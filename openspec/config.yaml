@@ -1,0 +1,32 @@
+schema: spec-driven
+
+context: |
+  auto-reel-ng — a rewrite of `auto-reel` (the `movie-merge` Python tool). It merges per-event video
+  clips into one polished movie per event (title card + real chapters), with cross-vendor GPU
+  acceleration, optional black/white/freeze analysis, and a web GUI. The authoritative design is in
+  docs/high-level-design.md; research findings in docs/research/; hardware spikes in experiments/.
+
+  Tech stack & locked decisions (see HLD "Decisions" + D-1..D-7):
+  - Python 3.13+/3.14, FastAPI service; engine is a pure-ish library driven by both the API and a headless CLI.
+  - ffmpeg/ffprobe invoked as subprocesses (no Python binding). Default binary = jellyfin-ffmpeg, but the
+    engine is binary-agnostic and asserts ffmpeg >= 7.1 at startup (D-1).
+  - Cross-vendor GPU via capability detection + per-vendor "acceleration profiles" with a startup self-test
+    and guaranteed CPU fallback (NVIDIA/Intel/AMD). Never hardcode a vendor; auto-pick best, override allowed (D-3).
+  - Render strategy: normalize each clip on GPU, then stream-copy concat only when a strict ffprobe
+    equivalence check passes; otherwise re-encode. Normalize is the default path.
+  - reel.yaml (per event dir) is the editorial source of truth (metadata, clip order, trims, look).
+    Project-level config.yaml holds shared defaults; reel.yaml overrides (D-2). Postgres holds derived
+    state only (index, jobs, analysis cache, ingest-layout defs) and is rebuildable from disk (D-7).
+  - Ingest layouts are pluggable; ship `<year>/<event>/` and `flat` built-ins (D-6). AV1 is a v1 target (D-5).
+
+  Conventions:
+  - Fail loud on probe/render errors; NEVER fabricate metadata (a core auto-reel bug being fixed).
+  - Strict typing (mypy), black/isort line length 100, real tests from the start.
+  - Directory spelled `ffmpeg` (auto-reel's `ffmepg` typo is NOT carried over).
+
+rules:
+  proposal:
+    - Keep "Why" grounded in a specific auto-reel learning or an HLD decision; reference the decision id (D-n) where relevant.
+    - Always include a "Non-goals" section.
+  tasks:
+    - Each task is independently testable; include the test alongside the code it covers.

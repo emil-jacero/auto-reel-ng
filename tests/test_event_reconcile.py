@@ -1,0 +1,153 @@
+"""Tests for discovery seeding and the pure disk-against-document reconcile."""
+
+from __future__ import annotations
+
+from datetime import date
+from pathlib import Path
+
+import pytest
+
+from auto_reel_ng.errors import ReconcileError
+from auto_reel_ng.event.discovery import scan_event, seed_document
+from auto_reel_ng.event.reconcile import (
+    ClipStatus,
+    add_clip,
+    ignore_clip,
+    reconcile,
+)
+from auto_reel_ng.reel.document import DEFAULT_CHAPTER_NAME
+
+
+def _touch(path: Path) -> None:
+    """Create an empty placeholder file (scan only checks name/extension)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"")
+
+
+def _make_event(tmp_path: Path, name: str = "2024-06-21 - Midsummer - Dalarna") -> Path:
+    event = tmp_path / name
+    _touch(event / "00400.mp4")
+    _touch(event / "00401.mp4")
+    _touch(event / "Reception" / "00500.mp4")
+    _touch(event / "notes.txt")  # non-video, ignored by the scan
+    return event
+
+
+# --------------------------------------------------------------------------- #
+# Seeding (5.1, 5.3)
+# --------------------------------------------------------------------------- #
+
+
+def test_subdirectories_seed_chapters(tmp_path: Path) -> None:
+    doc = seed_document(_make_event(tmp_path))
+    names = [c.name for c in doc.chapters]
+    assert DEFAULT_CHAPTER_NAME in names
+    assert "Reception" in names
+
+    default_chapter = doc.chapter(DEFAULT_CHAPTER_NAME)
+    assert default_chapter is not None
+    assert [r.identity for r in default_chapter.clips] == ["00400.mp4", "00401.mp4"]
+
+    reception = doc.chapter("Reception")
+    assert reception is not None
+    assert [r.identity for r in reception.clips] == ["Reception/00500.mp4"]
+
+
+def test_folder_name_seeds_metadata(tmp_path: Path) -> None:
+    doc = seed_document(_make_event(tmp_path))
+    assert doc.metadata.title == "Midsummer"
+    assert doc.metadata.date == date(2024, 6, 21)
+    assert doc.metadata.location == "Dalarna"
+
+
+def test_non_video_files_are_not_scanned(tmp_path: Path) -> None:
+    listing = scan_event(_make_event(tmp_path))
+    assert "notes.txt" not in listing.identities
+
+
+def test_empty_document_yields_all_new(tmp_path: Path) -> None:
+    listing = scan_event(_make_event(tmp_path))
+    result = reconcile(listing.identities, None)
+    assert set(result.new) == {"00400.mp4", "00401.mp4", "Reception/00500.mp4"}
+    assert result.missing == ()
+    assert result.active == ()
+    assert all(s is ClipStatus.NEW for s in result.classification.values())
+
+
+# --------------------------------------------------------------------------- #
+# Reconcile classification (5.2)
+# --------------------------------------------------------------------------- #
+
+
+def test_reconcile_classifies_new_missing_active_ignored(tmp_path: Path) -> None:
+    doc = seed_document(_make_event(tmp_path))
+    # Drop a disk clip and add one not referenced; ignore another.
+    doc = ignore_clip(doc, "extra.mp4")
+    disk = ["00400.mp4", "Reception/00500.mp4", "extra.mp4", "brandnew.mp4"]
+
+    result = reconcile(disk, doc)
+    assert result.active == ("00400.mp4", "Reception/00500.mp4")
+    assert result.missing == ("00401.mp4",)  # referenced, not on disk
+    assert result.new == ("brandnew.mp4",)  # on disk, unreferenced, not ignored
+    assert result.ignored == ("extra.mp4",)  # on disk, in ignore
+
+
+def test_reconcile_does_not_mutate_document(tmp_path: Path) -> None:
+    doc = seed_document(_make_event(tmp_path))
+    before = doc.to_dict()
+    reconcile(["totally_new.mp4"], doc)
+    assert doc.to_dict() == before
+
+
+# --------------------------------------------------------------------------- #
+# Apply operations (5.4)
+# --------------------------------------------------------------------------- #
+
+
+def test_add_places_new_clip_into_chapter_without_moving_files(tmp_path: Path) -> None:
+    event = _make_event(tmp_path)
+    doc = seed_document(event)
+
+    # A clip the document does not yet reference is added to a named chapter.
+    updated = add_clip(doc, "late_arrival.mp4", "Reception")
+
+    reception = updated.chapter("Reception")
+    assert reception is not None
+    assert "late_arrival.mp4" in [r.identity for r in reception.clips]
+    # Source files are untouched on disk.
+    assert not (event / "late_arrival.mp4").exists()
+
+
+def test_add_to_missing_chapter_fails(tmp_path: Path) -> None:
+    doc = seed_document(_make_event(tmp_path))
+    with pytest.raises(ReconcileError, match="does not exist"):
+        add_clip(doc, "x.mp4", "NoSuchChapter")
+
+
+def test_add_already_referenced_clip_fails(tmp_path: Path) -> None:
+    doc = seed_document(_make_event(tmp_path))
+    with pytest.raises(ReconcileError, match="already referenced"):
+        add_clip(doc, "00400.mp4", "Reception")
+
+
+def test_ignore_records_clip_and_round_trips_to_ignored(tmp_path: Path) -> None:
+    doc = seed_document(_make_event(tmp_path))
+    updated = ignore_clip(doc, "junk.mp4")
+    assert "junk.mp4" in updated.ignore
+
+    # A subsequent reconcile classifies it IGNORED rather than NEW.
+    result = reconcile(["junk.mp4"], updated)
+    assert result.ignored == ("junk.mp4",)
+    assert result.new == ()
+
+
+def test_ignore_referenced_clip_fails(tmp_path: Path) -> None:
+    doc = seed_document(_make_event(tmp_path))
+    with pytest.raises(ReconcileError, match="referenced in a chapter"):
+        ignore_clip(doc, "00400.mp4")
+
+
+def test_ignore_is_idempotent(tmp_path: Path) -> None:
+    doc = ignore_clip(seed_document(_make_event(tmp_path)), "junk.mp4")
+    again = ignore_clip(doc, "junk.mp4")
+    assert again.ignore.count("junk.mp4") == 1

@@ -1,0 +1,8 @@
+# Experiment artifacts are reproducible via each experiment's run.sh — don't commit generated media.
+*/artifacts/*.mp4
+*/artifacts/*.mkv
+*/artifacts/*.mov
+*/artifacts/*.png
+*/artifacts/*.y4m
+*/artifacts/list.txt
+# Keep small logs/text evidence if explicitly added with: git add -f
