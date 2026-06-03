@@ -42,6 +42,9 @@ addopts = "-ra -q --cov=auto_reel_ng"
 testpaths = [
     "tests",
 ]
+markers = [
+    "gpu: integration test that requires a real, usable hardware accelerator",
+]
 
 [tool.coverage.run]
 source = ["auto_reel_ng"]

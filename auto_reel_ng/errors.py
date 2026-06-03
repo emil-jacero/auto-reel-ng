@@ -43,6 +43,25 @@ class AccelError(EngineError):
     """
 
 
+class RenderError(EngineError):
+    """A movie could not be rendered from its :class:`RenderPlan`.
+
+    Raised when a segment cannot be normalized, an unknown decorator is named, a
+    requested codec has no usable encoder, or a produced file fails its post-render
+    verification. The engine never silently drops a clip or substitutes a
+    placeholder; it raises this instead, naming the offending segment/output.
+    """
+
+
+class RenderVerificationError(RenderError):
+    """A produced movie file did not match its target spec on re-probe.
+
+    A stream-copy concat can mux at exit 0 yet produce a player-broken
+    (variable-resolution/aspect) file; this is raised when the re-probe catches
+    that, rather than reporting a broken render as success.
+    """
+
+
 class ReelError(EngineError):
     """A ``reel.yaml`` editorial document could not be parsed, validated, or applied.
 
