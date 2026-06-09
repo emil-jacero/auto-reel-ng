@@ -1,0 +1,5 @@
+file 'seg1_black.mp4'
+file 'seg2_motion.mp4'
+file 'seg3_white.mp4'
+file 'seg4_motion.mp4'
+file 'seg5_freeze.mp4'

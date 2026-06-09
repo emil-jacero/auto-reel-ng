@@ -1,0 +1,28 @@
+== s1710001.mp4 ==
+-- black (d=2:pic_th=0.98):
+   (none)
+-- white (negate,blackdetect d=2:pic_th=0.98):
+   (none)
+-- freeze (n=0.003:d=2):
+   (none)
+== s1710002.mp4 ==
+-- black (d=2:pic_th=0.98):
+   (none)
+-- white (negate,blackdetect d=2:pic_th=0.98):
+   (none)
+-- freeze (n=0.003:d=2):
+   (none)
+== s1710003.mp4 ==
+-- black (d=2:pic_th=0.98):
+   (none)
+-- white (negate,blackdetect d=2:pic_th=0.98):
+   (none)
+-- freeze (n=0.003:d=2):
+   (none)
+== s1710004.mp4 ==
+-- black (d=2:pic_th=0.98):
+   (none)
+-- white (negate,blackdetect d=2:pic_th=0.98):
+   (none)
+-- freeze (n=0.003:d=2):
+   (none)

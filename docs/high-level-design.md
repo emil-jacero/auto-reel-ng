@@ -184,7 +184,7 @@ Detections are **suggestions**: they appear in the GUI as proposed trims; the op
 approved trims are written to `reel.yaml` and applied at render time as in/out points. Raw detection
 output is cached in a sidecar (e.g. `.auto-reel/cache/`), **not** in `reel.yaml`.
 
-> ⚠️ **Research:** §8.6 white/freeze thresholds; §8.7 ML model choices.
+> ⚠️ **Research:** §8.6 white/freeze thresholds ✅ **RESOLVED** (exp 005); §8.7 ML model choices.
 
 ### 4.6 `reel.yaml` — editorial source of truth
 

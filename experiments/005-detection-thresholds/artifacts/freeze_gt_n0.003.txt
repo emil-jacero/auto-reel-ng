@@ -1,0 +1,4 @@
+### freezedetect n=0.003:d=2 on gt
+[freezedetect @ 0x7f1bdc004d00] lavfi.freezedetect.freeze_start: 0
+[freezedetect @ 0x7f1bdc004d00] lavfi.freezedetect.freeze_start: 8
+[freezedetect @ 0x7f1bdc004d00] lavfi.freezedetect.freeze_start: 16

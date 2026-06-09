@@ -15,6 +15,14 @@ changes):
 
 from __future__ import annotations
 
+from .analysis import (
+    AnalysisConfig,
+    AnalysisError,
+    Segment,
+    SegmentKind,
+    analyze_clip,
+    analyze_event,
+)
 from .errors import (
     AccelError,
     EngineError,
@@ -75,12 +83,19 @@ __all__ = [
     "ClipStatus",
     "add_clip",
     "ignore_clip",
+    # analysis
+    "Segment",
+    "SegmentKind",
+    "AnalysisConfig",
+    "analyze_clip",
+    "analyze_event",
     # errors
     "EngineError",
     "FfmpegError",
     "FfmpegVersionError",
     "ProbeError",
     "AccelError",
+    "AnalysisError",
     "ReelError",
     "ReelParseError",
     "ReelImportError",

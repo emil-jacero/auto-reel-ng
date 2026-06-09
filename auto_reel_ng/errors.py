@@ -81,6 +81,16 @@ class RenderVerificationError(RenderError):
     """
 
 
+class AnalysisError(EngineError):
+    """A clip could not be analyzed for black/white/freeze spans.
+
+    Raised when an ffmpeg detection pass exits non-zero or a clip is undecodable.
+    Consistent with the engine-wide fail-loud rule, the analysis pass never returns
+    a fabricated or empty result that hides the failure; it raises this instead,
+    naming the offending clip.
+    """
+
+
 class ReelError(EngineError):
     """A ``reel.yaml`` editorial document could not be parsed, validated, or applied.
 

@@ -1,0 +1,5 @@
+== real YAVG max per clip @2fps ==
+s1710001.mp4  max_YAVG=124.609
+s1710002.mp4  max_YAVG=124.513
+s1710003.mp4  max_YAVG=123.614
+s1710004.mp4  max_YAVG=119.259

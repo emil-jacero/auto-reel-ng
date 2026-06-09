@@ -1,0 +1,2 @@
+### blackdetect d=2:pic_th=0.98 (defaults) on gt
+[blackdetect @ 0x7f7eb8004d00] black_start:0 black_end:3 black_duration:3

@@ -1,0 +1,2 @@
+### WHITE via negate,blackdetect d=2:pic_th=0.98 on gt
+[blackdetect @ 0x7faf540050c0] black_start:8 black_end:11 black_duration:3
