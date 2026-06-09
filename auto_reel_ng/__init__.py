@@ -23,6 +23,13 @@ from .analysis import (
     analyze_clip,
     analyze_event,
 )
+from .cli import main as cli_main
+from .config import (
+    ConfigError,
+    ProjectConfig,
+    load_project_config,
+    resolve_look_defaults,
+)
 from .errors import (
     AccelError,
     EngineError,
@@ -46,6 +53,16 @@ from .event import (
     seed_document,
 )
 from .ffmpeg.runtime import REQUIRED_FFMPEG_VERSION, FfmpegRuntime, parse_ffmpeg_version
+from .ingest import (
+    DEFAULT_LAYOUT,
+    EventRef,
+    FolderHint,
+    Layout,
+    LayoutError,
+    get_layout,
+    layout_names,
+    register_layout,
+)
 from .probe.media import get_default_runtime, probe_many, probe_media
 from .probe.metadata import AudioStream, ClipMetadata
 from .reel import (
@@ -89,6 +106,22 @@ __all__ = [
     "AnalysisConfig",
     "analyze_clip",
     "analyze_event",
+    # ingest layouts
+    "EventRef",
+    "FolderHint",
+    "Layout",
+    "LayoutError",
+    "DEFAULT_LAYOUT",
+    "get_layout",
+    "layout_names",
+    "register_layout",
+    # project config
+    "ProjectConfig",
+    "ConfigError",
+    "load_project_config",
+    "resolve_look_defaults",
+    # cli entry
+    "cli_main",
     # errors
     "EngineError",
     "FfmpegError",

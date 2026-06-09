@@ -30,6 +30,9 @@ dev = [
     "pre-commit>=4.0.0",
 ]
 
+[project.scripts]
+auto-reel = "auto_reel_ng.cli.main:main"
+
 [project.urls]
 Homepage = "https://github.com/emil-jacero/auto-reel-ng"
 Repository = "https://github.com/emil-jacero/auto-reel-ng.git"
@@ -47,6 +50,7 @@ testpaths = [
 markers = [
     "gpu: integration test that requires a real, usable hardware accelerator",
     "has_fonts: image/render test that requires Cairo/Pango and the bundled default font",
+    "has_ffmpeg: integration test that requires a real, usable ffmpeg >= 7.1",
 ]
 
 [tool.coverage.run]

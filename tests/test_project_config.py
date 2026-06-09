@@ -1,0 +1,78 @@
+"""Tests for the project config.yaml loader and D-2 layered resolution."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from auto_reel_ng.config import (
+    ConfigError,
+    ProjectConfig,
+    load_project_config,
+    loads_project_config,
+    resolve_look_defaults,
+)
+from auto_reel_ng.event import resolve
+from auto_reel_ng.reel.document import Metadata, ReelDocument
+
+# --------------------------------------------------------------------------- #
+# loader: missing / present / malformed
+# --------------------------------------------------------------------------- #
+
+
+def test_missing_config_is_tolerated(tmp_path: Path) -> None:
+    config = load_project_config(tmp_path)
+    assert config == ProjectConfig()
+    assert config.layout is None
+    assert config.look == {}
+
+
+def test_config_supplies_layout_name(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("layout: flat\n", encoding="utf-8")
+    assert load_project_config(tmp_path).layout == "flat"
+
+
+def test_config_look_and_paths(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text(
+        "look:\n  resolution: 1080p\ninput: media\noutput: out\n", encoding="utf-8"
+    )
+    config = load_project_config(tmp_path)
+    assert config.look == {"resolution": "1080p"}
+    assert config.input_dir == Path("media")
+    assert config.output_dir == Path("out")
+
+
+def test_malformed_yaml_fails_loud(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("look: [unterminated\n", encoding="utf-8")
+    with pytest.raises(ConfigError):
+        load_project_config(tmp_path)
+
+
+def test_wrong_typed_layout_fails_loud() -> None:
+    with pytest.raises(ConfigError):
+        loads_project_config("layout: 42\n")
+
+
+def test_wrong_typed_look_fails_loud() -> None:
+    with pytest.raises(ConfigError):
+        loads_project_config("look: not-a-mapping\n")
+
+
+# --------------------------------------------------------------------------- #
+# D-2 layering through resolve()
+# --------------------------------------------------------------------------- #
+
+
+def test_config_default_applies_when_nothing_overrides() -> None:
+    config = ProjectConfig(look={"resolution": "1080p"})
+    document = ReelDocument(metadata=Metadata(title="x"))
+    plan = resolve(document, look_defaults=resolve_look_defaults(config))
+    assert plan.look["resolution"] == "1080p"
+
+
+def test_reel_yaml_overrides_config() -> None:
+    config = ProjectConfig(look={"resolution": "1080p"})
+    document = ReelDocument(metadata=Metadata(title="x"), look={"resolution": "4k"})
+    plan = resolve(document, look_defaults=resolve_look_defaults(config))
+    assert plan.look["resolution"] == "4k"

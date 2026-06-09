@@ -37,6 +37,47 @@ meta = probe_media("clip.mp4", runtime=runtime)
 print(meta.width, meta.height, meta.fps, meta.is_hdr, meta.has_audio)
 ```
 
+## Command line (`auto-reel`)
+
+Installing the package provides an `auto-reel` entry point that drives the whole
+pipeline headless. It takes a **project root** (the directory an ingest layout
+walks; defaults to the current directory) and writes one movie per event.
+
+```bash
+auto-reel render  <root> -o out           # scan -> reconcile -> probe -> resolve -> render
+auto-reel scan    <root>                  # inventory: events + NEW/ACTIVE/IGNORED/MISSING clips
+auto-reel analyze <root>                  # detect black/white/freeze segments, cache suggestions
+auto-reel import  <root>                  # adopt auto-reel legacy metadata into a v2 reel.yaml
+```
+
+Shared options: `--years 2023,2024` (year-event layout), `--layout flat|year-event`,
+and `-o/--output`. `render` also takes `--dry-run` (print the ffmpeg commands and
+write nothing), `--overwrite`, and `--device <amd|nvidia|intel|cpu|device-id>`.
+
+- **Layouts** map the project root to event directories: `year-event`
+  (`<root>/<year>/<event>/`, the default) and `flat` (events directly under the root).
+- **Adoption policy:** an event with no `reel.yaml` is seeded from its folder
+  structure; on later runs `render` adopts any newly added clip into the default
+  chapter (so it is never silently dropped) and reports clips that went `MISSING`.
+- **Per-event isolation:** one event failing to render is reported with its cause
+  and does not abort the rest; the exit code is non-zero if any event errored.
+
+### Project `config.yaml`
+
+An optional `config.yaml` at the project root supplies shared defaults. Every field
+is optional; a command-line flag overrides it, and an event's `reel.yaml` overrides
+the project `look`.
+
+```yaml
+# config.yaml
+layout: year-event        # ingest layout name
+input: media              # walk root, relative to the project root (optional)
+output: out               # default output directory (optional)
+look:                     # opaque defaults passed to resolve() as look_defaults
+  resolution: 1080p
+  video_codec: h264
+```
+
 ## Development
 
 ```bash
