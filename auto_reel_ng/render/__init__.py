@@ -16,6 +16,10 @@ re-probe the output before reporting success.
 from __future__ import annotations
 
 from ..errors import RenderError, RenderVerificationError
+
+# Importing the title package registers the ``title`` decorator and producer; the
+# render API must expose them, so trigger registration on package import.
+from . import title  # noqa: E402,F401  (side-effect import after the symbols above)
 from .chapters import aggregate_chapter_durations, build_ffmetadata
 from .concat import build_concat_command, build_concat_list, is_copy_uniform, probe_copy_fields
 from .decorators import (
@@ -32,6 +36,7 @@ from .normalize import (
     HDR_SLOWNESS_WARNING,
     NormalizeCommand,
     build_normalize_command,
+    build_synthetic_normalize_command,
     copy_eligible,
     decide_copy_eligibility,
 )
@@ -44,8 +49,16 @@ from .orchestrator import (
     render_batch,
     render_movie,
 )
+from .producers import ProducedSegment, Producer, get_producer, register_producer
 from .segments import OverlaySpec, Segment, build_segments, kept_spans
 from .target import TargetSpec, derive_target
+from .title import (  # noqa: E402
+    TitleCardConfig,
+    TitleCardContent,
+    TitleCardRequest,
+    parse_title_card_config,
+    render_title_card,
+)
 from .verify import verify_output
 
 __all__ = [
@@ -77,9 +90,21 @@ __all__ = [
     "apply_decorators",
     # normalize + copy eligibility
     "build_normalize_command",
+    "build_synthetic_normalize_command",
     "copy_eligible",
     "decide_copy_eligibility",
     "HDR_SLOWNESS_WARNING",
+    # synthetic-segment producers
+    "ProducedSegment",
+    "Producer",
+    "register_producer",
+    "get_producer",
+    # title card
+    "TitleCardConfig",
+    "TitleCardContent",
+    "TitleCardRequest",
+    "parse_title_card_config",
+    "render_title_card",
     # assembly
     "is_copy_uniform",
     "probe_copy_fields",

@@ -27,7 +27,13 @@ from ..reel.document import Metadata
 from .chapters import aggregate_chapter_durations, build_ffmetadata
 from .concat import build_concat_command, build_concat_list, is_copy_uniform
 from .decorators import apply_decorators, resolve_decorator_names
-from .normalize import build_normalize_command, decide_copy_eligibility
+from .normalize import (
+    NormalizeCommand,
+    build_normalize_command,
+    build_synthetic_normalize_command,
+    decide_copy_eligibility,
+)
+from .producers import get_producer
 from .segments import Segment, build_segments
 from .target import TargetSpec, derive_target
 from .verify import verify_output
@@ -178,6 +184,10 @@ def _plan_only(
 ) -> RenderResult:
     """Build and report the planned commands without executing or writing (dry-run)."""
     scratch = Path(options.temp_dir) if options.temp_dir else Path("dry-run")
+    # A synthetic segment is materialized (its card image rendered) to plan its
+    # command, so the scratch dir must exist for those renders.
+    if any(segment.is_synthetic for segment in segments):
+        scratch.mkdir(parents=True, exist_ok=True)
     commands: list[tuple[str, ...]] = []
     warnings: list[str] = []
     intermediates: list[Path] = []
@@ -185,16 +195,12 @@ def _plan_only(
         if segment.copy_eligible and segment.source_path is not None:
             intermediates.append(segment.source_path)
             continue
-        clip = options.clip_facts.get(segment.identity) if segment.identity else None
-        if clip is None:
-            raise RenderError(f"segment {index} has no clip facts to plan a normalize command")
-        intermediate = scratch / f"seg_{index:03d}.mp4"
-        command = build_normalize_command(
-            segment, clip, target, profile, intermediate, render_node=options.render_node
+        command = _build_segment_command(
+            index, segment, target=target, profile=profile, options=options, scratch=scratch
         )
         commands.append(command.args)
         warnings.extend(command.warnings)
-        intermediates.append(intermediate)
+        intermediates.append(command.output_path)
 
     list_file = scratch / "concat.txt"
     metadata_file = scratch / "chapters.ffmeta"
@@ -204,6 +210,46 @@ def _plan_only(
         dry_run=True,
         commands=tuple(commands),
         warnings=tuple(warnings),
+    )
+
+
+def _segment_label(segment: Segment) -> str:
+    """A human label for a segment in logs/errors (source identity or producer)."""
+    if segment.is_synthetic:
+        return f"<{segment.producer} producer>"
+    return repr(segment.identity)
+
+
+def _build_segment_command(
+    index: int,
+    segment: Segment,
+    *,
+    target: TargetSpec,
+    profile: AccelProfile,
+    options: RenderOptions,
+    scratch: Path,
+) -> NormalizeCommand:
+    """Build the normalize command for one segment (synthetic or source).
+
+    A synthetic segment is first materialized through its producer (rendering its
+    card image into ``scratch`` as a side effect), then built overlay-free; a
+    source segment takes the probe-driven normalize path.
+    """
+    intermediate = scratch / f"seg_{index:03d}.mp4"
+    if segment.is_synthetic:
+        assert segment.producer is not None
+        producer = get_producer(segment.producer)
+        produced = producer(segment, target, scratch / f"card_{index:03d}.png")
+        return build_synthetic_normalize_command(
+            segment, produced, target, profile, intermediate, render_node=options.render_node
+        )
+    clip = options.clip_facts.get(segment.identity) if segment.identity else None
+    if clip is None:
+        raise RenderError(
+            f"segment {index} ({_segment_label(segment)}) has no clip facts to normalize"
+        )
+    return build_normalize_command(
+        segment, clip, target, profile, intermediate, render_node=options.render_node
     )
 
 
@@ -217,25 +263,21 @@ def _normalize_segment(
     scratch: Path,
     progress: _Progress,
 ) -> tuple[Path, tuple[str, ...]]:
-    """Normalize one segment to an intermediate; return ``(path, warnings)``."""
-    clip = options.clip_facts.get(segment.identity) if segment.identity else None
-    if clip is None:
-        raise RenderError(f"segment {index} ({segment.identity!r}) has no clip facts to normalize")
-    intermediate = scratch / f"seg_{index:03d}.mp4"
-    command = build_normalize_command(
-        segment, clip, target, profile, intermediate, render_node=options.render_node
+    """Normalize one segment (synthetic or source) to an intermediate; return ``(path, warnings)``."""
+    command = _build_segment_command(
+        index, segment, target=target, profile=profile, options=options, scratch=scratch
     )
     for warning in command.warnings:
-        logger.warning("segment %s: %s", segment.identity, warning)
+        logger.warning("segment %s: %s", _segment_label(segment), warning)
     try:
         options.runtime.run_with_progress(
             command.args, duration=command.duration, on_progress=progress.step(index)
         )
     except EngineError as exc:
         raise RenderError(
-            f"normalize failed for segment {index} ({segment.identity!r}): {exc}"
+            f"normalize failed for segment {index} ({_segment_label(segment)}): {exc}"
         ) from exc
-    return intermediate, command.warnings
+    return command.output_path, command.warnings
 
 
 def _execute(

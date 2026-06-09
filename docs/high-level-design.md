@@ -52,7 +52,7 @@ The problems we are **explicitly fixing**:
 | 1 | GPU = NVENC **encode only**; decode/scale/pad/overlay on CPU; frames bounce CPU↔GPU | Capability-driven **acceleration profiles**; keep frames GPU-resident |
 | 2 | **2–3 full re-encodes** per clip (convert → scale-pad → concat) | Normalize-once on GPU + **stream-copy concat** fast path |
 | 3 | **Chapters are illusory** — never written to the container | Write real `ffmetadata` chapter markers |
-| 4 | moviepy title cards spawn their own `libx264`/`aac` ffmpeg, ignore chosen codec, hardcoded fonts | Render card to image, **overlay in the main graph** with the chosen codec |
+| 4 | moviepy title cards spawn their own `libx264`/`aac` ffmpeg, ignore chosen codec, hardcoded fonts | Render card to image, encode it as **its own segment** (overlay-free) with the chosen codec |
 | 5 | Fragile probe: `time.sleep(1)`/clip, per-clip exiftool+ffprobe, **silent fake-metadata fallback** | One robust probe layer; **fail loud**, never fabricate dimensions/fps |
 | 6 | **No rotation / SAR / HDR handling** (`is_hdr` computed, never used) | Normalize rotation/SAR; HDR→SDR tonemap |
 | 7 | **GPU-unaware concurrency** — N movies each launch NVENC, oversubscribe | GPU-aware **job scheduler** |
@@ -154,11 +154,22 @@ Audio is normalized in the same normalize pass (sample rate / channels / codec) 
 
 ### 4.4 Title / overlay generation
 
-Replace moviepy. Render the title card to a **transparent PNG** (Pillow/Cairo: text, optional background,
-fades expressed as overlay alpha over time). Composite via the profile's `overlay*` filter inside the
-normalize pass, using the chosen codec. Fonts configurable, with a bundled default (no hardcoded Ubuntu path).
+Replace moviepy. Render the title card to an **RGBA PNG at the target resolution** (Cairo + Pango: text,
+optional background, outline/shadow) behind a **single swappable renderer seam** (`render_title_card`), then
+ship it as **its own synthetic segment** — looped, faded with the `fade` filter, given a synthesized silent
+audio track, and encoded to the **target spec with the chosen codec** like any other segment. This is
+**card-as-segment, overlay-free** (decision **D-A**): no `overlay`/`overlay_vaapi` and no CPU overlay bridge,
+so it is fully on-GPU on every vendor — sidestepping the AMD `overlay_vaapi` gap (exp 003) the original
+"overlay in the main graph" wording would have hit. A generic, name-keyed **producer registry** materializes a
+synthetic segment's content by its `producer` key (the title card is the first registration; intro/outro/
+transition bumpers reuse the seam). Fonts are resolved **by family name through fontconfig** with a bundled
+default (DejaVu Sans), and an unresolved family **fails loud** rather than silently substituting. The same
+`render_title_card` seam produces the future GUI look-editor preview, so preview is byte-identical to the
+render. The title-over-footage *overlay* look stays a future addition via the decorator seam's `attacher`
+(non-goal here).
 
-> ⚠️ **Research:** §8.5 text-rendering replacement (Unicode/RTL, fontconfig, shadow quality).
+> ✅ **Resolved (§8.5):** Cairo + Pango, fail-loud font resolution, structural + tolerance-gated tests. The
+> title-over-footage overlay variant remains future work.
 
 ### 4.5 Analysis pass (black / white / freeze → ML later)
 
@@ -439,10 +450,21 @@ turned into confident OpenSpec changes. Numbered to match the ⚠️ markers abo
 4. **Stream-copy concat constraints.** ✅ **RESOLVED** (exp 001 + literature) — match `codec/profile/level/W/H/
    SAR/pix_fmt/time_base/fps` + audio params; **GOP open/closed, edit lists, AAC priming are NOT probe-visible**
    → normalize is the safe default; copy only for same-source clips (or add a keyframe packet check).
-5. **Title text rendering replacement** for moviepy — Pillow vs Cairo/Pango for Unicode/RTL, fontconfig
-   integration, shadow/outline quality, and producing a clean alpha PNG for overlay.
-6. **White/freeze detection thresholds** — `signalstats` luma-mean cutoffs for "white", `freezedetect`
-   tuning, minimum-duration logic, false-positive handling on bright scenes.
+5. **Title text rendering replacement** for moviepy. ✅ **RESOLVED** (title-card change) — **Cairo + Pango**
+   (real shaping/wrapping/kerning, fontconfig name-based fonts, headroom for non-Latin/RTL), behind a single
+   swappable `render_title_card` seam. **Fail-loud font resolution** (an unresolved family raises, naming the
+   bundled DejaVu Sans default; Pango's silent substitution is refused). Outline + crisp offset drop-shadow in
+   v1 (blurred shadow is a follow-up). The card ships **as its own overlay-free segment**, not an in-graph
+   overlay (decision **D-A**), so the AMD `overlay_vaapi` gap never applies. Tests are **structural** (computed
+   text boxes / wrap points / resolved family + golden ffmpeg-arg strings) with a single tolerance-based pixel
+   snapshot gated behind a "has-fonts" marker — no fragile exact-PNG goldens.
+6. **White/freeze detection thresholds.** ✅ **RESOLVED** (exp 005). Black/white via `blackdetect`
+   (`pic_th=0.98`, `pix_th=0.10`); **white = `negate,blackdetect`** (reuses the same machinery, range-robust —
+   chosen over a bespoke `signalstats` YAVG cutoff); `freezedetect=n=0.003`; **min-duration `d=2.0s`** default,
+   all configurable. Validated on a synthetic ground-truth clip (exact spans) with **zero false positives** on
+   real daytime footage (brightest frame `YAVG=124.6` vs white `235`). **Freeze overlaps black/white** → the
+   analysis layer must apply precedence (black/white > freeze) so a span isn't double-reported. Caveat:
+   re-check black on dark night footage. Defaults are suggestions the operator approves, never auto-applied.
 7. **ML analysis stack (later)** — PySceneDetect detectors (content vs adaptive), a blur/quality model,
    onnxruntime GPU execution providers per vendor.
 8. **ffmpeg distribution.** ✅ **RESOLVED → Decision D-1 (§4.12, LOCKED).** Default = **jellyfin-ffmpeg**

@@ -20,6 +20,38 @@ from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
 MakeClip = Callable[..., Path]
 
 
+def fonts_available() -> bool:
+    """True when Cairo + Pango and the bundled default font are usable on this host.
+
+    Mirrors the "has GPU" gate: the renderer's image/render tests are skipped when
+    the Cairo/Pango backend or the bundled DejaVu Sans family is unavailable, so the
+    suite passes on a host (or venv) without the system libraries installed.
+    """
+    try:
+        import gi  # noqa: PLC0415
+
+        gi.require_version("Pango", "1.0")
+        gi.require_version("PangoCairo", "1.0")
+        import cairo  # noqa: F401,PLC0415
+        from gi.repository import Pango, PangoCairo  # noqa: PLC0415
+    except (ImportError, ValueError):
+        return False
+    context = PangoCairo.FontMap.get_default().create_context()
+    desc = Pango.FontDescription()
+    desc.set_family("DejaVu Sans")
+    font = context.load_font(desc)
+    if font is None:
+        return False
+    return font.describe().get_family().strip().lower() == "dejavu sans"
+
+
+@pytest.fixture
+def has_fonts() -> None:
+    """Skip a test unless Cairo/Pango and the bundled default font are available."""
+    if not fonts_available():
+        pytest.skip("Cairo/Pango or the bundled default font (DejaVu Sans) not available")
+
+
 @pytest.fixture(scope="session")
 def runtime() -> FfmpegRuntime:
     """A real runtime backed by the system ffmpeg; skip the test if none is usable."""

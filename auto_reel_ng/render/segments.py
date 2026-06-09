@@ -60,10 +60,12 @@ class Segment:  # pylint: disable=too-many-instance-attributes
     A **source** segment carries ``identity``/``source_path`` and (for a trimmed
     clip) a numeric kept-span ``start``/``end`` in source seconds; ``is_full_clip``
     is true only when the clip had no cut spans. A **synthetic** segment carries a
-    ``producer`` reference and ``duration`` instead, with no source identity.
-    ``overlays`` is a first-class field; any non-empty overlay list makes the
-    segment copy-ineligible. ``copy_eligible`` is decided later (see
-    :mod:`auto_reel_ng.render.normalize`) and recorded here.
+    ``producer`` reference and ``duration`` instead, with no source identity, plus
+    an opaque ``producer_config`` payload the keyed producer interprets (the core
+    never inspects it, keeping the seam generic). ``overlays`` is a first-class
+    field; any non-empty overlay list makes the segment copy-ineligible.
+    ``copy_eligible`` is decided later (see :mod:`auto_reel_ng.render.normalize`)
+    and recorded here.
     """
 
     chapter: str
@@ -75,6 +77,7 @@ class Segment:  # pylint: disable=too-many-instance-attributes
     is_full_clip: bool = False
     producer: Optional[str] = None
     duration: Optional[float] = None
+    producer_config: Optional[object] = None
     overlays: tuple[OverlaySpec, ...] = ()
     copy_eligible: bool = False
 
@@ -109,9 +112,20 @@ class Segment:  # pylint: disable=too-many-instance-attributes
             "is_full_clip": self.is_full_clip,
             "producer": self.producer,
             "duration": self.duration,
+            "producer_config": _payload_to_dict(self.producer_config),
             "overlays": [o.to_dict() for o in self.overlays],
             "copy_eligible": self.copy_eligible,
         }
+
+
+def _payload_to_dict(payload: Optional[object]) -> Any:
+    """Render an opaque ``producer_config`` payload for logging, if it can serialize."""
+    if payload is None:
+        return None
+    to_dict = getattr(payload, "to_dict", None)
+    if callable(to_dict):
+        return to_dict()
+    return repr(payload)
 
 
 def kept_spans(cut_spans: Sequence[Trim], duration: float) -> list[tuple[float, float]]:

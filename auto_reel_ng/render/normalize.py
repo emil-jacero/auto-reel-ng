@@ -26,6 +26,7 @@ from ..accel.models import FrameLocation, OpClass, OpParams
 from ..accel.profiles.base import AccelProfile, needs_transfer
 from ..errors import RenderError
 from ..probe.metadata import ClipMetadata
+from .producers import ProducedSegment
 from .segments import OverlaySpec, Segment
 from .target import TargetSpec
 
@@ -196,13 +197,15 @@ def build_normalize_command(
     Realizes the kept span via in/out seeking, composes the video chain from
     profile fragments with explicit transfers, normalizes audio to the target
     params (synthesizing silence for video-only clips), and encodes to the
-    target codec. Raises :class:`RenderError` for a synthetic segment (its
-    producer arrives with #5) so a missing producer fails loud, never silently.
+    target codec. A synthetic segment is rejected here: it is materialized through
+    its producer and built by :func:`build_synthetic_normalize_command` instead, so
+    routing a synthetic segment through the source path fails loud rather than
+    silently mis-encoding it.
     """
     if segment.is_synthetic:
         raise RenderError(
-            f"synthetic segment (producer {segment.producer!r}) has no registered "
-            f"content producer; synthetic rendering arrives with the title change (#5)"
+            f"synthetic segment (producer {segment.producer!r}) must be built via "
+            f"build_synthetic_normalize_command, not the source-segment path"
         )
 
     params = OpParams(
@@ -277,6 +280,101 @@ def build_normalize_command(
     )
 
 
+def build_synthetic_normalize_command(
+    segment: Segment,
+    produced: ProducedSegment,
+    target: TargetSpec,
+    profile: AccelProfile,
+    output_path: Path,
+    *,
+    render_node: Optional[str] = None,
+) -> NormalizeCommand:
+    """Build the ffmpeg command that encodes a materialized synthetic segment (D-D).
+
+    Loops the producer's rendered image for the segment duration, applies a
+    fade-in/fade-out over the producer-supplied timings, synthesizes a silent audio
+    track at the target audio params (the same path video-only clips use), and
+    encodes to the target codec/pix_fmt/fps/resolution. The path is **overlay-free**
+    — it never uses ``overlay``/``overlay_vaapi`` or a CPU overlay bridge — so the
+    card renders fully through the encode on every vendor, including AMD where
+    ``overlay_vaapi`` is unavailable.
+    """
+    if not segment.is_synthetic:
+        raise RenderError(
+            f"build_synthetic_normalize_command requires a synthetic segment, got {segment!r}"
+        )
+
+    params = OpParams(
+        width=target.width,
+        height=target.height,
+        codec=target.video_codec,
+        render_node=render_node,
+        fill_color=target.fill_color,
+    )
+    encode = profile.fragment(OpClass.ENCODE, params)
+    duration = produced.duration
+
+    # A static image stays in system memory: a CPU scale+pad guard conforms it to
+    # the canvas (a no-op when it was authored on-size), then fades, then — only if
+    # the encoder wants hardware frames — a single hwupload. No overlay anywhere.
+    filters = [
+        f"scale={target.width}:{target.height}:force_original_aspect_ratio=decrease",
+        f"pad={target.width}:{target.height}:(ow-iw)/2:(oh-ih)/2:{target.fill_color}",
+        "setsar=1",
+    ]
+    if produced.fade_in > 0.0:
+        filters.append(f"fade=t=in:st=0:d={_fmt(produced.fade_in)}")
+    if produced.fade_out > 0.0:
+        start = max(0.0, duration - produced.fade_out)
+        filters.append(f"fade=t=out:st={_fmt(start)}:d={_fmt(produced.fade_out)}")
+    transfer = needs_transfer(FrameLocation.SYSTEM, encode.frames_in)
+    if transfer is not None:
+        filters.append(_transfer_filter(transfer))
+    vf = ",".join(filters)
+
+    layout = _channel_layout(target.audio_channels)
+    args: list[str] = [
+        "-y",
+        "-loop",
+        "1",
+        "-t",
+        _fmt(duration),
+        "-i",
+        str(produced.image_path),
+        "-f",
+        "lavfi",
+        "-t",
+        _fmt(duration),
+        "-i",
+        f"anullsrc=channel_layout={layout}:sample_rate={target.audio_sample_rate}",
+        "-vf",
+        vf,
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-r",
+        _fmt(target.fps),
+        *encode.output_flags,
+        "-pix_fmt",
+        target.pix_fmt,
+        "-t",
+        _fmt(duration),
+        "-c:a",
+        target.audio_codec,
+        "-ar",
+        str(target.audio_sample_rate),
+        "-ac",
+        str(target.audio_channels),
+        str(output_path),
+    ]
+    return NormalizeCommand(
+        args=tuple(args),
+        output_path=Path(output_path),
+        duration=duration,
+    )
+
+
 def _normalize_sar(sample_aspect_ratio: Optional[str]) -> str:
     """Treat an absent/``N/A`` SAR as square (1:1) for equivalence comparison."""
     if sample_aspect_ratio is None or sample_aspect_ratio in ("", "N/A", "0:1"):
@@ -331,6 +429,7 @@ __all__ = [
     "NormalizeCommand",
     "HDR_SLOWNESS_WARNING",
     "build_normalize_command",
+    "build_synthetic_normalize_command",
     "copy_eligible",
     "decide_copy_eligibility",
 ]

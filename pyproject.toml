@@ -15,6 +15,8 @@ authors = [
 ]
 dependencies = [
     "ruamel.yaml>=0.18.0",
+    "pycairo>=1.26.0",
+    "PyGObject>=3.50.0",
 ]
 
 [project.optional-dependencies]
@@ -44,6 +46,7 @@ testpaths = [
 ]
 markers = [
     "gpu: integration test that requires a real, usable hardware accelerator",
+    "has_fonts: image/render test that requires Cairo/Pango and the bundled default font",
 ]
 
 [tool.coverage.run]
@@ -86,6 +89,13 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
+
+# PyGObject (``gi``) and pycairo ship no usable type stubs; exempt them from the
+# missing-imports check the way the upstream project exempts moviepy/exifread. The
+# untyped surface is confined behind ``render_title_card`` (see render/title).
+[[tool.mypy.overrides]]
+module = ["gi.*", "cairo.*"]
+ignore_missing_imports = true
 
 [tool.pylint.messages_control]
 disable = [

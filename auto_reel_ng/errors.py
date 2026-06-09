@@ -53,6 +53,25 @@ class RenderError(EngineError):
     """
 
 
+class TitleCardError(RenderError):
+    """A title card could not be configured or rendered.
+
+    Raised for a malformed ``look.title_card`` value, an unknown producer key, or
+    a Cairo/Pango renderer that is unavailable on the host. The engine never
+    renders a card with a guessed value; it raises this instead, naming the field
+    or producer at fault.
+    """
+
+
+class FontResolutionError(TitleCardError):
+    """A configured font family did not resolve through fontconfig.
+
+    Pango would silently substitute a different family; the engine refuses that
+    and raises instead, naming the requested family and the bundled default, so an
+    operator never gets a card in an unintended typeface without being told.
+    """
+
+
 class RenderVerificationError(RenderError):
     """A produced movie file did not match its target spec on re-probe.
 

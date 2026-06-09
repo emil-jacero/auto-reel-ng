@@ -1,0 +1,493 @@
+"""Title-card tests: config, content, producer seam, decorator, synthetic encode.
+
+The pure layers (config parsing, text composition, producer registry, the title
+decorator, and the synthetic normalize command) are golden-tested without a GPU
+or fonts, matching the render layer's style. The Cairo+Pango renderer and the
+full end-to-end render are gated behind the ``has_fonts`` fixture (and a real CPU
+ffmpeg) so the suite passes on a host lacking the system libraries.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import date
+from pathlib import Path
+from typing import Optional
+
+import pytest
+
+from auto_reel_ng.accel.models import AcceleratorCapabilities, Device, Vendor
+from auto_reel_ng.accel.profiles import CPUProfile, VaapiProfile
+from auto_reel_ng.errors import FontResolutionError, RenderError, TitleCardError
+from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
+from auto_reel_ng.probe import probe_media
+from auto_reel_ng.probe.metadata import AudioStream, ClipMetadata
+from auto_reel_ng.reel.document import Metadata
+from auto_reel_ng.render import (
+    ProducedSegment,
+    RenderOptions,
+    Segment,
+    TargetSpec,
+    apply_decorators,
+    build_segments,
+    build_synthetic_normalize_command,
+    get_producer,
+    register_producer,
+    render_movie,
+)
+from auto_reel_ng.render.title import (
+    TitleCardConfig,
+    TitleCardContent,
+    TitleCardRequest,
+    compose_content,
+    parse_title_card_config,
+    title_card_lines,
+)
+from auto_reel_ng.render.title.decorator import TITLE_PRODUCER
+
+# --------------------------------------------------------------------------- #
+# Fixtures / factories (mirrors tests/test_render.py)                         #
+# --------------------------------------------------------------------------- #
+
+
+def _amd_profile() -> VaapiProfile:
+    return VaapiProfile(
+        AcceleratorCapabilities(
+            vendor=Vendor.AMD,
+            usable=True,
+            device=Device(
+                id="pci-0000:03:00.0",
+                vendor=Vendor.AMD,
+                name="RX 9070 XT",
+                render_node="/dev/dri/renderD128",
+            ),
+            pad_filter="pad_vaapi",
+            can_overlay_hw=False,
+            can_tonemap_hw=False,
+            usable_encoders={"h264": "h264_vaapi", "hevc": "hevc_vaapi", "av1": "av1_vaapi"},
+            decode_method="vaapi",
+        )
+    )
+
+
+def _target(**overrides: object) -> TargetSpec:
+    base: dict[str, object] = dict(
+        width=1920,
+        height=1080,
+        fps=30.0,
+        video_codec="h264",
+        video_encoder="h264_vaapi",
+        pix_fmt="yuv420p",
+        sample_aspect_ratio="1:1",
+        fill_color="black",
+        audio_codec="aac",
+        audio_sample_rate=48000,
+        audio_channels=2,
+    )
+    base.update(overrides)
+    return TargetSpec(**base)  # type: ignore[arg-type]
+
+
+def _subseq(haystack: tuple[str, ...], needle: list[str]) -> bool:
+    n = len(needle)
+    return any(list(haystack[i : i + n]) == needle for i in range(len(haystack) - n + 1))
+
+
+def _title_segment(**overrides: object) -> Segment:
+    base: dict[str, object] = dict(chapter="", producer=TITLE_PRODUCER, duration=7.0)
+    base.update(overrides)
+    return Segment(**base)  # type: ignore[arg-type]
+
+
+# --------------------------------------------------------------------------- #
+# 2. Title-card config                                                        #
+# --------------------------------------------------------------------------- #
+
+
+def test_defaults_applied_when_title_card_silent() -> None:
+    config = parse_title_card_config(None)
+    assert config.duration == 7.0
+    assert (config.fade_in, config.fade_out) == (2.0, 2.0)
+    assert config.font_family is None
+    assert config.resolved_family == "DejaVu Sans"
+
+
+def test_partial_config_keeps_defaults_for_absent_fields() -> None:
+    config = parse_title_card_config({"duration": 5.0, "font_family": "Inter"})
+    assert config.duration == 5.0
+    assert config.font_family == "Inter"
+    assert config.fade_in == 2.0  # untouched default
+
+
+def test_fades_clamped_to_duration() -> None:
+    config = parse_title_card_config({"duration": 4.0, "fade_in": 3.0, "fade_out": 3.0})
+    assert config.fade_in + config.fade_out == pytest.approx(4.0)
+    assert config.fade_in == pytest.approx(2.0) and config.fade_out == pytest.approx(2.0)
+
+
+def test_malformed_value_fails_loud_naming_field() -> None:
+    with pytest.raises(TitleCardError, match=r"look\.title_card\.duration"):
+        parse_title_card_config({"duration": "soon"})
+    with pytest.raises(TitleCardError, match=r"look\.title_card\.title_font_size"):
+        parse_title_card_config({"title_font_size": "big"})
+    with pytest.raises(TitleCardError, match=r"position"):
+        parse_title_card_config({"position": "sideways"})
+
+
+def test_config_to_dict_round_trips_fields() -> None:
+    config = parse_title_card_config({"duration": 6.0})
+    assert config.to_dict()["duration"] == 6.0
+
+
+# --------------------------------------------------------------------------- #
+# 3. Content composition (structural, no fonts)                               #
+# --------------------------------------------------------------------------- #
+
+
+def test_default_card_lines_include_title_and_formatted_date_location() -> None:
+    content = TitleCardContent(
+        heading="Midsommar", date=date(2024, 6, 21), location="Dalarna", description="Familjen"
+    )
+    lines = title_card_lines(content)
+    assert lines[0] == "Midsommar"
+    assert "2024-06-21" in lines
+    assert "Plats: Dalarna" in lines  # Swedish location formatting carried over
+    assert "Familjen" in lines
+
+
+def test_compose_content_default_chapter_uses_event_metadata() -> None:
+    plan = RenderPlan(
+        metadata=Metadata(title="Midsommar", date=date(2024, 6, 21), location="Dalarna"),
+        chapters=(ResolvedChapter(name="", clips=()),),
+    )
+    content = compose_content(plan, plan.chapters[0])
+    assert content.heading == "Midsommar"
+    assert content.location == "Dalarna"
+
+
+def test_compose_content_named_chapter_uses_chapter_name_as_heading() -> None:
+    plan = RenderPlan(
+        metadata=Metadata(title="Midsommar", location="Dalarna"),
+        chapters=(ResolvedChapter(name="Reception", clips=()),),
+    )
+    content = compose_content(plan, plan.chapters[0])
+    assert content.heading == "Reception"
+    assert content.location is None  # the opening card already showed the event sub-text
+
+
+# --------------------------------------------------------------------------- #
+# 4. Producer seam                                                            #
+# --------------------------------------------------------------------------- #
+
+
+def test_producer_resolved_by_name() -> None:
+    assert get_producer(TITLE_PRODUCER) is not None
+
+
+def test_unknown_producer_fails_loud() -> None:
+    with pytest.raises(RenderError, match=r"unknown segment producer 'bogus'"):
+        get_producer("bogus")
+
+
+def test_new_producer_registered_without_core_changes() -> None:
+    # The registry is generic: a producer registered under a fresh name resolves
+    # by that name and materializes a segment, with no change to the segment or
+    # normalize core. Restore the registry afterwards so the suite stays isolated.
+    from auto_reel_ng.render import producers as producers_module
+
+    def _dummy(segment: Segment, target: TargetSpec, dest: Path) -> ProducedSegment:
+        del segment, target  # a stand-in producer needs neither for this test
+        return ProducedSegment(image_path=dest, duration=2.0, fade_in=0.1, fade_out=0.1)
+
+    assert "intro" not in producers_module._REGISTRY  # truly a new name
+    register_producer("intro", _dummy)
+    try:
+        resolved = get_producer("intro")
+        assert resolved is _dummy
+        produced = resolved(
+            Segment(chapter="", producer="intro", duration=2.0),
+            _target(width=320, height=240),
+            Path("/t/intro.png"),
+        )
+        assert produced.image_path == Path("/t/intro.png") and produced.duration == 2.0
+    finally:
+        del producers_module._REGISTRY["intro"]
+
+
+def test_title_producer_requires_request_payload() -> None:
+    producer = get_producer(TITLE_PRODUCER)
+    with pytest.raises(TitleCardError, match="TitleCardRequest"):
+        producer(_title_segment(producer_config=None), _target(), Path("/t/card.png"))
+
+
+@pytest.mark.has_fonts
+def test_title_producer_yields_image_duration_and_fades(has_fonts: None, tmp_path: Path) -> None:
+    config = parse_title_card_config({"duration": 3.0, "fade_in": 0.5, "fade_out": 0.5})
+    content = TitleCardContent(heading="Midsommar", date=date(2024, 6, 21))
+    segment = _title_segment(
+        duration=3.0, producer_config=TitleCardRequest(config=config, content=content)
+    )
+    producer = get_producer(TITLE_PRODUCER)
+    dest = tmp_path / "card.png"
+    produced = producer(segment, _target(width=320, height=240), dest)
+    assert produced.image_path == dest and dest.exists()
+    assert produced.duration == 3.0
+    assert (produced.fade_in, produced.fade_out) == (0.5, 0.5)
+
+
+# --------------------------------------------------------------------------- #
+# 5. Title decorator (inserter)                                               #
+# --------------------------------------------------------------------------- #
+
+
+def _plan(look: dict, *chapters: ResolvedChapter) -> RenderPlan:
+    return RenderPlan(
+        metadata=Metadata(title="Movie", date=date(2024, 6, 21), location="Home"),
+        look=look,
+        chapters=chapters,
+    )
+
+
+def test_title_segment_inserted_before_default_chapter_title_clip() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4", is_title=True),)),
+    )
+    segments = build_segments(plan, Path("/ev"))
+    out = apply_decorators(("title",), plan, _target(), segments)
+    assert out[0].is_synthetic and out[0].producer == TITLE_PRODUCER
+    assert out[0].chapter == ""
+    assert out[1].identity == "a.mp4"
+    request = out[0].producer_config
+    assert isinstance(request, TitleCardRequest)
+    assert request.content.heading == "Movie"  # default chapter -> event title
+
+
+def test_per_chapter_title_segments_for_two_chapters() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(name="Intro", clips=(ResolvedClip(identity="a.mp4", is_title=True),)),
+        ResolvedChapter(name="Main", clips=(ResolvedClip(identity="b.mp4", is_title=True),)),
+    )
+    segments = build_segments(plan, Path("/ev"))
+    out = apply_decorators(("title",), plan, _target(), segments)
+    synthetic = [s for s in out if s.is_synthetic]
+    assert len(synthetic) == 2
+    # Each card sits immediately before its chapter's title clip and carries the name.
+    assert out[0].is_synthetic and out[1].identity == "a.mp4"
+    assert out[2].is_synthetic and out[3].identity == "b.mp4"
+    headings = [s.producer_config.content.heading for s in synthetic]  # type: ignore[union-attr]
+    assert headings == ["Intro", "Main"]  # both chapters are named -> chapter-name headings
+
+
+def test_no_title_decorator_means_no_card() -> None:
+    plan = _plan(
+        {},
+        ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4", is_title=True),)),
+    )
+    segments = build_segments(plan, Path("/ev"))
+    out = apply_decorators(("none",), plan, _target(), segments)
+    assert not any(s.is_synthetic for s in out)
+
+
+def test_chapter_without_title_clip_gets_no_card() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4", is_title=False),)),
+    )
+    segments = build_segments(plan, Path("/ev"))
+    out = apply_decorators(("title",), plan, _target(), segments)
+    assert not any(s.is_synthetic for s in out)
+
+
+# --------------------------------------------------------------------------- #
+# 6. Synthetic normalize command (golden strings, no GPU)                     #
+# --------------------------------------------------------------------------- #
+
+
+def _produced(**overrides: object) -> ProducedSegment:
+    base: dict[str, object] = dict(
+        image_path=Path("/t/card.png"), duration=7.0, fade_in=2.0, fade_out=2.0
+    )
+    base.update(overrides)
+    return ProducedSegment(**base)  # type: ignore[arg-type]
+
+
+def test_synthetic_command_loops_image_encodes_target_and_has_silent_audio() -> None:
+    command = build_synthetic_normalize_command(
+        _title_segment(), _produced(), _target(), _amd_profile(), Path("/t/seg.mp4")
+    )
+    args = command.args
+    assert _subseq(args, ["-loop", "1"])
+    assert _subseq(args, ["-t", "7", "-i", "/t/card.png"])
+    assert _subseq(args, ["-c:v", "h264_vaapi"])
+    assert "anullsrc=channel_layout=stereo:sample_rate=48000" in " ".join(args)
+    assert _subseq(args, ["-map", "0:v:0"]) and _subseq(args, ["-map", "1:a:0"])
+    assert _subseq(args, ["-c:a", "aac", "-ar", "48000", "-ac", "2"])
+    assert _subseq(args, ["-r", "30"])
+    assert command.duration == pytest.approx(7.0)
+
+
+def test_synthetic_command_applies_configured_fades() -> None:
+    command = build_synthetic_normalize_command(
+        _title_segment(),
+        _produced(duration=7.0, fade_in=2.0, fade_out=2.0),
+        _target(),
+        _amd_profile(),
+        Path("/t/seg.mp4"),
+    )
+    vf = command.args[command.args.index("-vf") + 1]
+    assert "fade=t=in:st=0:d=2" in vf
+    assert "fade=t=out:st=5:d=2" in vf
+
+
+def test_synthetic_command_omits_fades_when_zero() -> None:
+    command = build_synthetic_normalize_command(
+        _title_segment(),
+        _produced(fade_in=0.0, fade_out=0.0),
+        _target(),
+        _amd_profile(),
+        Path("/t/seg.mp4"),
+    )
+    vf = command.args[command.args.index("-vf") + 1]
+    assert "fade=t=in" not in vf and "fade=t=out" not in vf
+
+
+def test_synthetic_path_uses_no_overlay_on_amd() -> None:
+    # can_overlay_hw is False on AMD; the card must still encode with no overlay op.
+    command = build_synthetic_normalize_command(
+        _title_segment(), _produced(), _target(), _amd_profile(), Path("/t/seg.mp4")
+    )
+    assert "-filter_complex" not in command.args
+    assert "overlay" not in " ".join(command.args)
+    # VAAPI encode wants hardware frames: a single upload bridge, never an overlay.
+    vf = command.args[command.args.index("-vf") + 1]
+    assert vf.endswith("format=nv12,hwupload")
+
+
+def test_synthetic_command_honors_av1_target_codec() -> None:
+    command = build_synthetic_normalize_command(
+        _title_segment(),
+        _produced(),
+        _target(video_codec="av1", video_encoder="av1_vaapi"),
+        _amd_profile(),
+        Path("/t/seg.mp4"),
+    )
+    assert _subseq(command.args, ["-c:v", "av1_vaapi"])
+
+
+def test_synthetic_command_cpu_target_needs_no_hwupload() -> None:
+    command = build_synthetic_normalize_command(
+        _title_segment(),
+        _produced(),
+        _target(video_encoder="libx264"),
+        CPUProfile(),
+        Path("/t/seg.mp4"),
+    )
+    vf = command.args[command.args.index("-vf") + 1]
+    assert "hwupload" not in vf
+    assert _subseq(command.args, ["-c:v", "libx264"])
+
+
+def test_synthetic_builder_rejects_source_segment() -> None:
+    source = Segment(chapter="", identity="a.mp4", source_path=Path("/ev/a.mp4"), is_full_clip=True)
+    with pytest.raises(RenderError, match="requires a synthetic segment"):
+        build_synthetic_normalize_command(
+            source, _produced(), _target(), _amd_profile(), Path("/t/seg.mp4")
+        )
+
+
+# --------------------------------------------------------------------------- #
+# 3/4. Cairo + Pango renderer (gated behind has_fonts)                        #
+# --------------------------------------------------------------------------- #
+
+
+def _render(config: TitleCardConfig, content: TitleCardContent, target: TargetSpec, dest: Path):
+    from auto_reel_ng.render.title import render_title_card
+
+    return render_title_card(config, content, target, dest)
+
+
+@pytest.mark.has_fonts
+def test_rendered_card_is_target_resolution_and_rgba(has_fonts: None, tmp_path: Path) -> None:
+    import cairo
+
+    # Render over a translucent background so the alpha channel is retained (Cairo
+    # losslessly collapses a fully-opaque ARGB32 surface to RGB on write); the
+    # renderer always composes on an RGBA ARGB32 surface.
+    dest = tmp_path / "card.png"
+    _render(
+        parse_title_card_config({"background_opacity": 0.5}),
+        TitleCardContent(heading="Hej"),
+        _target(width=320, height=240),
+        dest,
+    )
+    surface = cairo.ImageSurface.create_from_png(str(dest))
+    assert (surface.get_width(), surface.get_height()) == (320, 240)
+    assert surface.get_format() == cairo.FORMAT_ARGB32
+
+
+@pytest.mark.has_fonts
+def test_bundled_default_renders_without_config(has_fonts: None, tmp_path: Path) -> None:
+    dest = tmp_path / "card.png"
+    out = _render(
+        parse_title_card_config(None),
+        TitleCardContent(heading="Midsommar", date=date(2024, 6, 21), location="Dalarna"),
+        _target(width=320, height=240),
+        dest,
+    )
+    assert out == dest and dest.exists()
+
+
+@pytest.mark.has_fonts
+def test_unresolved_font_family_fails_loud(has_fonts: None, tmp_path: Path) -> None:
+    config = parse_title_card_config({"font_family": "No Such Family ZZZ"})
+    with pytest.raises(FontResolutionError, match="No Such Family ZZZ"):
+        _render(
+            config,
+            TitleCardContent(heading="Hej"),
+            _target(width=320, height=240),
+            tmp_path / "card.png",
+        )
+
+
+# --------------------------------------------------------------------------- #
+# 7. End-to-end orchestration (gated behind has_fonts + real ffmpeg)          #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.has_fonts
+def test_end_to_end_render_inserts_title_card_segment(
+    has_fonts: None, runtime, make_clip, tmp_path
+) -> None:
+    clip = make_clip("a.mp4", width=320, height=240, fps=30, duration=1.0)
+    facts = {"a.mp4": probe_media(clip, runtime=runtime)}
+    look = {
+        "decorators": ["title"],
+        "target_resolution": [320, 240],
+        "video_codec": "h264",
+        "title_card": {"duration": 1.0, "fade_in": 0.2, "fade_out": 0.2},
+    }
+    plan = RenderPlan(
+        metadata=Metadata(title="Movie", date=date(2024, 6, 21), location="Home"),
+        look=look,
+        chapters=(
+            ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4", is_title=True),)),
+        ),
+    )
+    # The decorated plan puts the synthetic card first.
+    decorated = apply_decorators(
+        ("title",), plan, _target(width=320, height=240), build_segments(plan, tmp_path, facts)
+    )
+    assert decorated[0].is_synthetic
+
+    out_dir = tmp_path / "out"
+    options = RenderOptions(
+        event_dir=tmp_path, output_dir=out_dir, clip_facts=facts, runtime=runtime
+    )
+    result = render_movie(plan, CPUProfile(), options)
+    assert result.output_path.exists()
+    # The chapter duration accounts for the inserted ~1s card on top of the ~1s clip.
+    out_facts = probe_media(result.output_path, runtime=runtime)
+    assert out_facts.duration == pytest.approx(2.0, abs=0.4)
+    assert (out_facts.width, out_facts.height) == (320, 240)
