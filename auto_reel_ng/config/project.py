@@ -1,7 +1,8 @@
 """Project ``config.yaml``: shared defaults and the D-2 layering.
 
 A project root may carry a ``config.yaml`` declaring a default ``look`` map, the
-ingest ``layout`` name, and default ``input``/``output`` paths. Every field is
+ingest ``layout`` name, default ``input``/``output`` paths, and a ``database.url``
+override consumed by :mod:`auto_reel_ng.persistence.config`. Every field is
 optional: a missing file yields all-defaults (tolerated), while malformed YAML or
 a wrong-typed field fails loud (engine convention).
 
@@ -44,6 +45,7 @@ class ProjectConfig:
     layout: Optional[str] = None
     input_dir: Optional[Path] = None
     output_dir: Optional[Path] = None
+    database_url: Optional[str] = None
 
 
 def load_project_config(root: Path) -> ProjectConfig:
@@ -74,11 +76,13 @@ def loads_project_config(text: str, *, source: str = "<string>") -> ProjectConfi
             f"{source}: top-level config must be a mapping, got {type(data).__name__}"
         )
 
+    database = _require_mapping(data.get("database"), "database", source)
     return ProjectConfig(
         look=dict(_require_mapping(data.get("look"), "look", source)),
         layout=_require_str(data.get("layout"), "layout", source),
         input_dir=_require_path(data.get("input"), "input", source),
         output_dir=_require_path(data.get("output"), "output", source),
+        database_url=_require_str(database.get("url"), "database.url", source),
     )
 
 

@@ -17,6 +17,9 @@ dependencies = [
     "ruamel.yaml>=0.18.0",
     "pycairo>=1.26.0",
     "PyGObject>=3.50.0",
+    "sqlalchemy>=2.0.51",
+    "alembic>=1.18.5",
+    "psycopg[binary]>=3.3.4",
 ]
 
 [project.optional-dependencies]
@@ -51,6 +54,7 @@ markers = [
     "gpu: integration test that requires a real, usable hardware accelerator",
     "has_fonts: image/render test that requires Cairo/Pango and the bundled default font",
     "has_ffmpeg: integration test that requires a real, usable ffmpeg >= 7.1",
+    "requires_db: integration test that requires a podman-launched Postgres container",
 ]
 
 [tool.coverage.run]
@@ -100,6 +104,12 @@ warn_unreachable = true
 [[tool.mypy.overrides]]
 module = ["gi.*", "cairo.*"]
 ignore_missing_imports = true
+
+[tool.pylint.main]
+# The local ``alembic/`` migrations tree shares its name with the installed
+# ``alembic`` package; pylint's import resolution collides on that, not on any
+# lint issue in the migration scripts themselves.
+ignore-paths = ["^alembic/.*"]
 
 [tool.pylint.messages_control]
 disable = [

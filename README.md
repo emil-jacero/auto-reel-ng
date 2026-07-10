@@ -85,3 +85,16 @@ pip install -e ".[dev]"
 pytest                 # tests build synthetic clips via ffmpeg lavfi; no real media needed
 black . && isort . && mypy auto_reel_ng && pylint auto_reel_ng
 ```
+
+The persistence suite (`requires_db`-marked tests) needs **podman** on `PATH`: a
+session-scoped fixture starts a throwaway Postgres container per test run and tears
+it down after. Tests not marked `requires_db` run without it.
+
+To provision a database by hand (dev default is
+`postgresql+psycopg://auto_reel_ng:auto_reel_ng@localhost:5432/auto_reel_ng`, overridden
+by `DATABASE_URL` or `config.yaml`'s `database.url` — see
+`auto_reel_ng/persistence/config.py`):
+
+```bash
+DATABASE_URL=postgresql+psycopg://... alembic upgrade head
+```

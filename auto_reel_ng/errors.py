@@ -125,3 +125,17 @@ class ReconcileError(ReelError):
     that does not exist, or adding a clip already referenced). MISSING clips are
     reported through the reconcile result, not raised.
     """
+
+
+class PersistenceError(EngineError):
+    """The persistence layer (connection, schema, or job store) rejected an operation."""
+
+
+class IllegalJobTransitionError(PersistenceError):
+    """A job was transitioned to a terminal state from a status other than ``running``.
+
+    The job-store convention distinguishes rejection from silent no-op: an illegal
+    transition raises this (the caller made a wrong assumption about job state),
+    while e.g. a progress update on a non-running job is silently ignored (the
+    caller's information may simply be stale).
+    """
