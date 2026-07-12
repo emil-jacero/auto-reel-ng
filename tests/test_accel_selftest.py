@@ -122,6 +122,9 @@ def test_amd_host_reports_verified_capabilities() -> None:
     assert amd.pad_filter == "pad_vaapi"
     assert amd.can_overlay_hw is False
     assert amd.can_tonemap_hw is False
+    # All three hardware encoders work on this card. hevc_vaapi in particular requires
+    # width >= 384, so the self-test must probe above that floor (see _PROBE_SIZE);
+    # a smaller probe used to exclude HEVC even though the card supports it.
     assert amd.usable_encoders == {
         "h264": "h264_vaapi",
         "hevc": "hevc_vaapi",

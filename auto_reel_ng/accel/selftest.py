@@ -31,6 +31,12 @@ logger = logging.getLogger(__name__)
 #: Per-probe wall-clock ceiling; a probe that exceeds it is treated as faulting (hung).
 DEFAULT_PROBE_TIMEOUT = 30.0
 
+#: Frame size for the synthetic probe inputs. Must clear every hardware encoder's
+#: minimum dimensions or a capable encoder is falsely excluded — notably AMD
+#: ``hevc_vaapi`` requires width >= 384 (h264/av1 have no such floor), so a smaller
+#: probe (the old 320x240) made HEVC report as unusable on cards that support it.
+_PROBE_SIZE = "640x480"
+
 #: codec -> hardware encoder name, per vendor. Only probed if ffmpeg lists the encoder.
 _HW_ENCODERS = {
     Vendor.AMD: {"h264": "h264_vaapi", "hevc": "hevc_vaapi", "av1": "av1_vaapi"},
@@ -72,7 +78,7 @@ def build_synthetic_inputs(runtime: FfmpegRuntime, directory: Path) -> Synthetic
             "-f",
             "lavfi",
             "-i",
-            "testsrc2=size=320x240:rate=30",
+            f"testsrc2=size={_PROBE_SIZE}:rate=30",
             "-frames:v",
             "1",
             "-c:v",
@@ -91,7 +97,7 @@ def build_synthetic_inputs(runtime: FfmpegRuntime, directory: Path) -> Synthetic
                 "-f",
                 "lavfi",
                 "-i",
-                "testsrc2=size=320x240:rate=30",
+                f"testsrc2=size={_PROBE_SIZE}:rate=30",
                 "-frames:v",
                 "1",
                 "-vf",
@@ -203,7 +209,7 @@ def _encode_probes(device: Device, encoders: frozenset[str], hwupload: str) -> l
                     "-f",
                     "lavfi",
                     "-i",
-                    "testsrc2=size=320x240:rate=30",
+                    f"testsrc2=size={_PROBE_SIZE}:rate=30",
                     "-frames:v",
                     "1",
                     "-vf",
