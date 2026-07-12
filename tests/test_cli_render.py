@@ -15,6 +15,7 @@ from unittest.mock import Mock
 import pytest
 
 from auto_reel_ng.accel.profiles import CPUProfile
+from auto_reel_ng.cli import build as build_module
 from auto_reel_ng.cli import commands
 from auto_reel_ng.cli.main import main
 from auto_reel_ng.errors import ProbeError
@@ -39,7 +40,7 @@ def patched_engine(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     monkeypatch.setattr(commands, "FfmpegRuntime", lambda *a, **k: Mock(name="runtime"))
     monkeypatch.setattr(commands, "detect_capabilities", lambda *a, **k: Mock(name="inventory"))
     monkeypatch.setattr(commands, "select_profile", lambda *a, **k: CPUProfile())
-    monkeypatch.setattr(commands, "probe_media", lambda *a, **k: Mock(name="clip_meta"))
+    monkeypatch.setattr(build_module, "probe_media", lambda *a, **k: Mock(name="clip_meta"))
     return monkeypatch
 
 
@@ -127,7 +128,7 @@ def test_render_isolates_a_build_failure(
             raise ProbeError("unprobeable clip")
         return Mock()
 
-    patched_engine.setattr(commands, "probe_media", fake_probe)
+    patched_engine.setattr(build_module, "probe_media", fake_probe)
     patched_engine.setattr(
         commands,
         "render_batch",
@@ -164,3 +165,31 @@ def test_render_device_override_threads_to_profile(
     )
     assert main(["render", str(root), "--device", "cpu"]) == 0
     assert captured["override"] == "cpu"
+
+
+def test_build_render_job_is_the_path_cmd_render_delegates_to(
+    tmp_path: Path, patched_engine: pytest.MonkeyPatch
+) -> None:
+    # `_build_job` (cmd_render) is a thin wrapper over `build_render_job` (D-S1):
+    # the shared plan-build helper the job-scheduler worker also calls. Locks in
+    # "no behavior change to render" as the factoring's parity requirement.
+    root = _project(tmp_path, "2024-06-21 - A")
+    event_dir = root / "2024" / "2024-06-21 - A"
+    output_dir = tmp_path / "out"
+
+    job, event = commands.build_render_job(
+        event_dir,
+        output_dir=output_dir,
+        runtime=commands.FfmpegRuntime(),
+        profile=CPUProfile(),
+        render_node=None,
+        look_defaults={},
+    )
+
+    assert job.options.event_dir == event_dir
+    assert job.options.output_dir == output_dir
+    assert job.options.overwrite is False
+    assert job.options.dry_run is False
+    assert job.profile.vendor.value == "cpu"
+    assert (event_dir / "reel.yaml").exists()  # persisted, same as _build_job
+    assert event.seeded  # no reel.yaml existed yet, so the document was seeded

@@ -59,6 +59,24 @@ def test_wrong_typed_look_fails_loud() -> None:
         loads_project_config("look: not-a-mapping\n")
 
 
+def test_config_supplies_worker_settings(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text(
+        "worker:\n  gpu_sessions_per_device: 2\n  cpu_slots: 4\n  poll_interval: 1.5\n",
+        encoding="utf-8",
+    )
+    config = load_project_config(tmp_path)
+    assert config.worker == {
+        "gpu_sessions_per_device": 2,
+        "cpu_slots": 4,
+        "poll_interval": 1.5,
+    }
+
+
+def test_wrong_typed_worker_fails_loud() -> None:
+    with pytest.raises(ConfigError):
+        loads_project_config("worker: not-a-mapping\n")
+
+
 # --------------------------------------------------------------------------- #
 # D-2 layering through resolve()
 # --------------------------------------------------------------------------- #

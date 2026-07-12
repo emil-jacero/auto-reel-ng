@@ -1,10 +1,11 @@
 """Project ``config.yaml``: shared defaults and the D-2 layering.
 
 A project root may carry a ``config.yaml`` declaring a default ``look`` map, the
-ingest ``layout`` name, default ``input``/``output`` paths, and a ``database.url``
-override consumed by :mod:`auto_reel_ng.persistence.config`. Every field is
-optional: a missing file yields all-defaults (tolerated), while malformed YAML or
-a wrong-typed field fails loud (engine convention).
+ingest ``layout`` name, default ``input``/``output`` paths, a ``database.url``
+override consumed by :mod:`auto_reel_ng.persistence.config`, and a ``worker`` map
+consumed by :mod:`auto_reel_ng.scheduler.config`. Every field is optional: a
+missing file yields all-defaults (tolerated), while malformed YAML or a
+wrong-typed field fails loud (engine convention).
 
 Layered resolution (decision **D-2 / D-CLI2**): folder/layout seed ->
 ``config.yaml`` -> event ``reel.yaml`` -> CLI overrides, each later layer winning.
@@ -46,6 +47,9 @@ class ProjectConfig:
     input_dir: Optional[Path] = None
     output_dir: Optional[Path] = None
     database_url: Optional[str] = None
+    #: The job-scheduler worker's ``worker.*`` settings (opaque, like ``look``); see
+    #: :func:`auto_reel_ng.scheduler.config.resolve_worker_config`.
+    worker: Mapping[str, object] = field(default_factory=dict)
 
 
 def load_project_config(root: Path) -> ProjectConfig:
@@ -83,6 +87,7 @@ def loads_project_config(text: str, *, source: str = "<string>") -> ProjectConfi
         input_dir=_require_path(data.get("input"), "input", source),
         output_dir=_require_path(data.get("output"), "output", source),
         database_url=_require_str(database.get("url"), "database.url", source),
+        worker=dict(_require_mapping(data.get("worker"), "worker", source)),
     )
 
 
