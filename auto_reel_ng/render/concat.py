@@ -97,14 +97,17 @@ def build_concat_command(
 
     The segment set is assumed already uniform (made so by re-normalizing on a
     failed pre-flight), so the join only ever stream-copies. When a chapter
-    ``metadata_file`` is given, it is muxed in via ``-map_metadata``.
+    ``metadata_file`` is given, it is muxed in via ``-map_metadata``. The output
+    container is forced to ``mp4`` explicitly (rather than inferred from
+    ``output_path``'s extension) so an atomic-finalize ``.mp4.part`` target still
+    muxes correctly.
     """
     args: list[str] = ["-y", "-f", "concat", "-safe", "0", "-i", str(list_file)]
     if metadata_file is not None:
         # -map_chapters (not just -map_metadata) is what pulls the [CHAPTER]
         # markers out of the ffmetadata input and into the container.
         args += ["-i", str(metadata_file), "-map", "0", "-map_metadata", "1", "-map_chapters", "1"]
-    args += ["-c", "copy", "-movflags", "+faststart", str(output_path)]
+    args += ["-c", "copy", "-movflags", "+faststart", "-f", "mp4", str(output_path)]
     return tuple(args)
 
 

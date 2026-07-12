@@ -15,7 +15,7 @@ re-probe the output before reporting success.
 
 from __future__ import annotations
 
-from ..errors import RenderError, RenderVerificationError
+from ..errors import RenderCancelledError, RenderError, RenderVerificationError
 
 # Importing the title package registers the ``title`` decorator and producer; the
 # render API must expose them, so trigger registration on package import.
@@ -48,6 +48,7 @@ from .orchestrator import (
     output_filename,
     render_batch,
     render_movie,
+    resolve_target,
 )
 from .producers import ProducedSegment, Producer, get_producer, register_producer
 from .segments import OverlaySpec, Segment, build_segments, kept_spans
@@ -79,6 +80,7 @@ __all__ = [
     "build_segments",
     "kept_spans",
     "derive_target",
+    "resolve_target",
     # decorators
     "Decorator",
     "register_decorator",
@@ -116,4 +118,5 @@ __all__ = [
     # errors
     "RenderError",
     "RenderVerificationError",
+    "RenderCancelledError",
 ]

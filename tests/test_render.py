@@ -23,7 +23,7 @@ from auto_reel_ng.accel.models import (
 )
 from auto_reel_ng.accel.profiles import CPUProfile, VaapiProfile
 from auto_reel_ng.accel.profiles.cpu import CPU_TONEMAP_FILTER
-from auto_reel_ng.errors import RenderError, RenderVerificationError
+from auto_reel_ng.errors import RenderCancelledError, RenderError, RenderVerificationError
 from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
 from auto_reel_ng.probe import probe_media
 from auto_reel_ng.probe.metadata import AudioStream, ClipMetadata
@@ -57,6 +57,7 @@ from auto_reel_ng.render import (
     render_batch,
     render_movie,
     resolve_decorator_names,
+    resolve_target,
     verify_output,
 )
 
@@ -318,6 +319,19 @@ def test_amd_vaapi_normalize_chain() -> None:
     assert _subseq(args, ["-c:a", "aac", "-ar", "48000", "-ac", "2"])
     assert _subseq(args, ["-r", "30"])
     assert not command.warnings
+
+
+def test_hardware_encode_omits_software_pix_fmt() -> None:
+    # ffmpeg >= 8 rejects an explicit ``-pix_fmt yuv420p`` against a VAAPI encoder
+    # (it consumes GPU surfaces); the CPU path must still set it.
+    vaapi = build_normalize_command(
+        _source_segment(), _clip(), _target(), _amd_profile(), Path("/t/seg.mp4")
+    )
+    assert "-pix_fmt" not in vaapi.args
+    cpu = build_normalize_command(
+        _source_segment(), _clip(), _target(), CPUProfile(), Path("/t/seg.mp4")
+    )
+    assert _subseq(cpu.args, ["-pix_fmt", "yuv420p"])
 
 
 def test_hdr_uses_cpu_tonemap_with_transfers_and_warns() -> None:
@@ -709,8 +723,177 @@ def test_failed_render_removes_half_written_output(
     monkeypatch.setattr(orch, "verify_output", _boom)
     with pytest.raises(RenderVerificationError):
         render_movie(plan, CPUProfile(), options)
-    # The half-written output was removed rather than presented as success.
+    # The half-written output was removed rather than presented as success, and no
+    # leftover .part remains either (movie-assembly: atomic finalize cleanup).
     assert not (out_dir / "Movie.mp4").exists()
+    assert not (out_dir / "Movie.mp4.part").exists()
+
+
+def test_atomic_finalize_temp_file_shares_output_directory(
+    runtime, make_clip, tmp_path, monkeypatch
+) -> None:
+    # The finalizing os.replace must be a same-filesystem rename, so the .part
+    # concat target has to live in the output directory, never the scratch tmpdir
+    # (movie-assembly: "Temporary output shares the output directory").
+    clip_a = make_clip("a.mp4", width=320, height=240)
+    facts = {"a.mp4": probe_media(clip_a, runtime=runtime)}
+    plan = RenderPlan(
+        metadata=Metadata(title="Movie"),
+        look={"target_resolution": [640, 480]},
+        chapters=(ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4"),)),),
+    )
+    out_dir = tmp_path / "out"
+    options = RenderOptions(
+        event_dir=tmp_path, output_dir=out_dir, clip_facts=facts, runtime=runtime
+    )
+
+    captured: dict[str, Path] = {}
+    real_verify = orch.verify_output
+
+    def _spy_verify(rt: object, path: Path, tgt: object) -> ClipMetadata:
+        captured["part_path"] = path
+        return real_verify(rt, path, tgt)
+
+    monkeypatch.setattr(orch, "verify_output", _spy_verify)
+    result = render_movie(plan, CPUProfile(), options)
+
+    assert captured["part_path"].parent == out_dir
+    assert captured["part_path"].name == "Movie.mp4.part"
+    assert result.output_path.exists()
+    assert not captured["part_path"].exists()  # renamed away, not left behind
+
+
+def test_hard_kill_leftover_part_does_not_fool_skip_check(runtime, make_clip, tmp_path) -> None:
+    # Simulate a hard kill (SIGKILL/OOM/power loss) that struck after the concat
+    # wrote the .part file but before the atomic rename: only the .part exists,
+    # never the final path. skip-if-exists must not be fooled by the leftover
+    # .part into skipping the re-render, and the stale .part must not survive.
+    clip_a = make_clip("a.mp4", width=320, height=240)
+    facts = {"a.mp4": probe_media(clip_a, runtime=runtime)}
+    plan = RenderPlan(
+        metadata=Metadata(title="Movie"),
+        look={"target_resolution": [640, 480]},
+        chapters=(ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4"),)),),
+    )
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    leftover_part = out_dir / "Movie.mp4.part"
+    leftover_part.write_bytes(b"truncated garbage from a killed process")
+    options = RenderOptions(
+        event_dir=tmp_path, output_dir=out_dir, clip_facts=facts, runtime=runtime
+    )
+
+    result = render_movie(plan, CPUProfile(), options)
+
+    assert result.skipped is False
+    assert result.output_path.exists()
+    assert not leftover_part.exists()
+
+
+def test_resolve_target_matches_derive_target() -> None:
+    facts = {"a.mp4": _clip("a.mp4")}
+    plan = RenderPlan(
+        look={"target_resolution": [1920, 1080]},
+        chapters=(ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4"),)),),
+    )
+    assert resolve_target(plan, _amd_profile(), facts) == derive_target(
+        plan.look, facts["a.mp4"], _amd_profile()
+    )
+
+
+# --------------------------------------------------------------------------- #
+# 9. Cooperative cancellation (job-scheduler, D-S6)                           #
+# --------------------------------------------------------------------------- #
+
+
+def test_cancel_before_first_segment_renders_nothing(runtime, make_clip, tmp_path) -> None:
+    clip_a = make_clip("a.mp4", width=320, height=240)
+    facts = {"a.mp4": probe_media(clip_a, runtime=runtime)}
+    plan = RenderPlan(
+        metadata=Metadata(title="Movie"),
+        look={"target_resolution": [640, 480]},
+        chapters=(ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4"),)),),
+    )
+    out_dir = tmp_path / "out"
+    options = RenderOptions(
+        event_dir=tmp_path,
+        output_dir=out_dir,
+        clip_facts=facts,
+        runtime=runtime,
+        should_cancel=lambda: True,
+    )
+    with pytest.raises(RenderCancelledError):
+        render_movie(plan, CPUProfile(), options)
+    assert not (out_dir / "Movie.mp4").exists()
+    assert not (out_dir / "Movie.mp4.part").exists()
+
+
+def test_cancel_stops_before_the_next_segment(runtime, make_clip, tmp_path) -> None:
+    clip_a = make_clip("a.mp4", width=320, height=240, duration=1.0)
+    clip_b = make_clip("b.mp4", width=320, height=240, duration=1.0)
+    facts = {
+        "a.mp4": probe_media(clip_a, runtime=runtime),
+        "b.mp4": probe_media(clip_b, runtime=runtime),
+    }
+    plan = RenderPlan(
+        metadata=Metadata(title="Movie"),
+        look={"target_resolution": [640, 480]},
+        chapters=(
+            ResolvedChapter(name="Intro", clips=(ResolvedClip(identity="a.mp4"),)),
+            ResolvedChapter(name="Main", clips=(ResolvedClip(identity="b.mp4"),)),
+        ),
+    )
+    out_dir = tmp_path / "out"
+    # Cancel takes effect once the first segment (index 0) has already started, so
+    # segment 1 is never begun.
+    seen: list[int] = []
+
+    def _cancel_after_first() -> bool:
+        return len(seen) >= 1
+
+    real_build = orch._build_segment_command
+
+    def _spy_build(index, *args, **kwargs):
+        seen.append(index)
+        return real_build(index, *args, **kwargs)
+
+    options = RenderOptions(
+        event_dir=tmp_path,
+        output_dir=out_dir,
+        clip_facts=facts,
+        runtime=runtime,
+        should_cancel=_cancel_after_first,
+    )
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(orch, "_build_segment_command", _spy_build)
+        with pytest.raises(RenderCancelledError):
+            render_movie(plan, CPUProfile(), options)
+
+    assert seen == [0]
+    assert not (out_dir / "Movie.mp4").exists()
+    assert not (out_dir / "Movie.mp4.part").exists()
+
+
+def test_cancel_requested_pre_render_never_starts(runtime, tmp_path) -> None:
+    # should_cancel already true when render_movie is invoked (e.g. the job's
+    # cancel_requested flag was set while queued): the very first segment boundary
+    # check catches it, so no ffmpeg process is ever spawned.
+    facts = {"missing.mp4": _clip("missing.mp4", width=320, height=240)}
+    plan = RenderPlan(
+        metadata=Metadata(title="Movie"),
+        look={"target_resolution": [640, 480]},
+        chapters=(ResolvedChapter(name="", clips=(ResolvedClip(identity="missing.mp4"),)),),
+    )
+    out_dir = tmp_path / "out"
+    options = RenderOptions(
+        event_dir=tmp_path,
+        output_dir=out_dir,
+        clip_facts=facts,
+        runtime=runtime,
+        should_cancel=lambda: True,
+    )
+    with pytest.raises(RenderCancelledError):
+        render_movie(plan, CPUProfile(), options)
 
 
 def test_normalize_failure_is_surfaced_naming_segment(runtime, tmp_path) -> None:

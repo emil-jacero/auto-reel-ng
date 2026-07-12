@@ -12,13 +12,14 @@ leaves a half-written output presented as success.
 from __future__ import annotations
 
 import logging
+import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Optional, Sequence
 
 from ..accel.profiles.base import AccelProfile
-from ..errors import EngineError, RenderError
+from ..errors import EngineError, RenderCancelledError, RenderError
 from ..event.plan import RenderPlan
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..probe import probe_media
@@ -41,6 +42,7 @@ from .verify import verify_output
 logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[float], None]
+ShouldCancel = Callable[[], bool]
 
 
 @dataclass
@@ -52,7 +54,10 @@ class RenderOptions:  # pylint: disable=too-many-instance-attributes
     replaces an existing output, ``dry_run`` builds + reports commands without
     executing or writing, ``render_node`` targets a specific GPU, ``on_progress``
     receives an overall 0.0-1.0 fraction, and ``temp_dir`` overrides the base for
-    the ephemeral per-render scratch directory.
+    the ephemeral per-render scratch directory. ``should_cancel``, when given, is
+    polled at each segment boundary (job-scheduler, D-S6); a true result stops the
+    render before the next segment starts and raises :class:`RenderCancelledError`
+    rather than completing or failing the render.
     """
 
     event_dir: Path
@@ -64,6 +69,7 @@ class RenderOptions:  # pylint: disable=too-many-instance-attributes
     render_node: Optional[str] = None
     on_progress: Optional[ProgressCallback] = None
     temp_dir: Optional[Path] = None
+    should_cancel: Optional[ShouldCancel] = None
 
 
 @dataclass(frozen=True)
@@ -103,6 +109,15 @@ def output_filename(metadata: Metadata) -> str:
     return f"{title}.mp4"
 
 
+def _part_path(output_path: Path) -> Path:
+    """The atomic-finalize temp path: same directory as ``output_path``, ``.part`` suffix.
+
+    Same directory guarantees the finalizing :func:`os.replace` is a same-filesystem
+    (atomic) rename rather than a cross-filesystem copy.
+    """
+    return output_path.with_name(output_path.name + ".part")
+
+
 def _first_clip_facts(plan: RenderPlan, clip_facts: Mapping[str, ClipMetadata]) -> ClipMetadata:
     """Return the probed facts of the plan's first clip, or fail loud."""
     for chapter in plan.chapters:
@@ -114,6 +129,18 @@ def _first_clip_facts(plan: RenderPlan, clip_facts: Mapping[str, ClipMetadata]) 
                 )
             return facts
     raise RenderError("render plan has no clips to render")
+
+
+def resolve_target(
+    plan: RenderPlan, profile: AccelProfile, clip_facts: Mapping[str, ClipMetadata]
+) -> TargetSpec:
+    """Derive the :class:`TargetSpec` for ``plan`` under ``profile`` (public seam).
+
+    The same derivation :func:`render_movie` performs internally, exposed so a
+    caller can learn the resolved encoder (job-scheduler capacity classification,
+    D-S3) before committing to a render.
+    """
+    return derive_target(plan.look, _first_clip_facts(plan, clip_facts), profile)
 
 
 class _Progress:
@@ -144,11 +171,15 @@ class _Progress:
 def render_movie(plan: RenderPlan, profile: AccelProfile, options: RenderOptions) -> RenderResult:
     """Render one movie from ``plan`` using ``profile``; verify before reporting success.
 
-    Honors overwrite/skip and dry-run. On any failure after the output file was
-    created, the partial output is removed so a failed render is never presented
-    as a successful one, then the error is re-raised.
+    Honors overwrite/skip and dry-run. Finalization is atomic (movie-assembly): the
+    assembled movie is written to a ``.part`` file in the output directory and moved
+    into place with :func:`os.replace` only after verification passes, so a file at
+    the final path always means a complete, verified render — even across a hard
+    kill (SIGKILL/OOM/power loss) mid-assembly. On any failure, the ``.part`` is
+    removed so a failed render is never presented as a successful one, then the
+    error is re-raised; the final path itself is never touched until the rename.
     """
-    target = derive_target(plan.look, _first_clip_facts(plan, options.clip_facts), profile)
+    target = resolve_target(plan, profile, options.clip_facts)
 
     segments = build_segments(plan, options.event_dir, options.clip_facts)
     names = resolve_decorator_names(plan.look)
@@ -169,9 +200,11 @@ def render_movie(plan: RenderPlan, profile: AccelProfile, options: RenderOptions
     try:
         return _execute(segments, target, profile, options, output_path)
     except BaseException:
-        # Never present a half-written output as a finished render.
-        if output_path.exists():
-            output_path.unlink()
+        # Never present a half-written output as a finished render; the final path
+        # is untouched until the atomic rename, so only the .part needs cleanup.
+        part_path = _part_path(output_path)
+        if part_path.exists():
+            part_path.unlink()
         raise
 
 
@@ -280,6 +313,16 @@ def _normalize_segment(
     return command.output_path, command.warnings
 
 
+def _check_cancelled(options: RenderOptions, *, before: str) -> None:
+    """Raise :class:`RenderCancelledError` if a cancel was requested (D-S6).
+
+    Polled at each segment boundary (and once more before the final assembly), so
+    a cooperative cancel takes effect between segments rather than mid-ffmpeg.
+    """
+    if options.should_cancel is not None and options.should_cancel():
+        raise RenderCancelledError(f"render canceled before {before}")
+
+
 def _execute(
     segments: tuple[Segment, ...],
     target: TargetSpec,
@@ -287,10 +330,11 @@ def _execute(
     options: RenderOptions,
     output_path: Path,
 ) -> RenderResult:
-    """Run the full pipeline: normalize/copy, equivalence-guard, assemble, verify."""
+    """Run the full pipeline: normalize/copy, equivalence-guard, assemble, verify, finalize."""
     runtime = options.runtime
     progress = _Progress(len(segments) + 1, options.on_progress)
     Path(options.output_dir).mkdir(parents=True, exist_ok=True)
+    part_path = _part_path(output_path)
 
     with tempfile.TemporaryDirectory(
         prefix="auto-reel-render-", dir=str(options.temp_dir) if options.temp_dir else None
@@ -300,6 +344,7 @@ def _execute(
         intermediates: list[Path] = []
         copied_indices: list[int] = []
         for index, segment in enumerate(segments):
+            _check_cancelled(options, before=f"segment {index}")
             if segment.copy_eligible and segment.source_path is not None:
                 intermediates.append(segment.source_path)
                 copied_indices.append(index)
@@ -342,6 +387,7 @@ def _execute(
                 "segments could not be made copy-uniform; refusing a silent-broken concat"
             )
 
+        _check_cancelled(options, before="final assembly")
         measured = [probe_media(Path(p), runtime=runtime).duration for p in intermediates]
         chapter_pairs = aggregate_chapter_durations(segments, measured)
         metadata_file = scratch / "chapters.ffmeta"
@@ -349,14 +395,17 @@ def _execute(
 
         list_file = scratch / "concat.txt"
         list_file.write_text(build_concat_list(intermediates), encoding="utf-8")
-        concat_command = build_concat_command(list_file, output_path, metadata_file=metadata_file)
+        concat_command = build_concat_command(list_file, part_path, metadata_file=metadata_file)
         try:
             runtime.run(concat_command)
         except EngineError as exc:
             raise RenderError(f"concat failed assembling {output_path.name}: {exc}") from exc
         progress.complete(len(segments))
 
-        verify_output(runtime, output_path, target)
+        # Verify the .part file, not the final path: a file only ever appears at
+        # output_path once it is known-complete (the atomic-finalize guarantee).
+        verify_output(runtime, part_path, target)
+        os.replace(part_path, output_path)
 
     return RenderResult(output_path=output_path, warnings=tuple(warnings))
 

@@ -81,6 +81,16 @@ class RenderVerificationError(RenderError):
     """
 
 
+class RenderCancelledError(RenderError):
+    """A render was stopped between segments by a cooperative cancel request.
+
+    Raised by the orchestrator's segment loop when ``RenderOptions.should_cancel``
+    reports true at a segment boundary (job-scheduler, D-S6); the caller
+    distinguishes this from a genuine failure and transitions the job to
+    ``canceled`` rather than ``failed``.
+    """
+
+
 class AnalysisError(EngineError):
     """A clip could not be analyzed for black/white/freeze spans.
 
