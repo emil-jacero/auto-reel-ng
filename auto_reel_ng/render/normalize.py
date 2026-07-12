@@ -259,7 +259,12 @@ def build_normalize_command(
 
     args += ["-r", _fmt(target.fps)]
     args += list(encode.output_flags)
-    args += ["-pix_fmt", target.pix_fmt]
+    # A software -pix_fmt is only valid when the encoder ingests system frames. A
+    # hardware encoder (VAAPI/CUDA/QSV) consumes GPU surfaces, and ffmpeg >= 8
+    # rejects an explicit ``-pix_fmt yuv420p`` against them ("Incompatible pixel
+    # format ... for codec 'h264_vaapi'"); let ffmpeg select the surface format.
+    if encode.frames_in is FrameLocation.SYSTEM:
+        args += ["-pix_fmt", target.pix_fmt]
     if segment.is_trimmed:
         args += ["-t", _fmt(duration)]
     args += [
@@ -314,6 +319,12 @@ def build_synthetic_normalize_command(
     encode = profile.fragment(OpClass.ENCODE, params)
     duration = produced.duration
 
+    # See build_normalize_command: emit a software -pix_fmt only for a system-frame
+    # encoder; a hardware encoder consumes GPU surfaces and ffmpeg >= 8 rejects it.
+    pix_fmt_flags: tuple[str, ...] = (
+        ("-pix_fmt", target.pix_fmt) if encode.frames_in is FrameLocation.SYSTEM else ()
+    )
+
     # A static image stays in system memory: a CPU scale+pad guard conforms it to
     # the canvas (a no-op when it was authored on-size), then fades, then — only if
     # the encoder wants hardware frames — a single hwupload. No overlay anywhere.
@@ -356,8 +367,7 @@ def build_synthetic_normalize_command(
         "-r",
         _fmt(target.fps),
         *encode.output_flags,
-        "-pix_fmt",
-        target.pix_fmt,
+        *pix_fmt_flags,
         "-t",
         _fmt(duration),
         "-c:a",
