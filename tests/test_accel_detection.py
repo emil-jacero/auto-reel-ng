@@ -29,6 +29,8 @@ FILTERS_TEXT = """Filters:
  ..C scale_vaapi      V->V       Scale to/from VAAPI surfaces
  ..C pad_vaapi        V->V       Pad the input video
  ..C overlay_vaapi    VV->V      Overlay one video on top of another
+ TS overlay           VV->V      Overlay a video source on top of the input.
+ .. tonemap_vaapi     V->V       VAAPI HDR to SDR tonemapping
 """
 
 HWACCELS_TEXT = """Hardware acceleration methods:
@@ -49,7 +51,15 @@ def test_inventory_reflects_ffmpeg_reported_encoder() -> None:
 def test_parse_filter_and_hwaccel_listings() -> None:
     """Filter and hwaccel listings parse into clean name sets."""
     filters = parse_filter_listing(FILTERS_TEXT)
-    assert {"scale", "scale_vaapi", "pad_vaapi", "overlay_vaapi"} <= filters
+    # Covers both the 3-char (older) and 2-char (ffmpeg >= 8) flag-field layouts.
+    assert {
+        "scale",
+        "scale_vaapi",
+        "pad_vaapi",
+        "overlay_vaapi",
+        "overlay",
+        "tonemap_vaapi",
+    } <= filters
     hwaccels = parse_hwaccel_listing(HWACCELS_TEXT)
     assert hwaccels == frozenset({"vaapi", "vdpau"})
 

@@ -62,12 +62,15 @@ def parse_codec_listing(text: str) -> frozenset[str]:
 def parse_filter_listing(text: str) -> frozenset[str]:
     """Parse ``ffmpeg -filters`` text into the set of filter names.
 
-    Filter lines carry a three-character flag field, the name, then an ``in->out`` arrow,
-    e.g. `` T.C scale_vaapi      V->V    Scale ...`` -> ``scale_vaapi``.
+    Filter lines carry a leading flag field, the name, then an ``in->out`` arrow,
+    e.g. `` T.C scale_vaapi      V->V    Scale ...`` -> ``scale_vaapi``. The flag field
+    is **2 or 3 characters** depending on the ffmpeg build: older builds expose three
+    columns (timeline/slice/command, ``T.C``), while ffmpeg >= 8 dropped the command
+    column and emits two (``TS``). The ``in->out`` arrow is the reliable signal.
     """
     names: set[str] = set()
     for line in text.splitlines():
-        match = re.match(r"^\s*[A-Za-z.]{3}\s+(\w+)\s+\S+->\S+", line)
+        match = re.match(r"^\s*[A-Za-z.|]{2,3}\s+(\w+)\s+\S+->\S+", line)
         if match:
             names.add(match.group(1))
     return frozenset(names)
