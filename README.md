@@ -51,6 +51,7 @@ auto-reel import  <root>                  # adopt auto-reel legacy metadata into
 auto-reel enqueue <root>                  # scan -> insert one queued job per event; never renders
 auto-reel worker  <root>                  # run the job-scheduler loop until SIGINT/SIGTERM
 auto-reel jobs list|show|cancel <root>    # read the job store; request cancellation
+auto-reel serve   <root>                  # run the API service (REST + WS) until SIGINT/SIGTERM
 ```
 
 Shared options: `--years 2023,2024` (year-event layout), `--layout flat|year-event`,
@@ -110,6 +111,46 @@ Pool sizes and the poll interval come from `config.yaml`'s `worker` map (below),
 overridden by `worker`'s own `--gpu-sessions-per-device`, `--cpu-slots`, and
 `--poll-interval` flags (same CLI-over-config precedence as everything else).
 
+### API service (`serve`)
+
+`auto-reel serve <root>` runs a FastAPI service (REST + a WebSocket) over the same
+engine `render`/`enqueue`/`worker`/`jobs` already use — a deliberately **thin
+layer**: every endpoint maps to an operation the CLI can also reach, and no scan,
+render, or job logic lives in the web tier.
+
+- **Events are scanned on request.** `GET /api/v1/events` and
+  `GET /api/v1/events/{event_id}` walk the configured layout and parse each
+  event's `reel.yaml` fresh on every call — there is no database copy of event or
+  clip state, so an edit made on disk is visible on the very next request. The
+  `event_id` is the root-relative event directory (URL-encoded), the same identity
+  `jobs`/the job store already use. `GET /api/v1/events/{event_id}/analysis`
+  exposes the read-only analysis sidecar cache; it never triggers analysis.
+- **Jobs lifecycle over REST** is a thin wrapper over the job store:
+  `POST /api/v1/jobs` (idempotent, like `enqueue`; 409 with the existing job's id
+  on an active duplicate), `GET /api/v1/jobs` / `GET /api/v1/jobs/{id}`, and
+  `POST /api/v1/jobs/{id}/cancel` (`request_cancel`, same semantics as
+  `jobs cancel`). The API never writes a job's `status` itself.
+- **`WS /api/v1/ws/jobs`** pushes live job progress: a subscriber gets a full
+  snapshot of active (`queued`/`running`) jobs on connect, then delta messages
+  (progress changes and status transitions, including terminal) from a single
+  central poller that queries the store roughly once per `api.poll_interval` —
+  and only while at least one subscriber is connected. A subscriber that falls
+  behind (a full outbound queue) is disconnected rather than back-pressuring the
+  poller; it reconnects and resyncs via a fresh snapshot.
+- **`GET /healthz`** reports liveness and database reachability.
+- **Bind/auth posture:** the default bind is `127.0.0.1` — widening it to a LAN
+  address is an explicit operator choice (`api.host`/`--host`). There is **no
+  authentication in v1**; a single middleware hook point exists for a future
+  static-bearer-token check to drop in without any route changes.
+
+```bash
+auto-reel serve <root> --host 127.0.0.1 --port 8080
+```
+
+Settings resolve through the same config-then-flag layering as `worker`:
+`api.host`/`api.port`/`api.poll_interval` in `config.yaml`, overridden by
+`serve`'s own `--host`, `--port`, `--poll-interval` flags.
+
 ### Project `config.yaml`
 
 An optional `config.yaml` at the project root supplies shared defaults. Every field
@@ -128,6 +169,10 @@ worker:                    # job-scheduler worker settings (all optional)
   gpu_sessions_per_device: 1   # concurrent GPU-encode sessions per render node
   cpu_slots: 1                 # concurrent CPU-encoded renders
   poll_interval: 2.0           # seconds between empty claim polls
+api:                       # API service ('serve') settings (all optional)
+  host: 127.0.0.1              # bind host; widen only deliberately
+  port: 8080                   # bind port
+  poll_interval: 1.0           # seconds between WS hub poll ticks
 ```
 
 ## Development
