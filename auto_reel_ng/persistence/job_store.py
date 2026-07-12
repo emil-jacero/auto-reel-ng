@@ -21,13 +21,15 @@ from datetime import datetime
 from typing import Iterable, Optional
 
 from sqlalchemy import ColumnElement, func, or_, select
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, sessionmaker
 
 from ..errors import IllegalJobTransitionError
 from .engine import session_scope
 from .models import Job, JobStatus
 
 _TERMINAL_STATUSES = {JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELED}
+_ACTIVE_STATUSES = (JobStatus.QUEUED, JobStatus.RUNNING)
 
 
 class JobStore:
@@ -38,17 +40,56 @@ class JobStore:
 
     def enqueue(
         self,
+        project_root: str,
         event_dir: str,
         *,
         device: str = "auto",
         output_path: Optional[str] = None,
     ) -> uuid.UUID:
-        """Insert a new ``queued`` job; record intent only, never execute/schedule."""
+        """Insert a new ``queued`` job for ``event_dir`` (project-root-relative).
+
+        Idempotent (D-S7/D-S8): when an active (``queued``/``running``) job already
+        exists for the same ``(project_root, event_dir)``, no row is inserted and the
+        existing job's id is returned instead. The database's partial unique index
+        is the source of truth for this — a concurrent enqueue for the same identity
+        races safely against it — so the insert is attempted first and a unique
+        violation falls back to looking the existing job up, rather than a
+        check-then-insert with its own race window.
+        """
+        job = Job(
+            project_root=project_root, event_dir=event_dir, device=device, output_path=output_path
+        )
         with session_scope(self._session_factory) as session:
-            job = Job(event_dir=event_dir, device=device, output_path=output_path)
             session.add(job)
-            session.flush()
+            try:
+                session.flush()
+            except IntegrityError:
+                session.rollback()
+                existing = self._active_job(session, project_root, event_dir)
+                if existing is None:
+                    raise  # pragma: no cover - defensive, the index caused the conflict
+                return existing.id
             return job.id
+
+    @staticmethod
+    def _active_job(session: Session, project_root: str, event_dir: str) -> Optional[Job]:
+        """The active (``queued``/``running``) job for this identity, if any."""
+        stmt = select(Job).where(
+            Job.project_root == project_root,
+            Job.event_dir == event_dir,
+            Job.status.in_(_ACTIVE_STATUSES),
+        )
+        return session.execute(stmt).scalar_one_or_none()
+
+    def active_job(self, project_root: str, event_dir: str) -> Optional[Job]:
+        """Read-only lookup of the active (``queued``/``running``) job for this identity.
+
+        Used by callers (the ``enqueue`` CLI command) that want to report whether
+        a job already existed, without relying on :meth:`enqueue`'s own return
+        value to distinguish the two cases.
+        """
+        with session_scope(self._session_factory) as session:
+            return self._active_job(session, project_root, event_dir)
 
     def claim_next(self, worker_id: str, device_filter: Optional[str] = None) -> Optional[Job]:
         """Atomically claim the oldest eligible ``queued`` job (D-P3).
@@ -142,6 +183,58 @@ class JobStore:
                 return None
             job.status = JobStatus.CANCELED
             job.finished_at = func.now()  # pylint: disable=not-callable
+            session.flush()
+            session.refresh(job)
+            return job
+
+    def request_cancel(self, job_id: uuid.UUID) -> Optional[Job]:
+        """Request cancellation of ``job_id`` (D-S6).
+
+        A ``running`` job only has its ``cancel_requested`` flag set — the worker
+        remains the sole writer of ``status`` and performs the terminal transition
+        itself once it next checks the flag between segments. A ``queued`` job is
+        canceled directly (equivalent to :meth:`cancel_queued`). A job already in a
+        terminal state, or missing, is a no-op returning ``None``.
+        """
+        with session_scope(self._session_factory) as session:
+            job = session.get(Job, job_id)
+            if job is None:
+                return None
+            if job.status == JobStatus.RUNNING:
+                job.cancel_requested = True
+                session.flush()
+                session.refresh(job)
+                return job
+            if job.status == JobStatus.QUEUED:
+                job.status = JobStatus.CANCELED
+                job.finished_at = func.now()  # pylint: disable=not-callable
+                session.flush()
+                session.refresh(job)
+                return job
+            return None
+
+    def requeue(self, job_id: uuid.UUID) -> Job:
+        """Reset a ``running`` job to ``queued`` for a fresh claim (D-S5).
+
+        Clears ``worker_id``/``started_at``/``progress`` and increments
+        ``requeue_count`` (so a crash-requeue loop is visible); ``cancel_requested``
+        is left intact so a cancel requested before a crash still applies once the
+        requeued job is claimed and checked again. Rejects (raises
+        :class:`~auto_reel_ng.errors.IllegalJobTransitionError`) a job that is not
+        currently ``running`` — the row is left unchanged.
+        """
+        with session_scope(self._session_factory) as session:
+            job = session.get(Job, job_id)
+            if job is None or job.status != JobStatus.RUNNING:
+                found = job.status.value if job is not None else "missing"
+                raise IllegalJobTransitionError(
+                    f"cannot requeue job {job_id}: job is not running (status={found})"
+                )
+            job.status = JobStatus.QUEUED
+            job.worker_id = None
+            job.started_at = None
+            job.progress = 0.0
+            job.requeue_count += 1
             session.flush()
             session.refresh(job)
             return job

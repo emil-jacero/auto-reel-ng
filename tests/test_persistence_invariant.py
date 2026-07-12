@@ -28,11 +28,11 @@ def _reel_yaml_fixtures(root: Path) -> dict[Path, bytes]:
 def test_store_operations_never_touch_reel_yaml(job_store: JobStore, tmp_path: Path) -> None:
     before = _reel_yaml_fixtures(tmp_path)
 
-    job_id = job_store.enqueue(str(tmp_path / "2026-01-01 - Party"))
+    job_id = job_store.enqueue(str(tmp_path), "2026-01-01 - Party")
     job_store.claim_next("worker")
     job_store.set_progress(job_id, 0.5)
     job_store.transition(job_id, JobStatus.DONE)
-    other_id = job_store.enqueue(str(tmp_path / "2026-02-02 - Trip"))
+    other_id = job_store.enqueue(str(tmp_path), "2026-02-02 - Trip")
     job_store.cancel_queued(other_id)
     job_store.get(job_id)
     job_store.list_by_status(JobStatus.DONE)
@@ -53,8 +53,8 @@ def test_database_drop_and_recreate_leaves_reel_yaml_untouched(
     try:
         Base.metadata.create_all(engine)
         store = JobStore(make_session_factory(engine))
-        store.enqueue(str(tmp_path / "2026-01-01 - Party"))
-        store.enqueue(str(tmp_path / "2026-02-02 - Trip"))
+        store.enqueue(str(tmp_path), "2026-01-01 - Party")
+        store.enqueue(str(tmp_path), "2026-02-02 - Trip")
 
         # Drop and recreate the database: the transient work ledger is lost, but
         # nothing on disk is touched (D-7).

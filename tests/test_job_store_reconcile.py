@@ -11,9 +11,11 @@ from auto_reel_ng.persistence.job_store import JobStore
 
 pytestmark = pytest.mark.requires_db
 
+PROJECT_ROOT = "/project"
+
 
 def test_orphaned_running_job_is_surfaced(job_store: JobStore) -> None:
-    job_id = job_store.enqueue("event")
+    job_id = job_store.enqueue(PROJECT_ROOT, "event")
     job_store.claim_next("dead-worker")
 
     orphaned = job_store.find_orphaned_running(live_workers=["alive-worker"])
@@ -22,7 +24,7 @@ def test_orphaned_running_job_is_surfaced(job_store: JobStore) -> None:
 
 
 def test_active_running_job_is_not_surfaced(job_store: JobStore) -> None:
-    job_store.enqueue("event")
+    job_store.enqueue(PROJECT_ROOT, "event")
     job_store.claim_next("alive-worker")
 
     orphaned = job_store.find_orphaned_running(live_workers=["alive-worker"])
@@ -31,7 +33,7 @@ def test_active_running_job_is_not_surfaced(job_store: JobStore) -> None:
 
 
 def test_cutoff_surfaces_a_stale_running_job(job_store: JobStore) -> None:
-    job_id = job_store.enqueue("event")
+    job_id = job_store.enqueue(PROJECT_ROOT, "event")
     job_store.claim_next("worker")
 
     future_cutoff = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)
@@ -41,7 +43,7 @@ def test_cutoff_surfaces_a_stale_running_job(job_store: JobStore) -> None:
 
 
 def test_cutoff_does_not_surface_a_recent_running_job(job_store: JobStore) -> None:
-    job_store.enqueue("event")
+    job_store.enqueue(PROJECT_ROOT, "event")
     job_store.claim_next("worker")
 
     past_cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
@@ -51,7 +53,7 @@ def test_cutoff_does_not_surface_a_recent_running_job(job_store: JobStore) -> No
 
 
 def test_only_running_jobs_are_considered(job_store: JobStore) -> None:
-    job_store.enqueue("event")  # stays queued, never claimed
+    job_store.enqueue(PROJECT_ROOT, "event")  # stays queued, never claimed
 
     orphaned = job_store.find_orphaned_running(live_workers=[])
 

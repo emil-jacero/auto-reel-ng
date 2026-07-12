@@ -28,11 +28,14 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _EXPECTED_COLUMNS = {
     "id",
     "event_dir",
+    "project_root",
     "output_path",
     "status",
     "device",
     "priority",
     "progress",
+    "cancel_requested",
+    "requeue_count",
     "error",
     "fingerprint",
     "worker_id",
@@ -66,7 +69,11 @@ def test_upgrade_head_builds_full_schema_from_empty(migrated_url: str) -> None:
         assert columns == _EXPECTED_COLUMNS
 
         index_names = {i["name"] for i in inspector.get_indexes("jobs")}
-        assert {"ix_jobs_status", "ix_jobs_claim_next"} <= index_names
+        assert {
+            "ix_jobs_status",
+            "ix_jobs_claim_next",
+            "ux_jobs_active_identity",
+        } <= index_names
 
         enum_names = {e["name"] for e in inspector.get_enums()}
         assert "job_status" in enum_names
