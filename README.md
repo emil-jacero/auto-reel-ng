@@ -48,6 +48,9 @@ auto-reel render  <root> -o out           # scan -> reconcile -> probe -> resolv
 auto-reel scan    <root>                  # inventory: events + NEW/ACTIVE/IGNORED/MISSING clips
 auto-reel analyze <root>                  # detect black/white/freeze segments, cache suggestions
 auto-reel import  <root>                  # adopt auto-reel legacy metadata into a v2 reel.yaml
+auto-reel enqueue <root>                  # scan -> insert one queued job per event; never renders
+auto-reel worker  <root>                  # run the job-scheduler loop until SIGINT/SIGTERM
+auto-reel jobs list|show|cancel <root>    # read the job store; request cancellation
 ```
 
 Shared options: `--years 2023,2024` (year-event layout), `--layout flat|year-event`,
@@ -61,6 +64,51 @@ write nothing), `--overwrite`, and `--device <amd|nvidia|intel|cpu|device-id>`.
   chapter (so it is never silently dropped) and reports clips that went `MISSING`.
 - **Per-event isolation:** one event failing to render is reported with its cause
   and does not abort the rest; the exit code is non-zero if any event errored.
+
+### Job scheduler (`enqueue` / `worker` / `jobs`)
+
+A durable Postgres-backed queue (the `jobs` table) that lets rendering outlive one
+CLI invocation and survive a crash or restart without losing or duplicating work.
+
+- **`enqueue`** scans the project (same layout/`--years` selection as `render`) and
+  inserts one `queued` job per event, storing its **project-root-relative** event
+  path and the project root; it never probes or renders. Re-running it is
+  idempotent — an event with an already-active (`queued`/`running`) job is
+  reported, not duplicated.
+- **`worker`** runs the claim/execute loop: it polls the store (every 1–2s when
+  idle), and for each claimed job **rebuilds the render plan from current disk
+  state** — a job row is an event reference, never a frozen plan, so an edit made
+  to `reel.yaml` while a job is queued renders the latest state.
+- **`jobs list`/`show`/`cancel`** are a read-only view plus cancellation. `cancel`
+  on a `running` job only sets its `cancel_requested` flag — the worker remains the
+  sole writer of `status` and stops itself between segments (**cancel latency is
+  about one segment's encode**, seconds to roughly a minute on VAAPI; there is no
+  mid-ffmpeg kill in this version). `cancel` on a `queued` job cancels it directly.
+
+**Requeue-on-restart:** every `worker` process boot gets a fresh `host:pid:nonce`
+identity and, before claiming any work, resets every `running` row not owned by a
+*live* worker back to `queued` — unconditionally, with no verification step. This
+is sound because output finalization is atomic (below): a truly-finished orphan
+re-runs, hits the engine's skip-if-exists check, and completes as `done` in
+milliseconds instead of re-rendering. There is currently **no heartbeat / hung-worker
+detection** — this reconcile only catches a crashed or cleanly-restarted worker, not
+one that is still alive but stuck.
+
+**Capacity:** the worker selects its acceleration profile once at startup (like
+`render`) and enforces two pools — one semaphore per hardware render node (default
+capacity 1) plus a global CPU semaphore — classifying each job by its *resolved*
+encoder after the plan rebuild, so a CPU-only job always runs alongside a GPU
+render rather than waiting behind it.
+
+**Atomic finalize (movie-assembly):** the engine concats to `<output>.mp4.part` in
+the output directory and only `os.replace()`s it into the final path after
+post-render verification passes. A file existing at the final path is therefore
+always a complete, verified render — even across a hard kill (SIGKILL/OOM/power
+loss) mid-assembly — which is what makes unconditional requeue-on-restart safe.
+
+Pool sizes and the poll interval come from `config.yaml`'s `worker` map (below),
+overridden by `worker`'s own `--gpu-sessions-per-device`, `--cpu-slots`, and
+`--poll-interval` flags (same CLI-over-config precedence as everything else).
 
 ### Project `config.yaml`
 
@@ -76,6 +124,10 @@ output: out               # default output directory (optional)
 look:                     # opaque defaults passed to resolve() as look_defaults
   resolution: 1080p
   video_codec: h264
+worker:                    # job-scheduler worker settings (all optional)
+  gpu_sessions_per_device: 1   # concurrent GPU-encode sessions per render node
+  cpu_slots: 1                 # concurrent CPU-encoded renders
+  poll_interval: 2.0           # seconds between empty claim polls
 ```
 
 ## Development
