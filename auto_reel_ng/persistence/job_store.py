@@ -171,6 +171,23 @@ class JobStore:
             stmt = select(Job).where(Job.status == status).order_by(Job.created_at.asc())
             return list(session.execute(stmt).scalars().all())
 
+    def latest_by_project(self, project_root: str) -> dict[str, Job]:
+        """The most recent job (any status) per ``event_dir`` under ``project_root``.
+
+        One query (Postgres ``DISTINCT ON``) rather than a per-event lookup or a
+        full-table scan per status — the events-list read model (API, D-A3) needs
+        "latest job per event" for a project without an N+1 query per event.
+        """
+        with session_scope(self._session_factory) as session:
+            stmt = (
+                select(Job)
+                .where(Job.project_root == project_root)
+                .distinct(Job.event_dir)
+                .order_by(Job.event_dir, Job.created_at.desc())
+            )
+            jobs = session.execute(stmt).scalars().all()
+            return {job.event_dir: job for job in jobs}
+
     def cancel_queued(self, job_id: uuid.UUID) -> Optional[Job]:
         """Move a ``queued`` job to ``canceled``, stamping ``finished_at``.
 

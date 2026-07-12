@@ -21,11 +21,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Tuple
 
+import uvicorn
 from ruamel.yaml import YAML
 
 from ..accel import AccelProfile, detect_capabilities, select_profile
 from ..accel.profiles.hardware import HardwareProfile
 from ..analysis import Segment, analyze_event
+from ..api.app import create_app
+from ..api.settings import resolve_api_settings
 from ..config import ProjectConfig, load_project_config, resolve_look_defaults
 from ..errors import EngineError
 from ..event import ReconcileResult, reconcile, scan_event
@@ -617,4 +620,40 @@ def cmd_jobs_cancel(args: argparse.Namespace) -> int:
         print(f"job {job_id}: cancel requested; the worker will stop between segments")
     else:
         print(f"job {job_id}: {result.status.value}")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# serve
+# --------------------------------------------------------------------------- #
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    """``serve``: run the FastAPI service under uvicorn until SIGINT/SIGTERM (D-A7).
+
+    Resolves :class:`~auto_reel_ng.api.settings.ApiSettings` through the same D-2
+    layering as ``worker``, then runs uvicorn programmatically; uvicorn installs
+    its own SIGINT/SIGTERM handlers for a graceful shutdown (the WS hub's poller
+    is cancelled via the app's lifespan). A bind failure is reported loudly,
+    naming the attempted host:port, and the command exits non-zero.
+    """
+    project_root = _resolve_project_root(args)
+    settings = resolve_api_settings(
+        project_root, host=args.host, port=args.port, poll_interval=args.poll_interval
+    )
+    app = create_app(settings)
+
+    logger.info(
+        "Starting API service on %s:%s (project_root=%s)",
+        settings.host,
+        settings.port,
+        project_root,
+    )
+    uvicorn_config = uvicorn.Config(app, host=settings.host, port=settings.port)
+    server = uvicorn.Server(uvicorn_config)
+    try:
+        server.run()
+    except SystemExit:
+        print(f"error: could not bind {settings.host}:{settings.port}", file=sys.stderr)
+        return 1
     return 0

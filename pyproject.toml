@@ -20,17 +20,24 @@ dependencies = [
     "sqlalchemy>=2.0.51",
     "alembic>=1.18.5",
     "psycopg[binary]>=3.3.4",
+    "fastapi>=0.139.0",
+    "uvicorn>=0.51.0",
+    # uvicorn ships no WebSocket implementation on its own (`uvicorn[standard]`
+    # pulls in far more than needed here) — required for WS /api/v1/ws/jobs.
+    "websockets>=13.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3.0",
     "pytest-cov>=5.0.0",
+    "pytest-asyncio>=0.24.0",
     "black>=25.9.0",
     "isort>=5.13.2",
     "mypy>=1.18.0",
     "pylint>=3.3.8",
     "pre-commit>=4.0.0",
+    "httpx>=0.28.0",
 ]
 
 [project.scripts]
@@ -50,6 +57,7 @@ addopts = "-ra -q --cov=auto_reel_ng"
 testpaths = [
     "tests",
 ]
+asyncio_mode = "auto"
 markers = [
     "gpu: integration test that requires a real, usable hardware accelerator",
     "has_fonts: image/render test that requires Cairo/Pango and the bundled default font",

@@ -9,12 +9,12 @@ import pytest
 from auto_reel_ng.cli.main import main
 
 
-def test_help_lists_the_seven_subcommands(capsys: pytest.CaptureFixture[str]) -> None:
+def test_help_lists_the_eight_subcommands(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         main(["--help"])
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    for command in ("render", "scan", "analyze", "import", "enqueue", "worker", "jobs"):
+    for command in ("render", "scan", "analyze", "import", "enqueue", "worker", "jobs", "serve"):
         assert command in out
 
 

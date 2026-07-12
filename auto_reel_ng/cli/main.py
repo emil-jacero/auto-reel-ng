@@ -1,11 +1,11 @@
 """The ``auto-reel`` argument parser and entry point (HLD §4.11).
 
-Exposes seven subcommands — ``render``, ``scan``/``list``, ``analyze``, ``import``,
-``enqueue``, ``worker``, and ``jobs`` (``list``/``show``/``cancel``) — over a shared
-set of options (project root, output dir, ``--years``, ``--layout``, ``--device``,
-``--dry-run``, ``--overwrite``). Unknown subcommands and bad arguments exit non-zero
-with usage (argparse); engine errors are caught at the top and reported on stderr
-with a non-zero exit.
+Exposes eight subcommands — ``render``, ``scan``/``list``, ``analyze``, ``import``,
+``enqueue``, ``worker``, ``jobs`` (``list``/``show``/``cancel``), and ``serve`` —
+over a shared set of options (project root, output dir, ``--years``, ``--layout``,
+``--device``, ``--dry-run``, ``--overwrite``). Unknown subcommands and bad
+arguments exit non-zero with usage (argparse); engine errors are caught at the top
+and reported on stderr with a non-zero exit.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from .commands import (
     cmd_jobs_show,
     cmd_render,
     cmd_scan,
+    cmd_serve,
     cmd_worker,
 )
 
@@ -202,6 +203,29 @@ def build_parser() -> argparse.ArgumentParser:
     _add_root_arg(jobs_cancel)
     jobs_cancel.add_argument("job_id", help="the job's id")
     jobs_cancel.set_defaults(func=cmd_jobs_cancel)
+
+    serve = subparsers.add_parser(
+        "serve", help="run the API service (REST + WS) until SIGINT/SIGTERM"
+    )
+    _add_root_arg(serve)
+    serve.add_argument(
+        "--host",
+        default=None,
+        help="bind host (default: config.yaml 'api.host' or 127.0.0.1)",
+    )
+    serve.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="bind port (default: config.yaml 'api.port' or 8080)",
+    )
+    serve.add_argument(
+        "--poll-interval",
+        type=float,
+        default=None,
+        help="WS hub poll interval in seconds (default: config.yaml 'api.poll_interval' or 1.0)",
+    )
+    serve.set_defaults(func=cmd_serve)
 
     return parser
 

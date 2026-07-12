@@ -50,6 +50,9 @@ class ProjectConfig:
     #: The job-scheduler worker's ``worker.*`` settings (opaque, like ``look``); see
     #: :func:`auto_reel_ng.scheduler.config.resolve_worker_config`.
     worker: Mapping[str, object] = field(default_factory=dict)
+    #: The API service's ``api.*`` settings (opaque, like ``worker``); see
+    #: :func:`auto_reel_ng.api.settings.resolve_api_settings`.
+    api: Mapping[str, object] = field(default_factory=dict)
 
 
 def load_project_config(root: Path) -> ProjectConfig:
@@ -88,6 +91,7 @@ def loads_project_config(text: str, *, source: str = "<string>") -> ProjectConfi
         output_dir=_require_path(data.get("output"), "output", source),
         database_url=_require_str(database.get("url"), "database.url", source),
         worker=dict(_require_mapping(data.get("worker"), "worker", source)),
+        api=dict(_require_mapping(data.get("api"), "api", source)),
     )
 
 
