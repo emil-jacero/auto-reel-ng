@@ -1,10 +1,11 @@
 """The ``auto-reel`` argument parser and entry point (HLD §4.11).
 
-Exposes the four subcommands (``render``, ``scan``/``list``, ``analyze``,
-``import``) over a shared set of options (project root, output dir, ``--years``,
-``--layout``, ``--device``, ``--dry-run``, ``--overwrite``). Unknown subcommands
-and bad arguments exit non-zero with usage (argparse); engine errors are caught at
-the top and reported on stderr with a non-zero exit.
+Exposes seven subcommands — ``render``, ``scan``/``list``, ``analyze``, ``import``,
+``enqueue``, ``worker``, and ``jobs`` (``list``/``show``/``cancel``) — over a shared
+set of options (project root, output dir, ``--years``, ``--layout``, ``--device``,
+``--dry-run``, ``--overwrite``). Unknown subcommands and bad arguments exit non-zero
+with usage (argparse); engine errors are caught at the top and reported on stderr
+with a non-zero exit.
 """
 
 from __future__ import annotations
@@ -16,7 +17,18 @@ from typing import Optional, Sequence, Tuple
 
 from ..errors import EngineError
 from ..ingest import DEFAULT_LAYOUT
-from .commands import cmd_analyze, cmd_import, cmd_render, cmd_scan
+from ..persistence.models import JobStatus
+from .commands import (
+    cmd_analyze,
+    cmd_enqueue,
+    cmd_import,
+    cmd_jobs_cancel,
+    cmd_jobs_list,
+    cmd_jobs_show,
+    cmd_render,
+    cmd_scan,
+    cmd_worker,
+)
 
 
 def _parse_years(value: str) -> Tuple[str, ...]:
@@ -24,8 +36,29 @@ def _parse_years(value: str) -> Tuple[str, ...]:
     return tuple(year.strip() for year in value.split(",") if year.strip())
 
 
+def _add_root_arg(parser: argparse.ArgumentParser) -> None:
+    """Add the project-root positional + ``-v``/``--verbose`` (job-scheduler commands).
+
+    ``worker``/``jobs`` resolve a job's own project from its stored identity
+    (D-S7), so unlike ``_add_common_args`` they take no ``--years``/``--layout``/
+    ``--output`` — only the root used to locate ``config.yaml`` and the database.
+    """
+    parser.add_argument(
+        "root",
+        nargs="?",
+        default=None,
+        help="project root (default: current directory)",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="enable debug logging",
+    )
+
+
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
-    """Add the shared project options every subcommand accepts (3.3)."""
+    """Add the shared project options every scan/render-family subcommand accepts (3.3)."""
     parser.add_argument(
         "root",
         nargs="?",
@@ -58,7 +91,7 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the ``auto-reel`` argument parser with its four subcommands."""
+    """Build the ``auto-reel`` argument parser with its seven subcommands."""
     parser = argparse.ArgumentParser(
         prog="auto-reel",
         description="Merge per-event clips into one movie per event, headless.",
@@ -108,6 +141,67 @@ def build_parser() -> argparse.ArgumentParser:
         help="overwrite an existing v2 reel.yaml",
     )
     importer.set_defaults(func=cmd_import)
+
+    enqueue = subparsers.add_parser(
+        "enqueue", help="scan and insert one queued job per event; never renders"
+    )
+    _add_common_args(enqueue)
+    enqueue.add_argument(
+        "--device",
+        default=None,
+        help="device selector stored on the job (default: auto)",
+    )
+    enqueue.set_defaults(func=cmd_enqueue)
+
+    worker = subparsers.add_parser("worker", help="run the job-scheduler loop until SIGINT/SIGTERM")
+    _add_root_arg(worker)
+    worker.add_argument(
+        "--device",
+        default=None,
+        help="acceleration override: a vendor (amd/nvidia/intel/cpu) or a device id",
+    )
+    worker.add_argument(
+        "--poll-interval",
+        type=float,
+        default=None,
+        help="seconds to sleep between empty claim polls (default: config.yaml or 2.0)",
+    )
+    worker.add_argument(
+        "--gpu-sessions-per-device",
+        type=int,
+        default=None,
+        help="max concurrent GPU-encode sessions per render node (default: config.yaml or 1)",
+    )
+    worker.add_argument(
+        "--cpu-slots",
+        type=int,
+        default=None,
+        help="max concurrent CPU-encoded renders (default: config.yaml or 1)",
+    )
+    worker.set_defaults(func=cmd_worker)
+
+    jobs = subparsers.add_parser("jobs", help="read the job store; request cancellation")
+    jobs_sub = jobs.add_subparsers(dest="jobs_command", required=True, metavar="<jobs-command>")
+
+    jobs_list = jobs_sub.add_parser("list", help="list jobs, oldest first")
+    _add_root_arg(jobs_list)
+    jobs_list.add_argument(
+        "--status",
+        choices=[status.value for status in JobStatus],
+        default=None,
+        help="filter by status (default: every status)",
+    )
+    jobs_list.set_defaults(func=cmd_jobs_list)
+
+    jobs_show = jobs_sub.add_parser("show", help="show one job's full detail")
+    _add_root_arg(jobs_show)
+    jobs_show.add_argument("job_id", help="the job's id")
+    jobs_show.set_defaults(func=cmd_jobs_show)
+
+    jobs_cancel = jobs_sub.add_parser("cancel", help="request cancellation of a job")
+    _add_root_arg(jobs_cancel)
+    jobs_cancel.add_argument("job_id", help="the job's id")
+    jobs_cancel.set_defaults(func=cmd_jobs_cancel)
 
     return parser
 

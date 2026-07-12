@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+import signal
+import sys
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Tuple
@@ -25,15 +28,25 @@ from ..accel.profiles.hardware import HardwareProfile
 from ..analysis import Segment, analyze_event
 from ..config import ProjectConfig, load_project_config, resolve_look_defaults
 from ..errors import EngineError
-from ..event import ReconcileResult, reconcile, resolve, scan_event
+from ..event import ReconcileResult, reconcile, scan_event
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..ingest import DEFAULT_LAYOUT, EventRef, get_layout
-from ..probe import probe_media
-from ..probe.metadata import ClipMetadata
+from ..persistence.config import resolve_database_url
+from ..persistence.engine import make_engine, make_session_factory
+from ..persistence.job_store import JobStore
+from ..persistence.models import JobStatus
 from ..reel import ReelDocument, import_legacy, load_document, write_document
 from ..reel.legacy import ImportResult
-from ..render import RenderJob, RenderOptions, render_batch
-from .adoption import REEL_FILENAME, persist, prepare_event
+from ..render import RenderJob, render_batch
+from ..scheduler import (
+    CapacityPools,
+    Worker,
+    default_build_job,
+    resolve_worker_config,
+    worker_identity,
+)
+from .adoption import REEL_FILENAME
+from .build import build_render_job
 
 logger = logging.getLogger(__name__)
 
@@ -153,14 +166,17 @@ def _build_job(
     dry_run: bool,
     overwrite: bool,
 ) -> RenderJob:
-    """Resolve one event into a :class:`RenderJob` (adopt, probe, resolve, options)."""
-    event = prepare_event(ref.event_dir, adopt=True)
-
-    # Persist the seeded/adopted document so it is stable next run — never in dry-run.
-    if not dry_run:
-        path = persist(event)
-        if path is not None:
-            logger.info("Wrote %s", path)
+    """Resolve one event into a :class:`RenderJob`, reporting adopt/missing to stdout."""
+    job, event = build_render_job(
+        ref.event_dir,
+        output_dir=ctx.output_dir,
+        runtime=runtime,
+        profile=profile,
+        render_node=render_node,
+        look_defaults=look_defaults,
+        dry_run=dry_run,
+        overwrite=overwrite,
+    )
 
     if event.adopted:
         print(f"+  {ref.event_dir.name}: adopted {len(event.adopted)} new clip(s)")
@@ -171,31 +187,7 @@ def _build_job(
             f"referenced but absent: {', '.join(event.reconcile.missing)}"
         )
 
-    clip_facts = _probe_clips(event.document, ref.event_dir, runtime)
-    plan = resolve(event.document, look_defaults=look_defaults, clip_facts=clip_facts)
-    options = RenderOptions(
-        event_dir=ref.event_dir,
-        output_dir=ctx.output_dir,
-        clip_facts=clip_facts,
-        runtime=runtime,
-        overwrite=overwrite,
-        dry_run=dry_run,
-        render_node=render_node,
-    )
-    return RenderJob(plan=plan, profile=profile, options=options)
-
-
-def _probe_clips(
-    document: ReelDocument, event_dir: Path, runtime: FfmpegRuntime
-) -> Dict[str, ClipMetadata]:
-    """Probe every included clip into facts keyed by identity (fail loud on a bad clip)."""
-    facts: Dict[str, ClipMetadata] = {}
-    for identity in document.referenced_identities():
-        props = document.clips.get(identity)
-        if props is not None and props.exclude:
-            continue  # excluded clips never reach the plan, so do not probe them
-        facts[identity] = probe_media(Path(event_dir) / identity, runtime=runtime)
-    return facts
+    return job
 
 
 def _selected_render_node(profile: AccelProfile) -> Optional[str]:
@@ -419,3 +411,210 @@ def _has_version(path: Path) -> bool:
     except OSError:
         return False
     return isinstance(data, Mapping) and "version" in data
+
+
+# --------------------------------------------------------------------------- #
+# job-scheduler: shared helpers
+# --------------------------------------------------------------------------- #
+
+
+def _resolve_project_root(args: argparse.Namespace) -> Path:
+    """Resolve the project root positional arg (shared by worker/jobs, D-CLI2)."""
+    project_root = Path(args.root).resolve() if args.root else Path.cwd()
+    if not project_root.is_dir():
+        raise FileNotFoundError(
+            f"project root does not exist or is not a directory: {project_root}"
+        )
+    return project_root
+
+
+def _job_store(project_root: Path) -> JobStore:
+    """Build a :class:`JobStore` bound to the ``DATABASE_URL`` resolved for ``project_root``."""
+    database_url = resolve_database_url(project_root)
+    engine = make_engine(database_url)
+    return JobStore(make_session_factory(engine))
+
+
+def _parse_job_id(value: str) -> Optional[uuid.UUID]:
+    """Parse a job id, returning ``None`` (rather than raising) on a malformed string."""
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return None
+
+
+# --------------------------------------------------------------------------- #
+# enqueue
+# --------------------------------------------------------------------------- #
+
+
+def cmd_enqueue(args: argparse.Namespace) -> int:
+    """``enqueue``: scan via ingest layout, insert one queued job per event.
+
+    Never probes or renders (D-S8) — it only records intent, reusing the same
+    layout selection + config layering as ``render``/``scan``.
+    """
+    ctx = _project_context(args)
+    if not ctx.events:
+        print(f"No events found under {ctx.walk_root} (layout: {ctx.layout_name})")
+        return 0
+
+    store = _job_store(ctx.project_root)
+    device = args.device or "auto"
+    project_root_str = str(ctx.project_root)
+
+    created = 0
+    for ref in ctx.events:
+        event_dir = str(ref.event_dir.relative_to(ctx.project_root))
+        # Best-effort classification for the report only (a concurrent enqueue for
+        # the same identity could race this check); the DB-level idempotency
+        # guarantee itself comes from enqueue()'s own unique-index fallback.
+        was_active = store.active_job(project_root_str, event_dir) is not None
+        job_id = store.enqueue(project_root_str, event_dir, device=device)
+        if was_active:
+            print(f"=  {ref.event_dir.name}: already queued/running ({job_id})")
+        else:
+            created += 1
+            print(f"+  {ref.event_dir.name}: queued ({job_id})")
+
+    print(f"\n{created}/{len(ctx.events)} event(s) newly queued")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# worker
+# --------------------------------------------------------------------------- #
+
+
+def cmd_worker(args: argparse.Namespace) -> int:
+    """``worker``: run the job-scheduler loop until SIGINT/SIGTERM triggers a clean exit."""
+    project_root = _resolve_project_root(args)
+    config = load_project_config(project_root)
+    worker_config = resolve_worker_config(
+        config,
+        poll_interval=args.poll_interval,
+        gpu_sessions_per_device=args.gpu_sessions_per_device,
+        cpu_slots=args.cpu_slots,
+    )
+
+    runtime = FfmpegRuntime()
+    inventory = detect_capabilities(runtime)
+    profile = select_profile(inventory, override=args.device)
+    render_node = _selected_render_node(profile)
+    pools = CapacityPools.from_inventory(
+        inventory,
+        gpu_cap=worker_config.gpu_sessions_per_device,
+        cpu_cap=worker_config.cpu_slots,
+    )
+
+    store = _job_store(project_root)
+    identity = worker_identity()
+    logger.info(
+        "Starting worker %s (profile=%s render_node=%s poll_interval=%.1fs)",
+        identity,
+        profile.vendor.value,
+        render_node,
+        worker_config.poll_interval,
+    )
+
+    worker = Worker(
+        store,
+        worker_id=identity,
+        pools=pools,
+        poll_interval=worker_config.poll_interval,
+        build_job=lambda job: default_build_job(
+            job, runtime=runtime, profile=profile, render_node=render_node
+        ),
+        device_filter=render_node,
+    )
+
+    def _handle_signal(signum: int, _frame: object) -> None:
+        logger.info("Received signal %s; stopping worker", signum)
+        worker.stop()
+
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
+    worker.run()
+    logger.info("Worker %s stopped cleanly", identity)
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# jobs: list / show / cancel
+# --------------------------------------------------------------------------- #
+
+
+def cmd_jobs_list(args: argparse.Namespace) -> int:
+    """``jobs list``: print jobs (optionally filtered by ``--status``), oldest first."""
+    project_root = _resolve_project_root(args)
+    store = _job_store(project_root)
+    if args.status:
+        jobs = store.list_by_status(JobStatus(args.status))
+    else:
+        jobs = sorted(
+            (job for status in JobStatus for job in store.list_by_status(status)),
+            key=lambda job: job.created_at,
+        )
+    if not jobs:
+        print("No jobs found")
+        return 0
+    for job in jobs:
+        print(f"{job.id}  {job.status.value:9} {job.event_dir}  created={job.created_at}")
+    return 0
+
+
+def cmd_jobs_show(args: argparse.Namespace) -> int:
+    """``jobs show <id>``: print one job's full detail."""
+    project_root = _resolve_project_root(args)
+    job_id = _parse_job_id(args.job_id)
+    if job_id is None:
+        print(f"error: {args.job_id!r} is not a valid job id", file=sys.stderr)
+        return 1
+
+    store = _job_store(project_root)
+    job = store.get(job_id)
+    if job is None:
+        print(f"error: no job with id {job_id}", file=sys.stderr)
+        return 1
+
+    print(f"id:               {job.id}")
+    print(f"status:           {job.status.value}")
+    print(f"event_dir:        {job.event_dir}")
+    print(f"project_root:     {job.project_root}")
+    print(f"device:           {job.device}")
+    print(f"progress:         {job.progress:.0%}")
+    print(f"worker_id:        {job.worker_id}")
+    print(f"cancel_requested: {job.cancel_requested}")
+    print(f"requeue_count:    {job.requeue_count}")
+    print(f"created_at:       {job.created_at}")
+    print(f"started_at:       {job.started_at}")
+    print(f"finished_at:      {job.finished_at}")
+    if job.error:
+        print(f"error:            {job.error}")
+    return 0
+
+
+def cmd_jobs_cancel(args: argparse.Namespace) -> int:
+    """``jobs cancel <id>``: request cancellation (D-S6).
+
+    A ``running`` job only has its ``cancel_requested`` flag set — the worker
+    performs the terminal transition itself once it next checks between
+    segments. A ``queued`` job is canceled immediately.
+    """
+    project_root = _resolve_project_root(args)
+    job_id = _parse_job_id(args.job_id)
+    if job_id is None:
+        print(f"error: {args.job_id!r} is not a valid job id", file=sys.stderr)
+        return 1
+
+    store = _job_store(project_root)
+    result = store.request_cancel(job_id)
+    if result is None:
+        print(f"job {job_id}: already in a terminal state (or does not exist); no change")
+        return 0
+    if result.status == JobStatus.RUNNING:
+        print(f"job {job_id}: cancel requested; the worker will stop between segments")
+    else:
+        print(f"job {job_id}: {result.status.value}")
+    return 0
