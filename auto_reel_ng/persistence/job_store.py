@@ -45,8 +45,15 @@ class JobStore:
         *,
         device: str = "auto",
         output_path: Optional[str] = None,
+        force: bool = False,
+        fingerprint: Optional[str] = None,
     ) -> uuid.UUID:
         """Insert a new ``queued`` job for ``event_dir`` (project-root-relative).
+
+        ``force`` bypasses the staleness gate and replaces output (survives to
+        claim time); ``fingerprint`` is the gate's enqueue-time value, stamped for
+        observability (change-detection, §8.14) — the staleness decision itself
+        belongs to the caller, not the store.
 
         Idempotent (D-S7/D-S8): when an active (``queued``/``running``) job already
         exists for the same ``(project_root, event_dir)``, no row is inserted and the
@@ -57,7 +64,12 @@ class JobStore:
         check-then-insert with its own race window.
         """
         job = Job(
-            project_root=project_root, event_dir=event_dir, device=device, output_path=output_path
+            project_root=project_root,
+            event_dir=event_dir,
+            device=device,
+            output_path=output_path,
+            force=force,
+            fingerprint=fingerprint,
         )
         with session_scope(self._session_factory) as session:
             session.add(job)

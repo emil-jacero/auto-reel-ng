@@ -2,8 +2,9 @@
 
 Schema was sized for the scheduler (7b) and API (7c); 7b's job-scheduler change
 (D-S6/D-S7) added ``cancel_requested``, ``project_root``, and ``requeue_count``
-via an additive migration. ``fingerprint`` is reserved-unused (§8.14, parked);
-nothing here writes editorial state back to ``reel.yaml`` (D-7/D-P6).
+via an additive migration. change-detection (§8.14) added ``force`` and put
+``fingerprint`` to work: it is stamped at enqueue with the event's render
+fingerprint. Nothing here writes editorial state back to ``reel.yaml`` (D-7/D-P6).
 """
 
 from __future__ import annotations
@@ -75,6 +76,7 @@ class Job(Base):
     progress: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     requeue_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    force: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     fingerprint: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     worker_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)

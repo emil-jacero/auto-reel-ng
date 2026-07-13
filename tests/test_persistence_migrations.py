@@ -36,6 +36,7 @@ _EXPECTED_COLUMNS = {
     "progress",
     "cancel_requested",
     "requeue_count",
+    "force",
     "error",
     "fingerprint",
     "worker_id",

@@ -40,6 +40,7 @@ def test_enqueue_defaults(job_store: JobStore) -> None:
     assert job.finished_at is None
     assert job.error is None
     assert job.fingerprint is None
+    assert job.force is False
     assert job.output_path is None
 
 
@@ -51,6 +52,17 @@ def test_enqueue_explicit_device_and_output(job_store: JobStore) -> None:
     assert job is not None
     assert job.device == "renderD128"
     assert job.output_path == "/out/event.mp4"
+
+
+def test_enqueue_stamps_force_and_fingerprint(job_store: JobStore) -> None:
+    job_id = job_store.enqueue(
+        PROJECT_ROOT, "renderD128-event", device="renderD128", force=True, fingerprint="abc123"
+    )
+    job = job_store.get(job_id)
+    assert job is not None
+    assert job.device == "renderD128"
+    assert job.force is True
+    assert job.fingerprint == "abc123"
 
 
 # --------------------------------------------------------------------------- #
