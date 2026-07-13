@@ -23,6 +23,7 @@ def test_defaults_when_nothing_configured(tmp_path: Path) -> None:
     assert settings.project_root == tmp_path
     assert settings.walk_root == tmp_path
     assert settings.layout_name == "year-event"
+    assert settings.output_dir == tmp_path / "output"
 
 
 def test_config_yaml_overrides_defaults(tmp_path: Path) -> None:
@@ -55,3 +56,11 @@ def test_input_dir_shifts_walk_root(tmp_path: Path) -> None:
     config = loads_project_config("input: media\n")
     settings = resolve_api_settings(tmp_path, config=config, env={})
     assert settings.walk_root == tmp_path / "media"
+
+
+def test_output_dir_shifts_with_config(tmp_path: Path) -> None:
+    # The staleness gate's expected-output path (change-detection, §8.14) follows
+    # the same D-2 layering as the CLI's own `_project_context` output resolution.
+    config = loads_project_config("output: renders\n")
+    settings = resolve_api_settings(tmp_path, config=config, env={})
+    assert settings.output_dir == tmp_path / "renders"

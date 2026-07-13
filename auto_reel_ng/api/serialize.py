@@ -17,6 +17,8 @@ def job_to_out(job: object) -> JobOut:
         worker_id=job.worker_id,  # type: ignore[attr-defined]
         cancel_requested=job.cancel_requested,  # type: ignore[attr-defined]
         requeue_count=job.requeue_count,  # type: ignore[attr-defined]
+        force=job.force,  # type: ignore[attr-defined]
+        fingerprint=job.fingerprint,  # type: ignore[attr-defined]
         error=job.error,  # type: ignore[attr-defined]
         created_at=job.created_at,  # type: ignore[attr-defined]
         started_at=job.started_at,  # type: ignore[attr-defined]

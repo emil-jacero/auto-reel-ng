@@ -33,6 +33,8 @@ class FakeJob:
     worker_id: Optional[str] = None
     cancel_requested: bool = False
     requeue_count: int = 0
+    force: bool = False
+    fingerprint: Optional[str] = None
     error: Optional[str] = None
     created_at: datetime = field(default_factory=lambda: _NOW)
     started_at: Optional[datetime] = None

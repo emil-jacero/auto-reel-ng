@@ -18,6 +18,7 @@ from fastapi.responses import Response
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from ..ffmpeg.runtime import FfmpegRuntime
 from ..persistence.engine import make_engine, make_session_factory
 from ..persistence.job_store import JobStore
 from .problem import service_unavailable
@@ -51,6 +52,9 @@ def create_app(settings: ApiSettings, *, auth_checker: Optional[AuthChecker] = N
     session_factory = make_session_factory(engine)
     job_store = JobStore(session_factory)
     jobs_hub = JobsHub(job_store, poll_interval=settings.poll_interval)
+    # Built once (D-C1): the engine identity's ffmpeg-version component is
+    # per-process, not per-request (change-detection, §8.14).
+    runtime = FfmpegRuntime()
 
     @asynccontextmanager
     async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -66,6 +70,7 @@ def create_app(settings: ApiSettings, *, auth_checker: Optional[AuthChecker] = N
     app.state.session_factory = session_factory
     app.state.job_store = job_store
     app.state.jobs_hub = jobs_hub
+    app.state.runtime = runtime
 
     checker = auth_checker or _default_auth_checker
 

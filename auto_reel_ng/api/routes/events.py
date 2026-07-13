@@ -65,7 +65,9 @@ def get_event(event_id: str, request: Request) -> Union[EventDetailOut, Response
     """``GET /api/v1/events/{event_id}`` (task 2.3): current detail from disk."""
     settings = _settings(request)
     try:
-        return events_read.get_event(settings, event_id, request.app.state.job_store)
+        return events_read.get_event(
+            settings, event_id, request.app.state.job_store, request.app.state.runtime
+        )
     except events_read.EventNotFoundError:
         return not_found(
             f"no event {event_id!r} under the configured project root", event_id=event_id

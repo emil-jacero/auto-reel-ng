@@ -31,12 +31,15 @@ class ApiSettings:
 
     ``project_root`` is the single configured project the service serves
     (no multi-project model, D-A1); ``walk_root`` is where the ingest layout
-    walks from (``project_root`` unless ``config.yaml`` sets ``input``).
+    walks from (``project_root`` unless ``config.yaml`` sets ``input``);
+    ``output_dir`` is where the staleness gate (§8.14) expects rendered output
+    (``project_root`` unless ``config.yaml`` sets ``output``, mirroring the CLI).
     """
 
     project_root: Path
     walk_root: Path
     layout_name: str
+    output_dir: Path
     host: str
     port: int
     poll_interval: float
@@ -101,12 +104,18 @@ def resolve_api_settings(
         (project_root / resolved_config.input_dir) if resolved_config.input_dir else project_root
     )
     layout_name = layout or resolved_config.layout or DEFAULT_LAYOUT
+    output_dir = (
+        (project_root / resolved_config.output_dir)
+        if resolved_config.output_dir
+        else project_root / "output"
+    )
 
     api_cfg = resolved_config.api
     return ApiSettings(
         project_root=project_root,
         walk_root=walk_root,
         layout_name=layout_name,
+        output_dir=output_dir,
         host=_resolve_str(host, api_cfg.get("host"), DEFAULT_HOST, key="host"),
         port=_resolve_int(port, api_cfg.get("port"), DEFAULT_PORT, key="port"),
         poll_interval=_resolve_float(

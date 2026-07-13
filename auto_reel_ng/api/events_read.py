@@ -15,13 +15,18 @@ from typing import Dict, List, Optional
 
 from ..analysis.cache import CACHE_SUBDIR, clip_signal, read_entry
 from ..cli.adoption import REEL_FILENAME
+from ..config.project import load_project_config, resolve_look_defaults
 from ..errors import ReelParseError
-from ..event.discovery import DiskListing, parse_folder_name, scan_event
+from ..event.discovery import DiskListing, parse_folder_name, scan_event, seed_document
 from ..event.reconcile import ClipStatus, ReconcileResult, reconcile
+from ..ffmpeg.runtime import FfmpegRuntime
 from ..ingest import EventRef, get_layout
 from ..persistence.job_store import JobStore
 from ..persistence.models import Job
 from ..reel import ReelDocument, load_document
+from ..render import output_filename
+from ..staleness.fingerprint import compute_fingerprint
+from ..staleness.gate import evaluate
 from .schemas import (
     AnalysisOut,
     ChapterOut,
@@ -30,6 +35,7 @@ from .schemas import (
     EventSummaryOut,
     JobSummaryOut,
     SegmentOut,
+    StalenessOut,
 )
 from .settings import ApiSettings
 
@@ -188,7 +194,30 @@ def _build_chapters(
     return chapters
 
 
-def get_event(settings: ApiSettings, event_id: str, job_store: JobStore) -> EventDetailOut:
+def _staleness(
+    settings: ApiSettings, event_dir: Path, document: Optional[ReelDocument], runtime: FfmpegRuntime
+) -> StalenessOut:
+    """The event's staleness verdict (change-detection, §8.14): read-only, never writes.
+
+    Uses ``document`` if it was already loaded, else the folder-seed equivalent
+    (never adopted, never persisted — a GET must not write, D-7).
+    """
+    fp_document = document if document is not None else seed_document(event_dir)
+    look_defaults = resolve_look_defaults(load_project_config(settings.project_root))
+    fingerprint = compute_fingerprint(
+        fp_document,
+        event_dir=event_dir,
+        look_defaults=look_defaults,
+        ffmpeg_version=runtime.version,
+    )
+    output_path = settings.output_dir / output_filename(fp_document.metadata)
+    verdict = evaluate(event_dir, output_path, fingerprint)
+    return StalenessOut(stale=verdict.stale, reasons=list(verdict.reasons))
+
+
+def get_event(
+    settings: ApiSettings, event_id: str, job_store: JobStore, runtime: FfmpegRuntime
+) -> EventDetailOut:
     """``GET /api/v1/events/{event_id}``: current detail, parsed fresh from disk."""
     event_dir = resolve_event_dir(settings, event_id)
     document, listing, result = _load_for_reconcile(event_id, event_dir)
@@ -204,6 +233,7 @@ def get_event(settings: ApiSettings, event_id: str, job_store: JobStore) -> Even
         chapters=_build_chapters(document, listing, result),
         missing=list(result.missing),
         latest_job=_job_summary(latest_jobs.get(event_id)),
+        staleness=_staleness(settings, event_dir, document, runtime),
     )
 
 

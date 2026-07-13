@@ -57,8 +57,16 @@ class EventSummaryOut(BaseModel):
     latest_job: Optional[JobSummaryOut] = None
 
 
+class StalenessOut(BaseModel):
+    """An event's staleness verdict: fresh, or stale with the changed components."""
+
+    stale: bool
+    reasons: List[str] = []
+
+
 class EventDetailOut(BaseModel):
-    """One event's full detail: metadata, ordered chapters/clips, reconcile state."""
+    """One event's full detail: metadata, ordered chapters/clips, reconcile state,
+    and its staleness verdict (change-detection, §8.14)."""
 
     event_id: str
     title: Optional[str] = None
@@ -68,6 +76,7 @@ class EventDetailOut(BaseModel):
     chapters: List[ChapterOut] = []
     missing: List[str] = []
     latest_job: Optional[JobSummaryOut] = None
+    staleness: StalenessOut
 
 
 class SegmentOut(BaseModel):
@@ -103,6 +112,8 @@ class JobOut(BaseModel):
     worker_id: Optional[str] = None
     cancel_requested: bool
     requeue_count: int
+    force: bool = False
+    fingerprint: Optional[str] = None
     error: Optional[str] = None
     created_at: datetime
     started_at: Optional[datetime] = None
@@ -114,6 +125,16 @@ class EnqueueRequest(BaseModel):
 
     event_id: str
     device: str = "auto"
+    force: bool = False
+
+
+class FreshResult(BaseModel):
+    """The body of ``POST /api/v1/jobs`` when the event is fresh and not enqueued (D-C3)."""
+
+    event_id: str
+    status: str = "fresh"
+    fingerprint: str
+    manifest: str
 
 
 class CancelResult(BaseModel):
@@ -141,6 +162,8 @@ __all__ = [
     "AnalysisOut",
     "JobOut",
     "EnqueueRequest",
+    "FreshResult",
+    "StalenessOut",
     "CancelResult",
     "WsMessage",
 ]

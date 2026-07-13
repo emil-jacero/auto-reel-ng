@@ -80,6 +80,67 @@ def test_enqueue_unknown_event_is_404(client: TestClient) -> None:
     assert response.status_code == 404
 
 
+def test_enqueue_stamps_fingerprint_and_defaults_force_false(
+    client: TestClient, store: JobStore
+) -> None:
+    response = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"})
+    body = response.json()
+    assert body["fingerprint"]
+    assert body["force"] is False
+
+
+def _adopt_and_write_manifest(project: Path, event_id: str) -> None:
+    from auto_reel_ng.cli.adoption import persist, prepare_event
+    from auto_reel_ng.config.project import load_project_config, resolve_look_defaults
+    from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
+    from auto_reel_ng.render import output_filename
+    from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
+    from auto_reel_ng.staleness.manifest import write_manifest
+
+    event_dir = project / event_id
+    event = prepare_event(event_dir, adopt=True)
+    persist(event)
+    runtime = FfmpegRuntime()
+    fingerprint = compute_fingerprint(
+        event.document,
+        event_dir=event_dir,
+        look_defaults=resolve_look_defaults(load_project_config(project)),
+        ffmpeg_version=runtime.version,
+    )
+    output_path = project / "output" / output_filename(event.document.metadata)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(b"already-rendered")
+    write_manifest(
+        event_dir,
+        fingerprint,
+        output=output_path.name,
+        engine_identity=engine_identity(runtime.version),
+    )
+
+
+def test_fresh_event_is_not_enqueued(client: TestClient, store: JobStore, project: Path) -> None:
+    _adopt_and_write_manifest(project, "2024/2024-06-21 - A")
+
+    response = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "fresh"
+    assert body["fingerprint"]
+    assert store.list_by_status(JobStatus.QUEUED) == []
+
+
+def test_force_enqueues_a_fresh_event(client: TestClient, store: JobStore, project: Path) -> None:
+    _adopt_and_write_manifest(project, "2024/2024-06-21 - A")
+
+    response = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A", "force": True})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["force"] is True
+    assert len(store.list_by_status(JobStatus.QUEUED)) == 1
+
+
 def test_list_jobs_filters_by_status(client: TestClient, store: JobStore) -> None:
     client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"})
     client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-22 - B"})
@@ -101,6 +162,8 @@ def test_get_job_detail(client: TestClient, store: JobStore) -> None:
     body = response.json()
     assert body["id"] == job_id
     assert body["requeue_count"] == 0
+    assert body["force"] is False
+    assert body["fingerprint"]
 
 
 def test_get_unknown_job_is_404(client: TestClient) -> None:

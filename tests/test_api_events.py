@@ -79,6 +79,56 @@ def test_event_identity_round_trips_with_spaces_and_unicode(client: TestClient) 
     assert detail.json()["event_id"] == raw_id
 
 
+def test_event_detail_reports_staleness_when_stale(client: TestClient) -> None:
+    event_id = quote("2024/2024-07-04 - Barbecue", safe="/")
+    response = client.get(f"/api/v1/events/{event_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["staleness"]["stale"] is True
+    assert "no_manifest" in body["staleness"]["reasons"]
+
+
+def test_event_detail_reports_staleness_when_fresh(client: TestClient, project: Path) -> None:
+    from auto_reel_ng.cli.adoption import persist, prepare_event
+    from auto_reel_ng.config.project import load_project_config, resolve_look_defaults
+    from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
+    from auto_reel_ng.render import output_filename
+    from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
+    from auto_reel_ng.staleness.manifest import write_manifest
+
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    event = prepare_event(event_dir, adopt=True)
+    persist(event)
+    runtime = FfmpegRuntime()
+    fingerprint = compute_fingerprint(
+        event.document,
+        event_dir=event_dir,
+        look_defaults=resolve_look_defaults(load_project_config(project)),
+        ffmpeg_version=runtime.version,
+    )
+    output_path = project / "output" / output_filename(event.document.metadata)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(b"already-rendered")
+    write_manifest(
+        event_dir,
+        fingerprint,
+        output=output_path.name,
+        engine_identity=engine_identity(runtime.version),
+    )
+
+    event_id = quote("2024/2024-07-04 - Barbecue", safe="/")
+    response = client.get(f"/api/v1/events/{event_id}")
+    body = response.json()
+    assert body["staleness"] == {"stale": False, "reasons": []}
+
+
+def test_getting_event_detail_never_writes_a_manifest(client: TestClient, project: Path) -> None:
+    event_id = quote("2024/2024-07-04 - Barbecue", safe="/")
+    client.get(f"/api/v1/events/{event_id}")
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    assert not (event_dir / ".auto-reel" / "cache" / "render-manifest.json").exists()
+
+
 def test_unknown_event_yields_404(client: TestClient) -> None:
     response = client.get("/api/v1/events/2024/does-not-exist")
     assert response.status_code == 404
