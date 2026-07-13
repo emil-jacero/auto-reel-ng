@@ -44,19 +44,21 @@ pipeline headless. It takes a **project root** (the directory an ingest layout
 walks; defaults to the current directory) and writes one movie per event.
 
 ```bash
-auto-reel render  <root> -o out           # scan -> reconcile -> probe -> resolve -> render
-auto-reel scan    <root>                  # inventory: events + NEW/ACTIVE/IGNORED/MISSING clips
+auto-reel render  <root> -o out           # scan -> gate -> reconcile -> probe -> resolve -> render
+auto-reel scan    <root>                  # inventory: events + NEW/ACTIVE/IGNORED/MISSING clips + staleness
 auto-reel analyze <root>                  # detect black/white/freeze segments, cache suggestions
 auto-reel import  <root>                  # adopt auto-reel legacy metadata into a v2 reel.yaml
-auto-reel enqueue <root>                  # scan -> insert one queued job per event; never renders
+auto-reel enqueue <root>                  # scan -> gate -> insert one queued job per stale event
 auto-reel worker  <root>                  # run the job-scheduler loop until SIGINT/SIGTERM
 auto-reel jobs list|show|cancel <root>    # read the job store; request cancellation
 auto-reel serve   <root>                  # run the API service (REST + WS) until SIGINT/SIGTERM
+auto-reel adopt-renders <root>            # one-time: write manifests for an already-rendered archive
 ```
 
 Shared options: `--years 2023,2024` (year-event layout), `--layout flat|year-event`,
-and `-o/--output`. `render` also takes `--dry-run` (print the ffmpeg commands and
-write nothing), `--overwrite`, and `--device <amd|nvidia|intel|cpu|device-id>`.
+and `-o/--output`. `render` and `enqueue` also take `--force` (bypass the staleness
+gate below); `render` additionally takes `--dry-run` (print the ffmpeg commands and
+write nothing) and `--device <amd|nvidia|intel|cpu|device-id>`.
 
 - **Layouts** map the project root to event directories: `year-event`
   (`<root>/<year>/<event>/`, the default) and `flat` (events directly under the root).
@@ -66,20 +68,64 @@ write nothing), `--overwrite`, and `--device <amd|nvidia|intel|cpu|device-id>`.
 - **Per-event isolation:** one event failing to render is reported with its cause
   and does not abort the rest; the exit code is non-zero if any event errored.
 
+### Change detection (staleness gate)
+
+`render`, `enqueue` (CLI and `POST /api/v1/jobs`), and the worker's claim-time
+recheck all go through **one staleness gate**: an event is **stale** if it has no
+render manifest, its current fingerprint differs from the manifest's, or the
+manifest's recorded output file is missing — otherwise it is **fresh** and is
+skipped (not rendered, not enqueued, or completed without rendering).
+
+- **The fingerprint** is a hash over four components — the event's editorial
+  document (`reel.yaml`, in canonical parsed form; a reformat/comment-only edit is
+  not a change), the resolved project `look` defaults, the on-disk clip set (each
+  clip's size + mtime, or a content hash under an opt-in), and the engine identity
+  (a hand-bumped `RENDER_GRAPH_VERSION` constant plus the ffmpeg version). It never
+  probes media and never depends on the acceleration profile/device — rendering the
+  same event on CPU or GPU yields the same fingerprint.
+- **The manifest** (`<event>/.auto-reel/cache/render-manifest.json`) is the *sole*
+  record of an event's last successful render — no database copy. It is written by
+  the engine only after a render's output is verified and atomically finalized,
+  never on a skip, a dry run, or a failure.
+- **`--force`** bypasses the gate entirely: `render --force` re-renders and
+  replaces output even if fresh; `enqueue --force` / `POST /api/v1/jobs {"force":
+  true}` enqueues even a fresh event, carrying `force` on the job row so it
+  survives to the worker's claim.
+- **`RENDER_GRAPH_VERSION`** (`auto_reel_ng/staleness/fingerprint.py`) must be
+  bumped by hand whenever a change alters produced output for identical inputs
+  (a command-graph, filter, or encoder-flag change) — under-bumping risks a missed
+  re-render (mitigated by `--force`); over-bumping just costs one archive re-render.
+
+**BREAKING: `render`'s `--overwrite` flag was removed.** `--force` now covers both
+"bypass the gate" and "replace an existing output" — scripts using `--overwrite`
+need only rename the flag.
+
+**Deploying onto an already-rendered archive:** run `auto-reel adopt-renders <root>`
+once. For every event whose output already exists, it writes a manifest at the
+current fingerprint — the operator's assertion that today's output reflects
+today's inputs — without rendering anything, so turning on the gate does not
+trigger a full archive re-render. Events with no output are reported as
+unrendered and left alone (they are not adoptable).
+
 ### Job scheduler (`enqueue` / `worker` / `jobs`)
 
 A durable Postgres-backed queue (the `jobs` table) that lets rendering outlive one
 CLI invocation and survive a crash or restart without losing or duplicating work.
 
-- **`enqueue`** scans the project (same layout/`--years` selection as `render`) and
-  inserts one `queued` job per event, storing its **project-root-relative** event
-  path and the project root; it never probes or renders. Re-running it is
-  idempotent — an event with an already-active (`queued`/`running`) job is
-  reported, not duplicated.
+- **`enqueue`** scans the project (same layout/`--years` selection as `render`),
+  applies the staleness gate above, and inserts one `queued` job per **stale**
+  event, storing its **project-root-relative** event path, the project root, its
+  fingerprint, and the `force` flag; it never probes or renders. A fresh event is
+  reported and not enqueued unless `--force`. Re-running it is idempotent — an
+  event with an already-active (`queued`/`running`) job is reported, not
+  duplicated.
 - **`worker`** runs the claim/execute loop: it polls the store (every 1–2s when
   idle), and for each claimed job **rebuilds the render plan from current disk
   state** — a job row is an event reference, never a frozen plan, so an edit made
-  to `reel.yaml` while a job is queued renders the latest state.
+  to `reel.yaml` while a job is queued renders the latest state. After the rebuild
+  it re-evaluates the staleness gate (unless the job's `force` flag is set): a
+  fresh event completes `done` without rendering — this is what absorbs a
+  requeued, already-finished orphan without a redundant re-render.
 - **`jobs list`/`show`/`cancel`** are a read-only view plus cancellation. `cancel`
   on a `running` job only sets its `cancel_requested` flag — the worker remains the
   sole writer of `status` and stops itself between segments (**cancel latency is
@@ -126,10 +172,14 @@ render, or job logic lives in the web tier.
   `jobs`/the job store already use. `GET /api/v1/events/{event_id}/analysis`
   exposes the read-only analysis sidecar cache; it never triggers analysis.
 - **Jobs lifecycle over REST** is a thin wrapper over the job store:
-  `POST /api/v1/jobs` (idempotent, like `enqueue`; 409 with the existing job's id
-  on an active duplicate), `GET /api/v1/jobs` / `GET /api/v1/jobs/{id}`, and
-  `POST /api/v1/jobs/{id}/cancel` (`request_cancel`, same semantics as
-  `jobs cancel`). The API never writes a job's `status` itself.
+  `POST /api/v1/jobs` (gated like `enqueue` — 201 on a stale event, 409 with the
+  existing job's id on an active duplicate, 200 `"status": "fresh"` with the
+  fingerprint and manifest reference when the event is fresh and `force` is not
+  set), `GET /api/v1/jobs` / `GET /api/v1/jobs/{id}` (includes `force` and
+  `fingerprint`), and `POST /api/v1/jobs/{id}/cancel` (`request_cancel`, same
+  semantics as `jobs cancel`). The API never writes a job's `status` itself.
+  `GET /api/v1/events/{event_id}` includes the same staleness verdict (`stale` +
+  `reasons`) `scan` prints, computed read-only — a GET never writes a manifest.
 - **`WS /api/v1/ws/jobs`** pushes live job progress: a subscriber gets a full
   snapshot of active (`queued`/`running`) jobs on connect, then delta messages
   (progress changes and status transitions, including terminal) from a single
