@@ -25,6 +25,8 @@ from ..ffmpeg.runtime import FfmpegRuntime
 from ..probe import probe_media
 from ..probe.metadata import ClipMetadata
 from ..reel.document import Metadata
+from ..staleness.fingerprint import Fingerprint, engine_identity
+from ..staleness.manifest import write_manifest
 from .chapters import aggregate_chapter_durations, build_ffmetadata
 from .concat import build_concat_command, build_concat_list, is_copy_uniform
 from .decorators import apply_decorators, resolve_decorator_names
@@ -57,7 +59,10 @@ class RenderOptions:  # pylint: disable=too-many-instance-attributes
     the ephemeral per-render scratch directory. ``should_cancel``, when given, is
     polled at each segment boundary (job-scheduler, D-S6); a true result stops the
     render before the next segment starts and raises :class:`RenderCancelledError`
-    rather than completing or failing the render.
+    rather than completing or failing the render. ``fingerprint``, when given, is
+    the caller's pre-render staleness fingerprint (change-detection, D-C5); the
+    render manifest is written from it immediately after the atomic finalize
+    succeeds, and never on skip/dry-run/failure/absent fingerprint.
     """
 
     event_dir: Path
@@ -70,6 +75,7 @@ class RenderOptions:  # pylint: disable=too-many-instance-attributes
     on_progress: Optional[ProgressCallback] = None
     temp_dir: Optional[Path] = None
     should_cancel: Optional[ShouldCancel] = None
+    fingerprint: Optional[Fingerprint] = None
 
 
 @dataclass(frozen=True)
@@ -406,6 +412,17 @@ def _execute(
         # output_path once it is known-complete (the atomic-finalize guarantee).
         verify_output(runtime, part_path, target)
         os.replace(part_path, output_path)
+
+        # The manifest is written only once the output is known-complete, and only
+        # when a fingerprint was supplied (D-C5); direct library use without one
+        # leaves the event stale-by-absence rather than fabricating a manifest.
+        if options.fingerprint is not None:
+            write_manifest(
+                options.event_dir,
+                options.fingerprint,
+                output=output_path.name,
+                engine_identity=engine_identity(runtime.version),
+            )
 
     return RenderResult(output_path=output_path, warnings=tuple(warnings))
 
