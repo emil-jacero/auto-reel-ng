@@ -19,13 +19,15 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from ..accel.profiles.base import AccelProfile
-from ..cli.build import build_render_job
+from ..cli.build import build_render_job_from_event, prepare_and_persist
 from ..config.project import load_project_config, resolve_look_defaults
 from ..errors import EngineError, IllegalJobTransitionError, RenderCancelledError
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..persistence.job_store import JobStore
 from ..persistence.models import Job, JobStatus
-from ..render import RenderJob, RenderResult, render_movie, resolve_target
+from ..render import RenderJob, RenderResult, output_filename, render_movie, resolve_target
+from ..staleness.fingerprint import compute_fingerprint
+from ..staleness.gate import evaluate
 from .pools import CapacityPools
 from .progress import ThrottledProgress
 
@@ -51,22 +53,35 @@ def default_build_job(
 
     Loads the *claimed job's own project* ``config.yaml`` for its ``look``/output
     defaults, rather than any config the worker process itself was started near —
-    a job row's ``project_root`` is authoritative for where it lives on disk.
+    a job row's ``project_root`` is authoritative for where it lives on disk. The
+    render fingerprint (change-detection, §8.14) is computed post-persist (D-C5)
+    and carried on the built job's options; ``overwrite`` is set unconditionally
+    (D-C4) — whether to render at all is :meth:`Worker._process`'s claim-time
+    recheck, using this same fingerprint.
     """
     project_root = Path(job.project_root) if job.project_root else Path.cwd()
     event_dir = project_root / job.event_dir
     config = load_project_config(project_root)
     look_defaults = resolve_look_defaults(config)
     output_dir = project_root / config.output_dir if config.output_dir else project_root / "output"
-    render_job, _event = build_render_job(
-        event_dir,
+
+    event = prepare_and_persist(event_dir)
+    fingerprint = compute_fingerprint(
+        event.document,
+        event_dir=event_dir,
+        look_defaults=look_defaults,
+        ffmpeg_version=runtime.version,
+    )
+    return build_render_job_from_event(
+        event,
         output_dir=output_dir,
         runtime=runtime,
         profile=profile,
         render_node=render_node,
         look_defaults=look_defaults,
+        overwrite=True,
+        fingerprint=fingerprint,
     )
-    return render_job
 
 
 class Worker:
@@ -204,6 +219,12 @@ class Worker:
             self._safe_transition(job.id, JobStatus.FAILED, error=str(exc))
             return
 
+        if not job.force and self._is_fresh(render_job):
+            logger.info("job %s: event fresh at claim time; completing without render", job.id)
+            self._store.set_progress(job.id, 1.0)
+            self._safe_transition(job.id, JobStatus.DONE)
+            return
+
         try:
             target = resolve_target(
                 render_job.plan, render_job.profile, render_job.options.clip_facts
@@ -224,6 +245,23 @@ class Worker:
             self._render_and_finish(job, render_job)
         finally:
             token.release()
+
+    @staticmethod
+    def _is_fresh(render_job: RenderJob) -> bool:
+        """The claim-time staleness recheck (§8.14, D-C3 site 3): re-evaluate the gate.
+
+        Catches both disk changes made while the job was queued and reverts (an
+        event back at its last-rendered state completes as skipped-``done`` rather
+        than re-rendering); absorbs a requeued already-finished orphan by manifest
+        verification rather than bare output existence. A job built without a
+        fingerprint (a caller not wired for change-detection) is never fresh.
+        """
+        fingerprint = render_job.options.fingerprint
+        if fingerprint is None:
+            return False
+        output_path = render_job.options.output_dir / output_filename(render_job.plan.metadata)
+        verdict = evaluate(render_job.options.event_dir, output_path, fingerprint)
+        return not verdict.stale
 
     def _cancel_requested(self, job_id: uuid.UUID) -> bool:
         current = self._store.get(job_id)

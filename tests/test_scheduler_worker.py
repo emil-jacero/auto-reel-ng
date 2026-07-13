@@ -16,6 +16,7 @@ from auto_reel_ng.accel.profiles import CPUProfile, VaapiProfile
 from auto_reel_ng.cli.adoption import persist, prepare_event
 from auto_reel_ng.errors import ProbeError, RenderError
 from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
+from auto_reel_ng.persistence.engine import session_scope
 from auto_reel_ng.persistence.job_store import JobStore
 from auto_reel_ng.persistence.models import Job, JobStatus
 from auto_reel_ng.probe import probe_media
@@ -23,7 +24,7 @@ from auto_reel_ng.probe.metadata import ClipMetadata
 from auto_reel_ng.reel.document import Metadata
 from auto_reel_ng.render import RenderJob, RenderOptions, RenderResult
 from auto_reel_ng.scheduler.pools import CapacityPools
-from auto_reel_ng.scheduler.worker import Worker, default_build_job
+from auto_reel_ng.scheduler.worker import Worker, _render_job, default_build_job
 
 pytestmark = pytest.mark.requires_db
 
@@ -669,3 +670,182 @@ def test_cancel_requested_pre_claim_cancels_promptly_without_the_worker(
     assert job is not None
     assert job.status == JobStatus.CANCELED
     assert job_store.claim_next("worker") is None
+
+
+# --------------------------------------------------------------------------- #
+# 6.1 claim-time staleness recheck (change-detection, §8.14)
+# --------------------------------------------------------------------------- #
+
+
+def _seed_project(tmp_path: Path, make_clip, *, name: str = "2024-01-01 - Reunion") -> Path:
+    event_dir = tmp_path / name
+    event_dir.mkdir()
+    make_clip(f"{name}/a.mp4", width=320, height=240, duration=1.0)
+    persist(prepare_event(event_dir, adopt=True))
+    return event_dir
+
+
+def _counting_render():
+    calls: List[int] = []
+
+    def render(rj: RenderJob) -> RenderResult:
+        calls.append(1)
+        return _render_job(rj)
+
+    return render, calls
+
+
+def test_reverted_event_skips_at_claim_time_without_ffmpeg(
+    job_store: JobStore, runtime, make_clip, tmp_path: Path
+) -> None:
+    event_dir = _seed_project(tmp_path, make_clip)
+    render, calls = _counting_render()
+
+    def build(job: Job) -> RenderJob:
+        return default_build_job(job, runtime=runtime, profile=CPUProfile(), render_node=None)
+
+    worker = Worker(
+        job_store,
+        worker_id="w1",
+        pools=_solo_pools(),
+        poll_interval=0.01,
+        build_job=build,
+        render=render,
+    )
+
+    first_id = job_store.enqueue(str(tmp_path), event_dir.name)
+    assert worker.process_next() is True  # real render: no manifest yet
+    assert job_store.get(first_id).status == JobStatus.DONE  # type: ignore[union-attr]
+    assert len(calls) == 1
+
+    # Nothing changed on disk since the last render (equivalent to a revert to
+    # exactly the last-rendered state): the second job must complete without
+    # any ffmpeg process.
+    second_id = job_store.enqueue(str(tmp_path), event_dir.name)
+    assert worker.process_next() is True
+    assert len(calls) == 1  # unchanged: no second render
+
+    job = job_store.get(second_id)
+    assert job is not None
+    assert job.status == JobStatus.DONE
+    assert job.progress == 1.0
+
+
+def test_forced_job_never_rechecks_and_always_renders(
+    job_store: JobStore, runtime, make_clip, tmp_path: Path
+) -> None:
+    event_dir = _seed_project(tmp_path, make_clip)
+    render, calls = _counting_render()
+
+    def build(job: Job) -> RenderJob:
+        return default_build_job(job, runtime=runtime, profile=CPUProfile(), render_node=None)
+
+    worker = Worker(
+        job_store,
+        worker_id="w1",
+        pools=_solo_pools(),
+        poll_interval=0.01,
+        build_job=build,
+        render=render,
+    )
+
+    job_store.enqueue(str(tmp_path), event_dir.name)
+    assert worker.process_next() is True
+    assert len(calls) == 1
+
+    # Unchanged disk state, but force=True: must render again regardless.
+    forced_id = job_store.enqueue(str(tmp_path), event_dir.name, force=True)
+    assert worker.process_next() is True
+    assert len(calls) == 2
+
+    job = job_store.get(forced_id)
+    assert job is not None
+    assert job.status == JobStatus.DONE
+
+
+def test_stale_job_replaces_the_outdated_output(
+    job_store: JobStore, runtime, make_clip, tmp_path: Path
+) -> None:
+    event_dir = _seed_project(tmp_path, make_clip)
+    render, calls = _counting_render()
+
+    def build(job: Job) -> RenderJob:
+        return default_build_job(job, runtime=runtime, profile=CPUProfile(), render_node=None)
+
+    worker = Worker(
+        job_store,
+        worker_id="w1",
+        pools=_solo_pools(),
+        poll_interval=0.01,
+        build_job=build,
+        render=render,
+    )
+
+    job_store.enqueue(str(tmp_path), event_dir.name)
+    assert worker.process_next() is True
+    assert len(calls) == 1
+    output_path = tmp_path / "output" / "Reunion.mp4"
+    assert output_path.exists()
+    first_mtime = output_path.stat().st_mtime_ns
+
+    # The clip changes (different duration -> different content signal): the
+    # event is stale via clip_set even though an output already exists.
+    make_clip(f"{event_dir.name}/a.mp4", width=320, height=240, duration=2.0)
+    stale_id = job_store.enqueue(str(tmp_path), event_dir.name)
+    assert worker.process_next() is True
+    assert len(calls) == 2  # rendered again, replacing (not skipping) the output
+
+    job = job_store.get(stale_id)
+    assert job is not None
+    assert job.status == JobStatus.DONE
+    assert output_path.stat().st_mtime_ns != first_mtime
+
+
+def test_requeued_finished_orphan_absorbed_by_manifest(
+    job_store: JobStore, jobs_session_factory, runtime, make_clip, tmp_path: Path
+) -> None:
+    event_dir = _seed_project(tmp_path, make_clip)
+
+    def build(job: Job) -> RenderJob:
+        return default_build_job(job, runtime=runtime, profile=CPUProfile(), render_node=None)
+
+    worker = Worker(
+        job_store, worker_id="w1", pools=_solo_pools(), poll_interval=0.01, build_job=build
+    )
+    job_id = job_store.enqueue(str(tmp_path), event_dir.name)
+    assert worker.process_next() is True  # real render: manifest + output now exist
+    assert job_store.get(job_id).status == JobStatus.DONE  # type: ignore[union-attr]
+
+    # Simulate a crash after the render finished (manifest written) but before
+    # the DONE transition landed: the row is still "running" under a dead worker.
+    with session_scope(jobs_session_factory) as session:
+        row = session.get(Job, job_id)
+        row.status = JobStatus.RUNNING
+        row.worker_id = "dead-worker"
+
+    alive = Worker(
+        job_store,
+        worker_id="alive-worker",
+        pools=_solo_pools(),
+        poll_interval=0.01,
+        build_job=build,
+    )
+    requeued = alive.reconcile()
+    assert requeued == [job_id]
+
+    render, calls = _counting_render()
+    absorber = Worker(
+        job_store,
+        worker_id="w2",
+        pools=_solo_pools(),
+        poll_interval=0.01,
+        build_job=build,
+        render=render,
+    )
+    assert absorber.process_next() is True
+    assert calls == []  # absorbed by the manifest: no re-render
+
+    job = job_store.get(job_id)
+    assert job is not None
+    assert job.status == JobStatus.DONE
+    assert job.progress == 1.0

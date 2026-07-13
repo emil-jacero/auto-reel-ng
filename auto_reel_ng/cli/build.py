@@ -21,6 +21,7 @@ from ..probe.metadata import ClipMetadata
 from ..reel import ReelDocument
 from ..render import RenderJob, RenderOptions
 from ..render.orchestrator import ProgressCallback, ShouldCancel
+from ..staleness.fingerprint import Fingerprint
 from .adoption import PreparedEvent, persist, prepare_event
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,62 @@ def _probe_clips(
     return facts
 
 
+def prepare_and_persist(event_dir: Path, *, dry_run: bool = False) -> PreparedEvent:
+    """Prepare/adopt ``event_dir`` and persist the result (never in dry-run).
+
+    The first half of the D-S1 build path, split out so a caller (the
+    change-detection gate, D-C5) can compute the render fingerprint from
+    post-adoption disk state before deciding whether the second half (probe ->
+    resolve, potentially expensive) is worth doing at all.
+    """
+    event = prepare_event(event_dir, adopt=True)
+    if not dry_run:
+        path = persist(event)
+        if path is not None:
+            logger.info("Wrote %s", path)
+    return event
+
+
+def build_render_job_from_event(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    event: PreparedEvent,
+    *,
+    output_dir: Path,
+    runtime: FfmpegRuntime,
+    profile: AccelProfile,
+    render_node: Optional[str],
+    look_defaults: Mapping[str, object],
+    dry_run: bool = False,
+    overwrite: bool = False,
+    on_progress: Optional[ProgressCallback] = None,
+    should_cancel: Optional[ShouldCancel] = None,
+    temp_dir: Optional[Path] = None,
+    fingerprint: Optional[Fingerprint] = None,
+) -> RenderJob:
+    """Probe ``event``'s clips, resolve its plan, and build a :class:`RenderJob`.
+
+    The second half of the D-S1 build path: takes an already-prepared/persisted
+    event (:func:`prepare_and_persist`) rather than an event directory, so a
+    caller that already paid the prepare/persist cost (to compute a fingerprint
+    or gate on staleness) does not pay it twice.
+    """
+    clip_facts = _probe_clips(event.document, event.event_dir, runtime)
+    plan = resolve(event.document, look_defaults=look_defaults, clip_facts=clip_facts)
+    options = RenderOptions(
+        event_dir=event.event_dir,
+        output_dir=output_dir,
+        clip_facts=clip_facts,
+        runtime=runtime,
+        overwrite=overwrite,
+        dry_run=dry_run,
+        render_node=render_node,
+        on_progress=on_progress,
+        should_cancel=should_cancel,
+        temp_dir=temp_dir,
+        fingerprint=fingerprint,
+    )
+    return RenderJob(plan=plan, profile=profile, options=options)
+
+
 def build_render_job(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     event_dir: Path,
     *,
@@ -52,6 +109,7 @@ def build_render_job(  # pylint: disable=too-many-arguments,too-many-positional-
     on_progress: Optional[ProgressCallback] = None,
     should_cancel: Optional[ShouldCancel] = None,
     temp_dir: Optional[Path] = None,
+    fingerprint: Optional[Fingerprint] = None,
 ) -> Tuple[RenderJob, PreparedEvent]:
     """Prepare/adopt ``event_dir``, probe its clips, resolve the plan, build a job.
 
@@ -60,29 +118,22 @@ def build_render_job(  # pylint: disable=too-many-arguments,too-many-positional-
     callers rebuild from current disk state through this exact sequence
     (prepare/adopt -> persist -> probe -> resolve) rather than duplicating it.
     """
-    event = prepare_event(event_dir, adopt=True)
-
-    # Persist the seeded/adopted document so it is stable next run — never in dry-run.
-    if not dry_run:
-        path = persist(event)
-        if path is not None:
-            logger.info("Wrote %s", path)
-
-    clip_facts = _probe_clips(event.document, event_dir, runtime)
-    plan = resolve(event.document, look_defaults=look_defaults, clip_facts=clip_facts)
-    options = RenderOptions(
-        event_dir=event_dir,
+    event = prepare_and_persist(event_dir, dry_run=dry_run)
+    job = build_render_job_from_event(
+        event,
         output_dir=output_dir,
-        clip_facts=clip_facts,
         runtime=runtime,
-        overwrite=overwrite,
-        dry_run=dry_run,
+        profile=profile,
         render_node=render_node,
+        look_defaults=look_defaults,
+        dry_run=dry_run,
+        overwrite=overwrite,
         on_progress=on_progress,
         should_cancel=should_cancel,
         temp_dir=temp_dir,
+        fingerprint=fingerprint,
     )
-    return RenderJob(plan=plan, profile=profile, options=options), event
+    return job, event
 
 
-__all__ = ["build_render_job"]
+__all__ = ["prepare_and_persist", "build_render_job_from_event", "build_render_job"]

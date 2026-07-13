@@ -37,7 +37,9 @@ def _project(tmp_path: Path, *event_names: str) -> Path:
 @pytest.fixture
 def patched_engine(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     """Patch the heavy engine seams so render runs without a real ffmpeg."""
-    monkeypatch.setattr(commands, "FfmpegRuntime", lambda *a, **k: Mock(name="runtime"))
+    monkeypatch.setattr(
+        commands, "FfmpegRuntime", lambda *a, **k: Mock(name="runtime", version=(7, 1))
+    )
     monkeypatch.setattr(commands, "detect_capabilities", lambda *a, **k: Mock(name="inventory"))
     monkeypatch.setattr(commands, "select_profile", lambda *a, **k: CPUProfile())
     monkeypatch.setattr(build_module, "probe_media", lambda *a, **k: Mock(name="clip_meta"))
@@ -167,17 +169,19 @@ def test_render_device_override_threads_to_profile(
     assert captured["override"] == "cpu"
 
 
-def test_build_render_job_is_the_path_cmd_render_delegates_to(
+def test_build_render_job_is_the_shared_d_s1_build_path(
     tmp_path: Path, patched_engine: pytest.MonkeyPatch
 ) -> None:
-    # `_build_job` (cmd_render) is a thin wrapper over `build_render_job` (D-S1):
-    # the shared plan-build helper the job-scheduler worker also calls. Locks in
-    # "no behavior change to render" as the factoring's parity requirement.
+    # `build_render_job` (D-S1) is the shared prepare/adopt -> persist -> probe ->
+    # resolve helper the job-scheduler worker also builds on (via
+    # `prepare_and_persist` + `build_render_job_from_event`); `cmd_render` itself
+    # now gates through `_staleness_filter` before calling those same halves. This
+    # locks in "no behavior change to the standalone helper" as a regression guard.
     root = _project(tmp_path, "2024-06-21 - A")
     event_dir = root / "2024" / "2024-06-21 - A"
     output_dir = tmp_path / "out"
 
-    job, event = commands.build_render_job(
+    job, event = build_module.build_render_job(
         event_dir,
         output_dir=output_dir,
         runtime=commands.FfmpegRuntime(),

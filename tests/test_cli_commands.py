@@ -57,6 +57,27 @@ def test_list_alias_works(tmp_path: Path) -> None:
     assert main(["list", str(root)]) == 0
 
 
+def test_scan_reports_staleness_with_reasons(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "proj"
+    event = root / "2024" / "2024-06-21 - Midsummer"
+    _touch(event / "00400.mp4")
+
+    assert main(["scan", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "stale: no_manifest" in out
+
+
+def test_scan_never_writes_a_manifest(tmp_path: Path) -> None:
+    root = tmp_path / "proj"
+    event = root / "2024" / "2024-06-21 - Midsummer"
+    _touch(event / "00400.mp4")
+
+    assert main(["scan", str(root)]) == 0
+    assert not (event / ".auto-reel" / "cache" / "render-manifest.json").exists()
+
+
 # --------------------------------------------------------------------------- #
 # analyze (6.2)
 # --------------------------------------------------------------------------- #

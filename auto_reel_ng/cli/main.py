@@ -1,11 +1,16 @@
 """The ``auto-reel`` argument parser and entry point (HLD §4.11).
 
-Exposes eight subcommands — ``render``, ``scan``/``list``, ``analyze``, ``import``,
-``enqueue``, ``worker``, ``jobs`` (``list``/``show``/``cancel``), and ``serve`` —
-over a shared set of options (project root, output dir, ``--years``, ``--layout``,
-``--device``, ``--dry-run``, ``--overwrite``). Unknown subcommands and bad
-arguments exit non-zero with usage (argparse); engine errors are caught at the top
-and reported on stderr with a non-zero exit.
+Exposes nine subcommands — ``render``, ``scan``/``list``, ``analyze``, ``import``,
+``enqueue``, ``worker``, ``jobs`` (``list``/``show``/``cancel``), ``serve``, and
+``adopt-renders`` — over a shared set of options (project root, output dir,
+``--years``, ``--layout``, ``--device``, ``--dry-run``, ``--force``). Unknown
+subcommands and bad arguments exit non-zero with usage (argparse); engine errors
+are caught at the top and reported on stderr with a non-zero exit.
+
+``render`` and ``enqueue`` gate every event through the staleness gate
+(change-detection, §8.14): only stale events render/enqueue unless ``--force``.
+``render``'s former ``--overwrite`` flag was removed (**BREAKING**) — ``--force``
+now covers both "bypass the gate" and "replace an existing output".
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ from ..errors import EngineError
 from ..ingest import DEFAULT_LAYOUT
 from ..persistence.models import JobStatus
 from .commands import (
+    cmd_adopt_renders,
     cmd_analyze,
     cmd_enqueue,
     cmd_import,
@@ -109,9 +115,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="print the ffmpeg commands without executing or writing anything",
     )
     render.add_argument(
-        "--overwrite",
+        "--force",
         action="store_true",
-        help="replace an existing output file",
+        help="bypass the staleness gate and replace any existing output (was --overwrite)",
     )
     render.add_argument(
         "--device",
@@ -144,13 +150,18 @@ def build_parser() -> argparse.ArgumentParser:
     importer.set_defaults(func=cmd_import)
 
     enqueue = subparsers.add_parser(
-        "enqueue", help="scan and insert one queued job per event; never renders"
+        "enqueue", help="scan, gate, and insert one queued job per stale event; never renders"
     )
     _add_common_args(enqueue)
     enqueue.add_argument(
         "--device",
         default=None,
         help="device selector stored on the job (default: auto)",
+    )
+    enqueue.add_argument(
+        "--force",
+        action="store_true",
+        help="bypass the staleness gate: enqueue every event, with force set on the job",
     )
     enqueue.set_defaults(func=cmd_enqueue)
 
@@ -226,6 +237,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="WS hub poll interval in seconds (default: config.yaml 'api.poll_interval' or 1.0)",
     )
     serve.set_defaults(func=cmd_serve)
+
+    adopt_renders = subparsers.add_parser(
+        "adopt-renders",
+        help="write manifests for already-rendered events; never renders (one-time deploy step)",
+    )
+    _add_common_args(adopt_renders)
+    adopt_renders.set_defaults(func=cmd_adopt_renders)
 
     return parser
 

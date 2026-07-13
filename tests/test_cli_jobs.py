@@ -32,6 +32,36 @@ def _project(tmp_path: Path, *event_names: str) -> Path:
     return root
 
 
+def _adopt_and_write_manifest(root: Path, event_dir: Path) -> None:
+    """Adopt ``event_dir`` and write a manifest + output at its current fingerprint,
+    so it evaluates fresh without a real render."""
+    from auto_reel_ng.cli.adoption import persist, prepare_event
+    from auto_reel_ng.config.project import load_project_config, resolve_look_defaults
+    from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
+    from auto_reel_ng.render import output_filename
+    from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
+    from auto_reel_ng.staleness.manifest import write_manifest
+
+    event = prepare_event(event_dir, adopt=True)
+    persist(event)
+    runtime = FfmpegRuntime()
+    fingerprint = compute_fingerprint(
+        event.document,
+        event_dir=event_dir,
+        look_defaults=resolve_look_defaults(load_project_config(root)),
+        ffmpeg_version=runtime.version,
+    )
+    output_path = root / "output" / output_filename(event.document.metadata)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(b"already-rendered")
+    write_manifest(
+        event_dir,
+        fingerprint,
+        output=output_path.name,
+        engine_identity=engine_identity(runtime.version),
+    )
+
+
 @pytest.fixture
 def db_env(postgres_container: str, monkeypatch: pytest.MonkeyPatch) -> str:
     """Point ``DATABASE_URL`` at the shared podman container for CLI subcommands."""
@@ -90,6 +120,56 @@ def test_enqueue_twice_reports_existing_and_inserts_no_duplicates(
     assert "0/1 event(s) newly queued" in out
     assert "already queued" in out
     assert len(store.list_by_status(JobStatus.QUEUED)) == 1
+
+
+def test_enqueue_stamps_fingerprint_on_the_job(tmp_path: Path, store: JobStore) -> None:
+    root = _project(tmp_path, "2024-06-21 - A")
+    assert main(["enqueue", str(root)]) == 0
+    job = store.list_by_status(JobStatus.QUEUED)[0]
+    assert job.fingerprint
+    assert job.force is False
+
+
+def test_enqueue_skips_a_fresh_event(
+    tmp_path: Path, store: JobStore, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _project(tmp_path, "2024-06-21 - A")
+    _adopt_and_write_manifest(root, root / "2024" / "2024-06-21 - A")
+
+    assert main(["enqueue", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "0/1 event(s) newly queued" in out
+    assert "fresh, not enqueued" in out
+    assert len(store.list_by_status(JobStatus.QUEUED)) == 0
+
+
+def test_enqueue_force_enqueues_a_fresh_event(tmp_path: Path, store: JobStore) -> None:
+    root = _project(tmp_path, "2024-06-21 - A")
+    _adopt_and_write_manifest(root, root / "2024" / "2024-06-21 - A")
+
+    assert main(["enqueue", str(root), "--force"]) == 0
+    queued = store.list_by_status(JobStatus.QUEUED)
+    assert len(queued) == 1
+    assert queued[0].force is True
+
+
+def test_enqueue_mixed_stale_and_fresh_events(
+    tmp_path: Path, store: JobStore, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # headless-cli spec: "one stale and one fresh event -> one queued job for the
+    # stale event and the fresh event is reported fresh with no job."
+    root = _project(tmp_path, "2024-06-21 - A", "2024-06-22 - B")
+    _adopt_and_write_manifest(root, root / "2024" / "2024-06-21 - A")  # A is fresh
+
+    assert main(["enqueue", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "1/2 event(s) newly queued" in out
+    assert "2024-06-21 - A: fresh, not enqueued" in out
+    assert "2024-06-22 - B: queued" in out
+
+    queued = store.list_by_status(JobStatus.QUEUED)
+    assert len(queued) == 1
+    assert queued[0].event_dir == "2024/2024-06-22 - B"
 
 
 # --------------------------------------------------------------------------- #
