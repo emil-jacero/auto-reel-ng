@@ -15,3 +15,8 @@ dist/
 .coverage.*
 htmlcov/
 coverage.xml
+
+# crash debris (a 156 MB GPU core dump from exp 004 once had to be filter-repo'd out of history)
+gpucore*
+core.[0-9]*
+vgcore.*
