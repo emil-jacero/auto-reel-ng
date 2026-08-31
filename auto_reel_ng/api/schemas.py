@@ -16,9 +16,9 @@ import uuid
 # resolve to the field's own class attribute instead of the stdlib type).
 from datetime import date as DateValue
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ClipOut(BaseModel):
@@ -76,6 +76,80 @@ class EventDetailOut(BaseModel):
     chapters: List[ChapterOut] = []
     missing: List[str] = []
     latest_job: Optional[JobSummaryOut] = None
+    staleness: StalenessOut
+
+
+class TrimBody(BaseModel):
+    """One cut span (``in``/``out``/``reason``), the reel.yaml YAML vocabulary.
+
+    ``in`` is a Python keyword, so the field is renamed and aliased for the wire.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    in_: float = Field(alias="in")
+    out: float
+    reason: Optional[str] = None
+
+
+class ClipPropertiesBody(BaseModel):
+    """Per-clip editorial properties in the ``clips`` map (editorial-write, D-E2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    trims: List[TrimBody] = []
+    title: Optional[bool] = None
+    rotate: Optional[int] = None
+    exclude: bool = False
+
+
+class ChapterBody(BaseModel):
+    """One chapter in an editorial write: a name and its ordered clip identities."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    clips: List[str] = []
+
+
+class MetadataBody(BaseModel):
+    """Event metadata in an editorial write."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = None
+    date: Optional[DateValue] = None
+    location: Optional[str] = None
+    description: Optional[str] = None
+
+
+class EditorialDocumentBody(BaseModel):
+    """The complete desired (request) or persisted (response) editorial state.
+
+    A coarse whole-document shape (D-E2): the client sends every editable
+    section, and the server merges it onto the event's existing structure rather
+    than replacing the file (D-E1). Unknown fields are rejected (fail-loud) rather
+    than silently ignored.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    metadata: MetadataBody = MetadataBody()
+    look: Dict[str, Any] = {}
+    chapters: List[ChapterBody] = []
+    clips: Dict[str, ClipPropertiesBody] = {}
+    ignore: List[str] = []
+
+
+class EditorialWriteResult(BaseModel):
+    """The response of ``PUT /api/v1/events/{event_id}/reel``: persisted state + verdict.
+
+    Echoing the persisted document lets the client observe server-side
+    normalization and the event's new staleness verdict without a follow-up GET
+    (open question, design.md, settled here).
+    """
+
+    document: EditorialDocumentBody
     staleness: StalenessOut
 
 
@@ -158,6 +232,12 @@ __all__ = [
     "JobSummaryOut",
     "EventSummaryOut",
     "EventDetailOut",
+    "TrimBody",
+    "ClipPropertiesBody",
+    "ChapterBody",
+    "MetadataBody",
+    "EditorialDocumentBody",
+    "EditorialWriteResult",
     "SegmentOut",
     "AnalysisOut",
     "JobOut",

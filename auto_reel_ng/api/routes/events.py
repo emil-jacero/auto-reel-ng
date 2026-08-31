@@ -13,9 +13,18 @@ from typing import List, Union
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
+from ...errors import ReelError
+from ...event.editorial import apply_editorial_write
 from .. import events_read
-from ..problem import bad_gateway, not_found
-from ..schemas import AnalysisOut, EventDetailOut, EventSummaryOut
+from ..problem import bad_gateway, bad_request, not_found
+from ..schemas import (
+    AnalysisOut,
+    EditorialDocumentBody,
+    EditorialWriteResult,
+    EventDetailOut,
+    EventSummaryOut,
+)
+from ..serialize import document_to_body
 from ..settings import ApiSettings
 
 logger = logging.getLogger(__name__)
@@ -74,6 +83,42 @@ def get_event(event_id: str, request: Request) -> Union[EventDetailOut, Response
         )
     except events_read.EventReadError as exc:
         return bad_gateway(f"event {event_id!r}: {exc.detail}", event_id=event_id)
+
+
+@router.put("/events/{event_id:path}/reel", response_model=EditorialWriteResult)
+def put_reel(
+    event_id: str, payload: EditorialDocumentBody, request: Request
+) -> Union[EditorialWriteResult, Response]:
+    """``PUT /api/v1/events/{event_id}/reel``: apply a desired editorial state (D-E2).
+
+    A coarse whole-document write: ``payload`` is the complete desired editorial
+    state, merged onto the event's existing structure (never replacing the file
+    outright, D-E1) and validated fail-loud before anything is persisted. The
+    route carries no editorial logic of its own (D-E6) — it resolves the event,
+    delegates to the engine operation, and echoes the persisted document plus the
+    event's resulting staleness verdict (computed free, D-E5) so the client needs
+    no follow-up GET. The write never enqueues and never touches the render
+    manifest.
+    """
+    settings = _settings(request)
+    try:
+        event_dir = events_read.resolve_event_dir(settings, event_id)
+    except events_read.EventNotFoundError:
+        return not_found(
+            f"no event {event_id!r} under the configured project root", event_id=event_id
+        )
+
+    desired_data = payload.model_dump(by_alias=True)
+    try:
+        document = apply_editorial_write(event_dir, desired_data)
+    except ReelError as exc:
+        return bad_request(str(exc), event_id=event_id)
+
+    runtime = request.app.state.runtime
+    return EditorialWriteResult(
+        document=document_to_body(document),
+        staleness=events_read.staleness_for(settings, event_dir, document, runtime),
+    )
 
 
 __all__ = ["router"]

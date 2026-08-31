@@ -194,13 +194,14 @@ def _build_chapters(
     return chapters
 
 
-def _staleness(
+def staleness_for(
     settings: ApiSettings, event_dir: Path, document: Optional[ReelDocument], runtime: FfmpegRuntime
 ) -> StalenessOut:
     """The event's staleness verdict (change-detection, §8.14): read-only, never writes.
 
     Uses ``document`` if it was already loaded, else the folder-seed equivalent
-    (never adopted, never persisted — a GET must not write, D-7).
+    (never adopted, never persisted — a GET must not write, D-7). Public: also
+    used by the editorial-write route to echo the post-save verdict inline.
     """
     fp_document = document if document is not None else seed_document(event_dir)
     look_defaults = resolve_look_defaults(load_project_config(settings.project_root))
@@ -233,7 +234,7 @@ def get_event(
         chapters=_build_chapters(document, listing, result),
         missing=list(result.missing),
         latest_job=_job_summary(latest_jobs.get(event_id)),
-        staleness=_staleness(settings, event_dir, document, runtime),
+        staleness=staleness_for(settings, event_dir, document, runtime),
     )
 
 
@@ -271,4 +272,5 @@ __all__ = [
     "list_events",
     "get_event",
     "get_analysis",
+    "staleness_for",
 ]

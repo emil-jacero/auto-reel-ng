@@ -30,6 +30,15 @@ def problem_response(
     return JSONResponse(status_code=status_code, content=body)
 
 
+def bad_request(detail: str, **extra: Any) -> JSONResponse:
+    """A 400 problem response: a semantically invalid request body.
+
+    Used for a failed editorial-write validation — distinct from FastAPI's own
+    422, which is reserved for a structurally malformed body.
+    """
+    return problem_response(400, "Bad Request", detail, **extra)
+
+
 def not_found(detail: str, **extra: Any) -> JSONResponse:
     """A 404 problem response."""
     return problem_response(404, "Not Found", detail, **extra)
@@ -52,6 +61,7 @@ def service_unavailable(detail: str, **extra: Any) -> JSONResponse:
 
 __all__ = [
     "problem_response",
+    "bad_request",
     "not_found",
     "conflict",
     "bad_gateway",

@@ -1,8 +1,46 @@
-"""Shared ``Job`` -> :class:`JobOut` conversion (routes/jobs.py and the WS hub, ws.py)."""
+"""Shared ``Job``/``ReelDocument`` -> pydantic conversions used by more than one route."""
 
 from __future__ import annotations
 
-from .schemas import JobOut
+from ..reel.document import ReelDocument
+from .schemas import (
+    ChapterBody,
+    ClipPropertiesBody,
+    EditorialDocumentBody,
+    JobOut,
+    MetadataBody,
+    TrimBody,
+)
+
+
+def document_to_body(document: ReelDocument) -> EditorialDocumentBody:
+    """Convert a validated :class:`ReelDocument` to its wire shape (editorial-write echo)."""
+    return EditorialDocumentBody(
+        metadata=MetadataBody(
+            title=document.metadata.title,
+            date=document.metadata.date,
+            location=document.metadata.location,
+            description=document.metadata.description,
+        ),
+        look=dict(document.look),
+        chapters=[
+            ChapterBody(name=chapter.name, clips=[ref.identity for ref in chapter.clips])
+            for chapter in document.chapters
+        ],
+        clips={
+            identity: ClipPropertiesBody(
+                trims=[
+                    TrimBody(in_=trim.start, out=trim.end, reason=trim.reason)  # type: ignore[call-arg]
+                    for trim in props.trims
+                ],
+                title=props.title,
+                rotate=props.rotate,
+                exclude=props.exclude,
+            )
+            for identity, props in document.clips.items()
+        },
+        ignore=list(document.ignore),
+    )
 
 
 def job_to_out(job: object) -> JobOut:
@@ -26,4 +64,4 @@ def job_to_out(job: object) -> JobOut:
     )
 
 
-__all__ = ["job_to_out"]
+__all__ = ["document_to_body", "job_to_out"]

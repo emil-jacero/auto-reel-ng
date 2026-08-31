@@ -171,6 +171,28 @@ render, or job logic lives in the web tier.
   `event_id` is the root-relative event directory (URL-encoded), the same identity
   `jobs`/the job store already use. `GET /api/v1/events/{event_id}/analysis`
   exposes the read-only analysis sidecar cache; it never triggers analysis.
+- **`PUT /api/v1/events/{event_id}/reel`** saves an editorial write: the body is
+  the *complete* desired editorial state (metadata, ordered chapters/clips,
+  per-clip properties, `ignore`, `look`) and the server merges it onto the
+  event's existing `reel.yaml` field by field, never replacing the file
+  outright — a hand-authored file's comments and key order survive a GUI save
+  unchanged apart from the lines that actually differ. Because the body is the
+  *complete* state, an omitted field is a deletion, not "leave it alone": a
+  client must send back what it loaded (the response echo is exactly that body)
+  rather than a partial patch. The response echoes the
+  persisted document plus the event's new staleness verdict, so no follow-up
+  `GET` is needed. **Saving is not rendering**: the write never enqueues and
+  never touches the render manifest — it only moves the fingerprint's
+  editorial component, so the very next read reports `stale: editorial` and
+  the existing `POST /api/v1/jobs` enqueues the re-render as usual. An invalid
+  state (e.g. a dangling cross-reference) is rejected with a 400 problem body
+  and leaves `reel.yaml` untouched; an unknown event is a 404. Referencing a
+  clip absent from disk is legal here — that is a MISSING clip for `scan` to
+  report, never silently dropped. **Known limitation:** there is no
+  concurrency control (last-write-wins) — a save that lands while that same
+  event is mid-render can race the render's own NEW-clip adoption rewrite; an
+  `If-Match` guard is a purely additive future addition if that collision ever
+  bites in practice.
 - **Jobs lifecycle over REST** is a thin wrapper over the job store:
   `POST /api/v1/jobs` (gated like `enqueue` — 201 on a stale event, 409 with the
   existing job's id on an active duplicate, 200 `"status": "fresh"` with the
