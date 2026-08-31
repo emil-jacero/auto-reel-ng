@@ -267,14 +267,47 @@ Thin layer over the engine; no business logic that the CLI can't also reach.
 The north star is a **full timeline editor**, but we ship in thin slices:
 
 - **v1 (tiny, ship first):** scan/ingest view (events + clips), **drag-reorder clips** (persist to
-  `reel.yaml`), edit basic metadata (title/date/location/description), pick output look from defaults,
-  **schedule a render and watch live progress**. No timeline, no per-frame editing.
-- **v2:** look/style editor (title card live-ish preview), **analysis review** (approve black/white/freeze
+  `reel.yaml`), edit basic metadata (title/date/location/description), **schedule a render and watch
+  live progress**. The resolved `look` is shown **read-only**; editing it is v2. No timeline, no
+  per-frame editing.
+- **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview), **analysis review** (approve black/white/freeze
   trims), thumbnails/poster frames.
 - **v3:** **full timeline editor** — per-clip track with proxies, drag-trim in/out, reorder across
   chapters, scrub preview.
 
-> ⚠️ **Research:** §8.10 frontend framework; §8.11 proxy/thumbnail generation for the timeline.
+#### Decision D-8 — Frontend stack (LOCKED, 2026-08-31)
+
+**React 19 + Vite + TypeScript, built to static assets and served by the FastAPI process, under a hard
+dependency budget.** Rationale and rules:
+
+- **The runtime stays one Python process.** `auto-reel serve` is the whole deployment, so the frontend may
+  depend on Node at **build time only**; any framework requiring a Node process at runtime (SvelteKit, Next,
+  Nuxt) is disqualified. The build output is static files the API mounts.
+- **Why React.** The widest ecosystem and the deepest library/documentation coverage for the v3 timeline
+  editor (drag-trim, scrub preview) — the slice most likely to need something off the shelf. Chosen over
+  Svelte on support breadth, and over htmx/Jinja because v3 is not reachable from there without a rewrite.
+- **API types are generated, never hand-written.** Every endpoint carries a pydantic `response_model`, so
+  FastAPI's OpenAPI schema → `openapi-typescript` → TS types. A backend schema change becomes a frontend
+  **build error** instead of a silent runtime bug. Hand-maintaining a template ⇄ schema mapping (the htmx
+  path) was the deciding maintenance cost.
+- **The dependency budget is the real maintenance lever, not the framework** (Principle VII). GUI v1 ships
+  `react`, `react-dom`, `vite`, `@vitejs/plugin-react`, `typescript`, and one drag-and-drop library, plus
+  `openapi-typescript` as a dev dependency. **No component library, no CSS framework, no router, and no
+  state-management or data-fetching library at v1** — each is added only when a slice demonstrably needs it,
+  justified in that change's proposal. Component-library majors are the usual source of frontend bit rot;
+  plain CSS has none.
+- **Layout.** `web/` at the repo root; the Vite dev server proxies `/api` to the running service.
+  `create_app` mounts the built `web/dist` at `/` **when that directory exists** and serves nothing
+  otherwise, so dev and test runs never need a build. Same origin → no CORS, and the WS shares the host.
+- **Live progress needs no library.** The hub already fans out `JobOut` deltas and re-sends a full snapshot
+  on reconnect (D-A4), so the client is one WebSocket hook holding a `Map<job_id, JobOut>` with reconnect
+  backoff.
+- **The Node toolchain runs in podman** (`node:22`), mirroring the containerized-Postgres test fixture —
+  nothing is layered onto the immutable host.
+- **Shipping `web/dist` in the wheel/image is deferred to §6 phase 11 packaging**; it is not a v1 concern.
+
+> ⚠️ **Research:** §8.11 proxy/thumbnail generation for the timeline (v3). The frontend framework is now
+> **resolved** (Decision D-8).
 
 ### 4.11 Headless CLI
 
@@ -402,6 +435,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   DB is rebuildable from disk. Access goes through an ORM (SQLAlchemy) and migrations (Alembic). Ship Postgres in
   the compose/deployment stack; a dev fallback (containerized PG) keeps local setup simple. (§4.7/§4.8)
 
+- **D-8 — Frontend stack: React + Vite + TypeScript** (locked 2026-08-31). A static build served by the
+  FastAPI process — **no Node at runtime**; API types generated from the OpenAPI schema; a hard dependency
+  budget with **no component library, router, or state library at GUI v1**. (§4.10)
+
 ---
 
 ## 8. Research backlog — resolve before the corresponding spec
@@ -472,7 +509,10 @@ turned into confident OpenSpec changes. Numbered to match the ⚠️ markers abo
    configure line), `nonfree`/fdk-aac never shipped. Details in `docs/research/cross-vendor-ffmpeg.md`.
 9. **GPU concurrency limits** — NVENC simultaneous-session caps per GPU class, VRAM budgeting, and the
    QSV/VAAPI equivalents, to size the scheduler. Plus `ffmpeg -progress` parsing for accurate %.
-10. **Frontend framework** — React vs Svelte/SvelteKit for the SPA; component lib; WS state handling.
+10. **Frontend framework.** ✅ **RESOLVED → Decision D-8 (§4.10, LOCKED).** **React 19 + Vite +
+    TypeScript**, static build served by FastAPI (no runtime Node), API types generated from OpenAPI, and a
+    hard dependency budget (no component library, router, or state library at GUI v1). WS state handling is
+    a hand-written hook over the existing D-A4 progress hub.
 11. **Proxy & thumbnail generation** for the timeline editor — low-res proxies (and/or HLS) for scrubbing
     without touching originals; where to cache.
 12. **Single image, all vendors** — can one container ship CUDA + intel-media-driver + Mesa/VAAPI

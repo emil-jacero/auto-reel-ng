@@ -9,7 +9,7 @@ context: |
   (`movie-merge`): every principle below exists because the legacy tool got it wrong.
 
   Authoritative design: `docs/high-level-design.md` (HLD) — §6 is the phase roadmap, §7 holds the
-  locked decisions D-1..D-7, §8 the research backlog. Research notes in `docs/research/`, hardware
+  locked decisions D-1..D-8, §8 the research backlog. Research notes in `docs/research/`, hardware
   spikes in `experiments/`. This file is normative; the HLD is the reference it points at.
 
   ## Core Principles
