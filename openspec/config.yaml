@@ -1,32 +1,183 @@
 schema: spec-driven
 
 context: |
-  auto-reel-ng — a rewrite of `auto-reel` (the `movie-merge` Python tool). It merges per-event video
-  clips into one polished movie per event (title card + real chapters), with cross-vendor GPU
-  acceleration, optional black/white/freeze analysis, and a web GUI. The authoritative design is in
-  docs/high-level-design.md; research findings in docs/research/; hardware spikes in experiments/.
+  # auto-reel-ng Development Constitution
 
-  Tech stack & locked decisions (see HLD "Decisions" + D-1..D-7):
-  - Python 3.13+/3.14, FastAPI service; engine is a pure-ish library driven by both the API and a headless CLI.
-  - ffmpeg/ffprobe invoked as subprocesses (no Python binding). Default binary = jellyfin-ffmpeg, but the
-    engine is binary-agnostic and asserts ffmpeg >= 7.1 at startup (D-1).
-  - Cross-vendor GPU via capability detection + per-vendor "acceleration profiles" with a startup self-test
-    and guaranteed CPU fallback (NVIDIA/Intel/AMD). Never hardcode a vendor; auto-pick best, override allowed (D-3).
-  - Render strategy: normalize each clip on GPU, then stream-copy concat only when a strict ffprobe
-    equivalence check passes; otherwise re-encode. Normalize is the default path.
-  - reel.yaml (per event dir) is the editorial source of truth (metadata, clip order, trims, look).
-    Project-level config.yaml holds shared defaults; reel.yaml overrides (D-2). Postgres holds derived
-    state only (index, jobs, analysis cache, ingest-layout defs) and is rebuildable from disk (D-7).
-  - Ingest layouts are pluggable; ship `<year>/<event>/` and `flat` built-ins (D-6). AV1 is a v1 target (D-5).
+  auto-reel-ng merges per-event home-video clips into one movie per event (title card + real
+  chapters), with cross-vendor GPU acceleration, black/white/freeze analysis, a durable Postgres
+  job queue + worker, and a thin FastAPI service. It is a ground-up rewrite of `auto-reel`
+  (`movie-merge`): every principle below exists because the legacy tool got it wrong.
 
-  Conventions:
-  - Fail loud on probe/render errors; NEVER fabricate metadata (a core auto-reel bug being fixed).
-  - Strict typing (mypy), black/isort line length 100, real tests from the start.
-  - Directory spelled `ffmpeg` (auto-reel's `ffmepg` typo is NOT carried over).
+  Authoritative design: `docs/high-level-design.md` (HLD) — §6 is the phase roadmap, §7 holds the
+  locked decisions D-1..D-7, §8 the research backlog. Research notes in `docs/research/`, hardware
+  spikes in `experiments/`. This file is normative; the HLD is the reference it points at.
+
+  ## Core Principles
+
+  ### I. Fail Loud, Never Fabricate
+  The core legacy bug was a silent fake-metadata fallback (invented dimensions/fps when ffprobe
+  stumbled). Guessing is never allowed.
+  - `probe/` MUST return real ffprobe data or raise; no defaults, no "best effort" values.
+  - Render and analysis errors surface with the failing ffmpeg invocation, not a swallowed retry.
+  - Per-event isolation is the only tolerated softening: one bad event MUST NOT kill a batch, but
+    it MUST be reported as failed, never as rendered.
+
+  ### II. Disk Is the Source of Truth
+  `reel.yaml` in the event directory is the editorial model (metadata, clip order, trims, look);
+  project `config.yaml` holds shared defaults and `reel.yaml` overrides it (D-2).
+  - Postgres holds **derived** state only — index, jobs, analysis cache, layout defs (D-7) — and
+    MUST stay rebuildable from disk by a scan.
+  - Any writer (CLI, API, GUI) MUST write `reel.yaml` first and let the DB follow; the DB is never
+    the sole home of an editorial fact.
+  - Round-tripping `reel.yaml` MUST preserve user comments and key order (ruamel round-trip).
+
+  ### III. Detect Capabilities, Never Assume a Vendor
+  The legacy tool hardcoded NVENC encode-only and bounced frames across the CPU boundary.
+  - `accel/` decides by detection + a startup self-test, then picks the best profile; a forced
+    device/profile override MUST remain available (D-3, D-4).
+  - Every profile MUST have a working CPU fallback; a host with no usable GPU still renders.
+  - Keep frames GPU-resident within a profile (AMD = native `scale_vaapi,pad_vaapi`); no vendor
+    name may leak into `render/`, `event/`, or `api/`.
+  - AV1 is a first-class v1 target alongside H.264/HEVC (D-5).
+
+  ### IV. Deterministic Output & the Staleness Contract
+  Identical inputs MUST produce the same rendered output and the same fingerprint.
+  - The staleness fingerprint stays probe-free: editorial + resolved defaults + clip signals +
+    engine id. Do not add an input that requires decoding media.
+  - Any change that alters rendered bytes for identical inputs MUST bump `RENDER_GRAPH_VERSION`
+    (`auto_reel_ng/staleness/fingerprint.py`) in the same change.
+  - Finalize stays atomic: render to `.part` → verify → rename; a killed process MUST NOT leave a
+    file that looks rendered. The `render-manifest.json` sidecar is written only after verify.
+  - `--force` is the single documented way to bypass the gate (there is no `--overwrite`).
+
+  ### V. Engine First, Thin API
+  The engine is a library; the CLI and the service are two clients of it.
+  - No behavior may exist in `api/` that the CLI cannot also reach (HLD §4.9).
+  - Endpoints do request/response shaping, job lifecycle, and WS fan-out — nothing else.
+  - New engine capability lands with its CLI surface in the same change; the API may follow.
+
+  ### VI. Layer Boundaries
+  `ingest/` → `reel/`+`event/` → `probe/` → `accel/` → `render/` → `staleness/` → `persistence/` +
+  `scheduler/` → `api/`, with `ffmpeg/` wrapping subprocess invocation.
+  - Subprocess invocation lives only in `ffmpeg/`; nothing else shells out.
+  - Lower layers MUST NOT import higher ones (`render/` never imports `api/` or `persistence/`).
+  - The engine is binary-agnostic and asserts ffmpeg >= 7.1 at startup (D-1); no code may assume
+    the jellyfin build specifically.
+  - Ingest layouts stay pluggable — `year-event` and `flat` are built-ins, not the only shape (D-6).
+
+  ### VII. Simplicity & YAGNI
+  Prefer the simplest thing that serves a real event on disk.
+  - Direct functions over speculative abstractions; new config keys need a real use, and a default.
+  - Do not add a plugin hook, an option bag, or a second code path "for later".
+  - New third-party dependencies need justification in the proposal.
+
+  ### VIII. Small Batch Sizes
+  All changes MUST be kept TINY — one pipeline stage, one CLI subcommand, one endpoint at a time.
+  - **WARNING & BLOCK**: if a request would touch several layers at once (e.g. redesign the render
+    graph and the scheduler together, or design + implement + test a whole HLD phase in one go),
+    the Agent MUST warn, block, and propose a split.
+  - Tiny changes give focused, atomic commits: one concern per commit.
+
+  ## Execution Gate (Agent Directive)
+  Before beginning ANY implementation, evaluate the request against Principle VIII. If it is too
+  large, reply with:
+  "🛑 **Scope Warning**: This request is too large for a single safe iteration. I suggest we split
+  it into the following smaller steps: [list 2-3 logical, tiny steps]. Should we start with step 1?"
+
+  ## Technology Standards
+  - Python >= 3.13 (host runs 3.14), hatchling, package `auto_reel_ng/`. No Taskfile.
+  - The venv MUST be created with `--system-site-packages` (pycairo/PyGObject and pytest come from
+    rpm on this immutable host) and pytest run as `.venv/bin/python -m pytest`.
+  - ffmpeg/ffprobe as subprocesses, `-progress` parsed; >= 7.1 asserted. Default binary is
+    jellyfin-ffmpeg (GPL, D-1); the host's nonfree system build is dev-only, never redistributed.
+  - FastAPI + uvicorn + websockets; SQLAlchemy 2.x + Alembic + psycopg on Postgres (D-7).
+  - Title cards render via Cairo/Pango as their own segment — never moviepy.
+  - Tests: pytest with markers `gpu`, `has_fonts`, `has_ffmpeg`, `requires_db` (podman-launched
+    Postgres). Unit tests assert golden ffmpeg argument strings; hardware stays behind markers.
+  - Commits SHOULD follow Conventional Commits: `type(scope): description`, scope = package
+    (`probe`, `accel`, `render`, `staleness`, `scheduler`, `api`, `cli`, ...).
+
+  ## Code Style
+  - Strict mypy (`disallow_untyped_defs`), black + isort, line length 100.
+  - Fail loud: raise a typed error from `auto_reel_ng/errors.py`; do not return sentinel values.
+  - Prefer dataclasses over raw dicts across layer boundaries.
+  - Keep the movie/clip logging context; logging goes through `auto_reel_ng/logging.py`.
+  - The directory is spelled `ffmpeg/` (the legacy `ffmepg` typo is not carried over).
+  - Known-environmental noise, not failures: the five title-card tests skip without Cairo/Pango +
+    DejaVu Sans, and pylint reports pre-existing cairo `no-member`.
+
+  ## Validation Gates (before merge)
+  1. `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`
+  2. `.venv/bin/python -m mypy auto_reel_ng`
+  3. `.venv/bin/python -m pylint auto_reel_ng`
+  4. `.venv/bin/python -m pytest` (podman required; `-m "not requires_db"` to skip DB tests)
 
 rules:
   proposal:
-    - Keep "Why" grounded in a specific auto-reel learning or an HLD decision; reference the decision id (D-n) where relevant.
+    - "Focus: WHY we're doing this, WHAT's in/out of scope"
+    - "Updates when: Scope changes, intent clarifies, approach fundamentally shifts"
+    - Ground "Why" in a specific auto-reel learning (HLD §2) or a locked decision; cite the decision id (D-n) and the HLD section.
+    - Name the HLD §6 phase this belongs to; a change that depends on an unresolved §8 research item MUST resolve it first (experiment or research note) or explicitly narrow scope around it.
     - Always include a "Non-goals" section.
+    - State whether rendered output changes for identical inputs (Principle IV → `RENDER_GRAPH_VERSION` bump) and whether the staleness fingerprint inputs change.
+    - State whether `reel.yaml` / project `config.yaml` schema changes, and whether an Alembic migration plus a rescan is required.
+    - Name the affected packages and say whether the CLI, the API, or both are touched (Principle V).
+    - Complexity additions and new dependencies MUST include justification (Principle VII).
+    - Scope MUST be small enough to implement in a short session (Principle VIII).
+
+  design:
+    - "Focus: HOW we'll implement it technically"
+    - "Updates when: Implementation reveals better approach, constraints change"
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY).
+    - MUST include a "Research & Decisions" section when exploration was done.
+    - |
+      Format:
+        ## Research & Decisions
+
+        ### [Topic]
+        **Context**: [Why this decision was needed]
+        **Explored**: [What was investigated - link to docs/research or experiments/]
+        **Decision**: [Chosen option]
+        **Rationale**: [Why this option was selected]
+    - Include Python signatures, YAML snippets, or the concrete ffmpeg argument list where they clarify intent.
+    - "For anything touching the graph: show the emitted ffmpeg args per profile, and state what the CPU fallback path does (Principle III)."
+    - State failure behavior explicitly — what raises, what is reported per-event, what leaves no partial file (Principles I and IV).
+    - "State idempotency: what a re-run, a `--force` run, and a worker restart mid-render each do."
+    - A decision that outlives the change (graph shape, fingerprint input, schema) MUST be folded back into `docs/high-level-design.md` as a D-n entry rather than living only in the change.
+
+  specs:
+    - "Focus: WHAT behavior is changing (not HOW it's implemented)"
+    - "Updates when: New or changed requirements emerge"
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY).
+    - "Describe observable behavior: files written, CLI output and exit codes, emitted ffmpeg args, API status codes and payloads, WS progress events, DB rows."
+    - Use ADDED/MODIFIED/REMOVED sections to show deltas.
+    - Include scenarios with concrete media situations (e.g. "rotated 90° clip with non-1:1 SAR", "mixed fps chapters", "GPU present but AV1 encode unsupported", "worker killed mid-render").
+    - Keep specs capability-scoped; a change that would rewrite more than two capability specs is too large (Principle VIII).
+
   tasks:
-    - Each task is independently testable; include the test alongside the code it covers.
+    - "Focus: STEPS to take for implementation"
+    - "Updates when: Tasks complete, new tasks discovered, blockers identified"
+    - "CRITICAL: Break tasks into TINY chunks (max 1-2 hours)."
+    - "CRITICAL: If the task list grows past ~10 items or spans more than two packages, suggest splitting into a new OpenSpec change."
+    - Group tasks by package (`probe/`, `accel/`, `render/`, `staleness/`, `persistence/`, `scheduler/`, `api/`, `cli/`).
+    - Each task ships its test alongside the code it covers; hardware- or DB-dependent tests carry the right marker (`gpu`, `has_ffmpeg`, `has_fonts`, `requires_db`).
+    - Include an explicit task for the `RENDER_GRAPH_VERSION` bump and one for the Alembic migration whenever the proposal says they are needed.
+    - Include the validation gates as the final tasks (black/isort, mypy, pylint, pytest).
+    - "NEVER include delivery operations as tasks: no committing, pushing, branching, opening or
+      merging PRs, tagging, cutting releases, and no commit-message or PR-body hygiene checks.
+      tasks.md covers implementation and verification only — delivery happens afterwards under the
+      repo's normal git workflow. Sole exception: a change whose stated deliverable is itself a
+      release or packaging operation."
+
+operations:
+  apply:
+    guidance:
+      - Run the validation gates after each task, not only at the end.
+      - Never render into `auto-reel-media/` — it is a shared fixture. Dogfood against a scratch copy with symlinked clips.
+      - Do not weaken a probe or render error into a default value to make a test pass (Principle I); fix the input or the expectation instead.
+      - DB-backed tests launch a throwaway Postgres via podman; if podman is unavailable, run `-m "not requires_db"` and say so rather than skipping silently.
+  archive:
+    guidance:
+      - Confirm `RENDER_GRAPH_VERSION` was bumped if rendered output changed, and that `alembic upgrade head` runs clean on an empty database if the schema changed.
+      - Confirm any decision that outlived the change landed in `docs/high-level-design.md` (D-n) and that the §6 phase status is still accurate.
+      - Summarize the archive outcome before finishing.
