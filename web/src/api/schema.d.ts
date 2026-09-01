@@ -34,6 +34,12 @@ export interface paths {
         /**
          * Get Events
          * @description ``GET /api/v1/events`` (task 2.2): every event, freshly scanned.
+         *
+         *     Both ways this read can fail are reported distinctly and in the shared problem
+         *     shape: an unreachable job store as the 503 ``/healthz`` returns, a failed scan
+         *     as the 502 the detail route already returns. Neither is retried and neither
+         *     degrades — ``list_events`` builds the complete list before returning, so a
+         *     failure part-way through yields an error, never a partial set.
          */
         get: operations["get_events_api_v1_events_get"];
         put?: never;
@@ -569,6 +575,12 @@ export interface components {
         /**
          * StalenessOut
          * @description An event's staleness verdict: fresh, or stale with the changed components.
+         *
+         *     ``reasons`` is typed with the gate's own closed vocabulary rather than
+         *     ``List[str]``, so the OpenAPI schema publishes the enumeration and the
+         *     generated client types get an exhaustive union: renaming a reason in the
+         *     engine becomes a client build error instead of a silent runtime change
+         *     (D-8, §4.10). The wire values are the gate's strings, unchanged.
          */
         StalenessOut: {
             /** Stale */
@@ -577,8 +589,20 @@ export interface components {
              * Reasons
              * @default []
              */
-            reasons: string[];
+            reasons: components["schemas"]["StalenessReason"][];
         };
+        /**
+         * StalenessReason
+         * @description The closed set of reasons a stale verdict may cite.
+         *
+         *     A :class:`~enum.StrEnum` member *is* a ``str``, so a reason compares, joins,
+         *     formats and serializes exactly as the bare string it replaces — the wire
+         *     values are unchanged by construction. The component members mirror
+         *     :data:`~auto_reel_ng.staleness.fingerprint.COMPONENTS`, in that order (asserted
+         *     by the gate's tests, so a new component cannot ship without its reason).
+         * @enum {string}
+         */
+        StalenessReason: "no_manifest" | "output" | "editorial" | "defaults" | "clip_set" | "engine";
         /**
          * TrimBody
          * @description One cut span (``in``/``out``/``reason``), the reel.yaml YAML vocabulary.

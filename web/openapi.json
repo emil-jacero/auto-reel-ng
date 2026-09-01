@@ -28,7 +28,7 @@
           "events"
         ],
         "summary": "Get Events",
-        "description": "``GET /api/v1/events`` (task 2.2): every event, freshly scanned.",
+        "description": "``GET /api/v1/events`` (task 2.2): every event, freshly scanned.\n\nBoth ways this read can fail are reported distinctly and in the shared problem\nshape: an unreachable job store as the 503 ``/healthz`` returns, a failed scan\nas the 502 the detail route already returns. Neither is retried and neither\ndegrades — ``list_events`` builds the complete list before returning, so a\nfailure part-way through yields an error, never a partial set.",
         "operationId": "get_events_api_v1_events_get",
         "responses": {
           "200": {
@@ -1170,7 +1170,7 @@
           },
           "reasons": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/StalenessReason"
             },
             "type": "array",
             "title": "Reasons",
@@ -1182,7 +1182,20 @@
           "stale"
         ],
         "title": "StalenessOut",
-        "description": "An event's staleness verdict: fresh, or stale with the changed components."
+        "description": "An event's staleness verdict: fresh, or stale with the changed components.\n\n``reasons`` is typed with the gate's own closed vocabulary rather than\n``List[str]``, so the OpenAPI schema publishes the enumeration and the\ngenerated client types get an exhaustive union: renaming a reason in the\nengine becomes a client build error instead of a silent runtime change\n(D-8, §4.10). The wire values are the gate's strings, unchanged."
+      },
+      "StalenessReason": {
+        "type": "string",
+        "enum": [
+          "no_manifest",
+          "output",
+          "editorial",
+          "defaults",
+          "clip_set",
+          "engine"
+        ],
+        "title": "StalenessReason",
+        "description": "The closed set of reasons a stale verdict may cite.\n\nA :class:`~enum.StrEnum` member *is* a ``str``, so a reason compares, joins,\nformats and serializes exactly as the bare string it replaces — the wire\nvalues are unchanged by construction. The component members mirror\n:data:`~auto_reel_ng.staleness.fingerprint.COMPONENTS`, in that order (asserted\nby the gate's tests, so a new component cannot ship without its reason)."
       },
       "TrimBody": {
         "properties": {

@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from auto_reel_ng.reel.document import Chapter, ClipRef, Metadata, ReelDocument
-from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
-from auto_reel_ng.staleness.gate import MISSING_OUTPUT, NO_MANIFEST, evaluate
+from auto_reel_ng.staleness.fingerprint import COMPONENTS, compute_fingerprint, engine_identity
+from auto_reel_ng.staleness.gate import StalenessReason, evaluate
 from auto_reel_ng.staleness.manifest import write_manifest
 
 FFMPEG_VERSION = (7, 1)
@@ -60,7 +60,7 @@ def test_no_manifest_is_stale(tmp_path: Path) -> None:
     verdict = evaluate(event_dir, event_dir / "Party.mp4", fingerprint)
 
     assert verdict.stale is True
-    assert verdict.reasons == (NO_MANIFEST,)
+    assert verdict.reasons == (StalenessReason.NO_MANIFEST,)
 
 
 def test_missing_output_is_always_stale(tmp_path: Path) -> None:
@@ -72,7 +72,7 @@ def test_missing_output_is_always_stale(tmp_path: Path) -> None:
     verdict = evaluate(event_dir, output_path, fingerprint)
 
     assert verdict.stale is True
-    assert MISSING_OUTPUT in verdict.reasons
+    assert StalenessReason.OUTPUT in verdict.reasons
 
 
 def test_reasons_name_exactly_the_changed_components(tmp_path: Path) -> None:
@@ -102,3 +102,34 @@ def test_missing_referenced_clip_is_stale_via_clip_set(tmp_path: Path) -> None:
 
     assert verdict.stale is True
     assert "clip_set" in verdict.reasons
+
+
+def test_component_members_are_exactly_the_fingerprint_components() -> None:
+    """The hand-written component reasons mirror COMPONENTS, in order.
+
+    A fifth fingerprint component added without its reason fails here rather than
+    raising out of :func:`evaluate` the first time that component changes.
+    """
+    non_components = (StalenessReason.NO_MANIFEST, StalenessReason.OUTPUT)
+    component_members = tuple(reason for reason in StalenessReason if reason not in non_components)
+
+    assert tuple(reason.value for reason in component_members) == COMPONENTS
+
+
+def test_reasons_are_enum_members_carrying_the_unchanged_wire_values(tmp_path: Path) -> None:
+    """Every cited reason is a member *and* equal to the plain string it was before."""
+    event_dir = _setup(tmp_path)
+    baseline = _fingerprint(event_dir)
+    output_path = _render(event_dir, baseline)
+    (event_dir / "clip.mp4").write_bytes(b"replaced content, different size")
+    changed_fp = _fingerprint(event_dir, document=_document(title="Renamed Party"))
+    output_path.unlink()
+
+    verdict = evaluate(event_dir, output_path, changed_fp)
+
+    assert all(isinstance(reason, StalenessReason) for reason in verdict.reasons)
+    assert verdict.reasons == ("editorial", "clip_set", "output")
+
+    no_manifest = evaluate(tmp_path / "unrendered", tmp_path / "unrendered" / "x.mp4", changed_fp)
+    assert isinstance(no_manifest.reasons[0], StalenessReason)
+    assert no_manifest.reasons == ("no_manifest",)

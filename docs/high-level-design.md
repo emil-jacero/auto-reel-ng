@@ -363,6 +363,16 @@ The Python check is the load-bearing one: a developer who changes a response mod
 generated file, because regenerating overwrites it. Both artifacts are committed so `tsc` runs from a
 clean checkout and the client's API surface is visible in review.
 
+**A closed vocabulary must be typed as an enumeration, or the pipeline cannot see it.** The two checks
+compare and compile *what the schema says*; they cannot notice a field whose schema says less than the
+code means. A closed set published as a bare `list[str]` — `StalenessOut.reasons` was one — generates
+`string[]`, so every client re-states the vocabulary in a hand-maintained map, and renaming a value in
+the engine leaves `pytest`, the drift check and `tsc --noEmit` all green while the UI degrades to raw
+slugs: exactly the hand-maintained schema ⇄ view mapping D-8 rejected htmx to avoid. The rule that
+follows: a field drawn from a closed set is typed with an enumeration owned by the layer that owns the
+vocabulary (`StalenessReason` lives in `staleness/`, not in `api/`), so the schema publishes the set and
+the generated types become an exhaustive union. `events-list-client-contract` is the worked example.
+
 **`tsc --noEmit` is the frontend gate for GUI v1** — the whole frontend check. There is deliberately
 **no test runner and no browser automation**: types are generated from the schema, so drift is a compile
 error, and endpoint behavior is already covered by `pytest`. A later slice with logic worth unit-testing

@@ -17,7 +17,7 @@ from .fingerprint import (
     editorial_hash,
     engine_identity,
 )
-from .gate import MISSING_OUTPUT, NO_MANIFEST, Verdict, evaluate
+from .gate import StalenessReason, Verdict, evaluate
 from .manifest import (
     MANIFEST_FILENAME,
     RenderManifest,
@@ -41,8 +41,7 @@ __all__ = [
     "read_manifest",
     "write_manifest",
     # gate
+    "StalenessReason",
     "Verdict",
     "evaluate",
-    "NO_MANIFEST",
-    "MISSING_OUTPUT",
 ]

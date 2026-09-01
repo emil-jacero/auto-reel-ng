@@ -11,14 +11,21 @@ import time
 from typing import List, Optional, Union
 
 from fastapi import APIRouter, Header, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
+from sqlalchemy.exc import SQLAlchemyError
 
 from ...errors import ReelError
 from ...event.editorial import apply_editorial_write
 from ...reel.document import ReelDocument
 from ...staleness.fingerprint import editorial_hash
 from .. import events_read
-from ..problem import bad_gateway, bad_request, not_found, precondition_failed
+from ..problem import (
+    bad_gateway,
+    bad_request,
+    not_found,
+    precondition_failed,
+    service_unavailable,
+)
 from ..schemas import (
     AnalysisOut,
     EditorialDocumentBody,
@@ -36,6 +43,20 @@ router = APIRouter(prefix="/api/v1", tags=["events"])
 
 def _settings(request: Request) -> ApiSettings:
     return request.app.state.settings  # type: ignore[no-any-return]
+
+
+def _job_store_unavailable(exc: SQLAlchemyError, **extra: object) -> JSONResponse:
+    """The shared mapping for an unreachable job store on an events read (D-A6).
+
+    Both events reads consult the job store for ``latest_job``; when it cannot be
+    reached the read fails loud in the same 503 problem shape ``/healthz`` returns,
+    carrying the same ``check="database"``, so a client has one predicate for "the
+    service cannot reach its database" rather than three. The read is never
+    softened into a partial answer: reporting ``latest_job`` as absent because it
+    could not be read would fabricate "no job" out of "unknown" (Principle I).
+    """
+    logger.warning("events read: job store unreachable: %s", exc)
+    return service_unavailable(f"job store unreachable: {exc}", check="database", **extra)
 
 
 def _etag(document: ReelDocument) -> str:
@@ -61,13 +82,27 @@ def _if_match_satisfied(header: str, current: str) -> bool:
 
 
 @router.get("/events", response_model=List[EventSummaryOut])
-def get_events(request: Request) -> List[EventSummaryOut]:
-    """``GET /api/v1/events`` (task 2.2): every event, freshly scanned."""
+def get_events(request: Request) -> Union[List[EventSummaryOut], Response]:
+    """``GET /api/v1/events`` (task 2.2): every event, freshly scanned.
+
+    Both ways this read can fail are reported distinctly and in the shared problem
+    shape: an unreachable job store as the 503 ``/healthz`` returns, a failed scan
+    as the 502 the detail route already returns. Neither is retried and neither
+    degrades — ``list_events`` builds the complete list before returning, so a
+    failure part-way through yields an error, never a partial set.
+    """
     settings = _settings(request)
     started = time.monotonic()
-    result = events_read.list_events(
-        settings, request.app.state.job_store, request.app.state.runtime
-    )
+    try:
+        result = events_read.list_events(
+            settings, request.app.state.job_store, request.app.state.runtime
+        )
+    except SQLAlchemyError as exc:
+        return _job_store_unavailable(exc)
+    except events_read.EventReadError as exc:
+        return bad_gateway(f"event {exc.event_id!r}: {exc.detail}", event_id=exc.event_id)
+    except ReelError as exc:
+        return bad_gateway(f"event scan failed: {exc}")
     logger.info(
         "events scan: %d event(s) under %s in %.3fs",
         len(result),
@@ -129,6 +164,8 @@ def get_event(event_id: str, request: Request) -> Union[EventDetailOut, Response
         return events_read.get_event(
             settings, event_id, request.app.state.job_store, request.app.state.runtime
         )
+    except SQLAlchemyError as exc:
+        return _job_store_unavailable(exc, event_id=event_id)
     except events_read.EventNotFoundError:
         return not_found(
             f"no event {event_id!r} under the configured project root", event_id=event_id

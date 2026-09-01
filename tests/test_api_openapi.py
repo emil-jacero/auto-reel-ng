@@ -17,6 +17,7 @@ from auto_reel_ng.api.openapi import (
     build_openapi_schema,
     render_openapi_schema,
 )
+from auto_reel_ng.staleness.gate import StalenessReason
 
 #: The committed artifact `openapi-typescript` reads (repo root / web/openapi.json).
 COMMITTED_SCHEMA = Path(__file__).resolve().parent.parent / "web" / "openapi.json"
@@ -43,6 +44,7 @@ EXPECTED_MODELS = {
     "JobSummaryOut",
     "CancelResult",
     "StalenessOut",
+    "StalenessReason",
 }
 
 
@@ -70,6 +72,23 @@ def test_events_list_response_is_the_event_summary_model() -> None:
     content = schema["paths"]["/api/v1/events"]["get"]["responses"]["200"]["content"]
     items = content["application/json"]["schema"]["items"]
     assert items["$ref"].endswith("/EventSummaryOut")
+
+
+def test_staleness_reasons_are_published_as_a_closed_enumeration() -> None:
+    """The reasons field is an enumeration of the gate's reasons, not ``string[]``.
+
+    This is what makes a renamed reason a client build error: ``openapi-typescript``
+    turns the referenced enum into a string union (D-8, §4.10). A bare
+    ``{"type": "string"}`` array item here would be the hole this asserts against.
+    """
+    schema = build_openapi_schema()
+    reasons = schema["components"]["schemas"]["StalenessOut"]["properties"]["reasons"]
+    assert reasons["type"] == "array"
+    assert reasons["items"]["$ref"].endswith("/StalenessReason")
+
+    published = schema["components"]["schemas"]["StalenessReason"]
+    assert published["type"] == "string"
+    assert published["enum"] == [reason.value for reason in StalenessReason]
 
 
 def test_committed_schema_is_not_stale() -> None:

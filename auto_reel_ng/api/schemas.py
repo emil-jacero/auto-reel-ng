@@ -20,6 +20,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..staleness.gate import StalenessReason
+
 
 class ClipOut(BaseModel):
     """One clip: identity, reconcile status, and the file facts a reorder view needs.
@@ -55,10 +57,17 @@ class JobSummaryOut(BaseModel):
 
 
 class StalenessOut(BaseModel):
-    """An event's staleness verdict: fresh, or stale with the changed components."""
+    """An event's staleness verdict: fresh, or stale with the changed components.
+
+    ``reasons`` is typed with the gate's own closed vocabulary rather than
+    ``List[str]``, so the OpenAPI schema publishes the enumeration and the
+    generated client types get an exhaustive union: renaming a reason in the
+    engine becomes a client build error instead of a silent runtime change
+    (D-8, §4.10). The wire values are the gate's strings, unchanged.
+    """
 
     stale: bool
-    reasons: List[str] = []
+    reasons: List[StalenessReason] = []
 
 
 class EventSummaryOut(BaseModel):
