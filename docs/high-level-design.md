@@ -268,6 +268,13 @@ and therefore belong to the analysis cache; no events read may probe a clip to f
 D-A3 (scanned per request) plus Principle IV (the staleness path never decodes) applied to the read model,
 not a new decision, and it is the rule to quote when a response field would need an `ffprobe`.
 
+**The same rule bounds content hashing.** The staleness fingerprint's clip-set component has a content-hash
+opt-in (`compute_fingerprint(use_hash=True)`) that sha256s every clip's bytes; on a per-event read that is a
+deliberate, bounded cost, but a whole-library read must never take it — an events **list** would turn one
+request into a read of every byte in the library. The list computes its verdicts from the clips' size and
+mtime, the same content-free signal a `stat` already gives it. Read endpoints that fan out over the whole
+project MUST NOT read clip content to fill a response field, by hash any more than by probe.
+
 ### 4.10 Web GUI — phased
 
 The north star is a **full timeline editor**, but we ship in thin slices:
@@ -331,6 +338,35 @@ dependency budget.** Rationale and rules:
 - **The Node toolchain runs in podman** (`node:22`), mirroring the containerized-Postgres test fixture —
   nothing is layered onto the immutable host.
 - **Shipping `web/dist` in the wheel/image is deferred to §6 phase 11 packaging**; it is not a v1 concern.
+
+#### The schema → types pipeline, and what checks it (slice A, 2026-09-01)
+
+D-8 promises that a backend schema change becomes a **frontend build error**. The mechanism is two
+committed artifacts and two checks standing on either side of them:
+
+```
+auto_reel_ng/api response models
+        │  app.openapi()                     ← auto_reel_ng/api/openapi.py, offline:
+        ▼                                      no service, no reachable database (the engine is lazy)
+   web/openapi.json          (committed)  ◄── pytest: regenerate and compare, naming the disagreement
+        │  openapi-typescript
+        ▼
+   web/src/api/schema.d.ts   (committed)
+        │
+        ▼
+      client code                          ◄── tsc --noEmit: fails where client code reads a field
+                                               the regenerated types no longer describe
+```
+
+The Python check is the load-bearing one: a developer who changes a response model and never opens
+`web/` still gets a failure, with no Node involved. Neither check can be satisfied by hand-editing a
+generated file, because regenerating overwrites it. Both artifacts are committed so `tsc` runs from a
+clean checkout and the client's API surface is visible in review.
+
+**`tsc --noEmit` is the frontend gate for GUI v1** — the whole frontend check. There is deliberately
+**no test runner and no browser automation**: types are generated from the schema, so drift is a compile
+error, and endpoint behavior is already covered by `pytest`. A later slice with logic worth unit-testing
+proposes a runner then, with its justification.
 
 > ⚠️ **Research:** §8.11 proxy/thumbnail generation for the timeline (v3). The frontend framework is now
 > **resolved** (Decision D-8).

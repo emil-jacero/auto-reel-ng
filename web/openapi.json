@@ -1,0 +1,1260 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "auto-reel-ng API",
+    "version": "1"
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "summary": "Healthz",
+        "description": "Liveness + DB reachability (D-A6 open question, settled: yes).",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Events",
+        "description": "``GET /api/v1/events`` (task 2.2): every event, freshly scanned.",
+        "operationId": "get_events_api_v1_events_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EventSummaryOut"
+                  },
+                  "type": "array",
+                  "title": "Response Get Events Api V1 Events Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events/{event_id}/analysis": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Analysis",
+        "description": "``GET /api/v1/events/{event_id}/analysis`` (task 2.4): cached segments only.\n\nRegistered *before* the ``{event_id:path}`` detail route below: both patterns\nare greedy over ``/``, and Starlette matches routes in registration order, so\nthe more specific ``/analysis`` suffix must be tried first or the detail route\nwould swallow it (``event_id`` ending in literal ``/analysis``).",
+        "operationId": "get_analysis_api_v1_events__event_id__analysis_get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events/{event_id}/reel": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Reel",
+        "description": "``GET /api/v1/events/{event_id}/reel``: the editorial document as authored.\n\nThe exact inverse of the PUT below — same model, same serializer — so a client\nmay submit what it read without hand-building a write body. Registered *before*\nthe greedy ``{event_id:path}`` detail route for the reason the ``/analysis``\nroute documents. The response carries an ``ETag`` for the optional ``If-Match``\nprecondition on the write; there is deliberately no conditional GET (D-R4).",
+        "operationId": "get_reel_api_v1_events__event_id__reel_get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialDocumentBody-Output"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Put Reel",
+        "description": "``PUT /api/v1/events/{event_id}/reel``: apply a desired editorial state (D-E2).\n\nA coarse whole-document write: ``payload`` is the complete desired editorial\nstate, merged onto the event's existing structure (never replacing the file\noutright, D-E1) and validated fail-loud before anything is persisted. The\nroute carries no editorial logic of its own (D-E6) — it resolves the event,\ndelegates to the engine operation, and echoes the persisted document plus the\nevent's resulting staleness verdict (computed free, D-E5) so the client needs\nno follow-up GET. The write never enqueues and never touches the render\nmanifest.\n\nA successful write carries an ``ETag`` for the state it just persisted,\ncomputed from the returned document by the same helper ``get_reel`` uses, so a\nclient may chain conditional writes with no intervening read. A ``412`` carries\nnone: a client that lost the race must re-read before it overwrites.",
+        "operationId": "put_reel_api_v1_events__event_id__reel_put",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorialDocumentBody-Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialWriteResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events/{event_id}": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Event",
+        "description": "``GET /api/v1/events/{event_id}`` (task 2.3): current detail from disk.",
+        "operationId": "get_event_api_v1_events__event_id__get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Create Job",
+        "description": "``POST /api/v1/jobs`` (task 3.1, gated per change-detection §8.14).\n\nIdempotent enqueue, 409 on active duplicate, 200 \"fresh — not enqueued\" when\nthe event is fresh and ``force`` is false. The API never transitions job\nstatus itself (D-A6) — the gate decision is made here, at enqueue, the same\nas the CLI's own ``enqueue``.",
+        "operationId": "create_job_api_v1_jobs_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnqueueRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "List Jobs",
+        "description": "``GET /api/v1/jobs`` (task 3.2): optionally filtered by status, oldest first.",
+        "operationId": "list_jobs_api_v1_jobs_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/JobStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JobOut"
+                  },
+                  "title": "Response List Jobs Api V1 Jobs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Get Job",
+        "description": "``GET /api/v1/jobs/{id}`` (task 3.2): one job's full detail.",
+        "operationId": "get_job_api_v1_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Cancel Job",
+        "description": "``POST /api/v1/jobs/{id}/cancel`` (task 3.3): request_cancel, tri-state outcome.",
+        "operationId": "cancel_job_api_v1_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnalysisOut": {
+        "properties": {
+          "analyzed": {
+            "type": "boolean",
+            "title": "Analyzed"
+          },
+          "segments": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/SegmentOut"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Segments",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "analyzed"
+        ],
+        "title": "AnalysisOut",
+        "description": "An event's cached analysis (D-A3 open question: raw sidecar segments, per clip).\n\n``analyzed`` distinguishes \"never analyzed\" (``False``, ``segments`` empty)\nfrom \"analyzed, found nothing\" (``True``, ``segments`` empty) — the sidecar\ncache is per-clip, so this is true when at least one clip has a cache entry."
+      },
+      "CancelResult": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "outcome"
+        ],
+        "title": "CancelResult",
+        "description": "The body of ``POST /api/v1/jobs/{id}/cancel`` (D-S6 tri-state, task 3.3)."
+      },
+      "ChapterBody": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "clips": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Clips",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ChapterBody",
+        "description": "One chapter in an editorial write: a name and its ordered clip identities."
+      },
+      "ChapterOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "clips": {
+            "items": {
+              "$ref": "#/components/schemas/ClipOut"
+            },
+            "type": "array",
+            "title": "Clips",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ChapterOut",
+        "description": "One chapter: its name (``\"\"`` is the default/root chapter) and ordered clips."
+      },
+      "ClipOut": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "title": "Identity"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "mtime": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mtime"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identity",
+          "status"
+        ],
+        "title": "ClipOut",
+        "description": "One clip: identity, reconcile status, and the file facts a reorder view needs.\n\n``size`` (bytes) and ``mtime`` (timezone-aware UTC) come from the clip's own\ndirectory entry — **file** facts, never media facts. Nothing here is decoded or\nprobed, so the detail response stays probe-free (Principle IV); duration,\ndimensions and codec belong to the analysis cache, not this shape. Both are\n``None`` for a clip the document references but disk does not have: absence is\nreported, never fabricated as a zero or an epoch (Principle I)."
+      },
+      "ClipPropertiesBody": {
+        "properties": {
+          "trims": {
+            "items": {
+              "$ref": "#/components/schemas/TrimBody"
+            },
+            "type": "array",
+            "title": "Trims",
+            "default": []
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "rotate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotate"
+          },
+          "exclude": {
+            "type": "boolean",
+            "title": "Exclude",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ClipPropertiesBody",
+        "description": "Per-clip editorial properties in the ``clips`` map (editorial-write, D-E2)."
+      },
+      "EditorialDocumentBody-Input": {
+        "properties": {
+          "metadata": {
+            "$ref": "#/components/schemas/MetadataBody",
+            "default": {}
+          },
+          "look": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Look",
+            "default": {}
+          },
+          "chapters": {
+            "items": {
+              "$ref": "#/components/schemas/ChapterBody"
+            },
+            "type": "array",
+            "title": "Chapters",
+            "default": []
+          },
+          "clips": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ClipPropertiesBody"
+            },
+            "type": "object",
+            "title": "Clips",
+            "default": {}
+          },
+          "ignore": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ignore",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "EditorialDocumentBody",
+        "description": "The complete desired (request) or persisted (response) editorial state.\n\nA coarse whole-document shape (D-E2): the client sends every editable\nsection, and the server merges it onto the event's existing structure rather\nthan replacing the file (D-E1). Unknown fields are rejected (fail-loud) rather\nthan silently ignored."
+      },
+      "EditorialDocumentBody-Output": {
+        "properties": {
+          "metadata": {
+            "$ref": "#/components/schemas/MetadataBody",
+            "default": {}
+          },
+          "look": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Look",
+            "default": {}
+          },
+          "chapters": {
+            "items": {
+              "$ref": "#/components/schemas/ChapterBody"
+            },
+            "type": "array",
+            "title": "Chapters",
+            "default": []
+          },
+          "clips": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ClipPropertiesBody"
+            },
+            "type": "object",
+            "title": "Clips",
+            "default": {}
+          },
+          "ignore": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ignore",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "EditorialDocumentBody",
+        "description": "The complete desired (request) or persisted (response) editorial state.\n\nA coarse whole-document shape (D-E2): the client sends every editable\nsection, and the server merges it onto the event's existing structure rather\nthan replacing the file (D-E1). Unknown fields are rejected (fail-loud) rather\nthan silently ignored."
+      },
+      "EditorialWriteResult": {
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/EditorialDocumentBody-Output"
+          },
+          "staleness": {
+            "$ref": "#/components/schemas/StalenessOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document",
+          "staleness"
+        ],
+        "title": "EditorialWriteResult",
+        "description": "The response of ``PUT /api/v1/events/{event_id}/reel``: persisted state + verdict.\n\nEchoing the persisted document lets the client observe server-side\nnormalization and the event's new staleness verdict without a follow-up GET\n(open question, design.md, settled here)."
+      },
+      "EnqueueRequest": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "device": {
+            "type": "string",
+            "title": "Device",
+            "default": "auto"
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id"
+        ],
+        "title": "EnqueueRequest",
+        "description": "The body of ``POST /api/v1/jobs``."
+      },
+      "EventDetailOut": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "chapters": {
+            "items": {
+              "$ref": "#/components/schemas/ChapterOut"
+            },
+            "type": "array",
+            "title": "Chapters",
+            "default": []
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing",
+            "default": []
+          },
+          "latest_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobSummaryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "staleness": {
+            "$ref": "#/components/schemas/StalenessOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "staleness"
+        ],
+        "title": "EventDetailOut",
+        "description": "One event's full detail: metadata, ordered chapters/clips, reconcile state,\nand its staleness verdict (change-detection, §8.14)."
+      },
+      "EventSummaryOut": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "clip_count": {
+            "type": "integer",
+            "title": "Clip Count"
+          },
+          "new_count": {
+            "type": "integer",
+            "title": "New Count"
+          },
+          "missing_count": {
+            "type": "integer",
+            "title": "Missing Count"
+          },
+          "latest_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobSummaryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "staleness": {
+            "$ref": "#/components/schemas/StalenessOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "clip_count",
+          "new_count",
+          "missing_count",
+          "staleness"
+        ],
+        "title": "EventSummaryOut",
+        "description": "One event as listed by ``GET /api/v1/events``."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "JobOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "event_dir": {
+            "type": "string",
+            "title": "Event Dir"
+          },
+          "project_root": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Root"
+          },
+          "device": {
+            "type": "string",
+            "title": "Device"
+          },
+          "progress": {
+            "type": "number",
+            "title": "Progress"
+          },
+          "worker_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Id"
+          },
+          "cancel_requested": {
+            "type": "boolean",
+            "title": "Cancel Requested"
+          },
+          "requeue_count": {
+            "type": "integer",
+            "title": "Requeue Count"
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "default": false
+          },
+          "fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fingerprint"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "event_dir",
+          "device",
+          "progress",
+          "cancel_requested",
+          "requeue_count",
+          "created_at"
+        ],
+        "title": "JobOut",
+        "description": "One job's full detail, mirroring ``jobs show`` (task 3.2)."
+      },
+      "JobStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed",
+          "canceled"
+        ],
+        "title": "JobStatus",
+        "description": "The five lifecycle states a job may occupy (D-P4)."
+      },
+      "JobSummaryOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "progress": {
+            "type": "number",
+            "title": "Progress"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "progress",
+          "created_at"
+        ],
+        "title": "JobSummaryOut",
+        "description": "The latest job for an event, as embedded in the events list (D-A3)."
+      },
+      "MetadataBody": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "MetadataBody",
+        "description": "Event metadata in an editorial write."
+      },
+      "SegmentOut": {
+        "properties": {
+          "start": {
+            "type": "number",
+            "title": "Start"
+          },
+          "end": {
+            "type": "number",
+            "title": "End"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "kind",
+          "confidence"
+        ],
+        "title": "SegmentOut",
+        "description": "One detected segment (black/white/freeze span) for a clip."
+      },
+      "StalenessOut": {
+        "properties": {
+          "stale": {
+            "type": "boolean",
+            "title": "Stale"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "stale"
+        ],
+        "title": "StalenessOut",
+        "description": "An event's staleness verdict: fresh, or stale with the changed components."
+      },
+      "TrimBody": {
+        "properties": {
+          "in": {
+            "type": "number",
+            "title": "In"
+          },
+          "out": {
+            "type": "number",
+            "title": "Out"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "in",
+          "out"
+        ],
+        "title": "TrimBody",
+        "description": "One cut span (``in``/``out``/``reason``), the reel.yaml YAML vocabulary.\n\n``in`` is a Python keyword, so the field is renamed and aliased for the wire."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

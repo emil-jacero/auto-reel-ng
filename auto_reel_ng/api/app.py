@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncIterator, Awaitable, Callable, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -40,6 +42,18 @@ AuthChecker = Callable[[Request], Optional[Response]]
 def _default_auth_checker(_request: Request) -> Optional[Response]:
     """The v1 no-op auth checker: every request is authorized (D-A8)."""
     return None
+
+
+def web_dist_dir() -> Path:
+    """The development checkout's ``web/dist`` — the built client, when it exists.
+
+    One symbol rather than a settings key (Principle VII: there is exactly one
+    correct answer per deployment and no operator ever chooses it), and the seam
+    tests monkeypatch. §6 phase 11 — packaging the assets into the wheel/image —
+    edits this function and nothing else; an installed wheel finds no directory
+    here and simply serves no client, which is a supported state.
+    """
+    return Path(__file__).resolve().parent.parent.parent / "web" / "dist"
 
 
 def create_app(settings: ApiSettings, *, auth_checker: Optional[AuthChecker] = None) -> FastAPI:
@@ -98,7 +112,17 @@ def create_app(settings: ApiSettings, *, auth_checker: Optional[AuthChecker] = N
     app.include_router(jobs_router)
     app.include_router(ws_router)
 
+    # Mounted last, deliberately: Starlette matches in registration order, so every
+    # API route, /healthz and the WS endpoint are resolved before the mount sees a
+    # path. Moving this above the routers would answer /api/v1/events with the
+    # client's index.html. A missing build is normal (dev runs and the test suite
+    # never build the client), so the mount is simply skipped.
+    dist = web_dist_dir()
+    if dist.is_dir():
+        logger.info("serving the built web client from %s", dist)
+        app.mount("/", StaticFiles(directory=dist, html=True), name="web")
+
     return app
 
 
-__all__ = ["create_app", "AuthChecker"]
+__all__ = ["create_app", "AuthChecker", "web_dist_dir"]

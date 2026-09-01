@@ -287,6 +287,14 @@ The persistence suite (`requires_db`-marked tests) needs **podman** on `PATH`: a
 session-scoped fixture starts a throwaway Postgres container per test run and tears
 it down after. Tests not marked `requires_db` run without it.
 
+### Web client
+
+The browser client lives in `web/` (React + Vite + TypeScript, D-8). Its Node
+toolchain runs in **podman** — nothing is installed on the host — and it is needed
+only to *build* the client: `auto-reel serve` mounts `web/dist` when it exists and
+runs unchanged when it does not, so tests and dev runs never require a build. Build,
+dev-server and type-regeneration commands are in [`web/README.md`](web/README.md).
+
 To provision a database by hand (dev default is
 `postgresql+psycopg://auto_reel_ng:auto_reel_ng@localhost:5432/auto_reel_ng`, overridden
 by `DATABASE_URL` or `config.yaml`'s `database.url` — see
