@@ -51,6 +51,28 @@ de-risking order `editorial-write-api` used.
   with an emptied `ignore` list — promotes previously ignored footage into the render. Both are silent, and
   neither was chosen by the user.
 
+## Capabilities
+
+### Modified Capabilities
+- `api-service`: Gains `GET /api/v1/events/{event_id}/reel` — the editorial document in exactly the shape
+  the write endpoint accepts, carrying an `ETag` — and an optional `If-Match` precondition on the existing
+  `PUT /api/v1/events/{event_id}/reel`. The other read endpoints stay read-only and unchanged.
+
+## Impact
+
+- **Packages:** `api/` (one new route, the precondition check on the existing PUT) and `staleness/` (extract
+  one function; no behavior change). Two packages, one endpoint added, one modified — within Principle VIII.
+- **API / CLI (Principle V):** API only, and this adds **no engine capability**. Reading an event's document
+  is `load_document`, which the CLI already reaches (`scan`, `render`, and `enqueue` all load it; the raw file
+  is `cat reel.yaml`). "New engine capability lands with its CLI surface" therefore does not trigger — nothing
+  lands here that the CLI cannot already reach.
+- **Rendered output:** unchanged for identical inputs. **No `RENDER_GRAPH_VERSION` bump.**
+- **Staleness fingerprint inputs:** unchanged. The `editorial` component is refactored into a named function
+  and MUST hash identically to today; a test pins that, so this change makes **no event stale**.
+- **Schemas:** no `reel.yaml` change, no `config.yaml` change, no Postgres schema change. **No Alembic
+  migration and no rescan.**
+- **Dependencies:** none added (Principle VII).
+
 ## Non-goals
 
 - **No look picker and no config endpoint.** Editing the look is GUI v2 (§4.10, updated in this change's
@@ -67,18 +89,3 @@ de-risking order `editorial-write-api` used.
 - **No mandatory `If-Match`.** Requiring it would break unconditional scripted clients the spec already
   guarantees.
 - **No frontend code**, and no new CLI subcommand (see Impact).
-
-## Impact
-
-- **Packages:** `api/` (one new route, the precondition check on the existing PUT) and `staleness/` (extract
-  one function; no behavior change). Two packages, one endpoint added, one modified — within Principle VIII.
-- **API / CLI (Principle V):** API only, and this adds **no engine capability**. Reading an event's document
-  is `load_document`, which the CLI already reaches (`scan`, `render`, and `enqueue` all load it; the raw file
-  is `cat reel.yaml`). "New engine capability lands with its CLI surface" therefore does not trigger — nothing
-  lands here that the CLI cannot already reach.
-- **Rendered output:** unchanged for identical inputs. **No `RENDER_GRAPH_VERSION` bump.**
-- **Staleness fingerprint inputs:** unchanged. The `editorial` component is refactored into a named function
-  and MUST hash identically to today; a test pins that, so this change makes **no event stale**.
-- **Schemas:** no `reel.yaml` change, no `config.yaml` change, no Postgres schema change. **No Alembic
-  migration and no rescan.**
-- **Dependencies:** none added (Principle VII).

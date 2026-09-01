@@ -171,6 +171,19 @@ render, or job logic lives in the web tier.
   `event_id` is the root-relative event directory (URL-encoded), the same identity
   `jobs`/the job store already use. `GET /api/v1/events/{event_id}/analysis`
   exposes the read-only analysis sidecar cache; it never triggers analysis.
+- **`GET /api/v1/events/{event_id}/reel`** returns the event's **complete**
+  editorial document — metadata, ordered chapters/clips, per-clip properties,
+  `ignore` and `look` — in exactly the shape the `PUT` below accepts, parsed
+  fresh from `reel.yaml`. It is read-only: it never creates the file and never
+  writes a manifest. An event with clips but no `reel.yaml` yet reads as the
+  **empty document** (200, not 404), mirroring the write's own seeding, so read
+  and write accept the same set of events; an unparseable document is a loud
+  problem body, never a partial one. **A write body comes from this endpoint,
+  never from `GET /api/v1/events/{event_id}`** — the events-detail response is
+  the *reconcile* view: it merges disk-only NEW clips into the chapters and tags
+  every clip with a status, so rebuilding a write body from it would adopt every
+  NEW clip and drop `look`, `clips` and `ignore` on the floor. The response
+  carries an `ETag` over the editorial state; there is no conditional `GET`.
 - **`PUT /api/v1/events/{event_id}/reel`** saves an editorial write: the body is
   the *complete* desired editorial state (metadata, ordered chapters/clips,
   per-clip properties, `ignore`, `look`) and the server merges it onto the
@@ -188,11 +201,14 @@ render, or job logic lives in the web tier.
   state (e.g. a dangling cross-reference) is rejected with a 400 problem body
   and leaves `reel.yaml` untouched; an unknown event is a 404. Referencing a
   clip absent from disk is legal here — that is a MISSING clip for `scan` to
-  report, never silently dropped. **Known limitation:** there is no
-  concurrency control (last-write-wins) — a save that lands while that same
-  event is mid-render can race the render's own NEW-clip adoption rewrite; an
-  `If-Match` guard is a purely additive future addition if that collision ever
-  bites in practice.
+  report, never silently dropped. The write accepts an optional **`If-Match`**
+  header carrying an `ETag` from the read above: a matching tag (or `*`) writes,
+  a stale tag is `412 Precondition Failed` with `reel.yaml` byte-for-byte
+  untouched, and an absent header stays unconditional (last-write-wins) exactly
+  as before, so scripted `curl` clients are unaffected. The tag is canonical
+  over the document's typed fields — the same hash the staleness fingerprint's
+  editorial component uses — so a comment-only or reformatting edit never
+  triggers a spurious 412. Recovery from a 412 is re-read, re-apply, retry.
 - **Jobs lifecycle over REST** is a thin wrapper over the job store:
   `POST /api/v1/jobs` (gated like `enqueue` — 201 on a stale event, 409 with the
   existing job's id on an active duplicate, 200 `"status": "fresh"` with the

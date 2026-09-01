@@ -58,6 +58,18 @@ class Fingerprint:
         }
 
 
+def editorial_hash(document: ReelDocument) -> str:
+    """The fingerprint's ``editorial`` component: a hash over the document's canonical fields.
+
+    Canonical over the document's *typed* fields, never its on-disk bytes, so a
+    comment-only or formatting-only edit to ``reel.yaml`` leaves it unchanged while
+    any editorial change moves it. Shared with ``api/`` as the editorial-read ETag
+    (D-R1), which makes it structurally impossible for a held ETag and a staleness
+    verdict to disagree about whether the editorial state changed.
+    """
+    return _hash_json(document.to_dict())
+
+
 def engine_identity(ffmpeg_version: tuple[int, int]) -> str:
     """A human-readable engine identity for the manifest (D-C2)."""
     return f"render_graph_version={RENDER_GRAPH_VERSION} ffmpeg={ffmpeg_version[0]}.{ffmpeg_version[1]}"
@@ -78,7 +90,7 @@ def compute_fingerprint(
     D-2 project defaults; ``event_dir`` is scanned fresh for the clip-set component.
     No ffprobe call is made and no media content is read (beyond the opt-in hash).
     """
-    editorial = _hash_json(document.to_dict())
+    editorial = editorial_hash(document)
     defaults = _hash_json(dict(look_defaults))
     clip_set = _hash_clip_set(event_dir, use_hash=use_hash)
     engine = _hash_json(
@@ -113,6 +125,7 @@ __all__ = [
     "RENDER_GRAPH_VERSION",
     "COMPONENTS",
     "Fingerprint",
+    "editorial_hash",
     "engine_identity",
     "compute_fingerprint",
 ]

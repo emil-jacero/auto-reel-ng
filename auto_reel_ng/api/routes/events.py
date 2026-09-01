@@ -8,15 +8,17 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import List, Union
+from typing import List, Optional, Union
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Header, Request
 from fastapi.responses import Response
 
 from ...errors import ReelError
 from ...event.editorial import apply_editorial_write
+from ...reel.document import ReelDocument
+from ...staleness.fingerprint import editorial_hash
 from .. import events_read
-from ..problem import bad_gateway, bad_request, not_found
+from ..problem import bad_gateway, bad_request, not_found, precondition_failed
 from ..schemas import (
     AnalysisOut,
     EditorialDocumentBody,
@@ -34,6 +36,28 @@ router = APIRouter(prefix="/api/v1", tags=["events"])
 
 def _settings(request: Request) -> ApiSettings:
     return request.app.state.settings  # type: ignore[no-any-return]
+
+
+def _etag(document: ReelDocument) -> str:
+    """The entity-tag for an editorial state: the fingerprint's own hash (D-R1).
+
+    Quoted per RFC 9110 and strong: it is canonical over the document's typed
+    fields, so a comment-only or formatting-only edit to ``reel.yaml`` leaves it
+    unchanged and cannot raise a spurious 412.
+    """
+    return f'"{editorial_hash(document)}"'
+
+
+def _if_match_satisfied(header: str, current: str) -> bool:
+    """RFC 9110 ``If-Match``: ``*`` matches any state, otherwise strong comparison.
+
+    A weak tag (``W/"..."``) never matches under strong comparison and is simply
+    not equal to ``current``, so it falls through to a 412 without a special case.
+    """
+    candidates = [candidate.strip() for candidate in header.split(",") if candidate.strip()]
+    if "*" in candidates:
+        return True
+    return any(candidate == current for candidate in candidates)
 
 
 @router.get("/events", response_model=List[EventSummaryOut])
@@ -69,6 +93,32 @@ def get_analysis(event_id: str, request: Request) -> Union[AnalysisOut, Response
         )
 
 
+@router.get("/events/{event_id:path}/reel", response_model=EditorialDocumentBody)
+def get_reel(
+    event_id: str, request: Request, response: Response
+) -> Union[EditorialDocumentBody, Response]:
+    """``GET /api/v1/events/{event_id}/reel``: the editorial document as authored.
+
+    The exact inverse of the PUT below — same model, same serializer — so a client
+    may submit what it read without hand-building a write body. Registered *before*
+    the greedy ``{event_id:path}`` detail route for the reason the ``/analysis``
+    route documents. The response carries an ``ETag`` for the optional ``If-Match``
+    precondition on the write; there is deliberately no conditional GET (D-R4).
+    """
+    settings = _settings(request)
+    try:
+        document = events_read.get_reel(settings, event_id)
+    except events_read.EventNotFoundError:
+        return not_found(
+            f"no event {event_id!r} under the configured project root", event_id=event_id
+        )
+    except events_read.EventReadError as exc:
+        return bad_gateway(f"event {event_id!r}: {exc.detail}", event_id=event_id)
+
+    response.headers["ETag"] = _etag(document)
+    return document_to_body(document)
+
+
 @router.get("/events/{event_id:path}", response_model=EventDetailOut)
 def get_event(event_id: str, request: Request) -> Union[EventDetailOut, Response]:
     """``GET /api/v1/events/{event_id}`` (task 2.3): current detail from disk."""
@@ -87,7 +137,10 @@ def get_event(event_id: str, request: Request) -> Union[EventDetailOut, Response
 
 @router.put("/events/{event_id:path}/reel", response_model=EditorialWriteResult)
 def put_reel(
-    event_id: str, payload: EditorialDocumentBody, request: Request
+    event_id: str,
+    payload: EditorialDocumentBody,
+    request: Request,
+    if_match: Optional[str] = Header(default=None, alias="If-Match"),
 ) -> Union[EditorialWriteResult, Response]:
     """``PUT /api/v1/events/{event_id}/reel``: apply a desired editorial state (D-E2).
 
@@ -107,6 +160,17 @@ def put_reel(
         return not_found(
             f"no event {event_id!r} under the configured project root", event_id=event_id
         )
+
+    if if_match is not None:
+        try:
+            current = events_read.get_reel(settings, event_id)
+        except events_read.EventReadError as exc:
+            return bad_gateway(f"event {event_id!r}: {exc.detail}", event_id=event_id)
+        if not _if_match_satisfied(if_match, _etag(current)):
+            return precondition_failed(
+                f"event {event_id!r} changed since it was read; re-read and re-apply the edit",
+                event_id=event_id,
+            )
 
     desired_data = payload.model_dump(by_alias=True)
     try:

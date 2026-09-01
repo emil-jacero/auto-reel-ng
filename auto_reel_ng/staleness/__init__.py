@@ -14,6 +14,7 @@ from .fingerprint import (
     RENDER_GRAPH_VERSION,
     Fingerprint,
     compute_fingerprint,
+    editorial_hash,
     engine_identity,
 )
 from .gate import MISSING_OUTPUT, NO_MANIFEST, Verdict, evaluate
@@ -31,6 +32,7 @@ __all__ = [
     "COMPONENTS",
     "Fingerprint",
     "compute_fingerprint",
+    "editorial_hash",
     "engine_identity",
     # manifest
     "MANIFEST_FILENAME",

@@ -49,6 +49,11 @@ def conflict(detail: str, **extra: Any) -> JSONResponse:
     return problem_response(409, "Conflict", detail, **extra)
 
 
+def precondition_failed(detail: str, **extra: Any) -> JSONResponse:
+    """A 412 problem response: an ``If-Match`` tag that does not match current state."""
+    return problem_response(412, "Precondition Failed", detail, **extra)
+
+
 def bad_gateway(detail: str, **extra: Any) -> JSONResponse:
     """A 502-style problem response for an upstream engine failure (scan/probe)."""
     return problem_response(502, "Bad Gateway", detail, **extra)
@@ -64,6 +69,7 @@ __all__ = [
     "bad_request",
     "not_found",
     "conflict",
+    "precondition_failed",
     "bad_gateway",
     "service_unavailable",
 ]

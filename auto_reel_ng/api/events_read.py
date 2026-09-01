@@ -238,6 +238,25 @@ def get_event(
     )
 
 
+def get_reel(settings: ApiSettings, event_id: str) -> ReelDocument:
+    """``GET /api/v1/events/{event_id}/reel``: the document as authored, parsed fresh.
+
+    An event whose directory resolves but which has no ``reel.yaml`` yet reads as
+    the empty document (D-R2), mirroring the write endpoint's own seeding — the
+    read must accept exactly the set of events the write accepts. Read-only: no
+    file is created and nothing is adopted. A malformed document is loud
+    (:class:`EventReadError`), never an empty or partial one (Principle I).
+    """
+    event_dir = resolve_event_dir(settings, event_id)
+    reel_path = event_dir / REEL_FILENAME
+    if not reel_path.exists():
+        return ReelDocument()
+    try:
+        return load_document(reel_path)
+    except ReelParseError as exc:
+        raise EventReadError(event_id, str(exc)) from exc
+
+
 def get_analysis(settings: ApiSettings, event_id: str) -> AnalysisOut:
     """``GET /api/v1/events/{event_id}/analysis``: cached sidecar segments only.
 
@@ -271,6 +290,7 @@ __all__ = [
     "resolve_event_dir",
     "list_events",
     "get_event",
+    "get_reel",
     "get_analysis",
     "staleness_for",
 ]

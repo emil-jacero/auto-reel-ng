@@ -3,15 +3,31 @@ independence, and no-ffprobe (task 1.1)."""
 
 from __future__ import annotations
 
+import os
 import subprocess
+from datetime import date
 from pathlib import Path
 
 import pytest
 
-from auto_reel_ng.reel.document import Chapter, ClipRef, Metadata, ReelDocument
-from auto_reel_ng.staleness.fingerprint import COMPONENTS, compute_fingerprint
+from auto_reel_ng.reel.document import (
+    Chapter,
+    ClipProperties,
+    ClipRef,
+    Metadata,
+    ReelDocument,
+    Trim,
+)
+from auto_reel_ng.staleness.fingerprint import COMPONENTS, compute_fingerprint, editorial_hash
 
 FFMPEG_VERSION = (7, 1)
+
+#: Golden hashes for ``_pinned_document()`` + ``_pinned_event_dir()`` (task 1.1).
+PINNED_EDITORIAL = "cfb295abf2c9f44e4ec05e5634beaf1b9b21235c21d65d0109a944509d848de4"
+PINNED_DEFAULTS = "9d1a9bf4432fae2ec90ade0e7eb1552455abd6da0fac7974d78a16d63113f555"
+PINNED_CLIP_SET = "b1c642b3cd29b949070b357534bae6e2077121b032f93fa34c7aa0df957b6663"
+PINNED_ENGINE = "00d18f13435b95c59bc3e8ee4dae480a8ad4a729b3edc1a6ab4c03e25e03409e"
+PINNED_COMBINED = "7de1e5715e8f76af2fd41c6828802014f12d3d74fbffef6a2b19045d316701ad"
 
 
 def _document(title: str = "Party") -> ReelDocument:
@@ -114,3 +130,95 @@ def test_no_probing_occurs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(subprocess, "Popen", _forbidden)
 
     _fingerprint(event_dir)  # must not raise
+
+
+# --- editorial_hash extraction regression (task 1.1, D-R1) -------------------
+
+
+def _pinned_document() -> ReelDocument:
+    """A document exercising every editorial section the hash covers."""
+    return ReelDocument(
+        metadata=Metadata(
+            title="Pinned Party",
+            date=date(2026, 8, 31),
+            location="Gothenburg",
+            description="a fixed document",
+        ),
+        look={"resolution": "1080p", "fps": 30},
+        chapters=(
+            Chapter(name="", clips=(ClipRef("clip.mp4"),)),
+            Chapter(name="beach", clips=(ClipRef("beach/two.mp4"),)),
+        ),
+        clips={
+            "clip.mp4": ClipProperties(
+                trims=(Trim(0.5, 2.25, "black"),), title=True, rotate=90, exclude=False
+            )
+        },
+        ignore=("beach/skip.mp4",),
+    )
+
+
+def _pinned_event_dir(tmp_path: Path) -> Path:
+    """An event dir with a fixed size *and* mtime, so ``clip_set`` is pinnable too."""
+    (tmp_path / "clip.mp4").write_bytes(b"clip-bytes")
+    (tmp_path / "beach").mkdir()
+    (tmp_path / "beach" / "two.mp4").write_bytes(b"more-clip-bytes")
+    for clip in ("clip.mp4", "beach/two.mp4"):
+        os.utime(tmp_path / clip, ns=(1_756_000_000_000_000_000, 1_756_000_000_000_000_000))
+    return tmp_path
+
+
+def test_pinned_fingerprint_is_bit_identical(tmp_path: Path) -> None:
+    """Golden hashes for a fixed document + disk state (task 1.1).
+
+    Extracting ``editorial_hash`` out of ``compute_fingerprint`` must leave every
+    component — and the combined hash — byte-identical, so no rendered event goes
+    stale. A diff here means either an intentional fingerprint-input change (which
+    needs its own decision) or an accidental one (which does not).
+    """
+    fingerprint = compute_fingerprint(
+        _pinned_document(),
+        event_dir=_pinned_event_dir(tmp_path),
+        look_defaults={"resolution": "1080p", "fps": 30},
+        ffmpeg_version=FFMPEG_VERSION,
+    )
+
+    assert fingerprint.editorial == PINNED_EDITORIAL
+    assert fingerprint.defaults == PINNED_DEFAULTS
+    assert fingerprint.clip_set == PINNED_CLIP_SET
+    assert fingerprint.engine == PINNED_ENGINE
+    assert fingerprint.combined == PINNED_COMBINED
+
+
+def test_editorial_hash_is_the_editorial_component(tmp_path: Path) -> None:
+    """The extracted function IS the component, not a parallel implementation."""
+    document = _pinned_document()
+    fingerprint = compute_fingerprint(
+        document,
+        event_dir=_pinned_event_dir(tmp_path),
+        look_defaults={},
+        ffmpeg_version=FFMPEG_VERSION,
+    )
+    assert editorial_hash(document) == fingerprint.editorial
+
+
+def test_editorial_hash_moves_only_on_editorial_change() -> None:
+    """Canonical over typed fields: metadata moves it, an equal document does not."""
+    baseline = editorial_hash(_pinned_document())
+    assert editorial_hash(_pinned_document()) == baseline
+
+    changed = _pinned_document()
+    changed = ReelDocument(
+        version=changed.version,
+        metadata=Metadata(
+            title="Renamed Party",
+            date=changed.metadata.date,
+            location=changed.metadata.location,
+            description=changed.metadata.description,
+        ),
+        look=changed.look,
+        chapters=changed.chapters,
+        clips=changed.clips,
+        ignore=changed.ignore,
+    )
+    assert editorial_hash(changed) != baseline
