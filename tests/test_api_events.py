@@ -199,3 +199,121 @@ def test_analysis_populated_returns_segments(client: TestClient, project: Path) 
 def test_unknown_event_analysis_yields_404(client: TestClient) -> None:
     response = client.get("/api/v1/events/2024/does-not-exist/analysis")
     assert response.status_code == 404
+
+
+FACTS_REEL_YAML = """\
+version: 0
+metadata:
+  title: Barbecue
+chapters:
+  - name: ""
+    clips:
+      - 00500.mp4
+      - gone.mp4
+"""
+
+
+def _utc_datetime(raw: str):
+    from datetime import datetime, timedelta
+
+    parsed = datetime.fromisoformat(raw)
+    assert parsed.utcoffset() == timedelta(0), raw
+    return parsed
+
+
+def _clips_by_identity(body: dict) -> dict:
+    return {clip["identity"]: clip for chapter in body["chapters"] for clip in chapter["clips"]}
+
+
+def test_clips_carry_file_facts(client: TestClient, project: Path) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    (event_dir / "00500.mp4").write_bytes(b"\x00" * 11)  # active: in the document and on disk
+    (event_dir / "clips" / "00600.mp4").write_bytes(b"\x00" * 22)  # disk-only: NEW
+    (event_dir / "reel.yaml").write_text(FACTS_REEL_YAML, encoding="utf-8")
+
+    event_id = quote("2024/2024-07-04 - Barbecue", safe="/")
+    body = client.get(f"/api/v1/events/{event_id}").json()
+    clips = _clips_by_identity(body)
+
+    assert clips["00500.mp4"]["status"] == "active"
+    assert clips["00500.mp4"]["size"] == 11
+    _utc_datetime(clips["00500.mp4"]["mtime"])
+
+    assert clips["clips/00600.mp4"]["status"] == "new"
+    assert clips["clips/00600.mp4"]["size"] == 22
+    _utc_datetime(clips["clips/00600.mp4"]["mtime"])
+
+
+def test_missing_clip_reports_no_file_facts(client: TestClient, project: Path) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    (event_dir / "reel.yaml").write_text(FACTS_REEL_YAML, encoding="utf-8")
+
+    event_id = quote("2024/2024-07-04 - Barbecue", safe="/")
+    body = client.get(f"/api/v1/events/{event_id}").json()
+    clips = _clips_by_identity(body)
+
+    assert clips["gone.mp4"]["status"] == "missing"
+    assert clips["gone.mp4"]["size"] is None
+    assert clips["gone.mp4"]["mtime"] is None
+    assert body["missing"] == ["gone.mp4"]
+
+
+def test_clip_in_a_named_chapter_is_statted_at_its_identity_path(
+    client: TestClient, project: Path
+) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    # Same basename at the event root and inside the chapter, different sizes: a
+    # stat resolved against the event root instead of the identity would report 3.
+    (event_dir / "00600.mp4").write_bytes(b"\x00" * 3)
+    (event_dir / "clips" / "00600.mp4").write_bytes(b"\x00" * 44)
+
+    event_id = quote("2024/2024-07-04 - Barbecue", safe="/")
+    clips = _clips_by_identity(client.get(f"/api/v1/events/{event_id}").json())
+
+    assert clips["clips/00600.mp4"]["size"] == 44
+    assert clips["00600.mp4"]["size"] == 3
+
+
+def test_stat_failure_after_the_scan_reports_nulls_not_a_failed_event(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from auto_reel_ng.api import events_read
+
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    document, listing, result = events_read._load_for_reconcile("id", event_dir)
+
+    # The scan has happened; the clip vanishes before the read model stats it.
+    real_stat = Path.stat
+
+    def vanished(self: Path, *args: object, **kwargs: object):
+        if self.name == "00500.mp4":
+            raise OSError("clip vanished mid-request")
+        return real_stat(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "stat", vanished)
+
+    chapters = events_read._build_chapters(document, listing, result, event_dir)
+    clips = {clip.identity: clip for chapter in chapters for clip in chapter.clips}
+    assert clips["00500.mp4"].size is None
+    assert clips["00500.mp4"].mtime is None
+    assert clips["00500.mp4"].status == "new"  # the event's detail still built
+
+
+def test_file_facts_cost_no_probe(client: TestClient, project: Path) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    # Header-damaged bytes: ffprobe would fail on these, a stat does not care.
+    (event_dir / "00500.mp4").write_bytes(b"not a container at all")
+
+    event_id = quote("2024/2024-07-04 - Barbecue", safe="/")
+    response = client.get(f"/api/v1/events/{event_id}")
+    assert response.status_code == 200
+    clips = _clips_by_identity(response.json())
+    assert clips["00500.mp4"]["size"] == 22
+    _utc_datetime(clips["00500.mp4"]["mtime"])
+
+
+def test_events_list_carries_no_per_clip_facts(client: TestClient) -> None:
+    body = client.get("/api/v1/events").json()
+    barbecue = next(e for e in body if e["event_id"] == "2024/2024-07-04 - Barbecue")
+    assert "chapters" not in barbecue
+    assert barbecue["clip_count"] == 2

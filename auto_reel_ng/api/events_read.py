@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import logging
 from datetime import date as DateValue
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from ..analysis.cache import CACHE_SUBDIR, clip_signal, read_entry
 from ..cli.adoption import REEL_FILENAME
@@ -151,19 +152,49 @@ def list_events(settings: ApiSettings, job_store: JobStore) -> List[EventSummary
     return summaries
 
 
+def _file_facts(path: Path) -> Tuple[Optional[int], Optional[datetime]]:
+    """``(size, mtime UTC)`` for a clip on disk; ``(None, None)`` if it is not there.
+
+    A direct ``stat`` at the point of use rather than the staleness clip signals:
+    those drop mtime entirely when hashing is on, which would make the response's
+    shape depend on a staleness switch. ``OSError`` yields nulls — a clip can be
+    deleted between the scan and this syscall, and null is the honest statement
+    that the facts are unavailable, not a fabricated value (Principle I).
+    """
+    try:
+        stat = path.stat()
+    except OSError:
+        return None, None
+    return stat.st_size, datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+
+
+def _clip_out(event_dir: Path, identity: str, status: ClipStatus) -> ClipOut:
+    """One clip with its file facts; a MISSING clip has no file, so it is not statted."""
+    if status is ClipStatus.MISSING:
+        return ClipOut(identity=identity, status=status.value)
+    # The identity *is* the event-relative POSIX path (the mapping render/ uses),
+    # so a clip in a named chapter subdirectory resolves inside that directory.
+    size, mtime = _file_facts(event_dir / identity)
+    return ClipOut(identity=identity, status=status.value, size=size, mtime=mtime)
+
+
 def _build_chapters(
-    document: Optional[ReelDocument], listing: DiskListing, result: ReconcileResult
+    document: Optional[ReelDocument],
+    listing: DiskListing,
+    result: ReconcileResult,
+    event_dir: Path,
 ) -> List[ChapterOut]:
     """Ordered chapters/clips (D-A3): the document's structure when one exists,
 
     with disk-only NEW clips appended to their disk chapter; the disk listing's
-    own grouping when there is no document yet (the seeding case).
+    own grouping when there is no document yet (the seeding case). Each clip
+    carries the file facts ``_clip_out`` stats — never a probe.
     """
     if document is None:
         return [
             ChapterOut(
                 name=name,
-                clips=[ClipOut(identity=i, status=ClipStatus.NEW.value) for i in identities],
+                clips=[_clip_out(event_dir, i, ClipStatus.NEW) for i in identities],
             )
             for name, identities in listing.by_chapter
         ]
@@ -175,7 +206,7 @@ def _build_chapters(
         for ref in chapter.clips:
             seen.add(ref.identity)
             status = result.classification.get(ref.identity, ClipStatus.MISSING)
-            clips.append(ClipOut(identity=ref.identity, status=status.value))
+            clips.append(_clip_out(event_dir, ref.identity, status))
         chapters.append(ChapterOut(name=chapter.name, clips=clips))
 
     by_name = {chapter.name: chapter for chapter in chapters}
@@ -184,7 +215,7 @@ def _build_chapters(
             if identity in seen:
                 continue
             status = result.classification.get(identity, ClipStatus.NEW)
-            clip = ClipOut(identity=identity, status=status.value)
+            clip = _clip_out(event_dir, identity, status)
             if name in by_name:
                 by_name[name].clips.append(clip)
             else:
@@ -231,7 +262,7 @@ def get_event(
         date=event_date,
         location=location,
         description=document.metadata.description if document is not None else None,
-        chapters=_build_chapters(document, listing, result),
+        chapters=_build_chapters(document, listing, result, event_dir),
         missing=list(result.missing),
         latest_job=_job_summary(latest_jobs.get(event_id)),
         staleness=staleness_for(settings, event_dir, document, runtime),

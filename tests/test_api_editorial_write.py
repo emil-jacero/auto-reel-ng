@@ -186,3 +186,70 @@ def test_put_of_echoed_document_is_a_noop(client: TestClient, project: Path) -> 
     assert second.status_code == 200
     assert second.json()["document"] == echoed
     assert (_event_dir(project) / "reel.yaml").read_text(encoding="utf-8") == text_after_first
+
+
+def test_write_etag_equals_the_tag_a_read_would_give(client: TestClient) -> None:
+    body = {**BASE_BODY, "metadata": {**BASE_BODY["metadata"], "title": "Tagged Barbecue"}}
+    written = client.put(f"/api/v1/events/{_event_id()}/reel", json=body)
+    assert written.status_code == 200
+    assert written.headers["ETag"]
+
+    read = client.get(f"/api/v1/events/{_event_id()}/reel")
+    assert read.headers["ETag"] == written.headers["ETag"]
+
+
+def test_unmodified_save_returns_the_tag_it_was_given(client: TestClient) -> None:
+    read = client.get(f"/api/v1/events/{_event_id()}/reel")
+    etag = read.headers["ETag"]
+
+    written = client.put(
+        f"/api/v1/events/{_event_id()}/reel",
+        json=read.json(),
+        headers={"If-Match": etag},
+    )
+    assert written.status_code == 200
+    assert written.headers["ETag"] == etag
+
+
+def test_consecutive_conditional_writes_need_no_intervening_read(
+    client: TestClient, project: Path
+) -> None:
+    read = client.get(f"/api/v1/events/{_event_id()}/reel")
+    first = client.put(
+        f"/api/v1/events/{_event_id()}/reel",
+        json={**BASE_BODY, "chapters": [{"name": "", "clips": ["clips/00600.mp4", "00500.mp4"]}]},
+        headers={"If-Match": read.headers["ETag"]},
+    )
+    assert first.status_code == 200
+
+    # The tag the first write handed back is the only precondition used here: no
+    # GET of /reel happens between the two writes.
+    second = client.put(
+        f"/api/v1/events/{_event_id()}/reel",
+        json={**BASE_BODY, "chapters": [{"name": "", "clips": ["00500.mp4", "clips/00600.mp4"]}]},
+        headers={"If-Match": first.headers["ETag"]},
+    )
+    assert second.status_code == 200
+    assert second.json()["document"]["chapters"][0]["clips"] == ["00500.mp4", "clips/00600.mp4"]
+    assert "00500.mp4" in (_event_dir(project) / "reel.yaml").read_text(encoding="utf-8")
+
+
+def test_refused_write_hands_back_no_precondition(client: TestClient, project: Path) -> None:
+    read = client.get(f"/api/v1/events/{_event_id()}/reel")
+    stale_etag = read.headers["ETag"]
+
+    # Another writer changes the editorial state under the client.
+    client.put(
+        f"/api/v1/events/{_event_id()}/reel",
+        json={**BASE_BODY, "metadata": {**BASE_BODY["metadata"], "title": "Someone Else"}},
+    )
+    text_before = (_event_dir(project) / "reel.yaml").read_text(encoding="utf-8")
+
+    refused = client.put(
+        f"/api/v1/events/{_event_id()}/reel",
+        json={**BASE_BODY, "metadata": {**BASE_BODY["metadata"], "title": "Lost Update"}},
+        headers={"If-Match": stale_etag},
+    )
+    assert refused.status_code == 412
+    assert "ETag" not in refused.headers
+    assert (_event_dir(project) / "reel.yaml").read_text(encoding="utf-8") == text_before

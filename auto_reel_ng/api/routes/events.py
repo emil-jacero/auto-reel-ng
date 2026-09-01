@@ -140,6 +140,7 @@ def put_reel(
     event_id: str,
     payload: EditorialDocumentBody,
     request: Request,
+    response: Response,
     if_match: Optional[str] = Header(default=None, alias="If-Match"),
 ) -> Union[EditorialWriteResult, Response]:
     """``PUT /api/v1/events/{event_id}/reel``: apply a desired editorial state (D-E2).
@@ -152,6 +153,11 @@ def put_reel(
     event's resulting staleness verdict (computed free, D-E5) so the client needs
     no follow-up GET. The write never enqueues and never touches the render
     manifest.
+
+    A successful write carries an ``ETag`` for the state it just persisted,
+    computed from the returned document by the same helper ``get_reel`` uses, so a
+    client may chain conditional writes with no intervening read. A ``412`` carries
+    none: a client that lost the race must re-read before it overwrites.
     """
     settings = _settings(request)
     try:
@@ -179,6 +185,7 @@ def put_reel(
         return bad_request(str(exc), event_id=event_id)
 
     runtime = request.app.state.runtime
+    response.headers["ETag"] = _etag(document)
     return EditorialWriteResult(
         document=document_to_body(document),
         staleness=events_read.staleness_for(settings, event_dir, document, runtime),

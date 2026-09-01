@@ -169,8 +169,15 @@ render, or job logic lives in the web tier.
   event's `reel.yaml` fresh on every call — there is no database copy of event or
   clip state, so an edit made on disk is visible on the very next request. The
   `event_id` is the root-relative event directory (URL-encoded), the same identity
-  `jobs`/the job store already use. `GET /api/v1/events/{event_id}/analysis`
-  exposes the read-only analysis sidecar cache; it never triggers analysis.
+  `jobs`/the job store already use. Each clip in the **detail** response also
+  carries its file's byte `size` and `mtime` (UTC), read straight from the
+  directory entry, so a reorder view can show more than an opaque camera
+  filename; both are `null` for a clip the document references but disk does not
+  have. These are *file* facts — nothing is decoded to produce them, and media
+  facts (duration, dimensions, codec) are deliberately not here. The **list**
+  response keeps its clip counts and carries no per-clip facts.
+  `GET /api/v1/events/{event_id}/analysis` exposes the read-only analysis sidecar
+  cache; it never triggers analysis.
 - **`GET /api/v1/events/{event_id}/reel`** returns the event's **complete**
   editorial document — metadata, ordered chapters/clips, per-clip properties,
   `ignore` and `look` — in exactly the shape the `PUT` below accepts, parsed
@@ -208,7 +215,12 @@ render, or job logic lives in the web tier.
   as before, so scripted `curl` clients are unaffected. The tag is canonical
   over the document's typed fields — the same hash the staleness fingerprint's
   editorial component uses — so a comment-only or reformatting edit never
-  triggers a spurious 412. Recovery from a 412 is re-read, re-apply, retry.
+  triggers a spurious 412. A **successful** write returns an `ETag` of its own,
+  identifying the state it just persisted — the same value the read above would
+  then give — so a client can chain conditional saves, using one write's tag as
+  the next write's `If-Match`, with no read in between. A **412 carries no
+  `ETag`**: recovery from a 412 is re-read, re-apply, retry, never a blind retry
+  against a tag the service handed back.
 - **Jobs lifecycle over REST** is a thin wrapper over the job store:
   `POST /api/v1/jobs` (gated like `enqueue` — 201 on a stale event, 409 with the
   existing job's id on an active duplicate, 200 `"status": "fresh"` with the

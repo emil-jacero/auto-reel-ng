@@ -22,10 +22,20 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ClipOut(BaseModel):
-    """One clip identity and its reconcile status within a chapter."""
+    """One clip: identity, reconcile status, and the file facts a reorder view needs.
+
+    ``size`` (bytes) and ``mtime`` (timezone-aware UTC) come from the clip's own
+    directory entry — **file** facts, never media facts. Nothing here is decoded or
+    probed, so the detail response stays probe-free (Principle IV); duration,
+    dimensions and codec belong to the analysis cache, not this shape. Both are
+    ``None`` for a clip the document references but disk does not have: absence is
+    reported, never fabricated as a zero or an epoch (Principle I).
+    """
 
     identity: str
     status: str  # ClipStatus.value: new / active / missing / ignored
+    size: Optional[int] = None
+    mtime: Optional[datetime] = None
 
 
 class ChapterOut(BaseModel):

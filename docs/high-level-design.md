@@ -262,6 +262,12 @@ single GPU. A `device` (or `auto`) field on the render job carries the selection
 REST for CRUD (projects, events, clips, look, jobs) + WebSocket channel for live job progress/logs.
 Thin layer over the engine; no business logic that the CLI can't also reach.
 
+**The events read model is probe-free.** File facts (byte size, mtime) come from the clip's own directory
+entry — a `stat` — and may be served per request. Media facts (duration, dimensions, codec) require decoding
+and therefore belong to the analysis cache; no events read may probe a clip to fill a response field. This is
+D-A3 (scanned per request) plus Principle IV (the staleness path never decodes) applied to the read model,
+not a new decision, and it is the rule to quote when a response field would need an `ffprobe`.
+
 ### 4.10 Web GUI — phased
 
 The north star is a **full timeline editor**, but we ship in thin slices:

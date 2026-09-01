@@ -37,6 +37,13 @@ root-relative event directory (URL-encoded). The service MUST NOT maintain a dat
 clip state, and responses MUST reflect disk changes made since any previous request. Events reads SHALL be
 read-only: no request may create or modify `reel.yaml` or the render manifest.
 
+Each clip in the detail response SHALL additionally carry the clip file's **byte size** and **modification
+time** (timezone-aware, UTC), read from the file's own directory entry. These are file facts, not media
+facts: no clip may be decoded or probed to produce them, so the detail response stays probe-free. A clip the
+document references but which is absent from disk SHALL report both as null rather than a substituted zero
+or epoch — absence is reported, never fabricated. The events **list** response SHALL NOT carry per-clip
+facts; it keeps its clip counts.
+
 #### Scenario: Disk edit is visible on the next request
 - **WHEN** an event's `reel.yaml` title is edited on disk after a previous GET
 - **THEN** the next `GET /api/v1/events/{event_id}` returns the new title
@@ -56,6 +63,25 @@ read-only: no request may create or modify `reel.yaml` or the render manifest.
 #### Scenario: Scan failure is loud, never fabricated
 - **WHEN** an event's `reel.yaml` is unparseable
 - **THEN** the response is an error naming the failing event, not an empty or partial success
+
+#### Scenario: Clips carry the file facts a reorder view needs
+- **WHEN** an event holds three clips named `P1000123.MP4`, `P1000124.MP4` and `P1000125.MP4`, written to
+  disk in an order that does not match their names
+- **THEN** each clip in the detail response carries its own byte size and modification time, so a client can
+  present them in the order they were shot rather than the order they are named
+
+#### Scenario: A clip missing from disk reports no file facts
+- **WHEN** the document references a clip whose file has been deleted or renamed
+- **THEN** that clip is still reported MISSING, and its size and modification time are both null
+
+#### Scenario: A disk-only NEW clip carries file facts like any other
+- **WHEN** a clip exists on disk but is not yet referenced by `reel.yaml`
+- **THEN** it appears in the detail response as NEW, carrying its size and modification time
+
+#### Scenario: File facts cost no probe
+- **WHEN** an event's clips are truncated, header-damaged, or otherwise undecodable
+- **THEN** the detail response still returns their size and modification time and does not fail, because no
+  clip was decoded to produce them
 
 ### Requirement: Analysis results are exposed read-only
 `GET /api/v1/events/{event_id}/analysis` SHALL return the event's cached analysis segments from the
@@ -152,6 +178,12 @@ The ETag SHALL identify the **editorial** state canonically: a comment-only or f
 `reel.yaml` MUST NOT change it, while any change to metadata, chapters, clip order, per-clip properties,
 `ignore`, or `look` MUST change it.
 
+A **successful** write SHALL carry an `ETag` response header identifying the editorial state it persisted —
+the same value a read of that event would then return. A client may therefore chain conditional writes,
+using the tag from one write as the precondition for the next, without an intervening read. A write refused
+with `412` SHALL NOT carry an `ETag`: a client that lost the race MUST re-read the document it is about to
+overwrite, not retry blindly against a tag the service handed it.
+
 #### Scenario: A concurrent write is refused, not clobbered
 - **WHEN** a client reads the document, another writer adds analysis trims to the same event, and the client
   then PUTs its edited state with the `If-Match` it originally received
@@ -176,6 +208,23 @@ The ETag SHALL identify the **editorial** state canonically: a comment-only or f
 - **WHEN** a client receives 412, re-reads the editorial document, re-applies its edit, and PUTs with the new
   `If-Match`
 - **THEN** the write succeeds
+
+#### Scenario: Consecutive conditional writes need no intervening read
+- **WHEN** a client reorders an event's clips, PUTs with the `If-Match` from its read, then reorders again
+  and PUTs with the `ETag` the first write returned
+- **THEN** both writes are applied, and no read of `/reel` occurred between them
+
+#### Scenario: The write's tag is the tag a read would give
+- **WHEN** a client PUTs an editorial change and then reads `GET /api/v1/events/{event_id}/reel`
+- **THEN** the read's `ETag` equals the one the write returned
+
+#### Scenario: An unmodified save returns the tag it was given
+- **WHEN** a client PUTs the document exactly as it read it
+- **THEN** the write's `ETag` equals the read's, because the editorial state did not change
+
+#### Scenario: A refused write hands back no precondition
+- **WHEN** a write is refused with 412 because the event changed since the client's read
+- **THEN** the response carries no `ETag`, so the client cannot retry without re-reading
 
 ### Requirement: The events detail response is not an editorial write body
 The events detail response and the editorial document are **separate models and SHALL NOT be interchangeable**.
