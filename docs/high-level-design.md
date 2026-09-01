@@ -281,6 +281,26 @@ The north star is a **full timeline editor**, but we ship in thin slices:
 - **v3:** **full timeline editor** — per-clip track with proxies, drag-trim in/out, reorder across
   chapters, scrub preview.
 
+**v1's slices** (planned 2026-09-01; one OpenSpec change each, in order). v1 is four features and a
+scaffold, which is several changes under Principle VIII, so the plan lives here rather than as five open
+change directories:
+
+| # | Slice | What it lands |
+|---|---|---|
+| 0 | `events-list-staleness` | `api/` prerequisite: the events **list** carries the staleness verdict, so the scan view can answer "what needs rendering?" in one request |
+| A | `web-app-scaffold` | `web/` + the static mount + schema→types pipeline; no screen |
+| B | event list screen | the scan/ingest view, over slice 0's verdicts |
+| C | event detail screen | chapters/clips read-only, using the per-clip `size`/`mtime` file facts |
+| D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency |
+| E | render + live progress | `POST /jobs` (201 / 200-fresh / 409), the WS hook, cancel |
+
+C, D and E are deliberately **not** designed yet: their screens depend on what A and B teach against a
+real library. The API they need already exists — `editorial-write-api`, `editorial-read-api` and
+`gui-event-screen-api-prep` closed the write precondition and the per-clip file facts, so no further
+`api/` prerequisite is known for v1. **The resolved `look`, shown read-only in the v1 sketch above, is
+not exposed by any endpoint**; it is deferred to v2 with the look editor rather than adding a read
+surface for a field v1 only displays.
+
 #### Decision D-8 — Frontend stack (LOCKED, 2026-08-31)
 
 **React 19 + Vite + TypeScript, built to static assets and served by the FastAPI process, under a hard
