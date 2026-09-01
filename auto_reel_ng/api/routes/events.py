@@ -65,7 +65,9 @@ def get_events(request: Request) -> List[EventSummaryOut]:
     """``GET /api/v1/events`` (task 2.2): every event, freshly scanned."""
     settings = _settings(request)
     started = time.monotonic()
-    result = events_read.list_events(settings, request.app.state.job_store)
+    result = events_read.list_events(
+        settings, request.app.state.job_store, request.app.state.runtime
+    )
     logger.info(
         "events scan: %d event(s) under %s in %.3fs",
         len(result),
@@ -188,7 +190,9 @@ def put_reel(
     response.headers["ETag"] = _etag(document)
     return EditorialWriteResult(
         document=document_to_body(document),
-        staleness=events_read.staleness_for(settings, event_dir, document, runtime),
+        staleness=events_read.staleness_for(
+            settings, event_dir, document, runtime, events_read.project_look_defaults(settings)
+        ),
     )
 
 

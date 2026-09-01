@@ -12,7 +12,7 @@ import logging
 from datetime import date as DateValue
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Mapping, Optional, Tuple
 
 from ..analysis.cache import CACHE_SUBDIR, clip_signal, read_entry
 from ..cli.adoption import REEL_FILENAME
@@ -127,10 +127,19 @@ def _title_date_location(
     return None, None, None
 
 
-def list_events(settings: ApiSettings, job_store: JobStore) -> List[EventSummaryOut]:
-    """``GET /api/v1/events``: every event under the configured root, freshly scanned."""
+def list_events(
+    settings: ApiSettings, job_store: JobStore, runtime: FfmpegRuntime
+) -> List[EventSummaryOut]:
+    """``GET /api/v1/events``: every event under the configured root, freshly scanned.
+
+    Each event carries the staleness verdict from the same gate the detail path
+    uses, so one request answers "which of these need a render?". The project look
+    defaults are resolved **once** here, before the loop, because they are a
+    per-request value identical for every row.
+    """
     refs = _list_event_refs(settings)
     latest_jobs = job_store.latest_by_project(str(settings.project_root))
+    look_defaults = project_look_defaults(settings)
 
     summaries: List[EventSummaryOut] = []
     for ref in refs:
@@ -147,6 +156,7 @@ def list_events(settings: ApiSettings, job_store: JobStore) -> List[EventSummary
                 new_count=len(result.new),
                 missing_count=len(result.missing),
                 latest_job=_job_summary(latest_jobs.get(event_id)),
+                staleness=staleness_for(settings, ref.event_dir, document, runtime, look_defaults),
             )
         )
     return summaries
@@ -225,17 +235,37 @@ def _build_chapters(
     return chapters
 
 
+def project_look_defaults(settings: ApiSettings) -> Mapping[str, object]:
+    """The resolved project look defaults (D-2) — a **per-request** value.
+
+    Read from disk on every call: no cache, no ``app.state`` copy, because a
+    ``config.yaml`` edit must be visible on the next request (D-A3). Callers
+    resolve it once per request and pass it to :func:`staleness_for`, so a list
+    over N events parses ``config.yaml`` once rather than N times.
+    """
+    return resolve_look_defaults(load_project_config(settings.project_root))
+
+
 def staleness_for(
-    settings: ApiSettings, event_dir: Path, document: Optional[ReelDocument], runtime: FfmpegRuntime
+    settings: ApiSettings,
+    event_dir: Path,
+    document: Optional[ReelDocument],
+    runtime: FfmpegRuntime,
+    look_defaults: Mapping[str, object],
 ) -> StalenessOut:
     """The event's staleness verdict (change-detection, §8.14): read-only, never writes.
 
     Uses ``document`` if it was already loaded, else the folder-seed equivalent
     (never adopted, never persisted — a GET must not write, D-7). Public: also
     used by the editorial-write route to echo the post-save verdict inline.
+
+    ``look_defaults`` is the caller's already-resolved per-request value
+    (:func:`project_look_defaults`) — a required parameter rather than something
+    resolved here, so a per-event loop cannot re-parse ``config.yaml`` per event.
+    The clip-set component stays on its default content-free path: the API never
+    passes ``use_hash``, so no clip's bytes are read to answer a read request.
     """
     fp_document = document if document is not None else seed_document(event_dir)
-    look_defaults = resolve_look_defaults(load_project_config(settings.project_root))
     fingerprint = compute_fingerprint(
         fp_document,
         event_dir=event_dir,
@@ -265,7 +295,9 @@ def get_event(
         chapters=_build_chapters(document, listing, result, event_dir),
         missing=list(result.missing),
         latest_job=_job_summary(latest_jobs.get(event_id)),
-        staleness=staleness_for(settings, event_dir, document, runtime),
+        staleness=staleness_for(
+            settings, event_dir, document, runtime, project_look_defaults(settings)
+        ),
     )
 
 
@@ -324,4 +356,5 @@ __all__ = [
     "get_reel",
     "get_analysis",
     "staleness_for",
+    "project_look_defaults",
 ]

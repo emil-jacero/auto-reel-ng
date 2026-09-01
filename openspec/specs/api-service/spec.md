@@ -44,6 +44,20 @@ document references but which is absent from disk SHALL report both as null rath
 or epoch — absence is reported, never fabricated. The events **list** response SHALL NOT carry per-clip
 facts; it keeps its clip counts.
 
+Every event in the **list** response SHALL carry the same staleness verdict shape as the detail response —
+whether the event is stale, and when it is, the changed components as reasons — computed from the same
+staleness gate and render manifest, so a client learns what needs rendering in one request rather than one
+request per event. The verdict SHALL be derived from disk on every request and MUST NOT be read from, or
+persisted to, the database. A list request MUST NOT compute the verdict from a completed job's existence:
+a job that finished before the clips changed describes a render, not freshness.
+
+Computing the list's verdicts SHALL NOT make the response more expensive than the facts require. The
+resolved project look defaults are a per-request value, identical for every event in one response, and
+SHALL be resolved once per request rather than per event. The clip-set component SHALL be computed from
+the clips' size and modification time — the fingerprint's default, content-free signal; the events list
+MUST NOT use the content-hash opt-in, so no clip's bytes are read to answer a list request. No event may
+be probed or decoded, and no `reel.yaml`, render manifest or rendered output may be written.
+
 #### Scenario: Disk edit is visible on the next request
 - **WHEN** an event's `reel.yaml` title is edited on disk after a previous GET
 - **THEN** the next `GET /api/v1/events/{event_id}` returns the new title
@@ -51,6 +65,36 @@ facts; it keeps its clip counts.
 #### Scenario: Staleness is part of the event detail
 - **WHEN** an event's clips changed since its last render
 - **THEN** `GET /api/v1/events/{event_id}` reports it stale citing the clip-set component
+
+#### Scenario: The list answers "what needs rendering?" in one request
+- **WHEN** a project root holds three events — one rendered with an unchanged fingerprint, one whose clips
+  changed since its last render, and one never rendered at all
+- **THEN** a single `GET /api/v1/events` reports the first fresh, the second stale citing the clip-set
+  component, and the third stale citing the absent manifest, with no follow-up detail request
+
+#### Scenario: List and detail agree on the same event
+- **WHEN** the same event is read through `GET /api/v1/events` and `GET /api/v1/events/{event_id}` with no
+  disk change in between
+- **THEN** both report the identical verdict and the identical reasons
+
+#### Scenario: A completed job is not freshness
+- **WHEN** an event's most recent job completed successfully and a clip was then added to its directory
+- **THEN** the list still reports that event stale, even though it carries a completed latest job
+
+#### Scenario: A list request reads no clip content
+- **WHEN** `GET /api/v1/events` is served for a project whose events hold large clips
+- **THEN** the verdicts are derived from the clips' size and modification time, and no clip's bytes are read
+  to produce them
+
+#### Scenario: Project look defaults are resolved once per list request
+- **WHEN** `GET /api/v1/events` is served for a project root holding many events and a `config.yaml`
+- **THEN** the project configuration is read and resolved once for that request, not once per event, and
+  every event's verdict is computed against that one resolved value
+
+#### Scenario: A list request writes nothing
+- **WHEN** `GET /api/v1/events` is served for a project containing events that have no `reel.yaml` and no
+  render manifest
+- **THEN** the verdicts are returned and no `reel.yaml`, manifest or output file is created
 
 #### Scenario: Event identity round-trips with spaces and non-ASCII characters
 - **WHEN** an event directory is named `2024/2024-06-21 - Midsommar i Dalarna`

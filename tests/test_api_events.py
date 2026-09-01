@@ -317,3 +317,174 @@ def test_events_list_carries_no_per_clip_facts(client: TestClient) -> None:
     barbecue = next(e for e in body if e["event_id"] == "2024/2024-07-04 - Barbecue")
     assert "chapters" not in barbecue
     assert barbecue["clip_count"] == 2
+
+
+def _make_fresh(project: Path, event_dir: Path) -> None:
+    """Render-adopt ``event_dir``: write the output file and a matching manifest.
+
+    Leaves the event fresh under the project's *current* ``config.yaml``, so a
+    later edit to the project look is the only thing that can turn it stale.
+    """
+    from auto_reel_ng.cli.adoption import persist, prepare_event
+    from auto_reel_ng.config.project import load_project_config, resolve_look_defaults
+    from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
+    from auto_reel_ng.render import output_filename
+    from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
+    from auto_reel_ng.staleness.manifest import write_manifest
+
+    event = prepare_event(event_dir, adopt=True)
+    persist(event)
+    runtime = FfmpegRuntime()
+    fingerprint = compute_fingerprint(
+        event.document,
+        event_dir=event_dir,
+        look_defaults=resolve_look_defaults(load_project_config(project)),
+        ffmpeg_version=runtime.version,
+    )
+    output_path = project / "output" / output_filename(event.document.metadata)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(b"already-rendered")
+    write_manifest(
+        event_dir,
+        fingerprint,
+        output=output_path.name,
+        engine_identity=engine_identity(runtime.version),
+    )
+
+
+def test_config_look_edit_changes_the_verdict_on_the_next_request(
+    client: TestClient, project: Path
+) -> None:
+    """The resolved look defaults are per-request, never cached across them (D-A3)."""
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _make_fresh(project, event_dir)
+    event_id = quote("2024/2024-07-04 - Barbecue", safe="/")
+
+    first = client.get(f"/api/v1/events/{event_id}").json()
+    assert first["staleness"] == {"stale": False, "reasons": []}
+
+    (project / "config.yaml").write_text("look:\n  title_seconds: 7\n", encoding="utf-8")
+
+    second = client.get(f"/api/v1/events/{event_id}").json()
+    assert second["staleness"]["stale"] is True
+    assert second["staleness"]["reasons"] == ["defaults"]
+
+
+def _by_id(body: list) -> dict:
+    return {event["event_id"]: event for event in body}
+
+
+def test_list_reports_fresh_stale_and_never_rendered_in_one_request(
+    client: TestClient, project: Path
+) -> None:
+    """The list answers "what needs rendering?" without a per-event detail request."""
+    fresh_dir = project / "2024" / "2024-07-04 - Barbecue"
+    changed_dir = project / "2024" / "2024-06-21 - Midsommar i Dalarna Åäö"
+    never_dir = project / "2024" / "2024-08-01 - Kräftskiva"
+
+    _make_fresh(project, fresh_dir)
+    _make_fresh(project, changed_dir)
+    _touch(changed_dir / "00401.mp4")  # clips changed since that render
+    _touch(never_dir / "00700.mp4")  # never rendered: no manifest at all
+
+    events = _by_id(client.get("/api/v1/events").json())
+
+    assert events["2024/2024-07-04 - Barbecue"]["staleness"] == {"stale": False, "reasons": []}
+    changed = events["2024/2024-06-21 - Midsommar i Dalarna Åäö"]["staleness"]
+    assert changed["stale"] is True
+    assert changed["reasons"] == ["clip_set"]
+    never = events["2024/2024-08-01 - Kräftskiva"]["staleness"]
+    assert never["stale"] is True
+    assert never["reasons"] == ["no_manifest"]
+
+
+def test_list_and_detail_agree_on_the_same_event(client: TestClient, project: Path) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _make_fresh(project, event_dir)
+    _touch(event_dir / "00501.mp4")
+
+    listed = _by_id(client.get("/api/v1/events").json())["2024/2024-07-04 - Barbecue"]
+    event_id = quote("2024/2024-07-04 - Barbecue", safe="/")
+    detail = client.get(f"/api/v1/events/{event_id}").json()
+
+    assert listed["staleness"] == detail["staleness"]
+    assert listed["staleness"]["stale"] is True
+    assert listed["staleness"]["reasons"] == ["clip_set"]
+
+
+def test_a_completed_job_is_not_freshness(
+    client: TestClient, project: Path, job_store, jobs_schema_engine
+) -> None:
+    """A job that finished before the clips changed describes a render, not freshness."""
+    from auto_reel_ng.persistence.models import JobStatus
+
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _make_fresh(project, event_dir)
+
+    job_id = job_store.enqueue(str(project), "2024/2024-07-04 - Barbecue")
+    job_store.claim_next("worker-1")
+    job_store.transition(job_id, JobStatus.DONE)
+
+    _touch(event_dir / "00501.mp4")  # a clip added after that job completed
+
+    listed = _by_id(client.get("/api/v1/events").json())["2024/2024-07-04 - Barbecue"]
+    assert listed["latest_job"]["status"] == "done"
+    assert listed["staleness"]["stale"] is True
+    assert listed["staleness"]["reasons"] == ["clip_set"]
+
+
+def test_serving_the_list_writes_nothing(client: TestClient, project: Path) -> None:
+    """A GET creates no reel.yaml, no manifest, no output — and a malformed manifest
+    is a stale verdict, not an error."""
+    from auto_reel_ng.staleness.manifest import manifest_path
+
+    broken_dir = project / "2024" / "2024-07-04 - Barbecue"
+    broken_manifest = manifest_path(broken_dir)
+    broken_manifest.parent.mkdir(parents=True, exist_ok=True)
+    broken_manifest.write_text("{not json", encoding="utf-8")
+
+    before = {p for p in project.rglob("*") if p.is_file()}
+    response = client.get("/api/v1/events")
+    assert response.status_code == 200
+    after = {p for p in project.rglob("*") if p.is_file()}
+    assert after == before
+
+    events = _by_id(response.json())
+    assert not any((project / event_id / "reel.yaml").exists() for event_id in events)
+    assert not (project / "output").exists()
+    broken = events["2024/2024-07-04 - Barbecue"]["staleness"]
+    assert broken["stale"] is True
+    assert broken["reasons"] == ["no_manifest"]
+
+
+def test_list_loads_the_project_config_once_and_never_hashes_clip_content(
+    client: TestClient, project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Per-request work stays per-request, and a list request reads no clip bytes."""
+    from auto_reel_ng.api import events_read
+
+    _touch(project / "2024" / "2024-08-01 - Kräftskiva" / "00700.mp4")
+    (project / "config.yaml").write_text("look:\n  title_seconds: 4\n", encoding="utf-8")
+
+    config_loads: list[Path] = []
+    real_load = events_read.load_project_config
+
+    def counting_load(root: Path):
+        config_loads.append(root)
+        return real_load(root)
+
+    hash_flags: list[bool] = []
+    real_fingerprint = events_read.compute_fingerprint
+
+    def recording_fingerprint(document, **kwargs):
+        hash_flags.append(bool(kwargs.get("use_hash", False)))
+        return real_fingerprint(document, **kwargs)
+
+    monkeypatch.setattr(events_read, "load_project_config", counting_load)
+    monkeypatch.setattr(events_read, "compute_fingerprint", recording_fingerprint)
+
+    body = client.get("/api/v1/events").json()
+
+    assert len(body) == 3  # several events, one shared resolved value
+    assert config_loads == [project]
+    assert hash_flags == [False, False, False]

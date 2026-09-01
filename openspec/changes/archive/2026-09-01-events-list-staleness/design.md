@@ -148,6 +148,21 @@ staleness path rather than the probe path, not a new decision and not a new D-n.
 
 ## Open Questions
 
-- **What the measured cost actually is on a large library.** The change records the number; whether it
-  justifies removing the duplicate walk is a follow-up decision. This does not change the specs, the
-  approach or the task breakdown — the field ships either way.
+- **What the measured cost actually is on a large library.** *Measured (task 3.1).* A scratch project of
+  **200 events × 4 clips**, each clip a symlink into `auto-reel-media/input` (never mutated), timed around
+  the same `list_events` call the route's duration log wraps — best of five warm runs, local NVMe:
+
+  | | 200 events | per event |
+  |---|---|---|
+  | before (no staleness) | **0.023 s** | 0.12 ms |
+  | after (with staleness) | **0.067 s** | 0.34 ms |
+  | delta | **+0.044 s (2.95×)** | +0.22 ms |
+
+  The relative number is the predicted one — the second directory walk plus a manifest read and an
+  output `exists()` roughly triple a loop that previously only walked once — but the absolute number is
+  67 ms for a library four times larger than the real one, well inside a list request's budget.
+  **No follow-up is justified on this evidence:** removing the duplicate walk would bend a
+  `staleness/` signature shared by the CLI, enqueue and the worker (Principle VI) to save ~0.2 ms per
+  event. The measurement is warm-cache and local; a cold or network-backed library is where the ratio
+  would be felt, and the route's own duration log is what should re-open this — not a re-run of this
+  bench.

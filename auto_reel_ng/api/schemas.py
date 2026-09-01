@@ -54,6 +54,13 @@ class JobSummaryOut(BaseModel):
     created_at: datetime
 
 
+class StalenessOut(BaseModel):
+    """An event's staleness verdict: fresh, or stale with the changed components."""
+
+    stale: bool
+    reasons: List[str] = []
+
+
 class EventSummaryOut(BaseModel):
     """One event as listed by ``GET /api/v1/events``."""
 
@@ -65,13 +72,11 @@ class EventSummaryOut(BaseModel):
     new_count: int
     missing_count: int
     latest_job: Optional[JobSummaryOut] = None
-
-
-class StalenessOut(BaseModel):
-    """An event's staleness verdict: fresh, or stale with the changed components."""
-
-    stale: bool
-    reasons: List[str] = []
+    #: The same verdict shape the detail response carries, so one list request
+    #: answers "which of these need a render?" without a per-event follow-up.
+    #: Derived from disk on every request — never read from or written to the DB,
+    #: and never inferred from ``latest_job`` (a completed job is not freshness).
+    staleness: StalenessOut
 
 
 class EventDetailOut(BaseModel):
