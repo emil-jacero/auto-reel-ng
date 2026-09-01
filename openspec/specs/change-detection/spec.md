@@ -59,6 +59,13 @@ from the output directory. The verdict SHALL carry the changed components (by co
 human-readable reasons. A force request SHALL bypass the gate entirely. All staleness decisions in the
 system MUST go through this gate.
 
+The reasons a verdict may cite SHALL come from a **closed, named vocabulary** owned by the gate: the
+no-manifest and missing-output reasons, plus one reason per fingerprint component. The gate MUST NOT emit
+a reason outside that vocabulary, and any consumer that publishes reasons — the CLI's output, the API's
+responses — SHALL take the set from the gate rather than restating it, so the vocabulary has exactly one
+source of truth. Adding, removing or renaming a reason is a change to this vocabulary and MUST be made
+here.
+
 #### Scenario: Fresh event
 - **WHEN** the manifest matches the current fingerprint and the output file exists
 - **THEN** the verdict is fresh with no reasons
@@ -76,6 +83,11 @@ system MUST go through this gate.
 - **WHEN** a clip referenced by `reel.yaml` is absent from disk
 - **THEN** the clip-set component differs, the event is stale, and downstream rendering proceeds with the
   MISSING clip reported loud (per the existing adoption policy) — the gate never suppresses the render
+
+#### Scenario: The vocabulary is closed
+- **WHEN** any consumer enumerates the reasons a verdict can cite
+- **THEN** it obtains exactly the no-manifest reason, the missing-output reason and one reason per
+  fingerprint component, and no other value can appear in a verdict
 
 ### Requirement: Manifest adoption
 The system SHALL support explicit adoption: for an event whose output file exists, writing a manifest at
