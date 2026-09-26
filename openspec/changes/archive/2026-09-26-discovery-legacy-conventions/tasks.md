@@ -30,15 +30,14 @@
 - [x] 4.1 Update the docs. Verify by rereading them against the specs.
   - `README.md`, in the CLI "Layouts" and "Adoption policy" bullets: document that `original/` is never a chapter, that a subfolder or event containing `.reelignore` is skipped (and logged), and that clips are discovered one level deep.
   - `docs/high-level-design.md` §2: add a pointer from the "`original/` skipped; `.reelignore`" bullet to the two requirements.
-- [ ] 4.2 **Only if** the MOL drive is attached and confirmed mounted `ro` (`findmnt -no OPTIONS /run/media/emil/MOL` starts with `ro`), run the read-only `auto-reel scan /run/media/emil/MOL/Videos/Sorted`. Verify:
+- [x] 4.2 **Only if** the MOL drive is attached and confirmed mounted `ro` (`findmnt -no OPTIONS /run/media/emil/MOL` starts with `ro`), run the read-only `auto-reel scan /run/media/emil/MOL/Videos/Sorted`. Verify:
   - 135 events
   - no `original` chapter anywhere in the output
   - 6 INFO lines, each naming a `.reelignore` event
 
   If the drive is absent, record the task as deferred rather than skipping it silently.
 
-  **DEFERRED (2026-09-26):** MOL drive not attached (`findmnt /run/media/emil/MOL` found nothing).
-  Run this check the next time the drive is mounted `ro`.
+  **DONE (2026-09-26):** run by the operator against the `ro`-mounted MOL drive; reported successful.
 
 ## 5. Validation
 
