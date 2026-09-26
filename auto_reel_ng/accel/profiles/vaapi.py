@@ -38,6 +38,13 @@ class VaapiProfile(HardwareProfile):
             frames_out=FrameLocation.VAAPI,
         )
 
+    def upload_device_flags(self, params: OpParams) -> tuple[str, ...]:
+        # The exact recipe the startup self-test runs every VAAPI encode probe with
+        # (accel/selftest.py), so a usable encoder is one proven to accept it.
+        node = self._render_node(params)
+        device = f"vaapi=va:{node}" if node else "vaapi=va"
+        return ("-init_hw_device", device, "-filter_hw_device", "va")
+
     def _normalize(self, params: OpParams) -> Optional[OpFragment]:
         if not self.capabilities.pad_filter:
             return None

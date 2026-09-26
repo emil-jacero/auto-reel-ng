@@ -38,6 +38,19 @@ class AccelProfile(ABC):
                 without a target resolution).
         """
 
+    def upload_device_flags(self, params: OpParams) -> tuple[str, ...]:
+        """Global flags that give a filter graph a device to ``hwupload`` frames into.
+
+        A chain whose frames start in system memory (a rendered card image, or a
+        software decode) and end at a hardware-frame encoder must upload them, and
+        ``hwupload`` needs a device to upload into. A hardware decode opens one as a
+        side effect; without one the command must name it. Empty means the profile
+        has no verified recipe: the caller then fails loud rather than emitting a
+        command ffmpeg would reject.
+        """
+        del params
+        return ()
+
 
 def needs_transfer(out_loc: FrameLocation, in_loc: FrameLocation) -> Optional[str]:
     """Return the transfer filter needed between two frame locations, or ``None``.

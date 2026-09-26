@@ -9,6 +9,7 @@ end-to-end covers the hardware path on the AMD host.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import unicodedata
 from datetime import date
@@ -21,6 +22,7 @@ from auto_reel_ng.accel import detect_capabilities, select_profile
 from auto_reel_ng.accel.models import (
     AcceleratorCapabilities,
     Device,
+    OpParams,
     Vendor,
 )
 from auto_reel_ng.accel.profiles import CPUProfile, VaapiProfile
@@ -323,6 +325,44 @@ def test_amd_vaapi_normalize_chain() -> None:
     assert _subseq(args, ["-c:a", "aac", "-ar", "48000", "-ac", "2"])
     assert _subseq(args, ["-r", "30"])
     assert not command.warnings
+
+
+def test_hardware_decode_opens_the_upload_device_itself() -> None:
+    # The hwaccel decode already opens a device; no second one is initialized.
+    command = build_normalize_command(
+        _source_segment(rotate=90), _clip(), _target(), _amd_profile(), Path("/t/seg.mp4")
+    )
+    assert "-init_hw_device" not in command.args
+
+
+def test_software_decode_names_the_device_hwupload_needs() -> None:
+    # Hardware decode unusable but the VAAPI encoder usable: frames are decoded to
+    # system memory and uploaded, so the command must open the device itself.
+    profile = VaapiProfile(dataclasses.replace(_amd_caps(), decode_method=None))
+    command = build_normalize_command(
+        _source_segment(), _clip(), _target(), profile, Path("/t/seg.mp4")
+    )
+    args = command.args
+    assert "-hwaccel" not in args
+    vf = args[args.index("-vf") + 1]
+    assert vf.startswith("format=nv12,hwupload,scale_vaapi=")
+    assert list(args[1:5]) == [
+        "-init_hw_device",
+        "vaapi=va:/dev/dri/renderD128",
+        "-filter_hw_device",
+        "va",
+    ]
+    assert args.index("-init_hw_device") < args.index("-i")
+
+
+def test_vaapi_upload_device_without_a_known_node_uses_the_default() -> None:
+    caps = dataclasses.replace(_amd_caps(), device=None)
+    assert VaapiProfile(caps).upload_device_flags(OpParams()) == (
+        "-init_hw_device",
+        "vaapi=va",
+        "-filter_hw_device",
+        "va",
+    )
 
 
 def test_hardware_encode_omits_software_pix_fmt() -> None:

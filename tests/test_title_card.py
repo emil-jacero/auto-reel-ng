@@ -9,6 +9,7 @@ ffmpeg) so the suite passes on a host lacking the system libraries.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from datetime import date
 from pathlib import Path
@@ -16,8 +17,9 @@ from typing import Optional
 
 import pytest
 
+from auto_reel_ng.accel import detect_capabilities, select_profile
 from auto_reel_ng.accel.models import AcceleratorCapabilities, Device, Vendor
-from auto_reel_ng.accel.profiles import CPUProfile, VaapiProfile
+from auto_reel_ng.accel.profiles import CPUProfile, NvencProfile, QsvProfile, VaapiProfile
 from auto_reel_ng.errors import FontResolutionError, RenderError, TitleCardError
 from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
 from auto_reel_ng.probe import probe_media
@@ -365,6 +367,73 @@ def test_synthetic_path_uses_no_overlay_on_amd() -> None:
     assert vf.endswith("format=nv12,hwupload")
 
 
+def test_synthetic_command_opens_the_device_hwupload_needs() -> None:
+    # The card image never passes a hardware decoder, so nothing opens a device for
+    # hwupload; without these flags ffmpeg rejects the command outright.
+    command = build_synthetic_normalize_command(
+        _title_segment(), _produced(), _target(), _amd_profile(), Path("/t/seg.mp4")
+    )
+    args = command.args
+    assert list(args[1:5]) == [
+        "-init_hw_device",
+        "vaapi=va:/dev/dri/renderD128",
+        "-filter_hw_device",
+        "va",
+    ]
+    assert args.index("-init_hw_device") < args.index("-i")
+
+
+def test_synthetic_command_honors_an_explicit_render_node() -> None:
+    command = build_synthetic_normalize_command(
+        _title_segment(),
+        _produced(),
+        _target(),
+        _amd_profile(),
+        Path("/t/seg.mp4"),
+        render_node="/dev/dri/renderD129",
+    )
+    assert _subseq(command.args, ["-init_hw_device", "vaapi=va:/dev/dri/renderD129"])
+
+
+def test_synthetic_command_system_frame_encoder_opens_no_device() -> None:
+    # NVENC ingests system-memory frames, so there is no upload and no device flag.
+    caps = dataclasses.replace(
+        _amd_profile().capabilities,
+        vendor=Vendor.NVIDIA,
+        device=None,
+        usable_encoders={"h264": "h264_nvenc"},
+        decode_method="cuda",
+    )
+    command = build_synthetic_normalize_command(
+        _title_segment(),
+        _produced(),
+        _target(video_encoder="h264_nvenc"),
+        NvencProfile(caps),
+        Path("/t/seg.mp4"),
+    )
+    assert "-init_hw_device" not in command.args
+    assert "hwupload" not in " ".join(command.args)
+
+
+def test_synthetic_command_without_a_verified_upload_device_fails_loud() -> None:
+    # QSV encoders want QSV frames, but no upload recipe has been verified on real
+    # Intel hardware: refuse at build time rather than hand ffmpeg a broken command.
+    caps = dataclasses.replace(
+        _amd_profile().capabilities,
+        vendor=Vendor.INTEL,
+        usable_encoders={"h264": "h264_qsv"},
+        decode_method="qsv",
+    )
+    with pytest.raises(RenderError, match=r"intel profile has no verified device.*--device cpu"):
+        build_synthetic_normalize_command(
+            _title_segment(),
+            _produced(),
+            _target(video_encoder="h264_qsv"),
+            QsvProfile(caps),
+            Path("/t/seg.mp4"),
+        )
+
+
 def test_synthetic_command_honors_av1_target_codec() -> None:
     command = build_synthetic_normalize_command(
         _title_segment(),
@@ -395,6 +464,38 @@ def test_synthetic_builder_rejects_source_segment() -> None:
         build_synthetic_normalize_command(
             source, _produced(), _target(), _amd_profile(), Path("/t/seg.mp4")
         )
+
+
+@pytest.mark.gpu
+def test_synthetic_segment_encodes_on_the_hardware_profile(runtime, tmp_path: Path) -> None:
+    # The card image starts in system memory; a hardware encoder that wants GPU
+    # frames needs a device to upload into. A plain PNG stands in for the card so
+    # the test exercises the encode path without Cairo/Pango or fonts.
+    profile = select_profile(detect_capabilities(runtime))
+    if profile.vendor is Vendor.CPU:
+        pytest.skip("no usable hardware accelerator on this host")
+    encoder = profile.capabilities.usable_encoders.get("h264")  # type: ignore[attr-defined]
+    if encoder is None:
+        pytest.skip("no hardware h264 encoder on this host")
+
+    card = tmp_path / "card.png"
+    runtime.run(["-y", "-f", "lavfi", "-i", "color=c=navy:s=640x360", "-frames:v", "1", str(card)])
+    target = _target(width=640, height=360, video_encoder=encoder)
+    output = tmp_path / "seg.mp4"
+    command = build_synthetic_normalize_command(
+        _title_segment(duration=1.0),
+        _produced(image_path=card, duration=1.0, fade_in=0.25, fade_out=0.25),
+        target,
+        profile,
+        output,
+    )
+    runtime.run(list(command.args))
+
+    meta = probe_media(output, runtime=runtime)
+    assert (meta.width, meta.height) == (640, 360)
+    assert meta.video_codec == "h264"
+    assert meta.has_audio
+    assert meta.duration == pytest.approx(1.0, abs=0.1)
 
 
 # --------------------------------------------------------------------------- #

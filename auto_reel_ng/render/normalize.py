@@ -91,6 +91,22 @@ def _transfer_filter(name: str) -> str:
     return name  # pragma: no cover - needs_transfer only emits the two above
 
 
+def _upload_device_flags(profile: AccelProfile, params: OpParams) -> tuple[str, ...]:
+    """The profile's upload-device flags, or a loud error when it has none.
+
+    Called only for a chain that uploads system frames with no hardware decode to
+    open a device, where ffmpeg would otherwise fail with "A hardware device
+    reference is required to upload frames to".
+    """
+    flags = profile.upload_device_flags(params)
+    if not flags:
+        raise RenderError(
+            f"the {profile.vendor.value} profile has no verified device for uploading "
+            "system-memory frames to its hardware encoder; render with --device cpu"
+        )
+    return flags
+
+
 def _overlay_enable(overlay: OverlaySpec) -> Optional[str]:
     """Return an ``enable=`` timeline expression for ``overlay``, or ``None``."""
     if overlay.start <= 0.0 and overlay.end is None:
@@ -231,7 +247,13 @@ def build_normalize_command(
 
     duration = segment.span_duration if segment.span_duration is not None else clip.duration
 
-    args: list[str] = ["-y", *decode.input_flags]
+    # A software decode opens no device, so a chain that uploads to a hardware
+    # encoder must name one; a hardware decode's device already serves hwupload.
+    device_flags: tuple[str, ...] = ()
+    if decode.frames_out is FrameLocation.SYSTEM and _transfer_filter("hwupload") in value:
+        device_flags = _upload_device_flags(profile, params)
+
+    args: list[str] = ["-y", *device_flags, *decode.input_flags]
     if segment.start is not None:
         args += ["-ss", _fmt(segment.start)]
     args += ["-i", str(segment.source_path)]
@@ -339,13 +361,18 @@ def build_synthetic_normalize_command(
         start = max(0.0, duration - produced.fade_out)
         filters.append(f"fade=t=out:st={_fmt(start)}:d={_fmt(produced.fade_out)}")
     transfer = needs_transfer(FrameLocation.SYSTEM, encode.frames_in)
+    device_flags: tuple[str, ...] = ()
     if transfer is not None:
         filters.append(_transfer_filter(transfer))
+        # The image never passed through a hardware decoder, so nothing has opened
+        # a device for hwupload to upload into.
+        device_flags = _upload_device_flags(profile, params)
     vf = ",".join(filters)
 
     layout = _channel_layout(target.audio_channels)
     args: list[str] = [
         "-y",
+        *device_flags,
         "-loop",
         "1",
         "-t",
