@@ -32,6 +32,7 @@ from ..schemas import (
     EditorialWriteResult,
     EventDetailOut,
     EventSummaryOut,
+    ProblemOut,
 )
 from ..serialize import document_to_body
 from ..settings import ApiSettings
@@ -81,7 +82,11 @@ def _if_match_satisfied(header: str, current: str) -> bool:
     return any(candidate == current for candidate in candidates)
 
 
-@router.get("/events", response_model=List[EventSummaryOut])
+@router.get(
+    "/events",
+    response_model=List[EventSummaryOut],
+    responses={502: {"model": ProblemOut}, 503: {"model": ProblemOut}},
+)
 def get_events(request: Request) -> Union[List[EventSummaryOut], Response]:
     """``GET /api/v1/events`` (task 2.2): every event, freshly scanned.
 
@@ -156,7 +161,15 @@ def get_reel(
     return document_to_body(document)
 
 
-@router.get("/events/{event_id:path}", response_model=EventDetailOut)
+@router.get(
+    "/events/{event_id:path}",
+    response_model=EventDetailOut,
+    responses={
+        404: {"model": ProblemOut},
+        502: {"model": ProblemOut},
+        503: {"model": ProblemOut},
+    },
+)
 def get_event(event_id: str, request: Request) -> Union[EventDetailOut, Response]:
     """``GET /api/v1/events/{event_id}`` (task 2.3): current detail from disk."""
     settings = _settings(request)

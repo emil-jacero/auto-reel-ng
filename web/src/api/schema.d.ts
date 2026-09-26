@@ -241,8 +241,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Status */
-            status: string;
+            status: components["schemas"]["JobStatus"];
             /** Outcome */
             outcome: string;
         };
@@ -483,8 +482,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Status */
-            status: string;
+            status: components["schemas"]["JobStatus"];
             /** Event Dir */
             event_dir: string;
             /** Project Root */
@@ -527,6 +525,10 @@ export interface components {
         /**
          * JobSummaryOut
          * @description The latest job for an event, as embedded in the events list (D-A3).
+         *
+         *     ``status`` is typed with the job store's own closed vocabulary, so the schema
+         *     publishes the enumeration and generated clients get an exhaustive union
+         *     (D-8, §4.10). ``JobStatus`` is a ``str`` enum: the wire values are unchanged.
          */
         JobSummaryOut: {
             /**
@@ -534,8 +536,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Status */
-            status: string;
+            status: components["schemas"]["JobStatus"];
             /** Progress */
             progress: number;
             /**
@@ -557,6 +558,29 @@ export interface components {
             location?: string | null;
             /** Description */
             description?: string | null;
+        };
+        /**
+         * ProblemOut
+         * @description The shared problem body every deliberate error uses (D-A6), as published in the schema.
+         *
+         *     Schema-only: routes still return ``problem.problem_response``'s ``JSONResponse``,
+         *     which FastAPI does not validate against this model. ``extra="allow"`` keeps
+         *     route-specific fields (e.g. a 409's existing job ``id``) legal without this
+         *     model enumerating them; the named optional fields are the ones clients branch on.
+         */
+        ProblemOut: {
+            /** Title */
+            title: string;
+            /** Status */
+            status: number;
+            /** Detail */
+            detail: string;
+            /** Check */
+            check?: string | null;
+            /** Event Id */
+            event_id?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * SegmentOut
@@ -675,6 +699,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventSummaryOut"][];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
                 };
             };
         };
@@ -798,6 +840,15 @@ export interface operations {
                     "application/json": components["schemas"]["EventDetailOut"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -805,6 +856,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
                 };
             };
         };

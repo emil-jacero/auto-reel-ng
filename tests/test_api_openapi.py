@@ -17,6 +17,7 @@ from auto_reel_ng.api.openapi import (
     build_openapi_schema,
     render_openapi_schema,
 )
+from auto_reel_ng.persistence.models import JobStatus
 from auto_reel_ng.staleness.gate import StalenessReason
 
 #: The committed artifact `openapi-typescript` reads (repo root / web/openapi.json).
@@ -45,6 +46,14 @@ EXPECTED_MODELS = {
     "CancelResult",
     "StalenessOut",
     "StalenessReason",
+    "JobStatus",
+    "ProblemOut",
+}
+
+#: The problem responses each events read declares (events-list-job-status-contract).
+EXPECTED_PROBLEM_RESPONSES = {
+    "/api/v1/events": {"502", "503"},
+    "/api/v1/events/{event_id}": {"404", "502", "503"},
 }
 
 
@@ -89,6 +98,31 @@ def test_staleness_reasons_are_published_as_a_closed_enumeration() -> None:
     published = schema["components"]["schemas"]["StalenessReason"]
     assert published["type"] == "string"
     assert published["enum"] == [reason.value for reason in StalenessReason]
+
+
+def test_job_status_fields_are_published_as_the_job_status_enumeration() -> None:
+    """Every job-status response field references the store's own enum, not ``string``."""
+    schema = build_openapi_schema()
+    models = schema["components"]["schemas"]
+    for model in ("JobSummaryOut", "JobOut", "CancelResult"):
+        status = models[model]["properties"]["status"]
+        assert status.get("$ref", "").endswith("/JobStatus"), f"{model}.status: {status}"
+
+    published = models["JobStatus"]
+    assert published["type"] == "string"
+    assert published["enum"] == [status.value for status in JobStatus]
+
+
+def test_events_reads_declare_their_problem_responses() -> None:
+    """Exactly the documented error codes, each described by ``ProblemOut``."""
+    schema = build_openapi_schema()
+    for path, expected in EXPECTED_PROBLEM_RESPONSES.items():
+        responses = schema["paths"][path]["get"]["responses"]
+        declared = {code for code in responses if code not in {"200", "422"}}
+        assert declared == expected, f"{path}: {sorted(declared)}"
+        for code in expected:
+            ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
+            assert ref.endswith("/ProblemOut"), f"{path} {code}: {ref}"
 
 
 def test_committed_schema_is_not_stale() -> None:

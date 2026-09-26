@@ -44,6 +44,26 @@
                 }
               }
             }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            }
           }
         }
       }
@@ -230,6 +250,36 @@
                 }
               }
             }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -462,8 +512,7 @@
             "title": "Id"
           },
           "status": {
-            "type": "string",
-            "title": "Status"
+            "$ref": "#/components/schemas/JobStatus"
           },
           "outcome": {
             "type": "string",
@@ -921,8 +970,7 @@
             "title": "Id"
           },
           "status": {
-            "type": "string",
-            "title": "Status"
+            "$ref": "#/components/schemas/JobStatus"
           },
           "event_dir": {
             "type": "string",
@@ -1057,8 +1105,7 @@
             "title": "Id"
           },
           "status": {
-            "type": "string",
-            "title": "Status"
+            "$ref": "#/components/schemas/JobStatus"
           },
           "progress": {
             "type": "number",
@@ -1078,7 +1125,7 @@
           "created_at"
         ],
         "title": "JobSummaryOut",
-        "description": "The latest job for an event, as embedded in the events list (D-A3)."
+        "description": "The latest job for an event, as embedded in the events list (D-A3).\n\n``status`` is typed with the job store's own closed vocabulary, so the schema\npublishes the enumeration and generated clients get an exhaustive union\n(D-8, §4.10). ``JobStatus`` is a ``str`` enum: the wire values are unchanged."
       },
       "MetadataBody": {
         "properties": {
@@ -1132,6 +1179,53 @@
         "type": "object",
         "title": "MetadataBody",
         "description": "Event metadata in an editorial write."
+      },
+      "ProblemOut": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "check": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "title",
+          "status",
+          "detail"
+        ],
+        "title": "ProblemOut",
+        "description": "The shared problem body every deliberate error uses (D-A6), as published in the schema.\n\nSchema-only: routes still return ``problem.problem_response``'s ``JSONResponse``,\nwhich FastAPI does not validate against this model. ``extra=\"allow\"`` keeps\nroute-specific fields (e.g. a 409's existing job ``id``) legal without this\nmodel enumerating them; the named optional fields are the ones clients branch on."
       },
       "SegmentOut": {
         "properties": {

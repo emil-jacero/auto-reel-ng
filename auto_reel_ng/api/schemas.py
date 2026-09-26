@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..persistence.models import JobStatus
 from ..staleness.gate import StalenessReason
 
 
@@ -48,10 +49,15 @@ class ChapterOut(BaseModel):
 
 
 class JobSummaryOut(BaseModel):
-    """The latest job for an event, as embedded in the events list (D-A3)."""
+    """The latest job for an event, as embedded in the events list (D-A3).
+
+    ``status`` is typed with the job store's own closed vocabulary, so the schema
+    publishes the enumeration and generated clients get an exhaustive union
+    (D-8, §4.10). ``JobStatus`` is a ``str`` enum: the wire values are unchanged.
+    """
 
     id: uuid.UUID
-    status: str
+    status: JobStatus
     progress: float
     created_at: datetime
 
@@ -202,7 +208,7 @@ class JobOut(BaseModel):
     """One job's full detail, mirroring ``jobs show`` (task 3.2)."""
 
     id: uuid.UUID
-    status: str
+    status: JobStatus
     event_dir: str
     project_root: Optional[str] = None
     device: str
@@ -239,8 +245,28 @@ class CancelResult(BaseModel):
     """The body of ``POST /api/v1/jobs/{id}/cancel`` (D-S6 tri-state, task 3.3)."""
 
     id: uuid.UUID
-    status: str
+    status: JobStatus
     outcome: str  # "flagged-running" / "canceled-queued" / "no-op-terminal"
+
+
+class ProblemOut(BaseModel):
+    """The shared problem body every deliberate error uses (D-A6), as published in the schema.
+
+    Schema-only: routes still return ``problem.problem_response``'s ``JSONResponse``,
+    which FastAPI does not validate against this model. ``extra="allow"`` keeps
+    route-specific fields (e.g. a 409's existing job ``id``) legal without this
+    model enumerating them; the named optional fields are the ones clients branch on.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    title: str
+    status: int
+    detail: str
+    #: The failing dependency on a 503 (``"database"``), as ``/healthz`` reports it.
+    check: Optional[str] = None
+    #: The event a per-event failure is about (502/404/400 on the events routes).
+    event_id: Optional[str] = None
 
 
 class WsMessage(BaseModel):
@@ -269,5 +295,6 @@ __all__ = [
     "FreshResult",
     "StalenessOut",
     "CancelResult",
+    "ProblemOut",
     "WsMessage",
 ]

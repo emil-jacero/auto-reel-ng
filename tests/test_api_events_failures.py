@@ -17,8 +17,11 @@ from urllib.parse import quote
 import pytest
 from fastapi.testclient import TestClient
 
+from auto_reel_ng.api import events_read
 from auto_reel_ng.api.app import create_app
+from auto_reel_ng.api.schemas import ProblemOut
 from auto_reel_ng.api.settings import resolve_api_settings
+from auto_reel_ng.errors import ReelError
 
 #: A reachable-looking URL whose port is closed: any query raises SQLAlchemyError.
 UNREACHABLE_DATABASE_URL = "postgresql+psycopg://nobody:nobody@127.0.0.1:1/nothing"
@@ -139,3 +142,54 @@ def test_a_healthy_read_is_unaffected(client) -> None:
     detail = client.get(f"/api/v1/events/{quote(EVENT_ID)}")
     assert detail.status_code == 200
     assert detail.json()["event_id"] == EVENT_ID
+
+
+# --- The returned bodies conform to the published ``ProblemOut`` shape ---------------
+
+
+def _validated_problem(response, expected_status: int) -> ProblemOut:
+    assert response.status_code == expected_status
+    problem = ProblemOut.model_validate(response.json())
+    assert problem.status == expected_status
+    return problem
+
+
+def test_database_problem_bodies_match_the_published_shape(offline_client) -> None:
+    listing = _validated_problem(offline_client.get("/api/v1/events"), 503)
+    assert listing.check == "database"
+
+    detail = _validated_problem(offline_client.get(f"/api/v1/events/{quote(EVENT_ID)}"), 503)
+    assert detail.check == "database"
+    assert detail.event_id == EVENT_ID
+
+
+def test_a_whole_scan_problem_body_matches_the_published_shape(
+    offline_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The list's non-per-event scan 502 (a bare ``ReelError``) carries no ``event_id``."""
+
+    def failing_scan(*_args: object) -> None:
+        raise ReelError("walk root unreadable")
+
+    monkeypatch.setattr(events_read, "list_events", failing_scan)
+    problem = _validated_problem(offline_client.get("/api/v1/events"), 502)
+    assert problem.check is None
+    assert problem.event_id is None
+
+
+@pytest.mark.requires_db
+def test_per_event_and_unknown_event_bodies_match_the_published_shape(
+    client, project: Path
+) -> None:
+    unknown = _validated_problem(client.get("/api/v1/events/2024/nope"), 404)
+    assert unknown.event_id == "2024/nope"
+
+    (project / "2024" / "2024-07-04 - Barbecue" / "reel.yaml").write_text(
+        "metadata: [not, a, mapping\n", encoding="utf-8"
+    )
+    listing = _validated_problem(client.get("/api/v1/events"), 502)
+    assert listing.event_id == EVENT_ID
+    assert listing.check is None
+
+    detail = _validated_problem(client.get(f"/api/v1/events/{quote(EVENT_ID)}"), 502)
+    assert detail.event_id == EVENT_ID

@@ -129,7 +129,7 @@ def cancel_job(job_id: uuid.UUID, request: Request) -> Union[CancelResult, Respo
 
     result = store.request_cancel(job_id)
     final = result if result is not None else job
-    return CancelResult(id=final.id, status=final.status.value, outcome=outcome)
+    return CancelResult(id=final.id, status=final.status, outcome=outcome)
 
 
 __all__ = ["router"]

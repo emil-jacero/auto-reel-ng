@@ -108,7 +108,7 @@ def _job_summary(job: Optional[Job]) -> Optional[JobSummaryOut]:
     if job is None:
         return None
     return JobSummaryOut(
-        id=job.id, status=job.status.value, progress=job.progress, created_at=job.created_at
+        id=job.id, status=job.status, progress=job.progress, created_at=job.created_at
     )
 
 
