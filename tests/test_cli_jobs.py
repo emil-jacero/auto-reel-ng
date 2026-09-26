@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from auto_reel_ng.cli.main import main
+from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.persistence.engine import make_engine, make_session_factory
 from auto_reel_ng.persistence.job_store import JobStore
 from auto_reel_ng.persistence.models import JobStatus
@@ -38,7 +39,7 @@ def _adopt_and_write_manifest(root: Path, event_dir: Path) -> None:
     from auto_reel_ng.cli.adoption import persist, prepare_event
     from auto_reel_ng.config.project import load_project_config, resolve_look_defaults
     from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
-    from auto_reel_ng.render import output_filename
+    from auto_reel_ng.render import output_relpath
     from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
     from auto_reel_ng.staleness.manifest import write_manifest
 
@@ -51,7 +52,7 @@ def _adopt_and_write_manifest(root: Path, event_dir: Path) -> None:
         look_defaults=resolve_look_defaults(load_project_config(root)),
         ffmpeg_version=runtime.version,
     )
-    output_path = root / "output" / output_filename(event.document.metadata)
+    output_path = default_output_dir(root) / output_relpath(event.document.metadata)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(b"already-rendered")
     write_manifest(
@@ -105,7 +106,7 @@ def test_enqueue_inserts_one_queued_job_per_event(
 def test_enqueue_never_renders_or_writes_output(tmp_path: Path, store: JobStore) -> None:
     root = _project(tmp_path, "2024-06-21 - A")
     assert main(["enqueue", str(root)]) == 0
-    assert not (root / "output").exists()
+    assert not (default_output_dir(root)).exists()
 
 
 def test_enqueue_twice_reports_existing_and_inserts_no_duplicates(
@@ -177,6 +178,22 @@ def test_enqueue_mixed_stale_and_fresh_events(
 # --------------------------------------------------------------------------- #
 
 
+def test_enqueue_refuses_colliding_events(
+    tmp_path: Path, store: JobStore, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # headless-cli spec: "Enqueue refuses colliding events".
+    root = _project(
+        tmp_path, "2024-06-21 - Midsommar", "2024-06-22 - Midsommar", "2024-08-01 - Kalas"
+    )
+
+    assert main(["enqueue", str(root)]) == 1
+
+    out = capsys.readouterr().out
+    assert out.count("ERROR") == 2
+    queued = store.list_by_status(JobStatus.QUEUED)
+    assert [job.event_dir for job in queued] == ["2024/2024-08-01 - Kalas"]
+
+
 def test_worker_processes_the_queue_end_to_end(
     tmp_path: Path, store: JobStore, runtime, make_clip, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -205,7 +222,7 @@ def test_worker_processes_the_queue_end_to_end(
     assert job is not None
     assert job.status == JobStatus.DONE
     assert job.progress == 1.0
-    assert list((root / "output").glob("*.mp4"))
+    assert list(default_output_dir(root).rglob("*.mp4"))
 
 
 # --------------------------------------------------------------------------- #

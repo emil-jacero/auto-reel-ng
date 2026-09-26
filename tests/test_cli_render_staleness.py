@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from auto_reel_ng.cli.main import main
+from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
 from auto_reel_ng.staleness.manifest import read_manifest
 
@@ -33,7 +34,7 @@ def test_unchanged_project_renders_nothing_on_second_run(
     assert main(["render", str(root)]) == 0
     first_out = capsys.readouterr().out
     assert "OK" in first_out
-    output_path = root / "output" / "Party.mp4"
+    output_path = default_output_dir(root) / "2024" / "Party.mp4"
     assert output_path.exists()  # default output dir is <root>/output
     manifest = read_manifest(event_dir)
     assert manifest is not None

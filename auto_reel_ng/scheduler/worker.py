@@ -20,12 +20,12 @@ from typing import Callable, Optional
 
 from ..accel.profiles.base import AccelProfile
 from ..cli.build import build_render_job_from_event, prepare_and_persist
-from ..config.project import load_project_config, resolve_look_defaults
+from ..config.project import default_output_dir, load_project_config, resolve_look_defaults
 from ..errors import EngineError, IllegalJobTransitionError, RenderCancelledError
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..persistence.job_store import JobStore
 from ..persistence.models import Job, JobStatus
-from ..render import RenderJob, RenderResult, output_filename, render_movie, resolve_target
+from ..render import RenderJob, RenderResult, output_relpath, render_movie, resolve_target
 from ..staleness.fingerprint import compute_fingerprint
 from ..staleness.gate import evaluate
 from .pools import CapacityPools
@@ -63,7 +63,9 @@ def default_build_job(
     event_dir = project_root / job.event_dir
     config = load_project_config(project_root)
     look_defaults = resolve_look_defaults(config)
-    output_dir = project_root / config.output_dir if config.output_dir else project_root / "output"
+    output_dir = (
+        project_root / config.output_dir if config.output_dir else default_output_dir(project_root)
+    )
 
     event = prepare_and_persist(event_dir)
     fingerprint = compute_fingerprint(
@@ -259,7 +261,7 @@ class Worker:
         fingerprint = render_job.options.fingerprint
         if fingerprint is None:
             return False
-        output_path = render_job.options.output_dir / output_filename(render_job.plan.metadata)
+        output_path = render_job.options.output_dir / output_relpath(render_job.plan.metadata)
         verdict = evaluate(render_job.options.event_dir, output_path, fingerprint)
         return not verdict.stale
 

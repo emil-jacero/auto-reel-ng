@@ -14,9 +14,10 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import unicodedata
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Callable, Mapping, Optional, Sequence
+from pathlib import Path, PurePosixPath
+from typing import Callable, Hashable, Mapping, Optional, Sequence, TypeVar
 
 from ..accel.profiles.base import AccelProfile
 from ..errors import EngineError, RenderCancelledError, RenderError
@@ -115,6 +116,44 @@ def output_filename(metadata: Metadata) -> str:
     return f"{title}.mp4"
 
 
+def output_relpath(metadata: Metadata) -> PurePosixPath:
+    """The output path relative to the output directory (legacy auto-reel layout).
+
+    ``<YYYY>/<output_filename>`` when ``metadata.date`` is set, else the bare
+    filename at the output root. The year is never inferred from anything else.
+    """
+    name = output_filename(metadata)
+    if metadata.date is None:
+        return PurePosixPath(name)
+    return PurePosixPath(f"{metadata.date.year:04d}") / name
+
+
+_K = TypeVar("_K", bound=Hashable)
+
+
+def _collision_key(path: PurePosixPath) -> str:
+    """Case- and normalization-insensitive comparison key for an output path."""
+    return unicodedata.normalize("NFC", str(path)).casefold()
+
+
+def find_output_collisions(claims: Mapping[_K, PurePosixPath]) -> dict[_K, tuple[_K, ...]]:
+    """Map each key whose output path is shared to the other keys claiming it.
+
+    Paths compare case-insensitively after NFC normalization, so a clash a
+    case-insensitive archive filesystem would create is caught on any host. Keys
+    in no collision are absent from the result. Pure: no filesystem access.
+    """
+    groups: dict[str, list[_K]] = {}
+    for key, path in claims.items():
+        groups.setdefault(_collision_key(path), []).append(key)
+    result: dict[_K, tuple[_K, ...]] = {}
+    for keys in groups.values():
+        if len(keys) > 1:
+            for key in keys:
+                result[key] = tuple(other for other in keys if other != key)
+    return result
+
+
 def _part_path(output_path: Path) -> Path:
     """The atomic-finalize temp path: same directory as ``output_path``, ``.part`` suffix.
 
@@ -194,7 +233,7 @@ def render_movie(plan: RenderPlan, profile: AccelProfile, options: RenderOptions
     if not segments:
         raise RenderError("render plan produced no segments to render")
 
-    output_path = Path(options.output_dir) / output_filename(plan.metadata)
+    output_path = Path(options.output_dir) / output_relpath(plan.metadata)
 
     if options.dry_run:
         return _plan_only(segments, target, profile, options, output_path)
@@ -339,7 +378,7 @@ def _execute(
     """Run the full pipeline: normalize/copy, equivalence-guard, assemble, verify, finalize."""
     runtime = options.runtime
     progress = _Progress(len(segments) + 1, options.on_progress)
-    Path(options.output_dir).mkdir(parents=True, exist_ok=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     part_path = _part_path(output_path)
 
     with tempfile.TemporaryDirectory(
@@ -450,6 +489,8 @@ __all__ = [
     "RenderJob",
     "BatchOutcome",
     "output_filename",
+    "output_relpath",
+    "find_output_collisions",
     "render_movie",
     "render_batch",
 ]

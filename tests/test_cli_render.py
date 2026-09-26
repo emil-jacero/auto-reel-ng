@@ -18,6 +18,7 @@ from auto_reel_ng.accel.profiles import CPUProfile
 from auto_reel_ng.cli import build as build_module
 from auto_reel_ng.cli import commands
 from auto_reel_ng.cli.main import main
+from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.errors import ProbeError
 from auto_reel_ng.render import BatchOutcome, RenderJob, RenderResult
 
@@ -63,6 +64,8 @@ def test_render_two_events_succeeds(
     assert main(["render", str(root)]) == 0
     assert len(seen["jobs"]) == 2
     assert capsys.readouterr().out.count("OK") == 2
+    # No -o and no config.yaml output: the default sits beside the root, not inside it.
+    assert {job.options.output_dir for job in seen["jobs"]} == {tmp_path / "proj-output"}
 
 
 def test_render_dry_run_prints_commands_and_writes_nothing(
@@ -91,7 +94,7 @@ def test_render_dry_run_prints_commands_and_writes_nothing(
     assert "ffmpeg -i in.mp4 out.mp4" in out
     # dry-run writes nothing: no persisted reel.yaml, no output directory.
     assert not (root / "2024" / "2024-06-21 - A" / "reel.yaml").exists()
-    assert not (root / "output").exists()
+    assert not (default_output_dir(root)).exists()
 
 
 def test_render_one_bad_event_does_not_abort_the_batch(
@@ -197,3 +200,18 @@ def test_build_render_job_is_the_shared_d_s1_build_path(
     assert job.profile.vendor.value == "cpu"
     assert (event_dir / "reel.yaml").exists()  # persisted, same as _build_job
     assert event.seeded  # no reel.yaml existed yet, so the document was seeded
+
+
+def test_default_output_year_folders_are_not_scanned_as_events(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # headless-cli spec: rendered year folders are never scanned back in as events.
+    root = _project(tmp_path, "2024-06-21 - Midsommar")
+    rendered = tmp_path / "proj-output" / "2024" / "Midsommar.mp4"
+    _touch(rendered)  # what a default-output render leaves behind
+
+    assert main(["scan", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "Midsommar" in out
+    assert "[" + str(root / "2024" / "2024-06-21 - Midsommar") + "]" in out
+    assert str(rendered.parent) not in out

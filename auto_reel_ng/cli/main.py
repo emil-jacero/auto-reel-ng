@@ -76,7 +76,7 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
         "-o",
         "--output",
         default=None,
-        help="output directory (default: <root>/output, or config.yaml 'output')",
+        help="output directory (default: <parent>/<root-name>-output, or config.yaml 'output')",
     )
     parser.add_argument(
         "--years",

@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from auto_reel_ng.api.app import create_app
 from auto_reel_ng.api.settings import resolve_api_settings
+from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.persistence.job_store import JobStore
 from auto_reel_ng.persistence.models import JobStatus
 
@@ -93,7 +94,7 @@ def _adopt_and_write_manifest(project: Path, event_id: str) -> None:
     from auto_reel_ng.cli.adoption import persist, prepare_event
     from auto_reel_ng.config.project import load_project_config, resolve_look_defaults
     from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
-    from auto_reel_ng.render import output_filename
+    from auto_reel_ng.render import output_relpath
     from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
     from auto_reel_ng.staleness.manifest import write_manifest
 
@@ -107,7 +108,7 @@ def _adopt_and_write_manifest(project: Path, event_id: str) -> None:
         look_defaults=resolve_look_defaults(load_project_config(project)),
         ffmpeg_version=runtime.version,
     )
-    output_path = project / "output" / output_filename(event.document.metadata)
+    output_path = default_output_dir(project) / output_relpath(event.document.metadata)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(b"already-rendered")
     write_manifest(

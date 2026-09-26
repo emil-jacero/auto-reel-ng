@@ -21,6 +21,7 @@ from auto_reel_ng.accel.detection import detect_capabilities
 from auto_reel_ng.accel.selection import select_profile
 from auto_reel_ng.api.app import create_app
 from auto_reel_ng.api.settings import resolve_api_settings
+from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.persistence.job_store import JobStore
 from auto_reel_ng.scheduler.pools import CapacityPools
 from auto_reel_ng.scheduler.worker import Worker, default_build_job
@@ -77,7 +78,7 @@ def test_editorial_write_save_stale_render_cycle(
 
         fresh_check = client.get(f"/api/v1/events/{encoded_id}")
         assert fresh_check.json()["staleness"]["stale"] is False
-        original_output = root / "output" / "Original Title.mp4"
+        original_output = default_output_dir(root) / "Original Title.mp4"  # undated: output root
         assert original_output.exists()
 
         # 3. Edit the title via a second save; the event goes stale citing editorial,
@@ -103,5 +104,5 @@ def test_editorial_write_save_stale_render_cycle(
         final_check = client.get(f"/api/v1/events/{encoded_id}")
         assert final_check.json()["staleness"]["stale"] is False
 
-        new_output = root / "output" / "Renamed Trip.mp4"
+        new_output = default_output_dir(root) / "Renamed Trip.mp4"
         assert new_output.exists()

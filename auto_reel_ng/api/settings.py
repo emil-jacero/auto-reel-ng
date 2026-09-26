@@ -13,7 +13,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Optional
 
-from ..config.project import ConfigError, ProjectConfig, load_project_config
+from ..config.project import (
+    ConfigError,
+    ProjectConfig,
+    default_output_dir,
+    load_project_config,
+)
 from ..ingest import DEFAULT_LAYOUT
 from ..persistence.config import resolve_database_url
 
@@ -107,7 +112,7 @@ def resolve_api_settings(
     output_dir = (
         (project_root / resolved_config.output_dir)
         if resolved_config.output_dir
-        else project_root / "output"
+        else default_output_dir(project_root)
     )
 
     api_cfg = resolved_config.api

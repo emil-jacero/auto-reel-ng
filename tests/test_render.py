@@ -10,7 +10,9 @@ end-to-end covers the hardware path on the AMD host.
 from __future__ import annotations
 
 import json
-from pathlib import Path
+import unicodedata
+from datetime import date
+from pathlib import Path, PurePosixPath
 from typing import Optional
 
 import pytest
@@ -46,6 +48,7 @@ from auto_reel_ng.render import (
     copy_eligible,
     decide_copy_eligibility,
     derive_target,
+    find_output_collisions,
     is_copy_uniform,
     kept_spans,
     make_attacher,
@@ -54,6 +57,7 @@ from auto_reel_ng.render import (
 from auto_reel_ng.render import orchestrator as orch
 from auto_reel_ng.render import (
     output_filename,
+    output_relpath,
     render_batch,
     render_movie,
     resolve_decorator_names,
@@ -492,6 +496,49 @@ def test_output_filename_with_and_without_location() -> None:
     assert output_filename(Metadata(title="Midsummer")) == "Midsummer.mp4"
 
 
+def test_output_relpath_uses_the_metadata_year() -> None:
+    dated = Metadata(title="Midsummer", date=date(2024, 6, 21), location="Dalarna")
+    assert output_relpath(dated) == PurePosixPath("2024/Midsummer - Dalarna.mp4")
+    no_location = Metadata(title="Julafton", date=date(2023, 12, 24))
+    assert output_relpath(no_location) == PurePosixPath("2023/Julafton.mp4")
+
+
+def test_output_relpath_undated_event_sits_at_the_root() -> None:
+    assert output_relpath(Metadata(title="Sommarlov")) == PurePosixPath("Sommarlov.mp4")
+
+
+def test_find_output_collisions_same_year_pair() -> None:
+    claims = {
+        "a": PurePosixPath("2024/Midsommar.mp4"),
+        "b": PurePosixPath("2024/Midsommar.mp4"),
+        "c": PurePosixPath("2024/Kalas.mp4"),
+    }
+    assert find_output_collisions(claims) == {"a": ("b",), "b": ("a",)}
+
+
+def test_find_output_collisions_ignores_case_and_normalization() -> None:
+    nfd = unicodedata.normalize("NFD", "2024/Göteborg.mp4")
+    claims = {
+        "upper": PurePosixPath("2024/Midsommar.mp4"),
+        "lower": PurePosixPath("2024/midsommar.mp4"),
+        "nfc": PurePosixPath("2024/Göteborg.mp4"),
+        "nfd": PurePosixPath(nfd),
+    }
+    result = find_output_collisions(claims)
+    assert result["upper"] == ("lower",)
+    assert result["nfc"] == ("nfd",)
+
+
+def test_find_output_collisions_different_years_and_three_way() -> None:
+    assert not find_output_collisions(
+        {"y23": PurePosixPath("2023/Midsommar.mp4"), "y24": PurePosixPath("2024/Midsommar.mp4")}
+    )
+    same = PurePosixPath("2024/Kalas.mp4")
+    result = find_output_collisions({"a": same, "b": same, "c": same})
+    assert result == {"a": ("b", "c"), "b": ("a", "c"), "c": ("a", "b")}
+    assert not find_output_collisions({})
+
+
 # --------------------------------------------------------------------------- #
 # 7/8. Assembly + orchestration against a real (CPU) ffmpeg                   #
 # --------------------------------------------------------------------------- #
@@ -563,6 +610,49 @@ def test_end_to_end_cpu_render_with_chapters(runtime, make_clip, tmp_path) -> No
         ).stdout
     )["chapters"]
     assert [c["tags"]["title"] for c in chapters] == ["Intro", "Main"]
+
+
+def test_render_finalizes_into_a_created_year_folder(
+    runtime, make_clip, tmp_path, monkeypatch
+) -> None:
+    clip = make_clip("a.mp4", width=320, height=240, fps=30, duration=1.0)
+    facts = {"a.mp4": probe_media(clip, runtime=runtime)}
+    plan = RenderPlan(
+        metadata=Metadata(title="Movie", date=date(2024, 6, 21)),
+        look={"target_resolution": [320, 240], "video_codec": "h264"},
+        chapters=(ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4"),)),),
+    )
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    dry = render_movie(
+        plan,
+        CPUProfile(),
+        RenderOptions(
+            event_dir=tmp_path, output_dir=out_dir, clip_facts=facts, runtime=runtime, dry_run=True
+        ),
+    )
+    assert dry.output_path == out_dir / "2024" / "Movie.mp4"
+    assert not (out_dir / "2024").exists()
+
+    seen_parts: list[Path] = []
+    real_replace = orch.os.replace
+
+    def _spy_replace(src: Path, dst: Path) -> None:
+        seen_parts.append(Path(src))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(orch.os, "replace", _spy_replace)
+    result = render_movie(
+        plan,
+        CPUProfile(),
+        RenderOptions(event_dir=tmp_path, output_dir=out_dir, clip_facts=facts, runtime=runtime),
+    )
+
+    assert result.output_path == out_dir / "2024" / "Movie.mp4"
+    assert result.output_path.exists()
+    # The .part sat beside the final path, so the finalizing rename stayed in one dir.
+    assert [part.parent for part in seen_parts] == [out_dir / "2024"]
 
 
 def test_mismatch_forces_reencode_before_join(runtime, make_clip, tmp_path, monkeypatch) -> None:

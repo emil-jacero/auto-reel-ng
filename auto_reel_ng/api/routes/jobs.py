@@ -16,7 +16,7 @@ from ...cli.adoption import load_or_seed
 from ...config.project import load_project_config, resolve_look_defaults
 from ...persistence.job_store import JobStore
 from ...persistence.models import JobStatus
-from ...render import output_filename
+from ...render import output_relpath
 from ...staleness.fingerprint import compute_fingerprint
 from ...staleness.gate import evaluate
 from ...staleness.manifest import manifest_path
@@ -63,7 +63,7 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
     )
 
     if not payload.force:
-        output_path = settings.output_dir / output_filename(document.metadata)
+        output_path = settings.output_dir / output_relpath(document.metadata)
         verdict = evaluate(event_dir, output_path, fingerprint)
         if not verdict.stale:
             # A raw Response (task 3.1's not_found/conflict pattern): the declared

@@ -12,6 +12,7 @@ from auto_reel_ng.api.settings import (
     DEFAULT_PORT,
     resolve_api_settings,
 )
+from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.config.project import ConfigError, loads_project_config
 
 
@@ -23,7 +24,7 @@ def test_defaults_when_nothing_configured(tmp_path: Path) -> None:
     assert settings.project_root == tmp_path
     assert settings.walk_root == tmp_path
     assert settings.layout_name == "year-event"
-    assert settings.output_dir == tmp_path / "output"
+    assert settings.output_dir == default_output_dir(tmp_path)
 
 
 def test_config_yaml_overrides_defaults(tmp_path: Path) -> None:

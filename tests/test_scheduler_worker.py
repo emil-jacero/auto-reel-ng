@@ -14,6 +14,7 @@ import pytest
 from auto_reel_ng.accel.models import AcceleratorCapabilities, Device, Vendor
 from auto_reel_ng.accel.profiles import CPUProfile, VaapiProfile
 from auto_reel_ng.cli.adoption import persist, prepare_event
+from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.errors import ProbeError, RenderError
 from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
 from auto_reel_ng.persistence.engine import session_scope
@@ -290,8 +291,8 @@ def test_claimed_job_renders_from_current_disk_state_not_enqueue_time(
     job = job_store.get(job_id)
     assert job is not None
     assert job.status == JobStatus.DONE
-    assert (tmp_path / "output" / "Edited Title.mp4").exists()
-    assert not (tmp_path / "output" / "Original Title.mp4").exists()
+    assert (default_output_dir(tmp_path) / "2024" / "Edited Title.mp4").exists()
+    assert not (default_output_dir(tmp_path) / "2024" / "Original Title.mp4").exists()
 
 
 # --------------------------------------------------------------------------- #
@@ -784,7 +785,7 @@ def test_stale_job_replaces_the_outdated_output(
     job_store.enqueue(str(tmp_path), event_dir.name)
     assert worker.process_next() is True
     assert len(calls) == 1
-    output_path = tmp_path / "output" / "Reunion.mp4"
+    output_path = default_output_dir(tmp_path) / "2024" / "Reunion.mp4"
     assert output_path.exists()
     first_mtime = output_path.stat().st_mtime_ns
 

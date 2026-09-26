@@ -29,7 +29,7 @@ def test_render_one_event_end_to_end(tmp_path: Path, runtime, make_clip) -> None
     output_dir = tmp_path / "out"
     assert main(["render", str(tmp_path / "proj"), "-o", str(output_dir), "--device", "cpu"]) == 0
 
-    outputs = list(output_dir.glob("*.mp4"))
+    outputs = list(output_dir.glob("2024/*.mp4"))
     assert len(outputs) == 1
 
     # Playable-uniform: the output re-probes cleanly with real dimensions (the render

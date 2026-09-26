@@ -9,6 +9,7 @@ import pytest
 from auto_reel_ng.config import (
     ConfigError,
     ProjectConfig,
+    default_output_dir,
     load_project_config,
     loads_project_config,
     resolve_look_defaults,
@@ -94,3 +95,11 @@ def test_reel_yaml_overrides_config() -> None:
     document = ReelDocument(metadata=Metadata(title="x"), look={"resolution": "4k"})
     plan = resolve(document, look_defaults=resolve_look_defaults(config))
     assert plan.look["resolution"] == "4k"
+
+
+def test_default_output_dir_is_a_sibling_of_the_root(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "sorted"
+    root.mkdir()
+    assert default_output_dir(root) == tmp_path / "sorted-output"
+    monkeypatch.chdir(root)
+    assert default_output_dir(Path(".")) == tmp_path / "sorted-output"

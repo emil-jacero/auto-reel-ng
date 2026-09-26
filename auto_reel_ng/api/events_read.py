@@ -25,7 +25,7 @@ from ..ingest import EventRef, get_layout
 from ..persistence.job_store import JobStore
 from ..persistence.models import Job
 from ..reel import ReelDocument, load_document
-from ..render import output_filename
+from ..render import output_relpath
 from ..staleness.fingerprint import compute_fingerprint
 from ..staleness.gate import evaluate
 from .schemas import (
@@ -272,7 +272,7 @@ def staleness_for(
         look_defaults=look_defaults,
         ffmpeg_version=runtime.version,
     )
-    output_path = settings.output_dir / output_filename(fp_document.metadata)
+    output_path = settings.output_dir / output_relpath(fp_document.metadata)
     verdict = evaluate(event_dir, output_path, fingerprint)
     return StalenessOut(stale=verdict.stale, reasons=list(verdict.reasons))
 

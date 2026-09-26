@@ -105,6 +105,18 @@ def resolve_look_defaults(config: ProjectConfig) -> dict[str, object]:
     return dict(config.look)
 
 
+def default_output_dir(project_root: Path) -> Path:
+    """The output directory used when neither ``-o`` nor ``config.yaml`` sets one.
+
+    ``<parent>/<root-name>-output``: a sibling of the project root, outside every
+    ingest layout's walk, so rendered movies filed into year folders are never
+    scanned back in as events. The root is resolved first so ``.`` still yields a
+    named sibling.
+    """
+    root = Path(project_root).resolve()
+    return root.parent / f"{root.name}-output"
+
+
 def _require_mapping(value: object, key: str, source: str) -> Mapping[str, object]:
     """Return ``value`` as a mapping, defaulting missing to empty; else fail loud."""
     if value is None:

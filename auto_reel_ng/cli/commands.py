@@ -32,7 +32,12 @@ from ..accel.profiles.hardware import HardwareProfile
 from ..analysis import Segment, analyze_event
 from ..api.app import create_app
 from ..api.settings import resolve_api_settings
-from ..config import ProjectConfig, load_project_config, resolve_look_defaults
+from ..config import (
+    ProjectConfig,
+    default_output_dir,
+    load_project_config,
+    resolve_look_defaults,
+)
 from ..errors import EngineError
 from ..event import ReconcileResult, reconcile, scan_event
 from ..ffmpeg.runtime import FfmpegRuntime
@@ -41,9 +46,9 @@ from ..persistence.config import resolve_database_url
 from ..persistence.engine import make_engine, make_session_factory
 from ..persistence.job_store import JobStore
 from ..persistence.models import JobStatus
-from ..reel import ReelDocument, import_legacy, load_document, write_document
+from ..reel import Metadata, ReelDocument, import_legacy, load_document, write_document
 from ..reel.legacy import ImportResult
-from ..render import RenderJob, output_filename, render_batch
+from ..render import RenderJob, find_output_collisions, output_relpath, render_batch
 from ..scheduler import (
     CapacityPools,
     Worker,
@@ -97,7 +102,7 @@ def _project_context(args: argparse.Namespace) -> ProjectContext:
     elif config.output_dir:
         output_dir = project_root / config.output_dir
     else:
-        output_dir = project_root / "output"
+        output_dir = default_output_dir(project_root)
 
     layout_name = args.layout or config.layout or DEFAULT_LAYOUT
     layout = get_layout(layout_name)
@@ -145,8 +150,16 @@ def cmd_render(args: argparse.Namespace) -> int:
         dry_run=args.dry_run,
     )
 
+    # Output-identity check over every selected event, fresh ones included: a fresh
+    # event owns its output, and a new same-named sibling must not overwrite it.
+    refused = _output_collisions(
+        {c.ref.event_dir: c.event.document.metadata for c in (*candidates, *fresh)}
+    )
+    candidates = [c for c in candidates if c.ref.event_dir not in refused]
+    fresh = [c for c in fresh if c.ref.event_dir not in refused]
+
     jobs: List[RenderJob] = []
-    build_failures: List[Tuple[Path, str]] = []
+    build_failures: List[Tuple[Path, str]] = list(refused.items())
     for candidate in candidates:
         try:
             jobs.append(
@@ -168,6 +181,24 @@ def cmd_render(args: argparse.Namespace) -> int:
 
     outcomes = render_batch(jobs)
     return _report_render(outcomes, build_failures, fresh, dry_run=args.dry_run)
+
+
+def _output_collisions(metadata_by_event: Mapping[Path, Metadata]) -> dict[Path, str]:
+    """Map each event whose output path collides to its ``ERROR`` message.
+
+    Every event sharing an output path is refused (headless-cli: batch commands
+    refuse colliding output paths); the message names the shared path and the
+    other claimants so the operator knows which ``reel.yaml`` to edit.
+    """
+    claims = {event_dir: output_relpath(md) for event_dir, md in metadata_by_event.items()}
+    return {
+        event_dir: (
+            f"output path {claims[event_dir]} is also claimed by "
+            f"{', '.join(other.name for other in others)}; "
+            "set a distinct title or location in reel.yaml"
+        )
+        for event_dir, others in find_output_collisions(claims).items()
+    }
 
 
 @dataclass(frozen=True)
@@ -218,7 +249,7 @@ def _staleness_filter(
             look_defaults=look_defaults,
             ffmpeg_version=ffmpeg_version,
         )
-        candidate_output = output_dir / output_filename(event.document.metadata)
+        candidate_output = output_dir / output_relpath(event.document.metadata)
         verdict = evaluate(ref.event_dir, candidate_output, fingerprint)
         candidate = _Candidate(ref=ref, event=event, fingerprint=fingerprint, verdict=verdict)
         if force or verdict.stale:
@@ -334,7 +365,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
             look_defaults=look_defaults,
             ffmpeg_version=runtime.version,
         )
-        output_path = ctx.output_dir / output_filename(fp_document.metadata)
+        output_path = ctx.output_dir / output_relpath(fp_document.metadata)
         verdict = evaluate(ref.event_dir, output_path, fingerprint)
 
         _print_inventory(ref, document, result, verdict)
@@ -553,18 +584,25 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
     project_root_str = str(ctx.project_root)
     force = args.force
 
+    documents = {ref.event_dir: load_or_seed(ref.event_dir)[0] for ref in ctx.events}
+    refused = _output_collisions({d: doc.metadata for d, doc in documents.items()})
+    for event_dir_path, message in refused.items():
+        print(f"ERROR  {event_dir_path.name}: {message}")
+
     created = 0
     fresh_count = 0
     for ref in ctx.events:
+        if ref.event_dir in refused:
+            continue
         event_dir = str(ref.event_dir.relative_to(ctx.project_root))
-        document = load_or_seed(ref.event_dir)[0]
+        document = documents[ref.event_dir]
         fingerprint = compute_fingerprint(
             document,
             event_dir=ref.event_dir,
             look_defaults=look_defaults,
             ffmpeg_version=runtime.version,
         )
-        output_path = ctx.output_dir / output_filename(document.metadata)
+        output_path = ctx.output_dir / output_relpath(document.metadata)
         verdict = evaluate(ref.event_dir, output_path, fingerprint)
 
         if not force and not verdict.stale:
@@ -593,7 +631,7 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
         f"\n{created}/{len(ctx.events)} event(s) newly queued "
         f"({fresh_count} fresh, not enqueued)"
     )
-    return 0
+    return 1 if refused else 0
 
 
 # --------------------------------------------------------------------------- #
@@ -792,10 +830,18 @@ def cmd_adopt_renders(args: argparse.Namespace) -> int:
     runtime = FfmpegRuntime()
     look_defaults = resolve_look_defaults(ctx.config)
 
+    documents = {ref.event_dir: load_or_seed(ref.event_dir)[0] for ref in ctx.events}
+    # One file cannot be adopted as two movies: refuse every claimant of a shared path.
+    refused = _output_collisions({d: doc.metadata for d, doc in documents.items()})
+    for event_dir, message in refused.items():
+        print(f"ERROR  {event_dir.name}: {message}")
+
     adopted = unrendered = already_fresh = 0
     for ref in ctx.events:
-        document = load_or_seed(ref.event_dir)[0]
-        output_path = ctx.output_dir / output_filename(document.metadata)
+        if ref.event_dir in refused:
+            continue
+        document = documents[ref.event_dir]
+        output_path = ctx.output_dir / output_relpath(document.metadata)
         if not output_path.exists():
             unrendered += 1
             print(f".  {ref.event_dir.name}: unrendered, nothing to adopt")
@@ -823,4 +869,4 @@ def cmd_adopt_renders(args: argparse.Namespace) -> int:
         print(f"+  {ref.event_dir.name}: adopted at current fingerprint")
 
     print(f"\n{adopted} adopted, {already_fresh} already fresh, {unrendered} unrendered")
-    return 0
+    return 1 if refused else 0

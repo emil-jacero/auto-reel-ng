@@ -45,7 +45,9 @@ from .orchestrator import (
     RenderJob,
     RenderOptions,
     RenderResult,
+    find_output_collisions,
     output_filename,
+    output_relpath,
     render_batch,
     render_movie,
     resolve_target,
@@ -71,6 +73,8 @@ __all__ = [
     "RenderJob",
     "BatchOutcome",
     "output_filename",
+    "output_relpath",
+    "find_output_collisions",
     # models
     "Segment",
     "OverlaySpec",

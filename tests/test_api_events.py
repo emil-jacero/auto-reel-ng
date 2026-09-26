@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from auto_reel_ng.api.app import create_app
 from auto_reel_ng.api.settings import resolve_api_settings
+from auto_reel_ng.config import default_output_dir
 
 pytestmark = pytest.mark.requires_db
 
@@ -92,7 +93,7 @@ def test_event_detail_reports_staleness_when_fresh(client: TestClient, project: 
     from auto_reel_ng.cli.adoption import persist, prepare_event
     from auto_reel_ng.config.project import load_project_config, resolve_look_defaults
     from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
-    from auto_reel_ng.render import output_filename
+    from auto_reel_ng.render import output_relpath
     from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
     from auto_reel_ng.staleness.manifest import write_manifest
 
@@ -106,7 +107,7 @@ def test_event_detail_reports_staleness_when_fresh(client: TestClient, project: 
         look_defaults=resolve_look_defaults(load_project_config(project)),
         ffmpeg_version=runtime.version,
     )
-    output_path = project / "output" / output_filename(event.document.metadata)
+    output_path = default_output_dir(project) / output_relpath(event.document.metadata)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(b"already-rendered")
     write_manifest(
@@ -328,7 +329,7 @@ def _make_fresh(project: Path, event_dir: Path) -> None:
     from auto_reel_ng.cli.adoption import persist, prepare_event
     from auto_reel_ng.config.project import load_project_config, resolve_look_defaults
     from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
-    from auto_reel_ng.render import output_filename
+    from auto_reel_ng.render import output_relpath
     from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
     from auto_reel_ng.staleness.manifest import write_manifest
 
@@ -341,7 +342,7 @@ def _make_fresh(project: Path, event_dir: Path) -> None:
         look_defaults=resolve_look_defaults(load_project_config(project)),
         ffmpeg_version=runtime.version,
     )
-    output_path = project / "output" / output_filename(event.document.metadata)
+    output_path = default_output_dir(project) / output_relpath(event.document.metadata)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(b"already-rendered")
     write_manifest(
@@ -451,7 +452,7 @@ def test_serving_the_list_writes_nothing(client: TestClient, project: Path) -> N
 
     events = _by_id(response.json())
     assert not any((project / event_id / "reel.yaml").exists() for event_id in events)
-    assert not (project / "output").exists()
+    assert not (default_output_dir(project)).exists()
     broken = events["2024/2024-07-04 - Barbecue"]["staleness"]
     assert broken["stale"] is True
     assert broken["reasons"] == ["no_manifest"]
