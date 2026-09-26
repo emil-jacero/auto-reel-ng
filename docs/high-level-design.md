@@ -150,6 +150,9 @@ Per movie:
 
 Audio is normalized in the same normalize pass (sample rate / channels / codec) so concat can stream-copy.
 
+Each movie is finalized to `<output>/<YYYY>/<title>[ - <location>].mp4`. Colliding output paths are refused
+(**D-9**).
+
 > ⚠️ **Research:** §8.4 stream-copy concat constraints (timebase, B-frames, SPS/PPS, audio priming).
 
 ### 4.4 Title / overlay generation
@@ -510,6 +513,14 @@ Rough dependency order; each becomes one or more OpenSpec changes:
 - **D-8 — Frontend stack: React + Vite + TypeScript** (locked 2026-08-31). A static build served by the
   FastAPI process — **no Node at runtime**; API types generated from the OpenAPI schema; a hard dependency
   budget with **no component library, router, or state library at GUI v1**. (§4.10)
+
+- **D-9 — Output layout** (2026-09-26, change `output-path-year-folder`). Movies go to
+  `<output>/<YYYY>/<title>[ - <location>].mp4`, with the year taken from the event's `metadata.date`. An
+  undated event goes directly under `<output>/`, and the year is never guessed. This is the legacy
+  auto-reel layout, so `adopt-renders` finds the existing archive. `render`, `enqueue` and `adopt-renders`
+  refuse every event whose output path collides with another's (compared case-insensitively, never
+  auto-suffixed). The default output directory is the sibling `<parent>/<root-name>-output`, outside the
+  walked root, so rendered year folders are never scanned as events. (§4.3/§4.11)
 
 ---
 

@@ -67,6 +67,19 @@ write nothing) and `--device <amd|nvidia|intel|cpu|device-id>`.
   chapter (so it is never silently dropped) and reports clips that went `MISSING`.
 - **Per-event isolation:** one event failing to render is reported with its cause
   and does not abort the rest; the exit code is non-zero if any event errored.
+- **Output layout:** each movie is written to
+  `<output>/<YYYY>/<title>[ - <location>].mp4`, where `YYYY` is the year of the
+  event's `metadata.date` (the layout legacy auto-reel used). An event with no date
+  goes directly under `<output>/`. With no `-o` and no `config.yaml` `output`, the
+  output directory is the sibling folder `<parent>/<root-name>-output` (for
+  example, `videos/sorted` → `videos/sorted-output`). Do not point the output
+  inside the walked root: the layouts would scan its year folders back in as events.
+- **Output collisions fail loud:** `render`, `enqueue` and `adopt-renders` refuse
+  every event whose output path it shares with another selected event (compared
+  case-insensitively). Each such event is reported as `ERROR`, nothing is rendered,
+  queued or adopted for it, an existing file at that path is left untouched, and
+  the exit code is non-zero. Fix it by giving one event a distinct `title` or
+  `location` in its `reel.yaml`.
 
 ### Change detection (staleness gate)
 
@@ -106,6 +119,11 @@ current fingerprint — the operator's assertion that today's output reflects
 today's inputs — without rendering anything, so turning on the gate does not
 trigger a full archive re-render. Events with no output are reported as
 unrendered and left alone (they are not adoptable).
+Point `-o` at the legacy auto-reel output root: adoption looks for
+`<output>/<YYYY>/<title>[ - <location>].mp4`, the same year-folder layout legacy
+wrote. Check the `unrendered` count before the first library-wide `render`: an
+event whose legacy name differs from its current title shows up there instead of
+being adopted, and would otherwise be re-rendered.
 
 ### Job scheduler (`enqueue` / `worker` / `jobs`)
 
@@ -148,7 +166,7 @@ encoder after the plan rebuild, so a CPU-only job always runs alongside a GPU
 render rather than waiting behind it.
 
 **Atomic finalize (movie-assembly):** the engine concats to `<output>.mp4.part` in
-the output directory and only `os.replace()`s it into the final path after
+the final output's own directory (its year folder) and only `os.replace()`s it into the final path after
 post-render verification passes. A file existing at the final path is therefore
 always a complete, verified render — even across a hard kill (SIGKILL/OOM/power
 loss) mid-assembly — which is what makes unconditional requeue-on-restart safe.
@@ -261,7 +279,7 @@ the project `look`.
 # config.yaml
 layout: year-event        # ingest layout name
 input: media              # walk root, relative to the project root (optional)
-output: out               # default output directory (optional)
+output: ../out            # output directory (optional; default <parent>/<root-name>-output)
 look:                     # opaque defaults passed to resolve() as look_defaults
   resolution: 1080p
   video_codec: h264
