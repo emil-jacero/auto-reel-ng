@@ -35,6 +35,42 @@ bind). Client code addresses the API **by path alone** — never an absolute bas
 URL — so the same code works behind the dev proxy and when the service serves the
 built assets. Same origin either way; the service needs no CORS.
 
+## A library to develop against
+
+The shared fixture holds one event, which cannot show what the screens must render.
+`scripts/make_dev_library.py` builds a small real-footage library from it (the fixture
+is only read). It cuts 6 s stream-copied clips and lays out 9 events across 2023 and
+2024. Part of the library is rendered through the real queue, then disk is edited so
+the list shows every state:
+
+- fresh, and stale for `editorial`, `output`, `clip_set` and `no_manifest`
+- NEW and MISSING clips
+- an undated event
+- a same-name output clash (`2024-07-14 - Kalas` and `2024-07-15 - Kalas`)
+- latest jobs that are `done`, `failed` and `queued`
+
+The service needs Postgres even to list events (the list carries each event's latest
+job). One-time setup, from the repository root:
+
+```bash
+# a persistent dev database at the dev-default URL (named volume survives restarts)
+podman run -d --name auto-reel-ng-dev-db \
+    -e POSTGRES_USER=auto_reel_ng -e POSTGRES_PASSWORD=auto_reel_ng -e POSTGRES_DB=auto_reel_ng \
+    -v auto-reel-ng-dev-db:/var/lib/postgresql/data -p 127.0.0.1:5432:5432 \
+    docker.io/library/postgres:16-alpine
+.venv/bin/python -m alembic upgrade head
+
+# build (or rebuild from scratch) the library beside the fixture
+.venv/bin/python scripts/make_dev_library.py ../auto-reel-dev
+```
+
+Then run the service against it and the dev server as above, and open
+<http://127.0.0.1:5173/>:
+
+```bash
+.venv/bin/auto-reel serve ../auto-reel-dev/library   # after a reboot: podman start auto-reel-ng-dev-db
+```
+
 ## Regenerating the API types
 
 The client's types are **generated, never hand-written**. Two committed artifacts:
