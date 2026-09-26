@@ -41,6 +41,8 @@ Full source was reviewed end-to-end. The mechanics worth **keeping**:
 
 - Folder-name metadata seeding (`YYYY-MM-DD - Title [- Location]`) + `reel.yaml` override.
 - Chapter-from-subdirectory convention; root clips = default chapter; `original/` skipped; `.reelignore`.
+  Carried by the specs `event-reconcile` ("Legacy folder conventions exclude clips from
+  discovery") and `ingest-layout` ("An event marked with .reelignore is not an event").
 - Sort strategies (datetime / filename / custom order).
 - Dataclass configs with `to_dict()` debug logging; thread/movie/clip logging context.
 - The `gpu:info` Taskfile idea (it already parses `ffmpeg -hwaccels/-encoders/-decoders`).

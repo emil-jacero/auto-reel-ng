@@ -62,9 +62,16 @@ write nothing) and `--device <amd|nvidia|intel|cpu|device-id>`.
 
 - **Layouts** map the project root to event directories: `year-event`
   (`<root>/<year>/<event>/`, the default) and `flat` (events directly under the root).
+  An event directory containing a `.reelignore` file (contents unread) is not an
+  event: both layouts skip it and log `skipping <dir>: .reelignore` at INFO. A marker
+  at year or root level has no effect; deleting the marker restores the event.
 - **Adoption policy:** an event with no `reel.yaml` is seeded from its folder
   structure; on later runs `render` adopts any newly added clip into the default
   chapter (so it is never silently dropped) and reports clips that went `MISSING`.
+  Clips are discovered one level deep: root clips form the default chapter and each
+  immediate subfolder a named chapter. A subfolder named `original` (any case; legacy
+  pre-conversion camera originals) or containing `.reelignore` is never a chapter, and
+  its files are never touched.
 - **Per-event isolation:** one event failing to render is reported with its cause
   and does not abort the rest; the exit code is non-zero if any event errored.
 - **Output layout:** each movie is written to
