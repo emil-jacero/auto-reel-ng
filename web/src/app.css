@@ -1,0 +1,193 @@
+/* Theme tokens; the dark override redefines them and nothing else. */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1c1f23;
+  --muted: #5f6670;
+  --border: #d8dce1;
+  --caption-bg: #f3f5f7;
+  --fresh-bg: #e3f4e8;
+  --fresh-fg: #1d6b35;
+  --stale-bg: #fdf0d8;
+  --stale-fg: #8a5300;
+  --failed-fg: #b3261e;
+  --badge-bg: #e8ecf1;
+  --alert-bg: #fdecea;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181b;
+    --fg: #e6e8eb;
+    --muted: #9aa1ab;
+    --border: #33373d;
+    --caption-bg: #202328;
+    --fresh-bg: #173524;
+    --fresh-fg: #8fd9a8;
+    --stale-bg: #3a2c12;
+    --stale-fg: #f2c46d;
+    --failed-fg: #f28b82;
+    --badge-bg: #2a2e34;
+    --alert-bg: #3b1d1b;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, sans-serif;
+  line-height: 1.4;
+}
+
+main {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.3rem 0.9rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+}
+
+.failure {
+  margin-top: 1rem;
+  padding: 0.25rem 1rem;
+  background: var(--alert-bg);
+  border-radius: 6px;
+}
+
+/* A narrow window scrolls the table, not the page. */
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 1.5rem;
+}
+
+/* Fixed layout so every year's table shares one set of column widths. */
+table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+th:nth-child(1) {
+  width: 7.5rem;
+}
+
+th:nth-child(2) {
+  width: 30%;
+}
+
+th:nth-child(3) {
+  width: 9rem;
+}
+
+th:nth-child(5) {
+  width: 12rem;
+}
+
+caption {
+  text-align: left;
+  font-weight: 600;
+  font-size: 1.1rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--caption-bg);
+}
+
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+td.date {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0 0.4rem;
+  border-radius: 4px;
+  background: var(--badge-bg);
+  font-size: 0.85rem;
+}
+
+.badge-missing,
+.job-failed {
+  color: var(--failed-fg);
+  font-weight: 600;
+}
+
+.pill {
+  display: inline-block;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pill-fresh {
+  background: var(--fresh-bg);
+  color: var(--fresh-fg);
+}
+
+.pill-stale {
+  background: var(--stale-bg);
+  color: var(--stale-fg);
+}
+
+.reasons {
+  margin-left: 0.5rem;
+}
+
+/* Too narrow for shared widths: let each table size itself. */
+@media (max-width: 40rem) {
+  table {
+    table-layout: auto;
+    font-size: 0.9rem;
+  }
+
+  th:nth-child(n) {
+    width: auto;
+  }
+
+  th,
+  td {
+    padding: 0.35rem 0.3rem;
+  }
+}

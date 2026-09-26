@@ -5,9 +5,28 @@ React 19 + Vite + TypeScript, built ahead of time into static assets that
 exists at runtime** — the deployment stays the single Python process, and the
 service starts normally when `dist/` is absent.
 
-There is **no screen here yet**. `src/App.tsx` is a wiring check: it fetches
-`GET /api/v1/events` through the generated types and renders the event count. The
-event-list slice replaces it outright.
+One screen so far, read-only: the **event list** (slice B of §4.10). It answers
+"which events need a render, and why": every event grouped by year, its clip
+counts, its staleness verdict with reasons in words, and its latest job. It reads
+the list on open and on Refresh — never polls, never caches — and reports a failed
+read by its cause (database, a named event's scan, or no answer).
+
+```
+src/
+├── App.tsx               mounts the event list
+├── app.css               layout + light/dark theme tokens
+├── api/
+│   ├── schema.d.ts       generated (see below)
+│   └── events.ts         the events fetch: URL, status codes, problem parsing
+└── events/
+    ├── EventList.tsx     the screen: load/refresh, summary, filter, year tables
+    ├── grouping.ts       groupByYear, needsRender (pure)
+    └── labels.ts         words for staleness reasons and job statuses
+```
+
+`labels.ts` maps each vocabulary through a `Record` over its generated union, so
+a reason or job status added, renamed or removed in the engine is a
+`tsc --noEmit` error until it is given words.
 
 ## The Node toolchain runs in podman
 
