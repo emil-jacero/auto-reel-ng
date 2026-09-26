@@ -69,6 +69,25 @@ def test_scan_reports_staleness_with_reasons(
     assert "stale: no_manifest" in out
 
 
+def test_scan_skips_reelignored_event_and_originals(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "proj"
+    ignored = root / "2017" / "2017-07-07 - Verona"
+    _touch(ignored / "00100.mp4")
+    _touch(ignored / ".reelignore")
+    event = root / "2017" / "2017-07-20 - Båttur"
+    _touch(event / "00400.mp4")
+    _touch(event / "original" / "00400.MTS")
+
+    assert main(["scan", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "Båttur" in out
+    assert "00400.mp4" in out
+    assert "Verona" not in out
+    assert "original" not in out
+
+
 def test_scan_never_writes_a_manifest(tmp_path: Path) -> None:
     root = tmp_path / "proj"
     event = root / "2024" / "2024-06-21 - Midsummer"

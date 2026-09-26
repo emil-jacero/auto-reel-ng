@@ -52,6 +52,13 @@ def test_list_events_matches_scan(client: TestClient) -> None:
     assert barbecue["missing_count"] == 0
 
 
+def test_list_events_excludes_reelignored_event(client: TestClient, project: Path) -> None:
+    _touch(project / "2024" / "2024-06-21 - Midsommar i Dalarna Åäö" / ".reelignore")
+    response = client.get("/api/v1/events")
+    assert response.status_code == 200
+    assert {event["event_id"] for event in response.json()} == {"2024/2024-07-04 - Barbecue"}
+
+
 def test_disk_edit_is_visible_on_next_request(client: TestClient, project: Path) -> None:
     event_dir = project / "2024" / "2024-06-21 - Midsommar i Dalarna Åäö"
     (event_dir / "reel.yaml").write_text(

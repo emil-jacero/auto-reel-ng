@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Iterable, Optional, Protocol
 
 from ..errors import EngineError
-from ..event.discovery import parse_folder_name
+from ..event.discovery import IGNORE_MARKER, is_reelignored, parse_folder_name
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +106,15 @@ def _subdirs(directory: Path) -> list[Path]:
     return sorted((p for p in directory.iterdir() if p.is_dir()), key=lambda p: p.name)
 
 
+def _event_refs(event_dirs: Iterable[Path]) -> Iterable[EventRef]:
+    """Yield an :class:`EventRef` per directory, skipping (and logging) ``.reelignore`` ones."""
+    for event_dir in event_dirs:
+        if is_reelignored(event_dir):
+            logger.info("skipping %s: %s", event_dir, IGNORE_MARKER)
+            continue
+        yield EventRef(event_dir=event_dir, metadata_hint=_folder_hint(event_dir.name))
+
+
 def year_event_layout(root: Path, years: Optional[Iterable[str]] = None) -> Iterable[EventRef]:
     """Walk ``<root>/<year>/<event>/``; optionally restrict to ``years`` (D-6)."""
     root = Path(root)
@@ -113,16 +122,14 @@ def year_event_layout(root: Path, years: Optional[Iterable[str]] = None) -> Iter
     for year_dir in _subdirs(root):
         if year_filter is not None and year_dir.name not in year_filter:
             continue
-        for event_dir in _subdirs(year_dir):
-            yield EventRef(event_dir=event_dir, metadata_hint=_folder_hint(event_dir.name))
+        yield from _event_refs(_subdirs(year_dir))
 
 
 def flat_layout(root: Path, years: Optional[Iterable[str]] = None) -> Iterable[EventRef]:
     """Yield each immediate subdirectory of ``root`` as an event (no year level)."""
     if years:
         logger.debug("flat layout has no year level; ignoring the year filter %s", list(years))
-    for event_dir in _subdirs(Path(root)):
-        yield EventRef(event_dir=event_dir, metadata_hint=_folder_hint(event_dir.name))
+    yield from _event_refs(_subdirs(Path(root)))
 
 
 register_layout("year-event", year_event_layout)
