@@ -222,3 +222,13 @@ def test_editorial_hash_moves_only_on_editorial_change() -> None:
         ignore=changed.ignore,
     )
     assert editorial_hash(changed) != baseline
+
+
+def test_file_added_under_originals_leaves_fingerprint_unchanged(tmp_path: Path) -> None:
+    event_dir = _event_dir(tmp_path)
+    baseline = _fingerprint(event_dir)
+
+    (event_dir / "original").mkdir()
+    (event_dir / "original" / "clip.MTS").write_bytes(b"camera-original")
+
+    assert _fingerprint(event_dir) == baseline

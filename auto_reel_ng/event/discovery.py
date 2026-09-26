@@ -41,6 +41,12 @@ VIDEO_EXTENSIONS = frozenset(
     }
 )
 
+# Legacy archive conventions (carried from auto-reel): a camera's pre-conversion
+# originals live in ``original/``; a ``.reelignore`` file (contents unread) marks an
+# event or chapter directory that must not be discovered.
+ORIGINALS_DIR = "original"
+IGNORE_MARKER = ".reelignore"
+
 # Swedish/English short words kept lowercase in title-case (carried from auto-reel).
 _LOWERCASE_WORDS = frozenset(
     {
@@ -103,8 +109,9 @@ def scan_event(event_dir: Path) -> DiskListing:
     """Scan ``event_dir`` for video clips grouped into disk-derived chapters.
 
     Root-level videos form the default chapter; each immediate subdirectory that
-    contains videos forms a named chapter. Ordering is deterministic (subdirs and
-    files sorted by name). Empty groups are omitted.
+    contains videos forms a named chapter, except ``original/`` (any case) and a
+    subdirectory holding ``.reelignore``. Discovery is one level deep. Ordering is
+    deterministic (subdirs and files sorted by name). Empty groups are omitted.
     """
     event_dir = Path(event_dir)
     groups: list[tuple[str, tuple[str, ...]]] = []
@@ -113,12 +120,23 @@ def scan_event(event_dir: Path) -> DiskListing:
     if root_clips:
         groups.append((DEFAULT_CHAPTER_NAME, root_clips))
 
-    for subdir in sorted((p for p in event_dir.iterdir() if p.is_dir()), key=lambda p: p.name):
+    subdirs = (p for p in event_dir.iterdir() if p.is_dir() and _is_chapter_dir(p))
+    for subdir in sorted(subdirs, key=lambda p: p.name):
         sub_clips = _video_identities(subdir, event_dir)
         if sub_clips:
             groups.append((subdir.name, sub_clips))
 
     return DiskListing(by_chapter=tuple(groups))
+
+
+def is_reelignored(directory: Path) -> bool:
+    """True when ``directory`` carries the legacy ``.reelignore`` marker (contents unread)."""
+    return (directory / IGNORE_MARKER).is_file()
+
+
+def _is_chapter_dir(subdir: Path) -> bool:
+    """An event subdirectory contributes clips unless it holds originals or is ignored."""
+    return subdir.name.casefold() != ORIGINALS_DIR and not is_reelignored(subdir)
 
 
 def seed_document(event_dir: Path) -> ReelDocument:

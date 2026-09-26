@@ -15,7 +15,7 @@ from auto_reel_ng.event.reconcile import (
     ignore_clip,
     reconcile,
 )
-from auto_reel_ng.reel.document import DEFAULT_CHAPTER_NAME
+from auto_reel_ng.reel.document import DEFAULT_CHAPTER_NAME, Chapter, ClipRef, ReelDocument
 
 
 def _touch(path: Path) -> None:
@@ -151,3 +151,74 @@ def test_ignore_is_idempotent(tmp_path: Path) -> None:
     doc = ignore_clip(seed_document(_make_event(tmp_path)), "junk.mp4")
     again = ignore_clip(doc, "junk.mp4")
     assert again.ignore.count("junk.mp4") == 1
+
+
+# --------------------------------------------------------------------------- #
+# Legacy folder conventions: original/, .reelignore, one level deep
+# --------------------------------------------------------------------------- #
+
+
+def _make_converted_event(tmp_path: Path, originals: str = "original") -> Path:
+    event = tmp_path / "2017-07-20 - Båttur"
+    _touch(event / "00400.mp4")
+    _touch(event / "00401.mp4")
+    _touch(event / originals / "00400.MTS")
+    _touch(event / originals / "00401.MTS")
+    return event
+
+
+def test_originals_folder_is_not_a_chapter(tmp_path: Path) -> None:
+    doc = seed_document(_make_converted_event(tmp_path))
+    assert [c.name for c in doc.chapters] == [DEFAULT_CHAPTER_NAME]
+    default_chapter = doc.chapter(DEFAULT_CHAPTER_NAME)
+    assert default_chapter is not None
+    assert [r.identity for r in default_chapter.clips] == ["00400.mp4", "00401.mp4"]
+    assert reconcile(scan_event(tmp_path / "2017-07-20 - Båttur").identities, doc).new == ()
+
+
+def test_originals_folder_is_matched_regardless_of_case(tmp_path: Path) -> None:
+    listing = scan_event(_make_converted_event(tmp_path, originals="Original"))
+    assert listing.identities == ("00400.mp4", "00401.mp4")
+
+
+def test_reelignored_chapter_is_skipped_and_sibling_kept(tmp_path: Path) -> None:
+    event = tmp_path / "2017-07-07 - Verona"
+    _touch(event / "2017-07-06" / "00100.mp4")
+    _touch(event / "dålig-kvalitet" / "00200.mp4")
+    _touch(event / "dålig-kvalitet" / ".reelignore")
+    listing = scan_event(event)
+    assert listing.by_chapter == (("2017-07-06", ("2017-07-06/00100.mp4",)),)
+
+
+def test_originals_nested_in_a_chapter_stay_undiscovered(tmp_path: Path) -> None:
+    event = tmp_path / "2017-07-07 - Verona"
+    _touch(event / "2017-07-10" / "00300.mp4")
+    _touch(event / "2017-07-10" / "original" / "00300.MTS")
+    assert scan_event(event).identities == ("2017-07-10/00300.mp4",)
+
+
+def test_directory_named_reelignore_is_not_the_marker(tmp_path: Path) -> None:
+    event = tmp_path / "2024-06-21 - Midsummer"
+    _touch(event / "Reception" / "00500.mp4")
+    (event / "Reception" / ".reelignore").mkdir()
+    assert scan_event(event).identities == ("Reception/00500.mp4",)
+
+
+def test_document_listing_an_original_reconciles_it_missing(tmp_path: Path) -> None:
+    event = _make_converted_event(tmp_path)
+    original = event / "original" / "00400.MTS"
+    original.write_bytes(b"camera-original")
+    doc = ReelDocument(
+        chapters=(
+            Chapter(name=DEFAULT_CHAPTER_NAME, clips=(ClipRef("00400.mp4"),)),
+            Chapter(name="original", clips=(ClipRef("original/00400.MTS"),)),
+        )
+    )
+    before = doc.to_dict()
+
+    result = reconcile(scan_event(event).identities, doc)
+
+    assert result.missing == ("original/00400.MTS",)
+    assert result.classification["original/00400.MTS"] is ClipStatus.MISSING
+    assert doc.to_dict() == before
+    assert original.read_bytes() == b"camera-original"
