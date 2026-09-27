@@ -70,8 +70,9 @@ def default_build_job(
     )
 
     # The same processable-event rule as the CLI: a failure fails the job with the reason.
-    require_processable(event_dir, load_event_document(event_dir)[0].metadata, today=date.today())
-    event = prepare_and_persist(event_dir)
+    document = load_event_document(event_dir, order=config.sort)[0]
+    require_processable(event_dir, document.metadata, today=date.today())
+    event = prepare_and_persist(event_dir, order=config.sort)
     fingerprint = compute_fingerprint(
         event.document,
         event_dir=event_dir,

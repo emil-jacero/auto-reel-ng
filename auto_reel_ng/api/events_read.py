@@ -19,7 +19,14 @@ from ..analysis.cache import CACHE_SUBDIR, clip_signal, read_entry
 from ..cli.adoption import REEL_FILENAME
 from ..config.project import load_project_config, resolve_look_defaults
 from ..errors import EventMetadataError, ReelParseError
-from ..event.discovery import DiskListing, parse_folder_name, scan_event, seed_document
+from ..event.discovery import (
+    ClipOrder,
+    DiskListing,
+    order_clips,
+    parse_folder_name,
+    scan_event,
+    seed_document,
+)
 from ..event.metadata import load_event_document, require_processable, with_resolved_metadata
 from ..event.reconcile import ClipStatus, ReconcileResult, reconcile
 from ..ffmpeg.runtime import FfmpegRuntime
@@ -94,7 +101,7 @@ def _list_event_refs(settings: ApiSettings) -> List[EventRef]:
 
 
 def _load_for_reconcile(
-    event_id: str, event_dir: Path
+    event_id: str, event_dir: Path, order: ClipOrder
 ) -> tuple[Optional[ReelDocument], DiskListing, ReconcileResult]:
     """Load the document (if any) + disk listing and reconcile them (as ``scan`` does).
 
@@ -103,7 +110,7 @@ def _load_for_reconcile(
     event without a real date and title is an :class:`EventReadError`.
     """
     try:
-        document, seeded = load_event_document(event_dir)
+        document, seeded = load_event_document(event_dir, order=order)
         require_processable(event_dir, document.metadata, today=DateValue.today())
     except (ReelParseError, EventMetadataError) as exc:
         raise EventReadError(event_id, str(exc)) from exc
@@ -148,7 +155,9 @@ def list_events(
     summaries: List[EventSummaryOut] = []
     for ref in refs:
         event_id = event_id_for(settings, ref.event_dir)
-        document, _listing, result = _load_for_reconcile(event_id, ref.event_dir)
+        document, _listing, result = _load_for_reconcile(
+            event_id, ref.event_dir, settings.clip_order
+        )
         title, event_date, location = _title_date_location(ref.event_dir, document)
         summaries.append(
             EventSummaryOut(
@@ -197,18 +206,23 @@ def _build_chapters(
     listing: DiskListing,
     result: ReconcileResult,
     event_dir: Path,
+    order: ClipOrder,
 ) -> List[ChapterOut]:
     """Ordered chapters/clips (D-A3): the document's structure when one exists,
 
     with disk-only NEW clips appended to their disk chapter; the disk listing's
-    own grouping when there is no document yet (the seeding case). Each clip
-    carries the file facts ``_clip_out`` stats — never a probe.
+    own grouping when there is no document yet (the seeding case). Disk clips are
+    placed in the project's sort rule ``order``, as seeding and adoption place them.
+    Each clip carries the file facts ``_clip_out`` stats — never a probe.
     """
     if document is None:
         return [
             ChapterOut(
                 name=name,
-                clips=[_clip_out(event_dir, i, ClipStatus.NEW) for i in identities],
+                clips=[
+                    _clip_out(event_dir, i, ClipStatus.NEW)
+                    for i in order_clips(identities, event_dir, order)
+                ],
             )
             for name, identities in listing.by_chapter
         ]
@@ -225,7 +239,7 @@ def _build_chapters(
 
     by_name = {chapter.name: chapter for chapter in chapters}
     for name, identities in listing.by_chapter:
-        for identity in identities:
+        for identity in order_clips(identities, event_dir, order):
             if identity in seen:
                 continue
             status = result.classification.get(identity, ClipStatus.NEW)
@@ -272,7 +286,8 @@ def staleness_for(
     passes ``use_hash``, so no clip's bytes are read to answer a read request.
     """
     fp_document = with_resolved_metadata(
-        document if document is not None else seed_document(event_dir), event_dir
+        document if document is not None else seed_document(event_dir, order=settings.clip_order),
+        event_dir,
     )
     fingerprint = compute_fingerprint(
         fp_document,
@@ -290,7 +305,7 @@ def get_event(
 ) -> EventDetailOut:
     """``GET /api/v1/events/{event_id}``: current detail, parsed fresh from disk."""
     event_dir = resolve_event_dir(settings, event_id)
-    document, listing, result = _load_for_reconcile(event_id, event_dir)
+    document, listing, result = _load_for_reconcile(event_id, event_dir, settings.clip_order)
     title, event_date, location = _title_date_location(event_dir, document)
     latest_jobs = job_store.latest_by_project(str(settings.project_root))
 
@@ -300,7 +315,7 @@ def get_event(
         date=event_date,
         location=location,
         description=document.metadata.description if document is not None else None,
-        chapters=_build_chapters(document, listing, result, event_dir),
+        chapters=_build_chapters(document, listing, result, event_dir, settings.clip_order),
         missing=list(result.missing),
         latest_job=_job_summary(latest_jobs.get(event_id)),
         staleness=staleness_for(

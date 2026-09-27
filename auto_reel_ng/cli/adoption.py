@@ -5,7 +5,9 @@ the policy lives here:
 
 - No ``reel.yaml`` -> seed a document from disk structure (the seeding case, D-F).
 - A ``reel.yaml`` plus ``NEW`` clips on disk -> adopt each ``NEW`` clip into the
-  default chapter (configurable) so an added file is never silently dropped.
+  default chapter (configurable) so an added file is never silently dropped. They
+  are appended after the chapter's existing clips, in the sort rule's order among
+  themselves; an existing order is never re-sorted.
 - ``MISSING`` clips (referenced, absent from disk) are reported by the caller and
   never removed from the document.
 
@@ -24,7 +26,7 @@ from typing import Optional, Tuple
 
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
-from ..event import ReconcileResult, add_clip, reconcile, scan_event
+from ..event import ClipOrder, ReconcileResult, add_clip, order_clips, reconcile, scan_event
 from ..event.metadata import (
     REEL_FILENAME,
     load_authored_document,
@@ -59,34 +61,36 @@ class PreparedEvent:
         return self.seeded or bool(self.adopted)
 
 
-def load_or_seed(event_dir: Path) -> Tuple[ReelDocument, bool]:
+def load_or_seed(event_dir: Path, *, order: ClipOrder) -> Tuple[ReelDocument, bool]:
     """Load or seed ``event_dir``'s document with resolved metadata (see :mod:`..event.metadata`)."""
-    return load_event_document(event_dir)
+    return load_event_document(event_dir, order=order)
 
 
 def prepare_event(
     event_dir: Path,
     *,
+    order: ClipOrder,
     adopt: bool = True,
     adopt_chapter: str = DEFAULT_CHAPTER_NAME,
 ) -> PreparedEvent:
     """Resolve ``event_dir`` to a document and reconcile it against disk.
 
-    When ``adopt`` is set, every ``NEW`` clip is adopted into ``adopt_chapter``
-    (created if absent) so an added file is included rather than dropped. ``MISSING``
-    clips are left in the document for the caller to report loudly (D-CLI3).
+    When ``adopt`` is set, every ``NEW`` clip is appended to ``adopt_chapter``
+    (created if absent), in ``order`` among themselves, so an added file is included
+    rather than dropped. ``MISSING`` clips are left in the document for the caller
+    to report loudly (D-CLI3).
     """
     event_dir = Path(event_dir)
-    authored, seeded = load_authored_document(event_dir)
+    authored, seeded = load_authored_document(event_dir, order=order)
     listing = scan_event(event_dir)
     result = reconcile(listing.identities, authored)
 
     adopted: Tuple[str, ...] = ()
     if adopt and result.new:
         authored = _ensure_chapter(authored, adopt_chapter)
-        for identity in result.new:
+        adopted = order_clips(result.new, event_dir, order)
+        for identity in adopted:
             authored = add_clip(authored, identity, adopt_chapter)
-        adopted = result.new
 
     return PreparedEvent(
         event_dir=event_dir,

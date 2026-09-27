@@ -19,6 +19,7 @@ from ..config.project import (
     default_output_dir,
     load_project_config,
 )
+from ..event.discovery import ClipOrder
 from ..ingest import DEFAULT_LAYOUT
 from ..persistence.config import resolve_database_url
 
@@ -38,7 +39,8 @@ class ApiSettings:
     (no multi-project model, D-A1); ``walk_root`` is where the ingest layout
     walks from (``project_root`` unless ``config.yaml`` sets ``input``);
     ``output_dir`` is where the staleness gate (§8.14) expects rendered output
-    (``project_root`` unless ``config.yaml`` sets ``output``, mirroring the CLI).
+    (``project_root`` unless ``config.yaml`` sets ``output``, mirroring the CLI);
+    ``clip_order`` is the project's ``sort`` rule, used wherever a read seeds.
     """
 
     project_root: Path
@@ -49,6 +51,7 @@ class ApiSettings:
     port: int
     poll_interval: float
     database_url: str
+    clip_order: ClipOrder
 
 
 def _resolve_str(flag: Optional[str], config_value: object, default: str, *, key: str) -> str:
@@ -130,6 +133,7 @@ def resolve_api_settings(
             key="poll_interval",
         ),
         database_url=resolve_database_url(project_root, env=env),
+        clip_order=resolved_config.sort,
     )
 
 

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from auto_reel_ng.api.app import create_app
 from auto_reel_ng.api.settings import resolve_api_settings
 from auto_reel_ng.config import default_output_dir
+from auto_reel_ng.event import DEFAULT_CLIP_ORDER
 from auto_reel_ng.persistence.job_store import JobStore
 from auto_reel_ng.persistence.models import JobStatus
 
@@ -99,7 +100,7 @@ def _adopt_and_write_manifest(project: Path, event_id: str) -> None:
     from auto_reel_ng.staleness.manifest import write_manifest
 
     event_dir = project / event_id
-    event = prepare_event(event_dir, adopt=True)
+    event = prepare_event(event_dir, order=DEFAULT_CLIP_ORDER, adopt=True)
     persist(event)
     runtime = FfmpegRuntime()
     fingerprint = compute_fingerprint(

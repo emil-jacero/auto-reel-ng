@@ -18,7 +18,13 @@ from typing import Optional, Tuple, TypeVar
 from ..errors import EventMetadataError
 from ..reel import ReelDocument, load_document
 from ..reel.document import Metadata
-from .discovery import FolderName, FolderNameProblem, parse_folder_name, seed_document
+from .discovery import (
+    ClipOrder,
+    FolderName,
+    FolderNameProblem,
+    parse_folder_name,
+    seed_document,
+)
 
 #: The editorial document file name within an event directory.
 REEL_FILENAME = "reel.yaml"
@@ -39,12 +45,16 @@ def resolve_metadata(authored: Metadata, folder: FolderName) -> Metadata:
     )
 
 
-def load_authored_document(event_dir: Path) -> Tuple[ReelDocument, bool]:
-    """``<event>/reel.yaml`` as authored if present, else a folder seed; ``(doc, seeded)``."""
+def load_authored_document(event_dir: Path, *, order: ClipOrder) -> Tuple[ReelDocument, bool]:
+    """``<event>/reel.yaml`` as authored if present, else a folder seed; ``(doc, seeded)``.
+
+    A seed places each chapter's clips in ``order`` (the project's sort rule); an
+    existing ``reel.yaml`` keeps its own order.
+    """
     reel_path = Path(event_dir) / REEL_FILENAME
     if reel_path.exists():
         return load_document(reel_path), False
-    return seed_document(event_dir), True
+    return seed_document(event_dir, order=order), True
 
 
 def with_resolved_metadata(document: ReelDocument, event_dir: Path) -> ReelDocument:
@@ -53,9 +63,9 @@ def with_resolved_metadata(document: ReelDocument, event_dir: Path) -> ReelDocum
     return replace(document, metadata=resolve_metadata(document.metadata, folder))
 
 
-def load_event_document(event_dir: Path) -> Tuple[ReelDocument, bool]:
+def load_event_document(event_dir: Path, *, order: ClipOrder) -> Tuple[ReelDocument, bool]:
     """Load or seed ``event_dir``'s document with resolved metadata; ``(doc, seeded)``."""
-    document, seeded = load_authored_document(event_dir)
+    document, seeded = load_authored_document(event_dir, order=order)
     return with_resolved_metadata(document, event_dir), seeded
 
 

@@ -16,6 +16,7 @@ from auto_reel_ng.accel.profiles import CPUProfile, VaapiProfile
 from auto_reel_ng.cli.adoption import persist, prepare_event
 from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.errors import ProbeError, RenderError
+from auto_reel_ng.event import DEFAULT_CLIP_ORDER
 from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
 from auto_reel_ng.persistence.engine import session_scope
 from auto_reel_ng.persistence.job_store import JobStore
@@ -292,7 +293,7 @@ def test_claimed_job_renders_from_current_disk_state_not_enqueue_time(
     event_dir.mkdir()
     make_clip("2024-01-01 - Original Title/a.mp4", width=320, height=240, duration=1.0)
 
-    persist(prepare_event(event_dir, adopt=True))
+    persist(prepare_event(event_dir, order=DEFAULT_CLIP_ORDER, adopt=True))
     reel_path = event_dir / "reel.yaml"
     assert "Original Title" in reel_path.read_text(encoding="utf-8")
 
@@ -706,7 +707,7 @@ def _seed_project(tmp_path: Path, make_clip, *, name: str = "2024-01-01 - Reunio
     event_dir = tmp_path / name
     event_dir.mkdir()
     make_clip(f"{name}/a.mp4", width=320, height=240, duration=1.0)
-    persist(prepare_event(event_dir, adopt=True))
+    persist(prepare_event(event_dir, order=DEFAULT_CLIP_ORDER, adopt=True))
     return event_dir
 
 

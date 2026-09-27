@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, Mapping, Optional, Tuple
 
 from ..accel.profiles.base import AccelProfile
-from ..event import resolve
+from ..event import ClipOrder, resolve
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..probe import probe_media
 from ..probe.metadata import ClipMetadata
@@ -40,7 +40,9 @@ def _probe_clips(
     return facts
 
 
-def prepare_and_persist(event_dir: Path, *, dry_run: bool = False) -> PreparedEvent:
+def prepare_and_persist(
+    event_dir: Path, *, order: ClipOrder, dry_run: bool = False
+) -> PreparedEvent:
     """Prepare/adopt ``event_dir`` and persist the result (never in dry-run).
 
     The first half of the D-S1 build path, split out so a caller (the
@@ -48,7 +50,7 @@ def prepare_and_persist(event_dir: Path, *, dry_run: bool = False) -> PreparedEv
     post-adoption disk state before deciding whether the second half (probe ->
     resolve, potentially expensive) is worth doing at all.
     """
-    event = prepare_event(event_dir, adopt=True)
+    event = prepare_event(event_dir, order=order, adopt=True)
     if not dry_run:
         path = persist(event)
         if path is not None:
@@ -99,6 +101,7 @@ def build_render_job_from_event(  # pylint: disable=too-many-arguments,too-many-
 def build_render_job(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     event_dir: Path,
     *,
+    order: ClipOrder,
     output_dir: Path,
     runtime: FfmpegRuntime,
     profile: AccelProfile,
@@ -118,7 +121,7 @@ def build_render_job(  # pylint: disable=too-many-arguments,too-many-positional-
     callers rebuild from current disk state through this exact sequence
     (prepare/adopt -> persist -> probe -> resolve) rather than duplicating it.
     """
-    event = prepare_and_persist(event_dir, dry_run=dry_run)
+    event = prepare_and_persist(event_dir, order=order, dry_run=dry_run)
     job = build_render_job_from_event(
         event,
         output_dir=output_dir,

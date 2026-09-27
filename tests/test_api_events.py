@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -11,6 +13,7 @@ from fastapi.testclient import TestClient
 from auto_reel_ng.api.app import create_app
 from auto_reel_ng.api.settings import resolve_api_settings
 from auto_reel_ng.config import default_output_dir
+from auto_reel_ng.event import DEFAULT_CLIP_ORDER
 
 pytestmark = pytest.mark.requires_db
 
@@ -105,7 +108,7 @@ def test_event_detail_reports_staleness_when_fresh(client: TestClient, project: 
     from auto_reel_ng.staleness.manifest import write_manifest
 
     event_dir = project / "2024" / "2024-07-04 - Barbecue"
-    event = prepare_event(event_dir, adopt=True)
+    event = prepare_event(event_dir, order=DEFAULT_CLIP_ORDER, adopt=True)
     persist(event)
     runtime = FfmpegRuntime()
     fingerprint = compute_fingerprint(
@@ -288,7 +291,7 @@ def test_stat_failure_after_the_scan_reports_nulls_not_a_failed_event(
     from auto_reel_ng.api import events_read
 
     event_dir = project / "2024" / "2024-07-04 - Barbecue"
-    document, listing, result = events_read._load_for_reconcile("id", event_dir)
+    document, listing, result = events_read._load_for_reconcile("id", event_dir, DEFAULT_CLIP_ORDER)
 
     # The scan has happened; the clip vanishes before the read model stats it.
     real_stat = Path.stat
@@ -300,7 +303,7 @@ def test_stat_failure_after_the_scan_reports_nulls_not_a_failed_event(
 
     monkeypatch.setattr(Path, "stat", vanished)
 
-    chapters = events_read._build_chapters(document, listing, result, event_dir)
+    chapters = events_read._build_chapters(document, listing, result, event_dir, DEFAULT_CLIP_ORDER)
     clips = {clip.identity: clip for chapter in chapters for clip in chapter.clips}
     assert clips["00500.mp4"].size is None
     assert clips["00500.mp4"].mtime is None
@@ -340,7 +343,7 @@ def _make_fresh(project: Path, event_dir: Path) -> None:
     from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
     from auto_reel_ng.staleness.manifest import write_manifest
 
-    event = prepare_event(event_dir, adopt=True)
+    event = prepare_event(event_dir, order=DEFAULT_CLIP_ORDER, adopt=True)
     persist(event)
     runtime = FfmpegRuntime()
     fingerprint = compute_fingerprint(
@@ -496,3 +499,41 @@ def test_list_loads_the_project_config_once_and_never_hashes_clip_content(
     assert len(body) == 3  # several events, one shared resolved value
     assert config_loads == [project]
     assert hash_flags == [False, False, False]
+
+
+# Names in filename order, with mtimes that run the other way (clip-order).
+_BY_NAME = ("clip2.mp4", "clip10.mp4", "img_4863.mp4", "IMG_4933.mp4")
+
+
+@pytest.mark.parametrize(
+    ("config_text", "expected"),
+    [
+        ("sort:\n  method: filename\n", list(_BY_NAME)),
+        (None, list(reversed(_BY_NAME))),
+    ],
+    ids=["filename", "default-datetime"],
+)
+def test_event_detail_lists_clips_in_configured_order(
+    tmp_path: Path,
+    postgres_container: str,
+    jobs_schema_engine,
+    config_text: str | None,
+    expected: list[str],
+) -> None:
+    root = tmp_path / "proj"
+    event_dir = root / "2024" / "2024-06-21 - A"
+    for index, name in enumerate(_BY_NAME):
+        _touch(event_dir / name)
+        stamp = datetime(2024, 6, 21, 18 - index).timestamp()
+        os.utime(event_dir / name, (stamp, stamp))
+    if config_text is not None:
+        (root / "config.yaml").write_text(config_text, encoding="utf-8")
+    settings = resolve_api_settings(root, env={"DATABASE_URL": postgres_container})
+
+    with TestClient(create_app(settings)) as test_client:
+        response = test_client.get(f"/api/v1/events/{quote('2024/2024-06-21 - A', safe='/')}")
+
+    assert response.status_code == 200
+    (chapter,) = response.json()["chapters"]
+    assert [clip["identity"] for clip in chapter["clips"]] == expected
+    assert not (event_dir / "reel.yaml").exists()  # a GET never seeds to disk

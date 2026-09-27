@@ -12,6 +12,7 @@ from auto_reel_ng.analysis import Segment, SegmentKind
 from auto_reel_ng.cli import commands
 from auto_reel_ng.cli.adoption import persist, prepare_event
 from auto_reel_ng.cli.main import main
+from auto_reel_ng.event import DEFAULT_CLIP_ORDER
 from auto_reel_ng.reel import load_document
 
 
@@ -43,7 +44,7 @@ def test_scan_reports_missing_clip(tmp_path: Path, capsys: pytest.CaptureFixture
     root = tmp_path / "proj"
     event = root / "2024" / "2024-06-21 - Midsummer"
     _touch(event / "00400.mp4")
-    persist(prepare_event(event))  # reel.yaml referencing 00400
+    persist(prepare_event(event, order=DEFAULT_CLIP_ORDER))  # reel.yaml referencing 00400
     (event / "00400.mp4").unlink()  # now absent from disk
 
     assert main(["scan", str(root)]) == 0
@@ -108,7 +109,7 @@ def test_analyze_prints_and_leaves_reel_untouched(
     root = tmp_path / "proj"
     event = root / "2024" / "2024-06-21 - Midsummer"
     _touch(event / "00400.mp4")
-    persist(prepare_event(event))
+    persist(prepare_event(event, order=DEFAULT_CLIP_ORDER))
     before = (event / "reel.yaml").read_text(encoding="utf-8")
 
     monkeypatch.setattr(commands, "FfmpegRuntime", lambda *a, **k: Mock())
@@ -155,7 +156,7 @@ def test_import_does_not_clobber_v2_reel(
     root = tmp_path / "proj"
     event = root / "2024" / "2024-06-21 - Whatever"
     _touch(event / "00400.mp4")
-    persist(prepare_event(event))  # a v2 reel.yaml exists
+    persist(prepare_event(event, order=DEFAULT_CLIP_ORDER))  # a v2 reel.yaml exists
     (event / "metadata.yaml").write_text("metadata:\n  title: Other\n", encoding="utf-8")
     before = (event / "reel.yaml").read_text(encoding="utf-8")
 

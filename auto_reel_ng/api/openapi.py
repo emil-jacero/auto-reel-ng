@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
+from ..event.discovery import DEFAULT_CLIP_ORDER
 from .app import create_app
 from .settings import DEFAULT_HOST, DEFAULT_POLL_INTERVAL_S, DEFAULT_PORT, ApiSettings
 
@@ -46,6 +47,7 @@ def schema_dump_settings() -> ApiSettings:
         port=DEFAULT_PORT,
         poll_interval=DEFAULT_POLL_INTERVAL_S,
         database_url=SCHEMA_DUMP_DATABASE_URL,
+        clip_order=DEFAULT_CLIP_ORDER,
     )
 
 

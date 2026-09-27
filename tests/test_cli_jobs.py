@@ -14,6 +14,7 @@ import pytest
 
 from auto_reel_ng.cli.main import main
 from auto_reel_ng.config import default_output_dir
+from auto_reel_ng.event import DEFAULT_CLIP_ORDER
 from auto_reel_ng.persistence.engine import make_engine, make_session_factory
 from auto_reel_ng.persistence.job_store import JobStore
 from auto_reel_ng.persistence.models import JobStatus
@@ -43,7 +44,7 @@ def _adopt_and_write_manifest(root: Path, event_dir: Path) -> None:
     from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
     from auto_reel_ng.staleness.manifest import write_manifest
 
-    event = prepare_event(event_dir, adopt=True)
+    event = prepare_event(event_dir, order=DEFAULT_CLIP_ORDER, adopt=True)
     persist(event)
     runtime = FfmpegRuntime()
     fingerprint = compute_fingerprint(

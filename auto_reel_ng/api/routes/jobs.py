@@ -57,7 +57,7 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
 
     runtime = request.app.state.runtime
     look_defaults = resolve_look_defaults(load_project_config(settings.project_root))
-    document = load_or_seed(event_dir)[0]
+    document = load_or_seed(event_dir, order=settings.clip_order)[0]
     fingerprint = compute_fingerprint(
         document, event_dir=event_dir, look_defaults=look_defaults, ffmpeg_version=runtime.version
     )

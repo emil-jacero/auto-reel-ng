@@ -40,7 +40,7 @@ from ..config import (
     resolve_look_defaults,
 )
 from ..errors import EngineError, EventMetadataError, ReelError
-from ..event import ReconcileResult, reconcile, scan_event
+from ..event import ClipOrder, ReconcileResult, reconcile, scan_event
 from ..event.metadata import require_processable
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..ingest import DEFAULT_LAYOUT, EventRef, get_layout
@@ -121,7 +121,9 @@ def _project_context(args: argparse.Namespace) -> ProjectContext:
     )
 
 
-def _checked_document(ref: EventRef, today: date) -> Tuple[Optional[ReelDocument], Optional[str]]:
+def _checked_document(
+    ref: EventRef, today: date, order: ClipOrder
+) -> Tuple[Optional[ReelDocument], Optional[str]]:
     """(document, None) for a processable event, or (None, reason) — never raises ReelError.
 
     The per-event isolation point for document errors (headless-cli): an event whose
@@ -129,7 +131,7 @@ def _checked_document(ref: EventRef, today: date) -> Tuple[Optional[ReelDocument
     title, is reported by the caller and skipped; the batch continues.
     """
     try:
-        document, _seeded = load_or_seed(ref.event_dir)
+        document, _seeded = load_or_seed(ref.event_dir, order=order)
         require_processable(ref.event_dir, document.metadata, today=today)
     except EventMetadataError as exc:
         return None, exc.reason
@@ -139,13 +141,13 @@ def _checked_document(ref: EventRef, today: date) -> Tuple[Optional[ReelDocument
 
 
 def _checked_documents(
-    events: List[EventRef], today: date
+    events: List[EventRef], today: date, order: ClipOrder
 ) -> Tuple[Dict[Path, ReelDocument], Dict[Path, str]]:
     """Split ``events`` into processable documents and per-event failure reasons."""
     documents: Dict[Path, ReelDocument] = {}
     failures: Dict[Path, str] = {}
     for ref in events:
-        document, reason = _checked_document(ref, today)
+        document, reason = _checked_document(ref, today, order)
         if document is None:
             failures[ref.event_dir] = str(reason)
         else:
@@ -177,6 +179,7 @@ def cmd_render(args: argparse.Namespace) -> int:
     # enumerate -> [staleness gate] -> build jobs -> render_batch
     candidates, fresh, invalid = _staleness_filter(
         ctx.events,
+        order=ctx.config.sort,
         output_dir=ctx.output_dir,
         look_defaults=look_defaults,
         ffmpeg_version=runtime.version,
@@ -249,6 +252,7 @@ class _Candidate:
 def _staleness_filter(
     events: List[EventRef],
     *,
+    order: ClipOrder,
     output_dir: Path,
     look_defaults: Mapping[str, object],
     ffmpeg_version: Tuple[int, int],
@@ -272,11 +276,11 @@ def _staleness_filter(
     fresh: List[_Candidate] = []
     failed: List[Tuple[Path, str]] = []
     for ref in events:
-        _document, reason = _checked_document(ref, today)
+        _document, reason = _checked_document(ref, today, order)
         if reason is not None:
             failed.append((ref.event_dir, reason))
             continue
-        event = prepare_and_persist(ref.event_dir, dry_run=dry_run)
+        event = prepare_and_persist(ref.event_dir, order=order, dry_run=dry_run)
         if event.adopted:
             print(f"+  {ref.event_dir.name}: adopted {len(event.adopted)} new clip(s)")
         if event.reconcile.missing:
@@ -397,7 +401,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
     errors = 0
     for ref in ctx.events:
         # The resolved (loaded or folder-seeded) document; scan never adopts or writes.
-        fp_document, reason = _checked_document(ref, today)
+        fp_document, reason = _checked_document(ref, today, ctx.config.sort)
         if fp_document is None:
             print(f"\nERROR  {ref.event_dir.name}: {reason}")
             errors += 1
@@ -623,7 +627,7 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
     force = args.force
 
     # A failing event is excluded before the collision check: it can never claim a path.
-    documents, failures = _checked_documents(ctx.events, date.today())
+    documents, failures = _checked_documents(ctx.events, date.today(), ctx.config.sort)
     refused = _output_collisions({d: doc.metadata for d, doc in documents.items()})
     for event_dir_path, message in (*failures.items(), *refused.items()):
         print(f"ERROR  {event_dir_path.name}: {message}")
@@ -875,7 +879,7 @@ def cmd_adopt_renders(args: argparse.Namespace) -> int:
     look_defaults = resolve_look_defaults(ctx.config)
 
     # A failing event is excluded before the collision check: it can never claim a path.
-    documents, failures = _checked_documents(ctx.events, date.today())
+    documents, failures = _checked_documents(ctx.events, date.today(), ctx.config.sort)
     # One file cannot be adopted as two movies: refuse every claimant of a shared path.
     refused = _output_collisions({d: doc.metadata for d, doc in documents.items()})
     for event_dir, message in (*failures.items(), *refused.items()):

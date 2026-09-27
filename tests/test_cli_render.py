@@ -8,6 +8,8 @@ the exit code (D-CLI5).
 
 from __future__ import annotations
 
+import os
+from datetime import datetime
 from pathlib import Path
 from typing import List
 from unittest.mock import Mock
@@ -20,6 +22,9 @@ from auto_reel_ng.cli import commands
 from auto_reel_ng.cli.main import main
 from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.errors import ProbeError
+from auto_reel_ng.event import DEFAULT_CLIP_ORDER
+from auto_reel_ng.reel import load_document
+from auto_reel_ng.reel.document import DEFAULT_CHAPTER_NAME
 from auto_reel_ng.render import BatchOutcome, RenderJob, RenderResult
 
 
@@ -186,6 +191,7 @@ def test_build_render_job_is_the_shared_d_s1_build_path(
 
     job, event = build_module.build_render_job(
         event_dir,
+        order=DEFAULT_CLIP_ORDER,
         output_dir=output_dir,
         runtime=commands.FfmpegRuntime(),
         profile=CPUProfile(),
@@ -215,3 +221,45 @@ def test_default_output_year_folders_are_not_scanned_as_events(
     assert "Midsommar" in out
     assert "[" + str(root / "2024" / "2024-06-21 - Midsommar") + "]" in out
     assert str(rendered.parent) not in out
+
+
+# Names in filename order, with mtimes that run the other way (clip-order).
+_BY_NAME = ("clip2.mp4", "clip10.mp4", "img_4863.mp4", "IMG_4933.mp4")
+
+
+@pytest.mark.parametrize(
+    ("config_text", "expected"),
+    [
+        ("sort:\n  method: filename\n", list(_BY_NAME)),
+        (None, list(reversed(_BY_NAME))),
+    ],
+    ids=["filename", "default-datetime"],
+)
+def test_render_persists_seed_in_configured_clip_order(
+    tmp_path: Path,
+    patched_engine: pytest.MonkeyPatch,
+    config_text: str | None,
+    expected: list[str],
+) -> None:
+    root = tmp_path / "proj"
+    event_dir = root / "2024" / "2024-06-21 - A"
+    for index, name in enumerate(_BY_NAME):
+        _touch(event_dir / name)
+        stamp = datetime(2024, 6, 21, 18 - index).timestamp()
+        os.utime(event_dir / name, (stamp, stamp))
+    if config_text is not None:
+        (root / "config.yaml").write_text(config_text, encoding="utf-8")
+    patched_engine.setattr(
+        commands,
+        "render_batch",
+        lambda jobs: [
+            BatchOutcome(job=job, result=RenderResult(output_path=job.options.output_dir / "a.mp4"))
+            for job in jobs
+        ],
+    )
+
+    assert main(["render", str(root)]) == 0
+
+    chapter = load_document(event_dir / "reel.yaml").chapter(DEFAULT_CHAPTER_NAME)
+    assert chapter is not None
+    assert [ref.identity for ref in chapter.clips] == expected

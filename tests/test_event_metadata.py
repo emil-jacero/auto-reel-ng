@@ -10,6 +10,7 @@ from ruamel.yaml import YAML
 
 from auto_reel_ng.cli.adoption import persist, prepare_event
 from auto_reel_ng.errors import EventMetadataError
+from auto_reel_ng.event import DEFAULT_CLIP_ORDER
 from auto_reel_ng.event.discovery import parse_folder_name
 from auto_reel_ng.event.metadata import (
     REEL_FILENAME,
@@ -75,7 +76,7 @@ def test_legacy_reel_yaml_without_date_takes_folder_date(tmp_path: Path) -> None
     event_dir = _event(
         tmp_path, "2025-01-13 - Resa till Gran Canaria", "title: Resa till Gran Canaria\n"
     )
-    document, seeded = load_event_document(event_dir)
+    document, seeded = load_event_document(event_dir, order=DEFAULT_CLIP_ORDER)
     assert seeded is False
     assert document.metadata.date == date(2025, 1, 13)
     assert document.metadata.title == "Resa till Gran Canaria"
@@ -87,7 +88,7 @@ def test_reel_yaml_date_beats_impossible_folder_date(tmp_path: Path) -> None:
         "2019-04-31 - Golfträning med Emil - Tjörn",
         "version: 0\nmetadata:\n  date: 2019-04-30\n",
     )
-    document, _ = load_event_document(event_dir)
+    document, _ = load_event_document(event_dir, order=DEFAULT_CLIP_ORDER)
     assert document.metadata.date == date(2019, 4, 30)
     assert document.metadata.title == "Golfträning med Emil"
     require_processable(event_dir, document.metadata, today=TODAY)
@@ -102,7 +103,9 @@ def test_reel_yaml_date_beats_impossible_folder_date(tmp_path: Path) -> None:
 )
 def test_resolution_is_never_persisted(tmp_path: Path, reel_yaml: str) -> None:
     event_dir = _event(tmp_path, "2025-01-13 - Resa till Gran Canaria", reel_yaml)
-    prepared = prepare_event(event_dir)  # 00400.mp4 is NEW -> adopted -> changed
+    prepared = prepare_event(
+        event_dir, order=DEFAULT_CLIP_ORDER
+    )  # 00400.mp4 is NEW -> adopted -> changed
     assert prepared.adopted == ("00400.mp4",)
     assert prepared.document.metadata.date == date(2025, 1, 13)
 
@@ -126,7 +129,7 @@ def test_resolution_is_never_persisted(tmp_path: Path, reel_yaml: str) -> None:
 )
 def test_missing_date_names_the_folder_problem(tmp_path: Path, name: str, phrase: str) -> None:
     event_dir = _event(tmp_path, name)
-    document, _ = load_event_document(event_dir)
+    document, _ = load_event_document(event_dir, order=DEFAULT_CLIP_ORDER)
     with pytest.raises(EventMetadataError) as info:
         require_processable(event_dir, document.metadata, today=TODAY)
     assert phrase in info.value.reason
@@ -136,7 +139,7 @@ def test_missing_date_names_the_folder_problem(tmp_path: Path, name: str, phrase
 
 def test_missing_title_is_rejected(tmp_path: Path) -> None:
     event_dir = _event(tmp_path, "2024-06-21")
-    document, _ = load_event_document(event_dir)
+    document, _ = load_event_document(event_dir, order=DEFAULT_CLIP_ORDER)
     with pytest.raises(EventMetadataError, match="no title.*metadata.title"):
         require_processable(event_dir, document.metadata, today=TODAY)
 
@@ -144,7 +147,7 @@ def test_missing_title_is_rejected(tmp_path: Path) -> None:
 def test_future_date_is_rejected(tmp_path: Path) -> None:
     tomorrow = TODAY + timedelta(days=1)
     event_dir = _event(tmp_path, f"{tomorrow.isoformat()} - Framtid")
-    document, _ = load_event_document(event_dir)
+    document, _ = load_event_document(event_dir, order=DEFAULT_CLIP_ORDER)
     with pytest.raises(EventMetadataError, match="in the future"):
         require_processable(event_dir, document.metadata, today=TODAY)
     require_processable(event_dir, document.metadata, today=tomorrow)
@@ -154,5 +157,5 @@ def test_reel_yaml_date_fixes_a_year_only_folder(tmp_path: Path) -> None:
     event_dir = _event(
         tmp_path, "2004 - Yngve berättar om skövde", "version: 0\nmetadata:\n  date: 2004-05-01\n"
     )
-    document, _ = load_event_document(event_dir)
+    document, _ = load_event_document(event_dir, order=DEFAULT_CLIP_ORDER)
     require_processable(event_dir, document.metadata, today=TODAY)
