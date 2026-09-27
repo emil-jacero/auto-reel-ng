@@ -1,10 +1,4 @@
-# project-config Specification
-
-## Purpose
-
-Load a project-level `config.yaml` of shared, all-optional defaults — a `look` map, the ingest layout name, default input/output paths, and the clip `sort` rule — tolerating missing or partial files while failing loud on malformed ones. Resolve effective settings through a defined layered order (folder/layout seed → project `config.yaml` → event `reel.yaml` → command-line overrides) so each later layer overrides the earlier, passing the resolved `look` map to `resolve()` as `look_defaults`.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Load a project config.yaml of shared defaults
 
@@ -47,25 +41,3 @@ default. Any other method, or a wrong-typed value, SHALL fail loud like any othe
 
 - **WHEN** `config.yaml` sets `sort: {method: custom}` or `sort: {reverse: "yes"}`
 - **THEN** the system raises a typed configuration error naming `sort.method` or `sort.reverse`
-
-### Requirement: Layered configuration resolution (D-2)
-
-The system SHALL resolve effective settings in the order folder/layout seed → project
-`config.yaml` → event `reel.yaml` → command-line overrides, with each later layer overriding the
-earlier. The resolved `look` map SHALL be passed to `resolve()` as `look_defaults`, which already
-treats it opaquely.
-
-#### Scenario: reel.yaml overrides config.yaml
-
-- **WHEN** `config.yaml` sets a default resolution and an event's `reel.yaml` sets a different one
-- **THEN** the event renders at the `reel.yaml` resolution
-
-#### Scenario: CLI flag overrides config.yaml
-
-- **WHEN** `config.yaml` sets a default and the matching CLI flag is passed
-- **THEN** the CLI flag value wins for that run
-
-#### Scenario: Config default applies when nothing overrides
-
-- **WHEN** `config.yaml` sets a default that no `reel.yaml` or CLI flag overrides
-- **THEN** that default is used
