@@ -147,3 +147,67 @@ def test_fresh_document_without_sort_omits_it() -> None:
 
     assert "sort" not in dumps_document(ReelDocument())
 
+
+def test_dated_legacy_title_splits_off_the_date() -> None:
+    result = import_legacy({"title": "2025-01-13 - Resa till Gran Canaria"})
+    assert result.document.metadata.title == "Resa till Gran Canaria"
+    assert result.document.metadata.date == date(2025, 1, 13)
+    assert result.unmapped == ()
+
+
+def test_dated_legacy_title_with_the_same_date_splits() -> None:
+    legacy = {"title": "2025-01-13 - Resa", "metadata": {"date": date(2025, 1, 13)}}
+    doc = import_legacy(legacy).document
+    assert (doc.metadata.title, doc.metadata.date) == ("Resa", date(2025, 1, 13))
+
+
+def test_dated_legacy_title_with_a_different_date_is_kept_verbatim() -> None:
+    legacy = {"title": "2025-01-13 - Resa", "metadata": {"date": date(2025, 1, 14)}}
+    doc = import_legacy(legacy).document
+    assert (doc.metadata.title, doc.metadata.date) == ("2025-01-13 - Resa", date(2025, 1, 14))
+
+
+def test_legacy_title_with_an_impossible_date_is_kept_verbatim() -> None:
+    doc = import_legacy({"title": "2019-04-31 - X"}).document
+    assert (doc.metadata.title, doc.metadata.date) == ("2019-04-31 - X", None)
+
+
+def test_dated_legacy_title_loads_from_disk_text() -> None:
+    doc = loads_document('title: "2025-01-13 - Resa till Gran Canaria"\n')
+    assert (doc.metadata.title, doc.metadata.date) == ("Resa till Gran Canaria", date(2025, 1, 13))
+
+
+def test_legacy_metadata_block_title_is_never_split() -> None:
+    doc = import_legacy({"metadata": {"title": "2025-01-13 - Resa"}}).document
+    assert (doc.metadata.title, doc.metadata.date) == ("2025-01-13 - Resa", None)
+
+
+def test_legacy_custom_sort_is_carried() -> None:
+    from auto_reel_ng.reel.document import ClipOrder, SortMethod
+
+    legacy = {"sort": {"method": "custom", "custom_order": {"b.mp4": 1}, "reverse": True}}
+    result = import_legacy(legacy)
+    assert result.document.sort == ClipOrder(
+        method=SortMethod.CUSTOM, reverse=True, custom_order={"b.mp4": 1}
+    )
+    assert not any("sort" in u for u in result.unmapped)
+
+
+def test_legacy_sort_survives_a_write() -> None:
+    doc = loads_document("sort:\n  method: filename\n  reverse: true\n")
+    assert loads_document(dumps_document(doc)).sort == doc.sort
+
+
+def test_unknown_legacy_sort_method_is_reported_and_not_carried() -> None:
+    result = import_legacy({"sort": {"method": "random"}})
+    assert any("sort.method" in u for u in result.unmapped)
+    assert result.document.sort is None
+
+
+def test_legacy_custom_order_without_custom_is_reported() -> None:
+    from auto_reel_ng.reel.document import SortMethod
+
+    result = import_legacy({"sort": {"method": "filename", "custom_order": {"a.mp4": 1}}})
+    assert any("sort.custom_order" in u for u in result.unmapped)
+    assert result.document.sort is not None
+    assert result.document.sort.method is SortMethod.FILENAME
