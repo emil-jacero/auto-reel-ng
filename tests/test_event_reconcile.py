@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date
+import os
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -10,7 +11,9 @@ import pytest
 
 from auto_reel_ng.errors import ReconcileError
 from auto_reel_ng.event.discovery import (
+    ClipOrder,
     FolderNameProblem,
+    SortMethod,
     parse_folder_name,
     scan_event,
     seed_document,
@@ -289,3 +292,74 @@ def test_document_listing_an_original_reconciles_it_missing(tmp_path: Path) -> N
     assert result.classification["original/00400.MTS"] is ClipStatus.MISSING
     assert doc.to_dict() == before
     assert original.read_bytes() == b"camera-original"
+
+
+# --------------------------------------------------------------------------- #
+# Clip order (clip-order)
+# --------------------------------------------------------------------------- #
+
+
+def _touch_at(path: Path, when: datetime) -> None:
+    """Create a placeholder clip with modification time ``when``."""
+    _touch(path)
+    stamp = when.timestamp()
+    os.utime(path, (stamp, stamp))
+
+
+def _default_clips(doc: ReelDocument) -> list[str]:
+    chapter = doc.chapter(DEFAULT_CHAPTER_NAME)
+    assert chapter is not None
+    return [r.identity for r in chapter.clips]
+
+
+def test_datetime_order_interleaves_two_cameras(tmp_path: Path) -> None:
+    event = tmp_path / "2024-04-20 - Lasse 80 år"
+    _touch_at(event / "S1600003.MP4", datetime(2024, 4, 20, 14, 32))
+    _touch_at(event / "P1110550.MP4", datetime(2024, 4, 20, 16, 36))
+    _touch_at(event / "S1600005.MP4", datetime(2024, 4, 20, 16, 35))
+    assert _default_clips(seed_document(event)) == [
+        "S1600003.MP4",
+        "S1600005.MP4",
+        "P1110550.MP4",
+    ]
+
+
+def test_filename_order_is_natural_and_ignores_case(tmp_path: Path) -> None:
+    event = tmp_path / "2022-04-03 - Olika djur"
+    for name in ("IMG_4933.mp4", "img_4863.mp4", "clip10.mp4", "clip2.mp4"):
+        _touch(event / name)
+    doc = seed_document(event, order=ClipOrder(method=SortMethod.FILENAME))
+    assert _default_clips(doc) == ["clip2.mp4", "clip10.mp4", "img_4863.mp4", "IMG_4933.mp4"]
+
+
+def test_equal_mtimes_fall_back_to_filename_order(tmp_path: Path) -> None:
+    event = tmp_path / "2024-01-01 - Tie"
+    when = datetime(2024, 1, 1, 12, 0)
+    for name in ("clip10.mp4", "CLIP2.mp4", "clip1.mp4"):
+        _touch_at(event / name, when)
+    assert _default_clips(seed_document(event)) == ["clip1.mp4", "CLIP2.mp4", "clip10.mp4"]
+
+
+@pytest.mark.parametrize("method", list(SortMethod))
+def test_reverse_flips_the_order(tmp_path: Path, method: SortMethod) -> None:
+    event = tmp_path / "2024-01-01 - Reverse"
+    _touch_at(event / "a.mp4", datetime(2024, 1, 1, 10, 0))
+    _touch_at(event / "b.mp4", datetime(2024, 1, 1, 11, 0))
+    _touch_at(event / "c.mp4", datetime(2024, 1, 1, 12, 0))
+    forward = _default_clips(seed_document(event, order=ClipOrder(method=method)))
+    backward = _default_clips(seed_document(event, order=ClipOrder(method=method, reverse=True)))
+    assert forward == ["a.mp4", "b.mp4", "c.mp4"]
+    assert backward == list(reversed(forward))
+
+
+def test_clip_order_keeps_chapter_order(tmp_path: Path) -> None:
+    event = tmp_path / "2024-01-01 - Chapters"
+    _touch_at(event / "Zeta" / "z.mp4", datetime(2024, 1, 1, 9, 0))
+    _touch_at(event / "Alpha" / "b.mp4", datetime(2024, 1, 1, 11, 0))
+    _touch_at(event / "Alpha" / "a.mp4", datetime(2024, 1, 1, 12, 0))
+    _touch_at(event / "root.mp4", datetime(2024, 1, 1, 13, 0))
+    doc = seed_document(event)
+    assert [c.name for c in doc.chapters] == [DEFAULT_CHAPTER_NAME, "Alpha", "Zeta"]
+    alpha = doc.chapter("Alpha")
+    assert alpha is not None
+    assert [r.identity for r in alpha.clips] == ["Alpha/b.mp4", "Alpha/a.mp4"]

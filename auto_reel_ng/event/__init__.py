@@ -8,7 +8,15 @@ applies a desired editorial state onto an event's document and persists it.
 
 from __future__ import annotations
 
-from .discovery import DiskListing, scan_event, seed_document
+from .discovery import (
+    DEFAULT_CLIP_ORDER,
+    ClipOrder,
+    DiskListing,
+    SortMethod,
+    order_clips,
+    scan_event,
+    seed_document,
+)
 from .editorial import apply_editorial_write
 from .plan import RenderPlan, ResolvedChapter, ResolvedClip
 from .reconcile import ClipStatus, ReconcileResult, add_clip, ignore_clip, reconcile
@@ -25,6 +33,11 @@ __all__ = [
     "DiskListing",
     "scan_event",
     "seed_document",
+    # clip order
+    "ClipOrder",
+    "SortMethod",
+    "DEFAULT_CLIP_ORDER",
+    "order_clips",
     # reconcile
     "ClipStatus",
     "ReconcileResult",

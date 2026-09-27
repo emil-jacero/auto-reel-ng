@@ -11,12 +11,13 @@ document — every disk clip is NEW and becomes part of the seeded structure.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 from ..reel.document import DEFAULT_CHAPTER_NAME, Chapter, ClipRef, Metadata, ReelDocument
 from .reconcile import ClipStatus, reconcile
@@ -140,11 +141,62 @@ def _is_chapter_dir(subdir: Path) -> bool:
     return subdir.name.casefold() != ORIGINALS_DIR and not is_reelignored(subdir)
 
 
-def seed_document(event_dir: Path) -> ReelDocument:
+class SortMethod(StrEnum):
+    """How clips entering a document are ordered (auto-reel's ``sort.method``, minus ``custom``)."""
+
+    DATETIME = "datetime"  # file mtime, oldest first; ties by the filename order
+    FILENAME = "filename"  # natural, case-insensitive file name order
+
+
+@dataclass(frozen=True)
+class ClipOrder:
+    """The sort rule for clips entering a document (seeding and NEW-clip adoption)."""
+
+    method: SortMethod = SortMethod.DATETIME
+    reverse: bool = False
+
+
+#: auto-reel's own default: ``datetime``, not reversed.
+DEFAULT_CLIP_ORDER = ClipOrder()
+
+_DIGITS_RE = re.compile(r"(\d+)")
+
+
+def natural_key(name: str) -> tuple[tuple[int, int | str], ...]:
+    """Digit runs as ints, everything else casefolded: clip2 < clip10, img_4863 < IMG_4933."""
+    return tuple(
+        (0, int(part)) if part.isdigit() else (1, part.casefold())
+        for part in _DIGITS_RE.split(name)
+        if part
+    )
+
+
+def order_clips(identities: Sequence[str], event_dir: Path, order: ClipOrder) -> tuple[str, ...]:
+    """Order event-relative ``identities`` by ``order``; never probes (``datetime`` = ``st_mtime``).
+
+    ``stat`` follows symlinks, so a symlinked clip sorts by its target's mtime.
+    """
+    event_dir = Path(event_dir)
+
+    def filename_key(identity: str) -> tuple[tuple[tuple[int, int | str], ...], str]:
+        return natural_key(Path(identity).name), identity
+
+    if order.method is SortMethod.DATETIME:
+        mtimes = {identity: os.stat(event_dir / identity).st_mtime for identity in identities}
+        ordered = sorted(identities, key=lambda i: (mtimes[i], filename_key(i)))
+    else:
+        ordered = sorted(identities, key=filename_key)
+    if order.reverse:
+        ordered.reverse()
+    return tuple(ordered)
+
+
+def seed_document(event_dir: Path, *, order: ClipOrder = DEFAULT_CLIP_ORDER) -> ReelDocument:
     """Seed a complete v0 :class:`ReelDocument` from ``event_dir`` folder structure.
 
-    Metadata comes from the folder name; structure comes from the disk scan. The
-    seed is validated as reconcile against an empty document (every clip NEW).
+    Metadata comes from the folder name; structure comes from the disk scan, with
+    each chapter's clips placed in ``order``. The seed is validated as reconcile
+    against an empty document (every clip NEW).
     """
     event_dir = Path(event_dir)
     listing = scan_event(event_dir)
@@ -155,7 +207,10 @@ def seed_document(event_dir: Path) -> ReelDocument:
 
     metadata = _metadata_from_folder_name(event_dir.name)
     chapters = tuple(
-        Chapter(name=name, clips=tuple(ClipRef(identity) for identity in clips))
+        Chapter(
+            name=name,
+            clips=tuple(ClipRef(identity) for identity in order_clips(clips, event_dir, order)),
+        )
         for name, clips in listing.by_chapter
     )
     return ReelDocument(metadata=metadata, chapters=chapters)
