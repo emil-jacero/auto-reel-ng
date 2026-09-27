@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, replace
+from fractions import Fraction
 from pathlib import Path
 from typing import Mapping, Optional
 
@@ -114,6 +115,22 @@ def _overlay_enable(overlay: OverlaySpec) -> Optional[str]:
     if overlay.end is None:
         return f"gte(t,{_fmt(overlay.start)})"
     return f"between(t,{_fmt(overlay.start)},{_fmt(overlay.end)})"
+
+
+def _needs_pad(clip: ClipMetadata, rotate: Optional[int], target: TargetSpec) -> bool:
+    """Whether normalizing ``clip`` onto the canvas leaves a region to pad.
+
+    Compared as exact ratios, so a 1920x1088 clip needs padding and every exact 16:9
+    size does not. Both the pixel aspect (what the aspect-preserving scale sees; no
+    scale honours SAR) and the display aspect (SAR applied) must match the canvas.
+    The segment's explicit ``rotate`` wins over the clip's own rotation metadata.
+    """
+    quarter_turn = (rotate or clip.rotation or 0) % 180 == 90
+    width, height = (clip.height, clip.width) if quarter_turn else (clip.width, clip.height)
+    canvas = Fraction(target.width, target.height)
+    sar = Fraction(_normalize_sar(clip.sample_aspect_ratio).replace(":", "/"))
+    pixel_aspect = Fraction(width, height)
+    return pixel_aspect != canvas or pixel_aspect * sar != canvas
 
 
 def _canvas_stages(
@@ -230,6 +247,7 @@ def build_normalize_command(
         codec=target.video_codec,
         render_node=render_node,
         fill_color=target.fill_color,
+        needs_pad=_needs_pad(clip, segment.rotate, target),
     )
     decode = profile.fragment(OpClass.DECODE, params)
     encode = profile.fragment(OpClass.ENCODE, params)
@@ -248,7 +266,7 @@ def build_normalize_command(
     duration = segment.span_duration if segment.span_duration is not None else clip.duration
 
     # A software decode opens no device, so a chain that uploads to a hardware
-    # encoder must name one; a hardware decode's device already serves hwupload.
+    # encoder must name one; a hardware decode names its own, shared with filters.
     device_flags: tuple[str, ...] = ()
     if decode.frames_out is FrameLocation.SYSTEM and _transfer_filter("hwupload") in value:
         device_flags = _upload_device_flags(profile, params)

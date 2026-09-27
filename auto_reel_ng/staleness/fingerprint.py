@@ -31,7 +31,8 @@ PathLike = Union[str, Path]
 #: risks a missed re-render (mitigated by ``--force``); over-bumping costs one
 #: archive re-render — accepted trade-off (D-C8).
 #: 2: render-target-format (1920x1080 / highest-clip-fps canvas, not the first clip's).
-RENDER_GRAPH_VERSION = 2
+#: 3: vaapi-pad-fill (padded clips render black bars, not pad_vaapi's green, on Mesa).
+RENDER_GRAPH_VERSION = 3
 
 #: The four fingerprint components, in the fixed order the combined hash uses.
 COMPONENTS = ("editorial", "defaults", "clip_set", "engine")

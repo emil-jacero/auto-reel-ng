@@ -67,6 +67,7 @@ from auto_reel_ng.render import (
     resolve_target,
     verify_output,
 )
+from auto_reel_ng.render.normalize import NormalizeCommand, _needs_pad
 
 # --------------------------------------------------------------------------- #
 # Fixtures / factories                                                         #
@@ -384,13 +385,10 @@ def test_amd_vaapi_normalize_chain() -> None:
     )
     args = command.args
     assert _subseq(args, ["-hwaccel", "vaapi"])
+    # An exact 16:9 clip fills the canvas: scale_vaapi alone, no pad, no transfer.
     assert _subseq(
         args,
-        [
-            "-vf",
-            "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease,"
-            "pad_vaapi=w=1920:h=1080:x=(ow-iw)/2:y=(oh-ih)/2:color=black",
-        ],
+        ["-vf", "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease"],
     )
     assert _subseq(args, ["-c:v", "h264_vaapi"])
     assert _subseq(args, ["-map", "0:v:0"]) and _subseq(args, ["-map", "0:a:0"])
@@ -399,12 +397,107 @@ def test_amd_vaapi_normalize_chain() -> None:
     assert not command.warnings
 
 
-def test_hardware_decode_opens_the_upload_device_itself() -> None:
-    # The hwaccel decode already opens a device; no second one is initialized.
+def _vf(command: NormalizeCommand) -> str:
+    return command.args[command.args.index("-vf") + 1]
+
+
+def _faulty_fill_profile() -> VaapiProfile:
+    return VaapiProfile(dataclasses.replace(_amd_caps(), pad_fill_ok=False))
+
+
+def test_portrait_clip_with_faulty_fill_pads_on_cpu() -> None:
+    command = build_normalize_command(
+        _source_segment(),
+        _clip(width=1440, height=1920),
+        _target(),
+        _faulty_fill_profile(),
+        Path("/t/seg.mp4"),
+    )
+    assert _vf(command) == (
+        "hwdownload,format=nv12,"
+        "scale=w=1920:h=1080:force_original_aspect_ratio=decrease,"
+        "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1,"
+        "format=nv12,hwupload"
+    )
+
+
+@pytest.mark.parametrize("size", [(3840, 2160), (1920, 1080), (1280, 720)])
+def test_exact_16_9_clip_stays_on_gpu_with_faulty_fill(size: tuple[int, int]) -> None:
+    width, height = size
+    command = build_normalize_command(
+        _source_segment(),
+        _clip(width=width, height=height),
+        _target(),
+        _faulty_fill_profile(),
+        Path("/t/seg.mp4"),
+    )
+    assert _vf(command) == "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease"
+
+
+def test_portrait_clip_with_correct_fill_pads_on_gpu() -> None:
+    command = build_normalize_command(
+        _source_segment(),
+        _clip(width=1440, height=1920),
+        _target(),
+        _amd_profile(),
+        Path("/t/seg.mp4"),
+    )
+    assert _vf(command) == (
+        "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease,"
+        "pad_vaapi=w=1920:h=1080:x=(ow-iw)/2:y=(oh-ih)/2:color=black"
+    )
+
+
+@pytest.mark.parametrize(
+    ("clip", "rotate", "expected"),
+    [
+        (_clip(width=1920, height=1088), None, True),  # 30/17, not exactly 16/9
+        (_clip(width=3840, height=2160), None, False),
+        (_clip(width=1280, height=720), None, False),
+        (_clip(width=1440, height=1920), None, True),
+        (_clip(width=1920, height=1080), 90, True),  # segment rotation -> portrait
+        (dataclasses.replace(_clip(), rotation=270), None, True),  # clip metadata rotation
+        (dataclasses.replace(_clip(), rotation=90), 180, False),  # segment rotate wins
+        (_clip(width=1920, height=1080, sar="N/A"), None, False),
+        # Anamorphic 16:9 display: no scale honours SAR, so the pixels still need bars.
+        (_clip(width=1440, height=1080, sar="4:3"), None, True),
+        (_clip(width=1920, height=1080, sar="4:3"), None, True),
+    ],
+)
+def test_needs_pad(clip: ClipMetadata, rotate: Optional[int], expected: bool) -> None:
+    assert _needs_pad(clip, rotate, _target()) is expected
+
+
+def test_hardware_decode_shares_one_named_device_with_filters() -> None:
+    # A CPU transpose between VAAPI decode and encode must hwupload back: the decode
+    # names one device, used for decode and the filter graph; no second is opened.
     command = build_normalize_command(
         _source_segment(rotate=90), _clip(), _target(), _amd_profile(), Path("/t/seg.mp4")
     )
-    assert "-init_hw_device" not in command.args
+    args = command.args
+    assert args.count("-init_hw_device") == 1
+    assert list(args[1:11]) == [
+        "-init_hw_device",
+        "vaapi=va:/dev/dri/renderD128",
+        "-filter_hw_device",
+        "va",
+        "-hwaccel",
+        "vaapi",
+        "-hwaccel_device",
+        "va",
+        "-hwaccel_output_format",
+        "vaapi",
+    ]
+    assert "format=nv12,hwupload" in _vf(command)
+
+
+def test_hardware_decode_without_a_known_node_uses_the_default_device() -> None:
+    caps = dataclasses.replace(_amd_caps(), device=None)
+    command = build_normalize_command(
+        _source_segment(), _clip(), _target(), VaapiProfile(caps), Path("/t/seg.mp4")
+    )
+    assert command.args.count("-init_hw_device") == 1
+    assert _subseq(command.args, ["-init_hw_device", "vaapi=va", "-filter_hw_device", "va"])
 
 
 def test_software_decode_names_the_device_hwupload_needs() -> None:
@@ -424,6 +517,7 @@ def test_software_decode_names_the_device_hwupload_needs() -> None:
         "-filter_hw_device",
         "va",
     ]
+    assert args.count("-init_hw_device") == 1
     assert args.index("-init_hw_device") < args.index("-i")
 
 
@@ -456,7 +550,7 @@ def test_hdr_uses_cpu_tonemap_with_transfers_and_warns() -> None:
         segment, _clip(is_hdr=True), _target(), _amd_profile(), Path("/t/seg.mp4")
     )
     vf = command.args[command.args.index("-vf") + 1]
-    assert "scale_vaapi" in vf and "pad_vaapi" in vf
+    assert "scale_vaapi" in vf
     assert "hwdownload,format=nv12" in vf
     assert CPU_TONEMAP_FILTER in vf
     assert vf.endswith("format=nv12,hwupload")
@@ -1194,3 +1288,108 @@ def test_end_to_end_hardware_render(runtime, make_clip, tmp_path) -> None:
         ).stdout
     )["chapters"]
     assert len(chapters) == 2
+
+
+# --------------------------------------------------------------------------- #
+# vaapi-pad-fill: real-hardware checks (gpu marker)                           #
+# --------------------------------------------------------------------------- #
+
+
+def _region_stats(runtime, video: Path, crop: str) -> dict[str, float]:
+    """Mean Y/U/V of ``crop`` (``w:h:x:y``) in the first frame of ``video``."""
+    result = runtime.run(
+        [
+            "-i",
+            str(video),
+            "-frames:v",
+            "1",
+            "-vf",
+            f"crop={crop},signalstats,metadata=mode=print:file=-",
+            "-f",
+            "null",
+            "-",
+        ]
+    )
+    stats: dict[str, float] = {}
+    for line in result.stdout.splitlines():
+        for key in ("YAVG", "UAVG", "VAVG"):
+            prefix = f"lavfi.signalstats.{key}="
+            if line.startswith(prefix):
+                stats[key] = float(line[len(prefix) :])
+    assert set(stats) == {"YAVG", "UAVG", "VAVG"}, result.stdout
+    return stats
+
+
+def _hardware_profile(runtime) -> VaapiProfile:
+    profile = select_profile(detect_capabilities(runtime))
+    if not isinstance(profile, VaapiProfile):
+        pytest.skip(f"needs a VAAPI profile; this host selected {profile.vendor.value}")
+    if "h264" not in profile.capabilities.usable_encoders:
+        pytest.skip("no hardware h264 encoder on this host")
+    return profile
+
+
+def _render_one(runtime, profile: VaapiProfile, clip: Path, tmp_path: Path, **seg) -> Path:
+    facts = probe_media(clip, runtime=runtime)
+    target = _target(
+        width=640,
+        height=360,
+        video_encoder=profile.capabilities.usable_encoders["h264"],
+    )
+    output = tmp_path / "seg.mp4"
+    segment = _source_segment(identity=clip.name, source_path=clip, **seg)
+    command = build_normalize_command(segment, facts, target, profile, output)
+    runtime.run(list(command.args))
+    meta = probe_media(output, runtime=runtime)
+    assert (meta.width, meta.height) == (640, 360)
+    return output
+
+
+@pytest.mark.gpu
+def test_detection_reports_faulty_pad_fill_on_mesa(runtime) -> None:
+    inventory = detect_capabilities(runtime, force_refresh=True)
+    amd = inventory.accelerator(Vendor.AMD)
+    if amd is None or amd.pad_filter is None:
+        pytest.skip("no AMD VAAPI pad on this host; the Mesa pad_vaapi fill defect is AMD-only")
+    # exp 006: pad_vaapi runs (normalize usable) but paints its padded region green.
+    assert amd.pad_filter == "pad_vaapi"
+    assert amd.pad_fill_ok is False
+
+
+@pytest.mark.gpu
+def test_portrait_clip_gets_black_bars_on_the_detected_profile(runtime, tmp_path: Path) -> None:
+    profile = _hardware_profile(runtime)
+    clip = tmp_path / "portrait.mp4"
+    runtime.run(
+        ["-y", "-f", "lavfi", "-i", "color=white:size=360x640:rate=30:duration=1"]
+        + ["-c:v", "libx264", "-pix_fmt", "yuv420p", str(clip)]
+    )
+    output = _render_one(runtime, profile, clip, tmp_path)
+
+    corner = _region_stats(runtime, output, "64:64:0:0")  # inside the left pillar
+    assert abs(corner["UAVG"] - 128) <= 8, corner
+    assert abs(corner["VAVG"] - 128) <= 8, corner
+    assert corner["YAVG"] <= 24, corner
+
+
+@pytest.mark.gpu
+def test_rotated_clip_renders_through_the_vaapi_profile(runtime, tmp_path: Path) -> None:
+    # CPU transpose between VAAPI decode and VAAPI encode: must hwupload back through
+    # the shared named device instead of failing with "A hardware device reference
+    # is required to upload frames to".
+    profile = _hardware_profile(runtime)
+    clip = tmp_path / "landscape.mp4"
+    runtime.run(
+        ["-y", "-f", "lavfi", "-i", "color=white:size=640x360:rate=30:duration=1"]
+        + ["-vf", "drawbox=x=0:y=180:w=640:h=180:color=black:t=fill"]
+        + ["-c:v", "libx264", "-pix_fmt", "yuv420p", str(clip)]
+    )
+    output = _render_one(runtime, profile, clip, tmp_path, rotate=90)
+
+    # transpose=1 turns clockwise: the white top half becomes the right half of a
+    # portrait picture, pillarboxed (~203 px wide) in the middle of the 640x360 canvas.
+    left = _region_stats(runtime, output, "40:200:240:80")
+    right = _region_stats(runtime, output, "40:200:360:80")
+    assert left["YAVG"] < 64 < 192 < right["YAVG"], (left, right)
+    corner = _region_stats(runtime, output, "64:64:0:0")
+    assert abs(corner["UAVG"] - 128) <= 8, corner

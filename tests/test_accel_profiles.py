@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from auto_reel_ng.accel.models import (
@@ -77,8 +79,9 @@ def test_cpu_profile_supplies_every_op() -> None:
 
 
 def test_amd_normalize_uses_native_scale_pad() -> None:
-    """AMD normalize emits scale_vaapi+pad_vaapi (not CPU scale,pad) in a VAAPI context."""
-    frag = VaapiProfile(_amd_caps()).fragment(OpClass.NORMALIZE, HD)
+    """A clip needing bars, with a correct hardware fill, uses scale_vaapi+pad_vaapi."""
+    params = dataclasses.replace(HD, needs_pad=True)
+    frag = VaapiProfile(_amd_caps()).fragment(OpClass.NORMALIZE, params)
     assert frag.filter == (
         "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease,"
         "pad_vaapi=w=1920:h=1080:x=(ow-iw)/2:y=(oh-ih)/2:color=black"
@@ -87,14 +90,37 @@ def test_amd_normalize_uses_native_scale_pad() -> None:
     assert frag.frames_out is FrameLocation.VAAPI
 
 
+@pytest.mark.parametrize("pad_fill_ok", [True, False])
+def test_amd_normalize_without_bars_is_scale_vaapi_alone(pad_fill_ok: bool) -> None:
+    """An exact-aspect clip fills the canvas: scale_vaapi alone, whatever the fill flag."""
+    caps = dataclasses.replace(_amd_caps(), pad_fill_ok=pad_fill_ok)
+    frag = VaapiProfile(caps).fragment(OpClass.NORMALIZE, HD)
+    assert frag.filter == "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease"
+    assert frag.frames_in is FrameLocation.VAAPI
+    assert frag.frames_out is FrameLocation.VAAPI
+
+
+def test_amd_normalize_with_faulty_fill_falls_back_to_cpu_pad() -> None:
+    """A clip needing bars on a host whose pad_vaapi ignores its colour pads on the CPU."""
+    caps = dataclasses.replace(_amd_caps(), pad_fill_ok=False)
+    params = dataclasses.replace(HD, needs_pad=True)
+    frag = VaapiProfile(caps).fragment(OpClass.NORMALIZE, params)
+    assert frag == CPUProfile().fragment(OpClass.NORMALIZE, params)
+    assert frag.frames_in is FrameLocation.SYSTEM
+
+
 def test_amd_decode_and_encode_fragments() -> None:
     profile = VaapiProfile(_amd_caps())
     decode = profile.fragment(OpClass.DECODE, HD)
     assert decode.input_flags == (
+        "-init_hw_device",
+        "vaapi=va:/dev/dri/renderD128",
+        "-filter_hw_device",
+        "va",
         "-hwaccel",
         "vaapi",
         "-hwaccel_device",
-        "/dev/dri/renderD128",
+        "va",
         "-hwaccel_output_format",
         "vaapi",
     )

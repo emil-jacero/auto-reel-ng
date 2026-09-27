@@ -242,3 +242,6 @@ class OpParams:
     codec: Optional[str] = None  # "h264" / "hevc" / "av1"
     render_node: Optional[str] = None
     fill_color: str = "black"
+    #: ``NORMALIZE`` only: the clip's pixel or display aspect differs from the canvas, so
+    #: the normalize must pad. Stated by ``render/`` as a geometric fact about the clip.
+    needs_pad: bool = False

@@ -26,12 +26,12 @@ from auto_reel_ng.staleness.manifest import write_manifest
 FFMPEG_VERSION = (7, 1)
 
 #: Golden hashes for ``_pinned_document()`` + ``_pinned_event_dir()`` (task 1.1).
-#: ENGINE/COMBINED re-pinned for RENDER_GRAPH_VERSION 2 (render-target-format).
+#: ENGINE/COMBINED re-pinned for RENDER_GRAPH_VERSION 3 (vaapi-pad-fill).
 PINNED_EDITORIAL = "cfb295abf2c9f44e4ec05e5634beaf1b9b21235c21d65d0109a944509d848de4"
 PINNED_DEFAULTS = "9d1a9bf4432fae2ec90ade0e7eb1552455abd6da0fac7974d78a16d63113f555"
 PINNED_CLIP_SET = "b1c642b3cd29b949070b357534bae6e2077121b032f93fa34c7aa0df957b6663"
-PINNED_ENGINE = "ab969ceabfaa607e4e5a544a7b7098c113c2ffa814b470b3c8c8f546683b1204"
-PINNED_COMBINED = "997a9896a72b02c8845ba90ce2f0915f8ccaa2054807212bf016b4b5594cfbc2"
+PINNED_ENGINE = "6b33c1854f377de7a817a286dcded9064c1eb6253000e564bb23274587f8b794"
+PINNED_COMBINED = "5f3f2ebc1ba60b5f357a93aad641cce507e027cd122d119f4dabe1002c8943db"
 
 
 def _document(title: str = "Party") -> ReelDocument:
@@ -111,19 +111,19 @@ def test_engine_version_bump_moves_only_engine(tmp_path: Path) -> None:
         assert changed.component(name) == baseline.component(name)
 
 
-def test_version_1_manifest_is_engine_stale(
+def test_version_2_manifest_is_engine_stale(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # render-target-format bumped RENDER_GRAPH_VERSION to 2: an output rendered
-    # under version 1 must re-render, for the engine reason alone.
+    # vaapi-pad-fill bumped RENDER_GRAPH_VERSION to 3: an output rendered under
+    # version 2 must re-render, for the engine reason alone.
     event_dir = _event_dir(tmp_path)
     output = event_dir / "Party.mp4"
     output.write_bytes(b"rendered")
     with monkeypatch.context() as patch:
-        patch.setattr(fingerprint_module, "RENDER_GRAPH_VERSION", 1)
+        patch.setattr(fingerprint_module, "RENDER_GRAPH_VERSION", 2)
         old = _fingerprint(event_dir)
         identity = fingerprint_module.engine_identity(FFMPEG_VERSION)
-    assert identity.startswith("render_graph_version=1 ")
+    assert identity.startswith("render_graph_version=2 ")
     write_manifest(event_dir, old, output=output.name, engine_identity=identity)
 
     verdict = evaluate(event_dir, output, _fingerprint(event_dir))

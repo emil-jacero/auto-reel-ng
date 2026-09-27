@@ -1,7 +1,9 @@
 """AMD VAAPI profile, grounded in the verified spike results (exp 003/004).
 
 Confirmed on the dev host (RX 9070 XT, Mesa/radv): hardware decode and the single-API
-``scale_vaapi,pad_vaapi`` normalize work and are the fastest path; the VAAPI encoders for
+``scale_vaapi,pad_vaapi`` normalize run and are the fastest path, but ``pad_vaapi`` ignores
+its fill colour on Mesa (exp 006), so a clip that needs bars pads on the CPU unless the
+self-test measured a correct fill (``pad_fill_ok``); the VAAPI encoders for
 h264/hevc/av1 work. ``overlay_vaapi`` is unsupported and every GPU HDR tonemap path
 faults — so overlay and tonemap delegate to the CPU profile.
 """
@@ -15,10 +17,15 @@ from .cpu import require_resolution
 from .hardware import HardwareProfile
 
 
+def vaapi_scale_filter(width: int, height: int) -> str:
+    """AR-preserving ``scale_vaapi``; fills the canvas alone for an exact-aspect clip."""
+    return f"scale_vaapi=w={width}:h={height}:force_original_aspect_ratio=decrease"
+
+
 def vaapi_normalize_filter(width: int, height: int, fill_color: str) -> str:
     """The verified AMD normalize: AR-preserving ``scale_vaapi`` then centered ``pad_vaapi``."""
     return (
-        f"scale_vaapi=w={width}:h={height}:force_original_aspect_ratio=decrease,"
+        f"{vaapi_scale_filter(width, height)},"
         f"pad_vaapi=w={width}:h={height}:x=(ow-iw)/2:y=(oh-ih)/2:color={fill_color}"
     )
 
@@ -29,11 +36,20 @@ class VaapiProfile(HardwareProfile):
     def _decode(self, params: OpParams) -> Optional[OpFragment]:
         if not self.capabilities.decode_method:
             return None
-        node = self._render_node(params)
-        device_flags = ("-hwaccel_device", node) if node else ()
+        # One named device serves decode *and* the filter graph, so a CPU stage between
+        # this decode and a VAAPI encode (pad, transpose, tonemap, overlay bridge) can
+        # hwupload back; a bare ``-hwaccel_device`` is invisible to filters (exp 006).
         return OpFragment(
             op=OpClass.DECODE,
-            input_flags=("-hwaccel", "vaapi", *device_flags, "-hwaccel_output_format", "vaapi"),
+            input_flags=(
+                *self.upload_device_flags(params),
+                "-hwaccel",
+                "vaapi",
+                "-hwaccel_device",
+                "va",
+                "-hwaccel_output_format",
+                "vaapi",
+            ),
             frames_in=FrameLocation.SYSTEM,
             frames_out=FrameLocation.VAAPI,
         )
@@ -48,10 +64,17 @@ class VaapiProfile(HardwareProfile):
     def _normalize(self, params: OpParams) -> Optional[OpFragment]:
         if not self.capabilities.pad_filter:
             return None
+        if params.needs_pad and not self.capabilities.pad_fill_ok:
+            # pad_vaapi ignores its colour on Mesa (exp 006) -> CPU scale+pad this clip.
+            return None
         width, height = require_resolution(params)
+        if params.needs_pad:
+            vf = vaapi_normalize_filter(width, height, params.fill_color)
+        else:
+            vf = vaapi_scale_filter(width, height)
         return OpFragment(
             op=OpClass.NORMALIZE,
-            filter=vaapi_normalize_filter(width, height, params.fill_color),
+            filter=vf,
             frames_in=FrameLocation.VAAPI,
             frames_out=FrameLocation.VAAPI,
         )
