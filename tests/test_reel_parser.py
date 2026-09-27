@@ -206,3 +206,40 @@ def test_malformed_yaml_is_rejected() -> None:
 
 def test_reel_parse_error_is_a_reel_error() -> None:
     assert issubclass(ReelParseError, ReelError)
+
+
+def test_sort_rule_loads() -> None:
+    from auto_reel_ng.reel.document import ClipOrder, SortMethod
+
+    doc = loads_document("version: 0\nsort:\n  method: filename\n  reverse: true\n")
+    assert doc.sort == ClipOrder(method=SortMethod.FILENAME, reverse=True)
+
+
+def test_sort_is_optional() -> None:
+    assert loads_document("version: 0\n").sort is None
+
+
+def test_custom_sort_with_custom_order_loads() -> None:
+    from auto_reel_ng.reel.document import SortMethod
+
+    doc = loads_document("version: 0\nsort:\n  method: custom\n  custom_order: {a.mp4: 2}\n")
+    assert doc.sort is not None
+    assert doc.sort.method is SortMethod.CUSTOM
+    assert dict(doc.sort.custom_order) == {"a.mp4": 2}
+
+
+@pytest.mark.parametrize(
+    ("sort", "field"),
+    [
+        ("{method: shuffle}", "sort.method"),
+        ("{reverse: 1}", "sort.reverse"),
+        ("{custom_order: {a.mp4: 1}}", "sort.custom_order"),
+        ("{method: filename, custom_order: {a.mp4: 1}}", "sort.custom_order"),
+        ("{method: custom, custom_order: {a.mp4: first}}", "sort.custom_order"),
+        ("{method: custom, custom_order: [a.mp4]}", "sort.custom_order"),
+        ("[filename]", "sort"),
+    ],
+)
+def test_malformed_sort_fails_loud_naming_the_field(sort: str, field: str) -> None:
+    with pytest.raises(ReelParseError, match=field.replace(".", r"\.")):
+        loads_document(f"version: 0\nsort: {sort}\n")

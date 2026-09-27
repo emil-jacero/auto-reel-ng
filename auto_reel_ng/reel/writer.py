@@ -16,7 +16,7 @@ from typing import Any, Union
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
-from .document import SCHEMA_VERSION, ReelDocument
+from .document import SCHEMA_VERSION, ClipOrder, ReelDocument
 
 
 def _yaml() -> YAML:
@@ -87,6 +87,8 @@ def _build_fresh(doc: ReelDocument) -> CommentedMap:
         data["clips"] = clips
     if doc.ignore:
         data["ignore"] = CommentedSeq(doc.ignore)
+    if doc.sort is not None:
+        data["sort"] = _sort_map(doc.sort)
     return data
 
 
@@ -132,6 +134,16 @@ def _clips_map(doc: ReelDocument) -> CommentedMap:
         # mapping so the round-trip preserves that the entry existed.
         clips[identity] = entry
     return clips
+
+
+def _sort_map(sort: ClipOrder) -> CommentedMap:
+    """Build the event ``sort`` mapping; ``custom_order`` only when it has entries."""
+    entry = CommentedMap()
+    entry["method"] = sort.method.value
+    entry["reverse"] = sort.reverse
+    if sort.custom_order:
+        entry["custom_order"] = CommentedMap(sort.custom_order)
+    return entry
 
 
 def _trim_map(trim: Any) -> CommentedMap:

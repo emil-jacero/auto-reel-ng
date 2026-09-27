@@ -122,3 +122,28 @@ def test_seeded_document_serializes_from_typed_model() -> None:
     assert "00400.mp4" in text
     # Re-parsing the serialized form yields an equivalent document.
     assert loads_document(text).referenced_identities() == ("00400.mp4",)
+
+
+def test_sort_block_round_trips_byte_stable() -> None:
+    text = "version: 0\nsort:\n  method: filename\n  reverse: true  # newest name first\n"
+    assert dumps_document(loads_document(text)) == text
+
+
+def test_fresh_document_emits_its_sort_rule() -> None:
+    from types import MappingProxyType
+
+    from auto_reel_ng.reel.document import ClipOrder, ReelDocument, SortMethod
+
+    rule = ClipOrder(
+        method=SortMethod.CUSTOM, reverse=False, custom_order=MappingProxyType({"b.mp4": 1})
+    )
+    text = dumps_document(ReelDocument(sort=rule))
+    assert "sort:\n  method: custom\n  reverse: false\n  custom_order:\n    b.mp4: 1\n" in text
+    assert loads_document(text).sort == rule
+
+
+def test_fresh_document_without_sort_omits_it() -> None:
+    from auto_reel_ng.reel.document import ReelDocument
+
+    assert "sort" not in dumps_document(ReelDocument())
+

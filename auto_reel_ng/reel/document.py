@@ -22,7 +22,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from enum import StrEnum
 from pathlib import PurePosixPath
+from types import MappingProxyType
 from typing import Any, Mapping, Optional
 
 # The only document version this engine defines.
@@ -121,6 +123,31 @@ class Metadata:
         }
 
 
+class SortMethod(StrEnum):
+    """How clips entering a document are ordered (auto-reel's ``sort.method``)."""
+
+    DATETIME = "datetime"  # file mtime, oldest first; ties by the filename order
+    FILENAME = "filename"  # natural, case-insensitive file name order
+    CUSTOM = "custom"  # ``custom_order`` positions first, then the rest by filename; per event
+
+
+@dataclass(frozen=True)
+class ClipOrder:
+    """The sort rule for clips entering a document (seeding and NEW-clip adoption).
+
+    ``custom_order`` maps a clip's file name (basename) to its position and is only
+    meaningful with :attr:`SortMethod.CUSTOM`.
+    """
+
+    method: SortMethod = SortMethod.DATETIME
+    reverse: bool = False
+    custom_order: Mapping[str, int] = field(default=MappingProxyType({}), hash=False)
+
+
+#: auto-reel's own default: ``datetime``, not reversed.
+DEFAULT_CLIP_ORDER = ClipOrder()
+
+
 @dataclass(frozen=True)
 class ReelDocument:  # pylint: disable=too-many-instance-attributes
     """A loaded, validated v0 editorial document.
@@ -136,6 +163,8 @@ class ReelDocument:  # pylint: disable=too-many-instance-attributes
     chapters: tuple[Chapter, ...] = ()
     clips: Mapping[str, ClipProperties] = field(default_factory=dict)
     ignore: tuple[str, ...] = ()
+    #: The event's own sort rule, overriding the project's for clips entering this document.
+    sort: Optional[ClipOrder] = None
     _data: Optional[Any] = field(default=None, compare=False, repr=False)
 
     @property
@@ -160,7 +189,11 @@ class ReelDocument:  # pylint: disable=too-many-instance-attributes
         return tuple(ref.identity for chapter in self.chapters for ref in chapter.clips)
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to a plain dict for debug logging (excludes the raw round-trip data)."""
+        """Convert to a plain dict for debug logging (excludes the raw round-trip data).
+
+        This is also the staleness fingerprint's editorial input. ``sort`` is left
+        out: it only orders clips entering ``chapters``, which is hashed already.
+        """
         return {
             "version": self.version,
             "metadata": self.metadata.to_dict(),

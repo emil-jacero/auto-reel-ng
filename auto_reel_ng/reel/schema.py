@@ -12,16 +12,19 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import PurePosixPath
+from types import MappingProxyType
 from typing import Any, Mapping, Optional
 
 from ..errors import ReelParseError
 from .document import (
     SCHEMA_VERSION,
     Chapter,
+    ClipOrder,
     ClipProperties,
     ClipRef,
     Metadata,
     ReelDocument,
+    SortMethod,
     Trim,
 )
 
@@ -40,6 +43,7 @@ def build_document(data: Mapping[str, Any], *, source: str = "<document>") -> Re
     chapters = _parse_chapters(data.get("chapters"), source=source)
     clips = _parse_clips(data.get("clips"), source=source)
     ignore = _parse_ignore(data.get("ignore"), source=source)
+    sort = _parse_sort(data.get("sort"), source=source)
 
     _validate_cross_references(chapters, clips, ignore, source=source)
 
@@ -50,6 +54,7 @@ def build_document(data: Mapping[str, Any], *, source: str = "<document>") -> Re
         chapters=chapters,
         clips=clips,
         ignore=ignore,
+        sort=sort,
         _data=data,
     )
 
@@ -184,6 +189,52 @@ def _parse_ignore(raw: Any, *, source: str) -> tuple[str, ...]:
     return tuple(
         _parse_identity(entry, loc=f"{source}: ignore[{i}]") for i, entry in enumerate(raw)
     )
+
+
+def _parse_sort(raw: Any, *, source: str) -> Optional[ClipOrder]:
+    """Parse the optional event ``sort: {method, reverse, custom_order}`` rule.
+
+    Absent fields take auto-reel's default (``datetime``, not reversed).
+    ``custom_order`` maps clip file names to integer positions and is only allowed
+    with ``method: custom``.
+    """
+    if raw is None:
+        return None
+    loc = f"{source}: sort"
+    if not isinstance(raw, Mapping):
+        raise ReelParseError(f"{loc} must be a mapping, got {type(raw).__name__}")
+
+    method_raw = raw.get("method", SortMethod.DATETIME.value)
+    try:
+        method = SortMethod(method_raw)
+    except ValueError:
+        allowed = ", ".join(m.value for m in SortMethod)
+        raise ReelParseError(f"{loc}.method must be one of {allowed}, got {method_raw!r}") from None
+    reverse = _req_bool(raw.get("reverse", False), loc=f"{loc}.reverse")
+
+    custom_raw = raw.get("custom_order")
+    custom_order: dict[str, int] = {}
+    if custom_raw is not None:
+        if method is not SortMethod.CUSTOM:
+            raise ReelParseError(
+                f"{loc}.custom_order is only allowed with method 'custom', got {method.value!r}"
+            )
+        if not isinstance(custom_raw, Mapping):
+            raise ReelParseError(
+                f"{loc}.custom_order must be a mapping, got {type(custom_raw).__name__}"
+            )
+        for name, position in custom_raw.items():
+            if not isinstance(name, str) or not name.strip():
+                raise ReelParseError(
+                    f"{loc}.custom_order: key must be a non-empty file name, got {name!r}"
+                )
+            if isinstance(position, bool) or not isinstance(position, int):
+                raise ReelParseError(
+                    f"{loc}.custom_order[{name!r}]: expected an integer position, "
+                    f"got {type(position).__name__}"
+                )
+            custom_order[name] = position
+    return ClipOrder(method=method, reverse=reverse, custom_order=MappingProxyType(custom_order))
 
 
 # --------------------------------------------------------------------------- #

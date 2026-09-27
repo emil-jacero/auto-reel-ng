@@ -2,7 +2,7 @@
 
 A project root may carry a ``config.yaml`` declaring a default ``look`` map, the
 ingest ``layout`` name, default ``input``/``output`` paths, the clip ``sort`` rule
-(:class:`~auto_reel_ng.event.discovery.ClipOrder`), a ``database.url``
+(:class:`~auto_reel_ng.reel.document.ClipOrder`), a ``database.url``
 override consumed by :mod:`auto_reel_ng.persistence.config`, and a ``worker`` map
 consumed by :mod:`auto_reel_ng.scheduler.config`. Every field is optional: a
 missing file yields all-defaults (tolerated), while malformed YAML or a
@@ -107,13 +107,14 @@ def _parse_sort(sort: Mapping[str, object], source: str) -> ClipOrder:
     if method_value is None:
         method = DEFAULT_CLIP_ORDER.method
     else:
-        try:
-            method = SortMethod(method_value)
-        except ValueError:
-            allowed = ", ".join(m.value for m in SortMethod)
+        # ``custom`` names specific files, so it is an event's own rule, never the library's.
+        allowed_methods = [m for m in SortMethod if m is not SortMethod.CUSTOM]
+        if method_value not in allowed_methods:
+            allowed = ", ".join(m.value for m in allowed_methods)
             raise ConfigError(
                 f"{source}: 'sort.method' must be one of {allowed}, got {method_value!r}"
-            ) from None
+            )
+        method = SortMethod(method_value)
     if not isinstance(reverse, bool):
         raise ConfigError(
             f"{source}: 'sort.reverse' must be a boolean, got {type(reverse).__name__}"

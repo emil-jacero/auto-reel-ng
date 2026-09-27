@@ -19,7 +19,16 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Optional, Sequence
 
-from ..reel.document import DEFAULT_CHAPTER_NAME, Chapter, ClipRef, Metadata, ReelDocument
+from ..reel.document import (
+    DEFAULT_CHAPTER_NAME,
+    DEFAULT_CLIP_ORDER,
+    Chapter,
+    ClipOrder,
+    ClipRef,
+    Metadata,
+    ReelDocument,
+    SortMethod,
+)
 from .reconcile import ClipStatus, reconcile
 
 logger = logging.getLogger(__name__)
@@ -140,24 +149,6 @@ def _is_chapter_dir(subdir: Path) -> bool:
     """An event subdirectory contributes clips unless it holds originals or is ignored."""
     return subdir.name.casefold() != ORIGINALS_DIR and not is_reelignored(subdir)
 
-
-class SortMethod(StrEnum):
-    """How clips entering a document are ordered (auto-reel's ``sort.method``, minus ``custom``)."""
-
-    DATETIME = "datetime"  # file mtime, oldest first; ties by the filename order
-    FILENAME = "filename"  # natural, case-insensitive file name order
-
-
-@dataclass(frozen=True)
-class ClipOrder:
-    """The sort rule for clips entering a document (seeding and NEW-clip adoption)."""
-
-    method: SortMethod = SortMethod.DATETIME
-    reverse: bool = False
-
-
-#: auto-reel's own default: ``datetime``, not reversed.
-DEFAULT_CLIP_ORDER = ClipOrder()
 
 _DIGITS_RE = re.compile(r"(\d+)")
 
