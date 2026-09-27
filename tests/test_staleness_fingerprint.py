@@ -18,16 +18,20 @@ from auto_reel_ng.reel.document import (
     ReelDocument,
     Trim,
 )
+from auto_reel_ng.staleness import fingerprint as fingerprint_module
 from auto_reel_ng.staleness.fingerprint import COMPONENTS, compute_fingerprint, editorial_hash
+from auto_reel_ng.staleness.gate import StalenessReason, evaluate
+from auto_reel_ng.staleness.manifest import write_manifest
 
 FFMPEG_VERSION = (7, 1)
 
 #: Golden hashes for ``_pinned_document()`` + ``_pinned_event_dir()`` (task 1.1).
+#: ENGINE/COMBINED re-pinned for RENDER_GRAPH_VERSION 2 (render-target-format).
 PINNED_EDITORIAL = "cfb295abf2c9f44e4ec05e5634beaf1b9b21235c21d65d0109a944509d848de4"
 PINNED_DEFAULTS = "9d1a9bf4432fae2ec90ade0e7eb1552455abd6da0fac7974d78a16d63113f555"
 PINNED_CLIP_SET = "b1c642b3cd29b949070b357534bae6e2077121b032f93fa34c7aa0df957b6663"
-PINNED_ENGINE = "00d18f13435b95c59bc3e8ee4dae480a8ad4a729b3edc1a6ab4c03e25e03409e"
-PINNED_COMBINED = "7de1e5715e8f76af2fd41c6828802014f12d3d74fbffef6a2b19045d316701ad"
+PINNED_ENGINE = "ab969ceabfaa607e4e5a544a7b7098c113c2ffa814b470b3c8c8f546683b1204"
+PINNED_COMBINED = "997a9896a72b02c8845ba90ce2f0915f8ccaa2054807212bf016b4b5594cfbc2"
 
 
 def _document(title: str = "Party") -> ReelDocument:
@@ -105,6 +109,27 @@ def test_engine_version_bump_moves_only_engine(tmp_path: Path) -> None:
     assert changed.combined != baseline.combined
     for name in ("editorial", "defaults", "clip_set"):
         assert changed.component(name) == baseline.component(name)
+
+
+def test_version_1_manifest_is_engine_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # render-target-format bumped RENDER_GRAPH_VERSION to 2: an output rendered
+    # under version 1 must re-render, for the engine reason alone.
+    event_dir = _event_dir(tmp_path)
+    output = event_dir / "Party.mp4"
+    output.write_bytes(b"rendered")
+    with monkeypatch.context() as patch:
+        patch.setattr(fingerprint_module, "RENDER_GRAPH_VERSION", 1)
+        old = _fingerprint(event_dir)
+        identity = fingerprint_module.engine_identity(FFMPEG_VERSION)
+    assert identity.startswith("render_graph_version=1 ")
+    write_manifest(event_dir, old, output=output.name, engine_identity=identity)
+
+    verdict = evaluate(event_dir, output, _fingerprint(event_dir))
+
+    assert verdict.stale is True
+    assert verdict.reasons == (StalenessReason.ENGINE,)
 
 
 def test_device_selection_does_not_move_the_fingerprint(tmp_path: Path) -> None:

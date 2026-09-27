@@ -30,7 +30,8 @@ PathLike = Union[str, Path]
 #: (command-graph changes, filter changes, encoder flag changes). Under-bumping
 #: risks a missed re-render (mitigated by ``--force``); over-bumping costs one
 #: archive re-render — accepted trade-off (D-C8).
-RENDER_GRAPH_VERSION = 1
+#: 2: render-target-format (1920x1080 / highest-clip-fps canvas, not the first clip's).
+RENDER_GRAPH_VERSION = 2
 
 #: The four fingerprint components, in the fixed order the combined hash uses.
 COMPONENTS = ("editorial", "defaults", "clip_set", "engine")

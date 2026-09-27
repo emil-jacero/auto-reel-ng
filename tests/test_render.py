@@ -282,23 +282,94 @@ def test_resolve_decorator_names_defaults_to_none() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_target_resolution_and_fps_from_look_and_first_clip() -> None:
-    target = derive_target({"target_resolution": [1920, 1080]}, _clip(fps=30.0), _amd_profile())
+def test_target_resolution_and_fps_from_look_not_first_clip() -> None:
+    look = {"target_resolution": [1920, 1080], "fps": 30}
+    target = derive_target(look, [_clip(fps=25.0)], _amd_profile())
     assert (target.width, target.height, target.fps) == (1920, 1080, 30.0)
     assert target.video_codec == "h264"
     assert target.video_encoder == "h264_vaapi"
     assert target.sample_aspect_ratio == "1:1"
 
 
+def test_portrait_first_clip_does_not_make_a_portrait_canvas() -> None:
+    clips = [_clip("phone.mp4", width=720, height=1280), _clip("cam.mp4")]
+    target = derive_target({}, clips, _amd_profile())
+    assert (target.width, target.height) == (1920, 1080)
+
+
+def test_4k_clips_do_not_make_a_4k_canvas_by_default() -> None:
+    clips = [_clip("uhd.mp4", width=3840, height=2160), _clip("hd.mp4")]
+    target = derive_target({}, clips, _amd_profile())
+    assert (target.width, target.height) == (1920, 1080)
+
+
+def test_highest_clip_fps_wins_by_default() -> None:
+    clips = [_clip("a.mp4", fps=25.0), _clip("b.mp4", fps=50.0), _clip("c.mp4", fps=30.0)]
+    assert derive_target({}, clips, _amd_profile()).fps == 50.0
+
+
+def test_look_fps_overrides_clip_fps() -> None:
+    assert derive_target({"fps": 30}, [_clip(fps=25.0)], _amd_profile()).fps == 30.0
+
+
+def test_look_target_resolution_overrides_default() -> None:
+    target = derive_target({"target_resolution": [3840, 2160]}, [_clip()], _amd_profile())
+    assert (target.width, target.height) == (3840, 2160)
+
+
+@pytest.mark.parametrize(
+    ("look", "key"),
+    [
+        ({"fps": "fifty"}, "look.fps"),
+        ({"fps": 0}, "look.fps"),
+        ({"fps": True}, "look.fps"),
+        ({"fps": "25"}, "look.fps"),
+        ({"target_resolution": [1920, 0]}, "look.target_resolution"),
+        ({"target_resolution": [1920]}, "look.target_resolution"),
+        ({"target_resolution": ["1920", "1080"]}, "look.target_resolution"),
+    ],
+)
+def test_malformed_look_canvas_keys_fail_loud(look: dict[str, object], key: str) -> None:
+    with pytest.raises(RenderError, match=key):
+        derive_target(look, [_clip()], _amd_profile())
+
+
+def test_uniform_default_canvas_keeps_copy_path() -> None:
+    facts = {name: _clip(name, fps=50.0) for name in ("a.mp4", "b.mp4")}
+    plan = RenderPlan(
+        chapters=(
+            ResolvedChapter(
+                name="", clips=(ResolvedClip(identity="a.mp4"), ResolvedClip(identity="b.mp4"))
+            ),
+        ),
+    )
+    target = resolve_target(plan, _amd_profile(), facts)
+    assert (target.width, target.height, target.fps) == (1920, 1080, 50.0)
+    decided = decide_copy_eligibility(build_segments(plan, Path("/ev"), facts), facts, target)
+    assert decided and all(segment.copy_eligible for segment in decided)
+
+
+def test_resolve_target_fails_loud_on_any_unprobed_clip() -> None:
+    plan = RenderPlan(
+        chapters=(
+            ResolvedChapter(
+                name="", clips=(ResolvedClip(identity="a.mp4"), ResolvedClip(identity="b.mp4"))
+            ),
+        ),
+    )
+    with pytest.raises(RenderError, match="'b.mp4' has no probed metadata"):
+        resolve_target(plan, _amd_profile(), {"a.mp4": _clip("a.mp4")})
+
+
 def test_av1_target_honored_when_profile_supports_it() -> None:
-    target = derive_target({"video_codec": "av1"}, _clip(), _amd_profile())
+    target = derive_target({"video_codec": "av1"}, [_clip()], _amd_profile())
     assert target.video_codec == "av1"
     assert target.video_encoder == "av1_vaapi"
 
 
 def test_unencodable_codec_fails_loud() -> None:
     with pytest.raises(RenderError, match="no usable hardware or CPU encoder"):
-        derive_target({"video_codec": "vp9"}, _clip(), CPUProfile())
+        derive_target({"video_codec": "vp9"}, [_clip()], CPUProfile())
 
 
 # --------------------------------------------------------------------------- #
@@ -711,6 +782,34 @@ def test_render_finalizes_into_a_created_year_folder(
     assert [part.parent for part in seen_parts] == [out_dir / "2024"]
 
 
+@pytest.mark.has_ffmpeg
+def test_canvas_ignores_portrait_low_fps_first_clip(runtime, make_clip, tmp_path) -> None:
+    # A portrait 25 fps clip first must not decide the canvas: the look pins the
+    # resolution (kept small for speed) and the fps defaults to the highest clip's.
+    make_clip("a.mp4", width=360, height=640, fps=25, duration=1.0)
+    make_clip("b.mp4", width=640, height=360, fps=50, duration=1.0)
+    facts = {name: probe_media(tmp_path / name, runtime=runtime) for name in ("a.mp4", "b.mp4")}
+    plan = RenderPlan(
+        metadata=Metadata(title="Movie"),
+        look={"target_resolution": [640, 360]},
+        chapters=(
+            ResolvedChapter(
+                name="", clips=(ResolvedClip(identity="a.mp4"), ResolvedClip(identity="b.mp4"))
+            ),
+        ),
+    )
+    options = RenderOptions(
+        event_dir=tmp_path, output_dir=tmp_path / "out", clip_facts=facts, runtime=runtime
+    )
+    result = render_movie(plan, CPUProfile(), options)
+
+    rendered = probe_media(result.output_path, runtime=runtime)
+    assert (rendered.width, rendered.height) == (640, 360)
+    # Probe reports avg_frame_rate; on a 2 s output the join's timestamp gap pulls it
+    # just under 50 (r_frame_rate is 50/1). The tolerance still separates 50 from 25.
+    assert rendered.fps == pytest.approx(50.0, abs=1.0)
+
+
 def test_mismatch_forces_reencode_before_join(runtime, make_clip, tmp_path, monkeypatch) -> None:
     # The lone segment is copy-eligible (640x480 conforming), so it would normally
     # be stream-copied as-is. Force the equivalence pre-flight to report the set
@@ -735,7 +834,7 @@ def test_mismatch_forces_reencode_before_join(runtime, make_clip, tmp_path, monk
         chapters=(ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4"),)),),
     )
     # Sanity: the segment really is copy-eligible, so the re-encode branch is reachable.
-    target = derive_target(plan.look, probed, CPUProfile())
+    target = derive_target(plan.look, [probed], CPUProfile())
     assert copy_eligible(_source_segment(source_path=clip_a), probed, target) is True
 
     calls = {"n": 0}
@@ -943,7 +1042,7 @@ def test_resolve_target_matches_derive_target() -> None:
         chapters=(ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4"),)),),
     )
     assert resolve_target(plan, _amd_profile(), facts) == derive_target(
-        plan.look, facts["a.mp4"], _amd_profile()
+        plan.look, [facts["a.mp4"]], _amd_profile()
     )
 
 

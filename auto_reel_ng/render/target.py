@@ -1,7 +1,9 @@
 """The target spec: the common canvas every segment conforms to (decision **D-E**).
 
-Derived from the resolved ``look`` + the first clip's probe facts + the selected
-acceleration profile's usable encoders. It is the single explicit object the
+Derived from the resolved ``look`` + the probe facts of every clip in the plan + the
+selected acceleration profile's usable encoders. No canvas property is taken from a
+clip because of its position in the plan: resolution defaults to 1920x1080 and fps to
+the highest probed clip fps. It is the single explicit object the
 equivalence check and post-render verification compare every segment/output
 against, and it grounds the chosen codec in an encoder the host can actually run
 (AV1 a first-class option, D-5): an unencodable codec fails loud rather than
@@ -11,7 +13,7 @@ silently substituting a different one.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from ..accel.models import OpClass, OpParams
 from ..accel.profiles.base import AccelProfile
@@ -19,6 +21,7 @@ from ..errors import AccelError, RenderError
 from ..probe.metadata import ClipMetadata
 
 #: Defaults applied when the resolved ``look`` is silent on a parameter.
+DEFAULT_TARGET_RESOLUTION = (1920, 1080)
 DEFAULT_VIDEO_CODEC = "h264"
 DEFAULT_PIX_FMT = "yuv420p"
 DEFAULT_FILL_COLOR = "black"
@@ -60,14 +63,33 @@ class TargetSpec:  # pylint: disable=too-many-instance-attributes
         }
 
 
-def _resolution(look: Mapping[str, Any], first_clip: ClipMetadata) -> tuple[int, int]:
-    """Resolution from ``look.target_resolution``; fall back to the first clip's."""
+def _resolution(look: Mapping[str, Any]) -> tuple[int, int]:
+    """``look.target_resolution`` (a pair of positive ints) or 1920x1080."""
     raw = look.get("target_resolution")
     if raw is None:
-        return first_clip.width, first_clip.height
-    if not isinstance(raw, (list, tuple)) or len(raw) != 2:
-        raise RenderError(f"look.target_resolution must be a [width, height] pair, got {raw!r}")
-    return int(raw[0]), int(raw[1])
+        return DEFAULT_TARGET_RESOLUTION
+    if (
+        not isinstance(raw, (list, tuple))
+        or len(raw) != 2
+        or not all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in raw)
+    ):
+        raise RenderError(
+            f"look.target_resolution must be a [width, height] pair of positive integers, "
+            f"got {raw!r}"
+        )
+    return raw[0], raw[1]
+
+
+def _fps(look: Mapping[str, Any], clips: Sequence[ClipMetadata]) -> float:
+    """``look.fps`` (a positive number) or the highest probed fps among ``clips``."""
+    raw = look.get("fps")
+    if raw is not None:
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)) or raw <= 0:
+            raise RenderError(f"look.fps must be a positive number, got {raw!r}")
+        return float(raw)
+    if not clips:
+        raise RenderError("render plan has no clips to derive the target fps from")
+    return max(clip.fps for clip in clips)
 
 
 def _resolve_encoder(profile: AccelProfile, codec: str) -> str:
@@ -95,24 +117,24 @@ def _resolve_encoder(profile: AccelProfile, codec: str) -> str:
 
 def derive_target(
     plan_look: Mapping[str, Any],
-    first_clip: ClipMetadata,
+    clips: Sequence[ClipMetadata],
     profile: AccelProfile,
 ) -> TargetSpec:
-    """Derive the :class:`TargetSpec` from look + first clip + profile.
+    """Derive the :class:`TargetSpec` from look + all plan clips + profile.
 
-    Resolution comes from ``look.target_resolution`` (falling back to the first
-    clip's dimensions); fps from the first clip's probed fps; codec/pix_fmt/fill
+    Resolution comes from ``look.target_resolution`` (default 1920x1080); fps from
+    ``look.fps`` (default: the highest probed fps among ``clips``); codec/pix_fmt/fill
     from the look; SAR is 1:1; audio params from the look (with sane defaults).
     The chosen codec is validated against the profile's usable encoders.
     """
-    width, height = _resolution(plan_look, first_clip)
+    width, height = _resolution(plan_look)
     codec = str(plan_look.get("video_codec", DEFAULT_VIDEO_CODEC))
     encoder = _resolve_encoder(profile, codec)
 
     return TargetSpec(
         width=width,
         height=height,
-        fps=first_clip.fps,
+        fps=_fps(plan_look, clips),
         video_codec=codec,
         video_encoder=encoder,
         pix_fmt=str(plan_look.get("pix_fmt", DEFAULT_PIX_FMT)),

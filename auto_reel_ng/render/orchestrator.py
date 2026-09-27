@@ -169,17 +169,22 @@ def _part_path(output_path: Path) -> Path:
     return output_path.with_name(output_path.name + ".part")
 
 
-def _first_clip_facts(plan: RenderPlan, clip_facts: Mapping[str, ClipMetadata]) -> ClipMetadata:
-    """Return the probed facts of the plan's first clip, or fail loud."""
+def _plan_clip_facts(
+    plan: RenderPlan, clip_facts: Mapping[str, ClipMetadata]
+) -> list[ClipMetadata]:
+    """Return the probed facts of every clip in the plan, or fail loud."""
+    facts: list[ClipMetadata] = []
     for chapter in plan.chapters:
         for clip in chapter.clips:
-            facts = clip_facts.get(clip.identity)
-            if facts is None:
+            clip_meta = clip_facts.get(clip.identity)
+            if clip_meta is None:
                 raise RenderError(
-                    f"first clip {clip.identity!r} has no probed metadata; cannot derive target"
+                    f"clip {clip.identity!r} has no probed metadata; cannot derive target"
                 )
-            return facts
-    raise RenderError("render plan has no clips to render")
+            facts.append(clip_meta)
+    if not facts:
+        raise RenderError("render plan has no clips to render")
+    return facts
 
 
 def resolve_target(
@@ -191,7 +196,7 @@ def resolve_target(
     caller can learn the resolved encoder (job-scheduler capacity classification,
     D-S3) before committing to a render.
     """
-    return derive_target(plan.look, _first_clip_facts(plan, clip_facts), profile)
+    return derive_target(plan.look, _plan_clip_facts(plan, clip_facts), profile)
 
 
 class _Progress:
