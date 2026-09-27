@@ -309,11 +309,23 @@ clips; clip order never decides it, and portrait or 4K clips are fitted into it.
 Set `look.target_resolution` / `look.fps` in one event's `reel.yaml` to override the
 canvas for that event only.
 
+`sort` sets the order clips enter an event's `reel.yaml`: when it is first seeded, and
+when NEW clips are adopted. The default, `datetime`, orders by file modification time,
+oldest first, as auto-reel did; equal times fall back to the filename order. It reads
+only `stat`, never probes. `filename` is natural and case-insensitive (`clip2` before
+`clip10`, `img_4863` before `IMG_4933`). `reverse: true` flips either. Chapters keep
+their order (root clips first, then subfolders by name). An order already in a
+`reel.yaml` is never re-sorted: NEW clips are appended after a chapter's existing
+clips, in rule order among themselves. Change an existing order by editing `reel.yaml`.
+
 ```yaml
 # config.yaml
 layout: year-event        # ingest layout name
 input: media              # walk root, relative to the project root (optional)
 output: ../out            # output directory (optional; default <parent>/<root-name>-output)
+sort:                     # order clips enter a reel.yaml (seed + NEW-clip adoption)
+  method: datetime            # datetime (file mtime, default) | filename (natural, case-insensitive)
+  reverse: false              # flip the order
 look:                     # opaque defaults passed to resolve() as look_defaults
   target_resolution: [1920, 1080]   # canvas [width, height] (default 1920x1080)
   # fps: 25                         # pin the frame rate (default: highest clip fps)

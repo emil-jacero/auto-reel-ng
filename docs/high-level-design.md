@@ -43,7 +43,10 @@ Full source was reviewed end-to-end. The mechanics worth **keeping**:
 - Chapter-from-subdirectory convention; root clips = default chapter; `original/` skipped; `.reelignore`.
   Carried by the specs `event-reconcile` ("Legacy folder conventions exclude clips from
   discovery") and `ingest-layout` ("An event marked with .reelignore is not an event").
-- Sort strategies (datetime / filename / custom order).
+- Sort strategies (datetime / filename / custom order). Carried by the specs `event-reconcile`
+  ("Clips enter a document in the configured sort order") and `project-config` (the `sort` rule);
+  `custom` is the `reel.yaml` clip list itself, and a per-event rule is the follow-up
+  `clip-order-legacy-sort`.
 - Dataclass configs with `to_dict()` debug logging; thread/movie/clip logging context.
 - The `gpu:info` Taskfile idea (it already parses `ffmpeg -hwaccels/-encoders/-decoders`).
 
