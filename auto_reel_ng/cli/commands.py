@@ -821,7 +821,12 @@ def cmd_adopt_renders(args: argparse.Namespace) -> int:
     current fingerprint — the operator's assertion that today's output reflects
     today's inputs. Explicit, never automatic, renders nothing, and never touches
     an event with no output (it is genuinely unrendered, not adoptable).
+
+    ``--dry-run`` runs the same evaluation (collision check, fingerprint, gate) and
+    reports what a real run would adopt, with the same totals and exit code, but
+    writes nothing, so it is safe on a read-only archive.
     """
+    dry_run: bool = args.dry_run
     ctx = _project_context(args)
     if not ctx.events:
         print(f"No events found under {ctx.walk_root} (layout: {ctx.layout_name})")
@@ -859,14 +864,23 @@ def cmd_adopt_renders(args: argparse.Namespace) -> int:
             print(f"=  {ref.event_dir.name}: already fresh")
             continue
 
+        adopted += 1
+        if dry_run:
+            print(f"+  {ref.event_dir.name}: would adopt at current fingerprint")
+            continue
         write_manifest(
             ref.event_dir,
             fingerprint,
             output=output_path.name,
             engine_identity=engine_identity(runtime.version),
         )
-        adopted += 1
         print(f"+  {ref.event_dir.name}: adopted at current fingerprint")
 
-    print(f"\n{adopted} adopted, {already_fresh} already fresh, {unrendered} unrendered")
+    if dry_run:
+        print(
+            f"\n{adopted} would adopt, {already_fresh} already fresh, {unrendered} unrendered"
+            " (dry run: nothing written)"
+        )
+    else:
+        print(f"\n{adopted} adopted, {already_fresh} already fresh, {unrendered} unrendered")
     return 1 if refused else 0

@@ -2,8 +2,9 @@
 
 Exposes nine subcommands — ``render``, ``scan``/``list``, ``analyze``, ``import``,
 ``enqueue``, ``worker``, ``jobs`` (``list``/``show``/``cancel``), ``serve``, and
-``adopt-renders`` — over a shared set of options (project root, output dir,
-``--years``, ``--layout``, ``--device``, ``--dry-run``, ``--force``). Unknown
+``adopt-renders``. The scan/render family shares the project options (project
+root, ``--output``, ``--years``, ``--layout``, ``--verbose``); flags such as
+``--dry-run``, ``--force`` and ``--device`` are added per subcommand. Unknown
 subcommands and bad arguments exit non-zero with usage (argparse); engine errors
 are caught at the top and reported on stderr with a non-zero exit.
 
@@ -243,6 +244,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="write manifests for already-rendered events; never renders (one-time deploy step)",
     )
     _add_common_args(adopt_renders)
+    adopt_renders.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="report what would be adopted without writing any manifest",
+    )
     adopt_renders.set_defaults(func=cmd_adopt_renders)
 
     return parser
