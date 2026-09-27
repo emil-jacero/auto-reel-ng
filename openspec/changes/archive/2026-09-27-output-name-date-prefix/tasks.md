@@ -41,7 +41,7 @@
 ## 4. Verification
 
 - [x] 4.1 Run `.venv/bin/python -m black auto_reel_ng tests scripts && .venv/bin/python -m isort auto_reel_ng tests scripts`, then `.venv/bin/python -m mypy auto_reel_ng`, `.venv/bin/python -m pylint auto_reel_ng` and the full `.venv/bin/python -m pytest`. Verify all are clean or green, apart from the known cairo `no-member` noise.
-- [ ] 4.2 **Only if** the MOL drive is attached **and** `findmnt -no OPTIONS /run/media/emil/MOL` starts with `ro`, run the preview:
+- [x] 4.2 **Only if** the MOL drive is attached **and** `findmnt -no OPTIONS /run/media/emil/MOL` starts with `ro`, run the preview:
 
   ```bash
   auto-reel adopt-renders /run/media/emil/MOL/Videos/Sorted -o /run/media/emil/MOL/Videos/Completed-auto-reel --dry-run
@@ -58,5 +58,6 @@
 
   If the drive is absent or mounted read-write, record the task as deferred and do not remount it yourself.
 
-  **Deferred (2026-09-26):** the MOL drive was attached but mounted read-write
-  (`findmnt` options start with `rw`), so the preview was not run and the drive was not remounted.
+  **Done (2026-09-27):** run on a read-only mount. Result: 129 would adopt, 0 already fresh,
+  3 unrendered, 3 colliding on `Untitled.mp4`, the six `.reelignore` events absent, exit code 1,
+  and no write errors.
