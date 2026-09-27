@@ -152,8 +152,8 @@ Per movie:
 
 Audio is normalized in the same normalize pass (sample rate / channels / codec) so concat can stream-copy.
 
-Each movie is finalized to `<output>/<YYYY>/<title>[ - <location>].mp4`. Colliding output paths are refused
-(**D-9**).
+Each movie is finalized to `<output>/<YYYY>/<YYYY-MM-DD> - <title>[ - <location>].mp4`. Colliding output
+paths are refused (**D-9**).
 
 > ⚠️ **Research:** §8.4 stream-copy concat constraints (timebase, B-frames, SPS/PPS, audio priming).
 
@@ -516,10 +516,13 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   FastAPI process — **no Node at runtime**; API types generated from the OpenAPI schema; a hard dependency
   budget with **no component library, router, or state library at GUI v1**. (§4.10)
 
-- **D-9 — Output layout** (2026-09-26, change `output-path-year-folder`). Movies go to
-  `<output>/<YYYY>/<title>[ - <location>].mp4`, with the year taken from the event's `metadata.date`. An
-  undated event goes directly under `<output>/`, and the year is never guessed. This is the legacy
-  auto-reel layout, so `adopt-renders` finds the existing archive. `render`, `enqueue` and `adopt-renders`
+- **D-9 — Output layout** (2026-09-26, changes `output-path-year-folder` and `output-name-date-prefix`).
+  Movies go to `<output>/<YYYY>/<YYYY-MM-DD> - <title>[ - <location>].mp4`, with the year folder and the
+  name's ISO date both taken from the event's `metadata.date`. An undated event goes directly under
+  `<output>/` as `<title>[ - <location>].mp4`, and the date is never guessed. This is the legacy auto-reel
+  layout, so `adopt-renders` finds the existing archive. *Corrected 2026-09-26:* the first version omitted
+  the date prefix legacy put in every movie name (`directory.py:220`); on the real archive that found
+  0 of 138 legacy outputs, the prefixed rule finds 129. `render`, `enqueue` and `adopt-renders`
   refuse every event whose output path collides with another's (compared case-insensitively, never
   auto-suffixed). The default output directory is the sibling `<parent>/<root-name>-output`, outside the
   walked root, so rendered year folders are never scanned as events. (§4.3/§4.11)

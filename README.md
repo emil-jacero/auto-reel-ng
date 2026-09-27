@@ -53,6 +53,7 @@ auto-reel worker  <root>                  # run the job-scheduler loop until SIG
 auto-reel jobs list|show|cancel <root>    # read the job store; request cancellation
 auto-reel serve   <root>                  # run the API service (REST + WS) until SIGINT/SIGTERM
 auto-reel adopt-renders <root>            # one-time: write manifests for an already-rendered archive
+                                          #   (--dry-run previews without writing)
 ```
 
 Shared options: `--years 2023,2024` (year-event layout), `--layout flat|year-event`,
@@ -75,9 +76,10 @@ write nothing) and `--device <amd|nvidia|intel|cpu|device-id>`.
 - **Per-event isolation:** one event failing to render is reported with its cause
   and does not abort the rest; the exit code is non-zero if any event errored.
 - **Output layout:** each movie is written to
-  `<output>/<YYYY>/<title>[ - <location>].mp4`, where `YYYY` is the year of the
-  event's `metadata.date` (the layout legacy auto-reel used). An event with no date
-  goes directly under `<output>/`. With no `-o` and no `config.yaml` `output`, the
+  `<output>/<YYYY>/<YYYY-MM-DD> - <title>[ - <location>].mp4`, where the year folder
+  and the date prefix both come from the event's `metadata.date` (the layout and
+  names legacy auto-reel used). An event with no date goes directly under
+  `<output>/` as `<title>[ - <location>].mp4`, with no date prefix. With no `-o` and no `config.yaml` `output`, the
   output directory is the sibling folder `<parent>/<root-name>-output` (for
   example, `videos/sorted` → `videos/sorted-output`). Do not point the output
   inside the walked root: the layouts would scan its year folders back in as events.
@@ -127,10 +129,15 @@ today's inputs — without rendering anything, so turning on the gate does not
 trigger a full archive re-render. Events with no output are reported as
 unrendered and left alone (they are not adoptable).
 Point `-o` at the legacy auto-reel output root: adoption looks for
-`<output>/<YYYY>/<title>[ - <location>].mp4`, the same year-folder layout legacy
-wrote. Check the `unrendered` count before the first library-wide `render`: an
-event whose legacy name differs from its current title shows up there instead of
-being adopted, and would otherwise be re-rendered.
+`<output>/<YYYY>/<YYYY-MM-DD> - <title>[ - <location>].mp4`, the same layout and
+names legacy wrote. Preview first: mount the archive read-only and run
+`auto-reel adopt-renders <root> -o <output> --dry-run`. It reports what it would
+adopt, with the same totals and exit code as a real run, and writes nothing.
+Remount read-write only for the real run. Check the `unrendered` count before the
+first library-wide `render`: an event whose legacy name differs from its current
+title shows up there instead of being adopted, and would otherwise be re-rendered.
+Do not run `import` before `adopt-renders`: it copies a legacy `title` that often
+already starts with the date, so the derived name would carry the date twice.
 
 ### Job scheduler (`enqueue` / `worker` / `jobs`)
 
