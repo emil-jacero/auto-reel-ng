@@ -1,7 +1,8 @@
 """Scan-on-request events/analysis read model (decision D-A3, tasks 2.2-2.4).
 
 Reuses the CLI's own building blocks unchanged: the ingest layout walk, disk
-scan + reconcile, ``load_document``, and the analysis sidecar cache reader. No
+scan + reconcile, the resolving loader (reel.yaml over folder name) plus the
+processable-event rule, and the analysis sidecar cache reader. No
 new semantics — this module only shapes the same data ``scan``/``analyze``
 already compute into the API's pydantic schemas.
 """
@@ -17,8 +18,9 @@ from typing import Dict, List, Mapping, Optional, Tuple
 from ..analysis.cache import CACHE_SUBDIR, clip_signal, read_entry
 from ..cli.adoption import REEL_FILENAME
 from ..config.project import load_project_config, resolve_look_defaults
-from ..errors import ReelParseError
+from ..errors import EventMetadataError, ReelParseError
 from ..event.discovery import DiskListing, parse_folder_name, scan_event, seed_document
+from ..event.metadata import load_event_document, require_processable, with_resolved_metadata
 from ..event.reconcile import ClipStatus, ReconcileResult, reconcile
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..ingest import EventRef, get_layout
@@ -52,7 +54,10 @@ class EventNotFoundError(Exception):
 
 
 class EventReadError(Exception):
-    """An event's ``reel.yaml`` could not be parsed (D-A6: loud, never fabricated)."""
+    """An event's ``reel.yaml`` could not be parsed, or its metadata is not processable.
+
+    (D-A6: loud, never fabricated.)
+    """
 
     def __init__(self, event_id: str, detail: str) -> None:
         super().__init__(detail)
@@ -91,17 +96,21 @@ def _list_event_refs(settings: ApiSettings) -> List[EventRef]:
 def _load_for_reconcile(
     event_id: str, event_dir: Path
 ) -> tuple[Optional[ReelDocument], DiskListing, ReconcileResult]:
-    """Load the document (if any) + disk listing and reconcile them (as ``scan`` does)."""
-    reel_path = event_dir / REEL_FILENAME
-    document: Optional[ReelDocument] = None
-    if reel_path.exists():
-        try:
-            document = load_document(reel_path)
-        except ReelParseError as exc:
-            raise EventReadError(event_id, str(exc)) from exc
+    """Load the document (if any) + disk listing and reconcile them (as ``scan`` does).
+
+    The returned document has resolved metadata (reel.yaml over folder name), and
+    is ``None`` when no ``reel.yaml`` exists yet. An unparseable document or an
+    event without a real date and title is an :class:`EventReadError`.
+    """
+    try:
+        document, seeded = load_event_document(event_dir)
+        require_processable(event_dir, document.metadata, today=DateValue.today())
+    except (ReelParseError, EventMetadataError) as exc:
+        raise EventReadError(event_id, str(exc)) from exc
+    persisted = None if seeded else document
     listing = scan_event(event_dir)
-    result = reconcile(listing.identities, document)
-    return document, listing, result
+    result = reconcile(listing.identities, persisted)
+    return persisted, listing, result
 
 
 def _job_summary(job: Optional[Job]) -> Optional[JobSummaryOut]:
@@ -115,16 +124,11 @@ def _job_summary(job: Optional[Job]) -> Optional[JobSummaryOut]:
 def _title_date_location(
     event_dir: Path, document: Optional[ReelDocument]
 ) -> tuple[Optional[str], Optional[DateValue], Optional[str]]:
-    """Title/date/location: the document's, else the folder-name hint (as ``scan`` shows)."""
-    if document is not None and (
-        document.metadata.title or document.metadata.date or document.metadata.location
-    ):
+    """Title/date/location: the resolved document's, else the folder name's (the seed)."""
+    if document is not None:
         return document.metadata.title, document.metadata.date, document.metadata.location
     parsed = parse_folder_name(event_dir.name)
-    if parsed is not None:
-        event_date, title, location = parsed
-        return title, event_date, location
-    return None, None, None
+    return parsed.title, parsed.date, parsed.location
 
 
 def list_events(
@@ -256,8 +260,10 @@ def staleness_for(
     """The event's staleness verdict (change-detection, §8.14): read-only, never writes.
 
     Uses ``document`` if it was already loaded, else the folder-seed equivalent
-    (never adopted, never persisted — a GET must not write, D-7). Public: also
-    used by the editorial-write route to echo the post-save verdict inline.
+    (never adopted, never persisted — a GET must not write, D-7), with its metadata
+    resolved against the folder name exactly as ``render`` resolves it. Public: also
+    used by the editorial-write route to echo the post-save verdict inline, where
+    the document is the one as authored.
 
     ``look_defaults`` is the caller's already-resolved per-request value
     (:func:`project_look_defaults`) — a required parameter rather than something
@@ -265,7 +271,9 @@ def staleness_for(
     The clip-set component stays on its default content-free path: the API never
     passes ``use_hash``, so no clip's bytes are read to answer a read request.
     """
-    fp_document = document if document is not None else seed_document(event_dir)
+    fp_document = with_resolved_metadata(
+        document if document is not None else seed_document(event_dir), event_dir
+    )
     fingerprint = compute_fingerprint(
         fp_document,
         event_dir=event_dir,

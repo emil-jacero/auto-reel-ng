@@ -2,7 +2,8 @@
 
 The shared fixture (``auto-reel-media``) holds a single event, which cannot show
 what the event screens must render: fresh and stale events, each staleness
-reason, NEW and MISSING clips, an undated event, an output collision, and every
+reason, NEW and MISSING clips, an event dated by its reel.yaml rather than its folder
+name, an output collision, and every
 latest-job state. This script cuts short stream-copied clips from the fixture
 (never modifying it) and lays out a ``year-event`` project under ``DEST``:
 
@@ -175,7 +176,13 @@ def main() -> None:
         "      - s1710002.mp4\n      - s1710004.mp4\n      - borttagen.mp4  # MISSING\n",
         encoding="utf-8",
     )
-    _link(library / "2024/Blandat", clips, ["s1710003.mp4"])  # undated: never rendered
+    # A folder name without a date: reel.yaml supplies it (reel.yaml over folder name). Never
+    # rendered; its clip is NEW because the document names no chapters.
+    blandat = library / "2024/Blandat"
+    _link(blandat, clips, ["s1710003.mp4"])
+    (blandat / "reel.yaml").write_text(
+        "version: 0\nmetadata:\n  title: Blandat\n  date: 2024-11-02\n", encoding="utf-8"
+    )
     # Same date, differing only in case: collides with 2024-07-14 - Kalas.
     _link(library / "2024/2024-07-14 - kalas", clips, ["s1710004.mp4"])
 

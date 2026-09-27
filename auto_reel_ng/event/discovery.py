@@ -2,7 +2,7 @@
 
 Folder layout is used only as a *hint* on first discovery: subdirectories become
 chapters, root-level clips become the default chapter, and the folder name
-(``YYYY-MM-DD - Title [- Location]``) seeds ``metadata``. After seeding, structure
+(``[YYYY-MM-DD - ]Title[ - Location]``, parsed leniently) seeds ``metadata``. After seeding, structure
 lives in the document and the loader never consults folder layout again. Seeding
 is expressed as :func:`~auto_reel_ng.event.reconcile.reconcile` against an empty
 document — every disk clip is NEW and becomes part of the seeded structure.
@@ -14,6 +14,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Optional
 
@@ -165,34 +166,87 @@ def seed_document(event_dir: Path) -> ReelDocument:
 # --------------------------------------------------------------------------- #
 
 
+class FolderNameProblem(StrEnum):
+    """Why a folder name could not supply a field (a closed set; messages are built at the error site)."""
+
+    IMPOSSIBLE_DATE = "impossible_date"  # well-formed YYYY-MM-DD that is not a calendar date
+    YEAR_ONLY = "year_only"  # a leading 4-digit year and no month/day
+    NO_DATE = "no_date"  # no leading date token at all
+    NO_TITLE = "no_title"  # nothing left after the date token
+
+
+@dataclass(frozen=True)
+class FolderName:
+    """What an event folder name ``[<date> - ]<title>[ - <location>]`` states.
+
+    Every field the name supplies is extracted, whether or not the date part is
+    usable; a field it cannot supply is ``None`` with the reason in ``problems``.
+    Nothing is fabricated. ``raw_date`` is the date token as written, for messages.
+    """
+
+    date: Optional[date]
+    title: Optional[str]
+    location: Optional[str]
+    problems: tuple[FolderNameProblem, ...] = ()
+    raw_date: Optional[str] = None
+
+
+_FOLDER_NAME_RE = re.compile(r"^(?:(?P<token>\d{4}(?:-\d{2}-\d{2})?)(?:\s*-\s*|$))?(?P<rest>.*)$")
+_LOCATION_SEPARATOR_RE = re.compile(r"\s+-\s+")
+
+
 def _metadata_from_folder_name(folder_name: str) -> Metadata:
-    """Parse ``YYYY-MM-DD - Title [- Location]`` into metadata (lenient on failure)."""
+    """Seed metadata from whatever the folder name supplies (never a placeholder)."""
     parsed = parse_folder_name(folder_name)
-    if parsed is None:
-        logger.debug("Could not parse metadata from folder name: %s", folder_name)
-        return Metadata()
-    event_date, title, location = parsed
-    return Metadata(title=title, date=event_date, location=location)
+    if parsed.problems:
+        logger.debug("Folder name %r: %s", folder_name, ", ".join(p.value for p in parsed.problems))
+    return Metadata(title=parsed.title, date=parsed.date, location=parsed.location)
 
 
-def parse_folder_name(folder_name: str) -> Optional[tuple[date, str, Optional[str]]]:
-    """Parse ``YYYY-MM-DD - Title [- Location]``; return None if it does not match."""
-    match = re.match(r"^(\d{4}-\d{2}-\d{2})", folder_name)
-    if not match:
-        return None
-    try:
-        event_date = datetime.strptime(match.group(1), "%Y-%m-%d").date()
-    except ValueError:
-        return None
+def parse_folder_name(folder_name: str) -> FolderName:
+    """Parse ``[<date> - ]<title>[ - <location>]`` leniently; never raises.
 
-    remaining = folder_name[len(match.group(1)) :].strip(" -")
-    if not remaining:
-        return None
+    The date is set only for a real ``YYYY-MM-DD`` calendar date; otherwise the
+    result states why (impossible date, year only, no date). Title and location
+    are extracted from the remainder regardless of the date.
+    """
+    match = _FOLDER_NAME_RE.match(folder_name.strip())
+    assert match is not None  # nosec B101 - the pattern matches every string
+    token = match.group("token")
+    problems: list[FolderNameProblem] = []
 
-    parts = remaining.rsplit(" - ", 1)
-    title = format_title_case(parts[0].strip())
-    location = format_title_case(parts[1].strip()) if len(parts) == 2 else None
-    return event_date, title, location
+    event_date: Optional[date] = None
+    if token is None:
+        problems.append(FolderNameProblem.NO_DATE)
+    elif len(token) == 4:
+        problems.append(FolderNameProblem.YEAR_ONLY)
+    else:
+        try:
+            event_date = datetime.strptime(token, "%Y-%m-%d").date()
+        except ValueError:
+            problems.append(FolderNameProblem.IMPOSSIBLE_DATE)
+
+    title: Optional[str] = None
+    location: Optional[str] = None
+    rest = match.group("rest").strip(" -")
+    if rest:
+        parts = _LOCATION_SEPARATOR_RE.split(rest)
+        if len(parts) > 1:
+            title = format_title_case(" - ".join(parts[:-1]).strip())
+            location = format_title_case(parts[-1].strip())
+        else:
+            title = format_title_case(rest)
+    if not title:
+        title = None
+        problems.append(FolderNameProblem.NO_TITLE)
+
+    return FolderName(
+        date=event_date,
+        title=title,
+        location=location or None,
+        problems=tuple(problems),
+        raw_date=token,
+    )
 
 
 def format_title_case(text: str) -> str:

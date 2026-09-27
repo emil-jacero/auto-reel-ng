@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from typing import Optional
 
 import pytest
 
 from auto_reel_ng.errors import ReconcileError
-from auto_reel_ng.event.discovery import scan_event, seed_document
+from auto_reel_ng.event.discovery import (
+    FolderNameProblem,
+    parse_folder_name,
+    scan_event,
+    seed_document,
+)
 from auto_reel_ng.event.reconcile import (
     ClipStatus,
     add_clip,
@@ -58,6 +64,67 @@ def test_folder_name_seeds_metadata(tmp_path: Path) -> None:
     assert doc.metadata.title == "Midsummer"
     assert doc.metadata.date == date(2024, 6, 21)
     assert doc.metadata.location == "Dalarna"
+
+
+def test_parse_well_formed_name_has_no_problems() -> None:
+    parsed = parse_folder_name("2024-06-21 - Midsummer - Dalarna")
+    assert parsed.date == date(2024, 6, 21)
+    assert parsed.title == "Midsummer"
+    assert parsed.location == "Dalarna"
+    assert parsed.problems == ()
+
+
+def test_parse_impossible_date_keeps_title_and_location() -> None:
+    parsed = parse_folder_name("2019-04-31 - Golfträning med Emil - Tjörn")
+    assert parsed.date is None
+    assert parsed.problems == (FolderNameProblem.IMPOSSIBLE_DATE,)
+    assert parsed.raw_date == "2019-04-31"
+    assert parsed.title == "Golfträning med Emil"
+    assert parsed.location == "Tjörn"
+
+
+def test_parse_year_only_keeps_title() -> None:
+    parsed = parse_folder_name("2004 - Yngve berättar om skövde")
+    assert parsed.date is None
+    assert parsed.problems == (FolderNameProblem.YEAR_ONLY,)
+    assert parsed.raw_date == "2004"
+    assert parsed.title == "Yngve Berättar om Skövde"
+    assert parsed.location is None
+
+
+def test_parse_name_without_date_is_a_title() -> None:
+    parsed = parse_folder_name("Blandat")
+    assert parsed.date is None
+    assert parsed.problems == (FolderNameProblem.NO_DATE,)
+    assert parsed.title == "Blandat"
+
+
+def test_parse_date_without_title_states_no_title() -> None:
+    parsed = parse_folder_name("2024-06-21 - ")
+    assert parsed.date == date(2024, 6, 21)
+    assert parsed.title is None
+    assert parsed.problems == (FolderNameProblem.NO_TITLE,)
+
+
+def test_parse_double_space_before_separator_splits_cleanly() -> None:
+    parsed = parse_folder_name("Lasse 78 år  - Kungälv")
+    assert parsed.title == "Lasse 78 År"
+    assert parsed.location == "Kungälv"
+
+
+@pytest.mark.parametrize(
+    ("name", "title"),
+    [
+        ("2019-04-31 - Golfträning", "Golfträning"),
+        ("2004 - Yngve", "Yngve"),
+        ("Blandat", "Blandat"),
+        ("2024-06-21", None),
+    ],
+)
+def test_seeding_never_fabricates_a_title(tmp_path: Path, name: str, title: Optional[str]) -> None:
+    event_dir = tmp_path / name
+    event_dir.mkdir()
+    assert seed_document(event_dir).metadata.title == title
 
 
 def test_non_video_files_are_not_scanned(tmp_path: Path) -> None:

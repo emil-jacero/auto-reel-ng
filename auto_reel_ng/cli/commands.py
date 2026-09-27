@@ -21,6 +21,7 @@ import signal
 import sys
 import uuid
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Tuple
 
@@ -38,15 +39,16 @@ from ..config import (
     load_project_config,
     resolve_look_defaults,
 )
-from ..errors import EngineError
+from ..errors import EngineError, EventMetadataError, ReelError
 from ..event import ReconcileResult, reconcile, scan_event
+from ..event.metadata import require_processable
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..ingest import DEFAULT_LAYOUT, EventRef, get_layout
 from ..persistence.config import resolve_database_url
 from ..persistence.engine import make_engine, make_session_factory
 from ..persistence.job_store import JobStore
 from ..persistence.models import JobStatus
-from ..reel import Metadata, ReelDocument, import_legacy, load_document, write_document
+from ..reel import Metadata, ReelDocument, import_legacy, write_document
 from ..reel.legacy import ImportResult
 from ..render import RenderJob, find_output_collisions, output_relpath, render_batch
 from ..scheduler import (
@@ -119,6 +121,38 @@ def _project_context(args: argparse.Namespace) -> ProjectContext:
     )
 
 
+def _checked_document(ref: EventRef, today: date) -> Tuple[Optional[ReelDocument], Optional[str]]:
+    """(document, None) for a processable event, or (None, reason) — never raises ReelError.
+
+    The per-event isolation point for document errors (headless-cli): an event whose
+    ``reel.yaml`` cannot be parsed, or whose resolved metadata lacks a real date or a
+    title, is reported by the caller and skipped; the batch continues.
+    """
+    try:
+        document, _seeded = load_or_seed(ref.event_dir)
+        require_processable(ref.event_dir, document.metadata, today=today)
+    except EventMetadataError as exc:
+        return None, exc.reason
+    except ReelError as exc:
+        return None, str(exc)
+    return document, None
+
+
+def _checked_documents(
+    events: List[EventRef], today: date
+) -> Tuple[Dict[Path, ReelDocument], Dict[Path, str]]:
+    """Split ``events`` into processable documents and per-event failure reasons."""
+    documents: Dict[Path, ReelDocument] = {}
+    failures: Dict[Path, str] = {}
+    for ref in events:
+        document, reason = _checked_document(ref, today)
+        if document is None:
+            failures[ref.event_dir] = str(reason)
+        else:
+            documents[ref.event_dir] = document
+    return documents, failures
+
+
 # --------------------------------------------------------------------------- #
 # render
 # --------------------------------------------------------------------------- #
@@ -141,13 +175,14 @@ def cmd_render(args: argparse.Namespace) -> int:
     logger.info("Selected %s profile (render_node=%s)", profile.vendor.value, render_node)
 
     # enumerate -> [staleness gate] -> build jobs -> render_batch
-    candidates, fresh = _staleness_filter(
+    candidates, fresh, invalid = _staleness_filter(
         ctx.events,
         output_dir=ctx.output_dir,
         look_defaults=look_defaults,
         ffmpeg_version=runtime.version,
         force=args.force,
         dry_run=args.dry_run,
+        today=date.today(),
     )
 
     # Output-identity check over every selected event, fresh ones included: a fresh
@@ -159,7 +194,7 @@ def cmd_render(args: argparse.Namespace) -> int:
     fresh = [c for c in fresh if c.ref.event_dir not in refused]
 
     jobs: List[RenderJob] = []
-    build_failures: List[Tuple[Path, str]] = list(refused.items())
+    build_failures: List[Tuple[Path, str]] = [*invalid, *refused.items()]
     for candidate in candidates:
         try:
             jobs.append(
@@ -219,8 +254,13 @@ def _staleness_filter(
     ffmpeg_version: Tuple[int, int],
     force: bool,
     dry_run: bool,
-) -> Tuple[List[_Candidate], List[_Candidate]]:
-    """Prepare/persist + gate every event; split into (render candidates, fresh).
+    today: date,
+) -> Tuple[List[_Candidate], List[_Candidate], List[Tuple[Path, str]]]:
+    """Prepare/persist + gate every event; split into (render candidates, fresh, failed).
+
+    An event whose document cannot be loaded or whose metadata is not processable
+    is returned as ``(event_dir, reason)`` in the third list before anything is
+    prepared or persisted for it (no seed is written, nothing is rendered).
 
     The change-detection gate (§8.14) call site for ``render``: each event is
     prepared/adopted and persisted (unless dry-run, D-C5) *before* its fingerprint
@@ -230,7 +270,12 @@ def _staleness_filter(
     """
     stale: List[_Candidate] = []
     fresh: List[_Candidate] = []
+    failed: List[Tuple[Path, str]] = []
     for ref in events:
+        _document, reason = _checked_document(ref, today)
+        if reason is not None:
+            failed.append((ref.event_dir, reason))
+            continue
         event = prepare_and_persist(ref.event_dir, dry_run=dry_run)
         if event.adopted:
             print(f"+  {ref.event_dir.name}: adopted {len(event.adopted)} new clip(s)")
@@ -256,7 +301,7 @@ def _staleness_filter(
             stale.append(candidate)
         else:
             fresh.append(candidate)
-    return stale, fresh
+    return stale, fresh, failed
 
 
 def _build_job(
@@ -347,18 +392,23 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
     runtime = FfmpegRuntime()
     look_defaults = resolve_look_defaults(ctx.config)
+    today = date.today()
 
+    errors = 0
     for ref in ctx.events:
-        # Reconcile disk against the persisted reel.yaml (None -> every clip NEW);
-        # scan never seeds, adopts, or writes anything.
-        reel_path = ref.event_dir / REEL_FILENAME
-        document = load_document(reel_path) if reel_path.exists() else None
-        listing = scan_event(ref.event_dir)
-        result = reconcile(listing.identities, document)
+        # The resolved (loaded or folder-seeded) document; scan never adopts or writes.
+        fp_document, reason = _checked_document(ref, today)
+        if fp_document is None:
+            print(f"\nERROR  {ref.event_dir.name}: {reason}")
+            errors += 1
+            continue
 
-        # The staleness gate (§8.14, read-only site): the fingerprint uses the
-        # same document seen/seeded by load_or_seed, never adopted or persisted.
-        fp_document = document if document is not None else load_or_seed(ref.event_dir)[0]
+        # Reconcile disk against the persisted reel.yaml (none -> every clip NEW).
+        persisted = (ref.event_dir / REEL_FILENAME).exists()
+        listing = scan_event(ref.event_dir)
+        result = reconcile(listing.identities, fp_document if persisted else None)
+
+        # The staleness gate (§8.14, read-only site): never adopted or persisted.
         fingerprint = compute_fingerprint(
             fp_document,
             event_dir=ref.event_dir,
@@ -368,15 +418,12 @@ def cmd_scan(args: argparse.Namespace) -> int:
         output_path = ctx.output_dir / output_relpath(fp_document.metadata)
         verdict = evaluate(ref.event_dir, output_path, fingerprint)
 
-        _print_inventory(ref, document, result, verdict)
-    return 0
+        _print_inventory(ref, str(fp_document.metadata.title), result, verdict)
+    return 1 if errors else 0
 
 
-def _print_inventory(
-    ref: EventRef, document: Optional[ReelDocument], result: ReconcileResult, verdict: Verdict
-) -> None:
+def _print_inventory(ref: EventRef, title: str, result: ReconcileResult, verdict: Verdict) -> None:
     """Print one event with each clip classified NEW/ACTIVE/IGNORED/MISSING, plus staleness."""
-    title = _event_title(ref, document)
     print(f"\n{title}  [{ref.event_dir}]")
     classification = result.classification
     if not classification:
@@ -390,15 +437,6 @@ def _print_inventory(
         print(f"  stale: {', '.join(verdict.reasons)}")
     else:
         print("  fresh")
-
-
-def _event_title(ref: EventRef, document: Optional[ReelDocument]) -> str:
-    """A display title: the document's, else the folder-name hint, else the dir name."""
-    if document is not None and document.metadata.title:
-        return document.metadata.title
-    if ref.metadata_hint is not None:
-        return ref.metadata_hint.title
-    return ref.event_dir.name
 
 
 # --------------------------------------------------------------------------- #
@@ -584,15 +622,16 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
     project_root_str = str(ctx.project_root)
     force = args.force
 
-    documents = {ref.event_dir: load_or_seed(ref.event_dir)[0] for ref in ctx.events}
+    # A failing event is excluded before the collision check: it can never claim a path.
+    documents, failures = _checked_documents(ctx.events, date.today())
     refused = _output_collisions({d: doc.metadata for d, doc in documents.items()})
-    for event_dir_path, message in refused.items():
+    for event_dir_path, message in (*failures.items(), *refused.items()):
         print(f"ERROR  {event_dir_path.name}: {message}")
 
     created = 0
     fresh_count = 0
     for ref in ctx.events:
-        if ref.event_dir in refused:
+        if ref.event_dir in refused or ref.event_dir in failures:
             continue
         event_dir = str(ref.event_dir.relative_to(ctx.project_root))
         document = documents[ref.event_dir]
@@ -631,7 +670,7 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
         f"\n{created}/{len(ctx.events)} event(s) newly queued "
         f"({fresh_count} fresh, not enqueued)"
     )
-    return 1 if refused else 0
+    return 1 if refused or failures else 0
 
 
 # --------------------------------------------------------------------------- #
@@ -835,15 +874,16 @@ def cmd_adopt_renders(args: argparse.Namespace) -> int:
     runtime = FfmpegRuntime()
     look_defaults = resolve_look_defaults(ctx.config)
 
-    documents = {ref.event_dir: load_or_seed(ref.event_dir)[0] for ref in ctx.events}
+    # A failing event is excluded before the collision check: it can never claim a path.
+    documents, failures = _checked_documents(ctx.events, date.today())
     # One file cannot be adopted as two movies: refuse every claimant of a shared path.
     refused = _output_collisions({d: doc.metadata for d, doc in documents.items()})
-    for event_dir, message in refused.items():
+    for event_dir, message in (*failures.items(), *refused.items()):
         print(f"ERROR  {event_dir.name}: {message}")
 
     adopted = unrendered = already_fresh = 0
     for ref in ctx.events:
-        if ref.event_dir in refused:
+        if ref.event_dir in refused or ref.event_dir in failures:
             continue
         document = documents[ref.event_dir]
         output_path = ctx.output_dir / output_relpath(document.metadata)
@@ -883,4 +923,4 @@ def cmd_adopt_renders(args: argparse.Namespace) -> int:
         )
     else:
         print(f"\n{adopted} adopted, {already_fresh} already fresh, {unrendered} unrendered")
-    return 1 if refused else 0
+    return 1 if refused or failures else 0

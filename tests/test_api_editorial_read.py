@@ -150,6 +150,22 @@ def test_event_without_reel_yaml_reads_as_the_empty_document(
     assert not (_event_dir(project, "2024/2024-08-01 - Unsaved") / "reel.yaml").exists()
 
 
+def test_read_returns_the_document_as_authored_not_resolved(
+    client: TestClient, project: Path
+) -> None:
+    """A date-less reel.yaml reads back date-less: folder-name resolution is never shown here."""
+    event_dir = _event_dir(project, "2024/2024-08-01 - Unsaved")
+    (event_dir / "reel.yaml").write_text(BARE_YAML.replace("00800", "00900"), encoding="utf-8")
+
+    response = client.get(f"/api/v1/events/{_event_id('2024/2024-08-01 - Unsaved')}/reel")
+    assert response.status_code == 200
+    assert response.json()["metadata"]["date"] is None
+
+    detail = client.get(f"/api/v1/events/{_event_id('2024/2024-08-01 - Unsaved')}").json()
+    assert detail["date"] == "2024-08-01"  # the event itself resolves the folder's date
+    assert "date" not in (event_dir / "reel.yaml").read_text(encoding="utf-8")
+
+
 def test_unparseable_document_is_loud(client: TestClient) -> None:
     """Never an empty or partial document (Principle I) — a problem body naming the event."""
     event_id = _event_id("2024/2024-09-01 - Broken")

@@ -120,6 +120,21 @@ def test_unparseable_reel_yaml_on_the_list_is_a_scan_problem(client, project: Pa
 
 
 @pytest.mark.requires_db
+def test_a_year_only_event_on_the_list_is_a_per_event_problem(client, project: Path) -> None:
+    """An event without a real date fails the list with the existing per-event 502 body."""
+    _touch(project / "2004" / "2004 - Yngve berättar om skövde" / "00100.mp4")
+
+    response = client.get("/api/v1/events")
+    body = response.json()
+
+    assert response.status_code == 502
+    assert body["event_id"] == "2004/2004 - Yngve berättar om skövde"
+    assert "year only" in body["detail"]
+    assert "metadata.date" in body["detail"]
+    assert "check" not in body
+
+
+@pytest.mark.requires_db
 def test_the_detail_routes_404_and_502_are_unchanged(client, project: Path) -> None:
     unknown = client.get("/api/v1/events/2024/nope")
     assert unknown.status_code == 404

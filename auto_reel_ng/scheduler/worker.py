@@ -15,6 +15,7 @@ import logging
 import threading
 import time
 import uuid
+from datetime import date
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -22,6 +23,7 @@ from ..accel.profiles.base import AccelProfile
 from ..cli.build import build_render_job_from_event, prepare_and_persist
 from ..config.project import default_output_dir, load_project_config, resolve_look_defaults
 from ..errors import EngineError, IllegalJobTransitionError, RenderCancelledError
+from ..event.metadata import load_event_document, require_processable
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..persistence.job_store import JobStore
 from ..persistence.models import Job, JobStatus
@@ -67,6 +69,8 @@ def default_build_job(
         project_root / config.output_dir if config.output_dir else default_output_dir(project_root)
     )
 
+    # The same processable-event rule as the CLI: a failure fails the job with the reason.
+    require_processable(event_dir, load_event_document(event_dir)[0].metadata, today=date.today())
     event = prepare_and_persist(event_dir)
     fingerprint = compute_fingerprint(
         event.document,

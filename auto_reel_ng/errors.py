@@ -149,3 +149,18 @@ class IllegalJobTransitionError(PersistenceError):
     while e.g. a progress update on a non-running job is silently ignored (the
     caller's information may simply be stale).
     """
+
+
+class EventMetadataError(ReelError):
+    """An event's resolved metadata lacks a real date or a title, or is dated in the future.
+
+    Raised at the project-level entry points (scan, render, enqueue, adopt-renders,
+    the worker, the events reads), never by the loaders. The message names the
+    event, the reason (the folder name's stated problem when the field was expected
+    from it) and the fix; ``reason`` carries the message without the event name.
+    """
+
+    def __init__(self, event_name: str, reason: str) -> None:
+        super().__init__(f"{event_name}: {reason}")
+        self.event_name = event_name
+        self.reason = reason

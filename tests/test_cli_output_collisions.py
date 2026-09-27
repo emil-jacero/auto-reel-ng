@@ -142,20 +142,20 @@ def test_same_title_on_different_dates_does_not_collide(
     assert len(rendered) == 2
 
 
-def test_two_undated_same_title_events_collide(
+def test_two_reel_yaml_events_with_same_date_and_title_collide(
     root: Path, rendered: List[RenderJob], capsys: pytest.CaptureFixture[str]
 ) -> None:
     for name in ("a", "b"):
         event_dir = _add_event(root, "2024", name)
         (event_dir / "reel.yaml").write_text(
-            "version: 0\nmetadata:\n  title: Blandat\n", encoding="utf-8"
+            "version: 0\nmetadata:\n  title: Blandat\n  date: 2024-11-02\n", encoding="utf-8"
         )
 
     assert main(["render", str(root)]) == 1
 
     out = capsys.readouterr().out
-    assert "ERROR  a: output path Blandat.mp4" in out
-    assert "ERROR  b: output path Blandat.mp4" in out
+    assert "ERROR  a: output path 2024/2024-11-02 - Blandat.mp4" in out
+    assert "ERROR  b: output path 2024/2024-11-02 - Blandat.mp4" in out
     assert rendered == []
 
 

@@ -93,12 +93,11 @@ def layout_names() -> tuple[str, ...]:
 
 
 def _folder_hint(name: str) -> Optional[FolderHint]:
-    """Parse ``YYYY-MM-DD - Title [- Location]`` into a hint, or None."""
+    """A hint when the folder name states a real date and a title, else None."""
     parsed = parse_folder_name(name)
-    if parsed is None:
+    if parsed.date is None or parsed.title is None:
         return None
-    event_date, title, location = parsed
-    return FolderHint(date=event_date, title=title, location=location)
+    return FolderHint(date=parsed.date, title=parsed.title, location=parsed.location)
 
 
 def _subdirs(directory: Path) -> list[Path]:

@@ -78,7 +78,8 @@ def test_editorial_write_save_stale_render_cycle(
 
         fresh_check = client.get(f"/api/v1/events/{encoded_id}")
         assert fresh_check.json()["staleness"]["stale"] is False
-        original_output = default_output_dir(root) / "Original Title.mp4"  # undated: output root
+        # The date-less PUT resolves the folder's date (reel.yaml over folder name, D-2).
+        original_output = default_output_dir(root) / "2024" / "2024-06-21 - Original Title.mp4"
         assert original_output.exists()
 
         # 3. Edit the title via a second save; the event goes stale citing editorial,
@@ -104,5 +105,5 @@ def test_editorial_write_save_stale_render_cycle(
         final_check = client.get(f"/api/v1/events/{encoded_id}")
         assert final_check.json()["staleness"]["stale"] is False
 
-        new_output = default_output_dir(root) / "Renamed Trip.mp4"
+        new_output = default_output_dir(root) / "2024" / "2024-06-21 - Renamed Trip.mp4"
         assert new_output.exists()

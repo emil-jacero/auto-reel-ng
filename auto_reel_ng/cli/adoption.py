@@ -10,7 +10,9 @@ the policy lives here:
   never removed from the document.
 
 Only ``render`` adopts and persists; ``scan`` resolves with ``adopt=False`` and
-writes nothing.
+writes nothing. The prepared ``document`` carries resolved metadata (reel.yaml over
+folder name, D-2); ``persist`` writes the ``authored`` one, so resolution never
+reaches disk.
 """
 
 from __future__ import annotations
@@ -22,26 +24,34 @@ from typing import Optional, Tuple
 
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
-from ..event import ReconcileResult, add_clip, reconcile, scan_event, seed_document
-from ..reel import ReelDocument, build_document, load_document, write_document
+from ..event import ReconcileResult, add_clip, reconcile, scan_event
+from ..event.metadata import (
+    REEL_FILENAME,
+    load_authored_document,
+    load_event_document,
+    with_resolved_metadata,
+)
+from ..reel import ReelDocument, build_document, write_document
 from ..reel.document import DEFAULT_CHAPTER_NAME
 from ..reel.writer import document_to_data
 
 logger = logging.getLogger(__name__)
 
-#: The editorial document file name within an event directory.
-REEL_FILENAME = "reel.yaml"
-
 
 @dataclass(frozen=True)
 class PreparedEvent:
-    """An event resolved to a document plus its disk reconcile (D-CLI3)."""
+    """An event resolved to a document plus its disk reconcile (D-CLI3).
+
+    ``document`` has resolved metadata and is what every consumer reads;
+    ``authored`` is the same document as authored, and is what :func:`persist` writes.
+    """
 
     event_dir: Path
     document: ReelDocument
     reconcile: ReconcileResult
     seeded: bool
     adopted: Tuple[str, ...]
+    authored: ReelDocument
 
     @property
     def changed(self) -> bool:
@@ -50,11 +60,8 @@ class PreparedEvent:
 
 
 def load_or_seed(event_dir: Path) -> Tuple[ReelDocument, bool]:
-    """Load ``<event>/reel.yaml`` if present, else seed a document from disk structure."""
-    reel_path = Path(event_dir) / REEL_FILENAME
-    if reel_path.exists():
-        return load_document(reel_path), False
-    return seed_document(event_dir), True
+    """Load or seed ``event_dir``'s document with resolved metadata (see :mod:`..event.metadata`)."""
+    return load_event_document(event_dir)
 
 
 def prepare_event(
@@ -70,23 +77,24 @@ def prepare_event(
     clips are left in the document for the caller to report loudly (D-CLI3).
     """
     event_dir = Path(event_dir)
-    document, seeded = load_or_seed(event_dir)
+    authored, seeded = load_authored_document(event_dir)
     listing = scan_event(event_dir)
-    result = reconcile(listing.identities, document)
+    result = reconcile(listing.identities, authored)
 
     adopted: Tuple[str, ...] = ()
     if adopt and result.new:
-        document = _ensure_chapter(document, adopt_chapter)
+        authored = _ensure_chapter(authored, adopt_chapter)
         for identity in result.new:
-            document = add_clip(document, identity, adopt_chapter)
+            authored = add_clip(authored, identity, adopt_chapter)
         adopted = result.new
 
     return PreparedEvent(
         event_dir=event_dir,
-        document=document,
+        document=with_resolved_metadata(authored, event_dir),
         reconcile=result,
         seeded=seeded,
         adopted=adopted,
+        authored=authored,
     )
 
 
@@ -95,7 +103,7 @@ def persist(event: PreparedEvent) -> Optional[Path]:
     if not event.changed:
         return None
     reel_path = event.event_dir / REEL_FILENAME
-    write_document(event.document, reel_path)
+    write_document(event.authored, reel_path)
     return reel_path
 
 

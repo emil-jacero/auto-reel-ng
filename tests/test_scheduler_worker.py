@@ -185,6 +185,30 @@ def test_worker_marks_job_failed_when_build_fails(job_store: JobStore) -> None:
     assert job.error is not None and "clip unreadable" in job.error
 
 
+def test_worker_fails_a_job_for_an_impossible_folder_date(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    name = "2019-04-31 - Golfträning med Emil - Tjörn"
+    (tmp_path / name).mkdir()
+    (tmp_path / name / "a.mp4").write_bytes(b"")
+    job_id = job_store.enqueue(str(tmp_path), name)
+
+    def build(job: Job) -> RenderJob:
+        runtime = Mock(name="runtime", version=(7, 1))
+        return default_build_job(job, runtime=runtime, profile=CPUProfile(), render_node=None)
+
+    worker = Worker(
+        job_store, worker_id="w1", pools=_solo_pools(), poll_interval=0.01, build_job=build
+    )
+    assert worker.process_next() is True
+
+    job = job_store.get(job_id)
+    assert job is not None
+    assert job.status == JobStatus.FAILED
+    assert job.error is not None and "2019-04-31 is not a real date" in job.error
+    assert not (tmp_path / name / "reel.yaml").exists()
+
+
 def test_worker_marks_job_failed_when_render_fails(job_store: JobStore, tmp_path: Path) -> None:
     job_id = job_store.enqueue(PROJECT_ROOT, "event")
     render_job = _cpu_render_job(tmp_path)
