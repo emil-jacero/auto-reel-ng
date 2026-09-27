@@ -1,7 +1,8 @@
 """Project ``config.yaml``: shared defaults and the D-2 layering.
 
 A project root may carry a ``config.yaml`` declaring a default ``look`` map, the
-ingest ``layout`` name, default ``input``/``output`` paths, a ``database.url``
+ingest ``layout`` name, default ``input``/``output`` paths, the clip ``sort`` rule
+(:class:`~auto_reel_ng.event.discovery.ClipOrder`), a ``database.url``
 override consumed by :mod:`auto_reel_ng.persistence.config`, and a ``worker`` map
 consumed by :mod:`auto_reel_ng.scheduler.config`. Every field is optional: a
 missing file yields all-defaults (tolerated), while malformed YAML or a
@@ -27,6 +28,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
 from ..errors import EngineError
+from ..event.discovery import DEFAULT_CLIP_ORDER, ClipOrder, SortMethod
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,8 @@ class ProjectConfig:
     #: The API service's ``api.*`` settings (opaque, like ``worker``); see
     #: :func:`auto_reel_ng.api.settings.resolve_api_settings`.
     api: Mapping[str, object] = field(default_factory=dict)
+    #: The order clips enter a document in (seeding and NEW-clip adoption).
+    sort: ClipOrder = DEFAULT_CLIP_ORDER
 
 
 def load_project_config(root: Path) -> ProjectConfig:
@@ -92,7 +96,29 @@ def loads_project_config(text: str, *, source: str = "<string>") -> ProjectConfi
         database_url=_require_str(database.get("url"), "database.url", source),
         worker=dict(_require_mapping(data.get("worker"), "worker", source)),
         api=dict(_require_mapping(data.get("api"), "api", source)),
+        sort=_parse_sort(_require_mapping(data.get("sort"), "sort", source), source),
     )
+
+
+def _parse_sort(sort: Mapping[str, object], source: str) -> ClipOrder:
+    """The ``sort: {method, reverse}`` rule; absent fields take auto-reel's default."""
+    method_value = _require_str(sort.get("method"), "sort.method", source)
+    reverse = sort.get("reverse", DEFAULT_CLIP_ORDER.reverse)
+    if method_value is None:
+        method = DEFAULT_CLIP_ORDER.method
+    else:
+        try:
+            method = SortMethod(method_value)
+        except ValueError:
+            allowed = ", ".join(m.value for m in SortMethod)
+            raise ConfigError(
+                f"{source}: 'sort.method' must be one of {allowed}, got {method_value!r}"
+            ) from None
+    if not isinstance(reverse, bool):
+        raise ConfigError(
+            f"{source}: 'sort.reverse' must be a boolean, got {type(reverse).__name__}"
+        )
+    return ClipOrder(method=method, reverse=reverse)
 
 
 def resolve_look_defaults(config: ProjectConfig) -> dict[str, object]:

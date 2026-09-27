@@ -14,7 +14,7 @@ from auto_reel_ng.config import (
     loads_project_config,
     resolve_look_defaults,
 )
-from auto_reel_ng.event import resolve
+from auto_reel_ng.event import ClipOrder, SortMethod, resolve
 from auto_reel_ng.reel.document import Metadata, ReelDocument
 
 # --------------------------------------------------------------------------- #
@@ -103,3 +103,29 @@ def test_default_output_dir_is_a_sibling_of_the_root(tmp_path: Path, monkeypatch
     assert default_output_dir(root) == tmp_path / "sorted-output"
     monkeypatch.chdir(root)
     assert default_output_dir(Path(".")) == tmp_path / "sorted-output"
+
+
+# --------------------------------------------------------------------------- #
+# sort rule (clip-order)
+# --------------------------------------------------------------------------- #
+
+
+def test_absent_sort_defaults_to_datetime() -> None:
+    assert loads_project_config("layout: flat\n").sort == ClipOrder(
+        method=SortMethod.DATETIME, reverse=False
+    )
+
+
+def test_sort_filename_reverse_parses() -> None:
+    config = loads_project_config("sort:\n  method: filename\n  reverse: true\n")
+    assert config.sort == ClipOrder(method=SortMethod.FILENAME, reverse=True)
+
+
+def test_unknown_sort_method_fails_loud() -> None:
+    with pytest.raises(ConfigError, match="sort.method"):
+        loads_project_config("sort:\n  method: custom\n")
+
+
+def test_wrong_typed_sort_reverse_fails_loud() -> None:
+    with pytest.raises(ConfigError, match="sort.reverse"):
+        loads_project_config('sort:\n  reverse: "yes"\n')
