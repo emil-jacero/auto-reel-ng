@@ -112,8 +112,8 @@ Legend: ✅ verified on dev host, ⚠️ verified-broken on dev host, ❓ untest
 
 | Logical op | NVIDIA (CUDA/NVENC) ❓ | Intel (QSV/VAAPI) ❓ | AMD (VAAPI) — tested | CPU |
 |---|---|---|---|---|
-| decode | `-hwaccel cuda -hwaccel_output_format cuda` | `-hwaccel qsv` / `vaapi` | ✅ `-hwaccel vaapi -hwaccel_output_format vaapi` | software |
-| scale + pad | `scale_cuda`/`scale_npp` (+`pad`?) | `vpp_qsv` scale **only** (no pad) → libplacebo or CPU pad | ✅ **`scale_vaapi,pad_vaapi`** (single-API, fastest) | `scale,pad` |
+| decode | `-hwaccel cuda -hwaccel_output_format cuda` | `-hwaccel qsv` / `vaapi` | ✅ `-init_hw_device vaapi=va:<node> -filter_hw_device va -hwaccel vaapi -hwaccel_device va -hwaccel_output_format vaapi` (one named device shared with filters, exp 006) | software |
+| scale + pad | `scale_cuda`/`scale_npp` (+`pad`?) | `vpp_qsv` scale **only** (no pad) → libplacebo or CPU pad | `scale_vaapi` ✅; `pad_vaapi` ⚠️ geometry correct, **fill colour ignored on Mesa** (exp 006) — the self-test's `pad_fill_ok` decides; clips needing bars fall back to CPU `scale,pad` | `scale,pad` |
 | overlay (title) | `overlay_cuda` | `overlay_qsv` | ⚠️ `overlay_vaapi` **unsupported on Mesa** → CPU bridge / title-as-segment | `overlay` |
 | tonemap HDR→SDR | `libplacebo` / CUDA | `tonemap_vaapi` / QSV | ⚠️ **all GPU paths fail** → CPU only | `zscale,tonemap` |
 | encode | `h264_nvenc`/`hevc_nvenc`/`av1_nvenc` | `*_qsv` | ✅ `h264_vaapi`/`hevc_vaapi`/`av1_vaapi` | `libx264`/`libx265`/`svtav1` |
@@ -121,7 +121,8 @@ Legend: ✅ verified on dev host, ⚠️ verified-broken on dev host, ❓ untest
 This replaces `VideoCodec.is_gpu_codec`. The profile also tracks **where frames live** (hw frame context)
 so the graph builder knows when an explicit `hwupload`/`hwdownload` is unavoidable. The AMD column is now
 empirically grounded (`experiments/002–004`); the libplacebo/Vulkan unification idea was **refuted on AMD/radv**
-(interop broken) and **not needed** — native `scale_vaapi,pad_vaapi` is the better AMD path. NVIDIA/Intel cells
+(interop broken) and **not needed** — native `scale_vaapi` is the better AMD path, with `pad_vaapi` only where
+the self-test measured a correct fill (exp 006). NVIDIA/Intel cells
 remain best-guess until tested on real hardware, and **every cell must be confirmed by the startup self-test**
 rather than assumed.
 
@@ -554,6 +555,8 @@ turned into confident OpenSpec changes. Numbered to match the ⚠️ markers abo
 >   single-API `scale_vaapi,pad_vaapi → {h264,hevc,av1}_vaapi`** — fully on-GPU and the **fastest** path tested
 >   (1.98 s vs bridge 2.83 s vs CPU 3.18 s for 30 s). `pad_vaapi` **exists** in ffmpeg 7.1+ (the "VAAPI can't
 >   pad" claim is outdated). The libplacebo↔VAAPI (Vulkan) route is **broken on radv** and not needed for AMD.
+>   **Corrected by exp 006:** `pad_vaapi` ignores its fill colour on Mesa (paints green); bars pad on the CPU
+>   unless the self-test's `pad_fill_ok` is true.
 > - **AMD driver gaps found** (exp 003+004): `overlay_vaapi` is **unsupported** (→ title can't be composited
 >   on-GPU via VAAPI; prefer **title-as-separate-segment** over overlay), and **every GPU HDR tonemap path
 >   fails** (`tonemap_vaapi` "doesn't support HDR", libplacebo interop broken, `tonemap_opencl` **crashes the
@@ -576,8 +579,12 @@ turned into confident OpenSpec changes. Numbered to match the ⚠️ markers abo
    filter to NVENC/QSV/VAAPI/AMF names. AMD: native `scale_vaapi,pad_vaapi`; libplacebo refuted on radv.
    **Still need:** validate NVIDIA (CUDA/libplacebo) and Intel (`vpp_qsv` scale-only) on real hardware; retry
    AMD libplacebo with `RADV_PERFTEST=video_decode`.
-2. **VAAPI padding.** ✅ **RESOLVED** — `pad_vaapi` exists (FFmpeg ≥ 7.1) and works on AMD (exp 003). Intel QSV
-   still needs libplacebo/CPU bridge (`vpp_qsv` can't pad).
+2. **VAAPI padding.** ⚠️ **RESOLVED WITH A DEFECT** — `pad_vaapi` exists (FFmpeg ≥ 7.1) and produces the right
+   geometry on AMD (exp 003), but **ignores its `color` on Mesa radeonsi**: every syntax paints all-zero YUV
+   (green bars; exp 006). The self-test now reads the padded pixels back (`amd.pad_fill` → `pad_fill_ok`);
+   clips that need bars pad on the CPU where the fill is wrong, 16:9 clips stay on `scale_vaapi`. The same
+   experiment found the VAAPI decode must share one named device with the filter graph, or no CPU stage can
+   `hwupload` back. Intel QSV still needs libplacebo/CPU bridge (`vpp_qsv` can't pad).
 3. **Mixed hardware frame contexts** in one ffmpeg graph (different decoders/inputs) — what's allowed,
    when an explicit `hwupload`/`hwdownload` round-trip is forced. *(Partially seen in exp 002: Vulkan↔VAAPI
    reverse map fails on radv; device-derivation order matters.)*
