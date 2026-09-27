@@ -73,13 +73,28 @@ write nothing) and `--device <amd|nvidia|intel|cpu|device-id>`.
   immediate subfolder a named chapter. A subfolder named `original` (any case; legacy
   pre-conversion camera originals) or containing `.reelignore` is never a chapter, and
   its files are never touched.
+- **Event metadata resolves field by field.** Date, title and location each come
+  from the event's `reel.yaml` when set there (blank counts as unset), else from the
+  folder name, read as `[<YYYY-MM-DD> - ]<title>[ - <location>]`. The folder name is
+  only a fallback: resolution happens at load and is never written back to
+  `reel.yaml`, and renaming a folder changes only the fields `reel.yaml` leaves unset.
+  Nothing is guessed from media (file dates of digitized footage are digitization
+  dates).
+- **An event needs a real date and a title.** An event whose resolved metadata has no
+  date, no title, or a date after today is reported per event, naming the reason and
+  the fix, for example
+  `ERROR  2019-04-31 - Golfträning: no date: folder name date 2019-04-31 is not a real date; set metadata.date in reel.yaml or correct the folder name`.
+  A folder name with a year only (`2004 - …`) or no date (`Blandat`) is reported the
+  same way. It is not an error when `reel.yaml` supplies the field.
 - **Per-event isolation:** one event failing to render is reported with its cause
-  and does not abort the rest; the exit code is non-zero if any event errored.
+  and does not abort the rest; the exit code is non-zero if any event errored. This
+  includes document errors: in `scan`, `render`, `enqueue` and `adopt-renders`, an
+  event whose `reel.yaml` cannot be parsed or whose metadata fails the rule above is
+  reported as `ERROR`, gets no seed, render, job or manifest, and the rest proceed.
 - **Output layout:** each movie is written to
   `<output>/<YYYY>/<YYYY-MM-DD> - <title>[ - <location>].mp4`, where the year folder
   and the date prefix both come from the event's `metadata.date` (the layout and
-  names legacy auto-reel used). An event with no date goes directly under
-  `<output>/` as `<title>[ - <location>].mp4`, with no date prefix. With no `-o` and no `config.yaml` `output`, the
+  names legacy auto-reel used). With no `-o` and no `config.yaml` `output`, the
   output directory is the sibling folder `<parent>/<root-name>-output` (for
   example, `videos/sorted` → `videos/sorted-output`). Do not point the output
   inside the walked root: the layouts would scan its year folders back in as events.

@@ -64,7 +64,7 @@ the list shows every state:
 
 - fresh, and stale for `editorial`, `output`, `clip_set` and `no_manifest`
 - NEW and MISSING clips
-- an undated event
+- an event whose folder name (`2024/Blandat`) has no date, dated by its `reel.yaml` (`2024-11-02`)
 - a same-name output clash (`2024-07-14 - Kalas` and `2024-07-14 - kalas`, same date, differing
   only in case)
 - latest jobs that are `done`, `failed` and `queued`

@@ -238,6 +238,12 @@ Open question: how much render/look config lives per-event in `reel.yaml` vs a *
 - Every editorial mutation in the GUI (reorder, trim, metadata edit) is **persisted to `reel.yaml`**,
   with Postgres updated as a cache. `reel.yaml` is authoritative on conflict / re-scan.
 - Layered config resolution: layout/folder seed → project `config.yaml` → event `reel.yaml` → render-time overrides (D-2).
+  The folder seed is a **per-field fallback**: an event's date, title and location each take the
+  `reel.yaml` value when set, else the folder name's (`[<date> - ]<title>[ - <location>]`, parsed leniently,
+  with a stated problem for an impossible, year-only or absent date). Resolution happens at load, for every
+  consumer (output naming, title card, fingerprint, scan, worker, events reads), and is **never persisted**;
+  the editorial read/write stays "as authored". A project event must resolve to a real, non-future date and
+  a title, else it fails on its own with the reason and the fix (nothing is derived from media).
 - **Ingest layouts are pluggable (D-6):** a layout parser maps a folder structure → events/clips. Built-ins:
   `<year>/<event>/` and `flat`; users can define more in `config.yaml` for different sources/purposes.
 
