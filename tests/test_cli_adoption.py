@@ -120,3 +120,37 @@ def test_new_clips_appended_in_configured_rule_order(tmp_path: Path) -> None:
     persist(prepare_event(event, order=ClipOrder(method=SortMethod.FILENAME)))
 
     assert _default_clips(event) == ["a.mp4", "clip2.mp4", "clip10.mp4"]
+
+
+def test_legacy_event_sort_overrides_the_library_rule(tmp_path: Path) -> None:
+    legacy = tmp_path / "2024-06-21 - Legacy"
+    sibling = tmp_path / "2024-06-21 - Sibling"
+    for event in (legacy, sibling):
+        _touch_at(event / "b.mp4", 9)
+        _touch_at(event / "a.mp4", 10)
+    (legacy / REEL_FILENAME).write_text("sort:\n  method: filename\n", encoding="utf-8")
+
+    adopted = prepare_event(legacy, order=DEFAULT_CLIP_ORDER)
+    seeded = prepare_event(sibling, order=DEFAULT_CLIP_ORDER)
+
+    assert adopted.seeded is False
+    assert adopted.adopted == ("a.mp4", "b.mp4")
+    assert seeded.seeded is True
+    assert seeded.document.referenced_identities() == ("b.mp4", "a.mp4")
+
+
+def test_v0_event_sort_orders_new_clips_after_existing_ones(tmp_path: Path) -> None:
+    event = tmp_path / "2024-06-21 - Midsummer"
+    _touch_at(event / "z.mp4", 12)
+    (event / REEL_FILENAME).write_text(
+        'version: 0\nchapters:\n  - name: ""\n    clips:\n      - z.mp4\n'
+        "sort:\n  method: filename\n",
+        encoding="utf-8",
+    )
+    _touch_at(event / "clip10.mp4", 8)
+    _touch_at(event / "clip2.mp4", 9)
+
+    persist(prepare_event(event, order=DEFAULT_CLIP_ORDER))
+
+    assert _default_clips(event) == ["z.mp4", "clip2.mp4", "clip10.mp4"]
+    assert "sort:\n  method: filename\n" in (event / REEL_FILENAME).read_text(encoding="utf-8")

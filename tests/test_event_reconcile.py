@@ -363,3 +363,35 @@ def test_clip_order_keeps_chapter_order(tmp_path: Path) -> None:
     alpha = doc.chapter("Alpha")
     assert alpha is not None
     assert [r.identity for r in alpha.clips] == ["Alpha/b.mp4", "Alpha/a.mp4"]
+
+
+def _custom(order: dict[str, int], *, reverse: bool = False) -> ClipOrder:
+    return ClipOrder(method=SortMethod.CUSTOM, reverse=reverse, custom_order=order)
+
+
+def test_custom_order_places_listed_clips_first(tmp_path: Path) -> None:
+    event = tmp_path / "2024-01-01 - Custom"
+    for name in ("d.mp4", "c.mp4", "b.mp4", "a.mp4"):
+        _touch(event / name)
+    doc = seed_document(event, order=_custom({"c.mp4": 1, "a.mp4": 2}))
+    assert _default_clips(doc) == ["c.mp4", "a.mp4", "b.mp4", "d.mp4"]
+
+
+def test_custom_order_reverse_flips_it(tmp_path: Path) -> None:
+    event = tmp_path / "2024-01-01 - Custom"
+    for name in ("d.mp4", "c.mp4", "b.mp4", "a.mp4"):
+        _touch(event / name)
+    doc = seed_document(event, order=_custom({"c.mp4": 1, "a.mp4": 2}, reverse=True))
+    assert _default_clips(doc) == ["d.mp4", "b.mp4", "a.mp4", "c.mp4"]
+
+
+def test_custom_order_keys_on_the_file_name_per_chapter(tmp_path: Path) -> None:
+    event = tmp_path / "2024-01-01 - Custom"
+    for name in ("x/a.mp4", "x/b.mp4", "b.mp4", "a.mp4"):
+        _touch(event / name)
+    doc = seed_document(event, order=_custom({"b.mp4": 1, "a.mp4": 1}))
+    # Equal positions fall back to the filename order; each chapter is ordered alone.
+    assert _default_clips(doc) == ["a.mp4", "b.mp4"]
+    chapter = doc.chapter("x")
+    assert chapter is not None
+    assert [r.identity for r in chapter.clips] == ["x/a.mp4", "x/b.mp4"]

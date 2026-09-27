@@ -212,7 +212,8 @@ def _build_chapters(
 
     with disk-only NEW clips appended to their disk chapter; the disk listing's
     own grouping when there is no document yet (the seeding case). Disk clips are
-    placed in the project's sort rule ``order``, as seeding and adoption place them.
+    placed as seeding and adoption place them: in the document's own ``sort`` when
+    it sets one, else the project's sort rule ``order``.
     Each clip carries the file facts ``_clip_out`` stats — never a probe.
     """
     if document is None:
@@ -227,6 +228,7 @@ def _build_chapters(
             for name, identities in listing.by_chapter
         ]
 
+    order = document.sort or order
     chapters: List[ChapterOut] = []
     seen: set[str] = set()
     for chapter in document.chapters:

@@ -166,6 +166,8 @@ def order_clips(identities: Sequence[str], event_dir: Path, order: ClipOrder) ->
     """Order event-relative ``identities`` by ``order``; never probes (``datetime`` = ``st_mtime``).
 
     ``stat`` follows symlinks, so a symlinked clip sorts by its target's mtime.
+    ``custom`` places clips whose file name is in ``custom_order`` first, by position
+    (ties by filename), then every other clip by filename.
     """
     event_dir = Path(event_dir)
 
@@ -175,6 +177,15 @@ def order_clips(identities: Sequence[str], event_dir: Path, order: ClipOrder) ->
     if order.method is SortMethod.DATETIME:
         mtimes = {identity: os.stat(event_dir / identity).st_mtime for identity in identities}
         ordered = sorted(identities, key=lambda i: (mtimes[i], filename_key(i)))
+    elif order.method is SortMethod.CUSTOM:
+        positions = order.custom_order
+        ordered = sorted(
+            identities,
+            key=lambda i: (
+                (0, positions[Path(i).name]) if Path(i).name in positions else (1, 0),
+                filename_key(i),
+            ),
+        )
     else:
         ordered = sorted(identities, key=filename_key)
     if order.reverse:

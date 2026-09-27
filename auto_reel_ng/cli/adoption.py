@@ -7,7 +7,8 @@ the policy lives here:
 - A ``reel.yaml`` plus ``NEW`` clips on disk -> adopt each ``NEW`` clip into the
   default chapter (configurable) so an added file is never silently dropped. They
   are appended after the chapter's existing clips, in the sort rule's order among
-  themselves; an existing order is never re-sorted.
+  themselves (the document's own ``sort`` when set, else the project's); an
+  existing order is never re-sorted.
 - ``MISSING`` clips (referenced, absent from disk) are reported by the caller and
   never removed from the document.
 
@@ -76,7 +77,8 @@ def prepare_event(
     """Resolve ``event_dir`` to a document and reconcile it against disk.
 
     When ``adopt`` is set, every ``NEW`` clip is appended to ``adopt_chapter``
-    (created if absent), in ``order`` among themselves, so an added file is included
+    (created if absent), in the document's own ``sort`` among themselves, or
+    ``order`` (the project's rule) when it sets none, so an added file is included
     rather than dropped. ``MISSING`` clips are left in the document for the caller
     to report loudly (D-CLI3).
     """
@@ -88,7 +90,7 @@ def prepare_event(
     adopted: Tuple[str, ...] = ()
     if adopt and result.new:
         authored = _ensure_chapter(authored, adopt_chapter)
-        adopted = order_clips(result.new, event_dir, order)
+        adopted = order_clips(result.new, event_dir, authored.sort or order)
         for identity in adopted:
             authored = add_clip(authored, identity, adopt_chapter)
 
