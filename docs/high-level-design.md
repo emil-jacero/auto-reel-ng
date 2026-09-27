@@ -232,7 +232,10 @@ chapters:
       - { file: 00401.mp4, order: 1 }
   - name: Reception
     clips: [ ... ]
-sort: { method: custom }   # 'custom' when an explicit order exists
+sort:                      # optional: this event's rule for clips ENTERING the document (seed +
+  method: custom           #   NEW-clip adoption); overrides config.yaml. datetime | filename | custom
+  reverse: false
+  custom_order: { 00401.mp4: 1 }   # custom only: file name -> position; unlisted clips follow by filename
 ```
 
 Open question: how much render/look config lives per-event in `reel.yaml` vs a **project-level**

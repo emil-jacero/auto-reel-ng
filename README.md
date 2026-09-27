@@ -73,6 +73,15 @@ write nothing) and `--device <amd|nvidia|intel|cpu|device-id>`.
   immediate subfolder a named chapter. A subfolder named `original` (any case; legacy
   pre-conversion camera originals) or containing `.reelignore` is never a chapter, and
   its files are never touched.
+- **Legacy documents:** a `reel.yaml` without `version` is auto-reel's format and is
+  imported on every load (not only by `auto-reel import`). Its `sort` (`method`,
+  `reverse`, `custom_order`) is carried as the event's own `sort`, so it orders the
+  event's clips when they are first adopted; only an unknown method is reported. A
+  top-level `title` of the form `<YYYY-MM-DD> - <rest>` (auto-reel's movie-name stem)
+  imports as title `<rest>`, and supplies the date when none is given, provided the
+  date is real and matches any `metadata.date`; any other title is kept verbatim.
+  Before running `auto-reel import`, remove the trailing location from a legacy
+  `metadata.yaml` title such as `Dans hemma - Kungälv`, or the name repeats it.
 - **Event metadata resolves field by field.** Date, title and location each come
   from the event's `reel.yaml` when set there (blank counts as unset), else from the
   folder name, read as `[<YYYY-MM-DD> - ]<title>[ - <location>]`. The folder name is
@@ -151,8 +160,9 @@ adopt, with the same totals and exit code as a real run, and writes nothing.
 Remount read-write only for the real run. Check the `unrendered` count before the
 first library-wide `render`: an event whose legacy name differs from its current
 title shows up there instead of being adopted, and would otherwise be re-rendered.
-Do not run `import` before `adopt-renders`: it copies a legacy `title` that often
-already starts with the date, so the derived name would carry the date twice.
+A legacy `reel.yaml` title that starts with its date (`2025-01-13 - Resa till Gran
+Canaria`) is split on load, so it adopts under its legacy name. `import` still reads
+legacy `metadata.yaml` titles verbatim; see *Legacy documents* above.
 
 ### Job scheduler (`enqueue` / `worker` / `jobs`)
 
@@ -317,6 +327,21 @@ only `stat`, never probes. `filename` is natural and case-insensitive (`clip2` b
 their order (root clips first, then subfolders by name). An order already in a
 `reel.yaml` is never re-sorted: NEW clips are appended after a chapter's existing
 clips, in rule order among themselves. Change an existing order by editing `reel.yaml`.
+
+An event's `reel.yaml` may set its own `sort`, which overrides `config.yaml` for clips
+entering that event. It also accepts `custom`, which is per event only: clips named in
+`custom_order` (file name → position) come first by position, then every other clip in
+`filename` order; `reverse` flips the whole list. A malformed `sort` fails that event
+loud.
+
+```yaml
+# <event>/reel.yaml
+version: 0
+sort:
+  method: custom              # datetime | filename | custom
+  reverse: false
+  custom_order: {P1110550.MP4: 1, S1600003.MP4: 2}
+```
 
 ```yaml
 # config.yaml
