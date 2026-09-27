@@ -207,7 +207,7 @@ def test_default_output_year_folders_are_not_scanned_as_events(
 ) -> None:
     # headless-cli spec: rendered year folders are never scanned back in as events.
     root = _project(tmp_path, "2024-06-21 - Midsommar")
-    rendered = tmp_path / "proj-output" / "2024" / "Midsommar.mp4"
+    rendered = tmp_path / "proj-output" / "2024" / "2024-06-21 - Midsommar.mp4"
     _touch(rendered)  # what a default-output render leaves behind
 
     assert main(["scan", str(root)]) == 0

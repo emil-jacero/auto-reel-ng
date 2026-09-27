@@ -65,7 +65,8 @@ the list shows every state:
 - fresh, and stale for `editorial`, `output`, `clip_set` and `no_manifest`
 - NEW and MISSING clips
 - an undated event
-- a same-name output clash (`2024-07-14 - Kalas` and `2024-07-15 - Kalas`)
+- a same-name output clash (`2024-07-14 - Kalas` and `2024-07-14 - kalas`, same date, differing
+  only in case)
 - latest jobs that are `done`, `failed` and `queued`
 
 The service needs Postgres even to list events (the list carries each event's latest

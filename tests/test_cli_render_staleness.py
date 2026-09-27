@@ -34,7 +34,7 @@ def test_unchanged_project_renders_nothing_on_second_run(
     assert main(["render", str(root)]) == 0
     first_out = capsys.readouterr().out
     assert "OK" in first_out
-    output_path = default_output_dir(root) / "2024" / "Party.mp4"
+    output_path = default_output_dir(root) / "2024" / "2024-06-21 - Party.mp4"
     assert output_path.exists()  # default output dir is <root>/output
     manifest = read_manifest(event_dir)
     assert manifest is not None

@@ -109,11 +109,17 @@ class BatchOutcome:
 
 
 def output_filename(metadata: Metadata) -> str:
-    """Build the ``<title> - <location>.mp4`` name (location omitted when absent)."""
-    title = metadata.title or "Untitled"
+    """``[<YYYY-MM-DD> - ]<title>[ - <location>].mp4``, the legacy auto-reel name.
+
+    A dated event's name starts with its ISO date (legacy ``directory.py:220``);
+    an undated event has no prefix. The location, when present, is appended.
+    """
+    stem = metadata.title or "Untitled"
+    if metadata.date is not None:
+        stem = f"{metadata.date.isoformat()} - {stem}"
     if metadata.location:
-        return f"{title} - {metadata.location}.mp4"
-    return f"{title}.mp4"
+        return f"{stem} - {metadata.location}.mp4"
+    return f"{stem}.mp4"
 
 
 def output_relpath(metadata: Metadata) -> PurePosixPath:

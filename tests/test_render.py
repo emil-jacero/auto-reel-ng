@@ -28,6 +28,7 @@ from auto_reel_ng.accel.models import (
 from auto_reel_ng.accel.profiles import CPUProfile, VaapiProfile
 from auto_reel_ng.accel.profiles.cpu import CPU_TONEMAP_FILTER
 from auto_reel_ng.errors import RenderCancelledError, RenderError, RenderVerificationError
+from auto_reel_ng.event import seed_document
 from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
 from auto_reel_ng.probe import probe_media
 from auto_reel_ng.probe.metadata import AudioStream, ClipMetadata
@@ -536,15 +537,30 @@ def test_output_filename_with_and_without_location() -> None:
     assert output_filename(Metadata(title="Midsummer")) == "Midsummer.mp4"
 
 
+def test_output_filename_prefixes_a_dated_event_with_its_iso_date() -> None:
+    dated = Metadata(title="Midsummer", date=date(2024, 6, 21), location="Dalarna")
+    assert output_filename(dated) == "2024-06-21 - Midsummer - Dalarna.mp4"
+
+
 def test_output_relpath_uses_the_metadata_year() -> None:
     dated = Metadata(title="Midsummer", date=date(2024, 6, 21), location="Dalarna")
-    assert output_relpath(dated) == PurePosixPath("2024/Midsummer - Dalarna.mp4")
+    assert output_relpath(dated) == PurePosixPath("2024/2024-06-21 - Midsummer - Dalarna.mp4")
     no_location = Metadata(title="Julafton", date=date(2023, 12, 24))
-    assert output_relpath(no_location) == PurePosixPath("2023/Julafton.mp4")
+    assert output_relpath(no_location) == PurePosixPath("2023/2023-12-24 - Julafton.mp4")
 
 
 def test_output_relpath_undated_event_sits_at_the_root() -> None:
     assert output_relpath(Metadata(title="Sommarlov")) == PurePosixPath("Sommarlov.mp4")
+
+
+def test_output_relpath_reproduces_a_legacy_archive_name(tmp_path: Path) -> None:
+    event_dir = tmp_path / "2017-07-20 - Båttur med Liljan och Ralf"
+    event_dir.mkdir()
+    (event_dir / "a.mp4").write_bytes(b"")
+    metadata = seed_document(event_dir).metadata
+    assert output_relpath(metadata) == PurePosixPath(
+        "2017/2017-07-20 - Båttur med Liljan och Ralf.mp4"
+    )
 
 
 def test_find_output_collisions_same_year_pair() -> None:
@@ -672,7 +688,7 @@ def test_render_finalizes_into_a_created_year_folder(
             event_dir=tmp_path, output_dir=out_dir, clip_facts=facts, runtime=runtime, dry_run=True
         ),
     )
-    assert dry.output_path == out_dir / "2024" / "Movie.mp4"
+    assert dry.output_path == out_dir / "2024" / "2024-06-21 - Movie.mp4"
     assert not (out_dir / "2024").exists()
 
     seen_parts: list[Path] = []
@@ -689,7 +705,7 @@ def test_render_finalizes_into_a_created_year_folder(
         RenderOptions(event_dir=tmp_path, output_dir=out_dir, clip_facts=facts, runtime=runtime),
     )
 
-    assert result.output_path == out_dir / "2024" / "Movie.mp4"
+    assert result.output_path == out_dir / "2024" / "2024-06-21 - Movie.mp4"
     assert result.output_path.exists()
     # The .part sat beside the final path, so the finalizing rename stayed in one dir.
     assert [part.parent for part in seen_parts] == [out_dir / "2024"]

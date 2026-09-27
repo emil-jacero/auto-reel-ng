@@ -63,15 +63,16 @@ def test_same_year_pair_is_refused_and_the_rest_renders(
     root: Path, rendered: List[RenderJob], capsys: pytest.CaptureFixture[str]
 ) -> None:
     _add_event(root, "2024", "2024-06-21 - Midsommar")
-    _add_event(root, "2024", "2024-06-22 - Midsommar")
+    _add_event(root, "2024", "2024-06-21 - midsommar")
     kalas = _add_event(root, "2024", "2024-08-01 - Kalas")
 
     assert main(["render", str(root)]) == 1
 
     out = capsys.readouterr().out
-    assert "ERROR  2024-06-21 - Midsommar: output path 2024/Midsommar.mp4" in out
-    assert "also claimed by 2024-06-22 - Midsommar" in out
-    assert "ERROR  2024-06-22 - Midsommar: output path 2024/Midsommar.mp4" in out
+    shared = "output path 2024/2024-06-21 - Midsommar.mp4"
+    assert f"ERROR  2024-06-21 - Midsommar: {shared}" in out
+    assert "also claimed by 2024-06-21 - midsommar" in out
+    assert f"ERROR  2024-06-21 - midsommar: {shared}" in out
     assert [job.options.event_dir for job in rendered] == [kalas]
 
 
@@ -79,13 +80,13 @@ def test_fresh_owner_is_protected_from_a_new_sibling(
     root: Path, rendered: List[RenderJob], capsys: pytest.CaptureFixture[str]
 ) -> None:
     owner = _add_event(root, "2024", "2024-06-21 - Midsommar")
-    output = default_output_dir(root) / "2024" / "Midsommar.mp4"
+    output = default_output_dir(root) / "2024" / "2024-06-21 - Midsommar.mp4"
     _touch(output, b"the 2024-06-21 movie")
     assert main(["adopt-renders", str(root)]) == 0  # owner is now fresh
     owner_manifest = read_manifest(owner)
     assert owner_manifest is not None
 
-    sibling = _add_event(root, "2024", "2024-06-22 - Midsommar")
+    sibling = _add_event(root, "2024", "2024-06-21 - midsommar")
     assert main(["render", str(root)]) == 1
 
     assert output.read_bytes() == b"the 2024-06-21 movie"
@@ -100,7 +101,7 @@ def test_force_and_dry_run_still_refuse(
     root: Path, rendered: List[RenderJob], capsys: pytest.CaptureFixture[str], flag: str
 ) -> None:
     _add_event(root, "2024", "2024-06-21 - Midsommar")
-    _add_event(root, "2024", "2024-06-22 - Midsommar")
+    _add_event(root, "2024", "2024-06-21 - midsommar")
 
     assert main(["render", str(root), flag]) == 1
 
@@ -112,9 +113,9 @@ def test_letter_case_only_difference_collides(
     root: Path, rendered: List[RenderJob], capsys: pytest.CaptureFixture[str]
 ) -> None:
     _add_event(root, "2024", "2024-06-21 - Midsommar")
-    other = _add_event(root, "2024", "2024-06-22 - Midsommar")
+    other = _add_event(root, "2024", "2024-06-21 - Midsommarfest")
     (other / "reel.yaml").write_text(
-        "version: 0\nmetadata:\n  title: midsommar\n  date: 2024-06-22\n", encoding="utf-8"
+        "version: 0\nmetadata:\n  title: midsommar\n  date: 2024-06-21\n", encoding="utf-8"
     )
 
     assert main(["render", str(root)]) == 1
@@ -131,12 +132,39 @@ def test_same_title_in_different_years_does_not_collide(
     assert len(rendered) == 2
 
 
+def test_same_title_on_different_dates_does_not_collide(
+    root: Path, rendered: List[RenderJob]
+) -> None:
+    _add_event(root, "2024", "2024-06-21 - Midsommar")
+    _add_event(root, "2024", "2024-06-22 - Midsommar")
+
+    assert main(["render", str(root)]) == 0
+    assert len(rendered) == 2
+
+
+def test_two_undated_same_title_events_collide(
+    root: Path, rendered: List[RenderJob], capsys: pytest.CaptureFixture[str]
+) -> None:
+    for name in ("a", "b"):
+        event_dir = _add_event(root, "2024", name)
+        (event_dir / "reel.yaml").write_text(
+            "version: 0\nmetadata:\n  title: Blandat\n", encoding="utf-8"
+        )
+
+    assert main(["render", str(root)]) == 1
+
+    out = capsys.readouterr().out
+    assert "ERROR  a: output path Blandat.mp4" in out
+    assert "ERROR  b: output path Blandat.mp4" in out
+    assert rendered == []
+
+
 def test_adopt_renders_refuses_a_shared_output(
     root: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     first = _add_event(root, "2024", "2024-06-21 - Midsommar")
-    second = _add_event(root, "2024", "2024-06-22 - Midsommar")
-    _touch(default_output_dir(root) / "2024" / "Midsommar.mp4")
+    second = _add_event(root, "2024", "2024-06-21 - midsommar")
+    _touch(default_output_dir(root) / "2024" / "2024-06-21 - Midsommar.mp4")
 
     assert main(["adopt-renders", str(root)]) == 1
 

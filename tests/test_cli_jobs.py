@@ -183,7 +183,7 @@ def test_enqueue_refuses_colliding_events(
 ) -> None:
     # headless-cli spec: "Enqueue refuses colliding events".
     root = _project(
-        tmp_path, "2024-06-21 - Midsommar", "2024-06-22 - Midsommar", "2024-08-01 - Kalas"
+        tmp_path, "2024-06-21 - Midsommar", "2024-06-21 - midsommar", "2024-08-01 - Kalas"
     )
 
     assert main(["enqueue", str(root)]) == 1

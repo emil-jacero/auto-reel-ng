@@ -176,7 +176,8 @@ def main() -> None:
         encoding="utf-8",
     )
     _link(library / "2024/Blandat", clips, ["s1710003.mp4"])  # undated: never rendered
-    _link(library / "2024/2024-07-15 - Kalas", clips, ["s1710004.mp4"])  # collides with 07-14
+    # Same date, differing only in case: collides with 2024-07-14 - Kalas.
+    _link(library / "2024/2024-07-14 - kalas", clips, ["s1710004.mp4"])
 
     # A queued job that no worker is running: the list's "waiting" state.
     store.enqueue(str(library), "2024/Blandat")
