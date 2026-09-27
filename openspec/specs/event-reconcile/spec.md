@@ -187,14 +187,17 @@ supplies.
 ### Requirement: Clips enter a document in the configured sort order
 
 Whenever clips are added to an event's document from disk, they SHALL be placed in the order given by the
-project's **sort rule**. This happens when a document is seeded, and when NEW clips are adopted into an
-existing document. The rule SHALL be applied per chapter, to the clips entering that chapter:
+**sort rule**. This happens when a document is seeded, and when NEW clips are adopted into an existing
+document. The rule is the event's own `sort` when its document sets one, otherwise the project's rule. The
+rule SHALL be applied per chapter, to the clips entering that chapter:
 
 - **`datetime`**, the default: ascending file modification time. Clips with equal modification times keep
   the `filename` order. The time SHALL come from the file's own directory entry. No clip is probed or
   decoded to order it.
 - **`filename`**: natural, case-insensitive order of the clip's file name. Digit runs compare as numbers,
   and letters compare without regard to case.
+- **`custom`**, per event only: clips named in the event's `custom_order` come first, by ascending position
+  (equal positions in `filename` order), then every unnamed clip in `filename` order.
 - **`reverse`**, when set, SHALL reverse the resulting order.
 
 Chapters SHALL keep their existing order: the default chapter first, then subfolders by name. The rule SHALL
@@ -231,3 +234,13 @@ clips, in rule order among themselves.
 #### Scenario: Ordering never probes
 - **WHEN** an event is seeded under the `datetime` rule during a scan
 - **THEN** no clip is probed or decoded
+
+#### Scenario: An event's own rule overrides the library's
+- **WHEN** `config.yaml` sets `sort: {method: datetime}`, and an event's legacy `reel.yaml` (no chapters)
+  sets `sort: {method: filename}`
+- **THEN** that event's clips are adopted in `filename` order, and every other event uses `datetime`
+
+#### Scenario: Custom order places listed clips first
+- **WHEN** an event's `sort` is `custom` with `custom_order: {c.mp4: 1, a.mp4: 2}`, and it holds `a.mp4`,
+  `b.mp4`, `c.mp4` and `d.mp4`
+- **THEN** the clips enter in the order `c.mp4`, `a.mp4`, `b.mp4`, `d.mp4`
