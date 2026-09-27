@@ -145,3 +145,25 @@ def test_build_inventory_one_accelerator_per_vendor() -> None:
     # The accelerator keeps the first device of that vendor.
     assert amd_accels[0].device is not None
     assert amd_accels[0].device.id == "pci-0000:03:00.0"
+
+
+def test_pad_fill_ok_follows_the_amd_fill_probe() -> None:
+    """AMD's pad_fill_ok is the pad-fill probe's result; normalize stays usable either way."""
+    base = {"amd.decode": OpStatus.WORKING, "amd.normalize": OpStatus.WORKING}
+
+    faulty = compute_accelerator(Vendor.AMD, None, {**base, "amd.pad_fill": OpStatus.UNSUPPORTED})
+    assert faulty.pad_fill_ok is False
+    assert faulty.pad_filter == "pad_vaapi"
+
+    missing = compute_accelerator(Vendor.AMD, None, base)
+    assert missing.pad_fill_ok is False
+
+    correct = compute_accelerator(Vendor.AMD, None, {**base, "amd.pad_fill": OpStatus.WORKING})
+    assert correct.pad_fill_ok is True
+
+
+def test_pad_fill_ok_is_true_for_cpu_pad_vendors() -> None:
+    """NVIDIA and Intel pad with CPU ``pad`` inside their normalize, so the fill is trusted."""
+    for vendor in (Vendor.NVIDIA, Vendor.INTEL):
+        caps = compute_accelerator(vendor, None, {f"{vendor.value}.normalize": OpStatus.WORKING})
+        assert caps.pad_fill_ok is True

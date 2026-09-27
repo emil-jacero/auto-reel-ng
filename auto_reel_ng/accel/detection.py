@@ -38,6 +38,10 @@ _DECODE_METHOD = {Vendor.AMD: "vaapi", Vendor.NVIDIA: "cuda", Vendor.INTEL: "qsv
 #: vendor -> the pad filter its normalize uses (CPU ``pad`` for the no-native-pad vendors).
 _PAD_FILTER = {Vendor.AMD: "pad_vaapi", Vendor.NVIDIA: "pad", Vendor.INTEL: "pad"}
 
+#: Bumped whenever what detection records changes, so an older cache file is re-detected.
+#: 2 = ``pad_fill_ok`` (vaapi-pad-fill).
+_CACHE_SCHEMA = 2
+
 #: Process-wide cache keyed by host fingerprint.
 _INVENTORY_CACHE: dict[tuple[object, ...], CapabilityInventory] = {}
 
@@ -110,6 +114,8 @@ def compute_accelerator(
 
     decode_method = _DECODE_METHOD[vendor] if works(f"{prefix}.decode") else None
     pad_filter = _PAD_FILTER[vendor] if works(f"{prefix}.normalize") else None
+    # Only the native VAAPI pad is measured; the other vendors pad with CPU ``pad``.
+    pad_fill_ok = works(f"{prefix}.pad_fill") if vendor is Vendor.AMD else True
 
     usable_encoders: dict[str, str] = {}
     for codec, encoder in _HW_ENCODERS[vendor].items():
@@ -126,6 +132,7 @@ def compute_accelerator(
         can_tonemap_hw=works(f"{prefix}.tonemap"),
         usable_encoders=usable_encoders,
         decode_method=decode_method,
+        pad_fill_ok=pad_fill_ok,
     )
 
 
@@ -245,8 +252,8 @@ def clear_cache() -> None:
 
 
 def _fingerprint(ffmpeg_version: tuple[int, int], devices: Sequence[Device]) -> tuple[object, ...]:
-    """A host fingerprint: ffmpeg version + the sorted set of enumerated device ids."""
-    return (ffmpeg_version, tuple(sorted(d.id for d in devices)))
+    """A host fingerprint: cache schema + ffmpeg version + the sorted enumerated device ids."""
+    return (_CACHE_SCHEMA, ffmpeg_version, tuple(sorted(d.id for d in devices)))
 
 
 def _write_cache(
@@ -319,6 +326,8 @@ def _accelerator_from_dict(data: Mapping[str, object]) -> AcceleratorCapabilitie
         can_tonemap_hw=bool(data["can_tonemap_hw"]),
         usable_encoders=_as_dict(data["usable_encoders"]),
         decode_method=data["decode_method"],  # type: ignore[arg-type]
+        # Indexed, not .get(): a cache written before the flag existed is a mismatch.
+        pad_fill_ok=bool(data["pad_fill_ok"]),
     )
 
 

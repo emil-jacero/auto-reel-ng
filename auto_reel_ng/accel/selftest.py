@@ -6,6 +6,7 @@ does *not* mean the driver can run it: on AMD, ``overlay_vaapi`` is rejected and
 fastest. So every candidate op is *run* on a tiny synthetic clip and classified:
 
 * exit 0                      -> :attr:`OpStatus.WORKING`
+* exit 0, output check fails  -> :attr:`OpStatus.UNSUPPORTED` (ran, but wrong; exp 006)
 * clean non-zero exit         -> :attr:`OpStatus.UNSUPPORTED` (driver said "no")
 * killed by a signal / hang   -> :attr:`OpStatus.FAULTING` (e.g. the GPU page-faulted)
 
@@ -17,11 +18,12 @@ whole pass fast enough to run at startup (and the result is cached; see ``detect
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 from ..ffmpeg.runtime import FfmpegRuntime
 from .models import Device, OpClass, OpStatus, Vendor
@@ -37,6 +39,9 @@ DEFAULT_PROBE_TIMEOUT = 30.0
 #: probe (the old 320x240) made HEVC report as unusable on cards that support it.
 _PROBE_SIZE = "640x480"
 
+#: Allowed chroma distance from neutral (128) for a padded region to count as black.
+_FILL_TOLERANCE = 8
+
 #: codec -> hardware encoder name, per vendor. Only probed if ffmpeg lists the encoder.
 _HW_ENCODERS = {
     Vendor.AMD: {"h264": "h264_vaapi", "hevc": "hevc_vaapi", "av1": "av1_vaapi"},
@@ -47,13 +52,19 @@ _HW_ENCODERS = {
 
 @dataclass(frozen=True)
 class Probe:
-    """One candidate operation to self-test, identified by a stable ``key``."""
+    """One candidate operation to self-test, identified by a stable ``key``.
+
+    ``expect`` is applied to the probe's stdout after a zero exit: "runs" is not
+    "correct" (exp 006), so a probe that checks its output can still fail as
+    :attr:`OpStatus.UNSUPPORTED`.
+    """
 
     key: str
     vendor: Vendor
     op: OpClass
     args: tuple[str, ...]
     codec: Optional[str] = None
+    expect: Optional[Callable[[str], bool]] = None
 
 
 @dataclass(frozen=True)
@@ -183,11 +194,31 @@ def run_probe(
     except subprocess.TimeoutExpired:
         return OpStatus.FAULTING
     if result.returncode == 0:
+        if probe.expect is not None and not probe.expect(result.stdout):
+            logger.info(
+                "self-test %s ran but its output check failed: %s",
+                probe.key,
+                result.stdout.strip() or "<no output>",
+            )
+            return OpStatus.UNSUPPORTED
         return OpStatus.WORKING
     if result.returncode < 0:
         # Negative return code = terminated by a signal (e.g. SIGABRT from a GPU fault).
         return OpStatus.FAULTING
     return OpStatus.UNSUPPORTED
+
+
+def black_fill(stdout: str) -> bool:
+    """True when every ``signalstats`` chroma reading in ``stdout`` is neutral (black).
+
+    Black is chroma 128 in both the limited and the full value range; the faulty
+    ``pad_vaapi`` fill on Mesa is all-zero YUV, chroma 0 (exp 006). No reading at all
+    counts as a failure: an unmeasured fill is not a verified one.
+    """
+    readings = [
+        float(value) for value in re.findall(r"lavfi\.signalstats\.[UV]AVG=([0-9.]+)", stdout)
+    ]
+    return bool(readings) and all(abs(value - 128) <= _FILL_TOLERANCE for value in readings)
 
 
 # -- per-vendor candidate recipes -------------------------------------------
@@ -275,6 +306,38 @@ def _vaapi_probes(
                     "null",
                     "-",
                 ),
+            )
+        )
+        # Scale a 64x36 frame into 64x64 so a padded band exists, then read the top of
+        # that band back. The normalize probe above proves the op runs; this one proves
+        # its fill is the requested colour (exp 006: Mesa paints all-zero YUV, green).
+        probes.append(
+            Probe(
+                key=f"{device.vendor.value}.pad_fill",
+                vendor=device.vendor,
+                op=OpClass.NORMALIZE,
+                args=(
+                    "-init_hw_device",
+                    f"vaapi=va:{node}",
+                    "-filter_hw_device",
+                    "va",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "color=white:size=64x36",
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    "format=nv12,hwupload,"
+                    "scale_vaapi=w=64:h=64:force_original_aspect_ratio=decrease,"
+                    "pad_vaapi=w=64:h=64:x=(ow-iw)/2:y=(oh-ih)/2:color=black,"
+                    "hwdownload,format=nv12,crop=64:8:0:0,signalstats,"
+                    "metadata=mode=print:file=-",
+                    "-f",
+                    "null",
+                    "-",
+                ),
+                expect=black_fill,
             )
         )
     if "overlay_vaapi" in filters:

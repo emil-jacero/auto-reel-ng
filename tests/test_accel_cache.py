@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from auto_reel_ng.accel import clear_cache, detect_capabilities
+import pytest
+
+from auto_reel_ng.accel import clear_cache, detect_capabilities, detection
 from auto_reel_ng.accel.detection import (
     _inventory_from_dict,
     _load_cache,
@@ -76,3 +79,45 @@ def test_inventory_dict_round_trips() -> None:
     inventory = _sample_inventory()
     restored = _inventory_from_dict(inventory.to_dict())
     assert restored.to_dict() == inventory.to_dict()
+
+
+def test_cache_without_pad_fill_ok_is_redetected(tmp_path: Path) -> None:
+    """A cache written before pad_fill_ok existed is not reused."""
+    cache_path = tmp_path / "caps.json"
+    fingerprint = ("host",)
+    _write_cache(cache_path, fingerprint, _sample_inventory())
+    payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    for accel in payload["inventory"]["accelerators"]:
+        del accel["pad_fill_ok"]
+    cache_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert _load_cache(cache_path, fingerprint) is None
+
+
+def test_old_cache_schema_triggers_redetection(
+    runtime: FfmpegRuntime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cache file fingerprinted under an older schema is ignored and rewritten."""
+    clear_cache()
+    cache_path = tmp_path / "caps.json"
+    monkeypatch.setattr(detection, "_CACHE_SCHEMA", 1)
+    detect_capabilities(runtime=runtime, selftest=False, cache_path=cache_path)
+    old = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert old["fingerprint"][0] == 1
+
+    monkeypatch.setattr(detection, "_CACHE_SCHEMA", 2)
+    clear_cache()
+    calls: list[object] = []
+    real_build = detection.build_inventory
+
+    def counting_build(**kwargs: object) -> object:
+        calls.append(kwargs)
+        return real_build(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(detection, "build_inventory", counting_build)
+    inventory = detect_capabilities(runtime=runtime, selftest=False, cache_path=cache_path)
+    assert len(calls) == 1  # re-detected, not loaded
+    new = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert new["fingerprint"][0] == 2
+    assert all("pad_fill_ok" in a for a in new["inventory"]["accelerators"])
+    assert inventory.accelerator(Vendor.CPU) is not None

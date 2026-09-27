@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -131,3 +132,82 @@ def test_amd_host_reports_verified_capabilities() -> None:
         "av1": "av1_vaapi",
     }
     assert amd.decode_method == "vaapi"
+
+
+def _fake_exit_zero(monkeypatch: pytest.MonkeyPatch, stdout: str, returncode: int = 0) -> None:
+    def fake_run(cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=returncode, stdout=stdout, stderr=""
+        )
+
+    monkeypatch.setattr(st.subprocess, "run", fake_run)
+
+
+def _fill_probe() -> Probe:
+    return Probe(
+        key="amd.pad_fill",
+        vendor=Vendor.AMD,
+        op=OpClass.NORMALIZE,
+        args=("-f", "null", "-"),
+        expect=st.black_fill,
+    )
+
+
+def test_black_padded_region_is_working(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A padded band that reads back as neutral chroma (black) passes the fill check."""
+    _fake_exit_zero(
+        monkeypatch,
+        "frame:0\nlavfi.signalstats.YAVG=16\n"
+        "lavfi.signalstats.UAVG=128\nlavfi.signalstats.VAVG=128\n",
+    )
+    runtime = SimpleNamespace(ffmpeg_path="ffmpeg")
+    assert run_probe(runtime, _fill_probe()) is OpStatus.WORKING  # type: ignore[arg-type]
+
+
+def test_green_padded_region_is_unsupported_with_reason(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A pad that runs but paints all-zero YUV (green, exp 006) is classified UNSUPPORTED."""
+    _fake_exit_zero(
+        monkeypatch,
+        "lavfi.signalstats.YAVG=0\nlavfi.signalstats.UAVG=0\nlavfi.signalstats.VAVG=0\n",
+    )
+    runtime = SimpleNamespace(ffmpeg_path="ffmpeg")
+    with caplog.at_level("INFO", logger=st.__name__):
+        status = run_probe(runtime, _fill_probe())  # type: ignore[arg-type]
+    assert status is OpStatus.UNSUPPORTED
+    assert "amd.pad_fill" in caplog.text
+    assert "output check failed" in caplog.text
+    assert "UAVG=0" in caplog.text
+
+
+def test_unmeasured_fill_is_unsupported(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No signalstats reading at all is not a verified fill."""
+    _fake_exit_zero(monkeypatch, "")
+    runtime = SimpleNamespace(ffmpeg_path="ffmpeg")
+    assert run_probe(runtime, _fill_probe()) is OpStatus.UNSUPPORTED  # type: ignore[arg-type]
+
+
+def test_fill_probe_nonzero_exit_is_unsupported(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A fill probe that fails to run is UNSUPPORTED as before, without consulting expect."""
+    _fake_exit_zero(monkeypatch, "lavfi.signalstats.UAVG=128\n", returncode=1)
+    runtime = SimpleNamespace(ffmpeg_path="ffmpeg")
+    assert run_probe(runtime, _fill_probe()) is OpStatus.UNSUPPORTED  # type: ignore[arg-type]
+
+
+def test_fill_probe_is_emitted_for_vaapi_pad() -> None:
+    """The AMD candidates include the pad-fill probe whenever pad_vaapi is listed."""
+    device = st.Device(
+        id="pci-0000:03:00.0", vendor=Vendor.AMD, name="dGPU", render_node="/dev/dri/renderD128"
+    )
+    inputs = st.SyntheticInputs(sdr=Path("sdr.mp4"), hdr=None)
+    probes = st.candidate_probes(
+        device,
+        inputs=inputs,
+        encoders=frozenset(),
+        filters=frozenset({"scale_vaapi", "pad_vaapi"}),
+    )
+    fill = next(p for p in probes if p.key == "amd.pad_fill")
+    assert fill.expect is st.black_fill
+    assert "vaapi=va:/dev/dri/renderD128" in fill.args
+    assert "color=black" in " ".join(fill.args)

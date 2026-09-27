@@ -114,6 +114,9 @@ class AcceleratorCapabilities:  # pylint: disable=too-many-instance-attributes
     usable_encoders: Mapping[str, str] = field(default_factory=dict)
     #: ffmpeg ``-hwaccel`` value for hardware decode, or ``None`` for software decode.
     decode_method: Optional[str] = None
+    #: Whether this accelerator's pad fills with the requested colour. Measured for
+    #: ``pad_vaapi`` (exp 006: Mesa paints green); true for CPU ``pad``-based vendors.
+    pad_fill_ok: bool = True
 
     def to_dict(self) -> dict[str, object]:
         """Plain-dict view for logging."""
@@ -126,6 +129,7 @@ class AcceleratorCapabilities:  # pylint: disable=too-many-instance-attributes
             "can_tonemap_hw": self.can_tonemap_hw,
             "usable_encoders": dict(self.usable_encoders),
             "decode_method": self.decode_method,
+            "pad_fill_ok": self.pad_fill_ok,
         }
 
 
