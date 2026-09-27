@@ -152,6 +152,9 @@ Per movie:
 
 Audio is normalized in the same normalize pass (sample rate / channels / codec) so concat can stream-copy.
 
+The target canvas defaults to 1920×1080 at the highest probed clip fps, overridable via `look.target_resolution` /
+`look.fps` (config.yaml or reel.yaml); clip order never decides it (render-target-format).
+
 Each movie is finalized to `<output>/<YYYY>/<YYYY-MM-DD> - <title>[ - <location>].mp4`. Colliding output
 paths are refused (**D-9**).
 

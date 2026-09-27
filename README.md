@@ -304,13 +304,19 @@ An optional `config.yaml` at the project root supplies shared defaults. Every fi
 is optional; a command-line flag overrides it, and an event's `reel.yaml` overrides
 the project `look`.
 
+The render canvas defaults to 1920×1080 at the highest frame rate among the event's
+clips; clip order never decides it, and portrait or 4K clips are fitted into it.
+Set `look.target_resolution` / `look.fps` in one event's `reel.yaml` to override the
+canvas for that event only.
+
 ```yaml
 # config.yaml
 layout: year-event        # ingest layout name
 input: media              # walk root, relative to the project root (optional)
 output: ../out            # output directory (optional; default <parent>/<root-name>-output)
 look:                     # opaque defaults passed to resolve() as look_defaults
-  resolution: 1080p
+  target_resolution: [1920, 1080]   # canvas [width, height] (default 1920x1080)
+  # fps: 25                         # pin the frame rate (default: highest clip fps)
   video_codec: h264
 worker:                    # job-scheduler worker settings (all optional)
   gpu_sessions_per_device: 1   # concurrent GPU-encode sessions per render node
