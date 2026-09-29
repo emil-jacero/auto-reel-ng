@@ -1,3 +1,4 @@
+import type { ClipStatus } from '../api/event'
 import type { EventFailure, JobStatus, StalenessReason } from '../api/events'
 
 /*
@@ -27,4 +28,11 @@ export const FAILURE_LABEL: Record<EventFailure, string> = {
   unparseable_reel_yaml: "reel.yaml can't be read",
   unusable_metadata: 'missing or invalid date or title',
   unreadable_disk: "files can't be read",
+}
+
+export const CLIP_STATUS_LABEL: Record<ClipStatus, string> = {
+  new: 'New, not yet in reel.yaml',
+  active: 'Included',
+  missing: 'Missing from disk',
+  ignored: 'Ignored',
 }

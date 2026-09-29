@@ -1,3 +1,5 @@
+import { isProblem, readJson } from './http'
+import type { Problem } from './http'
 import type { components } from './schema'
 
 /**
@@ -17,7 +19,7 @@ export type Staleness = components['schemas']['StalenessOut']
 export type StalenessReason = components['schemas']['StalenessReason']
 export type JobSummary = components['schemas']['JobSummaryOut']
 export type JobStatus = components['schemas']['JobStatus']
-export type Problem = components['schemas']['ProblemOut']
+export type { Problem }
 
 /**
  * How a read ended. Expected failures are values, not exceptions, so every
@@ -34,29 +36,6 @@ const EVENTS_URL = '/api/v1/events'
 
 // The failure statuses the service declares for this read (see the schema).
 const PROBLEM_STATUSES = new Set([502, 503])
-
-function isProblem(body: unknown): body is Problem {
-  if (typeof body !== 'object' || body === null) {
-    return false
-  }
-  const fields = body as Record<string, unknown>
-  return (
-    typeof fields.title === 'string' &&
-    typeof fields.status === 'number' &&
-    typeof fields.detail === 'string'
-  )
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  try {
-    return await response.json()
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw error
-    }
-    return undefined
-  }
-}
 
 /**
  * Read the events list. Rethrows `AbortError` — an abort is the caller's own

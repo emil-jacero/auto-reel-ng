@@ -5,27 +5,35 @@ React 19 + Vite + TypeScript, built ahead of time into static assets that
 exists at runtime** — the deployment stays the single Python process, and the
 service starts normally when `dist/` is absent.
 
-One screen so far, read-only: the **event list** (slice B of §4.10). It answers
+Two screens so far, both read-only. The **event list** (slice B of §4.10) answers
 "which events need a render, and why": every event grouped by year, its clip
-counts, its staleness verdict with reasons in words, and its latest job. It reads
-the list on open and on Refresh — never polls, never caches — and reports a failed
-read by its cause (database, a named event's scan, or no answer).
+counts, its staleness verdict with reasons in words, and its latest job. Each
+event's title opens its **event page** (slice C) at `#/event/<id>`: its chapters
+and clips in play order, each clip's status, size and time, and any clip
+`reel.yaml` lists that is missing from disk. Both read on open and on Refresh —
+never poll, never cache — and report a failed read by its cause. The list stays
+mounted while an event page is open, so Back returns to it without a new read.
 
 ```
 src/
-├── App.tsx               mounts the event list
+├── App.tsx               the route switch; keeps the list mounted
 ├── app.css               layout + light/dark theme tokens
+├── route.ts              hash routes (#/event/<id>) — no router library
 ├── api/
 │   ├── schema.d.ts       generated (see below)
-│   └── events.ts         the events fetch: URL, status codes, problem parsing
+│   ├── http.ts           shared response reading and problem parsing
+│   ├── events.ts         the list fetch: URL, status codes
+│   └── event.ts          the one-event fetch: URL, status codes
 └── events/
-    ├── EventList.tsx     the screen: load/refresh, summary, filter, year tables
+    ├── EventList.tsx     the list: load/refresh, summary, filter, year tables
+    ├── EventDetail.tsx   the event page: status, counts, per-chapter clip tables
+    ├── common.tsx        helpers both screens share (job cell, sizes, verdict)
     ├── grouping.ts       groupByYear, needsRender (pure)
-    └── labels.ts         words for staleness reasons and job statuses
+    └── labels.ts         words for reasons, job statuses, failures, clip statuses
 ```
 
 `labels.ts` maps each vocabulary through a `Record` over its generated union, so
-a reason or job status added, renamed or removed in the engine is a
+a reason, job status, failure kind or clip status added, renamed or removed in the engine is a
 `tsc --noEmit` error until it is given words.
 
 ## The Node toolchain runs in podman
@@ -58,12 +66,14 @@ built assets. Same origin either way; the service needs no CORS.
 
 The shared fixture holds one event, which cannot show what the screens must render.
 `scripts/make_dev_library.py` builds a small real-footage library from it (the fixture
-is only read). It cuts 6 s stream-copied clips and lays out 10 events across 2023 and
-2024: 9 that list normally, plus 1 that needs attention. Part of the library is rendered through the real queue, then disk is edited so
-the list shows every state:
+is only read). It cuts 6 s stream-copied clips and lays out 11 events across 2023 and
+2024: 10 that list normally, plus 1 that needs attention. Part of the library is rendered through
+the real queue, then disk is edited so the screens show every state:
 
 - fresh, and stale for `editorial`, `output`, `clip_set` and `no_manifest`
 - NEW and MISSING clips
+- a named chapter, an IGNORED clip and a NEW clip inside a chapter (`2024-08-20 - Två kapitel -
+  Tjörn`: a `Main` table and a `Kvällen` table on its event page)
 - an event whose folder name (`2024/Blandat`) has no date, dated by its `reel.yaml` (`2024-11-02`)
 - a same-name output clash (`2024-07-14 - Kalas` and `2024-07-14 - kalas`, same date, differing
   only in case)

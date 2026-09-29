@@ -2,7 +2,7 @@
 
 The shared fixture (``auto-reel-media``) holds a single event, which cannot show
 what the event screens must render: fresh and stale events, each staleness
-reason, NEW and MISSING clips, an event dated by its reel.yaml rather than its folder
+reason, NEW and MISSING clips, a named chapter, an IGNORED clip, an event dated by its reel.yaml rather than its folder
 name, an output collision, every
 latest-job state, and an event the list cannot read (its "Needs attention" row). This script cuts short stream-copied clips from the fixture
 (never modifying it) and lays out a ``year-event`` project under ``DEST``:
@@ -62,6 +62,12 @@ RENDERED = {
     "2024/2024-07-14 - Kalas": ["s1710002.mp4"],
     "2024/2024-08-02 - Badutflykt - Varberg": ["s1710001.mp4", "s1710003.mp4"],
     "2024/2024-10-05 - Trasig": ["trasig.mp4"],  # an empty clip: its job fails
+    # Root clips plus a named chapter: the worker seeds chapters "" and "Kvällen".
+    "2024/2024-08-20 - Två kapitel - Tjörn": [
+        "s1710001.mp4",
+        "Kvällen/s1710002.mp4",
+        "Kvällen/s1710003.mp4",
+    ],
 }
 
 
@@ -71,9 +77,11 @@ def _auto_reel(*args: str, check: bool = True) -> None:
 
 
 def _link(event_dir: Path, clips_dir: Path, names: list[str]) -> None:
-    event_dir.mkdir(parents=True, exist_ok=True)
+    """Link each clip into ``event_dir``; a name may carry a chapter folder (``Kvällen/x.mp4``)."""
     for name in names:
-        (event_dir / name).symlink_to(clips_dir / name)
+        link = event_dir / name
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(clips_dir / Path(name).name)
 
 
 def _prepare_dest(dest: Path) -> None:
@@ -140,6 +148,15 @@ def _edit_title(reel: Path, title: str) -> None:
         yaml.dump(document, handle)
 
 
+def _ignore(reel: Path, identity: str) -> None:
+    """Round-trip ``reel.yaml`` (comments and key order kept), dismissing ``identity``."""
+    yaml = YAML()
+    document = yaml.load(reel.read_text(encoding="utf-8"))
+    document["ignore"] = [identity]
+    with reel.open("w", encoding="utf-8") as handle:
+        yaml.dump(document, handle)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("dest", type=Path, help="directory to build into (e.g. ../auto-reel-dev)")
@@ -176,6 +193,10 @@ def main() -> None:
         "      - s1710002.mp4\n      - s1710004.mp4\n      - borttagen.mp4  # MISSING\n",
         encoding="utf-8",
     )
+    # IGNORED at the root, and NEW inside a named chapter: stale for clip_set.
+    tva_kapitel = library / "2024/2024-08-20 - Två kapitel - Tjörn"
+    _link(tva_kapitel, clips, ["s1710004.mp4", "Kvällen/s1710004.mp4"])
+    _ignore(tva_kapitel / "reel.yaml", "s1710004.mp4")
     # A folder name without a date: reel.yaml supplies it (reel.yaml over folder name). Never
     # rendered; its clip is NEW because the document names no chapters.
     blandat = library / "2024/Blandat"

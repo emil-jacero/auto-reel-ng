@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { fetchEvents } from '../api/events'
-import type { EventError, EventRow, EventSummary, JobSummary, Problem } from '../api/events'
+import type { EventError, EventRow, EventSummary, Problem } from '../api/events'
+import { eventHref } from '../route'
+import {
+  DATABASE_CAUSE,
+  JobCell,
+  StalenessCell,
+  UNREACHABLE_CAUSE,
+  folderName,
+  plural,
+} from './common'
 import { groupByYear, needsRender } from './grouping'
-import { FAILURE_LABEL, JOB_STATUS_LABEL, REASON_LABEL } from './labels'
+import { FAILURE_LABEL } from './labels'
 
 /**
  * The event list: which events need a render, and why.
@@ -22,7 +31,7 @@ type LoadState =
 
 function describeProblem(problem: Problem): { cause: string; detail: string | null } {
   if (problem.check === 'database') {
-    return { cause: "The service can't reach its database.", detail: problem.detail }
+    return { cause: DATABASE_CAUSE, detail: problem.detail }
   }
   if (problem.status === 502) {
     return { cause: 'The project could not be scanned.', detail: problem.detail }
@@ -30,36 +39,12 @@ function describeProblem(problem: Problem): { cause: string; detail: string | nu
   return { cause: problem.title, detail: problem.detail }
 }
 
-/** The event folder's name: the last segment of its id. */
-function folderName(eventId: string): string {
-  return eventId.split('/').pop() ?? eventId
-}
-
-function plural(count: number, one: string, many: string): string {
-  return `${count} ${count === 1 ? one : many}`
-}
-
-function JobCell({ job }: { job: JobSummary | null | undefined }) {
-  if (job == null) {
-    return null
-  }
-  const when = new Date(job.created_at).toLocaleString()
-  return (
-    <>
-      <span className={`job job-${job.status}`}>{JOB_STATUS_LABEL[job.status]}</span>
-      {job.status === 'running' && <> {Math.round(job.progress * 100)}%</>}
-      <div className="muted">{when}</div>
-    </>
-  )
-}
-
 function EventRow({ event }: { event: EventSummary }) {
-  const stale = needsRender(event)
   return (
     <tr>
       <td className="date">{event.date ?? ''}</td>
       <td>
-        {event.title ?? folderName(event.event_id)}
+        <a href={eventHref(event.event_id)}>{event.title ?? folderName(event.event_id)}</a>
         {event.location != null && <span className="muted"> · {event.location}</span>}
       </td>
       <td>
@@ -70,14 +55,7 @@ function EventRow({ event }: { event: EventSummary }) {
         )}
       </td>
       <td>
-        <span className={stale ? 'pill pill-stale' : 'pill pill-fresh'}>
-          {stale ? 'Needs render' : 'Up to date'}
-        </span>
-        {stale && event.staleness.reasons.length > 0 && (
-          <span className="reasons">
-            {event.staleness.reasons.map((reason) => REASON_LABEL[reason]).join(', ')}
-          </span>
-        )}
+        <StalenessCell staleness={event.staleness} />
       </td>
       <td>
         <JobCell job={event.latest_job} />
@@ -142,7 +120,8 @@ function EventTables({ events }: { events: EventSummary[] }) {
   )
 }
 
-export function EventList() {
+/** `hidden` keeps the list mounted, and its state, while an event page is shown. */
+export function EventList({ hidden }: { hidden: boolean }) {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
   const [onlyStale, setOnlyStale] = useState(false)
   const inFlight = useRef<AbortController | null>(null)
@@ -167,7 +146,7 @@ export function EventList() {
           case 'unreachable':
             setState({
               status: 'failed',
-              cause: 'The service is not reachable.',
+              cause: UNREACHABLE_CAUSE,
               detail: result.message,
             })
             break
@@ -188,7 +167,7 @@ export function EventList() {
   }, [load])
 
   return (
-    <main>
+    <main hidden={hidden}>
       <header>
         <h1>Events</h1>
         <button type="button" onClick={load} disabled={state.status === 'loading'}>
