@@ -3,8 +3,8 @@
 The shared fixture (``auto-reel-media``) holds a single event, which cannot show
 what the event screens must render: fresh and stale events, each staleness
 reason, NEW and MISSING clips, an event dated by its reel.yaml rather than its folder
-name, an output collision, and every
-latest-job state. This script cuts short stream-copied clips from the fixture
+name, an output collision, every
+latest-job state, and an event the list cannot read (its "Needs attention" row). This script cuts short stream-copied clips from the fixture
 (never modifying it) and lays out a ``year-event`` project under ``DEST``:
 
     DEST/clips/            the cut clips (outside the walked root)
@@ -185,6 +185,10 @@ def main() -> None:
     )
     # Same date, differing only in case: collides with 2024-07-14 - Kalas.
     _link(library / "2024/2024-07-14 - kalas", clips, ["s1710004.mp4"])
+
+    # An impossible folder date: the list shows it as an unusable-metadata error row. Added
+    # only now, because ``enqueue`` in phase 1 would report it as an ERROR and exit 1.
+    _link(library / "2024/2024-02-30 - Omöjligt datum", clips, ["s1710001.mp4"])
 
     # A queued job that no worker is running: the list's "waiting" state.
     store.enqueue(str(library), "2024/Blandat")

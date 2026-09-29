@@ -58,8 +58,8 @@ built assets. Same origin either way; the service needs no CORS.
 
 The shared fixture holds one event, which cannot show what the screens must render.
 `scripts/make_dev_library.py` builds a small real-footage library from it (the fixture
-is only read). It cuts 6 s stream-copied clips and lays out 9 events across 2023 and
-2024. Part of the library is rendered through the real queue, then disk is edited so
+is only read). It cuts 6 s stream-copied clips and lays out 10 events across 2023 and
+2024: 9 that list normally, plus 1 that needs attention. Part of the library is rendered through the real queue, then disk is edited so
 the list shows every state:
 
 - fresh, and stale for `editorial`, `output`, `clip_set` and `no_manifest`
@@ -68,6 +68,8 @@ the list shows every state:
 - a same-name output clash (`2024-07-14 - Kalas` and `2024-07-14 - kalas`, same date, differing
   only in case)
 - latest jobs that are `done`, `failed` and `queued`
+- an event the list cannot read (`2024-02-30 - Omöjligt datum`, an impossible date), shown as an
+  error row under "Needs attention"
 
 The service needs Postgres even to list events (the list carries each event's latest
 job). One-time setup, from the repository root:
