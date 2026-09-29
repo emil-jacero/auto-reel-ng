@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from ...errors import ReelError
 from ...event.editorial import apply_editorial_write
+from ...ingest import LayoutError
 from ...reel.document import ReelDocument
 from ...staleness.fingerprint import editorial_hash
 from .. import events_read
@@ -31,7 +32,7 @@ from ..schemas import (
     EditorialDocumentBody,
     EditorialWriteResult,
     EventDetailOut,
-    EventSummaryOut,
+    EventRowOut,
     ProblemOut,
 )
 from ..serialize import document_to_body
@@ -84,17 +85,17 @@ def _if_match_satisfied(header: str, current: str) -> bool:
 
 @router.get(
     "/events",
-    response_model=List[EventSummaryOut],
+    response_model=List[EventRowOut],
     responses={502: {"model": ProblemOut}, 503: {"model": ProblemOut}},
 )
-def get_events(request: Request) -> Union[List[EventSummaryOut], Response]:
+def get_events(request: Request) -> Union[List[EventRowOut], Response]:
     """``GET /api/v1/events`` (task 2.2): every event, freshly scanned.
 
-    Both ways this read can fail are reported distinctly and in the shared problem
-    shape: an unreachable job store as the 503 ``/healthz`` returns, a failed scan
-    as the 502 the detail route already returns. Neither is retried and neither
-    degrades — ``list_events`` builds the complete list before returning, so a
-    failure part-way through yields an error, never a partial set.
+    One unreadable event costs one error row, never the list (``list_events``
+    isolates per event). What remains are the whole-list failures, reported
+    distinctly in the shared problem shape: an unreachable job store as the 503
+    ``/healthz`` returns, a walk of the project root that fails as the scan-failure
+    502. Neither is retried and neither degrades into a partial list.
     """
     settings = _settings(request)
     started = time.monotonic()
@@ -104,9 +105,7 @@ def get_events(request: Request) -> Union[List[EventSummaryOut], Response]:
         )
     except SQLAlchemyError as exc:
         return _job_store_unavailable(exc)
-    except events_read.EventReadError as exc:
-        return bad_gateway(f"event {exc.event_id!r}: {exc.detail}", event_id=exc.event_id)
-    except ReelError as exc:
+    except (ReelError, LayoutError, OSError) as exc:
         return bad_gateway(f"event scan failed: {exc}")
     logger.info(
         "events scan: %d event(s) under %s in %.3fs",

@@ -233,6 +233,13 @@ render, or job logic lives in the web tier.
   have. These are *file* facts — nothing is decoded to produce them, and media
   facts (duration, dimensions, codec) are deliberately not here. The **list**
   response keeps its clip counts and carries no per-clip facts.
+  Every **list** row carries `kind`: `"event"` for a summary, `"error"` for an
+  event that could not be read. An error row carries only `event_id`, a
+  `failure` (`unparseable_reel_yaml`, `unusable_metadata` or `unreadable_disk`)
+  and the engine's `detail`, which names the fix, so one bad event costs one row,
+  never the list (as `scan` prints `ERROR <event>: …` and carries on). The detail
+  route still answers such an event with its 502. A database or walk failure
+  still fails the whole list (503 or 502).
   `GET /api/v1/events/{event_id}/analysis` exposes the read-only analysis sidecar
   cache; it never triggers analysis.
 - **`GET /api/v1/events/{event_id}/reel`** returns the event's **complete**

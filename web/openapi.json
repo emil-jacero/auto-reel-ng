@@ -28,7 +28,7 @@
           "events"
         ],
         "summary": "Get Events",
-        "description": "``GET /api/v1/events`` (task 2.2): every event, freshly scanned.\n\nBoth ways this read can fail are reported distinctly and in the shared problem\nshape: an unreachable job store as the 503 ``/healthz`` returns, a failed scan\nas the 502 the detail route already returns. Neither is retried and neither\ndegrades — ``list_events`` builds the complete list before returning, so a\nfailure part-way through yields an error, never a partial set.",
+        "description": "``GET /api/v1/events`` (task 2.2): every event, freshly scanned.\n\nOne unreadable event costs one error row, never the list (``list_events``\nisolates per event). What remains are the whole-list failures, reported\ndistinctly in the shared problem shape: an unreachable job store as the 503\n``/healthz`` returns, a walk of the project root that fails as the scan-failure\n502. Neither is retried and neither degrades into a partial list.",
         "operationId": "get_events_api_v1_events_get",
         "responses": {
           "200": {
@@ -37,7 +37,21 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/EventSummaryOut"
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/EventSummaryOut"
+                      },
+                      {
+                        "$ref": "#/components/schemas/EventErrorOut"
+                      }
+                    ],
+                    "discriminator": {
+                      "propertyName": "kind",
+                      "mapping": {
+                        "event": "#/components/schemas/EventSummaryOut",
+                        "error": "#/components/schemas/EventErrorOut"
+                      }
+                    }
                   },
                   "type": "array",
                   "title": "Response Get Events Api V1 Events Get"
@@ -872,8 +886,52 @@
         "title": "EventDetailOut",
         "description": "One event's full detail: metadata, ordered chapters/clips, reconcile state,\nand its staleness verdict (change-detection, §8.14)."
       },
+      "EventErrorOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "error",
+            "title": "Kind"
+          },
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "failure": {
+            "$ref": "#/components/schemas/EventFailure"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "event_id",
+          "failure",
+          "detail"
+        ],
+        "title": "EventErrorOut",
+        "description": "An event the list could not read, in place of its summary (per-event isolation).\n\nCarries no clip counts, staleness or title: those are exactly what could not be\nread, and absence is reported, never faked as zero (Principle I)."
+      },
+      "EventFailure": {
+        "type": "string",
+        "enum": [
+          "unparseable_reel_yaml",
+          "unusable_metadata",
+          "unreadable_disk"
+        ],
+        "title": "EventFailure",
+        "description": "Why an event could not be listed: the API's classification of engine errors."
+      },
       "EventSummaryOut": {
         "properties": {
+          "kind": {
+            "type": "string",
+            "const": "event",
+            "title": "Kind"
+          },
           "event_id": {
             "type": "string",
             "title": "Event Id"
@@ -940,6 +998,7 @@
         },
         "type": "object",
         "required": [
+          "kind",
           "event_id",
           "clip_count",
           "new_count",

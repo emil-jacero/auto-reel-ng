@@ -18,7 +18,7 @@ from typing import Dict, List, Mapping, Optional, Tuple
 from ..analysis.cache import CACHE_SUBDIR, clip_signal, read_entry
 from ..cli.adoption import REEL_FILENAME
 from ..config.project import load_project_config, resolve_look_defaults
-from ..errors import EventMetadataError, ReelParseError
+from ..errors import EventMetadataError, ReelError, ReelParseError
 from ..event.discovery import (
     ClipOrder,
     DiskListing,
@@ -42,6 +42,9 @@ from .schemas import (
     ChapterOut,
     ClipOut,
     EventDetailOut,
+    EventErrorOut,
+    EventFailure,
+    EventRowOut,
     EventSummaryOut,
     JobSummaryOut,
     SegmentOut,
@@ -101,19 +104,19 @@ def _list_event_refs(settings: ApiSettings) -> List[EventRef]:
 
 
 def _load_for_reconcile(
-    event_id: str, event_dir: Path, order: ClipOrder
+    event_dir: Path, order: ClipOrder
 ) -> tuple[Optional[ReelDocument], DiskListing, ReconcileResult]:
     """Load the document (if any) + disk listing and reconcile them (as ``scan`` does).
 
     The returned document has resolved metadata (reel.yaml over folder name), and
-    is ``None`` when no ``reel.yaml`` exists yet. An unparseable document or an
-    event without a real date and title is an :class:`EventReadError`.
+    is ``None`` when no ``reel.yaml`` exists yet. The engine's own errors propagate:
+    an unparseable document is a :class:`ReelParseError`, an event without a real
+    date and title an :class:`EventMetadataError`, an unlistable directory an
+    ``OSError``. Each caller maps them — the list to an error row, the detail to
+    an :class:`EventReadError`.
     """
-    try:
-        document, seeded = load_event_document(event_dir, order=order)
-        require_processable(event_dir, document.metadata, today=DateValue.today())
-    except (ReelParseError, EventMetadataError) as exc:
-        raise EventReadError(event_id, str(exc)) from exc
+    document, seeded = load_event_document(event_dir, order=order)
+    require_processable(event_dir, document.metadata, today=DateValue.today())
     persisted = None if seeded else document
     listing = scan_event(event_dir)
     result = reconcile(listing.identities, persisted)
@@ -140,39 +143,76 @@ def _title_date_location(
 
 def list_events(
     settings: ApiSettings, job_store: JobStore, runtime: FfmpegRuntime
-) -> List[EventSummaryOut]:
+) -> List[EventRowOut]:
     """``GET /api/v1/events``: every event under the configured root, freshly scanned.
 
     Each event carries the staleness verdict from the same gate the detail path
     uses, so one request answers "which of these need a render?". The project look
     defaults are resolved **once** here, before the loop, because they are a
     per-request value identical for every row.
+
+    Per-event isolation (Principle I): an event that cannot be read becomes an
+    :class:`EventErrorOut` row in place of its summary, and every other event is
+    listed as usual. The walk, the job store and the project config are read
+    before the loop, so their failures still fail the whole list.
     """
     refs = _list_event_refs(settings)
     latest_jobs = job_store.latest_by_project(str(settings.project_root))
     look_defaults = project_look_defaults(settings)
 
-    summaries: List[EventSummaryOut] = []
+    rows: List[EventRowOut] = []
     for ref in refs:
         event_id = event_id_for(settings, ref.event_dir)
-        document, _listing, result = _load_for_reconcile(
-            event_id, ref.event_dir, settings.clip_order
-        )
-        title, event_date, location = _title_date_location(ref.event_dir, document)
-        summaries.append(
-            EventSummaryOut(
-                event_id=event_id,
-                title=title,
-                date=event_date,
-                location=location,
-                clip_count=len(result.classification),
-                new_count=len(result.new),
-                missing_count=len(result.missing),
-                latest_job=_job_summary(latest_jobs.get(event_id)),
-                staleness=staleness_for(settings, ref.event_dir, document, runtime, look_defaults),
+        try:
+            rows.append(
+                _event_summary(
+                    settings,
+                    ref.event_dir,
+                    event_id,
+                    latest_jobs=latest_jobs,
+                    runtime=runtime,
+                    look_defaults=look_defaults,
+                )
             )
-        )
-    return summaries
+        except EventMetadataError as exc:  # before ReelError: it is a subclass
+            rows.append(_event_error(event_id, EventFailure.UNUSABLE_METADATA, exc))
+        except ReelError as exc:
+            rows.append(_event_error(event_id, EventFailure.UNPARSEABLE_REEL_YAML, exc))
+        except OSError as exc:
+            rows.append(_event_error(event_id, EventFailure.UNREADABLE_DISK, exc))
+    return rows
+
+
+def _event_summary(
+    settings: ApiSettings,
+    event_dir: Path,
+    event_id: str,
+    *,
+    latest_jobs: Mapping[str, Job],
+    runtime: FfmpegRuntime,
+    look_defaults: Mapping[str, object],
+) -> EventSummaryOut:
+    """One event's summary row; the engine's per-event errors propagate to the caller."""
+    document, _listing, result = _load_for_reconcile(event_dir, settings.clip_order)
+    title, event_date, location = _title_date_location(event_dir, document)
+    return EventSummaryOut(
+        kind="event",
+        event_id=event_id,
+        title=title,
+        date=event_date,
+        location=location,
+        clip_count=len(result.classification),
+        new_count=len(result.new),
+        missing_count=len(result.missing),
+        latest_job=_job_summary(latest_jobs.get(event_id)),
+        staleness=staleness_for(settings, event_dir, document, runtime, look_defaults),
+    )
+
+
+def _event_error(event_id: str, failure: EventFailure, exc: Exception) -> EventErrorOut:
+    """The error row for an event the list could not read; ``detail`` is the CLI's text."""
+    logger.warning("events scan: %s: %s: %s", event_id, failure.value, exc)
+    return EventErrorOut(kind="error", event_id=event_id, failure=failure, detail=str(exc))
 
 
 def _file_facts(path: Path) -> Tuple[Optional[int], Optional[datetime]]:
@@ -307,7 +347,10 @@ def get_event(
 ) -> EventDetailOut:
     """``GET /api/v1/events/{event_id}``: current detail, parsed fresh from disk."""
     event_dir = resolve_event_dir(settings, event_id)
-    document, listing, result = _load_for_reconcile(event_id, event_dir, settings.clip_order)
+    try:
+        document, listing, result = _load_for_reconcile(event_dir, settings.clip_order)
+    except (ReelParseError, EventMetadataError) as exc:
+        raise EventReadError(event_id, str(exc)) from exc
     title, event_date, location = _title_date_location(event_dir, document)
     latest_jobs = job_store.latest_by_project(str(settings.project_root))
 

@@ -291,7 +291,7 @@ def test_stat_failure_after_the_scan_reports_nulls_not_a_failed_event(
     from auto_reel_ng.api import events_read
 
     event_dir = project / "2024" / "2024-07-04 - Barbecue"
-    document, listing, result = events_read._load_for_reconcile("id", event_dir, DEFAULT_CLIP_ORDER)
+    document, listing, result = events_read._load_for_reconcile(event_dir, DEFAULT_CLIP_ORDER)
 
     # The scan has happened; the clip vanishes before the read model stats it.
     real_stat = Path.stat

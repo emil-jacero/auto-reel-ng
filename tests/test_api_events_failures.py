@@ -1,9 +1,10 @@
-"""Tests for how the two events reads fail (events-list-client-contract).
+"""Tests for how the two events reads fail (events-list-client-contract, events-list-error-rows).
 
 An unreachable job store and a failed scan are distinct conditions, both reported
 in the shared problem shape (D-A6): 503 naming ``check="database"`` exactly as
 ``/healthz`` does, and 502 for the scan. Neither read ever degrades into a partial
-or a substituted answer (Principle I).
+or a substituted answer (Principle I). On the list, one unreadable event is an
+error row in place of its summary, never a failed request (per-event isolation).
 
 The 503 tests need no container — the engine connects lazily, so an app pointed at
 a closed port fails at the job-store read itself.
@@ -11,6 +12,7 @@ a closed port fails at the job-store read itself.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from urllib.parse import quote
 
@@ -22,6 +24,7 @@ from auto_reel_ng.api.app import create_app
 from auto_reel_ng.api.schemas import ProblemOut
 from auto_reel_ng.api.settings import resolve_api_settings
 from auto_reel_ng.errors import ReelError
+from auto_reel_ng.ingest import LayoutError
 
 #: A reachable-looking URL whose port is closed: any query raises SQLAlchemyError.
 UNREACHABLE_DATABASE_URL = "postgresql+psycopg://nobody:nobody@127.0.0.1:1/nothing"
@@ -101,37 +104,99 @@ def test_a_failed_list_is_never_partial_and_never_fabricates_an_absent_job(
     assert "Barbecue" not in response.text
 
 
+def _rows_by_kind(response) -> tuple[list[dict], list[dict]]:
+    assert response.status_code == 200
+    rows = response.json()
+    assert isinstance(rows, list)
+    summaries = [row for row in rows if row["kind"] == "event"]
+    errors = [row for row in rows if row["kind"] == "error"]
+    assert len(summaries) + len(errors) == len(rows)
+    return summaries, errors
+
+
 @pytest.mark.requires_db
-def test_unparseable_reel_yaml_on_the_list_is_a_scan_problem(client, project: Path) -> None:
-    """Distinguishable from the database failure: 502, and no ``check`` field."""
+def test_unparseable_reel_yaml_on_the_list_is_an_error_row(client, project: Path) -> None:
+    """One bad event among three costs one row: two summaries and one error row."""
+    _touch(project / "2024" / "2024-08-01 - Kräftskiva" / "00600.mp4")
     (project / "2024" / "2024-07-04 - Barbecue" / "reel.yaml").write_text(
         "metadata: [not, a, mapping\n", encoding="utf-8"
     )
 
-    response = client.get("/api/v1/events")
-    body = response.json()
+    summaries, errors = _rows_by_kind(client.get("/api/v1/events"))
 
-    assert response.status_code == 502
-    assert body["title"] == "Bad Gateway"
-    assert body["status"] == 502
-    assert "check" not in body
-    assert body["event_id"] == EVENT_ID
-    assert not isinstance(body, list)
+    assert len(summaries) == 2
+    assert EVENT_ID not in {row["event_id"] for row in summaries}
+    assert len(errors) == 1
+    (error,) = errors
+    assert error["event_id"] == EVENT_ID
+    assert error["failure"] == "unparseable_reel_yaml"
+    assert error["detail"]
+    # No fact that could not be read is carried, not even as null.
+    assert set(error) == {"kind", "event_id", "failure", "detail"}
 
 
 @pytest.mark.requires_db
-def test_a_year_only_event_on_the_list_is_a_per_event_problem(client, project: Path) -> None:
-    """An event without a real date fails the list with the existing per-event 502 body."""
+def test_a_year_only_event_on_the_list_is_an_unusable_metadata_row(client, project: Path) -> None:
     _touch(project / "2004" / "2004 - Yngve berättar om skövde" / "00100.mp4")
 
-    response = client.get("/api/v1/events")
-    body = response.json()
+    summaries, errors = _rows_by_kind(client.get("/api/v1/events"))
 
-    assert response.status_code == 502
-    assert body["event_id"] == "2004/2004 - Yngve berättar om skövde"
-    assert "year only" in body["detail"]
-    assert "metadata.date" in body["detail"]
-    assert "check" not in body
+    assert len(summaries) == 2
+    (error,) = errors
+    assert error["event_id"] == "2004/2004 - Yngve berättar om skövde"
+    assert error["failure"] == "unusable_metadata"
+    assert "year only" in error["detail"]
+    assert "metadata.date" in error["detail"]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+@pytest.mark.requires_db
+def test_an_unreadable_event_directory_is_an_unreadable_disk_row(client, project: Path) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    event_dir.chmod(0o000)
+    try:
+        response = client.get("/api/v1/events")
+    finally:
+        event_dir.chmod(0o755)
+
+    summaries, errors = _rows_by_kind(response)
+    assert len(summaries) == 1
+    (error,) = errors
+    assert error["event_id"] == EVENT_ID
+    assert error["failure"] == "unreadable_disk"
+    assert error["detail"]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_an_unreadable_walk_root_is_a_scan_problem(offline_client, project: Path) -> None:
+    """The walk failing accounts for no event: a whole-list 502, never an unshaped 500.
+
+    No database is needed: the walk runs before the job store is consulted.
+    """
+    year_dir = project / "2024"
+    year_dir.chmod(0o000)
+    try:
+        response = offline_client.get("/api/v1/events")
+    finally:
+        year_dir.chmod(0o755)
+
+    problem = _validated_problem(response, 502)
+    assert problem.title == "Bad Gateway"
+    assert "event scan failed" in problem.detail
+    assert problem.check is None
+    assert problem.event_id is None
+
+
+@pytest.mark.parametrize("error", [LayoutError("bad layout"), OSError(13, "Permission denied")])
+def test_a_walk_failure_is_a_scan_problem(
+    offline_client, monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    def failing_walk(*_args: object) -> None:
+        raise error
+
+    monkeypatch.setattr(events_read, "_list_event_refs", failing_walk)
+    problem = _validated_problem(offline_client.get("/api/v1/events"), 502)
+    assert "event scan failed" in problem.detail
 
 
 @pytest.mark.requires_db
@@ -153,6 +218,7 @@ def test_a_healthy_read_is_unaffected(client) -> None:
     listing = client.get("/api/v1/events")
     assert listing.status_code == 200
     assert len(listing.json()) == 2
+    assert {row["kind"] for row in listing.json()} == {"event"}
 
     detail = client.get(f"/api/v1/events/{quote(EVENT_ID)}")
     assert detail.status_code == 200
@@ -202,9 +268,5 @@ def test_per_event_and_unknown_event_bodies_match_the_published_shape(
     (project / "2024" / "2024-07-04 - Barbecue" / "reel.yaml").write_text(
         "metadata: [not, a, mapping\n", encoding="utf-8"
     )
-    listing = _validated_problem(client.get("/api/v1/events"), 502)
-    assert listing.event_id == EVENT_ID
-    assert listing.check is None
-
     detail = _validated_problem(client.get(f"/api/v1/events/{quote(EVENT_ID)}"), 502)
     assert detail.event_id == EVENT_ID

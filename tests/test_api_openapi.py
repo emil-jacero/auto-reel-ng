@@ -17,6 +17,7 @@ from auto_reel_ng.api.openapi import (
     build_openapi_schema,
     render_openapi_schema,
 )
+from auto_reel_ng.api.schemas import EventFailure
 from auto_reel_ng.persistence.models import JobStatus
 from auto_reel_ng.staleness.gate import StalenessReason
 
@@ -38,6 +39,8 @@ EXPECTED_PATHS = {
 #: Response models the generated types are derived from.
 EXPECTED_MODELS = {
     "EventSummaryOut",
+    "EventErrorOut",
+    "EventFailure",
     "EventDetailOut",
     "AnalysisOut",
     "EditorialWriteResult",
@@ -75,12 +78,32 @@ def test_schema_describes_the_response_models() -> None:
     assert EXPECTED_MODELS <= set(schema["components"]["schemas"])
 
 
-def test_events_list_response_is_the_event_summary_model() -> None:
-    """The wiring-check page reads this shape through the generated types."""
+def test_events_list_item_is_a_union_discriminated_by_kind() -> None:
+    """A summary or an error row, told apart by ``kind`` — never a summary with nulls."""
     schema = build_openapi_schema()
     content = schema["paths"]["/api/v1/events"]["get"]["responses"]["200"]["content"]
     items = content["application/json"]["schema"]["items"]
-    assert items["$ref"].endswith("/EventSummaryOut")
+    members = {ref["$ref"].rsplit("/", 1)[-1] for ref in items["oneOf"]}
+    assert members == {"EventSummaryOut", "EventErrorOut"}
+    assert items["discriminator"]["propertyName"] == "kind"
+    assert set(items["discriminator"]["mapping"]) == {"event", "error"}
+
+
+def test_kind_is_required_on_both_row_types() -> None:
+    """Required, so the generated TypeScript discriminator is non-optional."""
+    models = build_openapi_schema()["components"]["schemas"]
+    for model, value in (("EventSummaryOut", "event"), ("EventErrorOut", "error")):
+        assert "kind" in models[model]["required"], model
+        assert models[model]["properties"]["kind"]["const"] == value
+
+
+def test_event_failure_is_published_as_a_closed_enumeration() -> None:
+    models = build_openapi_schema()["components"]["schemas"]
+    assert models["EventErrorOut"]["properties"]["failure"]["$ref"].endswith("/EventFailure")
+    published = models["EventFailure"]
+    assert published["type"] == "string"
+    assert published["enum"] == [failure.value for failure in EventFailure]
+    assert len(published["enum"]) == 3
 
 
 def test_staleness_reasons_are_published_as_a_closed_enumeration() -> None:

@@ -35,11 +35,11 @@ export interface paths {
          * Get Events
          * @description ``GET /api/v1/events`` (task 2.2): every event, freshly scanned.
          *
-         *     Both ways this read can fail are reported distinctly and in the shared problem
-         *     shape: an unreachable job store as the 503 ``/healthz`` returns, a failed scan
-         *     as the 502 the detail route already returns. Neither is retried and neither
-         *     degrades — ``list_events`` builds the complete list before returning, so a
-         *     failure part-way through yields an error, never a partial set.
+         *     One unreadable event costs one error row, never the list (``list_events``
+         *     isolates per event). What remains are the whole-list failures, reported
+         *     distinctly in the shared problem shape: an unreachable job store as the 503
+         *     ``/healthz`` returns, a walk of the project root that fails as the scan-failure
+         *     502. Neither is retried and neither degrades into a partial list.
          */
         get: operations["get_events_api_v1_events_get"];
         put?: never;
@@ -446,10 +446,40 @@ export interface components {
             staleness: components["schemas"]["StalenessOut"];
         };
         /**
+         * EventErrorOut
+         * @description An event the list could not read, in place of its summary (per-event isolation).
+         *
+         *     Carries no clip counts, staleness or title: those are exactly what could not be
+         *     read, and absence is reported, never faked as zero (Principle I).
+         */
+        EventErrorOut: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "error";
+            /** Event Id */
+            event_id: string;
+            failure: components["schemas"]["EventFailure"];
+            /** Detail */
+            detail: string;
+        };
+        /**
+         * EventFailure
+         * @description Why an event could not be listed: the API's classification of engine errors.
+         * @enum {string}
+         */
+        EventFailure: "unparseable_reel_yaml" | "unusable_metadata" | "unreadable_disk";
+        /**
          * EventSummaryOut
          * @description One event as listed by ``GET /api/v1/events``.
          */
         EventSummaryOut: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "event";
             /** Event Id */
             event_id: string;
             /** Title */
@@ -698,7 +728,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EventSummaryOut"][];
+                    "application/json": (components["schemas"]["EventSummaryOut"] | components["schemas"]["EventErrorOut"])[];
                 };
             };
             /** @description Bad Gateway */

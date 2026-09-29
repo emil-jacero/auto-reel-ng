@@ -16,7 +16,8 @@ import uuid
 # resolve to the field's own class attribute instead of the stdlib type).
 from datetime import date as DateValue
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from enum import StrEnum
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -79,6 +80,9 @@ class StalenessOut(BaseModel):
 class EventSummaryOut(BaseModel):
     """One event as listed by ``GET /api/v1/events``."""
 
+    #: The list's discriminator. Declared without a default so the schema marks it
+    #: required and generated clients get a non-optional ``kind: "event"``.
+    kind: Literal["event"]
     event_id: str
     title: Optional[str] = None
     date: Optional[DateValue] = None
@@ -92,6 +96,35 @@ class EventSummaryOut(BaseModel):
     #: Derived from disk on every request — never read from or written to the DB,
     #: and never inferred from ``latest_job`` (a completed job is not freshness).
     staleness: StalenessOut
+
+
+class EventFailure(StrEnum):
+    """Why an event could not be listed: the API's classification of engine errors."""
+
+    #: A ``reel.yaml`` that is malformed, fails validation, or cannot be imported.
+    UNPARSEABLE_REEL_YAML = "unparseable_reel_yaml"
+    #: No real date or title, or a future date (``EventMetadataError``).
+    UNUSABLE_METADATA = "unusable_metadata"
+    #: The event's files cannot be listed or stat'ed (``OSError``).
+    UNREADABLE_DISK = "unreadable_disk"
+
+
+class EventErrorOut(BaseModel):
+    """An event the list could not read, in place of its summary (per-event isolation).
+
+    Carries no clip counts, staleness or title: those are exactly what could not be
+    read, and absence is reported, never faked as zero (Principle I).
+    """
+
+    kind: Literal["error"]
+    event_id: str
+    failure: EventFailure
+    #: The engine's own message, which names the fix (the text the CLI prints).
+    detail: str
+
+
+#: One row of ``GET /api/v1/events``: a summary, or an error row, by ``kind``.
+EventRowOut = Annotated[Union[EventSummaryOut, EventErrorOut], Field(discriminator="kind")]
 
 
 class EventDetailOut(BaseModel):
@@ -281,6 +314,9 @@ __all__ = [
     "ChapterOut",
     "JobSummaryOut",
     "EventSummaryOut",
+    "EventFailure",
+    "EventErrorOut",
+    "EventRowOut",
     "EventDetailOut",
     "TrimBody",
     "ClipPropertiesBody",
