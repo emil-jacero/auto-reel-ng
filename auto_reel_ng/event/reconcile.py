@@ -11,8 +11,8 @@ derived index.
 
 from __future__ import annotations
 
-import enum
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Iterable, Mapping, Optional
 
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
@@ -23,8 +23,13 @@ from ..reel.schema import build_document
 from ..reel.writer import document_to_data
 
 
-class ClipStatus(enum.Enum):
-    """How a clip relates the disk to the document."""
+class ClipStatus(StrEnum):
+    """How a clip relates the disk to the document.
+
+    A :class:`~enum.StrEnum`, like the other engine vocabularies: a member *is* its
+    string value, so the API publishes this set as-is and the wire value is the
+    same ``new``/``missing``/``active``/``ignored`` string.
+    """
 
     NEW = "new"  # on disk, not referenced, not ignored
     MISSING = "missing"  # referenced in the document, absent from disk

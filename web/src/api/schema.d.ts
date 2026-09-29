@@ -129,6 +129,9 @@ export interface paths {
         /**
          * Get Event
          * @description ``GET /api/v1/events/{event_id}`` (task 2.3): current detail from disk.
+         *
+         *     An event the list would show as an error row is the scan-failure 502 here,
+         *     carrying the same ``failure`` kind and ``detail`` as that row, never a 500.
          */
         get: operations["get_event_api_v1_events__event_id__get"];
         put?: never;
@@ -281,12 +284,15 @@ export interface components {
          *     dimensions and codec belong to the analysis cache, not this shape. Both are
          *     ``None`` for a clip the document references but disk does not have: absence is
          *     reported, never fabricated as a zero or an epoch (Principle I).
+         *
+         *     ``status`` is typed with reconcile's own closed vocabulary, so the schema
+         *     publishes the enumeration and generated clients get an exhaustive union
+         *     (D-8, §4.10). ``ClipStatus`` is a ``StrEnum``: the wire values are unchanged.
          */
         ClipOut: {
             /** Identity */
             identity: string;
-            /** Status */
-            status: string;
+            status: components["schemas"]["ClipStatus"];
             /** Size */
             size?: number | null;
             /** Mtime */
@@ -312,6 +318,16 @@ export interface components {
              */
             exclude: boolean;
         };
+        /**
+         * ClipStatus
+         * @description How a clip relates the disk to the document.
+         *
+         *     A :class:`~enum.StrEnum`, like the other engine vocabularies: a member *is* its
+         *     string value, so the API publishes this set as-is and the wire value is the
+         *     same ``new``/``missing``/``active``/``ignored`` string.
+         * @enum {string}
+         */
+        ClipStatus: "new" | "missing" | "active" | "ignored";
         /**
          * EditorialDocumentBody
          * @description The complete desired (request) or persisted (response) editorial state.
@@ -609,6 +625,7 @@ export interface components {
             check?: string | null;
             /** Event Id */
             event_id?: string | null;
+            failure?: components["schemas"]["EventFailure"] | null;
         } & {
             [key: string]: unknown;
         };

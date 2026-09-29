@@ -1,10 +1,12 @@
-"""Tests for how the two events reads fail (events-list-client-contract, events-list-error-rows).
+"""Tests for how the two events reads fail.
 
+Covers events-list-client-contract, events-list-error-rows and event-detail-client-contract.
 An unreachable job store and a failed scan are distinct conditions, both reported
 in the shared problem shape (D-A6): 503 naming ``check="database"`` exactly as
 ``/healthz`` does, and 502 for the scan. Neither read ever degrades into a partial
 or a substituted answer (Principle I). On the list, one unreadable event is an
-error row in place of its summary, never a failed request (per-event isolation).
+error row in place of its summary, never a failed request (per-event isolation);
+on the detail, the same event is a 502 carrying the same failure kind and detail.
 
 The 503 tests need no container — the engine connects lazily, so an app pointed at
 a closed port fails at the job-store read itself.
@@ -13,7 +15,9 @@ a closed port fails at the job-store read itself.
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Callable, ContextManager, Iterator
 from urllib.parse import quote
 
 import pytest
@@ -270,3 +274,89 @@ def test_per_event_and_unknown_event_bodies_match_the_published_shape(
     )
     detail = _validated_problem(client.get(f"/api/v1/events/{quote(EVENT_ID)}"), 502)
     assert detail.event_id == EVENT_ID
+
+
+# --- The detail classifies per-event failures by the list's rule --------------------
+
+GOLF_ID = "2019/2019-04-31 - Golfträning med Emil - Tjörn"
+
+
+@contextmanager
+def _unparseable_reel_yaml(project: Path) -> Iterator[str]:
+    (project / EVENT_ID / "reel.yaml").write_text("metadata: [not, a, mapping\n", encoding="utf-8")
+    yield EVENT_ID
+
+
+@contextmanager
+def _impossible_folder_date(project: Path) -> Iterator[str]:
+    _touch(project / GOLF_ID / "00100.mp4")
+    yield GOLF_ID
+
+
+@contextmanager
+def _unreadable_event_dir(project: Path) -> Iterator[str]:
+    event_dir = project / EVENT_ID
+    event_dir.chmod(0o000)
+    try:
+        yield EVENT_ID
+    finally:
+        event_dir.chmod(0o755)
+
+
+BrokenEvent = Callable[[Path], ContextManager[str]]
+
+#: One broken event per failure kind, with the kind both reads must report for it.
+BROKEN_EVENTS = [
+    pytest.param(_unparseable_reel_yaml, "unparseable_reel_yaml", id="unparseable_reel_yaml"),
+    pytest.param(_impossible_folder_date, "unusable_metadata", id="unusable_metadata"),
+    pytest.param(
+        _unreadable_event_dir,
+        "unreadable_disk",
+        id="unreadable_disk",
+        marks=pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions"),
+    ),
+]
+
+
+@pytest.mark.requires_db
+@pytest.mark.parametrize(("broken", "failure"), BROKEN_EVENTS)
+def test_a_broken_event_detail_is_a_classified_scan_problem(
+    client, project: Path, broken: BrokenEvent, failure: str
+) -> None:
+    """A 502 naming the event and its kind; an unreadable directory was a bare 500."""
+    with broken(project) as event_id:
+        response = client.get(f"/api/v1/events/{quote(event_id)}")
+
+    problem = _validated_problem(response, 502)
+    assert problem.title == "Bad Gateway"
+    assert problem.event_id == event_id
+    assert problem.failure == failure
+    assert problem.check is None
+    assert problem.detail
+
+
+@pytest.mark.requires_db
+def test_an_impossible_folder_date_detail_names_the_fix(client, project: Path) -> None:
+    with _impossible_folder_date(project) as event_id:
+        problem = _validated_problem(client.get(f"/api/v1/events/{quote(event_id)}"), 502)
+
+    assert "2019-04-31 is not a real date" in problem.detail
+    # Unprefixed: the engine's own text, exactly as the list's error row carries it.
+    assert not problem.detail.startswith("event ")
+
+
+@pytest.mark.requires_db
+@pytest.mark.parametrize(("broken", "failure"), BROKEN_EVENTS)
+def test_list_and_detail_agree_on_why_an_event_cannot_be_read(
+    client, project: Path, broken: BrokenEvent, failure: str
+) -> None:
+    """Agreement by construction: the same kind and the same detail on both reads."""
+    with broken(project) as event_id:
+        listing = client.get("/api/v1/events")
+        detail = client.get(f"/api/v1/events/{quote(event_id)}")
+
+    _summaries, errors = _rows_by_kind(listing)
+    (row,) = [error for error in errors if error["event_id"] == event_id]
+    problem = _validated_problem(detail, 502)
+    assert row["failure"] == problem.failure == failure
+    assert row["detail"] == problem.detail

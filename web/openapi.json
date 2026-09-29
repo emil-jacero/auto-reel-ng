@@ -241,7 +241,7 @@
           "events"
         ],
         "summary": "Get Event",
-        "description": "``GET /api/v1/events/{event_id}`` (task 2.3): current detail from disk.",
+        "description": "``GET /api/v1/events/{event_id}`` (task 2.3): current detail from disk.\n\nAn event the list would show as an error row is the scan-failure 502 here,\ncarrying the same ``failure`` kind and ``detail`` as that row, never a 500.",
         "operationId": "get_event_api_v1_events__event_id__get",
         "parameters": [
           {
@@ -594,8 +594,7 @@
             "title": "Identity"
           },
           "status": {
-            "type": "string",
-            "title": "Status"
+            "$ref": "#/components/schemas/ClipStatus"
           },
           "size": {
             "anyOf": [
@@ -627,7 +626,7 @@
           "status"
         ],
         "title": "ClipOut",
-        "description": "One clip: identity, reconcile status, and the file facts a reorder view needs.\n\n``size`` (bytes) and ``mtime`` (timezone-aware UTC) come from the clip's own\ndirectory entry — **file** facts, never media facts. Nothing here is decoded or\nprobed, so the detail response stays probe-free (Principle IV); duration,\ndimensions and codec belong to the analysis cache, not this shape. Both are\n``None`` for a clip the document references but disk does not have: absence is\nreported, never fabricated as a zero or an epoch (Principle I)."
+        "description": "One clip: identity, reconcile status, and the file facts a reorder view needs.\n\n``size`` (bytes) and ``mtime`` (timezone-aware UTC) come from the clip's own\ndirectory entry — **file** facts, never media facts. Nothing here is decoded or\nprobed, so the detail response stays probe-free (Principle IV); duration,\ndimensions and codec belong to the analysis cache, not this shape. Both are\n``None`` for a clip the document references but disk does not have: absence is\nreported, never fabricated as a zero or an epoch (Principle I).\n\n``status`` is typed with reconcile's own closed vocabulary, so the schema\npublishes the enumeration and generated clients get an exhaustive union\n(D-8, §4.10). ``ClipStatus`` is a ``StrEnum``: the wire values are unchanged."
       },
       "ClipPropertiesBody": {
         "properties": {
@@ -671,6 +670,17 @@
         "type": "object",
         "title": "ClipPropertiesBody",
         "description": "Per-clip editorial properties in the ``clips`` map (editorial-write, D-E2)."
+      },
+      "ClipStatus": {
+        "type": "string",
+        "enum": [
+          "new",
+          "missing",
+          "active",
+          "ignored"
+        ],
+        "title": "ClipStatus",
+        "description": "How a clip relates the disk to the document.\n\nA :class:`~enum.StrEnum`, like the other engine vocabularies: a member *is* its\nstring value, so the API publishes this set as-is and the wire value is the\nsame ``new``/``missing``/``active``/``ignored`` string."
       },
       "EditorialDocumentBody-Input": {
         "properties": {
@@ -1274,6 +1284,16 @@
               }
             ],
             "title": "Event Id"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EventFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": true,

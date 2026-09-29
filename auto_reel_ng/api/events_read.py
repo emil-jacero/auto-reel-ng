@@ -64,15 +64,18 @@ class EventNotFoundError(Exception):
 
 
 class EventReadError(Exception):
-    """An event's ``reel.yaml`` could not be parsed, or its metadata is not processable.
+    """An event could not be read: its ``reel.yaml``, its metadata, or its files.
 
-    (D-A6: loud, never fabricated.)
+    ``failure`` is the kind :func:`classify_event_failure` gives it, set by the
+    detail read so its 502 names the same kind the list's error row would; the
+    editorial read raises without one. (D-A6: loud, never fabricated.)
     """
 
-    def __init__(self, event_id: str, detail: str) -> None:
+    def __init__(self, event_id: str, detail: str, failure: Optional[EventFailure] = None) -> None:
         super().__init__(detail)
         self.event_id = event_id
         self.detail = detail
+        self.failure = failure
 
 
 def event_id_for(settings: ApiSettings, event_dir: Path) -> str:
@@ -174,13 +177,26 @@ def list_events(
                     look_defaults=look_defaults,
                 )
             )
-        except EventMetadataError as exc:  # before ReelError: it is a subclass
-            rows.append(_event_error(event_id, EventFailure.UNUSABLE_METADATA, exc))
-        except ReelError as exc:
-            rows.append(_event_error(event_id, EventFailure.UNPARSEABLE_REEL_YAML, exc))
-        except OSError as exc:
-            rows.append(_event_error(event_id, EventFailure.UNREADABLE_DISK, exc))
+        except (ReelError, OSError) as exc:
+            failure = classify_event_failure(exc)
+            assert failure is not None  # nosec B101 - both caught types are always classified
+            rows.append(_event_error(event_id, failure, exc))
     return rows
+
+
+def classify_event_failure(exc: BaseException) -> Optional[EventFailure]:
+    """The API's kind for a per-event engine failure, or ``None`` when it is not one.
+
+    The one rule both events reads use, so the list's error row and the detail's
+    502 can never disagree about why an event cannot be read.
+    """
+    if isinstance(exc, EventMetadataError):  # before ReelError: it is a subclass
+        return EventFailure.UNUSABLE_METADATA
+    if isinstance(exc, ReelError):
+        return EventFailure.UNPARSEABLE_REEL_YAML
+    if isinstance(exc, OSError):
+        return EventFailure.UNREADABLE_DISK
+    return None
 
 
 def _event_summary(
@@ -234,11 +250,11 @@ def _file_facts(path: Path) -> Tuple[Optional[int], Optional[datetime]]:
 def _clip_out(event_dir: Path, identity: str, status: ClipStatus) -> ClipOut:
     """One clip with its file facts; a MISSING clip has no file, so it is not statted."""
     if status is ClipStatus.MISSING:
-        return ClipOut(identity=identity, status=status.value)
+        return ClipOut(identity=identity, status=status)
     # The identity *is* the event-relative POSIX path (the mapping render/ uses),
     # so a clip in a named chapter subdirectory resolves inside that directory.
     size, mtime = _file_facts(event_dir / identity)
-    return ClipOut(identity=identity, status=status.value, size=size, mtime=mtime)
+    return ClipOut(identity=identity, status=status, size=size, mtime=mtime)
 
 
 def _build_chapters(
@@ -345,13 +361,23 @@ def staleness_for(
 def get_event(
     settings: ApiSettings, event_id: str, job_store: JobStore, runtime: FfmpegRuntime
 ) -> EventDetailOut:
-    """``GET /api/v1/events/{event_id}``: current detail, parsed fresh from disk."""
+    """``GET /api/v1/events/{event_id}``: current detail, parsed fresh from disk.
+
+    The event's own failures are classified by the list's rule
+    (:func:`classify_event_failure`) into an :class:`EventReadError`. An unknown ID
+    is resolved first, so it stays :class:`EventNotFoundError`; the job store and
+    the project config are read outside the catch, as the list reads them before
+    its loop, so neither is ever reported as this event's failure.
+    """
     event_dir = resolve_event_dir(settings, event_id)
+    look_defaults = project_look_defaults(settings)
     try:
         document, listing, result = _load_for_reconcile(event_dir, settings.clip_order)
-    except (ReelParseError, EventMetadataError) as exc:
-        raise EventReadError(event_id, str(exc)) from exc
-    title, event_date, location = _title_date_location(event_dir, document)
+        title, event_date, location = _title_date_location(event_dir, document)
+        chapters = _build_chapters(document, listing, result, event_dir, settings.clip_order)
+        staleness = staleness_for(settings, event_dir, document, runtime, look_defaults)
+    except (ReelError, OSError) as exc:
+        raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
     latest_jobs = job_store.latest_by_project(str(settings.project_root))
 
     return EventDetailOut(
@@ -360,12 +386,10 @@ def get_event(
         date=event_date,
         location=location,
         description=document.metadata.description if document is not None else None,
-        chapters=_build_chapters(document, listing, result, event_dir, settings.clip_order),
+        chapters=chapters,
         missing=list(result.missing),
         latest_job=_job_summary(latest_jobs.get(event_id)),
-        staleness=staleness_for(
-            settings, event_dir, document, runtime, project_look_defaults(settings)
-        ),
+        staleness=staleness,
     )
 
 
@@ -423,6 +447,7 @@ __all__ = [
     "get_event",
     "get_reel",
     "get_analysis",
+    "classify_event_failure",
     "staleness_for",
     "project_look_defaults",
 ]

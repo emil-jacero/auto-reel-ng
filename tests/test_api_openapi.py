@@ -18,6 +18,7 @@ from auto_reel_ng.api.openapi import (
     render_openapi_schema,
 )
 from auto_reel_ng.api.schemas import EventFailure
+from auto_reel_ng.event.reconcile import ClipStatus
 from auto_reel_ng.persistence.models import JobStatus
 from auto_reel_ng.staleness.gate import StalenessReason
 
@@ -42,6 +43,7 @@ EXPECTED_MODELS = {
     "EventErrorOut",
     "EventFailure",
     "EventDetailOut",
+    "ClipStatus",
     "AnalysisOut",
     "EditorialWriteResult",
     "JobOut",
@@ -121,6 +123,17 @@ def test_staleness_reasons_are_published_as_a_closed_enumeration() -> None:
     published = schema["components"]["schemas"]["StalenessReason"]
     assert published["type"] == "string"
     assert published["enum"] == [reason.value for reason in StalenessReason]
+
+
+def test_clip_status_is_published_as_a_closed_enumeration() -> None:
+    """A clip's status references reconcile's own enum, so a renamed status breaks the client."""
+    models = build_openapi_schema()["components"]["schemas"]
+    assert models["ClipOut"]["properties"]["status"]["$ref"].endswith("/ClipStatus")
+
+    published = models["ClipStatus"]
+    assert published["type"] == "string"
+    assert published["enum"] == [status.value for status in ClipStatus]
+    assert set(published["enum"]) == {"new", "active", "missing", "ignored"}
 
 
 def test_job_status_fields_are_published_as_the_job_status_enumeration() -> None:

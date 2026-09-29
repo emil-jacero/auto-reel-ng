@@ -170,7 +170,11 @@ def get_reel(
     },
 )
 def get_event(event_id: str, request: Request) -> Union[EventDetailOut, Response]:
-    """``GET /api/v1/events/{event_id}`` (task 2.3): current detail from disk."""
+    """``GET /api/v1/events/{event_id}`` (task 2.3): current detail from disk.
+
+    An event the list would show as an error row is the scan-failure 502 here,
+    carrying the same ``failure`` kind and ``detail`` as that row, never a 500.
+    """
     settings = _settings(request)
     try:
         return events_read.get_event(
@@ -183,7 +187,9 @@ def get_event(event_id: str, request: Request) -> Union[EventDetailOut, Response
             f"no event {event_id!r} under the configured project root", event_id=event_id
         )
     except events_read.EventReadError as exc:
-        return bad_gateway(f"event {event_id!r}: {exc.detail}", event_id=event_id)
+        # Unprefixed: ``detail`` and ``failure`` are exactly the list's error row.
+        failure = exc.failure.value if exc.failure is not None else None
+        return bad_gateway(exc.detail, event_id=event_id, failure=failure)
 
 
 @router.put("/events/{event_id:path}/reel", response_model=EditorialWriteResult)

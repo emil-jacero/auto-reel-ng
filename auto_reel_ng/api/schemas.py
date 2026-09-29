@@ -21,6 +21,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..event.reconcile import ClipStatus
 from ..persistence.models import JobStatus
 from ..staleness.gate import StalenessReason
 
@@ -34,10 +35,14 @@ class ClipOut(BaseModel):
     dimensions and codec belong to the analysis cache, not this shape. Both are
     ``None`` for a clip the document references but disk does not have: absence is
     reported, never fabricated as a zero or an epoch (Principle I).
+
+    ``status`` is typed with reconcile's own closed vocabulary, so the schema
+    publishes the enumeration and generated clients get an exhaustive union
+    (D-8, §4.10). ``ClipStatus`` is a ``StrEnum``: the wire values are unchanged.
     """
 
     identity: str
-    status: str  # ClipStatus.value: new / active / missing / ignored
+    status: ClipStatus
     size: Optional[int] = None
     mtime: Optional[datetime] = None
 
@@ -300,6 +305,8 @@ class ProblemOut(BaseModel):
     check: Optional[str] = None
     #: The event a per-event failure is about (502/404/400 on the events routes).
     event_id: Optional[str] = None
+    #: Why the event could not be read, on the detail's 502: the list's error-row kind.
+    failure: Optional[EventFailure] = None
 
 
 class WsMessage(BaseModel):
