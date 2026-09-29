@@ -171,6 +171,19 @@ td.date {
   color: var(--stale-fg);
 }
 
+.pill-attention {
+  background: var(--alert-bg);
+  color: var(--failed-fg);
+}
+
+.attention .pill {
+  white-space: normal;
+}
+
+.attention .detail {
+  overflow-wrap: anywhere;
+}
+
 .reasons {
   margin-left: 0.5rem;
 }

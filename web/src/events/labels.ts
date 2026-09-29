@@ -1,4 +1,4 @@
-import type { JobStatus, StalenessReason } from '../api/events'
+import type { EventFailure, JobStatus, StalenessReason } from '../api/events'
 
 /*
  * Words for the generated vocabularies. A `Record` over the union fails
@@ -21,4 +21,10 @@ export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
   done: 'Rendered',
   failed: 'Failed',
   canceled: 'Canceled',
+}
+
+export const FAILURE_LABEL: Record<EventFailure, string> = {
+  unparseable_reel_yaml: "reel.yaml can't be read",
+  unusable_metadata: 'missing or invalid date or title',
+  unreadable_disk: "files can't be read",
 }

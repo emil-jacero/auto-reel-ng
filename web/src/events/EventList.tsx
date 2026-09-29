@@ -1,29 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { fetchEvents } from '../api/events'
-import type { EventSummary, JobSummary, Problem } from '../api/events'
+import type { EventError, EventRow, EventSummary, JobSummary, Problem } from '../api/events'
 import { groupByYear, needsRender } from './grouping'
-import { JOB_STATUS_LABEL, REASON_LABEL } from './labels'
+import { FAILURE_LABEL, JOB_STATUS_LABEL, REASON_LABEL } from './labels'
 
 /**
  * The event list: which events need a render, and why.
  *
  * Read-only. The list is scanned from disk per request, so it is read on mount
  * and on refresh, and nowhere else — no polling, no cache. Loading and failure
- * both replace the list: an earlier list is never shown as current.
+ * both replace the list: an earlier list is never shown as current. Events the
+ * service could not read arrive as error rows and are shown first, under
+ * "Needs attention", with nothing the row does not carry.
  */
 
 type LoadState =
   | { status: 'loading' }
-  | { status: 'ready'; events: EventSummary[]; fetchedAt: Date }
+  | { status: 'ready'; events: EventRow[]; fetchedAt: Date }
   | { status: 'failed'; cause: string; detail: string | null }
 
 function describeProblem(problem: Problem): { cause: string; detail: string | null } {
   if (problem.check === 'database') {
     return { cause: "The service can't reach its database.", detail: problem.detail }
   }
-  if (problem.event_id != null) {
-    return { cause: `Event ${problem.event_id} could not be scanned.`, detail: problem.detail }
+  if (problem.status === 502) {
+    return { cause: 'The project could not be scanned.', detail: problem.detail }
   }
   return { cause: problem.title, detail: problem.detail }
 }
@@ -81,6 +83,34 @@ function EventRow({ event }: { event: EventSummary }) {
         <JobCell job={event.latest_job} />
       </td>
     </tr>
+  )
+}
+
+function AttentionTable({ errors }: { errors: EventError[] }) {
+  return (
+    <div className="table-scroll">
+      <table className="attention">
+        <caption>Needs attention</caption>
+        <thead>
+          <tr>
+            <th scope="col">Folder</th>
+            <th scope="col">Problem</th>
+            <th scope="col">How to fix</th>
+          </tr>
+        </thead>
+        <tbody>
+          {errors.map((error) => (
+            <tr key={error.event_id}>
+              <td>{folderName(error.event_id)}</td>
+              <td>
+                <span className="pill pill-attention">{FAILURE_LABEL[error.failure]}</span>
+              </td>
+              <td className="detail">{error.detail}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -179,7 +209,7 @@ export function EventList() {
 
       {state.status === 'ready' && (
         <ReadyView
-          events={state.events}
+          rows={state.events}
           fetchedAt={state.fetchedAt}
           onlyStale={onlyStale}
           setOnlyStale={setOnlyStale}
@@ -189,17 +219,32 @@ export function EventList() {
   )
 }
 
+/** Split the rows by `kind`, keeping each side in the service's order. */
+function partition(rows: readonly EventRow[]): { events: EventSummary[]; errors: EventError[] } {
+  const events: EventSummary[] = []
+  const errors: EventError[] = []
+  for (const row of rows) {
+    if (row.kind === 'error') {
+      errors.push(row)
+    } else {
+      events.push(row)
+    }
+  }
+  return { events, errors }
+}
+
 function ReadyView({
-  events,
+  rows,
   fetchedAt,
   onlyStale,
   setOnlyStale,
 }: {
-  events: EventSummary[]
+  rows: EventRow[]
   fetchedAt: Date
   onlyStale: boolean
   setOnlyStale: (value: boolean) => void
 }) {
+  const { events, errors } = partition(rows)
   // Counted over the whole list: the filter changes which rows show, not the summary.
   const staleCount = events.filter(needsRender).length
   const shown = onlyStale ? events.filter(needsRender) : events
@@ -210,8 +255,14 @@ function ReadyView({
           <strong>
             {staleCount} of {plural(events.length, 'event', 'events')}
           </strong>{' '}
-          need rendering.
-          <span className="muted"> Scanned {fetchedAt.toLocaleTimeString()}.</span>
+          need rendering
+          {errors.length > 0 && (
+            <>
+              {' · '}
+              <strong>{errors.length}</strong> {errors.length === 1 ? 'needs' : 'need'} attention
+            </>
+          )}
+          .<span className="muted"> Scanned {fetchedAt.toLocaleTimeString()}.</span>
         </p>
         <label>
           <input
@@ -222,9 +273,15 @@ function ReadyView({
           Only events that need rendering
         </label>
       </div>
+      {/* Error rows need action too, so the filter never hides them. */}
+      {errors.length > 0 && <AttentionTable errors={errors} />}
       {shown.length === 0 ? (
         <p className="muted">
-          {events.length === 0 ? 'No events found.' : 'Nothing needs rendering.'}
+          {events.length > 0
+            ? 'Nothing needs rendering.'
+            : errors.length === 0
+              ? 'No events found.'
+              : 'No other events.'}
         </p>
       ) : (
         <EventTables events={shown} />

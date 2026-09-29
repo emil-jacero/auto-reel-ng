@@ -9,6 +9,10 @@ import type { components } from './schema'
  */
 
 export type EventSummary = components['schemas']['EventSummaryOut']
+export type EventError = components['schemas']['EventErrorOut']
+export type EventFailure = components['schemas']['EventFailure']
+/** One list row: a summary, or an event that could not be read, told apart by `kind`. */
+export type EventRow = EventSummary | EventError
 export type Staleness = components['schemas']['StalenessOut']
 export type StalenessReason = components['schemas']['StalenessReason']
 export type JobSummary = components['schemas']['JobSummaryOut']
@@ -20,7 +24,7 @@ export type Problem = components['schemas']['ProblemOut']
  * caller must handle all three outcomes.
  */
 export type EventsResult =
-  | { kind: 'ok'; events: EventSummary[] }
+  | { kind: 'ok'; events: EventRow[] }
   // 502/503 in the published ProblemOut shape
   | { kind: 'problem'; problem: Problem }
   // fetch rejected, or a status or body that carries no published shape
@@ -71,7 +75,7 @@ export async function fetchEvents(signal: AbortSignal): Promise<EventsResult> {
 
   const body = await readJson(response)
   if (response.status === 200 && Array.isArray(body)) {
-    return { kind: 'ok', events: body as EventSummary[] }
+    return { kind: 'ok', events: body as EventRow[] }
   }
   if (PROBLEM_STATUSES.has(response.status) && isProblem(body)) {
     return { kind: 'problem', problem: body }
