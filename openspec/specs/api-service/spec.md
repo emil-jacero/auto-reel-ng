@@ -423,6 +423,11 @@ It SHALL NOT carry clip counts, a staleness verdict, a title or any other fact t
 Every row, summary or error, SHALL state which of the two it is. The schema SHALL publish the list's item as
 a union discriminated by that field, and the failure kind as an enumeration.
 
+On an event's **detail**, the same per-event failures SHALL be answered with the scan-failure problem body.
+It SHALL name the event and carry the same failure kind the list's error row would carry for that event.
+Both reads SHALL classify a failure by the same rule, so they never disagree about why one event cannot be
+read, and no per-event failure on either read SHALL surface as an unshaped server error.
+
 The list SHALL NOT degrade otherwise: a request that cannot account for every walked event SHALL fail
 rather than return a partial list, a list with the unavailable facts omitted, or a list with substituted
 values. An unreachable job store fails the whole list, because every summary's latest job depends on it.
@@ -432,11 +437,11 @@ means "none" or "could not be read".
 
 Both reads SHALL publish these failures in the service's OpenAPI schema: each status code a read may
 answer with a problem body, and the problem body's shape. The shape comprises its title, numeric status
-and detail, plus the optional fields that name the failing dependency or the failing event. The list SHALL
-declare its scan-failure and database-failure responses, and the detail SHALL additionally declare its
-unknown-event response. A client SHALL therefore derive the problem body's type from the generated types
-rather than declaring it by hand, and every problem body these reads return SHALL conform to the
-published shape.
+and detail, plus the optional fields that name the failing dependency, the failing event, or the event's
+failure kind. The list SHALL declare its scan-failure and database-failure responses, and the detail SHALL
+additionally declare its unknown-event response. A client SHALL therefore derive the problem body's type
+from the generated types rather than declaring it by hand, and every problem body these reads return SHALL
+conform to the published shape.
 
 #### Scenario: The job store is unreachable on the list
 - **WHEN** the database is down and a client requests the events list
@@ -471,7 +476,19 @@ published shape.
 
 #### Scenario: An unreadable event still 404s and 502s as before
 - **WHEN** a client requests an unknown event, or one whose `reel.yaml` cannot be parsed
-- **THEN** the detail route returns the 404 and 502 problem bodies it already returns, unchanged
+- **THEN** the detail route returns the 404 problem body as before, and a 502 problem body that now also
+  carries the unparseable-`reel.yaml` failure kind
+
+#### Scenario: A detail whose files cannot be listed is a 502, not a 500
+- **WHEN** a client requests the detail of an event whose directory cannot be listed
+- **THEN** the response is the scan-failure problem body naming the event, with the unreadable-disk failure
+  kind, and never an unshaped server error
+
+#### Scenario: List and detail agree on why an event cannot be read
+- **WHEN** an event folder named `2019-04-31 - Golfträning med Emil - Tjörn` has no `reel.yaml`, and a client
+  reads both the events list and that event's detail
+- **THEN** the list's error row and the detail's problem body carry the same failure kind, the
+  unusable-metadata kind, and the same detail
 
 #### Scenario: A healthy read is unaffected
 - **WHEN** the database is reachable and every event scans cleanly
@@ -481,7 +498,8 @@ published shape.
 #### Scenario: The schema publishes the problem responses
 - **WHEN** the service's OpenAPI schema is generated
 - **THEN** the events list declares its 502 and 503 responses and the detail declares its 404, 502 and
-  503 responses, each described by the shared problem body shape rather than left undeclared
+  503 responses, each described by the shared problem body shape, which includes the optional failure kind,
+  rather than left undeclared
 
 #### Scenario: A returned problem body matches the published shape
 - **WHEN** the database is down and a client requests the events list
@@ -546,3 +564,30 @@ string continues to read the same string.
 - **WHEN** a client that treats a job's status as a plain string lists events whose latest jobs finished,
   failed and are still queued
 - **THEN** it receives `done`, `failed` and `queued`, the same strings it received before this change
+
+### Requirement: Clip status is a closed, published vocabulary
+
+Every response field that carries a clip's reconcile status SHALL be drawn from the engine's closed set of
+statuses (`new`, `active`, `missing`, `ignored`). The service's OpenAPI schema SHALL publish that set as an
+enumeration rather than as a free-form string. A client SHALL therefore be able to derive an exhaustive type
+for a clip's status, so that removing or renaming a status is a compile-time failure in generated client
+code rather than a silent runtime change (D-8, §4.10).
+
+This requirement MUST NOT change any status's wire value: an existing client reading a clip's status as a
+plain string continues to read the same string.
+
+#### Scenario: The schema publishes the clip status set
+- **WHEN** the service's OpenAPI schema is generated
+- **THEN** a clip's status on the event detail is described as the enumeration of clip statuses, not as an
+  unconstrained string
+
+#### Scenario: A renamed clip status breaks the client build
+- **WHEN** a clip status is renamed in the engine and the schema and client types are regenerated
+- **THEN** client code that referred to the old status fails to compile, rather than silently ceasing to
+  match
+
+#### Scenario: Wire values are unchanged
+- **WHEN** a client that treats a clip's status as a plain string reads the detail of an event with a NEW, an
+  ACTIVE, a MISSING and an IGNORED clip
+- **THEN** it receives `new`, `active`, `missing` and `ignored`, the same strings it received before this
+  change
