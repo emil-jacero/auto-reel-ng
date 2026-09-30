@@ -86,6 +86,8 @@ export function EventDetail({ eventId }: { eventId: string }) {
   const inFlight = useRef<AbortController | null>(null)
   // A quiet re-read asked for while a read runs: one more runs after it.
   const pending = useRef(false)
+  // Re-reads the page starts itself wait while Edit mode is open; leaving reads anyway.
+  const deferred = useRef(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const focusHeading = useRef(false)
 
@@ -145,7 +147,12 @@ export function EventDetail({ eventId }: { eventId: string }) {
 
   // The page's own re-read: its job ended, or an enqueue answer showed its read is
   // out of date. Quiet, so the page keeps its content while it runs.
-  const reread = useCallback(() => load({ quiet: true }), [load])
+  const reread = useCallback(() => {
+    deferred.current = editing
+    if (!editing) {
+      load({ quiet: true })
+    }
+  }, [editing, load])
 
   useEffect(() => {
     load()
@@ -167,6 +174,7 @@ export function EventDetail({ eventId }: { eventId: string }) {
       return
     }
     setEditing(false)
+    deferred.current = false
     load()
     focusHeading.current = true
   }, [load])
@@ -186,7 +194,7 @@ export function EventDetail({ eventId }: { eventId: string }) {
   }, [name])
 
   const loading = state.status === 'loading'
-  const updating = state.status === 'ready' && state.updating === true
+  const updating = state.status === 'ready' && state.updating === true && !editing
   return (
     <main className="page event-detail">
       <header className="page-header">
@@ -225,6 +233,8 @@ export function EventDetail({ eventId }: { eventId: string }) {
                   if (editing) {
                     requestLeave(leaveEditMode)
                   } else {
+                    deferred.current = inFlight.current !== null
+                    inFlight.current?.abort()
                     setEditing(true)
                   }
                 }}
@@ -342,6 +352,7 @@ function EventFacts({
           staleness={event.staleness}
           latestJob={event.latest_job}
           onFinished={onFinished}
+          blockedReason={editing ? 'Save or leave Edit mode to render' : undefined}
         />
       </div>
     </>
