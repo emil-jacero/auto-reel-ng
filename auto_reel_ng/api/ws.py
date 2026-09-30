@@ -30,7 +30,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic.json_schema import models_json_schema
 
 from ..persistence.job_store import FinishedJobs, JobStore
-from ..persistence.models import JobStatus
+from ..persistence.models import TERMINAL_STATUSES, JobStatus
 from .schemas import JobOut, WsMessage, WsMessageType
 from .serialize import job_to_out
 
@@ -48,9 +48,6 @@ _QUEUE_MAXSIZE = 64
 #: so 30 s is orders of magnitude of slack, at the cost of re-reading 30 s of
 #: finished rows per poll.
 _FINISHED_OVERLAP = timedelta(seconds=30)
-
-#: The statuses a job never leaves: a row in one of them is sent at most once.
-_TERMINAL = frozenset({JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELED})
 
 
 class JobsHub:
@@ -90,22 +87,36 @@ class JobsHub:
 
         Returns a queue whose first item is always a full snapshot (D-A4:
         snapshot-on-connect), so the caller's send loop delivers it the same way
-        as any later delta.
+        as any later delta. The queue is registered only once the first
+        subscriber's reads have succeeded: a start that fails (a database blip) or
+        is cancelled leaves the hub as it was, so the next subscriber is the first
+        one again and starts the poller, rather than joining one that never ran.
         """
         queue: asyncio.Queue = asyncio.Queue(maxsize=self._queue_maxsize)
         async with self._lock:
-            first = not self._subscribers
+            if not self._subscribers:
+                await self._start_polling()
             self._subscribers.add(queue)
-            if first:
-                # The finished read comes before the active snapshot: a job finishing
-                # between the two is then in neither, and the first tick sends it. In
-                # the other order it would be seeded as sent while no frame carried
-                # its terminal row.
-                await self._seed_finished()
-                self._snapshot = await self._fetch_active_snapshot()
-                self._poller_task = asyncio.create_task(self._poll_loop())
         queue.put_nowait(self._encode(WsMessageType.SNAPSHOT, self._snapshot.values()))
         return queue
+
+    async def _start_polling(self) -> None:
+        """Seed the poller's state and start it: the first subscriber's work.
+
+        The finished read comes before the active snapshot: a job finishing between
+        the two is then in neither, and the first tick sends it. In the other order
+        it would be seeded as sent while no frame carried its terminal row. If either
+        read raises, or the caller is cancelled, the finished-jobs state is reset
+        and the error propagates with no poller started.
+        """
+        try:
+            await self._seed_finished()
+            self._snapshot = await self._fetch_active_snapshot()
+        except BaseException:
+            self._finished_as_of = None
+            self._terminal_sent = {}
+            raise
+        self._poller_task = asyncio.create_task(self._poll_loop())
 
     async def unsubscribe(self, queue: asyncio.Queue, *, notify_close: bool = False) -> None:
         """Remove ``queue``; stops the poller if it was the last subscriber."""
@@ -200,7 +211,7 @@ class JobsHub:
             if final is not None:
                 left[job_id] = final
         for record in left.values():
-            if record.status in _TERMINAL:
+            if record.status in TERMINAL_STATUSES:
                 if record.id in self._terminal_sent:
                     continue  # an earlier frame carried it, whichever path found it
                 if record.finished_at is not None:  # else no finished read returns it
@@ -308,8 +319,11 @@ async def ws_jobs(websocket: WebSocket) -> None:
     """
     hub: JobsHub = websocket.app.state.jobs_hub
     await websocket.accept()
-    queue = await hub.subscribe()
+    queue: Optional[asyncio.Queue] = None
     try:
+        # Inside the try, so whatever ends this handler, a subscriber it
+        # registered is unsubscribed (a failed subscribe registers none).
+        queue = await hub.subscribe()
         while True:
             message = await queue.get()
             if message is _CLOSE:
@@ -318,7 +332,8 @@ async def ws_jobs(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     finally:
-        await hub.unsubscribe(queue)
+        if queue is not None:
+            await hub.unsubscribe(queue)
 
 
 __all__ = ["JobsHub", "publish_ws_schema", "router"]

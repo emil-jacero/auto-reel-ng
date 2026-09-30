@@ -33,6 +33,13 @@ class JobStatus(str, enum.Enum):
     CANCELED = "canceled"
 
 
+#: The statuses a job never leaves. Only a transition into one of them stamps
+#: ``finished_at``; a job in one is final.
+TERMINAL_STATUSES: frozenset[JobStatus] = frozenset(
+    {JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELED}
+)
+
+
 class Job(Base):
     """A unit of render work tracked in the durable queue (the ``jobs`` table).
 
