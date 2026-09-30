@@ -5,10 +5,10 @@ See proposal.md, "Why". This change starts from `main` once both of its gates ar
 - **`event-edit-screen` is on `main`.** It is archived as `2026-09-30-event-edit-screen`, and its review fixes
   landed with it: `c8bc64b`, and `1995185`, which moves the move-focus scroll into a passive effect. The editor
   below is cited from `main` at `1995185`.
-- **`render-progress-screen` is not on `main` yet.** Its tree (`wt-render-progress-screen`, branch
-  `pr/render-progress-screen`) was being rebased onto `1995185` during this review, with `EventDetail.tsx` in
-  conflict. The render region below is cited from its pre-rebase working tree. Because it archives second,
-  it wires the Edit-mode seam (its task 7.1).
+- **`render-progress-screen` is on `main` too** (`2026-09-30-render-progress-screen`, at `ac8154a`). It
+  wired the Edit-mode seam (its task 7.1). The render region below was first cited from its pre-rebase
+  working tree; task 1.1 re-checked it on `main` at `ac8154a`, where the seam sits in `EventFacts`
+  (`EventDetail.tsx:358`), as described.
 
 Task 1.1 re-checks every name on `main`.
 
@@ -570,6 +570,32 @@ whose counts other changes' checks cite.
     borta.mp4:
       exclude: true
   ```
+
+### Review decisions (supervisor, 2026-09-30)
+
+**Context**: The supervisor reviewed this design before implementation and ruled on its open points.
+
+**Decision**:
+
+- **Undo rule.** The original-order restore (`restoreClip`) is accepted. A missing clip that was moved, then
+  removed, then restored returns near its original place (the trade-off under "The draft").
+- **Fixtures.** No second missing clip in one chapter is added to a browser fixture. The "removals undone in
+  any order" scenario is proven by task 2.1's model script only.
+- **Excluded missing clips.** The explicit behaviour on `2024-09-03 - Utesluten` is accepted: every missing
+  clip holds the render back. Two follow-ups go into the PR body, not into code:
+  - an API field saying which missing clips a render needs, or a server-side refusal on `POST /jobs`
+  - a restored file is adopted into the default chapter, not its folder's chapter (`cli/adoption.py`
+    `adopt_chapter`)
+- **Accepted as designed:**
+  - removed clips in a tail list with Undo
+  - a save that adopts NEW clips in the chapter it writes (`event-edit-screen`'s behaviour)
+  - the row's "Blocked by missing clips" note
+  - the page's reason naming the full identity
+- **`.btn-compact`.** This change uses it outside the jobs screens (Remove and Undo in the editor). So the rule
+  moves, unchanged, from `jobs/jobs.css` to the shared `@layer components` in `styles/components.css`, next
+  to the other button classes, with no new token. This overrides "Not touched: `styles/**`" under "Files and
+  parallel changes" for that one rule.
+- **The seam.** Its location is re-checked on current `main` in task 1.1: `EventFacts`, in `EventDetail.tsx`.
 
 ## Failure behavior and idempotency
 
