@@ -137,6 +137,29 @@ def named_event_dir(settings: ApiSettings, event_id: str) -> Path:
     return event_dir
 
 
+def listed_event_dir(settings: ApiSettings, event_id: str) -> Path:
+    """The event directory ``event_id`` names, only when the events list shows that id.
+
+    The configured layout decides what an event is, exactly as ``GET /api/v1/events``
+    lists them: the project root, a year folder, an event's ``original/`` or chapter
+    folder and a ``.reelignore``d event are directories but not events, so each is
+    :class:`EventNotFoundError`, as an unknown id is. The walk is narrowed to the id's
+    first folder under the walk root (the year of ``year-event``; ``flat`` ignores the
+    hint), so a lookup lists one year, not the whole archive. A walk that fails raises
+    its ``OSError``, and an unknown layout its ``LayoutError``.
+    """
+    event_dir = named_event_dir(settings, event_id)
+    try:
+        first = event_dir.relative_to(settings.walk_root).parts[0]
+    except (ValueError, IndexError):  # outside the walked tree, or the walk root itself
+        raise EventNotFoundError(event_id) from None
+    layout = get_layout(settings.layout_name)
+    refs = layout(settings.walk_root, years=[first])
+    if any(event_id_for(settings, ref.event_dir) == event_id for ref in refs):
+        return event_dir
+    raise EventNotFoundError(event_id)
+
+
 def _list_event_refs(settings: ApiSettings) -> List[EventRef]:
     """Walk the configured layout from ``settings.walk_root`` (reuses the CLI's scan path)."""
     layout = get_layout(settings.layout_name)
@@ -504,9 +527,10 @@ def thumbnail_source(settings: ApiSettings, event_id: str, clip: str) -> Thumbna
     """``GET /api/v1/events/{event_id}/thumbnail``: the clip to serve and its cache entry.
 
     Read-only, and it never runs ffmpeg or ffprobe. In this order, so each outcome
-    has one answer: the event is resolved (:class:`EventNotFoundError`) and listed
-    with discovery's own rules (an ``OSError`` is an :class:`EventReadError` with
-    the list's ``unreadable_disk`` kind); ``clip`` must be exactly one of the listed
+    has one answer: the id must be one the events list shows (:func:`listed_event_dir`,
+    else :class:`EventNotFoundError`), and the event is listed with discovery's own
+    rules (an ``OSError`` from either walk is an :class:`EventReadError` with the
+    list's ``unreadable_disk`` kind); ``clip`` must be exactly one of the listed
     identities — no path or Unicode normalization, so nothing from the request is
     joined onto a path before it matched (:class:`ClipNotFoundError`); only then is
     ``config.yaml`` read (``ConfigError``) and the cache path computed. ``reel.yaml``
@@ -516,8 +540,8 @@ def thumbnail_source(settings: ApiSettings, event_id: str, clip: str) -> Thumbna
         ThumbnailError: the listed clip can no longer be statted (it changed after
             the listing), in the wording ``thumbs.thumbnail_for`` gives that case.
     """
-    event_dir = resolve_event_dir(settings, event_id)
     try:
+        event_dir = listed_event_dir(settings, event_id)
         listing = scan_event(event_dir)
     except OSError as exc:
         raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
@@ -620,6 +644,7 @@ __all__ = [
     "event_id_for",
     "resolve_event_dir",
     "named_event_dir",
+    "listed_event_dir",
     "list_events",
     "get_event",
     "get_reel",

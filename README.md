@@ -320,11 +320,14 @@ render, or job logic lives in the web tier.
   version) and `Cache-Control: private, max-age=86400`; an `If-None-Match` naming
   the current tag (weak comparison, so `W/` is ignored) is a **304** decided
   without extracting anything. Failures answer by cause and carry no caching
-  headers: **404** for an unknown event or a clip that is not on disk in it (a
-  MISSING clip, `original/`, anything outside the event); **502** with
+  headers: **404** for an id the events list does not show as an event (an
+  unknown id, a year folder, an event's `original/` folder, a `.reelignore`d
+  event) or a clip that is not on disk in it (a MISSING clip, a file under
+  `original/`, anything outside the event); **502** with
   `thumbnail_failure: thumbnail_failed` when the engine cannot make this clip's
-  thumbnail (an empty or undecodable clip, no frame at the position; the detail
-  names the clip and the cause), with `failure: unreadable_disk` when the event
+  thumbnail (an empty or undecodable clip, no frame at the position; the detail is
+  the clip's identity and the one-line cause `thumbs` prints, without server paths
+  — the service log has the full ffmpeg output), with `failure: unreadable_disk` when the event
   folder cannot be listed, and with no kind when the cache cannot be read or
   written or `config.yaml` is invalid. A failure is not remembered: the next
   request tries again. At most **2** extractions run at once per `serve` process

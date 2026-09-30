@@ -25,7 +25,7 @@ from ...event.editorial import apply_editorial_write
 from ...ingest import LayoutError
 from ...reel.document import ReelDocument
 from ...staleness.fingerprint import editorial_hash
-from ...thumbs import is_cached, thumbnail_for
+from ...thumbs import is_cached, one_line_cause, thumbnail_for
 from .. import events_read
 from ..problem import (
     bad_gateway,
@@ -294,11 +294,12 @@ def _thumbnail_failed(event_id: str, clip: str, detail: str) -> JSONResponse:
 def _clip_failed(event_id: str, clip: str, exc: ThumbnailError) -> JSONResponse:
     """The 502 of a clip the engine cannot make a thumbnail of, with the thumbnail kind.
 
-    The detail is the requested identity and the error's ``reason``, which carries the
-    cause without the clip's absolute path on the server.
+    The detail is the requested identity and the reason cut to one line with no server
+    path (:func:`~auto_reel_ng.thumbs.one_line_cause`, as the CLI's ERROR line); the
+    log keeps the full reason, failing command and stderr included.
     """
-    detail = f"{clip}: {exc.reason}"
-    logger.warning("thumbnail: %s: %s", event_id, detail)
+    detail = f"{clip}: {one_line_cause(exc.reason, Path(exc.clip))}"
+    logger.warning("thumbnail: %s: %s: %s", event_id, clip, exc.reason)
     return bad_gateway(
         detail, event_id=event_id, thumbnail_failure=ThumbnailFailure.THUMBNAIL_FAILED.value
     )
@@ -332,7 +333,7 @@ async def get_thumbnail(
         alias="v",
         description="An opaque cache-busting version; accepted and ignored",
     ),
-    if_none_match: Optional[str] = Header(default=None, alias="If-None-Match"),
+    _if_none_match: Optional[str] = Header(default=None, alias="If-None-Match"),
 ) -> Response:
     """``GET /api/v1/events/{event_id}/thumbnail?clip=``: one clip's thumbnail (D-11).
 
@@ -345,13 +346,18 @@ async def get_thumbnail(
     thumbnails cannot starve the other routes. Every blocking step (the listing,
     the stat, reading the JPEG, the extraction) runs in the threadpool.
 
-    Failures answer by cause and carry no caching headers: 404 for an unknown event
-    or a clip that is not on disk in it; 502 with ``thumbnail_failure`` when the
-    engine cannot make this clip's thumbnail, with the list's ``failure`` when the
-    event cannot be listed, and with neither for the cache or ``config.yaml``.
-    Nothing is written into the library, and the database is never touched.
+    Failures answer by cause and carry no caching headers: 404 for an id the events
+    list does not show as an event, or a clip that is not on disk in it; 502 with
+    ``thumbnail_failure`` when the engine cannot make this clip's thumbnail, with the
+    list's ``failure`` when the event cannot be listed, and with neither for the cache
+    or ``config.yaml``. Nothing is written into the library, and the database is
+    never touched.
+
+    ``If-None-Match`` is published as a parameter, but read from every header line
+    the request carries: the parameter would hold only the first.
     """
     settings = _settings(request)
+    if_none_match = ", ".join(request.headers.getlist("if-none-match")) or None
     try:
         source = await run_in_threadpool(events_read.thumbnail_source, settings, event_id, clip)
         return await _serve_thumbnail(request, source, if_none_match)
@@ -364,7 +370,7 @@ async def get_thumbnail(
     except events_read.EventReadError as exc:
         logger.warning("thumbnail: %s: %s: %s", event_id, clip, exc.detail)
         return _event_read_failed(exc, event_id)
-    except ConfigError as exc:
+    except (ConfigError, LayoutError) as exc:
         return _thumbnail_failed(event_id, clip, str(exc))
     except ThumbnailError as exc:
         return _clip_failed(event_id, clip, exc)

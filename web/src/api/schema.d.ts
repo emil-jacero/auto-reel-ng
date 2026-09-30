@@ -145,11 +145,15 @@ export interface paths {
          *     thumbnails cannot starve the other routes. Every blocking step (the listing,
          *     the stat, reading the JPEG, the extraction) runs in the threadpool.
          *
-         *     Failures answer by cause and carry no caching headers: 404 for an unknown event
-         *     or a clip that is not on disk in it; 502 with ``thumbnail_failure`` when the
-         *     engine cannot make this clip's thumbnail, with the list's ``failure`` when the
-         *     event cannot be listed, and with neither for the cache or ``config.yaml``.
-         *     Nothing is written into the library, and the database is never touched.
+         *     Failures answer by cause and carry no caching headers: 404 for an id the events
+         *     list does not show as an event, or a clip that is not on disk in it; 502 with
+         *     ``thumbnail_failure`` when the engine cannot make this clip's thumbnail, with the
+         *     list's ``failure`` when the event cannot be listed, and with neither for the cache
+         *     or ``config.yaml``. Nothing is written into the library, and the database is
+         *     never touched.
+         *
+         *     ``If-None-Match`` is published as a parameter, but read from every header line
+         *     the request carries: the parameter would hold only the first.
          */
         get: operations["get_thumbnail_api_v1_events__event_id__thumbnail_get"];
         put?: never;
