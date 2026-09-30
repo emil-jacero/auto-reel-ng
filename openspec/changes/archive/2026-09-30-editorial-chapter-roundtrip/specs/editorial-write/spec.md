@@ -22,7 +22,9 @@ clips and to the `ignore` list:
 - **A removed entry SHALL take only its own comments with it.** No other entry's comment is lost.
 - **An added entry SHALL carry no comment.**
 - **Comment lines after a list's last entry SHALL stay at the end of that list.** They introduce what follows
-  the list, whichever entry ends up last, and they stay after the list when it is left empty.
+  the list, whichever entry ends up last, and they stay after the list when it is left empty. The lines
+  after the last chapter's clips introduce what follows the chapters, so when chapters are appended they
+  move to the end of the new last chapter's clips.
 - **A list written in flow style (`[a.mp4, b.mp4]`) SHALL be persisted in block style when it must carry an
   entry's comment**, and SHALL otherwise keep its style.
 

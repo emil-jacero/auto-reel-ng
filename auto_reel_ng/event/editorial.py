@@ -146,16 +146,24 @@ def _apply_look(data: CommentedMap, desired: Optional[Mapping[str, Any]]) -> Non
 
 
 def _apply_ignore(data: CommentedMap, desired: Optional[Iterable[str]]) -> None:
-    """Rewrite ``ignore`` in place, keeping each entry's comments; drop the key if emptied."""
+    """Rewrite ``ignore`` in place, keeping each entry's comments; drop the key if emptied.
+
+    An ``ignore`` that is already empty (``[]``, a bare key, or absent) stays as written.
+    An emptied one followed by comment lines stays as ``ignore: []``, so they still
+    introduce what follows it.
+    """
     desired_list = list(desired or [])
-    if not desired_list:
+    section = data.get("ignore")
+    if not desired_list and not section:
+        return
+    if not isinstance(section, CommentedSeq):
+        data["ignore"] = CommentedSeq(desired_list)
+        return
+    comments, ends = _entry_comments(data, "ignore")
+    if not desired_list and not ends.trailing:
         data.pop("ignore", None)
         return
-    if isinstance(data.get("ignore"), CommentedSeq):
-        comments, trailing = _entry_comments(data, "ignore")
-        _rewrite_identity_list(data, "ignore", desired_list, comments, trailing)
-    else:
-        data["ignore"] = CommentedSeq(desired_list)
+    _rewrite_identity_list(data, "ignore", desired_list, comments, ends)
 
 
 def _apply_chapters(data: CommentedMap, desired: Optional[Iterable[Mapping[str, Any]]]) -> None:
@@ -169,14 +177,15 @@ def _apply_chapters(data: CommentedMap, desired: Optional[Iterable[Mapping[str, 
     the write, but the request is still the complete desired structure (D-E2).
     """
     desired_chapters = list(desired or [])
+    current = data.get("chapters")
     if not desired_chapters:
-        data.pop("chapters", None)
+        if current:  # already empty (``[]``, a bare key, or absent): stays as written
+            data.pop("chapters", None)
         return
 
-    current = data.get("chapters")
     existing_by_name: dict[Any, CommentedMap] = {}
     comments: dict[str, _EntryComments] = {}
-    trailing: dict[Any, str] = {}
+    ends: dict[Any, _ListComments] = {}
     if isinstance(current, (list, tuple)):
         for entry in current:
             if isinstance(entry, CommentedMap):
@@ -184,7 +193,7 @@ def _apply_chapters(data: CommentedMap, desired: Optional[Iterable[Mapping[str, 
                 existing_by_name[name] = entry
                 # Collected before any list is rewritten. An identity appears in at most
                 # one chapter, so a clip moved between chapters still finds its own.
-                chapter_comments, trailing[name] = _entry_comments(entry, "clips")
+                chapter_comments, ends[name] = _entry_comments(entry, "clips")
                 comments.update(chapter_comments)
 
     rebuilt = CommentedSeq()
@@ -197,23 +206,31 @@ def _apply_chapters(data: CommentedMap, desired: Optional[Iterable[Mapping[str, 
             entry["name"] = name
             entry["clips"] = CommentedSeq(clips)
         elif isinstance(entry.get("clips"), CommentedSeq):
-            _rewrite_identity_list(entry, "clips", clips, comments, trailing[name])
-        else:
+            _rewrite_identity_list(entry, "clips", clips, comments, ends[name])
+        elif clips:  # a missing or bare ``clips`` stays as written while it lists nothing
             entry["clips"] = CommentedSeq(clips)
         rebuilt.append(entry)
+
     # Existing chapters that all keep their place, with any new ones appended after them,
-    # keep their sequence node. It can hold comment lines between two chapters (after a
-    # flow list such as ``clips: []``) by index, and the lines after the last chapter;
-    # an append moves neither.
+    # keep their sequence node: it can hold comment lines between two chapters (after a
+    # flow list such as ``clips: []``) by index, and the lines after the last chapter.
     in_place = (
         isinstance(current, CommentedSeq)
         and len(current) <= len(rebuilt)
         and all(old is new for old, new in zip(current, rebuilt))
     )
-    if in_place:
-        current.extend(rebuilt[len(current) :])
-    else:
+    if not in_place:
         data["chapters"] = rebuilt
+        return
+    appended = rebuilt[len(current) :]
+    if current and appended:
+        # The lines after the last chapter's clips introduce what follows the chapters,
+        # so they move to the end of the new last chapter's clips.
+        moved = _entry_comments(current[-1], "clips")[1].trailing
+        if moved:
+            _set_trailing(current[-1], "clips", "")
+            _set_trailing(appended[-1], "clips", moved)
+    current.extend(appended)
 
 
 def _apply_clips(data: CommentedMap, desired: Optional[Mapping[str, Mapping[str, Any]]]) -> None:
@@ -309,23 +326,35 @@ class _EntryComments:
     column: int = 0  # the column the eol comment's '#' was written at
 
 
-def _entry_comments(parent: CommentedMap, key: str) -> tuple[dict[str, _EntryComments], str]:
-    """Split ``parent[key]``'s comments by entry; also return the list's trailing text.
+@dataclass(frozen=True)
+class _ListComments:
+    """A list's own comment lines, which stay with the list rather than with an entry."""
+
+    header: str = ""  # lines above a flow list's "[" (a block list's go with its first entry)
+    trailing: str = ""  # lines after the last entry, introducing whatever follows the list
+
+
+def _entry_comments(
+    parent: CommentedMap, key: str
+) -> tuple[dict[str, _EntryComments], _ListComments]:
+    """Split ``parent[key]``'s comments by entry; also return the list's own lines.
 
     ruamel files the lines *between* two entries in the comment token of the entry
     above them, after that entry's end-of-line comment, while a reader takes them as
     introducing the entry below. So each token is split at its first newline: the
     end-of-line part is its entry's, and the rest is the next entry's ``above``
     text — or, after the last entry, the list's trailing text, which introduces
-    whatever follows the list. The first entry's ``above`` text is the list's
-    header. A flow list (``[a.mp4, b.mp4]``) has none: the lines after it are the
-    tail of the key's end-of-line comment token, which follows its ``]``.
+    whatever follows the list. The lines above a block list's first entry are that
+    entry's. A flow or empty list (``[a.mp4, b.mp4]``, ``[]``) keeps the lines above
+    it as its own header, and the lines after it trail the key's end-of-line comment
+    token, which follows its ``]``.
     """
     seq = parent.get(key)
     if not isinstance(seq, CommentedSeq):
-        return {}, ""
-    flow = bool(seq) and bool(seq.fa.flow_style())
-    above = "" if flow else _header_text(parent, key, seq)
+        return {}, _ListComments()
+    flow = not seq or bool(seq.fa.flow_style())
+    header = _header_text(parent, key, seq)
+    above = "" if flow else header or _key_token_tail(parent, key)
     comments: dict[str, _EntryComments] = {}
     for index, identity in enumerate(seq):
         slot = seq.ca.items.get(index)
@@ -333,24 +362,24 @@ def _entry_comments(parent: CommentedMap, key: str) -> tuple[dict[str, _EntryCom
         eol, _, below = value.partition("\n")
         comments[identity] = _EntryComments(above, eol, column if eol else 0)
         above = below
-    return comments, _key_token_tail(parent, key) if flow else above
+    if flow:
+        return comments, _ListComments(header, _key_token_tail(parent, key))
+    return comments, _ListComments(trailing=above)
 
 
 def _header_text(parent: CommentedMap, key: str, seq: CommentedSeq) -> str:
-    """The lines above a block list's first entry, as verbatim (indented) text.
+    """The comment lines between ``key:`` and the list, as verbatim (indented) text.
 
     The loader files them twice, on the parent's key (comment slot 3, which the
     dumper prefers) and on the list, as one token per comment line: the line
     unindented plus the blank lines after it, and the column its ``#`` was written
-    at. When the key line has a comment of its own (``clips:   # root list``), they
-    are the tail of that comment's token instead.
+    at. When the key line has a comment of its own (``clips:   # root list``), a
+    block list's are the tail of that comment's token instead.
     """
     slot = parent.ca.items.get(key)
     tokens = (slot[3] if slot else None) or (seq.ca.comment[1] if seq.ca.comment else None)
-    if not tokens:
-        return _key_token_tail(parent, key)
     return "".join(
-        t.value if t.value.startswith("\n") else " " * t.column + t.value for t in tokens
+        t.value if t.value.startswith("\n") else " " * t.column + t.value for t in tokens or ()
     )
 
 
@@ -366,7 +395,7 @@ def _rewrite_identity_list(
     key: str,
     desired: list[str],
     comments: Mapping[str, _EntryComments],
-    trailing: str,
+    own: _ListComments,
 ) -> None:
     """Make ``parent[key]`` (a ``CommentedSeq``) hold ``desired``, keeping each entry's comments.
 
@@ -374,14 +403,13 @@ def _rewrite_identity_list(
     refilled in place, which keeps its node and the key's own comment, and its
     comment tokens are rebuilt from ``comments``: every entry keeps its end-of-line
     comment, at its column, and the lines above it, wherever it lands. An entry
-    missing from ``comments`` (an added one) gets none, a removed entry's comments
-    are not written, and ``trailing`` stays at the end of the list.
+    missing from ``comments`` (an added one) gets none, and a removed entry's
+    comments are not written. The list's own lines (``own``) stay at its top and end.
 
     A list with no entry comment to carry is written flow style when it is emptied
-    or already was flow, and ``trailing`` then follows the key's end-of-line comment
-    after the ``]``: ruamel would emit entry comments inside a flow list's brackets,
-    and a key comment before an empty block list's ``[]``. Any other list is block
-    style.
+    or already was flow: ruamel would emit entry comments inside a flow list's
+    brackets, and a key comment before an empty block list's ``[]``. Any other list
+    is block style, with a flow list's header above its first entry.
     """
     seq = parent[key]
     if list(seq) == desired:
@@ -394,38 +422,71 @@ def _rewrite_identity_list(
     carries = any(entry.above or entry.eol for entry in entries)
     if not carries and (not entries or seq.fa.flow_style()):
         seq.fa.set_flow_style()
-        _set_list_comments(parent, key, seq, header="", key_tail=trailing)
-        return
-    seq.fa.set_block_style()
-    _set_list_comments(parent, key, seq, header=entries[0].above, key_tail="")
-    for index, entry in enumerate(entries):
-        below = entries[index + 1].above if index + 1 < len(entries) else trailing
-        if entry.eol or below:
-            token = CommentToken(f"{entry.eol}\n{below}", CommentMark(entry.column))
-            seq.ca.items[index] = [token, None, None, None]
+        _set_header(parent, key, seq, own.header)
+    else:
+        seq.fa.set_block_style()
+        _set_key_tail(parent, key, seq, "")  # a block list's key tail was its old header
+        _set_header(parent, key, seq, own.header + entries[0].above)
+        for index, entry in enumerate(entries):
+            below = entries[index + 1].above if index + 1 < len(entries) else ""
+            if entry.eol or below:
+                token = CommentToken(f"{entry.eol}\n{below}", CommentMark(entry.column))
+                seq.ca.items[index] = [token, None, None, None]
+    _set_trailing(parent, key, own.trailing)
 
 
-def _set_list_comments(
-    parent: CommentedMap, key: str, seq: CommentedSeq, *, header: str, key_tail: str
-) -> None:
-    """Set a list's header and what follows the first line of its key's comment token.
+def _set_trailing(parent: CommentedMap, key: str, text: str) -> None:
+    """Make ``text`` the lines after the list ``parent[key]``, where its style keeps them.
 
-    The key's own end-of-line comment keeps its first line and column. Both are
-    written in the two places the loader files them, on the parent's key (comment
-    slots 2 and 3, which the dumper prefers) and on the list, so the copies agree.
+    After a block list, they are the tail of its last entry's comment token. After a
+    flow or empty list, which is then flow style, they are the tail of the key's
+    end-of-line comment token, which follows the ``]``.
     """
+    seq = parent[key]
+    if not seq or seq.fa.flow_style():
+        seq.fa.set_flow_style()
+        _set_key_tail(parent, key, seq, text)
+        return
+    last = len(seq) - 1
+    slot = seq.ca.items.get(last)
+    eol, column = "", 0
+    if slot and slot[0] is not None:
+        eol, column = slot[0].value.partition("\n")[0], slot[0].column
+    if eol or text:
+        seq.ca.items[last] = [CommentToken(f"{eol}\n{text}", CommentMark(column)), None, None, None]
+    else:
+        seq.ca.items.pop(last, None)
+
+
+def _set_header(parent: CommentedMap, key: str, seq: CommentedSeq, text: str) -> None:
+    """Make ``text`` (verbatim, indented) the lines between ``key:`` and the list."""
+    _set_list_slot(parent, key, seq, 1, [CommentToken(text, CommentMark(0))] if text else None)
+
+
+def _set_key_tail(parent: CommentedMap, key: str, seq: CommentedSeq, tail: str) -> None:
+    """Make ``tail`` follow the key's own end-of-line comment, which keeps its column."""
     slot = parent.ca.items.get(key)
     eol, column = "", 0
     if slot and slot[2] is not None:
         eol, column = slot[2].value.partition("\n")[0], slot[2].column
-    token = CommentToken(f"{eol}\n{key_tail}", CommentMark(column)) if eol or key_tail else None
-    pre = [CommentToken(header, CommentMark(0))] if header else None
-    if slot is not None:
-        slot[2:4] = [token, pre]
-    elif token is not None or pre is not None:
-        parent.ca.items[key] = [None, None, token, pre]
-    if seq.ca.comment is not None or token is not None or pre is not None:
-        seq.ca.comment = [token, pre]
+    token = CommentToken(f"{eol}\n{tail}", CommentMark(column)) if eol or tail else None
+    _set_list_slot(parent, key, seq, 0, token)
+
+
+def _set_list_slot(
+    parent: CommentedMap, key: str, seq: CommentedSeq, index: int, value: Any
+) -> None:
+    """Set a list's comment slot ``index`` (0: the key's token, 1: the lines above it).
+
+    It is written in both places the loader files it, on the parent's key (slot
+    ``2 + index``, which the dumper prefers) and on the list, so the copies agree.
+    """
+    if value is not None or key in parent.ca.items:
+        parent.ca.items.setdefault(key, [None, None, None, None])[2 + index] = value
+    if value is not None or seq.ca.comment is not None:
+        if seq.ca.comment is None:
+            seq.ca.comment = [None, None]
+        seq.ca.comment[index] = value
 
 
 __all__ = ["REEL_FILENAME", "apply_editorial_write"]
