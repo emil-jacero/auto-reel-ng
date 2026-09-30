@@ -33,7 +33,8 @@ import {
 import type { ReactNode } from 'react'
 
 import type { Clip } from '../api/event'
-import { formatBytes, plural } from '../events/common'
+import { ClipThumb } from '../events/ClipThumb'
+import { fileName, formatBytes, plural } from '../events/common'
 import { CLIP_STATUS_LABEL } from '../events/labels'
 import { CLIP_STATUS_LOOK } from '../events/tones'
 import { Icon } from '../ui/Icon'
@@ -51,11 +52,6 @@ import { movedSet } from './draft'
  * is played: the missing clips the operator removed (Save leaves them out of
  * reel.yaml, and each has an Undo until then), then the ignored clips.
  */
-
-/** The identity's last segment: the file name inside its chapter folder. */
-function fileName(identity: string): string {
-  return identity.split('/').pop() ?? identity
-}
 
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
 
@@ -118,11 +114,13 @@ function ClipFacts({ clip }: { clip: Clip }) {
 
 /** A row's facts; memoised, so a move re-renders only the rows it renumbers. */
 const RowBody = memo(function RowBody({
+  eventId,
   clip,
   position,
   was,
   action,
 }: {
+  eventId: string
   clip: Clip
   position: number | null
   was: number | null
@@ -133,6 +131,7 @@ const RowBody = memo(function RowBody({
   return (
     <>
       <span className="clip-pos">{position}</span>
+      <ClipThumb eventId={eventId} clip={clip} />
       <span className="clip-file">
         <span className="clip-name">{name}</span>
         {/* A moved clip at its old position (others moved around it) says only "moved". */}
@@ -212,6 +211,7 @@ const MoveButtons = memo(function MoveButtons({
 })
 
 const ClipRow = memo(function ClipRow({
+  eventId,
   clip,
   position,
   total,
@@ -221,6 +221,7 @@ const ClipRow = memo(function ClipRow({
   onStep,
   onRemove,
 }: {
+  eventId: string
   clip: Clip
   /** 1-based, among the clips the chapter plays. */
   position: number
@@ -291,6 +292,7 @@ const ClipRow = memo(function ClipRow({
       </button>
       {/* While a clip is lifted, every row shows the place a drop would give it. */}
       <RowBody
+        eventId={eventId}
         clip={clip}
         position={isSorting ? newIndex + 1 : position}
         was={was}
@@ -308,11 +310,11 @@ const ClipRow = memo(function ClipRow({
 })
 
 /** An ignored clip: listed, dimmed, not numbered, no controls. */
-const IgnoredRow = memo(function IgnoredRow({ clip }: { clip: Clip }) {
+const IgnoredRow = memo(function IgnoredRow({ eventId, clip }: { eventId: string; clip: Clip }) {
   return (
     <li className="clip-item" data-status={clip.status}>
       <span className="drag-slot" />
-      <RowBody clip={clip} position={null} was={null} />
+      <RowBody eventId={eventId} clip={clip} position={null} was={null} />
       <span className="clip-moves" />
     </li>
   )
@@ -323,10 +325,12 @@ const IgnoredRow = memo(function IgnoredRow({ clip }: { clip: Clip }) {
  * what IgnoredRow passes it), struck through, with its Undo in the file cell.
  */
 const RemovedRow = memo(function RemovedRow({
+  eventId,
   clip,
   locked,
   onUndo,
 }: {
+  eventId: string
   clip: Clip
   locked: boolean
   onUndo: (identity: string) => void
@@ -354,7 +358,7 @@ const RemovedRow = memo(function RemovedRow({
   return (
     <li className="clip-item" data-status={clip.status} data-identity={identity} data-removed>
       <span className="drag-slot" />
-      <RowBody clip={clip} position={null} was={null} action={undo} />
+      <RowBody eventId={eventId} clip={clip} position={null} was={null} action={undo} />
       <span className="clip-moves" />
     </li>
   )
@@ -368,6 +372,7 @@ export type RestoreHandler = (identity: string) => void
 type FocusTarget = 'move-up' | 'move-down' | 'clip-remove' | 'clip-undo'
 
 export const ClipOrderList = memo(function ClipOrderList({
+  eventId,
   index,
   chapter,
   heading,
@@ -383,6 +388,8 @@ export const ClipOrderList = memo(function ClipOrderList({
   onRestore,
   onAnnounce,
 }: {
+  /** The event, for its clips' thumbnail addresses. */
+  eventId: string
   /** The chapter's place on the page: the DndContext id, for stable description ids. */
   index: number
   chapter: string
@@ -555,6 +562,7 @@ export const ClipOrderList = memo(function ClipOrderList({
       <div className="clip-order-head" aria-hidden="true">
         <span />
         <span>#</span>
+        <span />
         <span>File</span>
         <span>Status</span>
         <span>Size</span>
@@ -585,6 +593,7 @@ export const ClipOrderList = memo(function ClipOrderList({
                 return (
                   <ClipRow
                     key={identity}
+                    eventId={eventId}
                     clip={clip}
                     position={at + 1}
                     total={order.length}
@@ -609,7 +618,13 @@ export const ClipOrderList = memo(function ClipOrderList({
             {removed.map((identity) => {
               const clip = clips.get(identity)
               return clip === undefined ? null : (
-                <RemovedRow key={identity} clip={clip} locked={locked} onUndo={onUndoRow} />
+                <RemovedRow
+                  key={identity}
+                  eventId={eventId}
+                  clip={clip}
+                  locked={locked}
+                  onUndo={onUndoRow}
+                />
               )
             })}
           </ul>
@@ -623,7 +638,9 @@ export const ClipOrderList = memo(function ClipOrderList({
           <ul className="clip-order clip-ignored" aria-labelledby={ignoredId}>
             {ignored.map((identity) => {
               const clip = clips.get(identity)
-              return clip === undefined ? null : <IgnoredRow key={identity} clip={clip} />
+              return clip === undefined ? null : (
+                <IgnoredRow key={identity} eventId={eventId} clip={clip} />
+              )
             })}
           </ul>
         </>

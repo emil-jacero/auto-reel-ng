@@ -760,6 +760,7 @@ export function EventEditor({
             chapters.map((chapter, index) => (
               <ClipOrderList
                 key={chapter.name}
+                eventId={eventId}
                 index={index}
                 chapter={chapter.name}
                 heading={chapterHeading(chapter.name, hasNamedChapter)}
