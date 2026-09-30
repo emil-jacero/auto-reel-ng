@@ -159,6 +159,13 @@ def test_a_case_insensitive_alias_of_the_input_directory_is_refused(
         _resolve(text, library)
 
 
+def test_an_input_directory_that_does_not_exist_yet_holds_nothing(
+    tmp_path: Path, home: Path, library: Path
+) -> None:
+    text = f"input: {tmp_path / 'not-mounted'}\nthumbnails:\n  cache_dir: {tmp_path / 'cache'}\n"
+    assert _resolve(text, library).cache_dir == tmp_path / "cache"
+
+
 def test_no_home_directory_is_a_config_error(
     library: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
