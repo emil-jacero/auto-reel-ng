@@ -129,11 +129,17 @@ const RowBody = memo(function RowBody({
       <span className="clip-pos">{position}</span>
       <span className="clip-file">
         <span className="clip-name">{name}</span>
-        {/* Hidden while a drag would put the clip back where it was. */}
-        {was !== null && position !== null && position !== was && (
+        {/* A moved clip at its old position (others moved around it) says only "moved". */}
+        {was !== null && position !== null && (
           <span className="badge clip-was" data-tone="info">
-            <Icon name={position < was ? 'arrow-up' : 'arrow-down'} />
-            was {was}
+            {position === was ? (
+              'moved'
+            ) : (
+              <>
+                <Icon name={position < was ? 'arrow-up' : 'arrow-down'} />
+                was {was}
+              </>
+            )}
           </span>
         )}
       </span>
@@ -320,7 +326,11 @@ export const ClipOrderList = memo(function ClipOrderList({
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+      // It scrolls a lifted clip into view: at once under reduced motion.
+      scrollBehavior: reducedMotion ? 'auto' : 'smooth',
+    }),
   )
 
   const announcements = useMemo<Announcements>(() => {
@@ -379,7 +389,11 @@ export const ClipOrderList = memo(function ClipOrderList({
     const row = [...list.children].find(
       (child) => child instanceof HTMLElement && child.dataset.identity === request.identity,
     )
-    row?.querySelector<HTMLButtonElement>(request.up ? '.move-up' : '.move-down')?.focus()
+    const button = row?.querySelector<HTMLButtonElement>(request.up ? '.move-up' : '.move-down')
+    button?.focus()
+    // Focus alone does not scroll a button that already had it: keep it in view,
+    // clear of the header and the save bar (both in the page's scroll padding).
+    button?.scrollIntoView({ block: 'nearest' })
   }, [order])
 
   return (

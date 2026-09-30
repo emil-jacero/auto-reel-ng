@@ -37,7 +37,13 @@ import { FIELD_LABEL, MetadataForm } from './MetadataForm'
 import { SaveBar } from './SaveBar'
 import type { Operation, Pressed, SaveProblem } from './SaveBar'
 import type { Resolved } from './MetadataForm'
-import { discardAndLeave, keepEditing, usePendingLeave, useUnsavedGuard } from './unsaved'
+import {
+  discardAndLeave,
+  keepEditing,
+  setSaving,
+  usePendingLeave,
+  useUnsavedGuard,
+} from './unsaved'
 
 /**
  * Edit mode: the event's clip order and metadata, saved explicitly.
@@ -101,6 +107,18 @@ type Action =
   | { type: 'save-start'; pressed: Pressed }
   | { type: 'save-failed'; problem: SaveProblem | null; refusal: string | null }
 
+/**
+ * An edit that brings the draft back to what was read retires the last save's
+ * failure: there is nothing left to save. A vanished event stays said.
+ */
+function afterEdit(next: Ready): Ready {
+  const dirty = isDirty(next.read, next.original, next.orders, next.metadata) || next.dateIncomplete
+  if (dirty || (next.problem === null && next.refusal === null)) {
+    return next
+  }
+  return { ...next, problem: next.problem?.kind === 'gone' ? next.problem : null, refusal: null }
+}
+
 function reduce(state: State, action: Action): State {
   switch (action.type) {
     case 'reading':
@@ -141,19 +159,19 @@ function reduce(state: State, action: Action): State {
       }
       const orders = new Map(state.orders)
       orders.set(action.chapter, moveClip(order, action.from, action.to))
-      return { ...state, orders, lastMoved: order[action.from] }
+      return afterEdit({ ...state, orders, lastMoved: order[action.from] })
     }
     case 'field':
-      return {
+      return afterEdit({
         ...state,
         metadata: { ...state.metadata, [action.field]: action.value },
         // A refusal is about the date or title that was sent; editing them retires it.
         refusal: action.field === 'title' || action.field === 'date' ? null : state.refusal,
-      }
+      })
     case 'date-validity':
       return action.incomplete === state.dateIncomplete
         ? state
-        : { ...state, dateIncomplete: action.incomplete }
+        : afterEdit({ ...state, dateIncomplete: action.incomplete })
     case 'reset':
       return {
         ...state,
@@ -350,6 +368,7 @@ export function EventEditor({
   const saving = useRef(false)
   const mounted = useRef(false)
   const barRef = useRef<HTMLDivElement>(null)
+  const alertRef = useRef<HTMLDivElement>(null)
   const refusalRef = useRef<HTMLDivElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const keepEditingRef = useRef<HTMLButtonElement>(null)
@@ -438,12 +457,18 @@ export function EventEditor({
   }
   const adopted =
     ready === null ? 0 : adoptedNewCount(ready.read, ready.original, ready.orders, newClips)
-  const dirty =
-    ready !== null &&
-    (isDirty(ready.read, ready.original, ready.orders, ready.metadata) || ready.dateIncomplete)
-  const showBar = ready !== null && (dirty || ready.problem !== null)
+  // Edits to save, and edits at all (a date typed in part is one, but cannot be saved).
+  const edited = ready !== null && isDirty(ready.read, ready.original, ready.orders, ready.metadata)
+  const dirty = edited || (ready?.dateIncomplete ?? false)
+  // While there are edits; a vanished event keeps its alert even without any.
+  const showBar = ready !== null && (dirty || ready.problem?.kind === 'gone')
 
   useUnsavedGuard(dirty)
+  // The page and the navigation guard hold every way out while a save is in flight.
+  useEffect(() => {
+    setSaving(locked)
+    return () => setSaving(false)
+  }, [locked])
 
   // The bar's height, for the toasts (they sit above it) and the bottom scroll
   // padding (focus never hides under it). It wraps when narrow, so it is measured.
@@ -464,13 +489,26 @@ export function EventEditor({
   }, [showBar])
 
   // After a failed answer focus stays on the pressed control, which the save bar's
-  // alert describes; an unusable date or title moves it to the message at those fields.
+  // alert describes. An unusable date or title moves it to the message at those
+  // fields; a pressed control that went with its alert (another kind of failure
+  // replaced it) hands focus to the new alert, never to <body>.
   const answers = ready?.answers ?? 0
   useEffect(() => {
-    if (answers > 0) {
-      refusalRef.current?.focus()
+    if (answers === 0) {
+      return
+    }
+    if (refusalRef.current !== null) {
+      refusalRef.current.focus()
+    } else if (document.activeElement === null || document.activeElement === document.body) {
+      alertRef.current?.focus()
     }
   }, [answers])
+
+  // Every announcement changes the region, a repeated one too: cleared, then set a frame later.
+  const announce = useCallback((message: string) => {
+    setAnnouncement('')
+    window.requestAnimationFrame(() => setAnnouncement(message))
+  }, [])
 
   const onMove = useCallback<MoveHandler>(
     (chapter, from, to) => dispatch({ type: 'move', chapter, from, to }),
@@ -478,7 +516,8 @@ export function EventEditor({
   )
 
   function submit(pressed: Pressed, operation: Operation): void {
-    if (ready === null || saving.current) {
+    // Never a half-typed date (it would be sent as unset) and never a save of nothing.
+    if (ready === null || saving.current || ready.dateIncomplete || !edited) {
       return
     }
     saving.current = true
@@ -493,12 +532,11 @@ export function EventEditor({
       .then((outcome) => {
         saving.current = false
         if (outcome.saved) {
-          // Even after an unmount, so the list learns of a save the operator left.
+          // Even after an unmount: the list learns of the save, and the page, if it is
+          // still shown, reads the event again (its exit does nothing once it is gone).
           toast.success('Saved')
           markEventsChanged()
-          if (mounted.current) {
-            onSaved()
-          }
+          onSaved()
         } else if (mounted.current) {
           dispatch({ type: 'save-failed', problem: outcome.problem, refusal: outcome.refusal })
         }
@@ -648,13 +686,15 @@ export function EventEditor({
                 lastMoved={ready.lastMoved}
                 locked={locked}
                 onMove={onMove}
-                onAnnounce={setAnnouncement}
+                onAnnounce={announce}
               />
             ))}
 
           {showBar && (
             <SaveBar
               barRef={barRef}
+              alertRef={alertRef}
+              edited={edited}
               problem={ready.problem}
               pressed={ready.pressed}
               summary={summarize(changed, ready.dateIncomplete, movedCount, adopted)}

@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 
 import { setNavigationGuard } from '../route'
+import { toast } from '../ui/toast'
 
 /*
  * Unsaved edits are never discarded silently. While the mounted editor holds
@@ -14,6 +15,11 @@ import { setNavigationGuard } from '../route'
  * The question is one dialog, rendered by the editor while a leave is pending
  * (`usePendingLeave`). Keep editing drops the pending leave; Discard drops the
  * guard, then goes where the operator was going.
+ *
+ * While a save is in flight (`setSaving`) nothing leaves and nothing asks: the
+ * page holds Refresh and Stop editing (`useSaving`), a navigation is undone, and
+ * a polite toast says the save is still running. Leaving then could re-read the
+ * event before the save lands, and show it stale.
  */
 
 type Guard = (proceed: () => void) => boolean
@@ -26,13 +32,30 @@ let installed: Guard | null = null
 // while nothing asks.
 let pending: { id: number; proceed: () => void } | null = null
 let asked = 0
+let saving = false
 const listeners = new Set<() => void>()
+
+function emit(): void {
+  for (const listener of listeners) {
+    listener()
+  }
+}
 
 function setPending(proceed: (() => void) | null): void {
   asked += proceed === null ? 0 : 1
   pending = proceed === null ? null : { id: asked, proceed }
-  for (const listener of listeners) {
-    listener()
+  emit()
+}
+
+function stillSaving(): void {
+  toast.info('Still saving. You can leave once the save has finished.')
+}
+
+/** The editor says whether a save is in flight. */
+export function setSaving(value: boolean): void {
+  if (saving !== value) {
+    saving = value
+    emit()
   }
 }
 
@@ -41,9 +64,11 @@ function uninstall(): void {
   setNavigationGuard(null)
 }
 
-/** Run `proceed` at once when nothing is unsaved; otherwise ask first. */
+/** Run `proceed` at once when nothing is unsaved; otherwise ask first. Never while saving. */
 export function requestLeave(proceed: () => void): void {
-  if (installed === null) {
+  if (saving) {
+    stillSaving()
+  } else if (installed === null) {
     proceed()
   } else {
     setPending(proceed)
@@ -72,6 +97,11 @@ function subscribe(listener: () => void): () => void {
   }
 }
 
+/** Whether a save is in flight: the page holds its own ways out meanwhile. */
+export function useSaving(): boolean {
+  return useSyncExternalStore(subscribe, () => saving)
+}
+
 /** The open question's number, to key its dialog by; 0 while nothing asks. */
 export function usePendingLeave(): number {
   return useSyncExternalStore(subscribe, () => pending?.id ?? 0)
@@ -84,7 +114,11 @@ export function useUnsavedGuard(dirty: boolean): void {
       return
     }
     const guard: Guard = (proceed) => {
-      setPending(proceed)
+      if (saving) {
+        stillSaving()
+      } else {
+        setPending(proceed)
+      }
       return false
     }
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
