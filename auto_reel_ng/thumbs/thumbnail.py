@@ -23,6 +23,7 @@ import json
 import logging
 import math
 import os
+import re
 import uuid
 from pathlib import Path
 from typing import List, Optional
@@ -38,6 +39,16 @@ THUMBNAIL_VERSION = 1
 
 #: The ``(width, height)`` box a thumbnail is fitted inside, keeping its aspect ratio.
 THUMBNAIL_BOX = (320, 180)
+
+#: How :class:`FfmpegRuntime` reports a failed command inside a reason.
+_FAILED_COMMAND = re.compile(r": Command exited -?\d+: ")
+
+#: ffmpeg's ``[component @ 0x…]`` prefixes on a stderr line.
+_LOG_TAGS = re.compile(r"^(?:\[[^\]]*\]\s*)+")
+
+#: Where an absolute path starts in a message: a ``/`` opening a word or a quoted or
+#: bracketed value (``'0/0'`` and ``in#0/mov`` do not start one).
+_ABSOLUTE_PATH = re.compile(r"(?:^|(?<=[\s'\"(\[=]))/(?=[^\s/])")
 
 
 def thumbnail_key(clip_path: Path, *, position: float) -> str:
@@ -210,6 +221,50 @@ def _probe_reason(exc: ProbeError, source: Path) -> str:
     return message
 
 
+def one_line_cause(reason: str, clip_path: Path) -> str:
+    """The one-line cause of a :class:`ThumbnailError`'s ``reason``, without server paths.
+
+    What a clip's failure shows after the clip's own name: the CLI's ERROR line and
+    the service's problem detail. A reason that quotes a failed command (``…: Command
+    exited N: <cmd>`` then ``stderr:`` and ffmpeg's output) is cut before the command,
+    and ffmpeg's last stderr line, without its ``[component @ 0x…]`` tags and with the
+    clip's path shortened to its file name, is kept as the gist: ``ffprobe could not
+    read: Invalid data found when processing input``. Any other reason keeps its first
+    line. Anything from a remaining absolute path on (a cache file ffmpeg names, say)
+    is dropped, so the result carries no server path; the full reason is for the logs.
+    """
+    source = _resolved(Path(clip_path))
+    head, _, stderr = reason.partition("\nstderr:\n")
+    lines = head.splitlines()
+    head = lines[0] if lines else head
+    failed = _FAILED_COMMAND.search(head)
+    if failed is None:
+        return _before_any_path(_shorten(head, source))
+    cause = _before_any_path(head[: failed.start()])
+    last = next((line.strip() for line in reversed(stderr.splitlines()) if line.strip()), "")
+    gist = _before_any_path(_shorten(_LOG_TAGS.sub("", last), source))
+    return f"{cause}: {gist}" if gist else cause
+
+
+def _resolved(path: Path) -> Path:
+    """``path`` resolved as the engine runs ffmpeg on it, or as given when it cannot be."""
+    try:
+        return path.resolve()
+    except (OSError, RuntimeError):  # a symlink loop
+        return path
+
+
+def _shorten(text: str, source: Path) -> str:
+    """``text`` with the clip's path, which ffmpeg repeats, shortened to its file name."""
+    return text.replace(f"{source}: ", "").replace(str(source), source.name)
+
+
+def _before_any_path(text: str) -> str:
+    """``text`` up to the first absolute path it still names, if any."""
+    found = _ABSOLUTE_PATH.search(text)
+    return text if found is None else text[: found.start()].rstrip(" :'\"([=")
+
+
 def _os_reason(exc: OSError) -> str:
     """An ``OSError``'s cause without the path it repeats (``No such file or directory``)."""
     return exc.strerror or str(exc)
@@ -272,6 +327,7 @@ __all__ = [
     "THUMBNAIL_BOX",
     "THUMBNAIL_VERSION",
     "is_cached",
+    "one_line_cause",
     "thumbnail_args",
     "thumbnail_for",
     "thumbnail_key",

@@ -23,6 +23,9 @@ from auto_reel_ng.errors import (
     ThumbnailCacheError,
     ThumbnailError,
 )
+from auto_reel_ng.thumbs import (
+    one_line_cause,
+)
 from auto_reel_ng.thumbs import thumbnail as thumbnail_module
 from auto_reel_ng.thumbs import thumbnail_args, thumbnail_for, thumbnail_key, thumbnail_path
 
@@ -548,3 +551,35 @@ def test_two_concurrent_generations_of_one_thumbnail(
     assert results[0] == results[1]
     assert results[0].read_bytes() == FAKE_JPEG
     assert _leftovers(cache_dir) == [results[0].name]
+
+
+# --- one_line_cause: the ERROR line's and the problem detail's cause ------------
+
+
+def test_one_line_cause_keeps_ffmpegs_last_stderr_line_without_tags_or_the_clip(
+    tmp_path: Path,
+) -> None:
+    clip = tmp_path / "clip.mp4"
+    reason = (
+        f"ffprobe could not read: Command exited 1: /usr/bin/ffprobe -v error {clip}\n"
+        f"stderr:\n[mov,mp4 @ 0x56] moov atom not found\n{clip}: Invalid data found"
+    )
+    assert one_line_cause(reason, clip) == "ffprobe could not read: Invalid data found"
+
+
+def test_one_line_cause_cuts_any_other_server_path(tmp_path: Path) -> None:
+    """A cache file ffmpeg names is cut, with the separator before it."""
+    reason = (
+        f"no frame extracted at 0.500s of 2.000s: Command exited 1: ffmpeg -i {tmp_path}/c.mp4\n"
+        "stderr:\n[image2 @ 0x1] Could not open file : /var/cache/auto reel/.k.tmp"
+    )
+    cause = one_line_cause(reason, tmp_path / "c.mp4")
+    assert cause == "no frame extracted at 0.500s of 2.000s: Could not open file"
+
+
+def test_one_line_cause_keeps_a_plain_reason_and_rationals(tmp_path: Path) -> None:
+    clip = tmp_path / "c.mp4"
+    rate = "Could not determine a plausible frame rate (avg_frame_rate='0/0', r_frame_rate='0/0')"
+    assert one_line_cause(rate, clip) == rate
+    assert one_line_cause("File is empty (zero bytes)", clip) == "File is empty (zero bytes)"
+    assert one_line_cause("first line\nsecond line", clip) == "first line"
