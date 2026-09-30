@@ -272,8 +272,14 @@ The key details:
 - **Every `ThumbnailError` message starts with the clip's path**, then `: ` and the cause, like
   `AnalysisError`'s. The error carries `clip` and `reason` (the pattern of `EventMetadataError`), and the
   reason never repeats the path: for a probe failure it is the `ProbeError` message with its first
-  mention of the probed path dropped, and for an `OSError` it is the `strerror`. The CLI prints
-  `ERROR  <event>/<identity>: <reason>`, so each line names the clip once.
+  mention of the probed path dropped, and for an `OSError` it is the `strerror`. A `UnicodeDecodeError`
+  from the runtime (ffprobe or ffmpeg echoing a non-UTF-8 name, decoded strictly) is the clip's
+  `ThumbnailError` too. The reason stays complete: a failed command's reason quotes the command and its
+  stderr, for the debug log and for T2 to shape. The CLI prints one line per failed clip,
+  `ERROR  <event>/<identity>: <cause>`: the reason cut before the quoted command, plus ffmpeg's last
+  stderr line without its `[component @ 0x…]` tags and the clip's path ("ffprobe could not read: Invalid
+  data found when processing input"). The full reason is logged at debug level (`-v`), and every
+  printed line shows a non-UTF-8 name's raw bytes as `\xNN`.
 - **`json.dumps` of a list** is a canonical, unambiguous encoding: floats use their shortest repr. With
   the default `ensure_ascii`, a non-UTF-8 file name (surrogate escapes) still encodes.
 - **The full 64-hex digest is the file stem.** T2 uses it as the strong ETag.
@@ -335,7 +341,12 @@ The validation rules:
   `.resolve()`d. It must not be relative to `project_root.resolve()`, nor to the walked input directory
   `(project_root / config.input_dir).resolve()` when `input` is set, which may lie outside the root.
   Otherwise it raises `ConfigError` naming `thumbnails.cache_dir` and the directory it falls inside. For
-  the default it also says to set `thumbnails.cache_dir`.
+  the default it also says to set `thumbnails.cache_dir`. Directories are also compared by identity: the
+  cache path and each existing ancestor are refused on `os.path.samestat` with the project root or the
+  input directory, which catches another spelling on a case-insensitive mount (the MOL NTFS drive) and a
+  bind mount.
+- **No home directory** (no `HOME` and no passwd entry, as in some containers) with no absolute
+  `XDG_CACHE_HOME` and no `cache_dir` raises `ConfigError` saying to set `thumbnails.cache_dir`.
 - **Unknown keys** under `thumbnails` are ignored, as they are under `worker`.
 - **The returned `cache_dir`** is the expanded, absolute path as configured or defaulted; the `.resolve()`d
   form is used only for the outside-the-library check.
@@ -382,9 +393,9 @@ view.
     event and moves on. A clip shared with a later event is therefore already cached when that event is
     checked, and the counts below are deterministic. Two identities of one event with the same symlink
     target are both extracted, harmlessly.
-  - `ThumbnailError` counts the clip as failed and collects its `ERROR` line,
-    `ERROR  <event>/<identity>: <reason>`. The event's results are collected in identity order, so
-    output is deterministic.
+  - `ThumbnailError` counts the clip as failed and collects its one `ERROR` line,
+    `ERROR  <event>/<identity>: <cause>` (see "Cache location, key and write"). The event's results are
+    collected in identity order, so output is deterministic.
 - **Fatal errors and interruption:** on `ThumbnailCacheError`, or any other `BaseException` such as
   Ctrl-C, the pool is shut down with `cancel_futures=True` before re-raising, so no queued clip starts.
   The pool's default shutdown on leaving a `with` block would otherwise run the rest of a large event's

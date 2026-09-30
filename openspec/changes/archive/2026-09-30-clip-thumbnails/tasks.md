@@ -197,3 +197,9 @@
   - every `ERROR` line names the clip once: `ThumbnailError` carries `clip` and `reason`, the reason drops the probe message's first mention of the path and uses an `OSError`'s `strerror`, and the CLI prints `ERROR  <event>/<identity>: <reason>`
   - the cache check goes through `thumbs.is_cached`, which turns an `OSError` from `Path.is_file()` (Python 3.13, an unsearchable cache) into `ThumbnailCacheError`; covered for the engine and the CLI with a monkeypatched `is_file`
   - README says that other names of one file may each count as generated; proposal and design record the `cli/thumbnails.py` location and the accepted implementation details
+
+  Review fixes, second round (supervisor, 2026-09-30):
+  - a `UnicodeDecodeError` from the runtime is the clip's `ThumbnailError`, and every printed line shows a non-UTF-8 name's bytes as `\xNN`; tested with a zero-byte `b'tom\xe9.mp4'` and a corrupt `b'caf\xe9.mp4'`, through the fake and the real runtime
+  - the CLI prints exactly one `ERROR  <event>/<clip>: <cause>` line per failed clip and logs the full reason (command and stderr) at debug level
+  - the cache-outside-the-library check also refuses a directory that is the project root or the input directory by identity (`os.path.samestat`), for case-insensitive and bind mounts
+  - no home directory is a `ConfigError`; `--jobs` is pinned (2 by default, 3 with `--jobs 3`, `--jobs two` is a usage error); README says to keep the position well below 1

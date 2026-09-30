@@ -398,8 +398,9 @@ It SHALL run at most `--jobs N` extractions at once. `N` is a positive integer w
 other value SHALL be a usage error. It SHALL print, in walk order:
 
 - one line per event, with its generated, cached and failed counts
-- one `ERROR  <event>/<clip>: <reason>` line per clip that failed, naming the clip once: the reason does
-  not repeat its path
+- exactly one `ERROR  <event>/<clip>: <cause>` line per clip that failed, naming the clip once: the cause
+  does not repeat its path or quote the failing command, and a file name that is not valid UTF-8 is
+  printed with its raw bytes escaped; the failing command and its stderr are logged at debug level
 - a final summary with the totals and the cache directory
 
 A clip that fails SHALL NOT stop the run. Nor SHALL an event whose folder cannot be listed; that event is
