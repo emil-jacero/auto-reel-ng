@@ -39,7 +39,11 @@ export function JobsIndicator() {
   return (
     <div className="jobs-indicator" data-connection={status}>
       <span className="pill" data-tone={CONNECTION_TONE[status]}>
-        {status === 'live' ? <span className="live-dot" aria-hidden="true" /> : <Icon name="loader" />}
+        {status === 'live' ? (
+          <span className="live-dot" aria-hidden="true" />
+        ) : (
+          <Icon name="loader" />
+        )}
         <span>
           <span className="visually-hidden">Render jobs: </span>
           {CONNECTION_LABEL[status]}

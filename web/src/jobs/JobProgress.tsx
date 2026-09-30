@@ -83,7 +83,13 @@ function stateTime(shown: ShownJob): { label: string; iso: string } {
 }
 
 /** The job's status in words: its pill, what it is doing, and its state's time. */
-export function JobState({ shown, lastJobLabel = false }: { shown: ShownJob; lastJobLabel?: boolean }) {
+export function JobState({
+  shown,
+  lastJobLabel = false,
+}: {
+  shown: ShownJob
+  lastJobLabel?: boolean
+}) {
   const { job } = shown
   const look = JOB_STATUS_LOOK[job.status]
   const active = isActive(job.status)

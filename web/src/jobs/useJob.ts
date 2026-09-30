@@ -69,7 +69,10 @@ function choose(live: JobOut | undefined, latest: JobSummary | null | undefined)
  * connection lacks it, or the store holds as active what the read shows ended,
  * the job is read once from the service (a reconciled end: no toast).
  */
-export function useEventJob(eventId: string, latest: JobSummary | null | undefined): ShownJob | null {
+export function useEventJob(
+  eventId: string,
+  latest: JobSummary | null | undefined,
+): ShownJob | null {
   const live = useSyncExternalStore(subscribe, () => newestJobOf(eventId))
   const connection = useSyncExternalStore(subscribe, () => getState().connection)
   const shown = useMemo(() => choose(live, latest), [live, latest])
