@@ -58,12 +58,6 @@
     }
   }
 
-  .cell-job .job-cell {
-    display: grid;
-    justify-items: start;
-    gap: 0.125rem;
-  }
-
   .cell-folder,
   .cell-fix {
     overflow-wrap: anywhere;
@@ -120,10 +114,6 @@
 
     .event-table .cell-job {
       grid-area: job;
-    }
-
-    .event-table .cell-job .job-cell {
-      display: inline-flex;
     }
 
     .attention-table tbody tr {

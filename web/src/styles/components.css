@@ -657,18 +657,6 @@
     font-size: var(--text-sm);
   }
 
-  .job-cell {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--s-1) var(--s-2);
-  }
-
-  .job-time {
-    color: var(--fg-muted);
-    font-size: var(--text-xs);
-  }
-
   /*
    * The modal dialog (`ui/Dialog.tsx`): an `h2` title, then the caller's body
    * and a `.dialog-actions` row. Its enter animation is progressive

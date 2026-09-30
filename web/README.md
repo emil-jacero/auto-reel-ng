@@ -111,7 +111,7 @@ src/
     ├── EventDetail.tsx   the event page: status, counts, clip panels, the Edit toggle and the needs-attention form
     ├── list.css          the list's layout and column widths
     ├── detail.css        the event page's layout and column widths
-    ├── common.tsx        helpers both screens share (job cell, sizes, verdict)
+    ├── common.tsx        helpers both screens share (sizes, verdict, failure sentences)
     ├── changes.ts        "an event changed": markEventsChanged(), useEventsVersion()
     ├── grouping.ts       groupByYear, needsRender (pure)
     ├── labels.ts         words for reasons, job statuses, failures, clip statuses

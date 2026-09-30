@@ -588,8 +588,11 @@ files are limited to these:
 No edit touches `labels.ts`, `tones.ts`, `common.tsx`, `App.tsx`, `route.ts`, `src/ui/**`, `src/styles/**`,
 `package.json`, `src/edit/**` or `src/api/reel.ts`; the first two are imported, not edited.
 `JobCell` stays in `common.tsx`: C4 or later code may still use it, and removing it is not this change's
-business. Styles live in `src/jobs/jobs.css` (`@layer components`), imported once by `JobsIndicator.tsx`, which
-the shell always mounts.
+business. *Changed during review:* nothing used `JobCell` once `LiveJobCell` replaced it, and it still showed
+the queued time unlabelled, so it is removed from `common.tsx`, with the rules only it used (`.job-cell` and
+`.job-time` in `src/styles/components.css`, `.cell-job .job-cell` in `events/list.css`). Styles live in
+`src/jobs/jobs.css` (`@layer components`), imported once by `JobsIndicator.tsx`, which the shell always
+mounts.
 *Added during implementation:* `jobs.css` also defines `.btn-compact` (a row-sized button) and, for the
 list's narrow card layout, lets the job cell's parts flow as one line of items after its "Last job" label,
 so the label stays beside its pill.
