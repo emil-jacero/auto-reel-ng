@@ -47,7 +47,9 @@ const CANCEL_ENDS_JOB: Record<CancelOutcome, boolean> = {
 function NoticeAlert({ notice }: { notice: Notice }) {
   switch (notice.kind) {
     case 'fresh':
-      return <Alert tone="info" role="status" title="Nothing to render — the movie is up to date." />
+      return (
+        <Alert tone="info" role="status" title="Nothing to render — the movie is up to date." />
+      )
     case 'collision':
       return (
         <Alert
