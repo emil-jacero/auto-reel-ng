@@ -1,8 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import './list.css'
+
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
 import { fetchEvents } from '../api/events'
 import type { EventError, EventRow, EventSummary, Problem } from '../api/events'
 import { eventHref } from '../route'
+import { Alert } from '../ui/Alert'
+import { Icon } from '../ui/Icon'
+import { Pill } from '../ui/Pill'
+import { LoadStatus, SkeletonRows } from '../ui/Skeleton'
+import { currentEventsVersion, useEventsVersion } from './changes'
 import {
   DATABASE_CAUSE,
   JobCell,
@@ -12,16 +19,19 @@ import {
   plural,
 } from './common'
 import { groupByYear, needsRender } from './grouping'
+import type { YearGroup } from './grouping'
 import { FAILURE_LABEL } from './labels'
+import { FAILURE_LOOK } from './tones'
 
 /**
  * The event list: which events need a render, and why.
  *
- * Read-only. The list is scanned from disk per request, so it is read on mount
- * and on refresh, and nowhere else — no polling, no cache. Loading and failure
- * both replace the list: an earlier list is never shown as current. Events the
- * service could not read arrive as error rows and are shown first, under
- * "Needs attention", with nothing the row does not carry.
+ * It only reads. The list is scanned from disk per request, so it is read on
+ * mount, on refresh, and when it is shown after the client recorded that an
+ * event changed (`changes.ts`) — nowhere else: no polling, no cache. Loading and
+ * failure both replace the list: an earlier list is never shown as current.
+ * Events the service could not read arrive as error rows and are shown first,
+ * under "Needs attention", with nothing the row does not carry.
  */
 
 type LoadState =
@@ -41,82 +51,134 @@ function describeProblem(problem: Problem): { cause: string; detail: string | nu
 
 function EventRow({ event }: { event: EventSummary }) {
   return (
-    <tr>
-      <td className="date">{event.date ?? ''}</td>
-      <td>
-        <a href={eventHref(event.event_id)}>{event.title ?? folderName(event.event_id)}</a>
-        {event.location != null && <span className="muted"> · {event.location}</span>}
+    <tr role="row">
+      <td role="cell" className="cell-date">
+        {event.date != null && <time dateTime={event.date}>{event.date}</time>}
       </td>
-      <td>
-        {event.clip_count}
-        {event.new_count > 0 && <span className="badge badge-new">{event.new_count} new</span>}
+      <td role="cell" className="cell-event">
+        <a href={eventHref(event.event_id)}>{event.title ?? folderName(event.event_id)}</a>
+        {event.location != null && <span className="event-location"> · {event.location}</span>}
+      </td>
+      <td role="cell" className="cell-clips">
+        <span className="clip-count">{plural(event.clip_count, 'clip', 'clips')}</span>
+        {event.new_count > 0 && (
+          <span className="badge" data-tone="info">
+            {event.new_count} new
+          </span>
+        )}
         {event.missing_count > 0 && (
-          <span className="badge badge-missing">{event.missing_count} missing</span>
+          <span className="badge" data-tone="err">
+            {event.missing_count} missing
+          </span>
         )}
       </td>
-      <td>
+      <td role="cell" className="cell-render">
         <StalenessCell staleness={event.staleness} />
       </td>
-      <td>
+      {/* Labelled only when it holds a job: at narrow width the label shows beside it. */}
+      <td
+        role="cell"
+        className="cell-job"
+        data-label={event.latest_job != null ? 'Last job' : undefined}
+      >
         <JobCell job={event.latest_job} />
       </td>
     </tr>
   )
 }
 
-function AttentionTable({ errors }: { errors: EventError[] }) {
+function AttentionPanel({ errors }: { errors: EventError[] }) {
+  const headingId = useId()
   return (
-    <div className="table-scroll">
-      <table className="attention">
-        <caption>Needs attention</caption>
-        <thead>
-          <tr>
-            <th scope="col">Folder</th>
-            <th scope="col">Problem</th>
-            <th scope="col">How to fix</th>
+    <section className="panel attention-panel">
+      <header className="panel-header">
+        <Icon name="alert-triangle" />
+        <h2 id={headingId}>Needs attention</h2>
+        <span className="panel-meta">{plural(errors.length, 'event', 'events')}</span>
+      </header>
+      <table className="data-table attention-table" role="table" aria-labelledby={headingId}>
+        <colgroup>
+          <col className="col-folder" />
+          <col className="col-problem" />
+          <col className="col-fix" />
+        </colgroup>
+        <thead role="rowgroup">
+          <tr role="row">
+            <th role="columnheader" scope="col">
+              Folder
+            </th>
+            <th role="columnheader" scope="col">
+              Problem
+            </th>
+            <th role="columnheader" scope="col">
+              How to fix
+            </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody role="rowgroup">
           {errors.map((error) => (
-            <tr key={error.event_id}>
-              <td>{folderName(error.event_id)}</td>
-              <td>
-                <span className="pill pill-attention">{FAILURE_LABEL[error.failure]}</span>
+            <tr role="row" key={error.event_id}>
+              <td role="cell" className="cell-folder">
+                {folderName(error.event_id)}
               </td>
-              <td className="detail">{error.detail}</td>
+              <td role="cell" className="cell-problem">
+                <Pill tone={FAILURE_LOOK[error.failure].tone} icon={FAILURE_LOOK[error.failure].icon}>
+                  {FAILURE_LABEL[error.failure]}
+                </Pill>
+              </td>
+              <td role="cell" className="cell-fix">
+                {error.detail}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </section>
   )
 }
 
-function EventTables({ events }: { events: EventSummary[] }) {
+function YearPanel({ group }: { group: YearGroup }) {
+  const headingId = useId()
   return (
-    <>
-      {groupByYear(events).map((group) => (
-        <div className="table-scroll" key={group.year ?? 'undated'}>
-          <table>
-            <caption>{group.year ?? 'No date'}</caption>
-            <thead>
-              <tr>
-                <th scope="col">Date</th>
-                <th scope="col">Event</th>
-                <th scope="col">Clips</th>
-                <th scope="col">Render</th>
-                <th scope="col">Last job</th>
-              </tr>
-            </thead>
-            <tbody>
-              {group.events.map((event) => (
-                <EventRow key={event.event_id} event={event} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
-    </>
+    <section className="panel">
+      <header className="panel-header">
+        <h2 id={headingId}>{group.year ?? 'No date'}</h2>
+        <span className="panel-meta">{plural(group.events.length, 'event', 'events')}</span>
+      </header>
+      <table className="data-table event-table" role="table" aria-labelledby={headingId}>
+        <colgroup>
+          <col className="col-date" />
+          <col className="col-event" />
+          <col className="col-clips" />
+          <col className="col-render" />
+          <col className="col-job" />
+        </colgroup>
+        <thead role="rowgroup">
+          <tr role="row">
+            <th role="columnheader" scope="col">
+              Date
+            </th>
+            <th role="columnheader" scope="col">
+              Event
+            </th>
+            <th role="columnheader" scope="col">
+              Clips
+            </th>
+            <th role="columnheader" scope="col">
+              Render
+            </th>
+            <th role="columnheader" scope="col">
+              Last job
+            </th>
+          </tr>
+        </thead>
+        <tbody role="rowgroup">
+          {group.events.map((event) => (
+            <EventRow key={event.event_id} event={event} />
+          ))}
+        </tbody>
+      </table>
+    </section>
   )
 }
 
@@ -125,11 +187,15 @@ export function EventList({ hidden }: { hidden: boolean }) {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
   const [onlyStale, setOnlyStale] = useState(false)
   const inFlight = useRef<AbortController | null>(null)
+  const version = useEventsVersion()
+  // The events version the list was last read at (recorded when the read starts).
+  const readVersion = useRef(currentEventsVersion())
 
   const load = useCallback(() => {
     inFlight.current?.abort()
     const controller = new AbortController()
     inFlight.current = controller
+    readVersion.current = currentEventsVersion()
     setState({ status: 'loading' })
     fetchEvents(controller.signal)
       .then((result) => {
@@ -166,34 +232,62 @@ export function EventList({ hidden }: { hidden: boolean }) {
     return () => inFlight.current?.abort()
   }, [load])
 
+  // Read again when shown after the client recorded that an event changed.
+  // Declared after the mount effect, so on mount the versions already match and
+  // no second read starts; a mark during a read starts one more, aborting it.
+  useEffect(() => {
+    if (!hidden && version !== readVersion.current) {
+      load()
+    }
+  }, [hidden, version, load])
+
+  const loading = state.status === 'loading'
+  const rows = state.status === 'ready' ? partition(state.events) : null
   return (
-    <main hidden={hidden}>
-      <header>
-        <h1>Events</h1>
-        <button type="button" onClick={load} disabled={state.status === 'loading'}>
-          Refresh
-        </button>
+    <main hidden={hidden} className="page event-list">
+      <header className="page-header">
+        <div className="page-title-row">
+          <h1 tabIndex={-1}>Events</h1>
+          <div className="toolbar">
+            {rows !== null && <FilterControl onlyStale={onlyStale} setOnlyStale={setOnlyStale} />}
+            {/* Busy, not disabled, while reading: it keeps keyboard focus. */}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              aria-disabled={loading || undefined}
+              aria-busy={loading || undefined}
+              onClick={() => {
+                if (!loading) {
+                  load()
+                }
+              }}
+            >
+              <Icon name="refresh" />
+              Refresh
+            </button>
+          </div>
+        </div>
+        <div className="page-meta">
+          {rows !== null && <Summary events={rows.events} errors={rows.errors} />}
+          {state.status === 'ready' && (
+            <span>Scanned {state.fetchedAt.toLocaleTimeString()}</span>
+          )}
+          <LoadStatus message={loading ? 'Scanning events…' : ''} />
+        </div>
       </header>
 
-      {state.status === 'loading' && <p className="muted">Scanning events…</p>}
-
-      {state.status === 'failed' && (
-        <div className="failure" role="alert">
-          <p>
-            <strong>{state.cause}</strong>
-          </p>
-          {state.detail !== null && <p className="muted">{state.detail}</p>}
+      {loading && (
+        <div className="panel" aria-hidden="true">
+          <div className="panel-header">
+            <span className="skeleton skeleton-heading" />
+          </div>
+          <SkeletonRows rows={8} />
         </div>
       )}
 
-      {state.status === 'ready' && (
-        <ReadyView
-          rows={state.events}
-          fetchedAt={state.fetchedAt}
-          onlyStale={onlyStale}
-          setOnlyStale={setOnlyStale}
-        />
-      )}
+      {state.status === 'failed' && <Alert tone="err" title={state.cause} detail={state.detail} />}
+
+      {rows !== null && <ReadyView events={rows.events} errors={rows.errors} onlyStale={onlyStale} />}
     </main>
   )
 }
@@ -212,50 +306,80 @@ function partition(rows: readonly EventRow[]): { events: EventSummary[]; errors:
   return { events, errors }
 }
 
-function ReadyView({
-  rows,
-  fetchedAt,
+/** The summary's words as stat chips, counted over the whole list whatever the filter shows. */
+function Summary({ events, errors }: { events: EventSummary[]; errors: EventError[] }) {
+  const staleCount = events.filter(needsRender).length
+  return (
+    <ul className="stats">
+      <li className="stat">
+        <Icon name="film" />
+        <span>
+          <strong>{staleCount}</strong> of {plural(events.length, 'event', 'events')} need rendering
+        </span>
+      </li>
+      {errors.length > 0 && (
+        <li className="stat" data-tone="warn">
+          <Icon name="alert-triangle" />
+          <span>
+            <strong>{errors.length}</strong> {errors.length === 1 ? 'needs' : 'need'} attention
+          </span>
+        </li>
+      )}
+    </ul>
+  )
+}
+
+/** All events, or only those that need a render: two native radios. */
+function FilterControl({
   onlyStale,
   setOnlyStale,
 }: {
-  rows: EventRow[]
-  fetchedAt: Date
   onlyStale: boolean
   setOnlyStale: (value: boolean) => void
 }) {
-  const { events, errors } = partition(rows)
-  // Counted over the whole list: the filter changes which rows show, not the summary.
-  const staleCount = events.filter(needsRender).length
+  const name = useId()
+  return (
+    <fieldset className="segmented">
+      <legend className="visually-hidden">Show</legend>
+      <input
+        className="visually-hidden"
+        type="radio"
+        id={`${name}-all`}
+        name={name}
+        checked={!onlyStale}
+        onChange={() => setOnlyStale(false)}
+      />
+      <label htmlFor={`${name}-all`}>All</label>
+      <input
+        className="visually-hidden"
+        type="radio"
+        id={`${name}-stale`}
+        name={name}
+        checked={onlyStale}
+        onChange={() => setOnlyStale(true)}
+      />
+      <label htmlFor={`${name}-stale`}>Needs render</label>
+    </fieldset>
+  )
+}
+
+function ReadyView({
+  events,
+  errors,
+  onlyStale,
+}: {
+  events: EventSummary[]
+  errors: EventError[]
+  onlyStale: boolean
+}) {
   const shown = onlyStale ? events.filter(needsRender) : events
   return (
     <>
-      <div className="summary">
-        <p>
-          <strong>
-            {staleCount} of {plural(events.length, 'event', 'events')}
-          </strong>{' '}
-          need rendering
-          {errors.length > 0 && (
-            <>
-              {' · '}
-              <strong>{errors.length}</strong> {errors.length === 1 ? 'needs' : 'need'} attention
-            </>
-          )}
-          .<span className="muted"> Scanned {fetchedAt.toLocaleTimeString()}.</span>
-        </p>
-        <label>
-          <input
-            type="checkbox"
-            checked={onlyStale}
-            onChange={(change) => setOnlyStale(change.target.checked)}
-          />{' '}
-          Only events that need rendering
-        </label>
-      </div>
       {/* Error rows need action too, so the filter never hides them. */}
-      {errors.length > 0 && <AttentionTable errors={errors} />}
+      {errors.length > 0 && <AttentionPanel errors={errors} />}
       {shown.length === 0 ? (
-        <p className="muted">
+        <p className="empty-state">
+          <Icon name="film" size={20} />
           {events.length > 0
             ? 'Nothing needs rendering.'
             : errors.length === 0
@@ -263,7 +387,7 @@ function ReadyView({
               : 'No other events.'}
         </p>
       ) : (
-        <EventTables events={shown} />
+        groupByYear(shown).map((group) => <YearPanel key={group.year ?? 'undated'} group={group} />)
       )}
     </>
   )

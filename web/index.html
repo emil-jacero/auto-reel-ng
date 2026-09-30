@@ -3,7 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>auto-reel-ng</title>
+    <meta name="color-scheme" content="light dark" />
+    <!-- The page background (--bg in src/styles/tokens.css); a meta cannot read a CSS token. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f9fafc" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0d11" />
+    <title>auto-reel</title>
+    <script>
+      /* The stored theme choice, applied before the first paint. Same key as src/shell/theme.ts. */
+      try { var theme = localStorage.getItem('auto-reel:theme') } catch (error) {}
+      if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,0 +1,15 @@
+/*
+ * The client's one cascade order, declared once and first in the bundle:
+ * `main.tsx` imports this file before `App`. Every stylesheet wraps all of its
+ * rules in exactly one of these layers — unlayered CSS would beat every layer.
+ *
+ * Screens keep their own stylesheet next to them (`events/list.css`,
+ * `events/detail.css`, `shell/shell.css`), and a later change adds its own file
+ * in `components` or `screens` rather than editing one of these.
+ */
+@layer reset, tokens, base, components, screens;
+
+@import './reset.css';
+@import './tokens.css';
+@import './base.css';
+@import './components.css';

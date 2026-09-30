@@ -309,6 +309,9 @@ The north star is a **full timeline editor**, but we ship in thin slices:
 - **v3:** **full timeline editor** — per-clip track with proxies, drag-trim in/out, reorder across
   chapters, scrub preview.
 
+The v1 screens share one visual system in plain CSS — tokens, an app shell, and the primitives slices
+D and E build on — pulled forward from the v2 look-and-feel pass (**D-10**, change `web-design-system`).
+
 **v1's slices** (planned 2026-09-01; one OpenSpec change each, in order). v1 is four features and a
 scaffold, which is several changes under Principle VIII, so the plan lives here rather than as five open
 change directories:
@@ -542,6 +545,16 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   refuse every event whose output path collides with another's (compared case-insensitively, never
   auto-suffixed). The default output directory is the sibling `<parent>/<root-name>-output`, outside the
   walked root, so rendered year folders are never scanned as events. (§4.3/§4.11)
+
+- **D-10 — GUI v1 visual system** (2026-09-30, change `web-design-system`). GUI v1 ships a modern visual
+  design, overriding event-list-screen's deferral of look and feel to v2, and does it inside D-8's budget:
+  plain CSS in cascade layers (`reset, tokens, base, components, screens`); one token set whose colors
+  are OKLCH `light-dark()` values (a cool neutral ramp, one indigo accent, five status tones measured
+  to WCAG AA in both schemes); system fonts, no web font; inline-SVG icons (Lucide paths, copied as
+  source); native `<dialog>` for confirmations. Status is never shown by color alone: every status
+  pairs its words with an icon. The color scheme follows the OS unless the operator picks Light or
+  Dark, a per-browser preference, not project state. Later slices add their own stylesheets and
+  reuse the shared primitives (`web/README.md`, "Design system"). (§4.10)
 
 ---
 

@@ -1,0 +1,141 @@
+/* The event list (`EventList.tsx`). */
+@layer screens {
+  /* Column widths, shared by every year's table; the event column takes the rest. */
+  .event-table {
+    & .col-date {
+      inline-size: 7rem;
+    }
+
+    & .col-clips {
+      inline-size: 9.5rem;
+    }
+
+    & .col-render {
+      inline-size: 30%;
+    }
+
+    & .col-job {
+      inline-size: 12.5rem;
+    }
+  }
+
+  .attention-table {
+    & .col-folder {
+      inline-size: 30%;
+    }
+
+    & .col-problem {
+      inline-size: 15rem;
+    }
+  }
+
+  .cell-date {
+    color: var(--fg-muted);
+    white-space: nowrap;
+  }
+
+  .cell-event {
+    overflow-wrap: anywhere;
+
+    & a {
+      font-weight: 500;
+    }
+  }
+
+  .event-location {
+    color: var(--fg-muted);
+  }
+
+  .cell-clips {
+    font-variant-numeric: tabular-nums;
+
+    & .badge {
+      margin-inline-start: var(--s-1);
+    }
+  }
+
+  .cell-job .job-cell {
+    display: grid;
+    justify-items: start;
+    gap: 0.125rem;
+  }
+
+  .cell-folder,
+  .cell-fix {
+    overflow-wrap: anywhere;
+  }
+
+  .cell-folder {
+    font-weight: 500;
+  }
+
+  /* "Needs attention" reads as a warning group. */
+  .attention-panel {
+    border-color: color-mix(in oklab, var(--warn) 40%, var(--border));
+
+    & .panel-header {
+      border-bottom-color: color-mix(in oklab, var(--warn) 30%, var(--border));
+      background: var(--warn-bg);
+      color: var(--warn-fg);
+    }
+
+    & .panel-meta {
+      color: var(--warn-fg);
+    }
+  }
+
+  /* A narrow panel: each event becomes a small card, every fact kept. */
+  @container (width < 40rem) {
+    .event-table tbody tr {
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-areas:
+        'event event'
+        'date clips'
+        'render render'
+        'job job';
+    }
+
+    .event-table .cell-event {
+      grid-area: event;
+    }
+
+    .event-table .cell-date {
+      grid-area: date;
+    }
+
+    .event-table .cell-clips {
+      grid-area: clips;
+    }
+
+    .event-table .cell-render {
+      grid-area: render;
+    }
+
+    .event-table .cell-job {
+      grid-area: job;
+    }
+
+    .event-table .cell-job .job-cell {
+      display: inline-flex;
+    }
+
+    .attention-table tbody tr {
+      grid-template-areas:
+        'folder'
+        'problem'
+        'fix';
+    }
+
+    .attention-table .cell-folder {
+      grid-area: folder;
+    }
+
+    .attention-table .cell-problem {
+      grid-area: problem;
+    }
+
+    .attention-table .cell-fix {
+      grid-area: fix;
+    }
+  }
+}
