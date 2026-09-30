@@ -34,7 +34,10 @@ the page in place, keeping what is shown until the new read answers. One WebSock
 per tab (`src/jobs/store.ts`) carries every job, reconnects by itself, and reads once any
 job that ended while it was down. Toasts tell how renders started in the tab ended.
 Jobs progress only while an `auto-reel worker` runs against the same database; with
-none, a job shows "Waiting for a worker".
+none, a job shows "Waiting for a worker". While an event's `reel.yaml` lists a clip
+missing from disk, its render would fail, so neither the page nor the row offers one:
+the page says which clip (or how many) and to restore it or remove it in Edit mode,
+and the row says "Blocked by missing clips". A job already queued keeps its Cancel.
 
 The event page's **Edit mode** (slice D) is the client's first write. **Edit** reads the
 event's `reel.yaml` (`GET …/reel` and its `ETag`) and turns the page into an editor:
@@ -43,12 +46,15 @@ field inherits from the folder name, and says so), and each chapter's clips as a
 to reorder — drag a clip's handle (mouse, pen or touch), lift it from the keyboard
 (Space or Enter, the arrows, Space or Enter; Escape cancels), or press its Move up /
 Move down. Clips stay in their chapter; ignored clips are listed but never move. A
-sticky save bar says what changed. **Save** sends one whole-document `PUT` under
-`If-Match` with only the operator's edits applied (`edit/draft.ts`); a failure keeps
-the edits and says why, and a conflict offers Reload latest or Overwrite with mine. A
-save never enqueues a render. The list's "Needs attention" folder names open their
-event's page; when an event's date or title is unusable, that page shows the failure
-and a form to fix them.
+missing clip (listed in `reel.yaml`, not on disk) has a **Remove** that takes it out
+of the play order into a "Removed from reel.yaml when you save" list, with **Undo**
+until Save; Save then drops only its `reel.yaml` entry and its own per-clip
+properties, and no file on disk is touched. A sticky save bar says what changed.
+**Save** sends one whole-document `PUT` under `If-Match` with only the operator's
+edits applied (`edit/draft.ts`); a failure keeps the edits and says why, and a
+conflict offers Reload latest or Overwrite with mine. A save never enqueues a render.
+The list's "Needs attention" folder names open their event's page; when an event's
+date or title is unusable, that page shows the failure and a form to fix them.
 
 Unsaved edits are never discarded silently: closing or reloading the tab gets the
 browser's own prompt, and Back, Forward, a link, a typed address, Refresh and Stop
@@ -92,17 +98,17 @@ src/
 │   └── reel.ts           the editorial read and write: ETag in, If-Match out
 ├── edit/
 │   ├── EventEditor.tsx   Edit mode: the reel read, the save bar, saves and failures
-│   ├── ClipOrderList.tsx one chapter's clips to reorder: drag, keyboard, buttons
+│   ├── ClipOrderList.tsx one chapter's clips to reorder: drag, keyboard, buttons; Remove / Undo
 │   ├── MetadataForm.tsx  title, date, location, description, and inherited values
 │   ├── SaveBar.tsx       the sticky save bar and a failed save's alert
-│   ├── draft.ts          the edit model: write body, moved clips, dirty (pure)
+│   ├── draft.ts          the edit model: write body, moved and removed clips, dirty (pure)
 │   ├── unsaved.ts        the unsaved-changes guard and its question
 │   └── edit.css          Edit mode's fields, rows and save bar
 ├── jobs/
 │   ├── store.ts          the one jobs WebSocket: live jobs, reconnect, endings (toasts, re-reads)
 │   ├── useJob.ts         which job an event shows (live or last read); the connection's counts
 │   ├── eta.ts            the time-left estimate (pure)
-│   ├── labels.ts         words for cancel outcomes and the connection
+│   ├── labels.ts         words for cancel outcomes, the connection and a held-back render
 │   ├── JobsIndicator.tsx the header's connection state and counts
 │   ├── JobProgress.tsx   a job's status words, bar and figures
 │   ├── RenderControl.tsx the event page's Render, Render anyway and Cancel region
@@ -278,10 +284,10 @@ HLD §7).
   default), `ui/Skeleton` (`SkeletonRows`, `LoadStatus`), `ui/Dialog`, `ui/toast`
   with `ui/ToastRegion`, and `markEventsChanged()`. Classes on native elements:
   `btn` plus `btn-primary`, `btn-secondary`, `btn-ghost` or `btn-danger` (plus
-  `btn-icon`); `pill`, `badge` and `alert` with `data-tone`; `panel` (with
-  `panel-header` and `panel-meta`); `data-table`; `segmented`; `dialog-actions`;
-  `visually-hidden`. The header's `<div className="shell-status">` is the slot for
-  status indicators.
+  `btn-icon`, or `btn-compact` for a control inside a row); `pill`, `badge` and
+  `alert` with `data-tone`; `panel` (with `panel-header` and `panel-meta`);
+  `data-table`; `segmented`; `dialog-actions`; `visually-hidden`. The header's
+  `<div className="shell-status">` is the slot for status indicators.
 - **Busy controls.** A control the operator pressed that now waits for an answer
   gets `aria-disabled="true"` and `aria-busy="true"` and ignores clicks (a ref
   guard) until the answer. It never gets the `disabled` attribute, which drops
