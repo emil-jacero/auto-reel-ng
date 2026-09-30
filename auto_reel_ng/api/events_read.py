@@ -103,6 +103,24 @@ def resolve_event_dir(settings: ApiSettings, event_id: str) -> Path:
     return candidate
 
 
+def named_event_dir(settings: ApiSettings, event_id: str) -> Path:
+    """The event directory exactly as ``event_id`` spells it: ``project_root / event_id``.
+
+    A job stores the id verbatim and the worker renders ``project_root / event_dir``,
+    so an enqueue judges this path — its folder name, its ``reel.yaml`` — never the
+    folder a symlink resolves to: an in-project symlinked event is an event of its own,
+    as the layout walk and the CLI's batch commands see it. :func:`resolve_event_dir`
+    still decides whether the id names a directory inside the root, and the spelled
+    path must be one too (a ``..`` through a missing folder resolves lexically, but no
+    worker could open it): otherwise :class:`EventNotFoundError`.
+    """
+    resolve_event_dir(settings, event_id)
+    event_dir = settings.project_root / event_id
+    if not event_dir.is_dir():
+        raise EventNotFoundError(event_id)
+    return event_dir
+
+
 def _list_event_refs(settings: ApiSettings) -> List[EventRef]:
     """Walk the configured layout from ``settings.walk_root`` (reuses the CLI's scan path)."""
     layout = get_layout(settings.layout_name)
@@ -458,12 +476,14 @@ def _output_claim(event_dir: Path, order: ClipOrder, today: DateValue) -> Option
     The loader and the processable rule the CLI's batch commands select claimants
     with (``cli/_checked_document``): an unparseable or unreadable ``reel.yaml``, or
     no real date or title, claims no path. An ``OSError`` claims none either — the
-    events list's per-event isolation — where the CLI aborts its run on it.
+    events list's per-event isolation — where the CLI aborts its run on it. So does a
+    ``ValueError``: the loader lets one escape for a ``reel.yaml`` that is not UTF-8
+    (``UnicodeDecodeError``) or holds an impossible date, instead of a ``ReelParseError``.
     """
     try:
         document, _seeded = load_event_document(event_dir, order=order)
         require_processable(event_dir, document.metadata, today=today)
-    except (ReelError, OSError):  # an EventMetadataError is a ReelError
+    except (ReelError, OSError, ValueError):  # an EventMetadataError is a ReelError
         return None
     return output_relpath(document.metadata)
 
@@ -479,33 +499,32 @@ def output_collision(
     ``render.find_output_collisions``. ``None`` when nothing else claims the path,
     or when ``event_dir`` fails on its own and claims none.
 
-    A walked event that resolves to ``event_dir`` is the named event itself, however
-    the walk spells it, so the named event never collides with itself. Every other
-    walked event claims under its own walk path, as each list row does, and is named
-    by the id that path gives it: a symlinked event folder is named as the list names
-    it, wherever it points, and two rows aliasing one folder keep both their claims.
+    ``event_dir`` is the event as its job names it (:func:`named_event_dir`), and every
+    claimant is keyed by its own id, never by the folder it resolves to, as the CLI
+    keys its walk: only the walked event with the named event's id is the named event
+    itself. A symlinked alias is therefore a claimant of its own, claiming the path its
+    own folder name and ``reel.yaml`` give it — the path a worker would render it to —
+    and it is named by its in-root id, wherever it points.
 
     The walk's own failure (``LayoutError``, ``OSError``) propagates: the caller must
     not enqueue an event whose collision it could not check (Principle I).
     """
-    event_dir = event_dir.resolve()  # a no-op for resolve_event_dir's result
     target = _output_claim(event_dir, settings.clip_order, today)
     if target is None:
         return None
-    claims: Dict[Path, PurePosixPath] = {event_dir: target}
-    ids: Dict[Path, str] = {}
+    named_id = event_id_for(settings, event_dir)
+    claims: Dict[str, PurePosixPath] = {named_id: target}
     for ref in _list_event_refs(settings):
-        if ref.event_dir.resolve() == event_dir:
-            continue
+        event_id = event_id_for(settings, ref.event_dir)
+        if event_id == named_id:
+            continue  # the named event itself: already claimed above
         claim = _output_claim(ref.event_dir, settings.clip_order, today)
         if claim is not None:
-            claims[ref.event_dir] = claim
-            ids[ref.event_dir] = event_id_for(settings, ref.event_dir)
-    others = find_output_collisions(claims).get(event_dir, ())
+            claims[event_id] = claim
+    others = find_output_collisions(claims).get(named_id, ())
     if not others:
         return None
-    # Every other claimant came from the walk, so each one has an id.
-    return OutputCollision(output_path=target, claimed_by=tuple(sorted(ids[o] for o in others)))
+    return OutputCollision(output_path=target, claimed_by=tuple(sorted(others)))
 
 
 __all__ = [
@@ -513,6 +532,7 @@ __all__ = [
     "EventReadError",
     "event_id_for",
     "resolve_event_dir",
+    "named_event_dir",
     "list_events",
     "get_event",
     "get_reel",

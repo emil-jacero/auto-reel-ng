@@ -83,7 +83,9 @@ first, so slice E stays a pure `web/` change (Principle VIII).
   - *Consequence:* `2024/./Blandat` or `2024/Blandat/` gets a job whose `event_dir` differs from the
     list's `2024/Blandat`. It bypasses the one-active-job index (a duplicate render of one event is
     possible), and it never matches the GUI's `event_dir === event_id`. `2024` or `.` is accepted as an
-    event. The collision check itself is not fooled: its keys are resolved folders.
+    event. The collision check judges the path an id spells: `./` and a trailing `/` normalize away, so
+    such a spelling is its own listed event, while a `..` spelling is a claimant of its own and
+    collides with the listed event it names (and a `..` through a missing folder is a 404).
   - *Why it is safe for now:* the GUI only sends ids that `GET /api/v1/events` returned.
 - **A published 503 on the jobs routes.** A database failure on `POST /jobs`, `GET /jobs`, `GET /jobs/{id}`
   or cancel stays an unshaped 500, where the events reads answer 503 with `check: database`.

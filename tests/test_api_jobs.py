@@ -14,6 +14,7 @@ from sqlalchemy.orm import sessionmaker
 
 from auto_reel_ng.api.app import create_app
 from auto_reel_ng.api.settings import resolve_api_settings
+from auto_reel_ng.cli.main import main
 from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.event import DEFAULT_CLIP_ORDER
 from auto_reel_ng.persistence.engine import session_scope
@@ -26,6 +27,10 @@ pytestmark = pytest.mark.requires_db
 #: The dev library's case-only twins (``scripts/make_dev_library.py``).
 KALAS = "2024/2024-07-14 - Kalas"
 KALAS_LOWER = "2024/2024-07-14 - kalas"
+
+#: An in-project symlinked alias of the Kalas folder, and a real folder named like it.
+FEST = "2024/2024-07-20 - Fest"
+FEST_LOWER = "2024/2024-07-20 - fest"
 
 
 def _touch(path: Path) -> None:
@@ -275,15 +280,119 @@ def test_an_event_outside_any_collision_still_enqueues(client: TestClient, proje
     assert response.status_code == 201
 
 
-def test_events_that_fail_on_their_own_claim_no_path(client: TestClient, project: Path) -> None:
+@pytest.mark.parametrize(
+    "reel_yaml",
+    [
+        b": [",
+        b"version: 0\nmetadata:\n  title: a\n  date: 2024-02-30\n",  # a ValueError to the loader
+        b"version: 0\nmetadata:\n  title: a \xff\n",  # not UTF-8: a UnicodeDecodeError
+    ],
+    ids=["unparseable-reel-yaml", "impossible-yaml-date", "not-utf-8"],
+)
+def test_events_that_fail_on_their_own_claim_no_path(
+    client: TestClient, project: Path, reel_yaml: bytes
+) -> None:
     _touch(project / "2024" / "2024-02-30 - Omöjligt datum" / "00400.mp4")
-    unparseable = project / "2024" / "2024-06-21 - a"  # A's twin, if it parsed
-    _touch(unparseable / "00400.mp4")
-    (unparseable / "reel.yaml").write_text(": [", encoding="utf-8")
+    unreadable = project / "2024" / "2024-06-21 - a"  # A's twin, if it could be read
+    _touch(unreadable / "00400.mp4")
+    (unreadable / "reel.yaml").write_bytes(reel_yaml)
 
     response = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"})
 
-    assert response.status_code == 201
+    assert response.status_code == 201  # never a 500 for a sibling's document
+
+
+@pytest.fixture
+def cli_database(monkeypatch: pytest.MonkeyPatch, postgres_container: str) -> None:
+    """Point the CLI's ``DATABASE_URL`` at the test container, as ``test_cli_jobs.py`` does."""
+    monkeypatch.setenv("DATABASE_URL", postgres_container)
+
+
+def _cli_refused(project: Path, capsys: pytest.CaptureFixture[str]) -> set[str]:
+    """The folders ``auto-reel enqueue <project>`` refuses for an output collision."""
+    capsys.readouterr()  # drop anything printed before
+    main(["enqueue", str(project)])
+    return {
+        line.removeprefix("ERROR  ").split(": ", 1)[0]
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("ERROR  ") and ": output path " in line
+    }
+
+
+@pytest.mark.parametrize(
+    ("real", "authored", "answers"),
+    [
+        # The alias claims the path its own folder name gives it, as the worker renders
+        # it: it and the real fest refuse each other; Kalas itself collides with nothing.
+        ((KALAS, FEST_LOWER), False, {FEST: [FEST_LOWER], FEST_LOWER: [FEST], KALAS: None}),
+        # Nothing else claims the alias's path: it enqueues while Kalas's twins refuse.
+        ((KALAS, KALAS_LOWER), False, {FEST: None, KALAS: [KALAS_LOWER], KALAS_LOWER: [KALAS]}),
+        # The alias reads the folder's authored reel.yaml: both claim Kalas.mp4, so
+        # neither gets a job (no second render of one folder past the one-active-job rule).
+        ((KALAS,), True, {KALAS: [FEST], FEST: [KALAS]}),
+    ],
+    ids=[
+        "alias-beside-its-name-twin",
+        "alias-of-a-colliding-folder",
+        "alias-of-an-authored-folder",
+    ],
+)
+@pytest.mark.usefixtures("cli_database")
+def test_an_in_project_alias_is_answered_as_the_cli_answers_it(
+    client: TestClient,
+    store: JobStore,
+    project: Path,
+    capsys: pytest.CaptureFixture[str],
+    real: tuple[str, ...],
+    authored: bool,
+    answers: dict[str, Optional[list[str]]],
+) -> None:
+    for event_id in real:
+        _touch(project / event_id / "00400.mp4")
+    if authored:
+        (project / KALAS / "reel.yaml").write_text(
+            "version: 0\nmetadata:\n  title: Kalas\n  date: 2024-07-14\n", encoding="utf-8"
+        )
+    (project / FEST).symlink_to(project / KALAS)
+
+    for event_id, claimed_by in answers.items():
+        response = client.post("/api/v1/jobs", json={"event_id": event_id})
+        if claimed_by is None:
+            assert response.status_code == 201, event_id
+        else:
+            assert response.status_code == 409, event_id
+            problem = response.json()
+            assert (problem["conflict"], problem["claimed_by"]) == ("output_collision", claimed_by)
+    enqueued = {event_id for event_id, claimed_by in answers.items() if claimed_by is None}
+    assert {job.event_dir for job in _all_jobs(store)} == enqueued
+    refused = {Path(event_id).name for event_id in answers if event_id not in enqueued}
+    assert _cli_refused(project, capsys) == refused  # the CLI's own answer
+
+
+def test_an_alias_is_gated_at_its_own_output(client: TestClient, project: Path) -> None:
+    """The gate judges the path the job names, as the worker will: not the alias's target."""
+    _touch(project / KALAS / "00400.mp4")
+    # No authored metadata: each row takes its title and date from its own folder name.
+    (project / KALAS / "reel.yaml").write_text("version: 0\n", encoding="utf-8")
+    _adopt_and_write_manifest(project, KALAS)  # Kalas.mp4 rendered: Kalas is fresh
+    (project / FEST).symlink_to(project / KALAS)
+
+    assert client.post("/api/v1/jobs", json={"event_id": KALAS}).status_code == 200  # fresh
+    # Fest.mp4 was never rendered: the alias is stale, not "fresh" by its target's movie.
+    assert client.post("/api/v1/jobs", json={"event_id": FEST}).status_code == 201
+
+
+def test_an_id_spelled_through_a_missing_folder_is_unknown(
+    client: TestClient, store: JobStore
+) -> None:
+    """It resolves lexically to A, but the worker would open the path it spells."""
+    event_id = "2024/missing/../2024-06-21 - A"
+
+    response = client.post("/api/v1/jobs", json={"event_id": event_id})
+
+    assert response.status_code == 404
+    assert response.json()["event_id"] == event_id
+    assert _all_jobs(store) == []
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")

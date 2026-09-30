@@ -75,7 +75,9 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
     store: JobStore = request.app.state.job_store
 
     try:
-        event_dir = events_read.resolve_event_dir(settings, payload.event_id)
+        # The event as the job names it and the worker renders it, not the folder a
+        # symlink resolves to: the collision check and the gate judge that path.
+        event_dir = events_read.named_event_dir(settings, payload.event_id)
     except events_read.EventNotFoundError:
         return not_found(
             f"no event {payload.event_id!r} under the configured project root",
