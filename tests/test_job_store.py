@@ -3,20 +3,35 @@ queries, and cancel (real Postgres — D-P1/T3)."""
 
 from __future__ import annotations
 
+import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import timedelta
+from typing import Callable, TypeVar
 
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import sessionmaker
 
 from auto_reel_ng.errors import IllegalJobTransitionError
 from auto_reel_ng.persistence.engine import session_scope
-from auto_reel_ng.persistence.job_store import JobStore
+from auto_reel_ng.persistence.job_store import CancelOutcome, JobStore, Submission
 from auto_reel_ng.persistence.models import Job, JobStatus
 
 pytestmark = pytest.mark.requires_db
 
+_T = TypeVar("_T")
+
 PROJECT_ROOT = "/project"
+
+#: Dev-library event ids (``scripts/make_dev_library.py``) the spec scenarios name.
+GRILLNING = "2024/2024-06-27 - Grillning med grannar"
+BLANDAT = "2024/Blandat"
+TRASIG = "2024/2024-10-05 - Trasig"
+BADUTFLYKT = "2024/2024-08-02 - Badutflykt - Varberg"
+MIDSOMMAR = "2023/2023-06-23 - Midsommar - Dalarna"
 
 # --------------------------------------------------------------------------- #
 # 4.1 enqueue
@@ -134,6 +149,54 @@ def test_active_job_is_none_when_absent_or_terminal(job_store: JobStore) -> None
     job_store.claim_next("worker")
     job_store.transition(job_id, JobStatus.DONE)
     assert job_store.active_job(PROJECT_ROOT, "event") is None
+
+
+# --------------------------------------------------------------------------- #
+# submit reports whether it created the job (jobs-client-contract 2.1)
+# --------------------------------------------------------------------------- #
+
+
+def test_submit_reports_the_job_it_created(job_store: JobStore) -> None:
+    submission = job_store.submit(
+        PROJECT_ROOT, GRILLNING, device="renderD128", force=True, fingerprint="abc123"
+    )
+
+    assert submission.created is True
+    queued = job_store.list_by_status(JobStatus.QUEUED)
+    assert [job.id for job in queued] == [submission.job_id]
+    job = queued[0]
+    assert (job.project_root, job.event_dir) == (PROJECT_ROOT, GRILLNING)
+    assert (job.device, job.force, job.fingerprint) == ("renderD128", True, "abc123")
+
+
+def test_submit_for_an_active_event_reports_the_existing_job_as_not_created(
+    job_store: JobStore,
+) -> None:
+    first = job_store.submit(PROJECT_ROOT, BLANDAT)
+
+    second = job_store.submit(PROJECT_ROOT, BLANDAT)
+
+    assert second == Submission(job_id=first.job_id, created=False)
+    assert [job.id for job in job_store.list_by_status(JobStatus.QUEUED)] == [first.job_id]
+
+
+def test_concurrent_submits_agree_on_one_creation(job_store: JobStore) -> None:
+    # Both threads are released together, so the two inserts race on the partial
+    # unique index instead of simply running one after the other.
+    barrier = threading.Barrier(2)
+
+    def _submit() -> Submission:
+        barrier.wait(timeout=10)
+        return job_store.submit(PROJECT_ROOT, GRILLNING)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(_submit) for _ in range(2)]
+        submissions = [f.result() for f in as_completed(futures)]
+
+    assert sorted(submission.created for submission in submissions) == [False, True]
+    assert submissions[0].job_id == submissions[1].job_id
+    queued = job_store.list_by_status(JobStatus.QUEUED)
+    assert [job.id for job in queued] == [submissions[0].job_id]
 
 
 # --------------------------------------------------------------------------- #
@@ -308,6 +371,77 @@ def test_list_by_status_filters_other_statuses_out(job_store: JobStore) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# list_finished_since (jobs-client-contract 2.1)
+# --------------------------------------------------------------------------- #
+
+
+def _finish(job_store: JobStore, event_dir: str, status: JobStatus = JobStatus.DONE) -> uuid.UUID:
+    """Enqueue, claim and terminate a job for ``event_dir``; the queue must be empty."""
+    job_id = job_store.enqueue(PROJECT_ROOT, event_dir)
+    claimed = job_store.claim_next("worker-1")
+    assert claimed is not None and claimed.id == job_id
+    job_store.transition(
+        job_id, status, error="probe failed" if status is JobStatus.FAILED else None
+    )
+    return job_id
+
+
+def test_list_finished_since_returns_the_jobs_finished_after_the_instant(
+    job_store: JobStore,
+) -> None:
+    _finish(job_store, MIDSOMMAR)  # finished before the first read: never returned
+
+    first = job_store.list_finished_since(None, overlap=timedelta(0))
+    assert first.as_of.tzinfo is not None
+    assert first.jobs == []
+
+    trasig = _finish(job_store, TRASIG, JobStatus.FAILED)
+    job_store.enqueue(PROJECT_ROOT, BADUTFLYKT)
+    job_store.claim_next("worker-2")  # running alongside
+    job_store.enqueue(PROJECT_ROOT, GRILLNING)  # queued alongside
+
+    second = job_store.list_finished_since(first.as_of, overlap=timedelta(0))
+
+    assert [(job.id, job.status, job.error) for job in second.jobs] == [
+        (trasig, JobStatus.FAILED, "probe failed")
+    ]
+    assert second.as_of >= first.as_of
+
+
+def test_list_finished_since_overlap_reaches_back_before_the_instant(
+    job_store: JobStore, jobs_session_factory: sessionmaker
+) -> None:
+    job_id = _finish(job_store, TRASIG, JobStatus.FAILED)
+    as_of = job_store.list_finished_since(None, overlap=timedelta(0)).as_of
+    with session_scope(jobs_session_factory) as session:
+        job = session.get(Job, job_id)
+        assert job is not None
+        job.finished_at = as_of - timedelta(seconds=5)
+
+    assert job_store.list_finished_since(as_of, overlap=timedelta(0)).jobs == []
+    reached = job_store.list_finished_since(as_of, overlap=timedelta(seconds=30)).jobs
+    assert [job.id for job in reached] == [job_id]
+
+
+def test_list_finished_since_orders_by_finished_at(
+    job_store: JobStore, jobs_session_factory: sessionmaker
+) -> None:
+    start = job_store.list_finished_since(None, overlap=timedelta(0)).as_of
+    earlier_created = _finish(job_store, GRILLNING)
+    later_created = _finish(job_store, TRASIG, JobStatus.FAILED)
+    with session_scope(jobs_session_factory) as session:
+        # Stamp the job created first as the one that finished last.
+        for job_id, seconds in ((earlier_created, 10), (later_created, 5)):
+            job = session.get(Job, job_id)
+            assert job is not None
+            job.finished_at = start + timedelta(seconds=seconds)
+
+    finished = job_store.list_finished_since(start, overlap=timedelta(0)).jobs
+
+    assert [job.id for job in finished] == [later_created, earlier_created]
+
+
+# --------------------------------------------------------------------------- #
 # 4.6 cancel_queued
 # --------------------------------------------------------------------------- #
 
@@ -387,6 +521,140 @@ def test_request_cancel_is_a_noop_for_a_terminal_job(
 
 def test_request_cancel_is_a_noop_for_a_missing_job(job_store: JobStore) -> None:
     assert job_store.request_cancel(uuid.uuid4()) is None
+
+
+# --------------------------------------------------------------------------- #
+# cancel: one locked transaction reporting its outcome (jobs-client-contract 2.2)
+# --------------------------------------------------------------------------- #
+
+
+def test_cancel_outcomes_are_a_closed_vocabulary() -> None:
+    assert [outcome.value for outcome in CancelOutcome] == [
+        "flagged-running",
+        "canceled-queued",
+        "no-op-terminal",
+    ]
+
+
+def test_cancel_flags_a_running_job(job_store: JobStore) -> None:
+    job_id = job_store.enqueue(PROJECT_ROOT, BADUTFLYKT)
+    job_store.claim_next("worker-1")
+
+    result = job_store.cancel(job_id)
+
+    assert result is not None
+    assert result.outcome is CancelOutcome.FLAGGED_RUNNING
+    assert (result.job.status, result.job.cancel_requested) == (JobStatus.RUNNING, True)
+    job = job_store.get(job_id)
+    assert job is not None
+    assert (job.status, job.cancel_requested) == (JobStatus.RUNNING, True)
+
+
+def test_cancel_cancels_a_queued_job(job_store: JobStore) -> None:
+    job_id = job_store.enqueue(PROJECT_ROOT, BLANDAT)
+
+    result = job_store.cancel(job_id)
+
+    assert result is not None
+    assert result.outcome is CancelOutcome.CANCELED_QUEUED
+    assert result.job.status == JobStatus.CANCELED
+    assert result.job.finished_at is not None
+    assert job_store.claim_next("worker-1") is None
+
+
+def test_cancel_leaves_a_terminal_job_unchanged(job_store: JobStore) -> None:
+    job_id = _finish(job_store, TRASIG, JobStatus.FAILED)
+    before = job_store.get(job_id)
+    assert before is not None
+
+    result = job_store.cancel(job_id)
+
+    assert result is not None
+    assert result.outcome is CancelOutcome.NO_OP_TERMINAL
+    assert result.job.status == JobStatus.FAILED
+    after = job_store.get(job_id)
+    assert after is not None
+    assert (after.status, after.cancel_requested, after.finished_at, after.error) == (
+        JobStatus.FAILED,
+        False,
+        before.finished_at,
+        before.error,
+    )
+
+
+def test_cancel_reports_a_missing_job_as_none(job_store: JobStore) -> None:
+    assert job_store.cancel(uuid.uuid4()) is None
+
+
+def _cancel_during_a_held_claim(
+    session_factory: sessionmaker, job_id: uuid.UUID, cancel: Callable[[uuid.UUID], _T]
+) -> _T:
+    """Run ``cancel(job_id)`` while another transaction holds the queued row mid-claim.
+
+    The claim is ``claim_next``'s own write (``FOR UPDATE SKIP LOCKED``, then
+    ``running`` with a worker id), left uncommitted for ~0.5 s after the cancel
+    starts: the cancel must wait for the row rather than act on the ``queued``
+    version it can still read. Committing the claim releases it.
+    """
+    pool = ThreadPoolExecutor(max_workers=1)
+    claim = session_factory()
+    try:
+        job = claim.execute(
+            select(Job).where(Job.id == job_id).with_for_update(skip_locked=True)
+        ).scalar_one()
+        job.status = JobStatus.RUNNING
+        job.worker_id = "worker-1"
+        job.started_at = func.now()  # pylint: disable=not-callable
+        claim.flush()
+        future = pool.submit(cancel, job_id)
+        time.sleep(0.5)
+        blocked = not future.done()
+        claim.commit()
+    finally:
+        claim.close()  # rolls an uncommitted claim back, so the cancel thread can finish
+        pool.shutdown(wait=True)
+    assert blocked, "the cancel did not wait for the transaction holding the row"
+    return future.result()
+
+
+def test_cancel_waits_for_a_claim_holding_the_row(
+    job_store: JobStore, jobs_session_factory: sessionmaker
+) -> None:
+    job_id = job_store.enqueue(PROJECT_ROOT, BLANDAT)
+
+    result = _cancel_during_a_held_claim(jobs_session_factory, job_id, job_store.cancel)
+
+    assert result is not None
+    assert result.outcome is CancelOutcome.FLAGGED_RUNNING
+    job = job_store.get(job_id)
+    assert job is not None
+    assert (job.status, job.worker_id, job.cancel_requested) == (
+        JobStatus.RUNNING,
+        "worker-1",
+        True,
+    )
+    assert job.finished_at is None
+
+
+def test_request_cancel_waits_for_a_claim_holding_the_row(
+    job_store: JobStore, jobs_session_factory: sessionmaker
+) -> None:
+    # The lost update this guards: an unlocked read sees ``queued``, and the write
+    # then overwrites the claim's committed ``running`` with ``canceled`` while the
+    # worker renders on, unflagged, to a row that says it was canceled.
+    job_id = job_store.enqueue(PROJECT_ROOT, BLANDAT)
+
+    result = _cancel_during_a_held_claim(jobs_session_factory, job_id, job_store.request_cancel)
+
+    assert result is not None
+    assert (result.status, result.cancel_requested) == (JobStatus.RUNNING, True)
+    job = job_store.get(job_id)
+    assert job is not None
+    assert (job.status, job.worker_id, job.cancel_requested) == (
+        JobStatus.RUNNING,
+        "worker-1",
+        True,
+    )
 
 
 # --------------------------------------------------------------------------- #
