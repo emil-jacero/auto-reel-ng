@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Gate: none. `clip-thumbnail-endpoint` (T2) waits for this change. Check the starting point:
+- [x] 1.1 Gate: none. `clip-thumbnail-endpoint` (T2) waits for this change. Check the starting point:
   - `test ! -e auto_reel_ng/thumbs`
   - `git diff 47e46f4 -- openspec/specs/headless-cli/spec.md` prints nothing. If the `auto-reel entry point with subcommands` requirement differs, re-base this change's MODIFIED block on the current text before implementing.
   - `git diff --stat 47e46f4 -- auto_reel_ng/errors.py auto_reel_ng/config/project.py auto_reel_ng/cli/` is informational. Code drift there merges normally, and only spec drift needs the re-base.
@@ -8,9 +8,11 @@
 
   Verify: every check holds, or the re-base or the stop is recorded in this task.
 
+  Result (at `64ac980`): every check holds. No `auto_reel_ng/thumbs`, no headless-cli spec diff, no code drift in `errors.py`, `config/project.py` or `cli/`, and no other open change (main checkout or any worktree) has a `headless-cli` delta. No re-base needed.
+
 ## 2. config/ + thumbs/ — settings and errors
 
-- [ ] 2.1 Add the settings and errors (design "Settings", "Two error types"):
+- [x] 2.1 Add the settings and errors (design "Settings", "Two error types"):
   - `errors.py`: `ThumbnailError(EngineError)` and `ThumbnailCacheError(EngineError)`, as siblings, each with a docstring
   - `config/project.py`: `ProjectConfig.thumbnails: Mapping[str, object]`, parsed with `_require_mapping(data.get("thumbnails"), "thumbnails", source)`, and the module docstring updated
   - new `auto_reel_ng/thumbs/__init__.py` and `thumbs/settings.py`: `DEFAULT_POSITION = 0.25`, `ThumbnailSettings`, `default_cache_dir()`, `resolve_thumbnail_settings(config, project_root)`. `__init__.py` exports `ThumbnailSettings` and `resolve_thumbnail_settings`.
@@ -36,7 +38,7 @@
 
 ## 3. thumbs/ — key, arguments, extraction
 
-- [ ] 3.1 Add `thumbs/thumbnail.py` with `THUMBNAIL_VERSION = 1`, `THUMBNAIL_BOX = (320, 180)`, `thumbnail_key`, `thumbnail_path` and `thumbnail_args` (design "The extraction command, measured", "Cache location, key and write"). Export them from `thumbs/__init__.py`. Tests in a new `tests/test_thumbs.py`:
+- [x] 3.1 Add `thumbs/thumbnail.py` with `THUMBNAIL_VERSION = 1`, `THUMBNAIL_BOX = (320, 180)`, `thumbnail_key`, `thumbnail_path` and `thumbnail_args` (design "The extraction command, measured", "Cache location, key and write"). Export them from `thumbs/__init__.py`. Tests in a new `tests/test_thumbs.py`:
   - **golden arguments:** `thumbnail_args(Path("s1710001.mp4"), at=15.36, output=Path("/c/.k.x.tmp"))` equals the exact list in the design, with `-ss 15.360` before `-i`, `-update 1` before `-y`, and no `-hwaccel`
   - **the key** is stable across calls, and changes when:
     - one byte is appended to the clip
@@ -51,7 +53,7 @@
   - `.venv/bin/python -m pytest tests/test_thumbs.py` passes
   - mypy is clean
   - `grep -rn "subprocess\|vaapi\|nvenc\|qsv\|cuda" auto_reel_ng/thumbs` prints nothing
-- [ ] 3.2 Add `thumbnail_for` with the six steps in design "Cache location, key and write", and export it from `thumbs/__init__.py`, which then exports `thumbnail_for`, `thumbnail_path`, `resolve_thumbnail_settings` and `ThumbnailSettings` (the names T2 imports). Tests go in `tests/test_thumbs.py`. They use a fake runtime that records its argument lists and writes JPEG bytes to the last argument, or raises, plus a monkeypatched `thumbs.thumbnail.probe_media`:
+- [x] 3.2 Add `thumbnail_for` with the six steps in design "Cache location, key and write", and export it from `thumbs/__init__.py`, which then exports `thumbnail_for`, `thumbnail_path`, `resolve_thumbnail_settings` and `ThumbnailSettings` (the names T2 imports). Tests go in `tests/test_thumbs.py`. They use a fake runtime that records its argument lists and writes JPEG bytes to the last argument, or raises, plus a monkeypatched `thumbs.thumbnail.probe_media`:
   - **a cache hit** returns the existing `<key>.jpg` and calls neither the probe nor the runtime
   - **a missing clip** raises `ThumbnailError` whose message starts with the clip's path
   - **a miss** with duration `61.44` runs once with `-ss 15.360`. Afterwards `<key>.jpg` exists and no `.tmp` file remains in the cache directory.
@@ -68,7 +70,7 @@
   - `.venv/bin/python -m pytest tests/test_thumbs.py` passes
   - mypy is clean
   - `.venv/bin/python -c "from auto_reel_ng.thumbs import ThumbnailSettings, resolve_thumbnail_settings, thumbnail_for, thumbnail_path"` succeeds
-- [ ] 3.3 Add a new `tests/test_thumbs_ffmpeg.py`, with every test marked `has_ffmpeg` and using the `runtime` fixture. The shaped clips come from the existing `make_clip` fixture (`tests/conftest.py`), 1–2 s long. Its `rotate=` already attaches the display matrix in the input-side `-display_rotation` stream-copy pass that ffmpeg ≥ 8 needs; the option is refused after `-i`. Each output's size is read with `run_ffprobe(["-v","error","-show_entries","stream=width,height","-of","csv=p=0", jpg])`:
+- [x] 3.3 Add a new `tests/test_thumbs_ffmpeg.py`, with every test marked `has_ffmpeg` and using the `runtime` fixture. The shaped clips come from the existing `make_clip` fixture (`tests/conftest.py`), 1–2 s long. Its `rotate=` already attaches the display matrix in the input-side `-display_rotation` stream-copy pass that ffmpeg ≥ 8 needs; the option is refused after `-i`. Each output's size is read with `run_ffprobe(["-v","error","-show_entries","stream=width,height","-of","csv=p=0", jpg])`:
   - 1920×1080 gives `320,180`
   - 1080×1920 gives `101,180`
   - 1920×1080 with `rotate=90` gives `101,180`
@@ -86,7 +88,7 @@
 
 ## 4. cli/ — `auto-reel thumbs`
 
-- [ ] 4.1 Register `thumbs` in `cli/main.py`:
+- [x] 4.1 Register `thumbs` in `cli/main.py`:
   - flags `root`, `--years`, `--layout`, `-v`, and `--jobs` with `type=_positive_int` and default 2. `_positive_int` is new: `int(value)`, and `argparse.ArgumentTypeError` below 1. No such helper exists yet.
   - `set_defaults(output=None, func=cmd_thumbs)`
   - the module and `build_parser` docstrings updated: ten subcommands (the latter still says "seven")
@@ -119,7 +121,9 @@
   Verify:
   - `.venv/bin/python -m pytest tests/test_cli_thumbs.py tests/test_cli_main.py` passes
   - mypy is clean
-- [ ] 4.2 Add one `has_ffmpeg` end-to-end test to `tests/test_cli_thumbs.py`, using the real runtime and real `thumbnail_for`:
+
+  Note (implementation): `cmd_thumbs` and its helpers live in a new `cli/thumbnails.py`, not `cli/commands.py`. Adding them there took `commands.py` from 930 to 1,056 lines and failed pylint's `too-many-lines` (1,000) gate, and the repository has no precedent for disabling that check. The module reuses `commands._project_context` unchanged, and the tests monkeypatch `cli.thumbnails.FfmpegRuntime`, `thumbnail_for`, `thumbnail_path` and `ThreadPoolExecutor` instead of the `commands.` names.
+- [x] 4.2 Add one `has_ffmpeg` end-to-end test to `tests/test_cli_thumbs.py`, using the real runtime and real `thumbnail_for`:
   - two generated 1080p clips and a zero-byte `trasig.mp4` in `tmp_path/clips/`, symlinked into three events under `tmp_path/library` so that one clip appears in two events
   - one link lives in `2024-08-20 - Två kapitel - Tjörn/Kvällen/` and is named `grillen, del 1.mp4` (spaces, a comma and Swedish letters)
   - before the first run, every directory under `tmp_path/library` is made read-only (`chmod a-w`). A `finally` restores the modes so `tmp_path` can be cleaned.
@@ -135,7 +139,7 @@
 
 ## 5. docs — HLD and README
 
-- [ ] 5.1 Record the decision (design "Where D-11 is recorded"):
+- [x] 5.1 Record the decision (design "Where D-11 is recorded"):
   - `docs/high-level-design.md`:
     - add the **D-11** entry after D-10 in §7
     - §4.10: v1 gains clip thumbnails (D-11), and v2 keeps "event poster frames"
@@ -155,7 +159,7 @@
 
 ## 6. Verification against the fixture
 
-- [ ] 6.1 Dogfood on a scratch library of symlinks. `auto-reel-media/` is only read; nothing is written there. Build it under the session scratchpad:
+- [x] 6.1 Dogfood on a scratch library of symlinks. `auto-reel-media/` is only read; nothing is written there. Build it under the session scratchpad:
   - `library/2024/2024-06-27 - Grillning med grannar/` with symlinks to the four fixture clips
   - `library/2024/2024-08-20 - Två kapitel - Tjörn/Kvällen/s1710002.mp4`, a symlink
   - `library/2024/2024-10-05 - Trasig/trasig.mp4`, zero bytes
@@ -171,9 +175,11 @@
   - `<scratch>/cache/auto-reel/thumbnails/` holds four `.jpg` files and no `.tmp` file
   - `s1710001.mp4`'s thumbnail is a 320×180 JPEG that differs from an `-ss 0` frame extracted into scratch. Look at both images to confirm it is the 15.36 s shot.
 
+  Result (2026-09-30, ffmpeg 8.1.2, library directories `chmod a-w`): the first run exited 1 with one `ERROR` line (`trasig.mp4`, "File is empty (zero bytes)") and printed `6 clips in 3 events: 4 generated, 1 cached, 1 failed` in 1.76 s wall at the default `--jobs 2`, process start included (≈0.44 s per generated clip, against the design's ≈0.54 s serial and ≈0.26 s at 2 jobs). The second run printed `0 generated, 5 cached, 1 failed` in 0.79 s. `find ../auto-reel-media -newer marker` printed nothing. The cache held four `.jpg` files (13,355, 16,106, 17,249 and 12,844 bytes, the design's sizes) and no `.tmp`. `s1710001.mp4`'s thumbnail is a 320×180 `mjpeg`, a different shot from the `-ss 0` frame, and byte-identical to an explicit `-ss 15.360` extraction.
+
 ## 7. Validation
 
-- [ ] 7.1 Run the validation gates:
+- [x] 7.1 Run the validation gates:
   - `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`
   - `.venv/bin/python -m mypy auto_reel_ng`
   - `.venv/bin/python -m pylint auto_reel_ng`
@@ -184,3 +190,10 @@
   - `RENDER_GRAPH_VERSION` in `staleness/fingerprint.py` is unchanged
   - `git status --short alembic/` is empty: no migration
   - `openspec validate clip-thumbnails --strict` passes
+
+  Result (2026-09-30): black and isort leave all 164 files unchanged; mypy reports no issues in 95 source files; pylint reports only the three known cairo `no-member` messages (9.98/10); the full pytest run has 944 passed and 5 skipped (the title-card font skips), exit 0, in 83 s. That count includes five tests added during verification: an unreadable event folder, a walk with no events, an unexpandable `~user` cache_dir, a read-only cache directory, and a failed rename. They bring `thumbs/` and `cli/thumbnails.py` to 100% line and branch coverage. `RENDER_GRAPH_VERSION` is still 3 with no diff in `staleness/fingerprint.py`, `git status --short alembic/` is empty, and `openspec validate clip-thumbnails --strict` passes.
+
+  Review fixes (supervisor, 2026-09-30):
+  - every `ERROR` line names the clip once: `ThumbnailError` carries `clip` and `reason`, the reason drops the probe message's first mention of the path and uses an `OSError`'s `strerror`, and the CLI prints `ERROR  <event>/<identity>: <reason>`
+  - the cache check goes through `thumbs.is_cached`, which turns an `OSError` from `Path.is_file()` (Python 3.13, an unsearchable cache) into `ThumbnailCacheError`; covered for the engine and the CLI with a monkeypatched `is_file`
+  - README says that other names of one file may each count as generated; proposal and design record the `cli/thumbnails.py` location and the accepted implementation details

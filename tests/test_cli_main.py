@@ -9,7 +9,7 @@ import pytest
 from auto_reel_ng.cli.main import main
 
 
-def test_help_lists_the_nine_subcommands(capsys: pytest.CaptureFixture[str]) -> None:
+def test_help_lists_the_ten_subcommands(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         main(["--help"])
     assert exc.value.code == 0
@@ -24,6 +24,7 @@ def test_help_lists_the_nine_subcommands(capsys: pytest.CaptureFixture[str]) -> 
         "jobs",
         "serve",
         "adopt-renders",
+        "thumbs",
     ):
         assert command in out
 

@@ -101,6 +101,31 @@ class AnalysisError(EngineError):
     """
 
 
+class ThumbnailError(EngineError):
+    """A clip could not give a thumbnail (D-11).
+
+    Raised when the clip cannot be statted, its probe fails, the probe reports no
+    usable duration, or ffmpeg produces no frame at the requested time. The engine
+    makes exactly one attempt and never substitutes another timestamp or a
+    placeholder. The message is ``<clip>: <reason>``; ``reason`` carries the cause
+    without the clip's path, for a caller that names the clip itself (the CLI).
+    """
+
+    def __init__(self, clip: str, reason: str) -> None:
+        super().__init__(f"{clip}: {reason}")
+        self.clip = clip
+        self.reason = reason
+
+
+class ThumbnailCacheError(EngineError):
+    """The thumbnail cache directory could not be created, read or written (D-11).
+
+    Deliberately a sibling of :class:`ThumbnailError`, not a subclass: it is not a
+    property of any one clip, so the CLI stops on it instead of reporting it
+    against every clip. The message names the directory.
+    """
+
+
 class ReelError(EngineError):
     """A ``reel.yaml`` editorial document could not be parsed, validated, or applied.
 

@@ -183,7 +183,7 @@ clips were:
     6 s. At 1 s and 2 s, before the cut, the truncated copy gave a real frame with exit 0.
   - The stderr is misleading: mjpeg "Non full-range YUV is non-standard … Could not open encoder
     before EOF … Nothing was written into output file".
-  - `thumbnail_for` therefore wraps any `FfmpegError` as `ThumbnailError(f"{clip}: no frame extracted
+  - `thumbnail_for` therefore wraps any `FfmpegError` as `ThumbnailError(clip, f"no frame extracted
     at {at:.3f}s of {duration:.3f}s: {exc}")`, so the operator reads the real cause first and still
     gets the command and stderr.
 - **Exit 0 with an empty or missing temporary file** raises the same error. It was never observed, and
@@ -242,8 +242,10 @@ def thumbnail_for(
 `thumbnail_for` does the following:
 
 1. **Cache hit:** `target = thumbnail_path(...)`. An `OSError` from the stat raises
-   `ThumbnailError("<clip>: cannot stat the clip: <exc>")`. If `target.is_file()`, it returns `target`,
-   with no probe and no ffmpeg.
+   `ThumbnailError(clip, "cannot stat the clip: <strerror>")`. If `is_cached(target)`, it returns
+   `target`, with no probe and no ffmpeg. `is_cached` wraps `target.is_file()`: Python 3.13 lets a
+   `PermissionError` through for an unsearchable cache directory, and that raises
+   `ThumbnailCacheError("<cache_dir>: cannot read thumbnails: <exc>")`.
 2. **Probe:** `runtime = runtime or probe.get_default_runtime()`. It probes the clip's resolved,
    absolute path and computes `at`, as in "Where the frame comes from". ffmpeg reads the same path.
 3. **Temporary file:**
@@ -268,7 +270,10 @@ The key details:
   `thumbs` subcommand"). `thumbnail_for` wraps it as a `ThumbnailError`, and the CLI reports it as that
   clip's failure.
 - **Every `ThumbnailError` message starts with the clip's path**, then `: ` and the cause, like
-  `AnalysisError`'s. For a probe failure the cause is the `ProbeError` message.
+  `AnalysisError`'s. The error carries `clip` and `reason` (the pattern of `EventMetadataError`), and the
+  reason never repeats the path: for a probe failure it is the `ProbeError` message with its first
+  mention of the probed path dropped, and for an `OSError` it is the `strerror`. The CLI prints
+  `ERROR  <event>/<identity>: <reason>`, so each line names the clip once.
 - **`json.dumps` of a list** is a canonical, unambiguous encoding: floats use their shortest repr. With
   the default `ensure_ascii`, a non-UTF-8 file name (surrogate escapes) still encodes.
 - **The full 64-hex digest is the file stem.** T2 uses it as the strong ETag.
@@ -292,8 +297,8 @@ identical `ERROR` lines when the cache directory is read-only, missing or not pe
 `except ThumbnailError` never catches a cache failure:
 - **`ThumbnailError(EngineError)`:** this clip cannot give a thumbnail. It covers a clip that cannot be
   statted, a probe failure, no usable duration, and no frame.
-- **`ThumbnailCacheError(EngineError)`:** the cache directory cannot be created or written, or the rename
-  fails.
+- **`ThumbnailCacheError(EngineError)`:** the cache directory cannot be created, read or written, or the
+  rename fails.
 
 **Rationale**: Each has a real consumer that treats it differently: per clip versus fatal in the CLI, and
 `thumbnail_failed` versus no kind in T2. Principle VII requires a real use, and this has two.
@@ -332,6 +337,8 @@ The validation rules:
   Otherwise it raises `ConfigError` naming `thumbnails.cache_dir` and the directory it falls inside. For
   the default it also says to set `thumbnails.cache_dir`.
 - **Unknown keys** under `thumbnails` are ignored, as they are under `worker`.
+- **The returned `cache_dir`** is the expanded, absolute path as configured or defaulted; the `.resolve()`d
+  form is used only for the outside-the-library check.
 
 **Rationale**:
 - **Absolute only:** a relative path would mean different directories for `serve` and the CLI, silently
@@ -351,20 +358,24 @@ The validation rules:
 operator also wants to pre-fill the cache for the archive overnight, rather than paying ffmpeg on first
 view.
 
-**Decision**: `cmd_thumbs(args)` in `cli/commands.py`, registered in `cli/main.py`.
+**Decision**: `cmd_thumbs(args)` in a new `cli/thumbnails.py`, registered in `cli/main.py`. It is not in
+`cli/commands.py`, because adding it there takes that module from 930 to 1,056 lines, past pylint's
+`too-many-lines` limit (1,000), and nothing in the repository disables that check. It imports
+`_project_context` from `.commands` unchanged.
 - **Flags:** `root`, `--years`, `--layout`, `-v` and `--jobs`. `--jobs` is `type=_positive_int`, default
   2. `_positive_int` is a **new** argparse type in `cli/main.py`: `int(value)`, and
   `argparse.ArgumentTypeError` below 1. No such helper exists at `47e46f4`; the worker's pool flags use
   plain `int`. There is no `-o`, since output is irrelevant here. `set_defaults(output=None)` lets
-  `_project_context` be reused unchanged.
+  `_project_context` be reused unchanged. `_add_common_args` gains an `output: bool = True` keyword so
+  `thumbs` can leave `-o` out.
 - **Order of work:** `_project_context` first. Then `resolve_thumbnail_settings(ctx.config,
   ctx.project_root)`, so a `ConfigError` stops before anything runs. Then one `FfmpegRuntime()`, which
   asserts the version once.
 - **Per event, in walk order:**
   - `scan_event(ref.event_dir)`, where an `OSError` gives `ERROR  <event>: cannot list event folder:
-    <exc>`, and the event counts as failed
+    <strerror>`, and the event counts as failed
   - then, for each identity in `listing.identities` (sorted), clip path `event_dir / identity`: if
-    `thumbnail_path(...).is_file()`, the clip is **cached**. An `OSError` from that check (the clip
+    `is_cached(thumbnail_path(...))`, the clip is **cached**. An `OSError` from the path's stat (the clip
     vanished between listing and `stat`) counts the clip as failed. Otherwise it is submitted to one
     shared `ThreadPoolExecutor(max_workers=args.jobs)` as `thumbnail_for(...)`.
   - **The event is a barrier.** `cmd_thumbs` waits for all of an event's futures before it prints that
@@ -372,7 +383,7 @@ view.
     checked, and the counts below are deterministic. Two identities of one event with the same symlink
     target are both extracted, harmlessly.
   - `ThumbnailError` counts the clip as failed and collects its `ERROR` line,
-    `ERROR  <event>/<identity>: <message>`. The event's results are collected in identity order, so
+    `ERROR  <event>/<identity>: <reason>`. The event's results are collected in identity order, so
     output is deterministic.
 - **Fatal errors and interruption:** on `ThumbnailCacheError`, or any other `BaseException` such as
   Ctrl-C, the pool is shut down with `cancel_futures=True` before re-raising, so no queued clip starts.
@@ -389,14 +400,15 @@ view.
   …
   2024-06-27 - Grillning med grannar: 4 clips, 1 generated, 3 cached
   …
-  ERROR  2024-10-05 - Trasig/trasig.mp4: …/trasig.mp4: File is empty (zero bytes): …/trasig.mp4
+  ERROR  2024-10-05 - Trasig/trasig.mp4: File is empty (zero bytes)
   2024-10-05 - Trasig: 1 clip, 1 failed
   …
   thumbnails: 22 clips in 11 events: 4 generated, 17 cached, 1 failed (cache: /home/emil/.cache/auto-reel/thumbnails)
   ```
 
   An `OSError` from the cached check itself prints `ERROR  <event>/<identity>: cannot stat the clip:
-  <exc>` and counts the clip as failed.
+  <strerror>` and counts the clip as failed. When an event folder could not be listed, the summary
+  also says `, N event(s) unreadable` before the cache path.
 
 - **Exit code:** 1 when any clip or event failed, else 0. "No events found under …" exits 0, like `scan`.
 

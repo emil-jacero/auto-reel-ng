@@ -129,8 +129,8 @@ A killed or failed extraction SHALL therefore never leave a partial `<key>.jpg`.
 - create the cache directory when it is absent
 - evict nothing
 
-A cache directory that cannot be created or written SHALL be reported with a typed cache error, naming the
-directory. That error SHALL be distinct from a clip's thumbnail error.
+A cache directory that cannot be created, read or written SHALL be reported with a typed cache error,
+naming the directory. That error SHALL be distinct from a clip's thumbnail error.
 
 #### Scenario: A second request is served from the cache
 - **WHEN** the thumbnail of `s1710002.mp4` in `2024-06-27 - Grillning med grannar` has been generated, and it
