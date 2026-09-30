@@ -34,19 +34,87 @@
     box-shadow: 0 0 0 2px color-mix(in oklab, var(--ok) 28%, transparent);
   }
 
+  /* "1 rendering · 13 queued": each count a unit that never breaks. */
   .jobs-counts {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0 var(--s-2);
     color: var(--fg-muted);
     font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
-    white-space: nowrap;
   }
 
-  /* A phone's header has little room: the counts take their own line, and wrap. */
+  .jobs-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    white-space: nowrap;
+
+    & > svg {
+      display: none;
+      flex: none;
+      inline-size: 0.75rem;
+      block-size: 0.75rem;
+    }
+  }
+
+  .jobs-count + .jobs-count::before {
+    content: '·';
+    content: '·' / '';
+    margin-inline-end: var(--s-2);
+    color: var(--fg-subtle);
+  }
+
+  /*
+   * A phone's header has little room: each count shrinks to its status icon and
+   * number (the words stay for assistive technology), so the indicator is at most
+   * two short lines, the pill and the counts, inside the header's height.
+   */
   @media (width < 30rem) {
     .jobs-counts {
+      gap: 0 var(--s-1);
       font-size: var(--text-xs);
-      text-align: end;
-      white-space: normal;
+    }
+
+    .jobs-count > svg {
+      display: block;
+    }
+
+    .jobs-count + .jobs-count::before {
+      content: none;
+    }
+
+    .jobs-count-word {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
+
+  /*
+   * Below 23.5rem "Connecting…" and "Reconnecting…" no longer fit beside the
+   * navigation and the theme control: the pill keeps its loader, on its tone, and
+   * the words stay for assistive technology. "Live" and its counts still fit.
+   */
+  @media (width < 23.5rem) {
+    .jobs-indicator:not([data-connection='live']) .pill {
+      padding-inline: 0.3125rem;
+
+      & > span {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        margin: -1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
     }
   }
 

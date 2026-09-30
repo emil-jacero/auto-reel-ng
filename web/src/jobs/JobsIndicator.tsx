@@ -1,5 +1,7 @@
 import './jobs.css'
 
+import type { JobStatus } from '../api/jobs'
+import { JOB_STATUS_LOOK } from '../events/tones'
 import { Icon } from '../ui/Icon'
 import type { Tone } from '../ui/Pill'
 import { CONNECTION_LABEL } from './labels'
@@ -13,16 +15,18 @@ const CONNECTION_TONE: Record<ConnectionStatus, Tone> = {
   reconnecting: 'warn',
 }
 
-/** "1 rendering · 2 queued", zero parts left out; empty when nothing is active. */
-function activity(rendering: number, queued: number): string {
-  const parts: string[] = []
-  if (rendering > 0) {
-    parts.push(`${rendering} rendering`)
-  }
-  if (queued > 0) {
-    parts.push(`${queued} queued`)
-  }
-  return parts.join(' · ')
+/**
+ * One count, a unit that never breaks: "1 rendering". At phone width only the
+ * status's icon and the number show; the words stay for assistive technology.
+ */
+function Count({ count, status, word }: { count: number; status: JobStatus; word: string }) {
+  return (
+    <span className="jobs-count">
+      <Icon name={JOB_STATUS_LOOK[status].icon} />
+      {count}
+      <span className="jobs-count-word"> {word}</span>
+    </span>
+  )
 }
 
 /**
@@ -35,7 +39,7 @@ function activity(rendering: number, queued: number): string {
  */
 export function JobsIndicator() {
   const { status, rendering, queued } = useConnection()
-  const counts = status === 'live' ? activity(rendering, queued) : ''
+  const counted = status === 'live' && (rendering > 0 || queued > 0)
   return (
     <div className="jobs-indicator" data-connection={status}>
       <span className="pill" data-tone={CONNECTION_TONE[status]}>
@@ -49,7 +53,12 @@ export function JobsIndicator() {
           {CONNECTION_LABEL[status]}
         </span>
       </span>
-      {counts !== '' && <span className="jobs-counts">{counts}</span>}
+      {counted && (
+        <span className="jobs-counts">
+          {rendering > 0 && <Count count={rendering} status="running" word="rendering" />}
+          {queued > 0 && <Count count={queued} status="queued" word="queued" />}
+        </span>
+      )}
     </div>
   )
 }
