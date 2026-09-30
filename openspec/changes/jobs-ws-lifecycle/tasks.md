@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Gate: `jobs-project-guards` (C3) must be archived on `main`: `ls openspec/changes/archive/ | grep -E -- '-jobs-project-guards$'` prints one directory. It did at `ed71d57`, and `47e46f4` is the baseline this change was written against. If it prints nothing, stop and report to the supervisor. Then confirm the baseline:
+- [x] 1.1 Gate: `jobs-project-guards` (C3) must be archived on `main`: `ls openspec/changes/archive/ | grep -E -- '-jobs-project-guards$'` prints one directory. It did at `ed71d57`, and `47e46f4` is the baseline this change was written against. If it prints nothing, stop and report to the supervisor. Then confirm the baseline:
   - `git diff 47e46f4 -- auto_reel_ng/api/ws.py auto_reel_ng/api/app.py auto_reel_ng/cli/commands.py tests/conftest.py tests/test_api_ws_hub.py tests/test_cli_serve.py openspec/specs/api-service/spec.md` prints nothing. If a file differs, re-read it against the design's "Context" first. If the spec differs in "WebSocket live job updates", re-base this change's MODIFIED block on the current text of that requirement and re-run `openspec validate jobs-ws-lifecycle --strict`.
   - `grep -n "A single send loop only" auto_reel_ng/api/ws.py` hits: `ws_jobs` is still the send loop the design's Context describes
   - `.venv/bin/python -c "import uvicorn, websockets; print(uvicorn.__version__, websockets.__version__)"`. If uvicorn is neither 0.51.x nor 0.54.x, re-read the following against the design's "What uvicorn does" before implementing:
@@ -11,7 +11,7 @@
 
 ## 2. api/ — the handler watches the client side
 
-- [ ] 2.1 Write `tests/test_api_ws_lifecycle.py` first. Then replace `ws_jobs` in `api/ws.py` with the receive loop and the `_push_frames(websocket, hub, queue)` task (design "The handler: a receive loop, with a push task it owns"), and rewrite its docstring.
+- [x] 2.1 Write `tests/test_api_ws_lifecycle.py` first. Then replace `ws_jobs` in `api/ws.py` with the receive loop and the `_push_frames(websocket, hub, queue)` task (design "The handler: a receive loop, with a push task it owns"), and rewrite its docstring.
   - The push task releases the subscription in its own `finally`.
   - The handler's cleanup follows the order in "Teardown order".
   - The close codes are imported by name (design, the bullets under the snippet).
@@ -23,7 +23,7 @@
   Before changing the handler, run the module against the current one and record the result:
   - **close releases**, **the other tab stays live** (its first assertion) and **fresh snapshot** fail, with the hub still at one subscriber and polling
   - **messages ignored** fails at the fixture's teardown. The server's shutdown hangs on the stuck handler (proposal item 2) until the fixture's wait times out.
-  - the **`TestClient`** cycles pass. They guard the new teardown order: with the unsubscribe after the wait, they failed within 200 cycles in the review.
+  - the **`TestClient`** cycles pass. They guard that at least one release happens before the harness's cancel lands, the handler's early unsubscribe or the push task's own, not the order itself. Measured in the implementation: with the cleanup reversed (wait, then unsubscribe) and the push task's release kept, they passed 5 of 5 runs on uvicorn 0.54 and on 0.51; with both removed, they failed within 200 cycles in 2 of 3 runs. The handler keeps the design's order because it does not depend on when the push task runs.
 
   Verify after the change:
   - **close releases:** two `websockets` clients connect and read their snapshots. Closing the first leaves `subscriber_count == 1` within 1 s, with `is_polling` true. Closing the second gives `subscriber_count == 0` and `is_polling` false within 1 s, and the `FakeStore`'s read counters do not change over the next five poll intervals.
@@ -33,7 +33,7 @@
   - **teardown under `TestClient`:** 200 cycles of `TestClient` connect → read the snapshot → exit, over an app built the same way. After each cycle `subscriber_count == 0` and `is_polling` is false.
   - `tests/test_api_ws_hub.py` and `tests/test_api_ws_e2e.py` pass unchanged
   - `.venv/bin/python -m mypy auto_reel_ng` is clean
-- [ ] 2.2 Cover the closes the handler sends (design "Close codes"), in `tests/test_api_ws_lifecycle.py`. Verify:
+- [x] 2.2 Cover the closes the handler sends (design "Close codes"), in `tests/test_api_ws_lifecycle.py`. Verify:
   - **hub lets go:** a connected client reads its snapshot, then the test awaits `hub.stop()`. The client's next receive raises `ConnectionClosed` with `rcvd.code == 1013`, and `subscriber_count == 0`.
   - **slow consumer:** use a hub built with `queue_maxsize=1` and a `FakeJob` running. The hub test's recipe (never drain) does not work over a real server, because the push task drains the queue (design "Tests"). Instead:
     - `WebSocket.send_text` is monkeypatched so that its second call waits on an `asyncio.Event` before sending
@@ -49,14 +49,14 @@
     - after the client closes, uvicorn logs "Exception in ASGI application"
     - against the design's snippet without the push task's `finally` release, this case times out (checked in the review)
   - mypy is clean
-- [ ] 2.3 Cover the endings uvicorn reports (design "What uvicorn does…"), in `tests/test_api_ws_lifecycle.py`. Verify:
+- [x] 2.3 Cover the endings uvicorn reports (design "What uvicorn does…"), in `tests/test_api_ws_lifecycle.py`. Verify:
   - **silent peer:** with `ws_ping_interval=0.2, ws_ping_timeout=0.2`, a raw `asyncio.open_connection` that sends the upgrade request, reads up to the end of the 101 headers and then reads nothing more, is subscribed and then released within 2 s, and the poller stops
   - **shutdown:** with one client connected and its snapshot read, setting `server.should_exit = True` closes the client with `rcvd.code == 1012`. The server task completes within 3 s, and afterwards `subscriber_count == 0` and `is_polling` is false.
   - the design's reproduction ("What uvicorn does…", table) showed both cases failing under the pre-change handler (the peer stays subscribed; the shutdown never completes), so these tests guard against a regression to it
 
 ## 3. cli/ — tests only: one signal stops `serve`
 
-- [ ] 3.1 In `tests/test_cli_serve.py` (`requires_db`), add the end-to-end signal test and the keepalive pin (design "Tests", "Keepalive"). No `cli/` code changes. Verify:
+- [x] 3.1 In `tests/test_cli_serve.py` (`requires_db`), add the end-to-end signal test and the keepalive pin (design "Tests", "Keepalive"). No `cli/` code changes. Verify:
   - **one signal (parametrized: SIGTERM, SIGINT):**
     - the test requests `jobs_schema_engine` as well as `postgres_container`, so the `jobs` table the snapshot reads exists
     - `python -m auto_reel_ng.cli.main serve <tmp_path> --host 127.0.0.1 --port <free>` is started with `DATABASE_URL` set to the container, and `stdout`/`stderr` are captured
@@ -71,7 +71,7 @@
 
 ## 4. Docs
 
-- [ ] 4.1 Update `README.md` and HLD §4.10. Do not add a new D-n entry. Verify by rereading both against the spec delta:
+- [x] 4.1 Update `README.md` and HLD §4.10. Do not add a new D-n entry. Verify by rereading both against the spec delta:
   - `README.md`'s WebSocket bullet:
     - a closed or lost connection is released at once, and a silent peer within about 40 s (20 s ping, 20 s answer)
     - client messages are ignored
@@ -81,7 +81,7 @@
 
 ## 5. Validation
 
-- [ ] 5.1 Smoke against the agent's own dev library (dev-env runbook §9, `SLUG=jobs-ws-lifecycle`, `N=7`, port 8107), with no worker running. The WebSocket client is a Python script from the venv (`websockets.sync.client`), run from the session scratchpad and never committed.
+- [x] 5.1 Smoke against the agent's own dev library (dev-env runbook §9, `SLUG=jobs-ws-lifecycle`, `N=7`, port 8107), with no worker running. The WebSocket client is a Python script from the venv (`websockets.sync.client`), run from the session scratchpad and never committed.
   - **idle after close:**
     - with a client connected, `SELECT max(query_start) FROM pg_stat_activity WHERE datname = '<DB>' AND pid <> pg_backend_pid()` advances between two reads 3 s apart (the poller runs)
     - after the client reads its snapshot (it holds `2024/Blandat`'s queued job) and closes, the same query returns the same value twice, 3 s apart
@@ -91,4 +91,4 @@
     - restart `serve` and repeat with `kill -INT`
 
   Never touch `../auto-reel-dev`, `auto-reel-media/` or port 8080.
-- [ ] 5.2 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`, then `.venv/bin/python -m mypy auto_reel_ng`, `.venv/bin/python -m pylint auto_reel_ng`, and the full `.venv/bin/python -m pytest`, including `requires_db`. Then run `openspec validate jobs-ws-lifecycle --strict`. Verify all are clean or green, apart from the known cairo `no-member` noise.
+- [x] 5.2 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`, then `.venv/bin/python -m mypy auto_reel_ng`, `.venv/bin/python -m pylint auto_reel_ng`, and the full `.venv/bin/python -m pytest`, including `requires_db`. Then run `openspec validate jobs-ws-lifecycle --strict`. Verify all are clean or green, apart from the known cairo `no-member` noise.

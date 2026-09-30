@@ -233,12 +233,19 @@ asyncio "exception never retrieved" log record, and a hub-initiated close reache
 This is very likely the race the current docstring describes.
 
 The review re-ran this as the planned 200-cycle test (task 2.1). With the push task's own release added,
-it passed in every run. With the cleanup reversed (wait, then unsubscribe), it failed within 200 cycles in
-5 of 5 runs, at cycles 2 to 123.
+it passed in every run. The implementation then measured what that test guards, on uvicorn 0.54 /
+starlette 1.7.0 and on uvicorn 0.51 / starlette 1.3.1. It guards that at least one release happens before
+the harness's cancel can skip it, either the handler's early unsubscribe or the push task's own release. It
+does not guard the order itself:
+- the cleanup reversed (wait, then unsubscribe), with the push task's own release kept: passed 5 of 5 runs
+  on each version pair, because the cancelled push task runs its `finally` before the session ends
+- the cleanup reversed and the push task's own release removed: failed in 2 of 3 runs, at cycles 7 and 56
+- the handler's order kept and the push task's own release removed: passed 3 of 3 runs
 
 **Decision**: the `finally` cancels the pusher (synchronous), then unsubscribes, then waits for the pusher.
 The push task's own release is a second one, and the handler does not rely on it: a cancelled task runs
-its `finally` only when it is next scheduled.
+its `finally` only when it is next scheduled. The handler keeps this order although the 200-cycle test
+cannot tell it from the reverse: the order does not depend on when the push task runs.
 `unsubscribe` suspends only when the hub's lock is held (a concurrent first subscribe or a slow-consumer
 drop). A cancellation that lands exactly there can only come from a test harness. uvicorn never cancels a
 connection task (`timeout_graceful_shutdown` is `None`), and at loop teardown `hub.stop()` clears every
@@ -298,7 +305,10 @@ unsubscribes today's handler, and it has no transport, keepalive or server shutd
   Prototyped as `c7/test_lifecycle_proto.py` (five cases). The review's scratch module
   (`c7-review/tree/tests/test_api_ws_lifecycle.py`) covers every Verify bullet of tasks 2.1–2.3. It passed
   in about 3.2 s on every run on uvicorn 0.51 and 0.54 (starlette 1.3.1 and 1.7.0). Against today's handler,
-  every case but the `TestClient` cycles failed.
+  the implementation's module failed 9 of its 11 cases. The two that passed were the `TestClient` cycles and
+  "the push side releases on its own": today's send loop is its own push side, and it unsubscribes in its
+  `finally`. That case guards the push task's release in the new structure, where removing the release
+  fails it.
 - **`tests/test_cli_serve.py`**, `requires_db`: `[sys.executable, "-m", "auto_reel_ng.cli.main", "serve",
   <tmp root>, "--host", "127.0.0.1", "--port", <free>]` as a subprocess, with `DATABASE_URL` set to the
   container. Only a main-thread process gets uvicorn's signal handlers, and an in-process `serve()` would
@@ -338,9 +348,11 @@ unsubscribes today's handler, and it has no transport, keepalive or server shutd
   delay that handler's release, and so shutdown. → The disconnect is queued and seen as soon as the reads
   return. A second SIGINT still forces the exit, and the reads are milliseconds otherwise. A graceful
   timeout is a named follow-up if this ever shows up.
-- **[Test harness cancellation]** The teardown order is load-bearing under `TestClient`. → The docstring says
-  so, and the existing `tests/test_api_ws_e2e.py` runs a `TestClient` teardown on every test. Task 2.1 adds a
-  repeated connect/exit test that asserts the hub is empty and idle after each cycle.
+- **[Test harness cancellation]** Under `TestClient`, a release has to happen before the harness's cancel
+  lands. → The handler unsubscribes before anything can suspend, the push task releases too, and the
+  docstring says so. The existing `tests/test_api_ws_e2e.py` runs a `TestClient` teardown on every test.
+  Task 2.1 adds a repeated connect/exit test that asserts the hub is empty and idle after each cycle. It
+  catches a handler with neither early release, not the order between the two ("Teardown order").
 - **[A vanished peer behind backed-up frames]** When a peer stops acknowledging (a laptop suspended
   mid-render) after the frames sent to it have filled the host's TCP send buffer, asyncio holds them in the
   transport. uvicorn's keepalive close then cannot finish: `connection_lost`, and so the disconnect, waits

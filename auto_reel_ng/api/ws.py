@@ -33,6 +33,8 @@ from typing import Any, Iterable, Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic.json_schema import models_json_schema
+from starlette.status import WS_1011_INTERNAL_ERROR, WS_1013_TRY_AGAIN_LATER
+from starlette.websockets import WebSocketState
 
 from ..persistence.job_store import FinishedJobs, JobStore
 from ..persistence.models import TERMINAL_STATUSES, Job, JobStatus
@@ -325,34 +327,83 @@ def publish_ws_schema(schema: dict[str, Any]) -> None:
 router = APIRouter()
 
 
+async def _push_frames(websocket: WebSocket, hub: JobsHub, queue: asyncio.Queue) -> None:
+    """Send the hub's frames until it lets this subscriber go (close 1013) or a send fails.
+
+    However the push side ends (the hub let go, a send failed, or the handler cancelled
+    it), it releases the subscription itself. One ending reaches it long before the
+    handler's receive loop: once uvicorn's keepalive has failed a connection whose frames
+    are backed up, it has sent its own close, so the next send raises and the 1011 close
+    is refused, and the disconnect waits until the write buffer drains.
+    """
+    try:
+        while (message := await queue.get()) is not _CLOSE:
+            await websocket.send_text(message)
+        await _close(websocket, WS_1013_TRY_AGAIN_LATER)  # dropped (slow consumer) or hub stopped
+    except WebSocketDisconnect:
+        pass  # the connection is gone; the receive loop sees it too
+    except Exception:
+        await _close(websocket, WS_1011_INTERNAL_ERROR)
+        raise
+    finally:
+        await hub.unsubscribe(queue)  # a no-op when the handler released it first
+
+
+async def _close(websocket: WebSocket, code: int) -> None:
+    """Close the connection with ``code`` unless it has already ended."""
+    if websocket.application_state is WebSocketState.CONNECTED:
+        with contextlib.suppress(WebSocketDisconnect, RuntimeError):
+            await websocket.close(code)
+
+
 @router.websocket("/api/v1/ws/jobs")
 async def ws_jobs(websocket: WebSocket) -> None:
     """``WS /api/v1/ws/jobs`` (task 4.2-4.3): snapshot on connect, then deltas.
 
-    A single send loop only — no concurrent "detect disconnect promptly" reader
-    task. That pattern (two tasks + cancel-the-other-on-first-completion) proved
-    racy under test-harness teardown (a cancelled sibling task's exception
-    surfacing through the WS test client's own close handshake); a disconnect is
-    still caught here via ``WebSocketDisconnect`` on the next failed send, which
-    is standard practice for a push-only channel like this one.
+    The channel is push-only, yet the handler reads the connection until it ends and
+    drops whatever a client sends. The receive loop is where the server reports every
+    end of a connection: a client close, a peer lost to uvicorn's keepalive (a ping every
+    20 s, answered within 20 s) and the server's own shutdown, which closes every
+    connection with 1012 (service restart). Each releases the subscription at once, so
+    the last one out stops the poller (D-A4), and at shutdown the handlers end before
+    the lifespan's ``hub.stop()`` (D-A7).
+
+    Frames go out from a push task the handler owns. When the hub lets the subscriber go
+    (a slow consumer, or the hub stopping), it closes with 1013 (try again later: a
+    reconnect gets a fresh snapshot). An unexpected send error closes with 1011
+    (internal error) and is re-raised here once the connection has ended, so uvicorn
+    logs it. The server reports either close back to the receive loop as a disconnect.
+
+    Only the push task is ever cancelled, never ``receive()``: it waits on the hub's
+    queue or on a send, and cancelling either is safe. It also releases the subscription
+    itself, for the one ending the receive loop learns of late (:func:`_push_frames`).
+    The handler's own release comes first in its cleanup, before anything can suspend:
+    a test harness (Starlette's ``TestClient``) cancels the handler right after it
+    delivers the disconnect, and a cancel landing on an earlier await would skip it.
     """
     hub: JobsHub = websocket.app.state.jobs_hub
     await websocket.accept()
     queue: Optional[asyncio.Queue] = None
+    pusher: Optional[asyncio.Task[None]] = None
     try:
         # Inside the try, so whatever ends this handler, a subscriber it
         # registered is unsubscribed (a failed subscribe registers none).
         queue = await hub.subscribe()
-        while True:
-            message = await queue.get()
-            if message is _CLOSE:
-                break
-            await websocket.send_text(message)
-    except WebSocketDisconnect:
-        pass
+        pusher = asyncio.create_task(_push_frames(websocket, hub, queue))
+        # Push-only: what a client sends is read and dropped until the connection ends.
+        while (await websocket.receive())["type"] != "websocket.disconnect":
+            pass
     finally:
+        # Release before anything here can suspend: a cancel landing on the wait below
+        # must find the subscription already gone.
+        if pusher is not None:
+            pusher.cancel()
         if queue is not None:
             await hub.unsubscribe(queue)
+        if pusher is not None:
+            await asyncio.wait({pusher})  # never raises; the outcome is read below
+    if pusher is not None and not pusher.cancelled():
+        pusher.result()  # re-raise an unexpected push error for uvicorn to log
 
 
 __all__ = ["JobsHub", "publish_ws_schema", "router"]

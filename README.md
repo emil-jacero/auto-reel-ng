@@ -356,8 +356,15 @@ render, or job logic lives in the web tier.
   a job that was enqueued, claimed and ended between two polls. A job that ended
   while the subscriber was disconnected is not replayed: after a reconnect's
   snapshot, a client re-reads the jobs it was tracking (`GET /api/v1/jobs/{id}`).
-  A subscriber that falls behind (a full outbound queue) is disconnected rather
-  than back-pressuring the poller; it reconnects and resyncs via a fresh snapshot.
+  The channel is push-only: anything a client sends is ignored. A connection that
+  is closed or lost releases its subscription at once, so the last tab to close
+  stops the poller; a peer that goes silent without closing (a suspended laptop)
+  is released by the keepalive within about 40 s (a ping every 20 s, answered
+  within 20 s), or later if it vanished with frames still backed up for it. A
+  subscriber that falls behind (a full outbound queue) is disconnected with close
+  code 1013 (try again later) rather than back-pressuring the poller, and stopping
+  the service closes every socket with 1012 (service restart). Either way the
+  client reconnects and resyncs via a fresh snapshot.
 - **`GET /healthz`** reports liveness and database reachability.
 - **Bind/auth posture:** the default bind is `127.0.0.1` — widening it to a LAN
   address is an explicit operator choice (`api.host`/`--host`). There is **no
@@ -367,6 +374,14 @@ render, or job logic lives in the web tier.
 ```bash
 auto-reel serve <root> --host 127.0.0.1 --port 8080
 ```
+
+One SIGINT (Ctrl+C) or SIGTERM (`systemctl stop`, `podman stop`) stops `serve`,
+GUI tabs connected or not: every WebSocket client gets close code 1012, and the
+service finishes its orderly shutdown (poller stopped, database connections
+released) within a few seconds. The one exception is a connection to a peer that
+vanished while frames were still backed up for it: the server cannot finish
+closing it, so the shutdown can stall until a second Ctrl+C forces the exit, or
+fail before its orderly part.
 
 Settings resolve through the same config-then-flag layering as `worker`:
 `api.host`/`api.port`/`api.poll_interval` in `config.yaml`, overridden by

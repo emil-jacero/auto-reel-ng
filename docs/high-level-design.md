@@ -360,7 +360,8 @@ dependency budget.** Rationale and rules:
   otherwise, so dev and test runs never need a build. Same origin → no CORS, and the WS shares the host.
 - **Live progress needs no library.** The hub already fans out `JobOut` deltas and re-sends a full snapshot
   on reconnect (D-A4), so the client is one WebSocket hook holding a `Map<job_id, JobOut>` with reconnect
-  backoff.
+  backoff. The service closes the socket with 1012 when it stops and 1013 when it drops a subscriber, and
+  the client reconnects after any close.
 - **The Node toolchain runs in podman** (`node:22`), mirroring the containerized-Postgres test fixture —
   nothing is layered onto the immutable host.
 - **Shipping `web/dist` in the wheel/image is deferred to §6 phase 11 packaging**; it is not a v1 concern.
