@@ -11,13 +11,23 @@ import asyncio
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import pytest
+from pydantic import ValidationError
+
+from auto_reel_ng.api.schemas import WsMessage, WsMessageType
 from auto_reel_ng.api.ws import JobsHub
+from auto_reel_ng.persistence.job_store import FinishedJobs
 from auto_reel_ng.persistence.models import JobStatus
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
+
+#: Dev-library event ids (``scripts/make_dev_library.py``) the spec scenarios name.
+TRASIG = "2024/2024-10-05 - Trasig"
+BADUTFLYKT = "2024/2024-08-02 - Badutflykt - Varberg"
+BLANDAT = "2024/Blandat"
 
 
 @dataclass
@@ -42,12 +52,18 @@ class FakeJob:
 
 
 class FakeStore:
-    """A minimal store stand-in exposing only ``list_by_status``/``get`` (hub's surface)."""
+    """A minimal store stand-in exposing only the hub's surface.
+
+    ``now`` is the fake database clock: the time ``list_finished_since`` reports, and
+    the instant it reads from when given none. It stands still unless a test moves it.
+    """
 
     def __init__(self) -> None:
         self.jobs: dict[uuid.UUID, FakeJob] = {}
+        self.now = _NOW
         self.list_by_status_calls = 0
         self.get_calls = 0
+        self.list_finished_since_calls = 0
 
     def list_by_status(self, status: JobStatus) -> list[FakeJob]:
         self.list_by_status_calls += 1
@@ -57,10 +73,45 @@ class FakeStore:
         self.get_calls += 1
         return self.jobs.get(job_id)
 
+    def list_finished_since(self, since: Optional[datetime], *, overlap: timedelta) -> FinishedJobs:
+        self.list_finished_since_calls += 1
+        start = (since if since is not None else self.now) - overlap
+        finished = [
+            job
+            for job in sorted(self.jobs.values(), key=lambda job: job.finished_at or start)
+            if job.finished_at is not None and job.finished_at >= start
+        ]
+        return FinishedJobs(as_of=self.now, jobs=finished)
+
 
 async def _drain(queue: asyncio.Queue, *, timeout: float = 1.0) -> dict:
     message = await asyncio.wait_for(queue.get(), timeout=timeout)
     return json.loads(message)
+
+
+async def _await_ticks(store: FakeStore, count: int, *, timeout: float = 2.0) -> None:
+    """Return once the poller has run ``count`` more complete ticks.
+
+    Every tick starts with one finished read and ends with its broadcast, so
+    ``count + 1`` further reads mean ``count`` ticks have run to their end.
+    """
+    target = store.list_finished_since_calls + count + 1
+    async with asyncio.timeout(timeout):
+        while store.list_finished_since_calls < target:
+            await asyncio.sleep(0.005)
+
+
+# --------------------------------------------------------------------------- #
+# The frame shape (jobs-client-contract 3.3)
+# --------------------------------------------------------------------------- #
+
+
+def test_the_frame_is_a_closed_shape() -> None:
+    assert WsMessage(type="snapshot", jobs=[]).type is WsMessageType.SNAPSHOT
+    with pytest.raises(ValidationError):
+        WsMessage(type="other", jobs=[])
+    with pytest.raises(ValidationError):
+        WsMessage(type="delta")  # type: ignore[call-arg]
 
 
 # --------------------------------------------------------------------------- #
@@ -75,6 +126,7 @@ async def test_no_subscribers_means_no_store_queries() -> None:
     await asyncio.sleep(0.1)
     assert store.list_by_status_calls == 0
     assert store.get_calls == 0
+    assert store.list_finished_since_calls == 0
 
 
 async def test_poller_starts_on_first_subscribe_stops_on_last_unsubscribe() -> None:
@@ -99,16 +151,21 @@ async def test_poller_starts_on_first_subscribe_stops_on_last_unsubscribe() -> N
 
 async def test_snapshot_on_connect_contains_active_jobs() -> None:
     store = FakeStore()
-    job_id = uuid.uuid4()
-    store.jobs[job_id] = FakeJob(id=job_id, status=JobStatus.RUNNING, progress=0.1)
+    running_id, queued_id = uuid.uuid4(), uuid.uuid4()
+    store.jobs[running_id] = FakeJob(
+        id=running_id, status=JobStatus.RUNNING, event_dir=BADUTFLYKT, progress=0.1
+    )
+    store.jobs[queued_id] = FakeJob(id=queued_id, status=JobStatus.QUEUED, event_dir=BLANDAT)
     hub = JobsHub(store, poll_interval=0.05)
 
     queue = await hub.subscribe()
     try:
         snapshot = await _drain(queue)
         assert snapshot["type"] == "snapshot"
-        assert [j["id"] for j in snapshot["jobs"]] == [str(job_id)]
-        assert snapshot["jobs"][0]["status"] == "running"
+        assert {job["id"]: (job["status"], job["progress"]) for job in snapshot["jobs"]} == {
+            str(running_id): ("running", 0.1),
+            str(queued_id): ("queued", 0.0),
+        }
     finally:
         await hub.unsubscribe(queue)
 
@@ -130,7 +187,8 @@ async def test_progress_delta_is_pushed() -> None:
         await hub.unsubscribe(queue)
 
 
-async def test_terminal_transition_between_ticks_is_pushed() -> None:
+@pytest.mark.parametrize("stamped", [True, False], ids=["finished_at", "no-finished_at"])
+async def test_terminal_transition_between_ticks_is_pushed(stamped: bool) -> None:
     store = FakeStore()
     job_id = uuid.uuid4()
     store.jobs[job_id] = FakeJob(id=job_id, status=JobStatus.RUNNING, progress=0.5)
@@ -140,11 +198,161 @@ async def test_terminal_transition_between_ticks_is_pushed() -> None:
     try:
         await _drain(queue)  # the initial snapshot
         # The job finishes between ticks: it leaves the active (queued/running) set.
-        store.jobs[job_id] = FakeJob(id=job_id, status=JobStatus.DONE, progress=1.0)
+        # A real terminal transition stamps finished_at; a row without one is seen
+        # by the vanished path only, and must still go out exactly once.
+        store.jobs[job_id] = FakeJob(
+            id=job_id,
+            status=JobStatus.DONE,
+            progress=1.0,
+            finished_at=store.now if stamped else None,
+        )
         delta = await _drain(queue, timeout=1.0)
         assert delta["type"] == "delta"
+        assert [job["id"] for job in delta["jobs"]] == [str(job_id)]
         assert delta["jobs"][0]["status"] == "done"
         assert delta["jobs"][0]["progress"] == 1.0
+        # Both the vanished path and every later finished read see the job (the
+        # fake clock stands still, so each window still holds it): it goes out once.
+        await _await_ticks(store, 5)
+        assert queue.empty()
+    finally:
+        await hub.unsubscribe(queue)
+
+
+# --------------------------------------------------------------------------- #
+# Cancel requests and jobs finished between polls (jobs-client-contract 3.3)
+# --------------------------------------------------------------------------- #
+
+
+async def test_a_cancel_request_is_pushed() -> None:
+    store = FakeStore()
+    job_id = uuid.uuid4()
+    store.jobs[job_id] = FakeJob(
+        id=job_id, status=JobStatus.RUNNING, event_dir=BADUTFLYKT, progress=0.4
+    )
+    hub = JobsHub(store, poll_interval=0.02)
+
+    queue = await hub.subscribe()
+    try:
+        await _drain(queue)  # the initial snapshot
+        store.jobs[job_id].cancel_requested = True  # neither status nor progress moves
+        delta = await _drain(queue)
+        assert delta["type"] == "delta"
+        assert [
+            (job["id"], job["status"], job["progress"], job["cancel_requested"])
+            for job in delta["jobs"]
+        ] == [(str(job_id), "running", 0.4, True)]
+        await _await_ticks(store, 3)
+        assert queue.empty()  # one delta for the change, not one per tick
+    finally:
+        await hub.unsubscribe(queue)
+
+
+async def test_a_job_that_lived_and_ended_between_two_polls_is_pushed_once() -> None:
+    store = FakeStore()
+    hub = JobsHub(store, poll_interval=0.02)
+
+    queue = await hub.subscribe()
+    try:
+        snapshot = await _drain(queue)
+        assert snapshot["jobs"] == []
+        # Enqueued, claimed and failed at probe between two polls: no active read
+        # ever saw it queued or running.
+        job_id = uuid.uuid4()
+        store.jobs[job_id] = FakeJob(
+            id=job_id,
+            status=JobStatus.FAILED,
+            event_dir=TRASIG,
+            error="ffprobe: invalid data",
+            finished_at=store.now,
+        )
+        delta = await _drain(queue)
+        assert delta["type"] == "delta"
+        assert [(job["id"], job["status"], job["error"]) for job in delta["jobs"]] == [
+            (str(job_id), "failed", "ffprobe: invalid data")
+        ]
+        # Every later window still includes its finished_at: only the hub's memory
+        # of what it sent keeps it from going out again.
+        await _await_ticks(store, 5)
+        assert queue.empty()
+    finally:
+        await hub.unsubscribe(queue)
+
+
+async def test_a_job_missed_by_one_active_read_still_gets_its_terminal_row() -> None:
+    """A still-active row off the vanished path is sent, but never remembered as final.
+
+    The active snapshot is two reads (queued, then running), so a requeue landing
+    between them hides a job from one tick: it "vanishes" while still active. That
+    row is current state and goes out, but it must not count as the job's terminal
+    row, or the real one would later be suppressed.
+    """
+    store = FakeStore()
+    job_id = uuid.uuid4()
+    store.jobs[job_id] = FakeJob(id=job_id, status=JobStatus.RUNNING, progress=0.5)
+    hidden: set[uuid.UUID] = set()
+    list_by_status = store.list_by_status
+    store.list_by_status = lambda status: [  # type: ignore[method-assign]
+        job for job in list_by_status(status) if job.id not in hidden
+    ]
+    hub = JobsHub(store, poll_interval=0.02)
+
+    queue = await hub.subscribe()
+    try:
+        await _drain(queue)  # the initial snapshot
+        hidden.add(job_id)  # one tick's active reads miss the requeued job
+        store.jobs[job_id].status = JobStatus.QUEUED
+        store.jobs[job_id].progress = 0.0
+        missed = await _drain(queue)
+        assert [(job["id"], job["status"]) for job in missed["jobs"]] == [(str(job_id), "queued")]
+
+        hidden.clear()
+        store.jobs[job_id] = FakeJob(
+            id=job_id, status=JobStatus.FAILED, error="ffprobe: invalid data", finished_at=store.now
+        )
+        final = await _drain(queue)
+        assert [(job["id"], job["status"]) for job in final["jobs"]] == [(str(job_id), "failed")]
+    finally:
+        await hub.unsubscribe(queue)
+
+
+async def test_a_job_finished_before_the_first_subscribe_is_never_sent() -> None:
+    store = FakeStore()
+    job_id = uuid.uuid4()
+    store.jobs[job_id] = FakeJob(
+        id=job_id,
+        status=JobStatus.DONE,
+        progress=1.0,
+        finished_at=store.now - timedelta(seconds=10),  # inside the overlap
+    )
+    hub = JobsHub(store, poll_interval=0.02)
+
+    queue = await hub.subscribe()
+    try:
+        snapshot = await _drain(queue)
+        assert snapshot["jobs"] == []
+        await _await_ticks(store, 5)
+        assert queue.empty()
+    finally:
+        await hub.unsubscribe(queue)
+
+
+async def test_the_sent_memory_forgets_jobs_older_than_the_window() -> None:
+    store = FakeStore()
+    hub = JobsHub(store, poll_interval=0.02)
+
+    queue = await hub.subscribe()
+    try:
+        await _drain(queue)  # the initial snapshot
+        job_id = uuid.uuid4()
+        store.jobs[job_id] = FakeJob(id=job_id, status=JobStatus.DONE, finished_at=store.now)
+        await _drain(queue)  # its one terminal delta
+        store.now += timedelta(seconds=60)  # the clock moves the window past the job
+
+        await _await_ticks(store, 2)
+
+        assert queue.empty()
+        assert hub._terminal_sent == {}  # pylint: disable=protected-access
     finally:
         await hub.unsubscribe(queue)
 

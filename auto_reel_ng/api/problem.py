@@ -21,9 +21,10 @@ def problem_response(
 ) -> JSONResponse:
     """Build a problem-JSON body: ``{title, status, detail, **extra}``.
 
-    ``extra`` carries route-specific fields (e.g. an existing job's ``id`` on a
-    409 conflict) so a client can uniformly read ``.id`` without branching on
-    which error it received.
+    ``extra`` carries route-specific fields (e.g. the active job's ``job_id`` on the
+    enqueue's 409, or the ``event_id`` an events failure is about), each declared on
+    :class:`~auto_reel_ng.api.schemas.ProblemOut`, so a client reads one named field
+    without branching on which error it received.
     """
     body: dict[str, Any] = {"title": title, "status": status_code, "detail": detail}
     body.update(extra)

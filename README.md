@@ -303,21 +303,42 @@ render, or job logic lives in the web tier.
   `ETag`**: recovery from a 412 is re-read, re-apply, retry, never a blind retry
   against a tag the service handed back.
 - **Jobs lifecycle over REST** is a thin wrapper over the job store:
-  `POST /api/v1/jobs` (gated like `enqueue` — 201 on a stale event, 409 with the
-  existing job's id on an active duplicate, 200 `"status": "fresh"` with the
-  fingerprint and manifest reference when the event is fresh and `force` is not
-  set), `GET /api/v1/jobs` / `GET /api/v1/jobs/{id}` (includes `force` and
-  `fingerprint`), and `POST /api/v1/jobs/{id}/cancel` (`request_cancel`, same
-  semantics as `jobs cancel`). The API never writes a job's `status` itself.
+  `POST /api/v1/jobs` (gated like `enqueue` — 201 on a stale event, 409 on an
+  active duplicate carrying the active job's id in `job_id`, 200
+  `"status": "fresh"` with the fingerprint and manifest reference when the event
+  is fresh and `force` is not set, 404 naming an unknown event in `event_id`),
+  `GET /api/v1/jobs` / `GET /api/v1/jobs/{id}` (includes `force` and
+  `fingerprint`), and `POST /api/v1/jobs/{id}/cancel` (same semantics as
+  `jobs cancel`); both of the latter answer an unknown id with a 404 carrying it
+  in `job_id`. The API never writes a job's `status` itself, and it reports the
+  store's facts rather than predicting them: whether a job was created is decided
+  by the insertion, so two requests racing for one event get one 201 and one 409
+  naming the job the 201 created, never two 201s. A cancel answers the `outcome`
+  the store applied — `flagged-running` (a running job's `cancel_requested` is
+  set; the worker stops it between segments), `canceled-queued` or
+  `no-op-terminal` — with the job's `status` after that same transaction, decided
+  under a lock on the job's row, so a worker claiming the job at that moment can
+  neither be mislabeled nor overwritten. A job's `event_dir` is the event's id: the
+  value the events routes take and return as `event_id`, so a client matches jobs
+  to events by equality. **Breaking (wire):** the 409 and the jobs 404s used to
+  carry the job id in an untyped `id` field; it is now the typed `job_id`, and
+  `id` is gone.
   `GET /api/v1/events/{event_id}` includes the same staleness verdict (`stale` +
   `reasons`) `scan` prints, computed read-only — a GET never writes a manifest.
-- **`WS /api/v1/ws/jobs`** pushes live job progress: a subscriber gets a full
-  snapshot of active (`queued`/`running`) jobs on connect, then delta messages
-  (progress changes and status transitions, including terminal) from a single
-  central poller that queries the store roughly once per `api.poll_interval` —
-  and only while at least one subscriber is connected. A subscriber that falls
-  behind (a full outbound queue) is disconnected rather than back-pressuring the
-  poller; it reconnects and resyncs via a fresh snapshot.
+- **`WS /api/v1/ws/jobs`** pushes live job progress. Every frame is
+  `{"type": "snapshot" | "delta", "jobs": [...]}`, with jobs in the shape the jobs
+  routes return; the schema publishes it as `WsMessage`, although no HTTP path
+  describes the WebSocket. A subscriber gets a full snapshot of active
+  (`queued`/`running`) jobs on connect, then deltas (progress changes, status
+  transitions including terminal, and a cancel request on a running job) from a
+  single central poller that queries the store roughly once per
+  `api.poll_interval` — and only while at least one subscriber is connected. A
+  connected subscriber receives every terminal transition exactly once, even for
+  a job that was enqueued, claimed and ended between two polls. A job that ended
+  while the subscriber was disconnected is not replayed: after a reconnect's
+  snapshot, a client re-reads the jobs it was tracking (`GET /api/v1/jobs/{id}`).
+  A subscriber that falls behind (a full outbound queue) is disconnected rather
+  than back-pressuring the poller; it reconnects and resyncs via a fresh snapshot.
 - **`GET /healthz`** reports liveness and database reachability.
 - **Bind/auth posture:** the default bind is `127.0.0.1` — widening it to a LAN
   address is an explicit operator choice (`api.host`/`--host`). There is **no

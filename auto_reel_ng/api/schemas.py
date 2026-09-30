@@ -22,6 +22,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..event.reconcile import ClipStatus
+from ..persistence.job_store import CancelOutcome
 from ..persistence.models import JobStatus
 from ..staleness.gate import StalenessReason
 
@@ -247,7 +248,14 @@ class JobOut(BaseModel):
 
     id: uuid.UUID
     status: JobStatus
-    event_dir: str
+    #: The API enqueues an event under the id the events routes use, so a client
+    #: matches a job to its event by equality; the description makes that contractual.
+    event_dir: str = Field(
+        description=(
+            "The event's id: the root-relative event directory, the same value the events"
+            " routes take as {event_id} and return as event_id"
+        )
+    )
     project_root: Optional[str] = None
     device: str
     progress: float
@@ -274,26 +282,34 @@ class FreshResult(BaseModel):
     """The body of ``POST /api/v1/jobs`` when the event is fresh and not enqueued (D-C3)."""
 
     event_id: str
-    status: str = "fresh"
+    #: A constant, declared without a default so the schema marks it required and
+    #: generated clients get a non-optional ``status: "fresh"``.
+    status: Literal["fresh"]
     fingerprint: str
     manifest: str
 
 
 class CancelResult(BaseModel):
-    """The body of ``POST /api/v1/jobs/{id}/cancel`` (D-S6 tri-state, task 3.3)."""
+    """The body of ``POST /api/v1/jobs/{id}/cancel``: the outcome the store applied (D-S6).
+
+    ``outcome`` and ``status`` come from the one transaction that applied the cancel,
+    so they always agree. ``outcome`` is typed with the store's own closed vocabulary,
+    so the schema publishes the enumeration and generated clients get an exhaustive
+    union (D-8, §4.10); the wire values are unchanged.
+    """
 
     id: uuid.UUID
     status: JobStatus
-    outcome: str  # "flagged-running" / "canceled-queued" / "no-op-terminal"
+    outcome: CancelOutcome
 
 
 class ProblemOut(BaseModel):
     """The shared problem body every deliberate error uses (D-A6), as published in the schema.
 
     Schema-only: routes still return ``problem.problem_response``'s ``JSONResponse``,
-    which FastAPI does not validate against this model. ``extra="allow"`` keeps
-    route-specific fields (e.g. a 409's existing job ``id``) legal without this
-    model enumerating them; the named optional fields are the ones clients branch on.
+    which FastAPI does not validate against this model. ``extra="allow"`` keeps an
+    undeclared route-specific field legal; a field clients branch on is declared
+    below as a named optional field, so the generated types carry it without a cast.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -303,17 +319,38 @@ class ProblemOut(BaseModel):
     detail: str
     #: The failing dependency on a 503 (``"database"``), as ``/healthz`` reports it.
     check: Optional[str] = None
-    #: The event a per-event failure is about (502/404/400 on the events routes).
+    #: The event a per-event failure is about (502/404/400 on the events routes, and
+    #: the enqueue's 404 for an unknown event).
     event_id: Optional[str] = None
     #: Why the event could not be read, on the detail's 502: the list's error-row kind.
     failure: Optional[EventFailure] = None
+    #: The job a jobs problem is about: the active job on the enqueue's 409, the
+    #: requested id on the 404 of a job's detail or its cancel.
+    job_id: Optional[uuid.UUID] = None
+
+
+class WsMessageType(StrEnum):
+    """The closed set of frame types on ``WS /api/v1/ws/jobs`` (D-A4)."""
+
+    #: The first frame of every connection: every active job, replacing a client's state.
+    SNAPSHOT = "snapshot"
+    #: Every later frame: the jobs that changed since the previous poll, merged by id.
+    DELTA = "delta"
 
 
 class WsMessage(BaseModel):
-    """One frame on ``WS /api/v1/ws/jobs`` (D-A4): a snapshot or a delta batch."""
+    """One frame on ``WS /api/v1/ws/jobs`` (D-A4): a snapshot or a delta batch.
 
-    type: str  # "snapshot" | "delta"
-    jobs: List[JobOut] = []
+    A WebSocket route is not an HTTP operation, so no path in the schema references
+    this model: the application publishes it into the schema's components itself,
+    so a client generated from the schema gets the frame's type without declaring it
+    by hand (D-8, §4.10).
+    """
+
+    type: WsMessageType
+    #: Always sent (a snapshot of no active jobs is an empty list), so declared without
+    #: a default: the schema marks it required and generated clients need no fallback.
+    jobs: List[JobOut]
 
 
 __all__ = [
@@ -339,5 +376,6 @@ __all__ = [
     "StalenessOut",
     "CancelResult",
     "ProblemOut",
+    "WsMessageType",
     "WsMessage",
 ]
