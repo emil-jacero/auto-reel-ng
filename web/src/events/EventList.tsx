@@ -4,20 +4,14 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
 import { fetchEvents } from '../api/events'
 import type { EventError, EventRow, EventSummary, Problem } from '../api/events'
+import { LiveJobCell } from '../jobs/LiveJobCell'
 import { eventHref } from '../route'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
 import { LoadStatus, SkeletonRows } from '../ui/Skeleton'
 import { currentEventsVersion, useEventsVersion } from './changes'
-import {
-  DATABASE_CAUSE,
-  JobCell,
-  StalenessCell,
-  UNREACHABLE_CAUSE,
-  folderName,
-  plural,
-} from './common'
+import { DATABASE_CAUSE, StalenessCell, UNREACHABLE_CAUSE, folderName, plural } from './common'
 import { groupByYear, needsRender } from './grouping'
 import type { YearGroup } from './grouping'
 import { FAILURE_LABEL } from './labels'
@@ -26,17 +20,24 @@ import { CLIP_STATUS_LOOK, FAILURE_LOOK } from './tones'
 /**
  * The event list: which events need a render, and why.
  *
- * It only reads. The list is scanned from disk per request, so it is read on
- * mount, on refresh, and when it is shown after the client recorded that an
- * event changed (`changes.ts`) — nowhere else: no polling, no cache. Loading and
- * failure both replace the list: an earlier list is never shown as current.
- * Events the service could not read arrive as error rows and are shown first,
- * under "Needs attention", with nothing the row does not carry.
+ * The list is scanned from disk per request, so it is read on mount, on
+ * refresh, and when it is shown after the client recorded that an event changed
+ * (`changes.ts`) — nowhere else: no polling, no cache. Loading and failure both
+ * replace the list: an earlier list is never shown as current. The one exception
+ * is the re-read after an event changed, which keeps the rows, marked as
+ * updating, until the new read answers (a failure still replaces them). Events
+ * the service could not read arrive as error rows and are shown first, under
+ * "Needs attention", with nothing the row does not carry. Each row's job is live
+ * (`jobs/LiveJobCell`), with a Render for a row that needs one.
  */
+
+/** `quiet`: a re-read because events changed, which keeps the rows shown. */
+type LoadOptions = { quiet?: boolean }
 
 type LoadState =
   | { status: 'loading' }
-  | { status: 'ready'; events: EventRow[]; fetchedAt: Date }
+  // `updating`: a quiet re-read runs, and the rows shown are the last read's.
+  | { status: 'ready'; events: EventRow[]; fetchedAt: Date; updating?: boolean }
   | { status: 'failed'; cause: string; detail: string | null }
 
 function describeProblem(problem: Problem): { cause: string; detail: string | null } {
@@ -78,14 +79,13 @@ function EventRow({ event }: { event: EventSummary }) {
       <td role="cell" className="cell-render">
         <StalenessCell staleness={event.staleness} />
       </td>
-      {/* Labelled only when it holds a job: at narrow width the label shows beside it. */}
-      <td
+      <LiveJobCell
         role="cell"
         className="cell-job"
-        data-label={event.latest_job != null ? 'Last job' : undefined}
-      >
-        <JobCell job={event.latest_job} />
-      </td>
+        eventId={event.event_id}
+        staleness={event.staleness}
+        latestJob={event.latest_job}
+      />
     </tr>
   )
 }
@@ -190,16 +190,33 @@ export function EventList({ hidden }: { hidden: boolean }) {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
   const [onlyStale, setOnlyStale] = useState(false)
   const inFlight = useRef<AbortController | null>(null)
+  // A quiet re-read asked for while a read runs: one more runs after it.
+  const pending = useRef(false)
   const version = useEventsVersion()
   // The events version the list was last read at (recorded when the read starts).
   const readVersion = useRef(currentEventsVersion())
 
-  const load = useCallback(() => {
+  /**
+   * Read the list. A plain read (first, Refresh) aborts any read and shows
+   * placeholders. A quiet one keeps the rows, marked as updating — unless the list
+   * shows a failure, which has no rows to keep — and never restarts a read in
+   * flight: it runs once after it instead, so a burst of finished renders cannot
+   * restart a whole-library scan forever.
+   */
+  const load: (options?: LoadOptions) => void = useCallback((options = {}) => {
+    const quiet = options.quiet === true
+    if (quiet && inFlight.current !== null) {
+      pending.current = true
+      return
+    }
     inFlight.current?.abort()
+    pending.current = false
     const controller = new AbortController()
     inFlight.current = controller
     readVersion.current = currentEventsVersion()
-    setState({ status: 'loading' })
+    setState((shown) =>
+      quiet && shown.status === 'ready' ? { ...shown, updating: true } : { status: 'loading' },
+    )
     fetchEvents(controller.signal)
       .then((result) => {
         if (controller.signal.aborted) {
@@ -228,6 +245,15 @@ export function EventList({ hidden }: { hidden: boolean }) {
         }
         setState({ status: 'failed', cause: 'The events could not be read.', detail: String(error) })
       })
+      .finally(() => {
+        if (controller.signal.aborted || inFlight.current !== controller) {
+          return
+        }
+        inFlight.current = null
+        if (pending.current) {
+          load({ quiet: true })
+        }
+      })
   }, [])
 
   useEffect(() => {
@@ -235,16 +261,19 @@ export function EventList({ hidden }: { hidden: boolean }) {
     return () => inFlight.current?.abort()
   }, [load])
 
-  // Read again when shown after the client recorded that an event changed.
-  // Declared after the mount effect, so on mount the versions already match and
-  // no second read starts; a mark during a read starts one more, aborting it.
+  // Read again, in place, when shown after the client recorded that an event
+  // changed: while shown, or on return, when the hidden list's rows are still
+  // there for App's scroll restore. Declared after the mount effect, so on mount
+  // the versions already match and no second read starts; a mark during a read
+  // queues one more after it.
   useEffect(() => {
     if (!hidden && version !== readVersion.current) {
-      load()
+      load({ quiet: true })
     }
   }, [hidden, version, load])
 
   const loading = state.status === 'loading'
+  const updating = state.status === 'ready' && state.updating === true
   const rows = state.status === 'ready' ? partition(state.events) : null
   return (
     <main hidden={hidden} className="page event-list">
@@ -276,7 +305,7 @@ export function EventList({ hidden }: { hidden: boolean }) {
           {state.status === 'ready' && (
             <span>Scanned {state.fetchedAt.toLocaleTimeString()}</span>
           )}
-          <LoadStatus message={loading ? 'Scanning events…' : ''} />
+          <LoadStatus message={loading ? 'Scanning events…' : updating ? 'Updating…' : ''} />
         </div>
       </header>
 
@@ -291,7 +320,11 @@ export function EventList({ hidden }: { hidden: boolean }) {
 
       {state.status === 'failed' && <Alert tone="err" title={state.cause} detail={state.detail} />}
 
-      {rows !== null && <ReadyView events={rows.events} errors={rows.errors} onlyStale={onlyStale} />}
+      {rows !== null && (
+        <div className="page-content" aria-busy={updating || undefined}>
+          <ReadyView events={rows.events} errors={rows.errors} onlyStale={onlyStale} />
+        </div>
+      )}
     </main>
   )
 }

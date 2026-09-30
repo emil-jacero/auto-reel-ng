@@ -3,6 +3,7 @@ import './shell.css'
 import { Fragment, useId } from 'react'
 import type { ReactNode } from 'react'
 
+import { JobsIndicator } from '../jobs/JobsIndicator'
 import { LIST_HREF } from '../route'
 import type { Route } from '../route'
 import { Icon } from '../ui/Icon'
@@ -94,8 +95,9 @@ export function AppShell({ route, children }: { route: Route; children: ReactNod
               Events
             </a>
           </nav>
-          {/* Status indicators of later slices (the jobs connection) go here. */}
-          <div className="shell-status" />
+          <div className="shell-status">
+            <JobsIndicator />
+          </div>
           <ThemeControl />
         </div>
       </header>
