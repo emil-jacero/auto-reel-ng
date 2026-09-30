@@ -236,6 +236,11 @@ render, or job logic lives in the web tier.
   facts (duration, dimensions, codec) are deliberately not here. The **list**
   response keeps its clip counts and carries no per-clip facts. A detail clip's
   `status` is one of `new`, `active`, `missing` or `ignored`.
+  Each event's `latest_job` (list and detail) carries `id`, `status`,
+  `progress`, `created_at`, `started_at` and `finished_at`, with the values
+  `GET /api/v1/jobs/{id}` returns for that job; a time not yet recorded (no
+  worker has claimed the job's current run, or it has not ended) is `null`,
+  never another time.
   Every **list** row carries `kind`: `"event"` for a summary, `"error"` for an
   event that could not be read. An error row carries only `event_id`, a
   `failure` (`unparseable_reel_yaml`, `unusable_metadata` or `unreadable_disk`)

@@ -56,7 +56,11 @@ class ChapterOut(BaseModel):
 
 
 class JobSummaryOut(BaseModel):
-    """The latest job for an event, as embedded in the events list (D-A3).
+    """The latest job for an event, as embedded in the events list and detail (D-A3).
+
+    A projection of the job's detail (``JobOut``): every field here has the same value,
+    meaning and schema definition there. ``started_at``/``finished_at`` are null until the
+    store stamps them (a claim; a terminal transition), never substituted.
 
     ``status`` is typed with the job store's own closed vocabulary, so the schema
     publishes the enumeration and generated clients get an exhaustive union
@@ -67,6 +71,8 @@ class JobSummaryOut(BaseModel):
     status: JobStatus
     progress: float
     created_at: datetime
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
 
 
 class StalenessOut(BaseModel):

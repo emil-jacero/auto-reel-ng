@@ -1369,6 +1369,30 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
           }
         },
         "type": "object",
@@ -1379,7 +1403,7 @@
           "created_at"
         ],
         "title": "JobSummaryOut",
-        "description": "The latest job for an event, as embedded in the events list (D-A3).\n\n``status`` is typed with the job store's own closed vocabulary, so the schema\npublishes the enumeration and generated clients get an exhaustive union\n(D-8, §4.10). ``JobStatus`` is a ``str`` enum: the wire values are unchanged."
+        "description": "The latest job for an event, as embedded in the events list and detail (D-A3).\n\nA projection of the job's detail (``JobOut``): every field here has the same value,\nmeaning and schema definition there. ``started_at``/``finished_at`` are null until the\nstore stamps them (a claim; a terminal transition), never substituted.\n\n``status`` is typed with the job store's own closed vocabulary, so the schema\npublishes the enumeration and generated clients get an exhaustive union\n(D-8, §4.10). ``JobStatus`` is a ``str`` enum: the wire values are unchanged."
       },
       "MetadataBody": {
         "properties": {

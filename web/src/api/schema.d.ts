@@ -625,7 +625,11 @@ export interface components {
         JobStatus: "queued" | "running" | "done" | "failed" | "canceled";
         /**
          * JobSummaryOut
-         * @description The latest job for an event, as embedded in the events list (D-A3).
+         * @description The latest job for an event, as embedded in the events list and detail (D-A3).
+         *
+         *     A projection of the job's detail (``JobOut``): every field here has the same value,
+         *     meaning and schema definition there. ``started_at``/``finished_at`` are null until the
+         *     store stamps them (a claim; a terminal transition), never substituted.
          *
          *     ``status`` is typed with the job store's own closed vocabulary, so the schema
          *     publishes the enumeration and generated clients get an exhaustive union
@@ -645,6 +649,10 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
         };
         /**
          * MetadataBody
