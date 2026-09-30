@@ -246,13 +246,27 @@ class JobStore:
         with session_scope(self._session_factory) as session:
             return session.get(Job, job_id)
 
-    def list_by_status(self, status: JobStatus) -> list[Job]:
-        """List jobs with the given ``status``, ordered by ``created_at`` ascending."""
+    def list_by_status(self, status: JobStatus, *, project_root: Optional[str] = None) -> list[Job]:
+        """List jobs with the given ``status``, ordered by ``created_at`` ascending.
+
+        ``project_root`` narrows the listing to that project's jobs — the API serves
+        one project (jobs-project-guards); a row with no recorded root never matches.
+        Omitted, every project's jobs are listed, as the CLI's ``jobs list`` wants.
+        """
         with session_scope(self._session_factory) as session:
-            stmt = select(Job).where(Job.status == status).order_by(Job.created_at.asc())
+            stmt = select(Job).where(Job.status == status)
+            if project_root is not None:
+                stmt = stmt.where(Job.project_root == project_root)
+            stmt = stmt.order_by(Job.created_at.asc())
             return list(session.execute(stmt).scalars().all())
 
-    def list_finished_since(self, since: Optional[datetime], *, overlap: timedelta) -> FinishedJobs:
+    def list_finished_since(
+        self,
+        since: Optional[datetime],
+        *,
+        overlap: timedelta,
+        project_root: Optional[str] = None,
+    ) -> FinishedJobs:
         """The jobs whose terminal transition was stamped at or after ``since - overlap``.
 
         Only a terminal transition stamps ``finished_at``, so every job returned is
@@ -262,12 +276,16 @@ class JobStore:
         ``as_of`` back as its next ``since`` never depends on its own host's clock.
         ``now()`` is a transaction's *start*, so a terminal row can commit after a
         read whose ``as_of`` is already past its ``finished_at``: ``overlap`` re-reads
-        that stretch, and the caller de-duplicates what it has seen.
+        that stretch, and the caller de-duplicates what it has seen. ``project_root``
+        narrows the jobs as it does for :meth:`list_by_status`; ``as_of`` is unaffected.
         """
         with session_scope(self._session_factory) as session:
             as_of = session.execute(select(func.now())).scalar_one()  # pylint: disable=not-callable
             start = (since if since is not None else as_of) - overlap
-            stmt = select(Job).where(Job.finished_at >= start).order_by(Job.finished_at.asc())
+            stmt = select(Job).where(Job.finished_at >= start)
+            if project_root is not None:
+                stmt = stmt.where(Job.project_root == project_root)
+            stmt = stmt.order_by(Job.finished_at.asc())
             return FinishedJobs(as_of=as_of, jobs=list(session.execute(stmt).scalars().all()))
 
     def latest_by_project(self, project_root: str) -> dict[str, Job]:
