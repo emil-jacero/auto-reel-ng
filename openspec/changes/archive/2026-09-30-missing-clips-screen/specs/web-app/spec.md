@@ -18,11 +18,13 @@ Removing a clip SHALL:
 - move keyboard focus to that Undo control, and announce that the clip will be removed from `reel.yaml` when
   the edits are saved
 
-Undo SHALL return the clip to its chapter's play order, right after as many clips as came before it when Edit
-mode opened and are still in the chapter's play order. With no other edit to the chapter, that is the position
-it had. So removals undone in any order, with no move between them, leave the chapter's order as read. Undo
-SHALL then move keyboard focus to the clip's remove control, and announce the clip's position out of the
-number of clips the chapter plays.
+Undo SHALL return the clip to its chapter's play order, right after whichever of the clips that came before it
+when Edit mode opened comes last in the chapter's play order now, or first when none of them is still in the
+play order. With no other edit to the chapter, that is the position it had. So removals undone in any order,
+with no move between them, leave the chapter's order as read, and however the chapter was reordered meanwhile,
+each clip still in the play order that came before it when Edit mode opened comes before it again. Undo SHALL
+then move keyboard focus to the clip's remove control, and announce the clip's position out of the number of
+clips the chapter plays.
 
 A removal SHALL count as an unsaved change, like a move. The save bar says how many missing clips will be
 removed, Reset returns every removed clip to its place, and leaving with a removal unsaved asks first, as
