@@ -99,8 +99,9 @@ None.
 - **Schemas:** no `reel.yaml` change. **No `config.yaml` change in this change:** it reads
   `thumbnails.position` and `thumbnails.cache_dir`, which `clip-thumbnails` adds. **No Alembic
   migration**, no rescan.
-- **Wire:** one new path with a required `clip` and an optional, ignored `v` query parameter, one new
-  schema component (`ThumbnailFailure`), one new optional problem field.
+- **Wire:** one new path with a required `clip` and an optional, ignored `v` query parameter and an
+  optional `If-None-Match` header, one new schema component (`ThumbnailFailure`), one new optional
+  problem field.
   Every existing response is unchanged, and the regenerated types compile against the existing client.
 - **New third-party dependencies:** none. `starlette.concurrency.run_in_threadpool` and `asyncio` are already available.
 - **Size (Principle VIII):** one route, one small gate class, one lookup helper, one enum, one capability

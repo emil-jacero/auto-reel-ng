@@ -125,6 +125,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{event_id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Thumbnail
+         * @description ``GET /api/v1/events/{event_id}/thumbnail?clip=``: one clip's thumbnail (D-11).
+         *
+         *     Registered *before* the greedy ``{event_id:path}`` detail route for the reason
+         *     the ``/analysis`` route documents; the clip identity is a query parameter
+         *     because two greedy path parameters cannot be told apart.
+         *
+         *     ``async`` on purpose: a request waiting for an extraction slot waits on the
+         *     gate's ``asyncio`` primitives and holds no threadpool worker, so a page of cold
+         *     thumbnails cannot starve the other routes. Every blocking step (the listing,
+         *     the stat, reading the JPEG, the extraction) runs in the threadpool.
+         *
+         *     Failures answer by cause and carry no caching headers: 404 for an unknown event
+         *     or a clip that is not on disk in it; 502 with ``thumbnail_failure`` when the
+         *     engine cannot make this clip's thumbnail, with the list's ``failure`` when the
+         *     event cannot be listed, and with neither for the cache or ``config.yaml``.
+         *     Nothing is written into the library, and the database is never touched.
+         */
+        get: operations["get_thumbnail_api_v1_events__event_id__thumbnail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/{event_id}": {
         parameters: {
             query?: never;
@@ -694,6 +729,7 @@ export interface components {
             conflict?: components["schemas"]["EnqueueConflict"] | null;
             /** Claimed By */
             claimed_by?: string[] | null;
+            thumbnail_failure?: components["schemas"]["ThumbnailFailure"] | null;
         } & {
             [key: string]: unknown;
         };
@@ -742,6 +778,15 @@ export interface components {
          * @enum {string}
          */
         StalenessReason: "no_manifest" | "output" | "editorial" | "defaults" | "clip_set" | "engine";
+        /**
+         * ThumbnailFailure
+         * @description Why a clip's thumbnail could not be served: the API's classification of engine errors.
+         *
+         *     A kind describes the *clip*, never the service: a thumbnail cache that cannot be
+         *     written or an invalid ``config.yaml`` answers 502 with no kind at all.
+         * @enum {string}
+         */
+        ThumbnailFailure: "thumbnail_failed";
         /**
          * TrimBody
          * @description One cut span (``in``/``out``/``reason``), the reel.yaml YAML vocabulary.
@@ -986,6 +1031,77 @@ export interface operations {
             };
             /** @description Precondition Failed */
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+        };
+    };
+    get_thumbnail_api_v1_events__event_id__thumbnail_get: {
+        parameters: {
+            query: {
+                /** @description The clip's identity as the event detail lists it: its event-relative path */
+                clip: string;
+                /** @description An opaque cache-busting version; accepted and ignored */
+                v?: string | null;
+            };
+            header?: {
+                "If-None-Match"?: string | null;
+            };
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The clip's thumbnail: a JPEG fitted within 320x180 */
+            200: {
+                headers: {
+                    /** @description Strong entity-tag of the thumbnail: the engine's cache key, quoted */
+                    ETag?: string;
+                    /** @description Always `private, max-age=86400` */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description Not modified: `If-None-Match` names the current thumbnail */
+            304: {
+                headers: {
+                    /** @description Strong entity-tag of the thumbnail: the engine's cache key, quoted */
+                    ETag?: string;
+                    /** @description Always `private, max-age=86400` */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

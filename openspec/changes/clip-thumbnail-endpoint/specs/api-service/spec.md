@@ -66,6 +66,7 @@ responses SHALL carry no caching headers.
   modification time from the event detail as `v`.
 - The endpoint SHALL publish in the service's OpenAPI schema:
   - its required `clip` and optional `v` query parameters
+  - its optional `If-None-Match` request header
   - its 200 as `image/jpeg`, with the `ETag` and `Cache-Control` headers
   - its 304
   - its 404 and 502 in the shared problem body shape
@@ -175,8 +176,8 @@ responses SHALL carry no caching headers.
 
 #### Scenario: The schema publishes the thumbnail responses
 - **WHEN** the service's OpenAPI schema is generated
-- **THEN** the thumbnail route declares a required `clip` query parameter and an optional string query
-  parameter `v`, and publishes:
+- **THEN** the thumbnail route declares a required `clip` query parameter, an optional string query
+  parameter `v` and an optional `If-None-Match` header parameter, and publishes:
   - a 200 as `image/jpeg` with the `ETag` and `Cache-Control` headers
   - a 304
   - 404 and 502 in the shared problem body shape

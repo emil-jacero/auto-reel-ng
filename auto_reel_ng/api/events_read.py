@@ -6,7 +6,9 @@ processable-event rule, and the analysis sidecar cache reader. No
 new semantics — this module only shapes the same data ``scan``/``analyze``
 already compute into the API's pydantic schemas. The enqueue's output-collision
 check (:func:`output_collision`) is the same kind of read: the batch commands'
-rule (D-9), from ``render/``, over the served project's events.
+rule (D-9), from ``render/``, over the served project's events. So is the
+thumbnail lookup (:func:`thumbnail_source`): discovery's own listing decides which
+clips have one, and ``thumbs/`` computes where it is cached (D-11).
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from typing import Dict, List, Mapping, Optional, Tuple
 from ..analysis.cache import CACHE_SUBDIR, clip_signal, read_entry
 from ..cli.adoption import REEL_FILENAME
 from ..config.project import load_project_config, resolve_look_defaults
-from ..errors import EventMetadataError, ReelError
+from ..errors import EventMetadataError, ReelError, ThumbnailError
 from ..event.discovery import (
     ClipOrder,
     DiskListing,
@@ -40,6 +42,7 @@ from ..reel import ReelDocument, load_document
 from ..render import find_output_collisions, output_relpath
 from ..staleness.fingerprint import compute_fingerprint
 from ..staleness.gate import evaluate
+from ..thumbs import resolve_thumbnail_settings, thumbnail_path
 from .schemas import (
     AnalysisOut,
     ChapterOut,
@@ -79,6 +82,19 @@ class EventReadError(Exception):
         self.event_id = event_id
         self.detail = detail
         self.failure = failure
+
+
+class ClipNotFoundError(Exception):
+    """``clip`` is not one of the clips discovery lists on disk for the event.
+
+    A MISSING clip, a file under ``original/``, and any identity naming something
+    outside the event are all simply not in the listing.
+    """
+
+    def __init__(self, event_id: str, clip: str) -> None:
+        super().__init__(f"no clip {clip!r} on disk in event {event_id!r}")
+        self.event_id = event_id
+        self.clip = clip
 
 
 def event_id_for(settings: ApiSettings, event_dir: Path) -> str:
@@ -466,6 +482,69 @@ def get_analysis(settings: ApiSettings, event_id: str) -> AnalysisOut:
 
 
 @dataclass(frozen=True)
+class ThumbnailSource:
+    """A listed clip and where its thumbnail is cached, as the thumbnail route serves it."""
+
+    #: ``event_dir / clip``, for a clip the event's disk listing holds.
+    clip_path: Path
+    #: ``ThumbnailSettings.position``, resolved on this request.
+    position: float
+    #: ``ThumbnailSettings.cache_dir``, resolved on this request.
+    cache_dir: Path
+    #: ``<cache_dir>/<key>.jpg`` as ``thumbs.thumbnail_path`` computes it: nothing generated.
+    cache_path: Path
+
+    @property
+    def etag(self) -> str:
+        """The cache key, quoted: a strong entity-tag of the thumbnail's bytes."""
+        return f'"{self.cache_path.stem}"'
+
+
+def thumbnail_source(settings: ApiSettings, event_id: str, clip: str) -> ThumbnailSource:
+    """``GET /api/v1/events/{event_id}/thumbnail``: the clip to serve and its cache entry.
+
+    Read-only, and it never runs ffmpeg or ffprobe. In this order, so each outcome
+    has one answer: the event is resolved (:class:`EventNotFoundError`) and listed
+    with discovery's own rules (an ``OSError`` is an :class:`EventReadError` with
+    the list's ``unreadable_disk`` kind); ``clip`` must be exactly one of the listed
+    identities — no path or Unicode normalization, so nothing from the request is
+    joined onto a path before it matched (:class:`ClipNotFoundError`); only then is
+    ``config.yaml`` read (``ConfigError``) and the cache path computed. ``reel.yaml``
+    is never read: a thumbnail is a fact of the clip file, not of the document.
+
+    Raises:
+        ThumbnailError: the listed clip can no longer be statted (it changed after
+            the listing), in the wording ``thumbs.thumbnail_for`` gives that case.
+    """
+    event_dir = resolve_event_dir(settings, event_id)
+    try:
+        listing = scan_event(event_dir)
+    except OSError as exc:
+        raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
+    if clip not in listing.identities:
+        raise ClipNotFoundError(event_id, clip)
+
+    thumbnails = resolve_thumbnail_settings(
+        load_project_config(settings.project_root), settings.project_root
+    )
+    clip_path = event_dir / clip
+    try:
+        cache_path = thumbnail_path(
+            clip_path, position=thumbnails.position, cache_dir=thumbnails.cache_dir
+        )
+    except OSError as exc:
+        raise ThumbnailError(
+            str(clip_path), f"cannot stat the clip: {exc.strerror or exc}"
+        ) from exc
+    return ThumbnailSource(
+        clip_path=clip_path,
+        position=thumbnails.position,
+        cache_dir=thumbnails.cache_dir,
+        cache_path=cache_path,
+    )
+
+
+@dataclass(frozen=True)
 class OutputCollision:
     """The named event's output path and the other events that claim it."""
 
@@ -537,6 +616,7 @@ def output_collision(
 __all__ = [
     "EventNotFoundError",
     "EventReadError",
+    "ClipNotFoundError",
     "event_id_for",
     "resolve_event_dir",
     "named_event_dir",
@@ -546,6 +626,8 @@ __all__ = [
     "get_analysis",
     "OutputCollision",
     "output_collision",
+    "ThumbnailSource",
+    "thumbnail_source",
     "classify_event_failure",
     "staleness_for",
     "project_look_defaults",
