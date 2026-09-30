@@ -139,6 +139,8 @@ cards, and C4's drag rows.
     `grid-template-columns: 2rem 5rem minmax(0, 1fr) auto`
   - below 30rem: `'pos thumb file file' / 'pos thumb status status' / 'pos size size mtime'`. The size and
     time line starts under the box, so the size is never squeezed. Measured: no overlap at 390 or 360px.
+    (Changed in review: the phone layout starts at 33rem, the time takes the rest of its line, and below
+    22rem the status starts under the box. See "Changed during review".)
 - **Drag rows:**
   - `RowBody` renders `<ClipThumb …/>` between the position and `.clip-file`, as a grid item of the row
   - `.clip-order-head` gains one empty `<span />` in the same place
@@ -224,7 +226,7 @@ export function ClipThumb({ eventId, clip }: { eventId: string; clip: Clip })
   - `data-state="loading"` until `load` fires. Under `prefers-reduced-motion: no-preference` the box
     shimmers, reusing C1's `skeleton-shimmer` keyframes by name, with the same gradient as `.skeleton`.
     Under reduced motion the fill stands still, in `--border` as `.skeleton`'s does. No `@keyframes` is
-    added.
+    added. (Changed in review: six passes, then the still fill. See "Changed during review".)
   - `'failed'`: the image is replaced by `<span role="img" aria-label={`No preview for ${name}`}>`. It holds
     `<Icon name="film" />` and the words "No preview" (`aria-hidden`, `--text-xs`, `--fg-muted`), stacked and
     centered, on the same `--surface-2` fill. It is neutral, with no error tone.
@@ -245,7 +247,7 @@ export function ClipThumb({ eventId, clip }: { eventId: string; clip: Clip })
   and `ClipThumb.tsx` imports it.
   - It uses only existing tokens and adds no color: its one mix is of `--fg`.
   - Its shimmer declaration sits inside `@media (prefers-reduced-motion: no-preference)`, with the literal
-    loop duration `1.6s`.
+    loop duration `1.6s` and a finite count of 6.
 
 **Rationale**:
 - The component owns its states, and each screen owns only a column width. A future size change is a few
@@ -462,6 +464,46 @@ port 8111), and never committed.
 **Rationale**: Each fixture exists only to make one scenario observable. None of them changes the shared
 script or another agent's library.
 
+### Changed during review
+
+The review found one major and four minor defects, and the known removed-row issue. All six were fixed on
+the pr branch after the rebase onto `missing-clips-screen`:
+
+1. **The idle shimmer burned CPU.** See Risks, "A shimmer on many boxes". `thumbs.css` now declares
+   `animation: skeleton-shimmer 1.6s linear 6`, still inside the no-preference block. When the animation
+   ends, `background-position` returns to the declared `0 0`, where the 300%-wide gradient shows only
+   `--border`: the reduced-motion look, with no jump.
+2. **Edit rows were 8px shorter than the table's.** The wide `.clip-item` kept C4's `padding-block:
+   var(--s-1)`, so the 45px frame sat 4px from the dividers, and every row shrank when Edit mode opened. It
+   is now `var(--s-2)`, the read table's cell padding and the narrow block's. Measured at 1280px, both
+   rows are 62px.
+3. **Edit mode scrolled sideways at 320–335px** (WCAG 1.4.10, reflow). Below 30rem the facts beside the
+   box are narrower than a `nowrap` time. In that block, `.clip-mtime` may wrap, with `text-wrap: balance`,
+   so the date and the clock time each keep a line.
+4. **The read cards wrapped at 360–375px.** Every time wrapped "PM" onto a line of its own, and the NEW
+   pill ("New, not yet in reel.yaml") took two lines. The phone layout's last line is now `'pos size
+   mtime mtime'`, so the time takes the rest of the line. Below 22rem (viewports under about 384px) the
+   longest pill no longer fits beside the box, so the status starts under it: `'pos thumb file file' /
+   'pos status status status' / 'pos size mtime mtime'`. At 390px the pill still fits beside the box. The card time
+   also gets `text-wrap: balance`, for the narrowest phones.
+5. **Read cards broke an 18-character camera name** mid-word on NEW clips in a 30–33rem panel (a 540px
+   window). Beside the longest pill the file column kept only about 140px. The clip table's phone layout
+   now starts at 33rem, not 30rem; the rule matches only `.clip-table tbody tr`.
+6. **After Remove or Undo at 390px, the row sat partly under the save bar.** `ClipOrderList` scrolled
+   only the focused button into view. It now scrolls that button's whole row (`block: 'nearest'`, inside
+   the page's scroll padding). The same applies to Move up and Move down, whose rows are taller with the
+   frame.
+
+**Verified in the Playwright container.** Camera-style names (`YYYYMMDDhhmmss.mp4`) were swapped into the
+detail JSON in the browser only (`page.route`), on Två kapitel with its NEW clip:
+- **Read view:**
+  - at 360, 375, 390, 520, 540 and 560px, in both schemes, every name, pill and time keeps one line
+  - at 320px, no horizontal scroll and no overlap
+- **Edit mode:** no horizontal scroll at any of those widths.
+- **Row heights:** 62px in the table and in Edit mode at 1280px.
+- **Save bar:** at 390 and 996px, the removed row lies whole between the header and the save bar, and the
+  row given back by Undo is in view.
+
 ## Failure behavior and idempotency
 
 - **The page never fails because of a thumbnail.** The detail read and the thumbnails are independent
@@ -492,9 +534,16 @@ script or another agent's library.
   `config.yaml` turns every box into "No preview", with no hint on the page. → Accepted for v1. The cause is one request away
   in the problem detail and in `auto-reel thumbs`. A page-level notice would need the client to read status
   codes (see "Failure presentation"), and it is left for a real need.
-- **[A shimmer on many boxes]** A large chapter holds many loading boxes at once. → Off-screen boxes are not
-  painted. A box stops shimmering once its image loads. Under reduced motion there is no animation. C4's
-  400-row keyboard check is re-run once with thumbnails (task 4.2).
+- **[A shimmer on many boxes]** A large chapter holds many loading boxes at once, and a box the browser
+  defers (lazy, far below the view) stays loading until the operator scrolls near it. → Not painting an
+  off-screen box does **not** stop its animation from ticking. Review measured `Stor dag` (400 rows, warm
+  cache): 345 deferred boxes animating forever cost 60 style recalculations per second, about 26% of a core,
+  with no input. The shimmer therefore runs six passes (about 10 s), long enough for the boxes in view to
+  fill, and then rests on the still `--border` fill, the reduced-motion look. A box whose image starts
+  loading later, after a scroll, shows the still fill. Measured after the fix, 12 s after the loaded count
+  settles: no running animation, 0 style recalculations and under 1 ms of main-thread work in 5 s of idle,
+  in the read view and in Edit mode. A box also stops shimmering once its image loads. Under reduced motion
+  there is no animation. C4's 400-row keyboard check is re-run once with thumbnails (task 4.2).
 - **[C1's baseline alignment]** Middle alignment in the clip table moves a pill a pixel or two relative to
   its neighbours. → This applies to the clip table only, it matches the drag rows, and the list's tables are
   unchanged.
