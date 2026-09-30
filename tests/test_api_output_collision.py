@@ -33,7 +33,7 @@ KALAS_LOWER = "2024/2024-07-14 - kalas"
 FEST = "2024/2024-07-20 - Fest"
 FEST_LOWER = "2024/2024-07-20 - fest"
 
-#: A reel.yaml that is not a ReelError to the loader: a ValueError each.
+#: A reel.yaml the loader cannot load: a ReelParseError each (once a bare ValueError).
 IMPOSSIBLE_YAML_DATE = b"version: 0\nmetadata:\n  title: Kalas\n  date: 2024-02-30\n"
 NOT_UTF_8 = b"version: 0\nmetadata:\n  title: Kalas \xff\n"
 

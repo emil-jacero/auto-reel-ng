@@ -476,9 +476,11 @@ def _output_claim(event_dir: Path, order: ClipOrder, today: DateValue) -> Option
     The loader and the processable rule the CLI's batch commands select claimants
     with (``cli/_checked_document``): an unparseable or unreadable ``reel.yaml``, or
     no real date or title, claims no path. An ``OSError`` claims none either — the
-    events list's per-event isolation — where the CLI aborts its run on it. So does a
-    ``ValueError``: the loader lets one escape for a ``reel.yaml`` that is not UTF-8
-    (``UnicodeDecodeError``) or holds an impossible date, instead of a ``ReelParseError``.
+    events list's per-event isolation — where the CLI aborts its run on it. The
+    ``ValueError`` is a guard only: the loader reports every ``reel.yaml`` it cannot
+    load as a ``ReelParseError``, an impossible date and bytes that are not UTF-8
+    included, so one reaching here is a bug in reading some other event, which still
+    claims no path rather than failing this event's collision check.
     """
     try:
         document, _seeded = load_event_document(event_dir, order=order)

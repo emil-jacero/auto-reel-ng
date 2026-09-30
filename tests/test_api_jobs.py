@@ -284,8 +284,8 @@ def test_an_event_outside_any_collision_still_enqueues(client: TestClient, proje
     "reel_yaml",
     [
         b": [",
-        b"version: 0\nmetadata:\n  title: a\n  date: 2024-02-30\n",  # a ValueError to the loader
-        b"version: 0\nmetadata:\n  title: a \xff\n",  # not UTF-8: a UnicodeDecodeError
+        b"version: 0\nmetadata:\n  title: a\n  date: 2024-02-30\n",  # a ReelParseError
+        b"version: 0\nmetadata:\n  title: a \xff\n",  # not UTF-8: a ReelParseError too
     ],
     ids=["unparseable-reel-yaml", "impossible-yaml-date", "not-utf-8"],
 )
