@@ -19,7 +19,8 @@ Content that cannot be read as YAML text SHALL fail the same way. This covers:
   `2024-02-29T25:00:00` as a date or a timestamp, and that date or time does not exist. The same holds for a
   value whose explicit tag it cannot satisfy, such as `!!int abc`, `!!bool maybe`, or `!!int` with no value.
   This SHALL fail in a v0 document and in a legacy one, wherever in the document the value appears, `look`
-  included. The error SHALL name the file, the value as written, and its line.
+  included. The error SHALL name the file, the value as written, and its line. It SHALL call the value
+  invalid and SHALL NOT call the YAML malformed: the text is well-formed.
 - **Any other text the YAML reader cannot load.** An example is a double-quoted escape that names no
   Unicode character (`"\UFFFFFFFF"`). When the reader reports no position, the error SHALL name the file
   and the reader's reason.
@@ -56,7 +57,7 @@ A value is never coerced, clamped or dropped to make a document load.
 - **WHEN** the `reel.yaml` of `2024/2024-07-04 - Barbecue` reads `version: 0`, then `metadata:`, then
   `title: Barbecue`, then `date: 2024-02-30` on line 4
 - **THEN** loading fails with the parse error, whose message names that `reel.yaml`, the value `2024-02-30`
-  and line 4, and no other kind of error is raised
+  and line 4 as an invalid value rather than as malformed YAML, and no other kind of error is raised
 
 #### Scenario: An impossible date in a legacy document fails the same way
 - **WHEN** a `reel.yaml` with no `version` key has `metadata:` with `date: 2024-13-45`

@@ -114,6 +114,45 @@ def test_scan_lists_the_rest_when_one_reel_yaml_is_unparseable(
     assert "Fest  [" in out
 
 
+@pytest.mark.parametrize(
+    ("content", "named"),
+    [
+        pytest.param(
+            b"version: 0\nmetadata:\n  title: Barbecue\n  date: 2024-02-30\n",
+            "'2024-02-30'",
+            id="impossible-date",
+        ),
+        pytest.param(
+            "version: 0\nmetadata:\n  title: Grillkväll\n".encode("latin-1"),
+            "not UTF-8 text",
+            id="latin-1",
+        ),
+    ],
+)
+def test_scan_isolates_an_impossible_reel_yaml_date(
+    root: Path,
+    rendered: List[RenderJob],
+    capsys: pytest.CaptureFixture[str],
+    content: bytes,
+    named: str,
+) -> None:
+    """A value or a byte the YAML reader cannot load costs one event, never the scan."""
+    _add_event(root, "2024", "2024-06-21 - Midsommar")
+    barbecue = _add_event(root, "2024", "2024-07-04 - Barbecue")
+    (barbecue / "reel.yaml").write_bytes(content)
+    _add_event(root, "2024", "2024-08-01 - Kräftskiva")
+
+    assert main(["scan", str(root)]) == 1
+
+    out = capsys.readouterr().out
+    errors = [line for line in out.splitlines() if "ERROR" in line]
+    assert len(errors) == 1
+    assert errors[0].startswith("ERROR  2024-07-04 - Barbecue: ")
+    assert named in errors[0]
+    assert "Midsommar  [" in out
+    assert "Kräftskiva  [" in out
+
+
 def test_adopt_renders_reports_bad_names_not_untitled_claimants(
     root: Path, rendered: List[RenderJob], capsys: pytest.CaptureFixture[str]
 ) -> None:

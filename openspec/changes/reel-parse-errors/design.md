@@ -30,7 +30,10 @@ project with ruamel.yaml 0.19.1, the installed version (`pyproject.toml` asks fo
   - raised outside any node's construction:
     - the scanner's `ValueError` from `chr()` for a double-quoted escape that names no character
       (`"\UFFFFFFFF"`)
-    - a `RecursionError` for a flow list nested 3000 deep
+    - a `RecursionError` for a flow list nested 3000 deep, raised while composing. Found at
+      implementation: between about 200 and 450 levels the composer survives and the recursion limit is hit
+      while constructing instead, inside the per-node call below (measured with the default limit of 1000,
+      standalone and under pytest alike)
     - a failure in the root collection's constructor after its first `yield`: ruamel drains the root's
       generator in `construct_document`, after the per-node call for the root has returned (a root
       complex key `? {a: [b]}` raises `TypeError` there)
@@ -95,23 +98,26 @@ construction.
   `ReelParseError`, and the full non-DB suite still passed unchanged with the hook patched in (621 passed,
   5 environmental skips, the same as without it).
 
-**Decision**: (d). In `reel/parser.py`:
+**Decision**: (d). In `reel/parser.py` (as built; docstrings trimmed):
 
 ```python
 _TIMESTAMP_TAG = "tag:yaml.org,2002:timestamp"
 
 
 class _Constructor(RoundTripConstructor):
-    """ruamel's round-trip constructor, reporting an unconstructible node as a marked YAML error."""
-
     def construct_non_recursive_object(self, node: Any, tag: Optional[str] = None) -> Any:
         try:
             return super().construct_non_recursive_object(node, tag)
-        except YAMLError:
+        except (YAMLError, RecursionError):
             raise
         except Exception as exc:  # pylint: disable=broad-exception-caught
+            mark = node.start_mark
+            reason = f" ({exc})" if isinstance(exc, ValueError) else ""
             raise ConstructorError(
-                None, None, f"{_shown(node)} is not a {_kind(node)} ({exc})", node.start_mark
+                None,
+                None,
+                f"{_shown(node)} on line {mark.line + 1}, column {mark.column + 1} "
+                f"is not a {_kind(node)}{reason}",
             ) from exc
 
 
@@ -122,36 +128,54 @@ def _yaml() -> YAML:
     return yaml
 ```
 
-and in `loads_document`, the load's `except YAMLError` clause gains a sibling:
+and in `loads_document`, the load's `except YAMLError` clause gains a sibling on each side:
 
 ```python
     try:
         data = _yaml().load(text)
+    except ConstructorError as exc:
+        raise ReelParseError(f"{source}: invalid value: {exc}") from exc
     except YAMLError as exc:
         raise ReelParseError(f"{source}: malformed YAML: {exc}") from exc
     except Exception as exc:  # pylint: disable=broad-exception-caught
-        # ruamel failing without a position (scanner chr(), recursion depth, a root generator)
+        # ruamel failing with no node to blame: a scanner chr() error, the recursion
+        # limit, the root collection's constructor after its first yield
         raise ReelParseError(f"{source}: malformed YAML: {exc}") from exc
 ```
 
-- `_kind` is `"real date or time"` for the timestamp tag, and otherwise `"valid <tag suffix>"` (`valid int`).
-- `_shown` is `repr(node.value)` for a scalar (`'2024-02-30'`), and otherwise the node's tag.
+- `_kind` is `"real date"` for a timestamp with no time, `"real date and time"` for one with a time (it
+  holds a `:`), and otherwise `"valid <tag suffix>"` (`valid int`, `valid bool`).
+- `_shown` is `repr(node.value)` for a scalar (`'2024-02-30'`, `''` for an empty one), and otherwise
+  `the mapping` or `the sequence`. A tag URI read as a value (`tag:yaml.org,2002:map is not a valid map`)
+  helped no one.
+- The builtin error's own text follows in parentheses only for a `ValueError`: that is Python's error for
+  a value out of range or not parseable, and its text describes the value (`day 29 must be in range 1..28
+  for month 2 in year 2023` explains a leap day in a year without one). The other types ruamel leaks
+  describe only its code: `!!bool maybe` is a `KeyError` whose text is `'maybe'` again, an empty `!!int` an
+  `IndexError` saying `string index out of range`, `!!set abc` an `AttributeError` about `ScalarNode`.
+- The position is part of the one-line problem text, not a `problem_mark`: ruamel's marked excerpt is
+  several lines, and the events list's error row puts `detail` in one table cell, which collapses them.
+- `loads_document` raises every `ConstructorError`, the hook's and ruamel's own (`!!timestamp foo`,
+  `!!int {a: 1}`), under the prefix `invalid value`. The text is well-formed YAML: a node it holds cannot
+  be built. Every other `YAMLError` (scanner, parser, composer, a duplicate key) keeps `malformed YAML`,
+  and so does the backstop.
 - The hook MUST re-raise a `YAMLError` unchanged, so that ruamel's own marked errors, and a child node's
   error that the hook already converted, keep their original position. The innermost failing node is the
   one reported.
+- The hook MUST also re-raise a `RecursionError` unchanged. Between about 200 and 450 levels of nesting the
+  stack runs out while constructing (Context). Converting it there reported, for 300 levels, `the sequence
+  on line 2, column 204 is not a valid seq`: one node blamed for the document's depth. Passed through, it
+  reaches the backstop like the composer's `RecursionError` does.
 - Both broad clauses MUST wrap only the load step. Routing, `import_legacy_data` and `build_document` stay
   outside them.
-- The `# pylint: disable=broad-exception-caught` follows the precedent in `accel/selftest.py`. The snippet
+- The `# pylint: disable=broad-exception-caught` follows the precedent in `accel/selftest.py`. The module
   passes strict mypy, pylint 10.00 with the repo's `pyproject.toml`, and black at line length 100.
 
-This is the resulting message for the Barbecue fixture, type-checked and reproduced:
+This is the resulting message for the Barbecue fixture, as `auto-reel scan` prints it on the scratch copy:
 
 ```
-…/2024-07-04 - Barbecue/reel.yaml: malformed YAML: '2024-02-30' is not a real date or time (day 30 must
-be in range 1..29 for month 2 in year 2024)
-  in "<unicode string>", line 4, column 9:
-        date: 2024-02-30
-              ^ (line: 4)
+ERROR  2024-07-04 - Barbecue: …/2024-07-04 - Barbecue/reel.yaml: invalid value: '2024-02-30' on line 4,
+column 9 is not a real date (day 30 must be in range 1..29 for month 2 in year 2024)
 ```
 
 **Rationale**:
@@ -161,8 +185,8 @@ be in range 1..29 for month 2 in year 2024)
   later" (Principle VII). Each builtin type it absorbs was reproduced above, and five different ones come
   from ruamel's constructors alone. A tuple of today's five types would leave the next one to crash the
   whole batch, and one bad event must not do that (Principle I).
-- It reuses the loader's existing `YAMLError` path, which already emits multi-line marked messages for
-  syntax errors. Callers and the CLI already print that shape.
+- It reuses the loader's existing `YAMLError` path: the hook raises ruamel's own error type, and the load's
+  clauses turn it into `ReelParseError`. Callers and the CLI print it like any other parse error.
 - `ConstructorError` is ruamel's own error for "cannot construct this node", and `!!timestamp foo` already
   raises it today. The new errors are the same kind of failure and are reported the same way.
 - The hook only acts when construction raises. A document that loads today builds the same objects, so no
@@ -229,20 +253,26 @@ existing fail-loud guarantee.
   API. If a ruamel upgrade renamed it, the override would silently become dead code. The backstop would
   still turn the error into a `ReelParseError`, but without the value's line. → The parser tests load
   `date: 2024-02-30` and assert a `ReelParseError` naming the line (task 2.1), so an upgrade that bypasses
-  the hook fails CI. The method exists unchanged in the installed 0.19.1.
-- **["malformed YAML" wording for a well-formed file]** The existing prefix is kept, although the file is
-  syntactically valid. → The problem text after it says exactly what is wrong ("is not a real date or
-  time"). Adding a second prefix would mean a second `except` path for no behavioral gain.
+  the hook fails CI. The method, its signature and its one call site in `construct_object` are the same in
+  0.18.0 (the `>=0.18.0` floor) and 0.19.1, and the tests pass on both.
+- **[Two prefixes]** A well-formed value that cannot be built reads `invalid value`, and everything else
+  the reader rejects reads `malformed YAML` (decided in review: the old single prefix called a
+  syntactically valid `date: 2024-02-30` malformed). → The backstop cannot tell the two apart, so a root
+  collection whose own constructor fails after its first yield (a complex key holding a list at the top of
+  the file) reads `malformed YAML` although the text is well-formed. The file and ruamel's reason are still
+  named, and such a key in a hand-written `reel.yaml` is not a realistic typo.
 - **[ruamel's `in "<unicode string>"` in the excerpt]** The marked excerpt names the stream, not the file.
-  → This is pre-existing for every syntax error. The file is named by the message's leading `source`.
+  → This is pre-existing for syntax errors and ruamel's own `ConstructorError`s. The file is named by the
+  message's leading `source`, and the hook's value errors carry no excerpt.
 - **[A broad catch could hide an engine bug]** `except Exception` would also absorb a bug in the hook's
   own `_shown`/`_kind`. → The clauses wrap only `YAML().load(text)`, which runs ruamel over user text plus
   the hook. `schema` and `legacy` validation stay outside, so a bug there still raises as itself. The error
   is chained (`from exc`), so the original traceback survives, and task 2.1's message assertions would
   catch a broken helper.
-- **[Backstop errors carry no position]** The scanner's `chr()` failure and `RecursionError` come without a
-  mark, so the message names the file and ruamel's reason (`chr() arg not in range(0x110000)`), not the
-  line. → Getting a line would mean hooking ruamel's scanner or composer as well, which costs more than such
+- **[Backstop errors carry no position]** The scanner's `chr()` failure and `RecursionError` (from the
+  composer, or passed through by the hook) come without a mark, so the message names the file and ruamel's
+  reason (`chr() arg not in range(0x110000)`, `maximum recursion depth exceeded`), not the line.
+  → Getting a line would mean hooking ruamel's scanner or composer as well, which costs more than such
   rare typos justify. The file is still named, the batch still survives, and the event is still reported
   as failed.
 
