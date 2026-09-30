@@ -38,11 +38,18 @@ class _Constructor(RoundTripConstructor):
     ruamel builds an unquoted ``2024-02-30`` with ``datetime.date(2024, 2, 30)`` and an
     ``!!bool maybe`` by a dict lookup, so such values escape as a bare ``ValueError``,
     ``KeyError``, ``IndexError``, ... Here they become ruamel's own ``ConstructorError``.
+    An integer too long to print is refused the same way, however it is written.
     """
 
     def construct_non_recursive_object(self, node: Any, tag: Optional[str] = None) -> Any:
         try:
-            return super().construct_non_recursive_object(node, tag)
+            data = super().construct_non_recursive_object(node, tag)
+            if isinstance(data, int):
+                # ruamel's int() refuses a decimal literal past Python's int-to-str digit limit,
+                # but not the same number in hex, octal or binary; printing it would fail later,
+                # in a message, a fingerprint or a JSON body, so refuse it here alike.
+                str(data)
+            return data
         except (YAMLError, RecursionError):
             # ruamel's own error, or a child node's converted below, already names the innermost
             # failing node; a document too deep to construct is no one node's fault.
@@ -113,8 +120,10 @@ def loads_document(text: str, *, source: str = "<string>") -> ReelDocument:
         raise ReelParseError(f"{source}: malformed YAML: {exc}") from exc
     except Exception as exc:  # pylint: disable=broad-exception-caught
         # ruamel failing with no node to blame: a scanner chr() error, the recursion
-        # limit, the root collection's constructor after its first yield
-        raise ReelParseError(f"{source}: malformed YAML: {exc}") from exc
+        # limit, the root collection's constructor after its first yield (a bare assert
+        # in the omap constructor has no text: its type is the reason left to name)
+        reason = str(exc) or type(exc).__name__
+        raise ReelParseError(f"{source}: malformed YAML: {reason}") from exc
 
     if data is None:
         raise ReelParseError(f"{source}: empty document")
