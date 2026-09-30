@@ -122,7 +122,7 @@ function AttentionPanel({ errors }: { errors: EventError[] }) {
           {errors.map((error) => (
             <tr role="row" key={error.event_id}>
               <td role="cell" className="cell-folder">
-                {folderName(error.event_id)}
+                <a href={eventHref(error.event_id)}>{folderName(error.event_id)}</a>
               </td>
               <td role="cell" className="cell-problem">
                 <Pill tone={FAILURE_LOOK[error.failure].tone} icon={FAILURE_LOOK[error.failure].icon}>

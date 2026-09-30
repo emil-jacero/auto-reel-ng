@@ -5,7 +5,7 @@ React 19 + Vite + TypeScript, built ahead of time into static assets that
 exists at runtime** — the deployment stays the single Python process, and the
 service starts normally when `dist/` is absent.
 
-Two screens so far, both only read. The **event list** (slice B of §4.10) answers
+Two screens so far. The **event list** (slice B of §4.10) answers
 "which events need a render, and why": every event grouped by year, its clip
 counts, its staleness verdict with reasons in words, and its latest job. Each
 event's title opens its **event page** (slice C) at `#/event/<id>`: its chapters
@@ -18,6 +18,27 @@ in `events/changes.ts`, called by the slices that write or render): then the lis
 reads again when shown, keeping its filter. Every page sits in one shell: a sticky
 header with the Events link and a System / Light / Dark theme control, remembered
 per browser (see "Design system").
+
+The event page's **Edit mode** (slice D) is the client's first write. **Edit** reads the
+event's `reel.yaml` (`GET …/reel` and its `ETag`) and turns the page into an editor:
+the title, date, location and description as `reel.yaml` itself says them (an empty
+field inherits from the folder name, and says so), and each chapter's clips as a list
+to reorder — drag a clip's handle (mouse, pen or touch), lift it from the keyboard
+(Space or Enter, the arrows, Space or Enter; Escape cancels), or press its Move up /
+Move down. Clips stay in their chapter; ignored clips are listed but never move. A
+sticky save bar says what changed. **Save** sends one whole-document `PUT` under
+`If-Match` with only the operator's edits applied (`edit/draft.ts`); a failure keeps
+the edits and says why, and a conflict offers Reload latest or Overwrite with mine. A
+save never enqueues a render. The list's "Needs attention" folder names open their
+event's page; when an event's date or title is unusable, that page shows the failure
+and a form to fix them.
+
+Unsaved edits are never discarded silently: closing or reloading the tab gets the
+browser's own prompt, and Back, Forward, a link, a typed address, Refresh and Stop
+editing ask "Discard unsaved changes?" first. Each history entry the client accepts
+carries its index in `history.state`, so a refused Back or Forward is undone by going
+back the other way and the history stays as it was; Discard redoes the move. A refused
+link or typed address stays behind as a Forward entry.
 
 ```
 src/
@@ -46,7 +67,16 @@ src/
 │   ├── schema.d.ts       generated (see below)
 │   ├── http.ts           shared response reading and problem parsing
 │   ├── events.ts         the list fetch: URL, status codes
-│   └── event.ts          the one-event fetch: URL, status codes
+│   ├── event.ts          the one-event fetch: URL, status codes
+│   └── reel.ts           the editorial read and write: ETag in, If-Match out
+├── edit/
+│   ├── EventEditor.tsx   Edit mode: the reel read, the save bar, saves and failures
+│   ├── ClipOrderList.tsx one chapter's clips to reorder: drag, keyboard, buttons
+│   ├── MetadataForm.tsx  title, date, location, description, and inherited values
+│   ├── SaveBar.tsx       the sticky save bar and a failed save's alert
+│   ├── draft.ts          the edit model: write body, moved clips, dirty (pure)
+│   ├── unsaved.ts        the unsaved-changes guard and its question
+│   └── edit.css          Edit mode's fields, rows and save bar
 └── events/
     ├── EventList.tsx     the list: load/refresh, summary, filter, year panels
     ├── EventDetail.tsx   the event page: status, counts, per-chapter clip panels
@@ -246,12 +276,12 @@ HLD §7).
 
 ## Dependency budget
 
-`react`, `react-dom`, `vite`, `@vitejs/plugin-react`, `typescript`, and
-`openapi-typescript` (dev). **No component library, no CSS framework, no router,
-and no state-management or data-fetching library at GUI v1.** Any addition must be
-justified in the proposal of the slice that demonstrably needs it — the
-drag-and-drop library arrives with the reorder slice, not here. The design system
-adds nothing to it.
+`react`, `react-dom`, the one drag-and-drop library — `@dnd-kit/core`,
+`@dnd-kit/sortable` and `@dnd-kit/utilities`, the legacy line, added by the reorder
+slice (D-8) — `vite`, `@vitejs/plugin-react`, `typescript`, and `openapi-typescript`
+(dev). **No component library, no CSS framework, no router, and no state-management
+or data-fetching library at GUI v1.** Any addition must be justified in the proposal
+of the slice that demonstrably needs it. The design system adds nothing to it.
 
 ## Checks
 
