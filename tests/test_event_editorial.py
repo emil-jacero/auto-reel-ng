@@ -405,6 +405,9 @@ ignore:
   - junk.mp4  # never render
 """
 
+#: The Sommarlov metadata alone, for documents that differ only in their lists.
+SOMMARLOV_METADATA = "version: 0\nmetadata:\n  title: Sommarlov\n  date: 2024-09-01\n"
+
 #: An ignore list alone: a header comment, an end-of-line comment, a blank line, and
 #: a closing comment after the list.
 IGNORE_ONLY = """\
@@ -479,10 +482,33 @@ def _chapter_clips(desired: dict, name: str) -> list:
 
 @pytest.mark.parametrize(
     "text",
-    [SOMMARLOV, SOMMARLOV_ANNOTATED, IGNORE_ONLY],
-    ids=["sommarlov", "annotated", "ignore_only"],
+    [
+        SOMMARLOV,
+        SOMMARLOV_ANNOTATED,
+        IGNORE_ONLY,
+        # A rebuilt list would write this entry unquoted: only leaving it alone keeps it.
+        SOMMARLOV.replace("      - s1710004.mp4\n", '      - "s1710004.mp4"\n'),
+        SOMMARLOV_METADATA + "ignore: []\n",
+        SOMMARLOV_METADATA + "ignore:\n",
+        SOMMARLOV_METADATA + "chapters: []\n",
+        SOMMARLOV_METADATA + "chapters:\n",
+        SOMMARLOV + "  - name: Kvällen\n",
+        SOMMARLOV + "  - name: Kvällen\n    clips:\n",
+    ],
+    ids=[
+        "sommarlov",
+        "annotated",
+        "ignore_only",
+        "quoted_entry",
+        "empty_ignore",
+        "bare_ignore",
+        "empty_chapters",
+        "bare_chapters",
+        "chapter_without_clips",
+        "chapter_with_bare_clips",
+    ],
 )
-def test_round_trip_noop_keeps_list_entry_comments(tmp_path: Path, text: str) -> None:
+def test_round_trip_noop_leaves_lists_as_written(tmp_path: Path, text: str) -> None:
     event_dir = _write_event(tmp_path, text)
     desired = _desired_from(load_document(event_dir / REEL_FILENAME))
 
@@ -708,18 +734,35 @@ def test_key_line_comment_stays_on_the_key_line(tmp_path: Path) -> None:
     _assert_write(event_dir, original, _annotated(root=keyed))
 
 
-def test_appended_chapter_keeps_the_lines_between_existing_chapters(tmp_path: Path) -> None:
-    """GUI slice D appends a disk chapter the document does not name; nothing else moves."""
+@pytest.mark.parametrize(
+    "kvallen",
+    [
+        KVALLEN_CHAPTER,
+        "  - name: Kvällen\n    clips: [Kvällen/b.mp4, Kvällen/c.mp4]\n",
+        "  - name: Kvällen\n    clips: [Kvällen/b.mp4, Kvällen/c.mp4]  # evening\n",
+    ],
+    ids=["block", "flow", "flow_with_comment"],
+)
+def test_appended_chapter_keeps_the_lines_between_existing_chapters(
+    tmp_path: Path, kvallen: str
+) -> None:
+    """GUI slice D appends a disk chapter the document does not name; nothing else moves.
+
+    The comment after the last chapter still introduces what follows the chapters.
+    """
     flow_root = (
         "  - name: ''   # the root clips\n"
         "    clips: [s1710002.mp4, s1710004.mp4, borttagen.mp4]\n"
         "  # between chapters\n"
     )
-    event_dir, desired = _annotated_event(tmp_path, _annotated(root=flow_root))
+    dismissed = "# dismissed clips\n"
+    text = _annotated(root=flow_root, kvallen=kvallen + dismissed)
+    event_dir, desired = _annotated_event(tmp_path, text)
     desired["chapters"].append({"name": "Natten", "clips": ["Natten/d.mp4"]})
 
     natten = "  - name: Natten\n    clips:\n      - Natten/d.mp4\n"
-    _assert_write(event_dir, desired, _annotated(root=flow_root, kvallen=KVALLEN_CHAPTER + natten))
+    expected = _annotated(root=flow_root, kvallen=kvallen + natten + dismissed)
+    _assert_write(event_dir, desired, expected)
 
 
 def test_non_canonical_entry_counts_as_a_change(tmp_path: Path) -> None:
@@ -731,3 +774,48 @@ def test_non_canonical_entry_counts_as_a_change(tmp_path: Path) -> None:
     assert _chapter_clips(desired, "")[0] == "s1710002.mp4"
 
     _assert_write(event_dir, desired, SOMMARLOV)
+
+
+def test_emptied_ignore_keeps_the_comment_that_follows_it(tmp_path: Path) -> None:
+    lists = "ignore:\n  - j.mp4  # jay\n# how the clips are ordered\nsort:\n  method: filename\n"
+    event_dir, desired = _annotated_event(tmp_path, SOMMARLOV_METADATA + lists)
+    desired["ignore"] = []
+
+    emptied = "ignore: []\n# how the clips are ordered\nsort:\n  method: filename\n"
+    _assert_write(event_dir, desired, SOMMARLOV_METADATA + emptied)
+
+
+def test_flow_list_keeps_the_comment_above_it(tmp_path: Path) -> None:
+    """It stays the list's own header, and tops the list when a commented clip turns it block."""
+    flow = (
+        "  - name: Kvällen\n"
+        "    clips:\n"
+        "      # the evening\n"
+        "        [Kvällen/b.mp4, Kvällen/c.mp4]\n"
+    )
+    event_dir, desired = _annotated_event(tmp_path, _annotated(kvallen=flow))
+    _chapter_clips(desired, "Kvällen").reverse()
+
+    reordered = flow.replace("[Kvällen/b.mp4, Kvällen/c.mp4]", "[Kvällen/c.mp4, Kvällen/b.mp4]")
+    _assert_write(event_dir, desired, _annotated(kvallen=reordered))
+
+    _chapter_clips(desired, "").remove("s1710002.mp4")
+    _chapter_clips(desired, "Kvällen").insert(1, "s1710002.mp4")
+    root = (
+        "  - name: ''   # the root clips\n"
+        "    clips:\n"
+        "      # before second\n"
+        "      - s1710004.mp4   # second\n"
+        "      - borttagen.mp4  # MISSING\n"
+        "  # between chapters\n"
+    )
+    kvallen = (
+        "  - name: Kvällen\n"
+        "    clips:\n"
+        "      # the evening\n"
+        "      - Kvällen/c.mp4\n"
+        "      # the opening shot\n"
+        "      - s1710002.mp4   # first\n"
+        "      - Kvällen/b.mp4\n"
+    )
+    _assert_write(event_dir, desired, _annotated(root=root, kvallen=kvallen))
