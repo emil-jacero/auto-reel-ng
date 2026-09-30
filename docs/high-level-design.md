@@ -329,14 +329,15 @@ change directories:
 | B | event list screen | the scan/ingest view, over slice 0's verdicts |
 | C | event detail screen | chapters/clips read-only, using the per-clip `size`/`mtime` file facts |
 | D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency — landed in `event-edit-screen` (the event page's Edit mode) |
-| E | render + live progress | `POST /jobs` (201 / 200-fresh / 409), the WS hook, cancel |
+| E | render + live progress | `POST /jobs` (201 / 200-fresh / 409), the WS hook, cancel — landed in `render-progress-screen` |
 
 C, D and E are deliberately **not** designed yet: their screens depend on what A and B teach against a
-real library. The API they need already exists — `editorial-write-api`, `editorial-read-api` and
-`gui-event-screen-api-prep` closed the write precondition and the per-clip file facts, so no further
-`api/` prerequisite is known for v1. **The resolved `look`, shown read-only in the v1 sketch above, is
-not exposed by any endpoint**; it is deferred to v2 with the look editor rather than adding a read
-surface for a field v1 only displays.
+real library. `editorial-write-api`, `editorial-read-api` and `gui-event-screen-api-prep` closed the
+write precondition and the per-clip file facts. Slice E then needed two more `api/` prerequisites, found
+while designing it: `jobs-client-contract` (the published jobs answers, cancel outcomes and WebSocket
+frames) and `jobs-project-guards` (the output-collision refusal and project-scoped jobs). **The
+resolved `look`, shown read-only in the v1 sketch above, is not exposed by any endpoint**; it is
+deferred to v2 with the look editor rather than adding a read surface for a field v1 only displays.
 
 #### Decision D-8 — Frontend stack (LOCKED, 2026-08-31)
 
@@ -368,7 +369,9 @@ dependency budget.** Rationale and rules:
 - **Live progress needs no library.** The hub already fans out `JobOut` deltas and re-sends a full snapshot
   on reconnect (D-A4), so the client is one WebSocket hook holding a `Map<job_id, JobOut>` with reconnect
   backoff. The service closes the socket with 1012 when it stops and 1013 when it drops a subscriber, and
-  the client reconnects after any close.
+  the client reconnects after any close. A snapshot carries only active jobs, so a job the client knew as
+  active that a reconnect snapshot lacks is read once with `GET /jobs/{id}`: it ended while the socket was
+  down.
 - **The Node toolchain runs in podman** (`node:22`), mirroring the containerized-Postgres test fixture —
   nothing is layered onto the immutable host.
 - **Shipping `web/dist` in the wheel/image is deferred to §6 phase 11 packaging**; it is not a v1 concern.
