@@ -194,11 +194,19 @@ scratch script under Node's type stripping:
   and then `y` (index 1), then undoing `x` and then `y`, gives `[a, y, x]`. That is dirty, with 1 clip counted
   as moved, although the operator moved nothing. The spec's "an undone removal leaves no change to save" would
   then be false.
-- **The original order:** put the clip right after as many clips as came before it when Edit mode opened and
-  are still in the chapter's order. Without moves, the order is always a subsequence of the original, so this
-  is exactly the original place, and removals undone in any order give back `[a, x, y]`. After a move it still
-  lands at the same count. On Sommarlov, removing `borttagen.mp4`, moving `s1710004.mp4` up and undoing gives
+- **The original order:** put the clip right after whichever of the clips that came before it when Edit mode
+  opened comes last in the chapter's order now, or first when none of them is left. Without moves, the order
+  is always a subsequence of the original, so this is exactly the original place, and removals undone in any
+  order give back `[a, x, y]`. After a move, every clip that came before it and is still listed comes before
+  it again. On Sommarlov, removing `borttagen.mp4`, moving `s1710004.mp4` up and undoing gives
   `[s1710004.mp4, s1710002.mp4, borttagen.mp4]`, with `borttagen.mp4` at position 3 again.
+
+  *Review refinement.* The rule as first written ("right after as many clips as came before it … and are still
+  in the chapter's order") placed the clip by a count. The review found it wrong once another clip moved: from
+  `[a, x, y, b]`, removing `x`, moving `b` to the front (`[b, a, y]`) and undoing gave `[b, x, a, y]`. That
+  counted 2 clips as moved and badged `a`, which nobody touched. Placing the clip after its last original
+  predecessor gives `[b, a, x, y]` with 1 clip moved, and changes nothing when no clip moved. The model script
+  checks both cases; the count rule fails them.
 
 **Decision**: Option (b), with the original-order rule. `draft.ts` gains:
 
@@ -210,8 +218,9 @@ export type Removals = ReadonlyMap<string, string>
 export function removeClip(orders: Orders, chapter: string, identity: string): Orders | null
 
 /**
- * `orders` with `identity` put back in `chapter`, right after as many clips as came before it in
- * `original` (the chapter's order when Edit mode opened) and are still in the chapter's order.
+ * `orders` with `identity` put back in `chapter`, right after whichever of the clips that came before it
+ * in `original` (the chapter's order when Edit mode opened) comes last in the chapter's order now;
+ * first when none of them is left.
  */
 export function restoreClip(
   orders: Orders,
@@ -221,10 +230,10 @@ export function restoreClip(
 ): Orders
 ```
 
-The rule has one trade-off. Suppose a missing clip is moved, then removed, then restored. It returns next to
-the clips it followed when Edit mode opened, not to where it had been moved. The operator's latest act on that
-clip was to remove it, and missing clips are rare, so this is accepted. Keeping that move would take a second,
-shadow order that holds removed clips, which is option (a) again.
+The rule has one trade-off. Suppose a missing clip is moved, then removed, then restored. It returns right
+after the last of the clips it followed when Edit mode opened, not to where it had been moved. The operator's
+latest act on that clip was to remove it, and missing clips are rare, so this is accepted. Keeping that move
+would take a second, shadow order that holds removed clips, which is option (a) again.
 
 In `EventEditor`:
 
@@ -578,7 +587,9 @@ whose counts other changes' checks cite.
 **Decision**:
 
 - **Undo rule.** The original-order restore (`restoreClip`) is accepted. A missing clip that was moved, then
-  removed, then restored returns near its original place (the trade-off under "The draft").
+  removed, then restored returns near its original place (the trade-off under "The draft"). After the
+  implementation review, the clip goes right after the last of its original predecessors in the current order,
+  not after a count of them ("The draft", *Review refinement*).
 - **Fixtures.** No second missing clip in one chapter is added to a browser fixture. The "removals undone in
   any order" scenario is proven by task 2.1's model script only.
 - **Excluded missing clips.** The explicit behaviour on `2024-09-03 - Utesluten` is accepted: every missing
@@ -630,8 +641,9 @@ whose counts other changes' checks cite.
   explicit, named control per clip, with Undo and Reset available until Save, and a count in the save bar.
   The file itself is never touched, and a restored file comes back as NEW.
 - **[Undo does not keep a move of the removed clip itself]** → A missing clip that was moved, then removed,
-  then restored goes back next to the clips it followed when Edit mode opened. This is the price of a rule
-  under which removals undone in any order leave nothing to save ("The draft"). The clip can be moved again.
+  then restored goes back right after the last of the clips it followed when Edit mode opened. This is the
+  price of a rule under which removals undone in any order leave nothing to save ("The draft"). The clip can
+  be moved again.
 - **[Focus jumps to the tail in a long chapter]** → The tail is the clip's new place, and it is scrolled into
   view. Undo there returns focus to the clip's row in the list. Missing clips are rare and few.
 - **[The guard trusts the last read]** → A file restored on disk after the page or the list was read still
