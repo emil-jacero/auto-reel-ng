@@ -243,11 +243,13 @@ export function removeClip(orders: Orders, chapter: string, identity: string): O
 }
 
 /**
- * `orders` with `identity` put back in `chapter`, right after as many clips as
- * came before it in `original` (the chapter's order when Edit mode opened) and
- * are still in the chapter's order. Without a move in between, the order is a
- * subsequence of `original`, so that is exactly its original place, whatever
- * order removals are undone in; after a move it lands at the same count.
+ * `orders` with `identity` put back in `chapter`, right after whichever of the
+ * clips that came before it in `original` (the chapter's order when Edit mode
+ * opened) comes last in the chapter's order now; first when none of them is
+ * left. Without a move in between, the order is a subsequence of `original`,
+ * so that is exactly its original place, whatever order removals are undone
+ * in. After a move it follows its original predecessors wherever they went, so
+ * the clips around it are not counted as moved.
  */
 export function restoreClip(
   orders: Orders,
@@ -259,12 +261,12 @@ export function restoreClip(
   if (order.includes(identity)) {
     return orders
   }
-  const listed = new Set(order)
-  const before = original
+  const at = new Map(order.map((clip, index) => [clip, index]))
+  const last = original
     .slice(0, Math.max(original.indexOf(identity), 0))
-    .filter((clip) => listed.has(clip)).length
+    .reduce((latest, clip) => Math.max(latest, at.get(clip) ?? -1), -1)
   const next = new Map(orders)
-  next.set(chapter, [...order.slice(0, before), identity, ...order.slice(before)])
+  next.set(chapter, [...order.slice(0, last + 1), identity, ...order.slice(last + 1)])
   return next
 }
 
