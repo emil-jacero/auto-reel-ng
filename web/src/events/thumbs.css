@@ -1,0 +1,87 @@
+/*
+ * A clip's thumbnail (`ClipThumb.tsx`): a 16:9 box as wide as the column its
+ * screen gives it, the frame shown whole inside it. States on `data-state`.
+ */
+@layer components {
+  .clip-thumb {
+    position: relative;
+    display: block;
+    inline-size: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+
+    /* The edge, drawn over the image so a frame reaches the box's corners. */
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--fg) 12%, transparent);
+      pointer-events: none;
+    }
+
+    /* Whole, never cropped: a portrait frame stands between two bands. */
+    & > img {
+      display: block;
+      inline-size: 100%;
+      block-size: 100%;
+      object-fit: contain;
+      /* Firefox paints the alt text while the image loads: the placeholder shows instead. */
+      color: transparent;
+    }
+  }
+
+  /* Loading: a still placeholder, which shimmers only when motion is welcome (below). */
+  .clip-thumb[data-state='loading'] {
+    background: var(--border);
+  }
+
+  /* Not on disk: an empty dashed outline, nothing requested. */
+  .clip-thumb[data-state='missing'] {
+    border: 1px dashed var(--border-strong);
+    background: none;
+
+    &::after {
+      content: none;
+    }
+  }
+
+  /* An ignored clip's frame, dimmed with the rest of its row. */
+  .clip-thumb[data-dimmed] > img {
+    opacity: 0.55;
+  }
+
+  /* No frame: neutral, not an error (a thumbnail is a convenience). */
+  .clip-thumb-none {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.125rem;
+    block-size: 100%;
+    color: var(--fg-muted);
+    font-size: var(--text-xs);
+    line-height: var(--lh-tight);
+    white-space: nowrap;
+
+    & > .icon {
+      color: var(--fg-subtle);
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* The placeholder rows' shimmer (`components.css`), on the box. */
+    .clip-thumb[data-state='loading'] {
+      background: linear-gradient(
+          90deg,
+          var(--border) 40%,
+          var(--surface-hover) 50%,
+          var(--border) 60%
+        )
+        0 0 / 300% 100%;
+      animation: skeleton-shimmer 1.6s linear infinite;
+    }
+  }
+}

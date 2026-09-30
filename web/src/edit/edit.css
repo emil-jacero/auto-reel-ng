@@ -191,13 +191,13 @@
 
   /*
    * One grid per row, the same columns in every row and in the header strip:
-   * handle, position, file, status, size, time, move buttons. The widths
-   * follow the read view's table; the file column takes the rest.
+   * handle, position, thumbnail, file, status, size, time, move buttons. The
+   * widths follow the read view's table; the file column takes the rest.
    */
   .clip-order-head,
   .clip-item {
     display: grid;
-    grid-template-columns: 2rem 2rem minmax(0, 1fr) 12rem 5.5rem 10.5rem 4.25rem;
+    grid-template-columns: 2rem 2rem 5rem minmax(0, 1fr) 12rem 5.5rem 10.5rem 4.25rem;
     align-items: center;
     column-gap: var(--s-3);
     padding-inline: var(--s-2) var(--s-3);
@@ -358,19 +358,22 @@
   }
 
   /*
-   * Narrow panels: two lines per row. The first holds the handle, position,
-   * file name and move buttons; the second the status, size and time.
+   * Narrow panels: two lines per row, beside the thumbnail. The first holds
+   * the handle, position, file name and move buttons; the second the status,
+   * size and time. From 58rem, not 54rem: with the thumbnail's column the wide
+   * grid would leave a camera name too little room, and break it in the word.
    */
-  @container (width < 54rem) {
+  @container (width < 58rem) {
     .clip-order-head {
       display: none;
     }
 
     .clip-item {
-      grid-template-columns: 2rem 1.5rem minmax(0, 1fr) auto;
+      grid-template-columns: 2rem 1.5rem 5rem minmax(0, 1fr) auto;
       grid-template-areas:
-        'handle pos file moves'
-        '. . facts facts';
+        'handle pos thumb file moves'
+        '. . thumb facts facts';
+      column-gap: var(--s-2);
       row-gap: 0.125rem;
       padding-block: var(--s-2);
     }
@@ -382,6 +385,10 @@
 
     .clip-pos {
       grid-area: pos;
+    }
+
+    .clip-item > .clip-thumb {
+      grid-area: thumb;
     }
 
     .clip-file {
@@ -399,6 +406,19 @@
       gap: var(--s-1) var(--s-3);
       grid-area: facts;
       min-inline-size: 0;
+    }
+  }
+
+  /*
+   * Phone width: the file name takes the thumbnail's column on the first line,
+   * and the thumbnail sits beside the facts on the second, so a camera name
+   * keeps one line.
+   */
+  @container (width < 30rem) {
+    .clip-item {
+      grid-template-areas:
+        'handle pos file file moves'
+        '. . thumb facts facts';
     }
   }
 

@@ -45,12 +45,18 @@
   }
 
   /*
-   * Column widths; the file column takes the rest. Fixed 34rem: at the 50rem
-   * card breakpoint the file column still has ~16rem.
+   * Column widths; the file column takes the rest. Fixed 39rem: at the 50rem
+   * card breakpoint the file column still has 11rem, room for an 18-character
+   * camera name (`YYYYMMDDhhmmss.mp4`) on one line.
    */
   .clip-table {
     & .col-pos {
       inline-size: 3.5rem;
+    }
+
+    /* The thumbnail's box (`ClipThumb.tsx`): 5rem wide, 16:9, in every layout. */
+    & .col-thumb {
+      inline-size: 5rem;
     }
 
     & .col-status {
@@ -66,9 +72,19 @@
     }
   }
 
+  /* Centred beside the box: every cell of a clip row, pills and text alike. */
+  .clip-table td {
+    vertical-align: middle;
+  }
+
   .cell-pos {
     color: var(--fg-muted);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* The neighbouring cells' padding already spaces the box. */
+  .clip-table .cell-thumb {
+    padding-inline: 0;
   }
 
   .cell-file {
@@ -95,19 +111,24 @@
   }
 
   /*
-   * A narrow panel: position beside each clip, every fact kept. From 30rem
-   * the status sits beside the file name; below 30rem it gets its own line.
+   * A narrow panel: position and thumbnail beside each clip, every fact kept.
+   * From 30rem the status sits beside the file name; below 30rem it gets its
+   * own line, and the size and time line starts under the box.
    */
   @container (width < 50rem) {
     .clip-table tbody tr {
-      grid-template-columns: 2rem minmax(0, 1fr) auto;
+      grid-template-columns: 2rem 5rem minmax(0, 1fr) auto;
       grid-template-areas:
-        'pos file status'
-        'pos size mtime';
+        'pos thumb file status'
+        'pos thumb size mtime';
     }
 
     .clip-table .cell-pos {
       grid-area: pos;
+    }
+
+    .clip-table .cell-thumb {
+      grid-area: thumb;
     }
 
     .clip-table .cell-file {
@@ -131,9 +152,9 @@
   @container (width < 30rem) {
     .clip-table tbody tr {
       grid-template-areas:
-        'pos file file'
-        'pos status status'
-        'pos size mtime';
+        'pos thumb file file'
+        'pos thumb status status'
+        'pos size size mtime';
     }
   }
 }

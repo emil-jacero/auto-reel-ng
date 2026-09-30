@@ -12,7 +12,12 @@ event's title opens its **event page** (slice C) at `#/event/<id>`: its chapters
 and clips in play order, each clip's status, size and time, and any clip
 `reel.yaml` lists that is missing from disk. Both read on open and on Refresh — no
 timer polling (job state arrives over the jobs WebSocket), never a cache — and
-report a failed read by its cause. The list stays mounted while an event page is
+report a failed read by its cause. Each clip row, on the event page and in Edit
+mode, shows a frame from its clip (the service's thumbnail, D-11): requested only
+as its row nears the view and behind the page's own requests, in a box sized before
+it arrives, and kept by the browser while the clip is unchanged. A frame the service
+cannot give shows "No preview"; a missing clip asks for none and shows an empty
+outline. The list stays mounted while an event page is
 open, so Back returns to it without a new read —
 unless the client recorded meanwhile that an event changed (`markEventsChanged()`
 in `events/changes.ts`, called by the slices that write or render): then the list
@@ -95,7 +100,8 @@ src/
 │   ├── events.ts         the list fetch: URL, status codes
 │   ├── event.ts          the one-event fetch: URL, status codes
 │   ├── jobs.ts           enqueue, one job, cancel: URLs, status codes; the jobs WebSocket URL
-│   └── reel.ts           the editorial read and write: ETag in, If-Match out
+│   ├── reel.ts           the editorial read and write: ETag in, If-Match out
+│   └── thumbnail.ts      a clip's thumbnail URL, typed from the schema (no fetch: an <img> asks)
 ├── edit/
 │   ├── EventEditor.tsx   Edit mode: the reel read, the save bar, saves and failures
 │   ├── ClipOrderList.tsx one chapter's clips to reorder: drag, keyboard, buttons; Remove / Undo
@@ -117,9 +123,11 @@ src/
 └── events/
     ├── EventList.tsx     the list: load/refresh, summary, filter, year panels
     ├── EventDetail.tsx   the event page: status, counts, clip panels, the Edit toggle and the needs-attention form
+    ├── ClipThumb.tsx     a clip row's thumbnail: lazy, loading, "No preview", missing
     ├── list.css          the list's layout and column widths
     ├── detail.css        the event page's layout and column widths
-    ├── common.tsx        helpers both screens share (sizes, verdict, failure sentences)
+    ├── thumbs.css        the thumbnail's 16:9 box and its states
+    ├── common.tsx        helpers both screens share (file names, sizes, verdict, failure sentences)
     ├── changes.ts        "an event changed": markEventsChanged(), useEventsVersion()
     ├── grouping.ts       groupByYear, needsRender (pure)
     ├── labels.ts         words for reasons, job statuses, failures, clip statuses

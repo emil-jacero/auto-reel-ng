@@ -14,10 +14,12 @@ import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
 import { LoadStatus, SkeletonRows } from '../ui/Skeleton'
+import { ClipThumb } from './ClipThumb'
 import {
   DATABASE_CAUSE,
   StalenessCell,
   UNREACHABLE_CAUSE,
+  fileName,
   folderName,
   formatBytes,
   plural,
@@ -320,7 +322,7 @@ export function EventDetail({ eventId }: { eventId: string }) {
           />
         ) : (
           <div className="page-content" aria-busy={updating || undefined}>
-            <ReadyView event={state.event} />
+            <ReadyView eventId={eventId} event={state.event} />
           </div>
         ))}
     </main>
@@ -365,7 +367,7 @@ function EventFacts({
   )
 }
 
-function ReadyView({ event }: { event: EventDetailData }) {
+function ReadyView({ eventId, event }: { eventId: string; event: EventDetailData }) {
   const clips = event.chapters.flatMap((chapter) => chapter.clips)
   const hasNamedChapter = event.chapters.some((chapter) => chapter.name !== '')
   return (
@@ -392,6 +394,7 @@ function ReadyView({ event }: { event: EventDetailData }) {
         event.chapters.map((chapter) => (
           <ChapterPanel
             key={chapter.name}
+            eventId={eventId}
             chapter={chapter}
             heading={chapter.name !== '' ? chapter.name : hasNamedChapter ? 'Main' : 'Clips'}
           />
@@ -423,12 +426,15 @@ function Counts({ clips }: { clips: Clip[] }) {
   return <strong className="counts">{parts.join(' · ')}</strong>
 }
 
-/** The identity's last segment: the file name inside its chapter folder. */
-function fileName(identity: string): string {
-  return identity.split('/').pop() ?? identity
-}
-
-function ChapterPanel({ chapter, heading }: { chapter: Chapter; heading: string }) {
+function ChapterPanel({
+  eventId,
+  chapter,
+  heading,
+}: {
+  eventId: string
+  chapter: Chapter
+  heading: string
+}) {
   // Chapter names hold spaces and non-ASCII letters, so the id is generated.
   const headingId = useId()
   return (
@@ -440,6 +446,7 @@ function ChapterPanel({ chapter, heading }: { chapter: Chapter; heading: string 
       <table className="data-table clip-table" role="table" aria-labelledby={headingId}>
         <colgroup>
           <col className="col-pos" />
+          <col className="col-thumb" />
           <col className="col-file" />
           <col className="col-status" />
           <col className="col-size" />
@@ -449,6 +456,9 @@ function ChapterPanel({ chapter, heading }: { chapter: Chapter; heading: string 
           <tr role="row">
             <th role="columnheader" scope="col">
               #
+            </th>
+            <th role="columnheader" scope="col">
+              <span className="visually-hidden">Preview</span>
             </th>
             <th role="columnheader" scope="col">
               File
@@ -469,6 +479,9 @@ function ChapterPanel({ chapter, heading }: { chapter: Chapter; heading: string 
             <tr role="row" key={clip.identity} className="clip-row" data-status={clip.status}>
               <td role="cell" className="cell-pos">
                 {index + 1}
+              </td>
+              <td role="cell" className="cell-thumb">
+                <ClipThumb eventId={eventId} clip={clip} />
               </td>
               <td role="cell" className="cell-file">
                 {fileName(clip.identity)}

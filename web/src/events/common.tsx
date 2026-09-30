@@ -14,6 +14,11 @@ export function folderName(eventId: string): string {
   return eventId.split('/').pop() ?? eventId
 }
 
+/** The identity's last segment: the file name inside its chapter folder. */
+export function fileName(identity: string): string {
+  return identity.split('/').pop() ?? identity
+}
+
 export function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`
 }
