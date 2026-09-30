@@ -352,4 +352,7 @@ def _req_time(value: Any, *, loc: str) -> float:
         raise ReelParseError(f"{loc}: expected a number of seconds, got {type(value).__name__}")
     if value < 0:
         raise ReelParseError(f"{loc}: time must be non-negative, got {value}")
-    return float(value)
+    try:
+        return float(value)
+    except OverflowError as exc:  # an integer past the largest float, about 1.8e308 seconds
+        raise ReelParseError(f"{loc}: time out of range, got {value}") from exc

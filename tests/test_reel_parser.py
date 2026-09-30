@@ -351,10 +351,65 @@ def test_a_value_ruamel_itself_refuses_is_an_invalid_value_too() -> None:
         pytest.param("version: 0\nlook: {n: !!set abc}\n", id="attribute-error"),
         pytest.param("version: 0\nlook:\n  ? {a: [b]}\n  : x\n", id="type-error"),
         pytest.param("? {a: [b]}\n: x\nmetadata: {title: t}\n", id="type-error-at-the-root"),
+        # A bare assert in ruamel's omap constructor: an AssertionError with no text.
+        pytest.param("!!omap [{version: 0}, {version: 0}]\n", id="empty-assertion-at-the-root"),
     ],
 )
 def test_no_other_builtin_error_escapes_the_load_step(text: str) -> None:
-    with pytest.raises(ReelParseError, match="^<string>: "):
+    """Whatever ruamel raises, the reason after the prefix is never empty."""
+    with pytest.raises(ReelParseError, match=r"^<string>: (invalid value|malformed YAML): \S"):
+        loads_document(text)
+
+
+#: An integer too long to print in decimal (about 6000 digits). Written in decimal, ruamel
+#: refuses it (Python's int-to-str digit limit); written in hex it loaded, and every message,
+#: fingerprint or JSON body that printed it failed with a bare ValueError.
+UNPRINTABLE_INT = "0x" + "f" * 5000
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param(f"version: {UNPRINTABLE_INT}\n", id="version"),
+        pytest.param(f"version: 0\nsort: {{method: {UNPRINTABLE_INT}}}\n", id="sort-method"),
+        pytest.param(
+            f"version: 0\nchapters: [{{name: '', clips: [{UNPRINTABLE_INT}]}}]\n",
+            id="clip-reference",
+        ),
+        pytest.param(f"version: 0\nignore: [{UNPRINTABLE_INT}]\n", id="ignore"),
+        pytest.param(
+            f"version: 0\nchapters: [{{name: '', clips: [a.mp4]}}]\n"
+            f"clips: {{a.mp4: {{trims: [{{in: -{UNPRINTABLE_INT}, out: 1}}]}}}}\n",
+            id="negative-trim",
+        ),
+        pytest.param(
+            f"version: 0\nchapters: [{{name: '', clips: [a.mp4]}}]\n"
+            f"clips: {{a.mp4: {{rotate: {UNPRINTABLE_INT}}}}}\n",
+            id="rotate",
+        ),
+        pytest.param(f"version: 0\nlook: {{n: {UNPRINTABLE_INT}}}\n", id="look"),
+        pytest.param(f"sort: {{method: {UNPRINTABLE_INT}}}\n", id="legacy-sort-method"),
+    ],
+)
+def test_an_integer_too_long_to_print_is_an_invalid_value(text: str) -> None:
+    with pytest.raises(ReelParseError, match=r"^<string>: invalid value: '-?0xfff") as exc:
+        loads_document(text)
+    assert "is not a valid int (" in str(exc.value)
+
+
+@pytest.mark.parametrize("field", ["in", "out"])
+def test_a_trim_time_too_large_for_a_float_is_a_parse_error(field: str) -> None:
+    """A 400-digit integer prints fine but is past the largest float (about 1.8e308)."""
+    times = {"in": "0", "out": "1"}
+    times[field] = "9" * 400
+    text = (
+        "version: 0\nchapters: [{name: '', clips: [a.mp4]}]\n"
+        f"clips: {{a.mp4: {{trims: [{{in: {times['in']}, out: {times['out']}}}]}}}}\n"
+    )
+
+    with pytest.raises(
+        ReelParseError, match=rf"trims\[0\]\.{field}: time out of range, got 9{{400}}$"
+    ):
         loads_document(text)
 
 
