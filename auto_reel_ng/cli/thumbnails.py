@@ -6,8 +6,10 @@ skipping cached ones. It never reads ``reel.yaml``, so a MISSING clip is never
 requested, and it writes only into the thumbnail cache, never under the project
 root. Kept apart from :mod:`.commands`, which holds the render/scan/job family.
 
-Each failed clip gets exactly one ``ERROR  <event>/<clip>: <cause>`` line; the full
-reason, with the failing command and its stderr, is logged at debug level (``-v``).
+Each failed clip gets exactly one ``ERROR  <event>/<clip>: <cause>`` line, the cause
+cut to one line by :func:`~auto_reel_ng.thumbs.one_line_cause` (the service's detail
+uses the same); the full reason, with the failing command and its stderr, is logged
+at debug level (``-v``).
 Every printed line is made printable first, so a file name that is not valid UTF-8
 shows its raw bytes as ``\\xNN`` instead of ending the run.
 """
@@ -16,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import re
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,7 @@ from ..ingest import EventRef
 from ..thumbs import (
     ThumbnailSettings,
     is_cached,
+    one_line_cause,
     resolve_thumbnail_settings,
     thumbnail_for,
     thumbnail_path,
@@ -36,12 +38,6 @@ from ..thumbs import (
 from .commands import _project_context
 
 logger = logging.getLogger(__name__)
-
-#: How :class:`FfmpegRuntime` reports a failed command inside a reason.
-_FAILED_COMMAND = re.compile(r": Command exited -?\d+: ")
-
-#: ffmpeg's ``[component @ 0x…]`` prefixes on a stderr line.
-_LOG_TAGS = re.compile(r"^(?:\[[^\]]*\]\s*)+")
 
 
 @dataclass(frozen=True)
@@ -147,7 +143,7 @@ def _thumbs_event(
         reason = errors[identity]
         logger.debug("%s", _printable(f"{name}/{identity}: {reason}"))
         source = (ref.event_dir / identity).resolve()
-        _emit(f"ERROR  {name}/{identity}: {_cause(reason, source)}")
+        _emit(f"ERROR  {name}/{identity}: {one_line_cause(reason, source)}")
     counts = [
         f"{count} {label}"
         for label, count in (("generated", generated), ("cached", cached), ("failed", len(errors)))
@@ -157,27 +153,6 @@ def _thumbs_event(
     return _EventThumbs(
         clips=len(identities), generated=generated, cached=cached, failed=len(errors)
     )
-
-
-def _cause(reason: str, source: Path) -> str:
-    """The one-line cause an ERROR line shows for a clip's ``reason``.
-
-    A reason that quotes a failed command (``…: Command exited N: <cmd>`` then
-    ``stderr:`` and ffmpeg's output) is cut before the command, and ffmpeg's last
-    stderr line, without its ``[component @ 0x…]`` tags and the clip's path, is
-    kept as the gist: ``ffprobe could not read: Invalid data found when processing
-    input``. Any other reason keeps its first line. The debug log has the rest.
-    """
-    head, _, stderr = reason.partition("\nstderr:\n")
-    lines = head.splitlines()
-    head = lines[0] if lines else head
-    failed = _FAILED_COMMAND.search(head)
-    if failed is None:
-        return head
-    cause = head[: failed.start()]
-    last = next((line.strip() for line in reversed(stderr.splitlines()) if line.strip()), "")
-    gist = _LOG_TAGS.sub("", last).replace(f"{source}: ", "").replace(str(source), source.name)
-    return f"{cause}: {gist}" if gist else cause
 
 
 def _emit(line: str) -> None:
