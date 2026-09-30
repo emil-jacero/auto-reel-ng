@@ -112,8 +112,11 @@
 
   /*
    * A narrow panel: position and thumbnail beside each clip, every fact kept.
-   * From 30rem the status sits beside the file name; below 30rem it gets its
-   * own line, and the size and time line starts under the box.
+   * From 33rem the status sits beside the file name (an 18-character camera
+   * name keeps one line beside the longest pill). Below 33rem it gets its own
+   * line, and the size and time line starts under the box, the time taking
+   * the rest of it. Below 22rem the longest pill no longer fits beside the
+   * box, so the status line starts under it too.
    */
   @container (width < 50rem) {
     .clip-table tbody tr {
@@ -146,15 +149,26 @@
     .clip-table .cell-mtime {
       grid-area: mtime;
       text-align: end;
+      /* Where a time must wrap (the narrowest phones), date and clock time each keep a line. */
+      text-wrap: balance;
     }
   }
 
-  @container (width < 30rem) {
+  @container (width < 33rem) {
     .clip-table tbody tr {
       grid-template-areas:
         'pos thumb file file'
         'pos thumb status status'
-        'pos size size mtime';
+        'pos size mtime mtime';
+    }
+  }
+
+  @container (width < 22rem) {
+    .clip-table tbody tr {
+      grid-template-areas:
+        'pos thumb file file'
+        'pos status status status'
+        'pos size mtime mtime';
     }
   }
 }

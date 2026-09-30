@@ -220,10 +220,11 @@
     list-style: none;
   }
 
+  /* The read view's cell padding: a row keeps its height when Edit mode opens. */
   .clip-item {
     position: relative;
     min-block-size: 2.75rem;
-    padding-block: var(--s-1);
+    padding-block: var(--s-2);
     border-bottom: 1px solid var(--border);
     background: var(--surface);
 
@@ -412,13 +413,20 @@
   /*
    * Phone width: the file name takes the thumbnail's column on the first line,
    * and the thumbnail sits beside the facts on the second, so a camera name
-   * keeps one line.
+   * keeps one line. On the narrowest phones the facts beside the box are
+   * narrower than a time: it wraps there, date and clock time on a line each,
+   * rather than scroll the page sideways.
    */
   @container (width < 30rem) {
     .clip-item {
       grid-template-areas:
         'handle pos file file moves'
         '. . thumb facts facts';
+    }
+
+    .clip-mtime {
+      white-space: normal;
+      text-wrap: balance;
     }
   }
 
