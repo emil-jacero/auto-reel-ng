@@ -173,11 +173,16 @@ directly:
 - **The summary:**
   - `movedSet(original, next, lastMoved)` returns the identities outside a longest increasing subsequence
     of the original positions, so moving one clip from 1 to 5 moves 1 clip, not 5. Its size is the chapter's
-    "clips moved" count, and its members get the "was N" badge.
-  - Ties: when several minimal sets exist (a swap of two neighbours), the badge goes to the clip the
-    operator moved last, so a Move down on `s1710002.mp4` badges `s1710002.mp4`. `movedSet` computes the
-    subsequence without `lastMoved` first and uses it when it is as long as the full one. Plain patience
-    sorting would badge the neighbour instead. The count is the same either way.
+    "clips moved" count, and its members get the moved mark and a badge.
+  - Ties: among equally long runs, `movedSet` keeps the one with the most clips at their original index,
+    then the one without the clip the operator moved last, so a Move down on `s1710002.mp4` badges
+    `s1710002.mp4`. It is a maximum-weight increasing run (a Fenwick tree over original positions,
+    O(n log n)) whose weight has the three preferences as digits. (Review decision: the plain `lastMoved`
+    tie-break could count a clip that never left its place, as in `[A,B,C]` → `[C,B,A]`, marking it with no
+    old position while the bar counted it.)
+  - A clip counted as moved can still sit at its original index when no longest run can keep it
+    (`[A..E]` → `[D,E,C,A,B]` moves three, `C` among them). Its badge then says "moved" rather than
+    "was N" at position N, so the count, the marks and the badges always agree.
   - `adoptedNewCount` counts the NEW clips in chapters that will be written from the view.
 - **Dirty** (`isDirty`) is computed, never a flag: any metadata draft that differs from the read, or any
   order that differs from the original.
@@ -325,7 +330,8 @@ and the session's reorder-UX research.
 
 **Sensors**
 - `PointerSensor` with `activationConstraint: { distance: 6 }`, and `KeyboardSensor` with
-  `sortableKeyboardCoordinates`. The listeners go on the handle only.
+  `sortableKeyboardCoordinates` and `scrollBehavior: 'auto'` under reduced motion (`'smooth'` otherwise).
+  The listeners go on the handle only.
 - The handle is a `<button className="btn btn-ghost btn-icon drag-handle">` with
   `<Icon name="grip-vertical" />` and `aria-label="Reorder <file>"`. `.drag-handle` has
   `touch-action: none`: a touch that starts on the handle drags, and one that starts elsewhere scrolls.
@@ -343,7 +349,7 @@ and the session's reorder-UX research.
 - its status as a `Pill` (`CLIP_STATUS_LABEL` words, `CLIP_STATUS_LOOK` tone and icon)
 - its size and modification time, or "—" when absent (a MISSING clip). The time is the only ordering cue v1
   has, because there are no thumbnails.
-- a "was N" badge when it is in the moved set
+- a badge when it is in the moved set: "was N", or "moved" for a moved clip at its original index
 - **Move up** and **Move down** icon buttons (`arrow-up`, `arrow-down`, `aria-label="Move <file> up"`),
   unavailable at the ends: `aria-disabled`, not `disabled`, so they keep their place in the tab order
 
@@ -389,7 +395,10 @@ its default on `:root`, not on the region element itself, which would block the 
 - It announces "<file> moved to position N of M." through the editor's single visually hidden
   `role="status"` region, which sits outside the lists.
 - A layout effect then re-focuses the same button of the moved row; at an end that button is
-  `aria-disabled`, so it still takes focus. dnd-kit restores focus to the handle after a keyboard drop.
+  `aria-disabled`, so it still takes focus. It also scrolls that button into view (`block: 'nearest'`,
+  which honours the page's scroll padding) after every move, since focus alone does not scroll a button
+  that already had it: repeated Move downs never slide it under the save bar. dnd-kit restores focus to the
+  handle after a keyboard drop.
 
 **Scale**
 - No virtualisation.
@@ -434,7 +443,9 @@ The flow:
    - When `adoptedNewCount > 0`, the hint adds "Saving this order adds N new clip(s) to reel.yaml."
 4. **Save bar** (`src/edit/SaveBar.tsx`, with the failure alert). It is `.save-bar`,
    `position: sticky; bottom: 0`, a `role="region"` with
-   `aria-label="Unsaved changes"`, shown while dirty or while a save failure is shown. Its height feeds
+   `aria-label="Unsaved changes"`, shown while there are edits, and for a vanished event (its alert stays,
+   Save unavailable). An edit that brings the draft back to what was read also retires a save's failure:
+   nothing is left to save, so the bar goes and Save, Retry and Overwrite never send a no-op. Its height feeds
    `--toast-inset-bottom` and `scroll-padding-bottom` (see "Row list and keyboard access"). It contains:
    - the summary: the changed field names, "N clips moved", and "adds N new clip(s) to reel.yaml"
    - **Reset** (`btn-secondary`, `rotate-ccw`): back to the read state, with no question asked
@@ -455,6 +466,12 @@ The flow:
      the date, at the bar's summary).
    - After a failed answer focus stays on the pressed control, which the alert now describes; a 400
      `unusable_metadata` moves it to the message at the date and title group.
+   - The alert is keyed by the failure's kind, so another kind of failure is a new alert: its buttons are
+     never the old ones reused. When the pressed control went with the old alert (Retry answered by a 412,
+     a 404 or a 400; Overwrite with mine answered by an unreachable service), focus moves on purpose to the
+     new alert (`tabIndex=-1`), which a screen reader then reads, never to `<body>` and never onto
+     **Reload latest (discard my changes)**, where a second Enter would throw the edits away. (Review
+     decision: unkeyed, React reused the old buttons across kinds.)
    - Task 5.1 checks it: with `page.route` holding the PUT, Enter on Save leaves `document.activeElement` on
      Save until the answer.
 
@@ -470,9 +487,13 @@ The flow:
 | 502 | alert: "reel.yaml could not be saved." plus the `FAILURE_LABEL` pill when `failure` is present, plus `detail`, plus **Retry** | kept |
 | rejected, 422, other | alert: `UNREACHABLE_CAUSE` or "The service gave an unexpected answer" plus the message, plus **Retry** | kept |
 
-   **Retry** re-sends the same body with the same `If-Match`. The 200 handling (toast and
-   `markEventsChanged()`) runs even if the editor unmounted meanwhile, so the list learns of a save the
-   operator navigated away from.
+   **Retry** builds the body again from the current draft and sends it with the same `If-Match`, the
+   same as Save would; the draft only changes by the operator's own edits after the failure. Retry and
+   **Overwrite with mine** are unavailable, as Save is, while the date is typed only in part or nothing is
+   left to save, and the save itself refuses both, so a half-typed date is never sent as unset. (Review
+   decision: this replaces "re-sends the same body"; only Save had checked the date.) The 200 handling
+   (toast and `markEventsChanged()`) runs even if the editor unmounted meanwhile, so the list learns of the
+   save, and the page reads the event again if it is still shown.
 6. **Conflict (412).** An alert with the `warn` tone: "This event was changed elsewhere since you started
    editing." It offers two actions:
    - **Reload latest (discard my changes)** (`btn-primary`) calls `onReload()`, so the page leaves Edit
@@ -532,6 +553,13 @@ Intercepting links alone misses Back, Forward and typed addresses (session React
   (register, clean up, register) leaves exactly one guard.
 - `requestLeave(proceed)` runs `proceed` at once when nothing is dirty. Otherwise it asks first.
   `EventDetail` calls it for Refresh and for leaving Edit mode.
+- **While a save is in flight nothing leaves, and nothing asks.** The editor publishes `saving`
+  (`setSaving`, `useSaving`). The page makes Refresh and Stop editing unavailable (`aria-disabled`), and
+  the navigation guard undoes a Back, Forward, link or typed address without a question, while a polite
+  toast says the save is still running. (Review decision: a Discard during the PUT unmounted the editor
+  and re-read the event before the save landed, and the later "Saved" left the page stale.) As a second
+  line, a save that succeeds after the editor unmounted still has the page, if it is shown, read the event
+  again.
 - The question is one `Dialog`, "Discard unsaved changes?", rendered by the editor and keyed by the
   question's number, so a question asked again before React renders (Escape, then Back at once) still
   opens the dialog afresh.
