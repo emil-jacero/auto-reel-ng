@@ -243,6 +243,38 @@
     --_fill: var(--fg-subtle);
   }
 
+  /*
+   * Forced colors drop the tokens' fills: the bar keeps an edge and paints its
+   * value in the system highlight, a waiting bar is a GrayText stripe (the same
+   * tile, so its sweep still loops), and the live dot takes the text color.
+   */
+  @media (forced-colors: active) {
+    .job-bar {
+      border: 1px solid CanvasText;
+
+      &::-webkit-progress-value {
+        forced-color-adjust: none;
+        background: Highlight;
+      }
+
+      &::-moz-progress-bar {
+        forced-color-adjust: none;
+        background: Highlight;
+      }
+    }
+
+    .job-bar:indeterminate {
+      forced-color-adjust: none;
+      background: linear-gradient(-45deg, GrayText 25%, Canvas 25% 50%, GrayText 50% 75%, Canvas 75%)
+        0 0 / 0.75rem 0.75rem;
+    }
+
+    .live-dot {
+      forced-color-adjust: none;
+      background: CanvasText;
+    }
+  }
+
   /* The event page's render region (`RenderControl.tsx`): its own line in the status line. */
   .render-control {
     display: grid;
