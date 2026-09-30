@@ -218,6 +218,11 @@
     gap: var(--s-1) var(--s-3);
     min-inline-size: 0;
     border-radius: var(--r-sm);
+
+    /* Focused only by script, when the control that had focus went away. */
+    &:focus {
+      outline: none;
+    }
   }
 
   .render-none,

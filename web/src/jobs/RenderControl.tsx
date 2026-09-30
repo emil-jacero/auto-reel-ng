@@ -51,6 +51,8 @@ type Notice =
 /** The control whose request is in flight. */
 type Pressed = 'render' | 'force' | 'cancel' | 'cancelConfirm'
 
+const NOTHING_TO_RENDER = 'Nothing to render — the movie is up to date.'
+
 // Whether a cancel's answer also tells how the job ended (so the ending raises
 // no second toast): a flagged running job is still to end, at the next segment.
 const CANCEL_ENDS_JOB: Record<CancelOutcome, boolean> = {
@@ -62,9 +64,8 @@ const CANCEL_ENDS_JOB: Record<CancelOutcome, boolean> = {
 function NoticeAlert({ notice }: { notice: Notice }) {
   switch (notice.kind) {
     case 'fresh':
-      return (
-        <Alert tone="info" role="status" title="Nothing to render — the movie is up to date." />
-      )
+      // A note: the region's status element says the same words, and announces them.
+      return <Alert tone="info" role="note" title={NOTHING_TO_RENDER} />
     case 'collision':
       return (
         <Alert
@@ -344,6 +345,10 @@ export function RenderControl({
               <JobState shown={shown} lastJobLabel />
             )}
             {blockedReason !== undefined && <span className="render-blocked">{blockedReason}</span>}
+            {/* An answer is said through this element, which exists before its words do. */}
+            {notice?.kind === 'fresh' && (
+              <span className="visually-hidden">{NOTHING_TO_RENDER}</span>
+            )}
           </p>
           {(canRender || cancellable) && (
             <div className="render-actions">
