@@ -318,7 +318,7 @@ def test_a_probe_error_becomes_a_thumbnail_error_naming_the_clip(
         ("an unforeseen probe message", "an unforeseen probe message"),
     ],
 )
-def test_a_probe_reason_names_the_clip_once(
+def test_a_probe_reason_drops_the_first_mention_of_the_path(
     tmp_path: Path, probe_calls: Callable[..., ProbeCalls], template: str, reason: str
 ) -> None:
     clip = _clip(tmp_path)
@@ -328,6 +328,32 @@ def test_a_probe_reason_names_the_clip_once(
         thumbnail_for(clip, position=0.25, cache_dir=tmp_path / "cache", runtime=FakeRuntime())
     # Only the path's first mention goes: a quoted ffprobe command keeps its argument.
     assert exc.value.reason == reason.format(p=source)
+
+
+def test_an_undecodable_probe_output_is_the_clips_failure(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    # The runtime decodes strictly, and ffprobe echoes a non-UTF-8 file name.
+    probe_calls(error=UnicodeDecodeError("utf-8", b"caf\xe9", 3, 4, "invalid continuation byte"))
+    with pytest.raises(ThumbnailError) as exc:
+        thumbnail_for(clip, position=0.25, cache_dir=tmp_path / "cache", runtime=FakeRuntime())
+    assert exc.value.reason.startswith("ffprobe's output could not be decoded: 'utf-8' codec")
+
+
+def test_an_undecodable_ffmpeg_output_is_no_frame_and_leaves_nothing(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    probe_calls(duration=27.84)
+    error = UnicodeDecodeError("utf-8", b"caf\xe9", 3, 4, "invalid continuation byte")
+    with pytest.raises(ThumbnailError) as exc:
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime(error=error))
+    assert exc.value.reason.startswith(
+        "no frame extracted at 6.960s of 27.840s: ffmpeg's output could not be decoded"
+    )
+    assert _leftovers(cache_dir) == []
 
 
 def test_an_ffmpeg_failure_is_no_frame_and_leaves_nothing(

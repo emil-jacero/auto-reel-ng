@@ -394,7 +394,9 @@ Settings resolve through the same config-then-flag layering as `worker`:
 Every clip on disk gets one small JPEG thumbnail (decision D-11), for the GUI's clip
 rows. The frame is taken a fraction of the way into the clip — `thumbnails.position`
 × its ffprobe duration, default 0.25 — never the first frame and never at a guessed
-time. Extraction is attempted once: a clip with no frame there (zero bytes, a copy
+time. Keep the position well below 1: the duration is the container's, so on a clip
+whose audio outlasts its video a position near 1 can fall past the last frame and
+fail. Extraction is attempted once: a clip with no frame there (zero bytes, a copy
 cut short before that time, a one-frame clip) has no thumbnail and is reported. The
 image is fitted inside 320×180 keeping the displayed aspect ratio (a clip held
 upright stays portrait; anamorphic footage is not squashed); the editorial `rotate`

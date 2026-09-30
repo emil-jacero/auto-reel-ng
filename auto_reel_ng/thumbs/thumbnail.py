@@ -185,6 +185,11 @@ def _probe_duration(clip_path: Path, source: Path, runtime: FfmpegRuntime) -> fl
         duration = probe_media(source, runtime=runtime).duration
     except ProbeError as exc:
         raise ThumbnailError(str(clip_path), _probe_reason(exc, source)) from exc
+    except UnicodeDecodeError as exc:
+        # The runtime decodes output strictly; ffprobe echoes a non-UTF-8 file name.
+        raise ThumbnailError(
+            str(clip_path), f"ffprobe's output could not be decoded: {exc}"
+        ) from exc
     # The probe reports 0.0 when neither the format nor the stream carries one.
     if not math.isfinite(duration) or duration <= 0:
         raise ThumbnailError(str(clip_path), f"ffprobe reported no usable duration ({duration})")
@@ -240,6 +245,12 @@ def _extract(
         # ffmpeg reports "nothing decoded at t" as an encoder-open error; lead with
         # the real cause and keep the command and stderr after it.
         raise ThumbnailError(str(clip_path), f"{no_frame}: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        # As in the probe: stderr naming a non-UTF-8 file cannot be decoded, so the
+        # outcome cannot be verified and the clip fails rather than being guessed at.
+        raise ThumbnailError(
+            str(clip_path), f"{no_frame}: ffmpeg's output could not be decoded: {exc}"
+        ) from exc
     if not output.is_file() or output.stat().st_size == 0:
         raise ThumbnailError(str(clip_path), f"{no_frame}: ffmpeg exited 0 but wrote no image")
 

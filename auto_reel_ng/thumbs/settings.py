@@ -37,12 +37,22 @@ def default_cache_dir() -> Path:
     ``$XDG_CACHE_HOME/auto-reel/thumbnails`` when ``XDG_CACHE_HOME`` is an absolute
     path, else ``~/.cache/auto-reel/thumbnails``; a relative ``XDG_CACHE_HOME`` is
     ignored, as the XDG base-directory spec says.
+
+    Raises:
+        ConfigError: neither applies, because no home directory can be determined
+            (no ``HOME`` and no passwd entry, as in some containers).
     """
     xdg_cache_home = os.environ.get("XDG_CACHE_HOME", "")
     if xdg_cache_home and Path(xdg_cache_home).is_absolute():
         base = Path(xdg_cache_home)
     else:
-        base = Path.home() / ".cache"
+        try:
+            base = Path.home() / ".cache"
+        except RuntimeError as exc:
+            raise ConfigError(
+                "thumbnails.cache_dir is not set and no home directory could be determined; "
+                "set thumbnails.cache_dir"
+            ) from exc
     return base / "auto-reel" / "thumbnails"
 
 
@@ -101,7 +111,10 @@ def _require_outside_library(
     """Refuse a cache directory inside the project root or the walked ``input`` directory.
 
     Symlinks are resolved on both sides, so a link into the library is caught too.
-    The default is checked as well: an ``XDG_CACHE_HOME`` inside the library would
+    Directories are also compared by identity (device and inode): on a
+    case-insensitive mount such as the archive's NTFS drive, or through a bind
+    mount, another spelling of a library directory is the same directory. The
+    default is checked as well: an ``XDG_CACHE_HOME`` inside the library would
     otherwise put the cache there.
     """
     resolved = cache_dir.resolve()
@@ -109,7 +122,9 @@ def _require_outside_library(
     if config.input_dir is not None:
         library_dirs.append(("the input directory", (project_root / config.input_dir).resolve()))
     for label, library_dir in library_dirs:
-        if not resolved.is_relative_to(library_dir):
+        if not (
+            resolved.is_relative_to(library_dir) or _same_directory_above(resolved, library_dir)
+        ):
             continue
         if defaulted:
             raise ConfigError(
@@ -121,6 +136,27 @@ def _require_outside_library(
             f"thumbnails.cache_dir {cache_dir} lies inside {label} {library_dir}; "
             "the thumbnail cache must be outside the library"
         )
+
+
+def _same_directory_above(path: Path, directory: Path) -> bool:
+    """True when ``path`` or one of its existing ancestors is ``directory`` itself.
+
+    Compared with :func:`os.path.samestat`, so a differently spelled or mounted
+    alias of ``directory`` counts. Ancestors that cannot be statted (not created
+    yet) are skipped; a ``directory`` that does not exist holds nothing.
+    """
+    try:
+        directory_stat = os.stat(directory)
+    except OSError:
+        return False
+    for candidate in (path, *path.parents):
+        try:
+            candidate_stat = os.stat(candidate)
+        except OSError:
+            continue
+        if os.path.samestat(candidate_stat, directory_stat):
+            return True
+    return False
 
 
 __all__ = [
