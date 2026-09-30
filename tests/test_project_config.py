@@ -50,6 +50,14 @@ def test_malformed_yaml_fails_loud(tmp_path: Path) -> None:
         load_project_config(tmp_path)
 
 
+def test_a_config_that_is_not_utf8_fails_loud(tmp_path: Path) -> None:
+    """A Latin-1 byte is a ConfigError naming the file, never a bare UnicodeDecodeError."""
+    (tmp_path / "config.yaml").write_bytes(b"# kommentar p\xe5 latin-1\nlayout: flat\n")
+    with pytest.raises(ConfigError, match="not valid UTF-8") as caught:
+        load_project_config(tmp_path)
+    assert str(tmp_path / "config.yaml") in str(caught.value)
+
+
 def test_wrong_typed_layout_fails_loud() -> None:
     with pytest.raises(ConfigError):
         loads_project_config("layout: 42\n")
