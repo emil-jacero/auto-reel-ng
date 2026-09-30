@@ -1,4 +1,12 @@
-import { Fragment, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 
 import type { JobSummary, Staleness } from '../api/events'
 import { cancelJob, enqueueJob } from '../api/jobs'
@@ -126,6 +134,12 @@ export function RenderControl({
   const statusRef = useRef<HTMLParagraphElement>(null)
   const keepUpToDateRef = useRef<HTMLButtonElement>(null)
   const keepRenderingRef = useRef<HTMLButtonElement>(null)
+  // The latest `onFinished`: an answer arrives after re-renders (Edit mode may have
+  // opened meanwhile), and must reach the page as it is now, not as it was pressed.
+  const onFinishedRef = useRef(onFinished)
+  useLayoutEffect(() => {
+    onFinishedRef.current = onFinished
+  })
 
   // A control removed while focused (Render once its job shows, Cancel once the
   // cancel is requested or the job ends, a dialog closed after its opener went)
@@ -166,9 +180,9 @@ export function RenderControl({
     const was = previousStatus.current
     previousStatus.current = status
     if (was !== null && status !== null && isActive(was) && !isActive(status)) {
-      onFinished()
+      onFinishedRef.current()
     }
-  }, [status, onFinished])
+  }, [status])
 
   // A failed job's error text is in the full job only: read it once, here on
   // the event's page (list rows never fetch it).
@@ -189,7 +203,7 @@ export function RenderControl({
       case 'fresh':
         setNotice({ kind: 'fresh' })
         markEventsChanged()
-        onFinished()
+        onFinishedRef.current()
         break
       case 'active':
         // Someone already started it: follow that job.
@@ -203,7 +217,7 @@ export function RenderControl({
         if (result.problem.status === 404) {
           setNotice({ kind: 'eventGone' })
           markEventsChanged()
-          onFinished()
+          onFinishedRef.current()
         } else {
           setNotice({ kind: 'scanFailed', detail: result.problem.detail })
         }

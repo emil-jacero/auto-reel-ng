@@ -86,8 +86,9 @@ export function EventDetail({ eventId }: { eventId: string }) {
   const inFlight = useRef<AbortController | null>(null)
   // A quiet re-read asked for while a read runs: one more runs after it.
   const pending = useRef(false)
-  // Re-reads the page starts itself wait while Edit mode is open; leaving reads anyway.
-  const deferred = useRef(false)
+  // Whether Edit mode is open, for the page's own re-reads however late they run:
+  // set together with `editing` at its two changes, never during render.
+  const editingRef = useRef(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const focusHeading = useRef(false)
 
@@ -147,12 +148,13 @@ export function EventDetail({ eventId }: { eventId: string }) {
 
   // The page's own re-read: its job ended, or an enqueue answer showed its read is
   // out of date. Quiet, so the page keeps its content while it runs.
+  // While Edit mode is open it reads nothing: the exit's unconditional `load()` is
+  // the deferred re-read.
   const reread = useCallback(() => {
-    deferred.current = editing
-    if (!editing) {
+    if (!editingRef.current) {
       load({ quiet: true })
     }
-  }, [editing, load])
+  }, [load])
 
   useEffect(() => {
     load()
@@ -173,8 +175,8 @@ export function EventDetail({ eventId }: { eventId: string }) {
     if (!shown.current) {
       return
     }
+    editingRef.current = false
     setEditing(false)
-    deferred.current = false
     load()
     focusHeading.current = true
   }, [load])
@@ -233,8 +235,9 @@ export function EventDetail({ eventId }: { eventId: string }) {
                   if (editing) {
                     requestLeave(leaveEditMode)
                   } else {
-                    deferred.current = inFlight.current !== null
+                    // A quiet re-read in flight stops; the exit's read replaces it.
                     inFlight.current?.abort()
+                    editingRef.current = true
                     setEditing(true)
                   }
                 }}
