@@ -191,17 +191,32 @@ export function RenderControl({
     setAsking(null)
   }, [])
 
-  // The page re-reads once when its job ends; the ref keeps a StrictMode re-run
-  // from seeing a transition twice.
+  // The page re-reads once when its job ends — also when its own read still shows
+  // as queued or running a job the store already knows ended (it ended while the
+  // read was on its way), which no transition here would report. The refs keep a
+  // StrictMode re-run from re-reading twice; the re-read shows the end, so it
+  // cannot loop.
   const status = job?.status ?? null
+  const readIsBehind =
+    latestJob != null &&
+    job !== undefined &&
+    job.id === latestJob.id &&
+    isActive(latestJob.status) &&
+    !isActive(job.status)
   const previousStatus = useRef(status)
+  const behindFor = useRef<string | null>(null)
   useEffect(() => {
     const was = previousStatus.current
     previousStatus.current = status
-    if (was !== null && status !== null && isActive(was) && !isActive(status)) {
+    const ended = was !== null && status !== null && isActive(was) && !isActive(status)
+    const behind = readIsBehind && behindFor.current !== jobId
+    if (readIsBehind) {
+      behindFor.current = jobId ?? null
+    }
+    if (ended || behind) {
       onFinishedRef.current()
     }
-  }, [status])
+  }, [status, readIsBehind, jobId])
 
   // A failed job's error text is in the full job only: read it once, here on
   // the event's page (list rows never fetch it).
