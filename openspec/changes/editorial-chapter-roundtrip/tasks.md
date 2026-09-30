@@ -1,10 +1,10 @@
 ## 1. Gate
 
-- [ ] 1.1 Gate: none; `event-edit-screen` waits for this change. Verify `git diff 541c44c -- auto_reel_ng/event/editorial.py openspec/specs/editorial-write/spec.md` prints nothing; if the spec differs, re-base the MODIFIED block before implementing.
+- [x] 1.1 Gate: none; `event-edit-screen` waits for this change. Verify `git diff 541c44c -- auto_reel_ng/event/editorial.py openspec/specs/editorial-write/spec.md` prints nothing; if the spec differs, re-base the MODIFIED block before implementing.
 
 ## 2. event/ — keep each list entry's comments
 
-- [ ] 2.1 Leave an unchanged list untouched (design "Leave an unchanged list untouched"). First add two commented fixtures and their tests to `tests/test_event_editorial.py`, and see the tests fail on the current code:
+- [x] 2.1 Leave an unchanged list untouched (design "Leave an unchanged list untouched"). First add two commented fixtures and their tests to `tests/test_event_editorial.py`, and see the tests fail on the current code:
   - `SOMMARLOV`: the dev library's `2024-09-01 - Sommarlov` `reel.yaml`, copied byte for byte from `scripts/make_dev_library.py` (`- borttagen.mp4  # MISSING`)
   - `SOMMARLOV_ANNOTATED`, the spec's fixture:
     - a comment on the chapter name
@@ -27,7 +27,7 @@
   - before the code change, `.venv/bin/python -m pytest tests/test_event_editorial.py -k "noop or no_op or untouched"` fails only on the new tests, and the diff shows the dropped `# MISSING`
   - after it, `.venv/bin/python -m pytest tests/test_event_editorial.py` passes, the existing tests unchanged
   - `.venv/bin/python -m mypy auto_reel_ng` is clean
-- [ ] 2.2 Keep each entry's comments in a changed list. Add `_EntryComments`, `_entry_comments` and `_rewrite_identity_list` with design "The helper" steps 1, 2, 4 and 5, taking the 2.1 check as step 1 and the header from `parent.ca.items[key][3]` or `seq.ca.comment[1]`. Then:
+- [x] 2.2 Keep each entry's comments in a changed list. Add `_EntryComments`, `_entry_comments` and `_rewrite_identity_list` with design "The helper" steps 1, 2, 4 and 5, taking the 2.1 check as step 1 and the header from `parent.ca.items[key][3]` or `seq.ca.comment[1]`. Then:
   - `_apply_chapters`: collect every existing chapter's comments and trailing text before any mutation, then rewrite each reused chapter's `clips` through the helper
   - `_apply_ignore`: rewrite through the helper
   - remove both `del …[:]` / `extend` refills
@@ -47,7 +47,7 @@
   - `.venv/bin/python -m pytest tests/test_event_editorial.py` passes
   - each test applies its desired state a second time and asserts the file is byte-identical
   - `.venv/bin/python -m mypy auto_reel_ng` is clean
-- [ ] 2.3 Handle ruamel's other storage layouts: design "The helper" steps 3 and 6, the key token's first-line trim in step 2, and the key token's tail as the third header source in `_entry_comments`. Add a test for each, comparing the whole persisted file to an expected string:
+- [x] 2.3 Handle ruamel's other storage layouts: design "The helper" steps 3 and 6, the key token's first-line trim in step 2, and the key token's tail as the third header source in `_entry_comments`. Add a test for each, comparing the whole persisted file to an expected string:
   - `SOMMARLOV_ANNOTATED`: moving every root clip to `Kvällen` persists `clips: []`, still followed by `# between chapters`
   - a variant with `Kvällen` in flow style: a commented clip moved in turns the list block style, and the file loads back with the same chapters
   - a variant with `clips:   # root list` on the root chapter: a reorder keeps `# root list` on the key line, `# the opening shot` travels with `s1710002.mp4`, and reversing the reorder restores the original bytes
@@ -58,7 +58,7 @@
 
 ## 3. api/ — the unmodified-save scenario
 
-- [ ] 3.1 Add a case to `tests/test_api_editorial_write.py` (`requires_db`). The event is `2024/2024-09-01 - Sommarlov`, its `reel.yaml` is the `SOMMARLOV` text, `s1710002.mp4` and `s1710004.mp4` are touched files, and `borttagen.mp4` is absent:
+- [x] 3.1 Add a case to `tests/test_api_editorial_write.py` (`requires_db`). The event is `2024/2024-09-01 - Sommarlov`, its `reel.yaml` is the `SOMMARLOV` text, `s1710002.mp4` and `s1710004.mp4` are touched files, and `borttagen.mp4` is absent:
   1. `GET …/reel`
   2. `PUT` its body back with the read's `ETag` in `If-Match`
 
@@ -69,7 +69,7 @@
 
 ## 4. Validation
 
-- [ ] 4.1 Run the validation gates:
+- [x] 4.1 Run the validation gates:
   - `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`
   - `.venv/bin/python -m mypy auto_reel_ng`
   - `.venv/bin/python -m pylint auto_reel_ng`

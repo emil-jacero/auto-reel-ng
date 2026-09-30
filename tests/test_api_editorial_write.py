@@ -338,3 +338,42 @@ def test_omitting_ignore_clears_it_and_writing_back_the_read_preserves_it(
     assert response.status_code == 200
     assert response.json()["document"]["ignore"] == []
     assert "ignore" not in reel_path.read_text(encoding="utf-8")
+
+
+# --- editorial-chapter-roundtrip 3.1: list-entry comments survive an unmodified save ---
+
+#: The dev library's ``2024-09-01 - Sommarlov`` reel.yaml, byte for byte
+#: (``scripts/make_dev_library.py``); ``borttagen.mp4`` is MISSING on disk.
+SOMMARLOV_REEL_YAML = """\
+version: 0
+metadata:
+  title: Sommarlov
+  date: 2024-09-01
+chapters:
+  - name: ''
+    clips:
+      - s1710002.mp4
+      - s1710004.mp4
+      - borttagen.mp4  # MISSING
+"""
+
+
+def test_unmodified_save_keeps_a_comment_on_a_clip_entry(client: TestClient, project: Path) -> None:
+    event_dir = project / "2024" / "2024-09-01 - Sommarlov"
+    _touch(event_dir / "s1710002.mp4")
+    _touch(event_dir / "s1710004.mp4")
+    reel_path = event_dir / "reel.yaml"
+    reel_path.write_text(SOMMARLOV_REEL_YAML, encoding="utf-8")
+    event_id = quote("2024/2024-09-01 - Sommarlov", safe="/")
+
+    read = client.get(f"/api/v1/events/{event_id}/reel")
+    assert read.status_code == 200
+    written = client.put(
+        f"/api/v1/events/{event_id}/reel",
+        json=read.json(),
+        headers={"If-Match": read.headers["ETag"]},
+    )
+
+    assert written.status_code == 200
+    assert reel_path.read_bytes() == SOMMARLOV_REEL_YAML.encode("utf-8")
+    assert written.headers["ETag"] == read.headers["ETag"]
