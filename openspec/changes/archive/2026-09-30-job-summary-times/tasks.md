@@ -42,7 +42,7 @@
 
 - [x] 4.1 Update the docs, then verify by rereading each against the specs:
   - `README.md`'s API service section, in the "Events are scanned on request" bullet: each event's `latest_job` (list and detail) carries `id`, `status`, `progress`, `created_at`, `started_at` and `finished_at`, with the values `GET /api/v1/jobs/{id}` returns for that job, and a time not yet recorded is `null`
-  - `web/README.md`'s "Rendering" paragraph: every job shown is dated by its state (finished, started or queued), whether it came from the connection or a read
+  - `web/README.md`'s "Rendering" paragraph: every job shown is dated by its state (finished, started or queued), whether it came from the connection or a read. *Changed during review:* finished (rendered) or ended (failed or canceled)
   - `docs/high-level-design.md` §4.10: one sentence after the one naming `jobs-project-guards`, naming `job-summary-times` as slice E's follow-up (the events reads' latest job carries its start and finish times, so a screen dates a job it knows only from a read by its state). No new D-n (design "HLD: one sentence, no D-n").
 
 ## 5. Validation
@@ -53,10 +53,10 @@
     - `POST /api/v1/jobs` for `2024/2024-08-02 - Badutflykt - Varberg` answers 201, and its cancel answers `canceled-queued`. The list's `latest_job` for it then has that job's id, `started_at: null`, and the `finished_at` that `GET /api/v1/jobs/{id}` reports.
     - `GET /openapi.json` equals `web/openapi.json` when both are parsed as JSON
   - **Playwright** (container `mcr.microsoft.com/playwright/python:v1.49.0-noble`, `--network host`, `pip install -q playwright==1.49.0` first; script and screenshots in `<scratchpad>/verify/job-summary-times/`; locators scoped to `main:not([hidden])`; rows found by their event link's `href`, since a row shows the event's title, not its folder name):
-    - in a fresh page, the list rows of Grillning, Trasig and Badutflykt each show "finished". Each row's `.job-when time` has a `datetime` equal to that job's `finished_at` from `GET /api/v1/jobs/{id}`.
+    - in a fresh page, the list rows of Grillning, Trasig and Badutflykt each show "finished" (*changed during review:* Trasig and Badutflykt show "ended"). Each row's `.job-when time` has a `datetime` equal to that job's `finished_at` from `GET /api/v1/jobs/{id}`.
     - Blandat's row shows "queued", and no row whose `.job-state` has an ended `data-status` shows "queued"
     - in a fresh page, Grillning's page shows "Last job", Rendered and "finished", with that `datetime`
-    - in a fresh page, with `**/api/v1/jobs/*` held by `page.route`, Trasig's page `.render-status` already shows "Last job", Failed and "finished", with the job's `finished_at` as `datetime`. Record its text, then release the route. "Why the render failed" appears with the error text, and the `.render-status` text equals the recorded text.
+    - in a fresh page, with `**/api/v1/jobs/*` held by `page.route`, Trasig's page `.render-status` already shows "Last job", Failed and "finished" (*changed during review:* "ended"), with the job's `finished_at` as `datetime`. Record its text, then release the route. "Why the render failed" appears with the error text, and the `.render-status` text equals the recorded text.
     - screenshots of the list and of Trasig's page in light and dark, at 1280 px and 390 px, with no horizontal page scroll at 390 px. Take these before the worker starts, while Blandat is still queued.
     - then start `auto-reel worker <library> --device cpu` against the same database. It claims Blandat's queued job first. On `2024-08-20 - Två kapitel - Tjörn`'s page (stale for `clip_set` in a fresh library), press Render. Wait until the page's job has gone through `queued` or `running` to `done` (Rendered), and record the "finished" `datetime`. Reload the tab: the same `datetime` is shown, and it equals `GET /api/v1/events/{id}`'s `latest_job.finished_at`.
 - [x] 5.2 Run the gates: `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`, then `.venv/bin/python -m mypy auto_reel_ng`, `.venv/bin/python -m pylint auto_reel_ng`, and the full `.venv/bin/python -m pytest`, including `requires_db`. Then run `npx tsc --noEmit` and `npm run build` in the node:22 container. Verify all are clean or green, apart from the known cairo `no-member` noise.

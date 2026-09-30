@@ -52,10 +52,11 @@ Measured on a dev library built with `scripts/make_dev_library.py` and served on
 - **The screens date a job known only from a read by its state.** `stateTime` in
   `web/src/jobs/JobProgress.tsx` stops restricting "finished" and "started" to jobs from the connection. It
   reads the two times from whichever job it is given. A list row or a page's "Last job" then says
-  "Rendered · finished …", "Failed · finished …" or "Canceled · finished …". "Queued …" stays for queued
+  "Rendered · finished …", "Failed · ended …" or "Canceled · ended …". "Queued …" stays for queued
   jobs, and for a job whose matching time is absent, still labelled "queued". A failed event's page shows
-  its finish time as soon as the event is read, so the status region's words stay the same when the job
-  read for the error text answers.
+  when the job ended as soon as the event is read, so the status region's words stay the same when the job
+  read for the error text answers. *Changed during review:* a failed or canceled job's time is labelled
+  "ended", not "finished", which read as a completed render (design, "Supervisor decisions").
 
 ## Non-goals
 
@@ -64,8 +65,9 @@ Measured on a dev library built with `scripts/make_dev_library.py` and served on
   "Cancelling…" comes from the connection only. The summary grows by exactly the two times.
 - **No change to the job store, its queries or its timestamps.** No new column, no Alembic migration, and
   `latest_by_project` stays one `DISTINCT ON` query.
-- **No new time format or wording.** C5's short "Sep 30, 6:25 PM" format and its "finished / started /
-  queued" labels stay. Only the input changes.
+- **No new time format.** C5's short "Sep 30, 6:25 PM" format and its "finished / started / queued" labels
+  stay. *Changed during review:* one label is added, "ended", for a failed or canceled job, whose time C5
+  never showed as a finish time (design, "Supervisor decisions").
 - **No `JobCell` clean-up.** `render-progress-screen` already removed it (from `web/src/events/common.tsx`)
   before it was archived, so there is nothing left to remove (design, "Supervisor decisions").
 - **No change to the WebSocket, the jobs routes, or `JobOut`.**
