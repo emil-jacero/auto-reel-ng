@@ -71,12 +71,16 @@
     white-space: nowrap;
   }
 
-  /* After an active job's words, the time reads as a second clause. */
-  .job-words + .job-when::before {
+  /*
+   * After an active job's words, the time reads as a second clause. The
+   * separator ends the words, so a time that wraps never starts with it.
+   */
+  .job-words:has(+ .job-when)::after {
     content: '·';
     content: '·' / '';
-    margin-inline-end: var(--s-2);
+    margin-inline-start: var(--s-2);
     color: var(--fg-subtle);
+    font-weight: 400;
   }
 
   .job-words {
