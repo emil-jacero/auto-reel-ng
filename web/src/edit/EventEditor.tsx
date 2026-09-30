@@ -28,7 +28,7 @@ import { Pill } from '../ui/Pill'
 import { SkeletonRows } from '../ui/Skeleton'
 import { toast } from '../ui/toast'
 import { ClipOrderList } from './ClipOrderList'
-import type { MoveHandler } from './ClipOrderList'
+import type { MoveHandler, RemoveHandler, RestoreHandler } from './ClipOrderList'
 import {
   adoptedNewCount,
   buildWriteBody,
@@ -40,8 +40,10 @@ import {
   moveClip,
   movedSet,
   ordersOf,
+  removeClip,
+  restoreClip,
 } from './draft'
-import type { EditableChapter, MetadataDraft, MetadataField, Orders } from './draft'
+import type { EditableChapter, MetadataDraft, MetadataField, Orders, Removals } from './draft'
 import { FIELD_LABEL, MetadataForm } from './MetadataForm'
 import { SaveBar } from './SaveBar'
 import type { Operation, Pressed, SaveProblem } from './SaveBar'
@@ -84,6 +86,8 @@ type Ready = {
   orders: Orders
   /** The clip moved last: it takes the "moved" badge when a swap could give it to either. */
   lastMoved: string | null
+  /** The missing clips taken out of their chapter's order, which Save leaves out of reel.yaml. */
+  removed: Removals
   metadata: MetadataDraft
   /** The date input holds a date typed only in part (its value reads as ''). */
   dateIncomplete: boolean
@@ -110,6 +114,8 @@ type Action =
   | { type: 'read-failed'; failure: ReadFailure }
   | { type: 'read'; document: ReelDocument; etag: string; chapters: EditableChapter[] | null }
   | { type: 'move'; chapter: string; from: number; to: number }
+  | { type: 'remove'; chapter: string; identity: string }
+  | { type: 'restore'; identity: string }
   | { type: 'field'; field: MetadataField; value: string }
   | { type: 'date-validity'; incomplete: boolean }
   | { type: 'reset' }
@@ -146,6 +152,7 @@ function reduce(state: State, action: Action): State {
         original,
         orders: original,
         lastMoved: null,
+        removed: new Map(),
         metadata: metadataDraftOf(action.document),
         dateIncomplete: false,
         resets: 0,
@@ -170,6 +177,26 @@ function reduce(state: State, action: Action): State {
       orders.set(action.chapter, moveClip(order, action.from, action.to))
       return afterEdit({ ...state, orders, lastMoved: order[action.from] })
     }
+    case 'remove': {
+      const orders = removeClip(state.orders, action.chapter, action.identity)
+      if (orders === null) {
+        return state
+      }
+      const removed = new Map(state.removed).set(action.identity, action.chapter)
+      return afterEdit({ ...state, orders, removed })
+    }
+    case 'restore': {
+      const chapter = state.removed.get(action.identity)
+      if (chapter === undefined) {
+        return state
+      }
+      // Back after the clips it followed when Edit mode opened (draft.ts, `restoreClip`).
+      const original = state.original.get(chapter) ?? []
+      const orders = restoreClip(state.orders, chapter, action.identity, original)
+      const removed = new Map(state.removed)
+      removed.delete(action.identity)
+      return afterEdit({ ...state, orders, removed })
+    }
     case 'field':
       return afterEdit({
         ...state,
@@ -186,6 +213,7 @@ function reduce(state: State, action: Action): State {
         ...state,
         orders: state.original,
         lastMoved: null,
+        removed: new Map(),
         metadata: metadataDraftOf(state.read),
         dateIncomplete: false,
         resets: state.resets + 1,
@@ -327,11 +355,12 @@ function fieldWords(fields: readonly MetadataField[]): string {
     : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
 }
 
-/** What the save bar lists: the changed fields, the moves, and what a save adds. */
+/** What the save bar lists: the changed fields, the moves, the removals, and what a save adds. */
 function summarize(
   changed: readonly MetadataField[],
   dateIncomplete: boolean,
   moved: number,
+  removed: number,
   adopted: number,
 ): string {
   // An incomplete date reads as '' but is not a date left empty: it is named as such.
@@ -340,11 +369,15 @@ function summarize(
     fields.length > 0 && `${fieldWords(fields)} changed`,
     dateIncomplete && 'date incomplete',
     moved > 0 && `${plural(moved, 'clip', 'clips')} moved`,
+    removed > 0 && `${plural(removed, 'missing clip', 'missing clips')} removed`,
     adopted > 0 && `adds ${plural(adopted, 'new clip', 'new clips')} to reel.yaml`,
   ].filter((part): part is string => part !== false)
   const text = parts.join(' · ')
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
+
+// A chapter with no removed clip: one constant, so its list keeps its memoised props.
+const NONE_REMOVED: readonly string[] = []
 
 /** The chapter's heading, as the read view names it. */
 function chapterHeading(name: string, hasNamedChapter: boolean): string {
@@ -460,8 +493,10 @@ export function EventEditor({
   const changed = ready === null ? [] : changedFields(ready.read, ready.metadata)
   let movedCount = 0
   if (ready !== null) {
+    // Against each original order without its removed clips: a removal alone moves nothing.
     for (const [name, original] of ready.original) {
-      movedCount += movedSet(original, ready.orders.get(name) ?? original, ready.lastMoved).size
+      const kept = original.filter((identity) => !ready.removed.has(identity))
+      movedCount += movedSet(kept, ready.orders.get(name) ?? kept, ready.lastMoved).size
     }
   }
   const adopted =
@@ -526,6 +561,34 @@ export function EventEditor({
     [],
   )
 
+  // Only a clip the page read as missing: a clip on disk is never removed from reel.yaml here.
+  const onRemove = useCallback<RemoveHandler>(
+    (chapter, identity) => {
+      if (clips.get(identity)?.status === 'missing') {
+        dispatch({ type: 'remove', chapter, identity })
+      }
+    },
+    [clips],
+  )
+
+  const onRestore = useCallback<RestoreHandler>(
+    (identity) => dispatch({ type: 'restore', identity }),
+    [],
+  )
+
+  // Each chapter's removed clips, in its original order; one shared empty list for the rest.
+  const removals = ready?.removed
+  const removedByChapter = useMemo(
+    () =>
+      new Map(
+        chapters.map((chapter) => {
+          const listed = chapter.movable.filter((identity) => removals?.has(identity) === true)
+          return [chapter.name, listed.length === 0 ? NONE_REMOVED : listed]
+        }),
+      ),
+    [chapters, removals],
+  )
+
   function submit(pressed: Pressed, operation: Operation): void {
     // Never a half-typed date (it would be sent as unset) and never a save of nothing.
     if (ready === null || saving.current || ready.dateIncomplete || !edited) {
@@ -533,7 +596,13 @@ export function EventEditor({
     }
     saving.current = true
     dispatch({ type: 'save-start', pressed })
-    const body = buildWriteBody(ready.read, ready.original, ready.orders, ready.metadata)
+    const body = buildWriteBody(
+      ready.read,
+      ready.original,
+      ready.orders,
+      ready.metadata,
+      new Set(ready.removed.keys()),
+    )
     send(eventId, body, ready.etag, operation)
       .catch((error: unknown) => ({
         saved: false as const,
@@ -556,6 +625,7 @@ export function EventEditor({
 
   const hasNamedChapter = chapters.some((chapter) => chapter.name !== '')
   const hasIgnored = chapters.some((chapter) => chapter.ignored.length > 0)
+  const hasMissing = [...clips.values()].some((clip) => clip.status === 'missing')
   const clipCount = chapters.reduce((sum, chapter) => sum + chapter.movable.length, 0)
 
   return (
@@ -663,6 +733,8 @@ export function EventEditor({
               <p>
                 Drag a clip by its handle, or use its arrows. Clips stay in their chapter.
                 {hasIgnored && ' Ignored clips are not played and cannot be moved.'}
+                {hasMissing &&
+                  ' A missing clip is not on disk: restore the file, or remove it from reel.yaml.'}
                 {adopted > 0 ? (
                   <strong>
                     {' '}
@@ -693,10 +765,13 @@ export function EventEditor({
                 order={ready.orders.get(chapter.name) ?? chapter.movable}
                 original={chapter.movable}
                 ignored={chapter.ignored}
+                removed={removedByChapter.get(chapter.name) ?? NONE_REMOVED}
                 clips={clips}
                 lastMoved={ready.lastMoved}
                 locked={locked}
                 onMove={onMove}
+                onRemove={onRemove}
+                onRestore={onRestore}
                 onAnnounce={announce}
               />
             ))}
@@ -708,7 +783,13 @@ export function EventEditor({
               edited={edited}
               problem={ready.problem}
               pressed={ready.pressed}
-              summary={summarize(changed, ready.dateIncomplete, movedCount, adopted)}
+              summary={summarize(
+                changed,
+                ready.dateIncomplete,
+                movedCount,
+                ready.removed.size,
+                adopted,
+              )}
               dateIncomplete={ready.dateIncomplete}
               onReset={() => {
                 dispatch({ type: 'reset' })

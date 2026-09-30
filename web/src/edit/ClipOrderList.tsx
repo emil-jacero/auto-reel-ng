@@ -30,6 +30,7 @@ import {
   useRef,
   useSyncExternalStore,
 } from 'react'
+import type { ReactNode } from 'react'
 
 import type { Clip } from '../api/event'
 import { formatBytes, plural } from '../events/common'
@@ -46,8 +47,9 @@ import { movedSet } from './draft'
  *
  * Each chapter has its own DndContext, so a clip cannot be dropped into another
  * chapter by construction, and the modifier below keeps a dragged row inside
- * its own list. The ignored clips follow in a separate list: they are not
- * played, so they are neither numbered nor movable.
+ * its own list. Two lists follow, neither numbered nor movable, since neither
+ * is played: the missing clips the operator removed (Save leaves them out of
+ * reel.yaml, and each has an Undo until then), then the ignored clips.
  */
 
 /** The identity's last segment: the file name inside its chapter folder. */
@@ -119,10 +121,13 @@ const RowBody = memo(function RowBody({
   clip,
   position,
   was,
+  action,
 }: {
   clip: Clip
   position: number | null
   was: number | null
+  /** A control at the end of the file cell: a missing clip's Remove, a removed one's Undo. */
+  action?: ReactNode
 }) {
   const name = fileName(clip.identity)
   return (
@@ -143,6 +148,7 @@ const RowBody = memo(function RowBody({
             )}
           </span>
         )}
+        {action}
       </span>
       <ClipFacts clip={clip} />
     </>
@@ -155,6 +161,8 @@ type Step = (identity: string, from: number, to: number) => void
 const GRIP = <Icon name="grip-vertical" />
 const UP = <Icon name="arrow-up" />
 const DOWN = <Icon name="arrow-down" />
+const REMOVE = <Icon name="x" />
+const UNDO = <Icon name="rotate-ccw" />
 
 /** Move up and Move down; memoised, so a drag step re-renders neither. */
 const MoveButtons = memo(function MoveButtons({
@@ -211,6 +219,7 @@ const ClipRow = memo(function ClipRow({
   locked,
   reducedMotion,
   onStep,
+  onRemove,
 }: {
   clip: Clip
   /** 1-based, among the clips the chapter plays. */
@@ -220,6 +229,7 @@ const ClipRow = memo(function ClipRow({
   locked: boolean
   reducedMotion: boolean
   onStep: Step
+  onRemove: (identity: string) => void
 }) {
   const {
     attributes,
@@ -237,6 +247,28 @@ const ClipRow = memo(function ClipRow({
     // No motion under reduced motion; dnd-kit's own transition otherwise.
     transition: reducedMotion ? null : undefined,
   })
+  // Only a missing clip offers Remove; memoised, so a drag step leaves RowBody alone.
+  const { identity, status } = clip
+  const remove = useMemo(
+    () =>
+      status !== 'missing' ? undefined : (
+        <button
+          type="button"
+          className="btn btn-ghost btn-compact clip-remove"
+          aria-label={`Remove ${fileName(identity)} from reel.yaml`}
+          aria-disabled={locked || undefined}
+          onClick={() => {
+            if (!locked) {
+              onRemove(identity)
+            }
+          }}
+        >
+          {REMOVE}
+          Remove
+        </button>
+      ),
+    [identity, status, locked, onRemove],
+  )
   return (
     <li
       ref={setNodeRef}
@@ -258,7 +290,12 @@ const ClipRow = memo(function ClipRow({
         {GRIP}
       </button>
       {/* While a clip is lifted, every row shows the place a drop would give it. */}
-      <RowBody clip={clip} position={isSorting ? newIndex + 1 : position} was={was} />
+      <RowBody
+        clip={clip}
+        position={isSorting ? newIndex + 1 : position}
+        was={was}
+        action={remove}
+      />
       <MoveButtons
         identity={clip.identity}
         index={position - 1}
@@ -281,7 +318,54 @@ const IgnoredRow = memo(function IgnoredRow({ clip }: { clip: Clip }) {
   )
 })
 
+/**
+ * A missing clip the operator removed: listed like an ignored clip (RowBody gets
+ * what IgnoredRow passes it), struck through, with its Undo in the file cell.
+ */
+const RemovedRow = memo(function RemovedRow({
+  clip,
+  locked,
+  onUndo,
+}: {
+  clip: Clip
+  locked: boolean
+  onUndo: (identity: string) => void
+}) {
+  const { identity } = clip
+  const undo = useMemo(
+    () => (
+      <button
+        type="button"
+        className="btn btn-secondary btn-compact clip-undo"
+        aria-label={`Undo removing ${fileName(identity)}`}
+        aria-disabled={locked || undefined}
+        onClick={() => {
+          if (!locked) {
+            onUndo(identity)
+          }
+        }}
+      >
+        {UNDO}
+        Undo
+      </button>
+    ),
+    [identity, locked, onUndo],
+  )
+  return (
+    <li className="clip-item" data-status={clip.status} data-identity={identity} data-removed>
+      <span className="drag-slot" />
+      <RowBody clip={clip} position={null} was={null} action={undo} />
+      <span className="clip-moves" />
+    </li>
+  )
+})
+
 export type MoveHandler = (chapter: string, from: number, to: number) => void
+export type RemoveHandler = (chapter: string, identity: string) => void
+export type RestoreHandler = (identity: string) => void
+
+/** The button focus lands on once a row is in its new place, as a class name. */
+type FocusTarget = 'move-up' | 'move-down' | 'clip-remove' | 'clip-undo'
 
 export const ClipOrderList = memo(function ClipOrderList({
   index,
@@ -290,10 +374,13 @@ export const ClipOrderList = memo(function ClipOrderList({
   order,
   original,
   ignored,
+  removed,
   clips,
   lastMoved,
   locked,
   onMove,
+  onRemove,
+  onRestore,
   onAnnounce,
 }: {
   /** The chapter's place on the page: the DndContext id, for stable description ids. */
@@ -305,23 +392,38 @@ export const ClipOrderList = memo(function ClipOrderList({
   /** The same, as the page showed them when Edit mode opened. */
   original: readonly string[]
   ignored: readonly string[]
+  /** The missing clips the operator removed, in their original order. */
+  removed: readonly string[]
   clips: ReadonlyMap<string, Clip>
   lastMoved: string | null
   locked: boolean
   onMove: MoveHandler
+  onRemove: RemoveHandler
+  onRestore: RestoreHandler
   /** Speak a button move through the editor's live region (dnd-kit speaks the drags). */
   onAnnounce: (message: string) => void
 }) {
   const headingId = useId()
+  const removedId = useId()
   const ignoredId = useId()
-  const listRef = useRef<HTMLOListElement>(null)
-  // The button a move by button leaves focus on, once the row is in its new place.
-  const focusAfterMove = useRef<{ identity: string; up: boolean } | null>(null)
+  // The whole chapter: a row moves between the <ol> and the removed list, and
+  // the <ol> is not rendered at all once every clip of the chapter is removed.
+  const sectionRef = useRef<HTMLElement>(null)
+  // The button a move, a removal or an Undo leaves focus on, once the row is in its new place.
+  const focusAfter = useRef<{ identity: string; target: FocusTarget } | null>(null)
   // The same button, to scroll into view once every layout effect has run.
-  const scrollAfterMove = useRef<HTMLButtonElement | null>(null)
+  const scrollAfter = useRef<HTMLButtonElement | null>(null)
   const reducedMotion = useReducedMotion()
   const items = useMemo(() => [...order], [order])
-  const moved = useMemo(() => movedSet(original, order, lastMoved), [original, order, lastMoved])
+  // Against the original order without the removed clips: a removal alone moves nothing.
+  const kept = useMemo(
+    () =>
+      removed.length === 0
+        ? original
+        : original.filter((identity) => !removed.includes(identity)),
+    [original, removed],
+  )
+  const moved = useMemo(() => movedSet(kept, order, lastMoved), [kept, order, lastMoved])
   const originalPosition = useMemo(
     () => new Map(original.map((identity, at) => [identity, at + 1])),
     [original],
@@ -372,43 +474,68 @@ export const ClipOrderList = memo(function ClipOrderList({
 
   const onStep = useCallback<Step>(
     (identity, from, to) => {
-      focusAfterMove.current = { identity, up: to < from }
+      focusAfter.current = { identity, target: to < from ? 'move-up' : 'move-down' }
       onMove(chapter, from, to)
       onAnnounce(`${fileName(identity)} moved to position ${to + 1} of ${order.length}.`)
     },
     [chapter, onAnnounce, onMove, order.length],
   )
 
+  // The pressed Remove or Undo leaves with its row: focus follows the clip to the control
+  // that reverses it (the layout effect below).
+  const onRemoveRow = useCallback(
+    (identity: string) => {
+      focusAfter.current = { identity, target: 'clip-undo' }
+      onRemove(chapter, identity)
+      onAnnounce(`${fileName(identity)} will be removed from reel.yaml when you save.`)
+    },
+    [chapter, onAnnounce, onRemove],
+  )
+
+  const onUndoRow = useCallback(
+    (identity: string) => {
+      focusAfter.current = { identity, target: 'clip-remove' }
+      onRestore(identity)
+    },
+    [onRestore],
+  )
+
   // After a move by button the row's DOM node may have been moved, which drops
   // its focus: put it back on the same button. At an end that button is
-  // aria-disabled, not disabled, so it still takes focus.
+  // aria-disabled, not disabled, so it still takes focus. After a removal or an
+  // Undo the row is a new node in the other list: focus its Undo or its Remove.
   useLayoutEffect(() => {
-    const request = focusAfterMove.current
-    const list = listRef.current
-    if (request === null || list === null) {
+    const request = focusAfter.current
+    const section = sectionRef.current
+    if (request === null || section === null) {
       return
     }
-    focusAfterMove.current = null
-    const row = [...list.children].find(
-      (child) => child instanceof HTMLElement && child.dataset.identity === request.identity,
+    focusAfter.current = null
+    const row = [...section.querySelectorAll<HTMLElement>('.clip-item')].find(
+      (item) => item.dataset.identity === request.identity,
     )
-    const button = row?.querySelector<HTMLButtonElement>(request.up ? '.move-up' : '.move-down')
+    const button = row?.querySelector<HTMLButtonElement>(`.${request.target}`)
     button?.focus({ preventScroll: true })
-    scrollAfterMove.current = button ?? null
-  }, [order])
+    scrollAfter.current = button ?? null
+    // An Undo says where the clip is back, from the order it now has.
+    if (request.target === 'clip-remove') {
+      const at = order.indexOf(request.identity) + 1
+      onAnnounce(`${fileName(request.identity)} is back at position ${at} of ${order.length}.`)
+    }
+  }, [order, removed, onAnnounce])
 
   // Focus alone does not scroll a button that already had it: keep it in view,
   // clear of the header and the save bar (both in the page's scroll padding). A
   // passive effect, so a save bar the move brought is already measured (the
   // editor publishes its height in its own layout effect, after this list's).
   useEffect(() => {
-    const button = scrollAfterMove.current
-    scrollAfterMove.current = null
+    const button = scrollAfter.current
+    scrollAfter.current = null
     button?.scrollIntoView({ block: 'nearest' })
-  }, [order])
+  }, [order, removed])
 
   return (
-    <section className="panel edit-chapter" aria-labelledby={headingId}>
+    <section ref={sectionRef} className="panel edit-chapter" aria-labelledby={headingId}>
       <header className="panel-header">
         <h2 id={headingId}>{heading}</h2>
         {moved.size > 0 && (
@@ -418,6 +545,7 @@ export const ClipOrderList = memo(function ClipOrderList({
         )}
         <span className="panel-meta">
           {plural(order.length, 'clip', 'clips')}
+          {removed.length > 0 && ` · ${removed.length} removed on save`}
           {ignored.length > 0 && ` · ${ignored.length} ignored`}
         </span>
       </header>
@@ -445,7 +573,7 @@ export const ClipOrderList = memo(function ClipOrderList({
           onDragEnd={onDragEnd}
         >
           <SortableContext items={items} strategy={verticalListSortingStrategy}>
-            <ol ref={listRef} className="clip-order" aria-labelledby={headingId}>
+            <ol className="clip-order" aria-labelledby={headingId}>
               {order.map((identity, at) => {
                 const clip = clips.get(identity)
                 if (clip === undefined) {
@@ -461,12 +589,28 @@ export const ClipOrderList = memo(function ClipOrderList({
                     locked={locked}
                     reducedMotion={reducedMotion}
                     onStep={onStep}
+                    onRemove={onRemoveRow}
                   />
                 )
               })}
             </ol>
           </SortableContext>
         </DndContext>
+      )}
+      {removed.length > 0 && (
+        <>
+          <p className="removed-caption" id={removedId}>
+            Removed from reel.yaml when you save
+          </p>
+          <ul className="clip-order clip-removed" aria-labelledby={removedId}>
+            {removed.map((identity) => {
+              const clip = clips.get(identity)
+              return clip === undefined ? null : (
+                <RemovedRow key={identity} clip={clip} locked={locked} onUndo={onUndoRow} />
+              )
+            })}
+          </ul>
+        </>
       )}
       {ignored.length > 0 && (
         <>

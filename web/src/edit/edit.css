@@ -323,7 +323,12 @@
     }
   }
 
-  /* The ignored clips: after the rest, dimmed, not numbered, not movable. */
+  /*
+   * The missing clips the operator removed, then the ignored clips: after the
+   * rest, dimmed, not numbered, not movable. A removed clip's name is struck
+   * through; the caption's words say what happens to it.
+   */
+  .removed-caption,
   .ignored-caption {
     padding: var(--s-2) var(--s-4);
     border-bottom: 1px solid var(--border);
@@ -334,6 +339,7 @@
     letter-spacing: 0.02em;
   }
 
+  .clip-removed .clip-item,
   .clip-ignored .clip-item {
     background: var(--surface-2);
     color: var(--fg-muted);
@@ -341,6 +347,10 @@
     &:hover {
       background: var(--surface-2);
     }
+  }
+
+  .clip-removed .clip-name {
+    text-decoration: line-through;
   }
 
   .drag-slot {

@@ -26,6 +26,9 @@ export type EditableChapter = {
 /** Chapter name → the identities of its movable clips, in order. */
 export type Orders = ReadonlyMap<string, readonly string[]>
 
+/** The missing clips the operator removed: identity → its chapter's name. */
+export type Removals = ReadonlyMap<string, string>
+
 /** The four metadata fields as their inputs hold them: `''` for unset. */
 export type MetadataDraft = { title: string; date: string; location: string; description: string }
 export type MetadataField = keyof MetadataDraft
@@ -141,7 +144,9 @@ function writtenFromView(read: ReelDocument, original: Orders, next: Orders): st
 /**
  * The PUT body: `read` with only the operator's edits applied.
  *
- * - `look`, `clips` (per-clip properties) and `ignore` go back as read.
+ * - `look` and `ignore` go back as read, and so does `clips` (per-clip
+ *   properties), less the entries of the `removed` clips: the engine refuses
+ *   properties for a clip no chapter lists.
  * - A metadata field keeps its read value unless its draft says otherwise; an
  *   edited one is sent as typed, or unset when empty or whitespace-only.
  * - With no chapter reordered, `chapters` go back as read. Otherwise every
@@ -149,12 +154,14 @@ function writtenFromView(read: ReelDocument, original: Orders, next: Orders): st
  *   which takes the order shown (its ignored clips excluded, its missing and new
  *   ones kept where they stand); a reordered chapter the document does not name
  *   is appended. When the document names none, every chapter shown is written.
+ *   A removal takes its clip out of the order, so its chapter is a reordered one.
  */
 export function buildWriteBody(
   read: ReelDocument,
   original: Orders,
   next: Orders,
   metadata: MetadataDraft,
+  removed: ReadonlySet<string>,
 ): ReelWriteBody {
   const changed = new Set(changedFields(read, metadata))
   const field = (name: MetadataField) =>
@@ -185,7 +192,9 @@ export function buildWriteBody(
     },
     look: read.look,
     chapters,
-    clips: read.clips,
+    clips: Object.fromEntries(
+      Object.entries(read.clips).filter(([identity]) => !removed.has(identity)),
+    ),
     ignore: read.ignore,
   }
 }
@@ -220,6 +229,43 @@ export function moveClip(order: readonly string[], from: number, to: number): st
   const [clip] = moved.splice(from, 1)
   moved.splice(to, 0, clip)
   return moved
+}
+
+/** `orders` with `identity` taken out of `chapter`; null when the chapter does not list it. */
+export function removeClip(orders: Orders, chapter: string, identity: string): Orders | null {
+  const order = orders.get(chapter)
+  if (order === undefined || !order.includes(identity)) {
+    return null
+  }
+  const next = new Map(orders)
+  next.set(chapter, order.filter((listed) => listed !== identity))
+  return next
+}
+
+/**
+ * `orders` with `identity` put back in `chapter`, right after as many clips as
+ * came before it in `original` (the chapter's order when Edit mode opened) and
+ * are still in the chapter's order. Without a move in between, the order is a
+ * subsequence of `original`, so that is exactly its original place, whatever
+ * order removals are undone in; after a move it lands at the same count.
+ */
+export function restoreClip(
+  orders: Orders,
+  chapter: string,
+  identity: string,
+  original: readonly string[],
+): Orders {
+  const order = orders.get(chapter) ?? []
+  if (order.includes(identity)) {
+    return orders
+  }
+  const listed = new Set(order)
+  const before = original
+    .slice(0, Math.max(original.indexOf(identity), 0))
+    .filter((clip) => listed.has(clip)).length
+  const next = new Map(orders)
+  next.set(chapter, [...order.slice(0, before), identity, ...order.slice(before)])
+  return next
 }
 
 /**
