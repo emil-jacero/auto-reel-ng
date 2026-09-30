@@ -1,8 +1,9 @@
 ## Context
 
-See proposal.md, "Why". This change is written against `main` at `541c44c`, before `jobs-client-contract`
-(C2) lands. The line numbers below are from that commit. The implementer re-reads them after C2 is archived
-(task 1.1).
+See proposal.md, "Why". This change was written against `main` at `541c44c`, before `jobs-client-contract`
+(C2) landed. Task 1.1 re-read every line number below against the code as C2 left it (C2 archived), and
+corrected the ones C2 moved in `api/`, `persistence/` and the tests. The `cli/`, `render/`, `event/` and
+`reel/` references are unchanged: C2 did not edit those packages.
 
 **The collision rule already lives in the engine, and the CLI only composes it:**
 - `render/orchestrator.py:125-160` holds the whole rule:
@@ -22,10 +23,11 @@ See proposal.md, "Why". This change is written against `main` at `541c44c`, befo
   - In every case the set is the selected events: the layout walk, narrowed by `--years`.
   - "Failing" means a `ReelError` only: `_checked_document` catches `EventMetadataError` and `ReelError`
     (`commands.py:133-139`). An unreadable `reel.yaml` is a `ReelParseError` (`reel/parser.py:41-43`), so it
-    is covered. An `OSError` is not: an event folder with no `reel.yaml` that cannot be listed raises from
-    `seed_document`, and `cli/main.py:267-274` catches only `EngineError`, `FileNotFoundError` and
-    `NotADirectoryError`. A `PermissionError` therefore aborts the whole `enqueue` run with a traceback, and
-    nothing is enqueued.
+    is covered. An `OSError` is not: an event folder that cannot be listed raises from `seed_document`
+    (a folder that cannot be searched hides its `reel.yaml` from the loader's existence check, so this
+    holds whether or not it has one), and `cli/main.py:267-274` catches only `EngineError`,
+    `FileNotFoundError` and `NotADirectoryError`. A `PermissionError` therefore aborts the whole `enqueue`
+    run with a traceback, and nothing is enqueued.
 - **The API side:**
   - `load_or_seed` is `load_event_document` (`cli/adoption.py:65-67`, `event/metadata.py:66-69`), the loader
     the events reads already use (`api/events_read.py:121-122`).
@@ -33,32 +35,37 @@ See proposal.md, "Why". This change is written against `main` at `541c44c`, befo
     The events list uses it, and its failures (`ReelError`, `LayoutError`, `OSError`) are the list's
     scan-failure 502 (`api/routes/events.py:128-130`).
 
-**`POST /api/v1/jobs` today** (`api/routes/jobs.py:31-88`):
+**`POST /api/v1/jobs` as C2 left it** (`api/routes/jobs.py:34-110`):
 1. It resolves the event. An unknown event is a 404.
-2. It checks for an active job. One found is a 409 `conflict(..., id=...)`, which C2 renames to `job_id`.
+2. It checks for an active job. One found is a 409 `conflict(..., job_id=...)` (C2 renamed the untyped
+   `id=` to `job_id`).
 3. It loads the event (`load_or_seed`), computes the fingerprint and runs the gate. A fresh event is the
    200 `FreshResult`.
-4. It calls `store.enqueue`, which answers 201. C2 adds a 409 for the race where an enqueue falls back to
-   an existing job.
+4. It calls C2's `store.submit`, which answers 201 when it created the job. When the insertion falls back
+   to an existing job (the race), it is C2's second 409, with that job's `job_id`.
 
 No collision check runs. The event's own document is loaded without `require_processable`.
 
 **The project boundary in the store and the service:**
-- `Job.project_root` is a nullable `Text` column (`persistence/models.py:63`). Every writer sets it:
+- `Job.project_root` is a nullable `Text` column (`persistence/models.py:70`). Every writer sets it:
   - the CLI `enqueue` (`commands.py:626`, the resolved root)
-  - the API (`jobs.py:51`, `str(settings.project_root)`, which `serve` resolves at `commands.py:581`)
+  - the API (`jobs.py:63`, `str(settings.project_root)`, which `serve` resolves at `commands.py:581`)
   - the dev library script
 - The events reads already scope to it: `latest_by_project(str(settings.project_root))`
   (`events_read.py:163,381`).
 - The jobs routes and the hub do not:
-  - `list_by_status(status)` has no project filter (`job_store.py:180-184`).
-  - `GET /jobs` (`jobs.py:91-102`) and the hub's `_fetch_active_snapshot` (`ws.py:175-183`) call it.
-  - `GET /jobs/{id}` and cancel take any id (`jobs.py:105-132`).
-- `claim_next` is global on purpose (`job_store.py:106`): the worker queue is shared.
+  - `list_by_status(status)` has no project filter (`job_store.py:249-253`), and neither has C2's
+    `list_finished_since(since, *, overlap)` (`job_store.py:255-271`).
+  - `GET /jobs` (`jobs.py:113-124`) and the hub's `_fetch_active_snapshot` (`ws.py:253-261`) call the
+    first; the hub's `_fetch_finished` (`ws.py:268-271`, at poller start and on every tick) calls the
+    second.
+  - `GET /jobs/{id}` and cancel take any id (`jobs.py:127-151`).
+- `claim_next` is global on purpose (`job_store.py:175`): the worker queue is shared.
 - The hub is built in `create_app` with only the store and the poll interval (`api/app.py:68`).
-- `tests/test_api_ws_hub.py:44-58` has a `FakeStore` with `list_by_status(status)`, and six direct
-  `JobsHub(store, poll_interval=...)` constructions (`:73-161`). The hub's new keyword call breaks both, so
-  task 4.2 extends them.
+- `tests/test_api_ws_hub.py:55-85` has a `FakeStore` with `list_by_status(status)` and
+  `list_finished_since(since, *, overlap)`, one test replaces `list_by_status` with a
+  `lambda status: ...` (`:366`), and there are thirteen direct `JobsHub(store, poll_interval=...)`
+  constructions (`:125-440`). The hub's new keyword call breaks all three, so task 4.2 extends them.
 - C2 adds tests this change meets:
   - C2 task 3.4 adds an OpenAPI case asserting that `POST /jobs` declares *exactly* 200, 404 and 409
     besides 201 and 422. Task 3.3 here adds `502` to it.
@@ -166,15 +173,15 @@ def output_collision(
     target = _output_claim(event_dir, settings.clip_order, today)
     if target is None:
         return None
-    claims: Dict[Path, PurePosixPath] = {}
+    claims: Dict[Path, PurePosixPath] = {event_dir: target}
     ids: Dict[Path, str] = {}
     for ref in _list_event_refs(settings):          # LayoutError / OSError / ReelError propagate
+        if ref.event_dir.resolve() == event_dir:
+            continue                                # the named event itself, however spelled
         claim = _output_claim(ref.event_dir, settings.clip_order, today)
         if claim is not None:
-            key = ref.event_dir.resolve()
-            claims[key] = claim
-            ids[key] = event_id_for(settings, ref.event_dir)   # the list's own id, unresolved
-    claims[event_dir] = target                      # replaces the walk's entry for it, if any
+            claims[ref.event_dir] = claim           # keyed by the walk's own path, as the CLI
+            ids[ref.event_dir] = event_id_for(settings, ref.event_dir)   # the list's own id
     others = find_output_collisions(claims).get(event_dir, ())
     if not others:
         return None
@@ -183,9 +190,16 @@ def output_collision(
 ```
 
 **Rationale**:
-- **Keys:** they are resolved directories, so two spellings of one folder are one claimant, never a
-  collision with itself. This holds even when `settings.project_root` was built unresolved, as tests
-  build it.
+- **Keys:** a walked event that resolves to the named event's folder is the named event itself, however
+  the walk spells it, so it never collides with itself. This holds even when `settings.project_root` was
+  built unresolved, as tests build it. Every other walked event claims under its own walk path, as the
+  CLI's `_output_collisions` keys it and as each events-list row stands on its own.
+  - *Corrected during apply (task 3.2):* the first draft keyed every claimant by its resolved folder. Two
+    list rows aliasing one folder under different names (an in-project symlink, such as
+    `2024/2024-07-20 - Fest` pointing at `2024/2024-07-14 - Kalas`) then shared one key, and the one
+    walked later silently replaced the other's claim. A `POST` for the case-only twin `2024-07-14 - kalas`
+    found no collision and would have been enqueued over `Kalas.mp4`, where `auto-reel enqueue` refuses
+    it. Keying by the walk's path keeps both claims.
 - **Ids:** each id is `event_id_for` on the walk's unresolved path, the exact string `GET /api/v1/events`
   lists and a client links to. Deriving it from the resolved key would be wrong in two ways:
   - A symlinked year or event folder that points outside the root would make `relative_to` raise
@@ -254,7 +268,7 @@ the vocabulary.
 - The engine has no notion of "why an enqueue was refused": the store answers with a job id, and render
   answers with a collision map.
 - The classification is the API's, just as `EventFailure` (the API's classification of engine errors)
-  lives in `api/schemas.py:106-114`.
+  lives in `api/schemas.py:107-115`.
 
 **Decision**: `class EnqueueConflict(StrEnum)` in `api/schemas.py`, with `ACTIVE_JOB = "active_job"` and
 `OUTPUT_COLLISION = "output_collision"`. `ProblemOut` gains two fields:
@@ -330,7 +344,7 @@ def list_finished_since(self, since: Optional[datetime], *, overlap: timedelta,
   - `project_root` is required, with no default. An unscoped hub would be a second code path
     (Principle VII), and a forgotten argument would silently widen the feed. So every `JobsHub(...)` in
     `tests/test_api_ws_hub.py` gains `project_root="/proj"`, which is `FakeJob`'s default root. That covers
-    the six calls on `main` and any that C2 adds.
+    all thirteen calls C2 left there.
   - The hub test's `FakeStore.list_by_status` and `FakeStore.list_finished_since` gain the keyword and
     filter on it.
 
@@ -396,15 +410,25 @@ count stays two (api-service, job-store).
   of them. → The cost is below that of the `GET /events` the client already issues. Measure one
   `POST /jobs` against the archive during apply (task 3.3). If it is too slow, a later change can cache
   the claims per request batch, rather than weakening the rule.
+  - *Measured during apply (task 3.3):* the MOL archive was not mounted, so one `output_collision` call
+    was timed read-only against the dev library (11 walked events, local disk; library tree unchanged):
+    median 8.8 ms for `2024/2024-07-14 - kalas` (a collision) and 7.8 ms for
+    `2024/2024-06-27 - Grillning med grannar` (none), over 25 runs each, against a median 12.9 ms for the
+    events list's own read (`list_events`, 10 runs). That is about 0.7 ms per walked event. MOL's
+    141 sorted events on a USB NTFS drive are not measured: expect roughly 0.1 s from the same
+    per-event cost, plus that drive's slower directory reads.
 - **[The target's own failures keep today's behaviour]** An unprocessable event (`2024-02-30 - Omöjligt
   datum`) claims no path, so the collision check lets it through to today's path, which enqueues it and
   lets the worker fail it. An unparseable `reel.yaml` is still a bare 500 from `load_or_seed`
-  (`jobs.py:60`). → Out of scope. A named follow-up (proposal, Non-goals).
-- **[An unlistable sibling is skipped, where the CLI aborts]** If `2024-07-14 - Kalas` (no `reel.yaml`)
-  became unlistable, a `POST` for `2024-07-14 - kalas` would find no twin and enqueue it. Its render would
-  then replace `Kalas.mp4`. `auto-reel enqueue` would instead crash before enqueuing anything. → The window
-  is narrow: the owner's folder must be unreadable, and must have no `reel.yaml` (an unreadable `reel.yaml`
-  is a `ReelParseError`, which the CLI skips just the same). The events list shows that folder as an
+  (`jobs.py:73`). → Out of scope. A named follow-up (proposal, Non-goals).
+- **[An unlistable sibling is skipped, where the CLI aborts]** If `2024-07-14 - Kalas` became unlistable,
+  a `POST` for `2024-07-14 - kalas` would find no twin and enqueue it. Its render would then replace
+  `Kalas.mp4`. `auto-reel enqueue` would instead crash before enqueuing anything. → The window is narrow:
+  the owner's folder itself must be unlistable (an unreadable `reel.yaml` in a listable folder is a
+  `ReelParseError`, which the CLI skips just the same). *Corrected during apply:* the first draft also
+  required the folder to have no `reel.yaml`, but a folder that cannot be searched hides its `reel.yaml`
+  from the loader, which then seeds and fails to list it; a mode-000 folder holding a `reel.yaml` raises
+  `PermissionError` from the shared loader. The events list shows that folder as an
   `unreadable_disk` row. Parity belongs in a follow-up that moves the claimant selection into one engine
   function, with `OSError` as a per-event failure in both clients (proposal, Non-goals).
 - **[Claimant selection composed twice]** `cli/_checked_document` and `api/_output_claim` both compose

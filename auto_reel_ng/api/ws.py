@@ -11,6 +11,11 @@ Each poll also reads the jobs that finished since the previous one, so a job who
 whole active life fell between two polls — enqueued, claimed and failed at probe
 within one interval — still reaches every connected subscriber, exactly once.
 
+The hub reports one project, the one the service serves (D-A1): both reads are
+narrowed to its root, so no frame carries another project's job, and a change to
+one never causes a delta (jobs-project-guards). Only the report is scoped: the
+worker queue stays shared by every project in the database.
+
 Store calls run on a dedicated single-thread executor (D-A5 risk mitigation), so
 concurrent REST scan requests (FastAPI's default threadpool) can never starve the
 poller.
@@ -30,7 +35,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic.json_schema import models_json_schema
 
 from ..persistence.job_store import FinishedJobs, JobStore
-from ..persistence.models import TERMINAL_STATUSES, JobStatus
+from ..persistence.models import TERMINAL_STATUSES, Job, JobStatus
 from .schemas import JobOut, WsMessage, WsMessageType
 from .serialize import job_to_out
 
@@ -54,9 +59,17 @@ class JobsHub:
     """Subscriber-gated central poller + fanout for live job updates."""
 
     def __init__(
-        self, job_store: JobStore, *, poll_interval: float, queue_maxsize: int = _QUEUE_MAXSIZE
+        self,
+        job_store: JobStore,
+        *,
+        project_root: str,
+        poll_interval: float,
+        queue_maxsize: int = _QUEUE_MAXSIZE,
     ) -> None:
         self._store = job_store
+        # Required, with no default: a forgotten argument must not silently widen the
+        # feed to every project in the database.
+        self._project_root = project_root
         self._poll_interval = poll_interval
         self._queue_maxsize = queue_maxsize
         self._subscribers: set[asyncio.Queue] = set()
@@ -252,22 +265,28 @@ class JobsHub:
 
     async def _fetch_active_snapshot(self) -> dict[uuid.UUID, JobOut]:
         loop = asyncio.get_running_loop()
-        queued = await loop.run_in_executor(
-            self._executor, self._store.list_by_status, JobStatus.QUEUED
-        )
-        running = await loop.run_in_executor(
-            self._executor, self._store.list_by_status, JobStatus.RUNNING
-        )
-        return {job.id: job_to_out(job) for job in (*queued, *running)}
+        active: list[Job] = []
+        for status in (JobStatus.QUEUED, JobStatus.RUNNING):
+            read = functools.partial(
+                self._store.list_by_status, status, project_root=self._project_root
+            )
+            active.extend(await loop.run_in_executor(self._executor, read))
+        return {job.id: job_to_out(job) for job in active}
 
     async def _fetch_one(self, job_id: uuid.UUID) -> Optional[JobOut]:
+        # Only ever asked for a job the scoped snapshot held: it needs no scope check.
         loop = asyncio.get_running_loop()
         job = await loop.run_in_executor(self._executor, self._store.get, job_id)
         return job_to_out(job) if job is not None else None
 
     async def _fetch_finished(self, since: Optional[datetime]) -> FinishedJobs:
         loop = asyncio.get_running_loop()
-        read = functools.partial(self._store.list_finished_since, since, overlap=_FINISHED_OVERLAP)
+        read = functools.partial(
+            self._store.list_finished_since,
+            since,
+            overlap=_FINISHED_OVERLAP,
+            project_root=self._project_root,
+        )
         return await loop.run_in_executor(self._executor, read)
 
     async def _seed_finished(self) -> None:

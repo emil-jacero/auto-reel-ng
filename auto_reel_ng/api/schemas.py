@@ -303,6 +303,15 @@ class CancelResult(BaseModel):
     outcome: CancelOutcome
 
 
+class EnqueueConflict(StrEnum):
+    """Why ``POST /api/v1/jobs`` refused an event with a 409: the API's classification."""
+
+    #: An active (``queued`` or ``running``) job already exists for the event: ``job_id``.
+    ACTIVE_JOB = "active_job"
+    #: Another event of the project renders to the same output path: ``claimed_by``.
+    OUTPUT_COLLISION = "output_collision"
+
+
 class ProblemOut(BaseModel):
     """The shared problem body every deliberate error uses (D-A6), as published in the schema.
 
@@ -327,6 +336,12 @@ class ProblemOut(BaseModel):
     #: The job a jobs problem is about: the active job on the enqueue's 409, the
     #: requested id on the 404 of a job's detail or its cancel.
     job_id: Optional[uuid.UUID] = None
+    #: Which conflict an enqueue's 409 is, so a client picks its reaction from the
+    #: published type, never from the detail text.
+    conflict: Optional[EnqueueConflict] = None
+    #: On an ``output_collision``: the other events claiming the same output path, as
+    #: sorted event ids (a collision can be three-way).
+    claimed_by: Optional[List[str]] = None
 
 
 class WsMessageType(StrEnum):
@@ -375,6 +390,7 @@ __all__ = [
     "FreshResult",
     "StalenessOut",
     "CancelResult",
+    "EnqueueConflict",
     "ProblemOut",
     "WsMessageType",
     "WsMessage",

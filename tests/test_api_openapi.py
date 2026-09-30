@@ -23,7 +23,7 @@ from auto_reel_ng.api.openapi import (
     render_openapi_schema,
     schema_dump_settings,
 )
-from auto_reel_ng.api.schemas import EventFailure, WsMessageType
+from auto_reel_ng.api.schemas import EnqueueConflict, EventFailure, WsMessageType
 from auto_reel_ng.event.reconcile import ClipStatus
 from auto_reel_ng.persistence.job_store import CancelOutcome
 from auto_reel_ng.persistence.models import JobStatus
@@ -57,6 +57,7 @@ EXPECTED_MODELS = {
     "JobSummaryOut",
     "CancelResult",
     "CancelOutcome",
+    "EnqueueConflict",
     "FreshResult",
     "StalenessOut",
     "StalenessReason",
@@ -193,9 +194,14 @@ def test_editorial_routes_declare_their_responses_and_etag() -> None:
 
 
 #: The responses each jobs route declares besides its success and FastAPI's 422, by
-#: published model (jobs-client-contract).
+#: published model (jobs-client-contract; the enqueue's 502 from jobs-project-guards).
 EXPECTED_JOBS_RESPONSES = {
-    ("post", "/api/v1/jobs"): {"200": "FreshResult", "404": "ProblemOut", "409": "ProblemOut"},
+    ("post", "/api/v1/jobs"): {
+        "200": "FreshResult",
+        "404": "ProblemOut",
+        "409": "ProblemOut",
+        "502": "ProblemOut",
+    },
     ("get", "/api/v1/jobs/{job_id}"): {"404": "ProblemOut"},
     ("post", "/api/v1/jobs/{job_id}/cancel"): {"404": "ProblemOut"},
 }
@@ -237,6 +243,24 @@ def test_the_problem_body_declares_job_id_and_jobs_document_their_event() -> Non
     description = models["JobOut"]["properties"]["event_dir"]["description"]
     assert "the event's id" in description.lower()
     assert "event_id" in description
+
+
+def _non_null(field: dict) -> dict:
+    """The one non-null member of an optional field's ``anyOf``."""
+    (member,) = [member for member in field["anyOf"] if member != {"type": "null"}]
+    return member
+
+
+def test_the_enqueue_conflict_is_published_as_a_closed_enumeration() -> None:
+    """``conflict`` tells a client which 409 it got; ``claimed_by`` names the other events."""
+    models = build_openapi_schema()["components"]["schemas"]
+    problem = models["ProblemOut"]["properties"]
+    assert _non_null(problem["conflict"])["$ref"].endswith("/EnqueueConflict")
+    published = models["EnqueueConflict"]
+    assert published["type"] == "string"
+    assert published["enum"] == [conflict.value for conflict in EnqueueConflict]
+    assert published["enum"] == ["active_job", "output_collision"]
+    assert _non_null(problem["claimed_by"]) == {"type": "array", "items": {"type": "string"}}
 
 
 def test_the_websocket_frame_is_published_without_a_path() -> None:

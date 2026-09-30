@@ -2,20 +2,30 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 import uuid
 from pathlib import Path
+from typing import Optional
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import sessionmaker
 
 from auto_reel_ng.api.app import create_app
 from auto_reel_ng.api.settings import resolve_api_settings
 from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.event import DEFAULT_CLIP_ORDER
+from auto_reel_ng.persistence.engine import session_scope
 from auto_reel_ng.persistence.job_store import JobStore
-from auto_reel_ng.persistence.models import JobStatus
+from auto_reel_ng.persistence.models import Job, JobStatus
+from auto_reel_ng.staleness.manifest import manifest_path
 
 pytestmark = pytest.mark.requires_db
+
+#: The dev library's case-only twins (``scripts/make_dev_library.py``).
+KALAS = "2024/2024-07-14 - Kalas"
+KALAS_LOWER = "2024/2024-07-14 - kalas"
 
 
 def _touch(path: Path) -> None:
@@ -82,6 +92,7 @@ def test_an_enqueue_that_loses_the_race_is_a_conflict(
 
     assert second.status_code == 409
     assert second.json()["job_id"] == first.json()["id"]
+    assert second.json()["conflict"] == "active_job"  # the same kind as the pre-check's
     assert len(store.list_by_status(JobStatus.QUEUED)) == 1
 
 
@@ -91,6 +102,8 @@ def test_duplicate_enqueue_is_a_visible_conflict(client: TestClient, store: JobS
     assert second.status_code == 409
     problem = second.json()
     assert problem["job_id"] == first.json()["id"]
+    assert problem["conflict"] == "active_job"
+    assert "claimed_by" not in problem
     assert "id" not in problem  # the untyped extra the typed ``job_id`` replaced
     assert len(store.list_by_status(JobStatus.QUEUED)) == 1
 
@@ -173,6 +186,123 @@ def test_force_enqueues_a_fresh_event(client: TestClient, store: JobStore, proje
     body = response.json()
     assert body["force"] is True
     assert len(store.list_by_status(JobStatus.QUEUED)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Output collisions on enqueue (jobs-project-guards 3.3)
+# --------------------------------------------------------------------------- #
+
+
+def _add_case_only_twins(project: Path) -> None:
+    """Add the dev library's two Kalas events to this test's project.
+
+    ``kalas`` authors its title in lower case, so its output path differs from
+    ``Kalas``'s only in letter case: the rule compares paths case-insensitively.
+    """
+    _touch(project / KALAS / "00400.mp4")
+    _touch(project / KALAS_LOWER / "00500.mp4")
+    (project / KALAS_LOWER / "reel.yaml").write_text(
+        "version: 0\nmetadata:\n  title: kalas\n", encoding="utf-8"
+    )
+
+
+def _all_jobs(store: JobStore) -> list[Job]:
+    return [job for status in JobStatus for job in store.list_by_status(status)]
+
+
+@pytest.mark.parametrize("force", [False, True], ids=["unforced", "forced"])
+def test_an_output_collision_is_refused(
+    client: TestClient, store: JobStore, project: Path, force: bool
+) -> None:
+    _add_case_only_twins(project)
+
+    response = client.post("/api/v1/jobs", json={"event_id": KALAS_LOWER, "force": force})
+
+    assert response.status_code == 409
+    problem = response.json()
+    assert problem["conflict"] == "output_collision"
+    assert problem["claimed_by"] == [KALAS]
+    assert problem["event_id"] == KALAS_LOWER
+    assert "job_id" not in problem
+    assert "2024/2024-07-14 - kalas.mp4" in problem["detail"]
+    assert f"also claimed by {KALAS};" in problem["detail"]
+    assert "set a distinct title or location in reel.yaml" in problem["detail"]
+    assert _all_jobs(store) == []
+
+
+def test_a_fresh_events_movie_is_protected_from_its_twin(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    _add_case_only_twins(project)
+    _adopt_and_write_manifest(project, KALAS)
+    movie = default_output_dir(project) / "2024" / "2024-07-14 - Kalas.mp4"
+    manifest = manifest_path(project / KALAS)
+    before = (movie.read_bytes(), manifest.read_bytes())
+
+    response = client.post("/api/v1/jobs", json={"event_id": KALAS})
+
+    assert response.status_code == 409  # checked before the gate: not the 200 "fresh"
+    assert response.json()["conflict"] == "output_collision"
+    assert response.json()["claimed_by"] == [KALAS_LOWER]
+    assert (movie.read_bytes(), manifest.read_bytes()) == before
+    assert _all_jobs(store) == []
+    # Without its twin the same event is simply fresh: the collision took precedence.
+    shutil.rmtree(project / KALAS_LOWER)
+    assert client.post("/api/v1/jobs", json={"event_id": KALAS}).status_code == 200
+
+
+def test_a_collision_outranks_an_active_job(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    """Checked first: a job queued before its twin appeared is not the answer."""
+    _add_case_only_twins(project)
+    active = store.enqueue(str(project), KALAS_LOWER)
+
+    response = client.post("/api/v1/jobs", json={"event_id": KALAS_LOWER})
+
+    assert response.status_code == 409
+    problem = response.json()
+    assert problem["conflict"] == "output_collision"
+    assert "job_id" not in problem
+    assert [job.id for job in _all_jobs(store)] == [active]  # nothing new
+
+
+def test_an_event_outside_any_collision_still_enqueues(client: TestClient, project: Path) -> None:
+    _add_case_only_twins(project)
+
+    response = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"})
+
+    assert response.status_code == 201
+
+
+def test_events_that_fail_on_their_own_claim_no_path(client: TestClient, project: Path) -> None:
+    _touch(project / "2024" / "2024-02-30 - Omöjligt datum" / "00400.mp4")
+    unparseable = project / "2024" / "2024-06-21 - a"  # A's twin, if it parsed
+    _touch(unparseable / "00400.mp4")
+    (unparseable / "reel.yaml").write_text(": [", encoding="utf-8")
+
+    response = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"})
+
+    assert response.status_code == 201
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_a_walk_that_fails_refuses_to_enqueue(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    year_dir = project / "2023"
+    _touch(year_dir / "2023-06-23 - Midsommar - Dalarna" / "00400.mp4")
+    year_dir.chmod(0o000)
+    try:
+        response = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"})
+    finally:
+        year_dir.chmod(0o755)
+
+    assert response.status_code == 502
+    problem = response.json()
+    assert problem["title"] == "Bad Gateway"
+    assert "event scan failed" in problem["detail"]
+    assert _all_jobs(store) == []
 
 
 def test_list_jobs_filters_by_status(client: TestClient, store: JobStore) -> None:
@@ -280,3 +410,80 @@ def test_cancel_unknown_job_is_404(client: TestClient, store: JobStore) -> None:
     job = store.get(uuid.UUID(queued["id"]))
     assert job is not None
     assert (job.status, job.cancel_requested) == (JobStatus.QUEUED, False)  # no row changed
+
+
+# --------------------------------------------------------------------------- #
+# The served project only (jobs-project-guards 4.1)
+# --------------------------------------------------------------------------- #
+
+#: Another library in the same database: its job is only a row, no folder exists.
+FOREIGN_ROOT = "/elsewhere/library"
+
+
+def _job_outside_the_project(
+    store: JobStore, session_factory: sessionmaker, project_root: Optional[str]
+) -> uuid.UUID:
+    """A queued ``2024/Blandat`` job of another project, or with no recorded root."""
+    if project_root is not None:
+        return store.enqueue(project_root, "2024/Blandat")
+    with session_scope(session_factory) as session:
+        job = Job(project_root=None, event_dir="2024/Blandat")
+        session.add(job)
+        session.flush()
+        return job.id
+
+
+@pytest.mark.parametrize("project_root", [FOREIGN_ROOT, None], ids=["foreign", "rootless"])
+def test_a_job_outside_the_project_is_not_listed(
+    client: TestClient,
+    store: JobStore,
+    jobs_session_factory: sessionmaker,
+    project_root: Optional[str],
+) -> None:
+    own = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"}).json()
+    outside = _job_outside_the_project(store, jobs_session_factory, project_root)
+
+    for params in ({}, {"status": "queued"}):
+        listed = client.get("/api/v1/jobs", params=params).json()
+        assert [job["id"] for job in listed] == [own["id"]], params
+    # The store itself still holds both: only the service's view is scoped.
+    assert outside in {job.id for job in store.list_by_status(JobStatus.QUEUED)}
+
+
+@pytest.mark.parametrize("project_root", [FOREIGN_ROOT, None], ids=["foreign", "rootless"])
+def test_a_job_outside_the_project_is_an_unknown_id(
+    client: TestClient,
+    store: JobStore,
+    jobs_session_factory: sessionmaker,
+    project_root: Optional[str],
+) -> None:
+    outside = _job_outside_the_project(store, jobs_session_factory, project_root)
+    unknown = client.get(f"/api/v1/jobs/{uuid.uuid4()}").json()
+
+    shown = client.get(f"/api/v1/jobs/{outside}")
+    canceled = client.post(f"/api/v1/jobs/{outside}/cancel")
+
+    for response in (shown, canceled):
+        assert response.status_code == 404
+        problem = response.json()
+        assert set(problem) == set(unknown)  # the very shape an unknown id gets
+        assert (problem["title"], problem["status"]) == (unknown["title"], unknown["status"])
+        assert problem["job_id"] == str(outside)
+        assert problem["detail"] == f"no job with id {outside}"
+    job = store.get(outside)
+    assert job is not None
+    assert (job.status, job.cancel_requested) == (JobStatus.QUEUED, False)  # untouched
+
+
+def test_the_projects_own_jobs_are_served_beside_a_foreign_one(
+    client: TestClient, store: JobStore
+) -> None:
+    store.enqueue(FOREIGN_ROOT, "2024/2024-06-21 - A")  # the same event id, another project
+    own = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"})
+    assert own.status_code == 201  # the one-active-job rule is per project too
+    job_id = own.json()["id"]
+
+    assert client.get(f"/api/v1/jobs/{job_id}").json()["id"] == job_id
+    canceled = client.post(f"/api/v1/jobs/{job_id}/cancel").json()
+    assert (canceled["outcome"], canceled["status"]) == ("canceled-queued", "canceled")
+    assert [job["id"] for job in client.get("/api/v1/jobs").json()] == [job_id]

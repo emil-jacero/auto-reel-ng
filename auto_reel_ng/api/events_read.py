@@ -4,15 +4,18 @@ Reuses the CLI's own building blocks unchanged: the ingest layout walk, disk
 scan + reconcile, the resolving loader (reel.yaml over folder name) plus the
 processable-event rule, and the analysis sidecar cache reader. No
 new semantics — this module only shapes the same data ``scan``/``analyze``
-already compute into the API's pydantic schemas.
+already compute into the API's pydantic schemas. The enqueue's output-collision
+check (:func:`output_collision`) is the same kind of read: the batch commands'
+rule (D-9), from ``render/``, over the served project's events.
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date as DateValue
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Dict, List, Mapping, Optional, Tuple
 
 from ..analysis.cache import CACHE_SUBDIR, clip_signal, read_entry
@@ -34,7 +37,7 @@ from ..ingest import EventRef, get_layout
 from ..persistence.job_store import JobStore
 from ..persistence.models import Job
 from ..reel import ReelDocument, load_document
-from ..render import output_relpath
+from ..render import find_output_collisions, output_relpath
 from ..staleness.fingerprint import compute_fingerprint
 from ..staleness.gate import evaluate
 from .schemas import (
@@ -439,6 +442,72 @@ def get_analysis(settings: ApiSettings, event_id: str) -> AnalysisOut:
     return AnalysisOut(analyzed=analyzed, segments=segments)
 
 
+@dataclass(frozen=True)
+class OutputCollision:
+    """The named event's output path and the other events that claim it."""
+
+    #: Relative to the output directory, as ``render.output_relpath`` gives it.
+    output_path: PurePosixPath
+    #: The other claimants' event ids (the ids ``GET /api/v1/events`` lists), sorted.
+    claimed_by: Tuple[str, ...]
+
+
+def _output_claim(event_dir: Path, order: ClipOrder, today: DateValue) -> Optional[PurePosixPath]:
+    """The event's output path, or ``None`` when it fails on its own and claims nothing.
+
+    The loader and the processable rule the CLI's batch commands select claimants
+    with (``cli/_checked_document``): an unparseable or unreadable ``reel.yaml``, or
+    no real date or title, claims no path. An ``OSError`` claims none either — the
+    events list's per-event isolation — where the CLI aborts its run on it.
+    """
+    try:
+        document, _seeded = load_event_document(event_dir, order=order)
+        require_processable(event_dir, document.metadata, today=today)
+    except (ReelError, OSError):  # an EventMetadataError is a ReelError
+        return None
+    return output_relpath(document.metadata)
+
+
+def output_collision(
+    settings: ApiSettings, event_dir: Path, *, today: DateValue
+) -> Optional[OutputCollision]:
+    """The output collision ``event_dir`` is part of, over every event of the served project.
+
+    The batch commands' rule (D-9): the claimants are the events the configured
+    layout walks — the events list's rows — plus ``event_dir`` itself, which a caller
+    may name although the walk does not reach it; their paths are compared by
+    ``render.find_output_collisions``. ``None`` when nothing else claims the path,
+    or when ``event_dir`` fails on its own and claims none.
+
+    A walked event that resolves to ``event_dir`` is the named event itself, however
+    the walk spells it, so the named event never collides with itself. Every other
+    walked event claims under its own walk path, as each list row does, and is named
+    by the id that path gives it: a symlinked event folder is named as the list names
+    it, wherever it points, and two rows aliasing one folder keep both their claims.
+
+    The walk's own failure (``LayoutError``, ``OSError``) propagates: the caller must
+    not enqueue an event whose collision it could not check (Principle I).
+    """
+    event_dir = event_dir.resolve()  # a no-op for resolve_event_dir's result
+    target = _output_claim(event_dir, settings.clip_order, today)
+    if target is None:
+        return None
+    claims: Dict[Path, PurePosixPath] = {event_dir: target}
+    ids: Dict[Path, str] = {}
+    for ref in _list_event_refs(settings):
+        if ref.event_dir.resolve() == event_dir:
+            continue
+        claim = _output_claim(ref.event_dir, settings.clip_order, today)
+        if claim is not None:
+            claims[ref.event_dir] = claim
+            ids[ref.event_dir] = event_id_for(settings, ref.event_dir)
+    others = find_output_collisions(claims).get(event_dir, ())
+    if not others:
+        return None
+    # Every other claimant came from the walk, so each one has an id.
+    return OutputCollision(output_path=target, claimed_by=tuple(sorted(ids[o] for o in others)))
+
+
 __all__ = [
     "EventNotFoundError",
     "EventReadError",
@@ -448,6 +517,8 @@ __all__ = [
     "get_event",
     "get_reel",
     "get_analysis",
+    "OutputCollision",
+    "output_collision",
     "classify_event_failure",
     "staleness_for",
     "project_look_defaults",

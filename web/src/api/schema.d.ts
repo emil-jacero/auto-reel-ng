@@ -157,7 +157,7 @@ export interface paths {
         };
         /**
          * List Jobs
-         * @description ``GET /api/v1/jobs`` (task 3.2): optionally filtered by status, oldest first.
+         * @description ``GET /api/v1/jobs`` (task 3.2): the served project's jobs, by status, oldest first.
          */
         get: operations["list_jobs_api_v1_jobs_get"];
         put?: never;
@@ -169,6 +169,12 @@ export interface paths {
          *     the event is fresh and ``force`` is false. The API never transitions job
          *     status itself (D-A6) — the gate decision is made here, at enqueue, the same
          *     as the CLI's own ``enqueue``.
+         *
+         *     The output-collision check comes first, as the CLI decides it before anything
+         *     else: an event whose output path another event of the project claims is a 409
+         *     ``output_collision``, fresh or stale, forced or not — never gated, never "already
+         *     active". A walk that fails leaves the rule unchecked, so it is the events list's
+         *     scan-failure 502 and nothing is enqueued (Principle I).
          */
         post: operations["create_job_api_v1_jobs_post"];
         delete?: never;
@@ -186,7 +192,7 @@ export interface paths {
         };
         /**
          * Get Job
-         * @description ``GET /api/v1/jobs/{id}`` (task 3.2): one job's full detail.
+         * @description ``GET /api/v1/jobs/{id}`` (task 3.2): one of the served project's jobs, in full.
          */
         get: operations["get_job_api_v1_jobs__job_id__get"];
         put?: never;
@@ -210,9 +216,12 @@ export interface paths {
          * Cancel Job
          * @description ``POST /api/v1/jobs/{id}/cancel`` (task 3.3): the store's cancel and its outcome.
          *
-         *     One store call and no pre-read: the outcome and the echoed status come from the
-         *     locked transaction that applied the cancel, so a worker's claim landing
-         *     in between can never make them disagree.
+         *     The one read before the store call decides only *whether* this service may
+         *     cancel the job — the served project's own — and a job's project root is never
+         *     written after insert, so that read cannot go stale. The outcome and the echoed
+         *     status still come from the locked transaction that applied the cancel, never
+         *     from that read, so a worker's claim landing in between can never make them
+         *     disagree.
          */
         post: operations["cancel_job_api_v1_jobs__job_id__cancel_post"];
         delete?: never;
@@ -434,6 +443,12 @@ export interface components {
             document: components["schemas"]["EditorialDocumentBody-Output"];
             staleness: components["schemas"]["StalenessOut"];
         };
+        /**
+         * EnqueueConflict
+         * @description Why ``POST /api/v1/jobs`` refused an event with a 409: the API's classification.
+         * @enum {string}
+         */
+        EnqueueConflict: "active_job" | "output_collision";
         /**
          * EnqueueRequest
          * @description The body of ``POST /api/v1/jobs``.
@@ -668,6 +683,9 @@ export interface components {
             failure?: components["schemas"]["EventFailure"] | null;
             /** Job Id */
             job_id?: string | null;
+            conflict?: components["schemas"]["EnqueueConflict"] | null;
+            /** Claimed By */
+            claimed_by?: string[] | null;
         } & {
             [key: string]: unknown;
         };
@@ -1132,6 +1150,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
                 };
             };
         };
