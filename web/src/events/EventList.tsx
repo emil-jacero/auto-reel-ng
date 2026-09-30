@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
 import { fetchEvents } from '../api/events'
 import type { EventError, EventRow, EventSummary, Problem } from '../api/events'
+import { MISSING_BLOCKS_ROW } from '../jobs/labels'
 import { LiveJobCell } from '../jobs/LiveJobCell'
 import { eventHref } from '../route'
 import { Alert } from '../ui/Alert'
@@ -85,6 +86,7 @@ function EventRow({ event }: { event: EventSummary }) {
         eventId={event.event_id}
         staleness={event.staleness}
         latestJob={event.latest_job}
+        blockedReason={event.missing_count > 0 ? MISSING_BLOCKS_ROW : undefined}
       />
     </tr>
   )

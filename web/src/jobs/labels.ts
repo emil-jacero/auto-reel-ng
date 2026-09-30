@@ -24,3 +24,16 @@ export const NOT_QUEUED = 'The render was not queued.'
 export const NOT_CONFIRMED = 'The cancel was not confirmed.'
 export const SCAN_FAILED = 'The project could not be scanned, so the render was not queued.'
 export const COLLISION_FIX = 'Give one of them a distinct title or location in its reel.yaml.'
+
+/** Why the page holds a render back while reel.yaml lists clips missing from disk, if it does. */
+export function missingClipsReason(missing: readonly string[]): string | undefined {
+  if (missing.length === 0) {
+    return undefined
+  }
+  return missing.length === 1
+    ? `${missing[0]} is missing from disk. Restore it, or remove it in Edit mode.`
+    : `${missing.length} clips are missing from disk. Restore them, or remove them in Edit mode.`
+}
+
+/** A row's words in place of Render while its event lists a missing clip. */
+export const MISSING_BLOCKS_ROW = 'Blocked by missing clips'

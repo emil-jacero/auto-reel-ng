@@ -7,6 +7,7 @@ import type { Chapter, Clip, EventDetail as EventDetailData } from '../api/event
 import type { EventFailure, Problem } from '../api/events'
 import { EventEditor } from '../edit/EventEditor'
 import { requestLeave, useSaving } from '../edit/unsaved'
+import { missingClipsReason } from '../jobs/labels'
 import { RenderControl } from '../jobs/RenderControl'
 import { LIST_HREF } from '../route'
 import { Alert } from '../ui/Alert'
@@ -355,7 +356,9 @@ function EventFacts({
           staleness={event.staleness}
           latestJob={event.latest_job}
           onFinished={onFinished}
-          blockedReason={editing ? 'Save or leave Edit mode to render' : undefined}
+          blockedReason={
+            editing ? 'Save or leave Edit mode to render' : missingClipsReason(event.missing)
+          }
         />
       </div>
     </>
