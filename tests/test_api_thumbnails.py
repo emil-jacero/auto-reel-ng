@@ -54,6 +54,7 @@ TJORN = "2024/2024-08-20 - Två kapitel - Tjörn"
 SOMMARLOV = "2024/2024-09-01 - Sommarlov"
 SKILJETECKEN = "2024/2024-09-10 - Skiljetecken"
 TRASIG_YAML = "2024/2024-09-15 - Trasig yaml"
+IGNORED_EVENT = "2024/2024-09-20 - Aldrig"  # holds .reelignore: not an event of the list
 
 #: A chapter-folder identity with spaces, punctuation, a ``+`` and Swedish letters.
 PUNCTUATED = "Kväll, del 2/a+b & c #1.mp4"
@@ -129,6 +130,9 @@ def project(tmp_path: Path, cache_dir: Path) -> Path:
         _write(root / GRILLNING / name, f"grill {name}".encode())
 
     _write(root / KALAS / "s1710001.mp4", b"kalas")
+    _write(root / GRILLNING / "original" / "x.mp4", b"original of grill")
+    _write(root / IGNORED_EVENT / "s1710001.mp4", b"never rendered")
+    _write(root / IGNORED_EVENT / ".reelignore")
 
     tjorn = root / TJORN
     for identity in (
@@ -165,8 +169,8 @@ def settings(project: Path) -> ApiSettings:
 
 
 def _event_dir(project: Path, event: str) -> Path:
-    """The event folder as ``resolve_event_dir`` returns it: resolved."""
-    return (project / event).resolve()
+    """The event folder as the events list names it (``listed_event_dir``)."""
+    return project / event
 
 
 # --- task 2.2: which clips have a thumbnail ---------------------------------
@@ -225,6 +229,25 @@ def test_an_absolute_path_is_not_an_identity(settings: ApiSettings, project: Pat
 def test_an_unknown_event_is_not_found(settings: ApiSettings) -> None:
     with pytest.raises(events_read.EventNotFoundError):
         events_read.thumbnail_source(settings, "2024/2024-12-24 - Finns inte", "s1710001.mp4")
+
+
+@pytest.mark.parametrize(
+    ("event_id", "clip"),
+    [
+        ("", "2024/2024-06-27 - Grillning med grannar/s1710001.mp4"),  # the project root
+        ("2024", "2024-06-27 - Grillning med grannar/s1710001.mp4"),  # a year folder
+        (f"{GRILLNING}/original", "x.mp4"),  # an event's originals
+        (f"{TJORN}/Kvällen", "s1710002.mp4"),  # a chapter folder
+        (IGNORED_EVENT, "s1710001.mp4"),  # .reelignore: the layout skips it
+        (f"{GRILLNING}/", "s1710001.mp4"),  # not the list's spelling of the id
+        (f"2024/../{GRILLNING}", "s1710001.mp4"),
+    ],
+)
+def test_a_directory_the_events_list_does_not_show_is_not_an_event(
+    settings: ApiSettings, event_id: str, clip: str
+) -> None:
+    with pytest.raises(events_read.EventNotFoundError):
+        events_read.thumbnail_source(settings, event_id, clip)
 
 
 def test_an_unlistable_event_folder_is_unreadable_disk(
@@ -578,6 +601,16 @@ def test_not_found_and_a_missing_clip_parameter(client: TestClient, fake: FakeTh
     assert fake.calls == []
 
 
+def test_folders_that_are_not_events_answer_404(client: TestClient, fake: FakeThumbnailFor) -> None:
+    year = client.get(_url("2024", "2024-06-27 - Grillning med grannar/s1710001.mp4"))
+    originals = client.get(_url(f"{GRILLNING}/original", "x.mp4"))
+    for response, event_id in ((year, "2024"), (originals, f"{GRILLNING}/original")):
+        assert response.status_code == 404
+        assert response.json()["event_id"] == event_id
+        _assert_no_caching_headers(response)
+    assert fake.calls == []
+
+
 def test_an_engine_failure_is_the_thumbnail_kind(
     client: TestClient, fake: FakeThumbnailFor, project: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -661,6 +694,22 @@ def test_a_bad_thumbnail_setting_has_no_kind(
     assert "thumbnails.position" in body["detail"]
     assert "failure" not in body
     assert "thumbnail_failure" not in body
+    assert fake.calls == []
+
+
+def test_a_config_that_is_not_utf8_has_no_kind(
+    client: TestClient, project: Path, fake: FakeThumbnailFor
+) -> None:
+    (project / "config.yaml").write_bytes(b"# kommentar p\xe5 latin-1\n")
+
+    response = client.get(_url(GRILLNING, "s1710001.mp4"))
+
+    assert response.status_code == 502
+    body = response.json()
+    assert "not valid UTF-8" in body["detail"]
+    assert "failure" not in body
+    assert "thumbnail_failure" not in body
+    _assert_no_caching_headers(response)
     assert fake.calls == []
 
 
@@ -776,6 +825,21 @@ def test_a_changed_clip_gets_a_new_entity_tag(
     assert len(fake.calls) == 2
 
 
+def test_if_none_match_on_several_header_lines_is_one_list(
+    client: TestClient, fake: FakeThumbnailFor
+) -> None:
+    url = _url(GRILLNING, "s1710001.mp4")
+    etag = client.get(url).headers["etag"]
+    for lines in (
+        [("If-None-Match", '"zzz"'), ("If-None-Match", etag)],
+        [("If-None-Match", etag), ("If-None-Match", '"zzz"')],
+    ):
+        response = client.get(url, headers=lines)
+        assert response.status_code == 304, lines
+        assert response.headers["etag"] == etag
+    assert len(fake.calls) == 1
+
+
 def test_a_non_matching_tag_is_a_200(client: TestClient) -> None:
     response = client.get(
         _url(GRILLNING, "s1710001.mp4"), headers={"If-None-Match": '"not-the-key"'}
@@ -823,6 +887,78 @@ def _dimensions(runtime: FfmpegRuntime, image: Path) -> str:
         text=True,
     )
     return result.stdout.strip()
+
+
+def _truncate_media_data(clip: Path, *, keep: int = 300) -> None:
+    """Cut ``clip`` ``keep`` bytes into its ``mdat`` box: the ``moov`` index stays intact."""
+    data = clip.read_bytes()
+    offset = 0
+    while offset + 8 <= len(data):
+        size = int.from_bytes(data[offset : offset + 4], "big")
+        if data[offset + 4 : offset + 8] == b"mdat":
+            clip.write_bytes(data[: offset + 8 + keep])
+            return
+        offset += size
+    raise AssertionError(f"no mdat box in {clip}")
+
+
+@pytest.mark.has_ffmpeg
+def test_an_undecodable_clip_gets_a_one_line_detail_without_server_paths(
+    tmp_path: Path,
+    runtime: FfmpegRuntime,
+    make_clip: Callable[..., Path],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Random bytes fail the probe and a truncated media box fails ffmpeg; neither detail
+    carries the command, a path or stderr, and the log keeps the full reason."""
+    root = tmp_path / "proj"
+    event_dir = root / GRILLNING
+    event_dir.mkdir(parents=True)
+    _write(event_dir / "random.mp4", os.urandom(20_000))
+    whole = make_clip("whole.mp4", duration=2.0)
+    subprocess.run(
+        [
+            runtime.ffmpeg_path,
+            "-v",
+            "error",
+            "-i",
+            str(whole),
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",  # moov before mdat, so the cut keeps the index
+            str(event_dir / "truncated.mp4"),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    _truncate_media_data(event_dir / "truncated.mp4")
+    _write_config(root, tmp_path / "cache")
+
+    app = create_app(resolve_api_settings(root, env={"DATABASE_URL": UNREACHABLE_DATABASE_URL}))
+    with TestClient(app) as client:
+        responses = {
+            clip: client.get(_url(GRILLNING, clip)) for clip in ("random.mp4", "truncated.mp4")
+        }
+
+    for clip, response in responses.items():
+        assert response.status_code == 502, clip
+        body = response.json()
+        assert body["thumbnail_failure"] == "thumbnail_failed"
+        detail = body["detail"]
+        assert detail.startswith(f"{clip}: "), detail
+        cause = detail.removeprefix(f"{clip}: ")
+        assert cause and "/" not in cause and "\n" not in detail, detail
+    assert responses["random.mp4"].json()["detail"].startswith("random.mp4: ffprobe could not read")
+    assert (
+        responses["truncated.mp4"]
+        .json()["detail"]
+        .startswith("truncated.mp4: no frame extracted at ")
+    )
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    for clip in responses:
+        (logged,) = [message for message in warnings if f": {clip}: " in message]
+        assert "Command exited" in logged and "stderr:" in logged  # the full reason
 
 
 @pytest.mark.has_ffmpeg
