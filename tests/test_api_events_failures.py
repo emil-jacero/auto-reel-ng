@@ -140,6 +140,45 @@ def test_unparseable_reel_yaml_on_the_list_is_an_error_row(client, project: Path
 
 
 @pytest.mark.requires_db
+@pytest.mark.parametrize(
+    ("content", "named"),
+    [
+        pytest.param(
+            b"version: 0\nmetadata:\n  title: Barbecue\n  date: 2024-02-30\n",
+            "'2024-02-30'",
+            id="impossible-date",
+        ),
+        pytest.param(
+            "version: 0\nmetadata:\n  title: Grillkväll\n".encode("latin-1"),
+            "not UTF-8 text",
+            id="latin-1",
+        ),
+    ],
+)
+def test_an_impossible_reel_yaml_date_is_an_error_row_not_a_500(
+    client, project: Path, content: bytes, named: str
+) -> None:
+    """A value or a byte the YAML reader cannot load was a 500 for the whole list."""
+    _touch(project / "2024" / "2024-08-01 - Kräftskiva" / "00600.mp4")
+    (project / EVENT_ID / "reel.yaml").write_bytes(content)
+
+    summaries, errors = _rows_by_kind(client.get("/api/v1/events"))
+
+    assert len(summaries) == 2
+    (error,) = errors
+    assert error["event_id"] == EVENT_ID
+    assert error["failure"] == "unparseable_reel_yaml"
+    assert named in error["detail"]
+
+    # The event's own reads are the classified 502, the document read included.
+    for path in (f"/api/v1/events/{quote(EVENT_ID)}", f"/api/v1/events/{quote(EVENT_ID)}/reel"):
+        problem = _validated_problem(client.get(path), 502)
+        assert problem.event_id == EVENT_ID
+        assert problem.failure == "unparseable_reel_yaml"
+        assert named in problem.detail
+
+
+@pytest.mark.requires_db
 def test_a_year_only_event_on_the_list_is_an_unusable_metadata_row(client, project: Path) -> None:
     _touch(project / "2004" / "2004 - Yngve berättar om skövde" / "00100.mp4")
 

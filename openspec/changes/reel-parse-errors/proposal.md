@@ -53,17 +53,21 @@ isolation code can do nothing with it. One mistyped date in one event's `reel.ya
 ## What Changes
 
 - **An impossible scalar is a parse error that names the value and its line.** The parser's YAML loader
-  turns any non-YAML error raised while one node is constructed into a marked ruamel error, which carries
-  that node's value and position. The existing `except YAMLError` then raises it as `ReelParseError`.
-  Example message:
-  `…/reel.yaml: malformed YAML: '2024-02-30' is not a real date or time (day 30 must be in range 1..29 for
-  month 2 in year 2024)`, followed by ruamel's `line 4, column 9` excerpt. This covers v0 and legacy
-  documents alike, any position in the document, and every typed tag (`!!int`, `!!float`, `!!bool`, …).
+  turns any non-YAML error raised while one node is constructed into ruamel's own `ConstructorError`,
+  worded from that node's value and position. `loads_document` raises every `ConstructorError` as
+  `ReelParseError` under the prefix `invalid value`: the text is well-formed YAML, so the message does not
+  call it malformed. Example message:
+  `…/reel.yaml: invalid value: '2024-02-30' on line 4, column 9 is not a real date (day 30 must be in
+  range 1..29 for month 2 in year 2024)`. This covers v0 and legacy documents alike, any position in the
+  document, and every typed tag (`!!int`, `!!float`, `!!bool`, …). The message is one line, because the
+  events list's error row shows it in one table cell. A real syntax error keeps the prefix
+  `malformed YAML` and ruamel's multi-line excerpt.
 - **Anything else the YAML reader raises is a parse error too.** `loads_document` gets one backstop
   clause after `except YAMLError`, around the load call only. It turns a failure that ruamel raises
   without a node, such as the scanner's `chr()` error or a `RecursionError`, into
   `ReelParseError(f"{source}: malformed YAML: {exc}")`. Such a message names the file and ruamel's reason,
-  but no line, because ruamel reports none.
+  but no line, because ruamel reports none. The constructor hook passes a `RecursionError` through
+  unchanged, so a document nested too deep to construct lands here too, instead of being blamed on one node.
 - **A non-UTF-8 file is a parse error.** `load_document` wraps `UnicodeDecodeError` as `ReelParseError`:
   `…/reel.yaml: not UTF-8 text (invalid continuation byte at byte 32)`.
 - **No caller changes.** Every new error is a `ReelParseError`, so every existing `ReelError` handler applies
@@ -73,6 +77,7 @@ isolation code can do nothing with it. One mistyped date in one event's `reel.ya
   - parser unit tests for each path: impossible values and unsatisfiable tags, the backstop, and non-UTF-8
   - one events-list API test (one error row, not a 500)
   - one CLI `scan` test (one `ERROR` line)
+  - one worker test (the job ends `failed` with the reason, not `running`)
 
 ## Non-goals
 
@@ -102,6 +107,9 @@ isolation code can do nothing with it. One mistyped date in one event's `reel.ya
 - **Non-finite trim times.** `in: .nan` and `out: .inf` pass `schema._req_time` today (verified), because
   NaN is neither negative nor `<=` anything. This is a validation gap in the same requirement's "a negative
   time" rule, not a load failure. Named follow-up.
+- **The worker's other exceptions.** `scheduler/worker._process` catches only `EngineError`. After this
+  change no `reel.yaml` content reaches it as anything else, but any other unexpected exception still kills
+  the job's thread and leaves its row `running` until a restart requeues it. Named follow-up.
 
 ## Capabilities
 
@@ -122,12 +130,13 @@ None.
 ## Impact
 
 - **Packages:**
-  - `reel/`: `parser.py` only. It gains a round-trip constructor subclass, a backstop clause around the
-    load call, and a `UnicodeDecodeError` clause
+  - `reel/`: `parser.py` only. It gains a round-trip constructor subclass, a value-level clause for
+    `ConstructorError`, a backstop clause around the load call, and a `UnicodeDecodeError` clause
   - `tests/`:
     - `test_reel_parser.py`
     - `test_cli_event_metadata.py` (one `scan` case)
     - `test_api_events_failures.py` (one `requires_db` list case)
+    - `test_scheduler_worker.py` (one `requires_db` worker case)
   - nothing else changes
   - `api/` is not touched, because `classify_event_failure` already maps `ReelError` to
     `unparseable_reel_yaml`. Verified on the scratch copy: a quoted bad date, already a `ReelParseError`,
@@ -141,13 +150,13 @@ None.
 - **Fingerprint:** inputs unchanged. A document that loads today loads to the same typed fields. The
   constructor hook only acts when construction raises.
 - **Schemas:** no `reel.yaml` or `config.yaml` schema change, **no Alembic migration**, no rescan.
-- **Complexity (Principle VII):** a 10-line constructor subclass and two `except` clauses. The two
-  `except Exception` clauses are deliberate: the review reproduced six builtin error types from ruamel's
-  load step. A narrower catch leaves demonstrated inputs crashing the batch (design, "Where to turn a
-  builtin error into a parse error").
+- **Complexity (Principle VII):** a constructor subclass with two small wording helpers (about 35 lines)
+  and three `except` clauses. The two `except Exception` clauses are deliberate: the review reproduced six
+  builtin error types from ruamel's load step. A narrower catch leaves demonstrated inputs crashing the
+  batch (design, "Where to turn a builtin error into a parse error").
 - **Dependencies:**
-  - no new library: the hook subclasses ruamel.yaml's `RoundTripConstructor` (0.19.1 installed,
-    `>=0.18.0` required)
+  - no new library: the hook subclasses ruamel.yaml's `RoundTripConstructor`. The tests pass on 0.18.0,
+    the `>=0.18.0` floor, and on 0.19.1, the version a fresh venv resolves, so the floor is unchanged
   - gate: none. It can start now
   - it complements `jobs-project-guards` and does not conflict with it: this change touches only
     `reel/parser.py` and its tests

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 
 import pytest
 
 from auto_reel_ng.errors import ReelError, ReelParseError
-from auto_reel_ng.reel.parser import loads_document
+from auto_reel_ng.reel.parser import load_document, loads_document
 
 VALID_DOC = """\
 version: 0
@@ -243,3 +244,157 @@ def test_custom_sort_with_custom_order_loads() -> None:
 def test_malformed_sort_fails_loud_naming_the_field(sort: str, field: str) -> None:
     with pytest.raises(ReelParseError, match=field.replace(".", r"\.")):
         loads_document(f"version: 0\nsort: {sort}\n")
+
+
+# --- Content that cannot be loaded is a parse error, never a builtin error -------------
+
+BARBECUE = "version: 0\nmetadata:\n  title: Barbecue\n  date: 2024-02-30\n"
+
+#: A double-quoted escape beyond the last code point. Raw, so the file holds the backslash:
+#: in a plain literal Python itself rejects ``\UFFFFFFFF`` at compile time.
+ESCAPE_BEYOND_UNICODE = r"""version: 0
+metadata:
+  title: "Fest \UFFFFFFFF"
+"""
+
+
+def _load_file(tmp_path: Path, content: str | bytes) -> tuple[Path, ReelParseError]:
+    """Write ``content`` as ``reel.yaml``, load it, and return the parse error it raises."""
+    reel = tmp_path / "reel.yaml"
+    if isinstance(content, bytes):
+        reel.write_bytes(content)
+    else:
+        reel.write_text(content, encoding="utf-8")
+    with pytest.raises(ReelParseError) as exc:
+        load_document(reel)
+    return reel, exc.value
+
+
+@pytest.mark.parametrize(
+    ("text", "value", "line", "kind"),
+    [
+        pytest.param(BARBECUE, "'2024-02-30'", 4, "real date", id="v0-date"),
+        pytest.param(
+            "version: 0\nmetadata:\n  date: 2024-13-45\n",
+            "'2024-13-45'",
+            3,
+            "real date",
+            id="v0-month",
+        ),
+        pytest.param(
+            "metadata:\n  date: 2024-02-30\n", "'2024-02-30'", 2, "real date", id="legacy-date"
+        ),
+        pytest.param(
+            "metadata:\n  date: 2024-13-45\n", "'2024-13-45'", 2, "real date", id="legacy-month"
+        ),
+        pytest.param(
+            "version: 0\nlook:\n  generated: 2024-02-29T25:00:00\n",
+            "'2024-02-29T25:00:00'",
+            3,
+            "real date and time",
+            id="look-timestamp",
+        ),
+        pytest.param("version: 0\nlook: {n: !!int abc}\n", "'abc'", 2, "valid int", id="int-tag"),
+        pytest.param(
+            "version: 0\nlook:\n  shadow: !!bool maybe\n", "'maybe'", 3, "valid bool", id="bool-tag"
+        ),
+        pytest.param(
+            "version: 0\nlook:\n  size: !!int\n", "''", 3, "valid int", id="empty-int-tag"
+        ),
+    ],
+)
+def test_a_value_its_tag_cannot_hold_is_a_parse_error_naming_it_and_its_line(
+    tmp_path: Path, text: str, value: str, line: int, kind: str
+) -> None:
+    """Well-formed YAML, so the message says what is wrong with the value, not the syntax."""
+    reel, error = _load_file(tmp_path, text)
+
+    message = str(error)
+    assert message.startswith(f"{reel}: invalid value: {value} on line {line}, column ")
+    assert f" is not a {kind}" in message
+    assert "malformed YAML" not in message
+
+
+def test_an_impossible_date_carries_the_reason_python_gives(tmp_path: Path) -> None:
+    with pytest.raises(ValueError) as reason:
+        date(2024, 2, 30)
+
+    reel, error = _load_file(tmp_path, BARBECUE)
+
+    assert str(error) == (
+        f"{reel}: invalid value: '2024-02-30' on line 4, column 9 is not a real date"
+        f" ({reason.value})"
+    )
+
+
+def test_a_builtin_reason_that_only_describes_ruamel_is_left_out(tmp_path: Path) -> None:
+    """``!!bool maybe`` fails as a KeyError whose text is only ``'maybe'`` again."""
+    reel, error = _load_file(tmp_path, "version: 0\nlook:\n  shadow: !!bool maybe\n")
+
+    assert str(error) == f"{reel}: invalid value: 'maybe' on line 3, column 11 is not a valid bool"
+
+
+def test_loads_document_reports_an_impossible_date_as_a_parse_error() -> None:
+    with pytest.raises(ReelParseError, match=r"^<string>: invalid value: '2024-02-30' on line 4"):
+        loads_document(BARBECUE)
+
+
+def test_a_value_ruamel_itself_refuses_is_an_invalid_value_too() -> None:
+    """ruamel's own construction errors share the prefix: the YAML is not malformed."""
+    with pytest.raises(ReelParseError, match="^<string>: invalid value: failed to construct"):
+        loads_document("version: 0\nlook: {n: !!timestamp foo}\n")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("version: 0\nlook: {n: !!set abc}\n", id="attribute-error"),
+        pytest.param("version: 0\nlook:\n  ? {a: [b]}\n  : x\n", id="type-error"),
+        pytest.param("? {a: [b]}\n: x\nmetadata: {title: t}\n", id="type-error-at-the-root"),
+    ],
+)
+def test_no_other_builtin_error_escapes_the_load_step(text: str) -> None:
+    with pytest.raises(ReelParseError, match="^<string>: "):
+        loads_document(text)
+
+
+def test_a_real_leap_day_still_loads_as_a_date() -> None:
+    doc = loads_document("version: 0\nmetadata:\n  date: 2024-02-29\n")
+    assert doc.metadata.date == date(2024, 2, 29)
+
+
+def test_a_quoted_impossible_date_keeps_its_validation_message() -> None:
+    with pytest.raises(ReelParseError, match=r"metadata\.date: invalid date '2024-02-30'"):
+        loads_document("version: 0\nmetadata:\n  date: '2024-02-30'\n")
+
+
+def test_an_escape_that_names_no_character_is_a_parse_error(tmp_path: Path) -> None:
+    """ruamel's scanner fails with no node to blame: the file and the reader's reason."""
+    reel, error = _load_file(tmp_path, ESCAPE_BEYOND_UNICODE)
+
+    assert str(error).startswith(f"{reel}: malformed YAML: ")
+    assert "chr()" in str(error)
+
+
+@pytest.mark.parametrize(
+    "depth",
+    [
+        # Deep enough to exhaust the stack while constructing: no single node is at fault.
+        pytest.param(300, id="too-deep-to-construct"),
+        # Deeper still: the stack runs out while composing, before construction starts.
+        pytest.param(3000, id="too-deep-to-compose"),
+    ],
+)
+def test_a_document_nested_too_deep_is_a_parse_error(tmp_path: Path, depth: int) -> None:
+    reel, error = _load_file(tmp_path, "version: 0\nlook: " + "[" * depth + "]" * depth + "\n")
+
+    assert str(error).startswith(f"{reel}: malformed YAML: ")
+    assert "recursion" in str(error)
+
+
+def test_a_reel_yaml_that_is_not_utf8_is_a_parse_error(tmp_path: Path) -> None:
+    latin1 = "version: 0\nmetadata:\n  title: Kräftskiva\n".encode("latin-1")
+
+    reel, error = _load_file(tmp_path, latin1)
+
+    assert str(error) == f"{reel}: not UTF-8 text (invalid continuation byte at byte 32)"
