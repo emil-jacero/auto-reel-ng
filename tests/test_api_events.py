@@ -444,6 +444,93 @@ def test_a_completed_job_is_not_freshness(
     assert listed["staleness"]["reasons"] == ["clip_set"]
 
 
+_BARBECUE = "2024/2024-07-04 - Barbecue"
+_JOB_TIMES = ("created_at", "started_at", "finished_at")
+
+
+def _latest_job_reads(client: TestClient, job_id) -> tuple[dict, dict, dict]:
+    """The event's ``latest_job`` from the list and from the detail, and the job's own detail."""
+    listed = _by_id(client.get("/api/v1/events").json())[_BARBECUE]["latest_job"]
+    detail = client.get(f"/api/v1/events/{quote(_BARBECUE, safe='/')}").json()["latest_job"]
+    job = client.get(f"/api/v1/jobs/{job_id}").json()
+    assert listed["id"] == detail["id"] == job["id"] == str(job_id)
+    return listed, detail, job
+
+
+@pytest.mark.parametrize("terminal", ["done", "failed"])
+def test_an_ended_latest_job_reports_the_job_details_times(
+    client: TestClient, project: Path, job_store, terminal: str
+) -> None:
+    """The latest job is a projection of the job's detail: the same time strings on both reads."""
+    from auto_reel_ng.persistence.models import JobStatus
+
+    job_id = job_store.enqueue(str(project), _BARBECUE)
+    job_store.claim_next("worker-1")
+    error = "probe failed" if terminal == "failed" else None
+    job_store.transition(job_id, JobStatus(terminal), error=error)
+
+    listed, detail, job = _latest_job_reads(client, job_id)
+    assert job["started_at"] is not None and job["finished_at"] is not None
+    for summary in (listed, detail):
+        assert summary["status"] == terminal
+        assert {key: summary[key] for key in _JOB_TIMES} == {key: job[key] for key in _JOB_TIMES}
+    created, started, finished = (_utc_datetime(job[key]) for key in _JOB_TIMES)
+    assert created <= started <= finished
+
+
+def test_a_queued_latest_job_has_no_start_or_finish_time(
+    client: TestClient, project: Path, job_store
+) -> None:
+    """Both keys are present and null until the store stamps them — never substituted."""
+    job_id = job_store.enqueue(str(project), _BARBECUE)
+
+    listed, detail, job = _latest_job_reads(client, job_id)
+    for summary in (listed, detail):
+        assert summary["status"] == "queued"
+        assert summary["created_at"] == job["created_at"]
+        assert "started_at" in summary and summary["started_at"] is None
+        assert "finished_at" in summary and summary["finished_at"] is None
+
+
+def test_a_job_cancelled_while_queued_has_a_finish_time_but_no_start_time(
+    client: TestClient, project: Path, job_store
+) -> None:
+    job_id = job_store.enqueue(str(project), _BARBECUE)
+    cancel = client.post(f"/api/v1/jobs/{job_id}/cancel")
+    assert cancel.status_code == 200
+    assert cancel.json()["outcome"] == "canceled-queued"
+
+    listed, detail, job = _latest_job_reads(client, job_id)
+    assert job["finished_at"] is not None
+    for summary in (listed, detail):
+        assert summary["status"] == "canceled"
+        assert summary["started_at"] is None
+        assert summary["finished_at"] == job["finished_at"]
+
+
+def test_a_running_latest_job_loses_its_start_time_when_requeued(
+    client: TestClient, project: Path, job_store
+) -> None:
+    """``requeue`` is what a graceful stop and the startup reconcile call (D-S5, D-S8)."""
+    job_id = job_store.enqueue(str(project), _BARBECUE)
+    job_store.claim_next("worker-1")
+
+    listed, detail, job = _latest_job_reads(client, job_id)
+    assert job["started_at"] is not None
+    for summary in (listed, detail):
+        assert summary["status"] == "running"
+        assert summary["started_at"] == job["started_at"]
+        assert summary["finished_at"] is None
+
+    job_store.requeue(job_id)
+
+    listed, detail, job = _latest_job_reads(client, job_id)
+    for summary in (listed, detail):
+        assert summary["status"] == "queued"
+        assert summary["started_at"] is None
+        assert summary["finished_at"] is None
+
+
 def test_serving_the_list_writes_nothing(client: TestClient, project: Path) -> None:
     """A GET creates no reel.yaml, no manifest, no output — and a malformed manifest
     is a stale verdict, not an error."""

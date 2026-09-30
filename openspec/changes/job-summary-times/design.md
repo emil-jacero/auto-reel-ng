@@ -71,10 +71,26 @@ working tree, which is on `main` before this change starts.
 
 **Non-Goals:**
 
-- More summary fields, a store change, a new format or wording, `JobCell`. See proposal.md, "Non-goals".
+- More summary fields, a store change, a new format or wording. See proposal.md, "Non-goals".
 - Any change to `useEventJob`'s choice of which job a screen shows.
 
 ## Research & Decisions
+
+### Supervisor decisions (before implementation)
+
+- **Trasig's status-region glitch is in scope.** The page's `role="status"` text switching from "queued …"
+  to "finished …" when the failed job's read answers is known, and this change fixes it. Its web scenario
+  stays.
+- **The "queued <created_at>" fallback stays in `stateTime`.** It is true and labelled, and only an older
+  service or a requeued job reaches it.
+- **Both fields are `Optional[datetime] = None`**, exactly as on `JobOut` (next topic).
+- **`JobCell` is already gone.** `render-progress-screen` removed it during its review, before it was archived
+  (its design, "Changed during review"), and `grep -rn JobCell web/src` on `main` finds only `LiveJobCell`.
+  This change therefore removes nothing, and needs no task for it. The Non-goal, Risk and Open Question below
+  that named it are updated to say so.
+- **`web/openapi.json` and `web/src/api/schema.d.ts` are never merged by hand.** `clip-thumbnail-endpoint`
+  also regenerates them. If a cherry-pick conflicts on either, `main`'s version is taken and both are
+  regenerated, then checked with the staleness test.
 
 ### Declaring the two fields exactly as `JobOut` does
 
@@ -256,8 +272,6 @@ changes slice E needed, and this follow-up is one more.
 - **[A requeued job reads "queued <first enqueue time>"]** The store records no requeue time, and
   `requeue_count` is on `JobOut` only. → Accepted, because the label is true: the job was queued then.
   Adding a requeue timestamp would be a store and migration change for a rare case (Principle VII).
-- **[`JobCell` still shows the queued time unlabelled]** Nothing renders it after
-  `render-progress-screen`. → Left alone (proposal, Non-goals). Open Questions names its removal.
 - **[Parallel web change on the same gate]** `missing-clips-screen` is expected to edit `RenderControl`,
   `LiveJobCell` and the screens; its brief names `RenderControl`'s `blockedReason` and the list row's
   Render. → On the web side this change touches only `stateTime` and its comment in `JobProgress.tsx`,
@@ -276,5 +290,5 @@ changes slice E needed, and this follow-up is one more.
 
 ## Open Questions
 
-- **Removing `JobCell`** (`web/src/events/common.tsx`), unused once `render-progress-screen` is on `main`,
-  is a follow-up clean-up. It changes no spec, approach or task here.
+None. (Removing `JobCell`, once listed here, is moot: `render-progress-screen` removed it before it was
+archived; see "Supervisor decisions".)

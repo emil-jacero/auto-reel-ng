@@ -66,9 +66,8 @@ Measured on a dev library built with `scripts/make_dev_library.py` and served on
   `latest_by_project` stays one `DISTINCT ON` query.
 - **No new time format or wording.** C5's short "Sep 30, 6:25 PM" format and its "finished / started /
   queued" labels stay. Only the input changes.
-- **No removal of `JobCell`** (`web/src/events/common.tsx`). After `render-progress-screen` nothing renders
-  it, and it still shows the queued time unlabelled. C5 kept it on purpose, so removing it is a separate
-  clean-up (design, Open Questions).
+- **No `JobCell` clean-up.** `render-progress-screen` already removed it (from `web/src/events/common.tsx`)
+  before it was archived, so there is nothing left to remove (design, "Supervisor decisions").
 - **No change to the WebSocket, the jobs routes, or `JobOut`.**
 
 ## Capabilities

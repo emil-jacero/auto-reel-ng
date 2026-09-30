@@ -161,6 +161,25 @@ def test_job_status_fields_are_published_as_the_job_status_enumeration() -> None
     assert published["enum"] == [status.value for status in JobStatus]
 
 
+def test_the_latest_job_publishes_its_fields_as_the_job_detail_does() -> None:
+    """``JobSummaryOut`` is a projection of ``JobOut``: every field it has is defined there
+    identically, so a generated client types each one the same in both places, and the four
+    fields a summary always had stay the only required ones."""
+    models = build_openapi_schema()["components"]["schemas"]
+    summary, detail = models["JobSummaryOut"], models["JobOut"]
+    assert list(summary["properties"]) == [
+        "id",
+        "status",
+        "progress",
+        "created_at",
+        "started_at",
+        "finished_at",
+    ]
+    for name, field in summary["properties"].items():
+        assert field == detail["properties"][name], name
+    assert summary["required"] == ["id", "status", "progress", "created_at"]
+
+
 def test_events_reads_declare_their_problem_responses() -> None:
     """Exactly the documented error codes, each described by ``ProblemOut``."""
     schema = build_openapi_schema()
