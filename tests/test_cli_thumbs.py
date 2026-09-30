@@ -8,6 +8,7 @@ zero-byte clip). The last test runs the real extraction over a read-only library
 
 from __future__ import annotations
 
+import logging
 import os
 import stat
 from concurrent.futures import ThreadPoolExecutor
@@ -239,6 +240,57 @@ def test_a_second_run_counts_every_success_as_cached(
     assert len(_error_lines(out)) == 1
 
 
+def test_a_multi_line_reason_is_one_output_line_and_the_rest_is_logged(
+    library: Path,
+    fake: Callable[..., FakeCalls],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    fake()
+    trasig = library / TRASIG / "trasig.mp4"
+    reason = (
+        "no frame extracted at 6.960s of 27.840s: Command exited 234: /usr/bin/ffmpeg "
+        f"-hide_banner -ss 6.960 -i {trasig} -frames:v 1 /cache/.k.x.tmp\nstderr:\n"
+        "[mjpeg @ 0x55d0] Non full-range YUV is non-standard\n"
+        "[out#0/image2 @ 0x55d1] Nothing was written into output file"
+    )
+
+    def no_frame(clip: Path, **kwargs: object) -> Path:
+        raise ThumbnailError(str(clip), reason)
+
+    monkeypatch.setattr(thumbs_cli, "thumbnail_for", no_frame)
+
+    with caplog.at_level(logging.DEBUG, logger="auto_reel_ng.cli.thumbnails"):
+        assert main(["thumbs", str(library), "--years", "2024", "-v"]) == 1
+
+    out = capsys.readouterr().out
+    assert (
+        "ERROR  2024-10-05 - Trasig/trasig.mp4: no frame extracted at 6.960s of 27.840s: "
+        "Nothing was written into output file"
+    ) in out.splitlines()
+    # One line per failed clip: 13 clips in 2024, nothing else from the command or stderr.
+    assert len(_error_lines(out)) == 13
+    assert not [line for line in out.splitlines() if "Command exited" in line or "0x55" in line]
+    assert str(trasig) not in out
+    assert f"2024-10-05 - Trasig/trasig.mp4: {reason}" in caplog.messages
+
+
+def test_a_non_utf8_file_name_is_printed_with_its_raw_bytes(
+    tmp_path: Path, fake: Callable[..., FakeCalls], capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "latin"
+    _write(root / TRASIG / os.fsdecode(b"tom\xe9.mp4"))  # zero bytes
+    fake()
+
+    assert main(["thumbs", str(root)]) == 1
+
+    out = capsys.readouterr().out
+    assert _error_lines(out) == [
+        "ERROR  2024-10-05 - Trasig/tom\\xe9.mp4: File is empty (zero bytes)"
+    ]
+
+
 def test_the_library_is_left_untouched(library: Path, fake: Callable[..., FakeCalls]) -> None:
     fake()
     before = _snapshot(library)
@@ -393,13 +445,46 @@ def test_an_unreadable_cache_stops_the_run_with_one_error(
 
 
 class _RecordingExecutor(ThreadPoolExecutor):
-    """A real pool that records the arguments of every ``shutdown`` call."""
+    """A real pool that records its ``max_workers`` and every ``shutdown`` call's arguments."""
 
     shutdowns: List[Dict[str, bool]] = []
+    created_with: List[Optional[int]] = []
+
+    def __init__(self, max_workers: Optional[int] = None, **kwargs: object) -> None:
+        type(self).created_with.append(max_workers)
+        super().__init__(max_workers, **kwargs)  # type: ignore[arg-type]
 
     def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
         type(self).shutdowns.append({"wait": wait, "cancel_futures": cancel_futures})
         super().shutdown(wait=wait, cancel_futures=cancel_futures)
+
+
+@pytest.mark.parametrize(("argv", "workers"), [([], 2), (["--jobs", "3"], 3)])
+def test_jobs_bounds_the_one_shared_pool(
+    library: Path,
+    fake: Callable[..., FakeCalls],
+    monkeypatch: pytest.MonkeyPatch,
+    argv: List[str],
+    workers: int,
+) -> None:
+    fake()
+    monkeypatch.setattr(_RecordingExecutor, "created_with", [])
+    monkeypatch.setattr(_RecordingExecutor, "shutdowns", [])
+    monkeypatch.setattr(thumbs_cli, "ThreadPoolExecutor", _RecordingExecutor)
+
+    main(["thumbs", str(library), *argv])
+
+    assert _RecordingExecutor.created_with == [workers]
+
+
+def test_a_non_integer_job_count_is_a_usage_error(
+    library: Path, fake: Callable[..., FakeCalls]
+) -> None:
+    calls = fake()
+    with pytest.raises(SystemExit) as exc:
+        main(["thumbs", str(library), "--jobs", "two"])
+    assert exc.value.code == 2
+    assert calls == []
 
 
 def test_an_interrupt_cancels_the_queued_clips_and_propagates(
@@ -419,6 +504,31 @@ def test_an_interrupt_cancels_the_queued_clips_and_propagates(
 # --------------------------------------------------------------------------- #
 # end to end: the real extraction over a read-only library (4.2)
 # --------------------------------------------------------------------------- #
+
+
+@pytest.mark.has_ffmpeg
+def test_non_utf8_names_fail_as_their_own_clips_with_the_real_runtime(
+    tmp_path: Path,
+    runtime: object,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    root = tmp_path / "library"
+    _write(root / TRASIG / os.fsdecode(b"tom\xe9.mp4"))  # zero bytes
+    _write(root / TRASIG / os.fsdecode(b"caf\xe9.mp4"), b"this is not a video " * 50)
+
+    assert main(["thumbs", str(root)]) == 1  # no traceback: each clip is its own failure
+
+    out = capsys.readouterr().out
+    errors = _error_lines(out)
+    assert len(errors) == 2
+    assert errors[0].startswith(
+        "ERROR  2024-10-05 - Trasig/caf\\xe9.mp4: ffprobe's output could not be decoded: "
+    )
+    assert errors[1] == "ERROR  2024-10-05 - Trasig/tom\\xe9.mp4: File is empty (zero bytes)"
+    assert out.splitlines()[-1].startswith("thumbnails: 2 clips in 1 event: 0 generated")
 
 
 @pytest.mark.has_ffmpeg
