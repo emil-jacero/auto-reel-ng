@@ -362,7 +362,9 @@ the second the status, badge, size and time. No fact is dropped. The handle and 
 
 **The save bar's height, one value for two consumers.** While the save bar is shown, `EventEditor` measures
 its border-box height with a `ResizeObserver` (it wraps at narrow widths, so the height is not a constant)
-and writes it, in px, as `--toast-inset-bottom` in the inline style of `<html>`. The effect's cleanup
+and writes it, in px, as `--toast-inset-bottom` in the inline style of `<html>`. It writes it first in a
+layout effect of the commit that shows the bar, and a button move scrolls in a passive effect, after every
+layout effect: the move that brings the bar already scrolls clear of it. The effect's cleanup
 removes the property when the bar hides or the editor unmounts; the StrictMode replay sets it again.
 - The bar is a floating card: `.save-bar` is the transparent sticky wrapper (`bottom: 0`, 16px of bottom
   padding, clicks passing through), and its card floats that gap above the viewport's edge. The height
@@ -444,7 +446,8 @@ The flow:
 4. **Save bar** (`src/edit/SaveBar.tsx`, with the failure alert). It is `.save-bar`,
    `position: sticky; bottom: 0`, a `role="region"` with
    `aria-label="Unsaved changes"`, shown while there are edits, and for a vanished event (its alert stays,
-   Save unavailable). An edit that brings the draft back to what was read also retires a save's failure:
+   Save unavailable; with no edits left the bar is titled and labelled "This event no longer exists", with
+   no summary). An edit that brings the draft back to what was read also retires a save's failure:
    nothing is left to save, so the bar goes and Save, Retry and Overwrite never send a no-op. Its height feeds
    `--toast-inset-bottom` and `scroll-padding-bottom` (see "Row list and keyboard access"). It contains:
    - the summary: the changed field names, "N clips moved", and "adds N new clip(s) to reel.yaml"
