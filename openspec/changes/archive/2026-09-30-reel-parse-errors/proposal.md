@@ -130,15 +130,17 @@ None.
 ## Impact
 
 - **Packages:**
-  - `reel/`: `parser.py` only. It gains a round-trip constructor subclass, a value-level clause for
-    `ConstructorError`, a backstop clause around the load call, and a `UnicodeDecodeError` clause
+  - `reel/`: `parser.py` gains a round-trip constructor subclass, a value-level clause for
+    `ConstructorError`, a backstop clause around the load call, and a `UnicodeDecodeError` clause.
+    `schema.py` gains one clause in `_req_time` (a review fix, design "Review fixes")
   - `tests/`:
     - `test_reel_parser.py`
     - `test_cli_event_metadata.py` (one `scan` case)
     - `test_api_events_failures.py` (one `requires_db` list case)
     - `test_scheduler_worker.py` (one `requires_db` worker case)
+    - `test_api_jobs.py`, `test_api_output_collision.py` (comments only)
   - nothing else changes
-  - `api/` is not touched, because `classify_event_failure` already maps `ReelError` to
+  - `api/` code is not touched (one docstring is corrected), because `classify_event_failure` already maps `ReelError` to
     `unparseable_reel_yaml`. Verified on the scratch copy: a quoted bad date, already a `ReelParseError`,
     classifies as that kind
 - **CLI vs API (Principle V):** the fix is in the engine loader, so both clients and the worker get it
@@ -147,8 +149,9 @@ None.
   error row, or the 502 problem body with `failure: unparseable_reel_yaml`. Before, they answered with an
   unshaped 500. No schema or OpenAPI change.
 - **Rendered output:** unchanged. **No `RENDER_GRAPH_VERSION` bump.**
-- **Fingerprint:** inputs unchanged. A document that loads today loads to the same typed fields. The
-  constructor hook only acts when construction raises.
+- **Fingerprint:** inputs unchanged. A document that loads today loads to the same typed fields, unless
+  it nests deeper than about 198 levels (design: the hook adds one frame per level). The constructor hook
+  only acts when construction raises or an int is too long to print.
 - **Schemas:** no `reel.yaml` or `config.yaml` schema change, **no Alembic migration**, no rescan.
 - **Complexity (Principle VII):** a constructor subclass with two small wording helpers (about 35 lines)
   and three `except` clauses. The two `except Exception` clauses are deliberate: the review reproduced six

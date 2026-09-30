@@ -66,7 +66,8 @@ project with ruamel.yaml 0.19.1, the installed version (`pyproject.toml` asks fo
 
 **Non-Goals:**
 
-- Any change outside `reel/parser.py` (see proposal, Non-goals, for `import` and `config.yaml`).
+- Any change outside `reel/parser.py` (see proposal, Non-goals, for `import` and `config.yaml`), apart from
+  the bug the review found in `schema._req_time`, fixed where it happens ("Review fixes" below).
 - Catching errors from `schema`/`legacy` validation code. Those raise `ReelParseError` themselves, and a
   bare builtin error there would be a bug to fix where it happens, not to mask. Both new handlers wrap
   only the `YAML().load(text)` call, never the routing or `build_document`.
@@ -189,14 +190,44 @@ column 9 is not a real date (day 30 must be in range 1..29 for month 2 in year 2
   clauses turn it into `ReelParseError`. Callers and the CLI print it like any other parse error.
 - `ConstructorError` is ruamel's own error for "cannot construct this node", and `!!timestamp foo` already
   raises it today. The new errors are the same kind of failure and are reported the same way.
-- The hook only acts when construction raises. A document that loads today builds the same objects, so no
-  typed field, no fingerprint and no `ETag` moves. On the scratch copy, the five v0 fixtures in
+- The hook only acts when construction raises, or when an int is too long to print ("Review fixes"
+  below). A document that loads today builds the same objects, so no typed field, no fingerprint and no
+  `ETag` moves, with one exception: the hook adds one Python frame per nesting level. At the default
+  recursion limit of 1000, the deepest document that loads drops from about 248 to about 198 levels
+  (measured standalone; the review measured 246 to 197). Accepted: no realistic `reel.yaml` nests that
+  deep, and a deeper one is a `ReelParseError`, not a crash. On the scratch copy, the five v0 fixtures in
   `tests/test_event_editorial.py` dumped byte-identical with and without the hook, and each was
   byte-stable. Strict mypy is clean on the snippet: ruamel ships `py.typed`.
 - No ruamel control flow depends on a builtin error passing through a node's construction. Its only
   broad handler, the bare `except` in `construct_undefined`, swallows a child's error in either form.
 - The writer's own `_yaml()` (`reel/writer.py`) is unchanged. It only reloads documents that already
   loaded.
+
+### Review fixes: bugs fixed where they happen
+
+The review found three more ways a `reel.yaml` escaped as a builtin error, and one stale comment. Each is
+fixed where it happens, as the Non-Goals require, not masked by a wider catch:
+
+- **A time too large for a float.** `schema._req_time` called `float(value)` on an int of 309 or more
+  digits and raised a bare `OverflowError` out of `build_document`. It now raises
+  `ReelParseError(f"{loc}: time out of range, got {value}")`.
+- **An int too long to print.** Python refuses to convert an int of more than 4300 decimal digits to text.
+  ruamel's `int()` already refuses such a literal written in decimal (an invalid value, through the hook),
+  but not the same number written in hex, octal or binary (`0x` and 5000 `f`s). That int then loaded, and
+  every message that quoted it failed with a bare `ValueError`: `unsupported version`, `sort.method`, a
+  chapter's clip reference, `ignore`, a negative trim, and the legacy importer's unmapped `sort.method`.
+  In `rotate` or `look` it loaded cleanly and crashed the editorial hash's `json.dumps` later, in `scan`
+  and the events list. The bug happens in the loader, which lets through a number nothing can print, so
+  the hook now prints every int it constructs (`str(data)`), and one that cannot be printed is an invalid
+  value, exactly like its decimal twin. Formatting only the version message safely would have left the
+  other seven.
+- **An empty reason.** A bare `assert` in ruamel's omap constructor (`!!omap [{version: 0}, {version: 0}]`
+  at the root, which reaches the backstop) has no text, so the message ended in `malformed YAML: `. The
+  backstop now names the exception's type when its text is empty.
+- **A stale comment.** `api/events_read._output_claim` still catches `ValueError` next to `ReelError` and
+  `OSError`, as a guard, and its docstring now says so. It no longer says the loader leaks one for a
+  non-UTF-8 file or an impossible date. Two test comments that called those files a `ValueError` were
+  corrected the same way.
 
 ### The non-UTF-8 file
 
