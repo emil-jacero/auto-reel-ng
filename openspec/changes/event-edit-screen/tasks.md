@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Confirm that **both** gates are archived on main: `openspec/changes/archive/*-web-design-system` and `openspec/changes/archive/*-editorial-chapter-roundtrip`; stop and report if either is missing. Then confirm the names this change builds on (design, "Context"). Verify:
+- [x] 1.1 Confirm that **both** gates are archived on main: `openspec/changes/archive/*-web-design-system` and `openspec/changes/archive/*-editorial-chapter-roundtrip`; stop and report if either is missing. Then confirm the names this change builds on (design, "Context"). Verify:
   - `ls -d openspec/changes/archive/*-web-design-system openspec/changes/archive/*-editorial-chapter-roundtrip` prints two directories
   - `web/src/ui/Icon.tsx` names `grip-vertical`, `arrow-up`, `arrow-down`, `pencil`, `check`, `rotate-ccw`, `x`, `alert-triangle` and `loader` in its `IconName` union
   - `web/src/ui/Dialog.tsx`, `web/src/ui/Pill.tsx`, `web/src/ui/Alert.tsx`, `web/src/ui/Skeleton.tsx` (`SkeletonRows`), `web/src/ui/toast.ts`, `web/src/events/tones.ts` (`CLIP_STATUS_LOOK`) and `web/src/events/changes.ts` (`markEventsChanged`) exist
@@ -15,7 +15,7 @@
 
 ## 2. web/ — dependency, editorial client and edit model
 
-- [ ] 2.1 Add the drag-and-drop library and `src/api/reel.ts` (design, "The drag-and-drop library", "Reading and writing the document").
+- [x] 2.1 Add the drag-and-drop library and `src/api/reel.ts` (design, "The drag-and-drop library", "Reading and writing the document").
   - `npm install @dnd-kit/core@^6.3.1 @dnd-kit/sortable@^10.0.0 @dnd-kit/utilities@^3.2.2` in the node:22 container
   - `src/api/reel.ts`: `fetchReel` and `saveReel`, their result unions, and the aliases `ReelDocument`, `ReelWriteBody` and `ReelWriteResult`
   - the read uses `cache: 'no-store'` and an `AbortSignal`; a 200 without an `ETag` is `unreachable`
@@ -30,7 +30,7 @@
   - `grep -n "no-store\|If-Match" web/src/api/reel.ts` shows both
   - the three body and response types are aliases of `components['schemas'][…]`; only the two result unions are declared locally, as in `api/event.ts`
   - `npx tsc --noEmit` and `npm run build` pass
-- [ ] 2.2 Add `src/edit/draft.ts` with no runtime imports and only `import type` imports: `editableChapters`, `detailMatchesDocument`, `buildWriteBody`, `movedSet` (subsequence-based, with the `lastMoved` tie-break), `adoptedNewCount` and `isDirty` (design, "The editable order", "The detail and the document must agree"). Verify:
+- [x] 2.2 Add `src/edit/draft.ts` with no runtime imports and only `import type` imports: `editableChapters`, `detailMatchesDocument`, `buildWriteBody`, `movedSet` (subsequence-based, with the `lastMoved` tie-break), `adoptedNewCount` and `isDirty` (design, "The editable order", "The detail and the document must agree"). Verify:
   - `tsc --noEmit` passes
   - a scratch script (in the session scratchpad, never committed) runs under `node --experimental-strip-types` in the node:22 container, imports `draft.ts`, and asserts the following over hand-copied detail and document JSON of the dev-library events (design, "Verification fixtures"):
     - **Två kapitel:** moving `Kvällen/s1710004.mp4` to the front gives `Kvällen = [Kvällen/s1710004.mp4, Kvällen/s1710002.mp4, Kvällen/s1710003.mp4]`, `""` is unchanged, and `ignore` is unchanged
@@ -45,37 +45,37 @@
 
 ## 3. web/ — editor components
 
-- [ ] 3.1 Add the navigation guard to `src/route.ts` (`setNavigationGuard`, `acceptedHash`, restore with `replaceState`, the `setRoute` bail-out on an equal route), and add `src/edit/unsaved.ts` (`useUnsavedGuard`, `requestLeave`, the pending-leave store, a guard slot cleared only by its owner) (design, "Unsaved-changes guard"). Verify:
+- [x] 3.1 Add the navigation guard to `src/route.ts` (`setNavigationGuard`, `acceptedHash` and each accepted entry's index in `history.state`, a refused move undone with `history.go` and redone by the guard's `proceed`, the `setRoute` bail-out on an equal route), and add `src/edit/unsaved.ts` (`useUnsavedGuard`, `requestLeave`, the pending-leave store, a guard slot cleared only by its owner) (design, "Unsaved-changes guard"). Verify:
   - `tsc --noEmit` passes
-  - `git diff --stat web/src/route.ts` shows 30 lines or fewer
+  - `git diff --stat web/src/route.ts` shows 50 lines or fewer
   - with no guard set, `#/event/…` ⇄ `#/` navigation behaves exactly as before (checked in 5.1)
-- [ ] 3.2 Add `src/edit/ClipOrderList.tsx` and `src/edit/MetadataForm.tsx`, plus their rules in `src/edit/edit.css` under `@layer screens` (design, "Row list and keyboard access", "Metadata form"). This covers:
+- [x] 3.2 Add `src/edit/ClipOrderList.tsx` and `src/edit/MetadataForm.tsx`, plus their rules in `src/edit/edit.css` under `@layer screens` (design, "Row list and keyboard access", "Metadata form"). This covers:
   - one `DndContext` per chapter, with the hand-written modifier: vertical axis, clamped to the chapter's `<ol>`
   - Pointer (distance 6) and Keyboard sensors on the handle
   - custom announcements and instructions
   - per chapter, a panel with its `h2`, an `<ol>` of memoised `<li>` rows as direct children, and the ignored tail as a separate `<ul>`
   - each row with its position, file name, status `Pill`, size, time, "was N" badge, and Move up and Move down, with focus retention
   - `transition: null` under reduced motion, every CSS transition inside `@media (prefers-reduced-motion: no-preference)` with a `--dur-*` token, and no `animation` outside that media query (none is needed)
-  - the two-line row layout below 40rem, and `:root:has(.save-bar) { scroll-padding-bottom: var(--toast-inset-bottom, 0px); }`
+  - the two-line row layout below 54rem; no `scroll-padding-bottom` rule of its own, since `web-design-system`'s `shell.css` already pads by `var(--toast-inset-bottom, 0px)` plus the toasts (design, "The save bar's height")
   - the four fields, with the value hint, the "Left empty" hint, the `badInput` message and the group message slot for `unusable_metadata`
 
   Verify:
   - `tsc --noEmit` passes, including the `accessibility={{ announcements, screenReaderInstructions }}` prop against the installed `@dnd-kit/core` types
   - `grep -n "touch-action: none" web/src/edit/edit.css` matches `.drag-handle`
-  - `grep -n "scroll-padding-bottom" web/src/edit/edit.css` shows `var(--toast-inset-bottom, 0px)`
-- [ ] 3.3 Add `src/edit/EventEditor.tsx`, without the conflict path (design, "Edit mode, saving and the save bar"). It covers:
+  - `grep -n "scroll-padding-bottom" web/src/edit/edit.css` shows only the comment naming `shell.css`'s rule
+- [x] 3.3 Add `src/edit/EventEditor.tsx`, without the conflict path (design, "Edit mode, saving and the save bar"). It covers:
   - the reel read (aborted on unmount), `SkeletonRows`, and its failure `Alert`s
   - the `detailMatchesDocument` guard with "Read again", and the detail captured once at mount: the reducer is never re-initialised from props, and the reel read's effect depends on `eventId` only, so a new `event` object does not reset the draft
   - the reducer, the hint, and the adoption notice
-  - the sticky `.save-bar` with its summary, Reset and Save, and Save disabled while the date is incomplete; while the bar shows, a `ResizeObserver` writes its height as `--toast-inset-bottom` on `<html>`, removed by the effect's cleanup
-  - the locked editor while saving: the pressed Save or Retry gets `aria-disabled="true"` + `aria-busy="true"` and a ref guard, never `disabled`; the lists, handles, move buttons, fields and Reset get `disabled`
+  - the sticky `.save-bar` (with its failure alert, in `src/edit/SaveBar.tsx`) with its summary, Reset and Save, and Save unavailable (`aria-disabled`) while the date is incomplete; while the bar shows, a `ResizeObserver` writes its height as `--toast-inset-bottom` on `<html>`, removed by the effect's cleanup
+  - the locked editor while saving: the pressed Save or Retry gets `aria-disabled="true"` + `aria-busy="true"` and a ref guard, never `disabled`; the handles, move buttons, fields (read-only) and Reset are `aria-disabled` too, and `grep -rn 'disabled=' web/src/edit` shows only `aria-disabled`
   - the outcome table except 412: toast, `markEventsChanged()` and `onSaved` on a 200, run even after unmount; the 400, 404, 502 and unreachable alerts; Retry
   - the one live region for the button path
 
   Verify:
   - `tsc --noEmit` and `npm run build` pass
   - `grep -n 'aria-busy\|aria-disabled\|toast-inset-bottom' web/src/edit/EventEditor.tsx` shows the busy Save and Retry and the inset effect
-- [ ] 3.4 Add the conflict path and the discard question to `EventEditor.tsx` (design, "Edit mode, saving and the save bar" step 6, "Unsaved-changes guard"):
+- [x] 3.4 Add the conflict path and the discard question to `EventEditor.tsx` (design, "Edit mode, saving and the save bar" step 6, "Unsaved-changes guard"):
   - the 412 `Alert` with **Reload latest (discard my changes)** (`onReload`, no question) and **Overwrite with mine**
   - the Overwrite `Dialog` with `initialFocus={cancelRef}`; confirming closes it (focus returns to **Overwrite with mine**, which is then `aria-disabled` + `aria-busy`, never `disabled`), then a re-read for the ETag only, then a PUT of the original-based body, all in the locked phase, with its own failure alerts
   - the "Discard unsaved changes?" `Dialog` wired to `useUnsavedGuard` and `requestLeave`, with `initialFocus={keepEditingRef}` and Escape meaning Keep editing
@@ -86,14 +86,14 @@
 
 ## 4. web/ — wiring into the page and the list, and docs
 
-- [ ] 4.1 Edit `src/events/EventDetail.tsx` and `src/events/EventList.tsx` (design, "Where it mounts, and 'Needs attention'"), then the docs:
+- [x] 4.1 Edit `src/events/EventDetail.tsx` and `src/events/EventList.tsx` (design, "Where it mounts, and 'Needs attention'"), then the docs:
   - EventDetail:
     - an `editing` state, with one toggle button (**Edit** / **Stop editing**, the latter through `requestLeave`)
     - `<EventEditor>` in place of the facts, description and chapter tables while editing
     - the seam's part (a): `load()` never touches `editing`; one `leaveEditMode()` sets `editing` to false, calls `load()` and moves focus to the page's `h1`; every exit uses it: Stop editing and Refresh (both through `requestLeave`), `onSaved` and `onReload`
     - the "Fix the date or title" section with `<EventEditor event={null}>` under an `unusable_metadata` failure
   - EventList: the attention row's folder name links to `eventHref(event_id)`.
-  - `web/README.md`: the screens paragraph (the event page's Edit mode, the "Needs attention" links and form, and the unsaved guard, including the rewritten history entry after a guarded Back); the file tree (`api/reel.ts`, and `edit/` with its six files); the dependency budget (the three `@dnd-kit` packages as the one drag-and-drop library)
+  - `web/README.md`: the screens paragraph (the event page's Edit mode, the "Needs attention" links and form, and the unsaved guard, including the rewritten history entry after a guarded Back); the file tree (`api/reel.ts`, and `edit/` with its seven files); the dependency budget (the three `@dnd-kit` packages as the one drag-and-drop library)
   - `docs/high-level-design.md`: in §4.10, the slice table's row D only: append that it landed in `event-edit-screen` (no status column; the "no further api/ prerequisite" sentence and row E are `render-progress-screen`'s). In §4.10's Decision D-8 block, extend the dependency-budget bullet to name the chosen library, and the condition for moving to `@dnd-kit/react`: 1.0, or #2116 fixed.
 
   Verify:
@@ -106,7 +106,7 @@
 
 ## 5. Verification against the dev library
 
-- [ ] 5.1 Set up the agent's own environment per the dev-env runbook §9:
+- [x] 5.1 Set up the agent's own environment per the dev-env runbook §9:
   - database `arel_event_edit_screen`, library `…/dev-event-edit-screen`, `auto-reel serve $DEV/library --port 8104`, and **no worker**
   - in that library copy only, add the fixtures from design, "Verification fixtures": `2024/2024-09-15 - Stor dag` (400 symlinked clips), `2024/2024-09-16 - Två mappar`, and `2024/2024-09-17 - Bruten fil` (unparseable `reel.yaml`)
 
@@ -124,9 +124,9 @@
     - Move down then Move up on `s1710002.mp4` leaves no save bar
     - dragging `s1710004.mp4` above `s1710001.mp4` badges only `s1710004.mp4` "was 4", and the save bar says "1 clip moved"; Reset restores the order with no question
     - dragging again and saving gives a PUT body whose `look`, `clips`, `ignore` and `metadata` equal the GET `/reel` body, and whose only chapter lists `s1710004, s1710001, s1710002, s1710003`. `reel.yaml` on disk matches. The page shows "Saved", leaves Edit mode with focus on the `h1`, and shows "Needs render" with the edit reason.
-    - **busy Save keeps focus:** with a reorder pending and `page.route('**/api/v1/events/**/reel', …)` holding the PUT, press Enter on Save: `document.activeElement` is still Save, Save has `aria-busy="true"` and `aria-disabled="true"` and no `disabled` attribute, a second Enter sends no second PUT, and the handles are `disabled`; then release the route
+    - **busy Save keeps focus:** with a reorder pending and `page.route('**/api/v1/events/**/reel', …)` holding the PUT, press Enter on Save: `document.activeElement` is still Save, Save has `aria-busy="true"` and `aria-disabled="true"` and no `disabled` attribute, a second Enter sends no second PUT, and the handles and fields are `aria-disabled`; then release the route
     - setting only the location to `Hönö` and saving leaves the chapter lines of `reel.yaml` byte-identical (`diff` of the chapter section before and after)
-    - **conflict:** while editing, change the `reel.yaml` title on the host with `sed`, then press Save. The conflict alert shows, and the edits are kept. **Reload latest** asks nothing and shows the hand-made title. Repeat the conflict, choose **Overwrite with mine**: a `Dialog` opens with Cancel focused; confirming with the PUT held by `page.route` leaves `document.activeElement` on **Overwrite with mine** (`aria-busy`, not `disabled`); after release it saves, and the operator's version is on disk.
+    - **conflict:** while editing, change the `reel.yaml` title on the host with `sed`, then press Save. The conflict alert shows, and the edits are kept; focus stays on Save, which is `aria-disabled` (never `disabled`) and described by the alert (`aria-describedby`). **Reload latest** asks nothing and shows the hand-made title. Repeat the conflict, choose **Overwrite with mine**: a `Dialog` opens with Cancel focused; confirming with the PUT held by `page.route` leaves `document.activeElement` on **Overwrite with mine** (`aria-busy`, not `disabled`); after release it saves, and the operator's version is on disk.
     - emptying the title shows "Left empty: inherits from the folder name when saved", and no hint presents the title just cleared as the folder name's; saving leaves `reel.yaml` with no title, and the page shows `Grillning med Grannar`
   - **Två kapitel** (`2024-08-20 - Två kapitel - Tjörn`), keyboard and structure:
     - Space, ArrowDown and Space on the `Kvällen/s1710002.mp4` handle give the order `s1710003, s1710002, s1710004`, and the dnd-kit live region reads "s1710002.mp4 moved to position 2 of 3"; then Reset
@@ -143,14 +143,18 @@
   - **Blandat:** a title-only save leaves `reel.yaml` with no `chapters` key.
   - **Två mappar:** reordering the root chapter and saving creates a `reel.yaml` that lists both chapters with all four clips.
   - **Midsommar 2024** (`2024-06-21 - Midsommar - Dalarna`):
-    - clearing only the day of the date shows the incomplete-date message and no Save; `reel.yaml` still sets `2024-06-21`
+    - clearing only the day of the date shows the incomplete-date message and Save unavailable (`aria-disabled`); `reel.yaml` still sets `2024-06-21`
     - a date after today shows the service's "is in the future" message at the date-and-title group, and `reel.yaml` is unchanged
     - a new title then saves; `GET /api/v1/jobs` returns the same set as before (no job enqueued)
     - pressing Back shows the list re-read (a new `GET /api/v1/events` request) with the new title
   - **Unsaved guard** (on Grillning, with a reorder pending):
     - Back keeps `page.url` on the event page and opens "Discard unsaved changes?" with Keep editing focused
     - Escape keeps the edits
-    - Back then Discard shows the list, and `reel.yaml` is unchanged
+    - Back again opens the same question in the page again; Discard then shows the list, and `reel.yaml` is unchanged; `history.length` is unchanged by each refusal
+    - Back, Keep editing, Save, then Back shows the list (history intact, not out of the app)
+    - Forward, with a Forward entry while the editor is dirty, is refused the same way and then discarded to its target
+    - a link (the header's Events) and a typed address (`#/`) are each refused, then discarded to the list
+    - at 390 px, after scrolling to the clips, Shift+Tab back to Title leaves Title fully visible, overlapped by neither the app header nor the Details heading
     - with edits pending, `page.close({ run_before_unload: True })` raises a `beforeunload` dialog (`page.on('dialog')`)
     - Refresh and **Stop editing** ask too
     - entering Edit mode with no change and pressing **Stop editing** asks nothing, sends one `GET /api/v1/events/…` (every exit re-reads), and moves focus to the `h1`
@@ -171,13 +175,13 @@
   - **Screenshots and layout:**
     - light and dark screenshots at 1280 px and 390 px width of: Grillning in Edit mode with the save bar, the conflict alert, the Omöjligt datum fix form, and the discard dialog. Save them to `<scratchpad>/verify/event-edit-screen/`.
     - at 390 px, `document.documentElement.scrollWidth <= clientWidth`, every row still shows its position, file name, status, size and time, and the save bar's Reset and Save are visible
-    - **toast above the save bar:** at 390 px with the save bar shown, `getComputedStyle(document.documentElement).getPropertyValue('--toast-inset-bottom')` equals the bar's `offsetHeight` in px, and so does `scroll-padding-bottom`; in the dev-server pass, `page.evaluate(() => import('/src/ui/toast.ts').then(m => m.toast.error('probe')))` shows a toast whose bounding box ends above the bar's top, with Reset and Save still hit-testable (`elementFromPoint`); after Reset hides the bar, the property is gone
+    - **toast above the save bar:** at 390 px with the save bar shown, `getComputedStyle(document.documentElement).getPropertyValue('--toast-inset-bottom')` equals the bar's `offsetHeight` in px, and `scroll-padding-bottom` is at least that; in the dev-server pass, `page.evaluate(() => import('/src/ui/toast.ts').then(m => m.toast.error('probe')))` shows a toast whose bounding box ends above the bar's top, with Reset and Save still hit-testable (`elementFromPoint`); after Reset hides the bar, the property is gone
     - under `reducedMotion: 'reduce'`, the rows have no transform transition and no element under the editor has a running animation (`document.getAnimations()` is empty)
     - an ad hoc axe-core run in Edit mode reports no serious or critical violations
 
 ## 6. The Edit-mode seam with `render-progress-screen` (at the pre-archive rebase)
 
-- [ ] 6.1 Evaluate this task only at the pre-archive rebase, never during implementation: the supervisor says which case applies after merging the first of `event-edit-screen` and `render-progress-screen`. During implementation, leave the box unchecked, go on to 7.1, and have the final report say "seam pending until the pre-archive rebase". At the pre-archive rebase, confirm the case on the rebased branch with `ls openspec/changes/archive/ | grep -- '-render-progress-screen$'`:
+- [x] 6.1 Not applicable: `render-progress-screen` wires the seam when it archives second. Evaluate this task only at the pre-archive rebase, never during implementation: the supervisor says which case applies after merging the first of `event-edit-screen` and `render-progress-screen`. During implementation, leave the box unchecked, go on to 7.1, and have the final report say "seam pending until the pre-archive rebase". At the pre-archive rebase, confirm the case on the rebased branch with `ls openspec/changes/archive/ | grep -- '-render-progress-screen$'`:
   - **It prints nothing:** write "not applicable: `render-progress-screen` wires the seam when it archives second" on this task and check the box.
   - **It prints the directory:** wire the seam in `EventDetail.tsx` (design, "Where it mounts", parts b to d), then run the combined check below:
     - deferred self-started re-reads while editing: while `editing`, every re-read EventDetail would start by itself (`reread()`: the render-finished re-read, and the "fresh" / 404 enqueue answers) only sets a pending ref; the `load()` in `leaveEditMode()` is that deferred re-read and clears the ref; entering Edit mode aborts a quiet re-read already in flight and sets the same pending ref (verify: start a quiet re-read held by `page.route`, press Edit, release it with an abort — the editor and its draft stay)
@@ -198,7 +202,7 @@
 
 ## 7. Validation
 
-- [ ] 7.1 Run the gates. Verify all pass:
+- [x] 7.1 Run the gates. Verify all pass:
   - `npx tsc --noEmit` and `npm run build` in the node:22 container
   - `web-design-system`'s motion grep gate (its design, "The motion grep gate"), its three commands verbatim over this change's directory:
     - `grep -rnE 'transition[^;]*[0-9.]+m?s\b' web/src/edit` prints nothing (no literal transition duration)

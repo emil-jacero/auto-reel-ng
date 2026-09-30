@@ -126,12 +126,12 @@ None.
 - **Packages:** `web/` only, plus two documentation lines (`docs/high-level-design.md`: §4.10's slice-table
   row D only, and the D-8 budget bullet).
   - New files: `src/api/reel.ts` (the editorial read and write) and `src/edit/` (`EventEditor.tsx`,
-    `ClipOrderList.tsx`, `MetadataForm.tsx`, `draft.ts`, `unsaved.ts`, `edit.css`).
+    `ClipOrderList.tsx`, `MetadataForm.tsx`, `SaveBar.tsx`, `draft.ts`, `unsaved.ts`, `edit.css`).
   - Small, localized edits to shared files:
     - `src/events/EventDetail.tsx`: the Edit toggle, the editor mount point, the guarded Refresh, and the
       form on an unusable-metadata failure
     - `src/events/EventList.tsx`: the "Needs attention" folder name becomes a link
-    - `src/route.ts`: a navigation-guard hook, about 20 lines
+    - `src/route.ts`: a navigation-guard hook, about 50 lines
   - `package.json` and `package-lock.json`, and `web/README.md`.
 - **CLI vs API (Principle V):** untouched. The page uses the existing `GET` and `PUT …/reel`. The write is
   the engine operation `event/editorial.py` `apply_editorial_write`, which any client can call. The CLI has
