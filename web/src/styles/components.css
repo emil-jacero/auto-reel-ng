@@ -122,6 +122,24 @@
     padding: 0;
   }
 
+  /* A compact button, for a control inside a table or list row. */
+  .btn-compact {
+    gap: var(--s-1);
+    min-block-size: 1.625rem;
+    padding: 0 var(--s-2);
+    font-size: var(--text-sm);
+
+    & > svg {
+      inline-size: 0.875rem;
+      block-size: 0.875rem;
+    }
+
+    &[aria-busy='true']::before {
+      inline-size: 0.875rem;
+      block-size: 0.875rem;
+    }
+  }
+
   @media (prefers-reduced-motion: no-preference) {
     .btn[aria-busy='true']::before {
       animation: btn-busy-spin 0.8s linear infinite;
