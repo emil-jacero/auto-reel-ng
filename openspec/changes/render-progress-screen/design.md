@@ -142,6 +142,8 @@ export function jobsSocketUrl(): string
   `POST /api/v1/jobs answered 500 Internal Server Error`. No `check === 'database'` branch is written: the
   jobs routes publish no 503 (Principle VII: no code path for an answer the contract does not have).
 - `readJson` and `isProblem` are reused from `api/http.ts`. POST bodies are sent as JSON.
+- *Changed during implementation:* the enqueue body leaves `device` out, so the service's own default
+  (`auto`) applies, and a default changed there needs no client change.
 - Enqueue and cancel are not aborted on unmount. They are writes, and their answer still updates the store.
 
 **Rationale**:
@@ -174,7 +176,7 @@ export function subscribe(listener: () => void): () => void   // retain on first
 export function getState(): JobsState                         // same object until something changes
 export function merge(job: JobOut): void                      // POST 201, GET results
 export function track(jobId: string): void                    // started or attached in this tab
-export function markAnnounced(jobId: string): void            // its end was already told (cancel answer)
+export function markAnnounced(jobId: string): boolean         // its end was already told (cancel answer)
 export type LoadOptions = {
   force?: boolean        // GET even if this id was requested before
   knownActive?: boolean  // a screen showed it queued/running: a terminal answer is a reconciled end
@@ -238,6 +240,12 @@ export function load(jobId: string, options?: LoadOptions): void
   the job ended (see "Cancel"), so `RenderControl` calls `markAnnounced(id)` and the job's terminal
   transition raises no second toast. A `flagged-running` answer does not announce: the later "canceled"
   toast says the worker actually stopped.
+  *Changed during implementation:* `markAnnounced` returns `false` when the store had already told that
+  ending itself, and `RenderControl` then skips the answer's toast. A delta carrying the job's end can
+  arrive before the cancel's own answer; without this, one ending would raise two notifications.
+- *Added during implementation:* the snapshot reconciliation and the delta merge are pure functions over
+  their inputs, `reconcile(previous, snapshot)` and `mergeVersions(before, incoming)` (no clock, no
+  `fetch`); the frame handlers commit their result and then run the effects (reads, toasts, marks).
 - **The state object** is replaced only when something changes, so `getSnapshot` is stable (a
   `useSyncExternalStore` requirement).
 
@@ -320,7 +328,12 @@ export function etaMs(s: Sample, job: JobOut): number | null
 - **Format:** "less than a minute left", "about N min left", or "about H h M min left". Always "about", and
   never seconds.
 
-`src/jobs/JobProgress.tsx` renders one job (`ShownJob`), `compact` in list rows:
+`src/jobs/JobProgress.tsx` renders one job (`ShownJob`), `compact` in list rows.
+*Changed during implementation:* it exports three pieces rather than one component with a `compact` flag:
+`JobState` (the pill, the words and the state's time: what a status region announces), `JobMeter` (the bar
+and its figures, outside any live region) and `JobProgress` (a list row's composition of the two, with no
+estimate). The event page places `JobState` inside its own status element and `JobMeter` below it, so its
+status element exists in every state, including no job at all.
 
 | State | Bar | Words (status element) |
 |---|---|---|
@@ -336,6 +349,12 @@ export function etaMs(s: Sample, job: JobOut): number | null
 - **The time** is what the service reported, labelled for what it is: "finished <time>" from `finished_at`
   when the shown job is a `JobOut` that has one, otherwise "queued <time>" from `created_at` (a
   `JobSummaryOut` has no finish time). It is never presented as a finish time it is not.
+  *Changed during implementation:* every state shows the time that matches it — "finished" for an ended
+  job, "started" (`started_at`) for a running one, "queued" for a queued one — with "queued <time>" from
+  `created_at` only when the matching field is absent. A `JobSummaryOut` (the list's and the page's read)
+  carries only `created_at`, so a job known only from a read still reads "queued <time>"; the connection
+  or a job read supplies the full `JobOut`. The format is short: "Sep 30, 6:25 PM", the year only when it
+  is not the current one.
 - The words sit in one `role="status"` element per page region. The percentage and the ETA are outside it,
   so updates are not announced (spec).
 - Rows get no live region, so a busy list stays quiet.
@@ -386,13 +405,16 @@ no verdict to act on, so it offers no Render. States come from `useEventJob` plu
 | Answer | Page |
 |---|---|
 | `enqueued` | `merge(job)`, `track(job.id)`; the region now shows the job |
-| `fresh` | inline info Alert "Nothing to render — the movie is up to date." + **Render anyway**; `markEventsChanged()` and `onFinished()` (the read was out of date) |
+| `fresh` | inline info Alert "Nothing to render — the movie is up to date." + **Render anyway**; `markEventsChanged()` and `onFinished()` (the read was out of date). *Changed during implementation:* the Alert (`role="status"`) holds no button; the region's own control becomes Render anyway at once (the answer is newer than the read), so the page never shows two Render anyway buttons once its re-read lands |
 | `active` | `track(jobId)`, `load(jobId)`; no alert: the region shows that job |
 | `collision` | error Alert "Another event renders to the same movie file", its `action` node holding one link per `claimedBy` id (`eventHref`, `folderName`) and "Give one of them a distinct title or location in its reel.yaml.", its `detail` the problem `detail` |
 | `problem` 404 | error Alert "This event no longer exists." + link to the list; `markEventsChanged()` and `onFinished()` (the page's re-read then shows the not-found failure) |
 | `problem` 502 | error Alert "The project could not be scanned, so the render was not queued." + detail (the words the list uses for the same body) |
 | `unreachable` | error Alert "The render was not queued." + the message (the status received, or the fetch error). Never `DATABASE_CAUSE`: a bare 500 does not say why. |
 
+- *Added during implementation (wording):* with no job at all the region says "No render job yet"; an
+  ended job reads "Last job" before its pill; the failed job's error text sits in an Alert titled "Why
+  the render failed" (`role="note"`: the status element already announces "Failed").
 - **Focus:** a busy control keeps focus (above). When the focused control is removed after its answer,
   focus moves to the region's status element (`tabIndex={-1}`), so a keyboard user keeps their place. That
   covers Render replaced by the job's progress, Cancel removed once the cancel is requested or the job
@@ -458,6 +480,10 @@ export const CONNECTION_LABEL: Record<ConnectionStatus, string> = {
 }
 ```
 
+*Added during implementation:* `labels.ts` also holds the three sentences the page and the list rows both
+use for the same enqueue answer — `NOT_QUEUED`, `SCAN_FAILED` and `COLLISION_FIX` — so the same answer
+reads the same on both screens.
+
 **Rationale**:
 - A `Record` over the generated union is the house mechanism for "never render a slug".
 - The forced GET is more honest than faking `cancel_requested: true` locally, and it does not depend on the
@@ -492,9 +518,14 @@ the list loses its place whenever any worker finished a render meanwhile.
   - 404: `toast.error(…)` plus `markEventsChanged()`
   - 502 and `unreachable`: `toast.error` with the same words as the page
   The list never forces a render, and error rows get nothing. A row never fetches a failed job's error text.
+  *Changed during implementation:* a row's error toasts start with the event's folder name ("“<folder>”:
+  The render was not queued. …"), since a toast carries no row; the 404 toast has no Open link (the event
+  is gone).
 - **In-place re-read.** `load` gains `{ quiet?: boolean }`, in `EventList` and in `EventDetail`:
   - quiet, with `ready` content: the content is kept, and the state becomes
-    `{ status: 'ready', …, updating: true }`. The content region gets `aria-busy="true"`, and C1's
+    `{ status: 'ready', …, updating: true }`. The content region gets `aria-busy="true"` (*added during
+    implementation:* a `.page-content` wrapper, a flex column with the page's gap, holds each screen's ready
+    content, so `aria-busy` never covers the header's status region), and C1's
     `LoadStatus` region in the page header (already rendered in every state) shows "Updating…", so the
     change is announced through a region that already exists.
   - an `ok` answer replaces the content; a failure replaces it with the failure, exactly as today
@@ -530,6 +561,9 @@ the list loses its place whenever any worker finished a render meanwhile.
   in `jobs.css` only inside `@media (prefers-reduced-motion: no-preference)`, `1.2s linear infinite` (see
   "Progress and ETA", Motion), so under reduce the icon stands still.
 
+*Added during implementation:* a visually hidden "Render jobs:" prefix gives the words context for a
+screen reader, and, motion permitting, the `loader` icon of a running job's pill turns as the header's does.
+
 While `live`, it adds `N rendering · M queued`, omitting zero parts, or nothing when both are zero. It is
 not a live region; the page regions announce state. It is plain text, not a link: there is no jobs page in
 v1. Below 30rem the counts wrap onto their own line inside the slot rather than widening the header, so
@@ -554,6 +588,9 @@ No edit touches `labels.ts`, `tones.ts`, `common.tsx`, `App.tsx`, `route.ts`, `s
 `JobCell` stays in `common.tsx`: C4 or later code may still use it, and removing it is not this change's
 business. Styles live in `src/jobs/jobs.css` (`@layer components`), imported once by `JobsIndicator.tsx`, which
 the shell always mounts.
+*Added during implementation:* `jobs.css` also defines `.btn-compact` (a row-sized button) and, for the
+list's narrow card layout, lets the job cell's parts flow as one line of items after its "Last job" label,
+so the label stays beside its pill.
 
 **Rationale**: C4 edits the same two screen files, for the Edit toggle and the error-row link. Keeping this
 change's footprint to a few named lines keeps the rebase mechanical. The seam in `EventDetail` (deferred
@@ -590,7 +627,11 @@ archives second: that change's final integration task wires it and runs one comb
 - **[A batch of CLI renders triggers many list re-reads]** → Quiet reads coalesce: at most one in flight and
   one pending.
 - **[The ETA is rough on short renders]** Dev-library renders take seconds. → It is hidden until past 5%
-  with at least 3 samples. It is verified on a synthetic long event (task 6.1).
+  with at least 3 samples. It is verified on a synthetic long event (task 6.1). *Learned during
+  implementation:* progress is not linear in time. Copy-eligible clips complete almost at once (the
+  dev-library clips, and so `Lång`, jump from 0 to about 97% and then spend their time in the concat),
+  so there the estimate first appears near the end; clips that need normalizing move the bar gradually and
+  the estimate appears at about 5%.
 - **[Toasts only for jobs this tab started or attached]** A render started from another tab or the CLI
   updates rows and pages live but raises no toast here. → This is deliberate: a CLI batch would otherwise
   flood the region. It is stated in the spec.
