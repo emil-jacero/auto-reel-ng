@@ -48,6 +48,8 @@ function controlState(pressed: Pressed | null, self: Pressed | null, blocked = f
 
 export function SaveBar({
   barRef,
+  alertRef,
+  edited,
   problem,
   pressed,
   summary,
@@ -59,6 +61,10 @@ export function SaveBar({
   onOverwrite,
 }: {
   barRef: RefObject<HTMLDivElement | null>
+  /** The alert, focused by the editor when the control pressed went with the last one. */
+  alertRef: RefObject<HTMLDivElement | null>
+  /** Whether there is anything to save. */
+  edited: boolean
   problem: SaveProblem | null
   pressed: Pressed | null
   summary: string
@@ -72,16 +78,28 @@ export function SaveBar({
   const alertId = useId()
   const summaryId = useId()
   const locked = pressed !== null
-  // Nothing a Save could do now: finish the date first, or answer the failure's own choices.
-  const saveBlocked = dateIncomplete || problem?.kind === 'conflict' || problem?.kind === 'gone'
+  // Nothing to send: no edits, or a date typed in part (it would be sent as unset).
+  const unsendable = !edited || dateIncomplete
+  // Save also waits while the failure's own choices are the way on.
+  const saveBlocked = unsendable || problem?.kind === 'conflict' || problem?.kind === 'gone'
+  const describedBy = dateIncomplete ? summaryId : problem !== null ? alertId : undefined
   return (
     <div ref={barRef} className="save-bar" role="region" aria-label="Unsaved changes">
       <div className="save-bar-card">
+        {/* Keyed by kind: another kind of failure is a new alert, never reused buttons. */}
         {problem !== null && (
-          <div id={alertId} className="save-bar-alert">
+          <div
+            key={problem.kind}
+            ref={alertRef}
+            id={alertId}
+            className="save-bar-alert"
+            tabIndex={-1}
+          >
             <SaveProblemAlert
               problem={problem}
               pressed={pressed}
+              blocked={unsendable}
+              describedBy={describedBy}
               onReload={onReload}
               onOverwrite={onOverwrite}
               onRetry={onRetry}
@@ -116,7 +134,7 @@ export function SaveBar({
               type="button"
               className="btn btn-primary"
               {...controlState(pressed, 'save', saveBlocked)}
-              aria-describedby={problem !== null ? alertId : dateIncomplete ? summaryId : undefined}
+              aria-describedby={describedBy}
               onClick={() => {
                 if (!locked && !saveBlocked) {
                   onSave()
@@ -136,12 +154,17 @@ export function SaveBar({
 function SaveProblemAlert({
   problem,
   pressed,
+  blocked,
+  describedBy,
   onReload,
   onOverwrite,
   onRetry,
 }: {
   problem: SaveProblem
   pressed: Pressed | null
+  /** Nothing to send (no edits, or a date typed in part): Retry and Overwrite wait too. */
+  blocked: boolean
+  describedBy: string | undefined
   onReload: () => void
   onOverwrite: () => void
   onRetry: (operation: Operation) => void
@@ -171,9 +194,10 @@ function SaveProblemAlert({
               <button
                 type="button"
                 className="btn btn-danger"
-                {...controlState(pressed, 'overwrite')}
+                {...controlState(pressed, 'overwrite', blocked)}
+                aria-describedby={blocked ? describedBy : undefined}
                 onClick={() => {
-                  if (!locked) {
+                  if (!locked && !blocked) {
                     onOverwrite()
                   }
                 }}
@@ -228,9 +252,10 @@ function SaveProblemAlert({
               <button
                 type="button"
                 className="btn btn-secondary"
-                {...controlState(pressed, 'retry')}
+                {...controlState(pressed, 'retry', blocked)}
+                aria-describedby={blocked ? describedBy : undefined}
                 onClick={() => {
-                  if (!locked) {
+                  if (!locked && !blocked) {
                     onRetry(problem.retry)
                   }
                 }}

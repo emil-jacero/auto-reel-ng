@@ -6,7 +6,7 @@ import { fetchEvent } from '../api/event'
 import type { Chapter, Clip, EventDetail as EventDetailData } from '../api/event'
 import type { EventFailure, Problem } from '../api/events'
 import { EventEditor } from '../edit/EventEditor'
-import { requestLeave } from '../edit/unsaved'
+import { requestLeave, useSaving } from '../edit/unsaved'
 import { LIST_HREF } from '../route'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
@@ -72,6 +72,9 @@ function describeProblem(problem: Problem, eventId: string): Failure {
 export function EventDetail({ eventId }: { eventId: string }) {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
   const [editing, setEditing] = useState(false)
+  // While a save is in flight, Refresh and Stop editing wait for its answer.
+  const saving = useSaving()
+  const shown = useRef(false)
   const inFlight = useRef<AbortController | null>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const focusHeading = useRef(false)
@@ -112,9 +115,20 @@ export function EventDetail({ eventId }: { eventId: string }) {
     return () => inFlight.current?.abort()
   }, [load])
 
+  useEffect(() => {
+    shown.current = true
+    return () => {
+      shown.current = false
+    }
+  }, [])
+
   // Every way out of Edit mode, so none skips a step: `load()` never touches
   // `editing`, and leaving always reads the event again.
   const leaveEditMode = useCallback(() => {
+    // A save answered after the page left needs no re-read.
+    if (!shown.current) {
+      return
+    }
     setEditing(false)
     load()
     focusHeading.current = true
@@ -149,10 +163,10 @@ export function EventDetail({ eventId }: { eventId: string }) {
             <button
               type="button"
               className="btn btn-secondary"
-              aria-disabled={loading || undefined}
+              aria-disabled={loading || saving || undefined}
               aria-busy={loading || undefined}
               onClick={() => {
-                if (!loading) {
+                if (!loading && !saving) {
                   requestLeave(editing ? leaveEditMode : load)
                 }
               }}
@@ -165,7 +179,17 @@ export function EventDetail({ eventId }: { eventId: string }) {
               <button
                 type="button"
                 className={editing ? 'btn btn-ghost' : 'btn btn-secondary'}
-                onClick={() => (editing ? requestLeave(leaveEditMode) : setEditing(true))}
+                aria-disabled={saving || undefined}
+                onClick={() => {
+                  if (saving) {
+                    return
+                  }
+                  if (editing) {
+                    requestLeave(leaveEditMode)
+                  } else {
+                    setEditing(true)
+                  }
+                }}
               >
                 <Icon name={editing ? 'x' : 'pencil'} />
                 {editing ? 'Stop editing' : 'Edit'}

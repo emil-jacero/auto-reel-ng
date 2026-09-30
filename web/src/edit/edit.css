@@ -12,6 +12,7 @@
   }
 
   /* Focused by script only, to say where a failure is explained: no ring (as the page h1). */
+  .save-bar-alert:focus,
   .field-refusal:focus {
     outline: none;
   }

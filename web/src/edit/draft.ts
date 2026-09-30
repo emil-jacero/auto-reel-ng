@@ -223,43 +223,60 @@ export function moveClip(order: readonly string[], from: number, to: number): st
 }
 
 /**
- * A longest subsequence of `order` whose original positions increase: the most
- * clips that kept their relative order. Patience sorting, O(n log n).
+ * The clips kept in place: a longest run of `order` whose original positions
+ * increase, so that moving one clip from position 1 to 5 moves one clip, not
+ * five. Among equally long runs it prefers, in turn, the one keeping the most
+ * clips at their original index (so a clip that never left its place is not
+ * counted as moved) and the one without `lastMoved` (a swap of two neighbours
+ * counts the clip the operator moved last). A maximum-weight increasing run over
+ * a Fenwick tree of original positions, O(n log n); the three preferences are
+ * digits of one weight.
  */
-function longestKept(order: readonly string[], position: ReadonlyMap<string, number>): Set<string> {
-  const ranks = order.map((identity) => position.get(identity) ?? -1)
-  // tails[k]: the index in `order` ending the lowest-ranked kept run of length k + 1.
-  const tails: number[] = []
+function keptInPlace(
+  order: readonly string[],
+  position: ReadonlyMap<string, number>,
+  lastMoved: string | null,
+): Set<string> {
+  const size = order.length
+  const digit = size + 1
+  // tree[k]: the best run ending at an original position in k's Fenwick range.
+  const tree = Array.from({ length: size + 1 }, () => ({ score: 0, end: -1 }))
+  const score: number[] = []
   const previous: number[] = []
-  ranks.forEach((rank, index) => {
-    let low = 0
-    let high = tails.length
-    while (low < high) {
-      const middle = (low + high) >> 1
-      if (ranks[tails[middle]] < rank) {
-        low = middle + 1
-      } else {
-        high = middle
+  let best = -1
+  order.forEach((identity, index) => {
+    const rank = position.get(identity)
+    if (rank === undefined) {
+      return
+    }
+    let below = { score: 0, end: -1 }
+    for (let k = rank; k > 0; k -= k & -k) {
+      below = tree[k].score > below.score ? tree[k] : below
+    }
+    const weight = digit * digit + (rank === index ? digit : 0) + (identity === lastMoved ? 0 : 1)
+    score[index] = below.score + weight
+    previous[index] = below.end
+    for (let k = rank + 1; k <= size; k += k & -k) {
+      if (score[index] > tree[k].score) {
+        tree[k] = { score: score[index], end: index }
       }
     }
-    previous[index] = low > 0 ? tails[low - 1] : -1
-    tails[low] = index
+    if (best === -1 || score[index] > score[best]) {
+      best = index
+    }
   })
   const kept = new Set<string>()
-  for (let index = tails.length > 0 ? tails[tails.length - 1] : -1; index !== -1; ) {
+  for (let index = best; index !== -1; index = previous[index]) {
     kept.add(order[index])
-    index = previous[index]
   }
   return kept
 }
 
 /**
- * The clips counted as moved: those outside a longest run that kept its order,
- * so that moving one clip from position 1 to 5 moves one clip, not five.
- *
- * When several such runs are longest (a swap of two neighbours), the clip the
- * operator moved last is the one counted: the run without it is taken whenever
- * it is as long as the longest.
+ * The clips counted as moved: those outside the run kept in place (see
+ * `keptInPlace`). A clip counted as moved can still sit at its original index
+ * (a clip between others that swapped around it); the page marks it as moved
+ * without an old position.
  */
 export function movedSet(
   original: readonly string[],
@@ -267,15 +284,6 @@ export function movedSet(
   lastMoved: string | null,
 ): Set<string> {
   const position = new Map(original.map((identity, index) => [identity, index]))
-  let kept = longestKept(next, position)
-  if (lastMoved !== null && next.includes(lastMoved)) {
-    const without = longestKept(
-      next.filter((identity) => identity !== lastMoved),
-      position,
-    )
-    if (without.size === kept.size) {
-      kept = without
-    }
-  }
+  const kept = keptInPlace(next, position, lastMoved)
   return new Set(next.filter((identity) => !kept.has(identity)))
 }

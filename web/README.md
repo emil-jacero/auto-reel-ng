@@ -36,15 +36,18 @@ and a form to fix them.
 Unsaved edits are never discarded silently: closing or reloading the tab gets the
 browser's own prompt, and Back, Forward, a link, a typed address, Refresh and Stop
 editing ask "Discard unsaved changes?" first. Each history entry the client accepts
-carries its index in `history.state`, so a refused Back or Forward is undone by going
-back the other way and the history stays as it was; Discard redoes the move. A refused
-link or typed address stays behind as a Forward entry.
+carries its index in `history.state` (`route.ts` stamps the entry shown when the app
+loads, and each new one), so a refused Back or Forward is undone by going back the
+other way and the history stays as it was; Discard redoes the move. A refused link or
+typed address stays behind as a Forward entry. While a save is in flight nothing
+leaves: Refresh and Stop editing wait, and a navigation is undone with a note that
+the save is still running.
 
 ```
 src/
 ├── main.tsx              mounts App; imports styles/index.css first
 ├── App.tsx               the route switch inside the shell; keeps the list mounted
-├── route.ts              hash routes (#/event/<id>) — no router library
+├── route.ts              hash routes (#/event/<id>) and the unsaved-edit navigation guard — no router library
 ├── styles/
 │   ├── index.css         the cascade layer order, then the four files below
 │   ├── reset.css         box sizing, zeroed margins; [hidden] always wins
@@ -79,7 +82,7 @@ src/
 │   └── edit.css          Edit mode's fields, rows and save bar
 └── events/
     ├── EventList.tsx     the list: load/refresh, summary, filter, year panels
-    ├── EventDetail.tsx   the event page: status, counts, per-chapter clip panels
+    ├── EventDetail.tsx   the event page: status, counts, clip panels, the Edit toggle and the needs-attention form
     ├── list.css          the list's layout and column widths
     ├── detail.css        the event page's layout and column widths
     ├── common.tsx        helpers both screens share (job cell, sizes, verdict)
