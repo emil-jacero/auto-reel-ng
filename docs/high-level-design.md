@@ -324,7 +324,7 @@ change directories:
 | A | `web-app-scaffold` | `web/` + the static mount + schema→types pipeline; no screen |
 | B | event list screen | the scan/ingest view, over slice 0's verdicts |
 | C | event detail screen | chapters/clips read-only, using the per-clip `size`/`mtime` file facts |
-| D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency |
+| D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency — landed in `event-edit-screen` (the event page's Edit mode) |
 | E | render + live progress | `POST /jobs` (201 / 200-fresh / 409), the WS hook, cancel |
 
 C, D and E are deliberately **not** designed yet: their screens depend on what A and B teach against a
@@ -351,10 +351,13 @@ dependency budget.** Rationale and rules:
   path) was the deciding maintenance cost.
 - **The dependency budget is the real maintenance lever, not the framework** (Principle VII). GUI v1 ships
   `react`, `react-dom`, `vite`, `@vitejs/plugin-react`, `typescript`, and one drag-and-drop library, plus
-  `openapi-typescript` as a dev dependency. **No component library, no CSS framework, no router, and no
-  state-management or data-fetching library at v1** — each is added only when a slice demonstrably needs it,
-  justified in that change's proposal. Component-library majors are the usual source of frontend bit rot;
-  plain CSS has none.
+  `openapi-typescript` as a dev dependency. The drag-and-drop library is the legacy `@dnd-kit` line
+  (`@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`; `event-edit-screen`): keyboard sorting and
+  screen-reader announcements built in, and it works under React's StrictMode. Its successor
+  `@dnd-kit/react` replaces it once that reaches 1.0 or its StrictMode issue #2116 is fixed. **No
+  component library, no CSS framework, no router, and no state-management or data-fetching library at v1**
+  — each is added only when a slice demonstrably needs it, justified in that change's proposal.
+  Component-library majors are the usual source of frontend bit rot; plain CSS has none.
 - **Layout.** `web/` at the repo root; the Vite dev server proxies `/api` to the running service.
   `create_app` mounts the built `web/dist` at `/` **when that directory exists** and serves nothing
   otherwise, so dev and test runs never need a build. Same origin → no CORS, and the WS shares the host.
