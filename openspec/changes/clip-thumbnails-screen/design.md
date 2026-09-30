@@ -81,6 +81,19 @@ worktrees at the time of writing. Task 1.1 re-checks every one of them against t
 
 ## Research & Decisions
 
+### Supervisor decisions (before implementation)
+
+- **The placement is accepted:** after the position number and before the file name, in reading order
+  ("Where the thumbnail sits"). So are moving `edit.css`' narrow breakpoint from 54rem to 58rem and the
+  image's `fetchPriority="low"`.
+- **The URL's `v` is the clip's `mtime` exactly as the event detail gives it** ("The URL, typed from the
+  schema").
+- **If `missing-clips-screen` or `job-summary-times` lands first,** task 1.1's facts are re-checked against
+  the current `main` (`edit.css`' grid values, `ClipOrderList`'s rows) and adapted. If a value the widths
+  here were measured against differs, the implementer stops and reports. At implementation
+  `job-summary-times` was archived on `main` and `missing-clips-screen` was not; every value this design
+  cites matched.
+
 ### Where the thumbnail sits
 
 **Context**: The plan asks for the thumbnail "at the start of each clip row" in the tables, their phone-width
@@ -175,7 +188,11 @@ export function ClipThumb({ eventId, clip }: { eventId: string; clip: Clip })
 - **The box** is `<span className="clip-thumb" data-state=… data-dimmed=…>`:
   - `display: block`, `inline-size: 100%` of its column, `aspect-ratio: 16 / 9`
   - `border-radius: var(--r-sm)`, `overflow: hidden`
-  - a 1px `--border` edge and a `--surface-2` fill
+  - a 1px edge and a `--surface-2` fill. The edge is an inset ring on `::after`, drawn over the image so
+    that a frame reaches the box's corners, in `color-mix(in oklab, var(--fg) 12%, transparent)`. That is
+    `--fg` at low strength, as `edit.css` mixes `--accent`: it darkens the edge of a light frame in the light
+    scheme and lightens a dark one in the dark scheme, where a solid `--border` line would show as a pale
+    hairline around every dark frame. (Settled at implementation; the plan said a `--border` edge.)
 
   The screens make the column 5rem wide (80×45 CSS px) at every width. That is 4× the source at a device
   pixel ratio of 1, and 2× at 2. The box MUST have its final size before any byte arrives, so nothing
@@ -199,7 +216,8 @@ export function ClipThumb({ eventId, clip }: { eventId: string; clip: Clip })
       handle drags there.
   - `data-state="loading"` until `load` fires. Under `prefers-reduced-motion: no-preference` the box
     shimmers, reusing C1's `skeleton-shimmer` keyframes by name, with the same gradient as `.skeleton`.
-    Under reduced motion the fill stands still. No `@keyframes` is added.
+    Under reduced motion the fill stands still, in `--border` as `.skeleton`'s does. No `@keyframes` is
+    added.
   - `'failed'`: the image is replaced by `<span role="img" aria-label={`No preview for ${name}`}>`. It holds
     `<Icon name="film" />` and the words "No preview" (`aria-hidden`, `--text-xs`, `--fg-muted`), stacked and
     centered, on the same `--surface-2` fill. It is neutral, with no error tone.
@@ -218,7 +236,7 @@ export function ClipThumb({ eventId, clip }: { eventId: string; clip: Clip })
   - The visible name and the alt text then come from one function.
 - **The stylesheet.** `src/events/thumbs.css` holds `.clip-thumb` and its states in `@layer components`,
   and `ClipThumb.tsx` imports it.
-  - It uses only existing tokens and adds no color.
+  - It uses only existing tokens and adds no color: its one mix is of `--fg`.
   - Its shimmer declaration sits inside `@media (prefers-reduced-motion: no-preference)`, with the literal
     loop duration `1.6s`.
 
@@ -248,6 +266,9 @@ export function ClipThumb({ eventId, clip }: { eventId: string; clip: Clip })
 its own queue, retry or prefetch.
 - Chromium loads lazy images within about 1250–2500px of the viewport. At 1280×800, with rows about 61px
   tall, that is roughly 30 of a large chapter's rows. The rest load as the operator scrolls.
+  - Measured at implementation: the Playwright container's headless Chromium reports no connection type,
+    and so uses its widest distance, 3000px. It requested 55 of `Många klipp`'s 60 rows before any scroll.
+    The distance is the browser's choice, not the page's.
 - **Priority.** Without a hint, a Save, a Render or a re-read started during a cold-cache load would queue
   behind every visible thumbnail not yet sent. With `fetchPriority="low"` every thumbnail stays below the
   page's own requests, so they take the next connection a thumbnail frees. That is at most about one
@@ -276,23 +297,30 @@ Both encode the identity. Only the second lets `tsc` check the parameter's name.
 **Decision**: `src/api/thumbnail.ts`:
 
 ```ts
-import type { paths } from './schema'
-import type { Clip } from './event'
 import { encodeEventId } from '../route'
+import type { Clip } from './event'
+import type { paths } from './schema'
 
 const THUMBNAIL_PATH = '/api/v1/events/{event_id}/thumbnail' satisfies keyof paths
 type ThumbnailQuery = NonNullable<paths[typeof THUMBNAIL_PATH]['get']['parameters']['query']>
 
-/** The thumbnail's address: the event id encoded per segment, the identity as the `clip` query value,
- *  and the clip's `mtime` exactly as the detail gives it as `v`, so a replaced clip gets a new address. */
 export function thumbnailUrl(eventId: string, clip: Pick<Clip, 'identity' | 'mtime'>): string {
-  const query =
+  const query: Record<string, string> =
     clip.mtime == null
       ? ({ clip: clip.identity } satisfies ThumbnailQuery)
       : ({ clip: clip.identity, v: clip.mtime } satisfies ThumbnailQuery)
-  return `/api/v1/events/${encodeEventId(eventId)}/thumbnail?${new URLSearchParams(query)}`
+  const path = THUMBNAIL_PATH.replace('{event_id}', () => encodeEventId(eventId))
+  return `${path}?${new URLSearchParams(query)}`
 }
 ```
+
+Two details were settled while implementing:
+- **The address is built from the checked constant.** A second, literal copy of the route in the template
+  would not be checked, so a typo there would pass `tsc`. The replacement is a function, so no `$` pattern
+  in an id could be read as a replacement pattern (`encodeURIComponent` encodes `$` anyway).
+- **`query` is annotated `Record<string, string>`.** Without it, TypeScript normalises the two branches
+  to `{ clip; v?: undefined } | { clip; v: string }`, which `URLSearchParams` does not accept. Each
+  branch still `satisfies` the generated query type, so an unknown or renamed key fails the build.
 
 - **The version.** `v` is the detail's `mtime` string, unparsed and unformatted. The server ignores its
   value; it only makes the address change when the clip file does. The detail gives every clip on disk an

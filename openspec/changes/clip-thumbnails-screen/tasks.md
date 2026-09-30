@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Confirm that the three gates are archived on `main`:
+- [x] 1.1 Confirm that the three gates are archived on `main`:
   `ls openspec/changes/archive/ | grep -E -- '-(clip-thumbnail-endpoint|event-edit-screen|render-progress-screen)$'`
   must print three directories. Stop and report to the supervisor if any is missing. Then re-check what this
   change builds on against the landed code (design, "Context"), and stop and report on any mismatch that
@@ -43,7 +43,7 @@
 
 ## 2. web/ — the URL and the component
 
-- [ ] 2.1 Add `src/api/thumbnail.ts` (`thumbnailUrl`, with the route checked by `satisfies keyof paths` and
+- [x] 2.1 Add `src/api/thumbnail.ts` (`thumbnailUrl`, with the route checked by `satisfies keyof paths` and
   the query typed from `paths`: `clip` is the identity, and `v` the clip's `mtime` exactly as the detail
   gives it), and move `fileName` from `EventDetail.tsx` into an export of `src/events/common.tsx`, imported
   back by `EventDetail.tsx` (design, "The URL, typed from the schema").
@@ -52,7 +52,7 @@
   - temporarily changing `thumbnail` to `thumbnails` in `THUMBNAIL_PATH`, or `v` to `version` in the query,
     makes `tsc` fail; restore it
   - `grep -rn "function fileName" web/src/events` prints only `common.tsx`
-- [ ] 2.2 Add `src/events/ClipThumb.tsx` and `src/events/thumbs.css` (`@layer components`), per design "The
+- [x] 2.2 Add `src/events/ClipThumb.tsx` and `src/events/thumbs.css` (`@layer components`), per design "The
   box: size, fit and states":
   - the missing box
   - `LoadingThumb` keyed by URL and rendering the box itself, with `loading="lazy"`, `decoding="async"`,
@@ -71,7 +71,7 @@
 
 ## 3. web/ — mount points and docs
 
-- [ ] 3.1 Mount the component in the read view (design, "Where the thumbnail sits", "Getting the event id to
+- [x] 3.1 Mount the component in the read view (design, "Where the thumbnail sits", "Getting the event id to
   the rows"):
   - in `EventDetail.tsx`: `eventId` to `ChapterPanel`, then per table a `col-thumb` `<col>`, a
     visually hidden "Preview" `<th role="columnheader" scope="col">`, and per row a
@@ -92,7 +92,7 @@
   - at 390px, no two cells of a row have intersecting text rectangles (`Range.getClientRects()` per cell,
     and the box's own rectangle)
   - `git diff --stat` lists only the files named in design, "File ownership"
-- [ ] 3.2 Mount the component in Edit mode:
+- [x] 3.2 Mount the component in Edit mode:
   - in `EventEditor.tsx`: pass `eventId` to `ClipOrderList`
   - in `ClipOrderList.tsx`: thread `eventId` through `ClipRow` and `IgnoredRow` to `RowBody`, render
     `<ClipThumb>` between the position and `.clip-file`, add one `<span />` to `.clip-order-head`, and replace
@@ -113,7 +113,7 @@
   - Move down on the first clip moves its frame to row 2 and keeps focus on the button, as C4 specifies
   - the three motion grep commands pass over `web/src/edit`
   - `grep -rn "function fileName" web/src` prints only `common.tsx`
-- [ ] 3.3 Update `web/README.md`:
+- [x] 3.3 Update `web/README.md`:
   - in the screens paragraph, each clip row's frame (lazy, "No preview" on failure, none for a missing
     clip)
   - in the file tree, `api/thumbnail.ts`, `events/ClipThumb.tsx` and `events/thumbs.css`, and "file
@@ -125,7 +125,7 @@
 
 ## 4. Verification against the dev library
 
-- [ ] 4.1 Run an ad-hoc Playwright pass for the read view from the session scratchpad, **never
+- [x] 4.1 Run an ad-hoc Playwright pass for the read view from the session scratchpad, **never
   committed**:
   - script: `/tmp/claude-1000/-var-home-emil-dev-larnet-auto-reel-project/72ded660-4d8e-435c-8a06-07bf9520945a/scratchpad/verify/clip-thumbnails-screen/check_read.py`
   - container: `mcr.microsoft.com/playwright/python:v1.49.0-noble`, run with `--network host --ipc host`,
@@ -183,7 +183,7 @@
     - no two of them overlap (the text-rectangle check of task 3.1)
 
   Verify: every item passes, and the PNGs and the check's output are in the verify directory.
-- [ ] 4.2 Run the Edit-mode and "changes nothing" checks with the same setup:
+- [x] 4.2 Run the Edit-mode and "changes nothing" checks with the same setup:
   - script: `…/verify/clip-thumbnails-screen/check_edit.py`
   - screenshots: Grillning and Två kapitel in Edit mode, light and dark, at 1280, 768 and 390px (12 PNGs)
 
@@ -219,7 +219,7 @@
 
 ## 5. Validation
 
-- [ ] 5.1 Run the gates:
+- [x] 5.1 Run the gates:
   - `npx tsc --noEmit` and `npm run build` in the node:22 container
   - the full `.venv/bin/python -m pytest`, which must keep the web-mount and OpenAPI drift tests green
   - no Python file changed, so these run only to confirm that nothing changed:
