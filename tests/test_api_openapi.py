@@ -23,7 +23,12 @@ from auto_reel_ng.api.openapi import (
     render_openapi_schema,
     schema_dump_settings,
 )
-from auto_reel_ng.api.schemas import EnqueueConflict, EventFailure, WsMessageType
+from auto_reel_ng.api.schemas import (
+    EnqueueConflict,
+    EventFailure,
+    ThumbnailFailure,
+    WsMessageType,
+)
 from auto_reel_ng.event.reconcile import ClipStatus
 from auto_reel_ng.persistence.job_store import CancelOutcome
 from auto_reel_ng.persistence.models import JobStatus
@@ -39,6 +44,7 @@ EXPECTED_PATHS = {
     "/api/v1/events/{event_id}",
     "/api/v1/events/{event_id}/analysis",
     "/api/v1/events/{event_id}/reel",
+    "/api/v1/events/{event_id}/thumbnail",
     "/api/v1/jobs",
     "/api/v1/jobs/{job_id}",
     "/api/v1/jobs/{job_id}/cancel",
@@ -58,6 +64,7 @@ EXPECTED_MODELS = {
     "CancelResult",
     "CancelOutcome",
     "EnqueueConflict",
+    "ThumbnailFailure",
     "FreshResult",
     "StalenessOut",
     "StalenessReason",
@@ -212,6 +219,35 @@ def test_editorial_routes_declare_their_responses_and_etag() -> None:
         assert "ETag" in responses["200"]["headers"], method
 
 
+def test_the_thumbnail_route_publishes_its_parameters_and_responses() -> None:
+    """``clip`` required, ``v`` and ``If-None-Match`` optional; a JPEG 200, a 304; problems."""
+    operation = build_openapi_schema()["paths"]["/api/v1/events/{event_id}/thumbnail"]["get"]
+    query = {param["name"]: param for param in operation["parameters"] if param["in"] == "query"}
+    assert set(query) == {"clip", "v"}
+    assert query["clip"]["required"] is True
+    assert query["clip"]["schema"]["type"] == "string"
+    assert query["v"]["required"] is False
+    assert _non_null(query["v"]["schema"]) == {"type": "string"}
+    header = {param["name"]: param for param in operation["parameters"] if param["in"] == "header"}
+    assert set(header) == {"If-None-Match"}
+    assert header["If-None-Match"]["required"] is False
+
+    responses = operation["responses"]
+    assert set(responses) - {"422"} == {"200", "304", "404", "502"}
+    assert "503" not in responses
+    assert list(responses["200"]["content"]) == ["image/jpeg"]
+    assert responses["200"]["content"]["image/jpeg"]["schema"] == {
+        "type": "string",
+        "format": "binary",
+    }
+    for code in ("200", "304"):
+        assert {"ETag", "Cache-Control"} <= set(responses[code]["headers"]), code
+    assert "content" not in responses["304"]
+    for code in ("404", "502"):
+        ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
+        assert ref.endswith("/ProblemOut"), code
+
+
 #: The responses each jobs route declares besides its success and FastAPI's 422, by
 #: published model (jobs-client-contract; the enqueue's 502 from jobs-project-guards).
 EXPECTED_JOBS_RESPONSES = {
@@ -280,6 +316,23 @@ def test_the_enqueue_conflict_is_published_as_a_closed_enumeration() -> None:
     assert published["enum"] == [conflict.value for conflict in EnqueueConflict]
     assert published["enum"] == ["active_job", "output_collision"]
     assert _non_null(problem["claimed_by"]) == {"type": "array", "items": {"type": "string"}}
+
+
+def test_the_thumbnail_failure_is_published_as_a_closed_enumeration() -> None:
+    """A field of its own on the problem body; the events failure set keeps its three values."""
+    models = build_openapi_schema()["components"]["schemas"]
+    problem = models["ProblemOut"]["properties"]
+    assert _non_null(problem["thumbnail_failure"])["$ref"].endswith("/ThumbnailFailure")
+    published = models["ThumbnailFailure"]
+    assert published["type"] == "string"
+    assert published["enum"] == [failure.value for failure in ThumbnailFailure]
+    assert published["enum"] == ["thumbnail_failed"]
+    assert _non_null(problem["failure"])["$ref"].endswith("/EventFailure")
+    assert models["EventFailure"]["enum"] == [
+        "unparseable_reel_yaml",
+        "unusable_metadata",
+        "unreadable_disk",
+    ]
 
 
 def test_the_websocket_frame_is_published_without_a_path() -> None:

@@ -78,6 +78,43 @@ See proposal.md, Why. These are the code facts that shape the approach:
 
 ## Research & Decisions
 
+### Supervisor decisions for the implementation
+
+Recorded before implementation (2026-09-30). They are binding and are reflected in the sections below.
+
+- **Already applied to the spec by the supervisor:**
+  - `thumbnail_path` lets the stat's `OSError` through, and `thumbnail_source` wraps it as a
+    `ThumbnailError` (502 `thumbnail_failed`)
+  - on a miss, the `ETag` comes from the stem of the path `thumbnail_for` returned
+  - the optional, ignored `v` query parameter is published
+  - the settings resolver is `resolve_thumbnail_settings(config, project_root)`
+- **`ThumbnailError(clip, reason)`.** `clip-thumbnails` landed with a two-argument constructor. `reason` is
+  path-free, while `str(exc)` starts with the absolute server path of the clip. No problem `detail` carries
+  an absolute server path where a path-free form exists: the `thumbnail_failed` detail is
+  `<identity>: <reason>`, with the event-relative identity the request named. `thumbnail_source` raises
+  the vanished-clip error in the same two-argument form `thumbnail_for` uses:
+  `ThumbnailError(str(clip_path), f"cannot stat the clip: {exc.strerror or exc}")`.
+- **Generated files.** `web/openapi.json` and `web/src/api/schema.d.ts` are never merged by hand. If a
+  cherry-pick conflicts on them (`job-summary-times` regenerates them too), take `main`'s version, then
+  re-run the generator and the drift test.
+
+Decided after the implementation review (2026-09-30):
+
+- **Paths in the other 502 details stay.** The `unreadable_disk` detail is exactly what the detail route and
+  the list's error row give (`str(OSError)`, the absolute event folder included): consistency across the
+  events reads outweighs the path-free rule. The `ConfigError` and `ThumbnailCacheError` details also stay
+  as the engine words them.
+- **`If-None-Match` is published** as an optional header parameter, as the editorial write publishes
+  `If-Match`. The spec's OpenAPI list names it.
+- **Accepted implementation deviations from the sketches below:**
+  - The route is split into small helpers (`_serve_thumbnail`, `_revalidated`, `_clip_failed`,
+    `_thumbnail_failed`) instead of one inline handler, so it stays within the project's `max-returns = 8`
+    without a pylint disable. The behavior is the sketch's.
+  - An `OSError` reading the cached or the just-extracted JPEG becomes a `ThumbnailCacheError` in the
+    engine's own `is_cached` wording (`<dir>: cannot read thumbnails: …`), so the route maps every cache
+    failure through one 502.
+  - The README's `thumbs` section names this route instead of the change.
+
 ### The route: a query parameter, registered before the detail route, `async`
 
 **Context**: The event id is a greedy `{event_id:path}` and the clip identity can contain `/`
@@ -143,8 +180,8 @@ order, so each outcome has one answer:
    settings.project_root)`, which raises `ConfigError`.
 5. It computes `thumbnail_path(event_dir / clip, position=..., cache_dir=...)`. An `OSError` from its
    stat (the listed clip can no longer be statted) is re-raised as
-   `ThumbnailError(f"{clip_path}: cannot stat the clip: {exc}")` from `exc`: the wording `thumbnail_for`
-   gives the same case.
+   `ThumbnailError(str(clip_path), f"cannot stat the clip: {exc.strerror or exc}")` from `exc`: the
+   wording `thumbnail_for` gives the same case.
 
 `reel.yaml` is not read.
 
@@ -354,7 +391,7 @@ Optional[ThumbnailFailure] = None`. `clip-thumbnails` defines no enum.
 | `ClipNotFoundError` (the identity is not exactly one the listing holds) | 404 | `event_id` |
 | Listing the event folder fails (`OSError`, classified as `EventReadError`) | 502 | `event_id`, `failure: unreadable_disk` |
 | `ConfigError` loading `config.yaml` or resolving `thumbnails.*` | 502 | `event_id`, detail names the config problem |
-| `ThumbnailError` from `thumbnail_source` (the listed clip can no longer be statted: `thumbnail_path`'s `OSError`, wrapped) or from `thumbnail_for` | 502 | `event_id`, `thumbnail_failure: thumbnail_failed`, detail = the `ThumbnailError` message |
+| `ThumbnailError` from `thumbnail_source` (the listed clip can no longer be statted: `thumbnail_path`'s `OSError`, wrapped) or from `thumbnail_for` | 502 | `event_id`, `thumbnail_failure: thumbnail_failed`, detail = `<identity>: <reason>` (the requested identity and the error's path-free `reason`) |
 | `ThumbnailCacheError` from `thumbnail_for` (a sibling class, caught on its own) | 502 | `event_id`, detail = the engine message naming the cache directory |
 | `OSError` reading the cached JPEG (the cache directory) | 502 | `event_id`, detail names the OS error and the cache directory |
 | Anything else | 500 (a bug, not mapped) | |
@@ -409,6 +446,12 @@ request already does.
   at most six at once, and `max-age` means a thumbnail is requested once a day, not once per visit. Task
   4.1 measures a warm burst against a 400-clip event. If it is slow, the follow-up is a discovery-level
   membership check in `event/`, not an `api/` re-implementation of the discovery rules.
+  **Measured (task 4.1, dev library on the local btrfs disk, cache pre-filled by `auto-reel thumbs`):** all
+  400 `2024-09-19 - Fyrahundra` thumbnails requested six at a time answered 200 in 4.5–5.0 s in total,
+  per request p50 63–67 ms and p95 75–109 ms, with no ffmpeg or ffprobe started. Sequentially a request
+  takes 8.6 ms (p50), of which `scan_event` over the 400 entries is 5.8 ms; a 4-clip event's request
+  takes 2.2 ms. The concurrent figure is the six requests sharing one process (GIL) for their listings.
+  Accepted for v1: a browser only asks for the rows near the viewport, once a day.
 - **[A cold page fills slowly]** At about 0.5 s per 1080p50 clip (`clip-thumbnails`' measurement) and two
   slots, the ~30 rows a browser loads lazily on a cold cache take about 8 s on local disk, and longer from
   the USB drive. → That is the bound working as intended. `auto-reel thumbs` pre-fills the cache

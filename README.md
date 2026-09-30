@@ -309,6 +309,33 @@ render, or job logic lives in the web tier.
   the next write's `If-Match`, with no read in between. A **412 carries no
   `ETag`**: recovery from a 412 is re-read, re-apply, retry, never a blind retry
   against a tag the service handed back.
+- **`GET /api/v1/events/{event_id}/thumbnail?clip=<identity>`** serves one clip's
+  thumbnail as `image/jpeg`: the frame `auto-reel thumbs` would cache (below),
+  taken from that cache and extracted on a miss. `clip` is the clip's `identity`
+  exactly as the detail lists it (its event-relative path, chapter folder
+  included), percent-encoded as a query value — a literal `+` reads as a space. An
+  optional `v` is accepted and ignored: a client appends the clip's `mtime` so a
+  replaced clip gets a new URL. A 200 carries a strong `ETag` (the cache key, which
+  changes with the clip's size and mtime, `thumbnails.position` and the thumbnail
+  version) and `Cache-Control: private, max-age=86400`; an `If-None-Match` naming
+  the current tag (weak comparison, so `W/` is ignored) is a **304** decided
+  without extracting anything. Failures answer by cause and carry no caching
+  headers: **404** for an unknown event or a clip that is not on disk in it (a
+  MISSING clip, `original/`, anything outside the event); **502** with
+  `thumbnail_failure: thumbnail_failed` when the engine cannot make this clip's
+  thumbnail (an empty or undecodable clip, no frame at the position; the detail
+  names the clip and the cause), with `failure: unreadable_disk` when the event
+  folder cannot be listed, and with no kind when the cache cannot be read or
+  written or `config.yaml` is invalid. A failure is not remembered: the next
+  request tries again. At most **2** extractions run at once per `serve` process
+  and concurrent requests for one clip share one; a cached thumbnail never waits
+  for them, and neither does any other route. The route needs **no database**
+  (it answers while Postgres is down) and writes nothing into the library — only
+  the cache outside it, so a read-only archive still gets thumbnails. There is **no
+  timeout** on an extraction: one stuck on a stalled drive holds its slot, and two
+  stop every uncached thumbnail (cached ones and every other route keep answering)
+  until `serve` is restarted. The events list and detail gain no thumbnail field
+  and stay probe-free.
 - **Jobs lifecycle over REST** is a thin wrapper over the job store:
   `POST /api/v1/jobs` (gated like `enqueue` — 201 on a stale event, 409 on an
   active duplicate carrying the active job's id in `job_id`, 200
@@ -424,7 +451,8 @@ it on a slow or flaky USB drive.
 **The cache** lives outside the library: `$XDG_CACHE_HOME/auto-reel/thumbnails/`
 (else `~/.cache/auto-reel/thumbnails/`), or `thumbnails.cache_dir`. `thumbs` reads
 `thumbnails.position` and `thumbnails.cache_dir` from `config.yaml` (the service's
-thumbnail route, change `clip-thumbnail-endpoint`, reads the same keys);
+thumbnail route, `GET /api/v1/events/{event_id}/thumbnail`, reads the same keys on
+every request);
 `cache_dir` must be absolute (`~` is expanded), and the directory — configured or
 default — must lie outside the project root and the `input` directory, or the
 command refuses to start. Files are named by a hash of the clip's resolved path,

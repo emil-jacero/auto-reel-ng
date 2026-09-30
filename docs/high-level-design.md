@@ -289,7 +289,10 @@ The service serves one project; its jobs views are scoped to it; the queue is sh
 entry — a `stat` — and may be served per request. Media facts (duration, dimensions, codec) require decoding
 and therefore belong to the analysis cache; no events read may probe a clip to fill a response field. This is
 D-A3 (scanned per request) plus Principle IV (the staleness path never decodes) applied to the read model,
-not a new decision, and it is the rule to quote when a response field would need an `ffprobe`.
+not a new decision, and it is the rule to quote when a response field would need an `ffprobe`. The thumbnail
+route (`GET /api/v1/events/{event_id}/thumbnail?clip=`, change `clip-thumbnail-endpoint`, **D-11**) is a
+per-clip media read on request, not a field of the events read model, so the list and detail stay probe-free
+and gain no field: the client builds each thumbnail's URL from the event id and clip identity it already has.
 
 **The same rule bounds content hashing.** The staleness fingerprint's clip-set component has a content-hash
 opt-in (`compute_fingerprint(use_hash=True)`) that sha256s every clip's bytes; on a per-event read that is a

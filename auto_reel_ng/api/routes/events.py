@@ -2,23 +2,30 @@
 
 Every route here is scan-on-request (D-A3) — no caching, no database copy of
 event/clip state; the freshest possible read of ``reel.yaml``/disk on every call.
+The one media read, a clip's thumbnail, is served from the engine's cache outside
+the library (D-11): a per-clip read on request, never a field of the read model.
 """
 
 from __future__ import annotations
 
 import logging
 import time
+from functools import partial
+from pathlib import Path
 from typing import List, Optional, Union
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.concurrency import run_in_threadpool
 
-from ...errors import EventMetadataError, ReelError
+from ...config.project import ConfigError
+from ...errors import EventMetadataError, ReelError, ThumbnailCacheError, ThumbnailError
 from ...event.editorial import apply_editorial_write
 from ...ingest import LayoutError
 from ...reel.document import ReelDocument
 from ...staleness.fingerprint import editorial_hash
+from ...thumbs import is_cached, thumbnail_for
 from .. import events_read
 from ..problem import (
     bad_gateway,
@@ -35,9 +42,11 @@ from ..schemas import (
     EventFailure,
     EventRowOut,
     ProblemOut,
+    ThumbnailFailure,
 )
 from ..serialize import document_to_body
 from ..settings import ApiSettings
+from ..thumbnails import ThumbnailGate
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +61,23 @@ _ETAG_RESPONSE = {
             "schema": {"type": "string"},
         }
     }
+}
+
+
+#: How long a browser may reuse a thumbnail without asking: a day. ``private`` keeps
+#: shared caches out of the archive's pictures.
+THUMBNAIL_CACHE_CONTROL = "private, max-age=86400"
+
+#: The validator headers of a thumbnail's 200 and 304, as published in the schema.
+_THUMBNAIL_HEADERS = {
+    "ETag": {
+        "description": "Strong entity-tag of the thumbnail: the engine's cache key, quoted",
+        "schema": {"type": "string"},
+    },
+    "Cache-Control": {
+        "description": f"Always `{THUMBNAIL_CACHE_CONTROL}`",
+        "schema": {"type": "string"},
+    },
 }
 
 
@@ -187,6 +213,163 @@ def get_reel(
 
     response.headers["ETag"] = _etag(document)
     return document_to_body(document)
+
+
+def _thumbnail_headers(etag: str) -> dict[str, str]:
+    return {"ETag": etag, "Cache-Control": THUMBNAIL_CACHE_CONTROL}
+
+
+async def _revalidated(if_none_match: str, source: events_read.ThumbnailSource) -> bool:
+    """RFC 9110 ``If-None-Match`` under weak comparison, decided before any extraction.
+
+    A ``W/`` prefix is ignored and a comma-separated list is accepted. ``*`` matches
+    only when the JPEG is already cached: only then does a current representation exist.
+    """
+    candidates = [candidate.strip() for candidate in if_none_match.split(",") if candidate.strip()]
+    if any(candidate.removeprefix("W/") == source.etag for candidate in candidates):
+        return True
+    return "*" in candidates and await run_in_threadpool(is_cached, source.cache_path)
+
+
+def _read_cached_thumbnail(path: Path) -> Optional[bytes]:
+    """The cached JPEG's bytes, or ``None`` when it is not cached (yet).
+
+    Any other ``OSError`` is the cache's fault, reported as the engine reports an
+    unreadable cache.
+    """
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ThumbnailCacheError(f"{path.parent}: cannot read thumbnails: {exc}") from exc
+
+
+def _read_extracted_thumbnail(path: Path) -> bytes:
+    """The JPEG the engine just returned; failing to read it is the cache's fault."""
+    try:
+        return path.read_bytes()
+    except OSError as exc:
+        raise ThumbnailCacheError(f"{path.parent}: cannot read thumbnails: {exc}") from exc
+
+
+async def _serve_thumbnail(
+    request: Request, source: events_read.ThumbnailSource, if_none_match: Optional[str]
+) -> Response:
+    """The 304, the cached 200, or the 200 of an extraction under the gate.
+
+    A cached thumbnail never waits for a slot. The engine's errors propagate to the
+    route, which answers them by cause.
+    """
+    if if_none_match is not None and await _revalidated(if_none_match, source):
+        return Response(status_code=304, headers=_thumbnail_headers(source.etag))
+    body = await run_in_threadpool(_read_cached_thumbnail, source.cache_path)
+    if body is not None:
+        return Response(body, media_type="image/jpeg", headers=_thumbnail_headers(source.etag))
+
+    gate: ThumbnailGate = request.app.state.thumbnail_gate
+    extract = partial(
+        thumbnail_for,
+        source.clip_path,
+        position=source.position,
+        cache_dir=source.cache_dir,
+        runtime=request.app.state.runtime,
+    )
+    path = await gate.produce(source.cache_path.stem, extract)
+    body = await run_in_threadpool(_read_extracted_thumbnail, path)
+    # The key of the bytes served, not the one computed before extraction: a clip that
+    # changed mid-request must not get the old key's strong tag.
+    return Response(body, media_type="image/jpeg", headers=_thumbnail_headers(f'"{path.stem}"'))
+
+
+def _thumbnail_failed(event_id: str, clip: str, detail: str) -> JSONResponse:
+    """A thumbnail 502 that is not the clip's fault: no kind, and no caching headers.
+
+    Logged like the editorial write's refused save.
+    """
+    logger.warning("thumbnail: %s: %s: %s", event_id, clip, detail)
+    return bad_gateway(detail, event_id=event_id)
+
+
+def _clip_failed(event_id: str, clip: str, exc: ThumbnailError) -> JSONResponse:
+    """The 502 of a clip the engine cannot make a thumbnail of, with the thumbnail kind.
+
+    The detail is the requested identity and the error's ``reason``, which carries the
+    cause without the clip's absolute path on the server.
+    """
+    detail = f"{clip}: {exc.reason}"
+    logger.warning("thumbnail: %s: %s", event_id, detail)
+    return bad_gateway(
+        detail, event_id=event_id, thumbnail_failure=ThumbnailFailure.THUMBNAIL_FAILED.value
+    )
+
+
+@router.get(
+    "/events/{event_id:path}/thumbnail",
+    response_class=Response,
+    responses={
+        200: {
+            "description": "The clip's thumbnail: a JPEG fitted within 320x180",
+            "content": {"image/jpeg": {"schema": {"type": "string", "format": "binary"}}},
+            "headers": _THUMBNAIL_HEADERS,
+        },
+        304: {
+            "description": "Not modified: `If-None-Match` names the current thumbnail",
+            "headers": _THUMBNAIL_HEADERS,
+        },
+        404: {"model": ProblemOut},
+        502: {"model": ProblemOut},
+    },
+)
+async def get_thumbnail(
+    event_id: str,
+    request: Request,
+    clip: str = Query(
+        description="The clip's identity as the event detail lists it: its event-relative path",
+    ),
+    _version: Optional[str] = Query(
+        default=None,
+        alias="v",
+        description="An opaque cache-busting version; accepted and ignored",
+    ),
+    if_none_match: Optional[str] = Header(default=None, alias="If-None-Match"),
+) -> Response:
+    """``GET /api/v1/events/{event_id}/thumbnail?clip=``: one clip's thumbnail (D-11).
+
+    Registered *before* the greedy ``{event_id:path}`` detail route for the reason
+    the ``/analysis`` route documents; the clip identity is a query parameter
+    because two greedy path parameters cannot be told apart.
+
+    ``async`` on purpose: a request waiting for an extraction slot waits on the
+    gate's ``asyncio`` primitives and holds no threadpool worker, so a page of cold
+    thumbnails cannot starve the other routes. Every blocking step (the listing,
+    the stat, reading the JPEG, the extraction) runs in the threadpool.
+
+    Failures answer by cause and carry no caching headers: 404 for an unknown event
+    or a clip that is not on disk in it; 502 with ``thumbnail_failure`` when the
+    engine cannot make this clip's thumbnail, with the list's ``failure`` when the
+    event cannot be listed, and with neither for the cache or ``config.yaml``.
+    Nothing is written into the library, and the database is never touched.
+    """
+    settings = _settings(request)
+    try:
+        source = await run_in_threadpool(events_read.thumbnail_source, settings, event_id, clip)
+        return await _serve_thumbnail(request, source, if_none_match)
+    except events_read.EventNotFoundError:
+        return not_found(
+            f"no event {event_id!r} under the configured project root", event_id=event_id
+        )
+    except events_read.ClipNotFoundError as exc:
+        return not_found(str(exc), event_id=event_id)
+    except events_read.EventReadError as exc:
+        logger.warning("thumbnail: %s: %s: %s", event_id, clip, exc.detail)
+        return _event_read_failed(exc, event_id)
+    except ConfigError as exc:
+        return _thumbnail_failed(event_id, clip, str(exc))
+    except ThumbnailError as exc:
+        return _clip_failed(event_id, clip, exc)
+    except ThumbnailCacheError as exc:
+        return _thumbnail_failed(event_id, clip, str(exc))
 
 
 @router.get(

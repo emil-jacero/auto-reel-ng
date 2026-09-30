@@ -318,6 +318,18 @@ class EnqueueConflict(StrEnum):
     OUTPUT_COLLISION = "output_collision"
 
 
+class ThumbnailFailure(StrEnum):
+    """Why a clip's thumbnail could not be served: the API's classification of engine errors.
+
+    A kind describes the *clip*, never the service: a thumbnail cache that cannot be
+    written or an invalid ``config.yaml`` answers 502 with no kind at all.
+    """
+
+    #: The engine could not produce the clip's thumbnail (``ThumbnailError``): the clip
+    #: cannot be statted or probed, has no usable duration, or gave no frame.
+    THUMBNAIL_FAILED = "thumbnail_failed"
+
+
 class ProblemOut(BaseModel):
     """The shared problem body every deliberate error uses (D-A6), as published in the schema.
 
@@ -348,6 +360,9 @@ class ProblemOut(BaseModel):
     #: On an ``output_collision``: the other events claiming the same output path, as
     #: sorted event ids (a collision can be three-way).
     claimed_by: Optional[List[str]] = None
+    #: Why a clip's thumbnail could not be produced, on the thumbnail route's 502. A
+    #: field of its own, never ``failure``: that one describes an event, not a clip.
+    thumbnail_failure: Optional[ThumbnailFailure] = None
 
 
 class WsMessageType(StrEnum):
@@ -397,6 +412,7 @@ __all__ = [
     "StalenessOut",
     "CancelResult",
     "EnqueueConflict",
+    "ThumbnailFailure",
     "ProblemOut",
     "WsMessageType",
     "WsMessage",

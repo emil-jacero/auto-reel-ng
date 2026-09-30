@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Confirm that `openspec/changes/archive/*-clip-thumbnails` exists on `main`. If it does not, stop and report. Then read what it shipped against this design's "What this change needs from `clip-thumbnails`":
+- [x] 1.1 Confirm that `openspec/changes/archive/*-clip-thumbnails` exists on `main`. If it does not, stop and report. Then read what it shipped against this design's "What this change needs from `clip-thumbnails`":
   - `errors.ThumbnailError` and `errors.ThumbnailCacheError`, and that they are siblings under `EngineError`
   - `thumbs.thumbnail_for(clip_path, *, position, cache_dir, runtime=None) -> Path`, cache-first
   - `thumbs.thumbnail_path(clip_path, *, position, cache_dir) -> Path`: the pure cache-path function (stat plus hash, no subprocess, nothing created), whose stat's `OSError` propagates unchanged
@@ -17,12 +17,12 @@
 
 ## 2. api/ — the failure kind, the lookup, the gate
 
-- [ ] 2.1 Add `ThumbnailFailure(StrEnum)` (`THUMBNAIL_FAILED = "thumbnail_failed"`) and `ProblemOut.thumbnail_failure: Optional[ThumbnailFailure] = None` to `api/schemas.py`, and export the enum (design "The failure kind's home"). Verify with a new case in `tests/test_api_openapi.py`:
+- [x] 2.1 Add `ThumbnailFailure(StrEnum)` (`THUMBNAIL_FAILED = "thumbnail_failed"`) and `ProblemOut.thumbnail_failure: Optional[ThumbnailFailure] = None` to `api/schemas.py`, and export the enum (design "The failure kind's home"). Verify with a new case in `tests/test_api_openapi.py`:
   - `ProblemOut.thumbnail_failure`'s non-null member references `ThumbnailFailure`
   - its `enum` is exactly `["thumbnail_failed"]`
   - `EventFailure` still has exactly three values
   - `EXPECTED_MODELS` gains `ThumbnailFailure`
-- [ ] 2.2 Add `ClipNotFoundError`, the frozen `ThumbnailSource` and `thumbnail_source(settings, event_id, clip)` to `api/events_read.py`, in the design's five-step order ("Which clips have a thumbnail"). Verify with a new `tests/test_api_thumbnails.py`. These tests need no database and no ffmpeg: clips are `_touch`ed, and `thumbnail_path` needs only a stat. The project is `tmp_path / "proj"` and its `config.yaml` sets `thumbnails.cache_dir` to `tmp_path / "cache"`: `clip-thumbnails` refuses a cache inside the project root. Cases:
+- [x] 2.2 Add `ClipNotFoundError`, the frozen `ThumbnailSource` and `thumbnail_source(settings, event_id, clip)` to `api/events_read.py`, in the design's five-step order ("Which clips have a thumbnail"). Verify with a new `tests/test_api_thumbnails.py`. These tests need no database and no ffmpeg: clips are `_touch`ed, and `thumbnail_path` needs only a stat. The project is `tmp_path / "proj"` and its `config.yaml` sets `thumbnails.cache_dir` to `tmp_path / "cache"`: `clip-thumbnails` refuses a cache inside the project root. Cases:
   - a root clip and `Kvällen/s1710002.mp4` resolve. `etag` is the quoted cache-path stem, and `cache_path` lies under `tmp_path / "cache"`
   - an IGNORED clip resolves
   - the identity `Kväll, del 2/a+b & c #1.mp4` resolves
@@ -32,7 +32,7 @@
   - an out-of-range `thumbnails.position` raises `ConfigError`, while a MISSING clip in the same project still raises `ClipNotFoundError`
   - a real vanished clip: `events_read.scan_event` is wrapped to call the real one, then delete one listed clip before returning its listing. `thumbnail_source` raises `ThumbnailError` whose message starts with that clip's path and contains `cannot stat the clip`, with `__cause__` a `FileNotFoundError`
   - an unparseable `reel.yaml` in the event does not stop a clip from resolving
-- [ ] 2.3 Add `api/thumbnails.py` with `MAX_CONCURRENT_EXTRACTIONS = 2` and `ThumbnailGate`, as the design sketches it ("Bounded, shared extraction": `asyncio.wait`, not `asyncio.shield`). Verify with `async def` tests in `tests/test_api_thumbnails.py` (`asyncio_mode = "auto"`). They use a blocking fake `extract` that records concurrency under a lock and is released by a `threading.Event`:
+- [x] 2.3 Add `api/thumbnails.py` with `MAX_CONCURRENT_EXTRACTIONS = 2` and `ThumbnailGate`, as the design sketches it ("Bounded, shared extraction": `asyncio.wait`, not `asyncio.shield`). Verify with `async def` tests in `tests/test_api_thumbnails.py` (`asyncio_mode = "auto"`). They use a blocking fake `extract` that records concurrency under a lock and is released by a `threading.Event`:
   - 6 distinct keys: the observed maximum is exactly 2 and all six return
   - 5 waiters on one key: `extract` is called once and all five get the same path
   - a failing `extract` raises the same exception to every waiter, and the next `produce` for that key calls `extract` again
@@ -42,7 +42,7 @@
 
 ## 3. api/ — the route and its contract
 
-- [ ] 3.1 Build the gate in `create_app` (`app.state.thumbnail_gate`). Add the `async` route `GET /events/{event_id:path}/thumbnail` in `routes/events.py`, directly after `/reel` and before the detail route, with the required `clip` and the optional, ignored `v` (design "The route"), the status mapping of the design ("Status by cause") and its WARNING log on every 502. Blocking work goes through `run_in_threadpool`. The success path serves the cached file or extracts through the gate, with `Content-Type: image/jpeg`.
+- [x] 3.1 Build the gate in `create_app` (`app.state.thumbnail_gate`). Add the `async` route `GET /events/{event_id:path}/thumbnail` in `routes/events.py`, directly after `/reel` and before the detail route, with the required `clip` and the optional, ignored `v` (design "The route"), the status mapping of the design ("Status by cause") and its WARNING log on every 502. Blocking work goes through `run_in_threadpool`. The success path serves the cached file or extracts through the gate, with `Content-Type: image/jpeg`.
 
   Verify in `tests/test_api_thumbnails.py`. The app is built on an unreachable database URL (`127.0.0.1:1`, as the schema dump uses), one app per test. `thumbnail_for` is monkeypatched, under the name the route module looks up, to a fake that counts calls, records its `runtime` argument, and writes a fixed small JPEG to the real `thumbnail_path(...)` of its arguments, so the next request finds it:
   - 200 `image/jpeg`, and a second request makes no new call and returns an identical body
@@ -56,19 +56,19 @@
   - a bad `thumbnails.position` gives 502 with neither kind
   - `GET /api/v1/events/{event_id}` for the same event still reaches its own route (the database's 503 on this app), and `/reel` answers 200: the registration order holds
   - `tests/test_api_events.py` passes unchanged
-- [ ] 3.2 Add the validators and caching headers of the design ("Validators and caching headers") to the route. Verify with the 3.1 fixture:
+- [x] 3.2 Add the validators and caching headers of the design ("Validators and caching headers") to the route. Verify with the 3.1 fixture:
   - a 200 carries `ETag` (the quoted cache-path stem) and `Cache-Control: private, max-age=86400`
   - on a miss, the `ETag` is the stem of the path `thumbnail_for` returned: a fake that writes and returns a different `<key>.jpg` than `thumbnail_path` computed (a clip changed mid-request) gives that path's stem
   - `If-None-Match` with the tag, with `W/` plus the tag, and with a list containing it gives 304 with the same two headers and an empty body. No `thumbnail_for` call is made, even with the cache directory emptied first
   - a non-matching tag gives 200
   - `If-None-Match: *` gives 304 only when the JPEG is cached, and 200 (one call) otherwise
   - no problem response (404, 422, 502) carries `Cache-Control` or `ETag`
-- [ ] 3.3 Add a test marked `has_ffmpeg` that runs the real engine through the route, using the `runtime` and `make_clip` fixtures. Create the event folder `tmp_path/"proj"/2024/2024-06-27 - Grillning med grannar/` first, because `make_clip` writes to `tmp_path / name` and ffmpeg creates no folders. In it go a 640×360 clip, a 360×640 portrait clip, both 1 s long, and a zero-byte `trasig.mp4`. `config.yaml` points `thumbnails.cache_dir` at `tmp_path / "cache"`. Make the whole project tree read-only (`chmod -R a-w`, restored in `finally`; skipped as root). Verify:
+- [x] 3.3 Add a test marked `has_ffmpeg` that runs the real engine through the route, using the `runtime` and `make_clip` fixtures. Create the event folder `tmp_path/"proj"/2024/2024-06-27 - Grillning med grannar/` first, because `make_clip` writes to `tmp_path / name` and ffmpeg creates no folders. In it go a 640×360 clip, a 360×640 portrait clip, both 1 s long, and a zero-byte `trasig.mp4`. `config.yaml` points `thumbnails.cache_dir` at `tmp_path / "cache"`. Make the whole project tree read-only (`chmod -R a-w`, restored in `finally`; skipped as root). Verify:
   - both bodies start with the JPEG marker `FF D8`
   - ffprobe on the cached files reports 320×180 and 101×180
   - a snapshot of every path, size and `st_mtime_ns` under the project is unchanged afterwards
   - `trasig.mp4` answers 502 `thumbnail_failed` with a detail naming it, and the cache directory then holds exactly the two JPEGs and no temporary file
-- [ ] 3.4 Declare `response_class=Response` and `responses=` on the route:
+- [x] 3.4 Declare `response_class=Response` and `responses=` on the route:
   - 200: `image/jpeg` (`{"type": "string", "format": "binary"}`), with the `ETag` and `Cache-Control` headers
   - 304: those two headers
   - 404 and 502: `ProblemOut`
@@ -86,7 +86,7 @@
 
 ## 4. Docs and verification against the dev library
 
-- [ ] 4.1 Document the endpoint and verify it against a real library.
+- [x] 4.1 Document the endpoint and verify it against a real library.
 
   Docs:
   - a `GET /api/v1/events/{event_id}/thumbnail?clip=` entry in `README.md`'s API service section. It covers:
@@ -123,7 +123,7 @@
 
 ## 5. Validation
 
-- [ ] 5.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`, then `.venv/bin/python -m mypy auto_reel_ng`, `.venv/bin/python -m pylint auto_reel_ng` and the full `.venv/bin/python -m pytest`, including `has_ffmpeg` and `requires_db`. Verify:
+- [x] 5.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`, then `.venv/bin/python -m mypy auto_reel_ng`, `.venv/bin/python -m pylint auto_reel_ng` and the full `.venv/bin/python -m pytest`, including `has_ffmpeg` and `requires_db`. Verify:
   - all are clean or green, apart from the known cairo `no-member` noise and the environmental title-card skips
   - `RENDER_GRAPH_VERSION` is unchanged and `git status --short alembic/` is empty
   - `openspec validate clip-thumbnail-endpoint --strict` passes

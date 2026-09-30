@@ -311,6 +311,146 @@
         }
       }
     },
+    "/api/v1/events/{event_id}/thumbnail": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Thumbnail",
+        "description": "``GET /api/v1/events/{event_id}/thumbnail?clip=``: one clip's thumbnail (D-11).\n\nRegistered *before* the greedy ``{event_id:path}`` detail route for the reason\nthe ``/analysis`` route documents; the clip identity is a query parameter\nbecause two greedy path parameters cannot be told apart.\n\n``async`` on purpose: a request waiting for an extraction slot waits on the\ngate's ``asyncio`` primitives and holds no threadpool worker, so a page of cold\nthumbnails cannot starve the other routes. Every blocking step (the listing,\nthe stat, reading the JPEG, the extraction) runs in the threadpool.\n\nFailures answer by cause and carry no caching headers: 404 for an unknown event\nor a clip that is not on disk in it; 502 with ``thumbnail_failure`` when the\nengine cannot make this clip's thumbnail, with the list's ``failure`` when the\nevent cannot be listed, and with neither for the cache or ``config.yaml``.\nNothing is written into the library, and the database is never touched.",
+        "operationId": "get_thumbnail_api_v1_events__event_id__thumbnail_get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "clip",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The clip's identity as the event detail lists it: its event-relative path",
+              "title": "Clip"
+            },
+            "description": "The clip's identity as the event detail lists it: its event-relative path"
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An opaque cache-busting version; accepted and ignored",
+              "title": "V"
+            },
+            "description": "An opaque cache-busting version; accepted and ignored"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The clip's thumbnail: a JPEG fitted within 320x180",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the thumbnail: the engine's cache key, quoted",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, max-age=86400`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: `If-None-Match` names the current thumbnail",
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the thumbnail: the engine's cache key, quoted",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, max-age=86400`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/events/{event_id}": {
       "get": {
         "tags": [
@@ -1539,6 +1679,16 @@
               }
             ],
             "title": "Claimed By"
+          },
+          "thumbnail_failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThumbnailFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": true,
@@ -1614,6 +1764,14 @@
         ],
         "title": "StalenessReason",
         "description": "The closed set of reasons a stale verdict may cite.\n\nA :class:`~enum.StrEnum` member *is* a ``str``, so a reason compares, joins,\nformats and serializes exactly as the bare string it replaces — the wire\nvalues are unchanged by construction. The component members mirror\n:data:`~auto_reel_ng.staleness.fingerprint.COMPONENTS`, in that order (asserted\nby the gate's tests, so a new component cannot ship without its reason)."
+      },
+      "ThumbnailFailure": {
+        "type": "string",
+        "enum": [
+          "thumbnail_failed"
+        ],
+        "title": "ThumbnailFailure",
+        "description": "Why a clip's thumbnail could not be served: the API's classification of engine errors.\n\nA kind describes the *clip*, never the service: a thumbnail cache that cannot be\nwritten or an invalid ``config.yaml`` answers 502 with no kind at all."
       },
       "TrimBody": {
         "properties": {

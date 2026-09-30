@@ -27,6 +27,7 @@ from .problem import service_unavailable
 from .routes.events import router as events_router
 from .routes.jobs import router as jobs_router
 from .settings import ApiSettings
+from .thumbnails import ThumbnailGate
 from .ws import JobsHub, publish_ws_schema
 from .ws import router as ws_router
 
@@ -72,6 +73,8 @@ def create_app(settings: ApiSettings, *, auth_checker: Optional[AuthChecker] = N
     # Built once (D-C1): the engine identity's ffmpeg-version component is
     # per-process, not per-request (change-detection, §8.14).
     runtime = FfmpegRuntime()
+    # One per app: the thumbnail route's extraction bound is per service process (D-11).
+    thumbnail_gate = ThumbnailGate()
 
     @asynccontextmanager
     async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -88,6 +91,7 @@ def create_app(settings: ApiSettings, *, auth_checker: Optional[AuthChecker] = N
     app.state.job_store = job_store
     app.state.jobs_hub = jobs_hub
     app.state.runtime = runtime
+    app.state.thumbnail_gate = thumbnail_gate
 
     checker = auth_checker or _default_auth_checker
 
