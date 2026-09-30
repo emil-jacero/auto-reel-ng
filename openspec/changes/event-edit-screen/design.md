@@ -288,6 +288,8 @@ Detail values are already resolved. The 400 names no field.
 - The fields are not inside a submitting `<form>`, so Enter in a field never saves. Save is the save bar's
   button.
 - The form is a section with the heading "Details" (`h2`), as the keyboard requirement asks of every section.
+  Its panel heading scrolls with it, unlike the chapter panels' sticky headings: a sticky heading would sit
+  over the fields it heads.
 
 **Rationale**:
 - The file keeps holding only what the operator authored (Principle II).
@@ -343,10 +345,12 @@ and the session's reorder-UX research.
   has, because there are no thumbnails.
 - a "was N" badge when it is in the moved set
 - **Move up** and **Move down** icon buttons (`arrow-up`, `arrow-down`, `aria-label="Move <file> up"`),
-  disabled at the ends
+  unavailable at the ends: `aria-disabled`, not `disabled`, so they keep their place in the tab order
 
-**Narrow windows**: below 40rem (a container query on the chapter panel, as `web-design-system` does for
-tables), a row wraps onto two lines. The first holds the handle, position, file name and move buttons, and
+**Narrow windows**: below 54rem (a container query on the chapter panel, as `web-design-system` does for
+tables), a row wraps onto two lines. (Implementation: planned as 40rem; an edit row has two more columns
+than the read table, the handle and the move buttons, and the read table itself switches at 50rem, so
+below 54rem the file column would collapse.) The first holds the handle, position, file name and move buttons, and
 the second the status, badge, size and time. No fact is dropped. The handle and move buttons are at least
 24×24 CSS px. `web-design-system` already pads the top for the sticky header.
 
@@ -354,8 +358,15 @@ the second the status, badge, size and time. No fact is dropped. The handle and 
 its border-box height with a `ResizeObserver` (it wraps at narrow widths, so the height is not a constant)
 and writes it, in px, as `--toast-inset-bottom` in the inline style of `<html>`. The effect's cleanup
 removes the property when the bar hides or the editor unmounts; the StrictMode replay sets it again.
-- `edit.css` has `:root:has(.save-bar) { scroll-padding-bottom: var(--toast-inset-bottom, 0px); }`, so a
-  focused or dragged row is never hidden under the bar.
+- The bar is a floating card: `.save-bar` is the transparent sticky wrapper (`bottom: 0`, 16px of bottom
+  padding, clicks passing through), and its card floats that gap above the viewport's edge. The height
+  published is the wrapper's, card and gap, so a toast sits a gap above the card.
+- `web-design-system` already sets `html`'s `scroll-padding-bottom` to
+  `calc(var(--toast-inset-bottom, 0px) + var(--toast-region-h, 0px) + var(--s-4))` (`shell.css`), so a
+  focused or dragged row is never hidden under the bar or a toast: the padding is at least the bar's
+  height. (Implementation: the planned `:root:has(.save-bar) { scroll-padding-bottom:
+  var(--toast-inset-bottom, 0px); }` in `edit.css` was dropped; it would override that rule with a
+  smaller padding.)
 - `web-design-system`'s `ToastRegion` offsets its bottom by the same property, so a toast (a
   `render-progress-screen` toast can arrive while editing) sits above the bar and never covers Reset or
   Save at 390px.
@@ -377,8 +388,8 @@ its default on `:root`, not on the region element itself, which would block the 
   `lastMoved` for the badge tie-break.
 - It announces "<file> moved to position N of M." through the editor's single visually hidden
   `role="status"` region, which sits outside the lists.
-- A layout effect then re-focuses the same button of the moved row, or its sibling button if that one is
-  now disabled at an end. dnd-kit restores focus to the handle after a keyboard drop.
+- A layout effect then re-focuses the same button of the moved row; at an end that button is
+  `aria-disabled`, so it still takes focus. dnd-kit restores focus to the handle after a keyboard drop.
 
 **Scale**
 - No virtualisation.
@@ -412,14 +423,17 @@ The flow:
 
 1. **Read.** On mount, `fetchReel` with an `AbortController` that the unmount aborts (so the StrictMode
    replay leaves one live read). While loading: `SkeletonRows` with the status "Reading reel.yaml…". A
-   failure shows an `Alert`: 404 is "no longer exists" with a list link, 502 shows the `FAILURE_LABEL` words
-   plus `detail`, and unreachable shows `UNREACHABLE_CAUSE`. Each has "Try again".
+   failure shows an `Alert` in the page's own words for a failed event read, as the spec asks: 404 is "No
+   event “<folder>” under the project root." with a list link, 502 shows the cause, the `FAILURE_LABEL`
+   words and `detail`, and unreachable shows `UNREACHABLE_CAUSE`. Each has "Try again". (Implementation:
+   planned as "no longer exists", which the 404 on a save uses.)
 2. **Check.** Run `detailMatchesDocument` when `event` is non-null (see above).
 3. **Edit.** A `useReducer` holds `{ read, etag, original, orders, lastMoved, metadata, phase, problem }`.
    - A hint above the lists: "Drag a clip by its handle, or use its arrows. Clips stay in their chapter.
      Ignored clips are not played and cannot be moved."
    - When `adoptedNewCount > 0`, the hint adds "Saving this order adds N new clip(s) to reel.yaml."
-4. **Save bar.** It is `.save-bar`, `position: sticky; bottom: 0`, a `role="region"` with
+4. **Save bar** (`src/edit/SaveBar.tsx`, with the failure alert). It is `.save-bar`,
+   `position: sticky; bottom: 0`, a `role="region"` with
    `aria-label="Unsaved changes"`, shown while dirty or while a save failure is shown. Its height feeds
    `--toast-inset-bottom` and `scroll-padding-bottom` (see "Row list and keyboard access"). It contains:
    - the summary: the changed field names, "N clips moved", and "adds N new clip(s) to reel.yaml"
@@ -433,8 +447,14 @@ The flow:
      drop keyboard focus to `<body>` and take it out of the tab order (`web-design-system`'s busy-control
      rule). For the same reason the alert holding a pressed Retry or Overwrite stays rendered until the
      answer arrives: `problem` is replaced by the outcome, never cleared when the request starts.
-   - **The rest of the locked editor** (the lists, handles, move buttons, fields, Reset, and the unpressed
-     buttons) MAY use `disabled`; focus is not on them.
+   - **The rest of the locked editor** (the handles, move buttons, fields, Reset, and the unpressed
+     buttons) is `aria-disabled` too, with the fields `readOnly`: no control in the editor ever gets the
+     `disabled` attribute, so each keeps its place in the tab order and focus never drops to `<body>`.
+   - **Save when nothing can be saved** (an incomplete date, a conflict, a vanished event) is
+     `aria-disabled`, not `disabled`, and its `aria-describedby` points at the failure's alert (or, for
+     the date, at the bar's summary).
+   - After a failed answer focus stays on the pressed control, which the alert now describes; a 400
+     `unusable_metadata` moves it to the message at the date and title group.
    - Task 5.1 checks it: with `page.route` holding the PUT, Enter on Save leaves `document.activeElement` on
      Save until the answer.
 
@@ -445,7 +465,7 @@ The flow:
 | 200 | `toast.success('Saved')`, `markEventsChanged()`, `onSaved()` (the page leaves Edit mode and re-reads) | cleared |
 | 400 `unusable_metadata` | message at the date and title group | kept |
 | 400 other | alert: "The change was refused." plus `detail` | kept |
-| 404 | alert: "This event no longer exists.", link to the list, Save disabled | kept |
+| 404 | alert: "This event no longer exists.", link to the list, Save unavailable | kept |
 | 412 | conflict alert (below) | kept |
 | 502 | alert: "reel.yaml could not be saved." plus the `FAILURE_LABEL` pill when `failure` is present, plus `detail`, plus **Retry** | kept |
 | rejected, 422, other | alert: `UNREACHABLE_CAUSE` or "The service gave an unexpected answer" plus the message, plus **Retry** | kept |
@@ -486,33 +506,44 @@ Intercepting links alone misses Back, Forward and typed addresses (session React
 
 **Decision**:
 
-**In `route.ts`** (about 20 lines):
-- `setNavigationGuard(guard: ((toHash: string) => boolean) | null)`, plus a module-level `acceptedHash`.
-- In `useRoute`'s listener: if the hash differs from `acceptedHash` and a guard returns `false`,
-  `history.replaceState(history.state, '', pathname + search + acceptedHash)` restores the address (no
-  event fires) and the route is kept. Otherwise `acceptedHash` is updated.
-- `setRoute` bails out (returns `prev`) when the parsed route equals the current one. A restored address
-  therefore neither remounts, scrolls nor moves focus, even with several `useRoute` consumers (the first
-  listener restores the address, and the others then see an equal route).
+**In `route.ts`** (about 50 lines):
+- `setNavigationGuard(guard: ((proceed: () => void) => boolean) | null)`, plus module-level
+  `acceptedHash` and `acceptedIndex`.
+- Every accepted history entry carries its place in the session history, an index kept in
+  `history.state` (stamped with `replaceState`, which changes no address): the entry shown when the
+  module loads keeps its index or gets 0, and a new entry gets the accepted index plus one.
+- In `useRoute`'s listener: if the hash differs from `acceptedHash` and a guard returns `false`, the move
+  is undone. Back or Forward lands on an entry with an index, `delta` entries away, and is undone with
+  `history.go(-delta)`; a link or typed address pushes a new entry without one and is undone with one step
+  back. The undo's own `hashchange` lands on `acceptedHash` again and changes nothing. The guard receives
+  `proceed`, which redoes the move: `history.go(delta)`, or assigning the target hash again. Otherwise
+  `acceptedHash` and `acceptedIndex` are updated.
+- This replaces restoring the address with `history.replaceState`, which overwrote the history entry Back
+  had landed on, so a second Back left the app.
+- `setRoute` bails out (returns `prev`) when the parsed route equals the current one. An undone move
+  therefore neither remounts, scrolls nor moves focus.
 - `acceptedHash` starts as `location.hash` when the module loads.
 
 **In `unsaved.ts`** (the module store):
 - `useUnsavedGuard(dirty)` is used once, by the mounted editor. While `dirty`, it registers `beforeunload`
-  (`preventDefault()` plus `returnValue = ''`), and a navigation guard that stores the target and asks.
+  (`preventDefault()` plus `returnValue = ''`), and a navigation guard that stores the route's `proceed`
+  and asks.
   Its cleanup clears the guard slot only if the slot still holds its own guard, so the StrictMode replay
   (register, clean up, register) leaves exactly one guard.
 - `requestLeave(proceed)` runs `proceed` at once when nothing is dirty. Otherwise it asks first.
   `EventDetail` calls it for Refresh and for leaving Edit mode.
-- The question is one `Dialog`, "Discard unsaved changes?", rendered by the editor.
+- The question is one `Dialog`, "Discard unsaved changes?", rendered by the editor and keyed by the
+  question's number, so a question asked again before React renders (Escape, then Back at once) still
+  opens the dialog afresh.
   - **Keep editing** is focused first: the editor passes `initialFocus={keepEditingRef}` to `Dialog` (no
     React `autoFocus`). Escape or closing the dialog means the same as Keep editing.
   - **Discard** (`btn-danger`) clears dirty, drops the guard, then proceeds. For a navigation, proceeding
-    is `location.hash = target`.
+    redoes the move the route undid.
 
 **Rationale**:
 - One place asks for every way of leaving.
-- The restored address keeps the page and the draft intact.
-- The history-stack noise this leaves after a guarded Back is recorded as a risk.
+- The undone move keeps the page, the draft and the history intact: after Keep editing, Back asks again;
+  after Discard, the list is where Back had led.
 
 ### Where it mounts, and "Needs attention"
 
@@ -664,11 +695,11 @@ aids, not states the screens must show day to day.
 - **[The 400 names no field]** → The message is shown once, for the date-and-title group, with both inputs
   marked invalid. A future API change could add a field pointer. The UI would then narrow the message
   without a spec change.
-- **[A guarded Back rewrites a history entry]** Restoring with `replaceState` rewrites the entry Back landed
-  on (the list's) to the event's address. After "Keep editing", the next Back skips past it to the entry
-  before. After "Discard", the navigation pushes a new list entry, so Back from the list can revisit the
-  event page once. → Accepted and noted in the README. It is less surprising than losing edits, and the
-  Navigation API, which could cancel instead, is not yet available everywhere.
+- **[A refused link or typed address leaves a Forward entry]** The browser pushes the new entry before the
+  page can refuse it; undoing it steps back past it, so it stays as a Forward entry. Forward then asks
+  again, and Discard or a later navigation replaces it. → Accepted; a refused Back or Forward changes
+  nothing in the history. The Navigation API, which could cancel instead, is not yet available
+  everywhere.
 - **[Comments on clip entries depend on the engine gate]** At `541c44c`, `_apply_chapters` empties and
   refills every chapter's clip list (`editorial.py:188-191`), so a save would drop end-of-line comments on
   clip entries, even in untouched chapters and for a body sent back unmodified (Principle II, and the
