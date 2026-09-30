@@ -23,6 +23,7 @@ import { CSS as DndCss } from '@dnd-kit/utilities'
 import {
   memo,
   useCallback,
+  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
@@ -316,6 +317,8 @@ export const ClipOrderList = memo(function ClipOrderList({
   const listRef = useRef<HTMLOListElement>(null)
   // The button a move by button leaves focus on, once the row is in its new place.
   const focusAfterMove = useRef<{ identity: string; up: boolean } | null>(null)
+  // The same button, to scroll into view once every layout effect has run.
+  const scrollAfterMove = useRef<HTMLButtonElement | null>(null)
   const reducedMotion = useReducedMotion()
   const items = useMemo(() => [...order], [order])
   const moved = useMemo(() => movedSet(original, order, lastMoved), [original, order, lastMoved])
@@ -390,9 +393,17 @@ export const ClipOrderList = memo(function ClipOrderList({
       (child) => child instanceof HTMLElement && child.dataset.identity === request.identity,
     )
     const button = row?.querySelector<HTMLButtonElement>(request.up ? '.move-up' : '.move-down')
-    button?.focus()
-    // Focus alone does not scroll a button that already had it: keep it in view,
-    // clear of the header and the save bar (both in the page's scroll padding).
+    button?.focus({ preventScroll: true })
+    scrollAfterMove.current = button ?? null
+  }, [order])
+
+  // Focus alone does not scroll a button that already had it: keep it in view,
+  // clear of the header and the save bar (both in the page's scroll padding). A
+  // passive effect, so a save bar the move brought is already measured (the
+  // editor publishes its height in its own layout effect, after this list's).
+  useEffect(() => {
+    const button = scrollAfterMove.current
+    scrollAfterMove.current = null
     button?.scrollIntoView({ block: 'nearest' })
   }, [order])
 

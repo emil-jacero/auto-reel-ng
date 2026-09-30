@@ -1,6 +1,15 @@
 import './edit.css'
 
-import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react'
 
 import type { Clip, EventDetail } from '../api/event'
 import type { EventFailure, Problem } from '../api/events'
@@ -471,16 +480,18 @@ export function EventEditor({
   }, [locked])
 
   // The bar's height, for the toasts (they sit above it) and the bottom scroll
-  // padding (focus never hides under it). It wraps when narrow, so it is measured.
-  useEffect(() => {
+  // padding (focus never hides under it). Published in the commit that shows the
+  // bar, so the scroll a move makes right after (a passive effect) already clears
+  // it; it wraps when narrow, so a ResizeObserver follows later changes.
+  useLayoutEffect(() => {
     const bar = barRef.current
     if (!showBar || bar === null) {
       return
     }
     const root = document.documentElement
-    const observer = new ResizeObserver(() => {
-      root.style.setProperty('--toast-inset-bottom', `${bar.offsetHeight}px`)
-    })
+    const publish = () => root.style.setProperty('--toast-inset-bottom', `${bar.offsetHeight}px`)
+    publish()
+    const observer = new ResizeObserver(publish)
     observer.observe(bar)
     return () => {
       observer.disconnect()

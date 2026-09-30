@@ -83,8 +83,16 @@ export function SaveBar({
   // Save also waits while the failure's own choices are the way on.
   const saveBlocked = unsendable || problem?.kind === 'conflict' || problem?.kind === 'gone'
   const describedBy = dateIncomplete ? summaryId : problem !== null ? alertId : undefined
+  // With no edits the bar stays only for a vanished event's alert: it says so, not "unsaved".
+  const unsaved = edited || dateIncomplete
+  const title = locked ? 'Saving…' : unsaved ? 'Unsaved changes' : 'This event no longer exists'
   return (
-    <div ref={barRef} className="save-bar" role="region" aria-label="Unsaved changes">
+    <div
+      ref={barRef}
+      className="save-bar"
+      role="region"
+      aria-label={unsaved ? 'Unsaved changes' : title}
+    >
       <div className="save-bar-card">
         {/* Keyed by kind: another kind of failure is a new alert, never reused buttons. */}
         {problem !== null && (
@@ -109,12 +117,14 @@ export function SaveBar({
         <div className="save-bar-row">
           <div className="save-bar-text">
             <p className="save-bar-title">
-              <span className="save-bar-dot" aria-hidden="true" />
-              {locked ? 'Saving…' : 'Unsaved changes'}
+              {unsaved && <span className="save-bar-dot" aria-hidden="true" />}
+              {title}
             </p>
-            <p id={summaryId} className="save-bar-summary">
-              {summary}
-            </p>
+            {summary !== '' && (
+              <p id={summaryId} className="save-bar-summary">
+                {summary}
+              </p>
+            )}
           </div>
           <div className="save-bar-actions">
             <button
