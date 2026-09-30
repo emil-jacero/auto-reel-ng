@@ -64,22 +64,19 @@ function activeWords(shown: ShownJob): string | null {
 
 /**
  * The time that matches the job's state, labelled for what it is: when it
- * finished (ended), started (running) or was queued. Only a full `JobOut` (from
- * the connection or a job read) reports the first two; a read's summary carries
- * only when the job was queued, so that is shown, labelled so, when the matching
- * time is absent — never a time presented as one it is not.
+ * finished (ended), started (running) or was queued. Every job the service
+ * reports, from the connection, a job read or an events read, carries the times
+ * it recorded; a time it has not recorded is absent, and then when the job was
+ * queued is shown, labelled so — never a time presented as one it is not.
  */
-function stateTime(shown: ShownJob): { label: string; iso: string } {
-  if (shown.source === 'live') {
-    const { job } = shown
-    if (!isActive(job.status) && job.finished_at != null) {
-      return { label: 'finished', iso: job.finished_at }
-    }
-    if (job.status === 'running' && job.started_at != null) {
-      return { label: 'started', iso: job.started_at }
-    }
+function stateTime({ job }: ShownJob): { label: string; iso: string } {
+  if (!isActive(job.status) && job.finished_at != null) {
+    return { label: 'finished', iso: job.finished_at }
   }
-  return { label: 'queued', iso: shown.job.created_at }
+  if (job.status === 'running' && job.started_at != null) {
+    return { label: 'started', iso: job.started_at }
+  }
+  return { label: 'queued', iso: job.created_at }
 }
 
 /** The job's status in words: its pill, what it is doing, and its state's time. */

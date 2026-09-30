@@ -335,7 +335,9 @@ C, D and E were designed only after A and B had been used against a real library
 landed. `editorial-write-api`, `editorial-read-api` and `gui-event-screen-api-prep` closed the
 write precondition and the per-clip file facts. Slice E then needed two more `api/` prerequisites, found
 while designing it: `jobs-client-contract` (the published jobs answers, cancel outcomes and WebSocket
-frames) and `jobs-project-guards` (the output-collision refusal and project-scoped jobs). **The
+frames) and `jobs-project-guards` (the output-collision refusal and project-scoped jobs). Its follow-up
+`job-summary-times` gave the events reads' latest job its start and finish times, so a screen dates a
+job it knows only from a read by its state. **The
 resolved `look`, shown read-only in the v1 sketch above, is not exposed by any endpoint**; it is
 deferred to v2 with the look editor rather than adding a read surface for a field v1 only displays.
 
