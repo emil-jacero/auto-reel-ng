@@ -26,8 +26,8 @@ browser (see "Design system").
 or **Render anyway** (confirmed) when it is up to date, and follows the job live:
 waiting for a worker, a progress bar with its percentage and a time-left estimate,
 cancelling, and how it ended — a failure with the service's error text. Every job
-shown is dated by its state — when it finished, started or was queued — whether it
-came from the connection or a read. **Cancel**
+shown is dated by its state — when it finished (rendered) or ended (failed or
+canceled), started or was queued — whether it came from the connection or a read. **Cancel**
 stops a queued job at once and asks first for a running one. Each list row shows its
 event's job live and offers a compact Render; a finished render re-reads the list and
 the page in place, keeping what is shown until the new read answers. One WebSocket

@@ -18,7 +18,8 @@ import type { ShownJob } from './useJob'
  * | cancel requested, not ended | kept, muted                | Cancelling…            |
  * | done / failed / canceled    | none                       | (the pill)             |
  *
- * Every state also shows its time (`stateTime`): finished, started or queued.
+ * Every state also shows its time (`stateTime`): finished (rendered), ended
+ * (failed or canceled), started or queued.
  *
  * `JobState` is what a status region announces: it changes with the state only.
  * `JobMeter` is outside any live region, so progress is never announced.
@@ -64,14 +65,15 @@ function activeWords(shown: ShownJob): string | null {
 
 /**
  * The time that matches the job's state, labelled for what it is: when it
- * finished (ended), started (running) or was queued. Every job the service
+ * finished (rendered), ended (failed or canceled — "finished" would read as a
+ * completed render), started (running) or was queued. Every job the service
  * reports, from the connection, a job read or an events read, carries the times
  * it recorded; a time it has not recorded is absent, and then when the job was
  * queued is shown, labelled so — never a time presented as one it is not.
  */
 function stateTime({ job }: ShownJob): { label: string; iso: string } {
   if (!isActive(job.status) && job.finished_at != null) {
-    return { label: 'finished', iso: job.finished_at }
+    return { label: job.status === 'done' ? 'finished' : 'ended', iso: job.finished_at }
   }
   if (job.status === 'running' && job.started_at != null) {
     return { label: 'started', iso: job.started_at }

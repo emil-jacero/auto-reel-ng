@@ -91,6 +91,14 @@ working tree, which is on `main` before this change starts.
 - **`web/openapi.json` and `web/src/api/schema.d.ts` are never merged by hand.** `clip-thumbnail-endpoint`
   also regenerates them. If a cherry-pick conflicts on either, `main`'s version is taken and both are
   regenerated, then checked with the staleness test.
+- **Wording change, approved in review: a failed or canceled job's time reads "ended".** With the times in
+  the summary, every ended job read "finished …" in every tab. For a failed job, or one cancelled before it
+  started (Badutflykt: "Canceled finished …"), that looks like a completed render, and Trasig's row showed
+  "Needs render · never rendered" beside "Failed finished …". "finished" now labels only a `done` job;
+  `failed` and `canceled` read "ended" with the same `finished_at`. "started" and "queued" are unchanged.
+  The web-app requirement and its Trasig and Badutflykt scenarios say so. `render-progress-screen`'s
+  synced "A render's progress is shown live" asks for a finish time only for `done` (its failed and
+  canceled bullets name no time), so its text needed no change.
 
 ### Declaring the two fields exactly as `JobOut` does
 
@@ -181,14 +189,15 @@ The scratch prototype passed `tsc --noEmit`.
 ```ts
 /**
  * The time that matches the job's state, labelled for what it is: when it
- * finished (ended), started (running) or was queued. Every job the service
+ * finished (rendered), ended (failed or canceled — "finished" would read as a
+ * completed render), started (running) or was queued. Every job the service
  * reports, from the connection, a job read or an events read, carries the times
  * it recorded; a time it has not recorded is absent, and then when the job was
  * queued is shown, labelled so — never a time presented as one it is not.
  */
 function stateTime({ job }: ShownJob): { label: string; iso: string } {
   if (!isActive(job.status) && job.finished_at != null) {
-    return { label: 'finished', iso: job.finished_at }
+    return { label: job.status === 'done' ? 'finished' : 'ended', iso: job.finished_at }
   }
   if (job.status === 'running' && job.started_at != null) {
     return { label: 'started', iso: job.started_at }
@@ -209,6 +218,9 @@ function stateTime({ job }: ShownJob): { label: string; iso: string } {
   Showing "—" instead would lose a true fact the job does carry.
 - A requeued job (`queued`, `started_at` null) reads "queued <created_at>". That is the first enqueue, and
   the store records no requeue time (Risks).
+- *Changed during review:* the ended label depends on the status: "finished" for `done`, "ended" for
+  `failed` and `canceled` (Supervisor decisions). It is still one time per job whatever its source, so the
+  status region's words for Trasig still do not change when its job read answers.
 
 ### ADDED requirements, not MODIFIED
 
