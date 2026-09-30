@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -142,6 +143,76 @@ async def test_poller_starts_on_first_subscribe_stops_on_last_unsubscribe() -> N
     calls_after_stop = store.list_by_status_calls
     await asyncio.sleep(0.1)
     assert store.list_by_status_calls == calls_after_stop  # no further polling
+
+
+class _Unreachable(Exception):
+    """Stands in for a database error during the first subscriber's reads."""
+
+
+async def _assert_a_new_subscriber_gets_deltas(hub: JobsHub, store: FakeStore) -> None:
+    """The next subscriber is the first one again: it starts the poller and sees changes."""
+    (job_id,) = store.jobs
+    queue = await hub.subscribe()
+    try:
+        snapshot = await _drain(queue)
+        assert [job["id"] for job in snapshot["jobs"]] == [str(job_id)]
+        assert (hub.subscriber_count, hub.is_polling) == (1, True)
+        store.jobs[job_id].progress = 0.5
+        delta = await _drain(queue)
+        assert (delta["type"], delta["jobs"][0]["progress"]) == ("delta", 0.5)
+    finally:
+        await hub.unsubscribe(queue)
+
+
+@pytest.mark.parametrize("failing_read", ["list_finished_since", "list_by_status"])
+async def test_a_failed_first_subscribe_leaves_the_hub_recoverable(failing_read: str) -> None:
+    store = FakeStore()
+    job_id = uuid.uuid4()
+    store.jobs[job_id] = FakeJob(id=job_id, status=JobStatus.RUNNING, progress=0.1)
+    read = getattr(store, failing_read)
+    failures = [_Unreachable("database unreachable")]
+
+    def flaky_read(*args: object, **kwargs: object) -> object:
+        if failures:
+            raise failures.pop()
+        return read(*args, **kwargs)
+
+    setattr(store, failing_read, flaky_read)
+    hub = JobsHub(store, poll_interval=0.02)
+
+    with pytest.raises(_Unreachable):
+        await hub.subscribe()
+
+    # Nothing registered and no half-seeded state: the failed start left no trace.
+    assert (hub.subscriber_count, hub.is_polling) == (0, False)
+    assert (hub._finished_as_of, hub._terminal_sent) == (None, {})  # pylint: disable=W0212
+    await _assert_a_new_subscriber_gets_deltas(hub, store)
+
+
+async def test_a_cancelled_first_subscribe_leaves_the_hub_recoverable() -> None:
+    store = FakeStore()
+    job_id = uuid.uuid4()
+    store.jobs[job_id] = FakeJob(id=job_id, status=JobStatus.RUNNING, progress=0.1)
+    read = store.list_finished_since
+    release = threading.Event()
+
+    def held_read(*args: object, **kwargs: object) -> object:
+        release.wait(timeout=5)  # the seed read hangs until the test lets it go
+        return read(*args, **kwargs)
+
+    store.list_finished_since = held_read  # type: ignore[method-assign]
+    hub = JobsHub(store, poll_interval=0.02)
+
+    first = asyncio.create_task(hub.subscribe())
+    await asyncio.sleep(0.05)  # the seed read is now in flight on the hub's executor
+    first.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    assert (hub.subscriber_count, hub.is_polling) == (0, False)
+
+    store.list_finished_since = read  # type: ignore[method-assign]
+    release.set()
+    await _assert_a_new_subscriber_gets_deltas(hub, store)
 
 
 # --------------------------------------------------------------------------- #

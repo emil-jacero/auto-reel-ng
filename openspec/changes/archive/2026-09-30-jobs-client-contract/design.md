@@ -301,9 +301,17 @@ timedelta(seconds=30)` is a module constant.
   sent: they finished before the poller existed. The order matters: a job that finishes between the two
   reads is then in neither, and the first tick sends it.
 - **Each tick**: read `list_finished_since(watermark, overlap=_FINISHED_OVERLAP)`, then the active
-  snapshot. The terminal rows of the tick are the `vanished` final rows plus the finished-read jobs, merged
-  by id. Each is appended to the delta only if its id is not in `_terminal_sent`, and every row sent is
-  recorded there. The watermark becomes the read's `as_of`. Entries whose `finished_at` is older than
+  snapshot. The rows that left the active set are the `vanished` final rows plus the finished-read jobs,
+  merged by id. A terminal row (a status in the store's `TERMINAL_STATUSES`) is appended to the delta only
+  if its id is not in `_terminal_sent`, and once sent it is recorded there with its `finished_at`. Only
+  terminal rows with a `finished_at` are recorded. Two kinds of row go out without being recorded:
+  - a `vanished` row that is still active: the snapshot is two reads (queued, then running), so a requeue
+    landing between them hides a job from one tick. Its row is current state and is sent as before, but
+    recording it would suppress the job's real terminal row later.
+  - a terminal row without a `finished_at` (only a row written outside the store's transitions): no
+    finished read can return it, so there is nothing to de-duplicate it against.
+
+  The watermark becomes the read's `as_of`. Entries whose `finished_at` is older than
   `watermark - _FINISHED_OVERLAP` are dropped from `_terminal_sent`, because no later read can return them.
 - The existing `vanished` path stays. When a job leaves the active set by a commit that lands between
   this tick's finished read and its active read, `vanished` sends it in this tick rather than the next.
@@ -343,6 +351,10 @@ timedelta(seconds=30)` is a module constant.
     The next first subscriber seeds them again, and a job that finished while nobody was connected is
     never sent; the client's reconcile after the snapshot covers it.
   - A failed finished read fails the tick exactly as a failed active read does today.
+  - A poller start whose reads fail, or which is cancelled, registers no subscriber and resets the watermark
+    and `_terminal_sent`, so the next subscriber is the first one again and starts the poller. The WebSocket
+    handler subscribes inside its `try`, so a subscriber it registered is always unsubscribed. Before this
+    change a failed start left its subscriber registered, and no later subscriber started the poller.
 - **Worker restart mid-render**: unchanged. A requeue keeps `cancel_requested`, so a cancel flagged before a
   crash still applies after the requeue. The hub pushes the requeued row as a status change.
 - **Nothing here renders or writes files.** No `RENDER_GRAPH_VERSION` bump, and no fingerprint or manifest

@@ -34,9 +34,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..errors import IllegalJobTransitionError
 from .engine import session_scope
-from .models import Job, JobStatus
+from .models import TERMINAL_STATUSES, Job, JobStatus
 
-_TERMINAL_STATUSES = {JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELED}
 _ACTIVE_STATUSES = (JobStatus.QUEUED, JobStatus.RUNNING)
 
 
@@ -213,7 +212,7 @@ class JobStore:
         Raises :class:`~auto_reel_ng.errors.IllegalJobTransitionError` if the job
         is missing or not currently ``running`` — the row is left unchanged.
         """
-        if terminal_status not in _TERMINAL_STATUSES:
+        if terminal_status not in TERMINAL_STATUSES:
             raise ValueError(f"{terminal_status!r} is not a terminal status")
         with session_scope(self._session_factory) as session:
             job = session.get(Job, job_id)
