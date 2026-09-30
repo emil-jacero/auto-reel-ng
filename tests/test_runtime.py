@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import shutil
 import stat
+import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -172,3 +174,86 @@ def test_explicit_non_executable_path_fails(tmp_path: Path) -> None:
     fake.chmod(fake.stat().st_mode & ~stat.S_IXUSR)
     with pytest.raises(FfmpegError):
         FfmpegRuntime(ffmpeg_path=str(fake))
+
+
+# -- stderr drain: no pipe deadlock ------------------------------------------
+
+#: A stand-in ffmpeg: answers ``-version``, then acts by its last argument. One MB of
+#: stderr is more than any pipe holds, so a runner that reads stderr only after
+#: stdout's EOF deadlocks on it deterministically.
+FAKE_FFMPEG = f"""#!{sys.executable}
+import sys, time
+args = sys.argv[1:]
+if "-version" in args:
+    print("ffmpeg version 8.1 fake")
+    sys.exit(0)
+mode = args[-1]
+if mode == "flood":
+    sys.stderr.write("x" * 1_000_000)
+    sys.stderr.flush()
+    print("out_time_us=500000", flush=True)
+    print("progress=end", flush=True)
+    sys.exit(0)
+if mode == "flood-fail":
+    sys.stderr.write("y" * 1_000_000 + "\\nboom\\n")
+    sys.exit(3)
+if mode == "slow":
+    print("out_time_us=100000", flush=True)
+    time.sleep(60)
+"""
+
+
+@pytest.fixture
+def fake_runtime(tmp_path: Path) -> FfmpegRuntime:
+    fake = tmp_path / "ffmpeg"
+    fake.write_text(FAKE_FFMPEG, encoding="utf-8")
+    fake.chmod(0o755)
+    return FfmpegRuntime(ffmpeg_path=str(fake), ffprobe_path=str(fake))
+
+
+def _within(seconds: float, call) -> list:  # type: ignore[no-untyped-def]
+    """Run ``call`` on a thread; fail (rather than hang the suite) if it does not return."""
+    outcome: list = []
+
+    def target() -> None:
+        try:
+            outcome.append(("ok", call()))
+        except BaseException as exc:  # pylint: disable=broad-except
+            outcome.append(("raised", exc))
+
+    worker = threading.Thread(target=target, daemon=True)
+    worker.start()
+    worker.join(seconds)
+    assert not worker.is_alive(), f"run_with_progress did not return within {seconds}s"
+    return outcome
+
+
+def test_large_stderr_does_not_deadlock(fake_runtime: FfmpegRuntime) -> None:
+    fractions: list[float] = []
+    outcome = _within(
+        20,
+        lambda: fake_runtime.run_with_progress(
+            ["flood"], duration=1.0, on_progress=fractions.append
+        ),
+    )
+    assert outcome == [("ok", None)]
+    assert fractions == [0.5, 1.0]
+
+
+def test_failure_after_large_stderr_carries_its_tail(fake_runtime: FfmpegRuntime) -> None:
+    outcome = _within(20, lambda: fake_runtime.run_with_progress(["flood-fail"], duration=1.0))
+    kind, exc = outcome[0]
+    assert kind == "raised" and isinstance(exc, FfmpegError)
+    assert "exited 3" in str(exc)
+    assert str(exc).rstrip().endswith("boom")
+
+
+def test_failing_callback_kills_ffmpeg_and_propagates(fake_runtime: FfmpegRuntime) -> None:
+    def explode(_fraction: float) -> None:
+        raise RuntimeError("callback failed")
+
+    outcome = _within(
+        20, lambda: fake_runtime.run_with_progress(["slow"], duration=1.0, on_progress=explode)
+    )
+    kind, exc = outcome[0]
+    assert kind == "raised" and isinstance(exc, RuntimeError)

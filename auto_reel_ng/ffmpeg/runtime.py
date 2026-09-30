@@ -17,8 +17,9 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 from pathlib import Path
-from typing import Callable, Optional, Sequence
+from typing import IO, Callable, List, Optional, Sequence
 
 from ..errors import FfmpegError, FfmpegVersionError
 
@@ -95,6 +96,11 @@ def _resolve_binary(
         f"Could not locate the {name!r} binary. Looked at the explicit argument, "
         f"${env_var}, {JELLYFIN_FFMPEG_DIR}, and PATH."
     )
+
+
+def _collect(stream: IO[str], chunks: List[str]) -> None:
+    """Read ``stream`` to EOF into ``chunks`` (the stderr drain thread's body)."""
+    chunks.append(stream.read())
 
 
 def _is_executable(path: str) -> bool:
@@ -217,17 +223,31 @@ class FfmpegRuntime:
             text=True,
         ) as proc:
             last_fraction = 0.0
-            assert proc.stdout is not None
-            for line in proc.stdout:
-                fraction = self._parse_progress_line(line, duration)
-                if fraction is None:
-                    continue
-                fraction = max(last_fraction, min(1.0, fraction))
-                if fraction > last_fraction or fraction >= 1.0:
-                    last_fraction = fraction
-                    if on_progress is not None:
-                        on_progress(fraction)
-            stderr = proc.stderr.read() if proc.stderr is not None else ""
+            assert proc.stdout is not None and proc.stderr is not None
+            # Drain stderr while stdout is streamed: reading it only after stdout's EOF
+            # deadlocks as soon as ffmpeg's stderr fills its pipe, which can be as small
+            # as one page when the user is over the kernel's pipe-user-pages-soft limit.
+            stderr_chunks: List[str] = []
+            drain = threading.Thread(
+                target=_collect, args=(proc.stderr, stderr_chunks), daemon=True
+            )
+            drain.start()
+            try:
+                for line in proc.stdout:
+                    fraction = self._parse_progress_line(line, duration)
+                    if fraction is None:
+                        continue
+                    fraction = max(last_fraction, min(1.0, fraction))
+                    if fraction > last_fraction or fraction >= 1.0:
+                        last_fraction = fraction
+                        if on_progress is not None:
+                            on_progress(fraction)
+            except BaseException:
+                proc.kill()  # never leave ffmpeg running behind a failed caller
+                raise
+            finally:
+                drain.join()
+            stderr = "".join(stderr_chunks)
             returncode = proc.wait()
         if returncode != 0:
             raise FfmpegError(
