@@ -7,6 +7,7 @@ home directory. The project root is ``tmp_path / "library"``, a sibling of both.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -134,6 +135,41 @@ def test_a_cache_dir_under_an_input_directory_outside_the_root_is_refused(
     text = f"input: {archive}\nthumbnails:\n  cache_dir: {archive / '.thumbs'}\n"
     with pytest.raises(ConfigError, match=r"thumbnails\.cache_dir"):
         _resolve(text, library)
+
+
+def test_a_case_insensitive_alias_of_the_input_directory_is_refused(
+    tmp_path: Path, home: Path, library: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The archive is a case-insensitive NTFS mount: "videos/sorted" names "Videos/Sorted".
+    archive = tmp_path / "MOL" / "Videos" / "Sorted"
+    archive.mkdir(parents=True)
+    alias = tmp_path / "MOL" / "videos" / "sorted"
+    real_stat = os.stat
+
+    def casefold_stat(path: object, *args: object, **kwargs: object) -> os.stat_result:
+        if str(path).casefold() == str(archive).casefold():
+            return real_stat(archive)
+        return real_stat(path, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(os, "stat", casefold_stat)
+    text = f"input: {archive}\nthumbnails:\n  cache_dir: {alias / '.thumbs'}\n"
+    with pytest.raises(
+        ConfigError, match=r"thumbnails\.cache_dir .* lies inside the input directory"
+    ):
+        _resolve(text, library)
+
+
+def test_no_home_directory_is_a_config_error(
+    library: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+
+    def no_home(cls: type) -> Path:
+        raise RuntimeError("Could not determine home directory.")
+
+    monkeypatch.setattr(Path, "home", classmethod(no_home))
+    with pytest.raises(ConfigError, match="no home directory could be determined"):
+        _resolve("", library)
 
 
 def test_a_default_inside_the_project_root_is_refused_too(
