@@ -331,8 +331,8 @@ change directories:
 | D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency — landed in `event-edit-screen` (the event page's Edit mode) |
 | E | render + live progress | `POST /jobs` (201 / 200-fresh / 409), the WS hook, cancel — landed in `render-progress-screen` |
 
-C, D and E are deliberately **not** designed yet: their screens depend on what A and B teach against a
-real library. `editorial-write-api`, `editorial-read-api` and `gui-event-screen-api-prep` closed the
+C, D and E were designed only after A and B had been used against a real library; all three have
+landed. `editorial-write-api`, `editorial-read-api` and `gui-event-screen-api-prep` closed the
 write precondition and the per-clip file facts. Slice E then needed two more `api/` prerequisites, found
 while designing it: `jobs-client-contract` (the published jobs answers, cancel outcomes and WebSocket
 frames) and `jobs-project-guards` (the output-collision refusal and project-scoped jobs). **The
