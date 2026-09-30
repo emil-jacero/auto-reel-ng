@@ -1063,7 +1063,8 @@ thumbnail's cache key, the `ETag` or the status.
 engine's discovery finds on disk for that event, which is every clip the event detail lists that is not
 MISSING, IGNORED clips included. The endpoint SHALL answer the following with 404 and a problem body naming
 the event, without running ffmpeg or ffprobe and without reading any file outside the event:
-- an unknown event
+- an unknown event, or a folder the events list does not show as an event, such as a year folder, an
+  event's `original/` folder or a `.reelignore`d event
 - a clip the event's document references but disk does not have (MISSING)
 - a file discovery skips, such as one under `original/`
 - any identity that is not a discovered clip of that event, including one that points outside the event
@@ -1073,9 +1074,9 @@ the event, without running ffmpeg or ffprobe and without reading any file outsid
   bytes it carries, and `Cache-Control: private, max-age=86400`.
 - The entity-tag SHALL change whenever the clip file's size or modification time changes, the configured
   frame position changes, or the engine's thumbnail version changes.
-- A request whose `If-None-Match` matches the current entity-tag, under weak comparison, SHALL be answered
-  304 with the same `ETag` and `Cache-Control` and no body. That answer SHALL be given without extracting a
-  frame, even when no thumbnail is cached on the server.
+- A request whose `If-None-Match` matches the current entity-tag, under weak comparison and across all its
+  `If-None-Match` header lines, SHALL be answered 304 with the same `ETag` and `Cache-Control` and no body.
+  That answer SHALL be given without extracting a frame, even when no thumbnail is cached on the server.
 
 **Extraction.**
 - A thumbnail already cached SHALL be served without extraction and without waiting behind extractions in
@@ -1092,8 +1093,9 @@ the event, without running ffmpeg or ffprobe and without reading any file outsid
 **Failures, by cause.** Each SHALL be a problem body naming the event:
 - **502 with the thumbnail failure kind:** the engine cannot produce a thumbnail. For example, the clip is
   empty or undecodable, it has no frame at the configured position, or it can no longer be statted
-  because it changed after the event was listed. The detail SHALL be the engine's message naming the clip
-  and the cause. No placeholder image is returned.
+  because it changed after the event was listed. The detail SHALL name the clip by its requested identity
+  and give the engine's reason cut to one line, without server paths, commands or tool output. No
+  placeholder image is returned.
 - **502 with the unreadable-disk failure kind the events reads use:** the event's folder cannot be listed.
 - **502 whose detail names the problem, with no failure kind:** the thumbnail cache cannot be read or
   written, or the project `config.yaml` cannot be loaded or holds an invalid thumbnail setting.
@@ -1179,11 +1181,24 @@ responses SHALL carry no caching headers.
 - **WHEN** the endpoint names an event id that does not resolve under the configured project root
 - **THEN** the response is 404 with a problem body
 
+#### Scenario: A folder that is not an event
+- **WHEN** the endpoint names the year folder `2024` with `clip=2024-06-27 - Grillning med grannar/s1710001.mp4`,
+  or the folder `2024/2024-06-27 - Grillning med grannar/original` with a file in it
+- **THEN** each response is 404 with a problem body naming the requested id, and no ffmpeg or ffprobe
+  process is started
+
 #### Scenario: An undecodable clip fails loud with the thumbnail kind
 - **WHEN** the event `2024/2024-10-05 - Trasig` is asked for its zero-byte clip `trasig.mp4`
 - **THEN** the response is 502 with the thumbnail failure kind, and a detail naming `trasig.mp4` and
   reporting that the file is empty. No image and no cache entry are produced, and a second request tries
   again and answers the same 502.
+
+#### Scenario: A corrupt clip's detail is one line without server paths
+- **WHEN** an event holds a clip of random bytes, or an mp4 whose media data is cut short behind an intact
+  index, and each is requested
+- **THEN** each response is 502 with the thumbnail failure kind, and its detail is the clip's identity
+  followed by a one-line cause: no newline, no ffmpeg or ffprobe command, and no path of the server
+- **AND** the service's log keeps the full reason, with the failing command and its output
 
 #### Scenario: A cache that cannot be written is the service's fault, not the clip's
 - **WHEN** the configured thumbnail cache directory is read-only and an uncached clip is requested
