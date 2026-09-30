@@ -486,6 +486,7 @@ export function load(jobId: string, options: LoadOptions = {}): void {
           forget(jobId)
           break
         case 'unreachable':
+        case 'unpublished':
           break
       }
     })
