@@ -1,6 +1,6 @@
 ## 1. Baseline (no gate: this change lands first)
 
-- [ ] 1.1 Confirm the starting point. This change has **no gate**. `event-edit-screen` and
+- [x] 1.1 Confirm the starting point. This change has **no gate**. `event-edit-screen` and
   `render-progress-screen` are gated on it. Steps:
   - Confirm `openspec/changes/` holds no other active change that edits `web/src/app.css`,
     `web/src/App.tsx` or `web/src/events/*.tsx`, apart from `event-edit-screen` and
@@ -27,7 +27,7 @@
 
 ## 2. web/ — stylesheets and tokens
 
-- [ ] 2.1 Add the stylesheets and page metadata (design "Stylesheet architecture", "Tokens and the support
+- [x] 2.1 Add the stylesheets and page metadata (design "Stylesheet architecture", "Tokens and the support
   floor", "Theme choice and persistence"):
   - Add `src/styles/index.css`: the single `@layer reset, tokens, base, components, screens;` statement,
     then `@import`s of the four other files.
@@ -57,7 +57,7 @@
 
 ## 3. web/ — shared UI and the app shell
 
-- [ ] 3.1 Add the status primitives (design "Shared primitives", "Status tones and icons"):
+- [x] 3.1 Add the status primitives (design "Shared primitives", "Status tones and icons"):
   - `src/ui/Icon.tsx`: the 20 `IconName`s in a `Record<IconName, ReactNode>`, paths copied from
     `lucide-static`'s `icons/*.svg`, Lucide's license notice (ISC, plus Feather's MIT) in the header
   - `src/ui/Pill.tsx` (`Tone`, `Pill`), `src/ui/Alert.tsx`, and `src/ui/Skeleton.tsx` (`SkeletonRows`,
@@ -70,7 +70,7 @@
   - `tsc --noEmit` passes
   - temporarily deleting the `'grip-vertical'` path entry makes `tsc` fail at the record; restore it
   - temporarily deleting one `JOB_STATUS_LOOK` key makes `tsc` fail; restore it
-- [ ] 3.2 Add the overlay primitives, per design "Shared primitives":
+- [x] 3.2 Add the overlay primitives, per design "Shared primitives":
   - `src/ui/Dialog.tsx`, with the self-initiated-close guard and the optional
     `initialFocus?: RefObject<HTMLElement | null>`: focused right after `showModal()` when given and
     connected; otherwise the first focusable child gets focus (native behavior). No `autoFocus`.
@@ -86,7 +86,7 @@
     blind
   - `grep -n 'autoFocus' web/src/ui/Dialog.tsx` prints nothing, and
     `grep -rn -- '--toast-inset-bottom' web/src` shows only the read in `components.css`
-- [ ] 3.3 Add the shell:
+- [x] 3.3 Add the shell:
   - `src/shell/theme.ts`, with every storage access in `try/catch`
   - `src/shell/AppShell.tsx`: the skip button, the brand mark, the primary nav with `aria-current`, the
     empty `<div className="shell-status" />`, the theme radio group and `<ToastRegion />`, plus
@@ -106,7 +106,7 @@
 
 ## 4. web/ — the two screens
 
-- [ ] 4.1 Restyle the event list (design "Tables at every width", "Status tones and icons", "The
+- [x] 4.1 Restyle the event list (design "Tables at every width", "Status tones and icons", "The
   events-changed signal"):
   - Add `src/events/list.css`, imported by `EventList.tsx`.
   - Markup:
@@ -125,7 +125,7 @@
   - `tsc --noEmit` passes
   - no `.table-scroll` or `nth-child` remains in `EventList.tsx` or `list.css`
   - `describeProblem` in `EventList.tsx` is unchanged (`git diff` shows no edit inside it)
-- [ ] 4.2 Restyle the event page (design "App shell, skip control and focus", "Tables at every width"):
+- [x] 4.2 Restyle the event page (design "App shell, skip control and focus", "Tables at every width"):
   - Add `src/events/detail.css`, imported by `EventDetail.tsx`.
   - The header: a back link with the `chevron-left` icon to `LIST_HREF`, the `h1` (`tabIndex={-1}`), the
     facts line, the description, the verdict and latest-job pills, the counts, the muted "Read <time>"
@@ -147,7 +147,7 @@
 
 ## 5. Docs
 
-- [ ] 5.1 Update `web/README.md`:
+- [x] 5.1 Update `web/README.md`:
   - the screens paragraph ("both read-only" becomes "both only read"), plus the theme control and the
     events-changed re-read
   - the file tree: `styles/`, `ui/`, `shell/`, `events/changes.ts`, `tones.ts` and the css files; `app.css`
@@ -171,7 +171,7 @@
 
 ## 6. Verification against the dev library
 
-- [ ] 6.1 Run an ad-hoc Playwright pass from the session scratchpad, **never committed**:
+- [x] 6.1 Run an ad-hoc Playwright pass from the session scratchpad, **never committed**:
   - script: `/tmp/claude-1000/-var-home-emil-dev-larnet-auto-reel-project/72ded660-4d8e-435c-8a06-07bf9520945a/scratchpad/verify/web-design-system/check.py`
   - container: `podman run --rm --network host --ipc host -v <scratch>:/work:Z -w /work
     mcr.microsoft.com/playwright/python:v1.49.0-noble`
@@ -258,7 +258,7 @@
 
 ## 7. Validation
 
-- [ ] 7.1 Run `npx tsc --noEmit` and `npm run build` in the node:22 container, and the full
+- [x] 7.1 Run `npx tsc --noEmit` and `npm run build` in the node:22 container, and the full
   `.venv/bin/python -m pytest`, which must keep the web-mount and OpenAPI drift tests green. No Python file
   changed, so black, isort, mypy and pylint are run only to confirm they are unchanged:
   - `.venv/bin/python -m black --check auto_reel_ng tests`

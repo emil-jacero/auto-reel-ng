@@ -1,0 +1,195 @@
+/* The shell (`AppShell.tsx`) and the page frame both screens share. */
+@layer screens {
+  html {
+    /* Keep a focused or scrolled-to element clear of the header and a sticky panel heading. */
+    scroll-padding-top: calc(var(--header-h) + var(--panel-head-h) + var(--s-2));
+  }
+
+  .skip-link {
+    position: fixed;
+    inset-block-start: var(--s-2);
+    inset-inline-start: var(--s-2);
+    z-index: 40;
+
+    &:not(:focus) {
+      inline-size: 1px;
+      block-size: 1px;
+      min-block-size: 0;
+      margin: -1px;
+      padding: 0;
+      border: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
+
+  /* Sticky and translucent; the page scrolls beneath it. */
+  .app-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    block-size: var(--header-h);
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklab, var(--bg) 82%, transparent);
+    backdrop-filter: saturate(1.5) blur(12px);
+  }
+
+  .app-header-inner {
+    display: flex;
+    align-items: center;
+    gap: var(--s-4);
+    block-size: 100%;
+    max-inline-size: calc(var(--page-max) + 2 * var(--page-gutter));
+    margin-inline: auto;
+    padding-inline: var(--page-gutter);
+  }
+
+  .brand {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: var(--s-2);
+    font-size: 0.9375rem;
+    font-weight: 650;
+    letter-spacing: -0.015em;
+  }
+
+  .brand-mark {
+    flex: none;
+    inline-size: 1.375rem;
+    block-size: 1.375rem;
+  }
+
+  .brand-tile,
+  .brand-hole {
+    fill: var(--accent);
+  }
+
+  .brand-reel {
+    fill: var(--accent-fg);
+  }
+
+  .app-nav {
+    display: flex;
+    align-items: center;
+    gap: var(--s-1);
+
+    & a {
+      display: inline-flex;
+      align-items: center;
+      min-block-size: 1.875rem;
+      padding: 0 var(--s-3);
+      border-radius: var(--r-md);
+      color: var(--fg-muted);
+      font-weight: 500;
+      text-decoration: none;
+      transition:
+        background-color var(--dur-fast) var(--ease-out),
+        color var(--dur-fast) var(--ease-out);
+    }
+
+    & a:hover {
+      background: var(--surface-hover);
+      color: var(--fg);
+    }
+
+    & a[aria-current='page'] {
+      background: var(--surface-hover);
+      color: var(--fg);
+    }
+  }
+
+  .shell-status {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-inline-size: 0;
+    margin-inline-start: auto;
+  }
+
+  .theme-control label {
+    inline-size: 1.75rem;
+    padding: 0;
+  }
+
+  /* A phone keeps the mark and hides the name, which stays in the accessibility tree. */
+  @media (width < 30rem) {
+    .app-header-inner {
+      gap: var(--s-3);
+    }
+
+    .brand-name {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
+
+  /* The page frame: each screen's <main>. */
+  .page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-5);
+    max-inline-size: calc(var(--page-max) + 2 * var(--page-gutter));
+    margin-inline: auto;
+    padding: var(--s-6) var(--page-gutter) var(--s-7);
+  }
+
+  .page-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+  }
+
+  .page-title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-3) var(--s-4);
+
+    & h1 {
+      min-inline-size: 0;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .page-actions,
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2) var(--s-3);
+  }
+
+  .page-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2) var(--s-3);
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--s-2);
+    padding: var(--s-7) var(--s-4);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--r-lg);
+    color: var(--fg-muted);
+    text-align: center;
+
+    & > svg {
+      color: var(--fg-subtle);
+    }
+  }
+}

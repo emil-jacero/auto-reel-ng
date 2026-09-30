@@ -1,5 +1,7 @@
 import type { JobSummary, Staleness } from '../api/events'
+import { Pill } from '../ui/Pill'
 import { JOB_STATUS_LABEL, REASON_LABEL } from './labels'
+import { JOB_STATUS_LOOK, VERDICT_LOOK } from './tones'
 
 /** Helpers both event screens share. */
 
@@ -32,32 +34,38 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(1)} ${BYTE_UNITS[unit]}`
 }
 
+/** The latest job: its status as a pill ("Rendering 42%" while running) and when it was queued. */
 export function JobCell({ job }: { job: JobSummary | null | undefined }) {
   if (job == null) {
     return null
   }
-  const when = new Date(job.created_at).toLocaleString()
+  const look = JOB_STATUS_LOOK[job.status]
   return (
-    <>
-      <span className={`job job-${job.status}`}>{JOB_STATUS_LABEL[job.status]}</span>
-      {job.status === 'running' && <> {Math.round(job.progress * 100)}%</>}
-      <div className="muted">{when}</div>
-    </>
+    <span className="job-cell">
+      <Pill tone={look.tone} icon={look.icon}>
+        {JOB_STATUS_LABEL[job.status]}
+        {job.status === 'running' && <> {Math.round(job.progress * 100)}%</>}
+      </Pill>
+      <time className="job-time" dateTime={job.created_at}>
+        {new Date(job.created_at).toLocaleString()}
+      </time>
+    </span>
   )
 }
 
 /** The render verdict: a pill, and every reason in words when stale. */
 export function StalenessCell({ staleness }: { staleness: Staleness }) {
+  const look = staleness.stale ? VERDICT_LOOK.stale : VERDICT_LOOK.fresh
   return (
-    <>
-      <span className={staleness.stale ? 'pill pill-stale' : 'pill pill-fresh'}>
+    <span className="verdict">
+      <Pill tone={look.tone} icon={look.icon}>
         {staleness.stale ? 'Needs render' : 'Up to date'}
-      </span>
+      </Pill>
       {staleness.stale && staleness.reasons.length > 0 && (
         <span className="reasons">
           {staleness.reasons.map((reason) => REASON_LABEL[reason]).join(', ')}
         </span>
       )}
-    </>
+    </span>
   )
 }

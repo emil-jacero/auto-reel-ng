@@ -1,0 +1,118 @@
+/*
+ * Design tokens: the only place a color, size or duration is chosen.
+ *
+ * Every color is one `light-dark(<light>, <dark>)` value in OKLCH, so the two
+ * schemes cannot drift apart. Neutrals sit on hue 260 and the one accent on 265.
+ * Within a scheme every tone's `-bg` shares one lightness and every `-fg`
+ * another, so status pills read as one family: a contrast fix moves a lightness
+ * for all five tones together. `--fg-subtle` is for icons, borders and
+ * placeholders only, never for text (it is below 4.5:1).
+ */
+@layer tokens {
+  :root {
+    color-scheme: light dark;
+
+    /* Neutrals */
+    --bg: light-dark(oklch(98.5% 0.003 260), oklch(16% 0.008 260));
+    --surface: light-dark(oklch(100% 0 0), oklch(19.5% 0.01 260));
+    --surface-2: light-dark(oklch(97.5% 0.004 260), oklch(22% 0.012 260));
+    --surface-hover: light-dark(oklch(96% 0.006 260), oklch(24.5% 0.014 260));
+    /* Raised: a selected segment and the floating layers, lighter than --surface in dark. */
+    --surface-raised: light-dark(oklch(100% 0 0), oklch(24% 0.013 260));
+    --border: light-dark(oklch(92% 0.006 260), oklch(28% 0.014 260));
+    --border-strong: light-dark(oklch(86% 0.009 260), oklch(35% 0.016 260));
+    --fg: light-dark(oklch(21% 0.02 260), oklch(95% 0.006 260));
+    --fg-muted: light-dark(oklch(47% 0.02 260), oklch(72% 0.016 260));
+    --fg-subtle: light-dark(oklch(62% 0.015 260), oklch(56% 0.016 260));
+
+    /* The one accent */
+    --accent: light-dark(oklch(52% 0.2 265), oklch(70% 0.15 265));
+    --accent-hover: light-dark(oklch(47% 0.2 265), oklch(76% 0.13 265));
+    --accent-fg: light-dark(oklch(99% 0 0), oklch(17% 0.02 265));
+    --accent-soft: light-dark(oklch(95% 0.03 265), oklch(27% 0.06 265));
+    --focus-ring: var(--accent);
+
+    /* Status tones: soft background, text, solid (icons, bars). */
+    --ok-bg: light-dark(oklch(95% 0.04 155), oklch(27% 0.05 155));
+    --ok-fg: light-dark(oklch(43% 0.11 155), oklch(83% 0.13 155));
+    --ok: light-dark(oklch(60% 0.15 155), oklch(72% 0.15 155));
+    --warn-bg: light-dark(oklch(95% 0.05 85), oklch(27% 0.05 85));
+    --warn-fg: light-dark(oklch(43% 0.1 70), oklch(83% 0.13 85));
+    --warn: light-dark(oklch(72% 0.16 75), oklch(80% 0.15 85));
+    --err-bg: light-dark(oklch(95% 0.03 25), oklch(27% 0.06 25));
+    --err-fg: light-dark(oklch(43% 0.17 27), oklch(83% 0.1 25));
+    --err: light-dark(oklch(58% 0.21 27), oklch(70% 0.17 25));
+    --info-bg: light-dark(oklch(95% 0.03 265), oklch(27% 0.06 265));
+    --info-fg: light-dark(oklch(43% 0.17 265), oklch(83% 0.09 265));
+    --info: var(--accent);
+    --idle-bg: light-dark(oklch(95% 0.006 260), oklch(27% 0.014 260));
+    --idle-fg: light-dark(oklch(43% 0.02 260), oklch(83% 0.016 260));
+    --idle: var(--fg-subtle);
+
+    /* Shadows: floating layers only (dialog, toast). */
+    --shadow-color: light-dark(oklch(22% 0.02 260 / 0.1), oklch(0% 0 0 / 0.45));
+    --shadow-sm: 0 1px 2px var(--shadow-color);
+    --shadow-md: 0 4px 12px var(--shadow-color), 0 1px 3px var(--shadow-color);
+    --shadow-lg: 0 16px 40px var(--shadow-color), 0 2px 8px var(--shadow-color);
+    --backdrop: light-dark(oklch(22% 0.02 260 / 0.35), oklch(0% 0 0 / 0.6));
+
+    /* Spacing, 4px base */
+    --s-1: 0.25rem;
+    --s-2: 0.5rem;
+    --s-3: 0.75rem;
+    --s-4: 1rem;
+    --s-5: 1.5rem;
+    --s-6: 2rem;
+    --s-7: 3rem;
+
+    /* Radii */
+    --r-sm: 4px;
+    --r-md: 6px;
+    --r-lg: 10px;
+    --r-full: 999px;
+
+    /* Type: system fonts only, 14px body */
+    --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+    --text-xs: 0.75rem;
+    --text-sm: 0.8125rem;
+    --text-base: 0.875rem;
+    --text-md: 1rem;
+    --text-lg: 1.25rem;
+    --text-xl: 1.625rem;
+    --lh-tight: 1.25;
+    --lh-normal: 1.5;
+
+    /* Motion: transition durations only. Loops use literal durations. */
+    --dur-fast: 120ms;
+    --dur-med: 200ms;
+    --dur-slow: 320ms;
+    --ease-out: cubic-bezier(0.2, 0, 0, 1);
+    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Layout */
+    --page-gutter: clamp(1rem, 4vw, 2rem);
+    --header-h: 3rem;
+    --panel-head-h: 2.75rem;
+    --row-h: 2.5rem;
+    --page-max: 72rem;
+  }
+
+  /* The theme control's override (src/shell/theme.ts). No other rule reads data-theme. */
+  :root[data-theme='light'] {
+    color-scheme: light;
+  }
+
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+  }
+
+  /* Reduced motion: every transition reads a --dur-* token, so this stops them all. */
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --dur-fast: 0ms;
+      --dur-med: 0ms;
+      --dur-slow: 0ms;
+    }
+  }
+}

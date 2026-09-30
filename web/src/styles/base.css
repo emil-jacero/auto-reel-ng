@@ -1,0 +1,87 @@
+/*
+ * Elements, typographically only: font, color, margins and link color. Nothing
+ * here sets `display` or layout on `main`, `header`, `nav` or `table` — layout
+ * lives in classes, so new markup never inherits a stray flex row.
+ */
+@layer base {
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: var(--text-base) / var(--lh-normal) var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-weight: 600;
+    line-height: var(--lh-tight);
+    text-wrap: balance;
+  }
+
+  h1 {
+    font-size: var(--text-xl);
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    font-size: var(--text-base);
+    letter-spacing: -0.005em;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  a {
+    color: inherit;
+    text-decoration-color: color-mix(in oklab, currentColor 35%, transparent);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+  }
+
+  a:hover {
+    text-decoration-color: currentColor;
+  }
+
+  th {
+    font-weight: 500;
+    text-align: start;
+  }
+
+  /* Counts, sizes and times line up in columns. */
+  time,
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+
+  code,
+  kbd,
+  samp {
+    font-family: var(--font-mono);
+    font-size: 0.92em;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  a:focus-visible {
+    border-radius: var(--r-sm);
+  }
+
+  /*
+   * A page heading is focused only by script (after navigation, or the skip
+   * control), never by Tab: it shows no ring. Chromium would draw one after a
+   * keyboard-started navigation, since script focus then counts as visible.
+   */
+  h1[tabindex='-1']:focus {
+    outline: none;
+  }
+}

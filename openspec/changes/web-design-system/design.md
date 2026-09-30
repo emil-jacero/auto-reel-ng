@@ -98,13 +98,21 @@ the web.dev Baseline tables.
 **Decision**:
 - `tokens.css` defines on `:root`:
   - `color-scheme: light dark`
-  - neutrals: `--bg`, `--surface`, `--surface-2`, `--surface-hover`, `--border`, `--border-strong`, `--fg`,
-    `--fg-muted`, `--fg-subtle`
+  - neutrals: `--bg`, `--surface`, `--surface-2`, `--surface-hover`, `--surface-raised`, `--border`,
+    `--border-strong`, `--fg`, `--fg-muted`, `--fg-subtle`
   - accent: `--accent`, `--accent-hover`, `--accent-fg`, `--accent-soft`, `--focus-ring`
-  - per tone `ok|warn|err|info|idle`: `--<tone>-bg`, `--<tone>-fg` and `--<tone>` (solid)
+  - per tone `ok|warn|err|info|idle`: `--<tone>-bg`, `--<tone>-fg` and `--<tone>` (solid); `--info` and
+    `--idle` alias `--accent` and `--fg-subtle`
   - spacing `--s-1..7` (4px base); radii `--r-sm|md|lg|full`; shadows `--shadow-sm|md|lg` (floating layers
-    only); type `--font-sans`, `--font-mono`, `--text-xs..xl` (body `--text-base` = 14px), `--lh-*`;
-    motion `--dur-fast|med|slow`, `--ease-*`; layout `--header-h`, `--page-max`, `--row-h`
+    only) over `--shadow-color`, and the dialog `--backdrop`; type `--font-sans`, `--font-mono`,
+    `--text-xs..xl` (body `--text-base` = 14px), `--lh-*`; motion `--dur-fast|med|slow`, `--ease-*`; layout
+    `--page-gutter`, `--header-h`, `--panel-head-h`, `--page-max`, `--row-h`
+  - *Added during implementation:* `--surface-raised` exists because in the dark scheme a floating layer
+    (dialog, toast) and the selected segment of a segmented control must be **lighter** than `--surface`;
+    `--surface` itself would sink below the track. `--panel-head-h` is the sticky panel heading's height, read
+    by `scroll-padding-top`. `--page-gutter` (`clamp(1rem, 4vw, 2rem)`) is the page's side padding.
+    `--shadow-color` and `--backdrop` keep the shadow and backdrop colors inside the one-token-per-color
+    rule.
 - Every color MUST be one `light-dark(<light>, <dark>)` value in OKLCH: hue 260 for neutrals, 265 for the
   accent. Within a scheme, every tone's `-bg` shares one lightness and every tone's `-fg` shares another,
   so pills read as one family. Chroma may differ by hue, within gamut. A contrast fix moves a lightness
@@ -128,47 +136,64 @@ the web.dev Baseline tables.
 
   `web/README.md` records the gate. Later changes run the same three commands over their own
   directories (C4 over `web/src/edit`, C5 over `web/src/jobs`) in their validation tasks.
-- `--fg-subtle` is for icons, borders and placeholders only, never for text: at its starting value it is
-  below 4.5:1 on `--bg` in both schemes.
-- Starting values (colors):
+- `--fg-subtle` is for icons, borders and placeholders only, never for text: it is below 4.5:1 on `--bg` in
+  both schemes.
+- Shipped values (colors). The plan's starting values were tuned by eye during implementation — a deeper
+  dark background (16% instead of 17%), a slightly deeper light accent (52% instead of 55%, for primary
+  buttons and focus rings), and tone lightnesses of 95%/27% (`-bg`) and 43%/83% (`-fg`) instead of
+  95%/29% and 45%/82% — then measured (see below). Hues, the equal-lightness-per-tone rule and the
+  `light-dark()` form are unchanged:
 
   ```css
-  --bg:            light-dark(oklch(99% 0.003 260), oklch(17% 0.010 260));
-  --surface:       light-dark(oklch(100% 0 0),      oklch(21% 0.012 260));
-  --surface-2:     light-dark(oklch(97% 0.005 260), oklch(24% 0.014 260));
-  --surface-hover: light-dark(oklch(95.5% 0.006 260), oklch(27% 0.016 260));
-  --border:        light-dark(oklch(91% 0.008 260), oklch(30% 0.016 260));
-  --border-strong: light-dark(oklch(84% 0.010 260), oklch(38% 0.018 260));
-  --fg:            light-dark(oklch(22% 0.020 260), oklch(96% 0.006 260));
-  --fg-muted:      light-dark(oklch(48% 0.020 260), oklch(72% 0.016 260));
-  --fg-subtle:     light-dark(oklch(60% 0.015 260), oklch(58% 0.016 260));
-  --accent:        light-dark(oklch(55% 0.19 265),  oklch(70% 0.15 265));
-  --accent-hover:  light-dark(oklch(50% 0.20 265),  oklch(76% 0.14 265));
-  --accent-fg:     light-dark(oklch(99% 0 0),       oklch(18% 0.02 265));
-  --accent-soft:   light-dark(oklch(95% 0.03 265),  oklch(28% 0.06 265));
-  --focus-ring:    var(--accent);
-  /* tones: -bg L 95% / 29%, -fg L 45% / 82%, solid as listed */
-  --ok-bg:   light-dark(oklch(95% 0.04 155),  oklch(29% 0.05 155));
-  --ok-fg:   light-dark(oklch(45% 0.11 155),  oklch(82% 0.13 155));
-  --ok:      light-dark(oklch(62% 0.15 155),  oklch(72% 0.15 155));
-  --warn-bg: light-dark(oklch(95% 0.05 85),   oklch(29% 0.05 85));
-  --warn-fg: light-dark(oklch(45% 0.10 70),   oklch(82% 0.13 85));
-  --warn:    light-dark(oklch(75% 0.16 80),   oklch(80% 0.15 85));
-  --err-bg:  light-dark(oklch(95% 0.03 25),   oklch(29% 0.06 25));
-  --err-fg:  light-dark(oklch(45% 0.17 27),   oklch(82% 0.12 25));
+  --bg:             light-dark(oklch(98.5% 0.003 260), oklch(16% 0.008 260));
+  --surface:        light-dark(oklch(100% 0 0),        oklch(19.5% 0.01 260));
+  --surface-2:      light-dark(oklch(97.5% 0.004 260), oklch(22% 0.012 260));
+  --surface-hover:  light-dark(oklch(96% 0.006 260),   oklch(24.5% 0.014 260));
+  --surface-raised: light-dark(oklch(100% 0 0),        oklch(24% 0.013 260));
+  --border:         light-dark(oklch(92% 0.006 260),   oklch(28% 0.014 260));
+  --border-strong:  light-dark(oklch(86% 0.009 260),   oklch(35% 0.016 260));
+  --fg:             light-dark(oklch(21% 0.02 260),    oklch(95% 0.006 260));
+  --fg-muted:       light-dark(oklch(47% 0.02 260),    oklch(72% 0.016 260));
+  --fg-subtle:      light-dark(oklch(62% 0.015 260),   oklch(56% 0.016 260));
+  --accent:         light-dark(oklch(52% 0.2 265),     oklch(70% 0.15 265));
+  --accent-hover:   light-dark(oklch(47% 0.2 265),     oklch(76% 0.13 265));
+  --accent-fg:      light-dark(oklch(99% 0 0),         oklch(17% 0.02 265));
+  --accent-soft:    light-dark(oklch(95% 0.03 265),    oklch(27% 0.06 265));
+  --focus-ring:     var(--accent);
+  /* tones: -bg L 95% / 27%, -fg L 43% / 83%, solid as listed */
+  --ok-bg:   light-dark(oklch(95% 0.04 155),  oklch(27% 0.05 155));
+  --ok-fg:   light-dark(oklch(43% 0.11 155),  oklch(83% 0.13 155));
+  --ok:      light-dark(oklch(60% 0.15 155),  oklch(72% 0.15 155));
+  --warn-bg: light-dark(oklch(95% 0.05 85),   oklch(27% 0.05 85));
+  --warn-fg: light-dark(oklch(43% 0.1 70),    oklch(83% 0.13 85));
+  --warn:    light-dark(oklch(72% 0.16 75),   oklch(80% 0.15 85));
+  --err-bg:  light-dark(oklch(95% 0.03 25),   oklch(27% 0.06 25));
+  --err-fg:  light-dark(oklch(43% 0.17 27),   oklch(83% 0.1 25));
   --err:     light-dark(oklch(58% 0.21 27),   oklch(70% 0.17 25));
-  --info-bg: light-dark(oklch(95% 0.03 265),  oklch(29% 0.06 265));
-  --info-fg: light-dark(oklch(45% 0.16 265),  oklch(82% 0.10 265));
-  --idle-bg: light-dark(oklch(95% 0.006 260), oklch(29% 0.014 260));
-  --idle-fg: light-dark(oklch(45% 0.02 260),  oklch(82% 0.016 260));
+  --info-bg: light-dark(oklch(95% 0.03 265),  oklch(27% 0.06 265));
+  --info-fg: light-dark(oklch(43% 0.17 265),  oklch(83% 0.09 265));
+  --info:    var(--accent);
+  --idle-bg: light-dark(oklch(95% 0.006 260), oklch(27% 0.014 260));
+  --idle-fg: light-dark(oklch(43% 0.02 260),  oklch(83% 0.016 260));
+  --idle:    var(--fg-subtle);
+  --shadow-color: light-dark(oklch(22% 0.02 260 / 0.1),  oklch(0% 0 0 / 0.45));
+  --backdrop:     light-dark(oklch(22% 0.02 260 / 0.35), oklch(0% 0 0 / 0.6));
   ```
 
   Other tokens: `--s-1..7` = 4, 8, 12, 16, 24, 32, 48px; `--r-sm|md|lg|full` = 4, 6, 10, 999px;
   `--text-xs|sm|base|md|lg|xl` = 12, 13, 14, 16, 20, 26px; `--dur-fast|med|slow` = 120, 200, 320ms;
-  `--header-h` 3rem, `--row-h` 2.5rem, `--page-max` 72rem.
-- These values are chosen by eye and estimated, **not** measured. Task 6.1 measures contrast (axe-core
-  `color-contrast`, both schemes), and this change adjusts lightness until every text/background pair
-  passes AA.
+  `--page-gutter` `clamp(1rem, 4vw, 2rem)`, `--header-h` 3rem, `--panel-head-h` 2.75rem, `--row-h` 2.5rem,
+  `--page-max` 72rem.
+- **Measured** in task 6.1: axe-core `wcag2a` + `wcag2aa` reports zero violations on the list,
+  `2024-08-20 - Två kapitel - Tjörn` and `2024-02-30 - Omöjligt datum`, in both schemes. Computed from the
+  tokens: muted text on `--bg` 6.56:1 (light) and 7.85:1 (dark); every pill's text on its own `-bg`
+  6.7–7.5:1 (light) and 8.7–9.1:1 (dark); the focus ring against the page 5.55:1 and 7.13:1. A later token
+  change re-measures the same way.
+- **`color-mix()` interpolates `in oklab`, never `in oklch`.** Found during implementation: mixing a warm
+  tone into a cool neutral in OKLCH interpolates the **hue** the short way round, so
+  `color-mix(in oklch, var(--warn) 40%, var(--border))` came out pink in the light scheme and teal in the
+  dark one. OKLab has no hue axis, so a mix only moves between the two colors. Later changes follow the
+  same rule.
 - The support floor is recorded in `web/README.md`: evergreen browsers from 2024 on (the versions above).
 
 **Rationale**:
@@ -232,8 +257,8 @@ buttons drop keyboard focus, because a disabled button loses focus (`EventList.t
 
 **Decision**:
 - `src/shell/AppShell.tsx` exports `AppShell({ route, children })`, which renders:
-  - a `<button className="skip-link">Skip to content</button>`, visually hidden until focused. It calls
-    `focusPageHeading()`.
+  - a `<button className="btn btn-primary skip-link">Skip to content</button>`, visually hidden until
+    focused (then a primary button at the top left, over the header). It calls `focusPageHeading()`.
   - `<header className="app-header">` containing:
     - the brand: an inline-SVG mark and the text "auto-reel". Below 30rem the text is visually hidden, and
       it stays in the accessibility tree.
@@ -245,7 +270,13 @@ buttons drop keyboard focus, because a disabled button loses focus (`EventList.t
   - `<ToastRegion />`
 - `App.tsx` renders its routes inside `<AppShell route={route}>`. `app.css` is no longer imported.
 - `focusPageHeading(options?: FocusOptions)` focuses `main:not([hidden]) h1`. Every page `h1` gets
-  `tabIndex={-1}`, and has no focus ring when focused by script (`h1:focus:not(:focus-visible)`).
+  `tabIndex={-1}`, and has no focus ring when focused by script: `h1[tabindex='-1']:focus { outline: none }`
+  in `base.css`.
+  - *Changed during implementation:* the plan's selector was `h1:focus:not(:focus-visible)`, which only
+    covers a pointer user. In Chromium, script focus that follows a keyboard action (Enter on an event link,
+    Back, the skip control) itself matches `:focus-visible`, so that selector drew a ring around the heading
+    after every keyboard navigation. The heading is never reached by Tab (tabindex -1), so no ring is lost
+    for any control. Screen readers announce the heading as before.
 - `App`'s existing route layout effect (`App.tsx:42-49`) calls `focusPageHeading({ preventScroll: true })`
   on every route change after the first render, after the scroll restore, so the two never fight. "A route
   change" MUST be detected by comparing `route` with the previous route kept in a ref (initialised to the
@@ -304,6 +335,9 @@ would also break sticky group headers.
   - clips: `col-pos`, `col-file`, `col-status`, `col-size`, `col-mtime`
 - Widths are set in the screen stylesheet, and `table-layout: fixed` keeps every year's table aligned. No
   `nth-child` selector remains.
+- Cells align on their first line's **baseline** (`vertical-align: baseline`), not their top: a clip row
+  mixes a monospace file name, sans-serif numbers and a pill, and top alignment left the file name about
+  2px above its neighbors.
 - `.panel` has `container-type: inline-size`. Under `@container (width < 40rem)`, each table reflows:
   - `thead` is visually hidden, not `display: none`
   - each `tr` becomes a small grid with named areas
@@ -359,9 +393,14 @@ new member, as `labels.ts` does. The words are unchanged, and come from `labels.
 
 ```ts
 export type StatusLook = { tone: Tone; icon: IconName }
+export const VERDICT_LOOK: Record<'stale' | 'fresh', StatusLook>   // keyed by staleness.stale
 export const JOB_STATUS_LOOK: Record<JobStatus, StatusLook>
 export const CLIP_STATUS_LOOK: Record<ClipStatus, StatusLook>
+export const FAILURE_LOOK: Record<EventFailure, StatusLook>
 ```
+
+`VERDICT_LOOK` and `FAILURE_LOOK` were added during implementation, so the verdict and failure rows of the
+table above are one lookup each, like the other two.
 
 - `StalenessCell` and `JobCell` (`common.tsx`) render `<Pill>`s. A running job keeps "Rendering 42%".
 - An ignored clip's row stays dimmed (`--fg-muted`) as today.
@@ -369,7 +408,10 @@ export const CLIP_STATUS_LOOK: Record<ClipStatus, StatusLook>
   words carry the meaning.
 - The list's page header keeps the summary's words and splits them into `.stat` chips: "**7** of 10 events
   need rendering", "**1** needs attention" (only when error rows exist), and a muted "Scanned 14:02:11".
-  The spec's "states that 6 of 9 events need rendering" and "1 needs attention" stay literally true.
+  The spec's "states that 6 of 9 events need rendering" and "1 needs attention" stay literally true. The
+  chips are a `<ul className="stats">`, so assistive technology hears two separate facts. The list's
+  toolbar (the All / Needs render control and Refresh) sits at the right of the title row; below 40rem it
+  wraps under the heading.
 
 **Rationale**:
 - One lookup per status keeps the tone identical on every screen, and `tsc` enforces completeness.
@@ -404,15 +446,19 @@ the skeleton and the buttons. `Dialog` and the toasts have no caller here.
   - With no `label` it is `aria-hidden="true"`. With a `label` it has `role="img"` and `aria-label`.
   - The paths live in a `Record<IconName, ReactNode>`, so a name without a path fails `tsc`.
   - The paths are copied once, at implementation time, from the `lucide-static` package's
-    `icons/<name>.svg` files (some Lucide names differ, for example `triangle-alert` and `refresh-cw`). The
-    file header keeps Lucide's license notice: ISC, including its MIT notice for the portions derived from
-    Feather.
+    `icons/<name>.svg` files (some Lucide names differ: `alert-triangle` is `triangle-alert`, `refresh` is
+    `refresh-cw`, and `loader` is `loader-circle`, a single arc that reads better spinning than Lucide's
+    eight-spoke `loader`). The file header keeps Lucide's license notice: ISC, including its MIT notice for
+    the portions derived from Feather.
 - **`Pill.tsx`**: `Pill({ tone, icon, children })` renders `<span className="pill" data-tone={tone}>` with
-  the icon and the words. `export type Tone = 'ok' | 'warn' | 'err' | 'info' | 'idle'`.
+  the icon and the words (the words in an inner `<span>`, so a long label wraps beside a fixed icon).
+  `export type Tone = 'ok' | 'warn' | 'err' | 'info' | 'idle'`.
 - **`Alert.tsx`**: `Alert({ tone, title, detail?, action?, role? })` renders a block with the tone's icon, a
   strong title, a muted detail and an optional action node. `title` is a `ReactNode`, so the event page's
   failure keeps its failure-kind `Pill` beside the cause, as today (`EventDetail.tsx:125-128`). `detail` is
-  `string | null`. `role` defaults to `alert` and replaces the `.failure` and `.warning` blocks.
+  `string | null`. `role` (`'alert' | 'status' | 'note'`, the last for a message that must not be
+  announced) defaults to `alert` and replaces the `.failure` and `.warning` blocks. A title holding a
+  `Pill` lays out as a wrapping row, so the pill never leaves an indent when it wraps.
 - **`Skeleton.tsx`**:
   - `SkeletonRows({ rows })` renders `rows` placeholder rows of `--row-h` height, all `aria-hidden`.
   - `LoadStatus({ message })` renders `<p role="status" className="load-status">{message}</p>`, visible
@@ -483,9 +529,10 @@ the skeleton and the buttons. `Dialog` and the toasts have no caller here.
   `[aria-disabled="true"]` and `[aria-busy="true"]` (a spinning `loader` before the label, motion
   permitting). A busy button is `aria-disabled` + `aria-busy` and ignores clicks, never `disabled` (see
   "App shell, skip control and focus"). There is no Button component: one would only forward attributes.
-- **Other classes in `components.css`**: `.panel` (with `.panel-header` and `.panel-body`), `.pill`,
-  `.badge`, `.alert`, `.data-table`, `.skeleton`, `.load-status`, `.segmented` (the radio-group look shared by the list
-  filter and the theme control), `.stats`/`.stat`, `.visually-hidden`, `.dialog`, `.toast`.
+- **Other classes in `components.css`**: `.panel` (with `.panel-header`, `.panel-meta` and `.panel-body`),
+  `.pill`, `.badge`, `.alert`, `.data-table`, `.skeleton`, `.load-status`, `.segmented` (the radio-group look
+  shared by the list filter and the theme control), `.stats`/`.stat`, `.visually-hidden`, `.dialog` (with
+  `.dialog-actions` for its button row; a `<p>` in a dialog is muted body text), `.toast`.
 
 **Rationale**:
 - Each primitive is small (under about 80 lines) and uses native behavior.
