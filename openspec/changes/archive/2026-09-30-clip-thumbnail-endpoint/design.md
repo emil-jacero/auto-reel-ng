@@ -115,6 +115,26 @@ Decided after the implementation review (2026-09-30):
     failure through one 502.
   - The README's `thumbs` section names this route instead of the change.
 
+Fixed after the PR review (2026-09-30):
+
+- **The clip detail is one line without server paths.** `reason` is path-free only for a probe that
+  refuses the file outright: when ffprobe or ffmpeg fails, it quotes the command (absolute library and
+  cache paths) and the whole multi-line stderr. The CLI's one-line cause helper moved into `thumbs` as
+  `one_line_cause(reason, clip_path)`: it cuts the command, keeps ffmpeg's last stderr line without its
+  `[component @ 0x…]` tags and with the clip's path shortened to its name, and drops anything from a
+  remaining absolute path on. The detail is `<identity>: <one-line cause>`; the CLI's ERROR line uses the
+  same helper, and the WARNING log keeps the full reason.
+- **Only ids the events list shows are events.** `resolve_event_dir` accepts any directory under the
+  project root, so a year folder or an event's `original/` answered 200. `thumbnail_source` now starts
+  with `events_read.listed_event_dir`: the id must be one the configured layout yields, compared exactly
+  as `event_id_for` spells it, with the walk narrowed to the id's first folder (the year of `year-event`;
+  `flat` ignores the hint). Anything else, the root and `.reelignore`d events included, is 404. A failing
+  walk is the `unreadable_disk` 502; an unknown layout answers like a bad `config.yaml`.
+- **`If-None-Match` on several header lines** is read as one list (`request.headers.getlist`); the
+  published parameter holds only the first line.
+- **A `config.yaml` that is not UTF-8** was a text/plain 500. `load_project_config` now raises `ConfigError`
+  for a `UnicodeDecodeError` as for an `OSError`, which every reader and the CLI share.
+
 ### The route: a query parameter, registered before the detail route, `async`
 
 **Context**: The event id is a greedy `{event_id:path}` and the clip identity can contain `/`
@@ -387,11 +407,11 @@ Optional[ThumbnailFailure] = None`. `clip-thumbnails` defines no enum.
 
 | Outcome | Status | Problem fields |
 |---|---|---|
-| `EventNotFoundError` | 404 | `event_id` |
+| `EventNotFoundError` (an id the events list does not show as an event) | 404 | `event_id` |
 | `ClipNotFoundError` (the identity is not exactly one the listing holds) | 404 | `event_id` |
 | Listing the event folder fails (`OSError`, classified as `EventReadError`) | 502 | `event_id`, `failure: unreadable_disk` |
 | `ConfigError` loading `config.yaml` or resolving `thumbnails.*` | 502 | `event_id`, detail names the config problem |
-| `ThumbnailError` from `thumbnail_source` (the listed clip can no longer be statted: `thumbnail_path`'s `OSError`, wrapped) or from `thumbnail_for` | 502 | `event_id`, `thumbnail_failure: thumbnail_failed`, detail = `<identity>: <reason>` (the requested identity and the error's path-free `reason`) |
+| `ThumbnailError` from `thumbnail_source` (the listed clip can no longer be statted: `thumbnail_path`'s `OSError`, wrapped) or from `thumbnail_for` | 502 | `event_id`, `thumbnail_failure: thumbnail_failed`, detail = `<identity>: <one-line cause>` (the requested identity and `thumbs.one_line_cause` of the error's `reason`) |
 | `ThumbnailCacheError` from `thumbnail_for` (a sibling class, caught on its own) | 502 | `event_id`, detail = the engine message naming the cache directory |
 | `OSError` reading the cached JPEG (the cache directory) | 502 | `event_id`, detail names the OS error and the cache directory |
 | Anything else | 500 (a bug, not mapped) | |
