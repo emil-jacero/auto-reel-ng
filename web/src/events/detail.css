@@ -39,18 +39,6 @@
     gap: var(--s-2) var(--s-5);
   }
 
-  .status-job {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--s-2);
-  }
-
-  .status-label {
-    color: var(--fg-muted);
-    font-size: var(--text-sm);
-  }
-
   .counts {
     color: var(--fg);
     font-weight: 600;
