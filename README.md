@@ -404,15 +404,17 @@ is not applied. Decoding is CPU-only; the source clip is only read.
 
 `auto-reel thumbs <root>` fills the cache for every clip the layout walk finds (root
 clips and chapter subfolders, IGNORED clips included; `original/` and `.reelignore`d
-folders skipped, like `scan`). It never reads or writes `reel.yaml`, so a MISSING clip
-is never requested, and it writes nothing under the project root, so it works on a
-library mounted read-only. It prints one line per event, one `ERROR  <event>/<clip>:
-<reason>` line per failed clip, and a summary; it exits non-zero when any clip
-failed. Cached thumbnails are skipped, so a re-run only extracts new, changed or
-previously failed clips. Clips that are other names of one file (links in one event)
-may each count as generated. `--jobs N` (default 2) bounds concurrent extractions: about
-0.5 s per clip serially on local disk, ≈30 min for a 6,500-clip archive at the
-default; lower it on a slow or flaky USB drive.
+folders skipped, like `scan`). It never reads or writes `reel.yaml`, so a MISSING
+clip is never requested, and it writes nothing under the project root, so it works
+on a library mounted read-only. It prints one line per event, one
+`ERROR  <event>/<clip>: <cause>` line per failed clip (`-v` also logs the failing
+ffmpeg command and its stderr), and a summary; it exits non-zero when any clip failed. A
+file name that is not valid UTF-8 is printed with its raw bytes as `\xNN`. Cached
+thumbnails are skipped, so a re-run only extracts new, changed or previously failed
+clips. Clips that are other names of one file (links in one event) may each count as
+generated. `--jobs N` (default 2) bounds concurrent extractions: about 0.5 s per
+clip serially on local disk, ≈30 min for a 6,500-clip archive at the default; lower
+it on a slow or flaky USB drive.
 
 **The cache** lives outside the library: `$XDG_CACHE_HOME/auto-reel/thumbnails/`
 (else `~/.cache/auto-reel/thumbnails/`), or `thumbnails.cache_dir`. `thumbs` reads
