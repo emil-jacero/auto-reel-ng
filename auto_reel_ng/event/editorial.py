@@ -27,6 +27,7 @@ from ..reel.document import ReelDocument
 from ..reel.parser import load_document
 from ..reel.schema import build_document
 from ..reel.writer import document_to_data, write_document
+from .metadata import require_processable, with_resolved_metadata
 
 #: The editorial document file name within an event directory (mirrors cli/adoption.py;
 #: not imported from there to avoid a cli <-> event import cycle).
@@ -35,7 +36,9 @@ REEL_FILENAME = "reel.yaml"
 _METADATA_KEYS = ("title", "date", "location", "description")
 
 
-def apply_editorial_write(event_dir: Path, desired_data: Mapping[str, Any]) -> ReelDocument:
+def apply_editorial_write(
+    event_dir: Path, desired_data: Mapping[str, Any], *, today: Optional[DateType] = None
+) -> ReelDocument:
     """Apply ``desired_data`` onto ``event_dir``'s document and persist it.
 
     ``desired_data`` is a v0-vocabulary mapping (optional ``metadata``/``look``/
@@ -47,6 +50,13 @@ def apply_editorial_write(event_dir: Path, desired_data: Mapping[str, Any]) -> R
     validated exactly as a loaded document is; a validation failure raises and
     nothing is written. Referencing a clip absent from disk is legal here (D-E4):
     this operation never scans disk and never probes media.
+
+    The merged document must also keep the event processable: its metadata,
+    resolved over the folder name as every consumer resolves it, needs a real date
+    and a title, and the date must not be after ``today`` (default: the current
+    day). Otherwise :class:`~auto_reel_ng.errors.EventMetadataError` is raised and
+    nothing is written. The resolution is only checked, never persisted: the file
+    holds the document as authored.
     """
     event_dir = Path(event_dir)
     reel_path = event_dir / REEL_FILENAME
@@ -60,6 +70,8 @@ def apply_editorial_write(event_dir: Path, desired_data: Mapping[str, Any]) -> R
     _apply_ignore(data, desired_data.get("ignore"))
 
     document = build_document(data, source=f"<editorial write: {event_dir}>")
+    resolved = with_resolved_metadata(document, event_dir).metadata
+    require_processable(event_dir, resolved, today=today or DateType.today())
     write_document(document, reel_path)
     return document
 

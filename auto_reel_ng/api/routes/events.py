@@ -14,7 +14,7 @@ from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import SQLAlchemyError
 
-from ...errors import ReelError
+from ...errors import EventMetadataError, ReelError
 from ...event.editorial import apply_editorial_write
 from ...ingest import LayoutError
 from ...reel.document import ReelDocument
@@ -32,6 +32,7 @@ from ..schemas import (
     EditorialDocumentBody,
     EditorialWriteResult,
     EventDetailOut,
+    EventFailure,
     EventRowOut,
     ProblemOut,
 )
@@ -41,6 +42,17 @@ from ..settings import ApiSettings
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["events"])
+
+
+#: The ``ETag`` header of a successful editorial read or write, as published in the schema.
+_ETAG_RESPONSE = {
+    "headers": {
+        "ETag": {
+            "description": "Strong entity-tag of the editorial state, for If-Match on the write",
+            "schema": {"type": "string"},
+        }
+    }
+}
 
 
 def _settings(request: Request) -> ApiSettings:
@@ -69,6 +81,15 @@ def _etag(document: ReelDocument) -> str:
     unchanged and cannot raise a spurious 412.
     """
     return f'"{editorial_hash(document)}"'
+
+
+def _event_read_failed(exc: events_read.EventReadError, event_id: str) -> JSONResponse:
+    """The scan-failure 502 every event read and the write's pre-read answer with.
+
+    Unprefixed: ``detail`` and ``failure`` are exactly the list's error row.
+    """
+    failure = exc.failure.value if exc.failure is not None else None
+    return bad_gateway(exc.detail, event_id=event_id, failure=failure)
 
 
 def _if_match_satisfied(header: str, current: str) -> bool:
@@ -134,7 +155,15 @@ def get_analysis(event_id: str, request: Request) -> Union[AnalysisOut, Response
         )
 
 
-@router.get("/events/{event_id:path}/reel", response_model=EditorialDocumentBody)
+@router.get(
+    "/events/{event_id:path}/reel",
+    response_model=EditorialDocumentBody,
+    responses={
+        200: _ETAG_RESPONSE,
+        404: {"model": ProblemOut},
+        502: {"model": ProblemOut},
+    },
+)
 def get_reel(
     event_id: str, request: Request, response: Response
 ) -> Union[EditorialDocumentBody, Response]:
@@ -154,7 +183,7 @@ def get_reel(
             f"no event {event_id!r} under the configured project root", event_id=event_id
         )
     except events_read.EventReadError as exc:
-        return bad_gateway(f"event {event_id!r}: {exc.detail}", event_id=event_id)
+        return _event_read_failed(exc, event_id)
 
     response.headers["ETag"] = _etag(document)
     return document_to_body(document)
@@ -187,12 +216,20 @@ def get_event(event_id: str, request: Request) -> Union[EventDetailOut, Response
             f"no event {event_id!r} under the configured project root", event_id=event_id
         )
     except events_read.EventReadError as exc:
-        # Unprefixed: ``detail`` and ``failure`` are exactly the list's error row.
-        failure = exc.failure.value if exc.failure is not None else None
-        return bad_gateway(exc.detail, event_id=event_id, failure=failure)
+        return _event_read_failed(exc, event_id)
 
 
-@router.put("/events/{event_id:path}/reel", response_model=EditorialWriteResult)
+@router.put(
+    "/events/{event_id:path}/reel",
+    response_model=EditorialWriteResult,
+    responses={
+        200: _ETAG_RESPONSE,
+        400: {"model": ProblemOut},
+        404: {"model": ProblemOut},
+        412: {"model": ProblemOut},
+        502: {"model": ProblemOut},
+    },
+)
 def put_reel(
     event_id: str,
     payload: EditorialDocumentBody,
@@ -215,6 +252,12 @@ def put_reel(
     computed from the returned document by the same helper ``get_reel`` uses, so a
     client may chain conditional writes with no intervening read. A ``412`` carries
     none: a client that lost the race must re-read before it overwrites.
+
+    Failures answer by cause and write nothing: 400 for an invalid submitted state
+    (with ``failure: unusable_metadata`` when the engine refuses a state that
+    leaves the event without a real date or title), 404, 412, and 502 for the disk:
+    an existing document that cannot be read (with its ``failure`` kind, as the
+    reads report it) or a save the filesystem refuses (naming the OS error).
     """
     settings = _settings(request)
     try:
@@ -224,22 +267,30 @@ def put_reel(
             f"no event {event_id!r} under the configured project root", event_id=event_id
         )
 
-    if if_match is not None:
-        try:
-            current = events_read.get_reel(settings, event_id)
-        except events_read.EventReadError as exc:
-            return bad_gateway(f"event {event_id!r}: {exc.detail}", event_id=event_id)
-        if not _if_match_satisfied(if_match, _etag(current)):
-            return precondition_failed(
-                f"event {event_id!r} changed since it was read; re-read and re-apply the edit",
-                event_id=event_id,
-            )
+    # Read on every request, not only with If-Match, so both paths answer a broken
+    # file identically: the disk's fault (502), never the request's (400).
+    try:
+        current = events_read.get_reel(settings, event_id)
+    except events_read.EventReadError as exc:
+        return _event_read_failed(exc, event_id)
+    if if_match is not None and not _if_match_satisfied(if_match, _etag(current)):
+        return precondition_failed(
+            f"event {event_id!r} changed since it was read; re-read and re-apply the edit",
+            event_id=event_id,
+        )
 
     desired_data = payload.model_dump(by_alias=True)
     try:
         document = apply_editorial_write(event_dir, desired_data)
-    except ReelError as exc:
+    except EventMetadataError as exc:  # before ReelError: it is a subclass
+        return bad_request(
+            str(exc), event_id=event_id, failure=EventFailure.UNUSABLE_METADATA.value
+        )
+    except ReelError as exc:  # the submitted state is invalid
         return bad_request(str(exc), event_id=event_id)
+    except OSError as exc:  # the filesystem refused the save
+        logger.warning("editorial write: %s: %s", event_id, exc)
+        return bad_gateway(f"reel.yaml could not be saved: {exc}", event_id=event_id)
 
     runtime = request.app.state.runtime
     response.headers["ETag"] = _etag(document)

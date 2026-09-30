@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import stat
 from pathlib import Path
 from urllib.parse import quote
 
@@ -255,3 +257,84 @@ def test_refused_write_hands_back_no_precondition(client: TestClient, project: P
     assert refused.status_code == 412
     assert "ETag" not in refused.headers
     assert (_event_dir(project) / "reel.yaml").read_text(encoding="utf-8") == text_before
+
+
+# --- editorial-client-contract 2.2: status by cause --------------------------
+
+
+def test_write_onto_a_broken_file_is_502_not_400(client: TestClient, project: Path) -> None:
+    """Without If-Match too: the disk is at fault, and the kind is the reads' kind."""
+    reel_path = _event_dir(project) / "reel.yaml"
+    reel_path.write_text("version: 0\nchapters: not-a-list\n", encoding="utf-8")
+    before = reel_path.read_bytes()
+
+    response = client.put(f"/api/v1/events/{_event_id()}/reel", json=BASE_BODY)
+
+    assert response.status_code == 502
+    body = response.json()
+    assert body["failure"] == "unparseable_reel_yaml"
+    assert body["event_id"] == "2024/2024-07-04 - Barbecue"
+    assert reel_path.read_bytes() == before
+
+
+def test_clearing_the_only_date_is_400_unusable_metadata(client: TestClient, project: Path) -> None:
+    event_dir = project / "2024" / "Blandat"
+    _touch(event_dir / "00100.mp4")
+    reel_path = event_dir / "reel.yaml"
+    reel_path.write_text(
+        "version: 0\nmetadata:\n  title: Blandat\n  date: 2024-05-01\n", encoding="utf-8"
+    )
+    before = reel_path.read_bytes()
+
+    response = client.put(
+        f"/api/v1/events/{quote('2024/Blandat', safe='/')}/reel",
+        json={"metadata": {"title": "Blandat"}},
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["failure"] == "unusable_metadata"
+    assert "no date" in body["detail"]
+    assert reel_path.read_bytes() == before
+
+
+def test_save_the_filesystem_refuses_is_502_naming_the_error(
+    client: TestClient, project: Path
+) -> None:
+    if os.geteuid() == 0:
+        pytest.skip("root ignores directory permissions")
+    event_dir = _event_dir(project)
+    before = (event_dir / "reel.yaml").read_bytes()
+    body = {**BASE_BODY, "metadata": {**BASE_BODY["metadata"], "title": "Read Only"}}
+    mode = event_dir.stat().st_mode
+    event_dir.chmod(stat.S_IRUSR | stat.S_IXUSR)
+    try:
+        response = client.put(f"/api/v1/events/{_event_id()}/reel", json=body)
+    finally:
+        event_dir.chmod(mode)
+
+    assert response.status_code == 502
+    problem = response.json()
+    assert "Permission denied" in problem["detail"]
+    assert "failure" not in problem
+    assert (event_dir / "reel.yaml").read_bytes() == before
+    assert list(event_dir.glob(".reel.yaml.*.tmp")) == []
+
+
+def test_omitting_ignore_clears_it_and_writing_back_the_read_preserves_it(
+    client: TestClient, project: Path
+) -> None:
+    reel_path = _event_dir(project) / "reel.yaml"
+    reel_path.write_text(REEL_YAML + "ignore:\n  - clips/00700.mp4\n", encoding="utf-8")
+    read = client.get(f"/api/v1/events/{_event_id()}/reel").json()
+
+    kept = {**read, "metadata": {**read["metadata"], "title": "Kept"}}
+    response = client.put(f"/api/v1/events/{_event_id()}/reel", json=kept)
+    assert response.status_code == 200
+    assert response.json()["document"]["ignore"] == ["clips/00700.mp4"]
+
+    cleared = {**BASE_BODY, "metadata": {**BASE_BODY["metadata"], "title": "Cleared"}}
+    response = client.put(f"/api/v1/events/{_event_id()}/reel", json=cleared)
+    assert response.status_code == 200
+    assert response.json()["document"]["ignore"] == []
+    assert "ignore" not in reel_path.read_text(encoding="utf-8")

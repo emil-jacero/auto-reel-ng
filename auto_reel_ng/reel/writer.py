@@ -9,7 +9,10 @@ canonical key order. Either way the output always declares ``version: 0``.
 
 from __future__ import annotations
 
+import contextlib
 import io
+import os
+import uuid
 from pathlib import Path
 from typing import Any, Union
 
@@ -54,8 +57,30 @@ def dumps_document(doc: ReelDocument) -> str:
 
 
 def write_document(doc: ReelDocument, path: Union[str, Path]) -> None:
-    """Write ``doc`` to ``path`` as ``reel.yaml`` (always ``version: 0``)."""
-    Path(path).write_text(dumps_document(doc), encoding="utf-8")
+    """Write ``doc`` to ``path`` as ``reel.yaml`` (always ``version: 0``), atomically.
+
+    The content goes in full to a uniquely named hidden sibling
+    (``.reel.yaml.<hex>.tmp``), is ``fsync``ed, and only then renamed over
+    ``path``: a failed or interrupted write leaves the previous document intact,
+    never a truncated one. The name is unique (``O_EXCL``) because the API can run
+    two saves at once in one process. On any failure the temporary file is removed
+    when the filesystem still allows it, and the error propagates. A leftover is
+    never read as the document: loaders read only ``reel.yaml``.
+    """
+    path = Path(path)
+    text = dumps_document(doc)
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)  # the umask applies
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        raise
 
 
 # --------------------------------------------------------------------------- #

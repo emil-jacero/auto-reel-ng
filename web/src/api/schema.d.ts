@@ -110,6 +110,12 @@ export interface paths {
          *     computed from the returned document by the same helper ``get_reel`` uses, so a
          *     client may chain conditional writes with no intervening read. A ``412`` carries
          *     none: a client that lost the race must re-read before it overwrites.
+         *
+         *     Failures answer by cause and write nothing: 400 for an invalid submitted state
+         *     (with ``failure: unusable_metadata`` when the engine refuses a state that
+         *     leaves the event without a real date or title), 404, 412, and 502 for the disk:
+         *     an existing document that cannot be read (with its ``failure`` kind, as the
+         *     reads report it) or a save the filesystem refuses (naming the OS error).
          */
         put: operations["put_reel_api_v1_events__event_id__reel_put"];
         post?: never;
@@ -813,10 +819,21 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description Strong entity-tag of the editorial state, for If-Match on the write */
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["EditorialDocumentBody-Output"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
                 };
             };
             /** @description Validation Error */
@@ -826,6 +843,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
                 };
             };
         };
@@ -850,10 +876,39 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description Strong entity-tag of the editorial state, for If-Match on the write */
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["EditorialWriteResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
                 };
             };
             /** @description Validation Error */
@@ -863,6 +918,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
                 };
             };
         };

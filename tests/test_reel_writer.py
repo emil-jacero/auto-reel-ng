@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import stat
 from datetime import date
+
+import pytest
 
 from auto_reel_ng.reel.legacy import import_legacy
 from auto_reel_ng.reel.parser import loads_document
@@ -211,3 +215,73 @@ def test_legacy_custom_order_without_custom_is_reported() -> None:
     assert any("sort.custom_order" in u for u in result.unmapped)
     assert result.document.sort is not None
     assert result.document.sort.method is SortMethod.FILENAME
+
+
+# --------------------------------------------------------------------------- #
+# Atomic replacement (editorial-client-contract 1.1)
+# --------------------------------------------------------------------------- #
+
+PREVIOUS = "version: 0\nmetadata:\n  title: Before\n"
+
+
+def _leftovers(folder) -> list:
+    return sorted(p.name for p in folder.glob(".reel.yaml.*.tmp"))
+
+
+def test_successful_write_leaves_no_temporary_file(tmp_path) -> None:
+    out = tmp_path / "reel.yaml"
+    out.write_text(PREVIOUS, encoding="utf-8")
+    write_document(loads_document("version: 0\nmetadata:\n  title: After\n"), out)
+    assert "title: After" in out.read_text(encoding="utf-8")
+    assert _leftovers(tmp_path) == []
+
+
+def test_each_write_uses_a_unique_temporary_name(tmp_path, monkeypatch) -> None:
+    sources: list = []
+    real_replace = os.replace
+
+    def recording_replace(src, dst):  # type: ignore[no-untyped-def]
+        sources.append(os.fspath(src))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", recording_replace)
+    out = tmp_path / "reel.yaml"
+    doc = loads_document(PREVIOUS)
+    write_document(doc, out)
+    write_document(doc, out)
+    assert len(sources) == 2
+    assert sources[0] != sources[1]
+    assert all(os.path.basename(s).startswith(".reel.yaml.") for s in sources)
+
+
+def test_failed_write_keeps_previous_document_and_removes_temporary(tmp_path, monkeypatch) -> None:
+    out = tmp_path / "reel.yaml"
+    out.write_text(PREVIOUS, encoding="utf-8")
+    before = out.read_bytes()
+
+    def failing_fsync(fd: int) -> None:
+        raise OSError(5, "Input/output error")
+
+    monkeypatch.setattr(os, "fsync", failing_fsync)
+    with pytest.raises(OSError, match="Input/output error"):
+        write_document(loads_document("version: 0\nmetadata:\n  title: After\n"), out)
+
+    assert out.read_bytes() == before
+    assert _leftovers(tmp_path) == []
+
+
+def test_read_only_folder_raises_and_touches_nothing(tmp_path) -> None:
+    if os.geteuid() == 0:
+        pytest.skip("root ignores directory permissions")
+    out = tmp_path / "reel.yaml"
+    out.write_text(PREVIOUS, encoding="utf-8")
+    before = out.read_bytes()
+    mode = tmp_path.stat().st_mode
+    tmp_path.chmod(stat.S_IRUSR | stat.S_IXUSR)
+    try:
+        with pytest.raises(OSError):
+            write_document(loads_document("version: 0\nmetadata:\n  title: After\n"), out)
+    finally:
+        tmp_path.chmod(mode)
+    assert out.read_bytes() == before
+    assert _leftovers(tmp_path) == []

@@ -161,6 +161,26 @@ def test_events_reads_declare_their_problem_responses() -> None:
             assert ref.endswith("/ProblemOut"), f"{path} {code}: {ref}"
 
 
+#: The problem responses each editorial route declares (editorial-client-contract).
+EXPECTED_EDITORIAL_RESPONSES = {
+    "get": {"404", "502"},
+    "put": {"400", "404", "412", "502"},
+}
+
+
+def test_editorial_routes_declare_their_responses_and_etag() -> None:
+    """Exactly the documented error codes as ``ProblemOut``, and the 200's ``ETag`` header."""
+    schema = build_openapi_schema()
+    for method, expected in EXPECTED_EDITORIAL_RESPONSES.items():
+        responses = schema["paths"]["/api/v1/events/{event_id}/reel"][method]["responses"]
+        declared = {code for code in responses if code not in {"200", "422"}}
+        assert declared == expected, f"{method}: {sorted(declared)}"
+        for code in expected:
+            ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
+            assert ref.endswith("/ProblemOut"), f"{method} {code}: {ref}"
+        assert "ETag" in responses["200"]["headers"], method
+
+
 def test_committed_schema_is_not_stale() -> None:
     """`web/openapi.json` must equal the schema the application produces today."""
     committed_text = COMMITTED_SCHEMA.read_text(encoding="utf-8")

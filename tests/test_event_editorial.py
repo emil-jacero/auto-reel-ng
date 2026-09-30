@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from typing import Optional
 
 import pytest
 
-from auto_reel_ng.errors import ReelParseError
+from auto_reel_ng.errors import EventMetadataError, ReelParseError
+from auto_reel_ng.event.discovery import ClipOrder
 from auto_reel_ng.event.editorial import REEL_FILENAME, apply_editorial_write
+from auto_reel_ng.event.metadata import load_event_document, require_processable
 from auto_reel_ng.event.resolution import resolve
 from auto_reel_ng.reel.document import ReelDocument
 from auto_reel_ng.reel.parser import load_document
@@ -294,3 +297,67 @@ def test_write_creates_no_manifest_and_moves_staleness_to_editorial(tmp_path: Pa
     verdict = evaluate(event_dir, output, new_fingerprint)
     assert verdict.stale is True
     assert "editorial" in verdict.reasons
+
+
+# --------------------------------------------------------------------------- #
+# Resolved-metadata refusal (editorial-client-contract 1.2)
+# --------------------------------------------------------------------------- #
+
+TODAY = date(2026, 9, 29)
+
+
+def _event_folder(tmp_path: Path, name: str, text: Optional[str] = None) -> Path:
+    event_dir = tmp_path / name
+    event_dir.mkdir(parents=True)
+    if text is not None:
+        (event_dir / REEL_FILENAME).write_text(text, encoding="utf-8")
+    return event_dir
+
+
+def test_undated_folder_without_a_date_is_refused(tmp_path: Path) -> None:
+    event_dir = _event_folder(tmp_path, "Blandat", "version: 0\nmetadata:\n  title: Blandat\n")
+    before = (event_dir / REEL_FILENAME).read_bytes()
+
+    with pytest.raises(EventMetadataError, match="no date"):
+        apply_editorial_write(event_dir, {"metadata": {"title": "Blandat"}}, today=TODAY)
+
+    assert (event_dir / REEL_FILENAME).read_bytes() == before
+
+
+def test_future_date_is_refused(tmp_path: Path) -> None:
+    event_dir = _event_folder(tmp_path, "Blandat")
+    desired = {"metadata": {"title": "Blandat", "date": "2026-09-30"}}
+
+    with pytest.raises(EventMetadataError, match="2026-09-30 is in the future"):
+        apply_editorial_write(event_dir, desired, today=TODAY)
+
+    assert not (event_dir / REEL_FILENAME).exists()
+
+
+def test_authored_date_fixes_a_year_only_folder(tmp_path: Path) -> None:
+    event_dir = _event_folder(tmp_path, "2004 - Yngve berättar om skövde")
+    desired = {"metadata": {"date": "2004-05-01"}}
+
+    apply_editorial_write(event_dir, desired, today=TODAY)
+
+    document, seeded = load_event_document(event_dir, order=ClipOrder())
+    assert not seeded
+    assert document.metadata.date == date(2004, 5, 1)
+    require_processable(event_dir, document.metadata, today=TODAY)
+
+
+def test_authored_date_fixes_an_impossible_folder_date(tmp_path: Path) -> None:
+    event_dir = _event_folder(tmp_path, "2019-04-31 - Golfträning med Emil - Tjörn")
+
+    apply_editorial_write(event_dir, {"metadata": {"date": "2019-04-30"}}, today=TODAY)
+
+    assert load_document(event_dir / REEL_FILENAME).metadata.date == date(2019, 4, 30)
+
+
+def test_folder_name_supplies_the_date_a_title_only_state_omits(tmp_path: Path) -> None:
+    event_dir = _event_folder(tmp_path, "2024-06-21 - Trip")
+
+    result = apply_editorial_write(event_dir, {"metadata": {"title": "Trip"}}, today=TODAY)
+
+    assert result.metadata.date is None  # the authored document, never the resolution
+    assert "date" not in (event_dir / REEL_FILENAME).read_text(encoding="utf-8")

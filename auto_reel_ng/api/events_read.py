@@ -18,7 +18,7 @@ from typing import Dict, List, Mapping, Optional, Tuple
 from ..analysis.cache import CACHE_SUBDIR, clip_signal, read_entry
 from ..cli.adoption import REEL_FILENAME
 from ..config.project import load_project_config, resolve_look_defaults
-from ..errors import EventMetadataError, ReelError, ReelParseError
+from ..errors import EventMetadataError, ReelError
 from ..event.discovery import (
     ClipOrder,
     DiskListing,
@@ -67,8 +67,8 @@ class EventReadError(Exception):
     """An event could not be read: its ``reel.yaml``, its metadata, or its files.
 
     ``failure`` is the kind :func:`classify_event_failure` gives it, set by the
-    detail read so its 502 names the same kind the list's error row would; the
-    editorial read raises without one. (D-A6: loud, never fabricated.)
+    detail and editorial reads so their 502 names the same kind the list's error
+    row would. (D-A6: loud, never fabricated.)
     """
 
     def __init__(self, event_id: str, detail: str, failure: Optional[EventFailure] = None) -> None:
@@ -399,8 +399,9 @@ def get_reel(settings: ApiSettings, event_id: str) -> ReelDocument:
     An event whose directory resolves but which has no ``reel.yaml`` yet reads as
     the empty document (D-R2), mirroring the write endpoint's own seeding — the
     read must accept exactly the set of events the write accepts. Read-only: no
-    file is created and nothing is adopted. A malformed document is loud
-    (:class:`EventReadError`), never an empty or partial one (Principle I).
+    file is created and nothing is adopted. A malformed or unreadable document is
+    loud (:class:`EventReadError`, classified by :func:`classify_event_failure`),
+    never an empty or partial one (Principle I).
     """
     event_dir = resolve_event_dir(settings, event_id)
     reel_path = event_dir / REEL_FILENAME
@@ -408,8 +409,8 @@ def get_reel(settings: ApiSettings, event_id: str) -> ReelDocument:
         return ReelDocument()
     try:
         return load_document(reel_path)
-    except ReelParseError as exc:
-        raise EventReadError(event_id, str(exc)) from exc
+    except (ReelError, OSError) as exc:
+        raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
 
 
 def get_analysis(settings: ApiSettings, event_id: str) -> AnalysisOut:

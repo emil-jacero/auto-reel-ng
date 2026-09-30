@@ -250,8 +250,10 @@ render, or job logic lives in the web tier.
   fresh from `reel.yaml`. It is read-only: it never creates the file and never
   writes a manifest. An event with clips but no `reel.yaml` yet reads as the
   **empty document** (200, not 404), mirroring the write's own seeding, so read
-  and write accept the same set of events; an unparseable document is a loud
-  problem body, never a partial one. **A write body comes from this endpoint,
+  and write accept the same set of events — including one whose folder name has
+  no usable date, which is how a client gives it one. An unparseable or
+  unreadable document is the scan-failure 502 carrying the same `failure` and
+  `detail` the detail route reports, never a partial one. **A write body comes from this endpoint,
   never from `GET /api/v1/events/{event_id}`** — the events-detail response is
   the *reconcile* view: it merges disk-only NEW clips into the chapters and tags
   every clip with a status, so rebuilding a write body from it would adopt every
@@ -263,16 +265,29 @@ render, or job logic lives in the web tier.
   event's existing `reel.yaml` field by field, never replacing the file
   outright — a hand-authored file's comments and key order survive a GUI save
   unchanged apart from the lines that actually differ. Because the body is the
-  *complete* state, an omitted field is a deletion, not "leave it alone": a
-  client must send back what it loaded (the response echo is exactly that body)
-  rather than a partial patch. The response echoes the
+  *complete* state, an omitted field or section is a deletion, not "leave it
+  alone" — a body without `ignore` clears the event's ignore list. A client
+  must write back what it read, with its edit applied (the response echo is
+  exactly that body), rather than a partial patch. The response echoes the
   persisted document plus the event's new staleness verdict, so no follow-up
   `GET` is needed. **Saving is not rendering**: the write never enqueues and
   never touches the render manifest — it only moves the fingerprint's
   editorial component, so the very next read reports `stale: editorial` and
-  the existing `POST /api/v1/jobs` enqueues the re-render as usual. An invalid
-  state (e.g. a dangling cross-reference) is rejected with a 400 problem body
-  and leaves `reel.yaml` untouched; an unknown event is a 404. Referencing a
+  the existing `POST /api/v1/jobs` enqueues the re-render as usual. Failures
+  answer by cause, and none writes anything: **400** is the request's fault —
+  an invalid state (e.g. a dangling cross-reference), or one that would leave
+  the event without a real date or title, or with a future date, which carries
+  `failure: unusable_metadata` (the folder name still supplies what the body
+  leaves unset); **404** is an unknown event; **412** is a lost race (below);
+  **502** is the disk's fault — an existing `reel.yaml` that cannot be read
+  (with the same `failure` kind the reads report, with or without `If-Match`),
+  or a save the filesystem refuses, such as a read-only mount (the detail names
+  the OS error). `reel.yaml` is replaced **atomically**: the new content goes to
+  a hidden `.reel.yaml.<hex>.tmp` beside it, is synced, and is renamed over the
+  original, so a failed save leaves the previous document intact. A leftover
+  `.reel.yaml.*.tmp` holds a save that did not finish: if `reel.yaml` is
+  missing, rename the leftover back to `reel.yaml`; otherwise delete it.
+  Referencing a
   clip absent from disk is legal here — that is a MISSING clip for `scan` to
   report, never silently dropped. The write accepts an optional **`If-Match`**
   header carrying an `ETag` from the read above: a matching tag (or `*`) writes,

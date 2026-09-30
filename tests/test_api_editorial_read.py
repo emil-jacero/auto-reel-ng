@@ -173,7 +173,25 @@ def test_unparseable_document_is_loud(client: TestClient) -> None:
     assert response.status_code == 502
     body = response.json()
     assert body["event_id"] == "2024/2024-09-01 - Broken"
+    assert body["failure"] == "unparseable_reel_yaml"
     assert "chapters" in body["detail"]
+    detail = client.get(f"/api/v1/events/{event_id}").json()
+    assert body["detail"] == detail["detail"]  # the reads agree word for word
+
+
+def test_unprocessable_event_without_reel_yaml_is_readable_for_fixing(
+    client: TestClient, project: Path
+) -> None:
+    """A year-only folder still reads as the empty document, so a client can give it a date."""
+    name = "2004/2004 - Yngve berättar om skövde"
+    _touch(_event_dir(project, name) / "00100.mp4")
+
+    response = client.get(f"/api/v1/events/{_event_id(name)}/reel")
+
+    assert response.status_code == 200
+    assert response.headers["ETag"]
+    assert response.json()["metadata"]["date"] is None
+    assert not (_event_dir(project, name) / "reel.yaml").exists()
 
 
 # --- task 2.3: the ETag -----------------------------------------------------

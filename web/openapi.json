@@ -153,7 +153,35 @@
                   "$ref": "#/components/schemas/EditorialDocumentBody-Output"
                 }
               }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the editorial state, for If-Match on the write",
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
           },
           "422": {
             "description": "Validation Error",
@@ -172,7 +200,7 @@
           "events"
         ],
         "summary": "Put Reel",
-        "description": "``PUT /api/v1/events/{event_id}/reel``: apply a desired editorial state (D-E2).\n\nA coarse whole-document write: ``payload`` is the complete desired editorial\nstate, merged onto the event's existing structure (never replacing the file\noutright, D-E1) and validated fail-loud before anything is persisted. The\nroute carries no editorial logic of its own (D-E6) — it resolves the event,\ndelegates to the engine operation, and echoes the persisted document plus the\nevent's resulting staleness verdict (computed free, D-E5) so the client needs\nno follow-up GET. The write never enqueues and never touches the render\nmanifest.\n\nA successful write carries an ``ETag`` for the state it just persisted,\ncomputed from the returned document by the same helper ``get_reel`` uses, so a\nclient may chain conditional writes with no intervening read. A ``412`` carries\nnone: a client that lost the race must re-read before it overwrites.",
+        "description": "``PUT /api/v1/events/{event_id}/reel``: apply a desired editorial state (D-E2).\n\nA coarse whole-document write: ``payload`` is the complete desired editorial\nstate, merged onto the event's existing structure (never replacing the file\noutright, D-E1) and validated fail-loud before anything is persisted. The\nroute carries no editorial logic of its own (D-E6) — it resolves the event,\ndelegates to the engine operation, and echoes the persisted document plus the\nevent's resulting staleness verdict (computed free, D-E5) so the client needs\nno follow-up GET. The write never enqueues and never touches the render\nmanifest.\n\nA successful write carries an ``ETag`` for the state it just persisted,\ncomputed from the returned document by the same helper ``get_reel`` uses, so a\nclient may chain conditional writes with no intervening read. A ``412`` carries\nnone: a client that lost the race must re-read before it overwrites.\n\nFailures answer by cause and write nothing: 400 for an invalid submitted state\n(with ``failure: unusable_metadata`` when the engine refuses a state that\nleaves the event without a real date or title), 404, 412, and 502 for the disk:\nan existing document that cannot be read (with its ``failure`` kind, as the\nreads report it) or a save the filesystem refuses (naming the OS error).",
         "operationId": "put_reel_api_v1_events__event_id__reel_put",
         "parameters": [
           {
@@ -220,7 +248,55 @@
                   "$ref": "#/components/schemas/EditorialWriteResult"
                 }
               }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the editorial state, for If-Match on the write",
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
           },
           "422": {
             "description": "Validation Error",
