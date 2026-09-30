@@ -237,12 +237,14 @@
   }
 
   /*
-   * Narrow panels: every row becomes a small grid (each screen names its
-   * areas), and the column headers stay in the accessibility tree without
-   * being shown. The tables carry explicit table roles, because changing
-   * `display` drops the implicit ones in some engines.
+   * Narrow panels: below 50rem every row becomes a small card (a grid whose
+   * areas each screen names), and the column headers stay in the
+   * accessibility tree without being shown. Each screen sizes its fixed
+   * columns so that, at 50rem, its flexible column (event title, file name)
+   * keeps at least ~11rem. The tables carry explicit table roles, because
+   * changing `display` drops the implicit ones in some engines.
    */
-  @container (width < 40rem) {
+  @container (width < 50rem) {
     .data-table,
     .data-table tbody,
     .data-table tr,
@@ -332,6 +334,7 @@
       min-block-size: 1.625rem;
       min-inline-size: 1.75rem;
       padding: 0 var(--s-3);
+      border: 1px solid transparent;
       border-radius: var(--r-md);
       color: var(--fg-muted);
       font-size: var(--text-sm);
@@ -340,23 +343,34 @@
       cursor: pointer;
       transition:
         background-color var(--dur-fast) var(--ease-out),
-        color var(--dur-fast) var(--ease-out),
-        box-shadow var(--dur-fast) var(--ease-out);
+        border-color var(--dur-fast) var(--ease-out),
+        color var(--dur-fast) var(--ease-out);
     }
 
     & label:hover {
       color: var(--fg);
     }
 
+    /* The selected option's edge is at least 3:1 against the track and the thumb. */
     & input:checked + label {
+      border-color: var(--fg-subtle);
       background: var(--surface-raised);
       color: var(--fg);
-      box-shadow: 0 0 0 1px var(--border-strong);
     }
 
     & input:focus-visible + label {
       outline: 2px solid var(--focus-ring);
       outline-offset: 1px;
+    }
+  }
+
+  /* Forced colors drop backgrounds and tints: the selected option takes the system highlight. */
+  @media (forced-colors: active) {
+    .segmented input:checked + label {
+      forced-color-adjust: none;
+      border-color: Highlight;
+      background: Highlight;
+      color: HighlightText;
     }
   }
 
@@ -472,13 +486,17 @@
     }
   }
 
-  /* A count beside a value ("1 new", "1 missing"): its words carry the meaning. */
+  /*
+   * A count beside a value ("1 new", "1 missing"): the words carry the
+   * meaning, with the status's icon and tone from `tones.ts`.
+   */
   .badge {
     --_bg: var(--idle-bg);
     --_fg: var(--idle-fg);
 
     display: inline-flex;
     align-items: center;
+    gap: 0.25rem;
     padding: 0 0.375rem;
     border-radius: var(--r-sm);
     background: var(--_bg);
@@ -487,6 +505,13 @@
     font-weight: 500;
     line-height: 1.5;
     white-space: nowrap;
+
+    & > svg {
+      flex: none;
+      inline-size: 0.75rem;
+      block-size: 0.75rem;
+      stroke-width: 2.5;
+    }
   }
 
   /* An inline message (`ui/Alert.tsx`): tone icon, title, detail, action. */
@@ -517,6 +542,10 @@
     padding-block-start: 0.0625rem;
   }
 
+  .alert-detail {
+    color: var(--fg-muted);
+  }
+
   .alert-title {
     color: var(--_fg);
     font-weight: 600;
@@ -544,8 +573,10 @@
     align-items: center;
     gap: var(--s-5);
     block-size: var(--row-h);
+    min-inline-size: 0;
     padding-inline: var(--s-4);
     border-bottom: 1px solid var(--border);
+    overflow: hidden;
 
     &:last-child {
       border-bottom: 0;
@@ -562,6 +593,12 @@
 
   .skeleton-short {
     inline-size: 4.5rem;
+  }
+
+  /* The title bar gives way first, so a narrow row never overflows. */
+  .skeleton-title {
+    flex: 0 1 auto;
+    min-inline-size: 0;
   }
 
   .skeleton-pill {
@@ -604,9 +641,18 @@
     font-size: var(--text-sm);
   }
 
-  /* The event cells both screens share (`events/common.tsx`). */
+  /*
+   * The event cells both screens share (`events/common.tsx`). The reasons
+   * follow the verdict pill, or move below it as a whole when they don't fit.
+   */
+  .verdict {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.125rem var(--s-2);
+  }
+
   .reasons {
-    margin-inline-start: var(--s-2);
     color: var(--fg-muted);
     font-size: var(--text-sm);
   }

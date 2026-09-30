@@ -56,22 +56,25 @@
     font-weight: 600;
   }
 
-  /* Column widths; the file column takes the rest. */
+  /*
+   * Column widths; the file column takes the rest. Fixed 34rem: at the 50rem
+   * card breakpoint the file column still has ~16rem.
+   */
   .clip-table {
     & .col-pos {
       inline-size: 3.5rem;
     }
 
     & .col-status {
-      inline-size: 14rem;
+      inline-size: 12.5rem;
     }
 
     & .col-size {
-      inline-size: 7.5rem;
+      inline-size: 6.5rem;
     }
 
     & .col-mtime {
-      inline-size: 12.5rem;
+      inline-size: 11.5rem;
     }
   }
 
@@ -103,13 +106,15 @@
     color: var(--fg-muted);
   }
 
-  /* A narrow panel: position beside each clip, every fact kept. */
-  @container (width < 40rem) {
+  /*
+   * A narrow panel: position beside each clip, every fact kept. From 30rem
+   * the status sits beside the file name; below 30rem it gets its own line.
+   */
+  @container (width < 50rem) {
     .clip-table tbody tr {
-      grid-template-columns: 1.75rem minmax(0, 1fr) auto;
+      grid-template-columns: 2rem minmax(0, 1fr) auto;
       grid-template-areas:
-        'pos file file'
-        'pos status status'
+        'pos file status'
         'pos size mtime';
     }
 
@@ -132,6 +137,15 @@
     .clip-table .cell-mtime {
       grid-area: mtime;
       text-align: end;
+    }
+  }
+
+  @container (width < 30rem) {
+    .clip-table tbody tr {
+      grid-template-areas:
+        'pos file file'
+        'pos status status'
+        'pos size mtime';
     }
   }
 }

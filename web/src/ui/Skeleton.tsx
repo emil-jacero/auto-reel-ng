@@ -17,7 +17,7 @@ export function SkeletonRows({ rows }: { rows: number }) {
         <div className="skeleton-row" key={index}>
           <span className="skeleton skeleton-short" />
           <span
-            className="skeleton"
+            className="skeleton skeleton-title"
             style={{ inlineSize: TITLE_WIDTHS[index % TITLE_WIDTHS.length] }}
           />
           <span className="skeleton skeleton-pill" />

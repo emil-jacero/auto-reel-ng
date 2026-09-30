@@ -1,21 +1,25 @@
 /* The event list (`EventList.tsx`). */
 @layer screens {
-  /* Column widths, shared by every year's table; the event column takes the rest. */
+  /*
+   * Column widths, shared by every year's table; the event column takes the
+   * rest. Fixed 26rem plus 24%: at the 50rem card breakpoint the event column
+   * still has ~12rem.
+   */
   .event-table {
     & .col-date {
-      inline-size: 7rem;
+      inline-size: 6.5rem;
     }
 
     & .col-clips {
-      inline-size: 9.5rem;
+      inline-size: 8.5rem;
     }
 
     & .col-render {
-      inline-size: 30%;
+      inline-size: 24%;
     }
 
     & .col-job {
-      inline-size: 12.5rem;
+      inline-size: 11rem;
     }
   }
 
@@ -84,15 +88,18 @@
     }
   }
 
-  /* A narrow panel: each event becomes a small card, every fact kept. */
-  @container (width < 40rem) {
+  /*
+   * A narrow panel: each event becomes a card, every fact kept. From 30rem
+   * the card has two sides, what the event is and where its render stands;
+   * below 30rem the facts stack.
+   */
+  @container (width < 50rem) {
     .event-table tbody tr {
-      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
       grid-template-areas:
-        'event event'
-        'date clips'
-        'render render'
-        'job job';
+        'event event render'
+        'date clips job';
+      column-gap: var(--s-4);
     }
 
     .event-table .cell-event {
@@ -120,10 +127,10 @@
     }
 
     .attention-table tbody tr {
+      grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:
-        'folder'
-        'problem'
-        'fix';
+        'folder problem'
+        'fix fix';
     }
 
     .attention-table .cell-folder {
@@ -136,6 +143,25 @@
 
     .attention-table .cell-fix {
       grid-area: fix;
+    }
+  }
+
+  @container (width < 30rem) {
+    .event-table tbody tr {
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-areas:
+        'event event'
+        'date clips'
+        'render render'
+        'job job';
+    }
+
+    .attention-table tbody tr {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas:
+        'folder'
+        'problem'
+        'fix';
     }
   }
 }

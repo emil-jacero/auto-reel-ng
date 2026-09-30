@@ -223,7 +223,10 @@ HLD §7).
   ref as `initialFocus` — never React's `autoFocus`, which fires while the dialog
   is still closed. Escape calls `onClose`; a close the caller starts does not.
 - **Toasts** appear bottom right. A page with a sticky bar at the bottom sets
-  `--toast-inset-bottom` on `:root` to the bar's height, so no toast covers it.
+  `--toast-inset-bottom` on `:root` to the bar's height, so no toast covers it. The
+  region publishes its own height as `--toast-region-h` on `:root` (absent when
+  empty); `html`'s `scroll-padding-bottom` and the page's bottom padding add both, so
+  a sticky error toast never covers keyboard focus or the end of the page.
 - **Motion.** Every `transition` takes its duration from a `--dur-*` token; the
   tokens become `0ms` under `prefers-reduced-motion: reduce`. Every `animation` and
   its `@keyframes` sit inside `@media (prefers-reduced-motion: no-preference)`, with
