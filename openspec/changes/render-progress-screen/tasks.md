@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Confirm the three gates are archived on `main`: `ls openspec/changes/archive/ | grep -E -- '-(web-design-system|jobs-client-contract|jobs-project-guards)$'` must print three directories. Stop and report to the supervisor if any is missing. Then confirm what this change builds on:
+- [x] 1.1 Confirm the three gates are archived on `main`: `ls openspec/changes/archive/ | grep -E -- '-(web-design-system|jobs-client-contract|jobs-project-guards)$'` must print three directories. Stop and report to the supervisor if any is missing. Then confirm what this change builds on:
   - `web/src/api/schema.d.ts` defines `CancelOutcome`, `WsMessage`, `WsMessageType`, `FreshResult` and `EnqueueConflict`
   - `ProblemOut` has `job_id`, `conflict` and `claimed_by`, and `POST /api/v1/jobs` publishes 201, 200, 404, 409 and 502 in `web/openapi.json`
   - `auto_reel_ng/api/ws.py` `_tick` emits a delta when only `cancel_requested` changed, and emits once a job that became terminal since the previous tick although no earlier frame carried it (C2; C3 scopes it to the project), with a hub test for each
@@ -14,7 +14,7 @@
 
 ## 2. web/ — the jobs API client and labels
 
-- [ ] 2.1 Add `src/api/jobs.ts`, per design "The jobs API client":
+- [x] 2.1 Add `src/api/jobs.ts`, per design "The jobs API client":
   - the schema aliases
   - `enqueueJob`, `fetchJob`, `cancelJob` and `jobsSocketUrl`
   - per-route problem statuses (enqueue 404/409/502, job read and cancel 404); everything else is `unreachable` with the status in the message
@@ -26,7 +26,7 @@
 
 ## 3. web/ — the live store and the header indicator
 
-- [ ] 3.1 Add `src/jobs/store.ts`'s connection lifecycle, per design "One shared WebSocket store":
+- [x] 3.1 Add `src/jobs/store.ts`'s connection lifecycle, per design "One shared WebSocket store":
   - `subscribe`, `getState`, and refcounted retain with a deferred release that does not reconnect
   - full-jitter backoff that resets only after a valid frame
   - the stale-socket guard, and reconnect on `online` only when no socket is open or connecting
@@ -39,7 +39,7 @@
   - the header shows "Live · 1 queued" (`2024/Blandat`)
   - a Playwright `page.on("websocket")` count stays at 1 across list → event page → Back
   - killing `serve` shows "Reconnecting…" with no counts, and restarting it returns to "Live" with no reload (allow up to 35 s: the backoff is capped at 30 s)
-- [ ] 3.2 Add the rest of the store, per design "One shared WebSocket store", "Which job an event shows" and "Progress and ETA":
+- [x] 3.2 Add the rest of the store, per design "One shared WebSocket store", "Which job an event shows" and "Progress and ETA":
   - `load` with `force` and `knownActive`, and the set of requested ids (no repeat GET without `force`)
   - snapshot reconciliation: keep known terminal jobs, and force-load known-active jobs that are missing
   - `track` and `markAnnounced`
@@ -53,7 +53,7 @@
 
 ## 4. web/ — the event page
 
-- [ ] 4.1 Add `src/jobs/JobProgress.tsx` and `src/jobs/RenderControl.tsx`, per design "Progress and ETA" and "The render region on the event page":
+- [x] 4.1 Add `src/jobs/JobProgress.tsx` and `src/jobs/RenderControl.tsx`, per design "Progress and ETA" and "The render region on the event page":
   - `JobProgress` with C1's `Pill` and `JOB_STATUS_LOOK`, the labelled time, and the indeterminate bar: static stripes by default, its sweep only inside `prefers-reduced-motion: no-preference` with a literal `1.2s` loop
   - Render, and Render anyway with its confirmation `Dialog` (its Cancel passed as `initialFocus`, no `autoFocus`)
   - `blockedReason?: string`: when set, Render and Render anyway give way to the reason text; progress, Cancel and notices stay
@@ -69,7 +69,7 @@
   - `2024-02-30 - Omöjligt datum` shows its failure and no Render
   - with `POST **/api/v1/jobs` held by `page.route`, Enter on Render on `2024-08-20 - Två kapitel - Tjörn` leaves `document.activeElement` on that button, with `aria-busy="true"` and no `disabled` attribute, until the route is aborted; a second Enter meanwhile sends no request, and after the abort the page says the render was not queued (nothing was enqueued, so the steps below still find Två kapitel stale)
   - `web-design-system`'s motion grep gate still passes over `web/src/jobs` (6.1's "Motion and layout")
-- [ ] 4.2 Add Cancel to `RenderControl`, per design "Cancel":
+- [x] 4.2 Add Cancel to `RenderControl`, per design "Cancel":
   - queued jobs cancel at once
   - running jobs ask in a `Dialog` ("the partial render is discarded"), with "Keep rendering" passed as `initialFocus` (no `autoFocus`)
   - the pressed Cancel or Cancel render is `aria-disabled` + `aria-busy` while in flight, never `disabled`
@@ -82,19 +82,19 @@
 
 ## 5. web/ — the event list
 
-- [ ] 5.1 Add `src/jobs/LiveJobCell.tsx`, which renders the job `<td>` itself (C1's role and column class passed through, `data-label="Last job"` exactly when a job is shown, live or read), and swap it for the job `<td>` in `EventRow` (design "The list: live job cell, compact Render, in-place re-read"). Add the row Render, named `Render <folder>` by `aria-label`, busy as on the page (`aria-disabled` + `aria-busy`, never `disabled`), and its toasts, with no force, nothing on error rows, focus moved to the row's event link, and no error-text fetch. Verify that `tsc --noEmit` and `npm run build` pass, and in the dev service:
+- [x] 5.1 Add `src/jobs/LiveJobCell.tsx`, which renders the job `<td>` itself (C1's role and column class passed through, `data-label="Last job"` exactly when a job is shown, live or read), and swap it for the job `<td>` in `EventRow` (design "The list: live job cell, compact Render, in-place re-read"). Add the row Render, named `Render <folder>` by `aria-label`, busy as on the page (`aria-disabled` + `aria-busy`, never `disabled`), and its toasts, with no force, nothing on error rows, focus moved to the row's event link, and no error-text fetch. Verify that `tsc --noEmit` and `npm run build` pass, and in the dev service:
   - the `2024-08-20 - Två kapitel - Tjörn` row's Render shows the job queued in that row, and that cell now has `data-label="Last job"` although the read had no job for it
   - the `2024-06-27 - Grillning med grannar` row's Render has the accessible name "Render 2024-06-27 - Grillning med grannar" (`get_by_role("button", name=…)`), and a job-less row's cell has no `data-label`
   - with `POST **/api/v1/jobs` held, Enter on the Grillning row's Render keeps `document.activeElement` on it, with `aria-busy="true"` and no `disabled` attribute, until the route is aborted (nothing is enqueued)
   - `2023-06-23 - Midsommar - Dalarna` and the `2024-02-30 - Omöjligt datum` error row have no Render
   - opening the list sends no `GET /api/v1/jobs/…` for `2024-10-05 - Trasig` (`page.on("request")`)
-- [ ] 5.2 In `EventList.tsx`, add `load({ quiet })`, the `updating` state ("Updating…" in C1's `LoadStatus` region, `aria-busy` on the content), quiet-read coalescing (a `pending` flag, cleared by Refresh), and make C1's version-triggered re-read quiet, both while the list is shown and when it is shown again (a failed list still reads with placeholders). Verify that `tsc --noEmit` and `npm run build` pass, and:
+- [x] 5.2 In `EventList.tsx`, add `load({ quiet })`, the `updating` state ("Updating…" in C1's `LoadStatus` region, `aria-busy` on the content), quiet-read coalescing (a `pending` flag, cleared by Refresh), and make C1's version-triggered re-read quiet, both while the list is shown and when it is shown again (a failed list still reads with placeholders). Verify that `tsc --noEmit` and `npm run build` pass, and:
   - with `**/api/v1/events` delayed 2 s by `page.route`, a `curl`-queued forced job for `2023/2023-06-23 - Midsommar - Dalarna` that completes (start the worker for this check, stop it after) keeps the rows on screen with "Updating…" during the re-read
   - `git diff main --stat -- web/src/events/labels.ts web/src/events/tones.ts web/src/events/common.tsx web/src/App.tsx` is empty
 
 ## 6. Verification against the dev library
 
-- [ ] 6.1 Set up per the dev-env runbook §9, with `SLUG=render-progress-screen` and `N=5`:
+- [x] 6.1 Set up per the dev-env runbook §9, with `SLUG=render-progress-screen` and `N=5`:
   - worktree venv, database `arel_render_progress_screen`, and library `dev-render-progress-screen`
   - with no worker of your own running, rebuild the library (`scripts/make_dev_library.py <dest>` again), because tasks 3–5 queued, cancelled and rendered jobs in it; the steps below assume its documented state (`2024/Blandat` queued, Grillning, Badutflykt, Två kapitel, Blandat, kalas and Trasig stale)
   - `auto-reel serve` on `127.0.0.1:8105` over a fresh `npm run build`
@@ -172,7 +172,7 @@
 
 ## 8. Docs and validation
 
-- [ ] 8.1 Update the docs:
+- [x] 8.1 Update the docs:
   - `web/README.md`: rendering, live progress and cancel on both screens, and that a running `auto-reel worker` is needed for jobs to progress; "never poll" now reads "no timer polling; job state arrives over the jobs WebSocket"; the file tree gains `src/api/jobs.ts` and `src/jobs/*`
   - `docs/high-level-design.md` §4.10: row E of the slice table appends that it landed in `render-progress-screen` (the table has no status column; `event-edit-screen` edits row D the same way). The sentence ending "so no further `api/` prerequisite is known for v1" is corrected: slice E then needed two `api/` prerequisites, found while designing it, `jobs-client-contract` (the published jobs answers, cancel outcomes and WebSocket frames) and `jobs-project-guards` (output-collision refusal and project-scoped jobs). D-8's "Live progress needs no library" bullet gains one sentence: jobs missing from a reconnect snapshot are read once with `GET /jobs/{id}`.
 
