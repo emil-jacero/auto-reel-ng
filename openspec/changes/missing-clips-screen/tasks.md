@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Confirm that **both** gates are archived on main: `ls openspec/changes/archive/ | grep -E -- '-(event-edit-screen|render-progress-screen)$'` must print two lines. If it does not, stop and report to the supervisor.
+- [x] 1.1 Confirm that **both** gates are archived on main: `ls openspec/changes/archive/ | grep -E -- '-(event-edit-screen|render-progress-screen)$'` must print two lines. If it does not, stop and report to the supervisor.
 
   Then re-check the names this change builds on (design, "Context"), and stop and report on any mismatch:
   - `web/src/edit/draft.ts` exports `editableChapters`, `ordersOf`, `buildWriteBody`, `isDirty`, `moveClip`, `movedSet` and `adoptedNewCount`, and imports only with `import type`
@@ -21,7 +21,7 @@
 
 ## 2. web/ — the edit model
 
-- [ ] 2.1 In `src/edit/draft.ts`, add `Removals`, `removeClip` and `restoreClip` (which takes the chapter's original order), and give `buildWriteBody` a `removed: ReadonlySet<string>` parameter that leaves those keys out of `clips` (design, "The write body", "The draft: a removal leaves the order"). Keep the file free of runtime imports.
+- [x] 2.1 In `src/edit/draft.ts`, add `Removals`, `removeClip` and `restoreClip` (which takes the chapter's original order), and give `buildWriteBody` a `removed: ReadonlySet<string>` parameter that leaves those keys out of `clips` (design, "The write body", "The draft: a removal leaves the order"). Keep the file free of runtime imports.
 
   Verify:
   - `npx tsc --noEmit` passes
@@ -40,7 +40,7 @@
 
 ## 3. web/ — the editor
 
-- [ ] 3.1 In `src/edit/EventEditor.tsx`, add the removals to the draft (design, "The draft: a removal leaves the order"):
+- [x] 3.1 In `src/edit/EventEditor.tsx`, add the removals to the draft (design, "The draft: a removal leaves the order"):
   - `Ready.removed`, and the `remove` and `restore` actions through `afterEdit`, both refused while a save is in flight. `restore` passes `restoreClip` the chapter's order from `original`.
   - `reset` empties `removed`
   - the handler dispatches `remove` only for a clip whose detail status is `missing`
@@ -51,7 +51,7 @@
   - `ClipOrderList` receives the chapter's removed identities, in original order, plus `onRemove` and `onRestore`
 
   Verify: `npx tsc --noEmit` and `npm run build` pass, and `git diff --stat web/src/edit/SaveBar.tsx web/src/edit/unsaved.ts` is empty.
-- [ ] 3.2 In `src/edit/ClipOrderList.tsx` and `src/edit/edit.css`, add the controls and the tail (design, "How a removed clip is shown", "The Remove and Undo controls", "Focus and announcements"):
+- [x] 3.2 In `src/edit/ClipOrderList.tsx` and `src/edit/edit.css`, add the controls and the tail (design, "How a removed clip is shown", "The Remove and Undo controls", "Focus and announcements"):
   - `RowBody`'s optional `action` slot at the end of `.clip-file`
   - the memoised Remove button in `ClipRow`, for missing rows only
   - `RemovedRow`, mirroring `IgnoredRow`, with its Undo
@@ -69,7 +69,7 @@
 
 ## 4. web/ — the render guard, and docs
 
-- [ ] 4.1 Hold the render back (design, "The render guard"):
+- [x] 4.1 Hold the render back (design, "The render guard"):
   - `src/jobs/labels.ts`: `missingClipsReason` and `MISSING_BLOCKS_ROW`
   - `src/events/EventDetail.tsx`: the seam's `blockedReason` expression falls back to `missingClipsReason(event.missing)`
   - `src/jobs/LiveJobCell.tsx`: a `blockedReason?: string` prop, and the `.row-blocked` note (the `alert-triangle` icon plus the words) in place of `RowRender`
@@ -80,7 +80,7 @@
   - `npx tsc --noEmit` and `npm run build` pass
   - `git diff --stat` shows no change to `RenderControl.tsx`, `JobProgress.tsx` or `store.ts`
   - the `EventDetail.tsx` and `EventList.tsx` diffs are 5 lines or fewer each
-- [ ] 4.2 Update the docs:
+- [x] 4.2 Update the docs:
   - `web/README.md`:
     - the Edit-mode paragraph: a missing clip's Remove, the "removed on save" list with Undo, and that only `reel.yaml` changes
     - the render paragraph: a missing clip holds Render back on the page and on the row, and says why
@@ -93,7 +93,7 @@
 
 ## 5. Verification against the dev library
 
-- [ ] 5.1 Set up the agent's own environment per the dev-env runbook §9, with `SLUG=missing-clips-screen` and `N=13`:
+- [x] 5.1 Set up the agent's own environment per the dev-env runbook §9, with `SLUG=missing-clips-screen` and `N=13`:
   - database `arel_missing_clips_screen`, library `../dev-missing-clips-screen`
   - `auto-reel serve <library> --port 8113` over a fresh `npm run build`
   - no worker until a step starts one
@@ -165,7 +165,7 @@
 
 ## 6. Validation
 
-- [ ] 6.1 Run the gates. Verify all pass:
+- [x] 6.1 Run the gates. Verify all pass:
   - `npx tsc --noEmit` and `npm run build` in the node:22 container
   - `web-design-system`'s motion grep gate (its design, "Tokens and the support floor", the "motion grep gate" bullet), its three commands verbatim, over `web/src/edit` and `web/src/jobs`. This change adds no animation.
   - `grep -rn 'autoFocus' web/src/edit web/src/jobs` prints nothing
