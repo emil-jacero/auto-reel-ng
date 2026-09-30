@@ -21,7 +21,7 @@ import {
 import { groupByYear, needsRender } from './grouping'
 import type { YearGroup } from './grouping'
 import { FAILURE_LABEL } from './labels'
-import { FAILURE_LOOK } from './tones'
+import { CLIP_STATUS_LOOK, FAILURE_LOOK } from './tones'
 
 /**
  * The event list: which events need a render, and why.
@@ -61,13 +61,16 @@ function EventRow({ event }: { event: EventSummary }) {
       </td>
       <td role="cell" className="cell-clips">
         <span className="clip-count">{plural(event.clip_count, 'clip', 'clips')}</span>
+        {/* The same tone and icon as the clip statuses on the event page. */}
         {event.new_count > 0 && (
-          <span className="badge" data-tone="info">
+          <span className="badge" data-tone={CLIP_STATUS_LOOK.new.tone}>
+            <Icon name={CLIP_STATUS_LOOK.new.icon} />
             {event.new_count} new
           </span>
         )}
         {event.missing_count > 0 && (
-          <span className="badge" data-tone="err">
+          <span className="badge" data-tone={CLIP_STATUS_LOOK.missing.tone}>
+            <Icon name={CLIP_STATUS_LOOK.missing.icon} />
             {event.missing_count} missing
           </span>
         )}
@@ -249,7 +252,8 @@ export function EventList({ hidden }: { hidden: boolean }) {
         <div className="page-title-row">
           <h1 tabIndex={-1}>Events</h1>
           <div className="toolbar">
-            {rows !== null && <FilterControl onlyStale={onlyStale} setOnlyStale={setOnlyStale} />}
+            {/* Mounted in every state: it only holds the choice, so a read never moves Refresh. */}
+            <FilterControl onlyStale={onlyStale} setOnlyStale={setOnlyStale} />
             {/* Busy, not disabled, while reading: it keeps keyboard focus. */}
             <button
               type="button"

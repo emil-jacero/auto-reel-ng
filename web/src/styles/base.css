@@ -50,9 +50,8 @@
     text-align: start;
   }
 
-  /* Counts, sizes and times line up in columns. */
-  time,
-  .num {
+  /* Times line up in columns. */
+  time {
     font-variant-numeric: tabular-nums;
   }
 

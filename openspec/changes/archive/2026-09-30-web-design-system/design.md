@@ -338,13 +338,32 @@ would also break sticky group headers.
 - Cells align on their first line's **baseline** (`vertical-align: baseline`), not their top: a clip row
   mixes a monospace file name, sans-serif numbers and a pill, and top alignment left the file name about
   2px above its neighbors.
-- `.panel` has `container-type: inline-size`. Under `@container (width < 40rem)`, each table reflows:
+- `.panel` has `container-type: inline-size`. Under `@container (width < 50rem)`, each table reflows into
+  cards:
   - `thead` is visually hidden, not `display: none`
   - each `tr` becomes a small grid with named areas
   - each `td` becomes `display: block`
 
   Because this changes `display`, every table carries explicit `role="table"`, `rowgroup`, `row`,
   `columnheader` and `cell` attributes.
+- *Changed after review.* The first cut reflowed below 40rem with wider fixed columns, which squeezed the
+  flexible column to nearly nothing between about 700 and 900px (the event title down to 0–30px, the file
+  name to 42–105px). One shared breakpoint of **50rem** now applies to every data table, and each screen
+  sizes its fixed columns so its flexible column keeps room at that width:
+  - list: `col-date` 6.5rem, `col-clips` 8.5rem, `col-render` 24%, `col-job` 11rem (26rem + 24%): the
+    event column keeps ~12rem at 50rem
+  - clips: `col-pos` 3.5rem, `col-status` 12.5rem (the longest label, "New, not yet in reel.yaml", fits
+    on one line), `col-size` 6.5rem, `col-mtime` 11.5rem (34rem): the file column keeps ~16rem
+
+  One breakpoint, not one per table: per-table thresholds would repeat the whole card rule set for each
+  threshold, and the sized columns already keep both flexible columns above ~10rem. The sweep in task 6.1
+  (600, 700, 768, 820, 900, 1024 and 1280px) checks it.
+- The cards have two layouts. From 30rem to 50rem a card has two sides: event title, date and clips on the
+  left, verdict and last job on the right (`'event event render' / 'date clips job'`); a clip shows its
+  status beside the file name and its size and time below (`'pos file status' / 'pos size mtime'`).
+  Below 30rem the facts stack, one line each, as on a phone.
+- The verdict cell (`.verdict`) is a wrapping flex row: the reasons follow the pill, or move below it as a
+  whole when they don't fit beside it, instead of breaking mid-phrase around the pill.
 - The only cell whose value is not self-describing at narrow width is Last job. When the event has a job,
   the cell gets `data-label="Last job"`; an event with no job gets no label, so the cell stays empty at
   every width (the spec's "no job status at all"). The label is shown with
@@ -404,14 +423,16 @@ table above are one lookup each, like the other two.
 
 - `StalenessCell` and `JobCell` (`common.tsx`) render `<Pill>`s. A running job keeps "Rendering 42%".
 - An ignored clip's row stays dimmed (`--fg-muted`) as today.
-- The list's "N new" and "N missing" badges are `.badge` with `data-tone="info"` or `data-tone="err"`. Their
-  words carry the meaning.
+- The list's "N new" and "N missing" badges are `.badge`s with the look of the matching clip status,
+  `CLIP_STATUS_LOOK.new` and `CLIP_STATUS_LOOK.missing` (tone and icon), so a status looks the same on
+  every page. The words carry the meaning.
 - The list's page header keeps the summary's words and splits them into `.stat` chips: "**7** of 10 events
   need rendering", "**1** needs attention" (only when error rows exist), and a muted "Scanned 14:02:11".
   The spec's "states that 6 of 9 events need rendering" and "1 needs attention" stay literally true. The
   chips are a `<ul className="stats">`, so assistive technology hears two separate facts. The list's
-  toolbar (the All / Needs render control and Refresh) sits at the right of the title row; below 40rem it
-  wraps under the heading.
+  toolbar (the All / Needs render control and Refresh) sits at the right of the title row, and wraps
+  under the heading when the row runs out of room. The All / Needs render control stays mounted in every
+  state (it holds only `onlyStale`), so a read never moves Refresh or hides the choice.
 
 **Rationale**:
 - One lookup per status keeps the tone identical on every screen, and `tsc` enforces completeness.
@@ -460,7 +481,8 @@ the skeleton and the buttons. `Dialog` and the toasts have no caller here.
   announced) defaults to `alert` and replaces the `.failure` and `.warning` blocks. A title holding a
   `Pill` lays out as a wrapping row, so the pill never leaves an indent when it wraps.
 - **`Skeleton.tsx`**:
-  - `SkeletonRows({ rows })` renders `rows` placeholder rows of `--row-h` height, all `aria-hidden`.
+  - `SkeletonRows({ rows })` renders `rows` placeholder rows of `--row-h` height, all `aria-hidden`. The
+    title bar is the one that shrinks (`flex: 0 1 auto`), so a row never widens a 320px page.
   - `LoadStatus({ message })` renders `<p role="status" className="load-status">{message}</p>`, visible
     muted text. Each screen renders it in **every** state, in its page header, with the read's message
     while loading and an empty string otherwise. Screen readers announce a live region whose text changes
@@ -523,7 +545,15 @@ the skeleton and the buttons. `Dialog` and the toasts have no caller here.
   - two always-present live containers: `role="status"` for success and info, `role="alert"` for errors
   - each toast shows its tone's icon, the message, the optional action link, and a dismiss button
     (`btn btn-ghost btn-icon`, `Icon name="x" label="Dismiss"`)
-  - pointer or focus inside the region pauses the timers
+  - pointer or focus inside the region pauses the timers. *Changed after review:* hover is read from a
+    document-level `pointerover` (inside = the region contains the target) and reset when the region
+    empties, not from `pointerenter`/`pointerleave` pairs: a toast dismissed by a click under the pointer
+    is removed without any leave event, which left every other toast paused for good
+  - the region publishes its height on `<html>` as `--toast-region-h` (a `ResizeObserver`; removed when
+    empty). `html`'s `scroll-padding-bottom` is
+    `calc(var(--toast-inset-bottom, 0px) + var(--toast-region-h, 0px) + var(--s-4))` and the page's bottom
+    padding adds the same height, so a sticky error toast never covers keyboard focus (WCAG 2.4.11) and
+    the end of the page can always scroll clear of it
 - **Buttons** are classes on native `<button>` and `<a>`: `btn` plus one of `btn-primary`, `btn-secondary`,
   `btn-ghost` or `btn-danger`, plus `btn-icon` for icon-only buttons. Styles exist for `:disabled`,
   `[aria-disabled="true"]` and `[aria-busy="true"]` (a spinning `loader` before the label, motion
@@ -531,7 +561,9 @@ the skeleton and the buttons. `Dialog` and the toasts have no caller here.
   "App shell, skip control and focus"). There is no Button component: one would only forward attributes.
 - **Other classes in `components.css`**: `.panel` (with `.panel-header`, `.panel-meta` and `.panel-body`),
   `.pill`, `.badge`, `.alert`, `.data-table`, `.skeleton`, `.load-status`, `.segmented` (the radio-group look
-  shared by the list filter and the theme control), `.stats`/`.stat`, `.visually-hidden`, `.dialog` (with
+  shared by the list filter and the theme control; the selected option has a 1px `--fg-subtle` edge,
+  at least 3:1 against both the track and the thumb in both schemes, and takes `Highlight` /
+  `HighlightText` under `forced-colors: active`), `.stats`/`.stat`, `.visually-hidden`, `.dialog` (with
   `.dialog-actions` for its button row; a `<p>` in a dialog is muted body text), `.toast`.
 
 **Rationale**:
