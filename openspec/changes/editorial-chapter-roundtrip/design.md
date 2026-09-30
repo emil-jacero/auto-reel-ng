@@ -48,6 +48,12 @@ the facts are restated here, and the tests in tasks 2.1 to 2.3 pin them.
 - **A flow-style list cannot hold entry tokens.** Tokens set on a flow list's items are emitted inside the
   brackets as `[a.mp4\n      # note\n, b.mp4  # x\n]`. It parses, but the author would not recognise it.
   `seq.fa.set_block_style()` emits the same list, tokens included, as a clean block list.
+- **After a flow list, the key's end-of-line token holds the lines that follow the list.** That token is
+  written after the `]`, so for `clips: [a.mp4, b.mp4]  # note` its tail is the text *after* the list
+  (`'# note\n  # between chapters\n'`), not a header. With no comment after the `]` (`clips: []`), the loader
+  files the following lines on the outer `chapters` sequence instead, as the pre-comment of the next chapter
+  entry (`chapters.ca.items[i][1]`), or after the last chapter as the sequence's end comment
+  (`chapters.ca.end`). Found while implementing (see "Flow lists and the chapters sequence").
 - **Deleting items loses their comments.** `del seq[:]` deletes item by item and drops each index's comment.
   `extend` adds items with none. That is the defect: see the diff in proposal.md.
 
@@ -144,13 +150,15 @@ def _rewrite_identity_list(
 
 1. **Unchanged:** if `list(seq) == desired`, it returns.
 2. **Refill:** it runs `del seq[:]`, then `seq.ca.items.clear()`, then `seq.extend(desired)`, reusing the
-   same node, so the list's own position and the parent key's other comment slots stay. If the key has an
-   end-of-line token, the token keeps only its first line (`'# root list\n'`), because its tail was the old
-   first entry's `above` text.
-3. **Emptied:** if `desired` is empty, the list keeps no entry tokens. When `trailing` is not empty, the list
-   is set to flow style (`seq.fa.set_flow_style()`), and `trailing` is appended to the key's end-of-line token
-   after its `\n`. If the key has no such token, one is created at column 0 with the value `"\n" + trailing`.
-   The helper then returns.
+   same node, so the list's own position and the parent key's other comment slots stay. When the list is
+   written block style (steps 4 to 6), the key's end-of-line token keeps only its first line
+   (`'# root list\n'`), because its tail was the old first entry's `above` text.
+3. **Emptied, or flow with nothing to carry:** if `desired` is empty, or the list is flow style and no entry
+   has a comment to carry, the list is set to flow style (`seq.fa.set_flow_style()`) and keeps no entry
+   tokens and no header. The key's end-of-line token keeps its first line, followed by `trailing`, so the
+   trailing lines stay behind the `]`. If the key has no such token and `trailing` is not empty, one is
+   created at column 0 with the value `"\n" + trailing`. The helper then returns. An empty list is always
+   emitted as `[]`; flow style is what places the key's own comment after it rather than before it.
 4. **Rebuild the tokens:** for each new index `k`, let `c = comments.get(desired[k], _EntryComments())`.
    Let `below` be the `above` text of the entry at `k + 1`, or `trailing` after the last entry. Then:
 
@@ -163,17 +171,21 @@ def _rewrite_identity_list(
 5. **Header:** it sets the first entry's `above` text as one column-0 token, in both copies the loader
    fills: `seq.ca.comment[1]` and `parent.ca.items[key][3]`. It creates the slot if it is missing, keeps the
    slot's other indices, and writes `None` to both copies when there is no text.
-6. **Style:** if the list is flow style and step 4 or 5 wrote any token, it is switched to block style
-   (`seq.fa.set_block_style()`). A flow list with nothing to carry stays flow.
+6. **Style:** any other list is written block style (`seq.fa.set_block_style()`), so a flow list that must
+   carry an entry's comment turns block. Trailing text alone does not turn it: step 3 keeps it behind the `]`.
 
 `_entry_comments` reads a token's `column` only when it has an end-of-line part. It takes the lines above the
 first entry from `parent.ca.items[key][3]`, then from `seq.ca.comment[1]`, and then from the tail of the key's
 end-of-line token, after its first `\n`. For header tokens, it turns the `(column, value)` pairs into verbatim
-indented text.
+indented text. A non-empty flow list has no header: its key token's tail is its trailing text.
+
+The implementation factors the header read, the key token's tail and the paired slot writes (both copies,
+steps 3 and 5) into three small private functions next to these two.
 
 The scratch prototype of these six steps reproduced every scenario in the spec delta. Each changed write,
-applied a second time, was a byte-for-byte no-op. Reversing a reorder restored the original bytes, for the
-key-comment variant as well.
+applied a second time, was a byte-for-byte no-op, except the emptied chapter, whose second write dropped
+`# between chapters` until the outer `chapters` node was kept (see the call sites and "Flow lists and the
+chapters sequence"). Reversing a reorder restored the original bytes, for the key-comment variant as well.
 
 Call sites:
 - **`_apply_chapters`** first collects the comments of **every** existing chapter's `clips` into one
@@ -181,7 +193,11 @@ Call sites:
   identity may appear in chapters at most once"), so a clip moved between existing chapters finds its
   comments. It records each chapter's trailing text by chapter name. It then calls
   `_rewrite_identity_list(entry, "clips", clips, comments, trailing[name])` where the old code emptied and
-  refilled. A fresh chapter is still `CommentedSeq(clips)`.
+  refilled. A fresh chapter is still `CommentedSeq(clips)`. When every existing chapter node keeps its
+  place and new chapters are only appended after them, it keeps the outer `chapters` node and appends to
+  it instead of assigning a new one, because that node holds the lines between two chapters by index, and
+  the lines after the last one, which an append does not move (see "Flow lists and the chapters
+  sequence").
 - **`_apply_ignore`** calls the helper with the `ignore` list's own map, where its code emptied and refilled.
   It still drops the key when the desired list is empty.
 
@@ -191,6 +207,39 @@ Call sites:
 - **Comparison uses the stored item.** It compares against the stored item, not the normalized identity.
   A hand-written `./a.mp4`, which the desired state carries as `a.mp4`, therefore counts as a change. It is
   rewritten in canonical form without its comment, which is harmless and rare.
+
+### Flow lists and the chapters sequence
+
+**Context**: Implementing the six steps surfaced two layouts they did not cover (Context, "After a flow
+list"). Applied literally, step 2 cut a flow list's trailing lines off the key token, and the header rule
+read them as the lines above its first entry, so a change moved them into the middle of the list. After the
+emptied-chapter scenario, the file holds `clips: []` followed by `# between chapters`. The loader files that
+line on the outer `chapters` sequence, which `_apply_chapters` replaced on every write, so re-applying the
+same state dropped it. So did an unmodified save of any file with a comment line after a flow clip list.
+
+**Explored**: Accepting the loss, which breaks the no-op scenario for these files and the "applied a second
+time" check, versus reading the key token's tail by the list's style and keeping the outer node when the
+chapter sequence is unchanged.
+
+**Decision**:
+- `_entry_comments` treats a non-empty flow list's key-token tail as the list's trailing text. The list has no
+  header.
+- `_rewrite_identity_list` places `trailing` by the style it writes. For a block list it goes after the last
+  entry. For a flow list or an emptied list it goes after the key token, behind the `]` (step 3). Only an
+  entry's comment turns a flow list block (step 6).
+- `_apply_chapters` keeps the outer `chapters` node when every existing chapter node keeps its place, and
+  appends any new chapters to it. Slice D's only change to the sequence, appending a disk chapter that the
+  document does not name, therefore keeps the lines between the existing chapters.
+
+**Rationale**:
+- The spec requires both "comment lines after a list's last entry SHALL stay at the end of that list" and
+  "Round-tripping an unmodified state is a no-op".
+- Keeping the outer node is "Leave an unchanged list untouched" applied to the chapter list, and an append
+  shifts no index. It is not re-homing: a sequence with a chapter removed, renamed or moved is still a new
+  node, as before.
+- One test pins each rule and fails without it: `test_flow_list_with_no_comment_to_carry_keeps_its_style`,
+  `test_emptied_chapter_keeps_the_comment_that_follows_it` and
+  `test_appended_chapter_keeps_the_lines_between_existing_chapters`.
 
 ### Where the convention is recorded
 
@@ -244,7 +293,22 @@ existing round-trip guarantee.
   The same happens to a key comment after `clips: []` (`clips: [] # root list`). → This is cosmetic only.
 - **[A flow list turns block]** A flow-style clip list that receives a commented clip is rewritten in block
   style. → The list changed anyway, and the writer's own style is block (D-G). A flow list with nothing to
-  carry keeps its style.
+  carry keeps its style. A comment written after its `]` moves to the key line at its old column, far to the
+  right of `clips:`. That is cosmetic only, and it needs a flow list that has an end-of-line comment and
+  receives a commented clip.
+- **[A reshuffled chapter sequence still drops the lines between chapters that follow a flow list]** Only
+  a sequence whose existing chapters keep their place, with new ones appended, keeps its node (see "Flow
+  lists and the chapters sequence"). When a chapter is removed, renamed or moved, a comment line after a
+  flow clip list, such as one after `clips: []`, is dropped as it is today. → Slice D never removes, renames
+  or moves a chapter, so a GUI save keeps such lines.
+- **[Quote style of retained entries in a changed list]** A changed list is refilled with the desired
+  identities as plain strings. A retained entry written with unnecessary quotes (`- "a.mp4"`) is therefore
+  written plain (`- a.mp4`); ruamel still quotes an identity that needs it. The old refill did the same, and
+  an unchanged list is never touched. → Follow-up, not in the spec: refill with the stored scalars.
+- **[Duplicate identities in `ignore`]** The schema allows an identity twice in `ignore`. The comments are
+  looked up by identity, so when such a list changes, every copy gets the comments of one copy. → This is
+  rare: the GUI resends `ignore` unchanged, so only a direct API caller can hit it. Follow-up only if it
+  matters.
 
 ## Migration Plan
 
