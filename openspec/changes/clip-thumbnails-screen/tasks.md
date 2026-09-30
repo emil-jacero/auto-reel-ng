@@ -94,7 +94,8 @@
   - `git diff --stat` lists only the files named in design, "File ownership"
 - [x] 3.2 Mount the component in Edit mode:
   - in `EventEditor.tsx`: pass `eventId` to `ClipOrderList`
-  - in `ClipOrderList.tsx`: thread `eventId` through `ClipRow` and `IgnoredRow` to `RowBody`, render
+  - in `ClipOrderList.tsx`: thread `eventId` through `ClipRow`, `IgnoredRow` (and, once `missing-clips-screen`
+    is on main, `RemovedRow`) to `RowBody`, render
     `<ClipThumb>` between the position and `.clip-file`, add one `<span />` to `.clip-order-head`, and replace
     the private `fileName` with the import
   - in `edit.css`:

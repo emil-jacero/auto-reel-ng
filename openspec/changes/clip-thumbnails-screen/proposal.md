@@ -23,9 +23,9 @@ rows live in their screens.
 - **A frame from each clip, after its position number and before its file name, in reading order.** It
   appears in:
   - the event page's chapter tables, and in their card layout at phone width
-  - Edit mode's reorder lists, both the movable rows and the dimmed ignored rows. In a panel narrower than
-    30rem the file name takes the first line, and the frame starts the second, so that no camera name is
-    broken inside the word.
+  - Edit mode's reorder lists: the movable rows, the removed missing rows (`missing-clips-screen`) and the
+    dimmed ignored rows. In a panel narrower than 30rem the file name takes the first line, and the frame
+    starts the second, so that no camera name is broken inside the word.
 
   This departs from the plan's "at the start of each clip row": measured, a box first in the row leaves
   the file name too little room, and camera names break inside the word (design, "Where the thumbnail

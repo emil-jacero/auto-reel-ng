@@ -4,7 +4,8 @@
 
 On an event's page, every clip row SHALL show a thumbnail of the clip beside its facts, after its position
 number and ahead of its file name in the row's reading order. This applies to the chapter tables, to their
-card layout in a narrow window, and to Edit mode's lists (the movable rows and the ignored rows). The
+card layout in a narrow window, and to Edit mode's lists (the movable rows, the removed rows and the ignored
+rows). The
 thumbnail SHALL be the image the service returns for that clip from
 `GET /api/v1/events/{event_id}/thumbnail?clip=<identity>`. The event id and the clip's full identity SHALL
 be sent exactly as the event detail gives them, including a chapter folder and non-ASCII letters. The

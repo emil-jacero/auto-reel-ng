@@ -93,6 +93,13 @@ worktrees at the time of writing. Task 1.1 re-checks every one of them against t
   here were measured against differs, the implementer stops and reports. At implementation
   `job-summary-times` was archived on `main` and `missing-clips-screen` was not; every value this design
   cites matched.
+- **After `missing-clips-screen` landed (main `446ac7a`)** this change was cherry-picked onto it. That change
+  left `edit.css`' grid values as they were, so the widths here still hold. It added a Remove control at the
+  end of a MISSING row's `.clip-file`, and a per-chapter list of the clips the operator removed, whose
+  `RemovedRow` reuses `RowBody`. The one conflict, `RowBody`'s props, keeps both sides: `RowBody` takes
+  `eventId` and `action`, `RemovedRow` takes `eventId` and passes it on, and `ClipOrderList` passes it to
+  `RemovedRow`. A removed row is a MISSING clip, so it shows the empty dashed box and requests nothing. The
+  requirement names the removed rows among Edit mode's lists.
 
 ### Where the thumbnail sits
 
