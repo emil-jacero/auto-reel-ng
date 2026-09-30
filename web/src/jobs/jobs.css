@@ -1,0 +1,350 @@
+/*
+ * The jobs slice (`src/jobs/`): the header's connection indicator, a job's state
+ * and meter, the event page's render region and the list rows' job cell.
+ * Imported once, by `JobsIndicator.tsx`, which the shell always mounts.
+ *
+ * Motion follows the design system's rule: transitions read the `--dur-*`
+ * tokens; every loop (the indeterminate sweep, the loader spin) is declared only
+ * inside `prefers-reduced-motion: no-preference`, with a literal duration, and a
+ * state is always also in words.
+ */
+@layer components {
+  /* The connection, in the header's status slot (`JobsIndicator.tsx`). */
+  .jobs-indicator {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.125rem var(--s-2);
+    min-inline-size: 0;
+
+    & .pill {
+      flex: none;
+    }
+  }
+
+  /* Live: a static dot on the ok tone, sized like the pill's icons. */
+  .live-dot {
+    flex: none;
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    margin-inline: 0.1875rem;
+    border-radius: var(--r-full);
+    background: var(--ok);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--ok) 28%, transparent);
+  }
+
+  .jobs-counts {
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  /* A phone's header has little room: the counts take their own line, and wrap. */
+  @media (width < 30rem) {
+    .jobs-counts {
+      font-size: var(--text-xs);
+      text-align: end;
+      white-space: normal;
+    }
+  }
+
+  /* A job's status words (`JobState`): the pill, then what it does or when it ended. */
+  .job-state {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-2);
+    min-inline-size: 0;
+  }
+
+  .job-label,
+  .job-when {
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A time never breaks inside its value. */
+  .job-when time {
+    white-space: nowrap;
+  }
+
+  /* After an active job's words, the time reads as a second clause. */
+  .job-words + .job-when::before {
+    content: '·';
+    content: '·' / '';
+    margin-inline-end: var(--s-2);
+    color: var(--fg-subtle);
+  }
+
+  .job-words {
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  /* An active job's meter (`JobMeter`): the bar, then its figures. */
+  .job-meter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-3);
+    min-inline-size: 0;
+  }
+
+  .job-figures {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--s-2);
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+
+    /* The separator is decoration: its alternative text is empty. */
+    & > * + *::before {
+      content: '·';
+      content: '·' / '';
+      margin-inline-end: var(--s-2);
+      color: var(--fg-subtle);
+    }
+  }
+
+  .job-percent {
+    color: var(--fg);
+    font-weight: 600;
+  }
+
+  /*
+   * The bar: a native <progress>, restyled. Its fill is the accent, muted while
+   * a cancel is pending. With no value it is indeterminate: diagonal stripes,
+   * standing still unless motion is allowed.
+   */
+  .job-bar {
+    --_fill: var(--accent);
+
+    appearance: none;
+    flex: 1 1 8rem;
+    min-inline-size: 4rem;
+    block-size: 0.375rem;
+    border: 0;
+    border-radius: var(--r-full);
+    background: var(--border);
+    overflow: hidden;
+
+    &::-webkit-progress-bar {
+      border-radius: var(--r-full);
+      background: transparent;
+    }
+
+    &::-webkit-progress-value {
+      border-radius: var(--r-full);
+      background: var(--_fill);
+      transition: width var(--dur-slow) var(--ease-out);
+    }
+
+    &::-moz-progress-bar {
+      border-radius: var(--r-full);
+      background: var(--_fill);
+    }
+
+    &:indeterminate {
+      background:
+        linear-gradient(
+            -45deg,
+            color-mix(in oklab, var(--_fill) 55%, transparent) 25%,
+            transparent 25% 50%,
+            color-mix(in oklab, var(--_fill) 55%, transparent) 50% 75%,
+            transparent 75%
+          )
+          0 0 / 0.75rem 0.75rem,
+        var(--border);
+    }
+
+    &:indeterminate::-moz-progress-bar {
+      background: transparent;
+    }
+  }
+
+  .job-meter[data-cancelling] .job-bar {
+    --_fill: var(--fg-subtle);
+  }
+
+  /* The event page's render region (`RenderControl.tsx`): its own line in the status line. */
+  .render-control {
+    display: grid;
+    flex: 1 1 100%;
+    gap: var(--s-3);
+    min-inline-size: 0;
+  }
+
+  .render-card {
+    display: grid;
+    gap: var(--s-3);
+    padding: var(--s-3) var(--s-4);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    transition: border-color var(--dur-med) var(--ease-out);
+
+    /* A job in progress: the card takes the accent's edge. */
+    &[data-active] {
+      border-color: color-mix(in oklab, var(--accent) 45%, var(--border));
+    }
+
+    & .job-bar {
+      block-size: 0.5rem;
+    }
+  }
+
+  .render-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2) var(--s-4);
+  }
+
+  /* Sized by its words: the actions wrap below only when both do not fit on a line. */
+  .render-status {
+    display: flex;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-3);
+    min-inline-size: 0;
+    border-radius: var(--r-sm);
+  }
+
+  .render-none,
+  .render-blocked {
+    color: var(--fg-muted);
+  }
+
+  .render-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+    margin-inline-start: auto;
+  }
+
+  /* The collision alert's claimants and fix, one sentence per line. */
+  .render-claimants {
+    display: grid;
+    gap: var(--s-1);
+
+    & a {
+      color: var(--_fg);
+      font-weight: 600;
+    }
+  }
+
+  /* A screen's content, kept (and aria-busy) during an in-place re-read. */
+  .page-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-5);
+    min-inline-size: 0;
+  }
+
+  /* A list row's job cell (`LiveJobCell.tsx`): the job, then a compact Render. */
+  .live-job {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+    max-inline-size: 100%;
+    vertical-align: middle;
+  }
+
+  /*
+   * A row become a card (a narrow panel): the cell's parts flow as one line of
+   * items after its "Last job" label, so the label stays beside the pill.
+   */
+  @container (width < 50rem) {
+    .event-table .cell-job {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--s-1) var(--s-2);
+
+      &[data-label]::before {
+        margin-inline-end: 0;
+      }
+
+      & .live-job,
+      & .job-progress,
+      & .job-state {
+        display: contents;
+      }
+    }
+  }
+
+  .job-progress {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-2);
+    min-inline-size: 0;
+    max-inline-size: 100%;
+
+    & .job-words,
+    & .job-when,
+    & .job-figures {
+      font-size: var(--text-xs);
+    }
+
+    & .job-meter {
+      flex: 1 1 100%;
+      column-gap: var(--s-2);
+    }
+
+    & .job-bar {
+      flex-basis: 4rem;
+      block-size: 0.25rem;
+    }
+  }
+
+  /* A compact button, for a control inside a table row. */
+  .btn-compact {
+    gap: var(--s-1);
+    min-block-size: 1.625rem;
+    padding: 0 var(--s-2);
+    font-size: var(--text-sm);
+
+    & > svg {
+      inline-size: 0.875rem;
+      block-size: 0.875rem;
+    }
+
+    &[aria-busy='true']::before {
+      inline-size: 0.875rem;
+      block-size: 0.875rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .job-bar:indeterminate {
+      animation: job-bar-sweep 1.2s linear infinite;
+    }
+
+    .jobs-indicator:not([data-connection='live']) .pill > svg,
+    .job-state[data-status='running'] .pill > svg {
+      animation: jobs-spin 1.2s linear infinite;
+    }
+
+    @keyframes job-bar-sweep {
+      to {
+        background-position:
+          0.75rem 0,
+          0 0;
+      }
+    }
+
+    @keyframes jobs-spin {
+      to {
+        rotate: 1turn;
+      }
+    }
+  }
+}

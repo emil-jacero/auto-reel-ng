@@ -7,6 +7,7 @@ import type { Chapter, Clip, EventDetail as EventDetailData } from '../api/event
 import type { EventFailure, Problem } from '../api/events'
 import { EventEditor } from '../edit/EventEditor'
 import { requestLeave, useSaving } from '../edit/unsaved'
+import { RenderControl } from '../jobs/RenderControl'
 import { LIST_HREF } from '../route'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
@@ -14,7 +15,6 @@ import { Pill } from '../ui/Pill'
 import { LoadStatus, SkeletonRows } from '../ui/Skeleton'
 import {
   DATABASE_CAUSE,
-  JobCell,
   StalenessCell,
   UNREACHABLE_CAUSE,
   folderName,
@@ -30,8 +30,12 @@ import { CLIP_STATUS_LOOK, FAILURE_LOOK } from './tones'
  *
  * It reads like the list: on mount and on refresh, never polled. Loading and
  * failure both replace the content, so an earlier state of the event is never
- * shown as current. Its Edit mode (`edit/EventEditor.tsx`) writes `reel.yaml`
- * only on an explicit Save. Mounted once per event (keyed by id).
+ * shown as current. The one exception is a re-read the page starts by itself —
+ * its job ended, or an enqueue answer showed its read is out of date — which
+ * keeps the content, marked as updating, until the new read answers. Its Edit
+ * mode (`edit/EventEditor.tsx`) writes `reel.yaml` only on an explicit Save, and
+ * its render region (`jobs/RenderControl`) enqueues or cancels only through its
+ * own controls. Mounted once per event (keyed by id).
  */
 
 type Failure = {
@@ -43,9 +47,13 @@ type Failure = {
   notFound?: boolean
 }
 
+/** `quiet`: a re-read the page starts by itself, which keeps the content shown. */
+type LoadOptions = { quiet?: boolean }
+
 type LoadState =
   | { status: 'loading' }
-  | { status: 'ready'; event: EventDetailData; fetchedAt: Date }
+  // `updating`: a quiet re-read runs, and the content shown is the last read's.
+  | { status: 'ready'; event: EventDetailData; fetchedAt: Date; updating?: boolean }
   | ({ status: 'failed' } & Failure)
 
 function describeProblem(problem: Problem, eventId: string): Failure {
@@ -76,14 +84,30 @@ export function EventDetail({ eventId }: { eventId: string }) {
   const saving = useSaving()
   const shown = useRef(false)
   const inFlight = useRef<AbortController | null>(null)
+  // A quiet re-read asked for while a read runs: one more runs after it.
+  const pending = useRef(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const focusHeading = useRef(false)
 
-  const load = useCallback(() => {
+  /**
+   * Read the event. A plain read (first, Refresh) aborts any read and shows
+   * placeholders. A quiet one keeps the content, marked as updating — unless the
+   * page shows a failure, which has no content to keep — and never restarts a
+   * read in flight: it runs once after it instead.
+   */
+  const load: (options?: LoadOptions) => void = useCallback((options = {}) => {
+    const quiet = options.quiet === true
+    if (quiet && inFlight.current !== null) {
+      pending.current = true
+      return
+    }
     inFlight.current?.abort()
+    pending.current = false
     const controller = new AbortController()
     inFlight.current = controller
-    setState({ status: 'loading' })
+    setState((shown) =>
+      quiet && shown.status === 'ready' ? { ...shown, updating: true } : { status: 'loading' },
+    )
     fetchEvent(eventId, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) {
@@ -108,7 +132,20 @@ export function EventDetail({ eventId }: { eventId: string }) {
         }
         setState({ status: 'failed', cause: 'The event could not be read.', detail: String(error) })
       })
+      .finally(() => {
+        if (controller.signal.aborted || inFlight.current !== controller) {
+          return
+        }
+        inFlight.current = null
+        if (pending.current) {
+          load({ quiet: true })
+        }
+      })
   }, [eventId])
+
+  // The page's own re-read: its job ended, or an enqueue answer showed its read is
+  // out of date. Quiet, so the page keeps its content while it runs.
+  const reread = useCallback(() => load({ quiet: true }), [load])
 
   useEffect(() => {
     load()
@@ -149,6 +186,7 @@ export function EventDetail({ eventId }: { eventId: string }) {
   }, [name])
 
   const loading = state.status === 'loading'
+  const updating = state.status === 'ready' && state.updating === true
   return (
     <main className="page event-detail">
       <header className="page-header">
@@ -197,13 +235,20 @@ export function EventDetail({ eventId }: { eventId: string }) {
             )}
           </div>
         </div>
-        {state.status === 'ready' && <EventFacts event={state.event} editing={editing} />}
+        {state.status === 'ready' && (
+          <EventFacts
+            eventId={eventId}
+            event={state.event}
+            editing={editing}
+            onFinished={reread}
+          />
+        )}
         <div className="page-meta">
           {state.status === 'ready' && (
             <Counts clips={state.event.chapters.flatMap((chapter) => chapter.clips)} />
           )}
           {state.status === 'ready' && <span>Read {state.fetchedAt.toLocaleTimeString()}</span>}
-          <LoadStatus message={loading ? 'Reading event…' : ''} />
+          <LoadStatus message={loading ? 'Reading event…' : updating ? 'Updating…' : ''} />
         </div>
       </header>
 
@@ -260,17 +305,29 @@ export function EventDetail({ eventId }: { eventId: string }) {
             onReload={leaveEditMode}
           />
         ) : (
-          <ReadyView event={state.event} />
+          <div className="page-content" aria-busy={updating || undefined}>
+            <ReadyView event={state.event} />
+          </div>
         ))}
     </main>
   )
 }
 
 /**
- * The header's facts: date and location, description, verdict and latest job.
- * In Edit mode the editor's fields take the place of the first two.
+ * The header's facts: date and location, description, verdict, and the render
+ * region. In Edit mode the editor's fields take the place of the first two.
  */
-function EventFacts({ event, editing }: { event: EventDetailData; editing: boolean }) {
+function EventFacts({
+  eventId,
+  event,
+  editing,
+  onFinished,
+}: {
+  eventId: string
+  event: EventDetailData
+  editing: boolean
+  onFinished: () => void
+}) {
   const facts = [event.date, event.location].filter((fact) => fact != null)
   return (
     <>
@@ -280,12 +337,12 @@ function EventFacts({ event, editing }: { event: EventDetailData; editing: boole
       )}
       <div className="status-line">
         <StalenessCell staleness={event.staleness} />
-        {event.latest_job != null && (
-          <span className="status-job">
-            <span className="status-label">Last job</span>
-            <JobCell job={event.latest_job} />
-          </span>
-        )}
+        <RenderControl
+          eventId={eventId}
+          staleness={event.staleness}
+          latestJob={event.latest_job}
+          onFinished={onFinished}
+        />
       </div>
     </>
   )
