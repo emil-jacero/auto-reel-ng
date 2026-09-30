@@ -64,17 +64,18 @@ What `web/` looks like then, and what this change reads from the service:
 - **The read side carries `latest_job: JobSummaryOut{id, status, progress, created_at}`** (`schemas.py:57-68`,
   `:98`, `:146`). It has no `error`, no `cancel_requested`, no `started_at` and no `finished_at`.
 - **WebSocket** (`auto_reel_ng/api/ws.py`):
-  - the first frame is always a `snapshot` of the queued and running jobs (`:66-81`, `:175-183`)
-  - deltas are for new jobs and for changes of `status`, `progress` or `cancel_requested` (`:141-149`,
-    plus C2's `cancel_requested` trigger)
-  - a job leaving the active set is emitted once as its terminal row (`:151-157`). After C2, a job that
+  - the first frame is always a `snapshot` of the queued and running jobs
+  - deltas are for new jobs and for changes of `status`, `progress` or `cancel_requested` (C2's
+    `cancel_requested` trigger)
+  - a job leaving the active set is emitted once as its terminal row. After C2, a job that
     became terminal since the previous tick although no earlier frame carried it (its whole active life
     fell between two polls, such as `2024-10-05 - Trasig` failing at probe) is also emitted once, as its
     terminal row. C3 keeps that project-scoped.
-  - a slow consumer is closed normally (`:163-173`)
-  - the endpoint never reads from the client (`:194-217`)
+  - after `jobs-ws-lifecycle`, the server closes with a code that says why: 1013 when the hub drops a
+    subscriber (a slow consumer), 1012 when the service shuts down, 1011 when a push fails. It reads
+    what a client sends only to notice a disconnect, and ignores it; a closed connection releases its
+    subscription at once
   - the hub polls at `poll_interval`, 1 s by default (`settings.py`), only while a subscriber is connected
-    (`:66-92`)
   - after C3, it carries only the served project's jobs
 - **`vite.config.ts`** already proxies `/api` with `ws: true`.
 
@@ -196,9 +197,10 @@ export function load(jobId: string, options?: LoadOptions): void
     mount, cleanup, mount sequence then reuses one socket.
   - `JobsIndicator` lives in the shell, so in practice the socket is open while the app is.
 - **Reconnect:**
-  - The socket reconnects on every `close` the store did not start itself, including a normal close (the
-    hub closes a slow consumer normally), and `error` closes it. The store's own deferred close clears
-    `current` first, so the guard below drops its `close` event and nothing reconnects.
+  - The socket reconnects on every `close` the store did not start itself, whatever its code (1013 for a
+    dropped slow consumer, 1012 for a service restart, 1011 for a failed push, or none when the network
+    goes), and `error` closes it. The client never branches on the code. The store's own deferred close
+    clears `current` first, so the guard below drops its `close` event and nothing reconnects.
   - The delay is full jitter: `random(0, min(30_000, 500 · 2^attempt))`.
   - `attempt` resets only when a **valid** frame arrives on the new socket. A server that accepts and then
     closes at once, or sends garbage, therefore backs off instead of spinning.
@@ -250,7 +252,7 @@ export function load(jobId: string, options?: LoadOptions): void
   `useSyncExternalStore` requirement).
 
 **Rationale**:
-- The snapshot holds only active jobs (`ws.py:175-183`), so "absent" means "no longer active", not
+- The snapshot holds only active jobs, so "absent" means "no longer active", not
   "unchanged". A job that finished during a disconnect would otherwise show as running forever, or vanish
   and let the row fall back to the older read (Principle I).
 - Keeping known terminal jobs means the page keeps showing a failure's `error` text after a reconnect,
@@ -644,8 +646,9 @@ archives second: that change's final integration task wires it and runs one comb
   Task 1.1 confirms it; the page that enqueued the job then shows its ending live, and task 6.1 checks it
   on Trasig without any Refresh.
 - **[A half-open connection still reads "Live"]** The hub sends nothing while no job changes, and the
-  endpoint never reads from the client (`ws.py:194-217`), so a connection that died silently (a suspended
-  laptop, a dropped route without an `offline` event) is only noticed when the browser's TCP stack gives up.
+  service's protocol-level pings are answered by the browser itself, out of the page's sight, so a
+  connection that died silently (a suspended laptop, a dropped route without an `offline` event) is only
+  noticed when the browser's TCP stack gives up.
   Until then the header says Live. → `online` reconnects cover the common case. A server heartbeat frame
   would close the gap, but it is an API change and out of scope; noted as a follow-up.
 - **[An early underestimate sticks]** `min(previous, new)` never lets the estimate grow, so a fast first
