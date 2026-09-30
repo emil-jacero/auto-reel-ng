@@ -244,7 +244,7 @@ Open question: how much render/look config lives per-event in `reel.yaml` vs a *
 ### 4.7 Project / config model & GUI ⇄ reel.yaml sync
 
 - **Project** = an input root containing `<year>/<event>/` dirs. Scanning populates a Postgres index
-  (event list, clip list, thumbnails, analysis cache pointers) for fast GUI loads.
+  (event list, clip list, analysis cache pointers) for fast GUI loads.
 - Every editorial mutation in the GUI (reorder, trim, metadata edit) is **persisted to `reel.yaml`**,
   with Postgres updated as a cache. `reel.yaml` is authoritative on conflict / re-scan.
 - Layered config resolution: layout/folder seed → project `config.yaml` → event `reel.yaml` → render-time overrides (D-2).
@@ -304,15 +304,19 @@ The north star is a **full timeline editor**, but we ship in thin slices:
 
 - **v1 (tiny, ship first):** scan/ingest view (events + clips), **drag-reorder clips** (persist to
   `reel.yaml`), edit basic metadata (title/date/location/description), **schedule a render and watch
-  live progress**. The resolved `look` is shown **read-only**; editing it is v2. No timeline, no
-  per-frame editing.
+  live progress**, and **clip thumbnails** (one frame per clip, **D-11**). The resolved `look` is shown
+  **read-only**; editing it is v2. No timeline, no per-frame editing.
 - **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview), **analysis review** (approve black/white/freeze
-  trims), thumbnails/poster frames.
+  trims), event poster frames.
 - **v3:** **full timeline editor** — per-clip track with proxies, drag-trim in/out, reorder across
   chapters, scrub preview.
 
 The v1 screens share one visual system in plain CSS — tokens, an app shell, and the primitives slices
 D and E build on — pulled forward from the v2 look-and-feel pass (**D-10**, change `web-design-system`).
+
+Clip thumbnails are pulled forward from v2 as **D-11**, in three changes (`clip-thumbnails` →
+`clip-thumbnail-endpoint` → `clip-thumbnails-screen`); `clip-thumbnail-endpoint` is the one extra `api/`
+prerequisite this adds to v1.
 
 **v1's slices** (planned 2026-09-01; one OpenSpec change each, in order). v1 is four features and a
 scaffold, which is several changes under Principle VIII, so the plan lives here rather than as five open
@@ -411,8 +415,8 @@ schema hook publishes it into the schema's components (`WsMessage` and its `WsMe
 error, and endpoint behavior is already covered by `pytest`. A later slice with logic worth unit-testing
 proposes a runner then, with its justification.
 
-> ⚠️ **Research:** §8.11 proxy/thumbnail generation for the timeline (v3). The frontend framework is now
-> **resolved** (Decision D-8).
+> ⚠️ **Research:** §8.11 proxies and scrubbing for the timeline (v3); single-frame clip thumbnails are
+> **resolved** (Decision D-11). The frontend framework is now **resolved** (Decision D-8).
 
 ### 4.11 Headless CLI
 
@@ -514,7 +518,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
 6. **Analysis pass v1** (black/white/freeze → segments → reel.yaml trims).
 7. **Job scheduler + FastAPI service** (jobs, progress over WS, Postgres index).
 8. **GUI v1** (ingest + reorder + metadata + schedule + progress).
-9. **GUI v2** (look editor + analysis review + thumbnails).
+9. **GUI v2** (look editor + analysis review).
 10. **GUI v3** (full timeline editor) and **ML analysis** (parallel, behind existing interfaces).
 11. **Packaging** (cross-vendor image, deployment docs).
 
@@ -565,6 +569,21 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   pairs its words with an icon. The color scheme follows the OS unless the operator picks Light or
   Dark, a per-browser preference, not project state. Later slices add their own stylesheets and
   reuse the shared primitives (`web/README.md`, "Design system"). (§4.10)
+
+- **D-11 — Clip thumbnails in GUI v1** (2026-09-30, change `clip-thumbnails`). Every clip on disk gets one
+  JPEG thumbnail, pulled forward from v2 at the operator's request.
+  - **The frame** is the one at `thumbnails.position` × the clip's ffprobe duration (default 0.25,
+    0 < p < 1). It is never the first frame and never at a guessed time. There is one attempt: a clip
+    with no frame there has no thumbnail.
+  - **Extraction** uses CPU decode through the engine's ffmpeg runtime: input seek, one frame,
+    SAR-corrected, the display rotation applied and the editorial `rotate` not, fitted inside 320×180.
+  - **The cache** is derived state in a file cache outside the library:
+    `$XDG_CACHE_HOME/auto-reel/thumbnails/` (else `~/.cache/…`), or `thumbnails.cache_dir`. It is keyed
+    by the resolved clip path, size, mtime, position, box and `THUMBNAIL_VERSION`, written atomically,
+    never in Postgres (D-7), and never evicted in v1 (≈15 KB per clip).
+  - **Filling it:** `auto-reel thumbs` fills it in batch. The service's thumbnail route fills it on
+    request (change `clip-thumbnail-endpoint`).
+  - **Still open:** proxies and scrubbing stay v3 (§8.11). (§4.10)
 
 ---
 
@@ -646,8 +665,10 @@ turned into confident OpenSpec changes. Numbered to match the ⚠️ markers abo
     TypeScript**, static build served by FastAPI (no runtime Node), API types generated from OpenAPI, and a
     hard dependency budget (no component library, router, or state library at GUI v1). WS state handling is
     a hand-written hook over the existing D-A4 progress hub.
-11. **Proxy & thumbnail generation** for the timeline editor — low-res proxies (and/or HLS) for scrubbing
-    without touching originals; where to cache.
+11. **Proxy & thumbnail generation** for the timeline editor. Clip thumbnails ✅ **RESOLVED → Decision
+    D-11** (§4.10): one JPEG per clip at a fraction of its duration, in a file cache outside the library.
+    Still open (v3): low-res proxies (and/or HLS) for scrubbing without touching originals; where to
+    cache them.
 12. **Single image, all vendors** — can one container ship CUDA + intel-media-driver + Mesa/VAAPI
     userspace and select at runtime from host-passed devices; document the `--gpus` vs `/dev/dri` matrix.
 13. **Per-device targeting** — exact flags to pin a job to a chosen GPU across NVENC (`-gpu`/

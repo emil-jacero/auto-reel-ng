@@ -54,12 +54,14 @@ auto-reel jobs list|show|cancel <root>    # read the job store; request cancella
 auto-reel serve   <root>                  # run the API service (REST + WS) until SIGINT/SIGTERM
 auto-reel adopt-renders <root>            # one-time: write manifests for an already-rendered archive
                                           #   (--dry-run previews without writing)
+auto-reel thumbs  <root> [--jobs N]       # generate missing clip thumbnails into the cache (not the library)
 ```
 
 Shared options: `--years 2023,2024` (year-event layout), `--layout flat|year-event`,
 and `-o/--output`. `render` and `enqueue` also take `--force` (bypass the staleness
 gate below); `render` additionally takes `--dry-run` (print the ffmpeg commands and
-write nothing) and `--device <amd|nvidia|intel|cpu|device-id>`.
+write nothing) and `--device <amd|nvidia|intel|cpu|device-id>`. `thumbs` takes
+`--years` and `--layout` but no `-o`, plus `--jobs N` (below).
 
 - **Layouts** map the project root to event directories: `year-event`
   (`<root>/<year>/<event>/`, the default) and `flat` (events directly under the root).
@@ -387,6 +389,43 @@ Settings resolve through the same config-then-flag layering as `worker`:
 `api.host`/`api.port`/`api.poll_interval` in `config.yaml`, overridden by
 `serve`'s own `--host`, `--port`, `--poll-interval` flags.
 
+### Clip thumbnails (`thumbs`)
+
+Every clip on disk gets one small JPEG thumbnail (decision D-11), for the GUI's clip
+rows. The frame is taken a fraction of the way into the clip — `thumbnails.position`
+× its ffprobe duration, default 0.25 — never the first frame and never at a guessed
+time. Extraction is attempted once: a clip with no frame there (zero bytes, a copy
+cut short before that time, a one-frame clip) has no thumbnail and is reported. The
+image is fitted inside 320×180 keeping the displayed aspect ratio (a clip held
+upright stays portrait; anamorphic footage is not squashed); the editorial `rotate`
+is not applied. Decoding is CPU-only; the source clip is only read.
+
+`auto-reel thumbs <root>` fills the cache for every clip the layout walk finds (root
+clips and chapter subfolders, IGNORED clips included; `original/` and `.reelignore`d
+folders skipped, like `scan`). It never reads or writes `reel.yaml`, so a MISSING clip
+is never requested, and it writes nothing under the project root, so it works on a
+library mounted read-only. It prints one line per event, one `ERROR  <event>/<clip>:
+<reason>` line per failed clip, and a summary; it exits non-zero when any clip
+failed. Cached thumbnails are skipped, so a re-run only extracts new, changed or
+previously failed clips. Clips that are other names of one file (links in one event)
+may each count as generated. `--jobs N` (default 2) bounds concurrent extractions: about
+0.5 s per clip serially on local disk, ≈30 min for a 6,500-clip archive at the
+default; lower it on a slow or flaky USB drive.
+
+**The cache** lives outside the library: `$XDG_CACHE_HOME/auto-reel/thumbnails/`
+(else `~/.cache/auto-reel/thumbnails/`), or `thumbnails.cache_dir`. `thumbs` reads
+`thumbnails.position` and `thumbnails.cache_dir` from `config.yaml` (the service's
+thumbnail route, change `clip-thumbnail-endpoint`, reads the same keys);
+`cache_dir` must be absolute (`~` is expanded), and the directory — configured or
+default — must lie outside the project root and the `input` directory, or the
+command refuses to start. Files are named by a hash of the clip's resolved path,
+size, mtime, the position and the extraction version, so an edited clip gets a new
+thumbnail by itself; moving or remounting the library at another path regenerates
+them all. Each thumbnail is ≈15 KB (≈100 MB for 6,500 clips) and nothing is evicted:
+delete the directory to reset it. When `serve` runs as another user or in a
+container, it has its own `XDG_CACHE_HOME` — set `thumbnails.cache_dir` in the
+project's `config.yaml` so the CLI and the service share one cache.
+
 ### Project `config.yaml`
 
 An optional `config.yaml` at the project root supplies shared defaults. Every field
@@ -442,6 +481,9 @@ api:                       # API service ('serve') settings (all optional)
   host: 127.0.0.1              # bind host; widen only deliberately
   port: 8080                   # bind port
   poll_interval: 1.0           # seconds between WS hub poll ticks
+thumbnails:                # clip thumbnail settings (all optional)
+  position: 0.25               # frame at this fraction of the clip's duration (0 < p < 1)
+  cache_dir: ~/.cache/auto-reel/thumbnails   # absolute (~ expanded); outside root and input
 ```
 
 ## Development

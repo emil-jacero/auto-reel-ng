@@ -44,8 +44,10 @@ often mounted read-only.
   cache hit never runs ffprobe or ffmpeg.
 - **New errors in `errors.py`:**
   - `ThumbnailError`: this clip cannot give a thumbnail. It covers a probe failure, no usable
-    duration, and ffmpeg failing or producing no frame, and it names the clip and the cause.
-  - `ThumbnailCacheError`: the cache directory cannot be created or written. It names the directory.
+    duration, and ffmpeg failing or producing no frame, and it names the clip and the cause. It carries
+    `clip` and `reason`, so the CLI names the clip once.
+  - `ThumbnailCacheError`: the cache directory cannot be created, read or written. It names the
+    directory.
     This is not a property of the clip, so the CLI stops on it and the API reports it apart.
 - **Two optional `config.yaml` keys (D-2):**
   - `thumbnails.position`: a number with 0 < p < 1, default **0.25**
@@ -57,7 +59,8 @@ often mounted read-only.
   - `ProjectConfig` gains one opaque `thumbnails` map, like `worker` and `api`, and
     `thumbs.resolve_thumbnail_settings` validates it
 - **Package exports:** `auto_reel_ng/thumbs/__init__.py` exports `thumbnail_for`, `thumbnail_path`,
-  `resolve_thumbnail_settings` and `ThumbnailSettings`, the names T2 imports.
+  `resolve_thumbnail_settings` and `ThumbnailSettings`, the names T2 imports, plus `is_cached`, the
+  cache check that raises `ThumbnailCacheError` when the cache cannot be read.
 - **New CLI subcommand `auto-reel thumbs <root> [--years] [--layout] [--jobs N] [-v]`:**
   - walks the layout like `scan`, honouring `--years`, `--layout` and `.reelignore`
   - makes a thumbnail for every clip that discovery lists on disk: root clips and chapter
@@ -120,7 +123,9 @@ often mounted read-only.
   - new `thumbs/`: `settings.py` and `thumbnail.py`
   - `errors.py`: two classes
   - `config/project.py`: one opaque field
-  - `cli/`: `main.py` for the parser, `commands.py` for `cmd_thumbs`
+  - `cli/`: `main.py` for the parser, a new `thumbnails.py` for `cmd_thumbs`. It is kept out of
+    `commands.py` because adding it there crosses pylint's `too-many-lines` limit (1,000); it reuses
+    `commands._project_context` unchanged.
   - tests
   - `docs/high-level-design.md` and `README.md`
   - nothing in `api/`, `render/`, `staleness/`, `persistence/` or `web/`

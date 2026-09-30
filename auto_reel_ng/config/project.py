@@ -3,8 +3,10 @@
 A project root may carry a ``config.yaml`` declaring a default ``look`` map, the
 ingest ``layout`` name, default ``input``/``output`` paths, the clip ``sort`` rule
 (:class:`~auto_reel_ng.reel.document.ClipOrder`), a ``database.url``
-override consumed by :mod:`auto_reel_ng.persistence.config`, and a ``worker`` map
-consumed by :mod:`auto_reel_ng.scheduler.config`. Every field is optional: a
+override consumed by :mod:`auto_reel_ng.persistence.config`, a ``worker`` map
+consumed by :mod:`auto_reel_ng.scheduler.config`, an ``api`` map consumed by
+:mod:`auto_reel_ng.api.settings`, and a ``thumbnails`` map consumed by
+:mod:`auto_reel_ng.thumbs.settings`. Every field is optional: a
 missing file yields all-defaults (tolerated), while malformed YAML or a
 wrong-typed field fails loud (engine convention).
 
@@ -55,6 +57,9 @@ class ProjectConfig:
     #: The API service's ``api.*`` settings (opaque, like ``worker``); see
     #: :func:`auto_reel_ng.api.settings.resolve_api_settings`.
     api: Mapping[str, object] = field(default_factory=dict)
+    #: The clip thumbnails' ``thumbnails.*`` settings (opaque, like ``worker``); see
+    #: :func:`auto_reel_ng.thumbs.settings.resolve_thumbnail_settings`.
+    thumbnails: Mapping[str, object] = field(default_factory=dict)
     #: The order clips enter a document in (seeding and NEW-clip adoption).
     sort: ClipOrder = DEFAULT_CLIP_ORDER
 
@@ -96,6 +101,7 @@ def loads_project_config(text: str, *, source: str = "<string>") -> ProjectConfi
         database_url=_require_str(database.get("url"), "database.url", source),
         worker=dict(_require_mapping(data.get("worker"), "worker", source)),
         api=dict(_require_mapping(data.get("api"), "api", source)),
+        thumbnails=dict(_require_mapping(data.get("thumbnails"), "thumbnails", source)),
         sort=_parse_sort(_require_mapping(data.get("sort"), "sort", source), source),
     )
 

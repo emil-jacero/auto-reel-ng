@@ -1,12 +1,13 @@
 """The ``auto-reel`` argument parser and entry point (HLD §4.11).
 
-Exposes nine subcommands — ``render``, ``scan``/``list``, ``analyze``, ``import``,
-``enqueue``, ``worker``, ``jobs`` (``list``/``show``/``cancel``), ``serve``, and
-``adopt-renders``. The scan/render family shares the project options (project
-root, ``--output``, ``--years``, ``--layout``, ``--verbose``); flags such as
-``--dry-run``, ``--force`` and ``--device`` are added per subcommand. Unknown
-subcommands and bad arguments exit non-zero with usage (argparse); engine errors
-are caught at the top and reported on stderr with a non-zero exit.
+Exposes ten subcommands — ``render``, ``scan``/``list``, ``analyze``, ``import``,
+``enqueue``, ``worker``, ``jobs`` (``list``/``show``/``cancel``), ``serve``,
+``adopt-renders``, and ``thumbs``. The scan/render family shares the project options
+(project root, ``--output``, ``--years``, ``--layout``, ``--verbose``; ``thumbs``
+takes no ``--output``); flags such as ``--dry-run``, ``--force``, ``--device`` and
+``--jobs`` are added per subcommand. Unknown subcommands and bad arguments exit
+non-zero with usage (argparse); engine errors are caught at the top and reported on
+stderr with a non-zero exit.
 
 ``render`` and ``enqueue`` gate every event through the staleness gate
 (change-detection, §8.14): only stale events render/enqueue unless ``--force``.
@@ -37,11 +38,23 @@ from .commands import (
     cmd_serve,
     cmd_worker,
 )
+from .thumbnails import cmd_thumbs
 
 
 def _parse_years(value: str) -> Tuple[str, ...]:
     """Parse a comma-separated ``--years`` value into a tuple of year strings."""
     return tuple(year.strip() for year in value.split(",") if year.strip())
+
+
+def _positive_int(value: str) -> int:
+    """Parse a positive integer argument (``thumbs --jobs``); argparse reports the rest."""
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"must be a positive integer, got {value!r}") from exc
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"must be a positive integer, got {value!r}")
+    return number
 
 
 def _add_root_arg(parser: argparse.ArgumentParser) -> None:
@@ -65,20 +78,28 @@ def _add_root_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_common_args(parser: argparse.ArgumentParser) -> None:
-    """Add the shared project options every scan/render-family subcommand accepts (3.3)."""
+def _add_common_args(parser: argparse.ArgumentParser, *, output: bool = True) -> None:
+    """Add the shared project options every scan/render-family subcommand accepts (3.3).
+
+    ``output=False`` leaves out ``-o``/``--output`` for a subcommand that writes no
+    movie (``thumbs``); it then sets ``output=None`` itself.
+    """
     parser.add_argument(
         "root",
         nargs="?",
         default=None,
         help="project root to scan (default: current directory)",
     )
-    parser.add_argument(
-        "-o",
-        "--output",
-        default=None,
-        help="output directory (default: <parent>/<root-name>-output, or config.yaml 'output')",
-    )
+    if output:
+        parser.add_argument(
+            "-o",
+            "--output",
+            default=None,
+            help=(
+                "output directory "
+                "(default: <parent>/<root-name>-output, or config.yaml 'output')"
+            ),
+        )
     parser.add_argument(
         "--years",
         type=_parse_years,
@@ -99,7 +120,7 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the ``auto-reel`` argument parser with its seven subcommands."""
+    """Build the ``auto-reel`` argument parser with its ten subcommands."""
     parser = argparse.ArgumentParser(
         prog="auto-reel",
         description="Merge per-event clips into one movie per event, headless.",
@@ -250,6 +271,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="report what would be adopted without writing any manifest",
     )
     adopt_renders.set_defaults(func=cmd_adopt_renders)
+
+    thumbs = subparsers.add_parser(
+        "thumbs",
+        help="generate missing clip thumbnails into the cache; never writes the library",
+    )
+    _add_common_args(thumbs, output=False)
+    thumbs.add_argument(
+        "--jobs",
+        type=_positive_int,
+        default=2,
+        help="max concurrent extractions (default: 2; lower it for a slow drive)",
+    )
+    thumbs.set_defaults(output=None, func=cmd_thumbs)
 
     return parser
 

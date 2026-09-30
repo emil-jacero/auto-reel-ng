@@ -78,6 +78,11 @@ def test_wrong_typed_worker_fails_loud() -> None:
         loads_project_config("worker: not-a-mapping\n")
 
 
+def test_wrong_typed_thumbnails_fails_loud() -> None:
+    with pytest.raises(ConfigError, match="'thumbnails'"):
+        loads_project_config("thumbnails: 3\n")
+
+
 # --------------------------------------------------------------------------- #
 # D-2 layering through resolve()
 # --------------------------------------------------------------------------- #
