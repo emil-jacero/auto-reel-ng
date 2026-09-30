@@ -146,6 +146,10 @@ export function jobsSocketUrl(): string
 - *Changed during implementation:* the enqueue body leaves `device` out, so the service's own default
   (`auto`) applies, and a default changed there needs no client change.
 - Enqueue and cancel are not aborted on unmount. They are writes, and their answer still updates the store.
+- *Changed during review:* "no answer" and "an unpublished answer" are two kinds. `unreachable` means
+  fetch rejected, and it reads "The render was not queued. The service is not reachable." (for a cancel,
+  "The cancel was not confirmed. …") with the error as the detail. `unpublished` is a status or body the
+  route does not publish, and it keeps "not queued" with the status received.
 
 **Rationale**:
 - It keeps the house pattern: one module knows the URLs and statuses, and callers handle every kind.
@@ -443,6 +447,13 @@ no verdict to act on, so it offers no Render. States come from `useEventJob` plu
   at `editing`'s two changes (the Edit button and `leaveEditMode()`), so it is stable, and
   `RenderControl` calls the latest `onFinished` through a ref: an enqueue answer that arrives after Edit
   mode opened (Render pressed, then Edit) never re-reads under the open editor.
+- *Changed during review:* the effect also calls `onFinished()` once when the page's read still shows
+  its latest job queued or running while the store already knows that same job ended (the end arrived
+  while the read was on its way). `RenderControl` then mounts at the ended state and would see no
+  transition; the re-read shows the end, so this cannot loop.
+- *Changed during review:* the "fresh" sentence is also said by the region's always-mounted status
+  element, and the visible Alert is a `note`, so it is announced once. The status element, focused
+  only by script, draws no focus ring.
 
 **Rationale**:
 - The spec's outcome list maps one-to-one onto `EnqueueResult`.
@@ -575,6 +586,13 @@ While `live`, it adds `N rendering · M queued`, omitting zero parts, or nothing
 not a live region; the page regions announce state. It is plain text, not a link: there is no jobs page in
 v1. Below 30rem the counts wrap onto their own line inside the slot rather than widening the header, so
 the header never scrolls horizontally at 390px.
+*Changed during review:* each count is a unit that never breaks. Below 30rem it shows only its status
+icon (the job pills' `loader` and `clock`) and its number, with the words kept for assistive technology,
+so the pill and the counts take at most two short lines inside the 48px header. Below 23.5rem
+"Connecting…" and "Reconnecting…" show as the pill's loader on its tone, the words again for assistive
+technology: they do not fit beside the navigation and the theme control. Under `forced-colors: active`
+the live dot takes `CanvasText`; the progress bar keeps a `CanvasText` edge and paints its value in
+`Highlight`, and a waiting bar is a `GrayText` stripe.
 
 **Rationale**: Status is never by color alone (C1). Hiding the counts while not live is the spec's "not
 current" rule.
