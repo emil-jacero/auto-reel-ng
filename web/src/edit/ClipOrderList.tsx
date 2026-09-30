@@ -421,8 +421,8 @@ export const ClipOrderList = memo(function ClipOrderList({
   const sectionRef = useRef<HTMLElement>(null)
   // The button a move, a removal or an Undo leaves focus on, once the row is in its new place.
   const focusAfter = useRef<{ identity: string; target: FocusTarget } | null>(null)
-  // The same button, to scroll into view once every layout effect has run.
-  const scrollAfter = useRef<HTMLButtonElement | null>(null)
+  // That button's row, to scroll into view whole once every layout effect has run.
+  const scrollAfter = useRef<HTMLElement | null>(null)
   const reducedMotion = useReducedMotion()
   const items = useMemo(() => [...order], [order])
   // Against the original order without the removed clips: a removal alone moves nothing.
@@ -526,7 +526,7 @@ export const ClipOrderList = memo(function ClipOrderList({
     )
     const button = row?.querySelector<HTMLButtonElement>(`.${request.target}`)
     button?.focus({ preventScroll: true })
-    scrollAfter.current = button ?? null
+    scrollAfter.current = row ?? null
     // An Undo says where the clip is back, from the order it now has.
     if (request.target === 'clip-remove') {
       const at = order.indexOf(request.identity) + 1
@@ -534,14 +534,15 @@ export const ClipOrderList = memo(function ClipOrderList({
     }
   }, [order, removed, onAnnounce])
 
-  // Focus alone does not scroll a button that already had it: keep it in view,
-  // clear of the header and the save bar (both in the page's scroll padding). A
-  // passive effect, so a save bar the move brought is already measured (the
-  // editor publishes its height in its own layout effect, after this list's).
+  // Focus alone does not scroll a button that already had it: keep its whole
+  // row in view (the frame and every fact, not only the button), clear of the
+  // header and the save bar (both in the page's scroll padding). A passive
+  // effect, so a save bar the move brought is already measured (the editor
+  // publishes its height in its own layout effect, after this list's).
   useEffect(() => {
-    const button = scrollAfter.current
+    const row = scrollAfter.current
     scrollAfter.current = null
-    button?.scrollIntoView({ block: 'nearest' })
+    row?.scrollIntoView({ block: 'nearest' })
   }, [order, removed])
 
   return (
