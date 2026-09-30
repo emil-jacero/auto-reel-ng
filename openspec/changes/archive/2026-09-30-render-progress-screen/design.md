@@ -433,11 +433,16 @@ no verdict to act on, so it offers no Render. States come from `useEventJob` plu
   `load({ quiet })` never touches `editing` either. While `editing` is true, `reread()` does not read at
   all: it defers every self-started re-read (a finished render, and the fresh and 404 enqueue answers)
   until Edit mode ends, and the exit's own `load()` is that deferred re-read. Entering Edit mode also aborts
-  a quiet re-read already in flight and marks it pending, so it too becomes the exit's `load()`. A quiet
+  a quiet re-read already in flight, so it too becomes the exit's `load()`. A quiet
   re-read therefore never runs under an open editor, so its failure path, which replaces the page, can never unmount a dirty
   draft (C4: "Unsaved edits are never discarded silently"). The wiring (`reread()`'s `editing` check and
   `blockedReason`) needs C4's `editing` state, so it is done by the change that archives second: task 7.1
   here, mirrored by C4's own final task, both evaluated only at the pre-archive rebase.
+  *Changed during review:* no pending ref is kept: the exit's `load()` is unconditional, so it is the
+  deferred re-read whether or not one was asked for. `reread()` reads an `editingRef` that the page sets
+  at `editing`'s two changes (the Edit button and `leaveEditMode()`), so it is stable, and
+  `RenderControl` calls the latest `onFinished` through a ref: an enqueue answer that arrives after Edit
+  mode opened (Render pressed, then Edit) never re-reads under the open editor.
 
 **Rationale**:
 - The spec's outcome list maps one-to-one onto `EnqueueResult`.
