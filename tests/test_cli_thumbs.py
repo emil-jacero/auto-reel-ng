@@ -291,6 +291,12 @@ def test_a_non_utf8_file_name_is_printed_with_its_raw_bytes(
     ]
 
 
+def test_printable_escapes_file_name_bytes_and_any_other_surrogate() -> None:
+    assert thumbs_cli._printable(os.fsdecode(b"tom\xe9.mp4")) == "tom\\xe9.mp4"
+    assert thumbs_cli._printable("å\ud800") == "å\\ud800"  # not from a file name
+    assert thumbs_cli._printable("Tjörn") == "Tjörn"
+
+
 def test_the_library_is_left_untouched(library: Path, fake: Callable[..., FakeCalls]) -> None:
     fake()
     before = _snapshot(library)
