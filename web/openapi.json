@@ -390,7 +390,7 @@
           "jobs"
         ],
         "summary": "Create Job",
-        "description": "``POST /api/v1/jobs`` (task 3.1, gated per change-detection §8.14).\n\nIdempotent enqueue, 409 on active duplicate, 200 \"fresh — not enqueued\" when\nthe event is fresh and ``force`` is false. The API never transitions job\nstatus itself (D-A6) — the gate decision is made here, at enqueue, the same\nas the CLI's own ``enqueue``.",
+        "description": "``POST /api/v1/jobs`` (task 3.1, gated per change-detection §8.14).\n\nIdempotent enqueue, 409 on active duplicate, 200 \"fresh — not enqueued\" when\nthe event is fresh and ``force`` is false. The API never transitions job\nstatus itself (D-A6) — the gate decision is made here, at enqueue, the same\nas the CLI's own ``enqueue``.\n\nThe output-collision check comes first, as the CLI decides it before anything\nelse: an event whose output path another event of the project claims is a 409\n``output_collision``, fresh or stale, forced or not — never gated, never \"already\nactive\". A walk that fails leaves the rule unchecked, so it is the events list's\nscan-failure 502 and nothing is enqueued (Principle I).",
         "operationId": "create_job_api_v1_jobs_post",
         "requestBody": {
           "required": true,
@@ -443,6 +443,16 @@
             },
             "description": "Conflict"
           },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -460,7 +470,7 @@
           "jobs"
         ],
         "summary": "List Jobs",
-        "description": "``GET /api/v1/jobs`` (task 3.2): optionally filtered by status, oldest first.",
+        "description": "``GET /api/v1/jobs`` (task 3.2): the served project's jobs, by status, oldest first.",
         "operationId": "list_jobs_api_v1_jobs_get",
         "parameters": [
           {
@@ -514,7 +524,7 @@
           "jobs"
         ],
         "summary": "Get Job",
-        "description": "``GET /api/v1/jobs/{id}`` (task 3.2): one job's full detail.",
+        "description": "``GET /api/v1/jobs/{id}`` (task 3.2): one of the served project's jobs, in full.",
         "operationId": "get_job_api_v1_jobs__job_id__get",
         "parameters": [
           {
@@ -568,7 +578,7 @@
           "jobs"
         ],
         "summary": "Cancel Job",
-        "description": "``POST /api/v1/jobs/{id}/cancel`` (task 3.3): the store's cancel and its outcome.\n\nOne store call and no pre-read: the outcome and the echoed status come from the\nlocked transaction that applied the cancel, so a worker's claim landing\nin between can never make them disagree.",
+        "description": "``POST /api/v1/jobs/{id}/cancel`` (task 3.3): the store's cancel and its outcome.\n\nThe one read before the store call decides only *whether* this service may\ncancel the job — the served project's own — and a job's project root is never\nwritten after insert, so that read cannot go stale. The outcome and the echoed\nstatus still come from the locked transaction that applied the cancel, never\nfrom that read, so a worker's claim landing in between can never make them\ndisagree.",
         "operationId": "cancel_job_api_v1_jobs__job_id__cancel_post",
         "parameters": [
           {
@@ -917,6 +927,15 @@
         ],
         "title": "EditorialWriteResult",
         "description": "The response of ``PUT /api/v1/events/{event_id}/reel``: persisted state + verdict.\n\nEchoing the persisted document lets the client observe server-side\nnormalization and the event's new staleness verdict without a follow-up GET\n(open question, design.md, settled here)."
+      },
+      "EnqueueConflict": {
+        "type": "string",
+        "enum": [
+          "active_job",
+          "output_collision"
+        ],
+        "title": "EnqueueConflict",
+        "description": "Why ``POST /api/v1/jobs`` refused an event with a 409: the API's classification."
       },
       "EnqueueRequest": {
         "properties": {
@@ -1472,6 +1491,30 @@
               }
             ],
             "title": "Job Id"
+          },
+          "conflict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnqueueConflict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "claimed_by": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claimed By"
           }
         },
         "additionalProperties": true,

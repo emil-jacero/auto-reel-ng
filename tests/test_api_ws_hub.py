@@ -25,6 +25,11 @@ from auto_reel_ng.persistence.models import JobStatus
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
+#: The project every hub below serves (``FakeJob``'s default root), and another one
+#: in the same database (jobs-project-guards).
+PROJ = "/proj"
+OTHER = "/other"
+
 #: Dev-library event ids (``scripts/make_dev_library.py``) the spec scenarios name.
 TRASIG = "2024/2024-10-05 - Trasig"
 BADUTFLYKT = "2024/2024-08-02 - Badutflykt - Varberg"
@@ -38,7 +43,7 @@ class FakeJob:
     id: uuid.UUID
     status: JobStatus
     event_dir: str = "2024/event"
-    project_root: Optional[str] = "/proj"
+    project_root: Optional[str] = PROJ
     device: str = "auto"
     progress: float = 0.0
     worker_id: Optional[str] = None
@@ -66,21 +71,35 @@ class FakeStore:
         self.get_calls = 0
         self.list_finished_since_calls = 0
 
-    def list_by_status(self, status: JobStatus) -> list[FakeJob]:
+    def list_by_status(
+        self, status: JobStatus, *, project_root: Optional[str] = None
+    ) -> list[FakeJob]:
         self.list_by_status_calls += 1
-        return [job for job in self.jobs.values() if job.status == status]
+        return [
+            job
+            for job in self.jobs.values()
+            if job.status == status and project_root in (None, job.project_root)
+        ]
 
     def get(self, job_id: uuid.UUID) -> Optional[FakeJob]:
         self.get_calls += 1
         return self.jobs.get(job_id)
 
-    def list_finished_since(self, since: Optional[datetime], *, overlap: timedelta) -> FinishedJobs:
+    def list_finished_since(
+        self,
+        since: Optional[datetime],
+        *,
+        overlap: timedelta,
+        project_root: Optional[str] = None,
+    ) -> FinishedJobs:
         self.list_finished_since_calls += 1
         start = (since if since is not None else self.now) - overlap
         finished = [
             job
             for job in sorted(self.jobs.values(), key=lambda job: job.finished_at or start)
-            if job.finished_at is not None and job.finished_at >= start
+            if job.finished_at is not None
+            and job.finished_at >= start
+            and project_root in (None, job.project_root)
         ]
         return FinishedJobs(as_of=self.now, jobs=finished)
 
@@ -122,7 +141,7 @@ def test_the_frame_is_a_closed_shape() -> None:
 
 async def test_no_subscribers_means_no_store_queries() -> None:
     store = FakeStore()
-    hub = JobsHub(store, poll_interval=0.02)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
     assert hub.is_polling is False
     await asyncio.sleep(0.1)
     assert store.list_by_status_calls == 0
@@ -132,7 +151,7 @@ async def test_no_subscribers_means_no_store_queries() -> None:
 
 async def test_poller_starts_on_first_subscribe_stops_on_last_unsubscribe() -> None:
     store = FakeStore()
-    hub = JobsHub(store, poll_interval=0.02)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
 
     queue = await hub.subscribe()
     assert hub.is_polling is True
@@ -178,7 +197,7 @@ async def test_a_failed_first_subscribe_leaves_the_hub_recoverable(failing_read:
         return read(*args, **kwargs)
 
     setattr(store, failing_read, flaky_read)
-    hub = JobsHub(store, poll_interval=0.02)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
 
     with pytest.raises(_Unreachable):
         await hub.subscribe()
@@ -201,7 +220,7 @@ async def test_a_cancelled_first_subscribe_leaves_the_hub_recoverable() -> None:
         return read(*args, **kwargs)
 
     store.list_finished_since = held_read  # type: ignore[method-assign]
-    hub = JobsHub(store, poll_interval=0.02)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
 
     first = asyncio.create_task(hub.subscribe())
     await asyncio.sleep(0.05)  # the seed read is now in flight on the hub's executor
@@ -227,7 +246,7 @@ async def test_snapshot_on_connect_contains_active_jobs() -> None:
         id=running_id, status=JobStatus.RUNNING, event_dir=BADUTFLYKT, progress=0.1
     )
     store.jobs[queued_id] = FakeJob(id=queued_id, status=JobStatus.QUEUED, event_dir=BLANDAT)
-    hub = JobsHub(store, poll_interval=0.05)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.05)
 
     queue = await hub.subscribe()
     try:
@@ -245,7 +264,7 @@ async def test_progress_delta_is_pushed() -> None:
     store = FakeStore()
     job_id = uuid.uuid4()
     store.jobs[job_id] = FakeJob(id=job_id, status=JobStatus.RUNNING, progress=0.1)
-    hub = JobsHub(store, poll_interval=0.02)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
 
     queue = await hub.subscribe()
     try:
@@ -263,7 +282,7 @@ async def test_terminal_transition_between_ticks_is_pushed(stamped: bool) -> Non
     store = FakeStore()
     job_id = uuid.uuid4()
     store.jobs[job_id] = FakeJob(id=job_id, status=JobStatus.RUNNING, progress=0.5)
-    hub = JobsHub(store, poll_interval=0.02)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
 
     queue = await hub.subscribe()
     try:
@@ -301,7 +320,7 @@ async def test_a_cancel_request_is_pushed() -> None:
     store.jobs[job_id] = FakeJob(
         id=job_id, status=JobStatus.RUNNING, event_dir=BADUTFLYKT, progress=0.4
     )
-    hub = JobsHub(store, poll_interval=0.02)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
 
     queue = await hub.subscribe()
     try:
@@ -321,7 +340,7 @@ async def test_a_cancel_request_is_pushed() -> None:
 
 async def test_a_job_that_lived_and_ended_between_two_polls_is_pushed_once() -> None:
     store = FakeStore()
-    hub = JobsHub(store, poll_interval=0.02)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
 
     queue = await hub.subscribe()
     try:
@@ -363,10 +382,10 @@ async def test_a_job_missed_by_one_active_read_still_gets_its_terminal_row() -> 
     store.jobs[job_id] = FakeJob(id=job_id, status=JobStatus.RUNNING, progress=0.5)
     hidden: set[uuid.UUID] = set()
     list_by_status = store.list_by_status
-    store.list_by_status = lambda status: [  # type: ignore[method-assign]
-        job for job in list_by_status(status) if job.id not in hidden
+    store.list_by_status = lambda status, **scope: [  # type: ignore[method-assign]
+        job for job in list_by_status(status, **scope) if job.id not in hidden
     ]
-    hub = JobsHub(store, poll_interval=0.02)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
 
     queue = await hub.subscribe()
     try:
@@ -396,7 +415,7 @@ async def test_a_job_finished_before_the_first_subscribe_is_never_sent() -> None
         progress=1.0,
         finished_at=store.now - timedelta(seconds=10),  # inside the overlap
     )
-    hub = JobsHub(store, poll_interval=0.02)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
 
     queue = await hub.subscribe()
     try:
@@ -410,7 +429,7 @@ async def test_a_job_finished_before_the_first_subscribe_is_never_sent() -> None
 
 async def test_the_sent_memory_forgets_jobs_older_than_the_window() -> None:
     store = FakeStore()
-    hub = JobsHub(store, poll_interval=0.02)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
 
     queue = await hub.subscribe()
     try:
@@ -429,6 +448,96 @@ async def test_the_sent_memory_forgets_jobs_older_than_the_window() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# The served project only (jobs-project-guards 4.2)
+# --------------------------------------------------------------------------- #
+
+
+async def test_the_snapshot_holds_only_the_served_projects_jobs() -> None:
+    store = FakeStore()
+    own_id, other_id, rootless_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    store.jobs[own_id] = FakeJob(id=own_id, status=JobStatus.RUNNING, event_dir=BADUTFLYKT)
+    store.jobs[other_id] = FakeJob(
+        id=other_id, status=JobStatus.RUNNING, event_dir=BADUTFLYKT, project_root=OTHER
+    )
+    store.jobs[rootless_id] = FakeJob(id=rootless_id, status=JobStatus.QUEUED, project_root=None)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
+
+    queue = await hub.subscribe()
+    try:
+        snapshot = await _drain(queue)
+        assert [job["id"] for job in snapshot["jobs"]] == [str(own_id)]
+    finally:
+        await hub.unsubscribe(queue)
+
+
+async def test_another_projects_progress_and_end_cause_no_delta() -> None:
+    store = FakeStore()
+    own_id, other_id = uuid.uuid4(), uuid.uuid4()
+    store.jobs[own_id] = FakeJob(id=own_id, status=JobStatus.RUNNING, progress=0.1)
+    store.jobs[other_id] = FakeJob(
+        id=other_id, status=JobStatus.RUNNING, project_root=OTHER, progress=0.1
+    )
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
+
+    queue = await hub.subscribe()
+    try:
+        await _drain(queue)  # the initial snapshot
+        store.jobs[other_id].progress = 0.6
+        await _await_ticks(store, 3)
+        store.jobs[other_id] = FakeJob(
+            id=other_id,
+            status=JobStatus.DONE,
+            project_root=OTHER,
+            progress=1.0,
+            finished_at=store.now,
+        )
+        await _await_ticks(store, 3)
+        assert queue.empty()  # neither its progress nor its terminal transition
+
+        store.jobs[own_id].progress = 0.5  # the served project's job streams as before
+        delta = await _drain(queue)
+        assert [(job["id"], job["progress"]) for job in delta["jobs"]] == [(str(own_id), 0.5)]
+    finally:
+        await hub.unsubscribe(queue)
+
+
+async def test_only_the_served_projects_short_lived_job_is_pushed() -> None:
+    """Each job lives and fails between two polls; only the served project's is sent."""
+    store = FakeStore()
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
+
+    queue = await hub.subscribe()
+    try:
+        await _drain(queue)  # the initial, empty snapshot
+        other_id = uuid.uuid4()
+        store.jobs[other_id] = FakeJob(
+            id=other_id,
+            status=JobStatus.FAILED,
+            event_dir=TRASIG,
+            project_root=OTHER,
+            error="ffprobe: invalid data",
+            finished_at=store.now,
+        )
+        await _await_ticks(store, 3)
+        assert queue.empty()
+
+        own_id = uuid.uuid4()
+        store.jobs[own_id] = FakeJob(
+            id=own_id,
+            status=JobStatus.FAILED,
+            event_dir=TRASIG,
+            error="ffprobe: invalid data",
+            finished_at=store.now,
+        )
+        delta = await _drain(queue)
+        assert [(job["id"], job["status"]) for job in delta["jobs"]] == [(str(own_id), "failed")]
+        await _await_ticks(store, 3)
+        assert queue.empty()  # exactly one delta
+    finally:
+        await hub.unsubscribe(queue)
+
+
+# --------------------------------------------------------------------------- #
 # 4.3: slow-consumer policy
 # --------------------------------------------------------------------------- #
 
@@ -437,7 +546,7 @@ async def test_slow_consumer_is_dropped_and_can_reconnect() -> None:
     store = FakeStore()
     job_id = uuid.uuid4()
     store.jobs[job_id] = FakeJob(id=job_id, status=JobStatus.RUNNING, progress=0.0)
-    hub = JobsHub(store, poll_interval=0.01, queue_maxsize=1)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.01, queue_maxsize=1)
 
     queue = await hub.subscribe()
     await _drain(queue)  # the initial snapshot, freeing the one-slot queue

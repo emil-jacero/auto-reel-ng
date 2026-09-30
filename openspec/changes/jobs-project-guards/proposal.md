@@ -10,7 +10,7 @@ first, so slice E stays a pure `web/` change (Principle VIII).
    refuse every such event (**D-9**; `headless-cli` "Batch commands refuse colliding output paths"):
    `render`, `enqueue` and `adopt-renders` all run `_output_collisions` (`cli/commands.py:224-240`) over
    `render.find_output_collisions`, which compares paths case-insensitively. The route never runs it
-   (`api/routes/jobs.py:40-88`). This is a real case in the dev library: `2024/2024-07-14 - Kalas` has been
+   (`api/routes/jobs.py:52-110`). This is a real case in the dev library: `2024/2024-07-14 - Kalas` has been
    rendered to `2024/2024-07-14 - Kalas.mp4`, and `2024/2024-07-14 - kalas` resolves to the same file on
    the case-insensitive archive filesystem. `auto-reel enqueue` refuses both events. A Render click on
    `kalas` would queue a job whose render overwrites the other event's movie. This is exactly the silent
@@ -19,8 +19,8 @@ first, so slice E stays a pure `web/` change (Principle VIII).
    already active", which is a 409 too. Slice E answers the two differently: it attaches to the running job
    in one case, and tells the operator to fix `reel.yaml` in the other.
 2. **The jobs views show every project in the database.** `GET /api/v1/jobs` and the WebSocket hub both
-   list jobs through `JobStore.list_by_status`, which has no project filter (`api/routes/jobs.py:91-102`,
-   `api/ws.py:175-183`, `persistence/job_store.py:180-184`). `GET /jobs/{id}` and cancel accept any id.
+   list jobs through `JobStore.list_by_status`, which has no project filter (`api/routes/jobs.py:113-124`,
+   `api/ws.py:253-261`, `persistence/job_store.py:249-253`). `GET /jobs/{id}` and cancel accept any id.
    The events reads, meanwhile, report each event's latest job *for the served project only*
    (`JobStore.latest_by_project`, `api/events_read.py:163,381`). One database holding several projects is
    ordinary. `DATABASE_URL` comes from the environment, then `config.yaml`, then one built-in dev default
@@ -93,15 +93,16 @@ first, so slice E stays a pure `web/` change (Principle VIII).
   processable, a failure claims nothing" is composed twice (`cli/_checked_document`, `api/_output_claim`)
   from the same engine calls, while the rule itself (`render.output_relpath`, `render.find_output_collisions`)
   is already one engine function both call.
-  - *Consequence:* the two differ on `OSError`. A sibling folder without `reel.yaml` that cannot be listed
-    aborts `auto-reel enqueue` with a traceback, while the API skips it as a claimant. If that folder owns a
+  - *Consequence:* the two differ on `OSError`. A sibling folder that cannot be listed (with or without a
+    `reel.yaml`, which such a folder hides) aborts `auto-reel enqueue` with a traceback, while the API
+    skips it as a claimant. If that folder owns a
     path, a `POST` for its twin is enqueued and its render replaces the owner's movie (design, Risks).
 - **A claim-time collision recheck in the worker.**
   - *Consequence:* a job queued before its twin appeared still renders, and can overwrite the twin's movie.
     The CLI has the same gap today. This change stops new jobs only.
 - **`POST /api/v1/jobs` on its own unprocessable or unparseable event.**
   - *Consequence:* an unprocessable event (`2024/2024-02-30 - Omöjligt datum`) is still enqueued and fails
-    in the worker. An unparseable `reel.yaml` is still a bare 500 (`api/routes/jobs.py:60`), not the events
+    in the worker. An unparseable `reel.yaml` is still a bare 500 (`api/routes/jobs.py:73`), not the events
     reads' 502 with a failure kind.
 
 ## Capabilities

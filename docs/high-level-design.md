@@ -282,6 +282,8 @@ single GPU. A `device` (or `auto`) field on the render job carries the selection
 
 REST for CRUD (projects, events, clips, look, jobs) + WebSocket channel for live job progress/logs.
 Thin layer over the engine; no business logic that the CLI can't also reach.
+The service serves one project; its jobs views are scoped to it; the queue is shared (change
+`jobs-project-guards`: `auto-reel jobs` and the worker stay database-wide).
 
 **The events read model is probe-free.** File facts (byte size, mtime) come from the clip's own directory
 entry — a `stat` — and may be served per request. Media facts (duration, dimensions, codec) require decoding
@@ -544,10 +546,11 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   `<output>/` as `<title>[ - <location>].mp4`, and the date is never guessed. This is the legacy auto-reel
   layout, so `adopt-renders` finds the existing archive. *Corrected 2026-09-26:* the first version omitted
   the date prefix legacy put in every movie name (`directory.py:220`); on the real archive that found
-  0 of 138 legacy outputs, the prefixed rule finds 129. `render`, `enqueue` and `adopt-renders`
-  refuse every event whose output path collides with another's (compared case-insensitively, never
-  auto-suffixed). The default output directory is the sibling `<parent>/<root-name>-output`, outside the
-  walked root, so rendered year folders are never scanned as events. (§4.3/§4.11)
+  0 of 138 legacy outputs, the prefixed rule finds 129. `render`, `enqueue`, `adopt-renders` and
+  `POST /api/v1/jobs` (change `jobs-project-guards`) refuse every event whose output path collides
+  with another's (compared case-insensitively, never auto-suffixed). The default output directory is
+  the sibling `<parent>/<root-name>-output`, outside the walked root, so rendered year folders are
+  never scanned as events. (§4.3/§4.11)
 
 - **D-10 — GUI v1 visual system** (2026-09-30, change `web-design-system`). GUI v1 ships a modern visual
   design, overriding event-list-screen's deferral of look and feel to v2, and does it inside D-8's budget:

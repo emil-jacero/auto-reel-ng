@@ -146,11 +146,12 @@ scan-failure 502 that the events list uses, and SHALL NOT enqueue. The schema SH
 `conflict` and `claimed_by` fields of the shared problem body.
 
 #### Scenario: A case-only twin is refused
-- **WHEN** `POST /api/v1/jobs` names `2024/2024-07-14 - kalas` in the dev library, where
-  `2024/2024-07-14 - Kalas` has the same date and a title differing only in letter case
+- **WHEN** `POST /api/v1/jobs` names `2024/2024-07-14 - kalas` in the dev library, whose folder name
+  differs from `2024/2024-07-14 - Kalas` only in letter case, so that both events resolve to the output
+  path `2024/2024-07-14 - Kalas.mp4` (a title taken from a folder name is title-cased)
 - **THEN** the response is 409 with `conflict` `output_collision` and `claimed_by`
   `["2024/2024-07-14 - Kalas"]`
-- **AND** its detail names `2024/2024-07-14 - kalas.mp4` and says to set a distinct title or location in
+- **AND** its detail names `2024/2024-07-14 - Kalas.mp4` and says to set a distinct title or location in
   `reel.yaml`
 - **AND** no job row is inserted
 

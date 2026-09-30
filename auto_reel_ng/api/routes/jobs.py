@@ -5,11 +5,16 @@ Every write goes through a store verb that reports what it did — ``submit``
 row's lock) — so a response maps the store's facts to a status code rather than
 predicting them from an earlier read. The API never transitions ``status`` itself
 (D-A6).
+
+The service serves one project (D-A1), so every jobs view here is scoped to it,
+and an enqueue refuses an event whose output path another of its events claims —
+the batch commands' rule (D-9), run over the served project (jobs-project-guards).
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import List, Optional, Union
 
 from fastapi import APIRouter, Query, Request
@@ -17,16 +22,26 @@ from fastapi.responses import JSONResponse, Response
 
 from ...cli.adoption import load_or_seed
 from ...config.project import load_project_config, resolve_look_defaults
+from ...errors import ReelError
+from ...ingest import LayoutError
 from ...persistence.job_store import JobStore
-from ...persistence.models import JobStatus
+from ...persistence.models import Job, JobStatus
 from ...render import output_relpath
 from ...staleness.fingerprint import compute_fingerprint
 from ...staleness.gate import evaluate
 from ...staleness.manifest import manifest_path
 from .. import events_read
-from ..problem import conflict, not_found
-from ..schemas import CancelResult, EnqueueRequest, FreshResult, JobOut, ProblemOut
+from ..problem import bad_gateway, conflict, not_found
+from ..schemas import (
+    CancelResult,
+    EnqueueConflict,
+    EnqueueRequest,
+    FreshResult,
+    JobOut,
+    ProblemOut,
+)
 from ..serialize import job_to_out as _job_out
+from ..settings import ApiSettings
 
 router = APIRouter(prefix="/api/v1", tags=["jobs"])
 
@@ -39,6 +54,7 @@ router = APIRouter(prefix="/api/v1", tags=["jobs"])
         200: {"model": FreshResult, "description": "The event is fresh; nothing was enqueued"},
         404: {"model": ProblemOut},
         409: {"model": ProblemOut},
+        502: {"model": ProblemOut},
     },
 )
 def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, FreshResult, Response]:
@@ -48,6 +64,12 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
     the event is fresh and ``force`` is false. The API never transitions job
     status itself (D-A6) — the gate decision is made here, at enqueue, the same
     as the CLI's own ``enqueue``.
+
+    The output-collision check comes first, as the CLI decides it before anything
+    else: an event whose output path another event of the project claims is a 409
+    ``output_collision``, fresh or stale, forced or not — never gated, never "already
+    active". A walk that fails leaves the rule unchecked, so it is the events list's
+    scan-failure 502 and nothing is enqueued (Principle I).
     """
     settings = request.app.state.settings
     store: JobStore = request.app.state.job_store
@@ -60,12 +82,28 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
             event_id=payload.event_id,
         )
 
+    try:
+        collision = events_read.output_collision(settings, event_dir, today=date.today())
+    except (ReelError, LayoutError, OSError) as exc:
+        return bad_gateway(f"event scan failed: {exc}")
+    if collision is not None:
+        # The CLI's message, naming the other claimants by the ids a client links to.
+        return conflict(
+            f"output path {collision.output_path} is also claimed by "
+            f"{', '.join(collision.claimed_by)}; "
+            "set a distinct title or location in reel.yaml",
+            event_id=payload.event_id,
+            conflict=EnqueueConflict.OUTPUT_COLLISION.value,
+            claimed_by=list(collision.claimed_by),
+        )
+
     project_root = str(settings.project_root)
     existing = store.active_job(project_root, payload.event_id)
     if existing is not None:
         return conflict(
             f"an active job already exists for event {payload.event_id!r}",
             job_id=str(existing.id),
+            conflict=EnqueueConflict.ACTIVE_JOB.value,
         )
 
     runtime = request.app.state.runtime
@@ -104,6 +142,7 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
         return conflict(
             f"an active job already exists for event {payload.event_id!r}",
             job_id=str(submission.job_id),
+            conflict=EnqueueConflict.ACTIVE_JOB.value,
         )
     job = store.get(submission.job_id)
     assert job is not None  # pragma: no cover - just inserted, must be readable
@@ -112,23 +151,40 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
 
 @router.get("/jobs", response_model=List[JobOut])
 def list_jobs(request: Request, status: Optional[JobStatus] = Query(None)) -> List[JobOut]:
-    """``GET /api/v1/jobs`` (task 3.2): optionally filtered by status, oldest first."""
+    """``GET /api/v1/jobs`` (task 3.2): the served project's jobs, by status, oldest first."""
     store: JobStore = request.app.state.job_store
+    project_root = str(request.app.state.settings.project_root)
     if status is not None:
-        jobs = store.list_by_status(status)
+        jobs = store.list_by_status(status, project_root=project_root)
     else:
         jobs = sorted(
-            (job for one_status in JobStatus for job in store.list_by_status(one_status)),
+            (
+                job
+                for one_status in JobStatus
+                for job in store.list_by_status(one_status, project_root=project_root)
+            ),
             key=lambda job: job.created_at,
         )
     return [_job_out(job) for job in jobs]
 
 
+def _served_job(store: JobStore, settings: ApiSettings, job_id: uuid.UUID) -> Optional[Job]:
+    """``job_id``'s job when it is the served project's (its recorded root), else ``None``.
+
+    Another project's job, or one with no recorded project root, is answered as an
+    id no job has (D-A1: the service serves one project), so the service reveals
+    nothing about other projects and never cancels their renders.
+    """
+    job = store.get(job_id)
+    if job is None or job.project_root != str(settings.project_root):
+        return None
+    return job
+
+
 @router.get("/jobs/{job_id}", response_model=JobOut, responses={404: {"model": ProblemOut}})
 def get_job(job_id: uuid.UUID, request: Request) -> Union[JobOut, Response]:
-    """``GET /api/v1/jobs/{id}`` (task 3.2): one job's full detail."""
-    store: JobStore = request.app.state.job_store
-    job = store.get(job_id)
+    """``GET /api/v1/jobs/{id}`` (task 3.2): one of the served project's jobs, in full."""
+    job = _served_job(request.app.state.job_store, request.app.state.settings, job_id)
     if job is None:
         return not_found(f"no job with id {job_id}", job_id=str(job_id))
     return _job_out(job)
@@ -140,11 +196,16 @@ def get_job(job_id: uuid.UUID, request: Request) -> Union[JobOut, Response]:
 def cancel_job(job_id: uuid.UUID, request: Request) -> Union[CancelResult, Response]:
     """``POST /api/v1/jobs/{id}/cancel`` (task 3.3): the store's cancel and its outcome.
 
-    One store call and no pre-read: the outcome and the echoed status come from the
-    locked transaction that applied the cancel, so a worker's claim landing
-    in between can never make them disagree.
+    The one read before the store call decides only *whether* this service may
+    cancel the job — the served project's own — and a job's project root is never
+    written after insert, so that read cannot go stale. The outcome and the echoed
+    status still come from the locked transaction that applied the cancel, never
+    from that read, so a worker's claim landing in between can never make them
+    disagree.
     """
     store: JobStore = request.app.state.job_store
+    if _served_job(store, request.app.state.settings, job_id) is None:
+        return not_found(f"no job with id {job_id}", job_id=str(job_id))
     result = store.cancel(job_id)
     if result is None:
         return not_found(f"no job with id {job_id}", job_id=str(job_id))

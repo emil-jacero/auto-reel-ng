@@ -323,6 +323,25 @@ render, or job logic lives in the web tier.
   to events by equality. **Breaking (wire):** the 409 and the jobs 404s used to
   carry the job id in an untyped `id` field; it is now the typed `job_id`, and
   `id` is gone.
+  **Output collisions:** `POST /api/v1/jobs` refuses an event whose output path
+  another event of the served project also claims — the rule `render`, `enqueue`
+  and `adopt-renders` apply (D-9), comparing paths case-insensitively and after
+  Unicode normalization, over every event the layout walks (an event that fails on
+  its own claims no path). The refusal is a 409 whose `conflict` is
+  `output_collision`, whose `claimed_by` lists the other claimants' event ids, and
+  whose detail names the shared path and the fix: a distinct title or location in
+  `reel.yaml`. It is checked before anything else, so neither `force` nor a fresh
+  event's 200 overrides it, and nothing is written. Every 409 of
+  `POST /api/v1/jobs` carries `conflict` — `active_job` on the active duplicate —
+  so a client tells the two apart from the type alone. A project walk that fails
+  is the events list's scan-failure 502, and nothing is enqueued.
+  **One project:** the service serves its configured project root, and its jobs
+  views follow it: `GET /api/v1/jobs`, `GET /api/v1/jobs/{id}`, cancel and
+  `WS /api/v1/ws/jobs` cover only the jobs enqueued for that root. Another
+  project's job — one database commonly holds several — answers 404 exactly like
+  an unknown id, and a cancel never touches it. `auto-reel jobs list|show|cancel`
+  and the worker stay database-wide: the queue is shared, and a worker claims any
+  project's job.
   `GET /api/v1/events/{event_id}` includes the same staleness verdict (`stale` +
   `reasons`) `scan` prints, computed read-only — a GET never writes a manifest.
 - **`WS /api/v1/ws/jobs`** pushes live job progress. Every frame is

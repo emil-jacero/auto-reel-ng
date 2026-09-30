@@ -65,7 +65,10 @@ def create_app(settings: ApiSettings, *, auth_checker: Optional[AuthChecker] = N
     engine = make_engine(settings.database_url)
     session_factory = make_session_factory(engine)
     job_store = JobStore(session_factory)
-    jobs_hub = JobsHub(job_store, poll_interval=settings.poll_interval)
+    # The hub reports the served project's jobs only, as the jobs routes list them.
+    jobs_hub = JobsHub(
+        job_store, project_root=str(settings.project_root), poll_interval=settings.poll_interval
+    )
     # Built once (D-C1): the engine identity's ffmpeg-version component is
     # per-process, not per-request (change-detection, §8.14).
     runtime = FfmpegRuntime()
