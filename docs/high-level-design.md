@@ -331,7 +331,7 @@ change directories:
 | A | `web-app-scaffold` | `web/` + the static mount + schema→types pipeline; no screen |
 | B | event list screen | the scan/ingest view, over slice 0's verdicts |
 | C | event detail screen | chapters/clips read-only, using the per-clip `size`/`mtime` file facts |
-| D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency — landed in `event-edit-screen` (the event page's Edit mode) |
+| D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency — landed in `event-edit-screen` (the event page's Edit mode). `missing-clips-screen` adds the explicit removal of a MISSING clip's entry (never automatic) and holds Render back while an event lists one |
 | E | render + live progress | `POST /jobs` (201 / 200-fresh / 409), the WS hook, cancel — landed in `render-progress-screen` |
 
 C, D and E were designed only after A and B had been used against a real library; all three have
