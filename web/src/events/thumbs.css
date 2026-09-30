@@ -72,7 +72,13 @@
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    /* The placeholder rows' shimmer (`components.css`), on the box. */
+    /*
+     * The placeholder rows' shimmer (`components.css`), on the box, for six
+     * passes (about 10 s): long enough for the boxes in view to fill, then the
+     * still fill above. A box the browser defers (lazy, far below the view)
+     * would otherwise tick forever, and hundreds of them cost a core while the
+     * page sits idle. At its resting position the gradient shows only --border.
+     */
     .clip-thumb[data-state='loading'] {
       background: linear-gradient(
           90deg,
@@ -81,7 +87,7 @@
           var(--border) 60%
         )
         0 0 / 300% 100%;
-      animation: skeleton-shimmer 1.6s linear infinite;
+      animation: skeleton-shimmer 1.6s linear 6;
     }
   }
 }
