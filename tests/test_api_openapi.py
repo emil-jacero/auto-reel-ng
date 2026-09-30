@@ -9,16 +9,23 @@ generated TypeScript (D-8, §4.10).
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 
+from fastapi.openapi.utils import get_openapi
+from fastapi.testclient import TestClient
+
+from auto_reel_ng.api.app import create_app
 from auto_reel_ng.api.openapi import (
     SCHEMA_DUMP_DATABASE_URL,
     build_openapi_schema,
     render_openapi_schema,
+    schema_dump_settings,
 )
-from auto_reel_ng.api.schemas import EventFailure
+from auto_reel_ng.api.schemas import EventFailure, WsMessageType
 from auto_reel_ng.event.reconcile import ClipStatus
+from auto_reel_ng.persistence.job_store import CancelOutcome
 from auto_reel_ng.persistence.models import JobStatus
 from auto_reel_ng.staleness.gate import StalenessReason
 
@@ -49,10 +56,14 @@ EXPECTED_MODELS = {
     "JobOut",
     "JobSummaryOut",
     "CancelResult",
+    "CancelOutcome",
+    "FreshResult",
     "StalenessOut",
     "StalenessReason",
     "JobStatus",
     "ProblemOut",
+    "WsMessage",
+    "WsMessageType",
 }
 
 #: The problem responses each events read declares (events-list-job-status-contract).
@@ -179,6 +190,97 @@ def test_editorial_routes_declare_their_responses_and_etag() -> None:
             ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
             assert ref.endswith("/ProblemOut"), f"{method} {code}: {ref}"
         assert "ETag" in responses["200"]["headers"], method
+
+
+#: The responses each jobs route declares besides its success and FastAPI's 422, by
+#: published model (jobs-client-contract).
+EXPECTED_JOBS_RESPONSES = {
+    ("post", "/api/v1/jobs"): {"200": "FreshResult", "404": "ProblemOut", "409": "ProblemOut"},
+    ("get", "/api/v1/jobs/{job_id}"): {"404": "ProblemOut"},
+    ("post", "/api/v1/jobs/{job_id}/cancel"): {"404": "ProblemOut"},
+}
+
+
+def test_jobs_routes_declare_their_responses() -> None:
+    """Exactly the documented codes, each described by its own published model."""
+    schema = build_openapi_schema()
+    for (method, path), expected in EXPECTED_JOBS_RESPONSES.items():
+        responses = schema["paths"][path][method]["responses"]
+        success = "201" if path == "/api/v1/jobs" else "200"
+        declared = {code for code in responses if code not in {success, "422"}}
+        assert declared == set(expected), f"{method} {path}: {sorted(declared)}"
+        for code, model in expected.items():
+            ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
+            assert ref.endswith(f"/{model}"), f"{method} {path} {code}: {ref}"
+    created = schema["paths"]["/api/v1/jobs"]["post"]["responses"]["201"]
+    assert created["content"]["application/json"]["schema"]["$ref"].endswith("/JobOut")
+
+
+def test_fresh_result_status_is_a_required_constant() -> None:
+    """Required, so the generated type is a non-optional ``status: "fresh"``."""
+    fresh = build_openapi_schema()["components"]["schemas"]["FreshResult"]
+    assert fresh["properties"]["status"]["const"] == "fresh"
+    assert "status" in fresh["required"]
+
+
+def test_cancel_outcome_is_published_as_a_closed_enumeration() -> None:
+    models = build_openapi_schema()["components"]["schemas"]
+    assert models["CancelResult"]["properties"]["outcome"]["$ref"].endswith("/CancelOutcome")
+    published = models["CancelOutcome"]
+    assert published["type"] == "string"
+    assert published["enum"] == [outcome.value for outcome in CancelOutcome]
+
+
+def test_the_problem_body_declares_job_id_and_jobs_document_their_event() -> None:
+    models = build_openapi_schema()["components"]["schemas"]
+    assert "job_id" in models["ProblemOut"]["properties"]
+    description = models["JobOut"]["properties"]["event_dir"]["description"]
+    assert "the event's id" in description.lower()
+    assert "event_id" in description
+
+
+def test_the_websocket_frame_is_published_without_a_path() -> None:
+    """Named components for the frame and its type set; no HTTP operation invented."""
+    schema = build_openapi_schema()
+    models = schema["components"]["schemas"]
+    frame = models["WsMessage"]
+    assert frame["properties"]["type"]["$ref"].endswith("/WsMessageType")
+    assert frame["properties"]["jobs"]["items"]["$ref"].endswith("/JobOut")
+    assert set(frame["required"]) == {"type", "jobs"}
+    published = models["WsMessageType"]
+    assert published["type"] == "string"
+    assert published["enum"] == [message_type.value for message_type in WsMessageType]
+    assert published["enum"] == ["snapshot", "delta"]
+    assert "/api/v1/ws/jobs" not in schema["paths"]
+    assert not [path for path in schema["paths"] if "/ws/" in path]
+
+
+def test_the_frame_merge_keeps_the_components_the_routes_publish() -> None:
+    """Merge-if-absent: the frame's ``$ref``s resolve to the routes' own ``JobOut``."""
+    app = create_app(schema_dump_settings())
+    routes_only = get_openapi(title=app.title, version=app.version, routes=app.routes)
+    merged = app.openapi()["components"]["schemas"]
+    for name, definition in routes_only["components"]["schemas"].items():
+        assert merged[name] == definition, name
+    assert set(merged) - set(routes_only["components"]["schemas"]) == {
+        "WsMessage",
+        "WsMessageType",
+    }
+
+
+def test_the_schema_hook_is_idempotent() -> None:
+    app = create_app(schema_dump_settings())
+    first = copy.deepcopy(app.openapi())
+    second = app.openapi()
+    assert second == first
+    assert list(second["components"]["schemas"]) == list(first["components"]["schemas"])
+
+
+def test_the_served_schema_is_the_committed_one() -> None:
+    """``/openapi.json`` goes through the same hook, so it publishes the frame too."""
+    served = TestClient(create_app(schema_dump_settings())).get("/openapi.json")
+    assert served.status_code == 200
+    assert served.json() == json.loads(render_openapi_schema())
 
 
 def test_committed_schema_is_not_stale() -> None:

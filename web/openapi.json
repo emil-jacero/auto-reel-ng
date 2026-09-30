@@ -413,6 +413,36 @@
               }
             }
           },
+          "200": {
+            "description": "The event is fresh; nothing was enqueued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreshResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -509,6 +539,16 @@
               }
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -528,7 +568,7 @@
           "jobs"
         ],
         "summary": "Cancel Job",
-        "description": "``POST /api/v1/jobs/{id}/cancel`` (task 3.3): request_cancel, tri-state outcome.",
+        "description": "``POST /api/v1/jobs/{id}/cancel`` (task 3.3): the store's cancel and its outcome.\n\nOne store call and no pre-read: the outcome and the echoed status come from the\nlocked transaction that applied the cancel, so a worker's claim landing\nin between can never make them disagree.",
         "operationId": "cancel_job_api_v1_jobs__job_id__cancel_post",
         "parameters": [
           {
@@ -552,6 +592,16 @@
                 }
               }
             }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -594,6 +644,16 @@
         "title": "AnalysisOut",
         "description": "An event's cached analysis (D-A3 open question: raw sidecar segments, per clip).\n\n``analyzed`` distinguishes \"never analyzed\" (``False``, ``segments`` empty)\nfrom \"analyzed, found nothing\" (``True``, ``segments`` empty) — the sidecar\ncache is per-clip, so this is true when at least one clip has a cache entry."
       },
+      "CancelOutcome": {
+        "type": "string",
+        "enum": [
+          "flagged-running",
+          "canceled-queued",
+          "no-op-terminal"
+        ],
+        "title": "CancelOutcome",
+        "description": "What a cancel request did to a job (D-S6): the outcome the store applied."
+      },
       "CancelResult": {
         "properties": {
           "id": {
@@ -605,8 +665,7 @@
             "$ref": "#/components/schemas/JobStatus"
           },
           "outcome": {
-            "type": "string",
-            "title": "Outcome"
+            "$ref": "#/components/schemas/CancelOutcome"
           }
         },
         "type": "object",
@@ -616,7 +675,7 @@
           "outcome"
         ],
         "title": "CancelResult",
-        "description": "The body of ``POST /api/v1/jobs/{id}/cancel`` (D-S6 tri-state, task 3.3)."
+        "description": "The body of ``POST /api/v1/jobs/{id}/cancel``: the outcome the store applied (D-S6).\n\n``outcome`` and ``status`` come from the one transaction that applied the cancel,\nso they always agree. ``outcome`` is typed with the store's own closed vocabulary,\nso the schema publishes the enumeration and generated clients get an exhaustive\nunion (D-8, §4.10); the wire values are unchanged."
       },
       "ChapterBody": {
         "properties": {
@@ -1094,6 +1153,36 @@
         "title": "EventSummaryOut",
         "description": "One event as listed by ``GET /api/v1/events``."
       },
+      "FreshResult": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "status": {
+            "type": "string",
+            "const": "fresh",
+            "title": "Status"
+          },
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint"
+          },
+          "manifest": {
+            "type": "string",
+            "title": "Manifest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "status",
+          "fingerprint",
+          "manifest"
+        ],
+        "title": "FreshResult",
+        "description": "The body of ``POST /api/v1/jobs`` when the event is fresh and not enqueued (D-C3)."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1119,7 +1208,8 @@
           },
           "event_dir": {
             "type": "string",
-            "title": "Event Dir"
+            "title": "Event Dir",
+            "description": "The event's id: the root-relative event directory, the same value the events routes take as {event_id} and return as event_id"
           },
           "project_root": {
             "anyOf": [
@@ -1370,6 +1460,18 @@
                 "type": "null"
               }
             ]
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
           }
         },
         "additionalProperties": true,
@@ -1380,7 +1482,7 @@
           "detail"
         ],
         "title": "ProblemOut",
-        "description": "The shared problem body every deliberate error uses (D-A6), as published in the schema.\n\nSchema-only: routes still return ``problem.problem_response``'s ``JSONResponse``,\nwhich FastAPI does not validate against this model. ``extra=\"allow\"`` keeps\nroute-specific fields (e.g. a 409's existing job ``id``) legal without this\nmodel enumerating them; the named optional fields are the ones clients branch on."
+        "description": "The shared problem body every deliberate error uses (D-A6), as published in the schema.\n\nSchema-only: routes still return ``problem.problem_response``'s ``JSONResponse``,\nwhich FastAPI does not validate against this model. ``extra=\"allow\"`` keeps an\nundeclared route-specific field legal; a field clients branch on is declared\nbelow as a named optional field, so the generated types carry it without a cast."
       },
       "SegmentOut": {
         "properties": {
@@ -1516,6 +1618,36 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WsMessage": {
+        "description": "One frame on ``WS /api/v1/ws/jobs`` (D-A4): a snapshot or a delta batch.\n\nA WebSocket route is not an HTTP operation, so no path in the schema references\nthis model: the application publishes it into the schema's components itself,\nso a client generated from the schema gets the frame's type without declaring it\nby hand (D-8, §4.10).",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/WsMessageType"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobOut"
+            },
+            "title": "Jobs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "type",
+          "jobs"
+        ],
+        "title": "WsMessage",
+        "type": "object"
+      },
+      "WsMessageType": {
+        "description": "The closed set of frame types on ``WS /api/v1/ws/jobs`` (D-A4).",
+        "enum": [
+          "snapshot",
+          "delta"
+        ],
+        "title": "WsMessageType",
+        "type": "string"
       }
     }
   }

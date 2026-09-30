@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncIterator, Awaitable, Callable, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
@@ -27,7 +27,7 @@ from .problem import service_unavailable
 from .routes.events import router as events_router
 from .routes.jobs import router as jobs_router
 from .settings import ApiSettings
-from .ws import JobsHub
+from .ws import JobsHub, publish_ws_schema
 from .ws import router as ws_router
 
 logger = logging.getLogger(__name__)
@@ -111,6 +111,20 @@ def create_app(settings: ApiSettings, *, auth_checker: Optional[AuthChecker] = N
     app.include_router(events_router)
     app.include_router(jobs_router)
     app.include_router(ws_router)
+
+    # The WebSocket frame is part of the contract but not of any HTTP route, so its
+    # models are merged into the schema here: the served /openapi.json and the
+    # committed web/openapi.json (api/openapi.py) then describe the same frame.
+    default_openapi = app.openapi
+
+    def _openapi() -> dict[str, Any]:
+        # No cache of its own: FastAPI's openapi() rebuilds its cached schema when
+        # the routes change, and the merge is idempotent on the same dict.
+        schema = default_openapi()
+        publish_ws_schema(schema)
+        return schema
+
+    app.openapi = _openapi  # type: ignore[method-assign]
 
     # Mounted last, deliberately: Starlette matches in registration order, so every
     # API route, /healthz and the WS endpoint are resolved before the mount sees a

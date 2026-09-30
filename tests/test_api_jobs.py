@@ -53,16 +53,45 @@ def test_enqueue_creates_queued_job(client: TestClient, store: JobStore) -> None
     assert response.status_code == 201
     body = response.json()
     assert body["status"] == "queued"
+    assert body["event_dir"] == "2024/2024-06-21 - A"
     job = store.get(uuid.UUID(body["id"]))
     assert job is not None
     assert job.status == JobStatus.QUEUED
+
+
+def test_a_job_carries_the_events_routes_id_as_its_event_dir(client: TestClient) -> None:
+    """The contract a client matches jobs to event rows by: ``event_dir == event_id``."""
+    rows = client.get("/api/v1/events").json()
+    event_id = next(row["event_id"] for row in rows if row["event_id"].endswith(" - A"))
+
+    job = client.post("/api/v1/jobs", json={"event_id": event_id}).json()
+
+    assert job["event_dir"] == event_id
+
+
+def test_an_enqueue_that_loses_the_race_is_a_conflict(
+    client: TestClient, store: JobStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"})
+    assert first.status_code == 201
+    # Stands in for a concurrent request that inserts after this request's
+    # pre-check found nothing: the store's insertion must decide, not the pre-check.
+    monkeypatch.setattr(client.app.state.job_store, "active_job", lambda *_: None)
+
+    second = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"})
+
+    assert second.status_code == 409
+    assert second.json()["job_id"] == first.json()["id"]
+    assert len(store.list_by_status(JobStatus.QUEUED)) == 1
 
 
 def test_duplicate_enqueue_is_a_visible_conflict(client: TestClient, store: JobStore) -> None:
     first = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"})
     second = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"})
     assert second.status_code == 409
-    assert second.json()["id"] == first.json()["id"]
+    problem = second.json()
+    assert problem["job_id"] == first.json()["id"]
+    assert "id" not in problem  # the untyped extra the typed ``job_id`` replaced
     assert len(store.list_by_status(JobStatus.QUEUED)) == 1
 
 
@@ -78,8 +107,9 @@ def test_terminal_job_does_not_block_new_enqueue(client: TestClient, store: JobS
 
 
 def test_enqueue_unknown_event_is_404(client: TestClient) -> None:
-    response = client.post("/api/v1/jobs", json={"event_id": "2024/does-not-exist"})
+    response = client.post("/api/v1/jobs", json={"event_id": "2024/2024-12-24 - Finns inte"})
     assert response.status_code == 404
+    assert response.json()["event_id"] == "2024/2024-12-24 - Finns inte"
 
 
 def test_enqueue_stamps_fingerprint_and_defaults_force_false(
@@ -128,7 +158,9 @@ def test_fresh_event_is_not_enqueued(client: TestClient, store: JobStore, projec
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "fresh"
+    assert body["event_id"] == "2024/2024-06-21 - A"
     assert body["fingerprint"]
+    assert body["manifest"].startswith("2024/2024-06-21 - A/")
     assert store.list_by_status(JobStatus.QUEUED) == []
 
 
@@ -169,8 +201,10 @@ def test_get_job_detail(client: TestClient, store: JobStore) -> None:
 
 
 def test_get_unknown_job_is_404(client: TestClient) -> None:
-    response = client.get(f"/api/v1/jobs/{uuid.uuid4()}")
+    job_id = uuid.uuid4()
+    response = client.get(f"/api/v1/jobs/{job_id}")
     assert response.status_code == 404
+    assert response.json()["job_id"] == str(job_id)
 
 
 def test_cancel_running_job_flags_without_changing_status(
@@ -203,19 +237,46 @@ def test_cancel_queued_job_cancels_immediately(client: TestClient, store: JobSto
     assert body["status"] == "canceled"
 
 
-def test_cancel_terminal_job_is_a_no_op(client: TestClient, store: JobStore) -> None:
+def test_cancel_reports_the_outcome_it_applied_not_an_earlier_read(
+    client: TestClient, store: JobStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"})
+    job_id = uuid.UUID(created.json()["id"])
+    queued_copy = store.get(job_id)  # read while the job is still queued ...
+    store.claim_next("worker-1")  # ... before a worker claims it
+    monkeypatch.setattr(client.app.state.job_store, "get", lambda _job_id: queued_copy)
+
+    response = client.post(f"/api/v1/jobs/{job_id}/cancel")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["outcome"], body["status"]) == ("flagged-running", "running")
+
+
+@pytest.mark.parametrize("terminal", [JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELED])
+def test_cancel_terminal_job_is_a_no_op(
+    client: TestClient, store: JobStore, terminal: JobStatus
+) -> None:
     created = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"})
     job_id = uuid.UUID(created.json()["id"])
     store.claim_next("worker-1")
-    store.transition(job_id, JobStatus.DONE)
+    store.transition(job_id, terminal)
 
     response = client.post(f"/api/v1/jobs/{job_id}/cancel")
     assert response.status_code == 200
     body = response.json()
     assert body["outcome"] == "no-op-terminal"
-    assert body["status"] == "done"
+    assert body["status"] == terminal.value
 
 
-def test_cancel_unknown_job_is_404(client: TestClient) -> None:
-    response = client.post(f"/api/v1/jobs/{uuid.uuid4()}/cancel")
+def test_cancel_unknown_job_is_404(client: TestClient, store: JobStore) -> None:
+    queued = client.post("/api/v1/jobs", json={"event_id": "2024/2024-06-21 - A"}).json()
+    job_id = uuid.uuid4()
+
+    response = client.post(f"/api/v1/jobs/{job_id}/cancel")
+
     assert response.status_code == 404
+    assert response.json()["job_id"] == str(job_id)
+    job = store.get(uuid.UUID(queued["id"]))
+    assert job is not None
+    assert (job.status, job.cancel_requested) == (JobStatus.QUEUED, False)  # no row changed

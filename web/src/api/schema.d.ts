@@ -208,7 +208,11 @@ export interface paths {
         put?: never;
         /**
          * Cancel Job
-         * @description ``POST /api/v1/jobs/{id}/cancel`` (task 3.3): request_cancel, tri-state outcome.
+         * @description ``POST /api/v1/jobs/{id}/cancel`` (task 3.3): the store's cancel and its outcome.
+         *
+         *     One store call and no pre-read: the outcome and the echoed status come from the
+         *     locked transaction that applied the cancel, so a worker's claim landing
+         *     in between can never make them disagree.
          */
         post: operations["cancel_job_api_v1_jobs__job_id__cancel_post"];
         delete?: never;
@@ -241,8 +245,19 @@ export interface components {
             };
         };
         /**
+         * CancelOutcome
+         * @description What a cancel request did to a job (D-S6): the outcome the store applied.
+         * @enum {string}
+         */
+        CancelOutcome: "flagged-running" | "canceled-queued" | "no-op-terminal";
+        /**
          * CancelResult
-         * @description The body of ``POST /api/v1/jobs/{id}/cancel`` (D-S6 tri-state, task 3.3).
+         * @description The body of ``POST /api/v1/jobs/{id}/cancel``: the outcome the store applied (D-S6).
+         *
+         *     ``outcome`` and ``status`` come from the one transaction that applied the cancel,
+         *     so they always agree. ``outcome`` is typed with the store's own closed vocabulary,
+         *     so the schema publishes the enumeration and generated clients get an exhaustive
+         *     union (D-8, §4.10); the wire values are unchanged.
          */
         CancelResult: {
             /**
@@ -251,8 +266,7 @@ export interface components {
              */
             id: string;
             status: components["schemas"]["JobStatus"];
-            /** Outcome */
-            outcome: string;
+            outcome: components["schemas"]["CancelOutcome"];
         };
         /**
          * ChapterBody
@@ -519,6 +533,23 @@ export interface components {
             latest_job?: components["schemas"]["JobSummaryOut"] | null;
             staleness: components["schemas"]["StalenessOut"];
         };
+        /**
+         * FreshResult
+         * @description The body of ``POST /api/v1/jobs`` when the event is fresh and not enqueued (D-C3).
+         */
+        FreshResult: {
+            /** Event Id */
+            event_id: string;
+            /**
+             * Status
+             * @constant
+             */
+            status: "fresh";
+            /** Fingerprint */
+            fingerprint: string;
+            /** Manifest */
+            manifest: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -535,7 +566,10 @@ export interface components {
              */
             id: string;
             status: components["schemas"]["JobStatus"];
-            /** Event Dir */
+            /**
+             * Event Dir
+             * @description The event's id: the root-relative event directory, the same value the events routes take as {event_id} and return as event_id
+             */
             event_dir: string;
             /** Project Root */
             project_root?: string | null;
@@ -616,9 +650,9 @@ export interface components {
          * @description The shared problem body every deliberate error uses (D-A6), as published in the schema.
          *
          *     Schema-only: routes still return ``problem.problem_response``'s ``JSONResponse``,
-         *     which FastAPI does not validate against this model. ``extra="allow"`` keeps
-         *     route-specific fields (e.g. a 409's existing job ``id``) legal without this
-         *     model enumerating them; the named optional fields are the ones clients branch on.
+         *     which FastAPI does not validate against this model. ``extra="allow"`` keeps an
+         *     undeclared route-specific field legal; a field clients branch on is declared
+         *     below as a named optional field, so the generated types carry it without a cast.
          */
         ProblemOut: {
             /** Title */
@@ -632,6 +666,8 @@ export interface components {
             /** Event Id */
             event_id?: string | null;
             failure?: components["schemas"]["EventFailure"] | null;
+            /** Job Id */
+            job_id?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -707,6 +743,26 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /**
+         * WsMessage
+         * @description One frame on ``WS /api/v1/ws/jobs`` (D-A4): a snapshot or a delta batch.
+         *
+         *     A WebSocket route is not an HTTP operation, so no path in the schema references
+         *     this model: the application publishes it into the schema's components itself,
+         *     so a client generated from the schema gets the frame's type without declaring it
+         *     by hand (D-8, §4.10).
+         */
+        WsMessage: {
+            type: components["schemas"]["WsMessageType"];
+            /** Jobs */
+            jobs: components["schemas"]["JobOut"][];
+        };
+        /**
+         * WsMessageType
+         * @description The closed set of frame types on ``WS /api/v1/ws/jobs`` (D-A4).
+         * @enum {string}
+         */
+        WsMessageType: "snapshot" | "delta";
     };
     responses: never;
     parameters: never;
@@ -1033,6 +1089,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The event is fresh; nothing was enqueued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FreshResult"];
+                };
+            };
             /** @description Successful Response */
             201: {
                 headers: {
@@ -1040,6 +1105,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
                 };
             };
             /** @description Validation Error */
@@ -1073,6 +1156,15 @@ export interface operations {
                     "application/json": components["schemas"]["JobOut"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -1102,6 +1194,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CancelResult"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
                 };
             };
             /** @description Validation Error */

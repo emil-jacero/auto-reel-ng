@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
+from typing import Callable
 
 import pytest
 from fastapi.testclient import TestClient
 
 from auto_reel_ng.api.app import create_app
 from auto_reel_ng.api.settings import resolve_api_settings
-from auto_reel_ng.persistence.job_store import JobStore
+from auto_reel_ng.persistence.job_store import CancelOutcome, JobStore
 from auto_reel_ng.persistence.models import JobStatus
 
 pytestmark = pytest.mark.requires_db
@@ -47,8 +49,10 @@ def client(project: Path, postgres_container: str, store: JobStore):
         yield test_client
 
 
-def _read_until_status(websocket, job_id: str, target: str, *, max_reads: int = 8) -> dict:
-    """Read WS frames until one reports ``job_id`` at ``target`` status.
+def _read_until(
+    websocket, job_id: str, matches: Callable[[dict], bool], *, max_reads: int = 8
+) -> dict:
+    """Read WS frames until one carries a row for ``job_id`` that ``matches``.
 
     Tolerates an intermediate delta this test doesn't otherwise assert on (e.g. a
     ``queued`` frame that lands between ``enqueue`` and ``claim_next`` if a poll
@@ -57,9 +61,29 @@ def _read_until_status(websocket, job_id: str, target: str, *, max_reads: int = 
     for _ in range(max_reads):
         message = json.loads(websocket.receive_text())
         for job in message.get("jobs", []):
-            if job["id"] == job_id and job["status"] == target:
+            if job["id"] == job_id and matches(job):
                 return job
-    raise AssertionError(f"status {target!r} for job {job_id} not seen within {max_reads} frames")
+    raise AssertionError(f"no matching row for job {job_id} within {max_reads} frames")
+
+
+def _read_until_status(websocket, job_id: str, target: str, *, max_reads: int = 8) -> dict:
+    """Read WS frames until one reports ``job_id`` at ``target`` status."""
+    return _read_until(websocket, job_id, lambda job: job["status"] == target, max_reads=max_reads)
+
+
+def _rows_before_marker(websocket, job_id: str, marker_id: str, *, max_reads: int = 8) -> list:
+    """Every row for ``job_id`` in the frames up to the one carrying ``marker_id``.
+
+    A job enqueued as a marker bounds the watch: the hub sends its delta after any
+    change committed before it, so a missing row fails here rather than blocking.
+    """
+    rows: list = []
+    for _ in range(max_reads):
+        message = json.loads(websocket.receive_text())
+        rows += [job for job in message["jobs"] if job["id"] == job_id]
+        if any(job["id"] == marker_id for job in message["jobs"]):
+            return rows
+    raise AssertionError("the marker job's delta never arrived")
 
 
 def test_deltas_arrive_within_a_poll_interval(
@@ -83,3 +107,53 @@ def test_deltas_arrive_within_a_poll_interval(
         store.transition(job_id, JobStatus.DONE)
         done = _read_until_status(websocket, str(job_id), "done")
         assert done["progress"] == 0.5
+
+
+def test_a_job_that_ends_between_polls_is_pushed_once(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    """The real store's finished read and database clock, end to end.
+
+    Enqueue, claim and failure take milliseconds, so a poll rarely sees the job
+    active; either way exactly one terminal row may arrive, although every later
+    poll's window still holds its ``finished_at``.
+    """
+    with client.websocket_connect("/api/v1/ws/jobs") as websocket:
+        snapshot = json.loads(websocket.receive_text())
+        assert snapshot["type"] == "snapshot"
+
+        job_id = store.enqueue(str(project), "2024/2024-10-05 - Trasig")
+        store.claim_next("worker-1")
+        store.transition(job_id, JobStatus.FAILED, error="ffprobe: invalid data")
+
+        failed = _read_until_status(websocket, str(job_id), "failed")
+        assert failed["error"] == "ffprobe: invalid data"
+
+        # Several polls later, an unrelated job's delta marks the end of the watch:
+        # no frame before it may carry the failed job again.
+        time.sleep(_POLL_INTERVAL_S * 5)
+        marker = store.enqueue(str(project), "2024/2024-06-21 - A")
+        assert _rows_before_marker(websocket, str(job_id), str(marker)) == []
+
+
+def test_a_cancel_request_is_pushed(client: TestClient, store: JobStore, project: Path) -> None:
+    """The flag a running job's cancel sets reaches subscribers with no progress change."""
+    with client.websocket_connect("/api/v1/ws/jobs") as websocket:
+        json.loads(websocket.receive_text())  # the snapshot
+
+        job_id = store.enqueue(str(project), "2024/2024-08-02 - Badutflykt - Varberg")
+        store.claim_next("worker-1")
+        store.set_progress(job_id, 0.4)
+        running = _read_until(websocket, str(job_id), lambda job: job["progress"] == 0.4)
+        assert (running["status"], running["cancel_requested"]) == ("running", False)
+
+        result = store.cancel(job_id)
+        assert result is not None and result.outcome is CancelOutcome.FLAGGED_RUNNING
+
+        # The flag's delta is due within about one poll; the marker bounds the wait.
+        time.sleep(_POLL_INTERVAL_S * 3)
+        marker = store.enqueue(str(project), "2024/2024-06-21 - A")
+        rows = _rows_before_marker(websocket, str(job_id), str(marker))
+        assert [(job["status"], job["progress"], job["cancel_requested"]) for job in rows] == [
+            ("running", 0.4, True)
+        ]

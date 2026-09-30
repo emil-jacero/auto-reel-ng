@@ -395,7 +395,10 @@ the engine leaves `pytest`, the drift check and `tsc --noEmit` all green while t
 slugs: exactly the hand-maintained schema ⇄ view mapping D-8 rejected htmx to avoid. The rule that
 follows: a field drawn from a closed set is typed with an enumeration owned by the layer that owns the
 vocabulary (`StalenessReason` lives in `staleness/`, not in `api/`), so the schema publishes the set and
-the generated types become an exhaustive union. `events-list-client-contract` is the worked example.
+the generated types become an exhaustive union. `events-list-client-contract` is the worked example. A
+model sent only over the WebSocket has no HTTP route to carry it into the schema, so the application's
+schema hook publishes it into the schema's components (`WsMessage` and its `WsMessageType`,
+`jobs-client-contract`), never through a fake HTTP route.
 
 **`tsc --noEmit` is the frontend gate for GUI v1** — the whole frontend check. There is deliberately
 **no test runner and no browser automation**: types are generated from the schema, so drift is a compile
