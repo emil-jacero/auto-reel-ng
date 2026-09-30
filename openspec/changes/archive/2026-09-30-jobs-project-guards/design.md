@@ -140,8 +140,12 @@ project root").
 **Decision**:
 - A read-model helper in `api/events_read.py` walks the configured layout, as the events list does.
 - Each event gets a claim with the loader and processability rule the CLI and the events reads share.
-- The named event is always added, even when the walk does not reach it. `resolve_event_dir` accepts any
-  folder under the root, and a folder outside `input` still claims its own path.
+- The named event is always added, even when the walk does not reach it. `named_event_dir` accepts any
+  folder under the root (containment is still `resolve_event_dir`'s), and a folder outside `input` still
+  claims its own path.
+- The named event is judged at the path its id spells, `project_root / event_id`: what the job stores and
+  what the worker renders (`scheduler/worker.py`, `project_root / job.event_dir`). It is never judged at
+  the folder a symlink resolves to.
 
 ```python
 @dataclass(frozen=True)
@@ -152,12 +156,21 @@ class OutputCollision:
     claimed_by: Tuple[str, ...]         # the other claimants' event ids, sorted
 
 
+def named_event_dir(settings: ApiSettings, event_id: str) -> Path:
+    """The event directory exactly as ``event_id`` spells it: ``project_root / event_id``."""
+    resolve_event_dir(settings, event_id)           # EventNotFoundError: unknown, or outside the root
+    event_dir = settings.project_root / event_id
+    if not event_dir.is_dir():                      # a ``..`` through a missing folder
+        raise EventNotFoundError(event_id)
+    return event_dir
+
+
 def _output_claim(event_dir: Path, order: ClipOrder, today: DateValue) -> Optional[PurePosixPath]:
     """The event's output path, or None when it fails on its own and claims nothing."""
     try:
         document, _seeded = load_event_document(event_dir, order=order)
         require_processable(event_dir, document.metadata, today=today)
-    except (ReelError, OSError):        # EventMetadataError is a ReelError
+    except (ReelError, OSError, ValueError):        # EventMetadataError is a ReelError
         return None
     return output_relpath(document.metadata)
 
@@ -165,43 +178,53 @@ def _output_claim(event_dir: Path, order: ClipOrder, today: DateValue) -> Option
 def output_collision(
     settings: ApiSettings, event_dir: Path, *, today: DateValue
 ) -> Optional[OutputCollision]:
-    """The collision ``event_dir`` is part of, over every event of the served project.
+    """The collision ``event_dir`` (as ``named_event_dir`` spells it) is part of, project-wide.
 
     The layout walk's own failure propagates: the caller must not enqueue unchecked.
     """
-    event_dir = event_dir.resolve()                 # a no-op for resolve_event_dir's result
     target = _output_claim(event_dir, settings.clip_order, today)
     if target is None:
         return None
-    claims: Dict[Path, PurePosixPath] = {event_dir: target}
-    ids: Dict[Path, str] = {}
+    named_id = event_id_for(settings, event_dir)
+    claims: Dict[str, PurePosixPath] = {named_id: target}
     for ref in _list_event_refs(settings):          # LayoutError / OSError / ReelError propagate
-        if ref.event_dir.resolve() == event_dir:
-            continue                                # the named event itself, however spelled
+        event_id = event_id_for(settings, ref.event_dir)   # the list's own id, as the CLI keys it
+        if event_id == named_id:
+            continue                                # the named event itself: claimed above
         claim = _output_claim(ref.event_dir, settings.clip_order, today)
         if claim is not None:
-            claims[ref.event_dir] = claim           # keyed by the walk's own path, as the CLI
-            ids[ref.event_dir] = event_id_for(settings, ref.event_dir)   # the list's own id
-    others = find_output_collisions(claims).get(event_dir, ())
+            claims[event_id] = claim
+    others = find_output_collisions(claims).get(named_id, ())
     if not others:
         return None
-    # Every other claimant came from the walk, so each one has an id.
-    return OutputCollision(output_path=target, claimed_by=tuple(sorted(ids[o] for o in others)))
+    return OutputCollision(output_path=target, claimed_by=tuple(sorted(others)))
 ```
 
 **Rationale**:
-- **Keys:** a walked event that resolves to the named event's folder is the named event itself, however
-  the walk spells it, so it never collides with itself. This holds even when `settings.project_root` was
-  built unresolved, as tests build it. Every other walked event claims under its own walk path, as the
-  CLI's `_output_collisions` keys it and as each events-list row stands on its own.
-  - *Corrected during apply (task 3.2):* the first draft keyed every claimant by its resolved folder. Two
-    list rows aliasing one folder under different names (an in-project symlink, such as
-    `2024/2024-07-20 - Fest` pointing at `2024/2024-07-14 - Kalas`) then shared one key, and the one
-    walked later silently replaced the other's claim. A `POST` for the case-only twin `2024-07-14 - kalas`
-    found no collision and would have been enqueued over `Kalas.mp4`, where `auto-reel enqueue` refuses
-    it. Keying by the walk's path keeps both claims.
+- **Keys:** every claimant is keyed by its own id, its in-root path as spelled, and never by the folder
+  it resolves to. That is how the CLI's `_output_collisions` keys its walk, and how the worker finds an
+  event (`project_root / job.event_dir`).
+  - Only the walked event with the named event's id is the named event itself. The named path is
+    `project_root / event_id`, so `./` and a trailing `/` normalize away. This holds even when
+    `settings.project_root` was built unresolved, as tests build it.
+  - An in-project symlinked alias is a claimant of its own. It claims the path its own folder name and
+    `reel.yaml` give it, which is the path a worker renders it to.
+  - *Corrected twice.* During apply (task 3.2), the first draft keyed every claimant by its resolved folder.
+    Two list rows aliasing one folder under different names (a symlink such as `2024/2024-07-20 - Fest`
+    pointing at `2024/2024-07-14 - Kalas`) then shared one key, and the row walked later silently replaced
+    the other's claim.
+  - The second draft keyed walked claimants by their walk path, but still judged the named event at its
+    resolved folder and treated every walked alias of that folder as the named event itself. The
+    independent review found that it disagreed with `auto-reel enqueue` both ways:
+    - with a real `2024-07-20 - fest` beside the alias, it accepted `Fest`, whose render then replaces
+      `fest`'s movie;
+    - beside Kalas's twin `kalas`, it refused `Fest` for `Kalas.mp4`, although the CLI enqueues `Fest`;
+    - with Kalas's `reel.yaml` authored, it accepted both `Kalas` and `Fest`, two jobs for one folder and
+      one path, where the CLI refuses both.
+  - Judging the named event at its own path and keying every claimant by id fixes all three. The tests
+    assert the CLI's own answer for each.
 - **Ids:** each id is `event_id_for` on the walk's unresolved path, the exact string `GET /api/v1/events`
-  lists and a client links to. Deriving it from the resolved key would be wrong in two ways:
+  lists and a client links to. Deriving it from a resolved folder would be wrong in two ways:
   - A symlinked year or event folder that points outside the root would make `relative_to` raise
     `ValueError`, a 500 on every enqueue in the project.
   - A symlink inside the root would get its target's id rather than the list's.
@@ -209,6 +232,12 @@ def output_collision(
   CLI reports as `ERROR` (a `ReelError`: unparseable or unreadable `reel.yaml`, or no real date or title)
   claims nothing here either. Both the headless-cli spec and the events list's error row already describe
   such an event as failing on its own.
+  - The loader also lets a `ValueError` escape instead of a `ReelParseError`: a `reel.yaml` that is not
+    UTF-8 (`UnicodeDecodeError`), or that holds an impossible YAML date (`date: 2024-02-30`), raises one.
+  - Such a sibling claims nothing too. Otherwise one bad document would fail every enqueue in the project
+    with a 500 (a review finding).
+  - Wrapping these errors at the parser is a follow-up, because `GET /api/v1/events` and the CLI meet the
+    same error.
 - **`OSError` differs from the CLI, deliberately:** a sibling folder without `reel.yaml` that cannot be
   listed makes the CLI abort its whole run (see Context). Here it claims nothing and the check goes on. It
   is the events list's per-event isolation (`unreadable_disk` row) and Principle I's one tolerated
@@ -224,7 +253,7 @@ def output_collision(
 **Decision**: `create_job` runs the checks in this order, building on C2's version:
 
 ```python
-event_dir = events_read.resolve_event_dir(settings, payload.event_id)             # 404
+event_dir = events_read.named_event_dir(settings, payload.event_id)               # 404
 try:
     collision = events_read.output_collision(settings, event_dir, today=date.today())
 except (ReelError, LayoutError, OSError) as exc:                                 # the list's 502
@@ -258,6 +287,13 @@ existing = store.active_job(project_root, payload.event_id)                     
   client links to, and folder names can repeat across years.
 - **The 502:** a failed walk leaves the rule unevaluated. Enqueueing anyway would guess
   (Principle I).
+- **One path for the whole route** (review fix): after the 404, the collision check, the fingerprint and the
+  gate all judge `named_event_dir`'s path, which is the path the job names and the worker renders.
+  - An in-project alias is therefore gated at the output its own name gives it, not at its target's.
+    Before, the gate read the target folder's output, so an alias whose own movie was never rendered
+    could be answered 200 "fresh" because its target's movie was.
+  - `resolve_event_dir` only decides existence and containment. A `..` spelled through a missing folder
+    passes it lexically but names nothing a worker could open, so it is a 404.
 
 ### The conflict vocabulary and its owner
 

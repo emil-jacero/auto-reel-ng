@@ -2,7 +2,8 @@
 
 ``events_read.output_collision`` applies the batch commands' rule (D-9) over every
 event of the served project: the layout walk's events — the events list's rows —
-plus the named event itself. No database: the read touches only the disk.
+plus the named event itself, each keyed by its own id as ``auto-reel enqueue`` keys
+its walk. No database: the read touches only the disk.
 """
 
 from __future__ import annotations
@@ -15,7 +16,9 @@ import pytest
 
 from auto_reel_ng.api import events_read
 from auto_reel_ng.api.settings import ApiSettings, resolve_api_settings
-from auto_reel_ng.ingest import LayoutError
+from auto_reel_ng.cli import commands
+from auto_reel_ng.event import DEFAULT_CLIP_ORDER
+from auto_reel_ng.ingest import LayoutError, year_event_layout
 
 #: Never connected to: the read under test runs no query.
 UNUSED_DATABASE_URL = "postgresql+psycopg://nobody:nobody@127.0.0.1:1/nothing"
@@ -26,18 +29,27 @@ TODAY = date(2026, 9, 30)
 KALAS = "2024/2024-07-14 - Kalas"
 KALAS_LOWER = "2024/2024-07-14 - kalas"
 
+#: An in-project symlinked alias of the Kalas folder, and a real folder named like it.
+FEST = "2024/2024-07-20 - Fest"
+FEST_LOWER = "2024/2024-07-20 - fest"
+
+#: A reel.yaml that is not a ReelError to the loader: a ValueError each.
+IMPOSSIBLE_YAML_DATE = b"version: 0\nmetadata:\n  title: Kalas\n  date: 2024-02-30\n"
+NOT_UTF_8 = b"version: 0\nmetadata:\n  title: Kalas \xff\n"
+
 
 def _touch(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"")
 
 
-def _event(root: Path, event_id: str, reel_yaml: str | None = None) -> Path:
+def _event(root: Path, event_id: str, reel_yaml: str | bytes | None = None) -> Path:
     """An event folder with one clip, and ``reel_yaml`` as its document when given."""
     event_dir = root / event_id
     _touch(event_dir / "00400.mp4")
     if reel_yaml is not None:
-        (event_dir / "reel.yaml").write_text(reel_yaml, encoding="utf-8")
+        raw = reel_yaml.encode("utf-8") if isinstance(reel_yaml, str) else reel_yaml
+        (event_dir / "reel.yaml").write_bytes(raw)
     return event_dir
 
 
@@ -57,8 +69,35 @@ def _settings(root: Path) -> ApiSettings:
 
 def _collision(root: Path, event_id: str) -> events_read.OutputCollision | None:
     settings = _settings(root)
-    event_dir = events_read.resolve_event_dir(settings, event_id)
+    event_dir = events_read.named_event_dir(settings, event_id)
     return events_read.output_collision(settings, event_dir, today=TODAY)
+
+
+def _refusals(root: Path) -> dict[str, tuple[str, ...]]:
+    """Every listed event the service refuses, with the claimants it names."""
+    refusals = {}
+    for ref in year_event_layout(root):
+        event_id = ref.event_dir.relative_to(root).as_posix()
+        collision = _collision(root, event_id)
+        if collision is not None:
+            refusals[event_id] = collision.claimed_by
+    return refusals
+
+
+def _cli_refused(root: Path) -> set[str]:
+    """The events ``auto-reel enqueue <root>`` refuses for an output collision.
+
+    Computed by the selection and the rule ``cmd_enqueue`` itself runs, so a test
+    asserts the CLI's actual answer rather than a restatement of it.
+    """
+    refs = list(year_event_layout(root))
+    documents, _failures = commands._checked_documents(  # pylint: disable=protected-access
+        refs, TODAY, DEFAULT_CLIP_ORDER
+    )
+    refused = commands._output_collisions(  # pylint: disable=protected-access
+        {event_dir: document.metadata for event_dir, document in documents.items()}
+    )
+    return {event_dir.relative_to(root).as_posix() for event_dir in refused}
 
 
 @pytest.mark.parametrize(
@@ -129,12 +168,15 @@ def test_another_date_is_no_collision(root: Path) -> None:
     ("sibling", "reel_yaml"),
     [
         ("2024/2024-02-30 - Omöjligt datum", None),  # an impossible folder date
-        ("2024/2024-07-14 - KALAS", ": ["),  # would collide, if its reel.yaml parsed
+        # Each of these would collide, if its reel.yaml could be read:
+        ("2024/2024-07-14 - KALAS", ": ["),
+        ("2024/2024-07-14 - KALAS", IMPOSSIBLE_YAML_DATE),
+        ("2024/2024-07-14 - KALAS", NOT_UTF_8),
     ],
-    ids=["unusable-metadata", "unparseable-reel-yaml"],
+    ids=["unusable-metadata", "unparseable-reel-yaml", "impossible-yaml-date", "not-utf-8"],
 )
 def test_a_sibling_that_fails_on_its_own_claims_nothing(
-    root: Path, sibling: str, reel_yaml: str | None
+    root: Path, sibling: str, reel_yaml: str | bytes | None
 ) -> None:
     _event(root, KALAS)
     _event(root, sibling, reel_yaml)
@@ -198,20 +240,54 @@ def test_a_symlinked_twin_outside_the_root_is_named_by_its_in_root_id(
     assert collision.claimed_by == (KALAS_LOWER,)
 
 
-def test_two_rows_aliasing_one_folder_keep_both_claims(root: Path) -> None:
-    """An in-project alias walked after its folder must not replace the folder's claim."""
-    _event(root, KALAS)
-    _event(root, KALAS_LOWER)
-    fest = root / "2024" / "2024-07-20 - Fest"  # listed as its own row; claims its own path
-    fest.symlink_to(root / KALAS)
+@pytest.mark.parametrize(
+    ("real", "authored", "refusals"),
+    [
+        # The alias claims the path its own folder name gives it (the path a worker
+        # renders it to), so it collides with the real fest, and fest with it.
+        ((KALAS, FEST_LOWER), False, {FEST: (FEST_LOWER,), FEST_LOWER: (FEST,)}),
+        # Nothing else claims the alias's path: only Kalas and its twin collide.
+        ((KALAS, KALAS_LOWER), False, {KALAS: (KALAS_LOWER,), KALAS_LOWER: (KALAS,)}),
+        # The alias reads the folder's authored reel.yaml: both rows claim Kalas.mp4.
+        ((KALAS,), True, {KALAS: (FEST,), FEST: (KALAS,)}),
+    ],
+    ids=[
+        "alias-beside-its-name-twin",
+        "alias-of-a-colliding-folder",
+        "alias-of-an-authored-folder",
+    ],
+)
+def test_an_in_project_alias_is_a_claimant_of_its_own(
+    root: Path,
+    real: tuple[str, ...],
+    authored: bool,
+    refusals: dict[str, tuple[str, ...]],
+) -> None:
+    """A symlinked event folder is a row of its own, as the CLI keys it by its walk path."""
+    for event_id in real:
+        _event(root, event_id)
+    if authored:
+        (root / KALAS / "reel.yaml").write_text(
+            "version: 0\nmetadata:\n  title: Kalas\n  date: 2024-07-14\n", encoding="utf-8"
+        )
+    (root / FEST).symlink_to(root / KALAS)
 
-    assert _collision(root, KALAS_LOWER) == events_read.OutputCollision(
-        output_path=PurePosixPath("2024/2024-07-14 - Kalas.mp4"), claimed_by=(KALAS,)
-    )
-    # A walked alias of the named event is the named event itself: never its own twin.
-    kalas = _collision(root, KALAS)
-    assert kalas is not None
-    assert kalas.claimed_by == (KALAS_LOWER,)
+    assert _cli_refused(root) == set(refusals)  # the CLI's answer ...
+    assert _refusals(root) == refusals  # ... is the service's, claimants included
+
+
+def test_the_named_path_is_judged_as_the_id_spells_it(root: Path) -> None:
+    """``./`` normalizes away: the event is its own listed row, never its own twin."""
+    _event(root, KALAS)
+
+    assert _collision(root, "2024/./2024-07-14 - Kalas") is None
+    # A ``..`` spelling is a claimant of its own, so it collides with the row it spells.
+    dotdot = _collision(root, "2024/2024-07-14 - Kalas/../2024-07-14 - Kalas")
+    assert dotdot is not None
+    assert dotdot.claimed_by == (KALAS,)
+    # A ``..`` through a missing folder resolves lexically, but no worker could open it.
+    with pytest.raises(events_read.EventNotFoundError):
+        events_read.named_event_dir(_settings(root), "2024/missing/../2024-07-14 - Kalas")
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
