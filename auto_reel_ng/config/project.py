@@ -74,6 +74,8 @@ def load_project_config(root: Path) -> ProjectConfig:
         text = config_path.read_text(encoding="utf-8")
     except OSError as exc:
         raise ConfigError(f"{config_path}: cannot read config: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise ConfigError(f"{config_path}: config is not valid UTF-8: {exc}") from exc
     return loads_project_config(text, source=str(config_path))
 
 
