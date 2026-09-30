@@ -442,6 +442,68 @@ def test_list_finished_since_orders_by_finished_at(
 
 
 # --------------------------------------------------------------------------- #
+# Listings narrowed to one project (jobs-project-guards 2.1)
+# --------------------------------------------------------------------------- #
+
+LIBRARY_A = "/dev/a/library"
+LIBRARY_B = "/dev/b/library"
+
+
+def test_list_by_status_narrowed_to_a_project_returns_only_its_jobs(job_store: JobStore) -> None:
+    own = job_store.enqueue(LIBRARY_A, BLANDAT)
+    foreign = job_store.enqueue(LIBRARY_B, BLANDAT)
+
+    narrowed = job_store.list_by_status(JobStatus.QUEUED, project_root=LIBRARY_A)
+    everything = job_store.list_by_status(JobStatus.QUEUED)
+
+    assert [job.id for job in narrowed] == [own]
+    assert [job.id for job in everything] == [own, foreign]  # every project, oldest first
+
+
+def test_a_job_with_no_project_root_is_never_in_a_narrowed_listing(
+    job_store: JobStore, jobs_session_factory: sessionmaker
+) -> None:
+    with session_scope(jobs_session_factory) as session:
+        rootless = Job(project_root=None, event_dir=BLANDAT)
+        session.add(rootless)
+        session.flush()
+        rootless_id = rootless.id
+
+    assert job_store.list_by_status(JobStatus.QUEUED, project_root=LIBRARY_A) == []
+    assert [job.id for job in job_store.list_by_status(JobStatus.QUEUED)] == [rootless_id]
+
+
+def test_list_finished_since_narrowed_to_a_project_returns_only_its_jobs(
+    job_store: JobStore,
+) -> None:
+    as_of = job_store.list_finished_since(None, overlap=timedelta(0)).as_of
+    own = job_store.enqueue(LIBRARY_A, TRASIG)
+    foreign = job_store.enqueue(LIBRARY_B, TRASIG)
+    for job_id in (own, foreign):
+        claimed = job_store.claim_next("worker-1")
+        assert claimed is not None and claimed.id == job_id
+        job_store.transition(job_id, JobStatus.FAILED, error="probe failed")
+
+    narrowed = job_store.list_finished_since(as_of, overlap=timedelta(0), project_root=LIBRARY_A)
+    everything = job_store.list_finished_since(as_of, overlap=timedelta(0))
+
+    assert [(job.id, job.status) for job in narrowed.jobs] == [(own, JobStatus.FAILED)]
+    assert {job.id for job in everything.jobs} == {own, foreign}
+    assert narrowed.as_of >= as_of  # the database time is the read's, narrowed or not
+
+
+def test_the_queue_stays_shared_while_listings_are_narrowed(job_store: JobStore) -> None:
+    """Scoping is a read filter only: a worker still claims any project's job."""
+    foreign = job_store.enqueue(LIBRARY_B, BLANDAT)
+
+    claimed = job_store.claim_next("worker-1")
+
+    assert claimed is not None and claimed.id == foreign
+    assert job_store.list_by_status(JobStatus.RUNNING, project_root=LIBRARY_A) == []
+    assert [job.id for job in job_store.list_by_status(JobStatus.RUNNING)] == [foreign]
+
+
+# --------------------------------------------------------------------------- #
 # 4.6 cancel_queued
 # --------------------------------------------------------------------------- #
 
