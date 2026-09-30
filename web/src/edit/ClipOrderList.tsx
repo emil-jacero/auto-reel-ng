@@ -400,7 +400,10 @@ export const ClipOrderList = memo(function ClipOrderList({
   onMove: MoveHandler
   onRemove: RemoveHandler
   onRestore: RestoreHandler
-  /** Speak a button move through the editor's live region (dnd-kit speaks the drags). */
+  /**
+   * Speak button moves, removals and Undos through the editor's live region (dnd-kit speaks
+   * the drags).
+   */
   onAnnounce: (message: string) => void
 }) {
   const headingId = useId()

@@ -630,7 +630,8 @@ export function EventEditor({
 
   return (
     <div className="event-editor">
-      {/* The one live region for the reel read and the button moves; dnd-kit speaks the drags. */}
+      {/* The one live region for the reel read, the button moves, removals and Undos; dnd-kit
+          speaks the drags. */}
       <p role="status" className="visually-hidden">
         {state.status === 'loading' ? 'Reading reel.yaml…' : announcement}
       </p>
