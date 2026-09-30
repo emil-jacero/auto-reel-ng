@@ -367,6 +367,22 @@
   }
 
   /*
+   * Why a row that needs a render offers none (`LiveJobCell`'s `blockedReason`):
+   * icon and words. The icon stays beside the first line when the words wrap.
+   */
+  .row-blocked {
+    display: inline-flex;
+    gap: var(--s-1);
+    align-items: flex-start;
+    color: var(--fg-muted);
+    font-size: var(--text-xs);
+
+    & > svg {
+      flex: none;
+    }
+  }
+
+  /*
    * A row become a card (a narrow panel): the cell's parts flow as one line of
    * items after its "Last job" label, so the label stays beside the pill.
    */

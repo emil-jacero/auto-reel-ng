@@ -88,21 +88,25 @@ function RowRender({ eventId, buttonRef }: { eventId: string; buttonRef: Ref<HTM
 
 /**
  * A list row's job cell: the event's job, live (`useEventJob`), and a compact
- * Render while the event needs one and has no queued or running job. It renders
- * the `<td>` itself, so the narrow-width "Last job" label follows the job
- * actually shown — including one the connection reported after the read — and
- * a row with no job has none. It never fetches a failed job's error text.
+ * Render while the event needs one and has no queued or running job — or, when
+ * `blockedReason` says why it cannot render, that reason in its place. It
+ * renders the `<td>` itself, so the narrow-width "Last job" label follows the
+ * job actually shown — including one the connection reported after the read —
+ * and a row with no job has none. It never fetches a failed job's error text.
  */
 export function LiveJobCell({
   eventId,
   staleness,
   latestJob,
+  blockedReason,
   role,
   className,
 }: {
   eventId: string
   staleness: Staleness
   latestJob: JobSummary | null | undefined
+  /** Why the event cannot render now; the row then shows it instead of Render. */
+  blockedReason?: string
   role: 'cell'
   className: string
 }) {
@@ -146,7 +150,16 @@ export function LiveJobCell({
     >
       <span className="live-job">
         {shown !== null && <JobProgress shown={shown} />}
-        {staleness.stale && !active && <RowRender eventId={eventId} buttonRef={watchRemoval} />}
+        {staleness.stale &&
+          !active &&
+          (blockedReason === undefined ? (
+            <RowRender eventId={eventId} buttonRef={watchRemoval} />
+          ) : (
+            <span className="row-blocked">
+              <Icon name="alert-triangle" />
+              {blockedReason}
+            </span>
+          ))}
       </span>
     </td>
   )
