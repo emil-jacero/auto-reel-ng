@@ -33,8 +33,10 @@ export type EnqueueResult =
   | { kind: 'collision'; claimedBy: string[]; problem: Problem }
   // 404 (unknown event) or 502 (the project walk failed), in the ProblemOut shape
   | { kind: 'problem'; problem: Problem }
-  // fetch rejected, or a status or body that carries no published shape
+  // no answer at all: fetch rejected (the message is the error)
   | { kind: 'unreachable'; message: string }
+  // an answer whose status or body the route does not publish (the message names it)
+  | { kind: 'unpublished'; message: string }
 
 /** How a job read ended. */
 export type JobResult =
@@ -42,6 +44,7 @@ export type JobResult =
   // 404: no such job in the served project
   | { kind: 'problem'; problem: Problem }
   | { kind: 'unreachable'; message: string }
+  | { kind: 'unpublished'; message: string }
 
 /** How a cancel request ended. */
 export type CancelAnswer =
@@ -49,6 +52,7 @@ export type CancelAnswer =
   // 404: no such job in the served project
   | { kind: 'problem'; problem: Problem }
   | { kind: 'unreachable'; message: string }
+  | { kind: 'unpublished'; message: string }
 
 const JOBS_URL = '/api/v1/jobs'
 const SOCKET_PATH = '/api/v1/ws/jobs'
@@ -90,7 +94,8 @@ export async function enqueueJob(eventId: string, force: boolean): Promise<Enque
   }
   if (response.status === 409 && isProblem(body)) {
     // A 409 means only what its conflict kind says; one without the kind, or
-    // without the field its kind promises, is never guessed as "already active".
+    // without the field its kind promises, is unpublished, never guessed as
+    // "already active".
     const conflict = body.conflict
     if (conflict != null) {
       switch (conflict) {
@@ -108,7 +113,7 @@ export async function enqueueJob(eventId: string, force: boolean): Promise<Enque
           // A new conflict kind is a `tsc --noEmit` error here until it is handled.
           const unhandled: never = conflict
           return {
-            kind: 'unreachable',
+            kind: 'unpublished',
             message: `${unpublished('POST', JOBS_URL, response)}: conflict ${String(unhandled)}`,
           }
         }
@@ -118,7 +123,7 @@ export async function enqueueJob(eventId: string, force: boolean): Promise<Enque
   if (ENQUEUE_PROBLEM_STATUSES.has(response.status) && isProblem(body)) {
     return { kind: 'problem', problem: body }
   }
-  return { kind: 'unreachable', message: unpublished('POST', JOBS_URL, response) }
+  return { kind: 'unpublished', message: unpublished('POST', JOBS_URL, response) }
 }
 
 /** Read one job. Rethrows `AbortError` when `signal` aborted it. */
@@ -141,7 +146,7 @@ export async function fetchJob(jobId: string, signal?: AbortSignal): Promise<Job
   if (JOB_PROBLEM_STATUSES.has(response.status) && isProblem(body)) {
     return { kind: 'problem', problem: body }
   }
-  return { kind: 'unreachable', message: unpublished('GET', url, response) }
+  return { kind: 'unpublished', message: unpublished('GET', url, response) }
 }
 
 /** Ask the service to cancel one job. A write, so not abortable (see `enqueueJob`). */
@@ -161,7 +166,7 @@ export async function cancelJob(jobId: string): Promise<CancelAnswer> {
   if (JOB_PROBLEM_STATUSES.has(response.status) && isProblem(body)) {
     return { kind: 'problem', problem: body }
   }
-  return { kind: 'unreachable', message: unpublished('POST', url, response) }
+  return { kind: 'unpublished', message: unpublished('POST', url, response) }
 }
 
 /**

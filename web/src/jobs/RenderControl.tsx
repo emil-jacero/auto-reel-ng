@@ -12,14 +12,20 @@ import type { JobSummary, Staleness } from '../api/events'
 import { cancelJob, enqueueJob } from '../api/jobs'
 import type { CancelOutcome, EnqueueResult } from '../api/jobs'
 import { markEventsChanged } from '../events/changes'
-import { folderName } from '../events/common'
+import { UNREACHABLE_CAUSE, folderName } from '../events/common'
 import { LIST_HREF, eventHref } from '../route'
 import { Alert } from '../ui/Alert'
 import { Dialog } from '../ui/Dialog'
 import { Icon } from '../ui/Icon'
 import { toast } from '../ui/toast'
 import { JobMeter, JobState } from './JobProgress'
-import { CANCEL_OUTCOME_LABEL, COLLISION_FIX, NOT_QUEUED, SCAN_FAILED } from './labels'
+import {
+  CANCEL_OUTCOME_LABEL,
+  COLLISION_FIX,
+  NOT_CONFIRMED,
+  NOT_QUEUED,
+  SCAN_FAILED,
+} from './labels'
 import { getState, isActive, load, markAnnounced, merge, subscribe, track } from './store'
 import { useEventJob } from './useJob'
 
@@ -37,9 +43,10 @@ type Notice =
   | { kind: 'collision'; claimedBy: string[]; detail: string }
   | { kind: 'eventGone' }
   | { kind: 'scanFailed'; detail: string }
-  | { kind: 'notQueued'; message: string }
+  // `answered`: the service answered in a way it does not publish; else no answer came
+  | { kind: 'notQueued'; answered: boolean; message: string }
   | { kind: 'jobGone' }
-  | { kind: 'cancelUnconfirmed'; message: string }
+  | { kind: 'cancelUnconfirmed'; answered: boolean; message: string }
 
 /** The control whose request is in flight. */
 type Pressed = 'render' | 'force' | 'cancel' | 'cancelConfirm'
@@ -97,11 +104,23 @@ function NoticeAlert({ notice }: { notice: Notice }) {
     case 'scanFailed':
       return <Alert tone="err" title={SCAN_FAILED} detail={notice.detail} />
     case 'notQueued':
-      return <Alert tone="err" title={NOT_QUEUED} detail={notice.message} />
+      return (
+        <Alert
+          tone="err"
+          title={notice.answered ? NOT_QUEUED : `${NOT_QUEUED} ${UNREACHABLE_CAUSE}`}
+          detail={notice.message}
+        />
+      )
     case 'jobGone':
       return <Alert tone="err" title="This job no longer exists." />
     case 'cancelUnconfirmed':
-      return <Alert tone="err" title="The cancel was not confirmed." detail={notice.message} />
+      return (
+        <Alert
+          tone="err"
+          title={notice.answered ? NOT_CONFIRMED : `${NOT_CONFIRMED} ${UNREACHABLE_CAUSE}`}
+          detail={notice.message}
+        />
+      )
   }
 }
 
@@ -223,7 +242,12 @@ export function RenderControl({
         }
         break
       case 'unreachable':
-        setNotice({ kind: 'notQueued', message: result.message })
+      case 'unpublished':
+        setNotice({
+          kind: 'notQueued',
+          answered: result.kind === 'unpublished',
+          message: result.message,
+        })
         break
     }
   }
@@ -275,7 +299,12 @@ export function RenderControl({
           setNotice({ kind: 'jobGone' })
           break
         case 'unreachable':
-          setNotice({ kind: 'cancelUnconfirmed', message: answer.message })
+        case 'unpublished':
+          setNotice({
+            kind: 'cancelUnconfirmed',
+            answered: answer.kind === 'unpublished',
+            message: answer.message,
+          })
           break
       }
     })

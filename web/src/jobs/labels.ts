@@ -21,5 +21,6 @@ export const CONNECTION_LABEL: Record<ConnectionStatus, string> = {
 
 /** The sentences the event page and the list rows both use for the same enqueue answer. */
 export const NOT_QUEUED = 'The render was not queued.'
+export const NOT_CONFIRMED = 'The cancel was not confirmed.'
 export const SCAN_FAILED = 'The project could not be scanned, so the render was not queued.'
 export const COLLISION_FIX = 'Give one of them a distinct title or location in its reel.yaml.'
