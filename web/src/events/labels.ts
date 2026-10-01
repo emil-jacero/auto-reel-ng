@@ -1,5 +1,6 @@
 import type { ClipStatus } from '../api/event'
 import type { EventFailure, JobStatus, StalenessReason } from '../api/events'
+import type { Unanswered } from '../api/http'
 
 /*
  * Words for the generated vocabularies. A `Record` over the union fails
@@ -26,8 +27,8 @@ export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
 
 export const FAILURE_LABEL: Record<EventFailure, string> = {
   unparseable_reel_yaml: "reel.yaml can't be read",
-  unusable_metadata: 'missing or invalid date or title',
-  unreadable_disk: "files can't be read",
+  unusable_metadata: 'Missing or invalid date or title',
+  unreadable_disk: "Files can't be read",
 }
 
 export const CLIP_STATUS_LABEL: Record<ClipStatus, string> = {
@@ -35,4 +36,45 @@ export const CLIP_STATUS_LABEL: Record<ClipStatus, string> = {
   active: 'Included',
   missing: 'Missing from disk',
   ignored: 'Ignored',
+}
+
+/*
+ * A request with no usable answer, in the words every screen uses. Type-only
+ * imports here (no `common.tsx`, which imports this module), so the helpers
+ * below run under `node --experimental-strip-types` as they are.
+ */
+
+export const UNANSWERED_CAUSE: Record<Unanswered['kind'], string> = {
+  unreachable: 'The service is not reachable.',
+  unpublished: 'The service sent an unexpected answer.',
+}
+
+/** What to do when a read the operator can repeat got no answer at all. */
+export const NOT_REACHABLE_HINT = 'Check that auto-reel serve is running, then press Refresh.'
+
+/**
+ * A read's failure for the list and the page: the cause, and what to show under
+ * it. No answer gets the way to recover, never the browser's own error text; an
+ * unexpected answer gets the request and the status it received.
+ */
+export function unansweredFailure(result: Unanswered): { cause: string; detail: string } {
+  return {
+    cause: UNANSWERED_CAUSE[result.kind],
+    detail: result.kind === 'unreachable' ? NOT_REACHABLE_HINT : result.message,
+  }
+}
+
+/**
+ * The service's detail for an event it could not read, as a row or page that
+ * already names the event's folder shows it: a leading `<folder name>: ` is
+ * dropped and the rest starts with a capital. Anything else, a parse error's
+ * `/path/reel.yaml: …` included, is returned as the service wrote it.
+ */
+export function failureDetail(eventId: string, detail: string): string {
+  const prefix = `${eventId.split('/').pop() ?? eventId}: `
+  const rest = detail.startsWith(prefix) ? detail.slice(prefix.length) : ''
+  if (rest.trim() === '') {
+    return detail
+  }
+  return rest.charAt(0).toUpperCase() + rest.slice(1)
 }

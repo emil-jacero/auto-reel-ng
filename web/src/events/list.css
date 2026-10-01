@@ -2,8 +2,9 @@
 @layer screens {
   /*
    * Column widths, shared by every year's table; the event column takes the
-   * rest. Fixed 26rem plus 24%: at the 50rem card breakpoint the event column
-   * still has ~12rem.
+   * rest. Fixed 14rem plus 50%: at the 50rem card breakpoint the event column
+   * keeps 11rem, and the job column has room for a job's status and time beside
+   * the row's action.
    */
   .event-table {
     & .col-date {
@@ -11,16 +12,21 @@
     }
 
     & .col-clips {
-      inline-size: 8.5rem;
+      inline-size: 7.5rem;
     }
 
     & .col-render {
-      inline-size: 24%;
+      inline-size: 21%;
     }
 
     & .col-job {
-      inline-size: 11rem;
+      inline-size: 29%;
     }
+  }
+
+  /* The whole event row opens its event (`EventList.tsx`, `openRow`). */
+  .event-table tbody tr {
+    cursor: pointer;
   }
 
   .attention-table {
@@ -50,12 +56,28 @@
     color: var(--fg-muted);
   }
 
+  /* A look-alike row's folder path, under its title. */
+  .event-folder {
+    display: block;
+    color: var(--fg-muted);
+    font-size: var(--text-xs);
+  }
+
   .cell-clips {
     font-variant-numeric: tabular-nums;
+  }
 
-    & .badge {
-      margin-inline-start: var(--s-1);
-    }
+  /* The count and its badges wrap as one group: a wrapped badge starts at the cell's edge. */
+  .clip-counts {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--s-1) var(--s-2);
+  }
+
+  .event-list .empty-title {
+    color: var(--fg);
+    font-weight: 600;
   }
 
   .cell-folder,
@@ -83,17 +105,75 @@
   }
 
   /*
+   * A wide panel: every cell's first line shares the title's. The job cell is a
+   * grid of two tracks: the job (its status, then its time on the next line) and,
+   * at the cell's end on the first line, the row's action (Render, or why the
+   * row is blocked), so the action has the same place in every row. Being
+   * block-level, the grid gives the cell its first baseline.
+   */
+  @container (width >= 50rem) {
+    .event-table tbody tr:hover > td {
+      background: var(--surface-hover);
+    }
+
+    .event-table .live-job {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: baseline;
+      column-gap: var(--s-3);
+    }
+
+    .event-table .live-job > .job-progress {
+      grid-area: 1 / 1;
+    }
+
+    .event-table .live-job > :is(.btn, .row-blocked) {
+      grid-area: 1 / 2;
+      justify-self: end;
+    }
+
+    .event-table .row-blocked {
+      max-inline-size: 7.5rem;
+    }
+
+    .event-table .live-job .job-when {
+      flex-basis: 100%;
+    }
+
+    /*
+     * Stop-gap until jobs-live-polish lands its own separator rule (it deletes
+     * this one): the time is on its own line here, so the dot that ends an
+     * active job's words would dangle.
+     */
+    .event-table .live-job .job-words::after {
+      content: none;
+    }
+  }
+
+  /*
    * A narrow panel: each event becomes a card, every fact kept. From 30rem
-   * the card has two sides, what the event is and where its render stands;
-   * below 30rem the facts stack.
+   * the card has two sides, what the event is (its date and clip count right
+   * under the title) and where its render stands; the job is the card's last
+   * line, ended by the row's action. The flexible second row takes the height
+   * of a verdict that runs to three lines, below the date line.
    */
   @container (width < 50rem) {
     .event-table tbody tr {
       grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-rows: auto 1fr auto;
       grid-template-areas:
         'event event render'
-        'date clips job';
+        'date clips render'
+        'job job job';
       column-gap: var(--s-4);
+    }
+
+    .event-table tbody tr:hover {
+      background: var(--surface-hover);
+    }
+
+    .event-table .live-job > :is(.btn, .row-blocked) {
+      margin-inline-start: auto;
     }
 
     .event-table .cell-event {
@@ -139,6 +219,7 @@
   @container (width < 30rem) {
     .event-table tbody tr {
       grid-template-columns: auto minmax(0, 1fr);
+      grid-template-rows: none;
       grid-template-areas:
         'event event'
         'date clips'

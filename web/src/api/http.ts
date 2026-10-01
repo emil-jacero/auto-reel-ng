@@ -27,3 +27,22 @@ export async function readJson(response: Response): Promise<unknown> {
     return undefined
   }
 }
+
+/** A request with no usable answer: none at all, or one its route does not publish. */
+export type Unanswered =
+  // no answer at all: fetch rejected (the message is the error)
+  | { kind: 'unreachable'; message: string }
+  // an answer whose status or body the route does not publish (the message names it)
+  | { kind: 'unpublished'; message: string }
+
+/** "GET /api/v1/events answered 500 Internal Server Error": what came back instead. */
+export function unpublishedAnswer(
+  method: 'GET' | 'PUT',
+  url: string,
+  response: Response,
+): Extract<Unanswered, { kind: 'unpublished' }> {
+  return {
+    kind: 'unpublished',
+    message: `${method} ${url} answered ${response.status} ${response.statusText}`.trimEnd(),
+  }
+}

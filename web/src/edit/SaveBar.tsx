@@ -2,8 +2,7 @@ import { useId } from 'react'
 import type { RefObject } from 'react'
 
 import type { EventFailure } from '../api/events'
-import { UNREACHABLE_CAUSE } from '../events/common'
-import { FAILURE_LABEL } from '../events/labels'
+import { FAILURE_LABEL, UNANSWERED_CAUSE } from '../events/labels'
 import { FAILURE_LOOK } from '../events/tones'
 import { LIST_HREF } from '../route'
 import { Alert } from '../ui/Alert'
@@ -32,7 +31,7 @@ export type SaveProblem =
   | { kind: 'refused'; detail: string }
   | { kind: 'gone'; detail: string }
   | { kind: 'disk'; title: string; failure: EventFailure | null; detail: string; retry: Operation }
-  | { kind: 'unreachable'; detail: string; retry: Operation }
+  | { kind: 'unreachable' | 'unpublished'; detail: string; retry: Operation }
 
 const CONFLICT_DETAIL =
   'Your edits are still here, unsaved. Reload the latest version, which discards them, ' +
@@ -236,12 +235,13 @@ function SaveProblemAlert({
       )
     case 'disk':
     case 'unreachable':
+    case 'unpublished':
       return (
         <Alert
           tone="err"
           title={
-            problem.kind === 'unreachable' ? (
-              UNREACHABLE_CAUSE
+            problem.kind !== 'disk' ? (
+              UNANSWERED_CAUSE[problem.kind]
             ) : (
               <>
                 {problem.title}{' '}

@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Confirm the base, and re-check the names this change builds on. Stop and report to the supervisor on any mismatch.
+- [x] 1.1 Confirm the base, and re-check the names this change builds on. Stop and report to the supervisor on any mismatch.
 
   - `git merge-base --is-ancestor bca64f2 HEAD` succeeds.
   - Find which parallel changes have landed with `ls openspec/changes/archive/ | grep -E -- '-(edit-mode|jobs-live|event-page|ui-a11y)-polish$'`. For each one that has, re-read every file named in design, "Files and parallel changes", and plan this change's lines onto that file's current text.
@@ -18,7 +18,7 @@
 
 ## 2. web/ — one time format
 
-- [ ] 2.1 Add `web/src/format.ts` with `formatInstant`, with no imports (design, "One time format"). Switch the five call sites:
+- [x] 2.1 Add `web/src/format.ts` with `formatInstant`, with no imports (design, "One time format"). Switch the five call sites:
   - `EventList.tsx` "Scanned"
   - `EventDetail.tsx` "Read"
   - `EventDetail.tsx` clip time
@@ -40,7 +40,7 @@
 
 ## 3. web/ — answers and failure copy
 
-- [ ] 3.1 Split the result kinds and give each its words (design, "No answer vs an unpublished answer" and "Failure copy"):
+- [x] 3.1 Split the result kinds and give each its words (design, "No answer vs an unpublished answer" and "Failure copy"):
   - `api/http.ts`: `Unanswered` and `unpublishedAnswer`
   - `api/events.ts`, `api/event.ts`, `api/reel.ts`: unions `ok | problem | Unanswered`. Every off-contract answer, including "200 without an ETag", becomes `unpublished`. A rejected fetch stays `unreachable`, and an `AbortError` is rethrown as today.
   - `events/labels.ts`:
@@ -68,7 +68,7 @@
 
 ## 4. web/ — the list
 
-- [ ] 4.1 Lay out the rows (design, "The list's row layout").
+- [x] 4.1 Lay out the rows (design, "The list's row layout").
   - `list.css`:
     - the new column widths, with the comment's budget
     - the table-width job-cell grid and the stacked `.job-when`
@@ -86,7 +86,7 @@
   - Every new rule in `list.css` is inside `@layer screens` and uses tokens only, with no literal colors.
   - `grep -nE '@container' web/src/events/list.css` shows only `50rem` and `30rem` breakpoints.
   - `grep -c 'job-words' web/src/events/list.css` is 1 if task 1.1's `::after` grep hit, else 0.
-- [ ] 4.2 Tell look-alike rows apart, and make the row a target (design, "Look-alike rows show their folder's path" and "The whole row opens its event"):
+- [x] 4.2 Tell look-alike rows apart, and make the row a target (design, "Look-alike rows show their folder's path" and "The whole row opens its event"):
   - `grouping.ts` `lookAlikes`, with the NFC, case-folded key
   - `ReadyView` computes it over all readable events
   - `EventRow` takes `lookAlike` and calls `useId()` unconditionally at its top. A look-alike row renders `.event-folder` holding `event.event_id` under that id, and sets the link's `aria-describedby` to it.
@@ -105,7 +105,7 @@
     - three alike events give all three
   - `grep -n 'useId' web/src/events/EventList.tsx` shows no `useId(` inside a JSX expression or a condition.
   - `grep -n 'tabIndex\|onKeyDown' web/src/events/EventList.tsx` shows no new hit on a `<tr>`.
-- [ ] 4.3 Add the empty states and the announcement (design, "Empty states and announcements"):
+- [x] 4.3 Add the empty states and the announcement (design, "Empty states and announcements"):
   - `Summary` only when the read holds rows, and its rendering chip only when `events.length > 0`
   - "No events yet", with its line
   - the filtered-empty "Nothing needs rendering" with **Show all events**: `setOnlyStale(false)`, then focus the All radio through a ref `FilterControl` takes
@@ -119,7 +119,7 @@
 
 ## 5. Docs
 
-- [ ] 5.1 Update `web/README.md`:
+- [x] 5.1 Update `web/README.md`:
   - **The list paragraph:** the whole event row opens its page (the title stays the keyboard stop), look-alike rows show their folder's path, and the empty and filtered-empty states with Show all events.
   - **"Design system":** one sentence saying that every time is written by `src/format.ts` (short month and day, hour and minute, the year only when not current, no seconds) and that event dates stay `YYYY-MM-DD`. One more saying that only rows that open something take a hover fill.
   - **The file tree:** `format.ts`, and `grouping.ts`'s new `lookAlikes`.
@@ -130,7 +130,7 @@
 
 ## 6. Verification against the dev library
 
-- [ ] 6.1 Set up the agent's own environment per the dev-env runbook §9, with `SLUG=event-list-polish` and `N=17`:
+- [x] 6.1 Set up the agent's own environment per the dev-env runbook §9, with `SLUG=event-list-polish` and `N=17`:
   - database `arel_event_list_polish`, library `../dev-event-list-polish`, serve on port 8117 over a fresh `npm run build`
   - no worker
   - never port 8080 or 5173, the `auto_reel_ng` database, `auto-reel-media/`, `:8114`, or another agent's database, library or port
@@ -145,7 +145,7 @@
   Check the **layout** at 1440, 1280, 1024, 900, 768, 600, 390 and 320 px. Do it in the light scheme, and at 1280 and 390 in the dark scheme too (the theme control). Save screenshots to `<scratchpad>/verify/event-list-polish/` and look at every one.
   - **Every width:** `document.documentElement.scrollWidth <= clientWidth`.
   - **Table widths (1024 and up, and 900):**
-    - in every row, the date's, verdict pill's and job pill's tops are within 3 px of the title link's top
+    - in every row, the date's, verdict pill's and job pill's tops are within 3 px of the title link's top. Firefox draws both pills 3.1 px above it, from the shared `ui/Pill`, and that was accepted by the supervisor (design, "Supervisor decisions").
     - every Render's vertical center is within 3 px of the title's, and every "Blocked by missing clips" note's top is within 3 px of the title's top (the note wraps to two lines and is top-aligned, so its center sits lower)
     - every Render and every "Blocked by missing clips" note shares one right edge (±1 px) per table
     - at 1024 and up, each finished job's time starts on the line below its pill, and no row's job cell holds more than two text lines apart from an active job's bar
@@ -159,12 +159,16 @@
     - each Kalas link's `aria-describedby` resolves to its own path text
     - toggling Needs render keeps both path lines on the rows still shown
     - a Refresh whose patched read renames one Kalas row's title (so the pair is no longer alike) shows no path line and no React error in the console, and the next Refresh with the real read shows both lines again
-- [ ] 6.2 Check the behaviour on the same server and harness:
+- [x] 6.2 Check the behaviour on the same server and harness:
   - **Row target**, in Chromium, Firefox **and WebKit**, at 1280 and 390:
     - a click on Två kapitel's clip count opens its page
     - a drag across a row's date selects it and stays on the list
     - pressing a row's Render (its POST answered by an in-browser mocked 201) stays on the list
     - a click on the "Needs attention" row's fix text stays on the list
+  - **Controls above the row target**, at 1280, 768 and 390, with a fine pointer in Chromium, Firefox and WebKit, and with a coarse pointer in Chromium (`has_touch`, `is_mobile`) with `ui-a11y-polish`'s hit-area rules injected:
+    - every link and button in every list row wins `elementFromPoint` at its center and inset corners, and under the coarse pointer every point of a Render's hit area does too
+    - pressing each Render (a click, or a tap at its center and in its hit-area margin) sends its POST and stays on the list
+    - the title link, and a click or tap on the row's date, open the row's event
   - **Hover:**
     - hovering an event row changes its cells' computed background
     - hovering a "Needs attention" row or an event page's clip row changes nothing
@@ -194,7 +198,7 @@
 
 ## 7. Validation
 
-- [ ] 7.1 Run the gates. Verify all pass:
+- [x] 7.1 Run the gates. Verify all pass:
   - `npx tsc --noEmit` and `npm run build` in the node:22 container
   - `web-design-system`'s motion grep gate (its design, "Tokens and the support floor"): its three commands verbatim, over `web/src/events` and `web/src/format.ts`. This change adds no animation or transition.
   - `grep -rn 'autoFocus' web/src/events` prints nothing
