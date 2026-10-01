@@ -42,6 +42,30 @@
 - The first edit of an event brings the save bar in, which takes about 110 ms on the 400-clip `Stor dag`
   whatever the field (a first Title keystroke too, as before this change; every later keystroke about
   15 ms): pre-existing, **accepted**, a follow-up. Task 4.1 measures with the bar already shown, as G1 did.
+- The pre-PR review (2026-10-01) found 1 major and 7 minor issues, all **fixed** on the PR branch; the sections
+  below are corrected in place:
+  - **Major: a hidden panel holding typed text was not marked on its row.** With 2+ clips the save bar only
+    counts them, so the operator could not find which panel held Save back. The editor now passes `typed` to
+    each list, and `CutsToggle` takes `typed`: `data-typed`, the visible word "typed" beside a dot at every
+    width (narrow: the dot and the word replace the scissors and the count, 59 px, inside the 64 px under
+    the handle; with all three it measured 77 px and covered the thumbnail), and the name suffix ", a cut
+    typed, not added". The save bar's wording for 2+ clips stays. ADDED requirement: a sentence and the
+    scenario "Hidden panels holding typed text are marked on their rows".
+  - `checkRestore` no longer refuses an Undo against another read cut: two read cuts keep their read spans,
+    so an overlap between them was in `reel.yaml` already, and refusing it made the read list unreachable by
+    Undo. Only a cut added since refuses. Scenario "Read cuts that overlap do not refuse each other's Undo".
+  - Overlaps are compared in whole milliseconds, the precision of what is typed and shown: a read end of
+    3.2033333 s is shown as `0:03.203`, and a cut typed from `3.203` touches it. Scenario "A cut starts where
+    another is shown to end".
+  - `settled` also drops a clip's draft entry when its saved trims equal the read ones (a read `manual` cut
+    removed and the same span typed again), and `cutChanges` counts only the clips in `changedCuts`, so the
+    panel and the save bar never show a change the save would not make. MODIFIED requirement: that undone edit
+    and the counting rule.
+  - `MANUAL_REASON` is gone; `draft.ts` writes `'manual' satisfies KnownReason` (a type-only import).
+  - `ids()` is exported once from `MetadataForm.tsx`; `CutsPanel.tsx` exports `SCISSORS` and `CHEVRON` for
+    `ReadCuts.tsx`, whose summary uses `plural()`; `removedReadWords` declares `: string`.
+  - The read view's summary holds the minus and the length in one span: the part's flex gap had put 4 px
+    between them ("− 1.2 s"); measured 0 px now.
 
 ## Context
 
@@ -215,13 +239,15 @@ clip's length, which no read gives (Context).
 1. the start, then the end, when it is `empty`, `unreadable` or `too-precise` (focus to that field)
 2. an end not after the start (`order`, at the end field)
 3. a span sharing more than an instant with a listed, not-removed cut of the clip: `newIn < c.out && c.in <
-   newOut` (`overlap`, at the start field, naming the first such cut by its number and times)
+   newOut`, each time rounded to whole milliseconds (`overlap`, at the start field, naming the first such cut
+   by its number and times)
 
 Touching spans (`[0, 1.5]` then `[1.5, 2]`) are accepted. A cut past the clip's end is accepted, and the panel
 states the render's rule (copy below).
 
 `checkRestore(listed, key)` applies rule 3 to an Undo: the removed cut's span against every other listed,
-not-removed cut. Without it, removing a read cut, adding one inside its span and pressing Undo would build
+not-removed cut, except another read cut when the removed cut is a read one (an overlap between two read cuts
+was in `reel.yaml` already, and an Undo only goes back to it). Without it, removing a read cut, adding one inside its span and pressing Undo would build
 an overlap that the page refuses everywhere else. A refused Undo keeps the cut removed and focus on Undo. Its
 words are shown in a `p.cut-refusal` in that cut's row (the Undo's `aria-describedby`) and announced once, and
 they go at the clip's next cut edit or Reset.
@@ -288,8 +314,10 @@ export function cutChanges(baseline: Baseline, draft: Draft): { added: number; r
 - `addCut` inserts `{reason: 'manual', removed: false}` after the last listed cut whose `in` is `<=` the new
   `in` (removed ones count, so a struck cut keeps its place). It does not re-check. `checkCut` ran in the
   panel against the same `cutsOf`. `restoreCut` likewise trusts `checkRestore`, run in the panel first.
-- After every operation, a clip whose list equals its baseline list (same keys, none removed) leaves
-  `draft.cuts`. So `isDirty` needs no special case for "added then removed" or "removed then Undo".
+- After every operation, a clip whose list equals its baseline list (same keys, none removed), or whose saved
+  trims equal the read ones, leaves `draft.cuts`. So `isDirty` needs no special case for "added then
+  removed", "removed then Undo" or "removed, then the same span typed again".
+- **`cutChanges`** counts added and removed cuts on the clips in `changedCuts` only.
 - **`isDirty`** adds `changedCuts(…).size > 0`. "Equal" compares `in`, `out` and `reason ?? null` of the
   not-removed cuts, in order, against the read `trims`.
 - **`writtenFromView`** (G1's one helper for `isDirty`, `adoptedNewCount` and `buildWriteBody`) gains one
@@ -416,7 +444,9 @@ store and the editor's stable handlers.
   `--fg-subtle` is fine for an icon (3:1), but measures about 3.6:1 (light) and 3.9:1 (dark) on `--surface`,
   under the 4.5:1 that the words "Cuts" need.
 - Accessible names. With no cut: "Cuts of s1710001.mp4". With cuts: "*n* cut(s) of *name*, *spoken* cut
-  out". The name starts with the visible words in both layouts ("Cuts", "1 cut", or the count "1").
+  out". The name starts with the visible words in both layouts ("Cuts", "1 cut", or the count "1"). While the
+  panel holds a time typed but not added, the name ends ", a cut typed, not added", and the control shows
+  "typed" beside a `--warn` dot (`data-typed`; the word in `--warn-fg`, 7.3:1 or more).
 - The error is not a live region. Its words are announced once through the editor's `announce`, and the field
   that has focus is described by it. That avoids a second announcement ("The screens announce each change
   once") and the editor's one-live-region rule.

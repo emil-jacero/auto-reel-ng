@@ -863,7 +863,9 @@ read, the page SHALL keep visible:
 
 An edit that is undone SHALL leave no change to save: a clip moved and moved back, within its chapter or to
 another chapter and back, a removal undone, a chapter renamed back or moved back, a deleted chapter restored,
-a chapter added and deleted again, a cut added and removed again, or a removed cut restored.
+a chapter added and deleted again, a cut added and removed again, a removed cut restored, or a removed cut
+added again with the same times and reason. The cut counts SHALL count only the clips whose saved cuts would
+change.
 
 Saving SHALL write the editorial document exactly as Edit mode read it, with only the operator's edits
 applied:
@@ -2866,7 +2868,8 @@ than three decimals. It SHALL also be refused when its end is not after its star
 than an instant with another cut of the clip that is not removed. A refusal SHALL be shown at the field it
 concerns, which SHALL receive keyboard focus. It SHALL be announced, and it SHALL say what to type, or which
 cut the new one overlaps. A cut that only touches another, the end of one being the start of the other, SHALL
-be accepted.
+be accepted. Times SHALL be compared to the millisecond, as they are typed and written, so a cut that starts
+where another is shown to end touches it.
 
 An added cut SHALL take its place in the list by its start, after every cut that starts at the same time or
 earlier. It SHALL be saved with the reason `manual`. After an addition:
@@ -2880,9 +2883,10 @@ there, and that a cut over the whole clip leaves the clip out of the movie.
 **Removing a cut.** Each cut SHALL offer **Remove**, which names the clip and the cut. A cut read from
 `reel.yaml` SHALL then stay listed in its place, marked as removed when the edits are saved, with an **Undo**
 that puts it back. Keyboard focus SHALL move to that Undo, and after an Undo to the cut's Remove. An Undo that
-would make the cut share more than an instant with a cut that is not removed SHALL be refused, as adding that
-cut would be: the cut stays removed, keyboard focus stays on its Undo, and the refusal is shown in the cut's
-row, announced, and names the cut to remove first. A cut added in this Edit mode SHALL simply be gone.
+would make the cut share more than an instant with a cut added in this Edit mode SHALL be refused, as adding
+that cut would be: the cut stays removed, keyboard focus stays on its Undo, and the refusal is shown in the
+cut's row, announced, and names the cut to remove first. Two cuts read from `reel.yaml` that overlap there
+SHALL NOT refuse each other's Undo: an Undo only goes back to what was read. A cut added in this Edit mode SHALL simply be gone.
 Keyboard focus SHALL then move to the Remove of the cut that took its place, or of the cut before it, or to
 the start field when no cut is left. Each removal and each Undo SHALL be
 announced. After any addition, removal or Undo, the control holding keyboard focus SHALL be fully visible,
@@ -2892,7 +2896,9 @@ not covered by the page header, the chapter's heading or the save bar.
 having unsaved changes. The save bar SHALL say that a cut was typed but not added, naming the clip as its row
 names it when only one clip holds one, also after an edit that changes that name. Save, and Overwrite with mine after a conflict, SHALL say that they are unavailable until
 the cut is added or its fields are cleared. Hiding the panel SHALL keep what was typed, and so SHALL moving the
-clip to another chapter. Reset SHALL empty every panel's fields.
+clip to another chapter. The Cuts control of each clip whose panel holds such a time SHALL say so in words, at
+every width and to assistive technology, also while its panel is hidden, so that the clip holding Save back
+is found on its row. Reset SHALL empty every panel's fields.
 
 While a save is in flight, the panel's fields, Add cut, Remove and Undo SHALL say that they are unavailable
 and change nothing when used. The Cuts control SHALL still show and hide its panel, since that changes nothing
@@ -2959,6 +2965,16 @@ window 320 or 390 pixels wide. No panel SHALL make the page scroll horizontally 
   removed first. Cut 1 stays removed, keyboard focus stays on its Undo, and the save bar still says that 1 cut
   was added and 1 removed.
 
+#### Scenario: Read cuts that overlap do not refuse each other's Undo
+- **WHEN** the `reel.yaml` of `2024-06-27 - Grillning med grannar` gives `s1710002.mp4` cuts from 0 to 3 seconds
+  and from 2 to 4 seconds, and the operator removes both and presses each one's Undo
+- **THEN** both are listed as before, and the page shows no unsaved changes
+
+#### Scenario: A cut starts where another is shown to end
+- **WHEN** the `reel.yaml` of `2024-06-27 - Grillning med grannar` gives `s1710003.mp4` a cut from 0 to 3.2033333
+  seconds, listed as ending at `0:03.203`, and the operator adds one from `3.203` to `4`
+- **THEN** it is accepted and listed second
+
 #### Scenario: Removing a cut added in this Edit mode
 - **WHEN** on `s1710001.mp4` of `2024-06-27 - Grillning med grannar`, the operator adds a cut from `0` to `1.5`
   and presses its Remove
@@ -2992,6 +3008,14 @@ window 320 or 390 pixels wide. No panel SHALL make the page scroll horizontally 
   with Move clips
 - **THEN** the save bar now says that a cut was typed on `Kvällen/s1710002.mp4` but not added, Save says that
   it is unavailable, and the clip's Cuts panel, now in `Main`, is still shown with `2` in the start field
+
+#### Scenario: Hidden panels holding typed text are marked on their rows
+- **WHEN** on `2024-06-27 - Grillning med grannar`, the operator types `5` in the start field of `s1710002.mp4`
+  and hides its panel, then types `1:00` in the start field of `s1710004.mp4` and hides that panel
+- **THEN** the save bar says that cuts were typed on 2 clips but not added, and the Cuts controls of those two
+  clips, and of no other, say "typed" and that a cut was typed but not added
+- **WHEN** the operator clears the field of `s1710002.mp4`
+- **THEN** its Cuts control no longer says so, and the save bar names `s1710004.mp4`
 
 #### Scenario: Cut controls wait for a save
 - **WHEN** on `2024-06-27 - Grillning med grannar`, with a cut added to `s1710001.mp4` and its panel shown, the
