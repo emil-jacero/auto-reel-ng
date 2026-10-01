@@ -315,7 +315,8 @@ The north star is a **full timeline editor**, but we ship in thin slices:
 
 - **v1 (tiny, ship first):** scan/ingest view (events + clips), **drag-reorder clips** (persist to
   `reel.yaml`), **chapter edits, Move clips and dragging clips between chapters** (**D-13**), **typed cuts** (**D-14**), edit basic metadata (title/date/location/description), **schedule a render and watch
-  live progress**, and **clip thumbnails** (one frame per clip, **D-11**). The resolved `look` is shown
+  live progress**, **clip thumbnails** (one frame per clip, **D-11**), and **the rendered movie on the event
+  page** (**D-15**). The resolved `look` is shown
   **read-only**; editing it is v2. No timeline, no per-frame editing.
 - **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview); **the full
   timeline editor, moved from v3** — a per-clip track with proxies, filmstrip, drag-trim in/out and scrub
@@ -348,7 +349,7 @@ change directories:
 | 0 | `events-list-staleness` | `api/` prerequisite: the events **list** carries the staleness verdict, so the scan view can answer "what needs rendering?" in one request |
 | A | `web-app-scaffold` | `web/` + the static mount + schema→types pipeline; no screen |
 | B | event list screen | the scan/ingest view, over slice 0's verdicts |
-| C | event detail screen | chapters/clips read-only, using the per-clip `size`/`mtime` file facts |
+| C | event detail screen | chapters/clips read-only, using the per-clip `size`/`mtime` file facts. `movie-player-screen` plays the event's rendered movie (D-15) |
 | D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency — landed in `event-edit-screen` (the event page's Edit mode). `missing-clips-screen` adds the explicit removal of a MISSING clip's entry (never automatic) and holds Render back while an event lists one. `chapter-management-screen` adds the chapter edits (add, rename, move, delete when empty) and Move clips between chapters (D-13). `clip-cuts-screen` adds a clip's cuts, listed, added from typed times and removed in Edit mode, and shown on the event page (D-14). `cross-chapter-drag` lets a clip be dragged into another chapter (D-13) |
 | E | render + live progress | `POST /jobs` (201 / 200-fresh / 409), the WS hook, cancel — landed in `render-progress-screen` |
 
@@ -660,6 +661,17 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   the clip's end, because no probe-free read gives a duration, so it states the render's rule instead (cut
   short at the end; a whole-clip cut leaves the clip out). A cut made in the GUI has the reason `manual`. The
   event page shows each clip's cuts. (§4.10)
+
+- **D-15 — The event page plays its rendered movie in GUI v1** (2026-10-01, change `movie-player-screen`). The
+  event page's read view shows the movie the staleness gate counts (`GET …/movie`, `media-endpoints`) in the
+  browser's native player, says whether it is current or outdated, and names its file and size. It loads none of
+  the movie until Play (`preload="none"`; the poster is the first played clip's thumbnail). Its address carries
+  the file's entity-tag as `v`, read with a one-byte range request on each read of the event, because Chrome
+  fails to play a replaced file at an address that served the old one. Failures are said by cause, including a
+  picture the browser cannot show (a legacy MPEG-4 movie plays its sound only). There are no custom controls or
+  shortcuts, no captions and no chapter list: the manifest records no chapter times and browsers expose none.
+  Chapter times in the render manifest and a movie version in the event detail are v2 items beside the proxy
+  work. A Refresh stops playback in v1. Edit mode shows no movie. (§4.10)
 
 ---
 
