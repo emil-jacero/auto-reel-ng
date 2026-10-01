@@ -3347,7 +3347,8 @@ row uses. The page SHALL show no poster when there is no such clip, or when that
 **The player.**
 - It SHALL be the browser's own media player with its native controls. It SHALL be named by the section's heading.
 - The page SHALL add no keyboard shortcut of its own. The player SHALL be reachable with Tab, and SHALL show a
-  visible focus indicator in both color schemes that nothing clips.
+  visible focus indicator in both color schemes that nothing clips, on the player itself and on every Tab stop of
+  its native controls.
 - The page SHALL show no captions control and no chapter list. No chapter times reach the client: the service
   gives none, and the browser exposes none of the movie's chapters.
 - It SHALL show the movie in a frame of 16:9 proportions that has its final size before any byte arrives. The
@@ -3430,8 +3431,11 @@ operator with a silent or black player and nothing said. It SHALL never show a f
 - **No answer, or an answer the route does not publish:** the same words the event page uses for its own read.
 
 These notes are part of the page's content and SHALL NOT be announced as alerts. The same holds when a re-read the
-page starts by itself gets one of these answers. Whenever a note replaces a player that had keyboard focus, the note
-SHALL receive it, so focus is never dropped.
+page starts by itself gets one of these answers. Focus is never dropped:
+- Whenever a note replaces a player that had keyboard focus, the note SHALL receive it.
+- Whenever a player replaces a note that had keyboard focus, the new player SHALL receive it.
+- When a re-read finds that the event no longer has a rendered movie, and the section that disappears held keyboard
+  focus, the page's heading SHALL receive it.
 
 **When playback fails.** After the operator starts playback:
 - **No picture.** When the browser has loaded the movie but reports no picture size, it plays the sound of a
@@ -3443,10 +3447,14 @@ SHALL receive it, so focus is never dropped.
     it played, and offer "Load the new movie". That control SHALL replace the player with one at the new address,
     without starting playback, and SHALL give it keyboard focus.
   - The entity-tag is the same: the section SHALL say that this browser could not play the movie, with the
-    browser's error in words, and offer to download the movie.
+    browser's error in words. When the browser reports a network error, it SHALL say instead that the movie could
+    not be loaded, with that error in words, never that the browser cannot play it. Either way it SHALL offer to
+    download the movie, and "Try again", which SHALL replace the player with a new one at the same address,
+    without starting playback, and SHALL give it keyboard focus.
   - Any other answer: the note for that answer, as when the movie cannot be fetched, in place of the player.
 
-These notes follow the operator's action, so each SHALL be announced once, when it appears. Downloading SHALL
+These notes follow the operator's action, so each SHALL be announced once, when it appears: a failure assertively,
+and the no-picture warning politely, through a region that exists before its words. Downloading SHALL
 save the file under its own name. A control in these notes SHALL be reachable from the keyboard, and under a
 coarse pointer SHALL take a tap anywhere in an area of at least 44 × 44 CSS pixels around it.
 
@@ -3477,6 +3485,20 @@ coarse pointer SHALL take a tap anywhere in an area of at least 44 × 44 CSS pix
 - **THEN** the section says that the movie file changed while it played and offers "Load the new movie"
 - **AND** activating it from the keyboard shows a paused player at the new file's address, with keyboard focus, and
   that player plays the new file
+
+#### Scenario: Try again after a playback error
+- **WHEN** the operator plays the movie of `2024-07-14 - Kalas` and the browser's requests for the movie fail while
+  the one-byte request still answers with the same entity-tag
+- **THEN** the section says that this browser could not play the movie, with the browser's error, and offers
+  "Try again" and "Download the movie"
+- **AND** once the requests answer again, activating "Try again" from the keyboard shows a paused player at the same
+  address, with keyboard focus, and that player plays the movie
+
+#### Scenario: A player that replaces a focused note takes the focus
+- **WHEN** the movie file of `2024-06-27 - Grillning med grannar` cannot be read when the operator plays it from
+  the keyboard, so a note replaces the player and receives keyboard focus, and the file is readable again when a
+  forced render of the event, queued from elsewhere and cancelled, makes the page read the event again
+- **THEN** a player replaces the note, and keyboard focus is on the new player
 
 #### Scenario: Notes stay inside a phone-width window
 - **WHEN** the section shows any of these notes in a window 320 pixels wide

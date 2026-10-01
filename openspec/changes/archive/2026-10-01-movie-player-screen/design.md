@@ -396,11 +396,13 @@ failures by cause, in words, never a slug.
 | `unreadable` | probe 502 | The movie could not be read. | `failureDetail(eventId, detail)`, plus the `FAILURE_LABEL` pill when `failure` is set | — | as above |
 | `empty` | probe 416 | The movie file is empty. | — | — | as above |
 | (unanswered) | probe rejected or unpublished | `unansweredFailure(result).cause` | its `detail` ("…press Refresh") | — | as above |
-| `no_picture` | `loadedmetadata` with `videoWidth === 0` | This browser cannot show this movie's picture. It plays the sound only. | Download it to watch it in another player. | Download the movie | under the frame; `status` |
-| `cannot_play` | `error`, and a re-probe gives the same version | This browser could not play the movie. | `MEDIA_ERROR_WORDS[code]`, then `: <MediaError.message>` when it is not empty | Download the movie | under the frame; `alert` |
+| `no_picture` | `loadedmetadata` with `videoWidth === 0` | This browser cannot show this movie's picture. It plays the sound only. | Download it to watch it in another player. | Download the movie | under the frame; a `note`, its title said through an always-mounted `status` region |
+| `cannot_play` | `error` (code other than 2), and a re-probe gives the same version | This browser could not play the movie. | `MEDIA_ERROR_WORDS[code]`, then `: <MediaError.message>` when it is not empty | Try again, Download the movie | under the frame; `alert` |
+| `load_failed` | `error` with code 2 (network), and a re-probe gives the same version | The movie could not be loaded. | as `cannot_play` | Try again, Download the movie | under the frame; `alert` |
 | `changed` | `error`, and a re-probe gives another version | The movie file changed while it played. | The file on disk is not the one that started playing. | Load the new movie | under the frame; `alert` |
 
-- **Tones:** `no_file` `warn`; `unreadable`, `empty` and `cannot_play` `err`; `no_picture` `warn`; `changed` `info`.
+- **Tones:** `no_file` `warn`; `unreadable`, `empty`, `cannot_play` and `load_failed` `err`; `no_picture` `warn`;
+  `changed` `info`.
 - **`MEDIA_ERROR_WORDS`** is a `Record<1 | 2 | 3 | 4, string>`:
   - 1: "Loading was stopped"
   - 2: "A network error interrupted loading"
@@ -702,3 +704,34 @@ Verification findings worth keeping for the next player change (`clip-preview-sc
   during it. The scripts wait with `page.wait_for_timeout`.
 - Chrome draws its native loading arc over the poster for a moment after the player mounts with its `src`
   (`networkState` 1, `readyState` 0, no request); it is gone within 1.5 s.
+
+## Review fixes (2026-10-01, before the PR)
+
+The review found no blocker; its minor findings changed this behaviour, recorded in the spec as well:
+- **Focus is never dropped, in every direction.** `sectionHasFocus()` covers the player and the note in its place.
+  A player that replaces a focused note (a re-read's probe answers `ok`) takes the focus, as a note that replaces
+  a focused player already did. When a re-read finds no rendered movie and the section unmounts while it holds
+  focus, a layout-effect cleanup (it runs while the section is still in the document) moves focus to the page's
+  `h1`.
+- **The no-picture warning is announced.** A polite live region that appears already filled is often not spoken,
+  so `MoviePlayer` keeps an empty visually hidden `role="status"` paragraph mounted, which receives the title; the
+  visible Alert is a `note`. This follows `ToastRegion` and `jobs/announce.ts` ("the region exists before its
+  first message").
+- **The ring on every Tab stop.** `:focus-visible` matches only the player's first stop. `.movie-frame
+  video:focus-within` draws the same 2px ring on the native controls' inner stops (Chrome 7 once loaded, Firefox
+  7). A pointer click on a control shows it too, which reads as the player's selection, so it is not limited.
+- **Recovery after a playback error.** `cannot_play` offers "Try again" beside the download. It bumps an attempt
+  counter in the player's key: a new paused player at the same address, focused. MediaError 2 (a network error) is
+  `load_failed`, "The movie could not be loaded.", not the browser's inability. A real code 2 is hard to provoke
+  on localhost (Chrome has the whole movie buffered), so the check simulates the element's `error` with code 2
+  and lets the page's real diagnosis probe decide the words.
+- **`MOVIE_AGE_LOOK` reuses `VERDICT_LOOK.fresh` and `.stale`**, so the Movie pill and the render region's pill
+  cannot drift apart.
+- `web/README.md`: the event page's sentence lists the Movie section in order, and its details are sentences of
+  their own.
+
+Verified with `check_review.py` (Chrome image and Firefox, 20 checks), and the earlier `check_read.py` (162),
+`check_play.py` (19 + 9 for the render) and `check_fail.py` (30) re-run green. Firefox, on a page with nothing
+focusable after the player, keeps `document.activeElement` on the `<video>` once Tab passes its last control
+(focus moves to the browser's own interface); on a bare page with a button after the player, Tab leaves it after
+7 stops.
