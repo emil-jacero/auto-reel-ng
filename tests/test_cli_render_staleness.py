@@ -91,7 +91,7 @@ def _scan_line(root: Path, capsys: pytest.CaptureFixture[str]) -> str:
 def test_retitle_scans_as_renamed_and_render_keeps_the_old_movie(
     runtime: FfmpegRuntime, make_clip, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A retitle reads ``output_renamed``; no render (failed, ok or forced) touches the old movie."""
+    """A retitle reads ``output_renamed``; no render (failed, ok, forced) touches the old movie."""
     root, event_dir = _project(tmp_path, make_clip)
     year_dir = default_output_dir(root) / "2024"
     assert main(["render", str(root)]) == 0
@@ -129,7 +129,9 @@ def test_retitle_scans_as_renamed_and_render_keeps_the_old_movie(
     assert manifest.output == "2024-06-21 - Party Renamed.mp4"
     assert _scan_line(root, capsys) == "fresh"
 
-    # A forced render after another rename keeps both earlier movies.
+    # A forced render after another rename keeps both earlier movies, its own previous
+    # movie (the one its manifest records) included.
+    new_stat = new.stat()
     reel_path.write_text(
         reel_path.read_text(encoding="utf-8").replace("Party Renamed", "Fest"), encoding="utf-8"
     )
@@ -140,6 +142,7 @@ def test_retitle_scans_as_renamed_and_render_keeps_the_old_movie(
         "2024-06-21 - Party Renamed.mp4",
         "2024-06-21 - Party.mp4",
     ]
+    assert (new.stat().st_size, new.stat().st_mtime_ns) == (new_stat.st_size, new_stat.st_mtime_ns)
     assert (old.stat().st_size, old.stat().st_mtime_ns) == (old_stat.st_size, old_stat.st_mtime_ns)
 
 

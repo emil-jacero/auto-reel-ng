@@ -37,7 +37,7 @@ EVENT_ID = "2024/2024-06-21 - Trip"
 def test_editorial_write_save_stale_render_cycle(
     tmp_path: Path,
     postgres_container: str,
-    jobs_schema_engine,
+    jobs_session_factory,
     runtime,
     make_clip,
 ) -> None:
@@ -126,7 +126,7 @@ def test_editorial_write_save_stale_render_cycle(
 def test_a_cancelled_render_after_a_rename_changes_nothing(
     tmp_path: Path,
     postgres_container: str,
-    jobs_schema_engine,
+    jobs_session_factory,
     runtime,
     make_clip,
 ) -> None:
