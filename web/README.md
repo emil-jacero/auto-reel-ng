@@ -124,7 +124,7 @@ a cut over the whole clip leaves the clip out. A cut made here is saved with the
 **Undo** (refused, in words, when another cut now overlaps it); a cut added in this Edit
 mode just goes. A time typed but not added counts as unsaved, is named in the save bar
 ("Cut typed on s1710001.mp4, not added"), marks its clip's Cuts control "typed" (also
-while the panel is hidden) and holds Save back, as a date typed in part does; it survives hiding the panel and Move clips, since the editor, not the row, holds
+while the panel is hidden) and holds Save back, as a date typed in part does; it survives hiding the panel, Move clips and a drag into another chapter, since the editor, not the row, holds
 the panel's state. A save writes only the changed clips' `trims` (their title-clip choice,
 rotation and exclusion as read; no empty entry), and a cut on a NEW clip writes its
 chapter, since `reel.yaml` refuses properties for a clip no chapter lists. A missing

@@ -1,7 +1,7 @@
 /*
  * Edit mode's chapter controls (`ChapterTools.tsx`, `ChapterDialogs.tsx`): each
- * chapter's tools row, the deleted placeholder, Add chapter, an empty
- * chapter's words, the "from …" badge and the Move clips dialog. No new colour:
+ * chapter's tools row, the deleted placeholder, Add chapter, the "from …" badge
+ * and the Move clips dialog (an empty chapter's area is drag.css's). No new colour:
  * every text is `--fg-muted` or stronger.
  */
 @layer screens {

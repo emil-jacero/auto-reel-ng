@@ -289,8 +289,9 @@ const ClipRow = memo(function ClipRow({
       ),
     [status, kept],
   )
-  // Shown or not lives in the editor's store too: Move clips mounts this row anew in
-  // its new chapter, and it opens as it was. Reset empties the store and hides it.
+  // Shown or not lives in the editor's store too: Move clips, or a drag into another
+  // chapter, mounts this row anew in its new chapter, and it opens as it was. Reset
+  // empties the store and hides it.
   const [open, setOpen] = useState(() => panels.get(identity)?.open ?? false)
   const [seenResets, setSeenResets] = useState(resets)
   if (seenResets !== resets) {
@@ -540,7 +541,10 @@ export const ClipOrderList = memo(function ClipOrderList({
 }: {
   /** The event, for its clips' thumbnail addresses. */
   eventId: string
-  /** The chapter's key for the session: the DndContext id, for stable description ids. */
+  /**
+   * The chapter's key for the session: its SortableContext id (the container a dragged clip
+   * comes from or goes to), and its `/chapter/<key>` droppable.
+   */
   chapterKey: ChapterKey
   /** Its name now ('' for the event's own chapter), by which it names its clips. */
   name: string

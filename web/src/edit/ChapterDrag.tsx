@@ -13,6 +13,7 @@ import {
 import type {
   Announcements,
   CollisionDetection,
+  DragCancelEvent,
   DragEndEvent,
   DragStartEvent,
   KeyboardCoordinateGetter,
@@ -96,8 +97,8 @@ const AUTO_SCROLL = { acceleration: 25, threshold: { x: 0.2, y: 0.2 } } as const
 /** The copy stays in its column at every width. */
 const vertical: Modifier = ({ transform }) => ({ ...transform, x: 0 })
 
-/** The lifted clip, as its row named it then. */
-type Lift = { identity: string; name: string }
+/** The lifted clip, as its row named it then, and whether a pointer (not the keyboard) holds it. */
+type Lift = { identity: string; name: string; pointer: boolean }
 
 /** What a release does: nothing, a reorder within the chapter, or a drop into another. */
 type Drop =
@@ -138,6 +139,24 @@ function firstLineIntoView(row: HTMLElement): void {
   const by = top < from || bottom - top > to - from ? top - from : bottom > to ? bottom - to : 0
   if (by !== 0) {
     window.scrollBy({ top: by, behavior: 'instant' })
+  }
+}
+
+/**
+ * Bring a row back into view after a cancelled drag: the whole row when it fits between the
+ * page's scroll padding, else its first line (`firstLineIntoView`).
+ */
+function rowIntoView(row: HTMLElement): void {
+  const root = document.documentElement
+  const style = getComputedStyle(root)
+  const room =
+    root.clientHeight -
+    (parseFloat(style.scrollPaddingTop) || 0) -
+    (parseFloat(style.scrollPaddingBottom) || 0)
+  if (row.getBoundingClientRect().height <= room) {
+    row.scrollIntoView({ block: 'nearest' })
+  } else {
+    firstLineIntoView(row)
   }
 }
 
@@ -220,13 +239,15 @@ export function ChapterDrag({
   // The drop to follow up, then its row, to scroll into view once the save bar is measured.
   const dropped = useRef<Dropped | null>(null)
   const scrollAfter = useRef<{ row: HTMLElement; across: boolean } | null>(null)
+  // The clip whose drag was just cancelled: its row comes back into view.
+  const cancelled = useRef<string | null>(null)
 
   /** The clip as lifted: its name then, the same through the drag. */
   const liftOf = useCallback((id: UniqueIdentifier): Lift => {
     const identity = String(id)
     return lift.current?.identity === identity
       ? lift.current
-      : { identity, name: current.current.nameOf(identity) }
+      : { identity, name: current.current.nameOf(identity), pointer: false }
   }, [])
 
   /** Its own chapter's order and its position there, 1-based. */
@@ -461,14 +482,19 @@ export function ChapterDrag({
     return { announcements, screenReaderInstructions, container: document.body }
   }, [announcements, several])
 
-  const onDragStart = useCallback(({ active }: DragStartEvent) => {
+  const onDragStart = useCallback(({ active, activatorEvent }: DragStartEvent) => {
     const identity = String(active.id)
-    const next = { identity, name: current.current.nameOf(identity) }
+    const next = {
+      identity,
+      name: current.current.nameOf(identity),
+      pointer: !(activatorEvent instanceof KeyboardEvent),
+    }
     lift.current = next
     slot.current = null
     lifting.current = true
     refused.current = null
     dropped.current = null
+    cancelled.current = null
     setLifted(next)
   }, [])
 
@@ -495,10 +521,29 @@ export function ChapterDrag({
     [dropOf, onDropInto, onReorder],
   )
 
-  const onDragCancel = useCallback(() => {
+  // A keyboard drag scrolls the page after the copy, a step into another chapter by a
+  // whole chapter's header: the focused handle may be out of the window when it is
+  // cancelled (the passive effect below brings it back).
+  const onDragCancel = useCallback(({ active }: DragCancelEvent) => {
     slot.current = null
+    cancelled.current = String(active.id)
     setLifted(null)
   }, [])
+
+  useEffect(() => {
+    const identity = cancelled.current
+    const root = rootRef.current
+    if (lifted !== null || identity === null || root === null) {
+      return
+    }
+    cancelled.current = null
+    const row = [...root.querySelectorAll<HTMLElement>('.clip-item')].find(
+      (item) => item.dataset.identity === identity,
+    )
+    if (row !== undefined) {
+      rowIntoView(row)
+    }
+  }, [lifted, rootRef])
 
   /*
    * After a drop the row is in its place: a drop into another chapter unmounted
@@ -565,11 +610,19 @@ export function ChapterDrag({
           style={{ height: 'auto' }}
           zIndex={25}
           dropAnimation={null}
+          // dnd-kit slides it 250 ms on each keyboard step by default.
+          transition={reducedMotion ? 'none' : undefined}
         >
           {lifted !== null && <DragPreview name={lifted.name} targetOf={targetOf} />}
         </DragOverlay>,
         document.body,
       )}
+      {/* While a pointer holds a clip, a transparent layer under the copy takes the pointer:
+          the rows under it show no hover, and the cursor is the grabbing hand everywhere.
+          The copy takes no pointer events itself. dnd-kit listens on the document, and a
+          wheel over the layer still scrolls the page. */}
+      {lifted?.pointer === true &&
+        createPortal(<div className="clip-drag-shield" aria-hidden="true" />, document.body)}
     </DndContext>
   )
 }
