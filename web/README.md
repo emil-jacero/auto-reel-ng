@@ -127,9 +127,11 @@ that shows a panel under the row (**D-14**): the clip's cuts (start → end, len
 reason in words; `manual` reads "Cut by hand") and two typed times, as seconds (`75.5`),
 `m:ss` (`1:15.5`) or `h:mm:ss` (`1:01:15.5`), with up to three decimals after `.` or `,`.
 **Add cut** refuses, at the field and in words, a time it cannot read, an end that is not
-after the start, and an overlap with another cut; it cannot refuse a cut past the clip's
-end (no read gives a clip's length), so the panel says the render stops it there and that
-a cut over the whole clip leaves the clip out. A cut made here is saved with the reason
+after the start, and an overlap with another cut. No read gives a clip's length, so until the
+clip's preview has read it (below) the panel says the render stops a cut past the clip's end
+there and that a cut over the whole clip leaves the clip out; once it has, the panel says
+where the clip ends, refuses a cut that ends after that, and marks a listed one that does
+("Past the clip’s end"). A cut made here is saved with the reason
 `manual`. **Remove** keeps a cut read from `reel.yaml` listed, struck through, with
 **Undo** (refused, in words, when another cut now overlaps it); a cut added in this Edit
 mode just goes. A time typed but not added counts as unsaved, is named in the save bar
@@ -138,7 +140,35 @@ while the panel is hidden) and holds Save back, as a date typed in part does; it
 the panel's state. A save writes only the changed clips' `trims` (their title-clip choice,
 rotation and exclusion as read; no empty entry), and a cut on a NEW clip writes its
 chapter, since `reel.yaml` refuses properties for a clip no chapter lists. A missing
-clip shows how many cuts it has, and offers no Cuts control. A
+clip shows how many cuts it has, and offers no Cuts control.
+The panel's first control, **Watch**, opens the clip's preview there (**D-16**,
+`preview/`); in Edit mode the clip's thumbnail is a "Watch <name>" button that shows the
+panel and opens it in one press (not the drag handle; the box keeps its size). One preview
+is open at a time, and none exists until asked for: no `<video>` and no request to the
+media route (`GET …/media?clip=&v=<mtime>`, `api/clipMedia.ts`) before Watch, on any
+number of clips. The preview has its own controls on a native `<video>` (no `controls`,
+no autoplay, the thumbnail as poster): Close (Escape too; focus returns to the opener),
+Play / Pause, a playhead slider (arrows 0.1 s, Page Up / Page Down 1 s, Home / End; a
+press or a drag along it; it says `0:01.234 of 0:06.02, in cut 2`, at most once a second
+while playing), **Skip cuts**, **Set From** and **Set To**. Under the picture, a cut bar
+draws the clip's cuts by shape (solid, a removed one dashed, the span typed in the fields
+outlined) with a legend. Set From / Set To write the playhead's time to the millisecond in
+the panel's format; it counts as typed, so the typed mark and the save bar's hold apply.
+Skip cuts plays the clip as the movie will: one frame ahead of each presented frame
+(`requestVideoFrameCallback`), cuts joined as the render joins them, and a cut that ends
+within 0.1 s of the clip's end stops playback at its start. The length is the browser's
+own read of the file (`loadedmetadata`, `durationchange`), kept per media address for the
+Edit session, never sent or saved. What the browser cannot do is a note, announced once:
+no sound (Firefox and the Sony cameras' PCM audio), no picture (HEVC, MPEG-4 Part 2,
+with a Download), and, after one `Range: bytes=0-0` read of the media route, why a clip
+cannot play: gone from disk or changed since the page was read (stop editing to read the
+event again; never "Refresh", which leaves Edit mode), an empty file, an unreadable one,
+a format this browser does not play (Download), or no answer (Try again). A preview writes
+nothing; a pending save or Move clips makes Set From / Set To unavailable but leaves
+playback alone; a clip moved within its chapter keeps playing, and one moved to another
+chapter reopens paused where it stood; Reset closes every preview. Verified in Chrome
+(channel `chrome`, the image `localhost/playback-research:chrome`) and Firefox;
+Playwright's own Chromium cannot decode H.264. A
 save bar says what changed, with one primary action: **Save**, or a failure's way
 on while it holds Save back (Reload latest after a conflict, Back to the event list for
 a vanished event). It is held at the window's bottom while it takes at most two fifths
@@ -206,7 +236,8 @@ src/
 │   ├── reel.ts           the editorial read and write: ETag in, If-Match out
 │   ├── movie.ts          the event's movie URL (typed from the schema) and its one-byte probe
 │   ├── headers.ts        Content-Range and Content-Disposition parsers (pure, no imports)
-│   └── thumbnail.ts      a clip's thumbnail URL, typed from the schema (no fetch: an <img> asks)
+│   ├── thumbnail.ts      a clip's thumbnail URL, typed from the schema (no fetch: an <img> asks)
+│   └── clipMedia.ts      a clip's media URL, and the one-byte read that says why it cannot play
 ├── edit/
 │   ├── EventEditor.tsx   Edit mode: the reel read, chapter edits, the save bar, saves and failures
 │   ├── ChapterDrag.tsx   the one drag context around every chapter: sensors, targets, the copy, words, focus
@@ -231,6 +262,11 @@ src/
 │   ├── MoviePanel.tsx    the event page's Movie section: probe, player, troubles by cause
 │   ├── labels.ts         words and looks for the movie's age and troubles, MediaError words
 │   └── movie.css         the section and its 16:9 frame
+├── preview/
+│   ├── previews.ts       the editor's previews: one open, its opener, kept playheads, lengths (pure)
+│   ├── playback.ts       skip spans, where playback goes per frame, slider keys, the preview's words (pure)
+│   ├── ClipPreview.tsx   a clip's preview in its Cuts panel: the video, controls, cut bar, notes
+│   └── preview.css       the preview, the cut bar, and the thumbnail as a Watch button
 ├── jobs/
 │   ├── store.ts          the one jobs WebSocket: live jobs, reconnect, endings (toasts, re-reads)
 │   ├── useJob.ts         which job an event shows (live or last read); the connection's counts
