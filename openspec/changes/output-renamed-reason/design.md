@@ -35,6 +35,27 @@ See proposal.md, "Why", for the finding and the reproduction. The code on `main`
   reason" (requirement "The event list shows every event with its render state") expects a renamed event to cite
   "the missing output". `renamed-label-and-zoom-bar` owns that capability and corrects it.
 
+## Supervisor decisions (2026-10-01)
+
+Recorded before implementation. Where they differ from a section below, they win, and that section says so.
+
+- **Context.** The brief is `plan/brief-decisions.md` (Z2). The operator agreed to a precise reason instead of
+  "movie file missing" when the name changed, and to keeping the old movie.
+- **Reason name: `output_renamed`.** `renamed-label-and-zoom-bar` (Z3) uses the same name.
+- **Replace-only (R1)**, cited only where `output` would have been: confirmed.
+- **The bare-file-name and regular-file check** on the manifest's recorded output: accepted.
+- **The one `REASON_LABEL` entry** in `web/src/events/labels.ts` is added here so `tsc` passes after the
+  regeneration. It uses the FINAL list wording, `movie name changed`, not the provisional words this design first
+  proposed (see "The published wording and the interim label"). Z3 adds the page sentence.
+- **The change-detection "Staleness gate" text correction** (expected path, not "the recorded output file")
+  belongs in this change: confirmed.
+- **Showing the old and new file names** in the CLI or the API: a follow-up, not here.
+- **The web-app scenario "A stale event names every reason"** is left to `renamed-label-and-zoom-bar`.
+- **Review additions** (after implementation):
+  - a CLI test that `enqueue` queues a renamed event exactly as it queues one whose movie is gone;
+  - a worker test for the cancelled arm of "A failed render after a rename changes nothing";
+  - `recorded_output_path` re-exported from `staleness/__init__.py`, like the other manifest names.
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -214,9 +235,9 @@ until it lands, because it is gated on this change being archived. The other cho
 **Decision**: The `StalenessReason` docstring says what every member means. For `output_renamed` it says: the
 event's movie name (its title, date or location) changed since the last render; that render's movie is still on
 disk under its old name; the next render writes the movie under the new name and leaves the old file where it is.
-`REASON_LABEL` gains `output_renamed: 'renamed — renders under the new name; the old movie stays'`. That is the
-brief's own example, and it reads correctly both in the list's joined reasons and on the page.
-`renamed-label-and-zoom-bar` keeps the wording decision: short on the list, full on the page.
+`REASON_LABEL` gains `output_renamed: 'movie name changed'`, the final list wording (supervisor decision; this
+design first proposed the brief's example, `'renamed — renders under the new name; the old movie stays'`).
+`renamed-label-and-zoom-bar` keeps the rest of the wording decision: it adds the full sentence on the page.
 
 **Rationale**: `main` stays buildable, and the generated client already enforces the rule that a reason is never
 shown as a slug.

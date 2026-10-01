@@ -26,7 +26,7 @@ The cause is in `auto_reel_ng/staleness/gate.py:74-75`. `evaluate()` appends `OU
 `Path(output_path)` does not exist. Every caller computes that path from the *current* metadata (`cli/commands.py`
 `:305`, `:426`, `:652`, `:958`; `api/events_read.py:421`; `api/routes/jobs.py:119`; `scheduler/worker.py:269`). The
 manifest's recorded `output` (`staleness/manifest.py:37`, read at `:92`, written as `output_path.name` at
-`render/orchestrator.py:473` and `cli/commands.py:982`) is written but never read. Reporting a movie as missing
+`render/orchestrator.py:473` and `cli/commands.py:983`) is written but never read. Reporting a movie as missing
 when it is on disk is a false fact on the operator's screen. Principle I ("never fabricate", HLD §2 row 5)
 applies to status as much as to metadata.
 

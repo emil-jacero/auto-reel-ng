@@ -1,6 +1,6 @@
 ## 1. Baseline (gate: none)
 
-- [ ] 1.1 Confirm the code and the specs this change was designed against. Stop and report to the supervisor if a
+- [x] 1.1 Confirm the code and the specs this change was designed against. Stop and report to the supervisor if a
   check fails in a way the design does not cover.
   - This command prints nothing:
     `git diff 93721b3 -- auto_reel_ng/staleness auto_reel_ng/render/orchestrator.py web/src/events/labels.ts tests/test_staleness_gate.py tests/test_staleness_manifest.py tests/test_cli_render_staleness.py tests/test_api_events.py tests/test_api_editorial_write.py tests/test_editorial_write_e2e.py tests/test_api_openapi.py openspec/specs/change-detection/spec.md openspec/specs/api-service/spec.md`
@@ -19,7 +19,7 @@
 
 ## 2. staleness/ — locate the recorded movie, cite the rename
 
-- [ ] 2.1 Red first, in `tests/test_staleness_manifest.py`:
+- [x] 2.1 Red first, in `tests/test_staleness_manifest.py`:
   - Add `test_recorded_output_path_inverts_output_relpath`, parametrised over every old × new pair (25) of these
     `Metadata` shapes:
     - `("Grillning med Grannar", 2024-06-27)`
@@ -39,7 +39,7 @@
   `recorded_output_path` in `__all__`. Verify:
   - `.venv/bin/python -m pytest tests/test_staleness_manifest.py` passes: 25 pairs plus the existing tests.
   - `.venv/bin/python -m mypy auto_reel_ng` is clean.
-- [ ] 2.2 Red first, in `tests/test_staleness_gate.py`. Add a helper that writes a fake movie at
+- [x] 2.2 Red first, in `tests/test_staleness_gate.py`. Add a helper that writes a fake movie at
   `tmp_path / "out" / output_relpath(meta)` and a manifest recording `.name`, then evaluates against
   `out / output_relpath(new_meta)`. Add `_as_before(reasons)`, which maps `output_renamed` to `output`. Add these
   tests; each asserts the exact tuple, `verdict.stale is True`, and `_as_before(...)` equal to the tuple today's gate
@@ -74,7 +74,7 @@
 
 ## 3. Callers that reuse the gate (tests only; no code change in cli/, api/, scheduler/, render/)
 
-- [ ] 3.1 CLI, real ffmpeg, no database. In `tests/test_cli_render_staleness.py`, add
+- [x] 3.1 CLI, real ffmpeg, no database. In `tests/test_cli_render_staleness.py`, add
   `test_retitle_scans_as_renamed_and_render_keeps_the_old_movie`, reusing `_project` (`2024-06-21 - Party`):
   1. `render`, then record `old.stat()` for `<output>/2024/2024-06-21 - Party.mp4`.
   2. Replace `Party` with `Party Renamed` in `reel.yaml`. `scan` prints `stale: editorial, output_renamed`.
@@ -94,7 +94,7 @@
   - `.venv/bin/python -m pytest tests/test_cli_render_staleness.py` passes;
   - with `_absent_output_reason` temporarily returning `StalenessReason.OUTPUT`, only this test's `scan` assertions
     fail. Restore it.
-- [ ] 3.2 API, `requires_db`.
+- [x] 3.2 API, `requires_db`.
   - In `tests/test_api_events.py`, add `test_renamed_event_reads_output_renamed_on_list_and_detail`:
     1. `_make_fresh(project, <Barbecue>)`.
     2. Set `metadata.title` in the persisted `reel.yaml` to `Grillkväll`, as a ruamel round trip like
@@ -110,7 +110,7 @@
 
   Verify that `.venv/bin/python -m pytest tests/test_api_events.py tests/test_api_editorial_write.py` passes
   (podman Postgres).
-- [ ] 3.3 Worker path, `requires_db`, real CPU render. In `tests/test_editorial_write_e2e.py`
+- [x] 3.3 Worker path, `requires_db`, real CPU render. In `tests/test_editorial_write_e2e.py`
   `test_editorial_write_save_stale_render_cycle`:
   - after step 3's title edit, assert `verdict["reasons"] == ["editorial", "output_renamed"]` on the PUT echo and on
     the follow-up GET;
@@ -123,7 +123,7 @@
 
 ## 4. Published contract and client build
 
-- [ ] 4.1 Regenerate the published artifacts, see the client build fail, and add the label:
+- [x] 4.1 Regenerate the published artifacts, see the client build fail, and add the label:
   1. Regenerate:
      - `.venv/bin/python -m auto_reel_ng.api.openapi > web/openapi.json`
      - `podman run --rm -v "$PWD/web:/app:Z" -w /app docker.io/library/node:22 sh -c 'npm ci && npm run generate:types'`
@@ -131,8 +131,8 @@
      that `"output_renamed"` is in `published["enum"]` and in `published["description"]`.
   3. Run `npx tsc --noEmit` in the same container. It fails with `TS2741` naming `output_renamed` in
      `src/events/labels.ts`. This failure is expected; it proves the exhaustive map catches the new member.
-  4. Add `output_renamed: 'renamed — renders under the new name; the old movie stays',` to `REASON_LABEL`, right
-     after `output`.
+  4. Add `output_renamed: 'movie name changed',` to `REASON_LABEL`, right after `output` (the final list wording;
+     design, "Supervisor decisions").
 
   Verify:
   - `grep -n 'StalenessReason: ' web/src/api/schema.d.ts` shows `"output" | "output_renamed" | "editorial"`;
@@ -144,7 +144,7 @@
 
 ## 5. Docs
 
-- [ ] 5.1 Record the decision.
+- [x] 5.1 Record the decision.
   - `docs/high-level-design.md` D-9 gains "*Amended 2026-10-01 (change `output-renamed-reason`):*". After a render,
     a new title, date or location changes the movie's path. The engine never deletes, moves, renames or overwrites
     the previous movie. The next render writes the new path beside it and records the new name. Until then, the
@@ -166,7 +166,7 @@
 
 ## 6. Validation
 
-- [ ] 6.1 Verification against a scratch dev library, from the session scratchpad; never committed.
+- [x] 6.1 Verification against a scratch dev library, from the session scratchpad; never committed.
   - **Setup:** create your own database `arel_<slug>`, never `auto_reel_ng`, and run `alembic upgrade head`. Build
     the library with `.venv/bin/python scripts/make_dev_library.py <scratch>/dev`. Run `serve` on port **8123**,
     never 8080 or 5173. Never use `auto-reel-media/`.
@@ -187,7 +187,7 @@
   - **Cleanup:** stop `serve` and the worker by their own PIDs, drop the database, and delete the scratch library.
 
   Verify: every observation matches, recorded in the final report with the commands used.
-- [ ] 6.2 Run the gates:
+- [x] 6.2 Run the gates:
   - `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`
   - `.venv/bin/python -m mypy auto_reel_ng`
   - `.venv/bin/python -m pylint auto_reel_ng`
