@@ -10,28 +10,31 @@ import { eventHref } from '../route'
 import { Icon } from '../ui/Icon'
 import { toast } from '../ui/toast'
 import { JobProgress } from './JobProgress'
+import { announce } from './announce'
 import { NOT_QUEUED, SCAN_FAILED, eventName } from './labels'
 import { isActive, load, merge, track } from './store'
 import { useEventJob } from './useJob'
 
 /**
- * A row's enqueue answer, told by toast: the row has no room for an alert. Every
- * answer is told, the operator's own Render included (a polite toast, the list's
- * only announcement for it); the row's later states stay quiet. `name` is the
- * event's title and date (`eventName`); a collision names folders instead, since
- * the events it names share their title and date.
+ * A row's enqueue answer. Every answer is told; the row's later states stay quiet.
+ * The operator's own Render (queued, or already queued or running) is said to
+ * assistive technology only (`announce`): the row shows that job at once, and a
+ * toast would cover the Render controls of the rows below it. Every other answer
+ * needs the operator's attention and raises a toast: the row has no room for an
+ * alert. `name` is the event's title and date (`eventName`); a collision names
+ * folders instead, since the events it names share their title and date.
  */
 function tellRowAnswer(eventId: string, name: string, result: EnqueueResult): void {
   const open = { action: { label: 'Open', href: eventHref(eventId) } }
   switch (result.kind) {
     case 'enqueued':
-      toast.info(`Render queued: ${name}`, open)
+      announce(`Render queued: ${name}`)
       track(result.job.id, name)
       merge(result.job)
       break
     case 'active':
       // Someone already started it: the row follows that job.
-      toast.info(`Render already queued or running: ${name}`, open)
+      announce(`Render already queued or running: ${name}`)
       track(result.jobId, name)
       load(result.jobId)
       break
