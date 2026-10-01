@@ -62,6 +62,16 @@ so.
 - **Follow-ups, not here:** Reset focusing an off-screen heading; Save sitting 56 Tab stops after Title;
   the verdict going stale in Edit mode after a live render.
 
+After the first review (2026-10-01), the supervisor accepted the implementation's deviations and decided:
+
+- **Fix the short-window clamp now** (Risks). After any save answer, the control that holds focus (the
+  pressed one, or the alert focus moved to) is scrolled into view with `block: 'nearest'` when it is not
+  fully inside the window. The rest of the bar comes with it.
+- **One `eventName`.** jobs-live-polish has landed, so the "Saved" toast imports its formatter
+  (`jobs/labels.ts`), and the local copy goes. The output is the same.
+- **A page error gets its own `SaveProblem` kind.** event-list-polish has landed, so the union is no
+  longer a line both changes edit. `disk` again means only the service's files.
+
 ### What landed on main (eb86e8b), re-checked
 
 Both gates are archived (`2026-10-01-event-page-polish`, `2026-10-01-ui-a11y-polish`). Every name task 1.1
@@ -797,14 +807,18 @@ The states are made in that library copy only, and each is restored afterwards:
   against the live table, not against the numbers.
 - [Edit mode's numbers move 24 px right] → This is the one shift the grip needs. Everything after the
   number stays.
-- [A short window held at its top: the conflict bar can sit partly below it] → Found by task 6.1, and not
-  new: on main the bar is taller. A sticky element cannot rise above its containing block,
+- [A short window held at its top: the conflict bar can sit partly below it] → **Resolved** (supervisor,
+  after review). Found by task 6.1, and not new: on main the bar is taller. A sticky element cannot rise above its containing block,
   `.event-editor`. In a window 320 × 700, 340 × 700 or 375 × 667 scrolled to its very top, the editor
   starts 400 to 480 px down, and a 290 to 320 px conflict bar overhangs the window by 25 to 100 px. Its last
   row, which holds the focused Save, is then out of view until the page scrolls. In the usual flow, where
   editing a field scrolls the page, the bar is whole at every size measured, and at 390 × 844 it is whole
-  even at the top. The fix would be structural: the bar's containing block, or scrolling the pressed
-  control into view after an answer. It is a follow-up (Open Questions).
+  even at the top. The fix chosen is the second of two: the editor scrolls the control that holds focus
+  into view (`block: 'nearest'`) after every save answer, when it is not fully inside the window. Moving
+  the bar out of `.event-editor` was the structural alternative. Measured with the page held at its top
+  and Save pressed: at 320 × 568, 320 × 700, 340 × 700 and 375 × 667, with a conflict and with a failed
+  write, Save is inside the window and so is the whole bar card. Where Save was already inside, nothing
+  scrolls.
 - [The drag handle is 24 px wide in the one-line layout] → It is still 32 px tall and meets WCAG 2.2's
   24 px target. Below 58rem, where touch is likely, it stays 32 px.
 
@@ -852,9 +866,6 @@ Open:
   because neither change may edit the other's files while both are in flight. Whichever lands second can
   replace one copy with an import of the other (`jobs/labels.ts` or `edit/EventEditor.tsx`), or the helper
   can move to a shared module in a follow-up.
-- **The conflict bar on a short window held at its top** (Risks): a follow-up, if wanted. Either the save
-  bar moves out of `.event-editor`, to a containing block that starts at the page's top, or the editor
-  scrolls the pressed control into view after a failed answer.
 - **Follow-ups the critics raised that are not in this round's list:**
   - Reset focuses an off-screen `h1` with `preventScroll`
   - 56 Tab stops from Title to Save on a 16-clip event

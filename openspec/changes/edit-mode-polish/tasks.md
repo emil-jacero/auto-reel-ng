@@ -48,6 +48,7 @@
     - `.save-bar-card .btn-primary` matches exactly one element, "Reload latest (discard my changes)"
     - Save has `btn-secondary` and `aria-disabled="true"`
     - `document.activeElement` is Save, and its `aria-describedby` is the alert's id
+  - In `src/edit/EventEditor.tsx` (supervisor, after review): after every save answer, the focused control is scrolled into view (`block: 'nearest'`) when it is not fully inside the window. With the page held at its top and Save pressed, at 320×568, 320×700, 340×700 and 375×667, with a conflict and with a write failure, the focused Save and the `.save-bar-card` are inside the window.
   - With the same conflict at 320, 340 and 360 wide, `document.documentElement.scrollWidth <= clientWidth`, and every element inside `.save-bar-card` has `getBoundingClientRect().right <= innerWidth`
   - At 390×844, with Sommarlov's folder `chmod a-w`, saving a reorder shows "reel.yaml could not be saved.", the service's whole detail with the real library path and temporary file name (its text equals the answer's `detail`), and Retry. With the page at its top, `.save-bar`'s `offsetHeight` is at most 337 px (two fifths; the review measured 300), the page does not scroll sideways, and the card's one `.btn-primary` is Save. Restore the folder's permissions afterwards.
 - [x] 2.2 Keep the toast contract as it landed, name the saved event, and word a save with no answer (design, "Supervisor decisions", "Toasts and the bar", "The "Saved" toast names the event", "A save with no answer, and an error in the page"):
