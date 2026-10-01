@@ -10,10 +10,11 @@ import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
 
 /*
- * The save bar: sticky at the bottom of the viewport while Edit mode holds
- * unsaved changes. It says what changed, offers Reset and Save, and shows the
- * last save's failure above them with that failure's own choices (Retry,
- * Reload latest, Overwrite with mine).
+ * The save bar, shown while Edit mode holds unsaved changes: held at the bottom
+ * of the viewport while it takes at most two fifths of the window; taller, it
+ * rests after the editor (EventEditor.tsx `placeBar`). It says what changed,
+ * offers Reset and Save, and shows the last save's failure above them with that
+ * failure's own choices (Retry, Reload latest, Overwrite with mine).
  *
  * Every control here follows the busy-control rule: one that cannot act now is
  * aria-disabled and ignores presses, never `disabled`, which would drop focus

@@ -531,14 +531,17 @@
   /* ------------------------------------------------------------ the save bar */
 
   /*
-   * Sticky at the bottom of the viewport while there are unsaved changes. The
-   * bar itself is transparent and lets clicks through; its card floats a gap
-   * above the edge. Its whole height (card and gap) is published on <html> as
-   * `--toast-inset-bottom` (EventEditor.tsx). The page's `scroll-padding-bottom`
-   * in shell.css adds the toasts' height and a gap to it: a focused or dragged
-   * row never scrolls under the bar. No rule here overrides that padding. The
-   * bar is registered with the toasts (`keepToastsClearOf`), which place
-   * themselves above it while it is held and below it once it rests.
+   * Sticky at the bottom of the viewport while there are unsaved changes, as
+   * long as it takes at most two fifths of the window; taller, it rests in the
+   * page after the editor (`data-rests`, below). The bar itself is transparent
+   * and lets clicks through; its card floats a gap above the edge. While it is
+   * held, its whole height (card and gap) is published on <html> as
+   * `--toast-inset-bottom` (EventEditor.tsx `placeBar`); while it rests, the
+   * property is absent. The page's `scroll-padding-bottom` in shell.css adds the
+   * toasts' height and a gap to it: a focused or dragged row never scrolls under
+   * the bar. No rule here overrides that padding. The bar is registered with the
+   * toasts (`keepToastsClearOf`), which place themselves above it while it is
+   * held and below it once it rests.
    */
   .save-bar {
     position: sticky;
@@ -546,6 +549,11 @@
     z-index: 6;
     padding-block-end: var(--s-4);
     pointer-events: none;
+  }
+
+  /* Taller than two fifths of the window, it would hide the editor: it rests in the page. */
+  .save-bar[data-rests] {
+    position: static;
   }
 
   /* One column no wider than the card: nothing the card holds widens the page. */

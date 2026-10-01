@@ -425,6 +425,33 @@ function chapterHeading(name: string, hasNamedChapter: boolean): string {
   return name !== '' ? name : hasNamedChapter ? 'Main' : 'Clips'
 }
 
+/** Above this share of the window's height the save bar rests in the page instead of being held. */
+const HELD_BAR_MAX_SHARE = 0.4
+
+/**
+ * Hold the bar at the window's bottom while it takes at most two fifths of the
+ * window; taller (a failed save in a short window, any bar at 400 % zoom) it would
+ * hide the editor, so it rests in the page after it (`data-rests`). Only a held bar
+ * takes room at the window's bottom: `--toast-inset-bottom` is its height then, and
+ * absent while it rests. A held bar that starts to rest takes its focused control
+ * to the page's end, so the page follows it there.
+ */
+function placeBar(bar: HTMLElement): void {
+  const root = document.documentElement
+  const rested = bar.hasAttribute('data-rests')
+  const rests = bar.offsetHeight > root.clientHeight * HELD_BAR_MAX_SHARE
+  bar.toggleAttribute('data-rests', rests)
+  if (rests) {
+    root.style.removeProperty('--toast-inset-bottom')
+  } else {
+    root.style.setProperty('--toast-inset-bottom', `${bar.offsetHeight}px`)
+  }
+  const focused = document.activeElement
+  if (rests && !rested && focused instanceof HTMLElement && bar.contains(focused)) {
+    focused.scrollIntoView({ block: 'nearest' })
+  }
+}
+
 export function EventEditor({
   eventId,
   event,
@@ -561,37 +588,52 @@ export function EventEditor({
     return () => setSaving(false)
   }, [locked])
 
-  // The bar's height, for the bottom scroll padding (focus never hides under it),
-  // and the toast region's offset when no bar is registered. Published in the
-  // commit that shows the bar, so the scroll a move or a drop makes right after (a
-  // passive effect) already clears it; it wraps when narrow, so a ResizeObserver
-  // follows later changes. Registered, the bar has the toasts place themselves
-  // above it while it is held at the window's bottom, below it once it rests.
+  // Held or resting (`placeBar`), and the held bar's height, for the bottom scroll
+  // padding (focus never hides under it) and the toast region's offset when no bar
+  // is registered; absent while the bar rests, which holds no room at the window's
+  // bottom. Decided in the commit that shows the bar, so the scroll a move or a drop
+  // makes right after (a passive effect) already clears it; it wraps when narrow,
+  // so a ResizeObserver follows later changes, and a zoom or a resized window
+  // changes the window's height alone, so `resize` does too. Registered, the bar has
+  // the toasts place themselves above it while it is held at the window's bottom,
+  // below it once it rests (at the page's end, or for its height).
   useLayoutEffect(() => {
     const bar = barRef.current
     if (!showBar || bar === null) {
       return
     }
     const root = document.documentElement
-    const publish = () => root.style.setProperty('--toast-inset-bottom', `${bar.offsetHeight}px`)
-    publish()
+    const place = () => placeBar(bar)
+    place()
     const release = keepToastsClearOf(bar)
-    const observer = new ResizeObserver(publish)
+    const observer = new ResizeObserver(place)
     observer.observe(bar)
+    window.addEventListener('resize', place)
     return () => {
+      window.removeEventListener('resize', place)
       observer.disconnect()
       release()
       root.style.removeProperty('--toast-inset-bottom')
     }
   }, [showBar])
 
+  // Every commit can change what the bar says (an answer, the summary, a pressed
+  // control), so its place is decided again before paint, and before the answer's
+  // focus scroll below measures the page.
+  useLayoutEffect(() => {
+    if (showBar && barRef.current !== null) {
+      placeBar(barRef.current)
+    }
+  })
+
   // After a failed answer focus stays on the pressed control, which the save bar's
   // alert describes. An unusable date or title moves it to the message at those
   // fields; a pressed control that went with its alert (another kind of failure
   // replaced it) hands focus to the new alert, never to <body>. The answer may
   // grow the bar: in a short window held at its top the sticky bar cannot rise
-  // above the editor, and its last row falls below the window. Whatever holds
-  // focus then is scrolled into view, and the rest of the bar comes with it.
+  // above the editor, and its last row falls below the window; a bar that rests
+  // for its height (`placeBar`) sits at the page's end. Whatever holds focus then
+  // is scrolled into view, and the rest of the bar comes with it.
   const answers = ready?.answers ?? 0
   useEffect(() => {
     if (answers === 0) {
