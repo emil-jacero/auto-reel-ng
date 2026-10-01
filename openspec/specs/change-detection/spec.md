@@ -65,16 +65,17 @@ request SHALL bypass the gate entirely. All staleness decisions in the system MU
 When the expected output does not exist, the verdict SHALL cite exactly one reason for it:
 - **output renamed**, when all of these hold:
   - the file name the manifest records for the last render differs from the expected output's file name;
-  - the recorded name is a bare file name, with no folder part;
+  - the recorded name is a bare file name, with no folder part, and is not empty, `.` or `..`;
   - a regular file with the recorded name exists where the output-naming rule places a movie of that name under
     the same output directory. That place is the year folder of the name's `YYYY-MM-DD` date prefix, or the output
     directory itself when the name has no date prefix.
 
   This means the event's name (its title, date or location) changed after the render that wrote the movie still on
   disk. The next render writes the expected output under the new name and leaves the recorded file where it is.
+  Only another event's render can replace that file (see "A renamed event keeps its previous movie").
 - **missing output**, otherwise. Either the recorded name is the expected one, or no regular file with the
   recorded name is at that place, or the recorded value is not a bare file name. A recorded value that is not a
-  bare file name is never looked up.
+  bare file name, or that is empty, `.` or `..`, is never looked up: nothing is checked on disk for it.
 
 The output-renamed reason MUST NOT change whether an event is stale. It is cited only where the missing-output reason
 would otherwise have been cited. Every caller of the gate therefore makes the same stale or fresh decision with it as
@@ -140,8 +141,10 @@ removing or renaming a reason is a change to this vocabulary and MUST be made he
 
 #### Scenario: A recorded value that is not a bare file name is never looked up
 - **WHEN** the retitled Grillning's manifest has been hand-edited so that its recorded output is
-  `../Grillning.mp4`, an absolute path to an existing file, an empty string, or `2024` (the year folder itself)
+  `../Grillning.mp4`, an absolute path to an existing file, an empty string, `.`, `..`, or `2024` (the year folder
+  itself)
 - **THEN** the verdict cites `editorial` and `output`, and not `output_renamed`
+- **AND** for an empty string, `.` and `..` the gate checks nothing on disk
 
 #### Scenario: The rename reason never changes the decision
 - **WHEN** the retitled Grillning, whose verdict cites `output_renamed`, goes through `auto-reel render`,
@@ -173,7 +176,8 @@ anything.
 
 ### Requirement: A renamed event keeps its previous movie
 When an event's output path has changed since its last render, because its title, date or location changed under
-the output-naming rule, the engine MUST NOT delete, move, rename or overwrite the movie that render wrote.
+the output-naming rule, the engine MUST NOT delete, move, rename or overwrite the movie that render wrote, except
+as stated below.
 
 The next successful render of the event SHALL:
 - write its movie at the new expected output path;
@@ -185,9 +189,16 @@ refers to it. Removing it is the operator's decision. This SHALL hold for a forc
 path: the CLI's `render` and the worker.
 
 A render still replaces whatever file is at its own expected output path, as every render of a stale event does.
-That covers two cases. One is a movie an earlier render left under the name the event has again. The other is a
-case-only change of name on a case-insensitive filesystem, where the new path names the previous movie's own file.
-In both cases the expected output already exists, so the gate cites neither `output` nor `output_renamed`.
+That covers three cases:
+- a movie an earlier render of the event left under the name the event has again;
+- a case-only change of name on a case-insensitive filesystem, where the new path names the previous movie's own
+  file;
+- another event whose current name is the renamed event's old name. Its render replaces the kept movie, because
+  the output-collision check compares only the events' current paths. The renamed event's verdict then still cites
+  `output_renamed`, although the file under its old name is now the other event's movie.
+
+In the first two cases the expected output already exists, so the gate cites neither `output` nor
+`output_renamed`.
 
 #### Scenario: A render after a retitle writes beside the old movie
 - **WHEN** the retitled `2024-06-27 - Grillning med grannar` is rendered

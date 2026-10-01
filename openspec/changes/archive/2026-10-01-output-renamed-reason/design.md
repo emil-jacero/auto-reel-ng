@@ -55,6 +55,13 @@ Recorded before implementation. Where they differ from a section below, they win
   - a CLI test that `enqueue` queues a renamed event exactly as it queues one whose movie is gone;
   - a worker test for the cancelled arm of "A failed render after a rename changes nothing";
   - `recorded_output_path` re-exported from `staleness/__init__.py`, like the other manifest names.
+- **Review fixes** (supervisor review):
+  - the two worker e2e tests start from an empty `jobs` table (`jobs_session_factory`), so a job another test left
+    queued is never claimed;
+  - the forced-render step checks its own previous movie as well;
+  - `""`, `.` and `..` are rejected before any lookup, so the gate never checks the output root or its parent;
+  - the published description of `output` claims only what the gate checks;
+  - "Another event takes the old name" is documented as an exception (Risks).
 
 ## Goals / Non-Goals
 
@@ -195,7 +202,9 @@ In each case nothing proves the event's previous movie is on disk. A bare-name c
 title, location, same-year and cross-year renames (`review/spike_hardened.py`).
 
 **Decision**: The gate looks up the recorded name only when it is a bare file name, and accepts only a regular
-file (`.is_file()`), never a directory. `_DATE_PREFIX` matches ASCII digits (`[0-9]`), the only digits D-9 writes
+file (`.is_file()`), never a directory. `""`, `.` and `..` are rejected before the bare-name check (review fix:
+`""` and `..` pass it and would make the gate stat the output root or its parent), so nothing is checked on disk
+for them. `_DATE_PREFIX` matches ASCII digits (`[0-9]`), the only digits D-9 writes
 (`date.isoformat()`, `f"{year:04d}"`).
 
 **Rationale**: The reason claims a fact about disk. It is cited only when the engine's own kind of record names an
@@ -312,6 +321,7 @@ def _absent_output_reason(manifest: RenderManifest, expected: Path) -> Staleness
     recorded = manifest.output
     if (
         recorded != expected.name
+        and recorded not in _NOT_A_FILE_NAME  # ("", ".", ".."): never the output root or its parent
         and Path(recorded).name == recorded  # a bare file name, never a path
         and recorded_output_path(recorded, expected).is_file()  # a movie, never a folder
     ):
@@ -367,6 +377,12 @@ The one failure was the component-mirror test this change updates.
 
   Both are truthful about what the next render will do. No change. The keep requirement states the
   case-insensitive case explicitly, so "never overwrites the previous movie" does not overclaim there.
+- **[Risk] Another event takes the old name** (found in review). Event A is renamed away from X and not yet
+  rendered; event B is renamed to X and rendered. The collision guard compares only the events' *current* paths,
+  so B's render replaces A's kept movie at X. A's verdict still cites `output_renamed`, for a file that is now B's
+  movie. → No code guard: comparing the file's mtime with the manifest's `written_at` would be noisy on the MOL
+  NTFS mount (clock skew). The keep requirement, the D-9 amendment, the reason's description and the README name
+  this as an exception, and the README tells the operator to check before deleting an old movie by hand.
 - **[Risk] A title or location containing `/`.** Nothing validates this today. D-9 then nests the movie one folder
   deeper and the manifest records only the last segment, so the lookup misses and the gate says `output`, as today.
   Validating titles is out of scope.
