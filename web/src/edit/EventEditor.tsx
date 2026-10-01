@@ -591,7 +591,10 @@ export function EventEditor({
   // After a failed answer focus stays on the pressed control, which the save bar's
   // alert describes. An unusable date or title moves it to the message at those
   // fields; a pressed control that went with its alert (another kind of failure
-  // replaced it) hands focus to the new alert, never to <body>.
+  // replaced it) hands focus to the new alert, never to <body>. The answer may
+  // grow the bar: in a short window held at its top the sticky bar cannot rise
+  // above the editor, and its last row falls below the window. Whatever holds
+  // focus then is scrolled into view, and the rest of the bar comes with it.
   const answers = ready?.answers ?? 0
   useEffect(() => {
     if (answers === 0) {
@@ -601,6 +604,13 @@ export function EventEditor({
       refusalRef.current.focus()
     } else if (document.activeElement === null || document.activeElement === document.body) {
       alertRef.current?.focus()
+    }
+    const focused = document.activeElement
+    if (focused instanceof HTMLElement && focused !== document.body) {
+      const box = focused.getBoundingClientRect()
+      if (box.top < 0 || box.bottom > document.documentElement.clientHeight) {
+        focused.scrollIntoView({ block: 'nearest' })
+      }
     }
   }, [answers])
 

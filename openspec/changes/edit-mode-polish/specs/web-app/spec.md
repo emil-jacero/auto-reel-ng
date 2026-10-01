@@ -70,6 +70,10 @@ Suppose Edit mode's read of the editorial document failed and the operator press
 
 Focus SHALL never fall to the page's body.
 
+When a save is answered, the control that then holds keyboard focus SHALL be fully inside the window. This
+SHALL hold when the answer makes the save bar taller than the room below the editor's top, such as a
+conflict in a short window scrolled to its top.
+
 #### Scenario: The first keyboard drop keeps the dropped clip in view
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, with no other edit and in a window
   1280 × 900, the operator focuses the handle of its first clip, `s1710001.mp4`, lifts the clip, moves it
@@ -80,6 +84,11 @@ Focus SHALL never fall to the page's body.
 #### Scenario: The first drop at phone width
 - **WHEN** the operator does the same in a window 390 × 844 with the third clip, `s1710003.mp4`
 - **THEN** its handle and its whole row are fully visible above the save bar
+
+#### Scenario: A conflict in a short window scrolled to its top
+- **WHEN** in a window 320 × 568 scrolled to its top, the operator has changed the location of
+  `2024-06-27 - Grillning med grannar`, presses Save, and the save is answered with a conflict
+- **THEN** Save keeps keyboard focus and is fully inside the window, and so is the rest of the save bar
 
 #### Scenario: Try again keeps focus while the document is still unreadable
 - **WHEN** the `reel.yaml` of `2024-06-27 - Grillning med grannar` became unparseable after its page was read,
