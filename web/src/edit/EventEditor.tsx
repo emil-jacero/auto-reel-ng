@@ -22,6 +22,7 @@ import { clipNames, folderName, plural } from '../events/common'
 import { FAILURE_LABEL, UNANSWERED_CAUSE, notReachableHint } from '../events/labels'
 import { FAILURE_LOOK } from '../events/tones'
 import { eventName } from '../jobs/labels'
+import { createClipPreviews } from '../preview/previews'
 import { LIST_HREF } from '../route'
 import { focusPageHeading } from '../shell/AppShell'
 import { Alert } from '../ui/Alert'
@@ -1150,16 +1151,25 @@ export function EventEditor({
   )
 
   // Each clip's cut panel, shown or not and its fields as typed, by identity: here, not
-  // in its row, which Move clips mounts anew in another chapter. Reset empties it.
+  // in its row, which Move clips mounts anew in another chapter. Reset empties it, and
+  // closes every clip preview (one open at a time, `preview/previews.ts`).
   const [cutPanels] = useState(() => {
     const held = new Map<string, PanelState>()
+    const previews = createClipPreviews()
     const panels: CutPanels = {
       get: (identity) => held.get(identity),
       set: (identity, next) => {
         held.set(identity, next)
       },
+      previews,
     }
-    return { panels, clear: () => held.clear() }
+    return {
+      panels,
+      clear: () => {
+        held.clear()
+        previews.hideAll()
+      },
+    }
   })
 
   // Each chapter's removed clips, in its original order; one shared empty list for the rest.

@@ -22,6 +22,7 @@ import { ClipName, clipNames, formatBytes, plural } from '../events/common'
 import { CLIP_STATUS_LABEL } from '../events/labels'
 import { CLIP_STATUS_LOOK } from '../events/tones'
 import { formatInstant } from '../format'
+import { watchName } from '../preview/playback'
 import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
 import { useReducedMotion } from './ChapterDrag'
@@ -89,6 +90,7 @@ const RowBody = memo(function RowBody({
   from = null,
   badge = null,
   action,
+  onWatch,
 }: {
   eventId: string
   clip: Clip
@@ -102,11 +104,26 @@ const RowBody = memo(function RowBody({
   badge?: ReactNode
   /** A control after the facts: a missing clip's Remove, a removed one's Undo. */
   action?: ReactNode
+  /** A clip with a Cuts panel: its thumbnail is a Watch button that opens its preview. */
+  onWatch?: () => void
 }) {
+  const thumb = <ClipThumb eventId={eventId} clip={clip} name={name} />
   return (
     <>
       <span className="clip-pos">{position}</span>
-      <ClipThumb eventId={eventId} clip={clip} name={name} />
+      {/* Not the drag handle: a press here never lifts the row. */}
+      {onWatch === undefined ? (
+        thumb
+      ) : (
+        <button
+          type="button"
+          className="clip-thumb-watch"
+          aria-label={watchName(name)}
+          onClick={onWatch}
+        >
+          {thumb}
+        </button>
+      )}
       <span className="clip-file">
         <span className="clip-name">
           <ClipName name={name} />
@@ -303,6 +320,14 @@ const ClipRow = memo(function ClipRow({
     panels.set(identity, { open: !open, start: held?.start ?? '', end: held?.end ?? '' })
     setOpen(!open)
   }, [identity, open, panels])
+  // The thumbnail's Watch: shows the panel as the Cuts control does, then opens the
+  // preview there. Stable, so RowBody's memo holds on every drag step.
+  const onWatch = useCallback(() => {
+    const held = panels.get(identity)
+    panels.set(identity, { open: true, start: held?.start ?? '', end: held?.end ?? '' })
+    setOpen(true)
+    panels.previews.show(identity, 'thumb')
+  }, [identity, panels])
   // Mounted on its first showing, and then only hidden: what was typed stays.
   const mounted = cuttable && (open || panels.get(identity) !== undefined)
   const panelId = `cuts-${useId()}`
@@ -343,6 +368,7 @@ const ClipRow = memo(function ClipRow({
         from={from}
         badge={badge}
         action={remove}
+        onWatch={cuttable ? onWatch : undefined}
       />
       <MoveButtons
         identity={clip.identity}
@@ -366,7 +392,9 @@ const ClipRow = memo(function ClipRow({
         <CutsPanel
           key={resets}
           id={panelId}
+          eventId={eventId}
           identity={identity}
+          mtime={clip.mtime ?? null}
           name={name}
           cuts={cuts}
           open={open}

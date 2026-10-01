@@ -1,14 +1,19 @@
 import './cuts.css'
 
-import { memo, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 
+import { clipMediaUrl } from '../api/clipMedia'
 import type { CutKey, DraftCut } from '../edit/draft'
 import { ids } from '../edit/MetadataForm'
+import { ClipPreview, useClipLength, usePreviewOpen } from '../preview/ClipPreview'
+import { WATCH, setWords, typedSpan, watchName } from '../preview/playback'
+import type { ClipPreviews } from '../preview/previews'
 import { Icon } from '../ui/Icon'
 import {
   CUT_HINT,
   NO_CUTS,
+  PAST_END,
   addedWords,
   checkCut,
   checkRestore,
@@ -16,6 +21,8 @@ import {
   formatLength,
   formatTime,
   keptCuts,
+  lengthHint,
+  pastEnd,
   reasonWords,
   refusalWords,
   removedAddedWords,
@@ -25,7 +32,7 @@ import {
   spanWords,
   toggleName,
 } from './times'
-import type { CutRefusal, ListedCut } from './times'
+import type { CutField, CutRefusal, ListedCut } from './times'
 
 /*
  * A clip's cuts in Edit mode: the Cuts control in its row, and the panel it
@@ -35,6 +42,10 @@ import type { CutRefusal, ListedCut } from './times'
  * in its new chapter, and a typed cut, or the panel being shown, must survive
  * that. Every announcement goes
  * through the editor's one live region.
+ *
+ * The panel's first control is Watch: the clip's preview (`preview/`, D-16) opens
+ * there, above the cuts, and sets the fields at its playhead. The length it reads
+ * from the clip's file then refuses a cut past the clip's end.
  */
 
 /** What one clip's panel holds: whether it is shown, and its two fields as typed. */
@@ -44,6 +55,8 @@ export type PanelState = { open: boolean; start: string; end: string }
 export type CutPanels = {
   get(identity: string): PanelState | undefined
   set(identity: string, next: PanelState): void
+  /** The editor's clip previews: one open at a time, and each clip's length once read. */
+  previews: ClipPreviews
 }
 
 /** The editor's cut operations; one stable object, so rows keep their memoised props. */
@@ -68,6 +81,7 @@ const REMOVE = <Icon name="x" />
 const UNDO = <Icon name="rotate-ccw" />
 const PLUS = <Icon name="plus" />
 const ALERT = <Icon name="alert-triangle" />
+const PLAY = <Icon name="play" />
 
 /** `0:00 → 0:01.5`, said "0:00 to 0:01.5"; a span may wrap after its arrow, a time never. */
 export function CutSpan({ cut }: { cut: { in: number; out: number } }) {
@@ -168,7 +182,8 @@ export const CutsToggle = memo(function CutsToggle({
 
 /** Where focus goes once a cut edit is on screen. */
 type FocusRequest =
-  { target: 'start' | 'end' } | { target: 'cut-remove' | 'cut-undo' | 'cut-control'; key: CutKey }
+  | { target: 'start' | 'end' | 'preview-toggle' | 'preview-thumb' }
+  | { target: 'cut-remove' | 'cut-undo' | 'cut-control'; key: CutKey }
 
 function hasText(start: string, end: string): boolean {
   return start.trim() !== '' || end.trim() !== ''
@@ -181,7 +196,9 @@ function hasText(start: string, end: string): boolean {
  */
 export const CutsPanel = memo(function CutsPanel({
   id,
+  eventId,
   identity,
+  mtime,
   name,
   cuts,
   open,
@@ -190,7 +207,11 @@ export const CutsPanel = memo(function CutsPanel({
   handlers,
 }: {
   id: string
+  /** The event, for the clip's media address. */
+  eventId: string
   identity: string
+  /** The clip's modification time as the detail gives it: its media address's `v`. */
+  mtime: string | null
   /** The clip's name as its row names it. */
   name: string
   cuts: readonly DraftCut[]
@@ -218,7 +239,17 @@ export const CutsPanel = memo(function CutsPanel({
   const errorId = `${fieldId}-error`
   const hintId = `${fieldId}-hint`
   const undoErrorId = `${fieldId}-undo`
+  const previewId = `preview-${fieldId}`
+  const rootRef = useRef<HTMLDivElement>(null)
+  const toggleRef = useRef<HTMLButtonElement>(null)
   const { onAdd, onRemove, onRestore, onTyped, onAnnounce } = handlers
+  const { previews } = panels
+  const previewOpen = usePreviewOpen(previews, identity)
+  // The length this browser read from the clip's file in a preview of this Edit mode;
+  // keyed by the media address, so a replaced file (a new `mtime`) has none.
+  const length = useClipLength(previews, clipMediaUrl(eventId, { identity, mtime }))
+  const typed = useMemo(() => typedSpan(start, end), [start, end])
+  const clip = useMemo(() => ({ identity, mtime }), [identity, mtime])
 
   function setFields(nextStart: string, nextEnd: string): void {
     panels.set(identity, {
@@ -240,7 +271,7 @@ export const CutsPanel = memo(function CutsPanel({
     if (locked) {
       return
     }
-    const checked = checkCut(cuts, start, end)
+    const checked = checkCut(cuts, start, end, length)
     if (!checked.ok) {
       setRefusal(checked.refusal)
       focusAfter.current = { target: checked.refusal.field }
@@ -293,6 +324,35 @@ export const CutsPanel = memo(function CutsPanel({
     onAnnounce(restoredWords(number, name))
   }
 
+  /** Set From / Set To: the playhead's time as typed text, so it counts as typed (G2). */
+  function setAt(field: CutField, seconds: number): void {
+    if (locked) {
+      return
+    }
+    const text = formatTime(seconds)
+    if (field === 'start') {
+      setFields(text, end)
+    } else {
+      setFields(start, text)
+    }
+    setRefusal(null)
+    onAnnounce(setWords(field, seconds))
+  }
+
+  /** Close, or Escape in the preview: focus goes back to the control that opened it. */
+  function closePlayer(): void {
+    const opener = previews.opener(identity)
+    previews.hide(identity)
+    focusAfter.current = { target: opener === 'thumb' ? 'preview-thumb' : 'preview-toggle' }
+  }
+
+  // Hiding the panel closes its preview, before the hidden region could play on.
+  useLayoutEffect(() => {
+    if (!open) {
+      previews.hide(identity)
+    }
+  }, [open, previews, identity])
+
   // Focus once the edit is on screen (a dropped cut's node is gone, a refusal's words
   // are in place): a layout effect, so no frame paints with focus on <body>.
   useLayoutEffect(() => {
@@ -302,7 +362,17 @@ export const CutsPanel = memo(function CutsPanel({
     }
     focusAfter.current = null
     let target: HTMLElement | null
-    if (!('key' in request)) {
+    if (request.target === 'preview-toggle') {
+      target = toggleRef.current
+      scrollAfter.current = target
+    } else if (request.target === 'preview-thumb') {
+      // The row's own thumbnail: a row remounted by a move has its own.
+      target =
+        rootRef.current
+          ?.closest('.clip-item')
+          ?.querySelector<HTMLElement>(':scope > .clip-thumb-watch') ?? null
+      scrollAfter.current = target
+    } else if (!('key' in request)) {
       target = request.target === 'start' ? startRef.current : endRef.current
       scrollAfter.current = formRef.current
     } else {
@@ -327,7 +397,47 @@ export const CutsPanel = memo(function CutsPanel({
 
   const unavailable = locked || undefined
   return (
-    <div className="clip-cuts" id={id} role="group" aria-label={`Cuts of ${name}`} hidden={!open}>
+    <div
+      ref={rootRef}
+      className="clip-cuts"
+      id={id}
+      role="group"
+      aria-label={`Cuts of ${name}`}
+      hidden={!open}
+    >
+      <button
+        ref={toggleRef}
+        type="button"
+        className="btn btn-secondary btn-compact preview-toggle"
+        aria-expanded={previewOpen}
+        aria-controls={previewOpen && open ? previewId : undefined}
+        aria-label={watchName(name)}
+        onClick={() => {
+          if (previewOpen) {
+            previews.hide(identity)
+          } else {
+            previews.show(identity, 'toggle')
+          }
+        }}
+      >
+        {PLAY}
+        {WATCH}
+      </button>
+      {previewOpen && open && (
+        <ClipPreview
+          id={previewId}
+          eventId={eventId}
+          clip={clip}
+          name={name}
+          cuts={cuts}
+          typed={typed}
+          locked={locked}
+          previews={previews}
+          onSet={setAt}
+          onClose={closePlayer}
+          onAnnounce={onAnnounce}
+        />
+      )}
       <div ref={listRef}>
         {cuts.length === 0 ? (
           <p className="cuts-none">{NO_CUTS}</p>
@@ -336,44 +446,52 @@ export const CutsPanel = memo(function CutsPanel({
             cuts={cuts}
             label={`Cuts of ${name}`}
             keyOf={(cut) => cut.key}
-            controls={(cut, number) =>
-              cut.removed ? (
-                <>
-                  <span className="badge" data-tone="warn">
-                    {REMOVE}
-                    Removed when you save
+            controls={(cut, number) => (
+              <>
+                {length !== undefined && pastEnd(cut, length) && (
+                  <span className="badge cut-past-end" data-tone="warn">
+                    {ALERT}
+                    {PAST_END}
                   </span>
+                )}
+                {cut.removed ? (
+                  <>
+                    <span className="badge" data-tone="warn">
+                      {REMOVE}
+                      Removed when you save
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-compact cut-undo"
+                      aria-label={`Undo removing cut ${number} of ${name}`}
+                      aria-describedby={undoRefusal?.key === cut.key ? undoErrorId : undefined}
+                      aria-disabled={unavailable}
+                      onClick={() => restore(cut, number)}
+                    >
+                      {UNDO}
+                      Undo
+                    </button>
+                    {undoRefusal?.key === cut.key && (
+                      <p className="cut-refusal field-error" id={undoErrorId}>
+                        {ALERT}
+                        {undoRefusal.words}
+                      </p>
+                    )}
+                  </>
+                ) : (
                   <button
                     type="button"
-                    className="btn btn-secondary btn-compact cut-undo"
-                    aria-label={`Undo removing cut ${number} of ${name}`}
-                    aria-describedby={undoRefusal?.key === cut.key ? undoErrorId : undefined}
+                    className="btn btn-ghost btn-compact cut-remove"
+                    aria-label={`Remove cut ${number} of ${name}, ${spanWords(cut)}`}
                     aria-disabled={unavailable}
-                    onClick={() => restore(cut, number)}
+                    onClick={() => remove(cut, number)}
                   >
-                    {UNDO}
-                    Undo
+                    {REMOVE}
+                    Remove
                   </button>
-                  {undoRefusal?.key === cut.key && (
-                    <p className="cut-refusal field-error" id={undoErrorId}>
-                      {ALERT}
-                      {undoRefusal.words}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-compact cut-remove"
-                  aria-label={`Remove cut ${number} of ${name}, ${spanWords(cut)}`}
-                  aria-disabled={unavailable}
-                  onClick={() => remove(cut, number)}
-                >
-                  {REMOVE}
-                  Remove
-                </button>
-              )
-            }
+                )}
+              </>
+            )}
           />
         )}
       </div>
@@ -441,7 +559,7 @@ export const CutsPanel = memo(function CutsPanel({
           </p>
         )}
         <p className="field-hint" id={hintId}>
-          {CUT_HINT}
+          {length === undefined ? CUT_HINT : lengthHint(length)}
         </p>
       </form>
     </div>
