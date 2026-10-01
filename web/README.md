@@ -38,8 +38,9 @@ connection is down. Each list row shows its
 event's job live and offers a compact Render; a finished render re-reads the list and
 the page in place, keeping what is shown until the new read answers. One WebSocket
 per tab (`src/jobs/store.ts`) carries every job, reconnects by itself, and reads once any
-job that ended while it was down. Toasts, naming each event by its title and date,
-confirm a row's Render and tell how renders started in the tab ended.
+job that ended while it was down. A row's Render is confirmed to assistive technology
+only, since the row shows its job and a toast would cover the rows below; toasts, naming
+each event by its title and date, tell how renders started in the tab ended.
 Jobs progress only while an `auto-reel worker` runs against the same database; with
 none, a job shows "Waiting for a worker". While an event's `reel.yaml` lists a clip
 missing from disk, its render would fail, so neither the page nor the row offers one:
@@ -118,6 +119,7 @@ src/
 │   ├── eta.ts            the time-left estimate (pure)
 │   ├── labels.ts         words for cancel outcomes, the connection and a held-back render
 │   ├── JobsIndicator.tsx the header's connection state and counts
+│   ├── announce.ts       what the slice tells assistive technology only (a row's Render)
 │   ├── JobProgress.tsx   a job's status words, bar and figures
 │   ├── RenderControl.tsx the event page's Render, Render anyway and Cancel region
 │   ├── LiveJobCell.tsx   a list row's live job cell and compact Render
