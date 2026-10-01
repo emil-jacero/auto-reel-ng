@@ -28,7 +28,11 @@ each listing the clips it plays, numbered in play order, and then its ignored cl
 unnumbered. Each clip shows its status (an included clip's quietly, so the
 exceptions stand out), size and time; a clip from another folder is named by its
 path in the event folder; and any clip `reel.yaml` lists that is missing from disk
-is named. Both read on open and on Refresh — no timer polling (job state arrives
+is named. A clip with **cuts** (`reel.yaml`'s `trims`: spans the movie leaves out, D-D)
+shows, under its name, how many and the time they cut out ("2 cuts · −4.5 s"), a
+disclosure (`<details>`) that lists them; the page reads them with `GET …/reel` after
+each event read, writes nothing, and if that read fails shows the clips without cuts and
+a note that says why. Both read on open and on Refresh — no timer polling (job state arrives
 over the jobs WebSocket), never a cache — and report a failed read by its cause,
 telling a service that did not answer ("not reachable", with what to check) from
 one that sent an answer its route does not publish ("an unexpected answer", with
@@ -97,7 +101,25 @@ it plays; its removed and ignored lists count their own. A missing clip (listed 
 `reel.yaml`, not on disk) has a **Remove**, under its name (after its facts on a narrow
 panel), that takes it out of the play order into a list captioned, for example, "1 clip
 removed from reel.yaml when you save", with **Undo** until Save; Save then drops only
-its `reel.yaml` entry and its own per-clip properties, and no file on disk is touched. A
+its `reel.yaml` entry and its own per-clip properties, and no file on disk is touched.
+Every clip on disk that a chapter plays has a **Cuts** control after its move buttons
+(under its name on a wide panel; under the handle, with the count only, on a narrow one)
+that shows a panel under the row (**D-14**): the clip's cuts (start → end, length, the
+reason in words; `manual` reads "Cut by hand") and two typed times, as seconds (`75.5`),
+`m:ss` (`1:15.5`) or `h:mm:ss` (`1:01:15.5`), with up to three decimals after `.` or `,`.
+**Add cut** refuses, at the field and in words, a time it cannot read, an end that is not
+after the start, and an overlap with another cut; it cannot refuse a cut past the clip's
+end (no read gives a clip's length), so the panel says the render stops it there and that
+a cut over the whole clip leaves the clip out. A cut made here is saved with the reason
+`manual`. **Remove** keeps a cut read from `reel.yaml` listed, struck through, with
+**Undo** (refused, in words, when another cut now overlaps it); a cut added in this Edit
+mode just goes. A time typed but not added counts as unsaved, is named in the save bar
+("Cut typed on s1710001.mp4, not added") and holds Save back, as a date typed in part
+does; it survives hiding the panel and Move clips, since the editor, not the row, holds
+the panel's state. A save writes only the changed clips' `trims` (their title-clip choice,
+rotation and exclusion as read; no empty entry), and a cut on a NEW clip writes its
+chapter, since `reel.yaml` refuses properties for a clip no chapter lists. A missing
+clip shows how many cuts it has, and offers no Cuts control. A
 save bar says what changed, with one primary action: **Save**, or a failure's way
 on while it holds Save back (Reload latest after a conflict, Back to the event list for
 a vanished event). It is held at the window's bottom while it takes at most two fifths
@@ -176,6 +198,11 @@ src/
 │   ├── unsaved.ts        the unsaved-changes guard and its question
 │   ├── chapters.css      the chapter tools, the deleted placeholder and the chapter dialogs
 │   └── edit.css          Edit mode's fields, rows and save bar
+├── cuts/
+│   ├── times.ts          typed times read and written, a cut's checks, the cut words and reasons (pure)
+│   ├── CutsPanel.tsx     Edit mode's Cuts control and panel, and the cut list both views share
+│   ├── ReadCuts.tsx      the event page's cut indicator and list, and the read of its cuts
+│   └── cuts.css          the control, the panel and the event page's indicator
 ├── jobs/
 │   ├── store.ts          the one jobs WebSocket: live jobs, reconnect, endings (toasts, re-reads)
 │   ├── useJob.ts         which job an event shows (live or last read); the connection's counts
