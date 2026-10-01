@@ -441,12 +441,17 @@ function ReadyView({ eventId, event }: { eventId: string; event: EventDetailData
   )
 }
 
-/** `N clips · <total size> · k new · m missing · i ignored`, zero counts omitted. */
+/**
+ * `N clips · <their size> · k new · m missing · i ignored`, zero counts omitted.
+ * The N clips are the ones the event plays, the new and missing among them, as
+ * each chapter's heading and Edit mode count them; its ignored clips come after.
+ */
 function Counts({ clips }: { clips: Clip[] }) {
   const count = (status: Clip['status']) => clips.filter((clip) => clip.status === status).length
-  const sizes = clips.flatMap((clip) => (clip.size == null ? [] : [clip.size]))
+  const played = clips.filter((clip) => clip.status !== 'ignored')
+  const sizes = played.flatMap((clip) => (clip.size == null ? [] : [clip.size]))
   // Only known sizes are summed; a missing clip has none, and none is not zero.
-  const parts = [plural(clips.length, 'clip', 'clips')]
+  const parts = [plural(played.length, 'clip', 'clips')]
   if (sizes.length > 0) {
     parts.push(formatBytes(sizes.reduce((sum, size) => sum + size, 0)))
   }
