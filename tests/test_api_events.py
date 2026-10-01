@@ -672,3 +672,163 @@ def test_event_detail_lists_clips_in_configured_order(
     (chapter,) = response.json()["chapters"]
     assert [clip["identity"] for clip in chapter["clips"]] == expected
     assert not (event_dir / "reel.yaml").exists()  # a GET never seeds to disk
+
+
+# --------------------------------------------------------------------------- #
+# The detail places clips reel.yaml does not list by the render's rule (D-12)
+# --------------------------------------------------------------------------- #
+
+_TVA_KAPITEL = "2024/2024-08-20 - Två kapitel - Tjörn"
+
+# The `2024-08-20 - Två kapitel - Tjörn` reel.yaml the spec scenarios start from.
+_TVA_KAPITEL_REEL = """version: 0
+chapters:
+- name: ''
+  clips:
+  - s1710001.mp4
+- name: Kvällen
+  clips:
+  - Kvällen/s1710002.mp4
+  - Kvällen/s1710003.mp4
+"""
+
+_DEFAULT_ONLY_REEL = "version: 0\nchapters:\n- name: ''\n  clips:\n  - s1710001.mp4\n"
+_NO_CHAPTERS_REEL = "version: 0\nmetadata:\n  title: Utan Kapitel\n"
+
+
+def _placed_event(project: Path, reel: str, clips: dict[str, int]) -> Path:
+    """The Två kapitel event holding ``clips`` (identity -> mtime minute) and a literal reel.yaml."""
+    event_dir = project / _TVA_KAPITEL
+    for identity, minute in clips.items():
+        _touch(event_dir / identity)
+        stamp = datetime(2024, 8, 20, 18, minute).timestamp()
+        os.utime(event_dir / identity, (stamp, stamp))
+    (event_dir / "reel.yaml").write_text(reel, encoding="utf-8")
+    return event_dir
+
+
+def _detail_chapters(client: TestClient) -> list[tuple[str, list[tuple[str, str]]]]:
+    response = client.get(f"/api/v1/events/{quote(_TVA_KAPITEL, safe='/')}")
+    assert response.status_code == 200
+    return [
+        (chapter["name"], [(clip["identity"], clip["status"]) for clip in chapter["clips"]])
+        for chapter in response.json()["chapters"]
+    ]
+
+
+def _listed(chapters: list[tuple[str, list[tuple[str, str]]]]) -> list[tuple[str, list[str]]]:
+    """The chapters as reel.yaml would list them: ignored clips left out."""
+    return [
+        (name, [identity for identity, status in clips if status != "ignored"])
+        for name, clips in chapters
+    ]
+
+
+def _document_chapters(event_dir: Path) -> list[tuple[str, list[str]]]:
+    from auto_reel_ng.reel import load_document
+
+    document = load_document(event_dir / "reel.yaml")
+    return [
+        (chapter.name, [ref.identity for ref in chapter.clips]) for chapter in document.chapters
+    ]
+
+
+def _adopt(event_dir: Path) -> None:
+    """What a render's prepare step does to reel.yaml, without rendering."""
+    from auto_reel_ng.cli.adoption import persist, prepare_event
+
+    persist(prepare_event(event_dir, order=DEFAULT_CLIP_ORDER))
+
+
+def test_detail_shows_a_new_clip_in_its_folders_chapter(client: TestClient, project: Path) -> None:
+    clips = {"s1710001.mp4": 1, "Kvällen/s1710002.mp4": 2, "Kvällen/s1710003.mp4": 3}
+    _placed_event(project, _TVA_KAPITEL_REEL, {**clips, "Kvällen/s1710004.mp4": 4})
+
+    assert _detail_chapters(client) == [
+        ("", [("s1710001.mp4", "active")]),
+        (
+            "Kvällen",
+            [
+                ("Kvällen/s1710002.mp4", "active"),
+                ("Kvällen/s1710003.mp4", "active"),
+                ("Kvällen/s1710004.mp4", "new"),
+            ],
+        ),
+    ]
+
+
+def test_detail_shows_a_folder_without_a_chapter_in_the_default_chapter(
+    client: TestClient, project: Path
+) -> None:
+    clips = {"s1710001.mp4": 1, "Dag 2/s1710003.mp4": 2, "Dag 2/s1710002.mp4": 3}
+    _placed_event(project, _DEFAULT_ONLY_REEL, clips)
+
+    assert _detail_chapters(client) == [
+        (
+            "",
+            [
+                ("s1710001.mp4", "active"),
+                ("Dag 2/s1710003.mp4", "new"),
+                ("Dag 2/s1710002.mp4", "new"),
+            ],
+        ),
+    ]
+
+
+def test_detail_of_a_document_naming_no_chapters_is_its_folder_seed(
+    client: TestClient, project: Path
+) -> None:
+    clips = {"s1710001.mp4": 1, "Kvällen/s1710003.mp4": 2, "Kvällen/s1710002.mp4": 3}
+    event_dir = _placed_event(project, _NO_CHAPTERS_REEL, clips)
+
+    first = _detail_chapters(client)
+    _adopt(event_dir)
+    second = _detail_chapters(client)
+
+    assert first == [
+        ("", [("s1710001.mp4", "new")]),
+        ("Kvällen", [("Kvällen/s1710003.mp4", "new"), ("Kvällen/s1710002.mp4", "new")]),
+    ]
+    assert _document_chapters(event_dir) == _listed(first)
+    assert second == [
+        (name, [(identity, "active") for identity, _ in clips]) for name, clips in first
+    ]
+
+
+def test_detail_places_an_ignored_clip_like_a_new_one(client: TestClient, project: Path) -> None:
+    reel = _DEFAULT_ONLY_REEL + "ignore:\n- Dag 2/s1710002.mp4\n"
+    _placed_event(project, reel, {"s1710001.mp4": 1, "Dag 2/s1710002.mp4": 2})
+
+    assert _detail_chapters(client) == [
+        ("", [("s1710001.mp4", "active"), ("Dag 2/s1710002.mp4", "ignored")]),
+    ]
+
+
+def test_detail_chapters_are_the_chapters_render_adopts(client: TestClient, project: Path) -> None:
+    reel = _TVA_KAPITEL_REEL + "ignore:\n- s1710009.mp4\n"
+    clips = {
+        "s1710001.mp4": 1,
+        "Kvällen/s1710002.mp4": 2,
+        "Kvällen/s1710003.mp4": 3,
+        "Kvällen/s1710004.mp4": 4,  # NEW, in a folder whose chapter reel.yaml names
+        "Dag 2/s1710005.mp4": 5,  # NEW, in a folder whose chapter it does not name
+        "s1710009.mp4": 6,  # ignored; sorts between the two entering the default chapter
+        "s1710006.mp4": 7,  # NEW, in the event folder
+    }
+    event_dir = _placed_event(project, reel, clips)
+
+    first = _detail_chapters(client)
+    _adopt(event_dir)
+    second = _detail_chapters(client)
+
+    assert _listed(first) == [
+        ("", ["s1710001.mp4", "Dag 2/s1710005.mp4", "s1710006.mp4"]),
+        ("Kvällen", ["Kvällen/s1710002.mp4", "Kvällen/s1710003.mp4", "Kvällen/s1710004.mp4"]),
+    ]
+    assert _listed(second) == _listed(first)
+    assert _document_chapters(event_dir) == _listed(first)
+    new_first = {identity for _, clips in first for identity, status in clips if status == "new"}
+    second_status = {identity: status for _, clips in second for identity, status in clips}
+    assert new_first == {"Kvällen/s1710004.mp4", "Dag 2/s1710005.mp4", "s1710006.mp4"}
+    assert all(second_status[identity] == "active" for identity in new_first)
+    assert second_status["s1710009.mp4"] == "ignored"

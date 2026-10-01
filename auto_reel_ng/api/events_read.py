@@ -21,7 +21,7 @@ from pathlib import Path, PurePosixPath
 from typing import Dict, List, Mapping, Optional, Tuple
 
 from ..analysis.cache import CACHE_SUBDIR, clip_signal, read_entry
-from ..cli.adoption import REEL_FILENAME
+from ..cli.adoption import REEL_FILENAME, place_disk_clips
 from ..config.project import load_project_config, resolve_look_defaults
 from ..errors import EventMetadataError, ReelError, ThumbnailError
 from ..event.discovery import (
@@ -331,10 +331,13 @@ def _build_chapters(
 ) -> List[ChapterOut]:
     """Ordered chapters/clips (D-A3): the document's structure when one exists,
 
-    with disk-only NEW clips appended to their disk chapter; the disk listing's
-    own grouping when there is no document yet (the seeding case). Disk clips are
-    placed as seeding and adoption place them: in the document's own ``sort`` when
-    it sets one, else the project's sort rule ``order``.
+    with every disk clip the document does not list (NEW or IGNORED) placed where a
+    render adopts it (D-12, :func:`~auto_reel_ng.cli.adoption.place_disk_clips`):
+    its folder's chapter when the document names it, else the default chapter, or
+    the seed's chapters when the document names none; after the chapter's listed
+    clips, in the document's own ``sort`` when it sets one, else the project's sort
+    rule ``order``. The disk listing's own grouping when there is no document yet
+    (the seeding case). Nothing is adopted or written here.
     Each clip carries the file facts ``_clip_out`` stats — never a probe.
     """
     if document is None:
@@ -349,7 +352,6 @@ def _build_chapters(
             for name, identities in listing.by_chapter
         ]
 
-    order = document.sort or order
     chapters: List[ChapterOut] = []
     seen: set[str] = set()
     for chapter in document.chapters:
@@ -361,18 +363,20 @@ def _build_chapters(
         chapters.append(ChapterOut(name=chapter.name, clips=clips))
 
     by_name = {chapter.name: chapter for chapter in chapters}
-    for name, identities in listing.by_chapter:
-        for identity in order_clips(identities, event_dir, order):
-            if identity in seen:
-                continue
-            status = result.classification.get(identity, ClipStatus.NEW)
-            clip = _clip_out(event_dir, identity, status)
-            if name in by_name:
-                by_name[name].clips.append(clip)
-            else:
-                new_chapter = ChapterOut(name=name, clips=[clip])
-                chapters.append(new_chapter)
-                by_name[name] = new_chapter
+    disk_only = [identity for identity in listing.identities if identity not in seen]
+    for name, identities in place_disk_clips(
+        document, listing, disk_only, event_dir=event_dir, order=order
+    ):
+        clips = [
+            _clip_out(event_dir, i, result.classification.get(i, ClipStatus.NEW))
+            for i in identities
+        ]
+        if name in by_name:
+            by_name[name].clips.extend(clips)
+        else:
+            new_chapter = ChapterOut(name=name, clips=clips)
+            chapters.append(new_chapter)
+            by_name[name] = new_chapter
     return chapters
 
 
