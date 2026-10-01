@@ -25,16 +25,20 @@ from .manifest import RenderManifest, read_manifest, recorded_output_path
 
 PathLike = Union[str, Path]
 
+#: Recorded values that pass as a bare name but name a folder, never a movie: never looked up.
+_NOT_A_FILE_NAME = ("", ".", "..")
+
 
 class StalenessReason(StrEnum):
     """The closed set of reasons a stale verdict may cite.
 
     - ``no_manifest``: no readable record of a last render exists to compare against.
     - ``output``: the event's movie is missing from its expected path, and the last
-      render's movie is not on disk under another name either.
+      render's movie was not found under its old name either.
     - ``output_renamed``: the event's movie name (its title, date or location) changed
-      since the last render, whose movie is still on disk under its old name. The next
-      render writes the movie under the new name and leaves the old file where it is.
+      since the last render, and a movie is still on disk under the old name. The next
+      render writes the movie under the new name and leaves the old file where it is;
+      only a render of another event that now has the old name replaces that file.
     - ``editorial``, ``defaults``, ``clip_set``, ``engine``: that fingerprint component
       changed since the last render (the ``reel.yaml`` document, the project's look
       defaults, the clips on disk, the render engine).
@@ -47,8 +51,8 @@ class StalenessReason(StrEnum):
     """
 
     NO_MANIFEST = "no_manifest"  # no manifest to compare sub-hashes against
-    OUTPUT = "output"  # the event's movie is not on disk
-    OUTPUT_RENAMED = "output_renamed"  # its name changed; the last render's movie is still on disk
+    OUTPUT = "output"  # the event's movie is not at its expected path
+    OUTPUT_RENAMED = "output_renamed"  # its name changed; a movie is still under the old name
     EDITORIAL = "editorial"  # ─┐
     DEFAULTS = "defaults"  #    │ one per fingerprint component,
     CLIP_SET = "clip_set"  #    │ in COMPONENTS order
@@ -97,6 +101,7 @@ def _absent_output_reason(manifest: RenderManifest, expected: Path) -> Staleness
     recorded = manifest.output
     if (
         recorded != expected.name
+        and recorded not in _NOT_A_FILE_NAME  # never the output root or its parent
         and Path(recorded).name == recorded  # a bare file name, never a path
         and recorded_output_path(recorded, expected).is_file()  # a movie, never a folder
     ):

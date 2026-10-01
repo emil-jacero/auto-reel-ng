@@ -255,6 +255,36 @@ def test_a_recorded_value_that_is_not_a_bare_movie_file_cites_output(
     assert old_movie.is_file()
 
 
+@pytest.mark.parametrize("recorded", ["", ".", ".."])
+def test_a_recorded_value_naming_a_folder_is_never_looked_up(
+    tmp_path: Path, recorded: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``""``, ``.`` and ``..`` name the output root or its parent: nothing is stat'ed for them."""
+    event_dir, _ = _render_named(tmp_path, GRILLNING)
+    write_manifest(
+        event_dir,
+        _fingerprint(event_dir, document=_document_named(GRILLNING)),
+        output=recorded,
+        engine_identity=engine_identity(FFMPEG_VERSION),
+    )
+    retitled = Metadata(title="Grillkväll med grannarna", date=GRILLNING.date)
+    expected = tmp_path / "out" / output_relpath(retitled)
+    fingerprint = _fingerprint(event_dir, document=_document_named(retitled))
+    looked_up: list[Path] = []
+    real_is_file = Path.is_file
+
+    def spy(path: Path) -> bool:
+        looked_up.append(path)
+        return real_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", spy)  # only the gate runs from here on
+
+    verdict = evaluate(event_dir, expected, fingerprint)
+
+    assert verdict.reasons == ("editorial", "output")
+    assert looked_up == []
+
+
 def test_renamed_with_old_movie_deleted_cites_output(tmp_path: Path) -> None:
     event_dir, old_movie = _render_named(tmp_path, GRILLNING)
     old_movie.unlink()
