@@ -55,7 +55,10 @@ type Failure = {
 type LoadOptions = { quiet?: boolean }
 
 type LoadState =
-  | { status: 'loading' }
+  // `editPlace`: the header keeps Edit's place, so Refresh stays where it was
+  // pressed. Set when the page showed Edit before this read, or reads for the
+  // first time; not after a failure, which has no Edit.
+  | { status: 'loading'; editPlace: boolean }
   // `updating`: a quiet re-read runs, and the content shown is the last read's.
   | { status: 'ready'; event: EventDetailData; fetchedAt: Date; updating?: boolean }
   | ({ status: 'failed' } & Failure)
@@ -82,7 +85,7 @@ function describeProblem(problem: Problem, eventId: string): Failure {
 }
 
 export function EventDetail({ eventId }: { eventId: string }) {
-  const [state, setState] = useState<LoadState>({ status: 'loading' })
+  const [state, setState] = useState<LoadState>({ status: 'loading', editPlace: true })
   const [editing, setEditing] = useState(false)
   // While a save is in flight, Refresh and Stop editing wait for its answer.
   const saving = useSaving()
@@ -113,7 +116,12 @@ export function EventDetail({ eventId }: { eventId: string }) {
     const controller = new AbortController()
     inFlight.current = controller
     setState((shown) =>
-      quiet && shown.status === 'ready' ? { ...shown, updating: true } : { status: 'loading' },
+      quiet && shown.status === 'ready'
+        ? { ...shown, updating: true }
+        : {
+            status: 'loading',
+            editPlace: shown.status === 'loading' ? shown.editPlace : shown.status === 'ready',
+          },
     )
     fetchEvent(eventId, controller.signal)
       .then((result) => {
@@ -258,6 +266,10 @@ export function EventDetail({ eventId }: { eventId: string }) {
               <Icon name="refresh" />
               Refresh
             </button>
+            {/* Edit's place while the page reads, so Refresh stays under the pointer. */}
+            {state.status === 'loading' && state.editPlace && (
+              <span className="skeleton skeleton-action" aria-hidden="true" />
+            )}
             {/* One element in both modes, so focus stays on it when Edit mode starts. */}
             {state.status === 'ready' && (
               <button
