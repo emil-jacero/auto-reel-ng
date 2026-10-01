@@ -207,6 +207,13 @@
     white-space: nowrap;
   }
 
+  /* A chapter saved without clips: words in place of its table (Edit mode's: chapters.css). */
+  .chapter-empty {
+    padding: var(--s-4);
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
   /* A clip from another folder: its folder part muted (`ClipName`). */
   .clip-dir {
     color: var(--fg-muted);

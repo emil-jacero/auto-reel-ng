@@ -1,0 +1,232 @@
+import type { Clip } from '../api/event'
+import type { ChapterKey, DraftChapter } from './draft'
+
+/*
+ * Chapter names: which ones Edit mode accepts, and what a name means for clips
+ * added later. Pure, with type-only imports, like `draft.ts`.
+ *
+ * A clip that appears in an event's folder after its `reel.yaml` exists joins,
+ * at the next read or render, the chapter named exactly after its folder, else
+ * the event's own chapter (D-12); an ignored clip is listed the same way. So a
+ * chapter's name decides where its folder's later clips go, and the notes below
+ * say so wherever an edit changes that.
+ */
+
+/** How the page names the event's own chapter (`''`) while another chapter is listed. */
+export const OWN_CHAPTER_HEADING = 'Main'
+
+/** Why a typed name is refused. */
+export type NameRefusal = 'empty' | 'taken' | 'taken-deleted' | 'reserved'
+
+/** The refusal at the name field, by cause; `clash` is the name it clashes with. */
+export const NAME_REFUSAL: Record<NameRefusal, (clash: string) => string> = {
+  empty: () => "Enter a name. A chapter's name is the heading of its title card.",
+  taken: (clash) => `A chapter called “${clash}” already exists. Names are compared ignoring case.`,
+  'taken-deleted': (clash) =>
+    `“${clash}” is deleted when you save. Undo that, or pick another name.`,
+  reserved: () =>
+    `“${OWN_CHAPTER_HEADING}” is how the page names the event's own chapter. Pick another name.`,
+}
+
+/** The event's own chapter's note in its tools row, while another chapter is listed. */
+export const OWN_CHAPTER_NOTE =
+  "The event's own chapter: its title card shows the event's title, and clips without a " +
+  'chapter of their own join it.'
+
+/** The chapter's later-clips notes, as Edit mode shows them. */
+export const LATER_CLIP_NOTE = {
+  folderUnnamed: (folder: string, newMain: boolean) =>
+    `No chapter will be named after the folder “${folder}”, so clips added to it later will ` +
+    (newMain
+      ? `start a new ${OWN_CHAPTER_HEADING} chapter at the end.`
+      : `join ${OWN_CHAPTER_HEADING}.`),
+  folderJoins: (folder: string) =>
+    `Clips added to the folder “${folder}” later will join this chapter. Clips from it that ` +
+    'other chapters list stay where they are.',
+  ignoredHere: (count: number) =>
+    `Its ${plural(count, 'ignored clip', 'ignored clips')} will be listed here.`,
+  ignoredToMain: (count: number, newMain: boolean) =>
+    `Its ${plural(count, 'ignored clip', 'ignored clips')} will be listed under ` +
+    (newMain ? `a new ${OWN_CHAPTER_HEADING} chapter at the end.` : `${OWN_CHAPTER_HEADING}.`),
+  ownDeleted:
+    'Clips added to the event folder later will start a new ' +
+    `${OWN_CHAPTER_HEADING} chapter at the end.`,
+}
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`
+}
+
+/** The identity's folder: '' for a file at the event folder's root. */
+function folderOf(identity: string): string {
+  const slash = identity.lastIndexOf('/')
+  return slash === -1 ? '' : identity.slice(0, slash)
+}
+
+function folded(name: string): string {
+  return name.toLocaleLowerCase()
+}
+
+/**
+ * Whether `typed` is an acceptable name for chapter `self` (null: a chapter
+ * being added). The name is trimmed and must not be empty. Ignoring case, it
+ * must differ from `Main` and from every other chapter's name, a deleted one's
+ * included (its Undo would bring the clash back). The engine checks exact
+ * duplicates only; this is stricter, never looser. Its own name back (spaces
+ * around it aside) is accepted: the dialog then changes nothing.
+ */
+export function checkName(
+  chapters: readonly DraftChapter[],
+  typed: string,
+  self: ChapterKey | null,
+): { ok: true; name: string } | { ok: false; refusal: NameRefusal; clash: string | null } {
+  const name = typed.trim()
+  if (name === '') {
+    return { ok: false, refusal: 'empty', clash: null }
+  }
+  const current = chapters.find((chapter) => chapter.key === self)
+  if (current !== undefined && current.name === name) {
+    return { ok: true, name }
+  }
+  if (folded(name) === folded(OWN_CHAPTER_HEADING)) {
+    return { ok: false, refusal: 'reserved', clash: OWN_CHAPTER_HEADING }
+  }
+  const clashes = chapters.filter(
+    (chapter) =>
+      chapter.key !== self && chapter.name !== '' && folded(chapter.name) === folded(name),
+  )
+  const listed = clashes.find((chapter) => !chapter.deleted)
+  if (listed !== undefined) {
+    return { ok: false, refusal: 'taken', clash: listed.name }
+  }
+  if (clashes.length > 0) {
+    return { ok: false, refusal: 'taken-deleted', clash: clashes[0].name }
+  }
+  return { ok: true, name }
+}
+
+/**
+ * Folders holding a clip on disk ('' = the event folder): from the detail's
+ * identities, missing ones excluded.
+ */
+export function diskFolders(clips: Iterable<Clip>): ReadonlySet<string> {
+  const folders = new Set<string>()
+  for (const clip of clips) {
+    if (clip.status !== 'missing') {
+      folders.add(folderOf(clip.identity))
+    }
+  }
+  return folders
+}
+
+export type NoteInput = {
+  chapters: readonly DraftChapter[]
+  /** `diskFolders` of the event. */
+  folders: ReadonlySet<string>
+  /** Each chapter's ignored clips, as the page lists them (an added chapter lists none). */
+  ignored: ReadonlyMap<ChapterKey, readonly string[]>
+}
+
+/**
+ * The later-clips notes of every chapter, deleted ones included, each in this
+ * order (names compared exactly, as the engine does; `Main` is the event's own
+ * chapter, or a new one at the end when it is deleted or not listed):
+ *
+ * 1. a read chapter named after a folder holding clips, renamed away or
+ *    deleted, while no other listed chapter takes that name: the folder's later
+ *    clips will join Main
+ * 2. a chapter added with, or renamed to, such a folder's name: they will join
+ *    it, and the folder's ignored clips other chapters list will be listed here
+ * 3. a chapter whose ignored clips no longer have a chapter named after their
+ *    folder: they will be listed under Main
+ * 4. the event's own chapter deleted: the event folder's later clips will
+ *    start a new Main chapter
+ */
+export function laterClipNotes(input: NoteInput): ReadonlyMap<ChapterKey, readonly string[]> {
+  const { chapters, folders, ignored } = input
+  const listed = chapters.filter((chapter) => !chapter.deleted)
+  const own = listed.find((chapter) => chapter.name === '') ?? null
+  const newMain = own === null
+  // Where an ignored clip of folder F is listed after the save: the chapter named F, else Main.
+  const homeOf = (folder: string): ChapterKey | null =>
+    listed.find((chapter) => chapter.name === folder)?.key ?? own?.key ?? null
+  const arriving = new Map<ChapterKey, number>()
+  const leaving = new Map<ChapterKey, number>()
+  for (const chapter of chapters) {
+    for (const identity of ignored.get(chapter.key) ?? []) {
+      const home = homeOf(folderOf(identity))
+      if (home === chapter.key) {
+        continue
+      }
+      if (home !== null && home !== own?.key) {
+        arriving.set(home, (arriving.get(home) ?? 0) + 1)
+      } else {
+        leaving.set(chapter.key, (leaving.get(chapter.key) ?? 0) + 1)
+      }
+    }
+  }
+  const notes = new Map<ChapterKey, readonly string[]>()
+  for (const chapter of chapters) {
+    const lines: string[] = []
+    const { readName } = chapter
+    if (
+      readName !== null &&
+      readName !== '' &&
+      folders.has(readName) &&
+      (chapter.deleted || chapter.name !== readName) &&
+      !listed.some((other) => other.name === readName)
+    ) {
+      lines.push(LATER_CLIP_NOTE.folderUnnamed(readName, newMain))
+    }
+    if (
+      !chapter.deleted &&
+      chapter.name !== '' &&
+      folders.has(chapter.name) &&
+      chapter.name !== readName
+    ) {
+      lines.push(LATER_CLIP_NOTE.folderJoins(chapter.name))
+      const count = arriving.get(chapter.key) ?? 0
+      if (count > 0) {
+        lines.push(LATER_CLIP_NOTE.ignoredHere(count))
+      }
+    }
+    const count = leaving.get(chapter.key) ?? 0
+    if (count > 0) {
+      lines.push(LATER_CLIP_NOTE.ignoredToMain(count, newMain))
+    }
+    if (chapter.readName === '' && chapter.deleted) {
+      lines.push(LATER_CLIP_NOTE.ownDeleted)
+    }
+    if (lines.length > 0) {
+      notes.set(chapter.key, lines)
+    }
+  }
+  return notes
+}
+
+// The key a chapter being added has while its name is typed: no chapter's.
+const TYPED = '\u0000typed'
+
+/**
+ * The notes the name dialog shows for `typed` on chapter `self` (null: a chapter
+ * being added): those the chapter would get once the name is confirmed. None
+ * while the name would be refused, since it would change nothing.
+ */
+export function nameDialogNote(
+  input: NoteInput,
+  self: ChapterKey | null,
+  typed: string,
+): readonly string[] {
+  const checked = checkName(input.chapters, typed, self)
+  if (!checked.ok) {
+    return []
+  }
+  const key = self ?? TYPED
+  const chapters =
+    self === null
+      ? [...input.chapters, { key, readName: null, name: checked.name, deleted: false }]
+      : input.chapters.map((chapter) =>
+          chapter.key === self ? { ...chapter, name: checked.name } : chapter,
+        )
+  return laterClipNotes({ ...input, chapters }).get(key) ?? []
+}

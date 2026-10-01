@@ -1,0 +1,215 @@
+/*
+ * Edit mode's chapter controls (`ChapterTools.tsx`, `ChapterDialogs.tsx`): each
+ * chapter's tools row, the deleted placeholder, Add chapter, an empty
+ * chapter's words, the "from …" badge and the Move clips dialog. No new colour:
+ * every text is `--fg-muted` or stronger.
+ */
+@layer screens {
+  /* Under the sticky one-line header, not in it; scrolls with the chapter. */
+  .chapter-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2) var(--s-3);
+    padding: var(--s-2) var(--s-4);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .chapter-notes {
+    display: grid;
+    flex: 1 1 16rem;
+    gap: var(--s-1);
+    min-inline-size: 0;
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+  }
+
+  .chapter-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1);
+    margin-inline-start: auto;
+  }
+
+  .chapter-order {
+    display: flex;
+    gap: 0.125rem;
+  }
+
+  .chapter-refusal {
+    flex-basis: 100%;
+    color: var(--err-fg);
+    font-size: var(--text-sm);
+  }
+
+  /* A chapter with no clip at all, in Edit mode (the read view's is in detail.css). */
+  .chapter-empty {
+    padding: var(--s-4);
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
+  /* Deleted on save: its header loses the raised tone, its heading is muted and struck. */
+  .edit-chapter[data-deleted] > .panel-header {
+    background: var(--surface);
+  }
+
+  .edit-chapter[data-deleted] h2 {
+    color: var(--fg-muted);
+  }
+
+  /* Focused by script after Add chapter, as the page h1 is: no ring. */
+  .edit-chapter > .panel-header > h2:focus {
+    outline: none;
+  }
+
+  .chapter-add {
+    display: flex;
+  }
+
+  /* A clip moved in from another chapter: where it came from, cut short past 12rem. */
+  .clip-from {
+    max-inline-size: 12rem;
+
+    & > span {
+      min-inline-size: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  @media (pointer: coarse) {
+    /*
+     * 16 px both ways. Each 32 px button's area grows 6 px up and down, and the
+     * up/down pair's (`.btn-icon + .btn-icon`, components.css) meet at their
+     * shared edge and grow 12 px outward, so the pair's areas reach 12 px into
+     * the gap beside them; a text button's grows none sideways. The 4 px left
+     * over leaves no edge for pixel rounding to hand to the neighbour (a 12 px
+     * gap made the areas touch, and a tap on Move clips' edge reached Move up).
+     */
+    .chapter-actions {
+      gap: var(--s-4);
+    }
+  }
+
+  /* ------------------------------------------------------------ the dialogs */
+
+  /* A dialog's form (`.dialog-fields`, Dialog.tsx), a gap below its description. */
+  .dialog > .dialog-fields {
+    margin-block-start: var(--s-4);
+  }
+
+  /* The name dialog's notes: one paragraph each. */
+  .chapter-name-notes {
+    display: grid;
+    gap: var(--s-1);
+  }
+
+  .dialog:has(.move-clips) {
+    inline-size: min(32rem, calc(100vw - 2 * var(--s-4)));
+  }
+
+  .move-clips {
+    display: grid;
+    gap: var(--s-4);
+  }
+
+  .choice-group {
+    display: grid;
+    gap: var(--s-2);
+    min-inline-size: 0;
+    border: 0;
+
+    & > legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: var(--s-2);
+      margin-block-end: var(--s-2);
+      font-size: var(--text-sm);
+      font-weight: 500;
+    }
+  }
+
+  .choice-count {
+    color: var(--fg-muted);
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The clips scroll on their own, so the targets and the actions stay in view. */
+  .choice-list {
+    list-style: none;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+
+    &.choice-clips {
+      max-block-size: min(45dvh, 22rem);
+      overflow-y: auto;
+    }
+
+    & > li + li {
+      border-top: 1px solid var(--border);
+    }
+  }
+
+  /* One tap area per row: the rows touch, so no tap falls between two. */
+  .choice {
+    display: grid;
+    grid-template-columns: 1rem auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--s-2);
+    min-block-size: 2.25rem;
+    padding: var(--s-1) var(--s-3);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--surface-hover);
+    }
+
+    & > input {
+      inline-size: 1rem;
+      block-size: 1rem;
+      margin: 0;
+      accent-color: var(--accent);
+    }
+
+    &:not(:has(.choice-pos)) {
+      grid-template-columns: 1rem minmax(0, 1fr);
+    }
+  }
+
+  .choice-pos {
+    min-inline-size: 1.5rem;
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+  }
+
+  /* The name, then a NEW clip's badge, which wraps under it when narrow. */
+  .choice-name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-2);
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+
+    & > .badge {
+      white-space: normal;
+    }
+  }
+
+  .choice-file {
+    min-inline-size: 0;
+    font-family: var(--font-mono);
+  }
+
+  @media (pointer: coarse) {
+    .choice {
+      min-block-size: 2.75rem;
+    }
+  }
+}
