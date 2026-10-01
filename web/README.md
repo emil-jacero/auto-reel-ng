@@ -77,8 +77,22 @@ reorder — drag a clip's handle (mouse, pen or touch), lift it from the keyboar
 or Enter, the arrows, Space or Enter; Escape cancels), or press its Move up / Move down.
 The rows keep the table's columns (`--clip-*`), so entering Edit mode moves nothing but
 the position number, and they name each clip as the table does (`clipNames`), a folder
-part included where a chapter lists a clip from another folder. Clips stay in their
-chapter; ignored clips are listed but never move. A chapter's heading counts the clips
+part included where a chapter lists a clip from another folder. A drag or a Move up /
+Move down never takes a clip into another chapter; ignored clips are listed but never
+move. Each chapter's own tools row, under its heading, edits the chapters themselves
+(**D-13**): **Rename…** (every chapter but the event's own, which keeps no name: its
+title card is the event's), **Move up** / **Move down**, **Delete** (only once the
+chapter plays no clip, and for the event's own chapter only once it lists no ignored
+clip; until Save it stays in its place with **Undo**), and **Move clips…**, a dialog
+that moves the picked clips (on disk only, checkboxes, Enter moves) to the end of
+another chapter, a clip moved back returning to its place. **Add chapter** follows the
+last chapter. A name is trimmed, must not be empty, and must differ, ignoring case,
+from every other chapter's name and from `Main`. Wherever an edit changes what a name
+means for clips added to a folder later (D-12: they join the chapter named exactly
+after their folder, else the event's own), the name dialog and the chapter say so. A
+save that changes the chapter list writes every chapter as shown, so every NEW clip
+joins `reel.yaml` where the page shows it. A clip moved in shows where it came from;
+a chapter saved without clips reads "No clips" on the event page. A chapter's heading counts the clips
 it plays; its removed and ignored lists count their own. A missing clip (listed in
 `reel.yaml`, not on disk) has a **Remove**, under its name (after its facts on a narrow
 panel), that takes it out of the play order into a list captioned, for example, "1 clip
@@ -151,12 +165,16 @@ src/
 │   ├── reel.ts           the editorial read and write: ETag in, If-Match out
 │   └── thumbnail.ts      a clip's thumbnail URL, typed from the schema (no fetch: an <img> asks)
 ├── edit/
-│   ├── EventEditor.tsx   Edit mode: the reel read, the save bar, saves and failures
+│   ├── EventEditor.tsx   Edit mode: the reel read, chapter edits, the save bar, saves and failures
 │   ├── ClipOrderList.tsx one chapter's clips to reorder: drag, keyboard, buttons; Remove / Undo
+│   ├── ChapterTools.tsx  a chapter's tools row, a deleted chapter's placeholder, Add chapter
+│   ├── ChapterDialogs.tsx the name dialog (Add chapter, Rename…) and Move clips
+│   ├── chapterNames.ts   chapter name rules and what a name means for later clips (pure)
 │   ├── MetadataForm.tsx  title, date, location, description, and inherited values
 │   ├── SaveBar.tsx       the save bar and a failed save's alert
-│   ├── draft.ts          the edit model: write body, moved and removed clips, dirty (pure)
+│   ├── draft.ts          the edit model: chapters, write body, moved and removed clips, dirty (pure)
 │   ├── unsaved.ts        the unsaved-changes guard and its question
+│   ├── chapters.css      the chapter tools, the deleted placeholder and the chapter dialogs
 │   └── edit.css          Edit mode's fields, rows and save bar
 ├── jobs/
 │   ├── store.ts          the one jobs WebSocket: live jobs, reconnect, endings (toasts, re-reads)
