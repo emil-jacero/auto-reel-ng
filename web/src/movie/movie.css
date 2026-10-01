@@ -1,0 +1,75 @@
+/* The event page's movie section (`MoviePanel.tsx`). */
+@layer screens {
+  /* A short section: its heading scrolls away rather than covering the player. */
+  .movie-panel > .panel-header {
+    position: static;
+  }
+
+  .movie-body {
+    padding-inline: var(--s-4);
+  }
+
+  /*
+   * 16:9, at most 48rem, and never taller than the window leaves below the
+   * shared header and this heading, so the native controls stay on screen in a
+   * short window. No ancestor of the video up to the panel sets `overflow`: it
+   * would clip the video's focus ring.
+   */
+  .movie-figure {
+    display: grid;
+    gap: var(--s-2);
+    inline-size: min(100%, 48rem, calc((100svh - var(--header-h) - var(--panel-head-h) - 2rem) * 16 / 9));
+    margin: 0 auto;
+    padding-block: var(--s-4);
+  }
+
+  /* Its size before any byte arrives; a picture of other proportions is letterboxed. */
+  .movie-frame {
+    aspect-ratio: 16 / 9;
+  }
+
+  /* The radius sits on the video, which clips its own picture. */
+  .movie-frame video {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    border-radius: var(--r-md);
+    background: var(--media-bg);
+  }
+
+  .movie-facts {
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+  }
+
+  .movie-file {
+    color: var(--fg);
+    font-family: var(--font-mono);
+  }
+
+  /* A fetch trouble in the player's place. */
+  .movie-body > :not(.movie-figure) {
+    margin-block: var(--s-4);
+  }
+
+  /* A narrow panel: the frame runs edge to edge, the words keep their inset. */
+  @container (width < 30rem) {
+    .movie-body {
+      padding-inline: 0;
+    }
+
+    .movie-figure {
+      padding-block-start: 0;
+    }
+
+    .movie-frame video {
+      border-radius: 0;
+    }
+
+    .movie-figure > :not(.movie-frame),
+    .movie-body > :not(.movie-figure) {
+      margin-inline: var(--s-4);
+    }
+  }
+}

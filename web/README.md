@@ -23,7 +23,16 @@ page shows the event's facts, with the folder name beside a title that differs f
 it; one render region holding the verdict and the latest job (when the verdict says
 "movie name changed", because the title, date or location changed since the last
 render, it adds on a line of its own that the next render saves the movie under its
-new name and that the movie under its old name stays on disk); then its chapters,
+new name and that the movie under its old name stays on disk); then, when the event
+has a rendered movie (its verdict cites neither `no_manifest` nor `output`), a
+**Movie** section (D-15) that plays it in the browser's own player, says whether it is
+**Current** or **Outdated**, and names its file and size as the movie route's one-byte
+answer gives them (the old name after a rename). Nothing of the movie loads before Play
+(`preload="none"`; the poster is the first played clip's thumbnail), the player's address
+carries the file's entity-tag, so a new render gets a new player, and what it cannot
+play is said by cause (no file, unreadable, empty, no answer, no picture, a browser
+error, a file changed while it played) with a download or the new movie to load. A
+Refresh, or Edit mode, stops playback; then its chapters,
 each listing the clips it plays, numbered in play order, and then its ignored clips,
 unnumbered. Each clip shows its status (an included clip's quietly, so the
 exceptions stand out), size and time; a clip from another folder is named by its
@@ -194,6 +203,8 @@ src/
 │   ├── event.ts          the one-event fetch: URL, status codes
 │   ├── jobs.ts           enqueue, one job, cancel: URLs, status codes; the jobs WebSocket URL
 │   ├── reel.ts           the editorial read and write: ETag in, If-Match out
+│   ├── movie.ts          the event's movie URL (typed from the schema) and its one-byte probe
+│   ├── headers.ts        Content-Range and Content-Disposition parsers (pure, no imports)
 │   └── thumbnail.ts      a clip's thumbnail URL, typed from the schema (no fetch: an <img> asks)
 ├── edit/
 │   ├── EventEditor.tsx   Edit mode: the reel read, chapter edits, the save bar, saves and failures
@@ -215,6 +226,10 @@ src/
 │   ├── CutsPanel.tsx     Edit mode's Cuts control and panel, and the cut list both views share
 │   ├── ReadCuts.tsx      the event page's cut indicator and list, and the read of its cuts
 │   └── cuts.css          the control, the panel and the event page's indicator
+├── movie/
+│   ├── MoviePanel.tsx    the event page's Movie section: probe, player, troubles by cause
+│   ├── labels.ts         words and looks for the movie's age and troubles, MediaError words
+│   └── movie.css         the section and its 16:9 frame
 ├── jobs/
 │   ├── store.ts          the one jobs WebSocket: live jobs, reconnect, endings (toasts, re-reads)
 │   ├── useJob.ts         which job an event shows (live or last read); the connection's counts
@@ -398,6 +413,9 @@ HLD §7).
   by the inline script in `index.html`). The control and that script also set both
   `theme-color` metas, so the browser's own interface color is the chosen scheme's
   page background; System gives each meta its OS scheme's color back.
+  `--media-bg`, behind a video picture, is the one deliberate constant: black in both
+  schemes, since native player controls draw light glyphs and letterbox bands read as
+  part of the picture.
 - **Status is never color alone.** A status is a `Pill`: an icon and its words, on
   its tone. Tone and icon come from `events/tones.ts`, the words from `labels.ts`.
   The usual state of a clip row, included, keeps its words and icon without the
@@ -502,3 +520,7 @@ of the slice that demonstrably needs it. The design system adds nothing to it.
 test runner and no browser automation**: the types are generated from the schema,
 so drift is a compile error, and the API's behavior is covered by `pytest`. A later
 slice with logic worth unit-testing may propose a runner, with its justification.
+
+Movie playback is checked ad hoc in Chrome (Playwright's channel `chrome`) or Firefox,
+never in Playwright's bundled Chromium, which cannot decode H.264 and would make a
+working player look broken.
