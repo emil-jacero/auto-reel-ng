@@ -147,10 +147,11 @@ and open the file themselves before answering, pass their own `stat_result`, set
 
 Starlette 1.7.0 (resolved by a fresh `pip install -e .` on 2026-10-01, as `pyproject.toml` pins only
 `fastapi>=0.139.0`) answers `bytes=5-4` with 400 instead of the empty 206, and answers a set of more than
-100 ranges with the whole file (read from the 1.7.0 source, not run). The project adds no pin for this: the
-spec allows 206, 400 or 416 for a range browsers never send, so the media tests accept either version's
+100 ranges with the whole file as a 200 (measured). The project adds no upper pin for this: the spec allows
+200, 206, 400 or 416 for a range browsers never send, so the media tests accept either version's
 answer to `bytes=5-4`, and the media, OpenAPI and thumbnail tests pass on both 1.3.1 and a freshly resolved
-1.7.0 (FastAPI 0.142.2).
+1.7.0 (FastAPI 0.142.2). The floor is `starlette>=1.0` (declared in `pyproject.toml`): Starlette 0.x sends
+the 416 as `Content-Range: */<size>`, without the `bytes` unit.
 
 ## 6. Auth for media elements
 

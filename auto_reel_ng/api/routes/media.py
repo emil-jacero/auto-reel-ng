@@ -100,13 +100,29 @@ def _if_none_match(request: Request) -> Optional[str]:
 
 
 def _media_failed(
-    event_id: str, label: str, detail: str, failure: Optional[str] = None
+    event_id: str,
+    label: str,
+    detail: str,
+    failure: Optional[str] = None,
+    *,
+    log_reason: Optional[str] = None,
 ) -> JSONResponse:
-    """A media 502, logged with the event and the file it is about; no caching headers."""
-    logger.warning("media: %s: %s: %s", event_id, label, detail)
+    """A media 502, logged with the event and the file it is about; no caching headers.
+
+    ``log_reason`` replaces ``detail`` in the log when the detail already starts with the
+    label (a :class:`MediaReadError`'s), so the line names the file once.
+    """
+    logger.warning("media: %s: %s: %s", event_id, label, log_reason or detail)
     if failure is None:
         return bad_gateway(detail, event_id=event_id)
     return bad_gateway(detail, event_id=event_id, failure=failure)
+
+
+def _unreadable(event_id: str, exc: MediaReadError) -> JSONResponse:
+    """The 502 of a file that exists but cannot be read: no kind, a path-free detail."""
+    return _media_failed(
+        event_id, exc.label, str(exc), log_reason=f"cannot read the file: {exc.reason}"
+    )
 
 
 def _event_not_found(event_id: str) -> JSONResponse:
@@ -148,7 +164,7 @@ def get_clip_media(
     except LayoutError as exc:
         return _media_failed(event_id, clip, str(exc))
     except MediaReadError as exc:
-        return _media_failed(event_id, clip, str(exc))
+        return _unreadable(event_id, exc)
     return media_response(media, _if_none_match(request))
 
 
@@ -182,5 +198,5 @@ def get_movie(
     except LayoutError as exc:
         return _media_failed(event_id, "movie", str(exc))
     except MediaReadError as exc:
-        return _media_failed(event_id, exc.label, str(exc))
+        return _unreadable(event_id, exc)
     return media_response(media, _if_none_match(request))

@@ -548,8 +548,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
 8. **GUI v1** (ingest + reorder + metadata + schedule + progress).
 9. **GUI v2** (look editor + the full timeline editor, with analysis review as timeline overlays; starts
    with the §8.11 research).
-10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope since the timeline
-    editor moved to v2.
+10. **ML analysis** (parallel, behind existing interfaces); GUI v3 holds only drag across chapters (D-13)
+    until `cross-chapter-drag` moves it to v1, since the timeline editor moved to v2.
 11. **Packaging** (cross-vendor image, deployment docs).
 
 ---
