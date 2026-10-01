@@ -24,7 +24,11 @@
     }
   }
 
-  /* The whole event row opens its event (`EventList.tsx`, `openRow`). */
+  /*
+   * The whole event row opens its event (`EventList.tsx`, `openRow`). Its hover
+   * fill, in each layout below, is for a pointer that hovers only: a touch
+   * screen keeps `:hover` on the last row tapped, which would read as selected.
+   */
   .event-table tbody tr {
     cursor: pointer;
   }
@@ -115,8 +119,10 @@
    * edge as every action.
    */
   @container (width >= 50rem) {
-    .event-table tbody tr:hover > td {
-      background: var(--surface-hover);
+    @media (hover: hover) {
+      .event-table tbody tr:hover > td {
+        background: var(--surface-hover);
+      }
     }
 
     .event-table .live-job {
@@ -183,8 +189,10 @@
       column-gap: var(--s-4);
     }
 
-    .event-table tbody tr:hover {
-      background: var(--surface-hover);
+    @media (hover: hover) {
+      .event-table tbody tr:hover {
+        background: var(--surface-hover);
+      }
     }
 
     .event-table .live-job > :is(.btn, .row-blocked) {
