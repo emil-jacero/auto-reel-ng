@@ -246,3 +246,21 @@
     - there is no horizontal scroll
     - the event page still says "Starting…" in its status words, and its meter has no `.job-starting`
   - every earlier Playwright script still passes, and each screenshot is looked at
+
+## 9. Review fixes
+
+- [x] 9.1 Apply the supervisor review's confirmed findings, in new commits (design, "Changed during
+  review"):
+  - a row's own Render (`enqueued`, `active`) is announced through `jobs/announce.ts`, the hidden polite
+    region `JobsIndicator` renders once, not by a toast over the list (items 1 and 3)
+  - `overflow-x: clip` applies to `.render-status` only (item 2)
+  - a self-closed question always hands focus to the status, and Cancel is keyed by its job (item 4)
+  - the cancel answer's toast ends with the event's name (item 5)
+  - the "may have started" sentence is read at each render (item 6)
+  - a row's figures sit in `.job-slot`, as wide as "Starting…" (item 7)
+  - a narrow card (below 20.5rem of content) reserves the figures' own line (item 8)
+- [x] 9.2 Change the archived spec delta and the synced spec alike, keep their four requirement blocks
+  equal, and run `openspec validate --specs --strict`.
+- [x] 9.3 Re-run the gates and the checks against 8116 restarted from the branch: tsc + build, the motion
+  and scope greps, `check_dialogs.py`, `check_rows.py`, `check_names.py`, `check_outage.py`,
+  `check_separator.py`, the new `check_review.py`, and `check_e2e.py` with a real worker.
