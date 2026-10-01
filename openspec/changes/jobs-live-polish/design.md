@@ -101,6 +101,31 @@ scratch directory above). Every finding is fixed:
 
 ## Research & Decisions
 
+### Supervisor decisions (implementation round)
+
+Recorded before implementation. They are binding, and they settle this design's two open questions and
+one adjacent finding. The sections below are updated to match.
+
+- **Polish-round context.** The brief is `plan/brief-polish.md`, with its file ownership. Six sibling
+  changes run in parallel: `edit-mode-polish` (P1), this change (P2), `event-list-polish` (P3),
+  `event-page-polish` (P4), `ui-a11y-polish` (P5) and `serve-clean-exit` (P6). This change stays in its
+  owned files. For `web/README.md` hunks, whichever change lands second rebases and keeps every side.
+- **Toasts name an event by its title plus its date**, for example 'Rendered “Midsommar” · 2024-06-21',
+  because titles repeat. This settles the first open question. Use the shared formatter from
+  `event-list-polish` if it has landed, otherwise a local one-liner. (`event-list-polish`'s `format.ts`
+  formats instants only, and its design keeps event dates as `YYYY-MM-DD`. So the local one-liner writes
+  the date as the screens write it, and stays correct after that change lands. See "Toasts name the event
+  by its title and date".)
+- **No visible focus ring on script-focused non-controls.** The codebase convention stays. This settles
+  the second open question.
+- **The requeue-while-the-socket-is-down limitation is accepted** and documented (Risks).
+- **Also fix: the render card grows by about 11.5 px when the first progress arrives.** Reserve the line,
+  so nothing shifts. This moves the finding out of "Adjacent findings not taken" (see "The render card
+  keeps its height").
+- **Separator stop-gap.** `event-list-polish` may add `.live-job .job-words::after { content: none }` to
+  `list.css` as a stop-gap. If it is on `main` when this change's PR branch is built, this change deletes
+  it, because its own rule replaces it. That is a one-line edit in another change's file.
+
 ### The job a screen shows while the connection is down
 
 **Context**: `choose()` keeps the store's copy of an active job over the screen's read of the same job,
@@ -311,9 +336,9 @@ the time wraps at every width. On the page it wraps at 390 and 320px, and not at
 - **Put the dot at the start of the time.** A wrapped line then starts with it. The original comment
   already rejects that.
 - **Always give the time its own line.** The page's status row would change height when "Starting…" gives
-  way to the first progress, a second shift on every render. (The card already grows by 11.5 px at that
-  moment, on `main` as with this change, because the meter's figures line appears: "Adjacent findings not
-  taken".)
+  way to the first progress, a second shift on every render. (The card also grew by 11.5 px at that
+  moment on `main`, because the meter's figures line appears. That shift is now fixed too: "The render
+  card keeps its height".)
 - **B: no glyph, a 12px gap.** This works, but on one line "Starting…  started 11:44 PM" loses the clause
   break the dot gives. Terminal states have no words, so they never needed one.
 - **A3: the dot hangs in the gap, and the job state clips its inline start.** On one line the words and
@@ -370,6 +395,56 @@ its one-line active state at desktop width, so the status row does not shift. A 
 one predictable shape: pill and words, then time, then bar. `overflow-x: clip` leaves `overflow-y`
 visible, and it is within the support floor (Safari 16+).
 
+### The render card keeps its height
+
+**Context**: The supervisor's added fix. On `main`, at 1280 px the card goes from 78 to 89.5 px (at 390 px,
+from 106 to 117.7) when "Starting…" gives way to "40%" (`review/spike.py` `spike_h`). The meter is a flex
+line of the bar and `.job-figures`. A waiting or starting job has an indeterminate bar and no figures, so
+the line is the bar's 8 px. The first percentage adds the figures, whose line is `--text-sm` × `--lh-normal`
+(13 px × 1.5 = 19.5 px), and the line grows by 11.5 px.
+
+**Explored**:
+
+- Always render an empty `.job-figures`. An empty flex item has no height, so it reserves nothing.
+- Hide the figures with `visibility: hidden` text such as "0%". That is a figure the service did not
+  report, kept in the DOM.
+- Give the card's meter a minimum block size of the figures' line.
+
+**Decision**: In `jobs.css`, `.render-card .job-meter { min-block-size: calc(var(--text-sm) *
+var(--lh-normal)); }`. It uses tokens only, and the bar is centred in the line as before. The list rows'
+compact meter is left as it is: the supervisor named the card, and `event-list-polish` owns the rows'
+layout. The list row is measured in task 6.1 and reported.
+
+**Rationale**: The line is reserved from the first active state, so queued, starting, running, cancelling
+and last-known all have one meter height. The card no longer grows when the first percentage arrives, at
+any width. A meter whose figures wrap below the bar can still grow. That happens only when the
+percentage, an estimate and "last known" all show at the narrowest widths.
+
+**Measured, and left for the supervisor** (`verify/jobs-live-polish/spike_narrow.py`, this-year dates):
+the status line's own text still reflows when "Starting…" gives way to the percentage, at some widths. The
+words go, so the time, or the Cancel button, can move up a line. The card then shrinks; it never grows.
+
+| viewport | card content box | `main`, card px, Starting… → 40% | this change |
+|---|---|---|---|
+| 1280, 768, 600 | 1118, 673, 518 px | 78 → 89.5 | 89.5 → 89.5 |
+| 480 | 408 px | 106.2 → 89.5 | 117.7 → 89.5 |
+| 430 | 362 px | 106.2 → 89.5 | 117.7 → 89.5 |
+| 390 | 324 px | 106.2 → 117.7 | 117.7 → 117.7 |
+| 360, 320 | 294, 254 px | 129.7 → 117.7 | 141.2 → 117.7 |
+
+The `main` column is derived, not measured: on `main` the Starting… meter is 11.5 px shorter, and the 40%
+state is the same. It agrees with the review's measurements at 1280 (78 → 89.5) and 390 (106 → 117.7).
+
+Two ways to remove that too, neither taken without the supervisor's word:
+
+- **A narrow-card rule:** below a card width, an active job's time takes its own line (a container query on
+  `.render-card`). With 21rem it holds 390, 360 and 320 steady, but not 430 or 480, because there the
+  Cancel button wraps instead. Any threshold is a width guess, and dates of another year move it.
+- **"Starting…" in the meter's figures slot**, where the percentage then appears, instead of in the status
+  words. The status line then reads the same in both states at every width, by construction. But it
+  changes `JobState`'s state table for the list rows too, and the status region would no longer announce
+  "Starting…" (only "Rendering").
+
 ### Row answers are announced
 
 **Context**: The row's `enqueued` and `active` answers raise nothing, while its `fresh`, `collision` and
@@ -386,39 +461,58 @@ list stays quiet (`render-progress-screen/design.md:366`).
 
 **Decision**: Use the toast.
 
-- `enqueued` raises `toast.info('Render of “<name>” queued', Open)`.
-- `active` raises `toast.info('A render of “<name>” is already queued or running', Open)`.
+- `enqueued` raises `toast.info('Render queued: <name>', Open)`.
+- `active` raises `toast.info('Render already queued or running: <name>', Open)`.
+- `<name>` is the event's name as the next section defines it, for example '“Badutflykt” · 2024-08-02'.
 - Later states of the row (running, cancelling) stay unannounced. The terminal toast of a tracked job
   announces the end.
 
 **Rationale**: It is the channel the row already uses for its answers, and it confirms the operator's own
 action (WCAG 4.1.3) without making the list chatty. Sighted operators also get the event's link, which is
-useful when the row is far down a long list. The wording matches the terminal toasts ("Render of “…”
-failed / canceled").
+useful when the row is far down a long list. The wording matches the terminal toasts ("Render failed: …",
+"Render canceled: …").
 
-### Toasts name the event by its title
+### Toasts name the event by its title and date
 
-**Context**: The store knows only `event_dir`. Titles live in the screens' reads.
+**Context**: The store knows only `event_dir`. Titles and dates live in the screens' reads. Titles repeat:
+the dev library has two "Midsommar" events (2023 and 2024), and the Kalas pair.
 
-**Decision**:
+**Decision** (the supervisor's, "Supervisor decisions"):
 
-- `jobs/labels.ts` gains `eventName(eventId, title) = title ?? folderName(eventId)`, the screens' own
-  rule.
+- `jobs/labels.ts` gains `eventName(eventId, title, date)`. With a title it is the title in quotes, then
+  " · " and the date when there is one: '“Midsommar” · 2024-06-21'. With no title it is the folder name in
+  quotes, as the screens show it. A folder name already starts with its date in the year-event layout, so
+  no date is added to it.
+- The date is the event's `YYYY-MM-DD`, as the list and the page write it. `event-list-polish`'s shared
+  `format.ts` formats instants only and keeps event dates as they are, so the local rule stays right once
+  that change lands.
+- A toast's text is a plain string, so the name keeps its own line breaks out of the "” · date" tail. No-break
+  spaces sit on both sides of the "·", and a word joiner (U+2060) follows each hyphen of the date. Found in
+  the 390 px pass: 'Rendered “Grillkväll med grannarna” ·' ended a line with the dot, and '· 2024-' /
+  '09-20' split the date. Chromium breaks after a hyphen even between digits. A word joiner is a
+  default-ignorable format character: it is neither drawn nor spoken.
+- Every toast that names the event puts the name last, or before a colon, so its "·" never sits inside a
+  sentence:
+  - the store's live endings: 'Rendered <name>', 'Render failed: <name>' and 'Render canceled: <name>'
+  - a row's answers: 'Render queued: <name>', 'Render already queued or running: <name>', 'Already up to
+    date: <name>' and 'No longer exists: <name>'
+  - a row's failures keep their shape '<name>: <sentence> <detail>'
 - `store.ts`'s `tracked` becomes a `Map<jobId, name>`, and `track(jobId, name)` records it. Every `track`
   call site has the name. `onEnded` announces `tracked.get(job.id)`, and a job with no entry raises
   nothing, as before. `store.ts` no longer imports `folderName`.
-- `RenderControl` and `LiveJobCell` gain a **required** prop `title: string | null | undefined`, so tsc
-  fails until both call sites pass it. Each call site passes `title={event.title}`: one line each in
-  `EventDetail.tsx` and `EventList.tsx`.
-- `tellRowAnswer` names the pressed event by title in `enqueued`, `active`, `fresh`, the 404, the scan
+- `RenderControl` and `LiveJobCell` gain two **required** props, `title` and `date` (each `string | null |
+  undefined`), so tsc fails until both call sites pass them. Each call site passes `title={event.title}`
+  and `date={event.date}`: two lines each in `EventDetail.tsx` and `EventList.tsx`.
+- `tellRowAnswer` names the pressed event this way in `enqueued`, `active`, `fresh`, the 404, the scan
   failure and the not-queued answers.
 - The **output-collision** toast keeps folder names for the pressed event and for the claimants. A
   collision exists only when date, title and location match, so the titles are identical and only the
   folders tell the events apart. The page's collision alert links the folder names too.
 - The row's Render keeps its accessible name "Render <folder>", as the spec requires.
 
-**Rationale**: Every toast now says what the screens say. The folder's " - " no longer wraps to the start
-of a toast line in the common case. The one place where folder names are the only distinction keeps them.
+**Rationale**: Every toast now says what the screens say, and the date tells apart events that share a
+title. The folder's " - " no longer wraps to the start of a toast line in the common case. The one place
+where folder names are the only distinction keeps them.
 
 ### MODIFIED, not ADDED
 
@@ -441,9 +535,11 @@ This change edits:
 - `web/src/jobs/useJob.ts`, `JobProgress.tsx`, `RenderControl.tsx`, `LiveJobCell.tsx`, `store.ts`,
   `labels.ts` and `jobs.css`
 - two sentences of `web/README.md`
-- one line each in other changes' files: `web/src/events/EventList.tsx` (`event-list-polish`,
-  `title={event.title}` on `<LiveJobCell>`) and `web/src/events/EventDetail.tsx` (`event-page-polish`,
-  `title={event.title}` on `<RenderControl>`)
+- two lines each in other changes' files: `web/src/events/EventList.tsx` (`event-list-polish`,
+  `title={event.title}` and `date={event.date}` on `<LiveJobCell>`) and `web/src/events/EventDetail.tsx`
+  (`event-page-polish`, the same two props on `<RenderControl>`)
+- only if `event-list-polish` has landed its stop-gap `.live-job .job-words::after { content: none }` in
+  `web/src/events/list.css` when this change's PR branch is built: that one rule is deleted
 
 `web/src/api/jobs.ts` needs no change.
 
@@ -470,21 +566,19 @@ Coordination with the other changes:
 - `event-list-polish` puts every list time on its own line at table widths (`.live-job .job-when {
   flex-basis: 100% }`), which agrees with this change's list rule. Its `.live-job .job-words::after {
   content: none }` targets the separator this change removes, so once both land that rule matches nothing.
-  Whichever lands second may drop it; leaving it is harmless.
+  If it is on `main` when this change's PR branch is built, this change deletes it (supervisor decision).
 - Where another change lands first, the gate task keeps its edits and re-applies this change's edits
   around them.
 
 ### Adjacent findings not taken
 
-- **The render card grows when the first progress arrives.** At 1280 px the card goes from 78 to 89.5 px
-  (at 390 px, from 106 to 117.7) when "Starting…" gives way to "40%", because `.job-figures` appears beside the
-  bar and is taller than it. This was measured on `main` and with this change alike (`review/spike.py`
-  `spike_h`). It is not in this round's brief, and this change neither adds to it nor fixes it.
+- **The render card grows when the first progress arrives.** Taken after all, by supervisor decision: see
+  "The render card keeps its height".
 - **A focus ring on `.render-status`** (a11y minor). The status matches `:focus-visible` after a keyboard
   action and shows no outline. That was confirmed in `shots/H-status-focused-1280.png`. The design system
   deliberately draws no ring on script-focused non-controls (the h1 in `base.css:78-85`, the status in
-  `jobs.css:322-325`). Changing that belongs to the design system, not this change. This change hands
-  focus there in two more cases, so the question is recorded under Open Questions.
+  `jobs.css:322-325`). The supervisor kept that convention ("Supervisor decisions"), so no ring is added,
+  although this change hands focus there in two more cases.
 - **A toast raised while a modal is open is not perceived** (integration minor). This is not in this
   round's brief. It is mitigated here for the cancel dialog: the dialog now closes when its job ends, and
   focus goes to the status, whose words say the job ended.
@@ -508,19 +602,25 @@ Coordination with the other changes:
 - **[A requeue during an outage]** The store holds "running (run 1)" and the read says "queued (requeued)",
   so the store's copy stays shown until the socket is back → it is labelled "last known", Cancel still
   asks (not live), and the snapshot on reconnect corrects it. The client cannot tell a requeued-queued job
-  from a never-started one without `requeue_count`, which `JobSummaryOut` lacks.
+  from a never-started one without `requeue_count`, which `JobSummaryOut` lacks. The supervisor accepted
+  this limitation.
 - **[A silently dead socket]** A half-open socket stays `live`, so the store keeps winning → this is
   unchanged from today and out of scope (proposal, Non-goals).
 - **[A second job for the event]** The dialog-closing rule compares the shown job's id with the question's
   → a cancel question about job J closes when job K is shown instead, rather than cancelling K.
 - **[Toast noise on the list]** Each row's Render now adds a 5 s info toast → at most three toasts are held
   and successes dismiss themselves. The toast carries the event's link, which is useful far down the list.
-- **[Two events with one title]** A title-named toast can fit two events (both Midsommar events, the
-  Kalas pair), where the folder name it replaces could not. → The terminal toasts and the row's queued,
-  already-active, up-to-date and collision toasts carry an "Open" link to their own event's page. The Kalas
-  pair claim one movie file, so the service refuses either one's enqueue, forced or not
-  (`api/routes/jobs.py`), and the collision toast keeps folder names. The Midsommar pair stays ambiguous
-  in the toast's words; this is recorded under Open Questions.
+- **[Two events with one title]** A title alone can fit two events (both Midsommar events, the Kalas pair),
+  where the folder name it replaces could not. → The toast adds the event's date, so the Midsommar pair
+  reads '“Midsommar” · 2023-06-23' and '“Midsommar” · 2024-06-21'. The Kalas pair shares title and date,
+  but they claim one movie file, so the service refuses either one's enqueue, forced or not
+  (`api/routes/jobs.py`), and the collision toast keeps folder names. The terminal toasts and the row's
+  queued, already-active, up-to-date and collision toasts also carry an "Open" link to their own event's
+  page.
+- **[A meter whose figures wrap]** At the narrowest widths, a meter showing a percentage, an estimate and
+  "last known" together can wrap its figures below the bar, and the card then grows by a line → this is
+  rare, because the estimate shows only for the store's copy, and "last known" only while the connection is
+  down.
 - **[Merge conflicts with parallel polish changes]** → The ownership split above keeps every hunk in
   separate blocks. The gate task checks `git diff bca64f2 main -- web/src/jobs` before starting.
 - **[`overflow-x: clip` on `.job-state`]** This could clip a future focusable child → a job state holds
@@ -534,12 +634,7 @@ web change.
 
 ## Open Questions
 
-- Should a toast tell apart two events that share a title? This change names events by title, as the
-  screens do. In the dev library `2023-06-23 - Midsommar - Dalarna` and `2024-06-21 - Midsommar - Dalarna`
-  are both "Midsommar", and `2024-07-14 - Kalas` and `2024-07-14 - kalas` are both "Kalas". A toast such as
-  'Rendered “Midsommar”' does not say which, while the folder name it replaces did ("Risks"). Adding the
-  date, or the folder only where `event-list-polish`'s look-alike rule applies, would change the toast
-  wording and the spec scenarios here.
-- Should the design system give script-focused non-controls (the page h1 and the job status) a visible
-  ring after a keyboard action? This change leaves both as they are ("Adjacent findings not taken"). The
-  answer changes no spec text or task here.
+None. Both earlier questions were settled by the supervisor ("Supervisor decisions"):
+
+- Two events that share a title are told apart in toasts by adding the date.
+- Script-focused non-controls (the page h1 and the job status) keep the convention of no visible ring.

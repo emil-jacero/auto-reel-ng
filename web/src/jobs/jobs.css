@@ -140,15 +140,28 @@
   }
 
   /*
-   * After an active job's words, the time reads as a second clause. The
-   * separator ends the words, so a time that wraps never starts with it.
+   * After an active job's words, the time reads as a second clause: a "·" hangs
+   * in the gap before the time. A time that wraps starts at the job state's
+   * inline start, which clips its dot away, so the dot never starts or ends a
+   * line. Nothing in a job state is focusable: the clip cuts no focus ring.
    */
-  .job-words:has(+ .job-when)::after {
-    content: '·';
-    content: '·' / '';
-    margin-inline-start: var(--s-2);
-    color: var(--fg-subtle);
-    font-weight: 400;
+  .job-state:has(> .job-words + .job-when) {
+    column-gap: var(--s-3);
+    overflow-x: clip;
+  }
+
+  .job-words + .job-when {
+    position: relative;
+
+    &::before {
+      content: '·';
+      content: '·' / '';
+      position: absolute;
+      inset-inline-end: 100%;
+      inline-size: var(--s-3);
+      color: var(--fg-subtle);
+      text-align: center;
+    }
   }
 
   .job-words {
@@ -297,6 +310,14 @@
       border-color: color-mix(in oklab, var(--accent) 45%, var(--border));
     }
 
+    /*
+     * The meter's line is its figures' line from the first active state, so the
+     * card does not grow when the first percentage arrives.
+     */
+    & .job-meter {
+      min-block-size: calc(var(--text-sm) * var(--lh-normal));
+    }
+
     & .job-bar {
       block-size: 0.5rem;
     }
@@ -417,6 +438,15 @@
     & .job-when,
     & .job-figures {
       font-size: var(--text-xs);
+    }
+
+    /* A row's narrow cell: the time after an active job's words takes its own line, with no dot. */
+    & .job-words + .job-when {
+      flex-basis: 100%;
+
+      &::before {
+        content: none;
+      }
     }
 
     & .job-meter {

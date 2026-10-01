@@ -10,37 +10,44 @@ import { eventHref } from '../route'
 import { Icon } from '../ui/Icon'
 import { toast } from '../ui/toast'
 import { JobProgress } from './JobProgress'
-import { NOT_QUEUED, SCAN_FAILED } from './labels'
+import { NOT_QUEUED, SCAN_FAILED, eventName } from './labels'
 import { isActive, load, merge, track } from './store'
 import { useEventJob } from './useJob'
 
-/** A row's enqueue answer, told by toast: the row has no room for an alert. */
-function tellRowAnswer(eventId: string, result: EnqueueResult): void {
-  const name = `“${folderName(eventId)}”`
+/**
+ * A row's enqueue answer, told by toast: the row has no room for an alert. Every
+ * answer is told, the operator's own Render included (a polite toast, the list's
+ * only announcement for it); the row's later states stay quiet. `name` is the
+ * event's title and date (`eventName`); a collision names folders instead, since
+ * the events it names share their title and date.
+ */
+function tellRowAnswer(eventId: string, name: string, result: EnqueueResult): void {
   const open = { action: { label: 'Open', href: eventHref(eventId) } }
   switch (result.kind) {
     case 'enqueued':
-      track(result.job.id)
+      toast.info(`Render queued: ${name}`, open)
+      track(result.job.id, name)
       merge(result.job)
       break
     case 'active':
       // Someone already started it: the row follows that job.
-      track(result.jobId)
+      toast.info(`Render already queued or running: ${name}`, open)
+      track(result.jobId, name)
       load(result.jobId)
       break
     case 'fresh':
       // The list never forces a render; the event's page offers Render anyway.
-      toast.info(`${name} is already up to date`, open)
+      toast.info(`Already up to date: ${name}`, open)
       markEventsChanged()
       break
     case 'collision': {
       const others = result.claimedBy.map((id) => `“${folderName(id)}”`).join(', ')
-      toast.error(`${name} shares its movie file with ${others}`, open)
+      toast.error(`“${folderName(eventId)}” shares its movie file with ${others}`, open)
       break
     }
     case 'problem':
       if (result.problem.status === 404) {
-        toast.error(`${name} no longer exists.`)
+        toast.error(`No longer exists: ${name}`)
         markEventsChanged()
       } else {
         toast.error(`${name}: ${SCAN_FAILED} ${result.problem.detail}`)
@@ -56,7 +63,16 @@ function tellRowAnswer(eventId: string, result: EnqueueResult): void {
 }
 
 /** The compact Render of one row, named for its event so a list of them is told apart. */
-function RowRender({ eventId, buttonRef }: { eventId: string; buttonRef: Ref<HTMLButtonElement> }) {
+function RowRender({
+  eventId,
+  name,
+  buttonRef,
+}: {
+  eventId: string
+  /** How a toast names the event (`eventName`); the control keeps its folder name. */
+  name: string
+  buttonRef: Ref<HTMLButtonElement>
+}) {
   const [busy, setBusy] = useState(false)
   const inFlight = useRef(false)
   return (
@@ -76,7 +92,7 @@ function RowRender({ eventId, buttonRef }: { eventId: string; buttonRef: Ref<HTM
         void enqueueJob(eventId, false).then((result) => {
           inFlight.current = false
           setBusy(false)
-          tellRowAnswer(eventId, result)
+          tellRowAnswer(eventId, name, result)
         })
       }}
     >
@@ -96,6 +112,8 @@ function RowRender({ eventId, buttonRef }: { eventId: string; buttonRef: Ref<HTM
  */
 export function LiveJobCell({
   eventId,
+  title,
+  date,
   staleness,
   latestJob,
   blockedReason,
@@ -103,6 +121,9 @@ export function LiveJobCell({
   className,
 }: {
   eventId: string
+  /** The event's title and date, as the row shows them: a toast names the event by them. */
+  title: string | null | undefined
+  date: string | null | undefined
   staleness: Staleness
   latestJob: JobSummary | null | undefined
   /** Why the event cannot render now; the row then shows it instead of Render. */
@@ -153,7 +174,11 @@ export function LiveJobCell({
         {staleness.stale &&
           !active &&
           (blockedReason === undefined ? (
-            <RowRender eventId={eventId} buttonRef={watchRemoval} />
+            <RowRender
+              eventId={eventId}
+              name={eventName(eventId, title, date)}
+              buttonRef={watchRemoval}
+            />
           ) : (
             <span className="row-blocked">
               <Icon name="alert-triangle" />

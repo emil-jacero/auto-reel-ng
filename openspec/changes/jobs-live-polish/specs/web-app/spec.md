@@ -164,6 +164,9 @@ The job SHALL be shown as follows:
 - **failed:** that it failed; on the event's page also the job's own error text from the service
 - **canceled:** that it was canceled, as a neutral state, not as an error
 
+On the event's page, the job's progress indicator SHALL keep one height through every queued or running
+state, so the render region does not grow when the first percentage arrives.
+
 While running, the event's page SHALL show an estimate of the time left, computed from the progress
 reported over time. It SHALL stay hidden until the job is past 5% and enough progress has been observed,
 and it SHALL NOT be shown increasing. It SHALL be shown only beside the progress it was computed from, so
@@ -177,7 +180,8 @@ notification: rendered, failed, or canceled. A job whose end the client learns o
 reconnect, or because a screen still showed it as active) SHALL NOT raise one, nor SHALL a job this tab
 neither started nor attached to. One ending SHALL raise at most one notification: a cancel whose answer
 already said the job was canceled or had finished raises no second one. A notification SHALL name the event
-as its page and its list row do: by its title, or by its folder name when it has none.
+by its title, as its page and its list row do, followed by its date when it has one, since titles repeat;
+an event with no title SHALL be named by its folder name.
 
 #### Scenario: A queued job waits for a worker
 - **WHEN** the operator opens `2024/Blandat`, whose job is queued, with no worker running
@@ -220,8 +224,20 @@ as its page and its list row do: by its title, or by its folder name when it has
 
 #### Scenario: A notification names the event as its page does
 - **WHEN** a render the operator started from `2024-06-27 - Grillning med grannar`'s page completes
-- **THEN** the notification names the event "Grillkväll med grannarna", the title its page shows, and not
-  its folder name
+- **THEN** the notification names the event "Grillkväll med grannarna", the title its page shows, with its
+  date 2024-06-27, and not its folder name
+
+#### Scenario: Two events with one title are told apart
+- **WHEN** renders the operator started from the pages of `2023-06-23 - Midsommar - Dalarna` and
+  `2024-06-21 - Midsommar - Dalarna` complete
+- **THEN** one notification names "Midsommar" with 2023-06-23, and the other names "Midsommar" with
+  2024-06-21
+
+#### Scenario: The progress indicator does not shift the page
+- **WHEN** the page of `2024-06-27 - Grillning med grannar` shows its job starting, and the first progress
+  arrives
+- **THEN** the progress indicator keeps its height while the percentage appears, and the render region
+  does not grow
 
 ### Requirement: A queued or running render can be cancelled
 
@@ -302,9 +318,10 @@ event's page, except as follows:
 - when another event claims the same movie file, an error notification names the other events and links to
   the pressed event's page.
 
-A row's notifications SHALL name the pressed event by its title, or by its folder name when it has none. The
-output-collision notification is the exception: it SHALL name the pressed event and the other events by
-their folder names, since events that claim the same movie file share their date, title and location.
+A row's notifications SHALL name the pressed event as the progress requirement's notifications do: by its
+title followed by its date, or by its folder name when it has no title. The output-collision notification
+is the exception: it SHALL name the pressed event and the other events by their folder names, since events
+that claim the same movie file share their date, title and location.
 
 A row that needs a render, has no queued or running job, but lists a clip that is missing from disk SHALL
 NOT offer Render, for the same reason as the event's page. In its place, the row SHALL say, in words with an
@@ -345,8 +362,8 @@ Error rows under "Needs attention" SHALL NOT offer Render.
 #### Scenario: A row's Render is confirmed in words
 - **WHEN** the operator presses Enter on the Render control of the `2024-08-02 - Badutflykt - Varberg` row
 - **THEN** one job is enqueued, the row shows it queued, keyboard focus is on the row's "Badutflykt" link,
-  and one notification, which assistive technology announces, says that the render of "Badutflykt" was
-  queued
+  and one notification, which assistive technology announces, says that the render of "Badutflykt",
+  2024-08-02, was queued
 
 #### Scenario: A collision notification names the folders
 - **WHEN** the operator presses Render on the `2024-07-14 - kalas` row
