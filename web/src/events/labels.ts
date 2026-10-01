@@ -52,15 +52,19 @@ export const UNANSWERED_CAUSE: Record<Unanswered['kind'], string> = {
 /** What to do when a read the operator can repeat got no answer at all. */
 export const NOT_REACHABLE_HINT = 'Check that auto-reel serve is running, then press Refresh.'
 
+/** What to do when such a read got an answer its route does not publish. */
+export const UNPUBLISHED_HINT = "The service's log may say why; press Refresh to try again."
+
 /**
  * A read's failure for the list and the page: the cause, and what to show under
  * it. No answer gets the way to recover, never the browser's own error text; an
- * unexpected answer gets the request and the status it received.
+ * unexpected answer gets the request and the status it received, then what to do.
  */
 export function unansweredFailure(result: Unanswered): { cause: string; detail: string } {
   return {
     cause: UNANSWERED_CAUSE[result.kind],
-    detail: result.kind === 'unreachable' ? NOT_REACHABLE_HINT : result.message,
+    detail:
+      result.kind === 'unreachable' ? NOT_REACHABLE_HINT : `${result.message}. ${UNPUBLISHED_HINT}`,
   }
 }
 

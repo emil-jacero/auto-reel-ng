@@ -24,7 +24,8 @@ and time, and any clip `reel.yaml` lists that is missing from disk. Both read on
 open and on Refresh — no timer polling (job state arrives over the jobs WebSocket),
 never a cache — and report a failed read by its cause, telling a service that did
 not answer ("not reachable", with what to check) from one that sent an answer its
-route does not publish ("an unexpected answer", with the request and status). Each
+route does not publish ("an unexpected answer", with the request, its path decoded,
+the status, and where to look). Each
 clip row, on the event page and in Edit
 mode, shows a frame from its clip (the service's thumbnail, D-11): requested only
 as its row nears the view and behind the page's own requests, in a box sized before
