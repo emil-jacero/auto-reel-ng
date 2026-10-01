@@ -16,6 +16,7 @@ already-rendered archive.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import logging
 import signal
 import sys
@@ -23,7 +24,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Tuple
+from typing import Dict, Iterator, List, Mapping, Optional, Tuple, override
 
 import uvicorn
 from ruamel.yaml import YAML
@@ -821,14 +822,34 @@ def cmd_jobs_cancel(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 
 
+class ServiceServer(uvicorn.Server):
+    """uvicorn's server for ``serve``: a stop signal it has obeyed is not raised again.
+
+    After its orderly shutdown ``uvicorn.Server`` raises each signal it caught once more,
+    for the handler installed before it: asyncio's SIGINT handler turns that into a
+    ``KeyboardInterrupt`` traceback, and SIGTERM's default handler kills the process.
+    ``serve`` has nothing left for the signal to do. It returns, and its exit status
+    reports the stop (headless-cli, "`serve` runs the API service").
+    """
+
+    @override
+    @contextlib.contextmanager
+    def capture_signals(self) -> Iterator[None]:
+        with super().capture_signals():
+            yield
+            # The shutdown the captured signals asked for has completed.
+            self._captured_signals.clear()
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     """``serve``: run the FastAPI service under uvicorn until SIGINT/SIGTERM (D-A7).
 
     Resolves :class:`~auto_reel_ng.api.settings.ApiSettings` through the same D-2
-    layering as ``worker``, then runs uvicorn programmatically; uvicorn installs
-    its own SIGINT/SIGTERM handlers for a graceful shutdown (the WS hub's poller
-    is cancelled via the app's lifespan). A bind failure is reported loudly,
-    naming the attempted host:port, and the command exits non-zero.
+    layering as ``worker``, then runs uvicorn programmatically; uvicorn handles
+    SIGINT/SIGTERM with a graceful shutdown (the WS hub's poller is cancelled via the
+    app's lifespan), after which ``serve`` exits 0, or 130 when a second SIGINT forced
+    the exit. A bind failure is reported loudly, naming the attempted host:port, and
+    the command exits non-zero.
     """
     project_root = _resolve_project_root(args)
     settings = resolve_api_settings(
@@ -843,13 +864,15 @@ def cmd_serve(args: argparse.Namespace) -> int:
         project_root,
     )
     uvicorn_config = uvicorn.Config(app, host=settings.host, port=settings.port)
-    server = uvicorn.Server(uvicorn_config)
+    server = ServiceServer(uvicorn_config)
     try:
         server.run()
     except SystemExit:
         print(f"error: could not bind {settings.host}:{settings.port}", file=sys.stderr)
         return 1
-    return 0
+    # A SIGINT during the shutdown made uvicorn skip the rest of it (its force-quit):
+    # 130 = 128 + SIGINT, a shell's status for an interrupted command.
+    return 130 if server.force_exit else 0
 
 
 # --------------------------------------------------------------------------- #

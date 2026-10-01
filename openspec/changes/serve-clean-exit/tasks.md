@@ -1,6 +1,6 @@
 ## 1. Baseline
 
-- [ ] 1.1 Confirm the code this change was designed against. Stop and report to the supervisor if a check
+- [x] 1.1 Confirm the code this change was designed against. Stop and report to the supervisor if a check
   fails in a way the design does not cover.
   - `git diff bca64f2 -- auto_reel_ng/cli/commands.py tests/test_cli_serve.py openspec/specs/headless-cli/spec.md README.md`
     prints nothing. If the spec's "`serve` runs the API service" differs, re-base this change's MODIFIED block
@@ -15,7 +15,7 @@
 
 ## 2. cli/ — `serve` exits by its status, not by the signal
 
-- [ ] 2.1 Red first. In `tests/test_cli_serve.py`, change `test_one_signal_stops_serve_with_a_websocket_open`
+- [x] 2.1 Red first. In `tests/test_cli_serve.py`, change `test_one_signal_stops_serve_with_a_websocket_open`
   as the design describes ("A test that means the same wherever pytest runs"):
   - add the `_SERVE_AS_FROM_A_TERMINAL` launcher constant (it resets SIGINT to `default_int_handler` *and*
     SIGTERM to `SIG_DFL`) and start the child as
@@ -32,7 +32,7 @@
   - the same two failures with pytest started with both signals ignored:
     `.venv/bin/python -c "import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_IGN); signal.signal(signal.SIGTERM, signal.SIG_IGN); os.execv(sys.executable, [sys.executable, '-m', 'pytest', 'tests/test_cli_serve.py', '-k', 'one_signal'])"`.
     If either case passes there, the launcher is not in effect. Fix that before going on.
-- [ ] 2.2 Add `ServiceServer` to `auto_reel_ng/cli/commands.py` exactly as in the design ("Where to stop the
+- [x] 2.2 Add `ServiceServer` to `auto_reel_ng/cli/commands.py` exactly as in the design ("Where to stop the
   re-raise"): `@override` plus `@contextlib.contextmanager`, clearing `self._captured_signals` inside
   `super().capture_signals()`, with its docstring. Add `import contextlib` and `Iterator` and `override` to
   the `typing` import. Add `tests/test_cli_serve_signals.py` (no marker) with the recording fixture and the
@@ -44,7 +44,7 @@
     pytest's own handlers). Restore the line afterwards.
   - `.venv/bin/python -m mypy auto_reel_ng` is clean
   - `.venv/bin/python -m pylint auto_reel_ng/cli/commands.py` reports no `protected-access` and nothing new
-- [ ] 2.3 Wire it into `cmd_serve`: build `ServiceServer(uvicorn_config)`, return
+- [x] 2.3 Wire it into `cmd_serve`: build `ServiceServer(uvicorn_config)`, return
   `130 if server.force_exit else 0` after `run()` with the design's comment, keep the `SystemExit` branch as
   it is, and rewrite the docstring's signal sentence (design, "Where to stop the re-raise"). In
   `tests/test_cli_serve.py`, re-point the replacements *before running anything*. A test still patching
@@ -66,32 +66,39 @@
 
 ## 3. Docs
 
-- [ ] 3.1 In `README.md`'s `serve` stop paragraph ("One SIGINT (Ctrl+C) or SIGTERM …"), end the first
+- [x] 3.1 In `README.md`'s `serve` stop paragraph ("One SIGINT (Ctrl+C) or SIGTERM …"), end the first
   sentence with "…released) within a few seconds, and `serve` exits with status 0." so that "The one
-  exception" still follows the few-seconds promise. After the paragraph's last sentence ("…or fail before
-  its orderly part."), add: "When a second Ctrl+C forces the exit, the application shutdown is skipped and
-  `serve` exits with status 130." Say nothing more about what a forced exit waits for. Leave the
-  vanished-peer sentence as it is (design, "Force-quit still waits for open connections": its correction
-  is the follow-up's). Verify by rereading the paragraph against the spec delta: orderly 0 for Ctrl+C and
-  SIGTERM, forced 130, bind failure unchanged, and no claim that a failed shutdown exits non-zero.
+  exception" still follows the few-seconds promise. Correct the vanished-peer sentence (supervisor
+  decision; design, "Force-quit still waits for open connections"): the shutdown can fail before its
+  orderly part, or wait until the operating system gives up on that connection, which can take many
+  minutes (no figure: none was reproduced; design, "Supervisor decisions (after implementation)"). Then
+  add "When a second Ctrl+C forces the exit, the application shutdown is skipped and `serve` exits with
+  status 130.", and say that the force ends the wait for running request handlers, not the wait for a
+  connection that has not ended, so a second Ctrl+C does not shorten the wait behind a vanished peer today.
+  Verify by rereading the paragraph against both spec deltas: orderly 0 for Ctrl+C and SIGTERM, forced
+  130, no claim that a second Ctrl+C ends the vanished peer's stall, bind failure unchanged, and no claim
+  that a failed shutdown exits non-zero.
 
 ## 4. Validation
 
-- [ ] 4.1 Manual check from the session scratchpad, never committed, with a throwaway `serve` on port **8120**
-  against a throwaway Postgres container of your own (`podman run --rm -d … -p 127.0.0.1::5432
-  postgres:16-alpine`, schema by `Base.metadata.create_all`), and an empty scratch project root. The
-  design-phase probes in the scratchpad's `polish-spec/serve-clean-exit/` can be reused: `run_serve.py
-  baseline` now runs the implemented code. They need a `db_url` file. Verify:
+- [x] 4.1 Manual check from the session scratchpad, never committed, with a throwaway `serve` on port **8120**
+  run by the worktree's own venv against the worktree's own database, and an empty scratch project root.
+  A scratch launcher starts `serve` as a terminal does (SIGINT at `default_int_handler`, SIGTERM at
+  `SIG_DFL`) and can wrap `create_app` with two probe routes. Verify:
   - a real pty (`pty.fork`), a WebSocket client connected, `\x03` typed: the child exits with status 0, the
     output after `^C` ends at "Finished server process" with no traceback, and the client got 1012
   - `kill -TERM`: exit 0, 1012
-  - forced: a handler that outlives its client (a scratch ASGI wrapper around `create_app`), then SIGINT and
+  - forced: a handler that outlives its client (a probe HTTP route that never answers), then SIGINT and
     SIGINT: exit 130, no `KeyboardInterrupt`, no "Application shutdown complete". Repeat with SIGTERM then
     SIGINT: 130.
+  - backed-up peer (supervisor decision): a probe WebSocket route backs 16 MiB of frames up to a raw peer
+    that stops reading. SIGINT then SIGINT, and SIGTERM then SIGINT then SIGINT: the process stays up until
+    the peer's connection ends, then exits 130 without "Application shutdown complete". One SIGINT: it
+    exits 0 after "Application shutdown complete" once the connection ends.
 
-  Never use port 8080, 8114 or 5173, the default database `auto_reel_ng`, or `auto-reel-media/`. Stop the
-  container afterwards.
-- [ ] 4.2 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`,
+  Never use port 8080, 8114 or 5173, the default database `auto_reel_ng`, or `auto-reel-media/`. Leave no
+  `serve` process behind.
+- [x] 4.2 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`,
   then `.venv/bin/python -m mypy auto_reel_ng`, `.venv/bin/python -m pylint auto_reel_ng`, and the full
   `.venv/bin/python -m pytest`, including `requires_db` (podman). Then run
   `openspec validate serve-clean-exit --strict`. Verify all are clean or green, apart from the known cairo

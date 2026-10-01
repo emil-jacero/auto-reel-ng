@@ -14,10 +14,13 @@ outcome.
 
 A SIGINT that arrives while the shutdown is still running, whichever signal started it, is the operator's
 force-quit: the service no longer waits for request handlers that are still running, and skips its
-application shutdown if that has not started yet. When the command then ends, it SHALL exit with status
-130, never 0, so that a forced stop is not reported as a clean one, and it SHALL NOT end with a
-`KeyboardInterrupt` traceback of its own. A request handler that the forced stop cancels MAY still be
-logged as an error.
+application shutdown if that has not started yet. It still waits for its client connections to end, so a
+connection the server cannot finish closing (api-service, "WebSocket live job updates": a vanished peer
+with frames backed up) keeps the command running through further SIGINTs until that connection ends.
+When the command then ends, it SHALL exit with status 130, never 0, so that a forced stop is not reported
+as a clean one, and it SHALL NOT end with a `KeyboardInterrupt` traceback of its own. A request handler
+that the forced stop cancels, and the application lifespan whose shutdown it skips, MAY still be logged
+as errors with their tracebacks.
 
 #### Scenario: Serve starts and answers
 - **WHEN** `auto-reel serve` runs against a project root and a reachable database
