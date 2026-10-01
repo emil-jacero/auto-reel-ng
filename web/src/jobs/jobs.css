@@ -141,12 +141,18 @@
 
   /*
    * After an active job's words, the time reads as a second clause: a "·" hangs
-   * in the gap before the time. A time that wraps starts at the job state's
-   * inline start, which clips its dot away, so the dot never starts or ends a
-   * line. Nothing in a job state is focusable: the clip cuts no focus ring.
+   * in the gap before the time. On the event page, a time that wraps starts at
+   * the job state's inline start, which clips its dot away, so the dot never
+   * starts or ends a line. Nothing in a job state is focusable: the clip cuts no
+   * focus ring. A list row draws no dot (its time takes its own line), so it
+   * clips nothing: a time wider than its cell, under user text spacing, stays
+   * whole there.
    */
   .job-state:has(> .job-words + .job-when) {
     column-gap: var(--s-3);
+  }
+
+  .render-status .job-state:has(> .job-words + .job-when) {
     overflow-x: clip;
   }
 
@@ -303,6 +309,9 @@
   }
 
   .render-card {
+    --_bar-h: 0.5rem;
+
+    container: render-card / inline-size;
     display: grid;
     gap: var(--s-3);
     padding: var(--s-3) var(--s-4);
@@ -325,7 +334,24 @@
     }
 
     & .job-bar {
-      block-size: 0.5rem;
+      block-size: var(--_bar-h);
+    }
+  }
+
+  /*
+   * A narrow card (a phone): the bar's 8rem and the longest live figures, "99% ·
+   * less than a minute left" (about 11.4rem in Noto Sans), no longer fit on one
+   * line. Their line is then always under the bar, reserved from the first active
+   * state, so the card does not grow when the estimate appears.
+   */
+  @container render-card (width < 20.5rem) {
+    .render-card .job-meter {
+      align-content: flex-start;
+      min-block-size: calc(var(--_bar-h) + var(--s-1) + var(--text-sm) * var(--lh-normal));
+    }
+
+    .render-card .job-figures {
+      flex-basis: 100%;
     }
   }
 
@@ -471,6 +497,30 @@
     & .job-bar {
       flex-basis: 4rem;
       block-size: 0.25rem;
+    }
+
+    /*
+     * The figures' slot is at least as wide as "Starting…" (its hidden
+     * `data-reserve` text, stacked under the figures) from the first active
+     * state, so the bar keeps one length while the job waits, starts and runs.
+     * The figures end where "Starting…" ends.
+     */
+    & .job-slot {
+      display: inline-grid;
+      justify-items: end;
+      font-size: var(--text-xs);
+
+      &::before {
+        content: attr(data-reserve);
+        content: attr(data-reserve) / '';
+        grid-area: 1 / 1;
+        font-weight: 500;
+        visibility: hidden;
+      }
+
+      & > .job-figures {
+        grid-area: 1 / 1;
+      }
     }
   }
 

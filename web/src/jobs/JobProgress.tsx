@@ -24,7 +24,9 @@ import type { ShownJob } from './useJob'
  *
  * A list row (`JobProgress`) says "Starting…" in its meter, where the
  * percentage then appears, not in its words: the row's words and lines are the
- * same before and after the first progress, so the row keeps its height.
+ * same before and after the first progress, so the row keeps its height. Its
+ * figures sit in a slot as wide as "Starting…" from the first active state, so
+ * its bar keeps one length while the job waits, starts and runs.
  *
  * `JobState` is what a status region announces: it changes with the state only.
  * `JobMeter` is outside any live region, so progress is never announced.
@@ -114,7 +116,9 @@ const RUNNING_MAX = 0.99
  * An active job's bar and figures: the percentage once progress is reported
  * (before it, "Starting…" when `startingInMeter`: a list row), the time-left
  * estimate when one is given (the event page only), and "last known" while the
- * connection that reported it is down.
+ * connection that reported it is down. With `startingInMeter` the figures sit in
+ * a slot at least as wide as "Starting…", even while there are none, so the bar
+ * beside it keeps its length.
  */
 export function JobMeter({
   shown,
@@ -135,6 +139,14 @@ export function JobMeter({
   // A refreshed copy is last known too: it stands in for the store's while the connection is down.
   const lastKnown = shown.source !== 'read' && !live
   const estimate = eta === undefined || isCancelling(shown) ? null : formatEta(eta)
+  const figures = (starting || percent !== null || estimate !== null || lastKnown) && (
+    <span className="job-figures">
+      {starting && <span className="job-starting">{STARTING}</span>}
+      {percent !== null && <span className="job-percent">{percent}%</span>}
+      {estimate !== null && <span className="job-eta">{estimate}</span>}
+      {lastKnown && <span className="job-last-known">last known</span>}
+    </span>
+  )
   return (
     <span className="job-meter" data-cancelling={isCancelling(shown) || undefined}>
       {/* Keyed by mode: an indeterminate bar is one with no value at all. */}
@@ -145,13 +157,13 @@ export function JobMeter({
         value={determinate ? fraction : undefined}
         aria-label="Render progress"
       />
-      {(starting || percent !== null || estimate !== null || lastKnown) && (
-        <span className="job-figures">
-          {starting && <span className="job-starting">{STARTING}</span>}
-          {percent !== null && <span className="job-percent">{percent}%</span>}
-          {estimate !== null && <span className="job-eta">{estimate}</span>}
-          {lastKnown && <span className="job-last-known">last known</span>}
+      {startingInMeter ? (
+        // The slot's width is reserved by its hidden `data-reserve` text (jobs.css).
+        <span className="job-slot" data-reserve={STARTING}>
+          {figures}
         </span>
+      ) : (
+        figures
       )}
     </span>
   )
