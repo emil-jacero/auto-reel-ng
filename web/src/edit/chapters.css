@@ -181,6 +181,12 @@
     }
   }
 
+  /* Pick all, above the clips: a row of its own, framed like them. */
+  .choice-all {
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+  }
+
   .choice-pos {
     min-inline-size: 1.5rem;
     color: var(--fg-muted);

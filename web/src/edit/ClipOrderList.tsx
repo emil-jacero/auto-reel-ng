@@ -419,6 +419,12 @@ export type MoveHandler = (chapter: ChapterKey, from: number, to: number) => voi
 export type RemoveHandler = (chapter: ChapterKey, identity: string) => void
 export type RestoreHandler = (identity: string) => void
 
+// A chapter that plays no clip says so, and how clips get in (Move clips is per chapter).
+const MOVE_IN = 'Move clips here with another chapter’s Move clips.'
+const LEFT_OUT = 'A chapter without clips is left out of the movie.'
+const NO_CLIPS = `No clips. ${MOVE_IN} ${LEFT_OUT}`
+const NO_CLIPS_PLAYED = `It plays no clip. ${MOVE_IN} ${LEFT_OUT}`
+
 /** The button focus lands on once a row is in its new place, as a class name. */
 type FocusTarget = 'move-up' | 'move-down' | 'clip-remove' | 'clip-undo'
 
@@ -499,8 +505,10 @@ export const ClipOrderList = memo(function ClipOrderList({
     },
     [origins, chapterKey],
   )
-  // Nothing to list: an added chapter, or one every clip has left.
-  const empty = order.length === 0 && removed.length === 0 && ignored.length === 0
+  // Plays nothing: an added chapter, or one every clip it played has left. With no
+  // removed or ignored clip either, nothing is listed at all, so no column strip.
+  const plays = order.length > 0
+  const empty = !plays && removed.length === 0 && ignored.length === 0
   const originalPosition = useMemo(
     () => new Map(original.map((identity, at) => [identity, at + 1])),
     [original],
@@ -654,12 +662,7 @@ export const ClipOrderList = memo(function ClipOrderList({
         <span className="panel-meta">{plural(order.length, 'clip', 'clips')}</span>
       </header>
       <ChapterTools chapterKey={chapterKey} heading={heading} headingId={headingId} {...tools} />
-      {empty && (
-        <p className="chapter-empty">
-          No clips. Move clips here with another chapter’s Move clips. A chapter without clips is
-          left out of the movie.
-        </p>
-      )}
+      {empty && <p className="chapter-empty">{NO_CLIPS}</p>}
       {/* The column names, in the rows' own cells (edit.css places them by class). */}
       {!empty && (
         <div className="clip-order-head" aria-hidden="true">
@@ -672,7 +675,8 @@ export const ClipOrderList = memo(function ClipOrderList({
           </span>
         </div>
       )}
-      {order.length > 0 && (
+      {!plays && !empty && <p className="chapter-empty">{NO_CLIPS_PLAYED}</p>}
+      {plays && (
         <DndContext
           id={`chapter-${chapterKey}`}
           sensors={sensors}

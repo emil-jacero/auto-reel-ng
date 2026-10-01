@@ -33,21 +33,24 @@ export const OWN_CHAPTER_NOTE =
   "The event's own chapter: its title card shows the event's title, and clips without a " +
   'chapter of their own join it.'
 
-/** The chapter's later-clips notes, as Edit mode shows them. */
+/**
+ * The chapter's later-clips notes, as Edit mode shows them. `own` is the event's
+ * own chapter's heading at that moment (`Main`, or `Clips` when it is the only
+ * chapter listed); null when it is deleted or not listed, so that such clips start
+ * a new `Main` chapter at the end.
+ */
 export const LATER_CLIP_NOTE = {
-  folderUnnamed: (folder: string, newMain: boolean) =>
+  folderUnnamed: (folder: string, own: string | null) =>
     `No chapter will be named after the folder “${folder}”, so clips added to it later will ` +
-    (newMain
-      ? `start a new ${OWN_CHAPTER_HEADING} chapter at the end.`
-      : `join ${OWN_CHAPTER_HEADING}.`),
+    (own === null ? `start a new ${OWN_CHAPTER_HEADING} chapter at the end.` : `join ${own}.`),
   folderJoins: (folder: string) =>
     `Clips added to the folder “${folder}” later will join this chapter. Clips from it that ` +
     'other chapters list stay where they are.',
   ignoredHere: (count: number) =>
     `Its ${plural(count, 'ignored clip', 'ignored clips')} will be listed here.`,
-  ignoredToMain: (count: number, newMain: boolean) =>
+  ignoredToMain: (count: number, own: string | null) =>
     `Its ${plural(count, 'ignored clip', 'ignored clips')} will be listed under ` +
-    (newMain ? `a new ${OWN_CHAPTER_HEADING} chapter at the end.` : `${OWN_CHAPTER_HEADING}.`),
+    (own === null ? `a new ${OWN_CHAPTER_HEADING} chapter at the end.` : `${own}.`),
   ownDeleted:
     'Clips added to the event folder later will start a new ' +
     `${OWN_CHAPTER_HEADING} chapter at the end.`,
@@ -119,6 +122,35 @@ export function diskFolders(clips: Iterable<Clip>): ReadonlySet<string> {
   return folders
 }
 
+/**
+ * How the page heads the event's own chapter: `Main` while another chapter a save
+ * keeps is listed, `Clips` otherwise (the read view's rule).
+ */
+export function ownChapterHeading(chapters: readonly DraftChapter[]): string {
+  return chapters.some((chapter) => !chapter.deleted && chapter.name !== '')
+    ? OWN_CHAPTER_HEADING
+    : 'Clips'
+}
+
+/**
+ * How many of `identities` (ignored clips the event's own chapter lists) the page
+ * would list under that chapter again after the save: those of the event folder,
+ * and those of a folder no chapter a save keeps is named after (exactly). The
+ * others move to the chapter named after their folder.
+ */
+export function ignoredStaying(
+  chapters: readonly DraftChapter[],
+  identities: readonly string[],
+): number {
+  const names = new Set(
+    chapters.filter((chapter) => !chapter.deleted).map((chapter) => chapter.name),
+  )
+  return identities.filter((identity) => {
+    const folder = folderOf(identity)
+    return folder === '' || !names.has(folder)
+  }).length
+}
+
 export type NoteInput = {
   chapters: readonly DraftChapter[]
   /** `diskFolders` of the event. */
@@ -129,8 +161,9 @@ export type NoteInput = {
 
 /**
  * The later-clips notes of every chapter, deleted ones included, each in this
- * order (names compared exactly, as the engine does; `Main` is the event's own
- * chapter, or a new one at the end when it is deleted or not listed):
+ * order (names compared exactly, as the engine does; "Main" below is the event's
+ * own chapter, named by its heading now, `Main` or `Clips`, or a new `Main` chapter
+ * at the end when it is deleted or not listed):
  *
  * 1. a read chapter named after a folder holding clips, renamed away or
  *    deleted, while no other listed chapter takes that name: the folder's later
@@ -146,7 +179,7 @@ export function laterClipNotes(input: NoteInput): ReadonlyMap<ChapterKey, readon
   const { chapters, folders, ignored } = input
   const listed = chapters.filter((chapter) => !chapter.deleted)
   const own = listed.find((chapter) => chapter.name === '') ?? null
-  const newMain = own === null
+  const ownHeading = own === null ? null : ownChapterHeading(chapters)
   // Where an ignored clip of folder F is listed after the save: the chapter named F, else Main.
   const homeOf = (folder: string): ChapterKey | null =>
     listed.find((chapter) => chapter.name === folder)?.key ?? own?.key ?? null
@@ -176,7 +209,7 @@ export function laterClipNotes(input: NoteInput): ReadonlyMap<ChapterKey, readon
       (chapter.deleted || chapter.name !== readName) &&
       !listed.some((other) => other.name === readName)
     ) {
-      lines.push(LATER_CLIP_NOTE.folderUnnamed(readName, newMain))
+      lines.push(LATER_CLIP_NOTE.folderUnnamed(readName, ownHeading))
     }
     if (
       !chapter.deleted &&
@@ -192,7 +225,7 @@ export function laterClipNotes(input: NoteInput): ReadonlyMap<ChapterKey, readon
     }
     const count = leaving.get(chapter.key) ?? 0
     if (count > 0) {
-      lines.push(LATER_CLIP_NOTE.ignoredToMain(count, newMain))
+      lines.push(LATER_CLIP_NOTE.ignoredToMain(count, ownHeading))
     }
     if (chapter.readName === '' && chapter.deleted) {
       lines.push(LATER_CLIP_NOTE.ownDeleted)

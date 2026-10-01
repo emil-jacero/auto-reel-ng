@@ -31,7 +31,13 @@ import { SkeletonRows } from '../ui/Skeleton'
 import { keepToastsClearOf, toast } from '../ui/toast'
 import { MoveClipsDialog, NameDialog } from './ChapterDialogs'
 import type { MovableClip } from './ChapterDialogs'
-import { OWN_CHAPTER_HEADING, OWN_CHAPTER_NOTE, diskFolders, laterClipNotes } from './chapterNames'
+import {
+  OWN_CHAPTER_HEADING,
+  OWN_CHAPTER_NOTE,
+  diskFolders,
+  ignoredStaying,
+  laterClipNotes,
+} from './chapterNames'
 import { AddChapter, DeletedChapter, NO_CLIPS_TO_MOVE } from './ChapterTools'
 import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './ChapterTools'
 import { ClipOrderList } from './ClipOrderList'
@@ -559,11 +565,13 @@ function placeIn(draft: Draft, key: ChapterKey): string {
 }
 
 /**
- * Why a chapter cannot be deleted, or null when it can: it still plays a clip
- * (moved out first, or removed when missing); or it is the event's own chapter and
- * lists an ignored clip, which the page would list under it again after the save.
+ * Why a chapter cannot be deleted, or null when it can. It still plays a clip:
+ * one on disk moves out with Move clips, a missing one goes with its Remove. Or it
+ * is the event's own chapter and lists an ignored clip the page would list under
+ * it again after the save (`ignoredStaying`): it would come back holding only that.
  */
 function deleteRefusal(
+  chapters: readonly DraftChapter[],
   chapter: DraftChapter,
   heading: string,
   order: readonly string[],
@@ -572,18 +580,28 @@ function deleteRefusal(
 ): string | null {
   if (order.length > 0) {
     const missing = order.filter((identity) => clips.get(identity)?.status === 'missing').length
-    const them = order.length === 1 ? 'it' : 'them'
-    const orRemove =
-      missing === 0 ? '' : `, or remove the missing ${missing === 1 ? 'one' : 'ones'}`
+    const present = order.length - missing
+    if (present === 0) {
+      return (
+        `“${heading}” still lists ${plural(missing, 'missing clip', 'missing clips')}. ` +
+        `Remove ${missing === 1 ? 'it' : 'them'} first.`
+      )
+    }
+    const plays = `“${heading}” still plays ${plural(order.length, 'clip', 'clips')}. `
+    if (missing === 0) {
+      return `${plays}Move ${present === 1 ? 'it' : 'them'} to another chapter first.`
+    }
+    const gone = missing === 1 ? 'the missing one' : `the ${missing} missing ones`
     return (
-      `“${heading}” still plays ${plural(order.length, 'clip', 'clips')}. ` +
-      `Move ${them} to another chapter first${orRemove}.`
+      `${plays}Move the ${present === 1 ? 'clip' : `${present} clips`} on disk to another ` +
+      `chapter and remove ${gone} first.`
     )
   }
-  if (chapter.name === '' && ignored.length > 0) {
+  const staying = chapter.name === '' ? ignoredStaying(chapters, ignored) : 0
+  if (staying > 0) {
     return (
-      `${heading} still lists ${plural(ignored.length, 'ignored clip', 'ignored clips')} ` +
-      'from the event folder, so it stays.'
+      `“${heading}” still lists ${plural(staying, 'ignored clip', 'ignored clips')} that no ` +
+      'other chapter will take, so it stays.'
     )
   }
   return null
@@ -1146,6 +1164,7 @@ export function EventEditor({
       }
       const heading = headingIn(current.draft, key)
       const refusal = deleteRefusal(
+        current.draft.chapters,
         chapter,
         heading,
         current.draft.orders.get(key) ?? [],
@@ -1206,7 +1225,14 @@ export function EventEditor({
         ...(notes.get(chapter.key) ?? []),
       ].filter((line): line is string => line !== false)
       const refusal = several
-        ? deleteRefusal(chapter, heading, order, ignoredOf.get(chapter.key) ?? [], clips)
+        ? deleteRefusal(
+            listed,
+            chapter,
+            heading,
+            order,
+            ignoredOf.get(chapter.key) ?? [],
+            clips,
+          )
         : undefined
       const model: ChapterToolsModel = {
         notes: lines,
@@ -1312,7 +1338,9 @@ export function EventEditor({
       const next = addChapter(current.draft, key, name)
       focusAfter.current = { key, target: 'heading' }
       dispatch({ type: 'chapter-add', key, name })
-      announce(`Chapter “${name}” added, ${placeIn(next, key)}. It has no clips.`)
+      announce(
+        `Chapter “${name}” added, ${placeIn(next, key)}. It has no clips.${notesIn(next, key)}`,
+      )
     } else {
       const { key } = shownDialog
       const before = headingIn(current.draft, key)
