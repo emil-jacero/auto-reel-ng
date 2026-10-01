@@ -56,12 +56,31 @@ def test_a_handled_signal_is_not_raised_again(signum: signal.Signals, recorded: 
     assert signal.getsignal(signum) is recorder
 
 
-def test_a_second_sigint_still_forces(recorded: list[int]) -> None:
+@pytest.mark.parametrize(
+    ("signals", "forced"),
+    [
+        ([signal.SIGINT, signal.SIGINT], True),
+        ([signal.SIGTERM, signal.SIGINT], True),
+        ([signal.SIGINT, signal.SIGTERM], False),
+        ([signal.SIGTERM, signal.SIGTERM], False),
+    ],
+    ids=["SIGINT,SIGINT", "SIGTERM,SIGINT", "SIGINT,SIGTERM", "SIGTERM,SIGTERM"],
+)
+def test_only_a_later_sigint_forces(
+    signals: list[signal.Signals], forced: bool, recorded: list[int]
+) -> None:
+    """A SIGINT during the shutdown forces whichever signal started it; a SIGTERM never does.
+
+    Both outcomes are uvicorn's ``handle_exit``: a change there that let any second signal
+    force would turn a repeated ``kill`` or ``systemctl stop`` into exit 130, and one that
+    dropped the SIGTERM-first force would report a forced stop as 0.
+    """
     server = commands.ServiceServer(_config())
     with server.capture_signals():
-        signal.raise_signal(signal.SIGINT)
-        signal.raise_signal(signal.SIGINT)
-        assert server.force_exit
+        for signum in signals:
+            signal.raise_signal(signum)
+        assert server.should_exit
+        assert server.force_exit is forced
     assert recorded == []
 
 
