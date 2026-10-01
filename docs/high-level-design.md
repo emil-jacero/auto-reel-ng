@@ -572,7 +572,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   name in the render manifest. Until then the staleness verdict cites `output_renamed` instead of
   `output` (which keeps meaning the movie is really gone). Removing the old file is the operator's
   call. A render still replaces the file at its own path, so a case-only rename on a
-  case-insensitive filesystem replaces the old movie, as before. (§4.3/§4.11)
+  case-insensitive filesystem replaces the old movie, as before, and so does the render of another
+  event that now has the renamed event's old name (the collision check compares only current paths);
+  the renamed event's verdict then still cites `output_renamed`, for a file that is now the other
+  event's movie. (§4.3/§4.11)
 
 - **D-10 — GUI v1 visual system** (2026-09-30, change `web-design-system`). GUI v1 ships a modern visual
   design, overriding event-list-screen's deferral of look and feel to v2, and does it inside D-8's budget:
