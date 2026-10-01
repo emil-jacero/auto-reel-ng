@@ -798,6 +798,29 @@ checks are scratch Playwright scripts against this branch's serve on :8116 (`ver
   - what a row tells assistive technology names the event as its notifications do
   - the confirmed-in-words scenario says no notification is shown over the list
 
+### Rebuilt on main
+
+`event-page-polish` (#15), `serve-clean-exit` (#16), `ui-a11y-polish` (#20) and `event-list-polish` (#21)
+merged first. The change was cherry-picked onto that main as `pr/jobs-live-polish-2`, with every commit kept
+and none rewritten.
+
+- **One conflict: `EventDetail.tsx`.** #15 moved `RenderControl` into its new `RenderPanel` (the render
+  region). Its version of the component is kept, and this change's two props, `title={event.title}` and
+  `date={event.date}`, are added to `RenderControl` there. `EventList.tsx`'s two props merged cleanly onto
+  #21's row.
+- **The separator stop-gap is deleted** (this design, "Supervisor decisions"). #21 landed
+  `.event-table .live-job .job-words::after { content: none }` in `list.css`. This change removes the
+  `::after` dot it guarded against: the separator is `.job-words + .job-when::before`, which `.live-job`
+  turns off in every row. So the stop-gap matched nothing, and a new commit deletes it. `check_separator.py`
+  now also asserts that no `.job-words` draws an `::after`, on the page and in every row. It passed
+  246/246 at 1280, 768, 390 and 320 px, light and dark.
+- **The four MODIFIED requirements** are ones no merged change touched. The synced spec's blocks equal this
+  change's, and every other requirement equals main's.
+- **The dev library's fixture.** The earlier `check_e2e.py` pass rendered Grillning and Badutflykt for real,
+  which left them up to date. The mock-based scripts need them stale, as `make_dev_library` left them:
+  Grillning "editorial, output" and Badutflykt "clip_set". Their render manifests were set back to those
+  reasons before the scripts ran, and again after this pass's own end-to-end run.
+
 ## Failure behavior & idempotency
 
 - **No new request.** A dialog that closes by itself sends nothing. Cancel's extra confirmation adds no
