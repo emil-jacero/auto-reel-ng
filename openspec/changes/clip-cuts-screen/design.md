@@ -15,6 +15,33 @@
 - Re-based on main `d631b7c` (G1 archived, with its review fixes): the MODIFIED requirement's text differs
   from the landed one only by this change's cut edits; every G1 name this design uses landed unchanged
   (task 1.1); the line numbers below were refreshed.
+- After implementation and review (2026-10-01), seven deviations from the sections below are **accepted**,
+  each found by task 4.2's measurements on the agent's own library:
+  1. **CSS order.** The bundle puts `cuts.css` before `edit.css` (`EventDetail.tsx` imports `ReadCuts`
+     before `EventEditor`), so `.field-input` beat `.cut-time` on equal specificity: under a coarse pointer
+     the fields measured 36 px tall (34-35 of 49 probe points), and they lost the mono font. The rules are
+     `.field-input.cut-time`. The read view's summary also takes the square `::after` area every `.btn`
+     has: its rounded bottom corners left 2-3 of 49 probe points to the row ("CSS").
+  2. **A cut row is a two-column grid**, the number and then a `div.cut-body` that wraps beside it (not one
+     flex line): at 320 px the read view's file cell is about 120 px wide, and the number stood alone on a
+     line above its span ("CSS", "The read view").
+  3. **The read view's summary is `inline-block` with two `nowrap` parts** (`.read-cuts-part`: the count,
+     then the time cut out), not `inline-flex`: in that cell its anonymous flex items wrapped inside
+     "2.375 s" ("The read view").
+  4. **One chevron class**, `.cuts-chevron`, for the toggle and the summary (instead of
+     `cuts-toggle-chevron` and `read-cuts-chevron`).
+  5. **`CutList` takes `keyOf` and `controls`** (one list for both views), and the panel wraps it in a
+     `div`; the read view's failure note is `ReadCutsNote` in `ReadCuts.tsx`, which keeps the
+     `EventDetail.tsx` diff at 8 lines and its `role="note"` where task 3.3's grep looks.
+  6. **Reset and the panel's state.** `ClipRow` hides its panel when its `resets` prop changes (state
+     adjusted during render, React's documented pattern), and the panel is keyed by `resets`. The typed
+     clip's name is resolved by `nameNow()` in the editor when the save bar's summary is built.
+  7. **Two details the sections below leave open.** An Add cut refusal goes at any change of either field.
+     After an added cut's Remove, focus goes to the first button of the cut now in its place: its Remove, or
+     its Undo when that cut is a removed one.
+- The first edit of an event brings the save bar in, which takes about 110 ms on the 400-clip `Stor dag`
+  whatever the field (a first Title keystroke too, as before this change; every later keystroke about
+  15 ms): pre-existing, **accepted**, a follow-up. Task 4.1 measures with the bar already shown, as G1 did.
 
 ## Context
 

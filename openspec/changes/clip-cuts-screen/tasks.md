@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Confirm that `openspec/changes/archive/*-chapter-management-screen` exists on main and that `openspec/changes/chapter-management-screen` does not. Stop and report to the supervisor if not. Then re-check the names this change builds on (design, "Context", "The draft model"), and stop and report on any mismatch:
+- [x] 1.1 Confirm that `openspec/changes/archive/*-chapter-management-screen` exists on main and that `openspec/changes/chapter-management-screen` does not. Stop and report to the supervisor if not. Then re-check the names this change builds on (design, "Context", "The draft model"), and stop and report on any mismatch:
   - `web/src/edit/draft.ts` exports `Draft` (with `chapters`, `orders`, `removed`, `metadata`), `Baseline` (with `read`, `chapters`, `original`), `isDirty(baseline, draft)`, `buildWriteBody(baseline, draft)`, `adoptedNewCount` and `keptOriginal`. Its one helper `writtenFromView(baseline, draft)` serves all three, and the file imports only with `import type`.
   - `web/src/edit/EventEditor.tsx` has `reduce`, `afterEdit`, `submit` (guarded by `dateIncomplete`), `summarize` (with the chapter parts), `announce`, `resets` and `dateIncomplete`, and G1's Move clips still moves a row into another chapter's `ClipOrderList` (the reason for the panel store)
   - `web/src/edit/ClipOrderList.tsx` has `ClipRow`, `RowBody` and `nameOf`, and is keyed by `chapterKey`
@@ -15,7 +15,7 @@
 
 ## 2. web/ — the model (pure)
 
-- [ ] 2.1 Add `src/cuts/times.ts` (design, "Times: forms, parsing, writing", "What a cut must satisfy", "The reason of a cut made here", "Copy"): `Trim`, `parseTime`, `formatTime`, `formatLength`, `spokenLength`, `cutOutSeconds`, `checkCut`, `checkRestore`, `KNOWN_REASONS`, `CUT_REASON_LABEL` (not `REASON_LABEL`, which `events/labels.ts` already exports), `reasonWords`, and the refusal and announcement copy as exported functions or constants. Type-only imports.
+- [x] 2.1 Add `src/cuts/times.ts` (design, "Times: forms, parsing, writing", "What a cut must satisfy", "The reason of a cut made here", "Copy"): `Trim`, `parseTime`, `formatTime`, `formatLength`, `spokenLength`, `cutOutSeconds`, `checkCut`, `checkRestore`, `KNOWN_REASONS`, `CUT_REASON_LABEL` (not `REASON_LABEL`, which `events/labels.ts` already exports), `reasonWords`, and the refusal and announcement copy as exported functions or constants. Type-only imports.
 
   Verify: a scratch script in `<scratchpad>/verify/clip-cuts-screen/`, never committed, runs under `node --experimental-strip-types` in `docker.io/library/node:22`, imports `times.ts`, and asserts:
   - `parseTime`:
@@ -43,7 +43,7 @@
     - a removed listed cut does not clash
   - `checkRestore`: with `r0 = [0, 1.2]` removed and `a1 = [1, 2]` listed, restoring `r0` → `overlap`, clash 2; with `a1 = [1.2, 2]` instead → ok (touching)
   - `reasonWords`: `black` → `Black frames`, `manual` → `Cut by hand`, `sunset noise` → `“sunset noise”`, `null` → `—`
-- [ ] 2.2 In `src/edit/draft.ts`, add the cut model (design, "The draft model"): `CutKey`, `DraftCut`, `Cuts`, `Draft.cuts`, `Baseline.cuts`, `readCuts`, `cutsOf`, `addCut`, `removeCut`, `restoreCut`, `changedCuts` and `cutChanges`. Add `changedCuts` to `isDirty`, the NEW-clip predicate and the no-chapters trigger to `writtenFromView`, and the `clips` merge to `buildWriteBody`. Keep the file free of runtime imports.
+- [x] 2.2 In `src/edit/draft.ts`, add the cut model (design, "The draft model"): `CutKey`, `DraftCut`, `Cuts`, `Draft.cuts`, `Baseline.cuts`, `readCuts`, `cutsOf`, `addCut`, `removeCut`, `restoreCut`, `changedCuts` and `cutChanges`. Add `changedCuts` to `isDirty`, the NEW-clip predicate and the no-chapters trigger to `writtenFromView`, and the `clips` merge to `buildWriteBody`. Keep the file free of runtime imports.
 
   Verify:
   - `npx tsc --noEmit` passes in the node:22 container once 3.2 has adapted the callers. Until then, only `EventEditor.tsx` and `ClipOrderList.tsx` may report errors.
@@ -65,13 +65,13 @@
 
 ## 3. web/ — the screens
 
-- [ ] 3.1 Add `src/cuts/CutsPanel.tsx` (`CutsToggle`, `CutsPanel`, `CutList`, `CutSpan`) and `src/cuts/cuts.css`, and `scissors` and `chevron-down` to `src/ui/Icon.tsx` (design, "The Edit-mode toggle and panel", "Copy", "Keyboard model and focus", "CSS"). Field markup reuses `.field`, `.field-label`, `.field-input`, `.field-error` and `.field-hint`. The panel seeds its fields from the editor's panel store and writes them back on each change (design, "A disclosure under the row"), keeps them as local state for rendering, and reports `cut-typed {identity, typed}` (no name) when "has text" flips. It refuses an overlapping Undo through `checkRestore`, shown in the cut's row. It handles focus after add, remove and Undo with a layout effect, then the passive scroll.
+- [x] 3.1 Add `src/cuts/CutsPanel.tsx` (`CutsToggle`, `CutsPanel`, `CutList`, `CutSpan`) and `src/cuts/cuts.css`, and `scissors` and `chevron-down` to `src/ui/Icon.tsx` (design, "The Edit-mode toggle and panel", "Copy", "Keyboard model and focus", "CSS"). Field markup reuses `.field`, `.field-label`, `.field-input`, `.field-error` and `.field-hint`. The panel seeds its fields from the editor's panel store and writes them back on each change (design, "A disclosure under the row"), keeps them as local state for rendering, and reports `cut-typed {identity, typed}` (no name) when "has text" flips. It refuses an overlapping Undo through `checkRestore`, shown in the cut's row. It handles focus after add, remove and Undo with a layout effect, then the passive scroll.
 
   Verify:
   - `npx tsc --noEmit` and `npm run build` pass in the node:22 container
   - `cuts.css` declares only `@layer screens`, and `grep -n "animation\|transition" web/src/cuts/cuts.css` prints nothing
   - `grep -rn ' disabled=\|autoFocus\|role="alert"' web/src/cuts` prints nothing
-- [ ] 3.2 Wire the panel into Edit mode (design, "Where the Cuts control sits", "A cut typed but not added", "Copy", "Performance"):
+- [x] 3.2 Wire the panel into Edit mode (design, "Where the Cuts control sits", "A cut typed but not added", "Copy", "Performance"):
   - `ClipOrderList.tsx`: `ClipRow` renders `CutsToggle` after `MoveButtons` and the panel right after it, for an `active` or `new` clip. Its `open` state is seeded from and written to the panel store, and the panel is mounted while `open` or while the store has an entry. `aria-controls` is set only while the panel is mounted. The list takes `draft.cuts` and `baseline.cuts` as props (never `draft`) and resolves `cutsOf` per row (design, "Performance"). `ClipRow` shows a missing clip's cut badge through a `RowBody` prop; `RemovedRow` passes none.
   - `EventEditor.tsx`:
     - actions `cut-add`, `cut-remove`, `cut-restore` and `cut-typed` go through `afterEdit` and are refused while a save is in flight
@@ -85,10 +85,10 @@
 
   Verify:
   - `npx tsc --noEmit` and `npm run build` pass
-  - `git diff web/src/edit/SaveBar.tsx` changes only the prop's name, its type line and its three uses
+  - `git diff web/src/edit/SaveBar.tsx` changes only the prop's name, its type line, its three uses and the two comments that say what holds Save back (now a typed cut too)
   - `git diff web/src/edit/edit.css` adds only the toggle rules and the selector change, with no `grid-template-columns` or `grid-template-areas` line changed
   - `grep -rn ' disabled=' web/src/edit web/src/cuts` prints nothing
-- [ ] 3.3 Add `src/cuts/ReadCuts.tsx` (`useReadCuts`, `ReadCuts`), and use it in `src/events/EventDetail.tsx`: `ReadyView` calls the hook and shows the failure note, and `ChapterPanel` renders `ReadCuts` in the file cell (design, "The read view").
+- [x] 3.3 Add `src/cuts/ReadCuts.tsx` (`useReadCuts`, `ReadCuts`), and use it in `src/events/EventDetail.tsx`: `ReadyView` calls the hook and shows the failure note, and `ChapterPanel` renders `ReadCuts` in the file cell (design, "The read view").
 
   Verify:
   - `npx tsc --noEmit` and `npm run build` pass
@@ -97,7 +97,7 @@
 
 ## 4. Verification against the dev library
 
-- [ ] 4.1 Set up the agent's own environment per the dev-env runbook §9 with `SLUG=clip-cuts-screen`, `N=27`: database `arel_clip_cuts_screen`, library `../dev-clip-cuts-screen`, `auto-reel serve <library> --port 8127` over a fresh `npm run build`, no worker. Never use port 8080 or 5173, `../auto-reel-dev`, `auto-reel-media/`, the default database, or another agent's database, library or port. In that library copy only, add the fixtures of design, "Verification fixtures" (the 400-clip `Stor dag` by the recipe the design's "Verification fixtures" copies from `archive/*-chapter-management-screen/design.md` and `archive/2026-09-30-event-edit-screen/design.md`), and copy every `reel.yaml` before touching it. Apply each `reel.yaml` fixture only for the scenarios that state it, and restore the copy before the next scenario. `make_dev_library.py` dumps `reel.yaml` with ruamel's default indentation, and the engine's writer (`reel/writer.py` 28-35) re-indents every list in the file on its first real write. So first normalise each `reel.yaml` the checks `diff`: load it and dump it again with `indent(mapping=2, sequence=4, offset=2)`. Then take its copy. A `diff` after a save then shows only the scenario's lines.
+- [x] 4.1 Set up the agent's own environment per the dev-env runbook §9 with `SLUG=clip-cuts-screen`, `N=27`: database `arel_clip_cuts_screen`, library `../dev-clip-cuts-screen`, `auto-reel serve <library> --port 8127` over a fresh `npm run build`, no worker. Never use port 8080 or 5173, `../auto-reel-dev`, `auto-reel-media/`, the default database, or another agent's database, library or port. In that library copy only, add the fixtures of design, "Verification fixtures" (the 400-clip `Stor dag` by the recipe the design's "Verification fixtures" copies from `archive/*-chapter-management-screen/design.md` and `archive/2026-09-30-event-edit-screen/design.md`), and copy every `reel.yaml` before touching it. Apply each `reel.yaml` fixture only for the scenarios that state it, and restore the copy before the next scenario. `make_dev_library.py` dumps `reel.yaml` with ruamel's default indentation, and the engine's writer (`reel/writer.py` 28-35) re-indents every list in the file on its first real write. So first normalise each `reel.yaml` the checks `diff`: load it and dump it again with `indent(mapping=2, sequence=4, offset=2)`. Then take its copy. A `diff` after a save then shows only the scenario's lines.
 
   Drive `http://127.0.0.1:8127/` with a Playwright script in `<scratchpad>/verify/clip-cuts-screen/` (container `mcr.microsoft.com/playwright/python:v1.49.0-noble`, `--network host`). Scope locators to `main:not([hidden])`, capture every `PUT …/reel` body, and check files host-side with `cat` and `diff`. Use the **keyboard only** (Tab, Shift+Tab, Enter, Space, Escape, typing; no clicks) for every item below except where it says pointer. After each step, assert `document.activeElement` and the editor's `role="status"` text.
   - Every scenario of the two ADDED requirements, on the named events, in order. Each save's body matches design, "The draft model", and each `reel.yaml` `diff` shows only the lines the scenario names.
@@ -120,7 +120,7 @@
     - every request of "Reading cuts changes nothing" is a GET
   - **Scale**: on `2024-09-15 - Stor dag`, open the Cuts of the 400th clip, type 10 characters in its start field (under 50 ms per keystroke), and add a cut (under 200 ms from Enter to the announcement). Then type 10 characters in Title: under 50 ms per keystroke, as G1 measured (no list re-renders: design, "Performance"). Then press Move up on the 200th clip: under 200 ms to its announcement, as before.
   - Restore every touched `reel.yaml` from its copy afterwards and `diff` to confirm.
-- [ ] 4.2 Layout, touch and accessibility on `2024-08-20 - Två kapitel - Tjörn` and `2024-06-27 - Grillning med grannar`. Check Edit mode with every panel closed, with one panel open holding two cuts (one of them removed, with Undo) and a refusal shown, and the read view with a cut list open:
+- [x] 4.2 Layout, touch and accessibility on `2024-08-20 - Två kapitel - Tjörn` and `2024-06-27 - Grillning med grannar`. Check Edit mode with every panel closed, with one panel open holding two cuts (one of them removed, with Undo) and a refusal shown, and the read view with a cut list open:
   - **Sizes**: 320×700, 390×844, 768×1024 and 1280×900, in the light and the dark theme (the theme control). Save screenshots of each state to `<scratchpad>/verify/clip-cuts-screen/` and look at every one.
     - at every size, `document.documentElement.scrollWidth <= clientWidth`
     - with panels closed, each row's height at 320 and 390 equals a run of main's build taken first (±1 px)
@@ -138,7 +138,7 @@
 
 ## 5. Docs and validation
 
-- [ ] 5.1 Update `web/README.md` and `docs/high-level-design.md`:
+- [x] 5.1 Update `web/README.md` and `docs/high-level-design.md`:
   - `web/README.md`: the Edit-mode paragraph (the Cuts control, times, refusals, Undo, typed-but-not-added) and the event page paragraph (the indicator and its list), and the file tree with `cuts/` and its four files
   - `docs/high-level-design.md`: D-14 as in design, "HLD"; §4.10's v1 bullet gains "typed cuts (**D-14**)", re-read after G1's D-13 edit landed; and §4.10's slice row D
 
