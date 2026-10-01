@@ -81,9 +81,18 @@ reorder — drag a clip's handle (mouse, pen or touch), lift it from the keyboar
 or Enter, the arrows, Space or Enter; Escape cancels), or press its Move up / Move down.
 The rows keep the table's columns (`--clip-*`), so entering Edit mode moves nothing but
 the position number, and they name each clip as the table does (`clipNames`), a folder
-part included where a chapter lists a clip from another folder. A drag or a Move up /
-Move down never takes a clip into another chapter; ignored clips are listed but never
-move. Each chapter's own tools row, under its heading, edits the chapters themselves
+part included where a chapter lists a clip from another folder. A drag can also take a
+clip into another chapter (`cross-chapter-drag`; one `DndContext` around every chapter,
+`edit/ChapterDrag.tsx`), by pointer or keyboard: dropped before any of its clips or after
+the last, the clip lands exactly there, as one edit with Move clips' rules (the "from"
+badge, the counts, the save body). Over another chapter nothing moves: a line marks the
+gap, and a copy of the clip follows the pointer naming the chapter and the position;
+past a chapter's first or last clip the arrows cross into the chapter before or after,
+passing over a deleted one. A chapter that plays no clip shows an area to drop clips on.
+A missing clip stays in its chapter, a deleted chapter's placeholder takes nothing, and
+no drag starts while a save or a Move clips is pending. Move up / Move down never take a
+clip into another chapter; ignored clips are listed but never move. Each chapter's own
+tools row, under its heading, edits the chapters themselves
 (**D-13**): **Rename…** (every chapter but the event's own, which keeps no name: its
 title card is the event's), **Move up** / **Move down**, **Delete** (only once the
 chapter plays no clip, and for the event's own chapter only once it lists no ignored
@@ -188,7 +197,9 @@ src/
 │   └── thumbnail.ts      a clip's thumbnail URL, typed from the schema (no fetch: an <img> asks)
 ├── edit/
 │   ├── EventEditor.tsx   Edit mode: the reel read, chapter edits, the save bar, saves and failures
-│   ├── ClipOrderList.tsx one chapter's clips to reorder: drag, keyboard, buttons; Remove / Undo
+│   ├── ChapterDrag.tsx   the one drag context around every chapter: sensors, targets, the copy, words, focus
+│   ├── dragSlots.ts      where a dragged clip can land: slots, keyboard steps, pointer targets (pure)
+│   ├── ClipOrderList.tsx one chapter's clips: its sortable list, a drop target, buttons; Remove / Undo
 │   ├── ChapterTools.tsx  a chapter's tools row, a deleted chapter's placeholder, Add chapter
 │   ├── ChapterDialogs.tsx the name dialog (Add chapter, Rename…) and Move clips
 │   ├── chapterNames.ts   chapter name rules and what a name means for later clips (pure)
@@ -197,6 +208,7 @@ src/
 │   ├── draft.ts          the edit model: chapters, write body, moved and removed clips, dirty (pure)
 │   ├── unsaved.ts        the unsaved-changes guard and its question
 │   ├── chapters.css      the chapter tools, the deleted placeholder and the chapter dialogs
+│   ├── drag.css          the dragged copy, the line where a drop lands, an empty chapter's area
 │   └── edit.css          Edit mode's fields, rows and save bar
 ├── cuts/
 │   ├── times.ts          typed times read and written, a cut's checks, the cut words and reasons (pure)
