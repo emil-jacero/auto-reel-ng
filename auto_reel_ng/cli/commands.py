@@ -18,13 +18,16 @@ from __future__ import annotations
 import argparse
 import contextlib
 import logging
+import os
 import signal
+import socket
 import sys
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Dict, Iterator, List, Mapping, Optional, Tuple, override
+from typing import Dict, Iterator, List, Mapping, NoReturn, Optional, Tuple, override
 
 import uvicorn
 from ruamel.yaml import YAML
@@ -829,7 +832,8 @@ class ServiceServer(uvicorn.Server):
     for the handler installed before it: asyncio's SIGINT handler turns that into a
     ``KeyboardInterrupt`` traceback, and SIGTERM's default handler kills the process.
     ``serve`` has nothing left for the signal to do. It returns, and its exit status
-    reports the stop (headless-cli, "`serve` runs the API service").
+    reports the stop (headless-cli, "`serve` runs the API service"), which :meth:`run`
+    makes final.
     """
 
     @override
@@ -840,6 +844,41 @@ class ServiceServer(uvicorn.Server):
             # The shutdown the captured signals asked for has completed.
             self._captured_signals.clear()
 
+    @override
+    def run(self, sockets: Optional[List[socket.socket]] = None) -> None:
+        """Serve until stopped; on the main thread, then make the stop final.
+
+        Once uvicorn returns, the outcome is decided (:func:`cmd_serve`). A further SIGINT
+        or SIGTERM is ignored from here on: the interpreter resets Python-level handlers
+        while it finalizes, so only ``SIG_IGN`` keeps a late signal from killing the
+        exiting process or ending it in a ``KeyboardInterrupt``. A forced stop ends the
+        process here: a request handler still running in a worker thread (a sync route
+        blocked on a stalled database or a slow drive) would otherwise hold the exit, as
+        uvicorn's force stops waiting for its task but the interpreter joins the thread.
+        Off the main thread (in-process tests) uvicorn handled no signal: this returns.
+        """
+        super().run(sockets)
+        if threading.current_thread() is not threading.main_thread():
+            return
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(signum, signal.SIG_IGN)
+        if self.force_exit:
+            _end_forced_stop()
+
+
+def _end_forced_stop() -> NoReturn:
+    """End the process at once with status 130, without joining any worker thread.
+
+    The log and the standard streams are flushed first. The app's lifespan cleanup
+    has already run, when ``asyncio.run`` cancelled the lifespan task.
+    """
+    logging.shutdown()
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None:
+            with contextlib.suppress(OSError, ValueError):
+                stream.flush()
+    os._exit(130)
+
 
 def cmd_serve(args: argparse.Namespace) -> int:
     """``serve``: run the FastAPI service under uvicorn until SIGINT/SIGTERM (D-A7).
@@ -848,8 +887,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
     layering as ``worker``, then runs uvicorn programmatically; uvicorn handles
     SIGINT/SIGTERM with a graceful shutdown (the WS hub's poller is cancelled via the
     app's lifespan), after which ``serve`` exits 0, or 130 when a second SIGINT forced
-    the exit. A bind failure is reported loudly, naming the attempted host:port, and
-    the command exits non-zero.
+    the exit (on the main thread :meth:`ServiceServer.run` ends the process itself
+    then, without waiting for request handlers still running in worker threads). A
+    bind failure is reported loudly, naming the attempted host:port, and the command
+    exits non-zero.
     """
     project_root = _resolve_project_root(args)
     settings = resolve_api_settings(
@@ -871,7 +912,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
         print(f"error: could not bind {settings.host}:{settings.port}", file=sys.stderr)
         return 1
     # A SIGINT during the shutdown made uvicorn skip the rest of it (its force-quit):
-    # 130 = 128 + SIGINT, a shell's status for an interrupted command.
+    # 130 = 128 + SIGINT, a shell's status for an interrupted command. On the main
+    # thread ServiceServer.run() has already ended the process with it.
     return 130 if server.force_exit else 0
 
 
