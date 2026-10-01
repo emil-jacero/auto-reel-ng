@@ -19,7 +19,9 @@ See proposal.md, "Why", for the finding. The code on `main` at `bca64f2`:
   `should_exit` is already set sets `force_exit`: the shutdown's wait loops for connections and handler tasks
   end, and the application (lifespan) shutdown is skipped if it has not started. uvicorn still awaits
   `asyncio.Server.wait_closed()` afterwards (Research, "Force-quit still waits for open connections"). A
-  second SIGTERM only sets `should_exit` again.
+  second SIGTERM only sets `should_exit` again. (Corrected in review: what force skips is uvicorn's
+  lifespan shutdown *step*; the app's own cleanup still runs when `asyncio.run` cancels the lifespan task.
+  "Changed during review of the pull request", item 2.)
 - The handlers step 3 restores are:
   - **SIGINT:** `asyncio.Runner` installs its own `_on_sigint` when it finds `signal.default_int_handler`,
     which is what an interactive Python process has. The re-raised SIGINT makes it cancel the main task, and
@@ -203,8 +205,10 @@ graceful shutdown" with: uvicorn handles SIGINT/SIGTERM, and `serve` exits 0 aft
 force-quit". It does not say what a forced stop exits with.
 
 **Explored**:
-- **0 as well.** This is the simplest, but it reports success for a stop that skipped the application shutdown
-  (the WebSocket hub not stopped, the engine not disposed) and may have cut a request.
+- **0 as well.** This is the simplest, but it reports success for a stop that skipped uvicorn's application
+  shutdown step and may have cut a request. (Corrected in review: an earlier text said the WebSocket hub
+  was not stopped and the engine not disposed. Both still happen, when `asyncio.run` cancels the lifespan
+  task; "Changed during review of the pull request", item 2.)
 - **Keep uvicorn's re-raise when `force_exit` is set.** That brings back today's forced outcome: a
   `KeyboardInterrupt` traceback, or death by SIGTERM when SIGTERM came first. The status then depends on the
   order of the signals.
@@ -212,7 +216,9 @@ force-quit". It does not say what a forced stop exits with.
   command, and force is only ever triggered by a SIGINT.
 
 **Decision**: 130, from `cmd_serve` reading `server.force_exit`. The subclass clears the list in both cases,
-so the forced path never re-raises either.
+so the forced path never re-raises either. Extended in review: on the main thread `ServiceServer.run()`
+ends a forced stop itself with `os._exit(130)`, so that no worker thread is joined, and sets both signals
+to `SIG_IGN` once uvicorn has returned ("Changed during review of the pull request", items 1 and 3).
 
 **Rationale**: An exit status is the service's only report to a supervisor or script (Principle I: never
 report a failure as success). The cost is one expression and one unit test. A second SIGINT that lands after
@@ -349,7 +355,8 @@ happens to make that exit non-zero. With `ServiceServer` it would be 0.
   - `stop()` can raise only by awaiting a poller that died with an error, which needs a subscriber still
     registered. But uvicorn ends every connection before it sends the lifespan shutdown, and each WebSocket
     handler unsubscribes in its `finally`, so the last one has already dropped the poller.
-  - A forced stop skips the lifespan shutdown altogether.
+  - A forced stop skips uvicorn's lifespan shutdown step. The lifespan's cleanup then runs in the cancelled
+    lifespan task, and the exit is 130 whatever it logs.
   - `dispose()` does not raise for a database that has gone away.
   - Measured: a real `serve` (port 8120, own Postgres) with a GUI-style WebSocket client. The database
     container was stopped mid-run (`/healthz` then answered 503) and left down for six poll intervals, then
@@ -423,6 +430,80 @@ its request open kept the process up through three SIGINTs. uvicorn 0.51.0 and 0
 The same orderly and forced cases on uvicorn 0.51: `kill -TERM` exit 0 with 1012; both forced cases 130
 without `KeyboardInterrupt`.
 
+### Changed during review of the pull request
+
+A supervisor review of `pr/serve-clean-exit` (two Opus lenses, each finding then checked by a skeptic)
+found one major and four minor defects. The major and the first minor are the same defect, found by both
+lenses. All five were fixed on the pr branch, in new commits. Each fix was reproduced first with the
+review's own scratch probes (`verify/serve-clean-exit/review_probe.py` and `review_pty.py`, port 8120, a
+local listener that accepts and never answers as the database, an empty root), then rerun on the fix.
+
+1. **A forced stop waited for a sync handler's worker thread, and a third Ctrl-C ended in a
+   `KeyboardInterrupt` traceback** (major). The spec and README said the force ends the wait for request
+   handlers still running. That held only for async handlers, the only kind the design's probes used
+   (`await asyncio.sleep(3600)`). Ten of the twelve API routes are sync `def` endpoints, which FastAPI
+   runs in anyio worker threads, and the thumbnail route runs its extraction in one too. Those threads are
+   not daemons. uvicorn's force stops waiting for the request's task, and `asyncio.run` cancels that task,
+   but the thread keeps running, and the interpreter joins it after `cmd_serve` has returned 130.
+   Measured before the fix, with `GET /healthz` blocked on the stalled database after its client gave up:
+   - `kill -INT` twice: "Finished server process", then the process was still up 6 s later. A third
+     SIGINT ended it with 130 and `Exception ignored while joining a thread in _thread._shutdown():
+     ... KeyboardInterrupt`.
+   - The real `auto-reel` console script in a pty, Ctrl-C typed twice: still up 8 s later.
+   - One SIGTERM: still up after 5 s (the orderly stop waits for the handler, as it should).
+
+   **Fix:** `ServiceServer.run()` now ends a forced stop itself, on the main thread: it flushes the log
+   and the standard streams and calls `os._exit(130)`, so no worker thread is joined. The app's cleanup
+   has already run by then (item 2). Off the main thread (`test_serve_starts_and_answers_healthz`) it
+   returns as uvicorn's does, and `cmd_serve` still maps `force_exit` to 130 for that path and for the
+   tests' fakes. After the fix: two or three SIGINTs give 130 0.03–0.11 s after the last one, with no
+   `KeyboardInterrupt`, for `kill -INT` and for a typed Ctrl-C in a pty. The spec now says that the
+   orderly shutdown waits for running handlers and that the force abandons one blocked in a worker thread,
+   with a new scenario for it. README's "one exception" became two: a request still being handled holds
+   the orderly shutdown until it returns. The api-service sentence gains the same remark. The
+   alternative, narrowing the text to async handlers, would have documented a hang that a second Ctrl-C
+   is meant to end.
+   New test `test_a_forced_stop_does_not_wait_for_a_handler_in_a_worker_thread` (no database): the
+   stalled `GET /healthz`, then SIGINT, SIGINT and SIGINT, must end with 130 within 5 s and no
+   `KeyboardInterrupt`. On the unfixed code it timed out.
+2. **"Skips its application shutdown" was inaccurate.** What force skips is uvicorn's lifespan shutdown
+   step and its "Application shutdown complete" line. The app's `_lifespan` is `try: yield finally: await
+   jobs_hub.stop(); engine.dispose()`. When `asyncio.run` closes the loop it cancels the still-pending
+   lifespan task, and that `finally` runs. Measured with an instrumented launcher on the real app, forced
+   stop with an async and with a sync handler: `hub.stop` start and end and `engine.dispose` are printed
+   after "Finished server process", followed by the lifespan's `CancelledError` traceback. The two spec
+   sentences, README, and this design's reason for 130 (Research, "Exit status of a forced stop") no
+   longer say the hub is not stopped and the engine not disposed. The spec says that the cleanup still
+   runs and that the command waits for it. 130 still holds, because a request may have been cut.
+3. **A second signal during the interpreter's finalization killed `serve`.** After `main()` returned,
+   the process spent about 0.2 s finalizing (the reviewer's stamps: 0.16–0.28 s). Python resets its own
+   handlers to `SIG_DFL` there, so a second signal killed it. Measured before the fix, with stop and second signal 0.25 s or 0.32 s apart:
+   `kill -TERM` twice gave −15 in 5 of 5 runs at each gap, and `kill -INT` twice gave −2 in 5 of 5. A
+   typed Ctrl-C 0.25 s after the first ended by signal 2 in 3 of 3 runs. The design's risk entry covered
+   only the gap between `clear()` and the restore. **Fix:** once uvicorn has returned on the main thread,
+   `ServiceServer.run()` sets SIGINT and SIGTERM to `SIG_IGN`, which survives finalization; a
+   Python-level handler would not. After the fix, `kill -TERM` twice exits 0 in 15 of 15 runs (gaps of
+   0.15, 0.25 and 0.32 s). `kill -INT` twice exits 0 in 10 of 10 at 0.25 and 0.32 s. The pty's typed
+   Ctrl-C exits 0 in 3 of 3. At 0.15 s the second SIGINT still lands inside uvicorn's shutdown and
+   forces (130, 5 of 5, before and after the fix), as the spec says. The spec now also says that a further SIGINT or SIGTERM while the command
+   exits changes nothing, with a scenario. The risk entry is corrected. New test
+   `test_a_late_signal_does_not_change_the_exit_status[SIGINT/SIGTERM]` (no database): the launcher
+   raises a SIGINT and a SIGTERM at itself after `main()` returns. The status must stay 0, and the test
+   fails (−2) on the unfixed code.
+4. **Two of the spec's signal-order promises had no test:** SIGTERM then SIGINT forces, and a SIGTERM
+   never forces. `test_a_second_sigint_still_forces` became `test_only_a_later_sigint_forces`, which
+   checks all four two-signal orders against `force_exit`. It also checks that nothing is raised again.
+   Both outcomes come from uvicorn's private `handle_exit`, so an upgrade that changes them now fails a
+   test.
+
+Found while fixing, and not changed here (Risks, the last two entries):
+- A forced stop's `os._exit` can leave an abandoned thread's hidden temporary file behind.
+- `JobsHub.stop()` joins its executor inside the app's cleanup. A poller read stuck on a stalled
+  database therefore holds even a forced stop until the read returns. A WebSocket subscriber opened on
+  the stalled database showed it: after the second SIGINT, the log had reached `hub.stop` start and the
+  process was still up 6 s later. A third SIGINT ended it with 130, and the lifespan logged that
+  `KeyboardInterrupt` as an error. The spec's MAY clause names this log.
+
 ## Failure behavior and idempotency
 
 - **Bind failure:** uvicorn's `sys.exit(1)` raises through the subclass (no `clear()`) and `run()`.
@@ -432,7 +513,9 @@ without `KeyboardInterrupt`.
 - **An application (lifespan) shutdown that raises** is caught by uvicorn, which logs "Application shutdown
   failed" with the traceback and returns normally, so `serve` would exit **0**. No step in today's lifespan
   can raise at that point (Research, "A failed application shutdown"). Known gap; see Open Questions.
-- **Forced stop:** 130, once every client connection has ended. uvicorn may log the handler it cut as
+- **Forced stop:** 130, once every client connection has ended and the app's cleanup has run. A request
+  handler still blocked in a worker thread is abandoned: `ServiceServer.run()` ends the process with
+  `os._exit(130)` instead of letting the interpreter join that thread. uvicorn may log the handler it cut as
   "Exception in ASGI application", and the lifespan task's `CancelledError` as an error traceback.
 - **Idempotency:** `serve` keeps no state across runs, and this change writes no file and no row. A restart
   behaves the same, and neither rendered output nor the job store is involved.
@@ -456,9 +539,28 @@ api-service delta). No web file and no other change's file is touched.
   other commands continues after Ctrl-C. → Accepted. The spec has promised exit zero since phase 7, `serve` is
   a long-running foreground service that is normally the last command, and supervisors (systemd, podman) read
   0 as a clean stop.
-- **[A signal in the last instructions]** A signal that arrives after `clear()` but before uvicorn restores
-  the handlers is recorded and re-raised, as today. → This is a new Ctrl-C at the moment the process exits,
-  and it ends as today's traceback. Accepted.
+- **[A signal in the last instructions]** A signal that arrives after `clear()` but before
+  `ServiceServer.run()` sets `SIG_IGN` is recorded and re-raised, or meets the handler uvicorn or asyncio
+  restored, as before the change. → This is a new Ctrl-C at the moment the process exits, and it ends as
+  today's traceback. Accepted. Corrected in review: the window that mattered was the interpreter's
+  finalization after `main()` returned (about 0.2 s, about half of a whole stop), where a second signal
+  killed `serve`. `SIG_IGN` now closes it. What remains is the gap from `clear()` to `SIG_IGN`: within
+  one millisecond on an orderly stop (the reviewer's stage stamps), and on a forced stop also the app's
+  cleanup, which runs in that gap ("Changed during review of the pull request", items 1 and 3).
+- **[A forced stop abandons worker threads]** `os._exit(130)` ends a request handler still running in a
+  worker thread wherever it is. Its temporary file can stay behind: a thumbnail extraction's
+  `.<key>.<uuid>.tmp` in the thumbnail cache, or, in a write that lands in that instant, a `reel.yaml`
+  writer's `.reel.yaml.<hex>.tmp` next to the file. Both are written to a hidden temporary name and
+  renamed into place, so no thumbnail or `reel.yaml` is ever left half-written, and nothing reads the
+  temporary names. → Accepted: the operator asked to stop now, and a killed or third-Ctrl-C'd process left
+  the same files before. Nothing sweeps them yet (follow-up).
+- **[The hub's stop waits for a store call]** `JobsHub.stop()` shuts its executor down with `wait=True`,
+  inside the app's cleanup, which a forced stop also waits for. A poller read stuck on a stalled database
+  (for example a subscriber's first read) holds every stop, forced or not, until that call returns
+  (psycopg 3.3's default connect timeout is 130 s; a query on a connection whose server went silent has no
+  bound). Measured in review: a third Ctrl-C interrupts it, the lifespan logs the `KeyboardInterrupt` as an
+  error, and `serve` exits 130. → Pre-existing, in `api/` (`jobs-ws-lifecycle`'s decision to wait); out of
+  scope, follow-up.
 - **[Force-quit waits for open connections]** Pre-existing and unchanged (Research, "Force-quit still waits
   for open connections"). A second Ctrl+C behind a vanished peer still leaves `serve` running until the host's
   TCP stack abandons the connection. → The spec and README now say so; aborting the transports is the
