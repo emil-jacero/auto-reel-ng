@@ -566,7 +566,13 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   `POST /api/v1/jobs` (change `jobs-project-guards`) refuse every event whose output path collides
   with another's (compared case-insensitively, never auto-suffixed). The default output directory is
   the sibling `<parent>/<root-name>-output`, outside the walked root, so rendered year folders are
-  never scanned as events. (§4.3/§4.11)
+  never scanned as events. *Amended 2026-10-01 (change `output-renamed-reason`):* after a render, a new
+  title, date or location changes the movie's path. The engine never deletes, moves, renames or
+  overwrites the previous movie: the next render writes the new path beside it and records the new
+  name in the render manifest. Until then the staleness verdict cites `output_renamed` instead of
+  `output` (which keeps meaning the movie is really gone). Removing the old file is the operator's
+  call. A render still replaces the file at its own path, so a case-only rename on a
+  case-insensitive filesystem replaces the old movie, as before. (§4.3/§4.11)
 
 - **D-10 — GUI v1 visual system** (2026-09-30, change `web-design-system`). GUI v1 ships a modern visual
   design, overriding event-list-screen's deferral of look and feel to v2, and does it inside D-8's budget:

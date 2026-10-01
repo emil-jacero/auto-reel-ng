@@ -121,8 +121,9 @@ write nothing) and `--device <amd|nvidia|intel|cpu|device-id>`. `thumbs` takes
 `render`, `enqueue` (CLI and `POST /api/v1/jobs`), and the worker's claim-time
 recheck all go through **one staleness gate**: an event is **stale** if it has no
 render manifest, its current fingerprint differs from the manifest's, or the
-manifest's recorded output file is missing — otherwise it is **fresh** and is
-skipped (not rendered, not enqueued, or completed without rendering).
+event's movie is missing from its expected path (today's title, date and
+location, D-9) — otherwise it is **fresh** and is skipped (not rendered, not
+enqueued, or completed without rendering).
 
 - **The fingerprint** is a hash over four components — the event's editorial
   document (`reel.yaml`, in canonical parsed form; a reformat/comment-only edit is
@@ -135,6 +136,12 @@ skipped (not rendered, not enqueued, or completed without rendering).
   record of an event's last successful render — no database copy. It is written by
   the engine only after a render's output is verified and atomically finalized,
   never on a skip, a dry run, or a failure.
+- **Renaming an event** (a new title, date or location after a render) changes
+  its movie's path. While the last render's movie is still on disk under the old
+  name, the verdict cites `output_renamed`; plain `output` means the movie is
+  really gone. The next render writes the movie under the new name and **keeps
+  the old file** — the engine never deletes, moves or renames it. Delete the old
+  movie by hand if you do not want both.
 - **`--force`** bypasses the gate entirely: `render --force` re-renders and
   replaces output even if fresh; `enqueue --force` / `POST /api/v1/jobs {"force":
   true}` enqueues even a fresh event, carrying `force` on the job row so it
@@ -279,7 +286,8 @@ render, or job logic lives in the web tier.
   persisted document plus the event's new staleness verdict, so no follow-up
   `GET` is needed. **Saving is not rendering**: the write never enqueues and
   never touches the render manifest — it only moves the fingerprint's
-  editorial component, so the very next read reports `stale: editorial` and
+  editorial component, so the very next read reports `stale: editorial` (with
+  `output_renamed` too when the save changed the title, date or location) and
   the existing `POST /api/v1/jobs` enqueues the re-render as usual. Failures
   answer by cause, and none writes anything: **400** is the request's fault —
   an invalid state (e.g. a dangling cross-reference), or one that would leave

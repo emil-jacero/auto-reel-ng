@@ -423,6 +423,54 @@ def test_list_and_detail_agree_on_the_same_event(client: TestClient, project: Pa
     assert listed["staleness"]["reasons"] == ["clip_set"]
 
 
+def _edit_title(event_dir: Path, title: str) -> None:
+    """Round-trip ``reel.yaml`` with a new title, as ``scripts/make_dev_library.py`` does."""
+    from ruamel.yaml import YAML
+
+    reel = event_dir / "reel.yaml"
+    yaml = YAML()
+    document = yaml.load(reel.read_text(encoding="utf-8"))
+    document["metadata"]["title"] = title
+    with reel.open("w", encoding="utf-8") as handle:
+        yaml.dump(document, handle)
+
+
+def _list_and_detail_staleness(client: TestClient, event_id: str) -> tuple[dict, dict]:
+    listed = _by_id(client.get("/api/v1/events").json())[event_id]["staleness"]
+    detail = client.get(f"/api/v1/events/{quote(event_id, safe='/')}").json()["staleness"]
+    return listed, detail
+
+
+def test_renamed_event_reads_output_renamed_on_list_and_detail(
+    client: TestClient, project: Path
+) -> None:
+    """A retitle reads as a renamed movie while the old one is on disk, as missing once gone."""
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _make_fresh(project, event_dir)
+    old_movie = default_output_dir(project) / "2024" / "2024-07-04 - Barbecue.mp4"
+    assert old_movie.read_bytes() == b"already-rendered"
+
+    _edit_title(event_dir, "Grillkväll")
+
+    renamed = {"stale": True, "reasons": ["editorial", "output_renamed"]}
+    assert _list_and_detail_staleness(client, "2024/2024-07-04 - Barbecue") == (renamed, renamed)
+    assert old_movie.read_bytes() == b"already-rendered"  # a read never touches the old movie
+
+    old_movie.unlink()
+
+    missing = {"stale": True, "reasons": ["editorial", "output"]}
+    assert _list_and_detail_staleness(client, "2024/2024-07-04 - Barbecue") == (missing, missing)
+
+
+def test_deleted_movie_still_reads_output(client: TestClient, project: Path) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _make_fresh(project, event_dir)
+    (default_output_dir(project) / "2024" / "2024-07-04 - Barbecue.mp4").unlink()
+
+    missing = {"stale": True, "reasons": ["output"]}
+    assert _list_and_detail_staleness(client, "2024/2024-07-04 - Barbecue") == (missing, missing)
+
+
 def test_a_completed_job_is_not_freshness(
     client: TestClient, project: Path, job_store, jobs_schema_engine
 ) -> None:

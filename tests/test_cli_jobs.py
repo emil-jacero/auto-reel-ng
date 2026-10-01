@@ -174,6 +174,42 @@ def test_enqueue_mixed_stale_and_fresh_events(
     assert queued[0].event_dir == "2024/2024-06-22 - B"
 
 
+@pytest.mark.parametrize(
+    ("keep_old_movie", "reason"), [(True, "output_renamed"), (False, "output")]
+)
+def test_enqueue_queues_a_renamed_event_whatever_its_output_reason(
+    tmp_path: Path,
+    store: JobStore,
+    capsys: pytest.CaptureFixture[str],
+    keep_old_movie: bool,
+    reason: str,
+) -> None:
+    """The rename reason never changes the decision: queued exactly as a missing movie is."""
+    root = _project(tmp_path, "2024-06-21 - A")
+    event_dir = root / "2024" / "2024-06-21 - A"
+    _adopt_and_write_manifest(root, event_dir)
+    reel = event_dir / "reel.yaml"
+    reel.write_text(
+        reel.read_text(encoding="utf-8").replace("title: A\n", "title: A Renamed\n"),
+        encoding="utf-8",
+    )
+    old_movie = default_output_dir(root) / "2024" / "2024-06-21 - A.mp4"
+    if not keep_old_movie:
+        old_movie.unlink()
+
+    assert main(["scan", str(root)]) == 0
+    assert f"stale: editorial, {reason}" in capsys.readouterr().out
+
+    assert main(["enqueue", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "1/1 event(s) newly queued" in out
+    assert "2024-06-21 - A: queued" in out
+    queued = store.list_by_status(JobStatus.QUEUED)
+    assert [job.event_dir for job in queued] == ["2024/2024-06-21 - A"]
+    assert queued[0].force is False
+    assert old_movie.exists() is keep_old_movie  # enqueue never touches the old movie
+
+
 # --------------------------------------------------------------------------- #
 # worker (6.2 smoke test: enqueue -> worker -> done, output exists)
 # --------------------------------------------------------------------------- #

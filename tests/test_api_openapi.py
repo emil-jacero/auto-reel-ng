@@ -142,6 +142,9 @@ def test_staleness_reasons_are_published_as_a_closed_enumeration() -> None:
     published = schema["components"]["schemas"]["StalenessReason"]
     assert published["type"] == "string"
     assert published["enum"] == [reason.value for reason in StalenessReason]
+    # The rename reason is published, and its description says what it means.
+    assert "output_renamed" in published["enum"]
+    assert "output_renamed" in published["description"]
 
 
 def test_clip_status_is_published_as_a_closed_enumeration() -> None:
