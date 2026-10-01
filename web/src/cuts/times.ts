@@ -128,9 +128,24 @@ export type CutRefusal =
   | { kind: 'order'; field: 'end'; start: number; end: number }
   | { kind: 'overlap'; field: 'start'; number: number; clash: { in: number; out: number } }
 
-/** Whether two spans share more than an instant (touching ones do not). */
+/** A time in whole milliseconds: the precision a time is typed and shown in. */
+function ms(seconds: number): number {
+  return Math.round(seconds * 1000)
+}
+
+/**
+ * Whether two spans share more than an instant (touching ones do not), compared to
+ * the millisecond: a read cut that ends at 3.2033333 s is shown ending at 0:03.203,
+ * and a cut typed from there touches it. (A sub-millisecond overlap is harmless: the
+ * render merges overlapping spans.)
+ */
 function overlaps(a: { in: number; out: number }, b: { in: number; out: number }): boolean {
-  return a.in < b.out && b.in < a.out
+  return ms(a.in) < ms(b.out) && ms(b.in) < ms(a.out)
+}
+
+/** Whether a cut key names a cut read from `reel.yaml` (`r0`, `r1`…; `edit/draft.ts`). */
+function isRead(key: string): boolean {
+  return key.startsWith('r')
 }
 
 /**
@@ -177,6 +192,9 @@ export type RestoreRefusal = {
 /**
  * An Undo checked as adding its cut would be: null when the removed cut `key`
  * shares no more than an instant with every other listed cut that is not removed.
+ * Two cuts read from `reel.yaml` keep the spans they were read with, so an overlap
+ * between them was already in the file: it never refuses an Undo, which only goes
+ * back to what was read. Only a cut added since can.
  */
 export function checkRestore(
   listed: readonly (ListedCut & { key: string })[],
@@ -188,7 +206,11 @@ export function checkRestore(
   }
   const cut = listed[at]
   const clash = listed.findIndex(
-    (other, index) => index !== at && other.removed !== true && overlaps(other, cut),
+    (other, index) =>
+      index !== at &&
+      other.removed !== true &&
+      !(isRead(other.key) && isRead(cut.key)) &&
+      overlaps(other, cut),
   )
   return clash === -1 ? null : { number: at + 1, clashNumber: clash + 1, clash: listed[clash] }
 }
@@ -196,9 +218,6 @@ export function checkRestore(
 /** The documented reasons of a cut (D-K): analysis findings, and a cut made by hand. */
 export const KNOWN_REASONS = ['black', 'white', 'freeze', 'manual'] as const
 export type KnownReason = (typeof KNOWN_REASONS)[number]
-
-/** The reason a cut made in the GUI is saved with (D-K). */
-export const MANUAL_REASON: KnownReason = 'manual'
 
 /** Not `REASON_LABEL`, which `events/labels.ts` exports for the staleness reasons. */
 export const CUT_REASON_LABEL: Record<KnownReason, string> = {
@@ -249,12 +268,17 @@ export function spokenSummary(cuts: readonly ListedCut[]): string {
 }
 
 /** The Cuts control's name: `Cuts of a.mp4`, or `1 cut of a.mp4, 1.5 seconds cut out`. */
-export function toggleName(cuts: readonly ListedCut[], name: string): string {
+export function toggleName(cuts: readonly ListedCut[], name: string, typed = false): string {
   const kept = keptCuts(cuts)
-  return kept.length === 0
-    ? `Cuts of ${name}`
-    : `${cutCount(kept.length)} of ${name}, ${spokenLength(cutOutSeconds(kept))} cut out`
+  const base =
+    kept.length === 0
+      ? `Cuts of ${name}`
+      : `${cutCount(kept.length)} of ${name}, ${spokenLength(cutOutSeconds(kept))} cut out`
+  return typed ? `${base}${TYPED_SUFFIX}` : base
 }
+
+/** Said after the Cuts control's name while its panel holds a time typed but not added. */
+export const TYPED_SUFFIX = ', a cut typed, not added'
 
 /** The forms a time may take, as the hint and the refusal name them. */
 export const TIME_FORMS = 'seconds (75.5), m:ss (1:15.5) or h:mm:ss (1:01:15.5)'
@@ -308,7 +332,11 @@ export function addedWords(
 }
 
 /** `Cut 1 of s1710003.mp4, 0:00 to 0:01.2, will be removed when you save.` */
-export function removedReadWords(number: number, cut: { in: number; out: number }, name: string) {
+export function removedReadWords(
+  number: number,
+  cut: { in: number; out: number },
+  name: string,
+): string {
   return `Cut ${number} of ${name}, ${spanWords(cut)}, will be removed when you save.`
 }
 

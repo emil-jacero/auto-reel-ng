@@ -1751,6 +1751,7 @@ export function EventEditor({
                   tools={model}
                   cuts={ready.draft.cuts}
                   baseCuts={ready.baseline.cuts}
+                  typed={ready.typed}
                   panels={cutPanels.panels}
                   resets={ready.resets}
                   cutHandlers={cutHandlers}

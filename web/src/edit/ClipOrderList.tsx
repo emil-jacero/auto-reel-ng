@@ -260,6 +260,7 @@ const ClipRow = memo(function ClipRow({
   locked,
   reducedMotion,
   cuts,
+  typed,
   panels,
   resets,
   cutHandlers,
@@ -278,6 +279,8 @@ const ClipRow = memo(function ClipRow({
   reducedMotion: boolean
   /** Its cuts as listed now (`cutsOf`): a stable array per clip. */
   cuts: readonly DraftCut[]
+  /** Its cut panel holds a time typed but not added (the editor's `typed`). */
+  typed: boolean
   panels: CutPanels
   /** Bumped by Reset: the panel is hidden and its fields emptied. */
   resets: number
@@ -396,6 +399,7 @@ const ClipRow = memo(function ClipRow({
           cuts={cuts}
           name={name}
           open={open}
+          typed={typed}
           controls={mounted ? panelId : null}
           onToggle={onToggle}
         />
@@ -521,6 +525,7 @@ export const ClipOrderList = memo(function ClipOrderList({
   tools,
   cuts,
   baseCuts,
+  typed,
   panels,
   resets,
   cutHandlers,
@@ -555,6 +560,8 @@ export const ClipOrderList = memo(function ClipOrderList({
    */
   cuts: Cuts
   baseCuts: Cuts
+  /** The clips whose cut panel holds a time typed but not added. */
+  typed: ReadonlySet<string>
   /** The editor's cut panel store and handlers (`cuts/CutsPanel.tsx`). */
   panels: CutPanels
   resets: number
@@ -799,6 +806,7 @@ export const ClipOrderList = memo(function ClipOrderList({
                     locked={locked}
                     reducedMotion={reducedMotion}
                     cuts={cutsOf(baseCuts, cuts, identity)}
+                    typed={typed.has(identity)}
                     panels={panels}
                     resets={resets}
                     cutHandlers={cutHandlers}

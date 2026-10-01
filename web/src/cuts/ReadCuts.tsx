@@ -5,10 +5,10 @@ import { useEffect, useState } from 'react'
 import type { EventDetail } from '../api/event'
 import { fetchReel } from '../api/reel'
 import type { ReelDocument, ReelReadResult } from '../api/reel'
+import { plural } from '../events/common'
 import { FAILURE_LABEL, unansweredFailure } from '../events/labels'
 import { Alert } from '../ui/Alert'
-import { Icon } from '../ui/Icon'
-import { CutList } from './CutsPanel'
+import { CHEVRON, CutList, SCISSORS } from './CutsPanel'
 import { cutOutSeconds, formatLength } from './times'
 import type { Trim } from './times'
 
@@ -94,13 +94,6 @@ export function ReadCutsNote({ failure }: { failure: ReadFailure | null }) {
   )
 }
 
-const SCISSORS = <Icon name="scissors" />
-const CHEVRON = (
-  <span className="cuts-chevron" aria-hidden="true">
-    <Icon name="chevron-down" />
-  </span>
-)
-
 /**
  * A clip's cuts under its name: "2 cuts · −4.5 s", said as "2 cuts · 4.5 s cut
  * out", opening the list as Edit mode lists it, with no control that changes it.
@@ -116,11 +109,14 @@ export function ReadCuts({ cuts, name }: { cuts: readonly Trim[] | undefined; na
         {/* Two parts that never break inside: the count, then the time cut out. */}
         <span className="read-cuts-part">
           {SCISSORS}
-          {cuts.length === 1 ? '1 cut' : `${cuts.length} cuts`} ·
+          {plural(cuts.length, 'cut', 'cuts')} ·
         </span>{' '}
         <span className="read-cuts-part">
-          <span aria-hidden="true">−</span>
-          {formatLength(cutOutSeconds(cuts))}
+          {/* One item: the part's gap never falls between the minus and its number. */}
+          <span>
+            <span aria-hidden="true">−</span>
+            {formatLength(cutOutSeconds(cuts))}
+          </span>
           <span className="visually-hidden"> cut out</span>
           {CHEVRON}
         </span>
