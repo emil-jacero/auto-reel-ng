@@ -629,7 +629,9 @@ Not covered, and why (raised to the supervisor):
   theme control below 24rem. No other change of this round lists `shell.css`. (After review: the theme
   control below 26rem, the brand name up to 34rem, and the row gap of `.page-actions` and `.toolbar`.)
 - **`web/src/styles/components.css`**: the toast rules (owned) and the coarse-pointer block (supervisor).
-- **`web/src/events/detail.css`** (P4): one coarse-pointer rule for `.back-link`.
+- **`web/src/events/detail.css`** (P4): one coarse-pointer rule for `.back-link`. (Rebuilt on main after
+  `event-page-polish`, which puts the event's folder beside the back link, top-aligned and padded as the link
+  is: a second rule pads the folder's first line down to the grown link's words. See "Rebuilt on main".)
 - **`web/README.md`**: only the "Dialogs" and "Toasts" bullets, the theme sentence and a touch-target
   sentence of "Design system".
 
@@ -758,6 +760,24 @@ commits. The scripts named below are in `<scratchpad>/verify/ui-a11y-polish/rf/`
   both pointers. This is `edit-mode-polish`'s alert, which it is reshaping.
 - **The fine pointer's 30rem step depends on the font.** With Liberation Sans the live counts stack in three
   lines at 480–485 px, on main as well. That step is the jobs indicator's and the shell's.
+
+### Rebuilt on main
+
+**Context**: `event-page-polish` (#15) and `serve-clean-exit` (#16) merged first. The change was cherry-picked
+onto that main as `pr/ui-a11y-polish-2`. `event-page-polish` puts the event's folder beside the back link, in
+`.page-crumbs`, top-aligned, and pads the folder as the link is, so their first lines share a line. The
+statement above that the back link "is alone on its line" no longer holds.
+
+**Decision**: The back link still grows to 44 px under a coarse pointer, and its words are centred in it,
+10.25 px lower than the folder's first line. A second coarse-pointer rule in `detail.css` pads the folder's
+top by as much, `calc((2.75rem - 1lh) / 2)`: both are `text-sm` at the same line height. The block sits after
+`.crumb-folder`'s own rule, which it overrides. A fine pointer is unchanged.
+
+**Rationale**: It keeps both changes' intent: a 44 px tall target, and the folder on the link's line however
+it wraps. `<scratchpad>/verify/ui-a11y-polish/rebuild/crumb_align.py` measured the centre of the link's words
+against the folder's first line: 0 px apart under both pointers at 1280, 390 and 320 px, on Grillning, Två
+kapitel and Badutflykt, and while the page reads. Before the rule they were 10.25 px apart under a coarse
+pointer.
 
 ## Failure behavior and idempotency
 
