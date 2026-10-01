@@ -43,6 +43,7 @@ import {
   playName,
   playheadName,
   playheadWords,
+  readyWords,
   regionName,
   seekKey,
   setName,
@@ -132,24 +133,20 @@ const CutBar = memo(function CutBar({
       onPointerCancel={onPointer.up}
     >
       <span className="cut-bar-track" />
-      {/* Drawn up to the clip's end; a cut that starts at or past it has nothing to draw. */}
       {lengthMs !== null &&
-        spans.map(
-          (span, at) =>
-            toMs(span.in) < lengthMs && (
-              <span
-                key={at}
-                className="cut-bar-span"
-                data-kind={span.kind}
-                style={
-                  {
-                    '--from': `${along(toMs(span.in), lengthMs)}%`,
-                    '--to': `${along(toMs(span.out), lengthMs)}%`,
-                  } as CSSProperties
-                }
-              />
-            ),
-        )}
+        spans.map((span, at) => (
+          <span
+            key={at}
+            className="cut-bar-span"
+            data-kind={span.kind}
+            style={
+              {
+                '--from': `${along(toMs(span.in), lengthMs)}%`,
+                '--to': `${along(toMs(span.out), lengthMs)}%`,
+              } as CSSProperties
+            }
+          />
+        ))}
       <span
         className="cut-bar-head"
         style={{ '--at': `${lengthMs === null ? 0 : along(atMs, lengthMs)}%` } as CSSProperties}
@@ -274,6 +271,12 @@ export const ClipPreview = memo(function ClipPreview({
   // Focus was in the region: a failure that removes its control moves it to Close.
   const focusInside = useRef(false)
   const scrollAfter = useRef(false)
+  // Try again opens the preview anew: Play takes focus, as on Watch.
+  const focusPlay = useRef(false)
+  // Play pressed before the clip's metadata was read: it plays once it can.
+  const pendingPlay = useRef(false)
+  // Opened by Watch, the thumbnail or Try again (not remounted by a move): say when it is ready.
+  const sayReady = useRef(false)
 
   const spans = useMemo(
     () => (lengthMs === null ? [] : skipSpans(cuts, lengthMs)),
@@ -306,7 +309,13 @@ export const ClipPreview = memo(function ClipPreview({
     }
     video.src = src
     return () => {
-      previews.keepPlayhead(identity, previews.open() === identity ? video.currentTime : undefined)
+      // Only a playhead this element holds: one that has not read its metadata (a
+      // StrictMode remount, a second move before the first loaded) leaves a kept one alone.
+      if (previews.open() !== identity) {
+        previews.keepPlayhead(identity, undefined)
+      } else if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+        previews.keepPlayhead(identity, video.currentTime)
+      }
       video.pause()
       video.removeAttribute('src')
       video.load()
@@ -319,8 +328,17 @@ export const ClipPreview = memo(function ClipPreview({
     if (previews.takeFocus(identity)) {
       playRef.current?.focus({ preventScroll: true })
       scrollAfter.current = true
+      sayReady.current = true
     }
   }, [shows, previews, identity])
+
+  // After Try again the note, and its button, gave way to the transport: focus its Play.
+  useLayoutEffect(() => {
+    if (focusPlay.current && playRef.current !== null) {
+      focusPlay.current = false
+      playRef.current.focus({ preventScroll: true })
+    }
+  }, [attempt])
 
   useEffect(() => {
     if (scrollAfter.current) {
@@ -359,7 +377,7 @@ export const ClipPreview = memo(function ClipPreview({
   }, [phase, src, name, mtime, announce])
 
   // While playing: the head follows each presented frame, and with Skip cuts on, the
-  // frame loop jumps over a cut one frame ahead (design, "Skip cuts").
+  // frame loop jumps over a cut two frame intervals ahead (design, "Skip cuts").
   useEffect(() => {
     const video = videoRef.current
     if (!playing || video === null) {
@@ -430,18 +448,11 @@ export const ClipPreview = memo(function ClipPreview({
     setAllCut(false)
   }, [])
 
-  function togglePlay(): void {
-    const video = videoRef.current
-    if (video === null || phase !== 'ready') {
-      return
-    }
-    if (!video.paused) {
-      video.pause()
-      return
-    }
-    if (skip && lengthMs !== null) {
+  /** Play from where Skip cuts allows, over a clip `total` ms long (null: not read yet). */
+  function startPlay(video: HTMLVideoElement, total: number | null): void {
+    if (skip && total !== null) {
       const now = toMs(video.currentTime)
-      const from = playFrom(spans, now, lengthMs)
+      const from = playFrom(skipSpans(cuts, total), now, total)
       if (from === null) {
         setAllCut(true)
         onAnnounce(ALL_CUT)
@@ -455,8 +466,31 @@ export const ClipPreview = memo(function ClipPreview({
     void video.play().catch(() => undefined)
   }
 
+  function togglePlay(): void {
+    const video = videoRef.current
+    if (video === null || phase === 'checking' || phase === 'failed') {
+      return
+    }
+    // Before the metadata: once it is read, it plays (a second press takes that back).
+    if (phase === 'loading') {
+      pendingPlay.current = !pendingPlay.current
+      return
+    }
+    if (!video.paused) {
+      video.pause()
+      return
+    }
+    startPlay(video, lengthMs)
+  }
+
   function onKey(event: KeyboardEvent<HTMLDivElement>): void {
     const video = videoRef.current
+    // Space plays or pauses, as on Play; never the page's own scroll.
+    if (event.key === ' ') {
+      event.preventDefault()
+      togglePlay()
+      return
+    }
     if (video === null || lengthMs === null) {
       return
     }
@@ -564,13 +598,30 @@ export const ClipPreview = memo(function ClipPreview({
       sound: 'mozHasAudio' in video && video.mozHasAudio === false,
     }
     setNotes(next)
-    if (next.sound) {
-      announce(noSoundWords(name))
-    }
-    if (next.picture) {
-      announce(noPictureWords(name))
-    }
     setPhase('ready')
+    // One announcement: the editor's live region holds one message, so the notes and the
+    // readiness go together, the notes first.
+    const words: string[] = []
+    for (const note of [next.sound && noSoundWords(name), next.picture && noPictureWords(name)]) {
+      const message = note === false ? null : `${note.title} ${note.detail}`
+      if (message !== null && !announced.current.has(message)) {
+        announced.current.add(message)
+        words.push(message)
+      }
+    }
+    if (sayReady.current) {
+      sayReady.current = false
+      words.push(readyWords(name, video.duration))
+    }
+    if (words.length > 0) {
+      onAnnounce(words.join(' '))
+    }
+    if (pendingPlay.current) {
+      pendingPlay.current = false
+      const total =
+        Number.isFinite(video.duration) && video.duration > 0 ? toMs(video.duration) : null
+      startPlay(video, total)
+    }
   }
 
   const onDurationChange = () => {
@@ -605,8 +656,11 @@ export const ClipPreview = memo(function ClipPreview({
       in: cut.in,
       out: cut.out,
     }))
-    return typed === null ? listed : [...listed, { kind: 'typed' as const, ...typed }]
-  }, [cuts, typed])
+    const all = typed === null ? listed : [...listed, { kind: 'typed' as const, ...typed }]
+    // Drawn up to the clip's end; a span that starts at or past it has nothing to draw.
+    return lengthMs === null ? [] : all.filter((span) => toMs(span.in) < lengthMs)
+  }, [cuts, typed, lengthMs])
+  // The legend names only the kinds the bar draws.
   const kinds = (['cut', 'removed', 'typed'] as const).filter((kind) =>
     barSpans.some((span) => span.kind === kind),
   )
@@ -682,6 +736,8 @@ export const ClipPreview = memo(function ClipPreview({
                 className="btn btn-secondary btn-compact"
                 onClick={() => {
                   announced.current.clear()
+                  focusPlay.current = true
+                  sayReady.current = true
                   setFailure(null)
                   setPhase('loading')
                   setAttempt((n) => n + 1)
@@ -725,7 +781,6 @@ export const ClipPreview = memo(function ClipPreview({
               type="button"
               className="btn btn-secondary btn-icon preview-play"
               aria-label={playName(name, playing)}
-              aria-disabled={!ready || undefined}
               onClick={togglePlay}
             >
               {playing ? PAUSE : PLAY}

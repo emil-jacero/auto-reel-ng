@@ -7,7 +7,7 @@ import { clipMediaUrl } from '../api/clipMedia'
 import type { CutKey, DraftCut } from '../edit/draft'
 import { ids } from '../edit/MetadataForm'
 import { ClipPreview, useClipLength, usePreviewOpen } from '../preview/ClipPreview'
-import { WATCH, setWords, typedSpan, watchName } from '../preview/playback'
+import { HIDE_PLAYER, WATCH, hideName, setWords, watchName } from '../preview/playback'
 import type { ClipPreviews } from '../preview/previews'
 import { Icon } from '../ui/Icon'
 import {
@@ -82,6 +82,7 @@ const UNDO = <Icon name="rotate-ccw" />
 const PLUS = <Icon name="plus" />
 const ALERT = <Icon name="alert-triangle" />
 const PLAY = <Icon name="play" />
+const HIDE = <Icon name="x" />
 
 /** `0:00 → 0:01.5`, said "0:00 to 0:01.5"; a span may wrap after its arrow, a time never. */
 export function CutSpan({ cut }: { cut: { in: number; out: number } }) {
@@ -248,7 +249,11 @@ export const CutsPanel = memo(function CutsPanel({
   // The length this browser read from the clip's file in a preview of this Edit mode;
   // keyed by the media address, so a replaced file (a new `mtime`) has none.
   const length = useClipLength(previews, clipMediaUrl(eventId, { identity, mtime }))
-  const typed = useMemo(() => typedSpan(start, end), [start, end])
+  // The bar's typed span: only one Add cut would accept (the panel's own checks).
+  const typed = useMemo(() => {
+    const checked = checkCut(cuts, start, end, length)
+    return checked.ok ? { in: checked.in, out: checked.out } : null
+  }, [cuts, start, end, length])
   const clip = useMemo(() => ({ identity, mtime }), [identity, mtime])
 
   function setFields(nextStart: string, nextEnd: string): void {
@@ -411,7 +416,7 @@ export const CutsPanel = memo(function CutsPanel({
         className="btn btn-secondary btn-compact preview-toggle"
         aria-expanded={previewOpen}
         aria-controls={previewOpen && open ? previewId : undefined}
-        aria-label={watchName(name)}
+        aria-label={previewOpen && open ? hideName(name) : watchName(name)}
         onClick={() => {
           if (previewOpen) {
             previews.hide(identity)
@@ -420,8 +425,9 @@ export const CutsPanel = memo(function CutsPanel({
           }
         }}
       >
-        {PLAY}
-        {WATCH}
+        {/* Open, it says what a press does: Hide player. */}
+        {previewOpen && open ? HIDE : PLAY}
+        {previewOpen && open ? HIDE_PLAYER : WATCH}
       </button>
       {previewOpen && open && (
         <ClipPreview

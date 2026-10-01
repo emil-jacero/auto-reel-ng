@@ -1,4 +1,4 @@
-import { formatTime, parseTime } from '../cuts/times'
+import { formatTime } from '../cuts/times'
 import type { CutField, ListedCut } from '../cuts/times'
 
 /*
@@ -140,28 +140,17 @@ export function playheadWords(atMs: number, lengthMs: number, cuts: readonly Lis
   return at === -1 ? words : `${words}, in cut ${at + 1}`
 }
 
-/**
- * The span the panel's fields hold, when both parse and the end is after the start; a
- * hint for the bar only (Add cut still runs the full `checkCut`).
- */
-export function typedSpan(start: string, end: string): { in: number; out: number } | null {
-  const from = parseTime(start)
-  const to = parseTime(end)
-  if (!from.ok || !to.ok || to.ms <= from.ms) {
-    return null
-  }
-  return { in: from.ms / 1000, out: to.ms / 1000 }
-}
-
 // The preview's copy. `<name>` is the clip's name as its row names it.
 
 export const WATCH = 'Watch'
+/** The panel's toggle while its preview is open: a press closes the player. */
+export const HIDE_PLAYER = 'Hide player'
 export const LOADING = 'Loading…'
 export const SKIP_CUTS = 'Skip cuts'
 export const SET_WORDS: Record<CutField, string> = { start: 'Set From', end: 'Set To' }
 export const PLAYHEAD_KEYS =
-  'Arrows move 0.1 seconds, Page Up and Page Down one second, Home and End to the start and ' +
-  'the end.'
+  'Space plays or pauses. Arrows move 0.1 seconds, Page Up and Page Down one second, Home and ' +
+  'End to the start and the end.'
 export const ALL_CUT = 'Nothing plays: the cuts cover the whole clip.'
 
 /** The bar's kinds of span, as the legend names them. */
@@ -173,6 +162,7 @@ export const SPAN_LABEL: Record<SpanKind, string> = {
 }
 
 export const watchName = (name: string) => `Watch ${name}`
+export const hideName = (name: string) => `Hide player of ${name}`
 export const regionName = (name: string) => `Player for ${name}`
 export const closeName = (name: string) => `Close the player of ${name}`
 export const playName = (name: string, playing: boolean) => `${playing ? 'Pause' : 'Play'} ${name}`
@@ -180,6 +170,13 @@ export const playheadName = (name: string) => `Playhead of ${name}`
 export const skipName = (name: string) => `Skip cuts of ${name}`
 export const setName = (field: CutField, name: string) =>
   `${SET_WORDS[field]} at the playhead of ${name}`
+
+/** Announced once an opened preview has read the clip: `s1710001.mp4 is ready to play, 0:06.02.` */
+export function readyWords(name: string, seconds: number): string {
+  return Number.isFinite(seconds) && seconds > 0
+    ? `${name} is ready to play, ${formatTime(seconds)}.`
+    : `${name} is ready to play.`
+}
 
 /** Announced after Set From / Set To: `From set to 0:01.234.` */
 export function setWords(field: CutField, seconds: number): string {
