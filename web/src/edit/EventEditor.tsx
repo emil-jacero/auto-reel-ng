@@ -16,8 +16,8 @@ import type { EventFailure, Problem } from '../api/events'
 import { fetchReel, saveReel } from '../api/reel'
 import type { ReelDocument, ReelReadResult, ReelSaveResult, ReelWriteBody } from '../api/reel'
 import { markEventsChanged } from '../events/changes'
-import { UNREACHABLE_CAUSE, folderName, plural } from '../events/common'
-import { FAILURE_LABEL } from '../events/labels'
+import { folderName, plural } from '../events/common'
+import { FAILURE_LABEL, UNANSWERED_CAUSE } from '../events/labels'
 import { FAILURE_LOOK } from '../events/tones'
 import { LIST_HREF } from '../route'
 import { focusPageHeading } from '../shell/AppShell'
@@ -239,14 +239,14 @@ function readFailure(
   result: Exclude<ReelReadResult, { kind: 'ok' }>,
   eventId: string,
 ): ReadFailure {
-  if (result.kind === 'unreachable') {
-    return { cause: UNREACHABLE_CAUSE, detail: result.message }
+  if (result.kind === 'unreachable' || result.kind === 'unpublished') {
+    return { cause: UNANSWERED_CAUSE[result.kind], detail: result.message }
   }
   const problem = result.problem
   if (problem.status === 404) {
     return {
       cause: `No event “${folderName(eventId)}” under the project root.`,
-      detail: problem.detail,
+      detail: null,
       notFound: true,
     }
   }
@@ -300,10 +300,10 @@ async function send(
   let ifMatch = etag
   if (operation === 'overwrite') {
     const latest = await fetchReel(eventId, new AbortController().signal)
-    if (latest.kind === 'unreachable') {
+    if (latest.kind === 'unreachable' || latest.kind === 'unpublished') {
       return {
         saved: false,
-        problem: { kind: 'unreachable', detail: latest.message, retry: operation },
+        problem: { kind: latest.kind, detail: latest.message, retry: operation },
         refusal: null,
       }
     }
@@ -333,9 +333,10 @@ async function send(
     case 'problem':
       return { saved: false, ...saveFailure(result.problem, operation) }
     case 'unreachable':
+    case 'unpublished':
       return {
         saved: false,
-        problem: { kind: 'unreachable', detail: result.message, retry: operation },
+        problem: { kind: result.kind, detail: result.message, retry: operation },
         refusal: null,
       }
   }

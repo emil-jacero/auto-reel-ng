@@ -7,12 +7,22 @@ service starts normally when `dist/` is absent.
 
 Two screens so far. The **event list** (slice B of §4.10) answers
 "which events need a render, and why": every event grouped by year, its clip
-counts, its staleness verdict with reasons in words, and its latest job. Each
-event's title opens its **event page** (slice C) at `#/event/<id>`: its chapters
-and clips in play order, each clip's status, size and time, and any clip
-`reel.yaml` lists that is missing from disk. Both read on open and on Refresh — no
-timer polling (job state arrives over the jobs WebSocket), never a cache — and
-report a failed read by its cause. Each clip row, on the event page and in Edit
+counts, its staleness verdict with reasons in words, and its latest job. A click
+anywhere on an event's row (not on its controls, and not one that selects text)
+opens its **event page** (slice C) at `#/event/<id>`, as its title does; the title
+link stays the row's one keyboard stop. Two events that would read the same (the
+same date, title and location, ignoring case) also show their folder's path, for
+example `2024/2024-07-14 - Kalas`. An empty library says so and how to add an
+event; when the Needs render choice hides every event, the list says nothing needs
+rendering and offers **Show all events**, which hands focus back to the All choice.
+Each finished read and each filter change is announced with the counts. The event
+page shows the event's chapters and clips in play order, each clip's status, size
+and time, and any clip `reel.yaml` lists that is missing from disk. Both read on
+open and on Refresh — no timer polling (job state arrives over the jobs WebSocket),
+never a cache — and report a failed read by its cause, telling a service that did
+not answer ("not reachable", with what to check) from one that sent an answer its
+route does not publish ("an unexpected answer", with the request and status). Each
+clip row, on the event page and in Edit
 mode, shows a frame from its clip (the service's thumbnail, D-11): requested only
 as its row nears the view and behind the page's own requests, in a box sized before
 it arrives, and kept by the browser while the clip is unchanged. A frame the service
@@ -76,6 +86,7 @@ src/
 ├── main.tsx              mounts App; imports styles/index.css first
 ├── App.tsx               the route switch inside the shell; keeps the list mounted
 ├── route.ts              hash routes (#/event/<id>) and the unsaved-edit navigation guard — no router library
+├── format.ts             formatInstant: the one way every time is written (see "Design system")
 ├── styles/
 │   ├── index.css         the cascade layer order, then the four files below
 │   ├── reset.css         box sizing, zeroed margins; [hidden] always wins
@@ -96,7 +107,7 @@ src/
 │   └── ToastRegion.tsx   where toasts appear (rendered once by the shell)
 ├── api/
 │   ├── schema.d.ts       generated (see below)
-│   ├── http.ts           shared response reading and problem parsing
+│   ├── http.ts           shared response reading and problem parsing; no answer vs an unpublished one
 │   ├── events.ts         the list fetch: URL, status codes
 │   ├── event.ts          the one-event fetch: URL, status codes
 │   ├── jobs.ts           enqueue, one job, cancel: URLs, status codes; the jobs WebSocket URL
@@ -129,8 +140,8 @@ src/
     ├── thumbs.css        the thumbnail's 16:9 box and its states
     ├── common.tsx        helpers both screens share (file names, sizes, verdict, failure sentences)
     ├── changes.ts        "an event changed": markEventsChanged(), useEventsVersion()
-    ├── grouping.ts       groupByYear, needsRender (pure)
-    ├── labels.ts         words for reasons, job statuses, failures, clip statuses
+    ├── grouping.ts       groupByYear, needsRender, lookAlikes (pure)
+    ├── labels.ts         words for reasons, job statuses, failures, clip statuses, unanswered requests
     └── tones.ts          the tone and icon of each status (the words stay in labels.ts)
 ```
 
@@ -165,6 +176,9 @@ bind). To proxy to a service elsewhere, set `AUTO_REEL_API`, for example
 dev-server command above. Client code addresses the API **by path alone** — never
 an absolute base URL — so the same code works behind the dev proxy and when the
 service serves the built assets. Same origin either way; the service needs no CORS.
+With the service down, Vite's proxy answers each request itself with a bare 500, so
+under `npm run dev` the screens say the service sent an unexpected answer, where the
+built client served by `auto-reel serve` says it is not reachable.
 
 Two things to know when containers run side by side:
 
@@ -287,6 +301,13 @@ HLD §7).
   by the inline script in `index.html`).
 - **Status is never color alone.** A status is a `Pill`: an icon and its words, on
   its tone. Tone and icon come from `events/tones.ts`, the words from `labels.ts`.
+- **Times.** Every time a screen shows is written by `src/format.ts`
+  (`formatInstant`): short month and day, hour and minute, the year only when it is
+  not the current one, never seconds, in the browser's locale; the exact instant
+  stays in `<time dateTime>`. Event dates are calendar dates and stay `YYYY-MM-DD`,
+  as the folders write them.
+- **Hover means a target.** Only rows that open something take a hover fill (the
+  list's event rows); "Needs attention" rows and clip rows do not.
 - **Shared pieces, by fixed name.** `ui/Icon` (`<Icon name="…" />`, decorative unless
   given a `label`), `ui/Pill`, `ui/Alert` (with an `action` slot; `role="alert"` by
   default), `ui/Skeleton` (`SkeletonRows`, `LoadStatus`), `ui/Dialog`, `ui/toast`

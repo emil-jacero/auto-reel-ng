@@ -1,13 +1,13 @@
 import type { Staleness } from '../api/events'
 import { Pill } from '../ui/Pill'
-import { REASON_LABEL } from './labels'
+import { REASON_LABEL, UNANSWERED_CAUSE } from './labels'
 import { VERDICT_LOOK } from './tones'
 
 /** Helpers both event screens share. */
 
 /** The failure sentences both screens use, so the same cause reads the same. */
 export const DATABASE_CAUSE = "The service can't reach its database."
-export const UNREACHABLE_CAUSE = 'The service is not reachable.'
+export const UNREACHABLE_CAUSE = UNANSWERED_CAUSE.unreachable
 
 /** The event folder's name: the last segment of its id. */
 export function folderName(eventId: string): string {

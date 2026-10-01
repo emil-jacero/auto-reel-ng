@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react'
 
 import { JOB_STATUS_LABEL } from '../events/labels'
 import { JOB_STATUS_LOOK } from '../events/tones'
+import { formatInstant } from '../format'
 import { Pill } from '../ui/Pill'
 import { formatEta } from './eta'
 import { getState, isActive, subscribe } from './store'
@@ -24,27 +25,6 @@ import type { ShownJob } from './useJob'
  * `JobState` is what a status region announces: it changes with the state only.
  * `JobMeter` is outside any live region, so progress is never announced.
  */
-
-// Short and locale-aware, with the year only when it is not this one; the exact
-// instant stays in `dateTime`.
-const THIS_YEAR = new Intl.DateTimeFormat(undefined, {
-  month: 'short',
-  day: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-})
-const OTHER_YEAR = new Intl.DateTimeFormat(undefined, {
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-})
-
-function formatTime(iso: string): string {
-  const date = new Date(iso)
-  return (date.getFullYear() === new Date().getFullYear() ? THIS_YEAR : OTHER_YEAR).format(date)
-}
 
 function isCancelling(shown: ShownJob): boolean {
   return shown.source === 'live' && shown.job.cancel_requested && isActive(shown.job.status)
@@ -102,7 +82,7 @@ export function JobState({
       </Pill>
       {words !== null && <span className="job-words">{words}</span>}
       <span className="job-when">
-        {time.label} <time dateTime={time.iso}>{formatTime(time.iso)}</time>
+        {time.label} <time dateTime={time.iso}>{formatInstant(time.iso)}</time>
       </span>
     </span>
   )
