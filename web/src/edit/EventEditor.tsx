@@ -239,6 +239,12 @@ function reduce(state: State, action: Action): State {
   }
 }
 
+/** What a failed read's alert says, to tell a repeated failure from a new one. */
+function failureWords(failure: ReadFailure): string {
+  const kind = failure.failure === undefined ? '' : FAILURE_LABEL[failure.failure]
+  return [failure.cause, kind, failure.detail ?? ''].join('\n')
+}
+
 /** A failed read in the words the page uses for a failed event read. */
 function readFailure(
   result: Exclude<ReelReadResult, { kind: 'ok' }>,
@@ -449,8 +455,9 @@ export function EventEditor({
   const refusalRef = useRef<HTMLDivElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const keepEditingRef = useRef<HTMLButtonElement>(null)
-  // Try again was pressed and its answer is still to come; a press meanwhile sends nothing.
-  const retried = useRef(false)
+  // What the failure's alert said when Try again was pressed (`failureWords`), until the
+  // answer comes; a press meanwhile sends nothing.
+  const retried = useRef<string | null>(null)
   const detailsHeadingRef = useRef<HTMLHeadingElement>(null)
   const readAgainRef = useRef<HTMLButtonElement>(null)
 
@@ -610,23 +617,28 @@ export function EventEditor({
     window.requestAnimationFrame(() => setAnnouncement(message))
   }, [])
 
-  // Try again's answer. A failure keeps focus on Try again and is said again (the
-  // alert's text did not change, so its role does not repeat it); a read moves
-  // focus to the fields' heading, a changed event to Read again, and the failure
-  // said before leaves the live region. A layout effect: a read unmounts the
-  // focused button, and no frame may paint with focus on <body>.
+  // Try again's answer. A failure keeps focus on Try again. The same failure is
+  // said again through the live region, since its alert's text did not change and
+  // the alert's role does not repeat it; a new one is said once, by its alert. A
+  // read moves focus to the fields' heading, a changed event to Read again, and the
+  // failure said before leaves the live region. A layout effect: a read unmounts
+  // the focused button, and no frame may paint with focus on <body>.
   useLayoutEffect(() => {
-    if (!retried.current || state.status === 'loading') {
+    if (retried.current === null || state.status === 'loading') {
       return
     }
     if (state.status === 'failed') {
       if (state.retrying === true) {
         return
       }
-      // The cause and its kind, as the alert's title says them.
-      announce(
-        state.failure === undefined ? state.cause : `${state.cause} ${FAILURE_LABEL[state.failure]}`,
-      )
+      if (failureWords(state) === retried.current) {
+        // The cause and its kind, as the alert's title says them.
+        announce(
+          state.failure === undefined
+            ? state.cause
+            : `${state.cause} ${FAILURE_LABEL[state.failure]}`,
+        )
+      }
     } else {
       setAnnouncement('')
       if (state.status === 'ready') {
@@ -635,7 +647,7 @@ export function EventEditor({
         readAgainRef.current?.focus()
       }
     }
-    retried.current = false
+    retried.current = null
   }, [state, announce])
 
   const onMove = useCallback<MoveHandler>(
@@ -763,8 +775,10 @@ export function EventEditor({
                 aria-disabled={retrying || undefined}
                 aria-busy={retrying || undefined}
                 onClick={() => {
-                  if (!retried.current) {
-                    retried.current = true
+                  if (retried.current === null && state.status === 'failed') {
+                    retried.current = failureWords(state)
+                    // Cleared, so the region says nothing stale once the answer comes.
+                    setAnnouncement('')
                     readReel(true)
                   }
                 }}
