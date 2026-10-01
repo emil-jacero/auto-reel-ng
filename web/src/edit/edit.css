@@ -196,17 +196,17 @@
    * widths as fallbacks): the handle and the position share its position column,
    * then its thumbnail, file (the rest), status, size and time columns, with no
    * gap and its cells' padding. So entering Edit mode moves no column but the
-   * position number. A row's action (a missing clip's Remove, a removed one's
-   * Undo) and the move buttons take the end of the file column.
+   * position number. The move buttons take the end of the file column; a row's
+   * action (a missing clip's Remove, a removed one's Undo) goes under its name.
    */
   .clip-order-head,
   .clip-item {
     display: grid;
     grid-template-columns:
       1.5rem calc(var(--clip-col-pos, 3.5rem) - 1.5rem) var(--clip-thumb-w, 5rem)
-      minmax(0, 1fr) auto auto
+      minmax(0, 1fr) auto
       var(--clip-col-status, 12.5rem) var(--clip-col-size, 6.5rem) var(--clip-col-mtime, 11.5rem);
-    grid-template-areas: 'handle pos thumb file action moves status size mtime';
+    grid-template-areas: 'handle pos thumb file moves status size mtime';
     align-items: center;
     column-gap: 0;
     padding-inline: 0;
@@ -279,13 +279,28 @@
   }
 
   /*
-   * The row's action (`ClipFacts`). A margin, as padding would widen the button.
-   * 1rem: under a coarse pointer Move up's touch area grows 11px toward it
-   * (components.css).
+   * The row's action (`ClipFacts`), in the one-line layout: under the name, in
+   * the file column, so the name keeps the column's whole room as an ordinary
+   * row's does and a camera name never breaks inside the word. The two hug the
+   * row's middle; every other cell spans both lines.
    */
-  .clip-item .clip-action {
-    grid-area: action;
-    margin-inline-end: var(--s-4);
+  @container (width >= 58rem) {
+    .clip-item:has(.clip-action) {
+      grid-template-areas:
+        'handle pos thumb file moves status size mtime'
+        'handle pos thumb action moves status size mtime';
+      row-gap: var(--s-1);
+
+      & > .clip-file {
+        align-self: end;
+      }
+    }
+
+    .clip-item .clip-action {
+      grid-area: action;
+      align-self: start;
+      padding-inline: var(--s-3);
+    }
   }
 
   .clip-item > .clip-moves {
@@ -461,10 +476,6 @@
     .clip-item > .clip-moves,
     :is(.clip-order-head, .clip-item) :is(.clip-status, .clip-size, .clip-mtime) {
       padding-inline: 0;
-    }
-
-    .clip-item .clip-action {
-      margin-inline-end: 0;
     }
 
     .clip-facts {
