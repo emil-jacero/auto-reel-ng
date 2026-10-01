@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Confirm the gate, and the names the design cites. Stop and report to the supervisor on any mismatch.
+- [x] 1.1 Confirm the gate, and the names the design cites. Stop and report to the supervisor on any mismatch.
 
   **The gate.** `output-renamed-reason` (Z2) must be archived on main:
   - `ls openspec/changes/archive/ | grep -- '-output-renamed-reason$'` prints one directory.
@@ -24,12 +24,14 @@
   **The spec.** Re-base this change's MODIFIED requirement, "The event list shows every event with its
   render state", on the text now in `openspec/specs/web-app/spec.md`. Keep only this change's edit to
   "A stale event names every reason" and its added scenario "A movie deleted from disk is named missing".
+  Likewise re-base "Notifications never cover the save bar" (supervisor decision, option (a)) and keep only
+  this change's edit to its focus sentence.
 
   Verify: `openspec validate renamed-label-and-zoom-bar --strict` passes.
 
 ## 2. web/ — the renamed reason in words
 
-- [ ] 2.1 Give the reason its words, and add the page's note map (design, "The reason's words", "Where the
+- [x] 2.1 Give the reason its words, and add the page's note map (design, "The reason's words", "Where the
   note lives"). In `src/events/labels.ts`:
   - set `REASON_LABEL.output_renamed` to `'movie name changed'`, replacing Z2's provisional words
   - add `REASON_NOTE: Record<StalenessReason, string | null>`, with the design's sentence for
@@ -43,7 +45,7 @@
     (`rsync -a --exclude node_modules --exclude dist web/ <scratch>/web-probe/`, then `npm ci` there). Add a
     member `"probe"` to `StalenessReason` in the copy's `schema.d.ts`. `npx tsc --noEmit` then reports TS2741
     at both `REASON_LABEL` and `REASON_NOTE`.
-- [ ] 2.2 Show the note on the event page only (design, "Where the note lives"):
+- [x] 2.2 Show the note on the event page only (design, "Where the note lives"):
   - `src/events/common.tsx`: `StalenessCell` takes `explain?: boolean` (default `false`). When it is set and
     the verdict is stale, each non-null `REASON_NOTE` of a cited reason renders after `.reasons` as
     `<span className="reason-note">`.
@@ -78,7 +80,7 @@
 
 ## 3. web/ — the save bar rests above two fifths of the window
 
-- [ ] 3.1 Make the bar rest in the page when it is taller than two fifths of the window (design, "The bar
+- [x] 3.1 Make the bar rest in the page when it is taller than two fifths of the window (design, "The bar
   rests above two fifths of the window", "When the bar decides").
 
   In `src/edit/EventEditor.tsx`:
@@ -144,7 +146,7 @@
     - its short window held at its top (320 × 568, 320 × 700, 340 × 700, 375 × 667: after the answer, Save
       and the card are inside the window)
     - task 3.1's first keyboard drop on Grillning at 1280 × 900 and 390 × 844
-- [ ] 3.2 Check the toast contract in both states (design, "The toast contract in both states"). This task
+- [x] 3.2 Check the toast contract in both states (design, "The toast contract in both states"). This task
   adds no code beyond 3.1.
 
   Verify, with Playwright:
@@ -158,15 +160,18 @@
     size.
   - **Record and report**: the Shift+Tab stops that a toast covers in part at 320 × 568 and 320 × 256. The
     prototype found 4 and 5 there, with `Remove borttagen.mp4` fully covered in both; main found 15 at
-    320 × 568. These break the focus sentence of "Notifications never cover the save bar", which this change
-    does not edit. Report them to the supervisor as that known violation, with their visible shares, and never
-    as a pass. If the user's answer to the design's Open Question changes the scope, follow that answer.
+    320 × 568. The bar rests there, so they are the case the narrowed focus sentence of "Notifications never
+    cover the save bar" leaves out (supervisor decision, option (a)). Report them with their visible shares,
+    as that case and as the evidence for the follow-up (option (b)), never as a pass of the old sentence.
+  - **The narrowed sentence still holds where it applies**: with one error toast held, a Shift+Tab walk from
+    Save at 390 × 844 and 1280 × 900 (the bar held) leaves no focus stop under the toast; and at 320 × 568 and
+    320 × 256, scrolled to the page's end, no toast covers any control of the page.
   - **ui-a11y-polish's own toast checks** at 1280 and 390 on Grillning, with a title edit and an error toast
     held: the toast sits above the held bar, and Tab to Save never lands under a toast.
 
 ## 4. Docs
 
-- [ ] 4.1 Update `web/README.md`:
+- [x] 4.1 Update `web/README.md`:
   - **The Edit-mode paragraph.** "A sticky save bar says what changed…" now says the bar is held at the
     window's bottom while it takes at most two fifths of the window. A taller bar rests in the page after the
     last chapter, and a save's answer, or a zoom that makes it rest, scrolls to its focused control. Examples
@@ -188,7 +193,7 @@
 
 ## 5. Verification against the dev library
 
-- [ ] 5.1 Run the whole pass in the agent's own environment (design, "Verification fixtures"):
+- [x] 5.1 Run the whole pass in the agent's own environment (design, "Verification fixtures"):
   - `SLUG=renamed-label-and-zoom-bar`
   - port 8124
   - database `arel_renamed_label_and_zoom_bar`
@@ -221,7 +226,7 @@
 
 ## 6. Validation
 
-- [ ] 6.1 Run the gates, and verify that all of them pass:
+- [x] 6.1 Run the gates, and verify that all of them pass:
   - `npx tsc --noEmit` and `npm run build` in the `node:22` container
   - the motion gate (web/README.md, "Motion") over `web/src/edit` and `web/src/events`. This change adds no
     animation.
