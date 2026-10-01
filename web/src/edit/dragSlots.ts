@@ -143,9 +143,12 @@ function distance(span: Span, y: number): number {
  *
  * The chapter is the listed one whose span holds `y`, else the nearest (a pointer in the
  * gap between two panels); a clip that stays home always gets its own. In its own chapter
- * the row whose centre is nearest (sortable's index semantics, as `closestCenter` gives).
- * In another, the first row whose centre lies below `y` ("before that row"), else the
- * chapter itself ("after its last clip", or the area of a chapter that plays none).
+ * the clip itself while `y` is inside its own row, measured where the row rests (a tall
+ * row, its Cuts panel open, is grabbed near its top, so the row above has the nearer
+ * centre at once); outside it, the row whose centre is nearest (sortable's index
+ * semantics, as `closestCenter` gives). In another, the first row whose centre lies below
+ * `y` ("before that row"), else the chapter itself ("after its last clip", or the area of
+ * a chapter that plays none).
  */
 export function pointerTarget(
   model: DragModel,
@@ -181,6 +184,10 @@ export function pointerTarget(
   }
   const order = orderOf(model, chapter)
   if (chapter === own) {
+    const home = rowSpan(identity)
+    if (home !== undefined && distance(home, y) === 0) {
+      return identity
+    }
     let best = identity
     let nearest = Infinity
     for (const row of order) {

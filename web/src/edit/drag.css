@@ -12,6 +12,20 @@
   }
 
   /*
+   * While a clip is held by a pointer: one transparent layer over the page, under the
+   * copy (25), above the header (20) and the save bar. The copy takes no pointer events,
+   * so without it the row under the pointer would show its hover tint and bright
+   * controls, apart from the line that marks the drop, and the cursor would be whatever
+   * lies beneath. One element, so the page's own styles never change during a drag.
+   */
+  .clip-drag-shield {
+    position: fixed;
+    inset: 0;
+    z-index: 24;
+    cursor: grabbing;
+  }
+
+  /*
    * The copy: the handle's grip, the clip's name and, over another chapter, where it
    * goes. As narrow as its words, and at least 3rem short of the row's end, so the
    * line under it shows there with its dot; the badge wraps under the name when narrow.
@@ -31,7 +45,6 @@
       var(--shadow-lg),
       0 0 0 1px color-mix(in oklab, var(--accent) 55%, transparent);
     color: var(--fg);
-    cursor: grabbing;
   }
 
   .clip-drag-grip {
@@ -119,6 +132,24 @@
       border-color: var(--accent);
       background: var(--accent-soft);
       color: var(--fg);
+    }
+  }
+
+  /*
+   * Forced colors (High Contrast) drop backgrounds and shadows: the line, its dot and the
+   * line after the last row keep a system colour, and the copy gets an edge.
+   */
+  @media (forced-colors: active) {
+    .clip-item[data-drop-before]::before,
+    .clip-item[data-drop-before]::after,
+    .chapter-drop-end,
+    .chapter-drop-end::after {
+      forced-color-adjust: none;
+      background: Highlight;
+    }
+
+    .clip-drag-preview {
+      border: 1px solid CanvasText;
     }
   }
 

@@ -31,8 +31,9 @@ import type { CutRefusal, ListedCut } from './times'
  * A clip's cuts in Edit mode: the Cuts control in its row, and the panel it
  * shows and hides under the row, which lists the cuts and adds one from two
  * typed times. The editor owns the cuts (`draft.ts`) and what the panel holds
- * (`CutPanels`): Move clips mounts a row anew in its new chapter, and a typed
- * cut, or the panel being shown, must survive that. Every announcement goes
+ * (`CutPanels`): Move clips, or a drag into another chapter, mounts a row anew
+ * in its new chapter, and a typed cut, or the panel being shown, must survive
+ * that. Every announcement goes
  * through the editor's one live region.
  */
 

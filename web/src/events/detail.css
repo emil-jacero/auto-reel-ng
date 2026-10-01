@@ -207,7 +207,7 @@
     white-space: nowrap;
   }
 
-  /* A chapter saved without clips: words in place of its table (Edit mode's: chapters.css). */
+  /* A chapter saved without clips: words in its table's place (in Edit mode: drag.css). */
   .chapter-empty {
     padding: var(--s-4);
     color: var(--fg-muted);
