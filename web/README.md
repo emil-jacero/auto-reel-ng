@@ -20,7 +20,10 @@ event, the list says nothing needs rendering and offers **Show all events**, whi
 hands focus back to the All choice.
 Each finished read and each filter change is announced with the counts. The event
 page shows the event's facts, with the folder name beside a title that differs from
-it; one render region holding the verdict and the latest job; then its chapters,
+it; one render region holding the verdict and the latest job (when the verdict says
+"movie name changed", because the title, date or location changed since the last
+render, it adds on a line of its own that the next render saves the movie under its
+new name and that the movie under its old name stays on disk); then its chapters,
 each listing the clips it plays, numbered in play order, and then its ignored clips,
 unnumbered. Each clip shows its status (an included clip's quietly, so the
 exceptions stand out), size and time; a clip from another folder is named by its
@@ -81,9 +84,12 @@ it plays; its removed and ignored lists count their own. A missing clip (listed 
 panel), that takes it out of the play order into a list captioned, for example, "1 clip
 removed from reel.yaml when you save", with **Undo** until Save; Save then drops only
 its `reel.yaml` entry and its own per-clip properties, and no file on disk is touched. A
-sticky save bar says what changed, with one primary action: **Save**, or a failure's way
+save bar says what changed, with one primary action: **Save**, or a failure's way
 on while it holds Save back (Reload latest after a conflict, Back to the event list for
-a vanished event). Save sends one whole-document `PUT` under `If-Match` with only the
+a vanished event). It is held at the window's bottom while it takes at most two fifths
+of the window; a taller bar (a failed save in a short window, any bar at 400 % zoom)
+rests in the page after the last chapter, and a save's answer, or a zoom or resize
+that makes it rest, scrolls to its focused control. Save sends one whole-document `PUT` under `If-Match` with only the
 operator's edits applied (`edit/draft.ts`); a failure keeps the edits and says why, in a
 compact alert inside the bar that fits a 320px window (a third of a phone's height for a
 conflict, two fifths with the service's full detail), and a conflict offers Reload
@@ -141,7 +147,7 @@ src/
 │   ├── EventEditor.tsx   Edit mode: the reel read, the save bar, saves and failures
 │   ├── ClipOrderList.tsx one chapter's clips to reorder: drag, keyboard, buttons; Remove / Undo
 │   ├── MetadataForm.tsx  title, date, location, description, and inherited values
-│   ├── SaveBar.tsx       the sticky save bar and a failed save's alert
+│   ├── SaveBar.tsx       the save bar and a failed save's alert
 │   ├── draft.ts          the edit model: write body, moved and removed clips, dirty (pure)
 │   ├── unsaved.ts        the unsaved-changes guard and its question
 │   └── edit.css          Edit mode's fields, rows and save bar
@@ -234,7 +240,9 @@ is only read). It cuts 6 s stream-copied clips and lays out 11 events across 202
 2024: 10 that list normally, plus 1 that needs attention. Part of the library is rendered through
 the real queue, then disk is edited so the screens show every state:
 
-- fresh, and stale for `editorial`, `output`, `clip_set` and `no_manifest`
+- fresh, and stale for `editorial`, `output_renamed` (`2024-06-27 - Grillning med grannar`,
+  retitled after its render, so its movie is still on disk under the old name), `clip_set`
+  and `no_manifest`; no event is stale for `output` until its movie is removed by hand
 - NEW and MISSING clips
 - a named chapter, an IGNORED clip and a NEW clip inside a chapter (`2024-08-20 - Två kapitel -
   Tjörn`: a `Main` table and a `Kvällen` table on its event page)
@@ -368,12 +376,17 @@ HLD §7).
   registers it with `keepToastsClearOf(bar)` (and releases it in the same effect's
   cleanup): the region then sits above the bar while it is stuck, and below it at the
   page's end, so no toast covers it. The page also sets `--toast-inset-bottom` on
-  `:root` to the bar's height: `html`'s scroll padding uses it, and so does the region
-  when no bar is registered. The region publishes its own height as
+  `:root` to the bar's height while the bar is held, and removes it while the bar
+  rests (taller than two fifths of the window, it holds no room at the window's
+  bottom): `html`'s scroll padding uses it, and so does the region when no bar is
+  registered. The region publishes its own height as
   `--toast-region-h` on `:root` (absent when empty), and, while a bar is registered,
   its height plus the gap as `--toast-rise-h`, for the toasts that rise with the bar;
   `html`'s `scroll-padding-bottom` and the page's bottom padding add them, so a
-  sticky error toast never covers keyboard focus or the end of the page. The stacks
+  sticky error toast never covers keyboard focus or the end of the page — except,
+  while a bar rests for its height, the controls just above it, which a toast may
+  cover until dismissed (a known gap; keeping room above a resting bar is a
+  follow-up in `ui/`). The stacks
   announce each toast once (`aria-atomic="false"`), each Dismiss is described by its
   message, and dismissing the focused toast hands focus to the next toast, else the
   previous one, else the control it came from, else the page's `h1`, without
