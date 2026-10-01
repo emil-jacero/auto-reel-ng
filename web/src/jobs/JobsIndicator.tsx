@@ -4,6 +4,7 @@ import type { JobStatus } from '../api/jobs'
 import { JOB_STATUS_LOOK } from '../events/tones'
 import { Icon } from '../ui/Icon'
 import type { Tone } from '../ui/Pill'
+import { useAnnouncement } from './announce'
 import { CONNECTION_LABEL } from './labels'
 import type { ConnectionStatus } from './store'
 import { useConnection } from './useJob'
@@ -35,10 +36,12 @@ function Count({ count, status, word }: { count: number; status: JobStatus; word
  * and, only while live, how many jobs render and wait — counts from a lost
  * connection are not current. Plain text, not a live region: the page regions
  * announce what changed. The shell always mounts it, so the connection is open
- * while the app is, and it imports the jobs stylesheet for the whole slice.
+ * while the app is, and it imports the jobs stylesheet for the whole slice. For
+ * the same reason it holds the slice's hidden status region (`announce.ts`).
  */
 export function JobsIndicator() {
   const { status, rendering, queued } = useConnection()
+  const said = useAnnouncement()
   const counted = status === 'live' && (rendering > 0 || queued > 0)
   return (
     <div className="jobs-indicator" data-connection={status}>
@@ -59,6 +62,9 @@ export function JobsIndicator() {
           {queued > 0 && <Count count={queued} status="queued" word="queued" />}
         </span>
       )}
+      <p role="status" className="visually-hidden">
+        {said !== null && <span key={said.id}>{said.message}</span>}
+      </p>
     </div>
   )
 }
