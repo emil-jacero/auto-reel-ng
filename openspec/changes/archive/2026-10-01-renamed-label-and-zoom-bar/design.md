@@ -92,6 +92,60 @@ Recorded before implementation. Where they differ from a section below, they win
   the window while the bar's top is above it (21 of 124 positions at 320 × 256). Then the focus sentence of
   "Notifications never cover the save bar" can be widened again to a resting bar.
 
+## Changed during review (2026-10-01)
+
+Supervisor review (4 Opus lenses + skeptics) of the PR branch found 1 blocker and 2 majors. All three are fixed.
+Where a section below says otherwise, this section wins.
+
+- **Blocker: a step-by-step zoom left Save 0 % visible.** A real browser zoom goes 110 → 125 → 150 → 175 → 200
+  → 250 → 300 → 400 %, with a resize at each step. The bar started to rest at an intermediate step (250 % from
+  1280 × 1024 for a conflict, 200 % for a failure), and each later shrink left focused Save below the window,
+  because `placeBar` scrolled only on the change from held to resting. The verification had jumped from
+  1280 × 1024 to 320 × 256 in one step.
+  - **Fix**: the `[showBar]` effect's `resize` listener (only it) runs `placeBar` and then, while the bar rests
+    and focus is inside it, `keepInWindow(focused)`: `scrollIntoView({ block: 'nearest' })` when the control is
+    not wholly inside `[0, clientHeight]`. The per-commit layout effect and the `ResizeObserver` do not follow,
+    so a commit or the bar's own resize never pulls the page back after the operator scrolled away.
+  - **Measured**: from 1280 × 1024 and from 1920 × 968 through every Chrome step up to 400 %, a conflict and a
+    failure, both schemes: Save focused and fully visible after every step (`t_rev.py zoomsteps`, 94/94, and the
+    reviewer's `r_zoomsteps.py`, 44/44). 320 × 568 → 320 × 256 while resting: the same.
+- **Major: at 480 × 242 (a 1920 × 1080 screen at 400 %) the plain bar stayed held over the moved row.** The 77 px
+  plain bar is 31.8 % of that window, under two fifths, so it was held, and after the first Move down the 96 px
+  row ran under it. The same at 480 × 270 and 320 × 293–351. The docs' "any bar at 400 % rests" was false there.
+  - **Fix: a second, fixed condition.** The bar rests whenever the window is shorter than **28rem** (448 px at
+    the default text size), whatever its size; the two-fifths rule stays. Both depend only on the bar's and the
+    window's heights, never on focus. `HELD_BAR_MIN_WINDOW_REM = 28`, compared with `clientHeight` in the root
+    font size's pixels.
+  - **Why 28rem** (`p_need.py`: Sommarlov, Grillning, Två kapitel, Badutflykt in Edit mode after one move, 15
+    widths from 320 to 1280): a held plain bar needs `scroll-padding-top + tallest row + bar + 16` of window,
+    at most 388 px (320 wide, a two-line 136 px summary bar, a 141 px row). A held bar of up to two fifths needs
+    `(100 + 16 + 141) / 0.6 ≈ 428` px at 320 wide. 28rem covers both with a margin of about one rem. Wider
+    windows need less (282 px at 1280), so the fixed height over-rests short wide windows, which is the price of
+    a rule that does not depend on width or content.
+  - **Consequences**: the plain bar now also rests in windows shorter than 448 px: 844 × 340 and 844 × 390
+    (landscape phones), 683 × 330 (a 200 % laptop), 768 × 387 (1920 × 968 at 250 %). It stays held at 320 × 568,
+    375 × 667, 390 × 844, 1280 × 900, 640 × 512 (1280 × 1024 at 200 %) and 960 × 484 (1920 × 968 at 200 %). In
+    a resting state the chapter heading's "N clips moved", the unsaved-changes guard and Tab order still lead
+    to Save.
+  - **Measured**: a first Move down and a first keyboard drop at 480 × 242, 480 × 270, 320 × 293, 320 × 351 and
+    320 × 256 (resting) and 390 × 844 (held), both schemes: the moved row and its focused control fully visible
+    (`t_rev.py firstedit`, 96/96).
+- **Major: Tab into the Description field at 400 % left its lower half below the window.** The browser scrolls
+  only a text area's caret into view, not its box; this broke "A conflict at 400 % zoom".
+  - **Fix**: one `onFocus` (focusin) handler on `.event-editor` calls `keepInWindow(target)` for keyboard focus
+    (`:focus-visible`) that lands partly outside `[0, clientHeight]`. `scrollIntoView` honours the scroll
+    padding, so it keeps clear of a held bar. Pointer focus is left alone, so a click never moves its button
+    from under the pointer. The `answers` effect now uses the same `keepInWindow`.
+  - **Measured**: the whole walk, Shift+Tab from Save up to Title and Tab back to Save, at 320 × 256 and
+    480 × 242, a conflict and a failure, both schemes: every stop fully visible (`t_rev.py walk`, 40/40; 19–20
+    stops each way). The reviewer's `u4.py` (6/6) and `u5.py` (9/9) pass.
+- **Recorded limit**: at 341 × 162 (a 1366 × 650 window at 400 %) the 134 px row does not fit under the
+  92 px of header and chapter heading at all, and the text area does not fit the band the scroll padding leaves;
+  nothing the bar does can change that.
+- **Wording**: the spec's resting-bar requirement, its zoom scenario (now step by step) and a new "first edit in a
+  short, wide window" scenario, and the notification requirement's scope sentence, state the two conditions
+  (synced spec and this archived delta). README, `EventEditor.tsx`, `SaveBar.tsx` and `edit.css` say the same.
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -296,7 +350,8 @@ wherever it fits.
 **Decision**:
 
 - **Rule**: the bar rests when `bar.offsetHeight > document.documentElement.clientHeight × 0.4`, and is held
-  otherwise. `clientHeight` is the viewport height `ToastRegion` already uses.
+  otherwise. `clientHeight` is the viewport height `ToastRegion` already uses. *Changed during review: it also
+  rests in any window shorter than 28rem.*
 - **Why two fifths**: it is edit-mode-polish's own ceiling for a held bar at 390 × 844 (failure ≤ 2/5,
   conflict ≤ 1/3). Every bar that requirement allows therefore stays held. Even a bar of exactly two fifths
   leaves the editor only `3/5 × H − header − chapter heading`, which is 62 px at 320 × 256.
@@ -586,6 +641,7 @@ database, `../auto-reel-dev` or `auto-reel-media/`.
   Held, it left the moved row 28 % visible at 320 × 256, and the focused control 0 % visible at 320 × 230.
   The chapter heading's "N clips moved", the unsaved-changes guard and Tab order (Save is last) still lead
   to it. The 117 px plain bar of a 320-wide window stays held in any window taller than about 292 px (117 / 0.4).
+  *Changed during review: in any window at least 28rem (448 px) tall.*
 - **[A landscape phone (844 × 340) or a 200 % laptop (683 × 330) now rests a failed save's bar
   (48–62 %)]** → Measured: 47.9 % and 60.6 % at 844 × 340, and 49.4 % and 62.4 % at 683 × 330 (review,
   `extra.py`). The plain bar stays held in both (23 %). The verifier found the sticky bar acceptable there.

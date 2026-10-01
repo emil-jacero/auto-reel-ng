@@ -87,9 +87,13 @@ its `reel.yaml` entry and its own per-clip properties, and no file on disk is to
 save bar says what changed, with one primary action: **Save**, or a failure's way
 on while it holds Save back (Reload latest after a conflict, Back to the event list for
 a vanished event). It is held at the window's bottom while it takes at most two fifths
-of the window; a taller bar (a failed save in a short window, any bar at 400 % zoom)
-rests in the page after the last chapter, and a save's answer, or a zoom or resize
-that makes it rest, scrolls to its focused control. Save sends one whole-document `PUT` under `If-Match` with only the
+of the window and the window is at least 28rem (448px) tall, which leaves room for the
+sticky header, a chapter heading and a whole clip row; otherwise (a failed save in a
+short window, any bar at 400 % zoom) it rests in the page after the last chapter. A
+save's answer, and every zoom or resize while the bar rests, keeps its focused control
+in the window, and keyboard focus that lands partly outside the window (the
+description field, whose caret alone the browser would scroll to) is scrolled in whole.
+Save sends one whole-document `PUT` under `If-Match` with only the
 operator's edits applied (`edit/draft.ts`); a failure keeps the edits and says why, in a
 compact alert inside the bar that fits a 320px window (a third of a phone's height for a
 conflict, two fifths with the service's full detail), and a conflict offers Reload
@@ -377,14 +381,14 @@ HLD §7).
   cleanup): the region then sits above the bar while it is stuck, and below it at the
   page's end, so no toast covers it. The page also sets `--toast-inset-bottom` on
   `:root` to the bar's height while the bar is held, and removes it while the bar
-  rests (taller than two fifths of the window, it holds no room at the window's
+  rests (in the page after the editor, it holds no room at the window's
   bottom): `html`'s scroll padding uses it, and so does the region when no bar is
   registered. The region publishes its own height as
   `--toast-region-h` on `:root` (absent when empty), and, while a bar is registered,
   its height plus the gap as `--toast-rise-h`, for the toasts that rise with the bar;
   `html`'s `scroll-padding-bottom` and the page's bottom padding add them, so a
   sticky error toast never covers keyboard focus or the end of the page — except,
-  while a bar rests for its height, the controls just above it, which a toast may
+  while the bar rests, the controls just above it, which a toast may
   cover until dismissed (a known gap; keeping room above a resting bar is a
   follow-up in `ui/`). The stacks
   announce each toast once (`aria-atomic="false"`), each Dismiss is described by its
