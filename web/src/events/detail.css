@@ -144,6 +144,13 @@
     }
   }
 
+  /* A reason's note (labels.ts REASON_NOTE): a line of its own under the verdict's reasons. */
+  .render-panel .reason-note {
+    flex-basis: 100%;
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
   .clip-table {
     & .col-pos {
       inline-size: var(--clip-col-pos);

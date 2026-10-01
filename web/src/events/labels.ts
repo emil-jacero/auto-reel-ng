@@ -18,6 +18,22 @@ export const REASON_LABEL: Record<StalenessReason, string> = {
   engine: 'render engine updated',
 }
 
+/**
+ * What the event page adds, on a line of its own, for a reason whose words alone
+ * do not say what the next render does; null for the others. Exhaustive like the
+ * labels, so a new reason is a decision here too.
+ */
+export const REASON_NOTE: Record<StalenessReason, string | null> = {
+  no_manifest: null,
+  output: null,
+  output_renamed:
+    'The next render saves the movie under its new name. The movie under its old name stays on disk.',
+  editorial: null,
+  defaults: null,
+  clip_set: null,
+  engine: null,
+}
+
 export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
   queued: 'Queued',
   running: 'Rendering',

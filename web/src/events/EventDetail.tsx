@@ -410,7 +410,7 @@ function RenderPanel({
 }) {
   return (
     <div className="render-panel">
-      <StalenessCell staleness={event.staleness} />
+      <StalenessCell staleness={event.staleness} explain />
       <RenderControl
         eventId={eventId}
         title={event.title}
