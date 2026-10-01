@@ -1257,7 +1257,7 @@ The job SHALL be shown as follows:
 - **canceled:** that it was canceled, as a neutral state, not as an error
 
 On the event's page, the job's progress indicator SHALL keep one height through every queued or running
-state, so the render region does not grow when the first percentage arrives.
+state, so the render region does not grow when the first percentage or the time-left estimate arrives.
 
 While running, the event's page SHALL show an estimate of the time left, computed from the progress
 reported over time. It SHALL stay hidden until the job is past 5% and enough progress has been observed,
@@ -1331,6 +1331,11 @@ an event with no title SHALL be named by its folder name.
 - **THEN** the progress indicator keeps its height while the percentage appears, and the render region
   does not grow
 
+#### Scenario: The estimate does not shift a phone's page
+- **WHEN** the page of `2024-06-27 - Grillning med grannar` is shown 320 pixels wide while its job renders,
+  and the time-left estimate appears beside the percentage
+- **THEN** the render region keeps its height
+
 ### Requirement: A queued or running render can be cancelled
 
 While an event's job is queued or running, its page SHALL offer a **Cancel** control:
@@ -1339,11 +1344,13 @@ While an event's job is queued or running, its page SHALL offer a **Cancel** con
 - a running job is cancelled only after the operator confirms, in a dialog that says the partial render is
   discarded and any existing movie stays as it was. So is a job the page shows as queued while the
   connection is not live, since it may have started meanwhile; that dialog also says the render may have
-  started. The dialog opens with focus on the action that keeps the job rendering.
+  started, for as long as the connection is down and the job is not shown running. The dialog opens with
+  focus on the action that keeps the job rendering.
 
-While the dialog is open and no cancel request is in flight, if the job ends, or a cancel of it is requested
-elsewhere, the dialog SHALL close by itself and send nothing. Keyboard focus SHALL then move to the page's
-job status, whose words say how the job stands.
+While the dialog is open and no cancel request is in flight, if the job ends, a cancel of it is requested
+elsewhere, or another job of the event shows in its place, the dialog SHALL close by itself and send
+nothing. Keyboard focus SHALL then move to the page's job status, whose words say how the job stands, also
+when a Cancel control for another job is shown.
 
 A pressed cancel control SHALL send one request, and until the answer arrives it SHALL stay in place, keep
 keyboard focus, be marked busy, and ignore further presses.
@@ -1356,8 +1363,8 @@ finished. An unknown job SHALL be reported as not found.
 
 #### Scenario: A queued job is cancelled at once
 - **WHEN** the operator presses Cancel on `2024/Blandat`'s queued job while the connection is live
-- **THEN** no confirmation is asked, one notification says the job was canceled before it started, and the
-  page shows the job as canceled
+- **THEN** no confirmation is asked, one notification says the job was canceled before it started and
+  names the event, and the page shows the job as canceled
 
 #### Scenario: A running job is cancelled after confirmation
 - **WHEN** the operator presses Cancel while `2024-06-27 - Grillning med grannar` is rendering, and confirms
@@ -1389,6 +1396,18 @@ finished. An unknown job SHALL be reported as not found.
 - **THEN** the dialog closes by itself, no cancel request is sent, the page shows the job rendered, and
   keyboard focus is on the page's job status
 
+#### Scenario: The cancel question closes when another job takes its place
+- **WHEN** the operator pressed Cancel on `2024/Blandat`'s queued job while the connection was lost, and when
+  the connection is back that job was canceled elsewhere and another job is queued for the event
+- **THEN** the dialog closes by itself, no cancel request is sent, and keyboard focus is on the page's job
+  status, not on the other job's Cancel control
+
+#### Scenario: The cancel question stops saying the render may have started
+- **WHEN** the operator pressed Cancel on `2024/Blandat`'s queued job while the connection was lost, and the
+  connection comes back with the job still queued while the confirmation is open
+- **THEN** the confirmation no longer says the render may have started, and no cancel request is sent until
+  the operator confirms
+
 ### Requirement: The event list shows live job state and offers a render
 
 Each event row the list shows with its render state SHALL show that event's job as the progress
@@ -1403,18 +1422,21 @@ label. The row's Render control, once
 pressed, behaves as the page's: one request, focus kept, marked busy. Its answers are handled as on the
 event's page, except as follows:
 
-- when a job is created, a notification says that the event's render was queued; when a job is already
-  queued or running for the event, a notification says so. The row then shows that job, and when the
-  removed Render had keyboard focus, focus moves to the row's event link.
+- when a job is created, the client tells assistive technology that the event's render was queued; when a
+  job is already queued or running for the event, it tells it so. Neither answer raises a visible
+  notification: the row shows the job at once, and a notification would cover the controls of the rows
+  below it. The row then shows that job, and when the removed Render had keyboard focus, focus moves to
+  the row's event link.
 - when the event is up to date, a notification says so and links to the event's page. The list does not
   force a render.
 - when another event claims the same movie file, an error notification names the other events and links to
   the pressed event's page.
 
-A row's notifications SHALL name the pressed event as the progress requirement's notifications do: by its
-title followed by its date, or by its folder name when it has no title. The output-collision notification
-is the exception: it SHALL name the pressed event and the other events by their folder names, since events
-that claim the same movie file share their date, title and location.
+A row's notifications, and what it tells assistive technology, SHALL name the pressed event as the
+progress requirement's notifications do: by its title followed by its date, or by its folder name when it
+has no title. The output-collision notification is the exception: it SHALL name the pressed event and the
+other events by their folder names, since events that claim the same movie file share their date, title
+and location.
 
 A row that needs a render, has no queued or running job, but lists a clip that is missing from disk SHALL
 NOT offer Render, for the same reason as the event's page. In its place, the row SHALL say, in words with an
@@ -1460,8 +1482,8 @@ Error rows under "Needs attention" SHALL NOT offer Render.
 #### Scenario: A row's Render is confirmed in words
 - **WHEN** the operator presses Enter on the Render control of the `2024-08-02 - Badutflykt - Varberg` row
 - **THEN** one job is enqueued, the row shows it queued, keyboard focus is on the row's "Badutflykt" link,
-  and one notification, which assistive technology announces, says that the render of "Badutflykt",
-  2024-08-02, was queued
+  assistive technology is told once that the render of "Badutflykt", 2024-08-02, was queued, and no
+  notification is shown over the list
 
 #### Scenario: A collision notification names the folders
 - **WHEN** the operator presses Render on the `2024-07-14 - kalas` row
