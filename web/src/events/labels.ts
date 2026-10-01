@@ -49,8 +49,13 @@ export const UNANSWERED_CAUSE: Record<Unanswered['kind'], string> = {
   unpublished: 'The service sent an unexpected answer.',
 }
 
-/** What to do when a read the operator can repeat got no answer at all. */
-export const NOT_REACHABLE_HINT = 'Check that auto-reel serve is running, then press Refresh.'
+/** What to do when a read the operator repeats with `control` got no answer at all. */
+export function notReachableHint(control: string): string {
+  return `Check that auto-reel serve is running, then press ${control}.`
+}
+
+/** The same for the list and the page, whose read is repeated by Refresh. */
+export const NOT_REACHABLE_HINT = notReachableHint('Refresh')
 
 /** What to do when such a read got an answer its route does not publish. */
 export const UNPUBLISHED_HINT = "The service's log may say why; press Refresh to try again."

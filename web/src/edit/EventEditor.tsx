@@ -17,7 +17,7 @@ import { fetchReel, saveReel } from '../api/reel'
 import type { ReelDocument, ReelReadResult, ReelSaveResult, ReelWriteBody } from '../api/reel'
 import { markEventsChanged } from '../events/changes'
 import { folderName, plural } from '../events/common'
-import { FAILURE_LABEL, UNANSWERED_CAUSE } from '../events/labels'
+import { FAILURE_LABEL, UNANSWERED_CAUSE, notReachableHint } from '../events/labels'
 import { FAILURE_LOOK } from '../events/tones'
 import { eventName } from '../jobs/labels'
 import { LIST_HREF } from '../route'
@@ -244,8 +244,13 @@ function readFailure(
   result: Exclude<ReelReadResult, { kind: 'ok' }>,
   eventId: string,
 ): ReadFailure {
-  if (result.kind === 'unreachable' || result.kind === 'unpublished') {
-    return { cause: UNANSWERED_CAUSE[result.kind], detail: result.message }
+  // No answer gets the way to recover, never the browser's own error text; an
+  // unexpected answer keeps the request and the status it received.
+  if (result.kind === 'unreachable') {
+    return { cause: UNANSWERED_CAUSE.unreachable, detail: notReachableHint('Try again') }
+  }
+  if (result.kind === 'unpublished') {
+    return { cause: UNANSWERED_CAUSE.unpublished, detail: result.message }
   }
   const problem = result.problem
   if (problem.status === 404) {
@@ -686,7 +691,7 @@ export function EventEditor({
         console.error('Edit mode: the save stopped on an error', error)
         return {
           saved: false as const,
-          problem: { kind: 'page' as const, detail: String(error), retry: operation },
+          problem: { kind: 'page' as const, retry: operation },
           refusal: null,
         }
       })
