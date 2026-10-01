@@ -126,6 +126,22 @@ one adjacent finding. The sections below are updated to match.
   `list.css` as a stop-gap. If it is on `main` when this change's PR branch is built, this change deletes
   it, because its own rule replaces it. That is a one-line edit in another change's file.
 
+### Supervisor decisions (review round)
+
+Recorded after the implementation report. They are binding, and the sections below are updated to match.
+
+- **The card's residual reflow is accepted** (option (a) of "The render card keeps its height"). Between
+  320 and 480 px the card can still shrink by a line, and never grow, when "Starting…" gives way to the
+  first percentage. It is documented under Risks.
+- **List rows keep their height too.** A row shrank by 4–8 px when its first percentage arrived, because its
+  compact meter was not reserved. Reserve its line, so the row does not shrink (see "A list row keeps its
+  height").
+- **The toast wording is accepted** as built: each event-named toast ends with the name, for example
+  'Render failed: “Grillkväll med grannarna” · 2024-06-27' (see "Toasts name the event by its title and
+  date").
+- **Separator stop-gap, re-checked.** `event-list-polish` had not landed when this change's PR branch was
+  built, so `list.css` has no stop-gap to delete.
+
 ### The job a screen shows while the connection is down
 
 **Context**: `choose()` keeps the store's copy of an active job over the screen's read of the same job,
@@ -347,7 +363,9 @@ the time wraps at every width. On the page it wraps at 390 and 320px, and not at
 
 **Decision**: Use A3 for the page. In list rows, the time after an active job's words always takes its own
 line, with no dot. A running row with progress has no words, so it keeps its pill and time together where
-they fit, as today; the list's row layout is `event-list-polish`'s. The rules replace `jobs.css` 142-152:
+they fit, as today; the list's row layout is `event-list-polish`'s. (Changed in review: every active job's
+time in a row now takes its own line, words or not. See "A list row keeps its height".) The rules replace
+`jobs.css` 142-152:
 
 ```css
 .job-state:has(> .job-words + .job-when) {
@@ -412,15 +430,16 @@ the line is the bar's 8 px. The first percentage adds the figures, whose line is
 
 **Decision**: In `jobs.css`, `.render-card .job-meter { min-block-size: calc(var(--text-sm) *
 var(--lh-normal)); }`. It uses tokens only, and the bar is centred in the line as before. The list rows'
-compact meter is left as it is: the supervisor named the card, and `event-list-polish` owns the rows'
-layout. The list row is measured in task 6.1 and reported.
+compact meter was left as it was at first, because the supervisor had named only the card. Task 6.1
+measured the rows, and the review then asked for them too (see "A list row keeps its height").
 
 **Rationale**: The line is reserved from the first active state, so queued, starting, running, cancelling
 and last-known all have one meter height. The card no longer grows when the first percentage arrives, at
 any width. A meter whose figures wrap below the bar can still grow. That happens only when the
 percentage, an estimate and "last known" all show at the narrowest widths.
 
-**Measured, and left for the supervisor** (`verify/jobs-live-polish/spike_narrow.py`, this-year dates):
+**Measured, and accepted by the supervisor as option (a)** (`verify/jobs-live-polish/spike_narrow.py`,
+this-year dates):
 the status line's own text still reflows when "Starting…" gives way to the percentage, at some widths. The
 words go, so the time, or the Cancel button, can move up a line. The card then shrinks; it never grows.
 
@@ -435,7 +454,7 @@ words go, so the time, or the Cancel button, can move up a line. The card then s
 The `main` column is derived, not measured: on `main` the Starting… meter is 11.5 px shorter, and the 40%
 state is the same. It agrees with the review's measurements at 1280 (78 → 89.5) and 390 (106 → 117.7).
 
-Two ways to remove that too, neither taken without the supervisor's word:
+Two ways to remove that too were offered, and the supervisor took neither:
 
 - **A narrow-card rule:** below a card width, an active job's time takes its own line (a container query on
   `.render-card`). With 21rem it holds 390, 360 and 320 steady, but not 430 or 480, because there the
@@ -444,6 +463,77 @@ Two ways to remove that too, neither taken without the supervisor's word:
   words. The status line then reads the same in both states at every width, by construction. But it
   changes `JobState`'s state table for the list rows too, and the status region would no longer announce
   "Starting…" (only "Rendering").
+
+### A list row keeps its height
+
+**Context**: A review decision. Before this fix, measured on this branch with `spike_rows.py` in the
+verify directory (Grillkväll, this-year dates), a row shrank by 8 px when the first percentage arrived, at
+every width from 1280 to 360 px. At 1280 the row went from 89.2 to 81.2 px, and at 390 from 151.3 to
+143.3 px. Two things change at that moment:
+
+- the compact meter gains its figures' line: the 4 px bar becomes an 18 px line (+14 px)
+- the words "Starting…" go (−22 px): either their own line, or the line of the time they pushed down
+
+So reserving the meter's line alone makes the shift −22 px, not 0. "Starting…" also takes a line of its
+own under the pill wherever the cell is narrow. That happens in the 148 px job column at table widths on
+`main`, and in the 206 px column of the card layout at 600 px.
+
+**Explored** (rules injected into the list, at 1280, 1024, 900, 768, 600, 480, 390, 360 and 320 px):
+
+- **Reserve the meter's line only** (`min-block-size`, as on the card). The row shrinks by 22 px at every
+  width.
+- **Also give every active row's time its own line.** This holds where "Starting…" fits beside the pill
+  (768, 480, 390, 360 and 320 px). It still shrinks by 22 px where the words wrap under the pill (1280,
+  1024, 900 and 600 px).
+- **Also show "Starting…" as the row meter's figure**, where the percentage then appears. The row's status
+  words are then the same before and after the first progress: there are none. So its lines are the same
+  at every width, by construction. This is option (c) above, which the card did not take because the card's
+  status region announces its words. A row has no live region, so a row loses nothing by it.
+
+**Decision**: All three, in the jobs slice only:
+
+- `JobProgress` (the row) passes `startingInMeter` to `JobState` and to `JobMeter`. The state's words then
+  omit "Starting…", and the meter shows it as `.job-starting` in its figures, where the percentage then
+  appears. `RenderControl` passes nothing, so the card is unchanged, and its status region still announces
+  "Starting…".
+- In `.job-progress`, the meter reserves its figures' line: `min-block-size: calc(var(--text-xs) *
+  var(--lh-normal))`.
+- In `.job-progress`, an active job's time always takes its own line:
+  `.job-state:is([data-status='queued'], [data-status='running']) > .job-when { flex-basis: 100% }`. This
+  replaces the rule for the time after words, and that time's dot stays `none`. A finished job keeps its
+  pill and time together where they fit.
+
+**Measured after the fix** (row height in px; queued / Starting… / 40% / cancelling; Grillkväll, this-year
+dates):
+
+| viewport | before | after |
+|---|---|---|
+| 1280, 1024, 900 | 89.2 / 89.2 / 81.2 / 103.2 | 103.2 / 81.2 / 81.2 / 103.2 |
+| 768 | 101.3 / 101.3 / 93.3 / 115.3 | 115.3 / 115.3 / 115.3 / 115.3 |
+| 600 | 123.3 / 123.3 / 115.3 / 137.3 | 137.3 / 115.3 / 115.3 / 137.3 |
+| 480, 390, 360 | 151.3 / 151.3 / 143.3 / 165.3 | 165.3 / 165.3 / 165.3 / 165.3 |
+| 320 | 173.3 / 151.3 / 165.3 / 165.3 | 187.3 / 165.3 / 165.3 / 165.3 |
+
+Starting… → 40% keeps the row's height in all 36 cases measured: Grillkväll and Lång Kväll, with this-year
+and other-year dates, at the nine widths. `check_separator.py` checks it at eight widths in light, and at
+1280 and 390 in dark.
+
+**Rationale**: The first percentage no longer moves a row, at any width. At card widths from 360 to 768 px
+a row keeps one height through every active state. That holds wherever an active job's words fit beside
+its pill.
+
+**Trade-offs**:
+
+- Where "Waiting for a worker" or "Cancelling…" does not fit beside the pill, the row changes by one line
+  when the job starts and when a cancel is requested. That is the 148 px table column on `main`, 600 px,
+  and the queued words at 320 px. Both are state changes, where the pill changes too, not a progress tick.
+  Before this fix, those columns kept their height when the job started and shrank by 8 px at the first
+  percentage.
+- `event-list-polish` widens the table's job column (29%, about 278 px at 1024 px), where the words fit
+  beside the pill. Once it lands, the table widths should hold too. That is expected, not measured, because
+  that change is not on `main`.
+- An active row is taller than before: by 14 px while it waits or starts (the reserved line), and by up to
+  22 px while it runs (the time's own line).
 
 ### Row answers are announced
 
@@ -550,11 +640,13 @@ It leaves alone:
 - The render card's markup. `event-page-polish` may regroup the page header around it.
 - `JobProgress.tsx`'s time formatting. `event-list-polish` deletes `THIS_YEAR`, `OTHER_YEAR` and
   `formatTime` (28-47), imports its shared formatter and changes the call at 105. This change edits other
-  hunks of that file (49-51 and 116-143).
+  hunks of that file: the state table's comment (10-26), 49-63, `JobState`'s props, 116-143 and
+  `JobProgress`.
 - Every class name another change selects on. `event-list-polish`'s `list.css` reads `.live-job`,
   `.job-progress`, `.job-when`, `.job-words` and `.row-blocked`. `event-page-polish`'s `detail.css` reads
   `.render-card` with `[data-active]`, `.render-none` and `.render-blocked`. All of them stay, on the same
-  elements.
+  elements. A row whose job is starting now shows no `.job-words`, because its "Starting…" is the meter's
+  `.job-starting` ("A list row keeps its height"). Its queued and cancelling words keep the class.
 
 Coordination with the other changes:
 
@@ -617,6 +709,13 @@ Coordination with the other changes:
   (`api/routes/jobs.py`), and the collision toast keeps folder names. The terminal toasts and the row's
   queued, already-active, up-to-date and collision toasts also carry an "Open" link to their own event's
   page.
+- **[The card's residual reflow]** Between 320 and 480 px, the card can still shrink by a line when
+  "Starting…" gives way to the first percentage. It never grows. → The supervisor accepted this (option (a)).
+  The measurements are in "The render card keeps its height".
+- **[A row at a job's start or cancel, in a narrow column]** Where an active job's words do not fit beside
+  its pill, a row changes by one line when the job starts and when a cancel is requested → these are state
+  changes, where the pill changes too. `event-list-polish`'s wider job column should remove them at table
+  widths ("A list row keeps its height").
 - **[A meter whose figures wrap]** At the narrowest widths, a meter showing a percentage, an estimate and
   "last known" together can wrap its figures below the bar, and the card then grows by a line → this is
   rare, because the estimate shows only for the store's copy, and "last known" only while the connection is
