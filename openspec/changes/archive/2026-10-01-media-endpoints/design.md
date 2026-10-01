@@ -699,8 +699,9 @@ None that change the specs, the approach or the tasks. Deferred, by design:
   field as absent either way.
 - **`MediaGoneError(label, reason)`.** The 404 detail is `<identity or file name>: no such file` or `…: not a
   regular file`, path-free like `MediaReadError`'s.
-- **HLD §4.10's v3 line** keeps "drag across chapters" while `cross-chapter-drag` has not landed (task 5.2
-  forbids carrying it into v2); once that change is on `main` it is dropped from v3, since it is v1.
+- **HLD §4.10's v3 line and §6 phase 10:** `cross-chapter-drag` landed on `main` first, putting dragging
+  across chapters in v1, so this change's v3 line and phase 10 say GUI v3 has no planned scope (task 5.2's
+  "if it has archived" branch, applied when the PR branch was rebuilt on that `main`).
 - **The revalidation check runs without `page.route`.** Playwright's routing disables the browser's HTTP
   cache, so a routed page never shows Chrome's `If-None-Match` 304s. The check loads `/healthz` (no script
   of its own) and asserts through `page.on("request")` that only GETs were sent; the playback check, which
