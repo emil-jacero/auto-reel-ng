@@ -151,7 +151,8 @@ Close when the control that held it went:
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, with every Cuts panel hidden, the operator tabs
   to the thumbnail of `s1710002.mp4`, which is named "Watch s1710002.mp4", and presses Enter
 - **THEN** the clip's Cuts panel is shown with its preview open, keyboard focus is on "Play s1710002.mp4",
-  nothing plays, and no other row changed its size or position
+  nothing plays, and no other row changed its size; the rows above it did not move, and the rows after it
+  moved down only by the height that the opened panel added to its row
 - **WHEN** the operator presses Escape
 - **THEN** the preview closes, its panel stays shown, and keyboard focus is on the thumbnail of `s1710002.mp4`
 - **WHEN** the operator presses the thumbnail of `s1710001.mp4` with the pointer
@@ -439,7 +440,7 @@ row.
 - **WHEN** the operator opens `2024-08-20 - Två kapitel - Tjörn`, and then enters Edit mode
 - **THEN** in the read view no thumbnail is focusable
 - **AND** in Edit mode the thumbnail of every clip `Main` and `Kvällen` play is a button named "Watch <name>",
-  such as "Watch Kvällen/s1710004.mp4" in `Main`, the ignored root clip `s1710004.mp4`'s thumbnail is not
+  such as "Watch s1710002.mp4" in `Kvällen`, which names its own clips without the folder, the ignored root clip `s1710004.mp4`'s thumbnail is not
   focusable, and every thumbnail box has the size and place it had before this change
 
 #### Scenario: A clip rotated for display is shown whole
