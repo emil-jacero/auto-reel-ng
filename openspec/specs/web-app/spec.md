@@ -2339,13 +2339,16 @@ The control that holds keyboard focus SHALL NOT leave the window because the bar
   into the window. When that control is in the bar, such as Save, the page scrolls to the bar.
 - When a resized or zoomed window makes the bar rest while one of the bar's controls holds keyboard focus,
   that control SHALL be scrolled fully into the window.
-- While the bar rests and one of its controls holds keyboard focus, every further resize or zoom of the window
-  SHALL leave that control fully inside the window, step by step. A change of what the bar says, or of its own
-  height, SHALL NOT scroll the page.
+- While the bar rests and one of its controls holds keyboard focus and is fully inside the window, every
+  further resize or zoom of the window SHALL leave that control fully inside the window, step by step. A
+  resize after the operator scrolled that control out of the window, a resize event that changes neither the
+  window's width nor its height (a phone's URL bar fires them), a change of what the bar says, and a change of
+  the bar's own height SHALL NOT scroll the page.
 
-When keyboard focus moves to a control of the editor that is partly outside the window, such as the description
-field, whose caret alone the browser would bring into view, that control SHALL be scrolled fully into the
-window.
+When keyboard focus moves to a control of the editor that is partly hidden, outside the window or under the
+sticky header, a chapter heading or a held bar, such as the description field, whose caret alone the browser
+would bring into view, that control SHALL be scrolled fully into view. Focus given by a pointer press SHALL NOT
+scroll the page, so the press, and a text field's caret, land where the operator pressed.
 
 No notification SHALL overlap the bar while it is held or while it rests.
 

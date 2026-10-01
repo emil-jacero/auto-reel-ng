@@ -145,6 +145,34 @@ Where a section below says otherwise, this section wins.
 - **Wording**: the spec's resting-bar requirement, its zoom scenario (now step by step) and a new "first edit in a
   short, wide window" scenario, and the notification requirement's scope sentence, state the two conditions
   (synced spec and this archived delta). README, `EventEditor.tsx`, `SaveBar.tsx` and `edit.css` say the same.
+- **Re-check of the fixes (second round: 2 majors, 1 minor, all fixed).**
+  - **Major: a mouse press on a text field scrolled the page.** Chromium gives a text input or text area
+    `:focus-visible` even on a pointer's focus, so the focusin handler ran on every press: a field showing
+    8–20 px at the bottom edge jumped 32–170 px, the click landed on the form, and with 2 px of drag the caret
+    landed on another line. **Fix**: `onPointerDownCapture` sets `pointerPressed` (cleared on a `setTimeout`),
+    and `onFocus` scrolls only when it is unset and the target matches `:focus-visible`. **Measured**: the
+    re-checker's `t_click.py` presses scroll 0 px at 320 × 256, 1280 × 900 and 1280 × 400, the click lands on
+    the field, and its `t_jitter.py` selection equals the browser's own (the handler suppressed).
+  - **Major (phones): any `resize` pulled the page back to a resting bar after a scroll away.** Chrome on
+    Android fires `resize` as its URL bar shows or hides, and a landscape phone always rests the bar. **Fix**:
+    the resize listener ignores events where `clientWidth` and `clientHeight` did not change, and follows the
+    focused control only if it was wholly in the window before the resize (`shown`, noted by a passive `scroll`
+    listener, a `focusin` listener on the bar and after each follow). **Measured**: the re-checker's
+    `t_away.py` (b) cases and `t_rev.py away` (48/48): a URL-bar-sized shrink, a width-only change and a
+    no-size-change event leave the scroll where the operator put it; the zoom steps (`t_rev.py zoomsteps`, the
+    re-checker's `t_zoomout.py`) still keep Save in view at every step.
+  - **Minor: a field under the held bar counted as in view.** `keepInWindow` checked only the window's edges,
+    so at 390 × 844 a Tab to the description left it 52 % visible under the bar card. **Fix**: `keepInView`
+    measures a target outside the bar against the scroll-padding box (`top < scroll-padding-top` or
+    `bottom > clientHeight − scroll-padding-bottom`), and a control of the bar against the window's edges (the
+    held bar's own height is in the bottom padding). **Measured**: the re-checker's `t_underbar.py` 6/6: the
+    description fully visible at 390 × 844, and the same position as before at 412 × 915 and 768 × 1024.
+  - **Expected re-checker results that are not regressions**: `t_click.py`'s "a mouse press on Save does not
+    scroll" — the press saves, the answer grows the bar, and the answer's focus scroll brings Save back into
+    view (edit-mode-polish's rule); `t_misc.py`'s "one follow per resize" counted follow scrolls after a wheel
+    scroll away, which the second fix now skips by design (its no-leaked-listener checks pass); `t_away.py`
+    (a1)/(a2) at 320 × 256 → 220–256 px wide: the scroll changes with no script scroll (the browser's scroll
+    anchoring as the page reflows below 320 px), as in the re-checker's own run before this round.
 
 ## Goals / Non-Goals
 
