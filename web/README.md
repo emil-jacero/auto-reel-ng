@@ -17,8 +17,8 @@ clip from another folder is named by its path in the event folder; and any clip
 `reel.yaml` lists that is missing from disk is named. Both read on open and on Refresh — no
 timer polling (job state arrives over the jobs WebSocket), never a cache — and
 report a failed read by its cause. Each clip row, on the event page and in Edit
-mode, shows a frame from its clip (the service's thumbnail, D-11; 128 × 72 at desktop
-width, 80 × 45 in narrower tables and cards): requested only
+mode, shows a frame from its clip (the service's thumbnail, D-11; 80 × 45, and 128 × 72
+in the chapter tables at desktop width): requested only
 as its row nears the view and behind the page's own requests, in a box sized before
 it arrives, and kept by the browser while the clip is unchanged. A frame the service
 cannot give shows "No preview"; a missing clip asks for none and shows an empty
