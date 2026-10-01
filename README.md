@@ -69,8 +69,12 @@ write nothing) and `--device <amd|nvidia|intel|cpu|device-id>`. `thumbs` takes
   event: both layouts skip it and log `skipping <dir>: .reelignore` at INFO. A marker
   at year or root level has no effect; deleting the marker restores the event.
 - **Adoption policy:** an event with no `reel.yaml` is seeded from its folder
-  structure; on later runs `render` adopts any newly added clip into the default
-  chapter (so it is never silently dropped) and reports clips that went `MISSING`.
+  structure; on later runs `render` adopts any newly added clip into the chapter
+  named after its folder (the default chapter for a clip in the event folder
+  itself), or into the default chapter when `reel.yaml` has no chapter of that
+  name, so it is never silently dropped; a `reel.yaml` that names no chapters at
+  all is adopted into as a new event is seeded (each subfolder its own chapter).
+  It reports clips that went `MISSING`.
   Clips are discovered one level deep: root clips form the default chapter and each
   immediate subfolder a named chapter. A subfolder named `original` (any case; legacy
   pre-conversion camera originals) or containing `.reelignore` is never a chapter, and

@@ -202,7 +202,9 @@ output is cached in a sidecar (e.g. `.auto-reel/cache/`), **not** in `reel.yaml`
 
 `reel.yaml` (per event dir) is the **canonical, git-friendly store of every editorial decision**. The GUI
 and CLI both read and write it; Postgres is only a derived index/cache for fast GUI listing. Folder-name
-parsing **seeds** a `reel.yaml` on first scan; thereafter the file wins.
+parsing **seeds** a `reel.yaml` on first scan; thereafter the file wins. A clip added later is adopted by
+the next render into its folder's chapter, or the default chapter when the file names no such chapter; a
+file that names no chapters at all is adopted into as a first scan seeds it (D-12).
 
 Proposed schema (superset of the old format — backward compatible with auto-reel's `metadata`/`title`/
 `description`/`sort`/`title_card`):
@@ -601,6 +603,24 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Filling it:** `auto-reel thumbs` fills it in batch. The service's thumbnail route fills it on
     request (change `clip-thumbnail-endpoint`).
   - **Still open:** proxies and scrubbing stay v3 (§8.11). (§4.10)
+
+- **D-12 — NEW-clip adoption follows the clip's folder** (2026-10-01, change `adopt-into-folder-chapter`;
+  amends `project-cli`'s D-CLI3). A clip that appears in an event after its `reel.yaml` exists (NEW) is
+  adopted by the next render, from the CLI or the worker, into the chapter named after the folder it is
+  in: the event folder's clips into the default chapter, and a subfolder's into the chapter of that name.
+  It goes into the default chapter only when `reel.yaml` has no chapter of that name. A `reel.yaml` that
+  names no chapters at all (a legacy import, a metadata-only first save) is adopted into as a new event is
+  seeded: the event folder's clips into the default chapter and each subfolder's into a chapter of its
+  own, in seeding order. Otherwise adoption creates no chapter except the default one, appended last when
+  absent. It never moves a clip the document lists, and it appends a chapter's entering clips in the sort
+  rule's order. The events detail places every clip `reel.yaml` does not list (NEW or ignored) by this
+  same rule, so it shows each NEW clip where the render will adopt it.
+
+  *Amended 2026-10-01:* D-CLI3 adopted every NEW clip into the default chapter ("configurable", never
+  wired). The GUI v1 end-to-end pass found `Kvällen/s1710004.mp4` shown under `Kvällen` and played in
+  Main after Render, and the operator chose the folder rule, and seeding for a `reel.yaml` that names no
+  chapters. Adoption writes `reel.yaml`, which the editorial component already fingerprints, so this is no
+  render-graph change. (§4.6)
 
 ---
 

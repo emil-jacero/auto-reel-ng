@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Confirm the base. This change has no gate and is independent of `output-renamed-reason` and `renamed-label-and-zoom-bar`. It starts from `main` at `93721b3` or later. Re-check the names the design cites, and stop and report to the supervisor on any mismatch:
+- [x] 1.1 Confirm the base. This change has no gate and is independent of `output-renamed-reason` and `renamed-label-and-zoom-bar`. It starts from `main` at `93721b3` or later. Re-check the names the design cites, and stop and report to the supervisor on any mismatch:
   - `auto_reel_ng/cli/adoption.py`: `prepare_event` has the `adopt_chapter` parameter and the single-chapter loop (`_ensure_chapter` → `order_clips(result.new, …)` → `add_clip`), and `_ensure_chapter` appends a missing chapter last
   - `auto_reel_ng/api/events_read.py` `_build_chapters`:
     - it keeps the seed branch for `document is None`
@@ -16,7 +16,7 @@
 
 ## 2. cli/ — one placement rule, used by adoption
 
-- [ ] 2.1 Add `place_disk_clips(document, listing, identities, *, event_dir, order)` to `cli/adoption.py`, with the signature, docstring and group order from design "One placement function, in `cli/adoption.py`":
+- [x] 2.1 Add `place_disk_clips(document, listing, identities, *, event_dir, order)` to `cli/adoption.py`, with the signature, docstring and group order from design "One placement function, in `cli/adoption.py`":
   - an identity's folder chapter comes from `listing.by_chapter`
   - its target is the folder chapter if `document.chapter(folder) is not None`, else `DEFAULT_CHAPTER_NAME`
   - groups come in document chapter order, then `""` last when the document lacks it, with no empty groups
@@ -39,7 +39,7 @@
   Verify:
   - `.venv/bin/python -m pytest tests/test_cli_adoption.py` passes
   - `.venv/bin/python -m mypy auto_reel_ng` is clean
-- [ ] 2.2 Make `prepare_event` adopt by the rule (design snippet "`prepare_event` becomes").
+- [x] 2.2 Make `prepare_event` adopt by the rule (design snippet "`prepare_event` becomes").
   - Remove the `adopt_chapter` parameter.
   - Loop over `place_disk_clips(authored, listing, result.new, …)`, calling `_ensure_chapter` per target (it can only create `""`) and `add_clip` per clip. `adopted` is the concatenation of the groups.
   - Rewrite the module docstring's policy bullet, and the `PreparedEvent` and `prepare_event` docstrings, to state the folder rule with its default-chapter fallback, citing **D-12** (amends D-CLI3).
@@ -57,7 +57,7 @@
   - `grep -rn "adopt_chapter" auto_reel_ng tests scripts` prints nothing
   - `.venv/bin/python -m pytest -m "not requires_db"` passes
   - `.venv/bin/python -m mypy auto_reel_ng` is clean
-- [ ] 2.3 Add `tests/test_cli_render_adoption.py`: a real render through `main([...])` over a scratch library in `tmp_path`, marked `@pytest.mark.has_ffmpeg`, using the `runtime` and `make_clip` fixtures (1.0 s, 320×240, moved into place as in `tests/test_cli_render_staleness.py`). Every run is `main(["render", str(root), "-o", str(out), "--device", "cpu"])`:
+- [x] 2.3 Add `tests/test_cli_render_adoption.py`: a real render through `main([...])` over a scratch library in `tmp_path`, marked `@pytest.mark.has_ffmpeg`, using the `runtime` and `make_clip` fixtures (1.0 s, 320×240, moved into place as in `tests/test_cli_render_staleness.py`). Every run is `main(["render", str(root), "-o", str(out), "--device", "cpu"])`:
   1. `2024/2024-08-20 - Två kapitel - Tjörn` holds `s1710001.mp4`, `Kvällen/s1710002.mp4` and `Kvällen/s1710003.mp4`. The first render exits 0 and seeds `""` = [`s1710001.mp4`] and `Kvällen` = [`Kvällen/s1710002.mp4`, `Kvällen/s1710003.mp4`].
   2. Add `Kvällen/s1710004.mp4` and `Dag 2/s1710005.mp4`. The second render:
      - exits 0, and stdout contains `adopted 2 new clip(s)`
@@ -70,7 +70,7 @@
 
 ## 3. api/ — the detail shows the same placement
 
-- [ ] 3.1 In `api/events_read.py` `_build_chapters`, replace the `listing.by_chapter` loop with the `place_disk_clips` loop over every disk-only clip (NEW and IGNORED) from design "One placement function, in `cli/adoption.py`". Drop `order = document.sort or order`, leave the seed branch unchanged, and update the docstring (D-12: placed where a render adopts them). Import `place_disk_clips` beside the existing `from ..cli.adoption import REEL_FILENAME`.
+- [x] 3.1 In `api/events_read.py` `_build_chapters`, replace the `listing.by_chapter` loop with the `place_disk_clips` loop over every disk-only clip (NEW and IGNORED) from design "One placement function, in `cli/adoption.py`". Drop `order = document.sort or order`, leave the seed branch unchanged, and update the docstring (D-12: placed where a render adopts them). Import `place_disk_clips` beside the existing `from ..cli.adoption import REEL_FILENAME`.
 
   Add tests to `tests/test_api_events.py` (the module is `requires_db`). Each builds its own event under the `project` fixture's root with touched files and a literal `reel.yaml`, and reads `GET /api/v1/events/{event_id}`:
   - `test_detail_shows_a_new_clip_in_its_folders_chapter`, the spec's `Två kapitel` case, with names and statuses per chapter
@@ -91,7 +91,7 @@
 
 ## 4. docs
 
-- [ ] 4.1 Add **D-12** to `docs/high-level-design.md` §7 after D-11, with the text in design "HLD: D-12 records the amendment" (amends D-CLI3, dated 2026-10-01, with the reason). Add the §4.6 sentence after "thereafter the file wins." In `README.md`'s "Adoption policy" bullet, replace "adopts any newly added clip into the default chapter (so it is never silently dropped)" with the folder rule and its fallback. Example: "adopts any newly added clip into the chapter named after its folder (the default chapter for a clip in the event folder itself), or into the default chapter when `reel.yaml` has no chapter of that name, so it is never silently dropped".
+- [x] 4.1 Add **D-12** to `docs/high-level-design.md` §7 after D-11, with the text in design "HLD: D-12 records the amendment" (amends D-CLI3, dated 2026-10-01, with the reason). Add the §4.6 sentence after "thereafter the file wins." In `README.md`'s "Adoption policy" bullet, replace "adopts any newly added clip into the default chapter (so it is never silently dropped)" with the folder rule and its fallback. Example: "adopts any newly added clip into the chapter named after its folder (the default chapter for a clip in the event folder itself), or into the default chapter when `reel.yaml` has no chapter of that name, so it is never silently dropped".
 
   Verify:
   - `grep -n "D-12" docs/high-level-design.md` shows the §7 entry and the §4.6 reference
@@ -101,7 +101,7 @@
 
 ## 5. Live check
 
-- [ ] 5.1 Reproduce the end-to-end failure and see it fixed through the GUI's own path. Use the scratch directory and the database of your own that the implementation brief assigns: never the default `auto_reel_ng` database, never `auto-reel-media/`, never ports 8080 or 5173. Use port **8122**.
+- [x] 5.1 Reproduce the end-to-end failure and see it fixed through the GUI's own path. Use the scratch directory and the database of your own that the implementation brief assigns: never the default `auto_reel_ng` database, never `auto-reel-media/`, never ports 8080 or 5173. Use port **8122**.
   1. With your `DATABASE_URL` exported, run `.venv/bin/alembic upgrade head`, then `.venv/bin/python scripts/make_dev_library.py <scratch>/dev`.
   2. Link one more clip into a folder that has no chapter: `mkdir "<scratch>/dev/library/2024/2024-08-02 - Badutflykt - Varberg/Dag 2" && ln -s <scratch>/dev/clips/s1710002.mp4 "<scratch>/dev/library/2024/2024-08-02 - Badutflykt - Varberg/Dag 2/s1710002.mp4"`.
   3. Start `.venv/bin/auto-reel serve <scratch>/dev/library --port 8122` and `.venv/bin/auto-reel worker`, both in the background with your `DATABASE_URL`. If the checkout has no `web/dist/index.html`, first build it with `podman run --rm -v "$PWD/web:/app:Z" -w /app docker.io/library/node:22 sh -c "npm ci && npm run build"`. The worker also runs the job the dev library leaves queued for `2024/Blandat`; that is expected.
@@ -126,7 +126,7 @@
 
 ## 6. Validation
 
-- [ ] 6.1 Run the validation gates:
+- [x] 6.1 Run the validation gates:
   - `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`
   - `.venv/bin/python -m mypy auto_reel_ng`
   - `.venv/bin/python -m pylint auto_reel_ng`

@@ -1,4 +1,4 @@
-"""Tests for the NEW-clip adoption policy (D-CLI3): seed / adopt / report MISSING.
+"""Tests for the NEW-clip adoption policy (D-12, amends D-CLI3): seed / adopt / report MISSING.
 
 These operate at the document level with empty placeholder files (the scan only
 reads name/extension), so no ffmpeg is involved.
@@ -10,9 +10,12 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from auto_reel_ng.cli.adoption import REEL_FILENAME, persist, prepare_event
-from auto_reel_ng.event import DEFAULT_CLIP_ORDER, ClipOrder, SortMethod
-from auto_reel_ng.reel import write_document
+import pytest
+
+from auto_reel_ng.cli.adoption import REEL_FILENAME, persist, place_disk_clips, prepare_event
+from auto_reel_ng.errors import ReconcileError
+from auto_reel_ng.event import DEFAULT_CLIP_ORDER, ClipOrder, SortMethod, scan_event, seed_document
+from auto_reel_ng.reel import load_document, write_document
 from auto_reel_ng.reel.document import DEFAULT_CHAPTER_NAME, Chapter, ClipRef, ReelDocument
 
 
@@ -154,3 +157,183 @@ def test_v0_event_sort_orders_new_clips_after_existing_ones(tmp_path: Path) -> N
 
     assert _default_clips(event) == ["z.mp4", "clip2.mp4", "clip10.mp4"]
     assert "sort:\n  method: filename\n" in (event / REEL_FILENAME).read_text(encoding="utf-8")
+
+
+# --------------------------------------------------------------------------- #
+# Placement by folder (D-12): place_disk_clips, and prepare_event adopting by it
+# --------------------------------------------------------------------------- #
+
+TVA_KAPITEL = "2024-08-20 - Två kapitel - Tjörn"
+
+# The `2024-08-20 - Två kapitel - Tjörn` reel.yaml the spec scenarios start from.
+TVA_KAPITEL_REEL = """version: 0
+metadata:
+  title: Två Kapitel
+chapters:
+- name: ''
+  clips:
+  - s1710001.mp4
+- name: Kvällen
+  clips:
+  - Kvällen/s1710002.mp4
+  - Kvällen/s1710003.mp4
+"""
+
+# What `import` writes for a legacy document, or a GUI metadata-only first save.
+NO_CHAPTERS_REEL = "version: 0\nmetadata:\n  title: Utan Kapitel\n"
+
+
+def _event(root: Path, reel: str, clips: dict[str, int]) -> Path:
+    """An event folder holding ``clips`` (identity -> mtime hour) and a literal ``reel.yaml``."""
+    event = root / TVA_KAPITEL
+    for identity, hour in clips.items():
+        _touch_at(event / identity, hour)
+    (event / REEL_FILENAME).write_text(reel, encoding="utf-8")
+    return event
+
+
+def _place(
+    event: Path, identities: tuple[str, ...], order: ClipOrder = DEFAULT_CLIP_ORDER
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    document = load_document(event / REEL_FILENAME)
+    return place_disk_clips(document, scan_event(event), identities, event_dir=event, order=order)
+
+
+def _chapters(document: ReelDocument) -> list[tuple[str, list[str]]]:
+    return [
+        (chapter.name, [ref.identity for ref in chapter.clips]) for chapter in document.chapters
+    ]
+
+
+def test_place_a_clip_into_the_folder_chapter_the_document_names(tmp_path: Path) -> None:
+    clips = {"s1710001.mp4": 9, "Kvällen/s1710002.mp4": 10, "Kvällen/s1710003.mp4": 11}
+    event = _event(tmp_path, TVA_KAPITEL_REEL, {**clips, "Kvällen/s1710004.mp4": 12})
+
+    assert _place(event, ("Kvällen/s1710004.mp4",)) == (("Kvällen", ("Kvällen/s1710004.mp4",)),)
+
+
+def test_place_a_clip_whose_folder_has_no_chapter_into_the_default_chapter(tmp_path: Path) -> None:
+    reel = "version: 0\nchapters:\n- name: ''\n  clips:\n  - s1710001.mp4\n"
+    event = _event(
+        tmp_path, reel, {"s1710001.mp4": 9, "Dag 2/s1710002.mp4": 10, "s1710003.mp4": 11}
+    )
+
+    assert _place(event, ("Dag 2/s1710002.mp4",)) == (("", ("Dag 2/s1710002.mp4",)),)
+    assert _place(event, ("s1710003.mp4",)) == (("", ("s1710003.mp4",)),)
+
+
+def test_place_a_document_naming_no_chapters_as_its_seed(tmp_path: Path) -> None:
+    clips = {"s1710001.mp4": 9, "Kvällen/s1710003.mp4": 10, "Kvällen/s1710002.mp4": 11}
+    event = _event(tmp_path, NO_CHAPTERS_REEL, clips)
+
+    placed = _place(event, tuple(sorted(clips)))
+
+    assert placed == (
+        ("", ("s1710001.mp4",)),
+        ("Kvällen", ("Kvällen/s1710003.mp4", "Kvällen/s1710002.mp4")),
+    )
+    seeded = seed_document(event, order=DEFAULT_CLIP_ORDER)
+    assert [(name, list(group)) for name, group in placed] == _chapters(seeded)
+    assert _place(event, ("Kvällen/s1710002.mp4",)) == (("Kvällen", ("Kvällen/s1710002.mp4",)),)
+
+
+def test_place_clips_from_two_folders_into_one_chapter_in_rule_order(tmp_path: Path) -> None:
+    reel = "version: 0\nchapters:\n- name: Kvällen\n  clips:\n  - Kvällen/a.mp4\n"
+    clips = {"Kvällen/a.mp4": 8, "b.mp4": 12, "Dag 2/c.mp4": 11, "Kvällen/d.mp4": 13}
+    event = _event(tmp_path, reel, clips)
+
+    assert _place(event, ("b.mp4", "Dag 2/c.mp4")) == (("", ("Dag 2/c.mp4", "b.mp4")),)
+    assert _place(event, ("b.mp4", "Dag 2/c.mp4", "Kvällen/d.mp4")) == (
+        ("Kvällen", ("Kvällen/d.mp4",)),
+        ("", ("Dag 2/c.mp4", "b.mp4")),
+    )
+
+
+def test_place_by_the_documents_own_sort(tmp_path: Path) -> None:
+    reel = (
+        "version: 0\nchapters:\n- name: Kvällen\n  clips:\n  - Kvällen/a.mp4\n"
+        "sort:\n  method: filename\n"
+    )
+    event = _event(tmp_path, reel, {"Kvällen/a.mp4": 8, "b.mp4": 12, "Dag 2/c.mp4": 11})
+
+    assert _place(event, ("b.mp4", "Dag 2/c.mp4")) == (("", ("b.mp4", "Dag 2/c.mp4")),)
+
+
+def test_place_a_clip_the_listing_does_not_hold_fails_loud(tmp_path: Path) -> None:
+    event = _event(tmp_path, TVA_KAPITEL_REEL, {"s1710001.mp4": 9})
+
+    with pytest.raises(ReconcileError, match="Kvällen/s1710009.mp4"):
+        _place(event, ("Kvällen/s1710009.mp4",))
+
+
+def test_new_clip_joins_its_folders_chapter(tmp_path: Path) -> None:
+    clips = {"s1710001.mp4": 9, "Kvällen/s1710002.mp4": 10, "Kvällen/s1710003.mp4": 11}
+    event = _event(tmp_path, TVA_KAPITEL_REEL, {**clips, "Kvällen/s1710004.mp4": 12})
+
+    prepared = prepare_event(event, order=DEFAULT_CLIP_ORDER)
+
+    assert prepared.adopted == ("Kvällen/s1710004.mp4",)
+    assert _chapters(prepared.authored) == [
+        ("", ["s1710001.mp4"]),
+        ("Kvällen", ["Kvällen/s1710002.mp4", "Kvällen/s1710003.mp4", "Kvällen/s1710004.mp4"]),
+    ]
+
+
+def test_new_clips_in_a_folder_without_a_chapter_join_the_default_chapter(tmp_path: Path) -> None:
+    reel = "version: 0\nchapters:\n- name: ''\n  clips:\n  - s1710001.mp4\n"
+    clips = {"s1710001.mp4": 9, "Dag 2/s1710003.mp4": 10, "Dag 2/s1710002.mp4": 11}
+    event = _event(tmp_path, reel, clips)
+
+    prepared = prepare_event(event, order=DEFAULT_CLIP_ORDER)
+    persist(prepared)
+
+    assert _chapters(load_document(event / REEL_FILENAME)) == [
+        ("", ["s1710001.mp4", "Dag 2/s1710003.mp4", "Dag 2/s1710002.mp4"]),
+    ]
+
+
+def test_clips_from_two_folders_enter_the_default_chapter_in_rule_order(tmp_path: Path) -> None:
+    reel = "version: 0\nchapters:\n- name: Kvällen\n  clips:\n  - Kvällen/a.mp4\n"
+    event = _event(tmp_path, reel, {"Kvällen/a.mp4": 8, "b.mp4": 12, "Dag 2/c.mp4": 11})
+
+    prepared = prepare_event(event, order=DEFAULT_CLIP_ORDER)
+
+    assert prepared.adopted == ("Dag 2/c.mp4", "b.mp4")
+    assert _chapters(prepared.authored) == [
+        ("Kvällen", ["Kvällen/a.mp4"]),
+        ("", ["Dag 2/c.mp4", "b.mp4"]),
+    ]
+
+
+def test_document_naming_no_chapters_is_seeded_like_a_new_event(tmp_path: Path) -> None:
+    clips = {"s1710001.mp4": 9, "Kvällen/s1710003.mp4": 10, "Kvällen/s1710002.mp4": 11}
+    event = _event(tmp_path, NO_CHAPTERS_REEL, clips)
+
+    prepared = prepare_event(event, order=DEFAULT_CLIP_ORDER)
+    persist(prepared)
+
+    seeded = seed_document(event, order=DEFAULT_CLIP_ORDER)
+    assert prepared.authored.chapters == seeded.chapters
+    assert _chapters(prepared.authored) == [
+        ("", ["s1710001.mp4"]),
+        ("Kvällen", ["Kvällen/s1710003.mp4", "Kvällen/s1710002.mp4"]),
+    ]
+    written = (event / REEL_FILENAME).read_text(encoding="utf-8")
+    assert written.startswith(NO_CHAPTERS_REEL)  # metadata as written, nothing resolved
+    assert "date:" not in written and "location:" not in written
+
+
+def test_a_clip_adopted_earlier_stays_where_it_is(tmp_path: Path) -> None:
+    reel = TVA_KAPITEL_REEL.replace(
+        "  - s1710001.mp4\n", "  - s1710001.mp4\n  - Kvällen/s1710004.mp4\n"
+    )
+    clips = {"s1710001.mp4": 9, "Kvällen/s1710002.mp4": 10, "Kvällen/s1710003.mp4": 11}
+    event = _event(tmp_path, reel, {**clips, "Kvällen/s1710004.mp4": 12})
+    before = (event / REEL_FILENAME).read_bytes()
+
+    prepared = prepare_event(event, order=DEFAULT_CLIP_ORDER)
+
+    assert prepared.adopted == ()
+    assert prepared.changed is False
+    assert persist(prepared) is None
+    assert (event / REEL_FILENAME).read_bytes() == before
