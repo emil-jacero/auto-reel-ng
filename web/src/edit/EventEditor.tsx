@@ -427,19 +427,37 @@ function chapterHeading(name: string, hasNamedChapter: boolean): string {
 
 /** Above this share of the window's height the save bar rests in the page instead of being held. */
 const HELD_BAR_MAX_SHARE = 0.4
+/**
+ * Below this window height (in rem) the save bar rests in the page whatever its
+ * size: a held bar of up to two fifths, the sticky header and chapter heading and
+ * the tallest clip row (141 px at 320 px wide) need about 27rem together.
+ */
+const HELD_BAR_MIN_WINDOW_REM = 28
+
+/** Scroll `element` the least distance into the window when part of it is outside. */
+function keepInWindow(element: HTMLElement): void {
+  const box = element.getBoundingClientRect()
+  if (box.top < 0 || box.bottom > document.documentElement.clientHeight) {
+    element.scrollIntoView({ block: 'nearest' })
+  }
+}
 
 /**
  * Hold the bar at the window's bottom while it takes at most two fifths of the
- * window; taller (a failed save in a short window, any bar at 400 % zoom) it would
- * hide the editor, so it rests in the page after it (`data-rests`). Only a held bar
- * takes room at the window's bottom: `--toast-inset-bottom` is its height then, and
- * absent while it rests. A held bar that starts to rest takes its focused control
- * to the page's end, so the page follows it there.
+ * window and the window is at least 28rem tall. Otherwise (a failed save in a
+ * short window, any bar at 400 % zoom) it would hide the editor, so it rests in
+ * the page after it (`data-rests`). Only a held bar takes room at the window's
+ * bottom: `--toast-inset-bottom` is its height then, and absent while it rests. A
+ * held bar that starts to rest takes its focused control to the page's end, so
+ * the page follows it there.
  */
 function placeBar(bar: HTMLElement): void {
   const root = document.documentElement
   const rested = bar.hasAttribute('data-rests')
-  const rests = bar.offsetHeight > root.clientHeight * HELD_BAR_MAX_SHARE
+  const rem = parseFloat(getComputedStyle(root).fontSize)
+  const rests =
+    root.clientHeight < HELD_BAR_MIN_WINDOW_REM * rem ||
+    bar.offsetHeight > root.clientHeight * HELD_BAR_MAX_SHARE
   bar.toggleAttribute('data-rests', rests)
   if (rests) {
     root.style.removeProperty('--toast-inset-bottom')
@@ -604,13 +622,23 @@ export function EventEditor({
     }
     const root = document.documentElement
     const place = () => placeBar(bar)
+    // A zoom or a resized window: a resting bar's focused control stays in the window
+    // at every step, as the bar moves with the page's end. Only here: a commit or the
+    // bar's own resize never pulls the page back after the operator scrolled away.
+    const follow = () => {
+      placeBar(bar)
+      const focused = document.activeElement
+      if (bar.hasAttribute('data-rests') && focused instanceof HTMLElement && bar.contains(focused)) {
+        keepInWindow(focused)
+      }
+    }
     place()
     const release = keepToastsClearOf(bar)
     const observer = new ResizeObserver(place)
     observer.observe(bar)
-    window.addEventListener('resize', place)
+    window.addEventListener('resize', follow)
     return () => {
-      window.removeEventListener('resize', place)
+      window.removeEventListener('resize', follow)
       observer.disconnect()
       release()
       root.style.removeProperty('--toast-inset-bottom')
@@ -646,10 +674,7 @@ export function EventEditor({
     }
     const focused = document.activeElement
     if (focused instanceof HTMLElement && focused !== document.body) {
-      const box = focused.getBoundingClientRect()
-      if (box.top < 0 || box.bottom > document.documentElement.clientHeight) {
-        focused.scrollIntoView({ block: 'nearest' })
-      }
+      keepInWindow(focused)
     }
   }, [answers])
 
@@ -775,7 +800,17 @@ export function EventEditor({
   const clipCount = chapters.reduce((sum, chapter) => sum + chapter.movable.length, 0)
 
   return (
-    <div className="event-editor">
+    <div
+      className="event-editor"
+      // Keyboard focus that lands partly outside the window comes in whole: for a
+      // text area the browser scrolls only its caret into view. A pointer's focus is
+      // left alone, so a click never moves its control from under the pointer.
+      onFocus={(event) => {
+        if (event.target instanceof HTMLElement && event.target.matches(':focus-visible')) {
+          keepInWindow(event.target)
+        }
+      }}
+    >
       {/* The one live region for the reel read, the button moves, removals and Undos; dnd-kit
           speaks the drags. */}
       <p role="status" className="visually-hidden">
