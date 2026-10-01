@@ -3101,7 +3101,8 @@ within its chapter SHALL do this:
   - Down at a chapter's last position SHALL take the clip to the first position of the next listed chapter.
   - Up at a chapter's first position SHALL take it to after the last clip of the chapter before.
   - A deleted chapter's placeholder SHALL be passed over.
-  - Escape SHALL cancel and leave every chapter as it was.
+  - Escape SHALL cancel and leave every chapter as it was, with the clip's handle in view again (its whole
+    row, or its first line when the row is taller than the room left).
 
 A chapter that plays no clip SHALL show, in Edit mode, an area that says clips can be dragged into it. The
 area SHALL be shown whether or not a drag is under way. A clip dropped on it SHALL become the chapter's first
@@ -3116,6 +3117,12 @@ While a clip is dragged over another chapter:
 - that chapter's clips SHALL NOT move to make room, and no part of the page SHALL change size or place;
   within the clip's own chapter, its other clips still make room, as before
 - the clip's own row SHALL stay in its chapter, marked as the clip being moved, until it is dropped
+- while the clip is held by a pointer, no other part of the page SHALL show that the pointer is over it,
+  and the pointer SHALL show that it holds the clip
+- in forced colors, the line and the copy's edge SHALL stay visible
+
+Within its own chapter, a clip SHALL stay at its place while the pointer is over its own row, however tall
+the row is: lifting a clip and releasing it there moves nothing.
 
 A drop into another chapter SHALL be one edit. The clip leaves its chapter and joins the other one at the
 position where it was dropped. Every other clip keeps its order. Then:
@@ -3162,7 +3169,7 @@ Above the chapters, Edit mode SHALL say how clips are moved:
 
 On a coarse pointer a drag SHALL start only from the handle, as within a chapter. In a window 320 CSS pixels
 wide or wider, and in both color schemes, no state of a drag SHALL make the page scroll horizontally. Under
-reduced motion, no clip SHALL slide into place.
+reduced motion, no clip SHALL slide into place, and the dragged copy SHALL NOT slide between positions.
 
 #### Scenario: Dragging a clip into the chapter above
 - **WHEN** in Edit mode on `2024-08-20 - Två kapitel - Tjörn`, the operator drags `Kvällen/s1710003.mp4` by its
@@ -3213,8 +3220,14 @@ reduced motion, no clip SHALL slide into place.
 #### Scenario: Escape cancels a drag into another chapter
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator lifts `s1710001.mp4` from the keyboard, presses
   Down twice, and presses Escape
-- **THEN** both chapters are as they were, keyboard focus is on the handle of `s1710001.mp4`, and
-  "Move cancelled. s1710001.mp4 is back at position 1 of 1." is announced
+- **THEN** both chapters are as they were, keyboard focus is on the handle of `s1710001.mp4`, fully visible,
+  and "Move cancelled. s1710001.mp4 is back at position 1 of 1." is announced
+
+#### Scenario: A tall row lifted and released in place
+- **WHEN** in a window 390 × 844 on `2024-08-20 - Två kapitel - Tjörn`, with the Cuts panel of
+  `Kvällen/s1710003.mp4` shown, the operator presses its handle, moves the pointer 10 pixels and releases it
+- **THEN** "Picked up s1710003.mp4, position 2 of 3." and "s1710003.mp4 dropped at position 2 of 3,
+  unchanged." are announced, and `Kvällen` plays `s1710002.mp4`, `s1710003.mp4` and `s1710004.mp4` as before
 
 #### Scenario: Dragging a clip into an empty chapter
 - **WHEN** on `2024-06-27 - Grillning med grannar`, the operator adds a chapter `Kvällen vid grillen`

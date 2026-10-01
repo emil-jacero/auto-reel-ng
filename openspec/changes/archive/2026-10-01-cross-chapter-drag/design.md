@@ -129,6 +129,26 @@ Taken on the brief `plan/brief-g3.md`. The operator asked: "i would like for the
   it was taken, and a refused drop is announced as unchanged.
 - **State.** `ChapterDrag`'s one React state is the lifted clip as `{ identity, name }` (its name as the
   row named it at the lift), not the identity alone.
+- **Review fixes (PR review, 2026-10-01).**
+  - **Own-chapter target from the dragged row.** A tall row (its Cuts panel open) is grabbed near its top, so
+    the row above had the nearer centre at once and a quick lift and release moved the clip up. In the own
+    chapter `pointerTarget` now returns the clip itself while the pointer is inside its own row (where it
+    rests); outside it, the nearest centre, as before. The spec says so, with a scenario "A tall row lifted
+    and released in place".
+  - **Reduced motion.** dnd-kit slides the copy 250 ms on each keyboard step by default; under reduced
+    motion `DragOverlay` gets `transition="none"`.
+  - **Pointer feel.** The copy takes no pointer events, so the row under the pointer took hover and the
+    cursor was whatever lay beneath. While a clip is held by a pointer, `ChapterDrag` portals one
+    transparent `.clip-drag-shield` (fixed, the whole window, z-index 24: under the copy, above the header
+    and the save bar, with the grabbing cursor) into `<body>`. No row takes hover, dnd-kit still listens on
+    the document, and a wheel over it still scrolls the page. A flag on the root that took the page's
+    pointer events away did the same, but restyled the whole page at the lift and the drop (the pointer
+    drop went from ≈ 150 ms to 241 ms); one element changes no other style. The copy's own `cursor` rule
+    is gone, and the lifted clip state gains `pointer` (the keyboard drags without the layer).
+  - **Forced colors.** The line, its dot and the line after the last row keep `Highlight`
+    (`forced-color-adjust: none`), and the copy gets a `CanvasText` border.
+  - **Escape after a crossing keyboard drag.** The sensor scrolls after the copy; on a cancel the source row
+    comes back into view (whole, or its first line when taller than the room), as after a drop.
 - **Render budget, measured (tasks 4.3, accepted).** On `Stor dag`, 1280 × 900, production build: lift 63–92
   ms; 10 keyboard steps within the 400, median 59–80 ms (≤ 2 `RowBody`, 0 lists, 0 editor, ≈ 410 row shells);
   across into `Kväll` and back, median 13–19 ms (0 `RowBody`); keyboard drop 138–159 ms and pointer drop
@@ -244,8 +264,9 @@ their centres. It would also ignore the deleted placeholder and let a missing cl
   1. If `y` is inside a `/deleted/…` rect, return no collision: over `null`.
   2. Choose the chapter: the `/chapter/…` rect that contains `y`, else the one nearest to `y`. A missing clip
      always gets its own chapter.
-  3. In the clip's **own** chapter, pick the row whose centre is nearest to `y`: sortable's index semantics,
-     as `closestCenter` gives today with the row under the pointer.
+  3. In the clip's **own** chapter, the clip itself while `y` is inside its own row (where it rests);
+     outside it, the row whose centre is nearest to `y`: sortable's index semantics, as `closestCenter`
+     gives today with the row under the pointer (review fix: a tall row is grabbed near its top).
   4. In **another** chapter, pick the first row, in play order, whose centre is below `y` ("before that
      row"). If there is none, pick `/chapter/<key>` ("after its last clip"). For a chapter that plays no
      clip that is its area.
@@ -423,7 +444,7 @@ where it was dropped. A separate small function keeps `moveClips` (and its scena
   (`[data-over]`) the border is solid `--accent` on `--accent-soft`, with `--fg` text. The same width, so the
   box does not move.
 - **Motion.** The sortable row transition keeps `reducedMotion ? null : undefined`, and the copy has
-  `dropAnimation={null}`. The one CSS transition, on the area's border and background colours, takes
+  `dropAnimation={null}` and, under reduced motion, `transition="none"` (review fix). The one CSS transition, on the area's border and background colours, takes
   `--dur-fast` / `--ease-out` inside the file's `@media (prefers-reduced-motion: no-preference)` block. The
   motion grep gate covers `web/src/edit`.
 - **Coarse pointer.** Unchanged: the handle keeps `touch-action: none` and its 44 px touch area
