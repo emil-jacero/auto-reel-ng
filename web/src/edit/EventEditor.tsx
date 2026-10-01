@@ -19,6 +19,7 @@ import { markEventsChanged } from '../events/changes'
 import { folderName, plural } from '../events/common'
 import { FAILURE_LABEL, UNANSWERED_CAUSE } from '../events/labels'
 import { FAILURE_LOOK } from '../events/tones'
+import { eventName } from '../jobs/labels'
 import { LIST_HREF } from '../route'
 import { focusPageHeading } from '../shell/AppShell'
 import { Alert } from '../ui/Alert'
@@ -349,27 +350,6 @@ async function send(
 const CHANGED_DETAIL =
   'Its clips or chapters no longer match what the page shows. ' +
   'Read it again to edit what is on disk now.'
-
-// A toast's text is a string: these keep its line breaks out of the name's date.
-const NO_BREAK_SPACE = '\u00a0'
-const WORD_JOINER = '\u2060' // invisible; no line break before or after it
-
-/**
- * How a toast names an event, in the render toasts' format: its title, then its
- * date, since titles repeat; with no title, its folder name, which starts with
- * the date. The "·" never ends or starts a line, and the date never breaks at its
- * hyphens.
- */
-function eventName(eventId: string, title: string | null, date: string | null): string {
-  if (title === null) {
-    return `“${folderName(eventId)}”`
-  }
-  if (date === null) {
-    return `“${title}”`
-  }
-  const unbroken = date.split('-').join(`-${WORD_JOINER}`)
-  return `“${title}”${NO_BREAK_SPACE}·${NO_BREAK_SPACE}${unbroken}`
-}
 
 /**
  * The title or date a save leaves the event with, as far as the page knows it:
@@ -706,13 +686,7 @@ export function EventEditor({
         console.error('Edit mode: the save stopped on an error', error)
         return {
           saved: false as const,
-          problem: {
-            kind: 'disk' as const,
-            title: 'The save stopped on an error in this page.',
-            failure: null,
-            detail: String(error),
-            retry: operation,
-          },
+          problem: { kind: 'page' as const, detail: String(error), retry: operation },
           refusal: null,
         }
       })

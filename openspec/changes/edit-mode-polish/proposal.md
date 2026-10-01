@@ -146,7 +146,7 @@ None.
     - with `event-page-polish`: its `clipNames` and `ClipName`, which Edit mode's rows adopt
     - with `ui-a11y-polish`: the toast contract, meaning its two registration lines in the bar effect, and
       its coarse-pointer tap areas, which the compact bar and the row action keep clear of each other
-    - with `jobs-live-polish`: the event-name format of its toasts, copied until both have landed
+    - with `jobs-live-polish`: its `eventName` formatter, which the "Saved" toast imports
     - with `event-list-polish`: its call sites in `EventEditor.tsx`, `SaveBar.tsx` and
       `ClipOrderList.tsx` (failure kinds and the clip time)
   - **New runtime dependencies:** none. D-8's budget is unchanged.

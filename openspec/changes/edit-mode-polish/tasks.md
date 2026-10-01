@@ -52,8 +52,8 @@
   - With the same conflict at 320, 340 and 360 wide, `document.documentElement.scrollWidth <= clientWidth`, and every element inside `.save-bar-card` has `getBoundingClientRect().right <= innerWidth`
   - At 390×844, with Sommarlov's folder `chmod a-w`, saving a reorder shows "reel.yaml could not be saved.", the service's whole detail with the real library path and temporary file name (its text equals the answer's `detail`), and Retry. With the page at its top, `.save-bar`'s `offsetHeight` is at most 337 px (two fifths; the review measured 300), the page does not scroll sideways, and the card's one `.btn-primary` is Save. Restore the folder's permissions afterwards.
 - [x] 2.2 Keep the toast contract as it landed, name the saved event, and word a save with no answer (design, "Supervisor decisions", "Toasts and the bar", "The "Saved" toast names the event", "A save with no answer, and an error in the page"):
-  - `src/edit/EventEditor.tsx`: the bar effect keeps publishing `bar.offsetHeight` as `--toast-inset-bottom`, with `keepToastsClearOf(bar)` and its `release()`; only its comment changes. The success toast says `Saved <name>`, with jobs-live-polish's `eventName` format and the saved title and date (never a value the service resolves). The `.catch` after `send()` makes a `disk`-kind problem titled "The save stopped on an error in this page.", logs the error, and keeps Retry.
-  - `src/edit/SaveBar.tsx`: the `unreachable` alert shows no detail; a comment above the `disk` kind says what it covers.
+  - `src/edit/EventEditor.tsx`: the bar effect keeps publishing `bar.offsetHeight` as `--toast-inset-bottom`, with `keepToastsClearOf(bar)` and its `release()`; only its comment changes. The success toast says `Saved <name>`, with jobs-live-polish's `eventName` (`jobs/labels.ts`) and the saved title and date (never a value the service resolves). The `.catch` after `send()` makes a `page`-kind problem, logs the error, and keeps Retry.
+  - `src/edit/SaveBar.tsx`: the `unreachable` alert shows no detail; the `page` kind is titled "The save stopped on an error in this page.".
 
   Verify:
   - `npx tsc --noEmit` and `npm run build` pass

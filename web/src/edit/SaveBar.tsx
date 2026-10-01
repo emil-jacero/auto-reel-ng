@@ -30,9 +30,12 @@ export type SaveProblem =
   | { kind: 'conflict' }
   | { kind: 'refused'; detail: string }
   | { kind: 'gone'; detail: string }
-  // A failure with its own title: the service's files, or an error in this page (EventEditor).
   | { kind: 'disk'; title: string; failure: EventFailure | null; detail: string; retry: Operation }
   | { kind: 'unreachable' | 'unpublished'; detail: string; retry: Operation }
+  // An error in this page itself, not an answer of the service (EventEditor's catch).
+  | { kind: 'page'; detail: string; retry: Operation }
+
+const PAGE_ERROR_TITLE = 'The save stopped on an error in this page.'
 
 /** A control's state: busy if it started the save in flight, else unavailable while one runs. */
 function controlState(pressed: Pressed | null, self: Pressed | null, blocked = false) {
@@ -235,11 +238,14 @@ function SaveProblemAlert({
     case 'disk':
     case 'unreachable':
     case 'unpublished':
+    case 'page':
       return (
         <Alert
           tone="err"
           title={
-            problem.kind !== 'disk' ? (
+            problem.kind === 'page' ? (
+              PAGE_ERROR_TITLE
+            ) : problem.kind !== 'disk' ? (
               UNANSWERED_CAUSE[problem.kind]
             ) : (
               <>

@@ -668,14 +668,14 @@ therefore shows two rows that read alike, and two handles both named "Reorder s1
 
 **Context**: jobs-live-polish names render toasts by the event's title followed by its date, or by the
 folder name when the event has no title: `“Grillkväll med grannarna” · 2024-06-27`. A no-break space sits on
-each side of the "·", and word joiners follow the date's hyphens. That helper, `eventName` in its
-`jobs/labels.ts`, is not on main, and neither change edits the other's files. Edit mode's success toast says
-only "Saved".
+each side of the "·", and word joiners follow the date's hyphens. That helper is `eventName` in its
+`jobs/labels.ts`. Edit mode's success toast says only "Saved".
 
 **Decision**: In `EventEditor.tsx`, the toast says `Saved <name>`.
 
-- **The format.** A local `eventName(eventId, title, date)` with P2's signature and output. Whichever of the
-  two changes lands second can reduce it to one import (Open Questions).
+- **The format.** `eventName(eventId, title, date)` from `jobs/labels.ts`, imported. Until jobs-live-polish
+  landed, this change carried a local copy with the same signature and output; the supervisor had it
+  replaced by the import when the change was rebased on main.
 - **The title and date** are the ones the save leaves the event with, never a guess:
   - a field the save writes with a value: that value
   - a field the document left unset and still leaves unset: the value the page resolved from the folder
@@ -697,15 +697,17 @@ service is not reachable."
 **Decision**:
 
 - **`SaveBar.tsx`:** the `unreachable` alert shows no detail. Its title, Retry and "Your edits are kept."
-  stay. The `unpublished` kind that event-list-polish adds keeps its detail, which names the request and
+  stay. The `unpublished` kind that event-list-polish added keeps its detail, which names the request and
   the status it got.
-- **`EventEditor.tsx`:** the `.catch` after `send()` makes a `disk`-kind problem titled "The save stopped on
-  an error in this page.", with the error's text as its detail and Retry. It also logs the error with
-  `console.error`, for its stack, as `jobs/store.ts` does. The `disk` kind already has this shape (its own
-  title, a detail, Retry), so the `SaveProblem` union is not widened. event-list-polish edits the union's
-  `unreachable` line, and a new member next to it would be a shared line. A comment above `disk` says what
-  it covers. Whether the PUT was sent is unknown at that point, so the title does not claim that nothing was
-  saved. A Retry after a write that did land is answered 412, which the conflict path handles.
+- **`EventEditor.tsx` and `SaveBar.tsx`:** the `.catch` after `send()` makes a problem of its own kind,
+  `page`, with the error's text as its detail and Retry. The bar titles it "The save stopped on an error in
+  this page." It also logs the error with `console.error`, for its stack, as `jobs/store.ts` does. Whether
+  the PUT was sent is unknown at that point, so the title does not claim that nothing was saved. A Retry
+  after a write that did land is answered 412, which the conflict path handles.
+- **Changed after review.** While event-list-polish was in flight, the `SaveProblem` union's `unreachable`
+  line was one both changes edited, so the first implementation reused the `disk` kind, whose shape fits
+  (its own title, a detail, Retry). Once event-list-polish landed, the supervisor had the page error given
+  its own kind, so `disk` again means only the service's files.
 
 **Rationale**: "Not reachable" is said only when no answer came, and the bar shows only the service's words
 and the client's.
@@ -719,7 +721,7 @@ to this change.
 
 | File | This change | Other changes' lines in it |
 |---|---|---|
-| `edit/SaveBar.tsx` | Save's class, the gone link's class, conflict copy, the `unreachable` alert's detail, a comment above the `disk` kind | `event-list-polish` (not on main yet): the `SaveProblem` kind `unreachable \| unpublished`, `case 'unpublished'`, the title expression and its import. These sit in the failure `switch`, not in the lines this change edits. |
+| `edit/SaveBar.tsx` | Save's class, the gone link's class, conflict copy, the `unreachable` alert's detail, the `page` kind | `event-list-polish` (not on main yet): the `SaveProblem` kind `unreachable \| unpublished`, `case 'unpublished'`, the title expression and its import. These sit in the failure `switch`, not in the lines this change edits. |
 | `edit/EventEditor.tsx` | the bar effect's comment, Try again, the heading and Read again refs, the `.catch` after `send()`, the "Saved" toast's name | `ui-a11y-polish` (landed): two registration lines in the bar effect, kept. `event-list-polish`: `readFailure`, `send()`, the import. |
 | `edit/ClipOrderList.tsx` | the drop scroll, `ClipFacts`' action and its `.clip-action` wrapper, the heading count and captions, clip names | `event-list-polish`: `formatInstant(clip.mtime)` (one line, plus the import) |
 | `edit/edit.css` | the save bar, the grid, the field edges | none |
@@ -736,8 +738,8 @@ Contracts this change honours:
   `li.clip-item[data-status='active'] .pill` reaches. It adopts `clipNames` / `ClipName` (supervisor
   decision; "Clip names, as the table names them").
 - **`ui-a11y-polish`**: the toast table above.
-- **`jobs-live-polish`**: the "Saved" toast follows its `eventName` format through a local copy ("The
-  "Saved" toast names the event"). `RenderControl`'s `blockedReason` for Edit mode is `EventDetail.tsx`'s,
+- **`jobs-live-polish`**: the "Saved" toast imports its `eventName` ("The "Saved" toast names the
+  event"). `RenderControl`'s `blockedReason` for Edit mode is `EventDetail.tsx`'s,
   and is unchanged.
 
 **Rationale**: Every dependency is a name, never a line both sides edit for different reasons. The two
@@ -797,8 +799,6 @@ The states are made in that library copy only, and each is restored afterwards:
   `borttagen.mp4` keeps its line from a 58.5rem panel. An 18-character missing camera name breaks inside
   the word between 58 and about 61rem (windows of about 990-1040 px). Today the Remove wraps under the name
   there instead. This is a cosmetic trade-off for a rare row.
-- [Two copies of the toast's event-name format, until jobs-live-polish lands] → The local helper keeps
-  P2's signature and output, so either change can make it one import (Open Questions).
 - [A missing row's Remove moves to the facts line, next to the move buttons' line] → Under a coarse pointer
   both take 44 px areas. Task 6.1 runs ui-a11y-polish's touch probe over Edit mode, Sommarlov's missing
   row included, at 1280, 768, 390 and 320.
@@ -858,14 +858,11 @@ commits.
 
 Resolved by the supervisor (2026-10-01, "Supervisor decisions"): the five column names are final; the
 two-fifths bound is accepted; the "Saved" toast names the event, and Edit mode adopts `clipNames` /
-`ClipName`, both in this change.
+`ClipName`, both in this change. After review: the short-window clamp is fixed here, the "Saved" toast
+imports jobs-live-polish's `eventName`, and a page error has its own `SaveProblem` kind.
 
 Open:
 
-- **One `eventName`.** This change keeps a local copy of jobs-live-polish's format for the "Saved" toast,
-  because neither change may edit the other's files while both are in flight. Whichever lands second can
-  replace one copy with an import of the other (`jobs/labels.ts` or `edit/EventEditor.tsx`), or the helper
-  can move to a shared module in a follow-up.
 - **Follow-ups the critics raised that are not in this round's list:**
   - Reset focuses an off-screen `h1` with `preventScroll`
   - 56 Tab stops from Title to Save on a 16-clip event
