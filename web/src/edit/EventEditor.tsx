@@ -434,10 +434,29 @@ const HELD_BAR_MAX_SHARE = 0.4
  */
 const HELD_BAR_MIN_WINDOW_REM = 28
 
-/** Scroll `element` the least distance into the window when part of it is outside. */
-function keepInWindow(element: HTMLElement): void {
+/** Whether all of `element` lies inside the window. */
+function inWindow(element: HTMLElement): boolean {
   const box = element.getBoundingClientRect()
-  if (box.top < 0 || box.bottom > document.documentElement.clientHeight) {
+  return box.top >= 0 && box.bottom <= document.documentElement.clientHeight
+}
+
+/**
+ * Scroll `element` the least distance into view when part of it is hidden. A
+ * control of `bar` is measured against the window's edges. Any other is measured
+ * against the page's scroll padding, which keeps clear of the sticky header and
+ * chapter heading and of a held bar; the scroll itself honours that padding too.
+ */
+function keepInView(element: HTMLElement, bar: HTMLElement | null): void {
+  const root = document.documentElement
+  const box = element.getBoundingClientRect()
+  let top = 0
+  let bottom = root.clientHeight
+  if (bar === null || !bar.contains(element)) {
+    const style = getComputedStyle(root)
+    top = parseFloat(style.scrollPaddingTop)
+    bottom -= parseFloat(style.scrollPaddingBottom)
+  }
+  if (box.top < top || box.bottom > bottom) {
     element.scrollIntoView({ block: 'nearest' })
   }
 }
@@ -497,6 +516,8 @@ export function EventEditor({
   const mounted = useRef(false)
   const barRef = useRef<HTMLDivElement>(null)
   const alertRef = useRef<HTMLDivElement>(null)
+  // A pointer press is under way: the focus it gives is not scrolled (onFocus below).
+  const pointerPressed = useRef(false)
   const refusalRef = useRef<HTMLDivElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const keepEditingRef = useRef<HTMLButtonElement>(null)
@@ -622,22 +643,48 @@ export function EventEditor({
     }
     const root = document.documentElement
     const place = () => placeBar(bar)
-    // A zoom or a resized window: a resting bar's focused control stays in the window
-    // at every step, as the bar moves with the page's end. Only here: a commit or the
-    // bar's own resize never pulls the page back after the operator scrolled away.
-    const follow = () => {
-      placeBar(bar)
+    const focusedInBar = () => {
       const focused = document.activeElement
-      if (bar.hasAttribute('data-rests') && focused instanceof HTMLElement && bar.contains(focused)) {
-        keepInWindow(focused)
+      return focused instanceof HTMLElement && bar.contains(focused) ? focused : null
+    }
+    // Whether the bar's focused control was wholly in the window before this resize:
+    // noted on every scroll and every focus move into the bar, and after each resize.
+    let shown = false
+    const note = () => {
+      const focused = focusedInBar()
+      shown = focused !== null && inWindow(focused)
+    }
+    // A zoom or a resized window: a resting bar's focused control that was in the
+    // window stays there at every step, as the bar moves with the page's end. Not
+    // after the operator scrolled it away, and not for a `resize` that changed no
+    // size (a phone's URL bar fires them). Only here: a commit or the bar's own
+    // resize never scrolls the page.
+    let width = root.clientWidth
+    let height = root.clientHeight
+    const follow = () => {
+      if (root.clientWidth === width && root.clientHeight === height) {
+        return
       }
+      width = root.clientWidth
+      height = root.clientHeight
+      placeBar(bar)
+      const focused = focusedInBar()
+      if (shown && focused !== null && bar.hasAttribute('data-rests')) {
+        keepInView(focused, bar)
+      }
+      note()
     }
     place()
+    note()
     const release = keepToastsClearOf(bar)
     const observer = new ResizeObserver(place)
     observer.observe(bar)
     window.addEventListener('resize', follow)
+    window.addEventListener('scroll', note, { passive: true })
+    bar.addEventListener('focusin', note)
     return () => {
+      bar.removeEventListener('focusin', note)
+      window.removeEventListener('scroll', note)
       window.removeEventListener('resize', follow)
       observer.disconnect()
       release()
@@ -674,7 +721,7 @@ export function EventEditor({
     }
     const focused = document.activeElement
     if (focused instanceof HTMLElement && focused !== document.body) {
-      keepInWindow(focused)
+      keepInView(focused, barRef.current)
     }
   }, [answers])
 
@@ -802,12 +849,23 @@ export function EventEditor({
   return (
     <div
       className="event-editor"
-      // Keyboard focus that lands partly outside the window comes in whole: for a
-      // text area the browser scrolls only its caret into view. A pointer's focus is
-      // left alone, so a click never moves its control from under the pointer.
+      // Keyboard focus that lands partly hidden comes into view whole: for a text area
+      // the browser scrolls only its caret into view. Focus from a pointer press is
+      // left alone (a text field matches :focus-visible even then), so a press never
+      // moves its control, or the caret, from under the pointer.
+      onPointerDownCapture={() => {
+        pointerPressed.current = true
+        window.setTimeout(() => {
+          pointerPressed.current = false
+        }, 0)
+      }}
       onFocus={(event) => {
-        if (event.target instanceof HTMLElement && event.target.matches(':focus-visible')) {
-          keepInWindow(event.target)
+        if (
+          !pointerPressed.current &&
+          event.target instanceof HTMLElement &&
+          event.target.matches(':focus-visible')
+        ) {
+          keepInView(event.target, barRef.current)
         }
       }}
     >
