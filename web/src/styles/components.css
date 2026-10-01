@@ -862,5 +862,18 @@
     .segmented label {
       min-inline-size: 2.75rem;
     }
+
+    /*
+     * Two 32 px controls stacked closer than 0.75rem would share their areas,
+     * and the later one, painted on top, would take the gap (the conflict
+     * alert's Reload latest over Overwrite with mine). A row that wraps keeps
+     * its lines 1rem apart: each area reaches 6px into the gap, and the 4px
+     * left between them leaves no edge for pixel rounding to hand over.
+     * `shell.css` does the same for the page's action rows.
+     */
+    .alert-action,
+    .dialog-actions {
+      row-gap: var(--s-4);
+    }
   }
 }
