@@ -19,8 +19,20 @@ import { fileName } from './common'
  * problems are reported where they already are (its status, its job).
  */
 
-/** The thumbnail of one clip row; a missing clip requests nothing. */
-export function ClipThumb({ eventId, clip }: { eventId: string; clip: Clip }) {
+/**
+ * The thumbnail of one clip row; a missing clip requests nothing. `name` is the
+ * clip's name as its row shows it (`clipNames`), for "Frame from …" and
+ * "No preview for …"; it defaults to the file name.
+ */
+export function ClipThumb({
+  eventId,
+  clip,
+  name = fileName(clip.identity),
+}: {
+  eventId: string
+  clip: Clip
+  name?: string
+}) {
   // No file, no frame: an empty outline, hidden, since the row's status says why.
   if (clip.status === 'missing') {
     return <span className="clip-thumb" data-state="missing" aria-hidden="true" />
@@ -31,7 +43,7 @@ export function ClipThumb({ eventId, clip }: { eventId: string; clip: Clip }) {
     <LoadingThumb
       key={src}
       src={src}
-      name={fileName(clip.identity)}
+      name={name}
       dimmed={clip.status === 'ignored'}
     />
   )

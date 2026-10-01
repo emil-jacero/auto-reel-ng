@@ -85,6 +85,28 @@ which a render's adoption writes (D-CLI3).
 
 ## Research & Decisions
 
+### Supervisor decisions (before implementation)
+
+- **The polish round's context** is the supervisor's polish brief. Five sibling changes run in parallel with
+  this one (`edit-mode-polish` P1, `jobs-live-polish` P2, `event-list-polish` P3, `ui-a11y-polish` P5 and
+  `serve-clean-exit` P6). This change stays inside its own files ("Files and parallel changes"). Where two
+  changes edit neighbouring `web/README.md` hunks, whichever lands second re-applies its own lines and keeps
+  every side's.
+- **The five column properties are final:** `--clip-col-pos`, `--clip-thumb-w`, `--clip-col-status`,
+  `--clip-col-size` and `--clip-col-mtime`. `edit-mode-polish` reads exactly these. Neither change renames
+  one alone (this design's first Open Question is answered).
+- **The clip rows lose their hover fill.** `event-list-polish` deletes the generic `.data-table` row hover,
+  so the chapter tables' rows no longer change colour under the pointer. That is intended: they are not
+  clickable. The quiet word's contrast is therefore measured on `--surface` alone after that change lands
+  (its 6.1:1 / 6.52:1 hover figures below stop applying).
+- **The missing-clips `Alert`'s markup is left as it is.** `ui-a11y-polish` adds `role="note"` to it.
+- **`clipNames` and `ClipName` are a stable, documented export.** `edit-mode-polish` lands after this change
+  and adopts them in `ClipOrderList.tsx` (this design's second Open Question is answered). Their names,
+  signatures and the `span.clip-dir` markup are part of that contract (and the `<wbr />` after it, see
+  "Supervisor decisions (after implementation)").
+- **The residual loading shift at phone width is accepted** (about 50 px at 390 on Grillning, "Loading: the
+  page's own shape"), and documented here and in the spec's 1280-pixel scenario only.
+
 ### The findings, re-checked
 
 **Context**: The brief requires every finding to be reproduced before it is fixed. The critics' minor
@@ -221,7 +243,9 @@ The line comes before the h1, and focus lands on the h1 after every navigation, 
 on from the heading would never reach it. When the page is ready and the line is shown, the h1 MUST carry
 `aria-describedby` with the line's `useId()` id, so the heading reads "Kalas" with the description
 "Folder: 2024-07-14 - kalas", as `event-list-polish` describes its look-alike title links. While loading,
-the h1 carries no description, because its accessible name already is the folder name.
+the h1 carries no description, because its accessible name already is the folder name. The id sits on an
+inner span, `span.crumb-folder > span#id`, which holds the visually hidden "Folder: " and the folder name,
+so the description never includes the separator (changed during implementation, item 1; accepted).
 
 The class is `crumb-folder`, not `event-folder`. `event-list-polish` gives that name to its list rows'
 folder line (`display: block`, in `list.css`), and Vite bundles every screen's CSS into one sheet, so two
@@ -327,7 +351,10 @@ function folderOf(identity: string): string
  */
 export function clipNames(chapter: string, identities: readonly string[]): (identity: string) => string
 
-/** A name, its folder part muted: <span class="clip-dir">Kvällen/</span>s1710004.mp4. */
+/**
+ * A name, its folder part muted: <span class="clip-dir">Kvällen/</span>s1710004.mp4.
+ * A narrow cell breaks it after the folder (a <wbr /> follows span.clip-dir).
+ */
 export function ClipName({ name }: { name: string }): ReactNode
 ```
 
@@ -538,6 +565,49 @@ it sorts after `s1710004.mp4` by name and by time, so the service lists `Main` a
 **Rationale**: This reproduces the finding's exact state without running the adoption path that the brief
 places out of this round, and gives the partition a case where it changes the order.
 
+### Changed during implementation
+
+The verification pass (task 5.1) found three things the decisions above did not foresee. Each is a
+markup or CSS detail inside this change's files, and none changes a spec sentence:
+
+1. **The heading's description is the folder line's inner span.** With the `id` on `span.crumb-folder`,
+   Chromium's own accessibility tree already gave the h1 the description "Folder: 2024-07-14 - Kalas"
+   (the `'/' / ''` alternative text is honoured). But Playwright 1.49's name computation reads the `::before`
+   value raw and returned `"/" / " Folder: …"`. An engine inside the support floor that predates the
+   alternative-text syntax (Firefox 120–127) also keeps the plain `content: '/'` and would read the slash.
+   So the `useId()` id now sits on an inner span, `span.crumb-folder > span#id`, which holds the visually
+   hidden "Folder: " and the folder name. The separator lives on the outer span, outside the subtree the
+   description reads, so every engine and the test compute the same words. `.crumb-folder`'s text and look
+   are unchanged.
+2. **The crumb line is top-aligned, and the folder is padded as the back link is.** `align-items: baseline`
+   placed "Events" about 4 px above the folder: an `inline-flex` link takes its baseline from its first
+   item, the icon's bottom edge. `center` fixed one line but floated the link between two lines where the
+   folder wraps (320 px). `flex-start`, with the folder's `padding-block: 0.125rem` matching the link's,
+   puts both first lines on one line in every case.
+3. **`ClipName` offers a break after the folder part** (`<wbr />` after `span.clip-dir`). In the 320 px
+   cards `Kvällen/s1710004.mp4` broke inside the file name (`Kvällen/s17100` / `04.mp4`). It now breaks
+   as `Kvällen/` / `s1710004.mp4`. The text content is unchanged.
+
+Smaller choices, within the decisions:
+
+- The `.counts` rule is gone, not restyled. `span.counts` inherits `.page-meta`'s muted colour and
+  weight 400, which is what the design asks.
+- `.back-link` loses `align-self: flex-start` and gains `flex: none`. It now sits in the `.page-crumbs`
+  row rather than the header's column, so it must not shrink when the folder name wraps.
+- The placeholder's text bars in the render region reuse `.skeleton-title` (`flex: 0 1 auto;
+  min-inline-size: 0`), as the design describes, and the region's two rows are `.skeleton-line`. The
+  in-cell bars are sized inline, as `SkeletonRows` sizes its title bars. The bars carry no data.
+- The read view's rows keep their order through one list, `[...played, ...ignored]`, numbered while the
+  index is within `played`, so each key is still `clip.identity`.
+
+### Supervisor decisions (after implementation)
+
+- **All four implementation changes are accepted:** the inner span that carries the heading's
+  description id (item 1), the top-aligned crumb line (item 2), the `<wbr />` in `ClipName` (item 3), and
+  the two small CSS changes (`.counts` removed, `.back-link`'s `flex: none`).
+- **`clipNames` and `ClipName` stay exported and stable** for `edit-mode-polish`. The contract is their
+  names, their signatures, `span.clip-dir` around the folder part, and the `<wbr />` after it.
+
 ## Failure behavior and idempotency
 
 - **The page writes nothing.** No request is added: the thumbnail addresses and the reads are unchanged.
@@ -573,16 +643,17 @@ or config migration. Rollback is a revert of the four source files and the READM
 
 ## Open Questions
 
-These are for the supervisor. None changes this change's specs, approach or tasks.
+These are for the supervisor. None changes this change's specs, approach or tasks. The first two are
+answered (Supervisor decisions).
 
-- **The column property names.** This change now uses `edit-mode-polish`'s published list, with
-  `--clip-thumb-w` for the frame (the first draft said `--clip-col-thumb`). Both sides must end with the
-  same five names, and neither may rename alone: a fallback in `var()` hides the mismatch, and Edit mode
-  then shows 80 px frames beside a 128 px table at 1280. If `edit-mode-polish` archives first with literal
-  widths instead, its thumbnail track becomes `var(--clip-thumb-w)` (one line in `edit.css`).
-- **Edit mode's names.** Should `ClipOrderList.tsx` adopt `clipNames` / `ClipName` for its rows, labels
-  and announcements (in `edit-mode-polish`, or a follow-up)? Until then, Edit mode's `Main` on the
-  fixture reads `s1710004.mp4` twice, as the read view did before.
+- **The column property names.** Answered (Supervisor decisions): the five names are final. This change
+  uses `edit-mode-polish`'s published list, with `--clip-thumb-w` for the frame (the first draft said
+  `--clip-col-thumb`). Neither side may rename alone: a fallback in `var()` hides the mismatch, and Edit
+  mode then shows 80 px frames beside a 128 px table at 1280. If `edit-mode-polish` archives first with
+  literal widths instead, its thumbnail track becomes `var(--clip-thumb-w)` (one line in `edit.css`).
+- **Edit mode's names.** Answered (Supervisor decisions): `edit-mode-polish` adopts `clipNames` /
+  `ClipName` in `ClipOrderList.tsx` after this change lands. Until then, Edit mode's `Main` on the fixture
+  reads `s1710004.mp4` twice, as the read view did before.
 - **An unassigned finding in this change's file**, left as it is: in Edit mode, the verdict stays stale
   after a live render ends (integration critic, minor), because `reread` is skipped while editing. Fixing
   it is behaviour plus a spec sentence. The missing-clips `Alert`'s role, which the same critics raised,
