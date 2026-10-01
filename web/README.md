@@ -146,29 +146,34 @@ The panel's first control, **Watch**, opens the clip's preview there (**D-16**,
 panel and opens it in one press (not the drag handle; the box keeps its size). One preview
 is open at a time, and none exists until asked for: no `<video>` and no request to the
 media route (`GET …/media?clip=&v=<mtime>`, `api/clipMedia.ts`) before Watch, on any
-number of clips. The preview has its own controls on a native `<video>` (no `controls`,
-no autoplay, the thumbnail as poster): Close (Escape too; focus returns to the opener),
-Play / Pause, a playhead slider (arrows 0.1 s, Page Up / Page Down 1 s, Home / End; a
-press or a drag along it; it says `0:01.234 of 0:06.02, in cut 2`, at most once a second
-while playing), **Skip cuts**, **Set From** and **Set To**. Under the picture, a cut bar
-draws the clip's cuts by shape (solid, a removed one dashed, the span typed in the fields
-outlined) with a legend. Set From / Set To write the playhead's time to the millisecond in
-the panel's format; it counts as typed, so the typed mark and the save bar's hold apply.
-Skip cuts plays the clip as the movie will: one frame ahead of each presented frame
-(`requestVideoFrameCallback`), cuts joined as the render joins them, and a cut that ends
-within 0.1 s of the clip's end stops playback at its start. The length is the browser's
-own read of the file (`loadedmetadata`, `durationchange`), kept per media address for the
-Edit session, never sent or saved. What the browser cannot do is a note, announced once:
-no sound (Firefox and the Sony cameras' PCM audio), no picture (HEVC, MPEG-4 Part 2,
-with a Download), and, after one `Range: bytes=0-0` read of the media route, why a clip
-cannot play: gone from disk or changed since the page was read (stop editing to read the
-event again; never "Refresh", which leaves Edit mode), an empty file, an unreadable one,
-a format this browser does not play (Download), or no answer (Try again). A preview writes
-nothing; a pending save or Move clips makes Set From / Set To unavailable but leaves
-playback alone; a clip moved within its chapter keeps playing, and one moved to another
-chapter reopens paused where it stood; Reset closes every preview. Verified in Chrome
-(channel `chrome`, the image `localhost/playback-research:chrome`) and Firefox;
-Playwright's own Chromium cannot decode H.264. A
+number of clips. The preview has its own controls on a native `<video>` (no `controls`, no
+autoplay, the thumbnail as poster): Close (Escape too; focus returns to the opener), Play
+/ Pause (a press while the clip loads plays it once it can; an opened preview says when it
+is ready), a playhead slider (Space plays or pauses, arrows 0.1 s, Page Up / Page Down 1
+s, Home / End; a press or a drag along it; it says `0:01.234 of 0:06.02, in cut 2`, at
+most once a second while playing), **Skip cuts**, **Set From** and **Set To**. Under the
+picture, a cut bar draws the clip's cuts by shape (solid, a removed one dashed, the span
+typed in the fields outlined, only while Add cut would accept it) with a legend of the
+kinds drawn. While a preview is open, the panel's Watch reads **Hide player**. Set From /
+Set To write the playhead's time to the millisecond in the panel's format; it counts as
+typed, so the typed mark and the save bar's hold apply. Skip cuts plays the clip as the
+movie will: two frame intervals ahead of each presented frame
+(`requestVideoFrameCallback`), so a dropped frame never lets a cut frame show (the one
+kept frame just before a cut may go unshown), cuts joined as the render joins them, and a
+cut that ends within 0.1 s of the clip's end stops playback at its start. The length is
+the browser's own read of the file (`loadedmetadata`, `durationchange`), kept per media
+address for the Edit session, never sent or saved. What the browser cannot do is a note,
+announced once: no sound (Firefox and the Sony cameras' PCM audio), no picture (HEVC,
+MPEG-4 Part 2, with a Download), and, after one `Range: bytes=0-0` read of the media route
+(`api/probe.ts`, the movie probe's own table), why a clip cannot play: gone from disk or
+changed since the page was read (stop editing to read the event again; never "Refresh",
+which leaves Edit mode), an empty file, an unreadable one, a format this browser does not
+play (Download), or no answer (Try again). A preview writes nothing; a pending save or
+Move clips makes Set From / Set To unavailable but leaves playback alone; a clip moved
+within its chapter keeps playing, and one moved to another chapter reopens paused where it
+stood; Reset closes every preview. Verified in Chrome (channel `chrome`, the image
+`localhost/playback-research:chrome`) and Firefox; Playwright's own Chromium cannot decode
+H.264. A
 save bar says what changed, with one primary action: **Save**, or a failure's way
 on while it holds Save back (Reload latest after a conflict, Back to the event list for
 a vanished event). It is held at the window's bottom while it takes at most two fifths
@@ -236,6 +241,7 @@ src/
 │   ├── reel.ts           the editorial read and write: ETag in, If-Match out
 │   ├── movie.ts          the event's movie URL (typed from the schema) and its one-byte probe
 │   ├── headers.ts        Content-Range and Content-Disposition parsers (pure, no imports)
+│   ├── probe.ts          one byte of a media route: the response-to-kind table the movie and a clip share
 │   ├── thumbnail.ts      a clip's thumbnail URL, typed from the schema (no fetch: an <img> asks)
 │   └── clipMedia.ts      a clip's media URL, and the one-byte read that says why it cannot play
 ├── edit/

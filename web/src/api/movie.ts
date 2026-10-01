@@ -1,7 +1,7 @@
 import { encodeEventId } from '../route'
 import { contentRangeSize, dispositionName } from './headers'
-import { isProblem, readJson, unpublishedAnswer } from './http'
 import type { Problem, Unanswered } from './http'
+import { probeFirstByte } from './probe'
 import type { paths } from './schema'
 
 /**
@@ -41,9 +41,6 @@ export type MovieProbe =
   | { kind: 'problem'; problem: Problem }
   | Unanswered
 
-// The failure statuses the route declares with a problem body (see the schema).
-const PROBLEM_STATUSES = new Set([404, 502])
-
 /** The entity-tag as the address carries it: no `W/`, no quotes; null when absent. */
 function versionOf(etag: string | null): string | null {
   if (etag === null) {
@@ -59,40 +56,22 @@ function versionOf(etag: string | null): string | null {
  * served. Rethrows `AbortError`.
  */
 export async function probeMovie(eventId: string, signal: AbortSignal): Promise<MovieProbe> {
-  const url = movieUrl(eventId, null)
-  let response: Response
-  try {
-    response = await fetch(url, { headers: { Range: 'bytes=0-0' }, cache: 'no-store', signal })
-  } catch (error) {
-    if (signal.aborted) {
-      throw error
-    }
-    return { kind: 'unreachable', message: String(error) }
-  }
+  // The shared one-byte table (`probe.ts`); a served movie must carry its entity-tag.
+  const answer = await probeFirstByte(movieUrl(eventId, null), signal, fileOf)
+  return answer.kind === 'served' ? { kind: 'ok', file: answer.file } : answer
+}
 
+/** The movie's facts from a 200 or 206; null without an entity-tag (not a usable answer). */
+function fileOf(response: Response): MovieFile | null {
   const version = versionOf(response.headers.get('ETag'))
-  if ((response.status === 200 || response.status === 206) && version !== null) {
-    // One byte asked for; a 200 would be the whole file, which is not read.
-    response.body?.cancel().catch(() => undefined)
-    const size =
-      response.status === 206
-        ? contentRangeSize(response.headers.get('Content-Range'))
-        : lengthOf(response.headers.get('Content-Length'))
-    return {
-      kind: 'ok',
-      file: { version, size, name: dispositionName(response.headers.get('Content-Disposition')) },
-    }
+  if (version === null) {
+    return null
   }
-  if (response.status === 416) {
-    return { kind: 'empty' }
-  }
-  if (PROBLEM_STATUSES.has(response.status)) {
-    const body = await readJson(response)
-    if (isProblem(body)) {
-      return { kind: 'problem', problem: body }
-    }
-  }
-  return unpublishedAnswer('GET', url, response)
+  const size =
+    response.status === 206
+      ? contentRangeSize(response.headers.get('Content-Range'))
+      : lengthOf(response.headers.get('Content-Length'))
+  return { version, size, name: dispositionName(response.headers.get('Content-Disposition')) }
 }
 
 /** A whole-file `Content-Length`, or null when absent or not a byte count. */

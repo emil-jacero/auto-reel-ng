@@ -228,8 +228,22 @@
   @media (forced-colors: active) {
     .cut-bar-span[data-kind='cut'],
     .cut-bar-swatch[data-kind='cut'],
-    .cut-bar-head {
+    .cut-bar-head,
+    .cut-bar-head::before {
       background: CanvasText;
+    }
+
+    /* The track's edge is a shadow, which forced colors drop: a border instead. */
+    .cut-bar-track {
+      border: 1px solid CanvasText;
+    }
+
+    /* On and off differ by more than the accent tokens, which forced colors flatten. */
+    .preview-skip[aria-pressed='true'] {
+      forced-color-adjust: none;
+      border-color: Highlight;
+      background: Highlight;
+      color: HighlightText;
     }
 
     :is(.cut-bar-span, .cut-bar-swatch)[data-kind='typed'] {

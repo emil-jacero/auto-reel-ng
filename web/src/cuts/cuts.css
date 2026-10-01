@@ -165,7 +165,8 @@
     margin-inline-start: auto;
   }
 
-  .cut-body > .badge + .btn {
+  /* The badges (removed, past the clip's end) and the action stay together at the end. */
+  .cut-body > .badge + :is(.badge, .btn) {
     margin-inline-start: 0;
   }
 

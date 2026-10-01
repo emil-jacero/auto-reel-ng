@@ -1,7 +1,7 @@
 import { encodeEventId } from '../route'
 import type { Clip } from './event'
-import { isProblem, readJson, unpublishedAnswer } from './http'
 import type { Problem, Unanswered } from './http'
+import { probeFirstByte } from './probe'
 import type { paths } from './schema'
 
 /**
@@ -41,35 +41,15 @@ export type MediaCheck =
   | { kind: 'problem'; problem: Problem }
   | Unanswered
 
-// The failure statuses the route declares with a problem body (see the schema).
-const PROBLEM_STATUSES = new Set([404, 502])
-
 /**
- * One `GET` with `Range: bytes=0-0` and `cache: 'no-store'`: no `If-None-Match`, so
- * never a 304. The body is cancelled unread. Rethrows `AbortError`.
+ * The clip's first byte, by the movie's own table (`probe.ts`): any 200 or 206 is the
+ * file served, with its `Last-Modified`. Rethrows `AbortError`.
  */
 export async function checkClipMedia(src: string, signal: AbortSignal): Promise<MediaCheck> {
-  let response: Response
-  try {
-    response = await fetch(src, { headers: { Range: 'bytes=0-0' }, cache: 'no-store', signal })
-  } catch (error) {
-    if (signal.aborted) {
-      throw error
-    }
-    return { kind: 'unreachable', message: String(error) }
-  }
-  if (response.status === 206 || response.status === 200) {
-    void response.body?.cancel().catch(() => undefined)
-    return { kind: 'served', lastModified: response.headers.get('Last-Modified') }
-  }
-  if (response.status === 416) {
-    return { kind: 'empty' }
-  }
-  const body = await readJson(response)
-  if (PROBLEM_STATUSES.has(response.status) && isProblem(body)) {
-    return { kind: 'problem', problem: body }
-  }
-  return unpublishedAnswer('GET', src, response)
+  const answer = await probeFirstByte(src, signal, (response) => ({
+    lastModified: response.headers.get('Last-Modified'),
+  }))
+  return answer.kind === 'served' ? { kind: 'served', ...answer.file } : answer
 }
 
 /**
