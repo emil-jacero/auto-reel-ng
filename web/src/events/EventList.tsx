@@ -494,18 +494,22 @@ function Summary({ events, errors }: { events: EventSummary[]; errors: EventErro
 
 /**
  * What the status message says once a read is shown: how many events are shown,
- * how many of them need rendering, and how many need attention when any do.
+ * how many of them need rendering, and how many need attention when any do. An
+ * empty read says what the screen's title says; a read of error rows only says
+ * how many need attention first, so "other" follows what it refers to.
  */
 function resultText(events: EventSummary[], errors: EventError[], onlyStale: boolean): string {
   if (events.length === 0 && errors.length === 0) {
-    return 'No events found.'
+    return 'No events yet.'
+  }
+  if (events.length === 0) {
+    const attention = plural(errors.length, 'event', 'events')
+    return `${attention} ${errors.length === 1 ? 'needs' : 'need'} attention; no other events.`
   }
   const stale = events.filter(needsRender).length
   const total = plural(events.length, 'event', 'events')
   let text: string
-  if (events.length === 0) {
-    text = 'No other events.'
-  } else if (!onlyStale) {
+  if (!onlyStale) {
     text = `Showing ${total}; ${stale} ${stale === 1 ? 'needs' : 'need'} rendering.`
   } else if (stale === 0) {
     text =
