@@ -85,6 +85,62 @@ One thing the spike first got wrong decided a detail: a child's `useLayoutEffect
 element's ref is attached. A droppable attached to the parent `<section>` from a child component must
 therefore attach in `useEffect` (see "Droppables").
 
+### Supervisor decisions (2026-10-01)
+
+Taken on the brief `plan/brief-g3.md`. The operator asked: "i would like for the editing of clips in chapters
+(moving them around) to be drag and drop ALSO, we can still keep the button and multiple choice menu."
+
+- **Re-render reading accepted** (the Open Question below): every sortable row shell re-runs on a new target
+  (dnd-kit 6); row bodies, lists and the editor do not. The budgets are as "Render budget" states.
+- **A drop lands where it is dropped.** A clip dropped into another chapter, including back into its home
+  chapter, lands exactly at the dropped position; Move clips keeps its own rule (`restoreClip`). Accepted.
+- **No jump keys** in a keyboard drag: a follow-up. (dnd-kit's default auto-scroll speed was first kept too;
+  the amendment below tunes it.)
+- **The empty-chapter wording on a single-chapter event** stays as it is (pre-existing); a follow-up.
+- **Probes against the live serve** intercept every `PUT` / `POST` / `DELETE` they do not intend, and
+  release or abort held routes in a `finally`. Real saves go only to the agent's own dev library, and each
+  `reel.yaml` is normalised as tasks 4.1 says before it is diffed.
+- **Web only**: no new dependency (D-8); `tsc` is the frontend gate; the motion grep gate and axe run as in
+  earlier web changes.
+- **Parallel work**: `media-endpoints` (api) may land meanwhile; `clip-preview-screen` builds on
+  `ClipOrderList` / `ChapterDrag` after this change merges, so their structure stays as "Files" describes.
+- **Amendment: the first line, not the whole row, after a drop into another chapter.** A row can be taller
+  than the room between the chapter's heading and the save bar (an open Cuts panel today, a clip preview in
+  the row later), so the whole-row rule cannot hold. After such a drop, focus is on the moved clip's handle,
+  and the handle and the row's first line (handle, name, Cuts control) are fully visible, clear of the page
+  header, the chapter's heading and the save bar; a taller row is scrolled so its first line is. The scroll
+  targets that first line (block "nearest" within the scroll-padding box), not the `li`. A drop within the
+  chapter keeps the whole-row rule of "Edit mode keeps keyboard focus in view and never drops it". Tasks 4.1
+  check it with the dragged clip's Cuts panel open. That requirement is MODIFIED (re-based on the current
+  spec text) to name this one exception, with a scenario "A tall row dropped into another chapter".
+- **The lift words are heard (implementation finding, accepted).** dnd-kit's live region keeps only the last
+  text of a batch, and right after a lift the clip is "over" itself, so "Picked up …" was replaced before it
+  was heard, on main too. `ChapterDrag` says nothing for that first self-over after a lift; every other
+  announcement is as the table below says. The missing clip's lift words ("It is missing, so it stays …")
+  are therefore heard.
+- **Auto-scroll is tuned (amendment).** dnd-kit's default `acceleration` (10) crossed `Stor dag`'s 400 clips in
+  about 40 s from just below the app header, slower on main (60 s). `ChapterDrag` passes one constant
+  `autoScroll` object: `acceleration` 25, the default 20 % edge zones. Measured (1280 × 900, header + 6 px):
+  3141 px in 3 s and `c0001.mp4` in 23.9 s across chapters, 2690 px and 24.0 s within the chapter; at 390 ×
+  844 a hold 20 px into the zone barely scrolls, mid-zone about 1000 px/s, and drops aimed after scrolling
+  land where aimed. Every drag in Edit mode gets it, within a chapter too.
+- **A refused drop leaves nothing behind (review).** `onDropInto` returns whether the editor took the drop
+  (false while a save or a Move clips is pending). `ChapterDrag` records the drop's focus follow-up only when
+  it was taken, and a refused drop is announced as unchanged.
+- **State.** `ChapterDrag`'s one React state is the lifted clip as `{ identity, name }` (its name as the
+  row named it at the lift), not the identity alone.
+- **Render budget, measured (tasks 4.3, accepted).** On `Stor dag`, 1280 × 900, production build: lift 63–92
+  ms; 10 keyboard steps within the 400, median 59–80 ms (≤ 2 `RowBody`, 0 lists, 0 editor, ≈ 410 row shells);
+  across into `Kväll` and back, median 13–19 ms (0 `RowBody`); keyboard drop 138–159 ms and pointer drop
+  150–168 ms, each with exactly 2 list renders; pointer on one target, 1 row per commit; 20 new targets, 0
+  `RowBody`, lists or editor and no long task; auto-scroll 2759 px in 3 s, `c0001.mp4` in 16 s; Move clips
+  137–143 ms. Two budgets are not met, by main's build either, on the same probe: the first Title keystroke
+  takes 115–134 ms (main 110–115 ms; later keystrokes under 30 ms, 0 lists), and Move up as the first edit
+  185–209 ms (main 195–212 ms). Both are the first edit mounting the save bar; accepted as pre-existing.
+- **Amendment: HLD §4.10's v3 line.** Task 5.1 re-reads §4.10 on main first. If `media-endpoints` has landed
+  there, the v3 line already reads "nothing planned for the GUI": keep it, and edit only the v1 bullet, slice
+  row D and D-13.
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -411,9 +467,13 @@ focus on `<body>`, which "Edit mode keeps keyboard focus in view and never drops
   script after a pointer interaction does not match `:focus-visible`, so no ring flashes. A keyboard drop
   then gets dnd-kit's own `RestoreFocus` on the same handle a frame later, which is harmless. The effect notes
   the row.
-- A **passive effect** scrolls that row `scrollIntoView({ block: 'nearest' })` after the editor's layout
-  effect has published the save bar's height. That is today's "first drop" path (edit-mode-polish, "The
-  first drop keeps its row in view"), moved up one component.
+- A **passive effect** scrolls after the editor's layout effect has published the save bar's height. That is
+  today's "first drop" path (edit-mode-polish, "The first drop keeps its row in view"), moved up one
+  component. A drop within the chapter scrolls the whole row (`scrollIntoView({ block: 'nearest' })`), as
+  today. A drop into another chapter scrolls the row's **first line** instead (Supervisor decisions,
+  amendment): the box around its handle, name and Cuts control is brought the least distance inside the
+  page's scroll-padding box (the page header and chapter heading above, a held save bar below), its top
+  first when it is taller than that box. A row with an open Cuts panel can be taller than the window.
 
 `ClipOrderList`'s `dropped` ref and its use in the two effects are removed.
 
@@ -537,7 +597,8 @@ export function ChapterDrag(props: {
   /** `listsLocked`: a save in flight or a Move clips pending. */
   locked: boolean
   onReorder: MoveHandler
-  onDropInto: (identity: string, from: ChapterKey, to: ChapterKey, at: number) => void
+  /** False when the editor refused the drop (a save or a Move clips pending). */
+  onDropInto: (identity: string, from: ChapterKey, to: ChapterKey, at: number) => boolean
   /** The editor's root, where the moved row is found after a drop. */
   rootRef: RefObject<HTMLElement | null>
   children: ReactNode
@@ -593,10 +654,13 @@ relabelled the directory for the second container and stopped the first.
 - **[Every row's shell re-runs on a new target, on every chapter]** → It is the same work a step inside a
   400-clip chapter does today, and it is bounded and measured (tasks 4.3). No body, list or editor re-renders.
   If a budget fails, the implementer stops and reports.
-- **[Auto-scroll across 400 rows is slow (≈ 14 s at 1280 × 900 in the spike)]** → dnd-kit's default speed is
-  kept. Move clips is the fast path for long distances, and the hint names it. Tuning `autoScroll`
-  acceleration is a follow-up if the operator asks.
-- **[A missing clip's lift words may be cut short]** → dnd-kit's live region is atomic, and the first "is
+- **[Auto-scroll across 400 rows is slow]** → The spike's ≈ 14 s did not hold with the real rows (about 40 s
+  at dnd-kit's default). `acceleration` is raised to 25 (Supervisor decisions): about 24 s from just below the
+  app header. A pointer pushed to the very edge scrolls fast (≈ 6 700 px/s at 390 × 844); the speed ramps
+  from nothing at the zone's inner edge, and leaving the zone stops it at once. Move clips is still the fast
+  path for long distances.
+- **[A missing clip's lift words may be cut short]** → Resolved: the first self-over after a lift is silent
+  (Supervisor decisions). Before that: dnd-kit's live region is atomic, and the first "is
   over position …" follows the lift at once (today too). The stays-home note is also in the hint, and the
   keyboard sequence never offers another chapter.
 - **[The copy is narrower than the row]** → On purpose: it ends at least 3rem before the row's end at every

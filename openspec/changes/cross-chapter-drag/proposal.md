@@ -92,7 +92,7 @@ None.
 
 - `web-app`. All of the following are in the one capability.
   - One ADDED requirement: `Requirement: Edit mode drags clips between chapters`.
-  - Three MODIFIED requirements, each re-based on the current `openspec/specs/web-app/spec.md`:
+  - Four MODIFIED requirements, each re-based on the current `openspec/specs/web-app/spec.md`:
     - `Requirement: The event page reorders clips within a chapter`. A drag no longer stops at the chapter's
       edge, except a missing clip's, and Move up and Move down still never leave it. The scenario "A clip
       cannot leave its chapter" now checks Move up at the chapter's edge, and a new scenario "A missing clip
@@ -102,6 +102,10 @@ None.
       that Move up and Move down still never do.
     - `Requirement: Edit mode adds, renames, reorders and deletes chapters`. A chapter that plays no clip says
       that clips can be dragged into it, or moved there with another chapter's Move clips.
+    - `Requirement: Edit mode keeps keyboard focus in view and never drops it`. One exception is added: after
+      a drop into another chapter, the handle and the row's first line are kept in view rather than the
+      whole row, which an open Cuts panel can make taller than the window. A scenario "A tall row dropped
+      into another chapter" checks it.
 
 ## Impact
 
@@ -128,4 +132,4 @@ None.
   - **New runtime dependencies:** none. `DragOverlay`, `useDroppable` and the custom collision detection and
     keyboard coordinate getter are all in the installed `@dnd-kit/core` 6.3.1 and `@dnd-kit/sortable` 10.0.0
     (D-8). `web/package.json` and the lockfile stay byte-identical.
-- **Size (Principle VIII):** one package plus docs, one capability delta (1 added, 3 modified), and 9 tasks.
+- **Size (Principle VIII):** one package plus docs, one capability delta (1 added, 4 modified), and 9 tasks.

@@ -49,8 +49,10 @@ within a chapter" states. While more than one chapter is listed, the instruction
 say that the arrows cross into the chapter before or after.
 
 After a drop into another chapter, by pointer or keyboard, keyboard focus SHALL be on the moved clip's
-handle in its new chapter. The handle and its whole row SHALL be fully visible and not covered by the page
-header, the chapter's heading or the save bar ("Edit mode keeps keyboard focus in view and never drops it").
+handle in its new chapter. The handle and the row's first line (its handle, name and Cuts control) SHALL be
+fully visible, not covered by the page header, the chapter's heading or the save bar. A row taller than that
+space SHALL be scrolled so that its first line is (see "Edit mode keeps keyboard focus in view and never
+drops it").
 
 Move clips does not offer some clips, and those SHALL NOT be taken into another chapter by a drag either:
 
@@ -84,7 +86,8 @@ reduced motion, no clip SHALL slide into place.
   - `Main` plays `Kvällen/s1710003.mp4` and then `s1710001.mp4`, the first marked as coming from `Kvällen`,
     and its heading says 1 clip moved
   - `Kvällen` plays `s1710002.mp4` and the new `s1710004.mp4`, and its heading counts no clip moved
-  - keyboard focus is on the handle of `Kvällen/s1710003.mp4` in `Main`, fully visible above the save bar
+  - keyboard focus is on the handle of `Kvällen/s1710003.mp4` in `Main`, and the row's first line is fully
+    visible above the save bar
   - "s1710003.mp4 moved to “Main”, position 1 of 2" is announced
   - the save bar says that 1 clip moved and that saving adds 1 new clip to `reel.yaml`
 
@@ -156,8 +159,9 @@ reduced motion, no clip SHALL slide into place.
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens the Cuts of `Kvällen/s1710002.mp4`, adds a
   cut from 0 to 1.5 seconds, types `2` in the start field, and drags the clip into `Main` after `s1710001.mp4`
 - **THEN** in `Main` the clip's Cuts panel is still shown, listing that cut, and its start field holds `2`;
-  the save bar says that a cut was typed on `Kvällen/s1710002.mp4` and not added, and Save says that it is
-  unavailable
+  keyboard focus is on its handle, and the row's first line (handle, name, Cuts control) is fully visible,
+  below the chapter's heading and above the save bar; the save bar says that a cut was typed on
+  `Kvällen/s1710002.mp4` and not added, and Save says that it is unavailable
 
 #### Scenario: No drag while a save is in flight
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, with a dragged clip not yet saved, the operator presses Save
@@ -539,3 +543,62 @@ change nothing when pressed.
   service has not answered yet
 - **THEN** Add chapter and every chapter's Rename, Move up, Move down, Move clips and Delete say that they are
   unavailable, and pressing them changes nothing
+
+### Requirement: Edit mode keeps keyboard focus in view and never drops it
+
+After the operator drops, moves, removes or restores a clip in Edit mode, from the keyboard or with a
+pointer, the control that holds keyboard focus SHALL be fully visible together with its whole row. No part
+of either SHALL be covered by the page header, the chapter's heading or the save bar. This SHALL also hold
+for the edit that first brings the save bar in. The one exception is a drop into another chapter (see "Edit
+mode drags clips between chapters"): then the moved clip's handle and its row's first line (its handle,
+name and Cuts control) SHALL be fully visible and not covered, and a row taller than the room between the
+chapter's heading and the save bar SHALL be scrolled so that its first line is.
+
+Suppose Edit mode's read of the editorial document failed and the operator presses **Try again**. Then:
+
+- the failure SHALL stay shown while the document is read again
+- Try again SHALL keep keyboard focus, and SHALL show that it is busy until the read answers
+- when the read fails again, focus SHALL stay on Try again, and the failure SHALL be announced again
+- when the read succeeds, focus SHALL move to the heading of the event's fields
+- when the event changed on disk in the meantime, focus SHALL move to the control that reads the event
+  again
+
+Focus SHALL never fall to the page's body.
+
+When a save is answered, the control that then holds keyboard focus SHALL be fully inside the window. This
+SHALL hold when the answer makes the save bar taller than the room below the editor's top, such as a
+conflict in a short window scrolled to its top.
+
+#### Scenario: The first keyboard drop keeps the dropped clip in view
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, with no other edit and in a window
+  1280 × 900, the operator focuses the handle of its first clip, `s1710001.mp4`, lifts the clip, moves it
+  down one place and drops it
+- **THEN** the save bar appears, keyboard focus is on that handle, and the handle and its whole row are fully
+  visible above the save bar
+
+#### Scenario: The first drop at phone width
+- **WHEN** the operator does the same in a window 390 × 844 with the third clip, `s1710003.mp4`
+- **THEN** its handle and its whole row are fully visible above the save bar
+
+#### Scenario: A tall row dropped into another chapter
+- **WHEN** in a window 390 × 600 on `2024-08-20 - Två kapitel - Tjörn`, the operator adds four cuts in the
+  Cuts panel of `Kvällen/s1710002.mp4`, so that its row is taller than the room left, and drags the clip
+  into `Main` after `s1710001.mp4`
+- **THEN** keyboard focus is on its handle in `Main`, and its handle, name and Cuts control are fully visible
+  below the chapter's heading and above the save bar
+
+#### Scenario: A conflict in a short window scrolled to its top
+- **WHEN** in a window 320 × 568 scrolled to its top, the operator has changed the location of
+  `2024-06-27 - Grillning med grannar`, presses Save, and the save is answered with a conflict
+- **THEN** Save keeps keyboard focus and is fully inside the window, and so is the rest of the save bar
+
+#### Scenario: Try again keeps focus while the document is still unreadable
+- **WHEN** the `reel.yaml` of `2024-06-27 - Grillning med grannar` became unparseable after its page was read,
+  the operator enters Edit mode, and then presses Enter on Try again while the file is still unparseable
+- **THEN** Try again shows that it is busy while the read runs, keyboard focus stays on Try again
+  throughout and afterwards, and the unparseable-document failure is announced again
+
+#### Scenario: Try again moves focus to the fields once the read succeeds
+- **WHEN** after that, the file is repaired and the operator presses Enter on Try again
+- **THEN** the event's fields and clip lists are shown, and keyboard focus is on the heading of the event's
+  fields

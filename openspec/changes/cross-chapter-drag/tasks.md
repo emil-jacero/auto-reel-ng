@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 This change has no gate. It starts from main at `6656ebc` or later (`git merge-base --is-ancestor 6656ebc HEAD`). Re-check the names it builds on (design, "Context"), and stop and report to the supervisor on any mismatch:
+- [x] 1.1 This change has no gate. It starts from main at `6656ebc` or later (`git merge-base --is-ancestor 6656ebc HEAD`). Re-check the names it builds on (design, "Context"), and stop and report to the supervisor on any mismatch:
   - `web/src/edit/ClipOrderList.tsx` has `withinChapter`, `useReducedMotion`, `dropped`, `NO_CLIPS`, `NO_CLIPS_PLAYED`, `ClipRow` with `useSortable({ id: clip.identity, disabled: locked, transition })`, and one `DndContext` with `id={`chapter-${chapterKey}`}`
   - `web/src/edit/EventEditor.tsx` has `reduce` with the `move` and `clips-move` actions, `isListed`, `afterEdit`, `idle`, `listsLocked`, `onDisk`, `nameNow`, `headingIn`, and the hint sentence "Clips stay in their chapter"
   - `web/src/edit/draft.ts` exports `moveClip`, `moveClips`, `restoreClip`, `keptOriginal`, `movedSet`, `writtenFromView` and `addChapter`, and imports only with `import type`
@@ -8,16 +8,17 @@
   - `web/package-lock.json` resolves `@dnd-kit/core` 6.3.1 and `@dnd-kit/sortable` 10.0.0, and `DragOverlay` and `useDroppable` are exported by the installed core
   - `ls openspec/changes/` shows no other change that touches `web/src/edit/`
 
-  Re-base the three MODIFIED blocks in `specs/web-app/spec.md` on the current `openspec/specs/web-app/spec.md`: for each requirement, take the landed text and carry this change's edits onto it, so no later wording is lost.
+  Re-base the four MODIFIED blocks in `specs/web-app/spec.md` on the current `openspec/specs/web-app/spec.md`: for each requirement, take the landed text and carry this change's edits onto it, so no later wording is lost.
 
   Verify: `openspec validate cross-chapter-drag --strict` passes. For each MODIFIED requirement, a `diff` of its main text against the change's text shows only this change's edits (proposal, "Modified Capabilities"):
   - **reorder**: the sentences on Move up / Move down and on how a clip changes chapter; the "A clip cannot leave its chapter" scenario, now about Move up; and the added "A missing clip cannot leave its chapter"
   - **Move clips**: its closing paragraph
   - **chapters**: the empty-chapter sentence and the first scenario's THEN
+  - **focus in view**: the drop-into-another-chapter exception in its first paragraph, and the added scenario "A tall row dropped into another chapter"
 
 ## 2. web/ — the model (pure)
 
-- [ ] 2.1 In `src/edit/draft.ts`, add `moveClipTo` (design, "A drop is one edit"), and add the new `src/edit/dragSlots.ts` with `Slot`, `DragModel`, `dragModel`, `slotsOf`, `stepSlot`, `overIdOf`, `slotOf`, `pointerTarget`, `CHAPTER_DROP` and `DELETED_DROP` (design, "Droppables and their ids", "Collision detection", "Keyboard model and the coordinate getter"). Both files take type-only imports, and `draft.ts` changes in nothing else.
+- [x] 2.1 In `src/edit/draft.ts`, add `moveClipTo` (design, "A drop is one edit"), and add the new `src/edit/dragSlots.ts` with `Slot`, `DragModel`, `dragModel`, `slotsOf`, `stepSlot`, `overIdOf`, `slotOf`, `pointerTarget`, `CHAPTER_DROP` and `DELETED_DROP` (design, "Droppables and their ids", "Collision detection", "Keyboard model and the coordinate getter"). Both files take type-only imports, and `draft.ts` changes in nothing else.
 
   Verify:
   - `npx tsc --noEmit` passes in the node:22 container. Until 3.3 lands, only callers may report errors.
@@ -53,7 +54,7 @@
 
 ## 3. web/ — the drag
 
-- [ ] 3.1 Add `src/edit/ChapterDrag.tsx` and `src/edit/drag.css` (design, "One `DndContext` …", "Collision detection", "Keyboard model and the coordinate getter", "What cannot cross, and the locks", "The visuals", "Announcements and instructions", "Focus and scroll after a drop", "Files"). It holds:
+- [x] 3.1 Add `src/edit/ChapterDrag.tsx` and `src/edit/drag.css` (design, "One `DndContext` …", "Collision detection", "Keyboard model and the coordinate getter", "What cannot cross, and the locks", "The visuals", "Announcements and instructions", "Focus and scroll after a drop", "Files"). It holds:
   - `ChapterDrag` with `id="edit-chapters"`
   - the sensors: `PointerSensor` with distance 6, and `KeyboardSensor` with the slot getter and `scrollBehavior` `auto` under reduced motion, `smooth` otherwise
   - the collision adapter over `pointerTarget`, with the slot in a ref that `onDragStart` empties
@@ -65,7 +66,7 @@
   - the layout and passive effects for focus and scroll after a drop
   - `useReducedMotion`, moved here from `ClipOrderList.tsx` and exported
 
-  The only React state is the active identity.
+  The only React state is the lifted clip, `{ identity, name }`.
 
   Verify:
   - `npx tsc --noEmit` and `npm run build` pass in the node:22 container
@@ -73,7 +74,7 @@
   - `drag.css` declares only `@layer screens`, and every `transition` in it sits in a `prefers-reduced-motion: no-preference` block and reads `--dur-*`
   - `grep -rn ' disabled=' web/src/edit` prints nothing
   - `git diff --stat main -- web/package.json web/package-lock.json` is empty
-- [ ] 3.2 Adapt `src/edit/ClipOrderList.tsx`, `src/edit/ChapterTools.tsx` and `src/edit/edit.css` (design, "Droppables and their ids", "The visuals", "The hint and the words"):
+- [x] 3.2 Adapt `src/edit/ClipOrderList.tsx`, `src/edit/ChapterTools.tsx` and `src/edit/edit.css` (design, "Droppables and their ids", "The visuals", "The hint and the words"):
   - `ClipOrderList.tsx`:
     - drop the per-chapter `DndContext`, sensors, `withinChapter`, `INSTRUCTIONS`, announcements, `onDragEnd` and `dropped`
     - `SortableContext` takes `id={chapterKey}`
@@ -88,9 +89,9 @@
   - `git diff web/src/edit/edit.css` changes no `grid-template-columns`, `grid-template-areas` or `@container` line
   - `grep -n "useDroppable" web/src/edit/ClipOrderList.tsx` hits inside `ChapterDrop` only
   - the diffs of `RowBody`, `MoveButtons`, `RemovedRow` and `IgnoredRow` are empty
-- [ ] 3.3 In `src/edit/EventEditor.tsx` (design, "A drop is one edit", "Files", "The hint and the words"):
+- [x] 3.3 In `src/edit/EventEditor.tsx` (design, "A drop is one edit", "Files", "The hint and the words"):
   - add the `clip-drop` action: `isListed` both, `from !== to`, through `afterEdit`, `lastMoved`; `state` itself when `moveClipTo` returns the same draft
-  - add `onDropInto`, which dispatches only when `idle()` holds and `onDisk` is true for the clip
+  - add `onDropInto`, which dispatches only when `idle()` holds and `onDisk` is true for the clip, and returns whether it did
   - wrap the chapter sections' `map` in `ChapterDrag`, with `orders`, the listed keys, `staysHome`, `nameOf` (over `nameNow`), `headingOf` (`headingIn`), `locked={listsLocked}`, `onReorder={onMove}`, `onDropInto` and `rootRef={editorRef}`
   - change the hint's sentences
 
@@ -102,7 +103,7 @@
 
 ## 4. Verification against the dev library
 
-- [ ] 4.1 Set up the agent's own environment per the dev-env runbook §9 with `SLUG=cross-chapter-drag`, `N=28`: database `arel_cross_chapter_drag`, library `../dev-cross-chapter-drag`, and `auto-reel serve <library> --port 8128` over a fresh `npm run build`, with no worker.
+- [x] 4.1 Set up the agent's own environment per the dev-env runbook §9 with `SLUG=cross-chapter-drag`, `N=28`: database `arel_cross_chapter_drag`, library `../dev-cross-chapter-drag`, and `auto-reel serve <library> --port 8128` over a fresh `npm run build`, with no worker.
   - Never use port 8080 or 5173, `../auto-reel-dev`, `auto-reel-media/`, the default database, or another agent's database, library or port. Never stop or remove a `test-pg` container.
   - In that library copy only, add `Stor dag` (design, "Verification fixtures").
   - Normalise and copy every `reel.yaml` a check will `diff`. Mount shared directories with `:z`.
@@ -114,7 +115,7 @@
   - **Keyboard drags** use only Tab, Space, Enter, the arrows and Escape. After each, assert `document.activeElement` two animation frames after the drop.
 
   Check:
-  - **Every scenario of the ADDED requirement and of the three MODIFIED ones**, on the named events, in order. Each save's body matches design, "A drop is one edit", and each `reel.yaml` `diff` against its normalised copy shows only the lines the scenario names:
+  - **Every scenario of the ADDED requirement and of the four MODIFIED ones**, on the named events, in order. Each save's body matches design, "A drop is one edit", and each `reel.yaml` `diff` against its normalised copy shows only the lines the scenario names:
     - **Saving a dragged clip** (`Två kapitel`): the default chapter becomes `- Kvällen/s1710003.mp4` then `- s1710001.mp4`. In `Kvällen`, `- Kvällen/s1710003.mp4` goes and `- Kvällen/s1710004.mp4` is added. Nothing else changes, and `ignore` is untouched.
     - **Dragging a clip into an empty chapter** (`Grillning`): `Kvällen vid grillen` is added with `- s1710004.mp4`, and that line leaves the default chapter
     - **Crossing into the next chapter from the keyboard**, then Save: `Kvällen` lists `Kvällen/s1710002.mp4`, `s1710001.mp4`, `Kvällen/s1710003.mp4` and `Kvällen/s1710004.mp4`, and the default chapter lists none. The page then shows `Main` holding only the ignored `s1710004.mp4`.
@@ -123,7 +124,7 @@
     - exactly one `.clip-item[data-drop-before]` (or `.chapter-drop-end`, or `.chapter-drop[data-over]`) in the target chapter, and none elsewhere
     - the copy's badge text matches the announcement
     - the source row has `data-dragging` and keeps its box
-  - **Focus**: after each drop into another chapter, by pointer and by keyboard, `document.activeElement` is the `.drag-handle` of the moved row in `[data-chapter-key="<target>"]`. The handle and its row lie inside the window, below the panel's sticky heading and above the save bar's top (bounding boxes).
+  - **Focus**: after each drop into another chapter, by pointer and by keyboard, `document.activeElement` is the `.drag-handle` of the moved row in `[data-chapter-key="<target>"]`. The handle and the row's first line (handle, `.clip-name`, Cuts control) lie inside the window, below the panel's sticky heading and above the save bar's top (bounding boxes). Also with the dragged clip's Cuts panel open, at 1280 × 900 and 390 × 844, and at 390 × 600 with four cuts added (the row is then taller than the room left), by pointer and by keyboard.
   - **Within a chapter, unchanged**: the scenarios "Dragging a clip to the front", "Reordering from the keyboard" and "Escape cancels a keyboard move" pass with the same words as on main, and the first keyboard drop on `Grillning` keeps its row in view at 1280 × 900 and 390 × 844
   - **Locked**: with a dragged clip pending and the `PUT` held by `page.route`, press Enter on Save
     - focus stays on Save, and every handle is `aria-disabled` with no `disabled` attribute
@@ -135,7 +136,7 @@
   - **Cuts**: the scenario "A dragged clip keeps its cuts and what was typed" passes by pointer and, after Reset, by keyboard (lift, Up, Space)
   - **Move clips unchanged**: every scenario of "Edit mode moves clips to another chapter" still passes with the same words and focus as on main
   - restore every touched `reel.yaml` from its copy afterwards, and `diff` to confirm
-- [ ] 4.2 Layout, touch, motion and accessibility on `2024-08-20 - Två kapitel - Tjörn`, and on `2024-06-27 - Grillning med grannar` with `Kvällen vid grillen` added:
+- [x] 4.2 Layout, touch, motion and accessibility on `2024-08-20 - Två kapitel - Tjörn`, and on `2024-06-27 - Grillning med grannar` with `Kvällen vid grillen` added:
   - **Sizes**: 320×700, 390×844, 768×1024 and 1280×900, each in the light and the dark theme (the theme control). At each of the 8:
     - **pointer drag**: drag `s1710001.mp4` over `Kvällen`, holding it between `s1710002.mp4` and `s1710003.mp4`. Take a screenshot.
       - no layout shift: every `.clip-item` and `.edit-chapter` keeps its document-relative box (`rect.top + scrollY`, `left`, `width`, `height`) from before the press within 0.5 px, the dragged row included
@@ -163,7 +164,7 @@
     - a keyboard drag lifted and over `Kvällen` (`Två kapitel`)
     - after a drop
   - no Playwright script, screenshot or `.playwright` directory is in the worktree
-- [ ] 4.3 Scale and render budget on `2024/2024-09-15 - Stor dag` at 1280 × 900 (design, "Render budget"). Measure the production build, with the commit hook installed by `page.add_init_script` before the first navigation (the design's method; never committed). Record every number in the report.
+- [x] 4.3 Scale and render budget on `2024/2024-09-15 - Stor dag` at 1280 × 900 (design, "Render budget"). Measure the production build, with the commit hook installed by `page.add_init_script` before the first navigation (the design's method; never committed). Record every number in the report.
   - **lift**: Space on the handles of `c0200.mp4` and `Kväll/k002.mp4`. From the key to "Picked up …" in the live region takes under 200 ms each.
   - **keyboard steps**:
     - 10 Down steps from `c0200.mp4`: median under 100 ms from the key to the new live-region text
@@ -183,9 +184,9 @@
 
 ## 5. Docs and validation
 
-- [ ] 5.1 Update `web/README.md` and `docs/high-level-design.md`:
+- [x] 5.1 Update `web/README.md` and `docs/high-level-design.md`:
   - `web/README.md`: in the Edit-mode paragraph, dragging into another chapter by pointer and keyboard, the empty chapter's area, missing clips staying, and Move clips kept; "A drag or a Move up / Move down never takes a clip into another chapter" becomes the Move up / Move down rule only. In the `edit/` tree, add `ChapterDrag.tsx`, `dragSlots.ts` and `drag.css`, and update `ClipOrderList.tsx`'s line.
-  - `docs/high-level-design.md`: D-13's "Dragging across chapters stays v3." replaced by the new sentence, §4.10's v1 bullet and v3 line, and slice row D, as in design, "HLD"
+  - `docs/high-level-design.md`: D-13's "Dragging across chapters stays v3." replaced by the new sentence, §4.10's v1 bullet and v3 line, and slice row D, as in design, "HLD". Re-read §4.10 on main first: if `media-endpoints` has landed, the v3 line already reads "nothing planned for the GUI"; keep it, and edit only the v1 bullet, slice row D and D-13
 
   Then run the gates:
   - `npx tsc --noEmit` and `npm run build` in the node:22 container
