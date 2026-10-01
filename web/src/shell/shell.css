@@ -211,6 +211,18 @@
     gap: var(--s-2) var(--s-3);
   }
 
+  /*
+   * Under a coarse pointer, controls that wrap onto a second line sit 1rem
+   * apart, so their tap areas never meet and the later one cannot take the gap
+   * (components.css does the same for alerts and dialogs).
+   */
+  @media (pointer: coarse) {
+    .page-actions,
+    .toolbar {
+      row-gap: var(--s-4);
+    }
+  }
+
   .page-meta {
     display: flex;
     flex-wrap: wrap;
