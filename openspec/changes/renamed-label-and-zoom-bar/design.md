@@ -30,6 +30,68 @@ code is `web/src/events/labels.ts` with its two call sites, and `web/src/edit/`.
   focused control. When the control is not fully inside the window, it calls
   `scrollIntoView({ block: 'nearest' })`. This is edit-mode-polish's fix for a short window held at its top.
 
+## Supervisor decisions (2026-10-01)
+
+Recorded before implementation. Where they differ from a section below, they win, and that section says so.
+
+- **Context.** The brief is `plan/brief-decisions.md` (Z3). The operator agreed to words for the renamed
+  reason and to a save bar that stops being sticky above about 40 % of the window.
+- **Wording: confirmed.** The list says `movie name changed` (landed with `output-renamed-reason`, see "The
+  gate as landed" below). The event page adds, on a line of its own: "The next render saves the movie under its
+  new name. The movie under its old name stays on disk."
+- **A focused bar control follows a bar that goes from held to resting: confirmed.** edit-mode-polish's focus
+  rules require it ("A focused control follows a bar that starts to rest").
+- **The two-fifths threshold and its consequences: accepted.** At 400 % zoom even the plain bar rests, and a
+  failed save's bar rests at 844 × 340 and 683 × 330. This amends `ui-a11y-polish`'s ruling "the save bar stays
+  sticky, no `position: fixed`" for short windows only: wherever the bar takes two fifths of the window or less
+  it stays sticky, and nothing uses `position: fixed`.
+- **One notification over the row above a resting bar: option (a).** This change also MODIFIES web-app's
+  "Notifications never cover the save bar": its focus sentence ("A control that receives keyboard focus SHALL NOT
+  be left under a notification…") is scoped to a bar that is not resting for its height, and to no bar. While
+  the bar rests because it would take more than two fifths of the window, a notification may cover a control
+  just above the bar; it still never overlaps the bar. Option (b), room kept above a resting bar and a
+  `ToastRegion` that places itself again when the bar moves, is a follow-up (`web/src/ui/`). This supersedes
+  "The toast contract in both states" where it says the change leaves that sentence as it is, the matching Open
+  Question, and task 3.2's "report as a known violation": the stops are now reported as the case the narrowed
+  sentence leaves out, with their visible shares.
+- **The web-app scenario "A stale event names every reason" is owned here.** No other change in this round
+  modifies "The event list shows every event with its render state".
+- **The gate as landed** (task 1.1, main `d77745d`):
+  - `openspec/changes/archive/2026-10-01-output-renamed-reason` exists; `StalenessReason` is
+    `"no_manifest" | "output" | "output_renamed" | …` (`schema.d.ts:795`).
+  - Z2 landed the final list words, `output_renamed: 'movie name changed'` (`labels.ts:14`), not the provisional
+    ones (Z2's own supervisor decision). Task 2.1's `REASON_LABEL` edit is therefore a no-op; `REASON_NOTE` is
+    still added. `npx tsc --noEmit` passes at the gate.
+  - The published description of `output_renamed` says the next render writes under the new name and leaves the
+    old file where it is, and that "only a render of another event that now has the old name replaces that
+    file" (an exception documented in change-detection, HLD D-9 and the root `README.md`). The page's note speaks
+    for this event's next render, which never touches the old file, so it stays true; it names no exception and
+    no file, as decided.
+  - `web/README.md`'s dev-library bullet ("stale for `editorial`, `output`, `clip_set` and `no_manifest`") was
+    left to this change; task 4.1 updates it.
+  - The MODIFIED list requirement re-based on the current `openspec/specs/web-app/spec.md` with no other
+    difference than this change's two scenarios.
+- **Implementation notes** (recorded during apply):
+  - The threshold also rests a failed save's bar in other short portrait windows that edit-mode-polish's
+    short-window check uses: a conflict at 320 × 700 (46 %), 340 × 700 (43 %) and 375 × 667 (44 %), and a write
+    failure there (49–52 %). Its check (after the answer, Save and the whole card are inside the window) passes
+    in all of them. 390 × 844 keeps the held bar (26 % / 31–36 %). *Supervisor review: accepted as is.*
+  - At 320 × 230 (recorded, not gated) the moved row is 134 px tall and the band between the sticky chapter
+    heading and the window's bottom is 129 px, so the row cannot be wholly visible whatever the bar does; the
+    focused Move down is. *Supervisor review: accepted as recorded.*
+  - With an error toast and a resting bar at 320 × 256, the toast sits above the window at 21 of 124 scroll
+    positions (main: 88), for example right after the answer, while the bar's top is above the window: the
+    unchanged `ToastRegion` places it just above the bar's top. It shows again below the bar at the page's end.
+    *Supervisor review: accepted for now; part of follow-up (b).*
+  - Task 2.1's grep `renders under the new name` finds nothing: the note says "saves the movie under its new
+    name", and Z2's provisional words never landed.
+- **Follow-up (b)** (`web/src/ui/`, not this change): keep room between the last chapter and a resting bar (for
+  example a margin of `--toast-rise-h`), and have `ToastRegion` place itself again when the bar moves without a
+  scroll, so that (1) a toast never covers the controls just above a resting bar (5 Shift+Tab stops at
+  320 × 256 and 4 at 320 × 568 today, `Remove borttagen.mp4` fully covered), and (2) a toast never sits above
+  the window while the bar's top is above it (21 of 124 positions at 320 × 256). Then the focus sentence of
+  "Notifications never cover the save bar" can be widened again to a resting bar.
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -427,6 +489,10 @@ absent. `keepToastsClearOf(bar)` stays registered in both states, and `ToastRegi
   320 × 256). The change does not edit that requirement. Whether to narrow it or to fix `ToastRegion` is the
   user's call (Open Questions). Until then, task 3.2 reports these stops as a known violation, never as a
   pass.
+- **Superseded (Supervisor decisions, option (a)).** The change MODIFIES "Notifications never cover the save
+  bar": the focus sentence holds for a bar that is not resting for its height, and with no bar. A resting bar
+  may have a notification over the control just above it, never over the bar. Task 3.2 reports the stops as
+  that case. Option (b) is the follow-up.
 
 ### Coordination with output-renamed-reason
 
@@ -535,6 +601,8 @@ database, `../auto-reel-dev` or `auto-reel-media/`.
   the focus sentence of `ui-a11y-polish`'s requirement "Notifications never cover the save bar", within its
   one-toast scope ("The toast contract in both states"). The operator can dismiss the toast. A fix needs
   `web/src/ui/` and is a follow-up. Narrowing the sentence instead is the user's call (Open Questions).
+  *Resolved (Supervisor decisions):* the sentence is narrowed in this change, option (a); the fix, option (b),
+  is the follow-up.
 - **[A scroll the operator did not start]** → `placeBar` scrolls only when the bar's own focused control
   would otherwise leave the window with the bar. It never scrolls for focus outside the bar.
 - **[Z2 lands other words, or another slug]** → Task 1.1 records both, and task 2.1 overwrites the words. The
@@ -553,9 +621,10 @@ API migration. To roll back, revert the commits. The engine's reason keeps worki
 - **Should Z2 land `'movie name changed'` instead of its provisional words?** Z2's task 4.1 currently adds
   `'renamed — renders under the new name; the old movie stays'`. Using the short words would keep the list's
   rows at today's height between the two merges, and make task 2.1's `REASON_LABEL` edit a no-op. It is a
-  supervisor call for Z2's tasks, and does not change this design.
+  supervisor call for Z2's tasks, and does not change this design. *Resolved:* Z2 landed `'movie name changed'`.
 - **The landscape and 200 % laptop windows** now rest a failed save's bar. They are an accepted consequence
-  of the agreed threshold, unless the supervisor wants the rule scoped to the narrowest windows.
+  of the agreed threshold, unless the supervisor wants the rule scoped to the narrowest windows. *Resolved:*
+  accepted.
 - **One toast and a resting bar break an existing focus rule. Narrow the rule, or fix the toasts?** With one
   error toast shown, the clip row just above a resting bar sits under the toast: 5 stops at 320 × 256
   (`Remove borttagen.mp4` at 0 %) and 4 at 320 × 568. Main has 15 at 320 × 568. web-app's "Notifications
@@ -567,5 +636,7 @@ API migration. To roll back, revert the commits. The engine's reason keeps worki
   - (c) both.
 
   The design assumes (b) and leaves the spec sentence as it is.
+
+  *Resolved (Supervisor decisions):* (a) in this change, (b) as a follow-up.
 - **If Z2 publishes the previously recorded output's file name**, should the note name it? This design names
   no file, because the brief's Z2 scope is a reason only.

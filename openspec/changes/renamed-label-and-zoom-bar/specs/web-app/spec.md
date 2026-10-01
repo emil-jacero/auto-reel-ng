@@ -64,6 +64,50 @@ present a missing fact (no date, no title, no job) as a value.
 - **THEN** both rows read "Blandat" in the undated group, and the first also shows `2023/Blandat` and the
   second `2024/Blandat`
 
+### Requirement: Notifications never cover the save bar
+
+While the event page's save bar is shown, no notification SHALL overlap it, at any scroll position and at any
+window width:
+
+- While the bar is held at the bottom of the window, notifications SHALL sit above it.
+- When the page is scrolled far enough that the bar rests in the page below the content, notifications SHALL
+  sit either above the bar or in the room below it.
+
+While the bar moves from the bottom of the window to its resting place, notifications that sit above it MAY
+move with it. While the bar takes two fifths of the window's height or less, so that it is held whenever the
+page is not scrolled to its resting place, and while no save bar is shown, a control that receives keyboard
+focus SHALL NOT be left under a notification at any scroll position, including while the bar moves, while one
+notification is shown, or two in a window at least 844 pixels tall. While the bar rests in the page because it
+would take more than two fifths of the window's height, a notification MAY cover a control just above the bar,
+such as the last clip row's; it still SHALL NOT overlap the bar.
+
+When a page is scrolled to its end, no notification SHALL cover any of the page's controls, with or without a
+save bar. With no save bar shown, notifications keep their place at the bottom of the window.
+
+#### Scenario: A notification above the held save bar
+- **WHEN** an error notification is shown, and the operator, in Edit mode on
+  `2024-06-27 - Grillning med grannar` with the page scrolled to its top, changes the title, in windows 1280
+  and 390 pixels wide
+- **THEN** the notification sits above the save bar, and covers neither Reset nor Save
+
+#### Scenario: The end of the page
+- **WHEN** in the same state, the operator scrolls step by step to the end of the page, or presses Tab until
+  Save has focus
+- **THEN** at no step does a notification overlap the save bar, and at the end Save is fully visible and
+  can be clicked, and no control of the page is covered by a notification
+
+#### Scenario: Tabbing through the last clips with two notifications
+- **WHEN** two error notifications are shown, and the operator, in Edit mode on
+  `2024-06-27 - Grillning med grannar` in a window 390 × 844 pixels, changes the title and then presses Tab
+  from Title through every clip row's controls to Save
+- **THEN** no notification covers any part of the control that has focus, at any step, and none overlaps the
+  save bar
+
+#### Scenario: A short page with a save bar
+- **WHEN** an error notification is shown and the operator changes the title in the metadata form of
+  `2024-02-30 - Omöjligt datum`, in windows 390 and 320 pixels wide
+- **THEN** at no scroll position does a notification overlap the save bar, and Save can be clicked
+
 ## ADDED Requirements
 
 ### Requirement: The event page says what a render does when the movie's name changed

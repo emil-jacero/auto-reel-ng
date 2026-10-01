@@ -59,7 +59,8 @@ zoom. This change is the GUI's part of both. Both problems were reproduced on ma
     rests in the page, so no toast overlaps the bar in either state (measured).
 - **Spec:** the web-app scenario "A stale event names every reason" changes. It currently describes a
   renamed event as "the missing output", which Z2 makes false. Two requirements are added: the page's note,
-  and the resting bar.
+  and the resting bar. "Notifications never cover the save bar" scopes its focus sentence to a bar that is not
+  resting for its height, and to no bar (supervisor decision, option (a); design, "Supervisor decisions").
 - **Docs:** `web/README.md`: the reasons and the dev library's stale kinds, the Edit-mode paragraph, and the
   Toasts bullet's sentence on `--toast-inset-bottom`.
 
@@ -75,9 +76,10 @@ zoom. This change is the GUI's part of both. Both problems were reproduced on ma
   and the bar resting in a short window, the clip row just above the bar can sit under the notification.
   Main already has this at 320 × 568 (15 focus stops), and this change cuts it to 4 there. At 320 × 256 it
   is new: 5 stops, one of them fully covered, where main hid 15 stops under the bar. Both break the focus
-  sentence of web-app's "Notifications never cover the save bar", and this change leaves that sentence as it
-  is. A fix needs `web/src/ui/` and is a follow-up. Narrowing the sentence instead is the user's call (design,
-  "The toast contract in both states", Open Questions).
+  sentence of web-app's "Notifications never cover the save bar" as archived, so this change narrows that
+  sentence to a bar that is not resting for its height, and to no bar (supervisor decision, option (a)). A fix
+  (room kept above a resting bar, and a `ToastRegion` that places itself again when the bar moves) needs
+  `web/src/ui/` and is a follow-up (option (b)).
 - **The held bar's budget at 390 × 844 is unchanged** (a third with a conflict, two fifths with a failure),
   and so are its compact layout, its single primary action and the sticky page and panel headers.
 - **No new dependency, token, component or animation.** Principle VII: one constant, one attribute, one CSS
@@ -95,6 +97,9 @@ None.
   - MODIFIED `Requirement: The event list shows every event with its render state`. Only its "A stale event
     names every reason" scenario changes: a renamed event cites the changed movie name, not a missing movie.
     A scenario is added for a movie that really is missing.
+  - MODIFIED `Requirement: Notifications never cover the save bar`. Only its focus sentence changes: it holds
+    while the bar takes two fifths of the window or less, and with no bar. While the bar rests for its height,
+    a notification may cover a control just above it, never the bar.
   - ADDED `Requirement: The event page says what a render does when the movie's name changed`
   - ADDED `Requirement: Edit mode's save bar rests in the page when it would hide the editor`
 
@@ -124,5 +129,5 @@ None.
     replaces those words (design, "Coordination with output-renamed-reason"; Open Questions).
   - **Parallel:** `adopt-into-folder-chapter` (Z1) is engine/CLI only and shares no file.
   - **New runtime dependencies:** none. D-8's budget is unchanged.
-- **Size (Principle VIII):** one package, one capability delta (one MODIFIED and two ADDED requirements),
+- **Size (Principle VIII):** one package, one capability delta (two MODIFIED and two ADDED requirements),
   and 8 tasks.
