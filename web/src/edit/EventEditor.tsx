@@ -356,6 +356,11 @@ const CHANGED_DETAIL =
   'Its clips or chapters no longer match what the page shows. ' +
   'Read it again to edit what is on disk now.'
 
+/** A metadata value, or null when unset: absent, empty or spaces only, as the service reads it. */
+function nonBlank(value: string | null | undefined): string | null {
+  return value != null && value.trim() !== '' ? value : null
+}
+
 /**
  * The title or date a save leaves the event with, as far as the page knows it:
  * the value written; else, for a field reel.yaml left unset and still leaves
@@ -368,11 +373,11 @@ function savedValue(
   body: ReelWriteBody,
   resolved: Resolved | null,
 ): string | null {
-  const written = body.metadata[field]
-  if (written != null) {
+  const written = nonBlank(body.metadata[field])
+  if (written !== null) {
     return written
   }
-  return read.metadata[field] == null ? (resolved?.[field] ?? null) : null
+  return nonBlank(read.metadata[field]) === null ? nonBlank(resolved?.[field]) : null
 }
 
 /** "Title", "Title and date", "Title, date and location": the changed fields in words. */
