@@ -541,6 +541,19 @@ The items are placed by area, with the table's cell padding (`--s-3`, and `--s-4
   `borttagen.mp4` keeps its line from a 58.5rem panel (`review/logs/rv_wide.log`), but an 18-character
   missing name breaks inside the word between 58 and about 61rem (Risks).
 
+**Changed after the supervisor's review: the action goes under the name.** In the one-line layout the
+action's own track took about 100 px from the file column, so a missing or removed row's name broke inside
+the word just above 58rem (`borttagen.mp4` at a 1000 px window, `20240901153012.mp4` up to 1030 px). The
+grid now has no `action` track: `'handle pos thumb file moves status size mtime'`. A row with an action
+(`.clip-item:has(.clip-action)`, inside `@container (width >= 58rem)`) gets a second grid line,
+`'handle pos thumb action moves status size mtime'`. The action sits under the name in the file column,
+with the file cell's padding, and the two hug the row's middle (`align-self: end` and `start`). Every other
+cell spans both lines. The name keeps the column's whole room, as an ordinary row's does. The row's height
+is unchanged beside the 128 px frames and grows a few pixels beside the 80 px ones. The action's margin,
+and its reset below 58rem, are gone. Measured from 990 to 1100 px in steps of 10, with a fine and a coarse
+pointer, with the missing rows listed and then removed: every name keeps one line, and the alignment
+checks of task 4.1 still hold.
+
 If `event-page-polish` has not landed, the fallbacks equal today's table, so the alignment already holds.
 If it has, the grid follows its widths, including the 8rem frames at 1280. Task 4.1 checks the alignment
 against whatever the table shows when the task runs.
@@ -567,6 +580,7 @@ Remove wraps under the name and pushes the box down. The facts area is 176 px.
 then holds only the name and the moved badge. The same applies to `RemovedRow`'s Undo.
 
 - **Wide layout**: the button takes the `action` area, a direct grid item through `display: contents`.
+  After review, that area is under the name in the file column ("One grid with the table").
 - **Narrow layout**: it is the facts flex line's last item.
 - **Tab order** in a row stays handle → Remove → Move up → Move down, since `.clip-facts` precedes
   `.clip-moves`.
@@ -579,8 +593,8 @@ There the facts' first line also holds Remove, right under the move buttons' lin
 15 px their two areas need. In narrower panels Remove already wraps to the facts' second line, 28 px down.
 In wider ones it ends clear of Move up's area. So:
 
-- `ClipFacts` wraps the action in `<span className="clip-action">`. The wrapper takes the `action` area and
-  its margin in the one-line layout.
+- `ClipFacts` wraps the action in `<span className="clip-action">`. The wrapper takes the `action` area in
+  the one-line layout.
 - Under `(pointer: coarse)`, from a 28rem panel to the 58rem one-line layout, a wrapper that holds a
   Remove takes `flex-basis: 100%`, so Remove starts a line of its own at the facts' start. Undo has no move
   buttons above it and keeps its place.
@@ -700,8 +714,14 @@ service is not reachable."
   stay. The `unpublished` kind that event-list-polish added keeps its detail, which names the request and
   the status it got.
 - **`EventEditor.tsx` and `SaveBar.tsx`:** the `.catch` after `send()` makes a problem of its own kind,
-  `page`, with the error's text as its detail and Retry. The bar titles it "The save stopped on an error in
-  this page." It also logs the error with `console.error`, for its stack, as `jobs/store.ts` does. Whether
+  `page`, with Retry and no detail: the bar titles it "The save stopped on an error in this page.", and the
+  browser's text for the error is not shown. It is logged with `console.error`, with its stack, as
+  `jobs/store.ts` does. (Before the review, the alert showed the error's text as its detail.)
+- **Try again after a read with no answer** (after review): `readFailure` gives the `unreachable` kind
+  event-list-polish's way to recover in place of the browser's text, "Check that auto-reel serve is
+  running, then press Try again." It comes from `notReachableHint(control)`, a helper added to
+  `events/labels.ts` beside `NOT_REACHABLE_HINT`, which is now `notReachableHint('Refresh')` and reads as
+  before. An `unpublished` answer keeps its message, which names the request and the status it got. Whether
   the PUT was sent is unknown at that point, so the title does not claim that nothing was saved. A Retry
   after a write that did land is answered 412, which the conflict path handles.
 - **Changed after review.** While event-list-polish was in flight, the `SaveProblem` union's `unreachable`
@@ -795,10 +815,9 @@ The states are made in that library copy only, and each is restored afterwards:
   bounds a failure at two fifths, not a third. The dev library's path and the writer's temporary name
   measured 300 px (36 %) at 390×844. A much deeper library path could still exceed it. Task 2.1 measures
   the real answer, and a miss there is a finding to report, not a reason to clip the text.
-- [A missing or removed row gives about 102 px of its file column to its action in the one-line layout] →
-  `borttagen.mp4` keeps its line from a 58.5rem panel. An 18-character missing camera name breaks inside
-  the word between 58 and about 61rem (windows of about 990-1040 px). Today the Remove wraps under the name
-  there instead. This is a cosmetic trade-off for a rare row.
+- [A missing or removed row gave about 102 px of its file column to its action in the one-line layout] →
+  **Resolved after review**: its names broke inside the word just above 58rem. The action now sits under the
+  name ("One grid with the table").
 - [A missing row's Remove moves to the facts line, next to the move buttons' line] → Under a coarse pointer
   both take 44 px areas. Task 6.1 runs ui-a11y-polish's touch probe over Edit mode, Sommarlov's missing
   row included, at 1280, 768, 390 and 320.
@@ -848,6 +867,32 @@ changed:
 The review's scripts, logs and screenshots are in `review/` (`rv_cols.py`, `rv_bar.py`, `rv_wide.py`),
 under the scratch directory named in "Findings, reproduced". They ran read-only against `:8114`: every
 PUT was fulfilled in the browser and every other non-GET aborted, and none reached the service.
+
+### Supervisor review fixes (2026-10-01)
+
+The supervisor's review (four lenses and skeptics) confirmed seven minor findings and no major one. Each is
+fixed in a commit of its own:
+
+- **A page error's alert showed the browser's text** ("TypeError: Cannot read properties of null…"), which
+  the save-bar requirement bans. The `page` kind has no detail now; the console keeps the error.
+- **Try again after a read with no answer showed "TypeError: Failed to fetch".** It shows the way to recover
+  instead, from `notReachableHint('Try again')`; an unpublished answer keeps its request and status.
+- **The "Saved" toast read `Saved “” · 2024-06-27` when `reel.yaml`'s title was blank.** `savedValue` reads a
+  blank value as unset, as `asSaved` and the engine's `_non_blank` do, and falls back to the resolved value
+  or the folder name.
+- **Try again said a new failure twice**, through its alert and through the live region. The live region
+  re-says a failure only when the alert's words (`failureWords`: cause, kind, detail) did not change; the
+  alert's role says a new one. The region is cleared when Try again is pressed, so it never repeats a stale
+  failure after the answer.
+- **Names broke inside the word just above 58rem** in missing and removed rows: the action goes under the name
+  ("One grid with the table").
+- **Older requirements still said "file name"** for Edit mode, against this change's clip-naming
+  requirement. The delta MODIFIES "The event page reorders clips within a chapter" (the row's facts and the
+  announcements) and "Edit mode removes a missing clip from reel.yaml on request" (the Remove control, the
+  removed listing and its Undo) to say "the clip's name, as the event page's table names it", re-based on the
+  current text after every sibling change had landed. The same words replace "file name" in this change's
+  own "Edit mode lines up with the event page and fits a phone". Scenarios are unchanged: their chapters
+  list only their own folders' clips, where the name is the file name.
 
 ## Migration Plan
 
