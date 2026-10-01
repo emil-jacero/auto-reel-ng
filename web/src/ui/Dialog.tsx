@@ -1,13 +1,18 @@
 import { Children, isValidElement, useEffect, useId, useRef } from 'react'
 import type { ReactNode, RefObject } from 'react'
 
-/** The `.dialog-actions` row: the one child left out of the dialog's description. */
-function isActionsRow(child: ReactNode): boolean {
+/** Whether `child` is an element with the class `name`. */
+function hasClass(child: ReactNode, name: string): boolean {
   if (!isValidElement<{ className?: unknown }>(child)) {
     return false
   }
   const { className } = child.props
-  return typeof className === 'string' && className.split(/\s+/).includes('dialog-actions')
+  return typeof className === 'string' && className.split(/\s+/).includes(name)
+}
+
+/** The `.dialog-fields` form and the `.dialog-actions` row: not the dialog's description. */
+function isOutsideDescription(child: ReactNode): boolean {
+  return hasClass(child, 'dialog-fields') || hasClass(child, 'dialog-actions')
 }
 
 /**
@@ -26,10 +31,12 @@ function isActionsRow(child: ReactNode): boolean {
  *   queues a `close` event that fires after the remount has reopened the
  *   dialog; the guard keeps it from closing a dialog that mounted open.
  *
- * `children` are the body and a `.dialog-actions` row of buttons. The body,
- * every child but that row, is the dialog's accessible description
+ * `children` are the body and a `.dialog-actions` row of buttons, with a
+ * `.dialog-fields` form between them when the dialog asks for input. The body,
+ * every child but those two, is the dialog's accessible description
  * (`aria-describedby`), so its consequence is read when it opens even though
- * focus goes straight to a button; the row follows it.
+ * focus goes straight to a button or a field; the fields and the row follow it,
+ * so a long list of choices is never read out as the description.
  */
 export function Dialog({
   open,
@@ -80,8 +87,9 @@ export function Dialog({
   }, [open, initialFocus])
 
   const parts = Children.toArray(children)
-  const body = parts.filter((part) => !isActionsRow(part))
-  const actions = parts.filter(isActionsRow)
+  const body = parts.filter((part) => !isOutsideDescription(part))
+  const fields = parts.filter((part) => hasClass(part, 'dialog-fields'))
+  const actions = parts.filter((part) => hasClass(part, 'dialog-actions'))
 
   return (
     <dialog
@@ -103,6 +111,7 @@ export function Dialog({
       <div id={bodyId} className="dialog-body">
         {body}
       </div>
+      {fields}
       {actions}
     </dialog>
   )

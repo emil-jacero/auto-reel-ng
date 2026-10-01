@@ -40,12 +40,18 @@ import { CLIP_STATUS_LOOK } from '../events/tones'
 import { formatInstant } from '../format'
 import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
-import { movedSet } from './draft'
+import { ChapterTools } from './ChapterTools'
+import type { ChapterToolsModel } from './ChapterTools'
+import { keptOriginal, movedSet } from './draft'
+import type { ChapterKey } from './draft'
 
 /*
  * One chapter's clips, reorderable within the chapter only. Three ways to move
  * a clip: drag its handle (pointer, pen or touch), lift it from the keyboard on
- * its handle, or press its Move up / Move down buttons.
+ * its handle, or press its Move up / Move down buttons. A clip changes chapter
+ * only through the chapter's Move clips dialog (`ChapterDialogs.tsx`); its row
+ * then says where it came from. The chapter's tools row (`ChapterTools.tsx`)
+ * sits between its header and its column strip.
  *
  * Each chapter has its own DndContext, so a clip cannot be dropped into another
  * chapter by construction, and the modifier below keeps a dragged row inside
@@ -117,6 +123,8 @@ function ClipFacts({ clip, action }: { clip: Clip; action?: ReactNode }) {
   )
 }
 
+const FROM = <Icon name="arrow-right" />
+
 /** A row's facts; memoised, so a move re-renders only the rows it renumbers. */
 const RowBody = memo(function RowBody({
   eventId,
@@ -124,6 +132,7 @@ const RowBody = memo(function RowBody({
   name,
   position,
   was,
+  from = null,
   action,
 }: {
   eventId: string
@@ -132,6 +141,8 @@ const RowBody = memo(function RowBody({
   name: string
   position: number | null
   was: number | null
+  /** The heading of the chapter it was moved in from, shown instead of `was`. */
+  from?: string | null
   /** A control after the facts: a missing clip's Remove, a removed one's Undo. */
   action?: ReactNode
 }) {
@@ -143,6 +154,13 @@ const RowBody = memo(function RowBody({
         <span className="clip-name">
           <ClipName name={name} />
         </span>
+        {/* Moved in from another chapter: where from, cut short when long (chapters.css). */}
+        {from !== null && position !== null && (
+          <span className="badge clip-was clip-from" data-tone="info">
+            {FROM}
+            <span>from {from}</span>
+          </span>
+        )}
         {/* A moved clip at its old position (others moved around it) says only "moved". */}
         {was !== null && position !== null && (
           <span className="badge clip-was" data-tone="info">
@@ -226,6 +244,7 @@ const ClipRow = memo(function ClipRow({
   position,
   total,
   was,
+  from,
   locked,
   reducedMotion,
   onStep,
@@ -238,6 +257,7 @@ const ClipRow = memo(function ClipRow({
   position: number
   total: number
   was: number | null
+  from: string | null
   locked: boolean
   reducedMotion: boolean
   onStep: Step
@@ -287,7 +307,7 @@ const ClipRow = memo(function ClipRow({
       className="clip-item"
       data-identity={clip.identity}
       data-status={clip.status}
-      data-moved={was !== null || undefined}
+      data-moved={was !== null || from !== null || undefined}
       data-dragging={isDragging || undefined}
       style={{ transform: DndCss.Translate.toString(transform), transition }}
     >
@@ -308,6 +328,7 @@ const ClipRow = memo(function ClipRow({
         name={name}
         position={isSorting ? newIndex + 1 : position}
         was={was}
+        from={from}
         action={remove}
       />
       <MoveButtons
@@ -394,25 +415,30 @@ const RemovedRow = memo(function RemovedRow({
   )
 })
 
-export type MoveHandler = (chapter: string, from: number, to: number) => void
-export type RemoveHandler = (chapter: string, identity: string) => void
+export type MoveHandler = (chapter: ChapterKey, from: number, to: number) => void
+export type RemoveHandler = (chapter: ChapterKey, identity: string) => void
 export type RestoreHandler = (identity: string) => void
 
 /** The button focus lands on once a row is in its new place, as a class name. */
 type FocusTarget = 'move-up' | 'move-down' | 'clip-remove' | 'clip-undo'
 
+/** Each clip's chapter when Edit mode opened, and that chapter's heading now. */
+export type Origins = ReadonlyMap<string, { key: ChapterKey; heading: string }>
+
 export const ClipOrderList = memo(function ClipOrderList({
   eventId,
-  index,
-  chapter,
+  chapterKey,
+  name: chapterName,
   heading,
   order,
   original,
   ignored,
   removed,
   clips,
+  origins,
   lastMoved,
   locked,
+  tools,
   onMove,
   onRemove,
   onRestore,
@@ -420,9 +446,10 @@ export const ClipOrderList = memo(function ClipOrderList({
 }: {
   /** The event, for its clips' thumbnail addresses. */
   eventId: string
-  /** The chapter's place on the page: the DndContext id, for stable description ids. */
-  index: number
-  chapter: string
+  /** The chapter's key for the session: the DndContext id, for stable description ids. */
+  chapterKey: ChapterKey
+  /** Its name now ('' for the event's own chapter), by which it names its clips. */
+  name: string
   heading: string
   /** The identities it plays, in the current order. */
   order: readonly string[]
@@ -432,8 +459,11 @@ export const ClipOrderList = memo(function ClipOrderList({
   /** The missing clips the operator removed, in their original order. */
   removed: readonly string[]
   clips: ReadonlyMap<string, Clip>
+  origins: Origins
   lastMoved: string | null
   locked: boolean
+  /** Its tools row (`ChapterTools`): what it shows and does. */
+  tools: ChapterToolsModel
   onMove: MoveHandler
   onRemove: RemoveHandler
   onRestore: RestoreHandler
@@ -457,24 +487,31 @@ export const ClipOrderList = memo(function ClipOrderList({
   const dropped = useRef<string | null>(null)
   const reducedMotion = useReducedMotion()
   const items = useMemo(() => [...order], [order])
-  // Against the original order without the removed clips: a removal alone moves nothing.
-  const kept = useMemo(
-    () =>
-      removed.length === 0
-        ? original
-        : original.filter((identity) => !removed.includes(identity)),
-    [original, removed],
-  )
+  // Against the original order without the clips it no longer holds: a removal, or a
+  // clip moved to another chapter, moves nothing by itself (draft.ts `keptOriginal`).
+  const kept = useMemo(() => keptOriginal(original, order), [original, order])
   const moved = useMemo(() => movedSet(kept, order, lastMoved), [kept, order, lastMoved])
+  // Where a clip moved in from another chapter came from: that chapter's heading now.
+  const fromOf = useCallback(
+    (identity: string) => {
+      const origin = origins.get(identity)
+      return origin !== undefined && origin.key !== chapterKey ? origin.heading : null
+    },
+    [origins, chapterKey],
+  )
+  // Nothing to list: an added chapter, or one every clip has left.
+  const empty = order.length === 0 && removed.length === 0 && ignored.length === 0
   const originalPosition = useMemo(
     () => new Map(original.map((identity, at) => [identity, at + 1])),
     [original],
   )
-  // How the chapter names its clips, as the read view's table does: from every clip it
-  // listed when Edit mode opened, so a move or a removal renames none.
+  // How the chapter names its clips, as the read view's table will once saved: by its
+  // name now, from every clip it lists now or listed when Edit mode opened. A move
+  // within it or a removal renames none; a clip from another folder moved in, or a
+  // name that is no longer its folder's, names them all by their paths.
   const nameOf = useMemo(
-    () => clipNames(chapter, [...original, ...ignored]),
-    [chapter, original, ignored],
+    () => clipNames(chapterName, [...original, ...order, ...ignored, ...removed]),
+    [chapterName, original, order, ignored, removed],
   )
 
   const sensors = useSensors(
@@ -515,19 +552,19 @@ export const ClipOrderList = memo(function ClipOrderList({
       const to = order.indexOf(String(over.id))
       if (from !== -1 && to !== -1) {
         dropped.current = String(active.id)
-        onMove(chapter, from, to)
+        onMove(chapterKey, from, to)
       }
     },
-    [chapter, onMove, order],
+    [chapterKey, onMove, order],
   )
 
   const onStep = useCallback<Step>(
     (identity, from, to) => {
       focusAfter.current = { identity, target: to < from ? 'move-up' : 'move-down' }
-      onMove(chapter, from, to)
+      onMove(chapterKey, from, to)
       onAnnounce(`${nameOf(identity)} moved to position ${to + 1} of ${order.length}.`)
     },
-    [chapter, nameOf, onAnnounce, onMove, order.length],
+    [chapterKey, nameOf, onAnnounce, onMove, order.length],
   )
 
   // The pressed Remove or Undo leaves with its row: focus follows the clip to the control
@@ -535,10 +572,10 @@ export const ClipOrderList = memo(function ClipOrderList({
   const onRemoveRow = useCallback(
     (identity: string) => {
       focusAfter.current = { identity, target: 'clip-undo' }
-      onRemove(chapter, identity)
+      onRemove(chapterKey, identity)
       onAnnounce(`${nameOf(identity)} will be removed from reel.yaml when you save.`)
     },
-    [chapter, nameOf, onAnnounce, onRemove],
+    [chapterKey, nameOf, onAnnounce, onRemove],
   )
 
   const onUndoRow = useCallback(
@@ -597,9 +634,17 @@ export const ClipOrderList = memo(function ClipOrderList({
   }, [order, removed])
 
   return (
-    <section ref={sectionRef} className="panel edit-chapter" aria-labelledby={headingId}>
+    <section
+      ref={sectionRef}
+      className="panel edit-chapter"
+      data-chapter-key={chapterKey}
+      aria-labelledby={headingId}
+    >
       <header className="panel-header">
-        <h2 id={headingId}>{heading}</h2>
+        {/* Focused by script after Add chapter. */}
+        <h2 id={headingId} tabIndex={-1}>
+          {heading}
+        </h2>
         {moved.size > 0 && (
           <span className="badge" data-tone="info">
             {plural(moved.size, 'clip', 'clips')} moved
@@ -608,19 +653,28 @@ export const ClipOrderList = memo(function ClipOrderList({
         {/* The clips it plays; the removed and ignored lists count their own. One line. */}
         <span className="panel-meta">{plural(order.length, 'clip', 'clips')}</span>
       </header>
+      <ChapterTools chapterKey={chapterKey} heading={heading} headingId={headingId} {...tools} />
+      {empty && (
+        <p className="chapter-empty">
+          No clips. Move clips here with another chapter’s Move clips. A chapter without clips is
+          left out of the movie.
+        </p>
+      )}
       {/* The column names, in the rows' own cells (edit.css places them by class). */}
-      <div className="clip-order-head" aria-hidden="true">
-        <span className="clip-pos">#</span>
-        <span className="clip-file">File</span>
-        <span className="clip-facts">
-          <span className="clip-status">Status</span>
-          <span className="clip-size">Size</span>
-          <span className="clip-mtime">Modified</span>
-        </span>
-      </div>
+      {!empty && (
+        <div className="clip-order-head" aria-hidden="true">
+          <span className="clip-pos">#</span>
+          <span className="clip-file">File</span>
+          <span className="clip-facts">
+            <span className="clip-status">Status</span>
+            <span className="clip-size">Size</span>
+            <span className="clip-mtime">Modified</span>
+          </span>
+        </div>
+      )}
       {order.length > 0 && (
         <DndContext
-          id={`chapter-${index}`}
+          id={`chapter-${chapterKey}`}
           sensors={sensors}
           collisionDetection={closestCenter}
           modifiers={MODIFIERS}
@@ -648,6 +702,7 @@ export const ClipOrderList = memo(function ClipOrderList({
                     position={at + 1}
                     total={order.length}
                     was={moved.has(identity) ? (originalPosition.get(identity) ?? null) : null}
+                    from={fromOf(identity)}
                     locked={locked}
                     reducedMotion={reducedMotion}
                     onStep={onStep}

@@ -9,13 +9,22 @@ import type { ReelDocument, ReelWriteBody } from '../api/reel'
  * Two models meet here. The event detail is what the page shows: every
  * chapter with every clip, NEW, MISSING and IGNORED ones included. The
  * editorial document is what Save writes. The operator reorders the detail's
- * lists; the write body is always the document as read, with only the
- * operator's edits applied, so every section and chapter the operator did not
- * touch goes back exactly as it came.
+ * lists, moves clips between them and edits the chapter list itself; the write
+ * body is always the document as read, with only the operator's edits applied,
+ * so every section and chapter the operator did not touch goes back exactly as
+ * it came (see "What a save writes" at `writtenFromView`).
  */
+
+/**
+ * A chapter's key for the Edit-mode session: `r0`, `r1`… for the chapters the
+ * page showed, in that order; `a1`, `a2`… for the ones the operator added. Every
+ * map below is keyed by it, never by a name, which a rename changes.
+ */
+export type ChapterKey = string
 
 /** One chapter as the editor lists it. */
 export type EditableChapter = {
+  key: ChapterKey
   name: string
   /** The clips it plays, in the order the page shows them: all but the ignored ones. */
   movable: string[]
@@ -23,11 +32,22 @@ export type EditableChapter = {
   ignored: string[]
 }
 
-/** Chapter name → the identities of its movable clips, in order. */
-export type Orders = ReadonlyMap<string, readonly string[]>
+/** A chapter of the draft's chapter list. */
+export type DraftChapter = {
+  key: ChapterKey
+  /** The name it was read with; null for a chapter added in this session. */
+  readName: string | null
+  /** Its name now: trimmed, '' only for the event's own chapter. */
+  name: string
+  /** Deleted on save; still listed, in place, with Undo. An added chapter is dropped instead. */
+  deleted: boolean
+}
 
-/** The missing clips the operator removed: identity → its chapter's name. */
-export type Removals = ReadonlyMap<string, string>
+/** Chapter key → the identities of its movable clips, in order. */
+export type Orders = ReadonlyMap<ChapterKey, readonly string[]>
+
+/** The missing clips the operator removed: identity → its chapter's key. */
+export type Removals = ReadonlyMap<string, ChapterKey>
 
 /** The four metadata fields as their inputs hold them: `''` for unset. */
 export type MetadataDraft = { title: string; date: string; location: string; description: string }
@@ -39,21 +59,51 @@ export const METADATA_FIELDS: readonly MetadataField[] = [
   'description',
 ]
 
+/** What the operator changed. `clip-cuts-screen` adds its per-clip properties here. */
+export type Draft = {
+  /** Every chapter in the order shown: the read ones (deleted ones in place) and the added ones. */
+  chapters: readonly DraftChapter[]
+  orders: Orders
+  removed: Removals
+  metadata: MetadataDraft
+}
+
+/** What Edit mode read: never changes during the session. */
+export type Baseline = {
+  read: ReelDocument
+  chapters: readonly DraftChapter[]
+  original: Orders
+}
+
+/** The edits to the chapter list itself, as the save bar counts them. */
+export type ChapterChanges = { added: number; renamed: number; deleted: number; reordered: boolean }
+
 /** The editable view of the page's chapters; none without a detail (the needs-attention form). */
 export function editableChapters(detail: EventDetail | null): EditableChapter[] {
   if (detail === null) {
     return []
   }
-  return detail.chapters.map((chapter) => ({
+  return detail.chapters.map((chapter, index) => ({
+    key: `r${index}`,
     name: chapter.name,
     movable: chapter.clips.filter((clip) => clip.status !== 'ignored').map((clip) => clip.identity),
     ignored: chapter.clips.filter((clip) => clip.status === 'ignored').map((clip) => clip.identity),
   }))
 }
 
-/** Each chapter's movable order, keyed by name, in the order the chapters are shown. */
+/** Each chapter's movable order, keyed by its key, in the order the chapters are shown. */
 export function ordersOf(chapters: readonly EditableChapter[]): Orders {
-  return new Map(chapters.map((chapter) => [chapter.name, chapter.movable]))
+  return new Map(chapters.map((chapter) => [chapter.key, chapter.movable]))
+}
+
+/** The chapter list as read: every chapter under its own name, none deleted. */
+export function draftChapters(chapters: readonly EditableChapter[]): DraftChapter[] {
+  return chapters.map((chapter) => ({
+    key: chapter.key,
+    readName: chapter.name,
+    name: chapter.name,
+    deleted: false,
+  }))
 }
 
 // The statuses of a clip the document lists: on disk (active) or not (missing).
@@ -121,24 +171,75 @@ function sameOrder(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((identity, index) => identity === b[index])
 }
 
-/** The chapters whose order differs from the original, in the order shown. */
-function reordered(original: Orders, next: Orders): string[] {
-  return [...original.keys()].filter(
-    (name) => !sameOrder(original.get(name) ?? [], next.get(name) ?? []),
+/**
+ * The chapters whose order differs from the original, by key: a key present in
+ * only one of the two maps counts (an added chapter).
+ */
+function reordered(original: Orders, next: Orders): Set<ChapterKey> {
+  const keys = new Set([...original.keys(), ...next.keys()])
+  return new Set(
+    [...keys].filter((key) => !sameOrder(original.get(key) ?? [], next.get(key) ?? [])),
   )
 }
 
+/** The chapters a save keeps: every one but the deleted ones, in the order shown. */
+export function listedChapters(chapters: readonly DraftChapter[]): DraftChapter[] {
+  return chapters.filter((chapter) => !chapter.deleted)
+}
+
 /**
- * The chapters Save writes from the operator's order rather than from the
- * document: the reordered ones; or, when the document names no chapters, every
- * chapter shown with a clip to play, as a first save would seed them.
+ * What the operator did to the chapter list itself. A moved added chapter is
+ * part of "added", not a reorder; a placeholder of a deleted one is no place.
  */
-function writtenFromView(read: ReelDocument, original: Orders, next: Orders): string[] {
-  const changed = reordered(original, next)
-  if (changed.length === 0 || read.chapters.length > 0) {
-    return changed
+export function chapterChanges(
+  baseline: Baseline,
+  chapters: readonly DraftChapter[],
+): ChapterChanges {
+  const read = chapters.filter((chapter) => chapter.readName !== null)
+  const kept = read.filter((chapter) => !chapter.deleted).map((chapter) => chapter.key)
+  const keptKeys = new Set(kept)
+  const asRead = baseline.chapters.map((chapter) => chapter.key).filter((key) => keptKeys.has(key))
+  return {
+    added: chapters.length - read.length,
+    renamed: read.filter((chapter) => !chapter.deleted && chapter.name !== chapter.readName).length,
+    deleted: read.filter((chapter) => chapter.deleted).length,
+    reordered: !sameOrder(kept, asRead),
   }
-  return [...original.keys()].filter((name) => (next.get(name) ?? []).length > 0)
+}
+
+/** Whether the chapter list itself changed: a save then writes every chapter from the view. */
+export function isStructural(changes: ChapterChanges): boolean {
+  return changes.added > 0 || changes.renamed > 0 || changes.deleted > 0 || changes.reordered
+}
+
+/**
+ * What a save writes from the view rather than from the document: the chapters
+ * it writes in the order shown, each under its current name, from its order now
+ * (missing and NEW clips in place, ignored and removed ones left out). Every
+ * trigger lives here, and only here (`buildWriteBody`, `adoptedNewCount` and
+ * `isDirty` all ask it), so the count and the body cannot disagree:
+ *
+ * - a change to the chapter list (`isStructural`): every listed chapter, so
+ *   every NEW clip is adopted where the page shows it, and a chapter's name then
+ *   only decides where later clips go (D-12)
+ * - an order changed while the document names no chapters: every listed
+ *   chapter, as a first save seeds them, an empty one (only ignored clips) too
+ * - otherwise the chapters whose order changed (reordered, a missing clip
+ *   removed, a clip moved in or out); none for a metadata-only edit
+ */
+export function writtenFromView(baseline: Baseline, draft: Draft): DraftChapter[] {
+  const listed = listedChapters(draft.chapters)
+  if (isStructural(chapterChanges(baseline, draft.chapters))) {
+    return listed
+  }
+  const changed = reordered(baseline.original, draft.orders)
+  if (changed.size === 0) {
+    return []
+  }
+  if (baseline.read.chapters.length === 0) {
+    return listed
+  }
+  return listed.filter((chapter) => changed.has(chapter.key))
 }
 
 /**
@@ -146,42 +247,35 @@ function writtenFromView(read: ReelDocument, original: Orders, next: Orders): st
  *
  * - `look` and `ignore` go back as read, and so does `clips` (per-clip
  *   properties), less the entries of the `removed` clips: the engine refuses
- *   properties for a clip no chapter lists.
+ *   properties for a clip no chapter lists. A moved clip keeps its entry: it is
+ *   keyed by identity, not by chapter.
  * - A metadata field keeps its read value unless its draft says otherwise; an
  *   edited one is sent as typed, or unset when empty or whitespace-only.
- * - With no chapter reordered, `chapters` go back as read. Otherwise every
- *   chapter the document names keeps its place and list, except a reordered one,
- *   which takes the order shown (its ignored clips excluded, its missing and new
- *   ones kept where they stand); a reordered chapter the document does not name
- *   is appended. When the document names none, every chapter shown is written.
- *   A removal takes its clip out of the order, so its chapter is a reordered one.
+ * - `chapters`, in the order shown: a chapter written from the view
+ *   (`writtenFromView`) under its current name with its order now; every other
+ *   chapter the document names exactly as read; a chapter shown only from disk
+ *   and not written from the view stays unwritten. With nothing written from the
+ *   view that is the document's own list, untouched.
  */
-export function buildWriteBody(
-  read: ReelDocument,
-  original: Orders,
-  next: Orders,
-  metadata: MetadataDraft,
-  removed: ReadonlySet<string>,
-): ReelWriteBody {
+export function buildWriteBody(baseline: Baseline, draft: Draft): ReelWriteBody {
+  const { read } = baseline
+  const { metadata } = draft
   const changed = new Set(changedFields(read, metadata))
   const field = (name: MetadataField) =>
     changed.has(name) ? asSaved(metadata[name]) : (read.metadata[name] ?? null)
 
-  const fromView = writtenFromView(read, original, next)
-  const listFor = (name: string) => ({ name, clips: [...(next.get(name) ?? [])] })
+  const fromView = new Set(writtenFromView(baseline, draft).map((chapter) => chapter.key))
   const chapters =
-    fromView.length === 0
+    fromView.size === 0
       ? read.chapters
-      : read.chapters.length === 0
-        ? fromView.map(listFor)
-        : [
-            ...read.chapters.map((chapter) =>
-              fromView.includes(chapter.name) ? listFor(chapter.name) : chapter,
-            ),
-            ...fromView
-              .filter((name) => !read.chapters.some((chapter) => chapter.name === name))
-              .map(listFor),
-          ]
+      : listedChapters(draft.chapters).flatMap((chapter) => {
+          if (fromView.has(chapter.key)) {
+            return [{ name: chapter.name, clips: [...(draft.orders.get(chapter.key) ?? [])] }]
+          }
+          // Not written from the view: unrenamed, so its read name finds it in the document.
+          const authored = read.chapters.find((listed) => listed.name === chapter.readName)
+          return authored === undefined ? [] : [authored]
+        })
 
   return {
     metadata: {
@@ -193,7 +287,7 @@ export function buildWriteBody(
     look: read.look,
     chapters,
     clips: Object.fromEntries(
-      Object.entries(read.clips).filter(([identity]) => !removed.has(identity)),
+      Object.entries(read.clips).filter(([identity]) => !draft.removed.has(identity)),
     ),
     ignore: read.ignore,
   }
@@ -201,26 +295,27 @@ export function buildWriteBody(
 
 /** How many NEW clips a save adds to `reel.yaml`: those in the chapters written from the view. */
 export function adoptedNewCount(
-  read: ReelDocument,
-  original: Orders,
-  next: Orders,
+  baseline: Baseline,
+  draft: Draft,
   newClips: ReadonlySet<string>,
 ): number {
-  return writtenFromView(read, original, next).reduce(
-    (count, name) =>
-      count + (next.get(name) ?? []).filter((identity) => newClips.has(identity)).length,
+  return writtenFromView(baseline, draft).reduce(
+    (count, chapter) =>
+      count +
+      (draft.orders.get(chapter.key) ?? []).filter((identity) => newClips.has(identity)).length,
     0,
   )
 }
 
-/** Whether there is anything to save: a changed field, or an order that differs. */
-export function isDirty(
-  read: ReelDocument,
-  original: Orders,
-  next: Orders,
-  metadata: MetadataDraft,
-): boolean {
-  return changedFields(read, metadata).length > 0 || reordered(original, next).length > 0
+/**
+ * Whether there is anything to save: a changed field, or anything a save would
+ * write from the view (an order that differs, a change to the chapter list).
+ */
+export function isDirty(baseline: Baseline, draft: Draft): boolean {
+  return (
+    changedFields(baseline.read, draft.metadata).length > 0 ||
+    writtenFromView(baseline, draft).length > 0
+  )
 }
 
 /** `order` with the clip at `from` moved to `to`. */
@@ -232,7 +327,7 @@ export function moveClip(order: readonly string[], from: number, to: number): st
 }
 
 /** `orders` with `identity` taken out of `chapter`; null when the chapter does not list it. */
-export function removeClip(orders: Orders, chapter: string, identity: string): Orders | null {
+export function removeClip(orders: Orders, chapter: ChapterKey, identity: string): Orders | null {
   const order = orders.get(chapter)
   if (order === undefined || !order.includes(identity)) {
     return null
@@ -253,7 +348,7 @@ export function removeClip(orders: Orders, chapter: string, identity: string): O
  */
 export function restoreClip(
   orders: Orders,
-  chapter: string,
+  chapter: ChapterKey,
   identity: string,
   original: readonly string[],
 ): Orders {
@@ -268,6 +363,152 @@ export function restoreClip(
   const next = new Map(orders)
   next.set(chapter, [...order.slice(0, last + 1), identity, ...order.slice(last + 1)])
   return next
+}
+
+/** The chapter each clip was in when Edit mode opened. */
+export function originOf(original: Orders): ReadonlyMap<string, ChapterKey> {
+  return new Map(
+    [...original].flatMap(([key, order]) =>
+      order.map((identity): [string, ChapterKey] => [identity, key]),
+    ),
+  )
+}
+
+/**
+ * A chapter's original order less every clip it no longer holds (removed, or
+ * moved to another chapter): `movedSet`'s first argument. Its ranks then never
+ * exceed the order's length, and the clips left behind are not counted as
+ * moved for the ones that left.
+ */
+export function keptOriginal(original: readonly string[], order: readonly string[]): string[] {
+  const held = new Set(order)
+  return original.filter((identity) => held.has(identity))
+}
+
+function withChapters(draft: Draft, chapters: readonly DraftChapter[]): Draft {
+  return { ...draft, chapters }
+}
+
+/** `draft` with an empty chapter `name` appended under the new key `key`. */
+export function addChapter(draft: Draft, key: ChapterKey, name: string): Draft {
+  if (draft.chapters.some((chapter) => chapter.key === key)) {
+    return draft
+  }
+  return {
+    ...draft,
+    chapters: [...draft.chapters, { key, readName: null, name, deleted: false }],
+    orders: new Map(draft.orders).set(key, []),
+  }
+}
+
+/** `draft` with chapter `key` named `name` (the caller checked it: `checkName`). */
+export function renameChapter(draft: Draft, key: ChapterKey, name: string): Draft {
+  return withChapters(
+    draft,
+    draft.chapters.map((chapter) =>
+      chapter.key === key && !chapter.deleted ? { ...chapter, name } : chapter,
+    ),
+  )
+}
+
+/**
+ * `draft` with chapter `key` swapped with its nearest chapter that is not
+ * deleted, one place up (-1) or down (1). A deleted placeholder keeps its
+ * index, so a press always changes the order a save writes.
+ */
+export function moveChapter(draft: Draft, key: ChapterKey, delta: -1 | 1): Draft {
+  const from = draft.chapters.findIndex((chapter) => chapter.key === key)
+  if (from === -1 || draft.chapters[from].deleted) {
+    return draft
+  }
+  let to = from + delta
+  while (to >= 0 && to < draft.chapters.length && draft.chapters[to].deleted) {
+    to += delta
+  }
+  if (to < 0 || to >= draft.chapters.length) {
+    return draft
+  }
+  const chapters = [...draft.chapters]
+  chapters[from] = draft.chapters[to]
+  chapters[to] = draft.chapters[from]
+  return withChapters(draft, chapters)
+}
+
+/**
+ * `draft` with chapter `key` deleted (the caller checked it plays no clip). An
+ * added chapter is dropped with its order. A read one stays in place, marked,
+ * with its order and its removals, so `restoreChapter` brings both back.
+ */
+export function deleteChapter(draft: Draft, key: ChapterKey): Draft {
+  const chapter = draft.chapters.find((listed) => listed.key === key)
+  if (chapter === undefined || chapter.deleted) {
+    return draft
+  }
+  if (chapter.readName === null) {
+    const orders = new Map(draft.orders)
+    orders.delete(key)
+    return {
+      ...draft,
+      chapters: draft.chapters.filter((listed) => listed.key !== key),
+      orders,
+    }
+  }
+  return withChapters(
+    draft,
+    draft.chapters.map((listed) => (listed.key === key ? { ...listed, deleted: true } : listed)),
+  )
+}
+
+/** `draft` with the deleted chapter `key` back in its place. */
+export function restoreChapter(draft: Draft, key: ChapterKey): Draft {
+  return withChapters(
+    draft,
+    draft.chapters.map((chapter) =>
+      chapter.key === key && chapter.deleted ? { ...chapter, deleted: false } : chapter,
+    ),
+  )
+}
+
+/**
+ * `draft` with `identities` moved from chapter `from` to chapter `to`. Only the
+ * clips `from` plays are moved, so a repeated call moves nothing. A clip that
+ * returns to the chapter it was in when Edit mode opened goes back after its
+ * original predecessors, as an undone removal does (`restoreClip`); these are
+ * placed one by one in their original order, so a move and its reverse leave
+ * nothing to save. The others join the end, in the order they had.
+ */
+export function moveClips(
+  draft: Draft,
+  from: ChapterKey,
+  to: ChapterKey,
+  identities: readonly string[],
+  original: Orders,
+): Draft {
+  const source = draft.orders.get(from)
+  const target = draft.orders.get(to)
+  if (from === to || source === undefined || target === undefined) {
+    return draft
+  }
+  const picked = new Set(identities)
+  const moving = source.filter((identity) => picked.has(identity))
+  if (moving.length === 0) {
+    return draft
+  }
+  const home = original.get(to) ?? []
+  const homeAt = new Map(home.map((identity, index) => [identity, index]))
+  const returning = moving
+    .filter((identity) => homeAt.has(identity))
+    .sort((a, b) => (homeAt.get(a) ?? 0) - (homeAt.get(b) ?? 0))
+  let orders: Orders = new Map(draft.orders).set(
+    from,
+    source.filter((identity) => !picked.has(identity)),
+  )
+  for (const identity of returning) {
+    orders = restoreClip(orders, to, identity, home)
+  }
+  const joining = moving.filter((identity) => !homeAt.has(identity))
+  orders = new Map(orders).set(to, [...(orders.get(to) ?? []), ...joining])
+  return { ...draft, orders }
 }
 
 /**

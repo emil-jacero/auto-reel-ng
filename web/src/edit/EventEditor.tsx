@@ -1,6 +1,7 @@
 import './edit.css'
 
 import {
+  startTransition,
   useCallback,
   useEffect,
   useId,
@@ -16,7 +17,7 @@ import type { EventFailure, Problem } from '../api/events'
 import { fetchReel, saveReel } from '../api/reel'
 import type { ReelDocument, ReelReadResult, ReelSaveResult, ReelWriteBody } from '../api/reel'
 import { markEventsChanged } from '../events/changes'
-import { folderName, plural } from '../events/common'
+import { clipNames, folderName, plural } from '../events/common'
 import { FAILURE_LABEL, UNANSWERED_CAUSE, notReachableHint } from '../events/labels'
 import { FAILURE_LOOK } from '../events/tones'
 import { eventName } from '../jobs/labels'
@@ -28,23 +29,47 @@ import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
 import { SkeletonRows } from '../ui/Skeleton'
 import { keepToastsClearOf, toast } from '../ui/toast'
+import { MoveClipsDialog, NameDialog } from './ChapterDialogs'
+import type { MovableClip } from './ChapterDialogs'
+import { OWN_CHAPTER_HEADING, OWN_CHAPTER_NOTE, diskFolders, laterClipNotes } from './chapterNames'
+import { AddChapter, DeletedChapter, NO_CLIPS_TO_MOVE } from './ChapterTools'
+import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './ChapterTools'
 import { ClipOrderList } from './ClipOrderList'
-import type { MoveHandler, RemoveHandler, RestoreHandler } from './ClipOrderList'
+import type { MoveHandler, Origins, RemoveHandler, RestoreHandler } from './ClipOrderList'
 import {
+  addChapter,
   adoptedNewCount,
   buildWriteBody,
+  chapterChanges,
   changedFields,
+  deleteChapter,
   detailMatchesDocument,
+  draftChapters,
   editableChapters,
   isDirty,
+  keptOriginal,
+  listedChapters,
   metadataDraftOf,
+  moveChapter,
   moveClip,
+  moveClips,
   movedSet,
   ordersOf,
+  originOf,
   removeClip,
+  renameChapter,
+  restoreChapter,
   restoreClip,
 } from './draft'
-import type { EditableChapter, MetadataDraft, MetadataField, Orders, Removals } from './draft'
+import type {
+  Baseline,
+  ChapterChanges,
+  ChapterKey,
+  Draft,
+  DraftChapter,
+  EditableChapter,
+  MetadataField,
+} from './draft'
 import { FIELD_LABEL, MetadataForm } from './MetadataForm'
 import { SaveBar } from './SaveBar'
 import type { Operation, Pressed, SaveProblem } from './SaveBar'
@@ -58,13 +83,18 @@ import {
 } from './unsaved'
 
 /**
- * Edit mode: the event's clip order and metadata, saved explicitly.
+ * Edit mode: the event's chapters, clip order and metadata, saved explicitly.
  *
  * It reads `reel.yaml` (the document and its ETag) next to the detail the page
  * already shows, and saves one whole-document PUT under `If-Match` per explicit
  * Save. The body is always the document as read with only the operator's
  * edits applied (`draft.ts`). While a save is in flight the editor is locked
  * and the pressed control is busy; every failure keeps the edits and says why.
+ *
+ * The chapters themselves are edited here too: added, renamed, moved up or down,
+ * deleted once empty, and clips moved between them with a chapter's Move clips
+ * dialog (`ChapterTools.tsx`, `ChapterDialogs.tsx`). What a name means for clips
+ * added later (D-12) is said beside the chapter (`chapterNames.ts`).
  *
  * `event` is the page's detail, read once at mount: a later re-read of the page
  * never changes the order shown or the draft. It is null for the needs-attention
@@ -81,15 +111,19 @@ type ReadFailure = {
 
 type Ready = {
   status: 'ready'
-  read: ReelDocument
+  /** What Edit mode read: the document, its chapters and their orders. */
+  baseline: Baseline
+  /**
+   * The operator's edits: the chapter list, each chapter's order, the missing
+   * clips taken out of their chapter's order (Save leaves them out of reel.yaml),
+   * and the fields.
+   */
+  draft: Draft
   etag: string
-  original: Orders
-  orders: Orders
   /** The clip moved last: it takes the "moved" badge when a swap could give it to either. */
   lastMoved: string | null
-  /** The missing clips taken out of their chapter's order, which Save leaves out of reel.yaml. */
-  removed: Removals
-  metadata: MetadataDraft
+  /** Chapters added so far in this session: the next one's key is `a${added + 1}`. */
+  added: number
   /** The date input holds a date typed only in part (its value reads as ''). */
   dateIncomplete: boolean
   /** Bumped by Reset, which remounts the fields (a partial date has no value to reset). */
@@ -116,9 +150,15 @@ type Action =
   | { type: 'retrying' }
   | { type: 'read-failed'; failure: ReadFailure }
   | { type: 'read'; document: ReelDocument; etag: string; chapters: EditableChapter[] | null }
-  | { type: 'move'; chapter: string; from: number; to: number }
-  | { type: 'remove'; chapter: string; identity: string }
+  | { type: 'move'; chapter: ChapterKey; from: number; to: number }
+  | { type: 'remove'; chapter: ChapterKey; identity: string }
   | { type: 'restore'; identity: string }
+  | { type: 'chapter-add'; key: ChapterKey; name: string }
+  | { type: 'chapter-rename'; key: ChapterKey; name: string }
+  | { type: 'chapter-move'; key: ChapterKey; delta: -1 | 1 }
+  | { type: 'chapter-delete'; key: ChapterKey }
+  | { type: 'chapter-restore'; key: ChapterKey }
+  | { type: 'clips-move'; from: ChapterKey; to: ChapterKey; identities: readonly string[] }
   | { type: 'field'; field: MetadataField; value: string }
   | { type: 'date-validity'; incomplete: boolean }
   | { type: 'reset' }
@@ -130,11 +170,31 @@ type Action =
  * failure: there is nothing left to save. A vanished event stays said.
  */
 function afterEdit(next: Ready): Ready {
-  const dirty = isDirty(next.read, next.original, next.orders, next.metadata) || next.dateIncomplete
+  const dirty = isDirty(next.baseline, next.draft) || next.dateIncomplete
   if (dirty || (next.problem === null && next.refusal === null)) {
     return next
   }
   return { ...next, problem: next.problem?.kind === 'gone' ? next.problem : null, refusal: null }
+}
+
+/** The draft as read: nothing changed. */
+function initialDraft(baseline: Baseline): Draft {
+  return {
+    chapters: baseline.chapters,
+    orders: baseline.original,
+    removed: new Map(),
+    metadata: metadataDraftOf(baseline.read),
+  }
+}
+
+/** `state` with `draft`, unless the action changed nothing. */
+function withDraft(state: Ready, draft: Draft): Ready {
+  return draft === state.draft ? state : afterEdit({ ...state, draft })
+}
+
+/** Whether `key` is a chapter of the draft that a save keeps (not deleted). */
+function isListed(draft: Draft, key: ChapterKey): boolean {
+  return draft.chapters.some((chapter) => chapter.key === key && !chapter.deleted)
 }
 
 function reduce(state: State, action: Action): State {
@@ -149,16 +209,18 @@ function reduce(state: State, action: Action): State {
       if (action.chapters === null) {
         return { status: 'changed' }
       }
-      const original = ordersOf(action.chapters)
+      const baseline: Baseline = {
+        read: action.document,
+        chapters: draftChapters(action.chapters),
+        original: ordersOf(action.chapters),
+      }
       return {
         status: 'ready',
-        read: action.document,
+        baseline,
+        draft: initialDraft(baseline),
         etag: action.etag,
-        original,
-        orders: original,
         lastMoved: null,
-        removed: new Map(),
-        metadata: metadataDraftOf(action.document),
+        added: 0,
         dateIncomplete: false,
         resets: 0,
         pressed: null,
@@ -174,38 +236,73 @@ function reduce(state: State, action: Action): State {
   }
   switch (action.type) {
     case 'move': {
-      const order = state.orders.get(action.chapter)
+      const { draft } = state
+      const order = draft.orders.get(action.chapter)
       if (order === undefined || action.from === action.to) {
         return state
       }
-      const orders = new Map(state.orders)
+      const orders = new Map(draft.orders)
       orders.set(action.chapter, moveClip(order, action.from, action.to))
-      return afterEdit({ ...state, orders, lastMoved: order[action.from] })
+      return afterEdit({ ...state, draft: { ...draft, orders }, lastMoved: order[action.from] })
     }
     case 'remove': {
-      const orders = removeClip(state.orders, action.chapter, action.identity)
+      const { draft } = state
+      const orders = removeClip(draft.orders, action.chapter, action.identity)
       if (orders === null) {
         return state
       }
-      const removed = new Map(state.removed).set(action.identity, action.chapter)
-      return afterEdit({ ...state, orders, removed })
+      const removed = new Map(draft.removed).set(action.identity, action.chapter)
+      return afterEdit({ ...state, draft: { ...draft, orders, removed } })
     }
     case 'restore': {
-      const chapter = state.removed.get(action.identity)
-      if (chapter === undefined) {
+      const { draft } = state
+      const chapter = draft.removed.get(action.identity)
+      // Never into a deleted chapter: it plays no clip until its Undo.
+      if (chapter === undefined || !isListed(draft, chapter)) {
         return state
       }
       // Back after the clips it followed when Edit mode opened (draft.ts, `restoreClip`).
-      const original = state.original.get(chapter) ?? []
-      const orders = restoreClip(state.orders, chapter, action.identity, original)
-      const removed = new Map(state.removed)
+      const original = state.baseline.original.get(chapter) ?? []
+      const orders = restoreClip(draft.orders, chapter, action.identity, original)
+      const removed = new Map(draft.removed)
       removed.delete(action.identity)
-      return afterEdit({ ...state, orders, removed })
+      return afterEdit({ ...state, draft: { ...draft, orders, removed } })
     }
+    case 'chapter-add':
+      // The key the caller took from the counter, so it can focus the new chapter.
+      if (action.key !== `a${state.added + 1}`) {
+        return state
+      }
+      return {
+        ...withDraft(state, addChapter(state.draft, action.key, action.name)),
+        added: state.added + 1,
+      }
+    case 'chapter-rename':
+      return withDraft(state, renameChapter(state.draft, action.key, action.name))
+    case 'chapter-move':
+      return withDraft(state, moveChapter(state.draft, action.key, action.delta))
+    case 'chapter-delete':
+      // The caller checked that the chapter plays no clip (`deleteRefusal`).
+      return (state.draft.orders.get(action.key) ?? []).length > 0
+        ? state
+        : withDraft(state, deleteChapter(state.draft, action.key))
+    case 'chapter-restore':
+      return withDraft(state, restoreChapter(state.draft, action.key))
+    case 'clips-move':
+      if (!isListed(state.draft, action.from) || !isListed(state.draft, action.to)) {
+        return state
+      }
+      return withDraft(
+        state,
+        moveClips(state.draft, action.from, action.to, action.identities, state.baseline.original),
+      )
     case 'field':
       return afterEdit({
         ...state,
-        metadata: { ...state.metadata, [action.field]: action.value },
+        draft: {
+          ...state.draft,
+          metadata: { ...state.draft.metadata, [action.field]: action.value },
+        },
         // A refusal is about the date or title that was sent; editing them retires it.
         refusal: action.field === 'title' || action.field === 'date' ? null : state.refusal,
       })
@@ -216,10 +313,8 @@ function reduce(state: State, action: Action): State {
     case 'reset':
       return {
         ...state,
-        orders: state.original,
+        draft: initialDraft(state.baseline),
         lastMoved: null,
-        removed: new Map(),
-        metadata: metadataDraftOf(state.read),
         dateIncomplete: false,
         resets: state.resets + 1,
         problem: null,
@@ -396,10 +491,14 @@ function fieldWords(fields: readonly MetadataField[]): string {
     : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
 }
 
-/** What the save bar lists: the changed fields, the moves, the removals, and what a save adds. */
+/**
+ * What the save bar lists: the changed fields, the chapter edits, the moves, the
+ * removals, and what a save adds.
+ */
 function summarize(
   changed: readonly MetadataField[],
   dateIncomplete: boolean,
+  chapters: ChapterChanges,
   moved: number,
   removed: number,
   adopted: number,
@@ -409,6 +508,10 @@ function summarize(
   const parts = [
     fields.length > 0 && `${fieldWords(fields)} changed`,
     dateIncomplete && 'date incomplete',
+    chapters.added > 0 && `${plural(chapters.added, 'chapter', 'chapters')} added`,
+    chapters.renamed > 0 && `${plural(chapters.renamed, 'chapter', 'chapters')} renamed`,
+    chapters.deleted > 0 && `${plural(chapters.deleted, 'chapter', 'chapters')} deleted`,
+    chapters.reordered && 'chapter order changed',
     moved > 0 && `${plural(moved, 'clip', 'clips')} moved`,
     removed > 0 && `${plural(removed, 'missing clip', 'missing clips')} removed`,
     adopted > 0 && `adds ${plural(adopted, 'new clip', 'new clips')} to reel.yaml`,
@@ -422,8 +525,127 @@ const NONE_REMOVED: readonly string[] = []
 
 /** The chapter's heading, as the read view names it. */
 function chapterHeading(name: string, hasNamedChapter: boolean): string {
-  return name !== '' ? name : hasNamedChapter ? 'Main' : 'Clips'
+  return name !== '' ? name : hasNamedChapter ? OWN_CHAPTER_HEADING : 'Clips'
 }
+
+/** The chapter dialog open, if any: Add chapter, a chapter's Rename… or its Move clips. */
+type ChapterDialog =
+  | { kind: 'add' }
+  | { kind: 'rename'; key: ChapterKey }
+  | { kind: 'move'; key: ChapterKey }
+
+/** Where focus goes once a chapter edit is on screen: a control of a chapter, by class. */
+type ChapterFocus = {
+  key: ChapterKey | null
+  target: 'heading' | 'chapter-up' | 'chapter-down' | 'chapter-undo' | 'chapter-delete' | 'add'
+}
+
+/** The statuses of a clip on disk that the chapter plays: the ones Move clips offers. */
+function onDisk(clip: Clip | undefined): boolean {
+  return clip?.status === 'active' || clip?.status === 'new'
+}
+
+/** A chapter's heading in `draft` (`Main`, `Clips` or its name), for an announcement. */
+function headingIn(draft: Draft, key: ChapterKey): string {
+  const named = listedChapters(draft.chapters).some((chapter) => chapter.name !== '')
+  const chapter = draft.chapters.find((listed) => listed.key === key)
+  return chapter === undefined ? '' : chapterHeading(chapter.name, named)
+}
+
+/** "chapter 2 of 3": its place among the chapters a save keeps. */
+function placeIn(draft: Draft, key: ChapterKey): string {
+  const kept = listedChapters(draft.chapters)
+  return `chapter ${kept.findIndex((chapter) => chapter.key === key) + 1} of ${kept.length}`
+}
+
+/**
+ * Why a chapter cannot be deleted, or null when it can: it still plays a clip
+ * (moved out first, or removed when missing); or it is the event's own chapter and
+ * lists an ignored clip, which the page would list under it again after the save.
+ */
+function deleteRefusal(
+  chapter: DraftChapter,
+  heading: string,
+  order: readonly string[],
+  ignored: readonly string[],
+  clips: ReadonlyMap<string, Clip>,
+): string | null {
+  if (order.length > 0) {
+    const missing = order.filter((identity) => clips.get(identity)?.status === 'missing').length
+    const them = order.length === 1 ? 'it' : 'them'
+    const orRemove =
+      missing === 0 ? '' : `, or remove the missing ${missing === 1 ? 'one' : 'ones'}`
+    return (
+      `“${heading}” still plays ${plural(order.length, 'clip', 'clips')}. ` +
+      `Move ${them} to another chapter first${orRemove}.`
+    )
+  }
+  if (chapter.name === '' && ignored.length > 0) {
+    return (
+      `${heading} still lists ${plural(ignored.length, 'ignored clip', 'ignored clips')} ` +
+      'from the event folder, so it stays.'
+    )
+  }
+  return null
+}
+
+/** Whether two tools objects show the same: the same notes, controls and handlers. */
+function sameTools(a: ChapterToolsModel, b: ChapterToolsModel): boolean {
+  return (Object.keys(a) as (keyof ChapterToolsModel)[]).every((field) =>
+    field === 'notes'
+      ? a.notes.join('\n') === b.notes.join('\n')
+      : field === 'place'
+        ? a.place?.first === b.place?.first && a.place?.last === b.place?.last
+        : a[field] === b[field],
+  )
+}
+
+/**
+ * What Move clips offers for chapter `key`: its clips on disk, in play order, and
+ * the other chapters; and how many clips it leaves out, and why.
+ */
+function moveDialogProps(
+  draft: Draft,
+  original: ReadonlyMap<ChapterKey, readonly string[]>,
+  key: ChapterKey,
+  ignored: readonly string[],
+  removed: readonly string[],
+  clips: ReadonlyMap<string, Clip>,
+): {
+  heading: string
+  clips: MovableClip[]
+  missing: number
+  ignored: number
+  targets: { key: ChapterKey; heading: string }[]
+} {
+  const chapter = draft.chapters.find((listed) => listed.key === key)
+  const order = draft.orders.get(key) ?? []
+  // Named as the chapter's rows name them (ClipOrderList `nameOf`).
+  const nameOf = clipNames(chapter?.name ?? '', [
+    ...(original.get(key) ?? []),
+    ...order,
+    ...ignored,
+    ...removed,
+  ])
+  const offered = order.flatMap((identity, index) => {
+    const clip = clips.get(identity)
+    return clip !== undefined && onDisk(clip)
+      ? [{ identity, name: nameOf(identity), status: clip.status, position: index + 1 }]
+      : []
+  })
+  return {
+    heading: headingIn(draft, key),
+    clips: offered,
+    missing: order.filter((identity) => clips.get(identity)?.status === 'missing').length,
+    ignored: ignored.length,
+    targets: listedChapters(draft.chapters)
+      .filter((listed) => listed.key !== key)
+      .map((listed) => ({ key: listed.key, heading: headingIn(draft, listed.key) })),
+  }
+}
+
+const NO_CHANGES: ChapterChanges = { added: 0, renamed: 0, deleted: 0, reordered: false }
+const NO_ORIGINS: Origins = new Map()
 
 /** Above this share of the window's height the save bar rests in the page instead of being held. */
 const HELD_BAR_MAX_SHARE = 0.4
@@ -526,6 +748,14 @@ export function EventEditor({
   const retried = useRef<string | null>(null)
   const detailsHeadingRef = useRef<HTMLHeadingElement>(null)
   const readAgainRef = useRef<HTMLButtonElement>(null)
+  const editorRef = useRef<HTMLDivElement>(null)
+  const [chapterDialog, setChapterDialog] = useState<ChapterDialog | null>(null)
+  // The chapter whose Delete was pressed while refused: its reason shows until the next edit.
+  const [refusedDelete, setRefusedDelete] = useState<ChapterKey | null>(null)
+  // Where a chapter edit leaves focus, once it is on screen (the effects below).
+  const focusAfter = useRef<ChapterFocus | null>(null)
+  // The part of the page to scroll into view once focus is there.
+  const scrollAfter = useRef<HTMLElement | null>(null)
 
   const chapters = useMemo(() => editableChapters(detail), [detail])
   const clips = useMemo(
@@ -540,6 +770,11 @@ export function EventEditor({
   const newClips = useMemo(
     () => new Set([...clips.values()].filter((c) => c.status === 'new').map((c) => c.identity)),
     [clips],
+  )
+  const folders = useMemo(() => diskFolders(clips.values()), [clips])
+  const ignoredOf = useMemo(
+    () => new Map(chapters.map((chapter) => [chapter.key, chapter.ignored])),
+    [chapters],
   )
   const resolved = useMemo<Resolved | null>(
     () =>
@@ -603,19 +838,25 @@ export function EventEditor({
 
   const ready = state.status === 'ready' ? state : null
   const locked = ready !== null && ready.pressed !== null
-  const changed = ready === null ? [] : changedFields(ready.read, ready.metadata)
+  // A Move clips applied in a transition (`confirmMove`): until it lands, the page shows
+  // the order from before it, so no control that acts on what is shown may act yet.
+  const [movingFrom, setMovingFrom] = useState<ChapterKey | null>(null)
+  const listsLocked = locked || movingFrom !== null
+  const changed = ready === null ? [] : changedFields(ready.baseline.read, ready.draft.metadata)
+  const chapterEdits =
+    ready === null ? NO_CHANGES : chapterChanges(ready.baseline, ready.draft.chapters)
   let movedCount = 0
   if (ready !== null) {
-    // Against each original order without its removed clips: a removal alone moves nothing.
-    for (const [name, original] of ready.original) {
-      const kept = original.filter((identity) => !ready.removed.has(identity))
-      movedCount += movedSet(kept, ready.orders.get(name) ?? kept, ready.lastMoved).size
+    // Against each original order without the clips it no longer holds: a removal, or a
+    // clip moved out, moves nothing by itself; a clip moved in counts once, where it is.
+    for (const [key, order] of ready.draft.orders) {
+      const original = ready.baseline.original.get(key) ?? []
+      movedCount += movedSet(keptOriginal(original, order), order, ready.lastMoved).size
     }
   }
-  const adopted =
-    ready === null ? 0 : adoptedNewCount(ready.read, ready.original, ready.orders, newClips)
+  const adopted = ready === null ? 0 : adoptedNewCount(ready.baseline, ready.draft, newClips)
   // Edits to save, and edits at all (a date typed in part is one, but cannot be saved).
-  const edited = ready !== null && isDirty(ready.read, ready.original, ready.orders, ready.metadata)
+  const edited = ready !== null && isDirty(ready.baseline, ready.draft)
   const dirty = edited || (ready?.dateIncomplete ?? false)
   // While there are edits; a vanished event keeps its alert even without any.
   const showBar = ready !== null && (dirty || ready.problem?.kind === 'gone')
@@ -785,36 +1026,347 @@ export function EventEditor({
   )
 
   // Each chapter's removed clips, in its original order; one shared empty list for the rest.
-  const removals = ready?.removed
+  const removals = ready?.draft.removed
   const removedByChapter = useMemo(
     () =>
       new Map(
         chapters.map((chapter) => {
-          const listed = chapter.movable.filter((identity) => removals?.has(identity) === true)
-          return [chapter.name, listed.length === 0 ? NONE_REMOVED : listed]
+          const gone = chapter.movable.filter((identity) => removals?.get(identity) === chapter.key)
+          return [chapter.key, gone.length === 0 ? NONE_REMOVED : gone]
         }),
       ),
     [chapters, removals],
   )
 
+  // The chapter list now, and how the event's own chapter is headed: `Main` while a
+  // chapter a save keeps has a name, else `Clips`.
+  const draftList = ready?.draft.chapters
+  const orders = ready?.draft.orders
+  const originals = ready?.baseline.original
+  const listed = useMemo(() => listedChapters(draftList ?? []), [draftList])
+  const hasNamedChapter = listed.some((chapter) => chapter.name !== '')
+  const notes = useMemo(
+    () => laterClipNotes({ chapters: draftList ?? [], folders, ignored: ignoredOf }),
+    [draftList, folders, ignoredOf],
+  )
+  const origins = useMemo<Origins>(() => {
+    if (originals === undefined || draftList === undefined) {
+      return NO_ORIGINS
+    }
+    const headings = new Map(
+      draftList.map((chapter) => [chapter.key, chapterHeading(chapter.name, hasNamedChapter)]),
+    )
+    return new Map(
+      [...originOf(originals)].map(([identity, key]) => [
+        identity,
+        { key, heading: headings.get(key) ?? '' },
+      ]),
+    )
+  }, [originals, draftList, hasNamedChapter])
+
+  // The state the chapter handlers below act on: they stay the same functions, so
+  // a chapter's tools keep their memoised props and typing in a field re-renders no list.
+  const latest = useRef<Ready | null>(null)
+  // The chapter a Move clips is leaving, set before the transition starts and cleared
+  // when it lands: a press meanwhile would act on the order from before the move.
+  const moving = useRef<ChapterKey | null>(null)
+  useLayoutEffect(() => {
+    latest.current = ready
+    moving.current = movingFrom
+  })
+  /** Whether a chapter control may act now: not while a save or a Move clips is pending. */
+  const idle = (current: Ready | null): current is Ready =>
+    current !== null && current.pressed === null && moving.current === null
+
+  /** The later-clips notes a chapter has once `draft` is the draft, for an announcement. */
+  const notesIn = useCallback(
+    (draft: Draft, key: ChapterKey): string => {
+      const lines = laterClipNotes({ chapters: draft.chapters, folders, ignored: ignoredOf })
+      return (lines.get(key) ?? []).map((line) => ` ${line}`).join('')
+    },
+    [folders, ignoredOf],
+  )
+
+  const onAddChapter = useCallback(() => {
+    if (idle(latest.current)) {
+      setRefusedDelete(null)
+      setChapterDialog({ kind: 'add' })
+    }
+  }, [])
+
+  const onRenameChapter = useCallback<ChapterHandler>((key) => {
+    if (idle(latest.current)) {
+      setRefusedDelete(null)
+      setChapterDialog({ kind: 'rename', key })
+    }
+  }, [])
+
+  const onMoveClipsFrom = useCallback<ChapterHandler>(
+    (key) => {
+      const current = latest.current
+      if (!idle(current)) {
+        return
+      }
+      const order = current.draft.orders.get(key) ?? []
+      if (!order.some((identity) => onDisk(clips.get(identity)))) {
+        announce(NO_CLIPS_TO_MOVE)
+        return
+      }
+      setRefusedDelete(null)
+      setChapterDialog({ kind: 'move', key })
+    },
+    [announce, clips],
+  )
+
+  const onMoveChapter = useCallback<ChapterMoveHandler>(
+    (key, delta) => {
+      const current = latest.current
+      if (!idle(current)) {
+        return
+      }
+      const next = moveChapter(current.draft, key, delta)
+      if (next === current.draft) {
+        return
+      }
+      setRefusedDelete(null)
+      // The section moves in the DOM, which drops its focus: put it back (effects below).
+      focusAfter.current = { key, target: delta < 0 ? 'chapter-up' : 'chapter-down' }
+      dispatch({ type: 'chapter-move', key, delta })
+      announce(`“${headingIn(next, key)}” moved to ${placeIn(next, key)}.`)
+    },
+    [announce],
+  )
+
+  const onDeleteChapter = useCallback<ChapterHandler>(
+    (key) => {
+      const current = latest.current
+      const chapter = current?.draft.chapters.find((listedChapter) => listedChapter.key === key)
+      if (!idle(current) || chapter === undefined) {
+        return
+      }
+      const heading = headingIn(current.draft, key)
+      const refusal = deleteRefusal(
+        chapter,
+        heading,
+        current.draft.orders.get(key) ?? [],
+        ignoredOf.get(key) ?? [],
+        clips,
+      )
+      if (refusal !== null) {
+        // Nothing changes, focus stays on Delete; the reason shows and is said.
+        setRefusedDelete(key)
+        announce(refusal)
+        return
+      }
+      setRefusedDelete(null)
+      const next = deleteChapter(current.draft, key)
+      dispatch({ type: 'chapter-delete', key })
+      if (chapter.readName === null) {
+        focusAfter.current = { key: null, target: 'add' }
+        announce(`Chapter “${chapter.name}” removed.`)
+      } else {
+        focusAfter.current = { key, target: 'chapter-undo' }
+        announce(`“${heading}” will be deleted when you save.${notesIn(next, key)}`)
+      }
+    },
+    [announce, clips, ignoredOf, notesIn],
+  )
+
+  const onUndoDelete = useCallback<ChapterHandler>(
+    (key) => {
+      const current = latest.current
+      if (!idle(current)) {
+        return
+      }
+      const next = restoreChapter(current.draft, key)
+      setRefusedDelete(null)
+      focusAfter.current = { key, target: 'chapter-delete' }
+      dispatch({ type: 'chapter-restore', key })
+      announce(`“${headingIn(next, key)}” is back, ${placeIn(next, key)}.`)
+    },
+    [announce],
+  )
+
+  // Each listed chapter's tools: what it offers, its notes and why it cannot go. A
+  // chapter's object is kept while what it shows is unchanged, so its list re-renders
+  // only when its own tools change.
+  const toolsCache = useRef(new Map<ChapterKey, ChapterToolsModel>())
+  const tools = useMemo(() => {
+    const result = new Map<ChapterKey, ChapterToolsModel>()
+    const several = listed.length > 1
+    listed.forEach((chapter, index) => {
+      const heading = chapterHeading(chapter.name, hasNamedChapter)
+      const order = orders?.get(chapter.key) ?? NONE_REMOVED
+      const lines = [
+        chapter.name === '' && several && OWN_CHAPTER_NOTE,
+        chapter.readName === null && 'New chapter.',
+        chapter.readName !== null &&
+          chapter.name !== chapter.readName &&
+          `Renamed from “${chapter.readName}”.`,
+        ...(notes.get(chapter.key) ?? []),
+      ].filter((line): line is string => line !== false)
+      const refusal = several
+        ? deleteRefusal(chapter, heading, order, ignoredOf.get(chapter.key) ?? [], clips)
+        : undefined
+      const model: ChapterToolsModel = {
+        notes: lines,
+        rename: chapter.name !== '',
+        moveClips: !several
+          ? null
+          : order.some((identity) => onDisk(clips.get(identity)))
+            ? 'offered'
+            : 'empty',
+        place: several ? { first: index === 0, last: index === listed.length - 1 } : null,
+        deleteRefusal: refusal,
+        refusalShown: refusedDelete === chapter.key && refusal != null,
+        locked: listsLocked,
+        moveClipsBusy: movingFrom === chapter.key,
+        onRename: onRenameChapter,
+        onMoveClips: onMoveClipsFrom,
+        onMoveChapter,
+        onDelete: onDeleteChapter,
+      }
+      const previous = toolsCache.current.get(chapter.key)
+      result.set(
+        chapter.key,
+        previous !== undefined && sameTools(previous, model) ? previous : model,
+      )
+    })
+    toolsCache.current = result
+    return result
+  }, [
+    listed,
+    hasNamedChapter,
+    orders,
+    notes,
+    ignoredOf,
+    clips,
+    refusedDelete,
+    listsLocked,
+    movingFrom,
+    onRenameChapter,
+    onMoveClipsFrom,
+    onMoveChapter,
+    onDeleteChapter,
+  ])
+
+  // The unsaved-changes question closes an open chapter dialog first, as a cancel: in
+  // the same commit, so the question's dialog opens over the page, not over it.
+  const shownDialog = leaveQuestion === 0 ? chapterDialog : null
+  useEffect(() => {
+    if (leaveQuestion !== 0) {
+      setChapterDialog(null)
+    }
+  }, [leaveQuestion])
+
+  // Focus after a chapter edit, once its result is on screen (`focusAfter`): a layout
+  // effect, so no frame paints with focus on <body> after a section moved. The new
+  // chapter's heading is the exception, focused by the passive effect below: closing
+  // the name dialog returns focus to Add chapter from the dialog's own passive
+  // cleanup, which runs after every layout effect of the commit and would undo it.
+  useLayoutEffect(() => {
+    const request = focusAfter.current
+    const root = editorRef.current
+    if (request === null || request.target === 'heading' || root === null) {
+      return
+    }
+    focusAfter.current = null
+    const target =
+      request.target === 'add'
+        ? root.querySelector<HTMLElement>('.chapter-add-button')
+        : root.querySelector<HTMLElement>(
+            `[data-chapter-key="${request.key}"] .${request.target}`,
+          )
+    target?.focus({ preventScroll: true })
+    scrollAfter.current = target?.closest<HTMLElement>('.chapter-tools') ?? target
+  })
+
+  // The new chapter's heading takes focus here, after the dialog's cleanup; then the
+  // part of the page focus went to comes into view, clear of the header and the bar.
+  useEffect(() => {
+    const request = focusAfter.current
+    const root = editorRef.current
+    if (request !== null && request.target === 'heading' && root !== null) {
+      focusAfter.current = null
+      const section = root.querySelector<HTMLElement>(`[data-chapter-key="${request.key}"]`)
+      section?.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true })
+      scrollAfter.current = section
+    }
+    const element = scrollAfter.current
+    scrollAfter.current = null
+    element?.scrollIntoView({ block: 'nearest' })
+  })
+
+  function closeChapterDialog(): void {
+    setChapterDialog(null)
+  }
+
+  function confirmName(name: string): void {
+    const current = latest.current
+    if (current === null || shownDialog === null || shownDialog.kind === 'move') {
+      return
+    }
+    setChapterDialog(null)
+    if (shownDialog.kind === 'add') {
+      const key = `a${current.added + 1}`
+      const next = addChapter(current.draft, key, name)
+      focusAfter.current = { key, target: 'heading' }
+      dispatch({ type: 'chapter-add', key, name })
+      announce(`Chapter “${name}” added, ${placeIn(next, key)}. It has no clips.`)
+    } else {
+      const { key } = shownDialog
+      const before = headingIn(current.draft, key)
+      const next = renameChapter(current.draft, key, name)
+      dispatch({ type: 'chapter-rename', key, name })
+      announce(`“${before}” renamed to “${name}”.${notesIn(next, key)}`)
+    }
+  }
+
+  function confirmMove(identities: string[], to: ChapterKey): void {
+    if (shownDialog === null || shownDialog.kind !== 'move') {
+      return
+    }
+    const current = latest.current
+    setChapterDialog(null)
+    if (current === null) {
+      return
+    }
+    // The dialog closes at once; the lists follow in a transition (a 400-clip chapter
+    // re-renders every row), so the press is answered before that work is done. Until it
+    // lands every control acting on the lists is unavailable, and the pressed Move clips
+    // busy (`movingFrom`): the page still shows the order from before the move.
+    const from = shownDialog.key
+    moving.current = from
+    setMovingFrom(from)
+    startTransition(() => {
+      dispatch({ type: 'clips-move', from, to, identities })
+      setMovingFrom(null)
+    })
+    announce(
+      `${plural(identities.length, 'clip', 'clips')} moved to “${headingIn(current.draft, to)}”.`,
+    )
+  }
+
   function submit(pressed: Pressed, operation: Operation): void {
     // Never a half-typed date (it would be sent as unset) and never a save of nothing.
-    if (ready === null || saving.current || ready.dateIncomplete || !edited) {
+    // Nor while a Move clips is pending: the draft shown is the one from before it.
+    if (
+      ready === null ||
+      saving.current ||
+      moving.current !== null ||
+      ready.dateIncomplete ||
+      !edited
+    ) {
       return
     }
     saving.current = true
     dispatch({ type: 'save-start', pressed })
-    const body = buildWriteBody(
-      ready.read,
-      ready.original,
-      ready.orders,
-      ready.metadata,
-      new Set(ready.removed.keys()),
-    )
+    const { read } = ready.baseline
+    const body = buildWriteBody(ready.baseline, ready.draft)
     const name = eventName(
       eventId,
-      savedValue('title', ready.read, body, resolved),
-      savedValue('date', ready.read, body, resolved),
+      savedValue('title', read, body, resolved),
+      savedValue('date', read, body, resolved),
     )
     send(eventId, body, ready.etag, operation)
       .catch((error: unknown) => {
@@ -841,13 +1393,13 @@ export function EventEditor({
   }
 
   const retrying = state.status === 'failed' && state.retrying === true
-  const hasNamedChapter = chapters.some((chapter) => chapter.name !== '')
   const hasIgnored = chapters.some((chapter) => chapter.ignored.length > 0)
   const hasMissing = [...clips.values()].some((clip) => clip.status === 'missing')
   const clipCount = chapters.reduce((sum, chapter) => sum + chapter.movable.length, 0)
 
   return (
     <div
+      ref={editorRef}
       className="event-editor"
       // Keyboard focus that lands partly hidden comes into view whole: for a text area
       // the browser scrolls only its caret into view. Focus from a pointer press is
@@ -970,8 +1522,8 @@ export function EventEditor({
               </p>
               <MetadataForm
                 key={ready.resets}
-                read={ready.read}
-                draft={ready.metadata}
+                read={ready.baseline.read}
+                draft={ready.draft.metadata}
                 resolved={resolved}
                 changed={changed}
                 locked={locked}
@@ -988,18 +1540,21 @@ export function EventEditor({
             <div className="edit-hint">
               <Icon name="info" />
               <p>
-                Drag a clip by its handle, or use its arrows. Clips stay in their chapter.
+                Drag a clip by its handle, or use its arrows.
+                {' Clips stay in their chapter'}
+                {listed.length > 1 ? '; use a chapter’s Move clips to move them to another.' : '.'}
                 {hasIgnored && ' Ignored clips are not played and cannot be moved.'}
                 {hasMissing &&
                   ' A missing clip is not on disk: restore the file, or remove it from reel.yaml.'}
                 {adopted > 0 ? (
                   <strong>
                     {' '}
-                    Saving this order adds {plural(adopted, 'new clip', 'new clips')} to reel.yaml.
+                    Saving adds {plural(adopted, 'new clip', 'new clips')} to reel.yaml.
                   </strong>
                 ) : (
                   newClips.size > 0 &&
-                  ' A new clip joins reel.yaml once its chapter’s order is saved.'
+                  ' A new clip joins reel.yaml once its chapter’s order, or the list of ' +
+                    'chapters, is saved.'
                 )}
               </p>
             </div>
@@ -1013,26 +1568,43 @@ export function EventEditor({
           )}
 
           {detail !== null &&
-            chapters.map((chapter, index) => (
-              <ClipOrderList
-                key={chapter.name}
-                eventId={eventId}
-                index={index}
-                chapter={chapter.name}
-                heading={chapterHeading(chapter.name, hasNamedChapter)}
-                order={ready.orders.get(chapter.name) ?? chapter.movable}
-                original={chapter.movable}
-                ignored={chapter.ignored}
-                removed={removedByChapter.get(chapter.name) ?? NONE_REMOVED}
-                clips={clips}
-                lastMoved={ready.lastMoved}
-                locked={locked}
-                onMove={onMove}
-                onRemove={onRemove}
-                onRestore={onRestore}
-                onAnnounce={announce}
-              />
-            ))}
+            ready.draft.chapters.map((chapter) => {
+              const heading = chapterHeading(chapter.name, hasNamedChapter)
+              const model = tools.get(chapter.key)
+              return chapter.deleted || model === undefined ? (
+                <DeletedChapter
+                  key={chapter.key}
+                  chapterKey={chapter.key}
+                  heading={heading}
+                  notes={notes.get(chapter.key) ?? NONE_REMOVED}
+                  locked={listsLocked}
+                  onUndo={onUndoDelete}
+                />
+              ) : (
+                <ClipOrderList
+                  key={chapter.key}
+                  eventId={eventId}
+                  chapterKey={chapter.key}
+                  name={chapter.name}
+                  heading={heading}
+                  order={ready.draft.orders.get(chapter.key) ?? NONE_REMOVED}
+                  original={ready.baseline.original.get(chapter.key) ?? NONE_REMOVED}
+                  ignored={ignoredOf.get(chapter.key) ?? NONE_REMOVED}
+                  removed={removedByChapter.get(chapter.key) ?? NONE_REMOVED}
+                  clips={clips}
+                  origins={origins}
+                  lastMoved={ready.lastMoved}
+                  locked={listsLocked}
+                  tools={model}
+                  onMove={onMove}
+                  onRemove={onRemove}
+                  onRestore={onRestore}
+                  onAnnounce={announce}
+                />
+              )
+            })}
+
+          {detail !== null && <AddChapter locked={listsLocked} onAdd={onAddChapter} />}
 
           {showBar && (
             <SaveBar
@@ -1044,8 +1616,9 @@ export function EventEditor({
               summary={summarize(
                 changed,
                 ready.dateIncomplete,
+                chapterEdits,
                 movedCount,
-                ready.removed.size,
+                ready.draft.removed.size,
                 adopted,
               )}
               dateIncomplete={ready.dateIncomplete}
@@ -1061,6 +1634,36 @@ export function EventEditor({
             />
           )}
         </>
+      )}
+
+      {ready !== null && shownDialog !== null && shownDialog.kind !== 'move' && (
+        <NameDialog
+          self={shownDialog.kind === 'rename' ? shownDialog.key : null}
+          current={
+            shownDialog.kind === 'rename'
+              ? (ready.draft.chapters.find((chapter) => chapter.key === shownDialog.key)?.name ??
+                null)
+              : null
+          }
+          notes={{ chapters: ready.draft.chapters, folders, ignored: ignoredOf }}
+          onConfirm={confirmName}
+          onCancel={closeChapterDialog}
+        />
+      )}
+
+      {ready !== null && shownDialog !== null && shownDialog.kind === 'move' && (
+        <MoveClipsDialog
+          {...moveDialogProps(
+            ready.draft,
+            ready.baseline.original,
+            shownDialog.key,
+            ignoredOf.get(shownDialog.key) ?? NONE_REMOVED,
+            removedByChapter.get(shownDialog.key) ?? NONE_REMOVED,
+            clips,
+          )}
+          onConfirm={confirmMove}
+          onCancel={closeChapterDialog}
+        />
       )}
 
       {/* Keyed by the question, so one asked again before a render opens afresh. */}

@@ -546,6 +546,18 @@ function ChapterPanel({
   const ignored = chapter.clips.filter((clip) => clip.status === 'ignored')
   const nameOf = clipNames(chapter.name, chapter.clips.map((clip) => clip.identity))
   const count = plural(played.length, 'clip', 'clips')
+  if (chapter.clips.length === 0) {
+    // Added and saved without clips: its heading and count, and no table.
+    return (
+      <section className="panel">
+        <header className="panel-header">
+          <h2 id={headingId}>{heading}</h2>
+          <span className="panel-meta">{count}</span>
+        </header>
+        <p className="chapter-empty">No clips. This chapter is left out of the movie.</p>
+      </section>
+    )
+  }
   return (
     <section className="panel">
       <header className="panel-header">
