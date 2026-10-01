@@ -1,3 +1,4 @@
+import { VERDICT_LOOK } from '../events/tones'
 import type { StatusLook } from '../events/tones'
 import type { Tone } from '../ui/Pill'
 
@@ -15,10 +16,10 @@ export const MOVIE_AGE_LABEL: Record<MovieAge, string> = {
   outdated: 'Outdated',
 }
 
-/** The render verdict's looks (`VERDICT_LOOK`): the movie's age is that verdict. */
+/** The render verdict's looks: the movie's age is that verdict, so the two pills match. */
 export const MOVIE_AGE_LOOK: Record<MovieAge, StatusLook> = {
-  current: { tone: 'ok', icon: 'check' },
-  outdated: { tone: 'warn', icon: 'refresh' },
+  current: VERDICT_LOOK.fresh,
+  outdated: VERDICT_LOOK.stale,
 }
 
 /** Under an outdated movie; the render region above lists the reasons. */
@@ -27,7 +28,7 @@ export const OUTDATED_NOTE =
 
 /**
  * Why the section cannot offer or play the movie. The first three answer the
- * one-byte probe and replace the player; the last three follow Play and sit
+ * one-byte probe and replace the player; the last four follow Play and sit
  * under it. A probe with no usable answer uses the page's own words instead
  * (`unansweredFailure`).
  */
@@ -37,6 +38,7 @@ export type MovieTrouble =
   | 'empty'
   | 'no_picture'
   | 'cannot_play'
+  | 'load_failed'
   | 'changed'
 
 export const MOVIE_TROUBLE: Record<MovieTrouble, { title: string; tone: Tone }> = {
@@ -48,6 +50,8 @@ export const MOVIE_TROUBLE: Record<MovieTrouble, { title: string; tone: Tone }> 
     tone: 'warn',
   },
   cannot_play: { title: 'This browser could not play the movie.', tone: 'err' },
+  // MediaError 2: the loading broke off, which is not the browser's doing
+  load_failed: { title: 'The movie could not be loaded.', tone: 'err' },
   changed: { title: 'The movie file changed while it played.', tone: 'info' },
 }
 
