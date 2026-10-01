@@ -67,33 +67,33 @@ the page says which clip (or how many) and to restore it or remove it in Edit mo
 and the row says "Blocked by missing clips". A job already queued keeps its Cancel.
 
 The event page's **Edit mode** (slice D) is the client's first write. **Edit** reads the
-event's `reel.yaml` (`GET …/reel` and its `ETag`) and turns the page into an editor:
-the title, date, location and description as `reel.yaml` itself says them (an empty
-field inherits from the folder name, and says so), and each chapter's clips as a list
-to reorder — drag a clip's handle (mouse, pen or touch), lift it from the keyboard
-(Space or Enter, the arrows, Space or Enter; Escape cancels), or press its Move up /
-Move down. The rows keep the table's columns (`--clip-*`), so entering Edit mode moves
-nothing but the position number, and they name each clip as the table does
-(`clipNames`), a folder part included where a chapter lists a clip from another
-folder. Clips stay in their chapter; ignored clips are listed but never move. A
-chapter's heading counts the clips it plays; its removed and ignored lists count
-their own. A missing clip (listed in `reel.yaml`, not on disk) has a **Remove**, after
-its facts, that takes it out of the play order into a list captioned, for example,
-"1 clip removed from reel.yaml when you save", with **Undo** until Save; Save then
-drops only its `reel.yaml` entry and its own per-clip properties, and no file on disk
-is touched. A sticky save bar says what changed, with one primary action: **Save**,
-or a failure's way on while it holds Save back (Reload latest after a conflict, Back
-to the event list for a vanished event). Save sends one whole-document `PUT` under
-`If-Match` with only the operator's edits applied (`edit/draft.ts`); a failure keeps
-the edits and says why, in a compact alert inside the bar that fits a 320px window
-(a third of a phone's height for a conflict, two fifths with the service's full
-detail), and a conflict offers Reload latest or Overwrite with mine. A save that gets
-no answer says the service is not reachable, without the browser's error text. A
-successful save is confirmed by a toast that names the event by its title and date.
-When the `reel.yaml` read fails, **Try again** keeps the failure and its focus while it
-reads, then moves focus to the fields' heading. A save never enqueues a render.
-The list's "Needs attention" folder names open their event's page; when an event's
-date or title is unusable, that page shows the failure and a form to fix them.
+event's `reel.yaml` (`GET …/reel` and its `ETag`) and turns the page into an editor: the
+title, date, location and description as `reel.yaml` itself says them (an empty field
+inherits from the folder name, and says so), and each chapter's clips as a list to
+reorder — drag a clip's handle (mouse, pen or touch), lift it from the keyboard (Space
+or Enter, the arrows, Space or Enter; Escape cancels), or press its Move up / Move down.
+The rows keep the table's columns (`--clip-*`), so entering Edit mode moves nothing but
+the position number, and they name each clip as the table does (`clipNames`), a folder
+part included where a chapter lists a clip from another folder. Clips stay in their
+chapter; ignored clips are listed but never move. A chapter's heading counts the clips
+it plays; its removed and ignored lists count their own. A missing clip (listed in
+`reel.yaml`, not on disk) has a **Remove**, under its name (after its facts on a narrow
+panel), that takes it out of the play order into a list captioned, for example, "1 clip
+removed from reel.yaml when you save", with **Undo** until Save; Save then drops only
+its `reel.yaml` entry and its own per-clip properties, and no file on disk is touched. A
+sticky save bar says what changed, with one primary action: **Save**, or a failure's way
+on while it holds Save back (Reload latest after a conflict, Back to the event list for
+a vanished event). Save sends one whole-document `PUT` under `If-Match` with only the
+operator's edits applied (`edit/draft.ts`); a failure keeps the edits and says why, in a
+compact alert inside the bar that fits a 320px window (a third of a phone's height for a
+conflict, two fifths with the service's full detail), and a conflict offers Reload
+latest or Overwrite with mine. A save that gets no answer says the service is not
+reachable, without the browser's error text, and an error in the page itself says so,
+never "not reachable". A successful save is confirmed by a toast that names the event by
+its title and date. When the `reel.yaml` read fails, **Try again** keeps the failure and
+its focus while it reads, then moves focus to the fields' heading. A save never enqueues
+a render. The list's "Needs attention" folder names open their event's page; when an
+event's date or title is unusable, that page shows the failure and a form to fix them.
 
 Unsaved edits are never discarded silently: closing or reloading the tab gets the
 browser's own prompt, and Back, Forward, a link, a typed address, Refresh and Stop
