@@ -109,7 +109,10 @@
    * grid of two tracks: the job (its status, then its time on the next line) and,
    * at the cell's end on the first line, the row's action (Render, or why the
    * row is blocked), so the action has the same place in every row. Being
-   * block-level, the grid gives the cell its first baseline.
+   * block-level, the grid gives the cell its first baseline. The space before
+   * the action is the action's own margin, not a gap: a row with no action has
+   * an empty second track, and its job (an active job's bar) reaches the same
+   * edge as every action.
    */
   @container (width >= 50rem) {
     .event-table tbody tr:hover > td {
@@ -120,7 +123,7 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       align-items: baseline;
-      column-gap: var(--s-3);
+      column-gap: 0;
     }
 
     .event-table .live-job > .job-progress {
@@ -130,10 +133,22 @@
     .event-table .live-job > :is(.btn, .row-blocked) {
       grid-area: 1 / 2;
       justify-self: end;
+      margin-inline-start: var(--s-3);
     }
 
+    /*
+     * Why the row is blocked, on two lines whose words end at the action's
+     * edge: inline, so the icon stays beside the first line's words.
+     */
     .event-table .row-blocked {
+      display: block;
       max-inline-size: 7.5rem;
+      text-align: end;
+
+      & > svg {
+        margin-inline-end: var(--s-1);
+        vertical-align: middle;
+      }
     }
 
     .event-table .live-job .job-when {
