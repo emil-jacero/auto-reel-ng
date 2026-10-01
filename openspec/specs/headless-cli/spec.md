@@ -203,6 +203,22 @@ through `request_cancel`.
 API service under uvicorn until SIGINT/SIGTERM triggers a graceful shutdown (WebSocket poller stopped,
 connections closed, exit zero). A failure to bind SHALL exit non-zero naming the attempted host and port.
 
+When one SIGINT or one SIGTERM has stopped the service and its orderly shutdown has completed, the command
+SHALL exit with status 0 and SHALL NOT end with a traceback. This SHALL hold whichever of the two signals
+stopped it, with or without WebSocket clients connected, and whether it runs in a terminal (Ctrl-C) or under
+a supervisor that sends SIGTERM. A further SIGTERM while the shutdown is still running SHALL NOT change the
+outcome.
+
+A SIGINT that arrives while the shutdown is still running, whichever signal started it, is the operator's
+force-quit: the service no longer waits for request handlers that are still running, and skips its
+application shutdown if that has not started yet. It still waits for its client connections to end, so a
+connection the server cannot finish closing (api-service, "WebSocket live job updates": a vanished peer
+with frames backed up) keeps the command running through further SIGINTs until that connection ends.
+When the command then ends, it SHALL exit with status 130, never 0, so that a forced stop is not reported
+as a clean one, and it SHALL NOT end with a `KeyboardInterrupt` traceback of its own. A request handler
+that the forced stop cancels, and the application lifespan whose shutdown it skips, MAY still be logged
+as errors with their tracebacks.
+
 #### Scenario: Serve starts and answers
 - **WHEN** `auto-reel serve` runs against a project root and a reachable database
 - **THEN** `GET /healthz` on the configured host/port returns success
@@ -214,6 +230,24 @@ connections closed, exit zero). A failure to bind SHALL exit non-zero naming the
 #### Scenario: Bind failure is loud
 - **WHEN** the configured port is already in use
 - **THEN** the command exits non-zero naming the attempted host:port
+
+#### Scenario: One Ctrl-C stops serve with exit zero
+- **WHEN** `auto-reel serve` runs in a terminal, a GUI tab showing the event list holds its jobs WebSocket
+  open, and the operator presses Ctrl-C once
+- **THEN** the tab's connection is closed with code 1012 and the service logs "Application shutdown complete"
+- **AND** the command exits with status 0, and its output holds no traceback
+
+#### Scenario: One SIGTERM stops serve with exit zero
+- **WHEN** `podman stop` sends one SIGTERM to a running `auto-reel serve` with a WebSocket client connected
+- **THEN** the client's connection is closed with code 1012, the service completes its orderly shutdown, and
+  the command exits with status 0 without a traceback
+
+#### Scenario: A second Ctrl-C forces the exit and reports it
+- **WHEN** one Ctrl-C has started the shutdown of `auto-reel serve`, the shutdown is still waiting for a
+  request handler that keeps running after its client left, and the operator presses Ctrl-C again
+- **THEN** the service stops waiting and skips its application shutdown, so its log has no "Application
+  shutdown complete"
+- **AND** the command exits with status 130 and does not end with a `KeyboardInterrupt` traceback
 
 ### Requirement: Batch commands refuse colliding output paths
 

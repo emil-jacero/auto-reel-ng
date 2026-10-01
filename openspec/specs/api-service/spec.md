@@ -501,8 +501,10 @@ connection releases its subscription at once, whichever side ends it:
   code 1012 (service restart), release their subscriptions, finish its orderly shutdown (the poller stopped
   and the database connections released) and exit within a few seconds, however many connections are open.
   No second signal SHALL be needed. The exception is a connection to such a vanished peer with frames still
-  backed up. The server cannot finish closing it, so it can make the shutdown fail, or stall it until a
-  second SIGINT forces the exit.
+  backed up. The server cannot finish closing it, so it can make the shutdown fail, or stall it until the
+  host's TCP stack abandons the connection, which can take many minutes. A second SIGINT does not shorten
+  that stall: it skips the application shutdown, but the process still exits only once that connection has
+  ended.
 
 #### Scenario: Snapshot on connect
 - **WHEN** a client connects while two jobs are active
