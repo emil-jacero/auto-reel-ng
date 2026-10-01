@@ -21,6 +21,9 @@ dependencies = [
     "alembic>=1.18.5",
     "psycopg[binary]>=3.3.4",
     "fastapi>=0.139.0",
+    # Already FastAPI's own dependency; declared because api/ imports it directly and the
+    # media routes' 416 needs >= 1.0 (`Content-Range: bytes */<size>`; 0.x omits the unit).
+    "starlette>=1.0",
     "uvicorn>=0.51.0",
     # uvicorn ships no WebSocket implementation on its own (`uvicorn[standard]`
     # pulls in far more than needed here) — required for WS /api/v1/ws/jobs.

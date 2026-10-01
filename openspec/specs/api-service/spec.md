@@ -1393,10 +1393,10 @@ unchanged.
 - A `Range` header with no `=`, with no range in it, with a first byte after its last byte plus one, or
   naming a unit other than `bytes` SHALL be answered 400. The 400 and 416 bodies are plain text, not problem
   bodies.
-- Any other `Range` value, including several ranges, SHALL be answered with 206, 400 or 416, never with a
-  5xx, and SHALL NOT send a byte outside the file. Several ranges that do not overlap MAY be answered as one
-  `multipart/byteranges` 206. Browsers send neither, so their exact answer is the framework's, not a
-  contract.
+- Any other `Range` value, including several ranges, SHALL be answered with 200 (the whole file, the header
+  ignored), 206, 400 or 416, never with a 5xx, and SHALL NOT send a byte outside the file. Several ranges that
+  do not overlap MAY be answered as one `multipart/byteranges` 206. Browsers send neither, so their exact
+  answer is the framework's, not a contract.
 - `If-Range` SHALL be honored: the range is served only when its validator is the file's current `ETag` or
   `Last-Modified`, and the whole file with 200 otherwise.
 

@@ -763,6 +763,18 @@ def test_ranges_browsers_never_send_stay_bounded(client: TestClient) -> None:
     # ``bytes=5-4`` (last byte = first byte - 1): Starlette 1.3.1 answers an empty 206 with
     # ``Content-Range: bytes 5-4/<size>``; Starlette 1.7.0 refuses it as malformed (400).
     # The spec allows 206, 400 or 416 here, so either version passes; any byte would not.
+    # More than 100 ranges: Starlette 1.3.1 answers one multipart 206; Starlette 1.7.0 ignores
+    # the header (its ``max_ranges``) and sends the whole file as 200, as RFC 9110 allows.
+    many = client.get(
+        url, headers={"Range": "bytes=" + ",".join(f"{2 * i}-{2 * i}" for i in range(101))}
+    )
+    assert many.status_code in (200, 206)
+    if many.status_code == 200:
+        assert many.content == GRILL_1
+    else:
+        assert many.headers["content-type"].startswith("multipart/byteranges")
+        assert GRILL_1[0:2] not in many.content  # single bytes 0, 2, 4, …, never a run
+
     empty = client.get(url, headers={"Range": "bytes=5-4"})
     assert empty.status_code in (206, 400, 416)
     if empty.status_code == 206:
@@ -946,10 +958,10 @@ def test_an_unreadable_clip_is_a_502_without_a_kind(
     assert body.get("thumbnail_failure") is None
     assert "Permission denied" in str(body["detail"])
     assert str(tmp_path) not in str(body["detail"])
-    assert any(
-        record.levelno == logging.WARNING and "s1710002.mp4" in record.getMessage()
-        for record in caplog.records
-    )
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings == [
+        f"media: {GRILLNING}: s1710002.mp4: cannot read the file: Permission denied"
+    ]
 
 
 def test_an_unlistable_event_folder_is_a_502_unreadable_disk(

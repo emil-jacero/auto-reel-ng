@@ -2,8 +2,8 @@
 
 - **Movie containment is lexical** (`os.path.abspath`, never `resolve()`), as decision "Which file is the movie"
   argues: accepted.
-- **`bytes=5-4`** keeps Starlette's empty 206 (`Content-Range: bytes 5-4/<size>`), pinned by a test (task 4.1):
-  accepted.
+- **`bytes=5-4`** and the other ranges browsers never send get the framework's answer, which differs between
+  Starlette versions; the test accepts every answer the spec allows (see "Implementation notes"): accepted.
 - **`Cache-Control: private, no-cache` with a strong `ETag` and 304s**: accepted.
 - **An un-adopted legacy movie is not served** until `auto-reel adopt-renders` records it: accepted. The README
   entry and §4.9's paragraph say so (tasks 5.1, 5.2).
@@ -687,6 +687,13 @@ None that change the specs, the approach or the tasks. Deferred, by design:
   file byte), with a comment naming both versions. The media, OpenAPI and thumbnail tests pass on the
   pinned 1.3.1 venv and on a freshly resolved 1.7.0 venv. The implementing venv was pinned to the main
   checkout's versions (FastAPI 0.139.0, Starlette 1.3.1, uvicorn 0.51.0) so task 1.1's baseline holds.
+  More than 100 ranges are a 206 on 1.3.1 and a 200 with the whole file on 1.7.0 (`max_ranges`); the spec's
+  "any other `Range` value" bullet allows 200 (the header ignored, as RFC 9110 permits), and a 101-range
+  case in the test accepts 200 or 206.
+- **`starlette>=1.0` is declared** in `pyproject.toml`. It is not a new dependency: FastAPI already brings it,
+  and `api/` imports it directly (`FileResponse`, `run_in_threadpool`). FastAPI 0.139 accepts Starlette from
+  0.46, but releases before 1.0 send the 416 as `Content-Range: */<size>` with no unit, which breaks the
+  spec's 416 scenarios; 1.0 is the first release that sends `bytes */<size>`.
 - **Problem bodies.** A 502 from an unreadable file or an unknown layout carries no `failure` key at all, as
   the thumbnail route's kindless 502s do; a 502 from an event read carries `failure`. A client reads the
   field as absent either way.
