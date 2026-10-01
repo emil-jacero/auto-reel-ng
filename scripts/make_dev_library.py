@@ -182,7 +182,7 @@ def main() -> None:
     # Phase 2: edit disk so the list shows each kind of staleness.
     _edit_title(
         library / "2024/2024-06-27 - Grillning med grannar/reel.yaml", "Grillkväll med grannarna"
-    )  # stale: editorial
+    )  # stale: editorial, output_renamed (its old movie stays)
     _link(library / "2024/2024-08-02 - Badutflykt - Varberg", clips, ["s1710004.mp4"])  # NEW
     sommarlov = library / "2024/2024-09-01 - Sommarlov"
     _link(sommarlov, clips, ["s1710002.mp4", "s1710004.mp4"])

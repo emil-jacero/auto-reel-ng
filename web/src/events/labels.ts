@@ -11,6 +11,7 @@ import type { Unanswered } from '../api/http'
 export const REASON_LABEL: Record<StalenessReason, string> = {
   no_manifest: 'never rendered',
   output: 'movie file missing',
+  output_renamed: 'movie name changed',
   editorial: 'edited since last render',
   defaults: 'project defaults changed',
   clip_set: 'clips changed',

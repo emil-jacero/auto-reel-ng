@@ -774,6 +774,16 @@ export interface components {
          * StalenessReason
          * @description The closed set of reasons a stale verdict may cite.
          *
+         *     - ``no_manifest``: no readable record of a last render exists to compare against.
+         *     - ``output``: the event's movie is missing from its expected path, and the last
+         *       render's movie is not on disk under another name either.
+         *     - ``output_renamed``: the event's movie name (its title, date or location) changed
+         *       since the last render, whose movie is still on disk under its old name. The next
+         *       render writes the movie under the new name and leaves the old file where it is.
+         *     - ``editorial``, ``defaults``, ``clip_set``, ``engine``: that fingerprint component
+         *       changed since the last render (the ``reel.yaml`` document, the project's look
+         *       defaults, the clips on disk, the render engine).
+         *
          *     A :class:`~enum.StrEnum` member *is* a ``str``, so a reason compares, joins,
          *     formats and serializes exactly as the bare string it replaces — the wire
          *     values are unchanged by construction. The component members mirror
@@ -781,7 +791,7 @@ export interface components {
          *     by the gate's tests, so a new component cannot ship without its reason).
          * @enum {string}
          */
-        StalenessReason: "no_manifest" | "output" | "editorial" | "defaults" | "clip_set" | "engine";
+        StalenessReason: "no_manifest" | "output" | "output_renamed" | "editorial" | "defaults" | "clip_set" | "engine";
         /**
          * ThumbnailFailure
          * @description Why a clip's thumbnail could not be served: the API's classification of engine errors.

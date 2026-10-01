@@ -1,12 +1,21 @@
-"""Tests for the staleness gate: fresh, each stale arm, reasons, MISSING clip (task 1.3)."""
+"""Tests for the staleness gate: fresh, each stale arm, reasons, MISSING clip (task 1.3).
+
+Also the rename reason (change ``output-renamed-reason``): an absent expected movie whose
+last render's movie is still on disk under its old D-9 name cites ``output_renamed`` in place
+of ``output``, and never changes whether the event is stale.
+"""
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
+import pytest
+
 from auto_reel_ng.reel.document import Chapter, ClipRef, Metadata, ReelDocument
+from auto_reel_ng.render import output_relpath
 from auto_reel_ng.staleness.fingerprint import COMPONENTS, compute_fingerprint, engine_identity
-from auto_reel_ng.staleness.gate import StalenessReason, evaluate
+from auto_reel_ng.staleness.gate import StalenessReason, Verdict, evaluate
 from auto_reel_ng.staleness.manifest import write_manifest
 
 FFMPEG_VERSION = (7, 1)
@@ -110,7 +119,11 @@ def test_component_members_are_exactly_the_fingerprint_components() -> None:
     A fifth fingerprint component added without its reason fails here rather than
     raising out of :func:`evaluate` the first time that component changes.
     """
-    non_components = (StalenessReason.NO_MANIFEST, StalenessReason.OUTPUT)
+    non_components = (
+        StalenessReason.NO_MANIFEST,
+        StalenessReason.OUTPUT,
+        StalenessReason.OUTPUT_RENAMED,
+    )
     component_members = tuple(reason for reason in StalenessReason if reason not in non_components)
 
     assert tuple(reason.value for reason in component_members) == COMPONENTS
@@ -133,3 +146,136 @@ def test_reasons_are_enum_members_carrying_the_unchanged_wire_values(tmp_path: P
     no_manifest = evaluate(tmp_path / "unrendered", tmp_path / "unrendered" / "x.mp4", changed_fp)
     assert isinstance(no_manifest.reasons[0], StalenessReason)
     assert no_manifest.reasons == ("no_manifest",)
+
+
+# --- The rename reason --------------------------------------------------------------------------
+
+GRILLNING = Metadata(title="Grillning med Grannar", date=date(2024, 6, 27))
+MIDSOMMAR_2024 = Metadata(title="Midsommar", date=date(2024, 6, 21), location="Dalarna")
+MIDSOMMAR_2023 = Metadata(title="Midsommar", date=date(2023, 6, 23), location="Dalarna")
+
+
+def _render_named(tmp_path: Path, metadata: Metadata) -> tuple[Path, Path]:
+    """Render ``metadata``'s event as the engine does, into ``tmp_path / "out"``.
+
+    The movie goes at its D-9 path and the manifest records that movie's bare file name.
+    Returns the event folder and the movie.
+    """
+    event_dir = tmp_path / "event"
+    event_dir.mkdir()
+    _setup(event_dir)
+    movie = tmp_path / "out" / output_relpath(metadata)
+    movie.parent.mkdir(parents=True, exist_ok=True)
+    movie.write_bytes(b"rendered")
+    write_manifest(
+        event_dir,
+        _fingerprint(event_dir, document=_document_named(metadata)),
+        output=movie.name,
+        engine_identity=engine_identity(FFMPEG_VERSION),
+    )
+    return event_dir, movie
+
+
+def _document_named(metadata: Metadata) -> ReelDocument:
+    return ReelDocument(
+        metadata=metadata, chapters=(Chapter(name="", clips=(ClipRef("clip.mp4"),)),)
+    )
+
+
+def _evaluate_named(tmp_path: Path, event_dir: Path, metadata: Metadata) -> Verdict:
+    """The gate's verdict for the event now named by ``metadata``, at its current D-9 path."""
+    expected = tmp_path / "out" / output_relpath(metadata)
+    return evaluate(
+        event_dir, expected, _fingerprint(event_dir, document=_document_named(metadata))
+    )
+
+
+def _as_before(reasons: tuple[StalenessReason, ...]) -> tuple[str, ...]:
+    """The reasons today's gate (before ``output_renamed``) cites for the same disk state."""
+    return tuple("output" if reason == "output_renamed" else reason for reason in reasons)
+
+
+def test_retitle_cites_output_renamed(tmp_path: Path) -> None:
+    event_dir, old_movie = _render_named(tmp_path, GRILLNING)
+    retitled = Metadata(title="Grillkväll med grannarna", date=GRILLNING.date)
+
+    verdict = _evaluate_named(tmp_path, event_dir, retitled)
+
+    assert verdict.stale is True
+    assert verdict.reasons == ("editorial", "output_renamed")
+    assert _as_before(verdict.reasons) == ("editorial", "output")
+    assert old_movie.read_bytes() == b"rendered"
+
+
+def test_location_change_cites_output_renamed(tmp_path: Path) -> None:
+    event_dir, _ = _render_named(tmp_path, MIDSOMMAR_2024)
+    moved = Metadata(title="Midsommar", date=MIDSOMMAR_2024.date, location="Leksand")
+
+    verdict = _evaluate_named(tmp_path, event_dir, moved)
+
+    assert verdict.stale is True
+    assert verdict.reasons == ("editorial", "output_renamed")
+    assert _as_before(verdict.reasons) == ("editorial", "output")
+
+
+def test_date_moved_to_another_year_cites_output_renamed(tmp_path: Path) -> None:
+    """The old movie stays in ``2023/``; the expected path is in ``2022/``."""
+    event_dir, old_movie = _render_named(tmp_path, MIDSOMMAR_2023)
+    redated = Metadata(title="Midsommar", date=date(2022, 6, 23), location="Dalarna")
+    assert old_movie.parent.name == "2023"
+
+    verdict = _evaluate_named(tmp_path, event_dir, redated)
+
+    assert verdict.stale is True
+    assert verdict.reasons == ("editorial", "output_renamed")
+    assert _as_before(verdict.reasons) == ("editorial", "output")
+
+
+@pytest.mark.parametrize("recorded", ["", "2024", "absolute", "../Grillning.mp4"])
+def test_a_recorded_value_that_is_not_a_bare_movie_file_cites_output(
+    tmp_path: Path, recorded: str
+) -> None:
+    """A hand-edited manifest never claims a rename, even when its value names something on disk."""
+    event_dir, old_movie = _render_named(tmp_path, GRILLNING)
+    (tmp_path / "Grillning.mp4").write_bytes(b"rendered")  # what ``out/../Grillning.mp4`` names
+    value = str(old_movie) if recorded == "absolute" else recorded
+    write_manifest(
+        event_dir,
+        _fingerprint(event_dir, document=_document_named(GRILLNING)),
+        output=value,
+        engine_identity=engine_identity(FFMPEG_VERSION),
+    )
+    retitled = Metadata(title="Grillkväll med grannarna", date=GRILLNING.date)
+
+    verdict = _evaluate_named(tmp_path, event_dir, retitled)
+
+    assert verdict.stale is True
+    assert verdict.reasons == ("editorial", "output")
+    assert _as_before(verdict.reasons) == ("editorial", "output")
+    assert old_movie.is_file()
+
+
+def test_renamed_with_old_movie_deleted_cites_output(tmp_path: Path) -> None:
+    event_dir, old_movie = _render_named(tmp_path, GRILLNING)
+    old_movie.unlink()
+    retitled = Metadata(title="Grillkväll med grannarna", date=GRILLNING.date)
+
+    verdict = _evaluate_named(tmp_path, event_dir, retitled)
+
+    assert verdict.stale is True
+    assert verdict.reasons == ("editorial", "output")
+    assert _as_before(verdict.reasons) == ("editorial", "output")
+
+
+def test_expected_movie_present_cites_neither(tmp_path: Path) -> None:
+    """A leftover file at the new path: the next render replaces it, so no output reason."""
+    event_dir, old_movie = _render_named(tmp_path, GRILLNING)
+    retitled = Metadata(title="Grillkväll med grannarna", date=GRILLNING.date)
+    (tmp_path / "out" / output_relpath(retitled)).write_bytes(b"leftover")
+
+    verdict = _evaluate_named(tmp_path, event_dir, retitled)
+
+    assert verdict.stale is True
+    assert verdict.reasons == ("editorial",)
+    assert _as_before(verdict.reasons) == ("editorial",)
+    assert old_movie.is_file()

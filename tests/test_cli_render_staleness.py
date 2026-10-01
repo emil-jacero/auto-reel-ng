@@ -81,6 +81,68 @@ def test_force_re_renders_a_fresh_event_and_replaces_output(
     assert manifest_after.fingerprint == manifest_before.fingerprint
 
 
+def _scan_line(root: Path, capsys: pytest.CaptureFixture[str]) -> str:
+    """The one staleness line ``scan`` prints for a single-event project."""
+    assert main(["scan", str(root)]) == 0
+    lines = [line.strip() for line in capsys.readouterr().out.splitlines()]
+    return next(line for line in lines if line == "fresh" or line.startswith("stale: "))
+
+
+def test_retitle_scans_as_renamed_and_render_keeps_the_old_movie(
+    runtime: FfmpegRuntime, make_clip, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A retitle reads ``output_renamed``; no render (failed, ok or forced) touches the old movie."""
+    root, event_dir = _project(tmp_path, make_clip)
+    year_dir = default_output_dir(root) / "2024"
+    assert main(["render", str(root)]) == 0
+    capsys.readouterr()
+    old = year_dir / "2024-06-21 - Party.mp4"
+    old_stat = old.stat()
+
+    reel_path = event_dir / "reel.yaml"
+    reel_path.write_text(
+        reel_path.read_text(encoding="utf-8").replace("Party", "Party Renamed"), encoding="utf-8"
+    )
+    assert _scan_line(root, capsys) == "stale: editorial, output_renamed"
+
+    # A failed render (an unreadable clip) changes nothing: no new movie, same manifest.
+    clip = event_dir / "00400.mp4"
+    clip_bytes = clip.read_bytes()
+    manifest_before = read_manifest(event_dir)
+    clip.write_bytes(b"")
+    assert main(["render", str(root)]) == 1
+    capsys.readouterr()
+    assert read_manifest(event_dir) == manifest_before
+    new = year_dir / "2024-06-21 - Party Renamed.mp4"
+    assert not new.exists()
+    assert (old.stat().st_size, old.stat().st_mtime_ns) == (old_stat.st_size, old_stat.st_mtime_ns)
+    assert _scan_line(root, capsys) == "stale: editorial, clip_set, output_renamed"
+
+    # A successful render writes the new name beside the old movie and records it.
+    clip.write_bytes(clip_bytes)
+    assert main(["render", str(root)]) == 0
+    capsys.readouterr()
+    assert new.exists()
+    assert (old.stat().st_size, old.stat().st_mtime_ns) == (old_stat.st_size, old_stat.st_mtime_ns)
+    manifest = read_manifest(event_dir)
+    assert manifest is not None
+    assert manifest.output == "2024-06-21 - Party Renamed.mp4"
+    assert _scan_line(root, capsys) == "fresh"
+
+    # A forced render after another rename keeps both earlier movies.
+    reel_path.write_text(
+        reel_path.read_text(encoding="utf-8").replace("Party Renamed", "Fest"), encoding="utf-8"
+    )
+    assert main(["render", str(root), "--force"]) == 0
+    capsys.readouterr()
+    assert sorted(path.name for path in year_dir.iterdir()) == [
+        "2024-06-21 - Fest.mp4",
+        "2024-06-21 - Party Renamed.mp4",
+        "2024-06-21 - Party.mp4",
+    ]
+    assert (old.stat().st_size, old.stat().st_mtime_ns) == (old_stat.st_size, old_stat.st_mtime_ns)
+
+
 def test_removed_overwrite_flag_fails_loud(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as exc:
         main(["render", str(tmp_path), "--overwrite"])

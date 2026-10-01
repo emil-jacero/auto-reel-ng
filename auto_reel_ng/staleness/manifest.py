@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,6 +27,9 @@ PathLike = Union[str, Path]
 
 MANIFEST_FILENAME = "render-manifest.json"
 _MANIFEST_VERSION = 1
+
+#: A D-9 movie name's ISO date prefix; its year names the folder the movie lives in.
+_DATE_PREFIX = re.compile(r"([0-9]{4})-[0-9]{2}-[0-9]{2} - ")
 
 
 @dataclass(frozen=True)
@@ -98,10 +102,37 @@ def read_manifest(event_dir: PathLike) -> Optional[RenderManifest]:
         return None
 
 
+def recorded_output_path(recorded: str, expected_output: PathLike) -> Path:
+    """Where the naming rule (D-9) put a movie named ``recorded``, beside ``expected_output``.
+
+    ``expected_output`` is the event's current expected path: ``<output>/<YYYY>/<name>`` for a
+    dated name, ``<output>/<name>`` for an undated one. It supplies ``<output>``. A dated
+    ``recorded`` name lives in its own date's year folder, an undated one directly in
+    ``<output>``. ``recorded`` is a bare file name; the gate checks that before calling. Pure:
+    no filesystem access. An undated title that itself starts with ``YYYY-MM-DD - `` is placed
+    in that year's folder, where it is not (gate: ``output``).
+    """
+    expected = Path(expected_output)
+    expected_year = _year_folder(expected.name)
+    in_year_folder = expected_year is not None and expected.parent.name == expected_year
+    output_dir = expected.parent.parent if in_year_folder else expected.parent
+    recorded_year = _year_folder(recorded)
+    if recorded_year is None:
+        return output_dir / recorded
+    return output_dir / recorded_year / recorded
+
+
+def _year_folder(name: str) -> Optional[str]:
+    """The year folder D-9 puts a movie of this name in, or ``None`` for an undated name."""
+    match = _DATE_PREFIX.match(name)
+    return match.group(1) if match else None
+
+
 __all__ = [
     "MANIFEST_FILENAME",
     "RenderManifest",
     "manifest_path",
     "write_manifest",
     "read_manifest",
+    "recorded_output_path",
 ]

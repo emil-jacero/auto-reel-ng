@@ -135,13 +135,14 @@ def test_save_makes_a_previously_fresh_event_stale(client: TestClient, project: 
     body = {**BASE_BODY, "metadata": {**BASE_BODY["metadata"], "title": "Changed"}}
     response = client.put(f"/api/v1/events/{_event_id()}/reel", json=body)
     assert response.status_code == 200
-    verdict = response.json()["staleness"]
-    assert verdict["stale"] is True
-    assert "editorial" in verdict["reasons"]
+    # The title feeds the movie's name: the old movie is on disk under the old one.
+    renamed = {"stale": True, "reasons": ["editorial", "output_renamed"]}
+    assert response.json()["staleness"] == renamed
 
     follow_up = client.get(f"/api/v1/events/{_event_id()}")
-    assert follow_up.json()["staleness"]["stale"] is True
+    assert follow_up.json()["staleness"] == renamed
 
+    assert output_path.read_bytes() == b"already-rendered"  # the write never touches the movie
     assert client.get("/api/v1/jobs").json() == []  # the write never enqueues
 
 
