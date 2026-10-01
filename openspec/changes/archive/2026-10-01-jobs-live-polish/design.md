@@ -235,12 +235,14 @@ type Asking = { kind: 'force' } | { kind: 'cancel'; jobId: string; mayHaveStarte
 ```
 
 - `mayHaveStarted` is set when the shown status is not `running`. The dialog's one paragraph then begins
-  "The connection is down, so this render may have started." before the existing sentence.
+  "The connection is down, so this render may have started." before the existing sentence. (Changed in
+  review: it is read at each render, from the connection and the shown status, and `Asking` no longer
+  carries it. See "Changed during review", item 6.)
 - The confirm button cancels `asking.jobId`, the job the question named, and never a job shown later.
 - A queued job while live still cancels at once, as the spec's scenario requires.
 
 **Rationale**: One condition closes the spec gap without depending on a Refresh. The copy stays true: it
-is captured when the question opens.
+is read from the state as it is now, so a reconnect does not leave it saying the connection is down.
 
 ### Dialogs close when their question is gone
 
@@ -269,10 +271,12 @@ useEffect(() => {
 }, [questionGone, closeDialog])
 ```
 
-**Rationale**: The dialog's own opener is gone in every one of these cases: Cancel is not rendered once the
-job is not cancellable, and Render anyway is not rendered once a job is active or the event needs a
-render. The focus rule below therefore always applies, and focus lands on the status that states the new
-fact. The status is a `role="status"` region whose words just changed, and it is focused, so the new state
+**Rationale**: The dialog's own opener is gone in almost every one of these cases: Cancel is not rendered
+once the job is not cancellable, and Render anyway is not rendered once a job is active or the event needs
+a render. The exception is another job shown in the asked job's place, whose own Cancel can take the
+opener's node. (Changed in review: a dialog that closes by itself now always hands focus to the status,
+and Cancel is keyed by its job. See "Changed during review", item 4.) Focus lands on the status that
+states the new fact. The status is a `role="status"` region whose words just changed, and it is focused, so the new state
 is read.
 
 ### Focus after a dialog whose opener is gone
@@ -319,7 +323,8 @@ The paths that work today stay the same:
   `watchRemoval` hands focus to the status.
 
 **Rationale**: The fix is local, it covers the closed-by-itself case with the same code, and it is correct
-under a browser that moves focus to `<body>` at once.
+under a browser that moves focus to `<body>` at once. (Changed in review: `focusIsLost()` alone missed a
+self-closed question whose opener node survived. See "Changed during review", item 4.)
 
 ### A running job reads at most 99%
 
@@ -365,7 +370,8 @@ the time wraps at every width. On the page it wraps at 390 and 320px, and not at
 line, with no dot. A running row with progress has no words, so it keeps its pill and time together where
 they fit, as today; the list's row layout is `event-list-polish`'s. (Changed in review: every active job's
 time in a row now takes its own line, words or not. See "A list row keeps its height".) The rules replace
-`jobs.css` 142-152:
+`jobs.css` 142-152 (changed in review: the clip applies to `.render-status` only, see "Changed during
+review", item 2):
 
 ```css
 .job-state:has(> .job-words + .job-when) {
@@ -436,7 +442,10 @@ measured the rows, and the review then asked for them too (see "A list row keeps
 **Rationale**: The line is reserved from the first active state, so queued, starting, running, cancelling
 and last-known all have one meter height. The card no longer grows when the first percentage arrives, at
 any width. A meter whose figures wrap below the bar can still grow. That happens only when the
-percentage, an estimate and "last known" all show at the narrowest widths.
+percentage, an estimate and "last known" all show at the narrowest widths. (Changed in review: at 320–390
+px the percentage and the estimate alone wrapped below the bar, so the card grew a line at the end of
+every render longer than a minute. A narrow card now always puts its figures on their own reserved line.
+See "Changed during review", item 8.)
 
 **Measured, and accepted by the supervisor as option (a)** (`verify/jobs-live-polish/spike_narrow.py`,
 this-year dates):
@@ -520,7 +529,9 @@ and other-year dates, at the nine widths. `check_separator.py` checks it at eigh
 
 **Rationale**: The first percentage no longer moves a row, at any width. At card widths from 360 to 768 px
 a row keeps one height through every active state. That holds wherever an active job's words fit beside
-its pill.
+its pill. (Changed in review: the row's bar changed length at each state, because the figures beside it
+changed width. The figures now sit in a slot as wide as "Starting…". See "Changed during review",
+item 7.)
 
 **Trade-offs**:
 
@@ -549,7 +560,9 @@ list stays quiet (`render-progress-screen/design.md:366`).
 - One list-level status region. That lives in `EventList.tsx`, `event-list-polish`'s file.
 - A polite toast from the answer handler that already toasts every other answer.
 
-**Decision**: Use the toast.
+**Decision**: Use the toast. (Changed in review: the toast covered the next rows' Render controls, so
+`enqueued` and `active` are now said through a visually hidden status region of the jobs slice, with no
+toast. See "Changed during review", item 1.)
 
 - `enqueued` raises `toast.info('Render queued: <name>', Open)`.
 - `active` raises `toast.info('Render already queued or running: <name>', Open)`.
@@ -585,7 +598,10 @@ the dev library has two "Midsommar" events (2023 and 2024), and the Kalas pair.
   sentence:
   - the store's live endings: 'Rendered <name>', 'Render failed: <name>' and 'Render canceled: <name>'
   - a row's answers: 'Render queued: <name>', 'Render already queued or running: <name>', 'Already up to
-    date: <name>' and 'No longer exists: <name>'
+    date: <name>' and 'No longer exists: <name>' (changed in review: the first two are announced, not
+    toasted, with the same words)
+  - the page's cancel answers (added in review): 'Render canceled before it started: <name>', 'Render
+    stopping at the next segment: <name>' and 'Render had already finished: <name>'
   - a row's failures keep their shape '<name>: <sentence> <detail>'
 - `store.ts`'s `tracked` becomes a `Map<jobId, name>`, and `track(jobId, name)` records it. Every `track`
   call site has the name. `onEnded` announces `tracked.get(job.id)`, and a job with no entry raises
@@ -623,8 +639,9 @@ is purely visual, and no requirement describes it.
 This change edits:
 
 - `web/src/jobs/useJob.ts`, `JobProgress.tsx`, `RenderControl.tsx`, `LiveJobCell.tsx`, `store.ts`,
-  `labels.ts` and `jobs.css`
-- two sentences of `web/README.md`
+  `labels.ts` and `jobs.css`; in review also `JobsIndicator.tsx` and a new `announce.ts`
+- two sentences of `web/README.md`; in review also the jobs slice's line for `announce.ts` in its source
+  tree
 - two lines each in other changes' files: `web/src/events/EventList.tsx` (`event-list-polish`,
   `title={event.title}` and `date={event.date}` on `<LiveJobCell>`) and `web/src/events/EventDetail.tsx`
   (`event-page-polish`, the same two props on `<RenderControl>`)
@@ -675,6 +692,112 @@ Coordination with the other changes:
   round's brief. It is mitigated here for the cancel dialog: the dialog now closes when its job ends, and
   focus goes to the status, whose words say the job ended.
 
+### Changed during review
+
+The supervisor's review found two major and six minor defects. It used two review lenses, and a skeptic
+re-checked each finding. All eight were fixed in new commits on `pr/jobs-live-polish`. The archived spec
+delta and the synced `openspec/specs/web-app/spec.md` were changed to match, as listed at the end. The
+checks are scratch Playwright scripts against this branch's serve on :8116 (`verify/jobs-live-polish/`):
+`check_rows.py`, `check_dialogs.py`, `check_names.py`, `check_review.py`, and the real-worker
+`check_e2e.py`.
+
+1. **A row's own Render raised a toast over the next rows' Render controls (major).** The toast region
+   sits over the table's "Last job" column at desktop width and spans the full width on a phone. A Render
+   pressed low in the viewport therefore put a toast over the next row's Render. A tap there then hit the
+   toast's Open link. Now `enqueued` and `active` say 'Render queued: <name>' and 'Render already queued
+   or running: <name>' through a visually hidden, polite status region, `jobs/announce.ts`. The region:
+   - is rendered once, by `JobsIndicator`, which the shell always mounts, so it exists before its first
+     message
+   - puts each message in a new node, so a repeat is said again
+   - is cleared after 5 s, so the text does not stay in the header
+
+   The row shows the job at once, so a sighted operator loses only the Open link. The row's other answers
+   keep their toasts. **Measured** at 1280×900 (pointer) and 390×844 (touch), with Badutflykt's Render in
+   the viewport's bottom band, after pressing Två Kapitel's Render:
+   - no toast shows
+   - `elementFromPoint` at the centre of Badutflykt's Render returns that button
+   - a real click or tap there renders Badutflykt and does not navigate
+2. **A row's time was cut under user text spacing (major, WCAG 1.4.12).** `overflow-x: clip` applied to
+   every job state with words, list rows included. A row draws no dot to clip. The clip now applies to
+   `.render-status` only. **Measured** with the 1.4.12 overrides and other-year dates:
+   - in the 1280 and 1024 table, the queued and cancelling rows' times end 14.8 px past their job state,
+     unclipped, and hit-test as the time
+   - the page keeps its clip, with its time whole, at 1280, 390, 360 and 320 px
+3. **A routine row toast could evict an unread error (minor).** Fixed by item 1: the row's own Render
+   raises no toast, so three held "Render failed" toasts survive a fourth row's Render. A row's "Already up
+   to date" info toast, which `main` already raised, can still evict an error when three errors are held.
+   That eviction rule belongs to `ui/toast.ts` (`ui-a11y-polish`), so it is a follow-up.
+4. **A cancel question that closed by itself could leave focus on another job's Cancel (minor).** Job J
+   was asked about while the connection was down, and the reconnect showed job K for the same event. K's
+   Cancel reused J's unkeyed node, so `Dialog` restored focus to it, and `focusIsLost()` was false. The
+   next Enter then cancelled K without asking. Two fixes:
+   - a question that closes by itself always hands focus to the job status (a `selfClosed` ref that the
+     hand-off effect honours)
+   - Cancel is keyed by its job, so a focused Cancel whose job gave way is removed and also hands focus
+     to the status (the same swap while live, in one delta)
+
+   Render and Render anyway stay unkeyed on purpose: the "fresh" answer turns the pressed Render into
+   Render anyway in place. A Render anyway question that closes by itself is covered by the first fix.
+5. **The cancel answer's toast did not name the event (minor).** It was the only notification of a
+   canceled-queued ending, because it suppresses the store's named ending toast. `CANCEL_OUTCOME_LABEL`
+   now holds prefixes, and the toast ends with the name, as the other toasts do:
+   - 'Render canceled before it started: “Blandat” · 2024-11-02'
+   - 'Render stopping at the next segment: <name>'
+   - 'Render had already finished: <name>'
+6. **The cancel dialog kept saying "The connection is down…" after a reconnect (minor).** The sentence was
+   captured when the question opened. It is now read at each render: `!connectionLive && job.status !==
+   'running'`. `Asking` no longer carries `mayHaveStarted`. The dialog stays open, so a confirmation the
+   operator is reading does not vanish, and confirming still cancels the job it asked about. Checked
+   with the job still queued after the reconnect, and with it now running.
+7. **A row's progress bar changed length at every state change (minor).** The bar shares a flex line
+   with figures of varying width. A row's figures now sit in `.job-slot`, an inline grid. Its hidden
+   `::before` (`content: attr(data-reserve)`, which holds `STARTING`) is stacked under the figures, so the
+   slot is at least as wide as "Starting…" from the first active state, and the figures end where
+   "Starting…" ends. **Measured:**
+   - Grillkväll's bar keeps one length from queued through Starting…, 9%, 40% and cancelling.
+   - Every active row's bar has that length too: 84.3 px at 1280 and 1024, 220.1 at 768, 142.8 at 600,
+     260.3 at 390 and 190.3 at 320, in light and dark.
+   - Row heights are unchanged: `check_separator.py` passes 206/206.
+
+   A queued row's bar is shorter than on `main`: 84 against 148 px at 1280. "last known" can still widen
+   the slot during an outage.
+8. **At 320–390 px the card grew a line when the estimate appeared (minor).** On one line, the meter
+   needs the bar's 8rem flex basis, the 0.75rem gap and the figures. "99% · less than a minute left" is
+   181.2 px in Noto Sans (172.8 in Liberation Sans, 160.4 in DejaVu Sans), so the meter needs 20.1rem of
+   card content. The card is now a named inline-size container (`render-card`). Below 20.5rem of content,
+   the figures always take their own line under the bar. That line is reserved from the first active
+   state: `min-block-size` is the bar, the row gap and the figures' line, with `align-content:
+   flex-start`, so the bar does not move.
+
+   **Measured**, card height in px for Starting… → 4% (no estimate) → with the estimate:
+
+   | viewport | card content | card px |
+   |---|---|---|
+   | 320, 340, 360 | 254, 274, 294 px | 153.2 → 129.7 → 129.7 |
+   | 390 | 324 px | 129.7 → 129.7 → 129.7 |
+   | 430, 480 | 362, 408 px | 117.7 → 89.5 → 89.5 |
+   | 768, 1280 | 673, 1118 px | 89.5 → 89.5 → 89.5 |
+
+   The shrink at Starting… → 4% is the accepted option (a). The narrow card is 12 px taller than before in
+   every active state.
+
+**Spec**, changed in the archived delta and the synced spec alike:
+- The progress requirement keeps the indicator's height when the estimate appears too, with a new
+  320 px scenario.
+- The cancel requirement:
+  - the "may have started" sentence holds only while the connection is down and the job is not shown
+    running
+  - the dialog also closes when another job shows in its place, and focus goes to the status even when
+    a Cancel for another job is shown
+  - the queued-cancel scenario's notification names the event
+  - two scenarios are added: another job takes the question's place, and the sentence goes after a
+    reconnect
+- The list requirement:
+  - a row's created and already-active answers are told to assistive technology, with no visible
+    notification
+  - what a row tells assistive technology names the event as its notifications do
+  - the confirmed-in-words scenario says no notification is shown over the list
+
 ## Failure behavior & idempotency
 
 - **No new request.** A dialog that closes by itself sends nothing. Cancel's extra confirmation adds no
@@ -699,9 +822,12 @@ Coordination with the other changes:
 - **[A silently dead socket]** A half-open socket stays `live`, so the store keeps winning → this is
   unchanged from today and out of scope (proposal, Non-goals).
 - **[A second job for the event]** The dialog-closing rule compares the shown job's id with the question's
-  → a cancel question about job J closes when job K is shown instead, rather than cancelling K.
+  → a cancel question about job J closes when job K is shown instead, rather than cancelling K, and focus
+  goes to the status, never to K's Cancel (changed in review).
 - **[Toast noise on the list]** Each row's Render now adds a 5 s info toast → at most three toasts are held
   and successes dismiss themselves. The toast carries the event's link, which is useful far down the list.
+  (Changed in review: that toast covered the next rows' Render and could evict an unread error, so a row's
+  own Render is now announced without a toast.)
 - **[Two events with one title]** A title alone can fit two events (both Midsommar events, the Kalas pair),
   where the folder name it replaces could not. → The toast adds the event's date, so the Midsommar pair
   reads '“Midsommar” · 2023-06-23' and '“Midsommar” · 2024-06-21'. The Kalas pair shares title and date,
@@ -719,12 +845,22 @@ Coordination with the other changes:
 - **[A meter whose figures wrap]** At the narrowest widths, a meter showing a percentage, an estimate and
   "last known" together can wrap its figures below the bar, and the card then grows by a line → this is
   rare, because the estimate shows only for the store's copy, and "last known" only while the connection is
-  down.
+  down. (Changed in review: the percentage and the estimate alone wrapped at 320–390 px; a narrow card now
+  reserves that line. Only all three together, offline, can still wrap: 266.5 px in Noto Sans, against a
+  254 px card at 320 px.)
 - **[Merge conflicts with parallel polish changes]** → The ownership split above keeps every hunk in
   separate blocks. The gate task checks `git diff bca64f2 main -- web/src/jobs` before starting.
 - **[`overflow-x: clip` on `.job-state`]** This could clip a future focusable child → a job state holds
   none today. The comment on the rule says why the clip is safe, so a later change that adds a control
-  there sees the constraint.
+  there sees the constraint. (Changed in review: it also cut a row's other-year time under user text
+  spacing, so it now applies to the event page's status only.)
+- **[A narrow card's reserved line]** Below 20.5rem of card content the meter reserves a second line, so a
+  waiting or starting card at 320–390 px is 12 px taller than before → it keeps one height while it runs.
+  The threshold is measured for Noto Sans, the widest of the fonts checked. The card is now an inline-size
+  container: a later layout must give it a definite width (a grid or flex item that stretches), as
+  `event-page-polish`'s `.render-panel` does.
+- **[The row's reserved slot]** A queued row's bar is shorter than on `main` (84 against 148 px at 1280),
+  so that it keeps one length once the job starts → bars in a list of active rows line up.
 
 ## Migration Plan
 
