@@ -60,11 +60,18 @@
     color: var(--fg-muted);
   }
 
-  /* A look-alike row's folder path, under its title. */
+  /*
+   * A look-alike row's folder path under its title, then why it is shown: each
+   * on its own line, so the path never breaks to make room for the note.
+   */
   .event-folder {
     display: block;
     color: var(--fg-muted);
     font-size: var(--text-xs);
+
+    & > span {
+      display: block;
+    }
   }
 
   .cell-clips {

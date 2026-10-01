@@ -12,9 +12,12 @@ anywhere on an event's row (not on its controls, and not one that selects text)
 opens its **event page** (slice C) at `#/event/<id>`, as its title does; the title
 link stays the row's one keyboard stop. Two events that would read the same (the
 same date, title and location, ignoring case) also show their folder's path, for
-example `2024/2024-07-14 - Kalas`. An empty library says so and how to add an
-event; when the Needs render choice hides every event, the list says nothing needs
-rendering and offers **Show all events**, which hands focus back to the All choice.
+example `2024/2024-07-14 - Kalas`, and say that they read the same as another
+event; the title link is described by both, the note first, since two paths can
+differ only in a letter's case, which screen readers do not voice. An empty
+library says so and how to add an event; when the Needs render choice hides every
+event, the list says nothing needs rendering and offers **Show all events**, which
+hands focus back to the All choice.
 Each finished read and each filter change is announced with the counts. The event
 page shows the event's facts, with the folder name beside a title that differs from
 it; one render region holding the verdict and the latest job; then its chapters,
