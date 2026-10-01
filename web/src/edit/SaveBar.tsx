@@ -32,8 +32,9 @@ export type SaveProblem =
   | { kind: 'gone'; detail: string }
   | { kind: 'disk'; title: string; failure: EventFailure | null; detail: string; retry: Operation }
   | { kind: 'unreachable' | 'unpublished'; detail: string; retry: Operation }
-  // An error in this page itself, not an answer of the service (EventEditor's catch).
-  | { kind: 'page'; detail: string; retry: Operation }
+  // An error in this page itself, not an answer of the service: EventEditor's catch,
+  // which logs its text and stack to the console.
+  | { kind: 'page'; retry: Operation }
 
 const PAGE_ERROR_TITLE = 'The save stopped on an error in this page.'
 
@@ -261,9 +262,9 @@ function SaveProblemAlert({
               </>
             )
           }
-          // No answer: the title says it all, and the browser's error text ("TypeError: Failed
-          // to fetch") would add nothing but a line.
-          detail={problem.kind === 'unreachable' ? null : problem.detail}
+          // No answer, or an error in this page: the title says it all, and the browser's
+          // error text ("TypeError: Failed to fetch") would add nothing but a line.
+          detail={problem.kind === 'unreachable' || problem.kind === 'page' ? null : problem.detail}
           action={
             <>
               <button
