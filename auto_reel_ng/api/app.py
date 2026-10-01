@@ -26,6 +26,7 @@ from ..persistence.job_store import JobStore
 from .problem import service_unavailable
 from .routes.events import router as events_router
 from .routes.jobs import router as jobs_router
+from .routes.media import router as media_router
 from .settings import ApiSettings
 from .thumbnails import ThumbnailGate
 from .ws import JobsHub, publish_ws_schema
@@ -115,6 +116,10 @@ def create_app(settings: ApiSettings, *, auth_checker: Optional[AuthChecker] = N
             return service_unavailable(f"database check failed: {exc}", check="database")
         return Response(status_code=200, content='{"status":"ok"}', media_type="application/json")
 
+    # Before the events router, deliberately: its detail route ``/events/{event_id:path}``
+    # is greedy over ``/`` and Starlette tries routes in registration order, so the media
+    # router's ``…/media`` and ``…/movie`` would otherwise be read as event ids.
+    app.include_router(media_router)
     app.include_router(events_router)
     app.include_router(jobs_router)
     app.include_router(ws_router)

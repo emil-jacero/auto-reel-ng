@@ -27,6 +27,7 @@ from ...reel.document import ReelDocument
 from ...staleness.fingerprint import editorial_hash
 from ...thumbs import is_cached, one_line_cause, thumbnail_for
 from .. import events_read
+from ..media import etag_matches
 from ..problem import (
     bad_gateway,
     bad_request,
@@ -225,9 +226,9 @@ async def _revalidated(if_none_match: str, source: events_read.ThumbnailSource) 
     A ``W/`` prefix is ignored and a comma-separated list is accepted. ``*`` matches
     only when the JPEG is already cached: only then does a current representation exist.
     """
-    candidates = [candidate.strip() for candidate in if_none_match.split(",") if candidate.strip()]
-    if any(candidate.removeprefix("W/") == source.etag for candidate in candidates):
+    if etag_matches(if_none_match, source.etag):
         return True
+    candidates = [candidate.strip() for candidate in if_none_match.split(",")]
     return "*" in candidates and await run_in_threadpool(is_cached, source.cache_path)
 
 

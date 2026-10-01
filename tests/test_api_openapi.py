@@ -13,6 +13,7 @@ import copy
 import json
 from pathlib import Path
 
+import pytest
 from fastapi.openapi.utils import get_openapi
 from fastapi.testclient import TestClient
 
@@ -45,6 +46,8 @@ EXPECTED_PATHS = {
     "/api/v1/events/{event_id}/analysis",
     "/api/v1/events/{event_id}/reel",
     "/api/v1/events/{event_id}/thumbnail",
+    "/api/v1/events/{event_id}/media",
+    "/api/v1/events/{event_id}/movie",
     "/api/v1/jobs",
     "/api/v1/jobs/{job_id}",
     "/api/v1/jobs/{job_id}/cancel",
@@ -246,6 +249,46 @@ def test_the_thumbnail_route_publishes_its_parameters_and_responses() -> None:
     for code in ("200", "304"):
         assert {"ETag", "Cache-Control"} <= set(responses[code]["headers"]), code
     assert "content" not in responses["304"]
+    for code in ("404", "502"):
+        ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
+        assert ref.endswith("/ProblemOut"), code
+
+
+@pytest.mark.parametrize(
+    ("path", "required_query"),
+    [("/api/v1/events/{event_id}/media", {"clip"}), ("/api/v1/events/{event_id}/movie", set())],
+)
+def test_the_media_routes_publish_their_parameters_and_responses(
+    path: str, required_query: set[str]
+) -> None:
+    """``v`` and the three request headers optional; video 200/206, 304, 400, 416; problems."""
+    operation = build_openapi_schema()["paths"][path]["get"]
+    query = {param["name"]: param for param in operation["parameters"] if param["in"] == "query"}
+    assert set(query) == required_query | {"v"}
+    assert {name for name, param in query.items() if param["required"]} == required_query
+    assert _non_null(query["v"]["schema"]) == {"type": "string"}
+    header = {param["name"]: param for param in operation["parameters"] if param["in"] == "header"}
+    assert set(header) == {"If-None-Match", "Range", "If-Range"}
+    assert not any(param["required"] for param in header.values())
+
+    responses = operation["responses"]
+    assert set(responses) == {"200", "206", "304", "400", "404", "416", "502", "422"}
+    for code in ("200", "206"):
+        assert responses[code]["content"] == {
+            "video/*": {"schema": {"type": "string", "format": "binary"}}
+        }, code
+    for code in ("206", "416"):
+        assert "Content-Range" in responses[code]["headers"], code
+    assert set(responses["200"]["headers"]) == {
+        "ETag",
+        "Last-Modified",
+        "Cache-Control",
+        "Accept-Ranges",
+        "Content-Disposition",
+    }
+    assert set(responses["304"]["headers"]) == {"ETag", "Cache-Control"}
+    for code in ("304", "400", "416"):
+        assert "content" not in responses[code], code
     for code in ("404", "502"):
         ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
         assert ref.endswith("/ProblemOut"), code

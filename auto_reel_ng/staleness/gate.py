@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 from .fingerprint import COMPONENTS, Fingerprint
 from .manifest import RenderManifest, read_manifest, recorded_output_path
@@ -96,17 +96,47 @@ def evaluate(event_dir: PathLike, output_path: PathLike, fingerprint: Fingerprin
     return Verdict(stale=bool(reasons), reasons=tuple(reasons))
 
 
+def rendered_output(event_dir: PathLike, output_path: PathLike) -> Optional[Path]:
+    """The event's rendered movie as the gate counts it, or ``None``.
+
+    ``None`` without a readable manifest: no render record, no movie. Otherwise the
+    expected output when it is a file, else the file the last render recorded under the
+    event's old name (the ``output_renamed`` case, :func:`_renamed_output`). This is the
+    gate's own rule made callable, so a reader of "the movie" (the API's movie route)
+    cannot disagree with a verdict. Reads the filesystem; never raises for a missing file.
+
+    A directory at the expected path is not a movie here, although :func:`evaluate`
+    counts it as present (``exists()``): no real library has one, and a verdict change
+    is not this function's to make.
+    """
+    manifest = read_manifest(event_dir)
+    if manifest is None:
+        return None
+    expected = Path(output_path)
+    if expected.is_file():
+        return expected
+    return _renamed_output(manifest, expected)
+
+
 def _absent_output_reason(manifest: RenderManifest, expected: Path) -> StalenessReason:
     """Explain an absent expected movie: renamed since the last render, or gone."""
+    if _renamed_output(manifest, expected) is not None:
+        return StalenessReason.OUTPUT_RENAMED
+    return StalenessReason.OUTPUT
+
+
+def _renamed_output(manifest: RenderManifest, expected: Path) -> Optional[Path]:
+    """The recorded movie under its old name, when the gate would cite ``output_renamed``."""
     recorded = manifest.output
     if (
         recorded != expected.name
         and recorded not in _NOT_A_FILE_NAME  # never the output root or its parent
         and Path(recorded).name == recorded  # a bare file name, never a path
-        and recorded_output_path(recorded, expected).is_file()  # a movie, never a folder
     ):
-        return StalenessReason.OUTPUT_RENAMED
-    return StalenessReason.OUTPUT
+        candidate = recorded_output_path(recorded, expected)
+        if candidate.is_file():  # a movie, never a folder
+            return candidate
+    return None
 
 
-__all__ = ["StalenessReason", "Verdict", "evaluate"]
+__all__ = ["StalenessReason", "Verdict", "evaluate", "rendered_output"]
