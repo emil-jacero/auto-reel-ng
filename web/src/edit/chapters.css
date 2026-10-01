@@ -44,13 +44,6 @@
     font-size: var(--text-sm);
   }
 
-  /* A chapter with no clip at all, in Edit mode (the read view's is in detail.css). */
-  .chapter-empty {
-    padding: var(--s-4);
-    color: var(--fg-muted);
-    font-size: var(--text-sm);
-  }
-
   /* Deleted on save: its header loses the raised tone, its heading is muted and struck. */
   .edit-chapter[data-deleted] > .panel-header {
     background: var(--surface);

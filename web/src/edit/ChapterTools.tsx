@@ -1,8 +1,10 @@
 import './chapters.css'
 
+import { useDroppable } from '@dnd-kit/core'
 import { memo, useId } from 'react'
 
 import type { ChapterKey } from './draft'
+import { DELETED_DROP } from './dragSlots'
 import { Icon } from '../ui/Icon'
 
 /*
@@ -209,7 +211,8 @@ export const ChapterTools = memo(function ChapterTools({
 
 /**
  * A chapter the page showed, deleted on save: listed in its place, struck
- * through, with none of its clips and an Undo, until the edits are saved.
+ * through, with none of its clips and an Undo, until the edits are saved. A clip
+ * dragged and released over it moves nothing (`/deleted/<key>`, dragSlots.ts).
  */
 export const DeletedChapter = memo(function DeletedChapter({
   chapterKey,
@@ -225,8 +228,10 @@ export const DeletedChapter = memo(function DeletedChapter({
   onUndo: ChapterHandler
 }) {
   const headingId = useId()
+  const { setNodeRef } = useDroppable({ id: `${DELETED_DROP}${chapterKey}` })
   return (
     <section
+      ref={setNodeRef}
       className="panel edit-chapter"
       data-deleted=""
       data-chapter-key={chapterKey}

@@ -39,6 +39,7 @@ import {
   ignoredStaying,
   laterClipNotes,
 } from './chapterNames'
+import { ChapterDrag } from './ChapterDrag'
 import { AddChapter, DeletedChapter, NO_CLIPS_TO_MOVE } from './ChapterTools'
 import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './ChapterTools'
 import { ClipOrderList } from './ClipOrderList'
@@ -61,6 +62,7 @@ import {
   metadataDraftOf,
   moveChapter,
   moveClip,
+  moveClipTo,
   moveClips,
   movedSet,
   ordersOf,
@@ -106,10 +108,12 @@ import {
  *
  * The chapters themselves are edited here too: added, renamed, moved up or down,
  * deleted once empty, and clips moved between them with a chapter's Move clips
- * dialog (`ChapterTools.tsx`, `ChapterDialogs.tsx`). What a name means for clips
- * added later (D-12) is said beside the chapter (`chapterNames.ts`). So are each
- * clip's cuts, in a panel under its row (`cuts/CutsPanel.tsx`): a cut typed but
- * not added holds Save back, as a date typed in part does.
+ * dialog (`ChapterTools.tsx`, `ChapterDialogs.tsx`) or dragged one at a time
+ * into another chapter (`ChapterDrag.tsx`, around every chapter). What a name
+ * means for clips added later (D-12) is said beside the chapter
+ * (`chapterNames.ts`). So are each clip's cuts, in a panel under its row
+ * (`cuts/CutsPanel.tsx`): a cut typed but not added holds Save back, as a date
+ * typed in part does.
  *
  * `event` is the page's detail, read once at mount: a later re-read of the page
  * never changes the order shown or the draft. It is null for the needs-attention
@@ -178,6 +182,7 @@ type Action =
   | { type: 'chapter-delete'; key: ChapterKey }
   | { type: 'chapter-restore'; key: ChapterKey }
   | { type: 'clips-move'; from: ChapterKey; to: ChapterKey; identities: readonly string[] }
+  | { type: 'clip-drop'; from: ChapterKey; to: ChapterKey; identity: string; at: number }
   | { type: 'field'; field: MetadataField; value: string }
   | { type: 'date-validity'; incomplete: boolean }
   | { type: 'cut-add'; identity: string; span: { in: number; out: number }; key: CutKey }
@@ -330,6 +335,15 @@ function reduce(state: State, action: Action): State {
         state,
         moveClips(state.draft, action.from, action.to, action.identities, state.baseline.original),
       )
+    case 'clip-drop': {
+      // A drag into another chapter, at the place it was dropped (`moveClipTo`).
+      const { from, to, identity, at } = action
+      if (from === to || !isListed(state.draft, from) || !isListed(state.draft, to)) {
+        return state
+      }
+      const draft = moveClipTo(state.draft, from, to, identity, at)
+      return draft === state.draft ? state : afterEdit({ ...state, draft, lastMoved: identity })
+    }
     case 'field':
       return afterEdit({
         ...state,
@@ -1330,6 +1344,39 @@ export function EventEditor({
     [announce],
   )
 
+  // The drag across chapters (`ChapterDrag`): what it reads, and its drop. It speaks
+  // through dnd-kit's live region, as a drag within a chapter does.
+  const listedKeys = useMemo(() => listed.map((chapter) => chapter.key), [listed])
+  // A clip Move clips does not offer (missing) never leaves its chapter by a drag either.
+  const staysHome = useCallback((identity: string) => !onDisk(clips.get(identity)), [clips])
+  // Asked only while a clip is lifted: the draft then is the latest one.
+  const nameOfClip = useCallback(
+    (identity: string) => {
+      const current = latest.current
+      return current === null
+        ? identity
+        : nameNow(current.draft, current.baseline.original, identity, ignoredOf, removedByChapter)
+    },
+    [ignoredOf, removedByChapter],
+  )
+  const headingOfChapter = useCallback(
+    (key: ChapterKey) => (latest.current === null ? '' : headingIn(latest.current.draft, key)),
+    [],
+  )
+  // Not while a save or a Move clips is pending, and only a clip on disk; false when refused.
+  // Synchronous, not in a transition: the dragged copy leaves in the commit that shows the
+  // clip in place.
+  const onDropInto = useCallback(
+    (identity: string, from: ChapterKey, to: ChapterKey, at: number) => {
+      if (!idle(latest.current) || !onDisk(clips.get(identity))) {
+        return false
+      }
+      dispatch({ type: 'clip-drop', from, to, identity, at })
+      return true
+    },
+    [clips],
+  )
+
   // Each listed chapter's tools: what it offers, its notes and why it cannot go. A
   // chapter's object is kept while what it shows is unchanged, so its list re-renders
   // only when its own tools change.
@@ -1693,12 +1740,18 @@ export function EventEditor({
             <div className="edit-hint">
               <Icon name="info" />
               <p>
-                Drag a clip by its handle, or use its arrows.
-                {' Clips stay in their chapter'}
-                {listed.length > 1 ? '; use a chapter’s Move clips to move them to another.' : '.'}
+                {/* With one chapter, where chapters come from: once, they were not found. */}
+                {listed.length > 1
+                  ? 'Drag a clip by its handle, or use its arrows, to reorder it. Drag it into ' +
+                    'another chapter to move it there; a chapter’s Move clips moves several ' +
+                    'clips at once.'
+                  : 'Drag a clip by its handle, or use its arrows. To split the event into ' +
+                    'chapters, use Add chapter below the chapters; clips can then be dragged ' +
+                    'between them.'}
                 {hasIgnored && ' Ignored clips are not played and cannot be moved.'}
                 {hasMissing &&
-                  ' A missing clip is not on disk: restore the file, or remove it from reel.yaml.'}
+                  ' A missing clip is not on disk and stays in its chapter: restore the file, or ' +
+                    'remove it from reel.yaml.'}
                 {adopted > 0 ? (
                   <strong>
                     {' '}
@@ -1720,48 +1773,61 @@ export function EventEditor({
             </p>
           )}
 
-          {detail !== null &&
-            ready.draft.chapters.map((chapter) => {
-              const heading = chapterHeading(chapter.name, hasNamedChapter)
-              const model = tools.get(chapter.key)
-              return chapter.deleted || model === undefined ? (
-                <DeletedChapter
-                  key={chapter.key}
-                  chapterKey={chapter.key}
-                  heading={heading}
-                  notes={notes.get(chapter.key) ?? NONE_REMOVED}
-                  locked={listsLocked}
-                  onUndo={onUndoDelete}
-                />
-              ) : (
-                <ClipOrderList
-                  key={chapter.key}
-                  eventId={eventId}
-                  chapterKey={chapter.key}
-                  name={chapter.name}
-                  heading={heading}
-                  order={ready.draft.orders.get(chapter.key) ?? NONE_REMOVED}
-                  original={ready.baseline.original.get(chapter.key) ?? NONE_REMOVED}
-                  ignored={ignoredOf.get(chapter.key) ?? NONE_REMOVED}
-                  removed={removedByChapter.get(chapter.key) ?? NONE_REMOVED}
-                  clips={clips}
-                  origins={origins}
-                  lastMoved={ready.lastMoved}
-                  locked={listsLocked}
-                  tools={model}
-                  cuts={ready.draft.cuts}
-                  baseCuts={ready.baseline.cuts}
-                  typed={ready.typed}
-                  panels={cutPanels.panels}
-                  resets={ready.resets}
-                  cutHandlers={cutHandlers}
-                  onMove={onMove}
-                  onRemove={onRemove}
-                  onRestore={onRestore}
-                  onAnnounce={announce}
-                />
-              )
-            })}
+          {detail !== null && (
+            <ChapterDrag
+              orders={ready.draft.orders}
+              listed={listedKeys}
+              staysHome={staysHome}
+              nameOf={nameOfClip}
+              headingOf={headingOfChapter}
+              locked={listsLocked}
+              onReorder={onMove}
+              onDropInto={onDropInto}
+              rootRef={editorRef}
+            >
+              {ready.draft.chapters.map((chapter) => {
+                const heading = chapterHeading(chapter.name, hasNamedChapter)
+                const model = tools.get(chapter.key)
+                return chapter.deleted || model === undefined ? (
+                  <DeletedChapter
+                    key={chapter.key}
+                    chapterKey={chapter.key}
+                    heading={heading}
+                    notes={notes.get(chapter.key) ?? NONE_REMOVED}
+                    locked={listsLocked}
+                    onUndo={onUndoDelete}
+                  />
+                ) : (
+                  <ClipOrderList
+                    key={chapter.key}
+                    eventId={eventId}
+                    chapterKey={chapter.key}
+                    name={chapter.name}
+                    heading={heading}
+                    order={ready.draft.orders.get(chapter.key) ?? NONE_REMOVED}
+                    original={ready.baseline.original.get(chapter.key) ?? NONE_REMOVED}
+                    ignored={ignoredOf.get(chapter.key) ?? NONE_REMOVED}
+                    removed={removedByChapter.get(chapter.key) ?? NONE_REMOVED}
+                    clips={clips}
+                    origins={origins}
+                    lastMoved={ready.lastMoved}
+                    locked={listsLocked}
+                    tools={model}
+                    cuts={ready.draft.cuts}
+                    baseCuts={ready.baseline.cuts}
+                    typed={ready.typed}
+                    panels={cutPanels.panels}
+                    resets={ready.resets}
+                    cutHandlers={cutHandlers}
+                    onMove={onMove}
+                    onRemove={onRemove}
+                    onRestore={onRestore}
+                    onAnnounce={announce}
+                  />
+                )
+              })}
+            </ChapterDrag>
+          )}
 
           {detail !== null && <AddChapter locked={listsLocked} onAdd={onAddChapter} />}
 

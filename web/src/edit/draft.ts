@@ -749,6 +749,33 @@ export function moveClips(
 }
 
 /**
+ * `draft` with `identity` taken out of chapter `from` and put at index `at` of chapter
+ * `to` (clamped to its length): a drop into another chapter. Only a clip `from` plays
+ * moves, so a repeated call moves nothing; `from === to` is a reorder (`moveClip`), not
+ * this, and returns `draft` unchanged. Unlike `moveClips`, a clip dropped back into the
+ * chapter it was in when Edit mode opened goes where it was dropped: at its original
+ * index, that is its original order again, and nothing is left to save.
+ */
+export function moveClipTo(
+  draft: Draft,
+  from: ChapterKey,
+  to: ChapterKey,
+  identity: string,
+  at: number,
+): Draft {
+  const source = draft.orders.get(from)
+  const target = draft.orders.get(to)
+  if (from === to || source === undefined || target === undefined || !source.includes(identity)) {
+    return draft
+  }
+  const index = Math.min(Math.max(at, 0), target.length)
+  const orders = new Map(draft.orders)
+  orders.set(from, source.filter((listed) => listed !== identity))
+  orders.set(to, [...target.slice(0, index), identity, ...target.slice(index)])
+  return { ...draft, orders }
+}
+
+/**
  * The clips kept in place: a longest run of `order` whose original positions
  * increase, so that moving one clip from position 1 to 5 moves one clip, not
  * five. Among equally long runs it prefers, in turn, the one keeping the most
