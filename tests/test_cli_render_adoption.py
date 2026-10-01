@@ -110,10 +110,14 @@ def test_render_adopts_new_clips_into_their_folders_chapters(
     assert spans[1][0] == "Kvällen"
     assert spans[1][1] == pytest.approx(3.0, abs=0.3)
 
-    # 3. Nothing is NEW any more: the event is fresh and reel.yaml is not rewritten.
-    before = (tva / REEL_FILENAME).read_bytes()
+    # 3. Nothing is NEW any more: the event is fresh, neither adopted into nor rendered,
+    # and neither its reel.yaml nor its movie is rewritten.
+    reel_before = (tva / REEL_FILENAME).read_bytes()
+    movie = _movie(out, "2024-08-20")
+    movie_before = (movie.stat().st_mtime_ns, movie.read_bytes())
     assert main(render) == 0
     third = capsys.readouterr().out
-    assert "FRESH" in third
-    assert "adopted" not in third
-    assert (tva / REEL_FILENAME).read_bytes() == before
+    tva_lines = [line for line in third.splitlines() if TVA_KAPITEL in line]
+    assert tva_lines == [f"FRESH  {TVA_KAPITEL}: up to date, not rendered"], third
+    assert (tva / REEL_FILENAME).read_bytes() == reel_before
+    assert (movie.stat().st_mtime_ns, movie.read_bytes()) == movie_before
