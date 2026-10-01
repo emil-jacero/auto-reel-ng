@@ -55,7 +55,7 @@ export function SaveBar({
   problem,
   pressed,
   summary,
-  dateIncomplete,
+  unfinished,
   onReset,
   onSave,
   onRetry,
@@ -70,7 +70,7 @@ export function SaveBar({
   problem: SaveProblem | null
   pressed: Pressed | null
   summary: string
-  dateIncomplete: boolean
+  unfinished: boolean
   onReset: () => void
   onSave: () => void
   onRetry: (operation: Operation) => void
@@ -80,15 +80,16 @@ export function SaveBar({
   const alertId = useId()
   const summaryId = useId()
   const locked = pressed !== null
-  // Nothing to send: no edits, or a date typed in part (it would be sent as unset).
-  const unsendable = !edited || dateIncomplete
+  // Nothing to send: no edits, a date typed in part (it would be sent as unset), or a cut typed
+  // but not added (it would be lost).
+  const unsendable = !edited || unfinished
   // Save also waits while the failure's own choices are the way on.
   const saveBlocked = unsendable || problem?.kind === 'conflict' || problem?.kind === 'gone'
   // One primary action at a time: the failure's way on while it holds Save back, else Save.
   const savePrimary = problem?.kind !== 'conflict' && problem?.kind !== 'gone'
-  const describedBy = dateIncomplete ? summaryId : problem !== null ? alertId : undefined
+  const describedBy = unfinished ? summaryId : problem !== null ? alertId : undefined
   // With no edits the bar stays only for a vanished event's alert: it says so, not "unsaved".
-  const unsaved = edited || dateIncomplete
+  const unsaved = edited || unfinished
   const title = locked ? 'Saving…' : unsaved ? 'Unsaved changes' : 'This event no longer exists'
   return (
     <div
@@ -176,7 +177,7 @@ function SaveProblemAlert({
 }: {
   problem: SaveProblem
   pressed: Pressed | null
-  /** Nothing to send (no edits, or a date typed in part): Retry and Overwrite wait too. */
+  /** Nothing to send (no edits, a date in part, a cut typed): Retry and Overwrite wait too. */
   blocked: boolean
   describedBy: string | undefined
   onReload: () => void
