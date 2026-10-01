@@ -532,8 +532,9 @@
 
   /*
    * Sticky at the bottom of the viewport while there are unsaved changes, as
-   * long as it takes at most two fifths of the window; taller, it rests in the
-   * page after the editor (`data-rests`, below). The bar itself is transparent
+   * long as it takes at most two fifths of the window and the window is at least
+   * 28rem tall; otherwise it rests in the page after the editor (`data-rests`,
+   * below), where it hides nothing. The bar itself is transparent
    * and lets clicks through; its card floats a gap above the edge. While it is
    * held, its whole height (card and gap) is published on <html> as
    * `--toast-inset-bottom` (EventEditor.tsx `placeBar`); while it rests, the
@@ -551,7 +552,7 @@
     pointer-events: none;
   }
 
-  /* Taller than two fifths of the window, it would hide the editor: it rests in the page. */
+  /* Held, it would hide the editor (EventEditor.tsx `placeBar`): it rests in the page. */
   .save-bar[data-rests] {
     position: static;
   }
