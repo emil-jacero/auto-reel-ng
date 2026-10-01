@@ -139,9 +139,11 @@ take a tap anywhere in an area of at least 44 × 44 CSS pixels around it:
 - the header's link to the event list, and the event page's link back to it
 - a notification's link
 
-No control's area SHALL reach into another control. The color-scheme options are the one exception to the
-width: in a window narrower than 384 pixels the header has no room for them, and there each option SHALL take
-a tap in an area 44 pixels tall and as wide as the option.
+No control's area SHALL reach into another control, including two controls stacked one above the other.
+Making room for these areas SHALL NOT push text out of the box that holds it, or anything out of the header.
+The color-scheme options are the one exception to the width: in a window narrower than 416 pixels the header
+has no room for them beside the connection's state in words, and there each option SHALL take a tap in an
+area 44 pixels tall and as wide as the option.
 
 When the primary pointer is fine, such as a mouse, every control SHALL keep the size and place it has without
 this rule.
@@ -149,8 +151,22 @@ this rule.
 #### Scenario: The list on a phone
 - **WHEN** the operator opens the dev library's event list on a touch screen 390 pixels wide
 - **THEN** a tap anywhere in a 44 × 44 pixel area centred on the Render of
-  `2024-06-27 - Grillning med grannar`, on Refresh, on each filter option, or on each color-scheme option
-  reaches that control, and the page does not scroll horizontally
+  `2024-06-27 - Grillning med grannar`, on Refresh, or on each filter option reaches that control, a tap
+  anywhere in an area 44 pixels tall and as wide as each color-scheme option reaches that option, and the page
+  does not scroll horizontally
+
+#### Scenario: The header keeps the connection's state in words
+- **WHEN** the jobs connection is connecting, reconnecting, or live with jobs rendering and queued, and the
+  operator opens the event list on a touch screen 384, 390, 412, 430, 480 or 528 pixels wide
+- **THEN** the connection's state is in words inside its pill, clear of the color-scheme control, the header's
+  content stays inside the header, and from 416 pixels a tap anywhere in a 44 × 44 pixel area centred on each
+  color-scheme option reaches that option
+
+#### Scenario: Two stacked buttons keep their own areas
+- **WHEN** the operator saves Edit mode on `2024-06-27 - Grillning med grannar` on a touch screen 390 pixels
+  wide, and the save is refused because the event was changed elsewhere
+- **THEN** "Reload latest (discard my changes)" and "Overwrite with mine" are stacked, and a tap anywhere in a
+  44 × 44 pixel area centred on either reaches that button and never the other
 
 #### Scenario: Moving a clip by touch
 - **WHEN** the operator opens Edit mode on `2024-06-27 - Grillning med grannar` on a touch screen 390 pixels
