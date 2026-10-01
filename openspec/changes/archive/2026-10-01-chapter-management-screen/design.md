@@ -7,6 +7,13 @@
 - Renaming a chapter, or moving a clip into a new chapter, loses that chapter's `reel.yaml` comments, and
   reordering chapters can drop a comment between chapters: **accepted for now**. Follow-up: the engine
   matches a renamed chapter by its clip list (Risks).
+- After implementation and review (2026-10-01): the six implementation deviations recorded below are
+  **accepted**; the Move clips transition is **locked** rather than accepted as a window; and a **Pick all**
+  box in Move clips is an **approved addition** ("The Move clips dialog"). The review's other minors are
+  fixed as described in place: an emptied chapter that still lists ignored or removed clips says how clips
+  get in; the own chapter's Delete refusal counts only the ignored clips that would stay under it; the
+  notes name the own chapter by its heading (`Clips` when alone); a Delete refusal tells clips on disk from
+  missing ones; Add chapter's announcement carries its notes.
 
 ## Context
 
@@ -96,9 +103,13 @@ be deleted or absent (a document that does not name `''`). (b) needs no new rule
 every clip move stays one visible, undoable step that the save bar counts. The extra cost is one Move clips
 before a Delete, which is also the step that makes the operator look at where the clips go.
 
-The event's own chapter has one more condition: it can be deleted only when it lists no ignored clip. The
-detail lists the event folder's ignored clips under the default chapter whether or not `reel.yaml` names it
-(adoption.py 124-125), so deleting it would bring it back on the next read, holding only ignored clips. The
+The event's own chapter has one more condition: it can be deleted only when it lists no ignored clip that
+would stay under it after the save. The detail lists an ignored clip under the chapter named exactly after
+its folder, else under the default chapter whether or not `reel.yaml` names it (adoption.py 124-125). So an
+ignored clip of the event folder, or of a folder no listed chapter is named after, would bring the deleted
+chapter back on the next read, holding only ignored clips. One whose folder now has a chapter of its name
+(say, one just added) moves there and does not hold the default chapter (`ignoredStaying`, chapterNames.ts,
+the same rule as the notes' "listed here"). The
 only chapter left cannot be deleted at all: a `chapters: []` save would turn the document seed-like and
 re-chapter every clip by folder (adoption.py 111).
 
@@ -303,7 +314,9 @@ export function laterClipNotes(input: {
 export function nameDialogNote(input: …, self: ChapterKey | null, typed: string): readonly string[]
 ```
 
-The notes, with `M` the event's own chapter's heading (`Main`):
+The notes, with `M` the event's own chapter's heading at that moment (`Main` while another chapter is
+listed, `Clips` when it is the only one, the read view's rule): the operator must be able to find M on the
+page, and after deleting the only other chapter no `Main` is shown anywhere:
 
 | When (exact name comparison) | Note |
 |---|---|
@@ -369,16 +382,24 @@ does today.
   Delete while more than one chapter is listed (deleted ones aside). Move up is `aria-disabled` on the first,
   Move down on the last. Move clips is `aria-disabled` while the chapter plays no clip on disk, with the
   note "No clips to move." in its description. Delete is `aria-disabled` while the chapter plays a clip (or,
-  for the event's own, lists an ignored one), described by its refusal, which is `hidden` until pressed.
-- Delete's refusal, shown (`hidden` removed) and announced on a press, focus staying on Delete:
-  - plays clips: "“Kvällen” still plays 3 clips. Move them to another chapter first." With a missing clip
-    among them: "… Move them to another chapter first, or remove the missing ones."
-  - the event's own chapter with ignored clips: "Main still lists 1 ignored clip from the event folder, so
-    it stays."
+  for the event's own, lists an ignored clip that would stay under it), described by its refusal, which is
+  `hidden` until pressed.
+- Delete's refusal, shown (`hidden` removed) and announced on a press, focus staying on Delete. Clips on
+  disk and missing clips are counted apart, since Move clips moves only the former:
+  - only clips on disk: "“Kvällen” still plays 3 clips. Move them to another chapter first."
+  - both: "“Main” still plays 3 clips. Move the 2 clips on disk to another chapter and remove the missing
+    one first."
+  - only missing clips: "“Main” still lists 1 missing clip. Remove it first."
+  - the event's own chapter with ignored clips that would stay: "“Main” still lists 1 ignored clip that no
+    other chapter will take, so it stays." (Not "from the event folder": a subfolder's ignored clip with no
+    chapter of its own is listed there too.)
 - The event's own chapter's note ("The event's own chapter: …") is shown while another chapter is listed.
-- An empty listed chapter (no played, removed or ignored clip) shows, instead of the column strip and the
-  list: `<p class="chapter-empty">No clips. Move clips here with another chapter's Move clips. A chapter
-  without clips is left out of the movie.</p>`.
+- A listed chapter that plays no clip says so and how clips get in. With no removed or ignored clip either,
+  it shows, instead of the column strip and the list: `<p class="chapter-empty">No clips. Move clips here
+  with another chapter's Move clips. A chapter without clips is left out of the movie.</p>`. When it still
+  lists removed or ignored clips, the column strip stays and `<p class="chapter-empty">It plays no clip.
+  Move clips here with another chapter's Move clips. A chapter without clips is left out of the movie.</p>`
+  comes before those lists.
 - Deleted placeholder (`ChapterTools.tsx`, `DeletedChapter`), in the chapter's place:
 
 ```html
@@ -502,6 +523,7 @@ the chapter's name in the accessible name since every chapter has the same butto
     <fieldset class="choice-group" aria-describedby="ce">
       <legend>Clips <span class="choice-count">1 of 3 picked</span></legend>
       <p class="field-error" id="ce" role="alert" hidden>Pick at least one clip.</p>
+      <label class="choice choice-all"><input type="checkbox" /> Pick all</label>  <!-- mixed while some -->
       <ul class="choice-list">
         <li><label class="choice"><input type="checkbox" value="Kvällen/s1710002.mp4" />
           <span class="choice-pos">1</span> <span class="choice-name">s1710002.mp4</span></label></li>
@@ -525,6 +547,11 @@ the chapter's name in the accessible name since every chapter has the same butto
 - Clips: the chapter's play order now, on-disk ones only (status `active` or `new`), named by the chapter's
   `nameOf`; NEW ones carry a "New" badge (label from `CLIP_STATUS_LABEL`, never the slug). Targets: every
   other listed, non-deleted chapter, by heading; checked already when it is the only one.
+- **Pick all** (approved addition, after review): a native checkbox row above the clips, before the first
+  box in tab order (Shift+Tab from it). Checked when every offered clip is picked, `indeterminate` (mixed)
+  while only some are; a press picks all, or clears all when all are picked. Emptying or splitting a long
+  chapter is then one press, not one per clip (400 on the scale fixture). Shift-click ranges stay a
+  follow-up. It is a `.choice` row (44 px under a coarse pointer), framed like the list.
 - Initial focus: the first clip's box. Space toggles. **Enter** on any box or radio submits (`onKeyDown` on
   the form calls `preventDefault()` then `requestSubmit()`, so a browser that also submits on Enter there
   does not submit twice), so a 400-clip list need not be tabbed through; the description says so.
@@ -568,7 +595,7 @@ All controls are native buttons, checkboxes and radios; no shortcut keys are add
 
 | Action | Focus after | Announcement |
 |---|---|---|
-| Add chapter → confirm | the new chapter's `h2` (`tabindex="-1"`), scrolled `nearest` (see below: a passive effect) | Chapter “X” added, chapter *k* of *n*. It has no clips. |
+| Add chapter → confirm | the new chapter's `h2` (`tabindex="-1"`), scrolled `nearest` (see below: a passive effect) | Chapter “X” added, chapter *k* of *n*. It has no clips. + notes |
 | Rename → confirm | Rename (Dialog's opener) | “A” renamed to “B”. + notes |
 | Move up / Move down | the same button, also once it is `aria-disabled` at an end | “A” moved to chapter *k* of *n*. |
 | Delete, empty read chapter | its placeholder's Undo | “A” will be deleted when you save. + notes |
