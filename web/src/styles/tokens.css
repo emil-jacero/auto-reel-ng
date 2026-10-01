@@ -24,6 +24,8 @@
     --fg: light-dark(oklch(21% 0.02 260), oklch(95% 0.006 260));
     --fg-muted: light-dark(oklch(47% 0.02 260), oklch(72% 0.016 260));
     --fg-subtle: light-dark(oklch(62% 0.015 260), oklch(56% 0.016 260));
+    /* behind a video picture: black in both schemes, as every player letterboxes */
+    --media-bg: light-dark(oklch(0% 0 0), oklch(0% 0 0));
 
     /* The one accent */
     --accent: light-dark(oklch(52% 0.2 265), oklch(70% 0.15 265));

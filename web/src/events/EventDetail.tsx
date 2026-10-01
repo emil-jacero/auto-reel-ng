@@ -12,6 +12,7 @@ import { requestLeave, useSaving } from '../edit/unsaved'
 import { formatInstant } from '../format'
 import { missingClipsReason } from '../jobs/labels'
 import { RenderControl } from '../jobs/RenderControl'
+import { MoviePanel } from '../movie/MoviePanel'
 import { LIST_HREF } from '../route'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
@@ -434,6 +435,7 @@ function ReadyView({ eventId, event }: { eventId: string; event: EventDetailData
   const read = useReadCuts(eventId, event)
   return (
     <>
+      <MoviePanel eventId={eventId} event={event} />
       {event.missing.length > 0 && (
         <Alert
           tone="warn"
