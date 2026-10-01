@@ -128,6 +128,41 @@ changes nothing.
   version replaces everything saved since editing started, including changes to chapters the operator did not
   touch, and focus is on Cancel.
 
+### Requirement: Every control is large enough to touch
+
+When the browser's primary pointer is coarse, such as a finger on a phone, each of these controls SHALL
+take a tap anywhere in an area of at least 44 × 44 CSS pixels around it:
+
+- every button
+- every option of a segmented choice, such as the list's All / Needs render filter and the color-scheme
+  control
+- the header's link to the event list, and the event page's link back to it
+- a notification's link
+
+No control's area SHALL reach into another control. The color-scheme options are the one exception to the
+width: in a window narrower than 384 pixels the header has no room for them, and there each option SHALL take
+a tap in an area 44 pixels tall and as wide as the option.
+
+When the primary pointer is fine, such as a mouse, every control SHALL keep the size and place it has without
+this rule.
+
+#### Scenario: The list on a phone
+- **WHEN** the operator opens the dev library's event list on a touch screen 390 pixels wide
+- **THEN** a tap anywhere in a 44 × 44 pixel area centred on the Render of
+  `2024-06-27 - Grillning med grannar`, on Refresh, on each filter option, or on each color-scheme option
+  reaches that control, and the page does not scroll horizontally
+
+#### Scenario: Moving a clip by touch
+- **WHEN** the operator opens Edit mode on `2024-06-27 - Grillning med grannar` on a touch screen 390 pixels
+  wide
+- **THEN** each clip's Reorder, Move up and Move down take a tap anywhere in a 44 × 44 pixel area of their
+  own, and no tap meant for Move up reaches Move down
+
+#### Scenario: A mouse sees no change
+- **WHEN** the operator opens the event list, the page of `2024-06-27 - Grillning med grannar` and its Edit
+  mode with a mouse, in windows 1280, 390 and 320 pixels wide
+- **THEN** every control has the size and place it had before this rule
+
 ## MODIFIED Requirements
 
 ### Requirement: Every page shares one header and follows the operator's color scheme

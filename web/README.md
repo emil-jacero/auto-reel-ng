@@ -97,7 +97,7 @@ src/
 │   ├── Alert.tsx         an inline message: tone, title, detail, action
 │   ├── Skeleton.tsx      placeholder rows, and the announced read status
 │   ├── Dialog.tsx        a modal over the native <dialog>
-│   ├── toast.ts          the toast store: toast.success / info / error
+│   ├── toast.ts          the toast store: toast.success / info / error, keepToastsClearOf
 │   └── ToastRegion.tsx   where toasts appear (rendered once by the shell)
 ├── api/
 │   ├── schema.d.ts       generated (see below)
@@ -289,7 +289,9 @@ HLD §7).
   in both schemes; `--fg-subtle` is for icons and borders, never text. The scheme
   follows the OS until the header's theme control sets `data-theme` on `<html>`
   (stored per browser under `auto-reel:theme`, and applied before the first paint
-  by the inline script in `index.html`).
+  by the inline script in `index.html`). The control and that script also set both
+  `theme-color` metas, so the browser's own interface color is the chosen scheme's
+  page background; System gives each meta its OS scheme's color back.
 - **Status is never color alone.** A status is a `Pill`: an icon and its words, on
   its tone. Tone and icon come from `events/tones.ts`, the words from `labels.ts`.
   The usual state of a clip row, included, keeps its words and icon without the
@@ -314,12 +316,30 @@ HLD §7).
   controls of a locked form may use `disabled`.
 - **Dialogs.** `<Dialog open title onClose initialFocus>`: pass the safe action's
   ref as `initialFocus` — never React's `autoFocus`, which fires while the dialog
-  is still closed. Escape calls `onClose`; a close the caller starts does not.
-- **Toasts** appear bottom right. A page with a sticky bar at the bottom sets
-  `--toast-inset-bottom` on `:root` to the bar's height, so no toast covers it. The
-  region publishes its own height as `--toast-region-h` on `:root` (absent when
-  empty); `html`'s `scroll-padding-bottom` and the page's bottom padding add both, so
-  a sticky error toast never covers keyboard focus or the end of the page.
+  is still closed. Escape calls `onClose`; a close the caller starts does not. The
+  children are the consequence, then a `dialog-actions` row: everything but that row
+  becomes the dialog's description (`aria-describedby`), so the consequence is read
+  when the dialog opens. No prop to pass.
+- **Toasts** appear bottom right. A page with a bar held at the bottom of the window
+  registers it with `keepToastsClearOf(bar)` (and releases it in the same effect's
+  cleanup): the region then sits above the bar while it is stuck, and below it at the
+  page's end, so no toast covers it. The page also sets `--toast-inset-bottom` on
+  `:root` to the bar's height: `html`'s scroll padding uses it, and so does the region
+  when no bar is registered. The region publishes its own height as
+  `--toast-region-h` on `:root` (absent when empty), and, while a bar is registered,
+  its height plus the gap as `--toast-rise-h`, for the toasts that rise with the bar;
+  `html`'s `scroll-padding-bottom` and the page's bottom padding add them, so a
+  sticky error toast never covers keyboard focus or the end of the page. The stacks
+  announce each toast once (`aria-atomic="false"`), each Dismiss is described by its
+  message, and dismissing the focused toast hands focus to the next toast, else the
+  previous one, else the control it came from, else the page's `h1`, without
+  scrolling.
+- **Touch.** Under `@media (pointer: coarse)` every `btn`, `segmented` option, toast
+  link, the header's Events link and the back link take a tap in at least 44 × 44 px:
+  an invisible `::after` around the control, so no box moves (segmented options grow
+  to 44 px wide, the theme options only from a 24rem window, and the back link to
+  44 px tall). A fine pointer sees none of it. A new control class that is smaller
+  than 44 px joins that rule.
 - **Motion.** Every `transition` takes its duration from a `--dur-*` token; the
   tokens become `0ms` under `prefers-reduced-motion: reduce`. Every `animation` and
   its `@keyframes` sit inside `@media (prefers-reduced-motion: no-preference)`, with

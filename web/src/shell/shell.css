@@ -3,9 +3,14 @@
   html {
     /* Keep a focused or scrolled-to element clear of the header and a sticky panel heading, */
     scroll-padding-top: calc(var(--header-h) + var(--panel-head-h) + var(--s-2));
-    /* and of a sticky bottom bar and the toasts above it (both publish their heights). */
+    /*
+     * and of a sticky bottom bar and the toasts above it (both publish their heights).
+     * The toasts above a registered bar rise with it as it leaves the bottom edge
+     * (`--toast-rise-h`, ToastRegion), so a focus scroll reserves their height twice.
+     */
     scroll-padding-bottom: calc(
-      var(--toast-inset-bottom, 0px) + var(--toast-region-h, 0px) + var(--s-4)
+      var(--toast-inset-bottom, 0px) + var(--toast-region-h, 0px) + var(--toast-rise-h, 0px) +
+        var(--s-4)
     );
   }
 
@@ -115,6 +120,34 @@
   .theme-control label {
     inline-size: 1.75rem;
     padding: 0;
+  }
+
+  /* A coarse pointer: the Events link takes a tap in 44 × 44 px, as buttons do (components.css). */
+  @media (pointer: coarse) {
+    .app-nav a {
+      position: relative;
+
+      &::after {
+        content: '';
+        position: absolute;
+        inset: min(-1px, calc(50% - 1.375rem));
+      }
+    }
+  }
+
+  /*
+   * Below 24rem the header has no room for 44 px theme options (it is full at
+   * 320px): they keep their width, and their tap area keeps it too, so the three
+   * never overlap. It is still 44px tall.
+   */
+  @media (pointer: coarse) and (width < 24rem) {
+    .theme-control label {
+      min-inline-size: 0;
+
+      &::after {
+        inset-inline: -1px;
+      }
+    }
   }
 
   /* A phone keeps the mark and hides the name, which stays in the accessibility tree. */
