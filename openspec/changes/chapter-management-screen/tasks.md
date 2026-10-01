@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 This change has no gate: it starts from main at `d0bc1d5` or later (`git merge-base --is-ancestor d0bc1d5 HEAD`). Re-check the names it builds on (design, "Context"), and stop and report to the supervisor on any mismatch:
+- [x] 1.1 This change has no gate: it starts from main at `d0bc1d5` or later (`git merge-base --is-ancestor d0bc1d5 HEAD`). Re-check the names it builds on (design, "Context"), and stop and report to the supervisor on any mismatch:
   - `web/src/edit/draft.ts` exports `EditableChapter`, `Orders`, `Removals`, `editableChapters`, `ordersOf`, `detailMatchesDocument`, `buildWriteBody`, `adoptedNewCount`, `isDirty`, `moveClip`, `removeClip`, `restoreClip` and `movedSet`, and imports only with `import type`
   - `web/src/edit/EventEditor.tsx` has `reduce` with the `move`, `remove`, `restore` and `reset` actions, `afterEdit`, `summarize`, `chapterHeading`, `submit` and `announce`, and renders `ClipOrderList` keyed by `chapter.name`
   - `web/src/edit/ClipOrderList.tsx` has `withinChapter`, `RowBody` (with `was`), `RemovedRow`, `IgnoredRow`, `DndContext id={`chapter-${index}`}`, and `nameOf = clipNames(chapter, [...original, ...ignored])`
@@ -13,7 +13,7 @@
 
 ## 2. web/ — the model (pure)
 
-- [ ] 2.1 In `src/edit/draft.ts`, add the chapter model (design, "The draft model", "Where moved clips land", "What a save writes"): `ChapterKey`, `DraftChapter`, `Draft`, `Baseline`, `ChapterChanges`; `EditableChapter.key` (`r0`, `r1`…); `Orders` and `Removals` keyed by chapter key; `draftChapters`, `chapterChanges`, `isStructural`, `originOf`, `keptOriginal`, `addChapter`, `renameChapter`, `moveChapter`, `deleteChapter`, `restoreChapter`, `moveClips`; one `writtenFromView(baseline, draft)` used by `buildWriteBody(baseline, draft)`, `adoptedNewCount` and `isDirty`, holding every "written from the view" trigger in that one function (G2's extension point: design, "Files and the G2 seam"); no caller re-derives a trigger. Keep `detailMatchesDocument`, `movedSet`, `moveClip`, `removeClip` and `restoreClip` as they are, re-keyed. Keep the file free of runtime imports.
+- [x] 2.1 In `src/edit/draft.ts`, add the chapter model (design, "The draft model", "Where moved clips land", "What a save writes"): `ChapterKey`, `DraftChapter`, `Draft`, `Baseline`, `ChapterChanges`; `EditableChapter.key` (`r0`, `r1`…); `Orders` and `Removals` keyed by chapter key; `draftChapters`, `chapterChanges`, `isStructural`, `originOf`, `keptOriginal`, `addChapter`, `renameChapter`, `moveChapter`, `deleteChapter`, `restoreChapter`, `moveClips`; one `writtenFromView(baseline, draft)` used by `buildWriteBody(baseline, draft)`, `adoptedNewCount` and `isDirty`, holding every "written from the view" trigger in that one function (G2's extension point: design, "Files and the G2 seam"); no caller re-derives a trigger. Keep `detailMatchesDocument`, `movedSet`, `moveClip`, `removeClip` and `restoreClip` as they are, re-keyed. Keep the file free of runtime imports.
 
   Verify:
   - `npx tsc --noEmit` passes in the node:22 container once 3.1 has adapted the callers (until then only `EventEditor.tsx` and `ClipOrderList.tsx` may report errors)
@@ -32,7 +32,7 @@
     - **chapter moves skip a deleted one**: with `Morgon` added, `r1` emptied and deleted, `moveChapter(a1, -1)` puts `a1` before `r0` in one press, and `r1` keeps its index
     - **repeat submit**: calling `moveClips` twice with the same arguments gives the same draft as once
     - every body above passes a hand-written check of the engine's rules: no duplicate name, no identity twice, every `clips` key listed, no ignored identity listed
-- [ ] 2.2 Add `src/edit/chapterNames.ts` (design, "Name checks and D-12 notes"): `checkName`, `diskFolders`, `laterClipNotes`, `nameDialogNote`, and the refusal and note copy as exported constants. Type-only imports.
+- [x] 2.2 Add `src/edit/chapterNames.ts` (design, "Name checks and D-12 notes"): `checkName`, `diskFolders`, `laterClipNotes`, `nameDialogNote`, and the refusal and note copy as exported constants. Type-only imports.
 
   Verify: the scratch script of 2.1 also asserts, on `Två kapitel`:
   - `checkName` refuses `'kvällen'` (`taken`, clash `Kvällen`), `'   '` (`empty`), `'main'` (`reserved`, also after `r0` is deleted), and, after `deleteChapter(r1)`, `'KVÄLLEN'` (`taken-deleted`); it accepts `' Kväll på stranden '` as `'Kväll på stranden'`, and `'kvällen'` for `r1` itself
@@ -43,7 +43,7 @@
 
 ## 3. web/ — the editor
 
-- [ ] 3.1 In `src/edit/EventEditor.tsx`, move the editor onto the model (design, "The draft model", "Keyboard model and focus", "Counts, badges, the save bar and the hint"):
+- [x] 3.1 In `src/edit/EventEditor.tsx`, move the editor onto the model (design, "The draft model", "Keyboard model and focus", "Counts, badges, the save bar and the hint"):
   - `Ready` holds `baseline` and `draft`; actions `chapter-add`, `chapter-rename`, `chapter-move`, `chapter-delete`, `chapter-restore` and `clips-move` go through `afterEdit` and are refused while a save is in flight; `reset` restores the baseline's chapters; added keys come from a counter in the state
   - the delete guard (plays a clip; the event's own chapter with an ignored clip; the only chapter left) lives in the reducer's caller and answers with the refusal copy; `restore` into a deleted chapter is refused
   - the moved count (`movedCount`) and `ClipOrderList`'s `kept` both use `keptOriginal` (design, "Counts, badges")
@@ -52,14 +52,14 @@
   - every announcement of the design's table goes through `announce`
 
   Verify: `npx tsc --noEmit` and `npm run build` pass; `git diff --stat web/src/edit/SaveBar.tsx web/src/edit/unsaved.ts web/src/edit/MetadataForm.tsx` is empty; `grep -rn ' disabled=' web/src/edit` prints nothing.
-- [ ] 3.2 Add `src/edit/ChapterTools.tsx` (tools row, `DeletedChapter`, `AddChapter`) and `src/edit/chapters.css`, adapt `src/edit/ClipOrderList.tsx` (keyed and `DndContext`-identified by `chapterKey`; the tools slot between header and column strip; the empty state; the "from …" badge; `nameOf` over original, order, ignored and removed), add `plus` and `arrow-right` to `src/ui/Icon.tsx`, and give the read view its empty chapter (`ChapterPanel` in `src/events/EventDetail.tsx`, the `.chapter-empty` rule in `src/events/detail.css`) (design, "The chapter tools row", "The read view's empty chapter", "Performance").
+- [x] 3.2 Add `src/edit/ChapterTools.tsx` (tools row, `DeletedChapter`, `AddChapter`) and `src/edit/chapters.css`, adapt `src/edit/ClipOrderList.tsx` (keyed and `DndContext`-identified by `chapterKey`; the tools slot between header and column strip; the empty state; the "from …" badge; `nameOf` over original, order, ignored and removed), add `plus` and `arrow-right` to `src/ui/Icon.tsx`, and give the read view its empty chapter (`ChapterPanel` in `src/events/EventDetail.tsx`, the `.chapter-empty` rule in `src/events/detail.css`) (design, "The chapter tools row", "The read view's empty chapter", "Performance").
 
   Verify:
   - `npx tsc --noEmit` and `npm run build` pass
   - `git diff web/src/edit/edit.css` changes no `grid-template-columns`, `grid-template-areas` or `@container` line, and `chapters.css` declares only `@layer screens`
-  - the `EventDetail.tsx` diff is 10 lines or fewer, and touches only `ChapterPanel`
+  - the `EventDetail.tsx` diff is 12 lines or fewer (an early return; design, "The read view's empty chapter"), and touches only `ChapterPanel`
   - the tools row is not inside `.panel-header` (`grep -n "chapter-tools" web/src/edit/ClipOrderList.tsx` shows it after `</header>`)
-- [ ] 3.3 Add `src/edit/ChapterDialogs.tsx` (`NameDialog`, `MoveClipsDialog`) and the `.dialog-fields` split in `src/ui/Dialog.tsx` (design, "The name dialog", "The Move clips dialog", "Dialog descriptions"). Field markup reuses `.field`, `.field-label`, `.field-input`, `.field-error`, `.field-hint`; the choice rows and the dialog width go in `chapters.css`.
+- [x] 3.3 Add `src/edit/ChapterDialogs.tsx` (`NameDialog`, `MoveClipsDialog`) and the `.dialog-fields` split in `src/ui/Dialog.tsx` (design, "The name dialog", "The Move clips dialog", "Dialog descriptions"). Field markup reuses `.field`, `.field-label`, `.field-input`, `.field-error`, `.field-hint`; the choice rows and the dialog width go in `chapters.css`.
 
   Verify:
   - `npx tsc --noEmit` and `npm run build` pass; `grep -rn 'autoFocus' web/src/edit web/src/ui` prints nothing
@@ -68,7 +68,7 @@
 
 ## 4. Verification against the dev library
 
-- [ ] 4.1 Set up the agent's own environment per the dev-env runbook §9 with `SLUG=chapter-management-screen`, `N=26`: database `arel_chapter_management_screen`, library `../dev-chapter-management-screen`, `auto-reel serve <library> --port 8126` over a fresh `npm run build`, no worker. Never port 8080 or 5173, `../auto-reel-dev`, `auto-reel-media/`, the default database, or another agent's database, library or port. In that library copy only, add the fixtures of design, "Verification fixtures" (`Stor dag` by the `archive/2026-09-30-event-edit-screen/design.md` recipe plus the three `Kväll/` files, no `reel.yaml`), and copy every `reel.yaml` before touching it. `make_dev_library.py` dumps `Två kapitel` and `Grillning` with ruamel's default indentation, and the engine's writer (`reel/writer.py` 28-35) re-indents every list on its first real write. So first normalise each `reel.yaml` a check will `diff` (these two in particular): load it and dump it again with `YAML()` and `indent(mapping=2, sequence=4, offset=2)`. Then take its copy.
+- [x] 4.1 Set up the agent's own environment per the dev-env runbook §9 with `SLUG=chapter-management-screen`, `N=26`: database `arel_chapter_management_screen`, library `../dev-chapter-management-screen`, `auto-reel serve <library> --port 8126` over a fresh `npm run build`, no worker. Never port 8080 or 5173, `../auto-reel-dev`, `auto-reel-media/`, the default database, or another agent's database, library or port. In that library copy only, add the fixtures of design, "Verification fixtures" (`Stor dag` by the `archive/2026-09-30-event-edit-screen/design.md` recipe plus the three `Kväll/` files, no `reel.yaml`), and copy every `reel.yaml` before touching it. `make_dev_library.py` dumps `Två kapitel` and `Grillning` with ruamel's default indentation, and the engine's writer (`reel/writer.py` 28-35) re-indents every list on its first real write. So first normalise each `reel.yaml` a check will `diff` (these two in particular): load it and dump it again with `YAML()` and `indent(mapping=2, sequence=4, offset=2)`. Then take its copy.
 
   Drive `http://127.0.0.1:8126/` with a Playwright script in `<scratchpad>/verify/chapter-management-screen/` (container `mcr.microsoft.com/playwright/python:v1.49.0-noble`, `--network host`), locators scoped to `main:not([hidden])`, every `PUT …/reel` body captured, file checks host-side with `cat` and `diff`. **Keyboard only** (Tab, Shift+Tab, Enter, Space, arrows, Escape; no clicks) for every item below except where it says pointer, asserting `document.activeElement` and the editor's `role="status"` text after each step:
   - every scenario of the four ADDED requirements, on the named events, in order; each save's body matches design, "What a save writes", and each `reel.yaml` `diff` shows only the lines the scenario names. Specifically:
@@ -86,7 +86,7 @@
   - **guard**: with only a chapter added, Back asks "Discard unsaved changes?"; Keep editing keeps it; with the Move clips dialog open, Back closes it and asks
   - **scale**: on `2024-09-15 - Stor dag`, open Move clips on the 400-clip chapter (focus on its first box), press Space, then Enter: the first clip is last in `Kväll`. The time from Enter to the dialog's close, and from a row's Move up press to its announcement, are each under 200 ms. Typing 10 characters in Title takes under 50 ms per keystroke, as on Grillning (lists do not re-render on typing; design, "Performance")
   - restore every touched `reel.yaml` from its copy afterwards and `diff` to confirm
-- [ ] 4.2 Layout, touch and accessibility, on `Två kapitel` in Edit mode with `Kvällen` renamed to `Kväll`, `Morgon` added and the Move clips dialog open in turn, and on Grillning's read view with an empty chapter saved:
+- [x] 4.2 Layout, touch and accessibility, on `Två kapitel` in Edit mode with `Kvällen` renamed to `Kväll`, `Morgon` added and the Move clips dialog open in turn, and on Grillning's read view with an empty chapter saved:
   - **sizes**: 320×700, 390×844, 768×1024 and 1280×900, in the light and the dark theme (the theme control); screenshots of each state to `<scratchpad>/verify/chapter-management-screen/`; look at every one. At each size `document.documentElement.scrollWidth <= clientWidth`; each chapter's header is one line (its height equals `--panel-head-h` computed); the tools row's buttons are inside the panel's box; at 1280 the clip columns start within 1 px of where the read view's table started them
   - **coarse pointer**: a context with `has_touch` and `is_mobile` at 320×700 and 390×844: for Add chapter, Undo, and each of `Kväll`'s Rename, Move clips, Move up, Move down and Delete, `ui-a11y-polish`'s touch probe (`elementFromPoint` at a 7 × 7 grid across the designed area: the border box grown to 44 px each way, and for the Move up / Move down pair anchored away from the other) returns that control or a descendant, each control scrolled to the window's centre first; in the Move clips dialog each `.choice` row is at least 44 px tall and rows do not overlap
   - **fine pointer**: at 1280 and 390 with a mouse, the existing controls (Edit, Save, the clip rows' handle and moves) keep their size and place (bounding boxes equal to a run on main's build, taken first)
@@ -97,7 +97,7 @@
 
 ## 5. Docs and validation
 
-- [ ] 5.1 Update `web/README.md` (the Edit-mode paragraph: the chapter tools, Move clips, Delete only when empty, the D-12 notes; the `edit/` file tree with `chapterNames.ts`, `ChapterTools.tsx`, `ChapterDialogs.tsx`, `chapters.css`) and `docs/high-level-design.md` (D-13 as in design, "HLD"; §4.10's v1 bullet gains "chapter edits and Move clips (**D-13**)", its v3 line and slice row D change). Then run the gates:
+- [x] 5.1 Update `web/README.md` (the Edit-mode paragraph: the chapter tools, Move clips, Delete only when empty, the D-12 notes; the `edit/` file tree with `chapterNames.ts`, `ChapterTools.tsx`, `ChapterDialogs.tsx`, `chapters.css`) and `docs/high-level-design.md` (D-13 as in design, "HLD"; §4.10's v1 bullet gains "chapter edits and Move clips (**D-13**)", its v3 line and slice row D change). Then run the gates:
   - `npx tsc --noEmit` and `npm run build` in the node:22 container
   - `web-design-system`'s motion grep gate, its three commands verbatim, over `web/src/edit` (this change adds no animation)
   - `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`, `.venv/bin/python -m mypy auto_reel_ng`, `.venv/bin/python -m pylint auto_reel_ng`, and the full `.venv/bin/python -m pytest` (the web-mount and OpenAPI drift tests green)

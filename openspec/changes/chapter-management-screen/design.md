@@ -10,8 +10,8 @@
 
 ## Context
 
-See proposal.md, "Why". This change works on main at `d0bc1d5`. Its code is `web/src/edit/`, two lines of
-`web/src/events/EventDetail.tsx`, and two small additions to the shared UI (`ui/Icon.tsx`, `ui/Dialog.tsx`).
+See proposal.md, "Why". This change works on main at `d0bc1d5`. Its code is `web/src/edit/`, an early return in
+`web/src/events/EventDetail.tsx`'s `ChapterPanel`, and two small additions to the shared UI (`ui/Icon.tsx`, `ui/Dialog.tsx`).
 
 **Edit mode today** (all re-read on `d0bc1d5`):
 
@@ -308,15 +308,21 @@ The notes, with `M` the event's own chapter's heading (`Main`):
 | When (exact name comparison) | Note |
 |---|---|
 | A read chapter named after folder `F` is renamed away or deleted, and no other listed, non-deleted chapter is named `F` | No chapter will be named after the folder “F”, so clips added to it later will join M. |
-| … and the event's own chapter is deleted too | No chapter will be named after the folder “F”, so clips added to it later will start a new Main chapter at the end. |
+| … and the event's own chapter is deleted too, or not listed | No chapter will be named after the folder “F”, so clips added to it later will start a new Main chapter at the end. |
 | A chapter is added with, or renamed to, the name of a folder `F` that holds clips, and was not named `F` when read | Clips added to the folder “F” later will join this chapter. Clips from it that other chapters list stay where they are. |
 | … and other chapters list ignored clips from `F` | Its *n* ignored clips will be listed here. |
 | A renamed or deleted read chapter lists ignored clips | Its *n* ignored clip(s) will be listed under M. |
-| … and the event's own chapter is deleted too | Its *n* ignored clip(s) will be listed under a new Main chapter at the end. |
+| … and the event's own chapter is deleted too, or not listed | Its *n* ignored clip(s) will be listed under a new Main chapter at the end. |
 | The event's own chapter is deleted | Clips added to the event folder later will start a new Main chapter at the end. |
 
+"Not listed" covers a document that never named the event's own chapter: its later clips start a new
+`Main` at the end too, so the note says so rather than "join Main". An ignored clip's notes follow where the
+page will list it after the save: under the chapter named exactly after its folder (that chapter's "listed
+here" note), else under the event's own chapter (the renamed or deleted chapter's "listed under Main" note).
+
 A case-only difference (`kvällen` for folder `Kvällen`) matches no folder, so the first row applies. The
-notes are shown in the name dialog as typed (below the field, in its description, not live) and in the
+name dialog shows the notes only while the typed name would be accepted (`checkName`): for a refused name
+they would describe a change that cannot happen. The notes are shown in the name dialog as typed (below the field, in its description, not live) and in the
 chapter's tools row (or its deleted placeholder) after the edit. They are part of the announcement of the
 edit that caused them.
 
@@ -414,12 +420,19 @@ does today.
 .edit-chapter > .panel-header > h2:focus { outline: none; }   /* focused by script, as the page h1 */
 .chapter-add { display: flex; }
 @media (pointer: coarse) {
-  /* Row gap 16 px: each 32 px button's area grows 6 px up and down. Column gap 12 px: the up/down
-     pair is `.btn-icon + .btn-icon`, whose areas meet at their shared edge and grow 11 px outward
-     (components.css 842-848), and a text button's grows 1 px sideways: 11 + 1 = 12. */
-  .chapter-actions { gap: var(--s-4) var(--s-3); }
+  /* 16 px both ways: see below. */
+  .chapter-actions { gap: var(--s-4); }
 }
 ```
+
+The coarse-pointer gap is `--s-4` (16 px) both ways. Each 32 px button's area grows 6 px up and down. The
+up/down pair's areas (`.btn-icon + .btn-icon`, components.css 842-848) meet at their shared edge and grow
+outward by `100% + 1px - 2.75rem` from the 30 px padding box, which is 12 px beyond the border box; a text
+button wider than 44 px grows none sideways. A gap equal to that growth makes the areas touch exactly, and
+pixel rounding then hands the edge to the neighbour painted later: measured at 320 px with a 12 px column
+gap, a tap on Move clips' right edge reached Move up, and one on Move down's right edge reached Delete
+(42 of 49 grid points each). With 16 px the 4 px left over keeps every area its own (49 of 49), as the
+design system already does for wrapped rows (components.css 851-862).
 
 Under a coarse pointer the hit areas are the design system's `.btn::after` (components.css 829-848),
 unchanged: each button's border box grown to 44 px each way, and for the up/down pair anchored away from
@@ -518,10 +531,21 @@ the chapter's name in the accessible name since every chapter has the same butto
   The radios are one tab stop, arrows choose (native).
 - Submit with no clip: the clips' error shows and focus goes to the first box. With no target: the targets'
   error and focus on the first radio. Nothing moves.
-- Success: the dialog closes, focus returns to Move clips (Dialog), announcement "2 clips moved to Main."
+- Success: the dialog closes, focus returns to Move clips (Dialog), announcement "2 clips moved to “Main”."
+  The dialog closes at once and the move is applied in a React `startTransition`: on the 400-clip fixture
+  one commit for both took 187–206 ms from Enter to the dialog's close (the long list re-renders every row),
+  against the 200 ms target; split, the dialog closes in about 80–90 ms and the lists follow. Until the
+  transition lands the page still shows the order from before the move, so nothing may act on it:
+  `movingFrom` (set before the transition, cleared inside it) makes every chapter control, Add chapter,
+  Undo and the clip rows `aria-disabled` (never `disabled`), the pressed Move clips also `aria-busy`, and
+  every chapter handler and Save ignore a press meanwhile. Without this, a Delete pressed on the emptied
+  chapter inside that window was refused as "still plays 3 clips".
 - Size: `.dialog:has(.move-clips) { inline-size: min(32rem, calc(100vw - 2 * var(--s-4))); }`; the clips'
   `.choice-list` scrolls on its own (`max-block-size: min(45dvh, 22rem); overflow-y: auto`), so the
-  targets and actions stay in view. `.choice` is a grid row (`1rem auto minmax(0,1fr) auto`), `min-block-size:
+  targets and actions stay in view. `.choice` is a grid row (`1rem auto minmax(0,1fr)`: box, position, name;
+  a target row `1rem minmax(0,1fr)`). A NEW clip's badge sits inside the name cell, a flex row that wraps it
+  under the name with `white-space: normal`: its label (`CLIP_STATUS_LABEL.new`, "New, not yet in reel.yaml")
+  is too long for a column of its own at 320 px. `min-block-size:
   2.25rem`, `2.75rem` under `pointer: coarse`, rows touching (no gap), so each tap area is its own row; the
   native boxes take `accent-color: var(--accent)`; names wrap (`overflow-wrap: anywhere`).
 
@@ -588,7 +612,9 @@ dialog closes first, as a cancel.
   "1 chapter deleted", "chapter order changed" (each only when non-zero / true), then the moves, removals
   and "adds *n* new clips to reel.yaml" as today.
 - The hint (`edit-hint`): "Drag a clip by its handle, or use its arrows. Clips stay in their chapter; use a
-  chapter's Move clips to move them to another." The NEW-clip sentence becomes "A new clip joins reel.yaml
+  chapter's Move clips to move them to another." The second clause only while more than one chapter is
+  listed (no Move clips exists otherwise); a single-chapter event keeps "Clips stay in their chapter." The
+  NEW-clip sentence becomes "A new clip joins reel.yaml
   once its chapter's order, or the list of chapters, is saved."; the bold one "Saving adds *n* new clips
   to reel.yaml."
 - Headings: `Main`/`Clips` from the draft's listed, non-deleted chapters.
@@ -597,14 +623,16 @@ dialog closes first, as a cancel.
 
 **Decision**: `ChapterPanel` renders, for a chapter with no played and no ignored clip, its header (count
 "0 clips") and `<p class="chapter-empty">No clips. This chapter is left out of the movie.</p>` instead of
-the table (`detail.css`, same rule as Edit mode's). Two lines in `EventDetail.tsx`.
+the table (`detail.css`, same rule as Edit mode's). It is an early return at the top of `ChapterPanel`
+(12 lines): wrapping the table in a ternary instead would re-indent the whole table, a far larger diff.
 
 ### Performance
 
 `ClipOrderList` stays `memo`. Its new props are primitives (`chapterKey`, `heading`, `name`) plus one
 `tools` object per chapter, built in one `useMemo` whose inputs are the draft's `chapters`, `orders`,
 `removed`, `locked` and the notes, never `metadata`: typing in a field re-renders no list. Every handler is
-one stable `dispatch`-based callback taking the chapter key. The Move clips dialog renders only while open.
+one stable `dispatch`-based callback taking the chapter key. The Move clips dialog renders only while open,
+and its move is applied in a transition (see "The Move clips dialog").
 Checked on the 400-clip fixture (tasks 5.1).
 
 ### Files and the G2 seam
