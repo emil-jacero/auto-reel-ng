@@ -94,9 +94,9 @@ export function ToastRegion() {
   const pointerInside = useRef(false)
   // The control focus came from when it entered the region (null: from nowhere).
   const returnTo = useRef<HTMLElement | null>(null)
-  // The last element inside the region to take focus; cleared once focus or a
-  // pointer press goes elsewhere. Never by a focusout: Chromium fires one, with
-  // no related target, when the focused node itself is removed.
+  // The last element inside the region to take focus; cleared once focus is
+  // somewhere else. A pointer press alone does not clear it: a touch scroll
+  // presses and leaves focus where it is.
   const lastFocused = useRef<HTMLElement | null>(null)
 
   const updatePause = useCallback(() => {
@@ -131,7 +131,7 @@ export function ToastRegion() {
 
   // Hover is read from where the pointer arrives, not from enter/leave pairs:
   // a toast dismissed under the pointer disappears without any leave event.
-  // Focus or a press anywhere else ends the region's hold on focus.
+  // Focus going anywhere else ends the region's hold on focus.
   useEffect(() => {
     const onOver = (event: PointerEvent) => {
       const region = regionRef.current
@@ -148,21 +148,38 @@ export function ToastRegion() {
         updatePause()
       }
     }
-    const onElsewhere = (event: Event) => {
+    const onFocusElsewhere = (event: FocusEvent) => {
       const region = regionRef.current
       if (region !== null && event.target instanceof Node && !region.contains(event.target)) {
         lastFocused.current = null
       }
     }
+    // Focus left an element of the region. Chromium fires the same focusout,
+    // with no related target, when the focused node itself is removed (a toast
+    // displaced by a newer one), and that one must keep the record for the
+    // hand-off. So decide once the work that fired it is done: by then a
+    // removed node is disconnected, and the layout effect below has run.
+    const onFocusOut = (event: FocusEvent) => {
+      const region = regionRef.current
+      const left = event.target
+      if (region === null || !(left instanceof Node) || !region.contains(left)) {
+        return
+      }
+      queueMicrotask(() => {
+        if (left.isConnected && !region.contains(document.activeElement)) {
+          lastFocused.current = null
+        }
+      })
+    }
     document.addEventListener('pointerover', onOver)
     document.addEventListener('pointerout', onOut)
-    document.addEventListener('pointerdown', onElsewhere)
-    document.addEventListener('focusin', onElsewhere)
+    document.addEventListener('focusin', onFocusElsewhere)
+    document.addEventListener('focusout', onFocusOut)
     return () => {
       document.removeEventListener('pointerover', onOver)
       document.removeEventListener('pointerout', onOut)
-      document.removeEventListener('pointerdown', onElsewhere)
-      document.removeEventListener('focusin', onElsewhere)
+      document.removeEventListener('focusin', onFocusElsewhere)
+      document.removeEventListener('focusout', onFocusOut)
     }
   }, [updatePause])
 
