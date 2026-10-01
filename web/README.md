@@ -33,11 +33,13 @@ waiting for a worker, a progress bar with its percentage and a time-left estimat
 cancelling, and how it ended — a failure with the service's error text. Every job
 shown is dated by its state — when it finished (rendered) or ended (failed or
 canceled), started or was queued — whether it came from the connection or a read. **Cancel**
-stops a queued job at once and asks first for a running one. Each list row shows its
+stops a queued job at once and asks first for a running one, and for any job while the
+connection is down. Each list row shows its
 event's job live and offers a compact Render; a finished render re-reads the list and
 the page in place, keeping what is shown until the new read answers. One WebSocket
 per tab (`src/jobs/store.ts`) carries every job, reconnects by itself, and reads once any
-job that ended while it was down. Toasts tell how renders started in the tab ended.
+job that ended while it was down. Toasts, naming each event by its title and date,
+confirm a row's Render and tell how renders started in the tab ended.
 Jobs progress only while an `auto-reel worker` runs against the same database; with
 none, a job shows "Waiting for a worker". While an event's `reel.yaml` lists a clip
 missing from disk, its render would fail, so neither the page nor the row offers one:

@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Confirm the base, re-base the spec, and set up.
+- [x] 1.1 Confirm the base, re-base the spec, and set up.
   - **The base:** `main` contains `bca64f2`. Run `git diff --stat bca64f2 main -- web/src/jobs
     web/src/api/jobs.ts web/src/events/EventList.tsx web/src/events/EventDetail.tsx web/src/ui/Dialog.tsx`.
     - If a parallel polish change landed first, read its diff and keep its edits. Expected ones:
@@ -10,6 +10,8 @@
     - Stop and report if one of them restructured `choose()`, `JobMeter`, RenderControl's dialog state
       (`asking`) or hand-off, `tellRowAnswer`, or `track`. `ui-a11y-polish` moving each dialog's `<p>`
       into `description` is expected, not a restructure.
+    - `grep -n 'job-words::after' web/src/events/list.css`: a hit is `event-list-polish`'s separator
+      stop-gap; delete that one rule (design, "Supervisor decisions").
   - **The code facts:** re-check the facts in design, "Context", against the landed code. Line numbers may
     move; the shapes must hold.
   - **The spec:** re-base each of the four MODIFIED blocks in `specs/web-app/spec.md` on the current
@@ -28,7 +30,7 @@
 
 ## 2. web/ — the job a screen shows
 
-- [ ] 2.1 In `src/jobs/useJob.ts`, add the `'refreshed'` `ShownJob` variant, `standing()`/`isFurther()`, and
+- [x] 2.1 In `src/jobs/useJob.ts`, add the `'refreshed'` `ShownJob` variant, `standing()`/`isFurther()`, and
   `choose(live, latest, connectionLive)` per design, "The job a screen shows while the connection is down".
   `useEventJob` passes `connection === 'live'`, and its `useMemo` gets `[live, latest, connection]` as its
   dependencies. Then update the readers of `source`:
@@ -49,7 +51,7 @@
     - On the list, a Refresh shows the same on Grillning's row.
     - With the socket live, a patched read of 0.6 does not beat a live delta of 0.4: the card reads 40%.
     - A read that is behind (queued) while the store has running 0.4 and the socket is down shows 40%.
-- [ ] 2.2 In `JobMeter`, cap a running job at `RUNNING_MAX = 0.99` for both the `<progress>` value and the
+- [x] 2.2 In `JobMeter`, cap a running job at `RUNNING_MAX = 0.99` for both the `<progress>` value and the
   percentage (design, "A running job reads at most 99%"), and fix the comment.
 
   Verify:
@@ -62,7 +64,7 @@
 
 ## 3. web/ — the render region's dialogs (`src/jobs/RenderControl.tsx`)
 
-- [ ] 3.1 Cancel asks while the connection is not live. Per design, "Cancel asks whenever the job might be
+- [x] 3.1 Cancel asks while the connection is not live. Per design, "Cancel asks whenever the job might be
   running":
   - `asking` becomes `{ kind: 'force' } | { kind: 'cancel'; jobId; mayHaveStarted }`
   - subscribe to `connection === 'live'`
@@ -77,7 +79,7 @@
     sentence and focus on "Keep rendering", and sends nothing. Escape sends nothing, and "Cancel render"
     sends exactly one POST, to the question's job id.
   - a running job while live: the dialog opens without the lead sentence
-- [ ] 3.2 Dialogs close when their question is gone, and focus never falls to `<body>`. Per design,
+- [x] 3.2 Dialogs close when their question is gone, and focus never falls to `<body>`. Per design,
   "Dialogs close when their question is gone" and "Focus after a dialog whose opener is gone": add the
   `questionGone` effect and `focusIsLost()`, and use `focusIsLost()` in the hand-off effect.
 
@@ -99,40 +101,47 @@
 
 ## 4. web/ — naming and row answers
 
-- [ ] 4.1 Name events by title (design, "Toasts name the event by its title"):
-  - `eventName()` in `src/jobs/labels.ts`
-  - `tracked` becomes a `Map` with `track(jobId, name)` in `store.ts`, and `onEnded` uses the tracked name
-  - a required `title: string | null | undefined` prop on `RenderControl` and `LiveJobCell`, passed to every
-    `track` call
-  - the one-line call-site edits `title={event.title}` in `src/events/EventDetail.tsx` and
-    `src/events/EventList.tsx` (other changes' files; one line each)
+- [x] 4.1 Name events by title and date (design, "Toasts name the event by its title and date"):
+  - `eventName(eventId, title, date)` in `src/jobs/labels.ts`
+  - `tracked` becomes a `Map` with `track(jobId, name)` in `store.ts`, and `onEnded` uses the tracked name,
+    worded 'Rendered <name>', 'Render failed: <name>' and 'Render canceled: <name>'
+  - required `title` and `date` props (`string | null | undefined`) on `RenderControl` and `LiveJobCell`,
+    whose name is passed to every `track` call
+  - the call-site edits `title={event.title}` and `date={event.date}` in `src/events/EventDetail.tsx` and
+    `src/events/EventList.tsx` (other changes' files; two lines each)
 
   Verify:
-  - `tsc --noEmit` passes, and fails when either call-site line is removed (restore it)
+  - `tsc --noEmit` passes, and fails when either call site's `title` or `date` line is removed (restore
+    it)
   - `grep -n folderName web/src/jobs/store.ts` prints nothing
   - Playwright, on Grillning's page: Render (mock 201), then running and `done` deltas raise one toast,
-    'Rendered “Grillkväll med grannarna”'. The same with a `failed` delta raises 'Render of “Grillkväll med
-    grannarna” failed'. With a confirmed cancel, the canceled end raises no second toast.
-- [ ] 4.2 Announce a row's `enqueued` and `active` answers with `toast.info` (design, "Row answers are
-  announced"). Name every non-collision row answer by title, and keep folder names in the collision toast.
+    'Rendered “Grillkväll med grannarna” · 2024-06-27'. The same with a `failed` delta raises 'Render
+    failed: “Grillkväll med grannarna” · 2024-06-27'. With a confirmed cancel, the canceled end raises no
+    second toast. On both Midsommar pages, a forced render's `done` names '“Midsommar” · 2023-06-23' and
+    '“Midsommar” · 2024-06-21'.
+- [x] 4.2 Announce a row's `enqueued` and `active` answers with `toast.info` (design, "Row answers are
+  announced"). Name every non-collision row answer by title and date, and keep folder names in the
+  collision toast.
 
   Verify, in `<scratch>/verify/jobs-live-polish/check_rows.py`, which logs every `[role=status]`,
   `[role=alert]` and `[aria-live]` text change with a `MutationObserver` in an init script:
   - **Queued:** Enter on "Render 2024-08-02 - Badutflykt - Varberg" (mock 201) makes the polite region say
-    'Render of “Badutflykt” queued', puts focus on the row's "Badutflykt" link, and sends one POST
-  - **Already active:** a mocked 409 `active_job` says 'A render of “Badutflykt” is already queued or
-    running'
-  - **Fresh:** a mocked 200 fresh says '“Badutflykt” is already up to date'
+    'Render queued: “Badutflykt” · 2024-08-02', puts focus on the row's "Badutflykt" link, and sends one
+    POST
+  - **Already active:** a mocked 409 `active_job` says 'Render already queued or running: “Badutflykt” ·
+    2024-08-02'
+  - **Fresh:** a mocked 200 fresh says 'Already up to date: “Badutflykt” · 2024-08-02'
   - **Collision:** Render on the `2024-07-14 - kalas` row, answered 409 by the service itself (a real
     answer: nothing is enqueued), raises an error toast naming '2024-07-14 - kalas' and '2024-07-14 -
     Kalas'
   - **Quiet rows:** a later `running` delta for Badutflykt adds no live-region text
 
-## 5. web/ — the separator (`src/jobs/jobs.css`)
+## 5. web/ — the separator and the card's height (`src/jobs/jobs.css`)
 
-- [ ] 5.1 Replace the `.job-words:has(+ .job-when)::after` rule with the hanging dot and the clipped
-  `.job-state`, and give an active time its own line in `.job-progress` (design, "The separator"). Do not
-  touch `.live-job` or the `@container (width < 50rem)` block.
+- [x] 5.1 Replace the `.job-words:has(+ .job-when)::after` rule with the hanging dot and the clipped
+  `.job-state`, and give an active time its own line in `.job-progress` (design, "The separator"). Reserve
+  the card meter's line (design, "The render card keeps its height"). Do not touch `.live-job` or the
+  `@container (width < 50rem)` block.
 
   Verify, in `<scratch>/verify/jobs-live-polish/check_separator.py`:
   - **States:** mocked snapshots of Grillning running at 0 ("Starting…") and cancelling, Lång kväll running
@@ -144,9 +153,11 @@
     - where `.job-words` and `.job-when` share a line, `when.left − words.right` is 12 ± 1 px and
       `getComputedStyle(when, '::before').content` is `"·" / ""`
     - where the time wraps, `when.left` equals the `.job-state`'s left, so the dot lies outside the clip
-    - the status row's (`.render-row`) height at 1280 is the same with "Starting…" and with progress 0.4.
-      The card itself grows by the meter's figures line on `main` too (design, "Adjacent findings not
-      taken"), so compare the row, not the card.
+    - the meter's (`.job-meter`) height is the same with queued, "Starting…", progress 0.4 and cancelling,
+      at every width; the card's (`.render-card`) height with 0.4 is never more than with "Starting…" (on
+      `main` it grew by 11.5 px); at 1280, 768 and 390 the card's and the status row's (`.render-row`)
+      heights are equal for "Starting…" and 0.4 (design, "The render card keeps its height", for the
+      status text's own reflow at other widths)
   - **List:** in every row whose job shows words ("Waiting for a worker", "Starting…", "Cancelling…"),
     the time is on its own line, and its `::before` content is `none`
   - **Everywhere:** `document.documentElement.scrollWidth <= innerWidth`, with a screenshot per state,
@@ -161,7 +172,7 @@
 
 ## 6. Verification against the dev library
 
-- [ ] 6.1 Run an end-to-end pass against 8116 with a real `auto-reel worker` on this library copy (`--device
+- [x] 6.1 Run an end-to-end pass against 8116 with a real `auto-reel worker` on this library copy (`--device
   cpu` if VAAPI is contended):
   - script: `<scratch>/verify/jobs-live-polish/check_e2e.py`, in
     `mcr.microsoft.com/playwright/python:v1.49.0-noble` with `--network host`, the Noto fonts and
@@ -169,10 +180,12 @@
   - never committed
 
   Check:
-  - **A real render:** from Grillning's page, a sampler reads `.job-state` and `.job-percent` every 100 ms.
-    No sample shows "100%" while the pill reads "Rendering". One toast names "Grillkväll med grannarna".
+  - **A real render:** from Grillning's page, a sampler reads `.job-state`, `.job-percent` and the card's
+    height every 100 ms. No sample shows "100%" while the pill reads "Rendering", and the card keeps one
+    height while the job is active. One toast names '“Grillkväll med grannarna” · 2024-06-27'.
   - **A real row Render:** on Badutflykt, the queued toast is announced, focus is on the row link, and
-    the row follows the job to "Rendered".
+    the row follows the job to "Rendered". Record the row's height before and after the first progress
+    (the rows' meter is not reserved: design, "The render card keeps its height").
   - **Screenshots:** the page (queued, running, cancelling, rendered, and the cancel dialog) and the list
     (queued and running rows), in light and dark, at 1280 and 390px. Look at each.
   - **axe-core** (wcag2a, wcag2aa; the copy in `scratchpad/verify/final/axe/`): zero violations on
@@ -184,11 +197,11 @@
 
 ## 7. Docs and validation
 
-- [ ] 7.1 Update `web/README.md`'s "Rendering" paragraph, then run the gates.
+- [x] 7.1 Update `web/README.md`'s "Rendering" paragraph, then run the gates.
   - **README**, two sentences only:
     - Cancel "asks first for a running one, and for any job while the connection is down"
-    - "Toasts, naming each event by its title, confirm a row's Render and tell how renders started in
-      the tab ended"
+    - "Toasts, naming each event by its title and date, confirm a row's Render and tell how renders
+      started in the tab ended"
   - **Gates:**
     - `npx tsc --noEmit` and `npm run build` in the node:22 container
     - the full `.venv/bin/python -m pytest`, which keeps the web-mount and OpenAPI drift tests green
@@ -202,8 +215,9 @@
   - `git diff web/README.md` touches only the "Rendering" paragraph
   - all of the gates pass
   - the motion grep gate passes over `web/src`
-  - `git diff main --stat` lists only `web/src/jobs/*`, `web/README.md`, the two one-line call sites in
-    `web/src/events/EventList.tsx` and `EventDetail.tsx`, and this change's directory
+  - `git diff main --stat` lists only `web/src/jobs/*`, `web/README.md`, the two-line call sites in
+    `web/src/events/EventList.tsx` and `EventDetail.tsx`, the stop-gap deletion in
+    `web/src/events/list.css` if task 1.1 found it, and this change's directory
   - `git diff main -- web/package.json web/package-lock.json web/openapi.json web/src/api web/src/ui
     web/src/styles` is empty
   - `openspec validate jobs-live-polish --strict` passes

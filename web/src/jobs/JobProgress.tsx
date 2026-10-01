@@ -47,7 +47,7 @@ function formatTime(iso: string): string {
 }
 
 function isCancelling(shown: ShownJob): boolean {
-  return shown.source === 'live' && shown.job.cancel_requested && isActive(shown.job.status)
+  return shown.source !== 'read' && shown.job.cancel_requested && isActive(shown.job.status)
 }
 
 /** What an active job is doing, beside its pill; null when the pill says it all. */
@@ -108,6 +108,11 @@ export function JobState({
   )
 }
 
+// The worker reports the full fraction a moment before the done state (finalize
+// runs between the two writes): a running job stops at 99%, bar included, and
+// only the done state says the render finished.
+const RUNNING_MAX = 0.99
+
 /**
  * An active job's bar and figures: the percentage once progress is reported,
  * the time-left estimate when one is given (the event page only), and "last
@@ -117,9 +122,11 @@ export function JobMeter({ shown, eta }: { shown: ShownJob; eta?: number }) {
   const live = useSyncExternalStore(subscribe, () => getState().connection === 'live')
   const { job } = shown
   const determinate = job.status === 'running' && job.progress > 0
-  // Floored, so a running job never reads 100%.
-  const percent = determinate ? Math.floor(job.progress * 100) : null
-  const lastKnown = shown.source === 'live' && !live
+  const fraction = Math.min(job.progress, RUNNING_MAX)
+  // Floored, and capped above, so a running job never reads 100%.
+  const percent = determinate ? Math.floor(fraction * 100) : null
+  // A refreshed copy is last known too: it stands in for the store's while the connection is down.
+  const lastKnown = shown.source !== 'read' && !live
   const estimate = eta === undefined || isCancelling(shown) ? null : formatEta(eta)
   return (
     <span className="job-meter" data-cancelling={isCancelling(shown) || undefined}>
@@ -128,7 +135,7 @@ export function JobMeter({ shown, eta }: { shown: ShownJob; eta?: number }) {
         key={determinate ? 'determinate' : 'indeterminate'}
         className="job-bar"
         max={1}
-        value={determinate ? job.progress : undefined}
+        value={determinate ? fraction : undefined}
         aria-label="Render progress"
       />
       {(percent !== null || estimate !== null || lastKnown) && (

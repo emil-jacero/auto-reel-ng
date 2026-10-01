@@ -355,6 +355,8 @@ function EventFacts({
         <StalenessCell staleness={event.staleness} />
         <RenderControl
           eventId={eventId}
+          title={event.title}
+          date={event.date}
           staleness={event.staleness}
           latestJob={event.latest_job}
           onFinished={onFinished}

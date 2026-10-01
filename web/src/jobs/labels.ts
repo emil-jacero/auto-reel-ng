@@ -1,4 +1,5 @@
 import type { CancelOutcome } from '../api/jobs'
+import { folderName } from '../events/common'
 import type { ConnectionStatus } from './store'
 
 /*
@@ -17,6 +18,33 @@ export const CONNECTION_LABEL: Record<ConnectionStatus, string> = {
   live: 'Live',
   connecting: 'Connecting…',
   reconnecting: 'Reconnecting…',
+}
+
+// A toast's text is a string: these keep its line breaks out of the name's date.
+const NO_BREAK_SPACE = '\u00a0'
+const WORD_JOINER = '\u2060' // invisible; no line break before or after it
+
+/**
+ * How a toast names an event: its title, as the screens show it, then its date,
+ * since titles repeat (two Midsommar events); with no title, its folder name,
+ * which already starts with the date. The date is the event's `YYYY-MM-DD`, as the
+ * screens write it. A toast puts the name last or before a colon, so its "·"
+ * never sits inside a sentence. A wrapping toast never leaves the "·" at a line's
+ * end or start, and never breaks the date at its hyphens.
+ */
+export function eventName(
+  eventId: string,
+  title: string | null | undefined,
+  date: string | null | undefined,
+): string {
+  if (title == null) {
+    return `“${folderName(eventId)}”`
+  }
+  if (date == null) {
+    return `“${title}”`
+  }
+  const unbroken = date.split('-').join(`-${WORD_JOINER}`)
+  return `“${title}”${NO_BREAK_SPACE}·${NO_BREAK_SPACE}${unbroken}`
 }
 
 /** The sentences the event page and the list rows both use for the same enqueue answer. */

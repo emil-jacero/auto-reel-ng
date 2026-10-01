@@ -1,7 +1,6 @@
 import { fetchJob, jobsSocketUrl } from '../api/jobs'
 import type { JobOut, JobStatus, WsMessage, WsMessageType } from '../api/jobs'
 import { markEventsChanged } from '../events/changes'
-import { folderName } from '../events/common'
 import { eventHref } from '../route'
 import { toast } from '../ui/toast'
 import { etaMs, nextSample } from './eta'
@@ -80,8 +79,8 @@ let releaseTimer: number | undefined
 
 /** Ids `load` has read; without `force` it never reads one again. */
 const requested = new Set<string>()
-/** Jobs this tab started or attached to: their live end raises a toast. */
-const tracked = new Set<string>()
+/** Jobs this tab started or attached to → their event's name: a live end raises a toast. */
+const tracked = new Map<string, string>()
 /** Jobs whose end the operator was already told of. */
 const announced = new Set<string>()
 const samples = new Map<string, Sample>()
@@ -398,21 +397,21 @@ function onEnded(job: JobOut, wasActive: boolean, source: Source): void {
   if (job.status === 'done') {
     markEventsChanged()
   }
-  if (!wasActive || source !== 'live' || !tracked.has(job.id) || announced.has(job.id)) {
+  const name = tracked.get(job.id)
+  if (!wasActive || source !== 'live' || name === undefined || announced.has(job.id)) {
     return
   }
   announced.add(job.id)
-  const name = folderName(job.event_dir)
   const options = { action: { label: 'Open', href: eventHref(job.event_dir) } }
   switch (job.status) {
     case 'done':
-      toast.success(`Rendered “${name}”`, options)
+      toast.success(`Rendered ${name}`, options)
       break
     case 'failed':
-      toast.error(`Render of “${name}” failed`, options)
+      toast.error(`Render failed: ${name}`, options)
       break
     case 'canceled':
-      toast.info(`Render of “${name}” canceled`, options)
+      toast.info(`Render canceled: ${name}`, options)
       break
     case 'queued':
     case 'running':
@@ -447,9 +446,12 @@ export function merge(job: JobOut): void {
   absorb([job], 'live')
 }
 
-/** A job this tab started or attached to: its live end raises a toast. */
-export function track(jobId: string): void {
-  tracked.add(jobId)
+/**
+ * A job this tab started or attached to: its live end raises a toast that names
+ * the event `name` (`eventName`; the store knows only the event's id).
+ */
+export function track(jobId: string, name: string): void {
+  tracked.set(jobId, name)
 }
 
 /**

@@ -28,6 +28,9 @@ and four critics found seven defects in that slice. Each was reproduced again, r
   Varberg”' where the screens say "Badutflykt". The folder's " - " can wrap to the start of a line, where
   it reads like a list bullet.
 
+The supervisor added an eighth fix for this round: **the render card grows by about 11.5 px** when the first
+progress arrives, because the meter's figures line appears.
+
 ## What Changes
 
 - **The newest copy of a job wins while the socket is down.** While the connection is live, the store's
@@ -47,18 +50,21 @@ and four critics found seven defects in that slice. Each was reproduced again, r
 - **Focus never drops to `<body>` after a dialog.** When a dialog closes after its opener is gone, focus
   moves to the job status. This covers a confirmed Render anyway and a dialog that closed by itself.
 - **A running job reads at most 99%, bar included.** Only "Rendered" says a render is done.
+- **The render card keeps its height.** The meter's line is reserved from the first active state, so
+  nothing shifts when the first percentage arrives.
 - **The separator never dangles.** On the event page the "·" sits in the gap between an active job's words
   and its time, and it is clipped away when the time wraps to a new line. In list rows the time after an
   active job's words always takes its own line, with no separator.
-- **Row answers are announced, and toasts name events by title.**
-  - A row's Render that creates a job raises a polite notification: 'Render of “<title>” queued'.
+- **Row answers are announced, and toasts name events by title and date.**
+  - A row's Render that creates a job raises a polite notification: 'Render queued: “<title>” · <date>'.
   - A row's Render that finds a job already queued or running also raises one.
-  - Every job toast and row-answer toast names the event as the screens do: its title, else its folder
-    name.
+  - Every job toast and row-answer toast names the event by its title, as the screens do, followed by its
+    date, since titles repeat: 'Rendered “Midsommar” · 2024-06-21'. An event with no title is named by its
+    folder name.
   - The output-collision toast keeps folder names. The events it names share their title by definition,
     so only the folder tells them apart.
 - **Docs.** `web/README.md` gets two sentences: Cancel asks while the connection is down, and toasts name
-  events by title and confirm a row's Render.
+  events by title and date and confirm a row's Render.
 
 ## Non-goals
 
@@ -71,8 +77,10 @@ and four critics found seven defects in that slice. Each was reproduced again, r
   (`event-page-polish`), the shared date/time formatter (`event-list-polish`), and toast focus, live-region
   atomicity, dialog descriptions and the toast inset (`ui-a11y-polish`).
 - **A visible ring on the script-focused job status.** The design system gives the page's h1 and the
-  status element no ring when script focuses them (`base.css`, `jobs.css`). That rule is left to the
-  design system.
+  status element no ring when script focuses them (`base.css`, `jobs.css`). The supervisor kept that
+  convention.
+- **The list rows' compact meter height.** Only the event page's render card reserves the meter's line. The
+  rows' layout is `event-list-polish`'s.
 - **Refresh re-opening the socket.** Reconnects keep their backoff, and Refresh reads only the screen's
   own content.
 - **Detecting a silently dead socket** (a keepalive on the client), and **toasts raised while a modal
@@ -93,13 +101,14 @@ None.
   - `Requirement: An event's page schedules its render`: Render anyway's dialog closes when its question
     is gone, and focus goes to the job status, never to `<body>`.
   - `Requirement: A render's progress is shown live`: while the connection is not live, the copy that is
-    further along wins; a running job reads at most 99%; the estimate is shown only beside the progress it
-    was computed from; and notifications name the event by its title.
+    further along wins; a running job reads at most 99%; the page's progress indicator keeps one height;
+    the estimate is shown only beside the progress it was computed from; and notifications name the event
+    by its title and date.
   - `Requirement: A queued or running render can be cancelled`: Cancel asks while the connection is not
     live, and the dialog closes by itself when its job ends.
   - `Requirement: The event list shows live job state and offers a render`: a row's enqueue answers
-    "created" and "already active" raise a notification, and row notifications name the event by title,
-    except the output-collision one.
+    "created" and "already active" raise a notification, and row notifications name the event by title and
+    date, except the output-collision one.
 
 ## Impact
 
@@ -111,9 +120,12 @@ None.
   - Owned files: `src/jobs/useJob.ts`, `store.ts`, `RenderControl.tsx`, `LiveJobCell.tsx`,
     `JobProgress.tsx`, `labels.ts` and `jobs.css`, plus two sentences in `web/README.md`.
   - `src/api/jobs.ts` needs no change.
-  - One-line call-site edits in other changes' files:
-    - `src/events/EventList.tsx` (`event-list-polish`): `title={event.title}` on `<LiveJobCell>`.
-    - `src/events/EventDetail.tsx` (`event-page-polish`): `title={event.title}` on `<RenderControl>`.
+  - Call-site edits in other changes' files, two lines each:
+    - `src/events/EventList.tsx` (`event-list-polish`): `title={event.title}` and `date={event.date}` on
+      `<LiveJobCell>`.
+    - `src/events/EventDetail.tsx` (`event-page-polish`): the same two props on `<RenderControl>`.
+    - Only if `event-list-polish`'s separator stop-gap is on `main` when this change's PR branch is built:
+      that one rule is deleted from `src/events/list.css`.
 - **CLI vs API (Principle V):** neither is touched.
 - **Rendered output:** unchanged, and **no `RENDER_GRAPH_VERSION` bump**. The fingerprint inputs are
   unchanged.
