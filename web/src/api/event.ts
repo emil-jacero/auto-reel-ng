@@ -1,6 +1,6 @@
 import { encodeEventId } from '../route'
-import { isProblem, readJson } from './http'
-import type { Problem } from './http'
+import { isProblem, readJson, unpublishedAnswer } from './http'
+import type { Problem, Unanswered } from './http'
 import type { components } from './schema'
 
 /**
@@ -19,8 +19,7 @@ export type EventResult =
   | { kind: 'ok'; event: EventDetail }
   // 404/502/503 in the published ProblemOut shape
   | { kind: 'problem'; problem: Problem }
-  // fetch rejected, or a status or body that carries no published shape
-  | { kind: 'unreachable'; message: string }
+  | Unanswered
 
 // The failure statuses the service declares for this read (see the schema).
 const PROBLEM_STATUSES = new Set([404, 502, 503])
@@ -48,8 +47,5 @@ export async function fetchEvent(eventId: string, signal: AbortSignal): Promise<
   if (PROBLEM_STATUSES.has(response.status) && isProblem(body)) {
     return { kind: 'problem', problem: body }
   }
-  return {
-    kind: 'unreachable',
-    message: `GET ${url} answered ${response.status} ${response.statusText}`.trimEnd(),
-  }
+  return unpublishedAnswer('GET', url, response)
 }

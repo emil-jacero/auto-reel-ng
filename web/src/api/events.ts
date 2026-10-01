@@ -1,5 +1,5 @@
-import { isProblem, readJson } from './http'
-import type { Problem } from './http'
+import { isProblem, readJson, unpublishedAnswer } from './http'
+import type { Problem, Unanswered } from './http'
 import type { components } from './schema'
 
 /**
@@ -23,14 +23,14 @@ export type { Problem }
 
 /**
  * How a read ended. Expected failures are values, not exceptions, so every
- * caller must handle all three outcomes.
+ * caller must handle every outcome: no answer (`unreachable`) and an answer the
+ * route does not publish (`unpublished`) are told apart, as in `jobs.ts`.
  */
 export type EventsResult =
   | { kind: 'ok'; events: EventRow[] }
   // 502/503 in the published ProblemOut shape
   | { kind: 'problem'; problem: Problem }
-  // fetch rejected, or a status or body that carries no published shape
-  | { kind: 'unreachable'; message: string }
+  | Unanswered
 
 const EVENTS_URL = '/api/v1/events'
 
@@ -59,8 +59,5 @@ export async function fetchEvents(signal: AbortSignal): Promise<EventsResult> {
   if (PROBLEM_STATUSES.has(response.status) && isProblem(body)) {
     return { kind: 'problem', problem: body }
   }
-  return {
-    kind: 'unreachable',
-    message: `GET ${EVENTS_URL} answered ${response.status} ${response.statusText}`.trimEnd(),
-  }
+  return unpublishedAnswer('GET', EVENTS_URL, response)
 }

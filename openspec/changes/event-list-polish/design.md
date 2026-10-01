@@ -226,6 +226,11 @@ still exist.
     that ends a text selection.
   - The row gets no role, tabindex or key handler. The title link stays its only tab stop, so the
     keyboard path and the accessibility tree are unchanged.
+  - **Every control in the row stays above the row target.** Nothing is laid over the row. A control's
+    own box, and any hit area its own pseudo-element adds, is the control. That includes
+    `ui-a11y-polish`'s coarse-pointer `.btn::after`, which grows the compact Render to 44 px tall. So the
+    click's target is inside the control, `openRow` returns, and only the control's own handler runs.
+    The list rows' controls are the title link and Render. Cancel lives on the event page, not in a row.
 - `list.css` adds:
   - `.event-table tbody tr { cursor: pointer }`
   - at table widths, `.event-table tbody tr:hover > td { background: var(--surface-hover) }`
@@ -564,6 +569,12 @@ Other changes' lines in **this** change's files, which this change MUST keep whe
   fetch when the service is down and says "not reachable" with the hint.
 - **Read times lose their seconds.** → A same-minute Refresh is still visible (placeholders) and audible
   (the announcement).
+- **Under a coarse pointer at table widths, a Render's 44 px hit area (`ui-a11y-polish`) reaches 1 px into
+  the row above.** That pixel is the row above's 1 px bottom border, the divider line. The cell's 8 px top
+  padding is one short of the area's 9 px growth, so a tap on exactly that line presses the lower row's
+  Render. → Accepted: it is a divider line, not the upper row's content, and it hands the tap to the
+  nearest control. Card widths leave 13 px or more. Measured with `ui-a11y-polish`'s rules injected (it had
+  not landed).
 - **Parallel edits in `EventDetail.tsx`, `EventEditor.tsx`, `SaveBar.tsx`, `ClipOrderList.tsx` and
   `JobProgress.tsx`.** → Each edit is listed above, and each is a few lines away from what the owning
   change rewrites.
@@ -571,6 +582,48 @@ Other changes' lines in **this** change's files, which this change MUST keep whe
 ## Migration Plan
 
 None. The change is client-only and needs no data migration. Rollback is a revert.
+
+## Supervisor decisions
+
+Recorded at the start of implementation (2026-10-01), binding on this change:
+
+- **Polish round context:** the supervisor's polish brief, including its file ownership. Six sibling
+  changes run in parallel: `edit-mode-polish` (P1), `jobs-live-polish` (P2), this change (P3),
+  `event-page-polish` (P4), `ui-a11y-polish` (P5) and `serve-clean-exit` (P6). This change stays in its
+  owned files plus the call sites listed in "Files and parallel changes". For `web/README.md` hunks,
+  whichever change lands second rebases and keeps every side.
+- **Look-alike rows show the full path** (for example `2024/2024-07-14 - Kalas`): accepted.
+- **Deleting the generic `.data-table` row hover:** accepted. `event-page-polish` is told.
+- **The separator stop-gap in `list.css`** is allowed only if `jobs-live-polish` has NOT landed when the
+  pr/ branch is built. `jobs-live-polish` removes it when it lands second.
+- **The Vite dev proxy answering 500 when the service is down** ("Risks / Trade-offs"): accepted.
+  `web/README.md`'s development section gains one sentence saying so.
+
+Recorded after implementation (Phase 2), binding on this change:
+
+- **The Firefox 0.1 px pill miss is accepted.** At 900-1440 px, Firefox draws both the verdict pill and the
+  job pill 3.1 px above the title's top. Task 6.1 allows 3 px, and Chromium and WebKit are within it. The
+  job pill's top equals the verdict pill's in all three engines, and both pills' text baselines sit 3 px
+  above the title's in every engine. The offset comes from the shared `ui/Pill` (`ui-a11y-polish`'s file),
+  not from this change's grid, so no baseline fix is made here.
+- **Implementation deviations accepted:**
+  1. `failureDetail` also returns the detail unchanged when only blank text follows the folder-name
+     prefix, so "a bare prefix comes back unchanged" holds.
+  2. `formatInstant` given an invalid `Date` returns its string form (`"Invalid Date"`), the value as
+     given, never a made-up time.
+  3. The "only error rows" empty state is a `div.empty-state` holding a `<p>`, like the other two, with
+     the same words and look as before.
+  4. The result announcement's wording for one event: "The one event does not need rendering." and
+     "Showing the N of M events that need(s) rendering."
+  5. `web/README.md` also extends the list paragraph's failure sentence ("not reachable" vs "an unexpected
+     answer"), and the file tree's lines for `http.ts` and `labels.ts`.
+- **The separator stop-gap stays.** `jobs-live-polish` had not landed on `origin/main` when the pr/ branch
+  was built: `.job-words:has(+ .job-when)::after` is still in `jobs.css`. `jobs-live-polish` deletes the
+  `list.css` rule when it lands.
+- **The row target leaves every control in the row clickable above it** ("The whole row opens its event").
+  This was checked by hit-testing every control of every list row at 1280, 768 and 390 px:
+  - with a fine pointer in Chromium, Firefox and WebKit
+  - with a coarse pointer in Chromium (touch emulation), with `ui-a11y-polish`'s hit-area rules injected
 
 ## Open Questions
 

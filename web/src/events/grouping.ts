@@ -53,3 +53,38 @@ export function groupByYear(events: readonly EventSummary[]): YearGroup[] {
   }
   return groups
 }
+
+/**
+ * The ids of every event that would read the same as another in the list: the
+ * same date, the same title (or, untitled, the same folder name in its place)
+ * and the same location, compared without regard to letter case and after NFC
+ * normalization, so two spellings of "å" that look alike compare alike. Such
+ * rows also show their folder's path, the one fact no two events share.
+ */
+export function lookAlikes(events: readonly EventSummary[]): ReadonlySet<string> {
+  const byKey = new Map<string, string[]>()
+  for (const event of events) {
+    // The folder name is the id's last segment (`common.tsx` is not imported here).
+    const shownTitle = event.title ?? event.event_id.split('/').pop() ?? event.event_id
+    const key = [
+      event.date ?? '',
+      shownTitle.normalize('NFC').toLowerCase(),
+      (event.location ?? '').normalize('NFC').toLowerCase(),
+    ].join('\u0000')
+    const ids = byKey.get(key)
+    if (ids === undefined) {
+      byKey.set(key, [event.event_id])
+    } else {
+      ids.push(event.event_id)
+    }
+  }
+  const alike = new Set<string>()
+  for (const ids of byKey.values()) {
+    if (ids.length > 1) {
+      for (const id of ids) {
+        alike.add(id)
+      }
+    }
+  }
+  return alike
+}

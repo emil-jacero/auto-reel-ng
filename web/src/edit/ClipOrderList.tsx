@@ -37,6 +37,7 @@ import { ClipThumb } from '../events/ClipThumb'
 import { fileName, formatBytes, plural } from '../events/common'
 import { CLIP_STATUS_LABEL } from '../events/labels'
 import { CLIP_STATUS_LOOK } from '../events/tones'
+import { formatInstant } from '../format'
 import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
 import { movedSet } from './draft'
@@ -105,7 +106,7 @@ function ClipFacts({ clip }: { clip: Clip }) {
         {clip.mtime == null ? (
           '—'
         ) : (
-          <time dateTime={clip.mtime}>{new Date(clip.mtime).toLocaleString()}</time>
+          <time dateTime={clip.mtime}>{formatInstant(clip.mtime)}</time>
         )}
       </span>
     </span>

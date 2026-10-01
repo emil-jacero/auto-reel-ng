@@ -7,6 +7,7 @@ import type { Chapter, Clip, EventDetail as EventDetailData } from '../api/event
 import type { EventFailure, Problem } from '../api/events'
 import { EventEditor } from '../edit/EventEditor'
 import { requestLeave, useSaving } from '../edit/unsaved'
+import { formatInstant } from '../format'
 import { missingClipsReason } from '../jobs/labels'
 import { RenderControl } from '../jobs/RenderControl'
 import { LIST_HREF } from '../route'
@@ -19,13 +20,12 @@ import {
   ClipName,
   DATABASE_CAUSE,
   StalenessCell,
-  UNREACHABLE_CAUSE,
   clipNames,
   folderName,
   formatBytes,
   plural,
 } from './common'
-import { CLIP_STATUS_LABEL, FAILURE_LABEL } from './labels'
+import { CLIP_STATUS_LABEL, FAILURE_LABEL, failureDetail, unansweredFailure } from './labels'
 import { CLIP_STATUS_LOOK, FAILURE_LOOK } from './tones'
 
 /**
@@ -67,14 +67,14 @@ function describeProblem(problem: Problem, eventId: string): Failure {
   if (problem.status === 404) {
     return {
       cause: `No event “${folderName(eventId)}” under the project root.`,
-      detail: problem.detail,
+      detail: null,
       notFound: true,
     }
   }
   if (problem.status === 502) {
     return {
       cause: 'This event could not be read.',
-      detail: problem.detail,
+      detail: failureDetail(eventId, problem.detail),
       failure: problem.failure ?? undefined,
     }
   }
@@ -136,7 +136,8 @@ export function EventDetail({ eventId }: { eventId: string }) {
             setState({ status: 'failed', ...describeProblem(result.problem, eventId) })
             break
           case 'unreachable':
-            setState({ status: 'failed', cause: UNREACHABLE_CAUSE, detail: result.message })
+          case 'unpublished':
+            setState({ status: 'failed', ...unansweredFailure(result) })
             break
         }
       })
@@ -307,7 +308,14 @@ export function EventDetail({ eventId }: { eventId: string }) {
           {state.status === 'ready' && (
             <Counts clips={state.event.chapters.flatMap((chapter) => chapter.clips)} />
           )}
-          {state.status === 'ready' && <span>Read {state.fetchedAt.toLocaleTimeString()}</span>}
+          {state.status === 'ready' && (
+            <span>
+              Read{' '}
+              <time dateTime={state.fetchedAt.toISOString()}>
+                {formatInstant(state.fetchedAt)}
+              </time>
+            </span>
+          )}
           <LoadStatus message={loading ? 'Reading event…' : updating ? 'Updating…' : ''} />
         </div>
         {state.status === 'ready' && !editing && state.event.description != null && (
@@ -573,7 +581,7 @@ function ChapterPanel({
                 {clip.mtime == null ? (
                   '—'
                 ) : (
-                  <time dateTime={clip.mtime}>{new Date(clip.mtime).toLocaleString()}</time>
+                  <time dateTime={clip.mtime}>{formatInstant(clip.mtime)}</time>
                 )}
               </td>
             </tr>
