@@ -300,7 +300,8 @@ finished. An unknown job SHALL be reported as not found.
 ### Requirement: The event list shows live job state and offers a render
 
 Each event row the list shows with its render state SHALL show that event's job as the progress
-requirement describes. The job the connection carries SHALL be matched to the row whose event id equals the
+requirement describes, and SHALL keep its height when the job's first percentage arrives. The job the
+connection carries SHALL be matched to the row whose event id equals the
 job's event directory. A row that needs a render, has no queued or running job, and lists no clip that is
 missing from disk SHALL offer a compact **Render** control, whose accessible name names the event ("Render"
 followed by the event's folder name), so that a list of Render controls is told apart by assistive
@@ -333,6 +334,11 @@ Error rows under "Needs attention" SHALL NOT offer Render.
 - **WHEN** a job is enqueued for `2024-08-02 - Badutflykt - Varberg` from its page, and the operator returns
   to the list
 - **THEN** its row shows the job queued, and its progress once a worker runs it, with no refresh
+
+#### Scenario: A row keeps its height when progress starts
+- **WHEN** the list shows the job for `2024-06-27 - Grillning med grannar` starting, and the first progress
+  arrives
+- **THEN** the row shows the percentage and keeps its height
 
 #### Scenario: A stale row is rendered from the list
 - **WHEN** the operator presses Render on the `2024-08-20 - Två kapitel - Tjörn` row

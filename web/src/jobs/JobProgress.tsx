@@ -21,6 +21,10 @@ import type { ShownJob } from './useJob'
  * Every state also shows its time (`stateTime`): finished (rendered), ended
  * (failed or canceled), started or queued.
  *
+ * A list row (`JobProgress`) says "Starting…" in its meter, where the
+ * percentage then appears, not in its words: the row's words and lines are the
+ * same before and after the first progress, so the row keeps its height.
+ *
  * `JobState` is what a status region announces: it changes with the state only.
  * `JobMeter` is outside any live region, so progress is never announced.
  */
@@ -50,8 +54,18 @@ function isCancelling(shown: ShownJob): boolean {
   return shown.source !== 'read' && shown.job.cancel_requested && isActive(shown.job.status)
 }
 
-/** What an active job is doing, beside its pill; null when the pill says it all. */
-function activeWords(shown: ShownJob): string | null {
+const STARTING = 'Starting…'
+
+/** A running job with no progress reported yet, and no cancel requested. */
+function isStarting(shown: ShownJob): boolean {
+  return shown.job.status === 'running' && shown.job.progress <= 0 && !isCancelling(shown)
+}
+
+/**
+ * What an active job is doing, beside its pill; null when the pill says it all,
+ * or when the meter says "Starting…" (`startingInMeter`, a list row).
+ */
+function activeWords(shown: ShownJob, startingInMeter: boolean): string | null {
   const { job } = shown
   if (isCancelling(shown)) {
     // A requeue keeps the flag, so a queued job can carry it too.
@@ -60,7 +74,7 @@ function activeWords(shown: ShownJob): string | null {
   if (job.status === 'queued') {
     return 'Waiting for a worker'
   }
-  return job.progress > 0 ? null : 'Starting…'
+  return isStarting(shown) && !startingInMeter ? STARTING : null
 }
 
 /**
@@ -85,14 +99,17 @@ function stateTime({ job }: ShownJob): { label: string; iso: string } {
 export function JobState({
   shown,
   lastJobLabel = false,
+  startingInMeter = false,
 }: {
   shown: ShownJob
   lastJobLabel?: boolean
+  /** The meter beside it says "Starting…" (a list row), so these words do not. */
+  startingInMeter?: boolean
 }) {
   const { job } = shown
   const look = JOB_STATUS_LOOK[job.status]
   const active = isActive(job.status)
-  const words = active ? activeWords(shown) : null
+  const words = active ? activeWords(shown, startingInMeter) : null
   const time = stateTime(shown)
   return (
     <span className="job-state" data-status={job.status}>
@@ -114,14 +131,24 @@ export function JobState({
 const RUNNING_MAX = 0.99
 
 /**
- * An active job's bar and figures: the percentage once progress is reported,
- * the time-left estimate when one is given (the event page only), and "last
- * known" while the connection that reported it is down.
+ * An active job's bar and figures: the percentage once progress is reported
+ * (before it, "Starting…" when `startingInMeter`: a list row), the time-left
+ * estimate when one is given (the event page only), and "last known" while the
+ * connection that reported it is down.
  */
-export function JobMeter({ shown, eta }: { shown: ShownJob; eta?: number }) {
+export function JobMeter({
+  shown,
+  eta,
+  startingInMeter = false,
+}: {
+  shown: ShownJob
+  eta?: number
+  startingInMeter?: boolean
+}) {
   const live = useSyncExternalStore(subscribe, () => getState().connection === 'live')
   const { job } = shown
   const determinate = job.status === 'running' && job.progress > 0
+  const starting = startingInMeter && isStarting(shown)
   const fraction = Math.min(job.progress, RUNNING_MAX)
   // Floored, and capped above, so a running job never reads 100%.
   const percent = determinate ? Math.floor(fraction * 100) : null
@@ -138,8 +165,9 @@ export function JobMeter({ shown, eta }: { shown: ShownJob; eta?: number }) {
         value={determinate ? fraction : undefined}
         aria-label="Render progress"
       />
-      {(percent !== null || estimate !== null || lastKnown) && (
+      {(starting || percent !== null || estimate !== null || lastKnown) && (
         <span className="job-figures">
+          {starting && <span className="job-starting">{STARTING}</span>}
           {percent !== null && <span className="job-percent">{percent}%</span>}
           {estimate !== null && <span className="job-eta">{estimate}</span>}
           {lastKnown && <span className="job-last-known">last known</span>}
@@ -149,12 +177,15 @@ export function JobMeter({ shown, eta }: { shown: ShownJob; eta?: number }) {
   )
 }
 
-/** A list row's job: its state and, while active, a compact meter (no estimate, no live region). */
+/**
+ * A list row's job: its state and, while active, a compact meter (no estimate,
+ * no live region) that says "Starting…" where its percentage then appears.
+ */
 export function JobProgress({ shown }: { shown: ShownJob }) {
   return (
     <span className="job-progress">
-      <JobState shown={shown} />
-      {isActive(shown.job.status) && <JobMeter shown={shown} />}
+      <JobState shown={shown} startingInMeter />
+      {isActive(shown.job.status) && <JobMeter shown={shown} startingInMeter />}
     </span>
   )
 }

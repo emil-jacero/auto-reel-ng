@@ -221,3 +221,28 @@
   - `git diff main -- web/package.json web/package-lock.json web/openapi.json web/src/api web/src/ui
     web/src/styles` is empty
   - `openspec validate jobs-live-polish --strict` passes
+
+## 8. Review decisions
+
+- [x] 8.1 Apply the supervisor's review decisions (design, "Supervisor decisions (review round)"):
+  - the card's residual reflow is accepted: record it in design and Risks, with no code change
+  - list rows keep their height when the first percentage arrives (design, "A list row keeps its
+    height"). `JobProgress` passes `startingInMeter` to `JobState` and `JobMeter`, so a row says
+    "Starting…" in its meter's figures (`.job-starting`). In `.job-progress`, the meter reserves its
+    figures' line, and an active job's time always takes its own line.
+  - the toast wording is accepted as built
+  - the separator stop-gap: `grep -n 'job-words::after' web/src/events/list.css` on the PR branch; delete
+    it on a hit
+
+  Verify:
+  - `npx tsc --noEmit` and `npm run build` pass
+  - `<scratch>/verify/jobs-live-polish/spike_rows.py`: row heights for queued, Starting…, 40% and
+    cancelling, for Grillkväll and Lång Kväll, with this-year and other-year dates, at 1280, 1024, 900,
+    768, 600, 480, 390, 360 and 320 px. Starting… and 40% are equal in every case.
+  - `check_separator.py`, `list_row_height`:
+    - a starting row shows no `.job-words` and has "Starting…" in its meter
+    - the row's, the cell's and the meter's heights are equal for Starting… and 40%, at 1280, 1024, 768,
+      600, 480, 390, 360 and 320 px in light, and at 1280 and 390 in dark
+    - there is no horizontal scroll
+    - the event page still says "Starting…" in its status words, and its meter has no `.job-starting`
+  - every earlier Playwright script still passes, and each screenshot is looked at

@@ -29,7 +29,8 @@ and four critics found seven defects in that slice. Each was reproduced again, r
   it reads like a list bullet.
 
 The supervisor added an eighth fix for this round: **the render card grows by about 11.5 px** when the first
-progress arrives, because the meter's figures line appears.
+progress arrives, because the meter's figures line appears. In review, the same was asked for **list rows**,
+which shrank by 4–8 px at that moment.
 
 ## What Changes
 
@@ -50,8 +51,10 @@ progress arrives, because the meter's figures line appears.
 - **Focus never drops to `<body>` after a dialog.** When a dialog closes after its opener is gone, focus
   moves to the job status. This covers a confirmed Render anyway and a dialog that closed by itself.
 - **A running job reads at most 99%, bar included.** Only "Rendered" says a render is done.
-- **The render card keeps its height.** The meter's line is reserved from the first active state, so
-  nothing shifts when the first percentage arrives.
+- **The render card and list rows keep their height.** The meter's line is reserved from the first active
+  state, so the card does not grow when the first percentage arrives. A list row also says "Starting…" in
+  its meter, where the percentage then appears, and gives an active job's time its own line. So a row keeps
+  its height when progress starts, at every width.
 - **The separator never dangles.** On the event page the "·" sits in the gap between an active job's words
   and its time, and it is clipped away when the time wraps to a new line. In list rows the time after an
   active job's words always takes its own line, with no separator.
@@ -79,8 +82,6 @@ progress arrives, because the meter's figures line appears.
 - **A visible ring on the script-focused job status.** The design system gives the page's h1 and the
   status element no ring when script focuses them (`base.css`, `jobs.css`). The supervisor kept that
   convention.
-- **The list rows' compact meter height.** Only the event page's render card reserves the meter's line. The
-  rows' layout is `event-list-polish`'s.
 - **Refresh re-opening the socket.** Reconnects keep their backoff, and Refresh reads only the screen's
   own content.
 - **Detecting a silently dead socket** (a keepalive on the client), and **toasts raised while a modal
@@ -106,9 +107,9 @@ None.
     by its title and date.
   - `Requirement: A queued or running render can be cancelled`: Cancel asks while the connection is not
     live, and the dialog closes by itself when its job ends.
-  - `Requirement: The event list shows live job state and offers a render`: a row's enqueue answers
-    "created" and "already active" raise a notification, and row notifications name the event by title and
-    date, except the output-collision one.
+  - `Requirement: The event list shows live job state and offers a render`: a row keeps its height when its
+    job's first percentage arrives; a row's enqueue answers "created" and "already active" raise a
+    notification; and row notifications name the event by title and date, except the output-collision one.
 
 ## Impact
 
@@ -133,4 +134,4 @@ None.
   Alembic migration**, and no rescan.
 - **Dependencies (Principle VII):** none added.
 - **Size (Principle VIII):** one package, one capability delta (four MODIFIED requirements of slice E),
-  and 10 tasks. Every fix is local to the jobs slice.
+  and 11 tasks. Every fix is local to the jobs slice.
