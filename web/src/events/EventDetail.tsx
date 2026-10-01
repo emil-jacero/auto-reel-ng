@@ -275,7 +275,7 @@ export function EventDetail({ eventId }: { eventId: string }) {
             {state.status === 'ready' && (
               <button
                 type="button"
-                className={editing ? 'btn btn-ghost' : 'btn btn-secondary'}
+                className="btn btn-secondary"
                 aria-disabled={saving || undefined}
                 onClick={() => {
                   if (saving) {

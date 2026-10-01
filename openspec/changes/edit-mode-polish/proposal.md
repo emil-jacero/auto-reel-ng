@@ -48,16 +48,12 @@ design-system design says a toast never covers Save. This change fixes the Edit-
     - at most a third with a conflict (measured at 215 px, 25 %)
     - at most two fifths with a failed write, whose service detail is shown in full (measured at 300 px,
       36 %, with the dev library's real path and temporary file name)
-- **The save bar's side of the toast contract.** Toast placement belongs to `ui-a11y-polish`. That change
-  registers the bar with `keepToastsClearOf(bar)`, using two lines in this change's bar effect, and the
-  region places itself above the stuck bar or below the resting one. This change owns what the editor
-  publishes:
-  - `--toast-inset-bottom` becomes the live band from the bar's top edge to the bottom of the window, kept
-    current on scroll and resize. Before, it was the bar's height, which is right only while the bar is
-    stuck.
-  - So `html`'s `scroll-padding-bottom` also covers the toasts that ride above a bar on its way up to rest,
-    and a focused control scrolls clear of them.
-  - Today's value is unchanged while the bar is stuck.
+- **The save bar's side of the toast contract.** Toast placement belongs to `ui-a11y-polish`, which landed
+  first. It registers the bar with `keepToastsClearOf(bar)`, using two lines in this change's bar effect.
+  Its region places itself above the stuck bar or below the resting one, and publishes the height of the
+  toasts that rise with the bar for the scroll padding. This change keeps those two lines and keeps
+  publishing `--toast-inset-bottom` as the bar's height (supervisor decision; the live band this proposal
+  first planned is dropped).
 - **Focus stays in view and is never dropped.**
   - A drop that changes the order, from the keyboard or a pointer, scrolls the dropped row clear of the save
     bar, as the Move, Remove and Undo buttons already do.
@@ -77,8 +73,15 @@ design-system design says a toast never covers Save. This change fixes the Edit-
     removed from reel.yaml when you save" and "1 ignored clip, not played".
   - **Stop editing** keeps the same secondary style as Edit.
   - **Field edges** take `--fg-subtle`, which measures 3.62:1 in light and 3.94:1 in dark.
-- **Docs:** `web/README.md`: the Edit-mode paragraph, and the toast bullet's sentence on
-  `--toast-inset-bottom`.
+- **Supervisor additions:**
+  - **The "Saved" toast names the event** by its title and date, as the render toasts of `jobs-live-polish`
+    do, or by its folder name when the saved event has no known title.
+  - **Edit mode names clips as the event page's table does** (`clipNames` / `ClipName` from
+    `event-page-polish`): a chapter that lists a clip from another folder names its clips by their paths, in
+    the rows, the frames, the control labels and the announcements.
+  - **A save with no answer** says the service is not reachable without the browser's own error text. An
+    error in the page itself is no longer reported as an unreachable service.
+- **Docs:** `web/README.md`: the Edit-mode paragraph.
 
 ## Non-goals
 
@@ -91,9 +94,6 @@ design-system design says a toast never covers Save. This change fixes the Edit-
 
   Where one of those changes needs a call site in this change's files, or this change needs one in theirs,
   the design names it.
-- **The "Saved" toast keeps its wording.** `jobs-live-polish` names render toasts by title and leaves
-  "Saved" to this file's owner. That is not one of this change's findings, so it is an open question for
-  the supervisor (design).
 - **Save stays at the end of the tab order.** The critics measured 56 Tab stops from Title to Save on a
   16-clip event. A roving tabindex or a Save shortcut is a separate change.
 - **Focus after Reset is unchanged.** Reset still focuses the page heading in place. The critic's point
@@ -111,20 +111,23 @@ None.
 
 ### Modified Capabilities
 
-- `web-app`: three ADDED requirements, all Edit mode's own. No MODIFIED block, so the parallel polish
+- `web-app`: four ADDED requirements, all Edit mode's own. No MODIFIED block, so the parallel polish
   changes cannot lose each other's wording at archive. The toast rule is `ui-a11y-polish`'s requirement
   ("Notifications never cover the save bar"), and it is not restated here.
   - `Requirement: Edit mode's save bar stays compact and fits the window`
   - `Requirement: Edit mode keeps keyboard focus in view and never drops it`
   - `Requirement: Edit mode lines up with the event page and fits a phone`
+  - `Requirement: Edit mode names clips and the saved event as the other screens do`
 
 ## Impact
 
 - **Packages:** `web/` only, plus one documentation file.
   - `src/edit/`:
-    - `SaveBar.tsx`: the primary action, the conflict copy
-    - `EventEditor.tsx`: the live toast inset, the Try again focus, the heading ref
-    - `ClipOrderList.tsx`: the drop scroll, the row action slot, the heading counts and captions
+    - `SaveBar.tsx`: the primary action, the conflict copy, the no-answer alert's detail
+    - `EventEditor.tsx`: the Try again focus, the heading ref, the "Saved" toast's name, the failure an
+      error in the page gets
+    - `ClipOrderList.tsx`: the drop scroll, the row action slot, the heading counts and captions, the clip
+      names
     - `edit.css`: the save bar, the row grid, and the field edges
   - `src/events/EventDetail.tsx`: the Edit and Stop editing toggle's class, one line. The brief assigns
     that toggle to this change.
@@ -134,13 +137,17 @@ None.
 - **Schemas:** no `reel.yaml`, `config.yaml` or API change, no Alembic migration and no rescan.
   `web/openapi.json` and `schema.d.ts` are untouched.
 - **Dependencies:**
-  - **Gates:** none beyond main at bca64f2. Coordination with the parallel changes, listed in the design
-    under "Files and parallel changes":
+  - **Gates:** none beyond main at bca64f2. Implemented on main at eb86e8b, where `event-page-polish` and
+    `ui-a11y-polish` have landed. Coordination with the parallel changes, listed in the design under "Files
+    and parallel changes":
     - with `event-page-polish`: its column properties `--clip-col-pos`, `--clip-thumb-w`,
       `--clip-col-status`, `--clip-col-size` and `--clip-col-mtime`, which this grid reads with today's
       widths as fallbacks
-    - with `ui-a11y-polish`: the toast contract, meaning its two registration lines in the bar effect
+    - with `event-page-polish`: its `clipNames` and `ClipName`, which Edit mode's rows adopt
+    - with `ui-a11y-polish`: the toast contract, meaning its two registration lines in the bar effect, and
+      its coarse-pointer tap areas, which the compact bar and the row action keep clear of each other
+    - with `jobs-live-polish`: the event-name format of its toasts, copied until both have landed
     - with `event-list-polish`: its call sites in `EventEditor.tsx`, `SaveBar.tsx` and
       `ClipOrderList.tsx` (failure kinds and the clip time)
   - **New runtime dependencies:** none. D-8's budget is unchanged.
-- **Size (Principle VIII):** one package, one capability delta and 10 tasks.
+- **Size (Principle VIII):** one package, one capability delta and 11 tasks.

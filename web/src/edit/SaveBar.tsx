@@ -30,12 +30,9 @@ export type SaveProblem =
   | { kind: 'conflict' }
   | { kind: 'refused'; detail: string }
   | { kind: 'gone'; detail: string }
+  // A failure with its own title: the service's files, or an error in this page (EventEditor).
   | { kind: 'disk'; title: string; failure: EventFailure | null; detail: string; retry: Operation }
   | { kind: 'unreachable' | 'unpublished'; detail: string; retry: Operation }
-
-const CONFLICT_DETAIL =
-  'Your edits are still here, unsaved. Reload the latest version, which discards them, ' +
-  'or overwrite the other change with yours.'
 
 /** A control's state: busy if it started the save in flight, else unavailable while one runs. */
 function controlState(pressed: Pressed | null, self: Pressed | null, blocked = false) {
@@ -81,6 +78,8 @@ export function SaveBar({
   const unsendable = !edited || dateIncomplete
   // Save also waits while the failure's own choices are the way on.
   const saveBlocked = unsendable || problem?.kind === 'conflict' || problem?.kind === 'gone'
+  // One primary action at a time: the failure's way on while it holds Save back, else Save.
+  const savePrimary = problem?.kind !== 'conflict' && problem?.kind !== 'gone'
   const describedBy = dateIncomplete ? summaryId : problem !== null ? alertId : undefined
   // With no edits the bar stays only for a vanished event's alert: it says so, not "unsaved".
   const unsaved = edited || dateIncomplete
@@ -141,7 +140,7 @@ export function SaveBar({
             </button>
             <button
               type="button"
-              className="btn btn-primary"
+              className={savePrimary ? 'btn btn-primary' : 'btn btn-secondary'}
               {...controlState(pressed, 'save', saveBlocked)}
               aria-describedby={describedBy}
               onClick={() => {
@@ -185,7 +184,6 @@ function SaveProblemAlert({
         <Alert
           tone="warn"
           title="This event was changed elsewhere since you started editing."
-          detail={CONFLICT_DETAIL}
           action={
             <>
               <button
@@ -213,6 +211,7 @@ function SaveProblemAlert({
               >
                 Overwrite with mine
               </button>
+              <span className="alert-note">Your edits are kept.</span>
             </>
           }
         />
@@ -226,7 +225,7 @@ function SaveProblemAlert({
           title="This event no longer exists."
           detail={problem.detail}
           action={
-            <a className="btn btn-secondary" href={LIST_HREF}>
+            <a className="btn btn-primary" href={LIST_HREF}>
               <Icon name="chevron-left" />
               Back to the event list
             </a>
@@ -256,7 +255,9 @@ function SaveProblemAlert({
               </>
             )
           }
-          detail={problem.detail}
+          // No answer: the title says it all, and the browser's error text ("TypeError: Failed
+          // to fetch") would add nothing but a line.
+          detail={problem.kind === 'unreachable' ? null : problem.detail}
           action={
             <>
               <button

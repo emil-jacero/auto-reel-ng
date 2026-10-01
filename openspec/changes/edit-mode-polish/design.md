@@ -33,13 +33,76 @@ Edit / Stop editing toggle in `EventDetail.tsx`.
 - **The read failure** (`EventEditor.tsx` 444-448, 648-680): `readReel` dispatches `reading`, which
   replaces the failed Alert, and its Try again with it, by the loading placeholder.
 
+## Supervisor decisions (2026-10-01)
+
+Recorded before implementation. Where they differ from a section below, they win, and that section says
+so.
+
+- **Polish round.** The brief is `plan/brief-polish.md`, including its file ownership. Six sibling changes
+  run in parallel: edit-mode-polish (P1, this one), jobs-live-polish (P2), event-list-polish (P3),
+  event-page-polish (P4), ui-a11y-polish (P5) and serve-clean-exit (P6). This change stays in its own
+  files. In `web/README.md`, whichever change lands second rebases and keeps every side.
+- **Column properties are final:** `--clip-col-pos`, `--clip-thumb-w`, `--clip-col-status`,
+  `--clip-col-size` and `--clip-col-mtime`. event-page-polish defines them, and has landed.
+- **The toast contract with ui-a11y-polish**, which landed first: keep publishing `--toast-inset-bottom` as
+  the bar's height, and keep its two registration lines. The live `clientHeight − bar.top` band and the
+  "before P5" fallback are dropped ("Toasts and the bar", Decisions 1 and 5, are withdrawn).
+- **The save bar's bounds are accepted:** at most a third of a 390 × 844 window with a conflict, and at
+  most two fifths with a failure's detail.
+- **ALSO: the "Saved" toast names the event** by its title plus its date, as jobs-live-polish names its
+  render toasts.
+- **ALSO: Edit mode adopts `clipNames` / `ClipName`** from event-page-polish in `ClipOrderList.tsx`: the
+  rows, the handle, Move, Remove and Undo labels, and the announcements. Edit mode then tells cross-folder
+  look-alike clips apart, as the read view does.
+- **ALSO: a save with no answer** shows the "not reachable" wording without the browser's raw text
+  (`TypeError: Failed to fetch`). The `.catch` around `send()` in `EventEditor` no longer labels an
+  exception in the page itself "not reachable".
+- **Keep the hooks of the quiet "Included" rule.** event-page-polish styles Edit rows through
+  `li.clip-item[data-status='active'] .pill`, so `clip-item`, `data-status` and the status `Pill` stay.
+- **Follow-ups, not here:** Reset focusing an off-screen heading; Save sitting 56 Tab stops after Title;
+  the verdict going stale in Edit mode after a live render.
+
+### What landed on main (eb86e8b), re-checked
+
+Both gates are archived (`2026-10-01-event-page-polish`, `2026-10-01-ui-a11y-polish`). Every name task 1.1
+lists matched. What landed, and what it changes here:
+
+- **The columns** (`detail.css` 10-27): the five properties exactly, with 5rem frames and 8rem from a 64rem
+  panel. The 8rem is set on `.event-detail .panel > *`, so Edit mode's `.clip-order-head` and `.clip-order`,
+  both children of the chapter panel, inherit it. The table's cell padding (`--s-3`, `--s-4` at the outer
+  ends) and its 50rem card breakpoint are as "One grid with the table" assumes. The quiet rule is
+  `:is(.clip-row, .clip-item)[data-status='active'] .pill` with `padding-inline: 0`, so the status words
+  start at the cell's padding in both views.
+- **Clip names** (`events/common.tsx`): `clipNames(chapter, identities)` returns the naming function for a
+  chapter, and `ClipName({ name })` mutes the folder part (`.clip-dir`, `detail.css`). The table also passes
+  the name to `ClipThumb` (`name`), for its "Frame from …" text.
+- **Toasts** (`ui/toast.ts`, `ui/ToastRegion.tsx`): `keepToastsClearOf(bar)` and its `release()` already
+  sit in this change's bar effect (`EventEditor.tsx` 529 and 534). While a bar is registered, the region
+  places itself from the bar's rectangle on every scroll and resize (`--toast-offset`: above the held bar,
+  below the resting one). It also publishes `--toast-rise-h`, which `shell.css` adds to
+  `scroll-padding-bottom`. That closes the gap the live band was for. `--toast-inset-bottom` is now read only
+  as the scroll padding's base and as the region's offset when no bar is registered.
+- **Dialogs** (`ui/Dialog.tsx`): the description is automatic. Every child but the `.dialog-actions` row
+  becomes `aria-describedby`, and there is no `description` prop. The editor's two dialogs need no change.
+- **A coarse pointer** (`components.css` 829-878, the `pointer: coarse` block at 841): every `.btn` takes a 44 × 44 tap area through an
+  invisible `::after`. Two adjacent `.btn-icon`s grow theirs away from each other, so Move up's grows 11 px
+  toward its start. `.alert-action` and `.dialog-actions` keep `row-gap: var(--s-4)`, so stacked buttons'
+  areas never meet. Two consequences here, in "The save bar" and "One grid with the table":
+  - The compact alert sets only the column gap of `.alert-action`. A `gap` in the `screens` layer would undo
+    the coarse row gap. Its buttons keep the 2rem height, so two stacked areas still leave 4 px between
+    them.
+  - In the one-line layout, a missing row's Remove ends 1rem before Move up, not 0.5rem. Move up's grown area
+    then stays clear of it.
+
 ## Goals / Non-Goals
 
 **Goals:**
 
 - Fix each of the eight reproduced findings inside `web/src/edit/` plus one class on the toggle, with no
-  new dependency, token or component. The toast finding is fixed together with `ui-a11y-polish`, which
-  places the toasts while this change publishes the bar's band.
+  new dependency, token or component. The toast finding is fixed by `ui-a11y-polish`, which landed first
+  and places the toasts from the bar this change registers; this change keeps publishing the bar's height.
+- Carry out the supervisor's three additions: the "Saved" toast's name, clip names in Edit mode, and a save
+  with no answer worded without the browser's text.
 - State every point where this change meets a parallel one as a named class, attribute or custom property,
   never as a shared line.
 
@@ -169,9 +232,15 @@ Reset and Save.
 
   & > svg { inline-size: 1rem; block-size: 1rem; margin-block-start: 0.125rem; }
 }
-.save-bar-alert .alert-action { gap: var(--s-2); }
-.save-bar-alert .alert-action .btn { min-block-size: 1.75rem; font-size: var(--text-sm); }
+.save-bar-alert .alert-action { column-gap: var(--s-2); }
+.save-bar-alert .alert-action .btn { font-size: var(--text-sm); }
 ```
+
+Changed at implementation, against the coarse-pointer rule that landed with ui-a11y-polish ("What landed
+on main"). The review's CSS set `gap` and `min-block-size: 1.75rem` here. Only the column gap is set now, so
+`.alert-action`'s own row gap, which is 1rem under a coarse pointer, stays. The alert's buttons keep `.btn`'s
+2rem height, so two stacked buttons' 44 px areas still leave 4 px between them. A stacked conflict at 390
+gets 4 to 8 px taller from this. The bounds below leave room for that.
 
 `SaveBar.tsx`:
 
@@ -232,9 +301,18 @@ change. P5's design ("Where toasts sit relative to the save bar") was read while
   `L` px higher than `scroll-padding-bottom` (`offsetHeight + region + gap`) accounts for. A control that
   Tab scrolls into that band can sit under a toast.
 
-**Decision**: Toast placement is P5's alone. This change's side:
+**Decision (supervisor, 2026-10-01, which supersedes the review's decision below)**: P5 landed first, and
+its region closes the gap itself: it places itself from the registered bar's rectangle on every scroll, and
+publishes `--toast-rise-h`, which `scroll-padding-bottom` adds ("What landed on main"). So this change keeps
+today's publish unchanged: `--toast-inset-bottom` is the bar's `offsetHeight`, written synchronously when
+the bar shows and kept current by a `ResizeObserver` on the bar, and removed when the bar leaves. P5's two
+lines, `const release = keepToastsClearOf(bar)` and `release()` in the cleanup, stay in that effect. Only
+the effect's comment changes, to say who reads the property now. Points 2 to 4 below still hold. Point 1, the
+live band, and point 5, the interim before P5, are withdrawn.
 
-1. **A live band.** `--toast-inset-bottom` = `max(0, ceil(documentElement.clientHeight − bar.top))`,
+**The review's decision, withdrawn in part**: Toast placement is P5's alone. This change's side:
+
+1. **A live band (withdrawn).** `--toast-inset-bottom` = `max(0, ceil(documentElement.clientHeight − bar.top))`,
    written only when the value changes.
    - It is published synchronously in the commit that shows the bar. The passive scroll after a move or a
      drop depends on that.
@@ -290,7 +368,7 @@ change. P5's design ("Where toasts sit relative to the save bar") was read while
 3. **No placement of toasts here**: no margin above the bar, and no region rule.
 4. **No spec sentence on toasts here.** P5's ADDED requirement ("Notifications never cover the save bar")
    is the contract. Restating it would be a second source.
-5. **If this change lands before P5**, the region still reads `--toast-inset-bottom` as its offset, so the
+5. **If this change lands before P5 (moot: P5 landed first)**, the region still reads `--toast-inset-bottom` as its offset, so the
    live band places toasts at the bar's top edge. That is P5's "follow" rule (its design, "F"). Toasts then
    never cover the bar, which fixes the brief's finding. At the page end, though, they can sit on the
    last rows' controls until P5's switch lands: P5 measured 4 Move buttons covered at 1280. Today they
@@ -299,13 +377,14 @@ change. P5's design ("Where toasts sit relative to the save bar") was read while
 | | `ui-a11y-polish` (P5) | `edit-mode-polish` (P1) |
 |---|---|---|
 | Where toasts sit | the region's live offset (`--toast-offset`) while a bar is registered, and `--toast-inset-bottom` otherwise | nothing |
-| `--toast-inset-bottom` | read as the fallback only | published live: the band from the bar's top to the window's bottom |
-| `scroll-padding-bottom` (`shell.css`) | unchanged | fed by the live band |
-| Registration | its two lines in P1's effect | keeps them if present |
+| `--toast-inset-bottom` | read as the fallback only | published as the bar's height, as before |
+| `scroll-padding-bottom` (`shell.css`) | adds `--toast-region-h` and `--toast-rise-h` | its base, the bar's height |
+| Registration | its two lines in P1's effect | keeps them |
 | Spec | "Notifications never cover the save bar" | not restated |
 
-**Rationale**: One owner for where toasts sit, and one for what the bar says about itself. The live band
-closes the one gap P5's rule leaves to the publisher, and changes nothing while the bar is stuck.
+**Rationale**: One owner for where toasts sit, and one for what the bar says about itself. P5's
+`--toast-rise-h` covers the toasts that rise with the bar, which the live band was for, so a second
+mechanism would only add a scroll listener.
 
 ### The first drop keeps its row in view
 
@@ -321,7 +400,7 @@ the viewport.
   `data-identity`, as for a button move. It does this before its own `focusAfter` early return, which the
   restructure moves.
 - The existing passive effect then runs `scrollIntoView({ block: 'nearest' })`. Because it is passive, it
-  runs after the editor published the bar's band in its layout effect, and `html`'s scroll padding already
+  runs after the editor published the bar's height in its layout effect, and `html`'s scroll padding already
   holds the new bar.
 
 **Rationale**: This is the same path the Move, Remove and Undo buttons already take (commit 4b7b701). A
@@ -356,6 +435,12 @@ says a busy control "SHALL keep keyboard focus, and SHALL NOT be removed from th
   - `ready`: focus the details `<h2>`, which gets a ref and `tabIndex={-1}`. Its default `:focus-visible`
     ring stays, so a sighted keyboard user sees where focus went.
   - `changed`: focus the "Read again" button, which gets a ref.
+
+Two details were added at implementation:
+
+- The re-announcement says the failure's kind as well, as the alert's title does: "This event could not be
+  read. reel.yaml can't be read".
+- After a read, the live region is cleared, so it no longer holds the failure that has gone.
 
 **Rationale**: This is the app's own busy pattern. Focus lands on the first heading of what replaced the
 failure, and never on `<body>`.
@@ -423,7 +508,7 @@ The items are placed by area, with the table's cell padding (`--s-3`, and `--s-4
 | `.clip-pos` (text-align end) | `pos` | end `--s-2` |
 | `> .clip-thumb` | `thumb` | — |
 | `.clip-file` | `file` | `--s-3` |
-| the row action (below) | `action` | margin end `--s-2` (a margin: padding would widen the button) |
+| the row action (below) | `action` | margin end `--s-4` (a margin: padding would widen the button). The review had `--s-2`. Under a coarse pointer Move up's tap area grows 11 px toward its start, and with `--s-2` it would reach 3 px into Remove ("What landed on main"). |
 | `.clip-moves` | `moves` | end `--s-3` |
 | `.clip-status`, `.clip-size` | `status`, `size` | `--s-3` |
 | `.clip-mtime` | `mtime` | `--s-3` start, `--s-4` end |
@@ -442,8 +527,9 @@ The items are placed by area, with the table's cell padding (`--s-3`, and `--s-4
   and the page scrolled sideways at 320.
 - The 58rem breakpoint stays. With the moves track (about 80 px) taken from the file column, 58rem still
   leaves an 18-character camera name its line in an ordinary row. A missing or removed row also gives its
-  action about 94 px. There `borttagen.mp4` keeps its line from a 58.5rem panel (`review/logs/rv_wide.log`),
-  but an 18-character missing name breaks inside the word between 58 and about 61rem (Risks).
+  action about 102 px with the `--s-4` margin (94 px in the review's measurement with `--s-2`). There
+  `borttagen.mp4` keeps its line from a 58.5rem panel (`review/logs/rv_wide.log`), but an 18-character
+  missing name breaks inside the word between 58 and about 61rem (Risks).
 
 If `event-page-polish` has not landed, the fallbacks equal today's table, so the alignment already holds.
 If it has, the grid follows its widths, including the 8rem frames at 1280. Task 4.1 checks the alignment
@@ -476,6 +562,22 @@ then holds only the name and the moved badge. The same applies to `RemovedRow`'s
   `.clip-moves`.
 - **Focus targets** (`.clip-remove`, `.clip-undo`) are found by class inside the row, so the
   `focusAfter` effect is unchanged.
+
+**Changed at implementation, for a coarse pointer.** ui-a11y-polish's touch probe (task 6.1) found Remove's
+44 px area meeting Move up's and Move down's in windows 510 to 590 px wide, panels of about 29.3 to 33.9rem.
+There the facts' first line also holds Remove, right under the move buttons' line: 2 px apart, against the
+15 px their two areas need. In narrower panels Remove already wraps to the facts' second line, 28 px down.
+In wider ones it ends clear of Move up's area. So:
+
+- `ClipFacts` wraps the action in `<span className="clip-action">`. The wrapper takes the `action` area and
+  its margin in the one-line layout.
+- Under `(pointer: coarse)`, from a 28rem panel to the 58rem one-line layout, a wrapper that holds a
+  Remove takes `flex-basis: 100%`, so Remove starts a line of its own at the facts' start. Undo has no move
+  buttons above it and keeps its place.
+- The cost: on a touch screen, a missing row in those panels is 103 px tall against 76 px for the others.
+  A fine pointer, and every phone width up to 28rem, keep the layout above, so the 390 px bound is
+  unchanged. After the change the probe passes over Sommarlov at 430 to 640 px, every 10 px, and at 1280,
+  768, 390 and 320.
 
 **Rationale**: The remedy sits beside the status that explains it. The row keeps the two-line rhythm of
 the others, and the change is one prop moved.
@@ -528,6 +630,76 @@ fit at 320.
   locked are unchanged.
   - D-10's token note allows `--fg-subtle` "for icons, borders and placeholders". No token is added.
 
+### Clip names, as the table names them (supervisor, ALSO)
+
+**Context**: event-page-polish names a chapter's clips with `clipNames(chapter.name, identities)`. A chapter
+whose clips all lie in its own folder names them by file name. A chapter that lists a clip from another
+folder names each clip by its path in the event folder. `ClipName` mutes the folder part. Edit mode still
+uses `fileName` everywhere: the row, the frame's text, the labels of the handle, Move, Remove and Undo, and
+the announcements of drags and buttons. A chapter that lists `s1710004.mp4` and `Kvällen/s1710004.mp4`
+therefore shows two rows that read alike, and two handles both named "Reorder s1710004.mp4".
+
+**Decision**: In `ClipOrderList.tsx`:
+
+- **One naming function per chapter.** `nameOf = clipNames(chapter, [...original, ...ignored])`, memoised on
+  those two lists. `original` holds every clip the chapter played when Edit mode opened, removed ones
+  included, so neither a removal nor a move renames a row. The read view passes the same identities: the
+  clips it plays and the clips it ignores.
+- **Every place that names a clip uses it.** `RowBody` takes the name as a prop. `.clip-name` renders
+  `<ClipName name={name} />`, and `ClipThumb` gets `name`. The same name goes into "Reorder …",
+  "Move … up", "Move … down", "Remove … from reel.yaml", "Undo removing …", dnd-kit's announcements and the
+  button announcements.
+- **The rows keep their hooks:** `li.clip-item`, `data-status` and the status `Pill`, which event-page-polish's
+  quiet "Included" rule reaches.
+
+**Rationale**: One function decides how both views name a clip, so Edit mode cannot drift from the table.
+
+### The "Saved" toast names the event (supervisor, ALSO)
+
+**Context**: jobs-live-polish names render toasts by the event's title followed by its date, or by the
+folder name when the event has no title: `“Grillkväll med grannarna” · 2024-06-27`. A no-break space sits on
+each side of the "·", and word joiners follow the date's hyphens. That helper, `eventName` in its
+`jobs/labels.ts`, is not on main, and neither change edits the other's files. Edit mode's success toast says
+only "Saved".
+
+**Decision**: In `EventEditor.tsx`, the toast says `Saved <name>`.
+
+- **The format.** A local `eventName(eventId, title, date)` with P2's signature and output. Whichever of the
+  two changes lands second can reduce it to one import (Open Questions).
+- **The title and date** are the ones the save leaves the event with, never a guess:
+  - a field the save writes with a value: that value
+  - a field the document left unset and still leaves unset: the value the page resolved from the folder
+    name, which is the detail's
+  - a field the operator emptied: left out. The service resolves it from the folder name, and the client
+    does not know that value. With no title, the name is the folder name, which starts with the date.
+- The needs-attention form has no detail, so an unset field there is left out too.
+
+**Rationale**: The same event reads the same in every toast, and nothing is invented.
+
+### A save with no answer, and an error in the page (supervisor, ALSO)
+
+**Context**: When `fetch` rejects, `saveReel` and the overwrite's `fetchReel` return `unreachable` with
+`String(error)`, and the bar shows that text as the detail: "TypeError: Failed to fetch". The browser wrote
+it, it says nothing the title does not, and it takes a line of a phone's bar. The `.catch` after `send()` also
+turns any exception into the same `unreachable` problem, so an error in the page itself, a bug, reads "The
+service is not reachable."
+
+**Decision**:
+
+- **`SaveBar.tsx`:** the `unreachable` alert shows no detail. Its title, Retry and "Your edits are kept."
+  stay. The `unpublished` kind that event-list-polish adds keeps its detail, which names the request and
+  the status it got.
+- **`EventEditor.tsx`:** the `.catch` after `send()` makes a `disk`-kind problem titled "The save stopped on
+  an error in this page.", with the error's text as its detail and Retry. It also logs the error with
+  `console.error`, for its stack, as `jobs/store.ts` does. The `disk` kind already has this shape (its own
+  title, a detail, Retry), so the `SaveProblem` union is not widened. event-list-polish edits the union's
+  `unreachable` line, and a new member next to it would be a shared line. A comment above `disk` says what
+  it covers. Whether the PUT was sent is unknown at that point, so the title does not claim that nothing was
+  saved. A Retry after a write that did land is answered 412, which the conflict path handles.
+
+**Rationale**: "Not reachable" is said only when no answer came, and the bar shows only the service's words
+and the client's.
+
 ### Files and parallel changes
 
 **Context**: Six polish changes are written in parallel. The brief assigns `web/src/edit/*` and the toggle
@@ -537,12 +709,12 @@ to this change.
 
 | File | This change | Other changes' lines in it |
 |---|---|---|
-| `edit/SaveBar.tsx` | Save's class, the gone link's class, conflict copy | `event-list-polish`: the `SaveProblem` kind `unreachable \| unpublished`, `case 'unpublished'`, the title expression and its import. These sit in the failure `switch`, not in the lines this change edits. |
-| `edit/EventEditor.tsx` | the live band effect, Try again, the heading and Read again refs | `ui-a11y-polish`: two registration lines in the bar effect, and the two dialogs' `description` props. `event-list-polish`: `readFailure`, `send()`, the import. |
-| `edit/ClipOrderList.tsx` | the drop scroll, `ClipFacts`' action, the heading count and captions | `event-list-polish`: `formatInstant(clip.mtime)` (one line, plus the import) |
+| `edit/SaveBar.tsx` | Save's class, the gone link's class, conflict copy, the `unreachable` alert's detail, a comment above the `disk` kind | `event-list-polish` (not on main yet): the `SaveProblem` kind `unreachable \| unpublished`, `case 'unpublished'`, the title expression and its import. These sit in the failure `switch`, not in the lines this change edits. |
+| `edit/EventEditor.tsx` | the bar effect's comment, Try again, the heading and Read again refs, the `.catch` after `send()`, the "Saved" toast's name | `ui-a11y-polish` (landed): two registration lines in the bar effect, kept. `event-list-polish`: `readFailure`, `send()`, the import. |
+| `edit/ClipOrderList.tsx` | the drop scroll, `ClipFacts`' action and its `.clip-action` wrapper, the heading count and captions, clip names | `event-list-polish`: `formatInstant(clip.mtime)` (one line, plus the import) |
 | `edit/edit.css` | the save bar, the grid, the field edges | none |
-| `events/EventDetail.tsx` | the toggle's `className` (one line) | `event-page-polish` owns the rest. It keeps that button byte-identical to main's, so the order of landing does not matter. |
-| `web/README.md` | the Edit-mode paragraph, and the Toasts bullet's `--toast-inset-bottom` sentence | `ui-a11y-polish` edits the same bullet. Whichever lands second rebases. |
+| `events/EventDetail.tsx` | the toggle's `className` (one line) | `event-page-polish` (landed) owns the rest, and left that button as it was. |
+| `web/README.md` | the Edit-mode paragraph | `ui-a11y-polish` (landed) rewrote the Toasts bullet, whose `--toast-inset-bottom` sentence is still true, so this change leaves it. |
 
 Contracts this change honours:
 
@@ -551,11 +723,12 @@ Contracts this change honours:
   that change's design now defines ("Thumbnail size, and the column contract"), and both changes' gate
   tasks stop on any difference. Neither side renames alone: a fallback hides a mismatch. It keeps `li.clip-item`,
   `data-status` and the status `Pill`, which that change's quiet-status rule
-  `li.clip-item[data-status='active'] .pill` reaches. It does not adopt `clipNames` / `ClipName` (Open
-  Questions).
+  `li.clip-item[data-status='active'] .pill` reaches. It adopts `clipNames` / `ClipName` (supervisor
+  decision; "Clip names, as the table names them").
 - **`ui-a11y-polish`**: the toast table above.
-- **`jobs-live-polish`**: none. `RenderControl`'s `blockedReason` for Edit mode is `EventDetail.tsx`'s, and
-  is unchanged.
+- **`jobs-live-polish`**: the "Saved" toast follows its `eventName` format through a local copy ("The
+  "Saved" toast names the event"). `RenderControl`'s `blockedReason` for Edit mode is `EventDetail.tsx`'s,
+  and is unchanged.
 
 **Rationale**: Every dependency is a name, never a line both sides edit for different reasons. The two
 shared sentences or lines are listed.
@@ -578,6 +751,12 @@ The states are made in that library copy only, and each is restored afterwards:
   the saved copy to repair it.
 - **A chapter with missing and ignored clips**: `page.route` patches `Två kapitel`'s detail and reel reads,
   as the e2e critics did, against this agent's own server.
+- **A chapter that lists a clip from another folder**: `Två kapitel`'s `reel.yaml` lists
+  `Kvällen/s1710004.mp4` in its default chapter, beside the ignored `s1710004.mp4`.
+- **No answer**: `page.route` aborts the `PUT …/reel`, so `fetch` rejects.
+- **An error in the page**: an init script wraps `window.fetch` so that a `PUT` resolves to `null`.
+  `saveReel` then throws reading the answer's status, outside its own `try`, which is an exception in the
+  page and not a missing answer.
 
 ## Failure behavior & idempotency
 
@@ -588,8 +767,10 @@ The states are made in that library copy only, and each is restored afterwards:
   `--force` render or a worker restart does not interact with it.
 - **A failed retry keeps the failure and the focus**, and announces the failure again. A retry answered
   after Edit mode closed is aborted, as today (`inFlight`).
-- **The live band is removed** when the bar leaves, so the region and the scroll padding fall back to 0,
-  as today.
+- **`--toast-inset-bottom` is removed** when the bar leaves, and the registration is released, so the
+  region and the scroll padding fall back to 0, as today.
+- **A save with no answer, and one that hit an error in the page**, keep the edits and offer Retry, as
+  every failed save does. Only their words change.
 - **Nothing is invented.** Absent facts still show "—", and the counts come from the order the editor
   already holds.
 
@@ -602,22 +783,28 @@ The states are made in that library copy only, and each is restored afterwards:
   bounds a failure at two fifths, not a third. The dev library's path and the writer's temporary name
   measured 300 px (36 %) at 390×844. A much deeper library path could still exceed it. Task 2.1 measures
   the real answer, and a miss there is a finding to report, not a reason to clip the text.
-- [A scroll listener in the editor next to P5's] → It does one `getBoundingClientRect` per frame, at most,
-  and writes only when the band changes, which while the bar is stuck is never. It runs only while the bar
-  shows. While the bar rises to rest (at most about the region's height plus a gap of scrolling), each
-  frame does write, and an inherited property on `<html>` restyles the whole tree. On a 380-clip chapter
-  that is a few milliseconds per frame, for a few frames.
-- [A missing or removed row gives about 94 px of its file column to its action in the one-line layout] →
+- [A missing or removed row gives about 102 px of its file column to its action in the one-line layout] →
   `borttagen.mp4` keeps its line from a 58.5rem panel. An 18-character missing camera name breaks inside
   the word between 58 and about 61rem (windows of about 990-1040 px). Today the Remove wraps under the name
   there instead. This is a cosmetic trade-off for a rare row.
-- [P1 lands before P5] → The fallback follows the bar's top (Decision 5 under "Toasts and the bar"): the
-  bar is never covered, but the last rows can be until P5 lands.
+- [Two copies of the toast's event-name format, until jobs-live-polish lands] → The local helper keeps
+  P2's signature and output, so either change can make it one import (Open Questions).
+- [A missing row's Remove moves to the facts line, next to the move buttons' line] → Under a coarse pointer
+  both take 44 px areas. Task 6.1 runs ui-a11y-polish's touch probe over Edit mode, Sommarlov's missing
+  row included, at 1280, 768, 390 and 320.
 - [The grid's look depends on `event-page-polish`'s properties] → With the fallbacks, alignment holds
   either way. If that change renames a property, the fallback hides it, so task 4.1 asserts alignment
   against the live table, not against the numbers.
 - [Edit mode's numbers move 24 px right] → This is the one shift the grip needs. Everything after the
   number stays.
+- [A short window held at its top: the conflict bar can sit partly below it] → Found by task 6.1, and not
+  new: on main the bar is taller. A sticky element cannot rise above its containing block,
+  `.event-editor`. In a window 320 × 700, 340 × 700 or 375 × 667 scrolled to its very top, the editor
+  starts 400 to 480 px down, and a 290 to 320 px conflict bar overhangs the window by 25 to 100 px. Its last
+  row, which holds the focused Save, is then out of view until the page scrolls. In the usual flow, where
+  editing a field scrolls the page, the bar is whole at every size measured, and at 390 × 844 it is whole
+  even at the top. The fix would be structural: the bar's containing block, or scrolling the pressed
+  control into view after an answer. It is a follow-up (Open Questions).
 - [The drag handle is 24 px wide in the one-line layout] → It is still 32 px tall and meets WCAG 2.2's
   24 px target. Below 58rem, where touch is likely, it stays 32 px.
 
@@ -655,22 +842,19 @@ commits.
 
 ## Open Questions
 
-For the supervisor. None of them changes this change's specs, approach or tasks.
+Resolved by the supervisor (2026-10-01, "Supervisor decisions"): the five column names are final; the
+two-fifths bound is accepted; the "Saved" toast names the event, and Edit mode adopts `clipNames` /
+`ClipName`, both in this change.
 
-- **The thumbnail column's property name.** P1 and P4 now both say `--clip-thumb-w`, beside the four
-  `--clip-col-*` names. P4's own README task still lists the mixed set. Please confirm the five names as
-  final, so that neither review renames alone again. If `--clip-col-thumb` is preferred for consistency,
-  both changes must switch together: P1 in its design, proposal and tasks 1.1 and 4.1.
-- **The two-fifths bound for a failed save.** The service's detail is shown in full, so it sets the bar's
-  height. Please confirm that two fifths at 390 × 844 is acceptable for a failure, or ask for a clamped
-  detail with a disclosure, which would be more than a polish.
+Open:
 
-- **The "Saved" toast.** `jobs-live-polish` names render toasts by title and leaves "Saved" (here) unnamed.
-  A one-line follow-up in `EventEditor.tsx` would be `toast.success(`Saved “${name}”`)`, with
-  `name = draft title || folderName(eventId)`. It is not in this change's list.
-- **Clip names in Edit mode.** `event-page-polish` exports `clipNames` / `ClipName` and leaves adopting them
-  in `ClipOrderList.tsx` open. Until someone adopts them, Två kapitel's `Main` can list `s1710004.mp4`
-  twice in Edit mode. This could be a small follow-up after both changes land.
+- **One `eventName`.** This change keeps a local copy of jobs-live-polish's format for the "Saved" toast,
+  because neither change may edit the other's files while both are in flight. Whichever lands second can
+  replace one copy with an import of the other (`jobs/labels.ts` or `edit/EventEditor.tsx`), or the helper
+  can move to a shared module in a follow-up.
+- **The conflict bar on a short window held at its top** (Risks): a follow-up, if wanted. Either the save
+  bar moves out of `.event-editor`, to a containing block that starts at the page's top, or the editor
+  scrolls the pressed control into view after a failed answer.
 - **Follow-ups the critics raised that are not in this round's list:**
   - Reset focuses an off-screen `h1` with `preventScroll`
   - 56 Tab stops from Title to Save on a 16-clip event
