@@ -91,8 +91,11 @@ of the window and the window is at least 28rem (448px) tall, which leaves room f
 sticky header, a chapter heading and a whole clip row; otherwise (a failed save in a
 short window, any bar at 400 % zoom) it rests in the page after the last chapter. A
 save's answer, and every zoom or resize while the bar rests, keeps its focused control
-in the window, and keyboard focus that lands partly outside the window (the
-description field, whose caret alone the browser would scroll to) is scrolled in whole.
+in the window, unless the operator scrolled it away (a `resize` that changes no size,
+as a phone's URL bar fires, is ignored). Keyboard focus that lands partly hidden
+(outside the window, or under the sticky header, a chapter heading or the held bar;
+the description field, whose caret alone the browser would scroll to) is brought into
+view whole; focus from a pointer press never scrolls, so the press lands where made.
 Save sends one whole-document `PUT` under `If-Match` with only the
 operator's edits applied (`edit/draft.ts`); a failure keeps the edits and says why, in a
 compact alert inside the bar that fits a 320px window (a third of a phone's height for a
