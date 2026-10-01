@@ -375,6 +375,7 @@ function ReadyView({ eventId, event }: { eventId: string; event: EventDetailData
       {event.missing.length > 0 && (
         <Alert
           tone="warn"
+          role="note"
           title={
             <>
               <code>reel.yaml</code> lists clips that are not on disk

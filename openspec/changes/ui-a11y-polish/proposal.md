@@ -30,6 +30,11 @@ spec: "A focused control SHALL NOT be hidden behind anything that stays in place
 alone cannot fix this: if the toasts simply follow the bar up, they cover the last clip rows at the end of
 the page instead, as the probe measured.
 
+A sixth was added by the supervisor: **touch targets at phone width are 24-28 px** (design critic: theme
+options 28 × 26, the list's compact Render 81 × 26, the filter options 26 px tall, the back link 71 × 24). That
+meets WCAG 2.5.8's 24 px, but not the 44 px phone interfaces use (WCAG 2.5.5), and the classes live in this
+layer's `components.css` and the shell's `shell.css`.
+
 ## What Changes
 
 - **Toasts keep keyboard focus.**
@@ -58,17 +63,24 @@ the page instead, as the probe measured.
   - `--toast-inset-bottom` stays P1's, the bar's height as today, and it still feeds `scroll-padding-bottom`.
   - Limit: when the toasts and the bar do not fit the window twice over (two toasts at 320 × 700, three at
     phone width), the bar stays clear, but a focused control can sit under the toasts while the bar rises.
-    A `position: fixed` save bar (P1's layout) has no such limit and needs none of the placement code above.
-    The review measured it cleaner in every case, and it is raised to the supervisor (design, "Also
-    considered").
-- **Every dialog states its consequence.** `Dialog` takes a required `description`. It renders that text
-  under the title and names it in `aria-describedby`. The four call sites (two in `EventEditor.tsx`, two in
-  `RenderControl.tsx`) move their body paragraph into the prop, with no visible change.
+    A `position: fixed` save bar would have no such limit; the supervisor kept the bar sticky (design,
+    "Supervisor decisions" and "Also considered").
+- **Every dialog states its consequence.** `Dialog` wraps its body, every child but the `.dialog-actions` row,
+  in an element with a generated id, and names it in `aria-describedby`. No prop is added and no caller
+  changes, so every existing and future dialog has its consequence read. Nothing looks different.
+- **Every control is large enough to touch.** Under a coarse pointer only (`@media (pointer: coarse)`):
+  - buttons, segmented options, the header's Events link and toast links get an invisible hit area of at
+    least 44 × 44 px centred on them, so no box moves; two icon buttons side by side extend theirs away from
+    each other
+  - segmented options grow to 44 px wide (the theme control only from a 24rem window: a 320 px header has no
+    room for it), and the event page's back link to 44 px tall
+  - under a fine pointer nothing changes
 - **The browser's UI color follows the scheme in effect.**
   - `applyThemeChoice` and the `index.html` pre-paint script set both `theme-color` metas to the chosen
     scheme's page background.
   - System restores each meta's own color.
-- **Docs:** the Dialogs and Toasts bullets of `web/README.md` ("Design system").
+- **Docs:** the Dialogs and Toasts bullets, the theme sentence and a touch-target sentence of
+  `web/README.md` ("Design system").
 
 ## Non-goals
 
@@ -78,10 +90,9 @@ the page instead, as the probe measured.
 - **Toasts raised while a modal dialog is open.** They sit under the backdrop, are inert, and a success
   toast's 5 s clock runs out unseen. This integration-critic finding was not assigned to any section of
   this round. It needs the region in the top layer (for example as a popover), which is a design decision
-  of its own. It is raised as an open question, not fixed here.
-- **Touch-target sizes at phone width** (theme control, segmented filter, compact Render, back link). This
-  design-critic finding is unassigned, and those rules live in `shell.css`, `components.css` and screen
-  CSS owned by other changes.
+  of its own. The supervisor kept it a follow-up.
+- **Touch targets in other changes' CSS.** Edit mode's text inputs (`edit.css`, P1) stay 36 px tall, and the
+  list's event title links are left to `event-list-polish` (P3), which makes each row a hit area for its link.
 - **Toast wording** (event titles instead of folders, "Saved" naming its event) and **list-row enqueue
   announcements** belong to `jobs-live-polish` (P2) and `edit-mode-polish` (P1).
 - **No change to toast timing, the three-toast cap, the tones, or where toasts appear when no bar is
@@ -96,11 +107,12 @@ None.
 
 ### Modified Capabilities
 
-- `web-app`: four ADDED requirements and one MODIFIED requirement.
+- `web-app`: five ADDED requirements and one MODIFIED requirement.
   - added `Requirement: The screens announce each change once`
   - added `Requirement: Dismissing a notification keeps keyboard focus`
   - added `Requirement: Notifications never cover the save bar`
   - added `Requirement: A confirmation dialog states its consequence`
+  - added `Requirement: Every control is large enough to touch`
   - modified `Requirement: Every page shares one header and follows the operator's color scheme`: the
     browser's own interface color follows the scheme in effect, from the first paint. The block is re-based
     on the current spec text at the gate (task 1.1).
@@ -109,13 +121,14 @@ None.
 
 - **Packages:** `web/` only.
   - Owned: `src/ui/ToastRegion.tsx`, `src/ui/toast.ts`, `src/ui/Dialog.tsx`, the toast rules of
-    `src/styles/components.css`, `src/shell/theme.ts` and `index.html`.
+    `src/styles/components.css`, `src/shell/theme.ts` and `index.html`; and, by the supervisor's decision,
+    one coarse-pointer block in `components.css`.
   - Call sites in other changes' files, localized and declared in design ("Files and parallel changes"):
-    - `src/edit/EventEditor.tsx`: two Dialog bodies move into `description`, and two lines register the
-      save bar (P1).
-    - `src/jobs/RenderControl.tsx`: two Dialog bodies move into `description` (P2).
+    - `src/edit/EventEditor.tsx`: two lines (and the import) register the save bar (P1).
     - `src/events/EventDetail.tsx`: one `role="note"` (P4).
-    - `src/shell/shell.css` (no owner this round): one `--toast-rise-h` term in `scroll-padding-bottom`.
+    - `src/events/detail.css`: one coarse-pointer rule for the back link (P4).
+    - `src/shell/shell.css` (no owner this round): one `--toast-rise-h` term in `scroll-padding-bottom`, and
+      the coarse-pointer rules for the header's Events link and the theme control.
   - `web/README.md`.
 - **CLI vs API (Principle V):** neither is touched. This is presentation only.
 - **Rendered output:** unchanged. **No `RENDER_GRAPH_VERSION` bump**, and the fingerprint inputs are
@@ -128,4 +141,4 @@ None.
     `event-list-polish` and `event-page-polish`. Whichever lands second rebases (design, "Files and parallel
     changes").
   - **New runtime dependencies:** none (D-8's budget is unchanged).
-- **Size (Principle VIII):** one package, one capability delta and 9 tasks.
+- **Size (Principle VIII):** one package, one capability delta and 10 tasks.

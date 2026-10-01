@@ -9,6 +9,9 @@ import { useSyncExternalStore } from 'react'
  * paused (pointer or focus inside it) their clocks stop, keeping the time left.
  * Errors stay until dismissed. At most three are held: a fourth drops the oldest
  * non-error toast, or the oldest toast when all three are errors.
+ *
+ * A page with a bar held at the window's bottom (Edit mode's save bar) registers
+ * it with `keepToastsClearOf(bar)`, so no toast ever covers it.
  */
 
 export type ToastTone = 'success' | 'info' | 'error'
@@ -113,4 +116,53 @@ function getSnapshot(): readonly Toast[] {
 /** The toasts held now, oldest first. */
 export function useToasts(): readonly Toast[] {
   return useSyncExternalStore(subscribe, getSnapshot)
+}
+
+/*
+ * The one element toasts keep clear of: a page's bar held at the window's
+ * bottom edge. `ToastRegion` places itself above it or below it.
+ */
+type Clearance = { bar: HTMLElement }
+
+let clearance: Clearance | null = null
+const clearanceListeners = new Set<() => void>()
+
+function setClearance(next: Clearance | null): void {
+  clearance = next
+  for (const listener of clearanceListeners) {
+    listener()
+  }
+}
+
+/**
+ * Keep toasts clear of `bar`, an element held at the viewport's bottom edge
+ * (position: sticky; inset-block-end: 0) whose box top is where its visible part
+ * starts, until the returned function is called. One bar at a time: a later call
+ * replaces an earlier one, and a release clears only its own registration (so a
+ * StrictMode re-run, which registers the same element again, keeps it).
+ */
+export function keepToastsClearOf(bar: HTMLElement): () => void {
+  const registration: Clearance = { bar }
+  setClearance(registration)
+  return () => {
+    if (clearance === registration) {
+      setClearance(null)
+    }
+  }
+}
+
+function subscribeClearance(listener: () => void): () => void {
+  clearanceListeners.add(listener)
+  return () => {
+    clearanceListeners.delete(listener)
+  }
+}
+
+function getClearance(): HTMLElement | null {
+  return clearance?.bar ?? null
+}
+
+/** The registered bar, for `ToastRegion`; null when no page registered one. */
+export function useToastClearance(): HTMLElement | null {
+  return useSyncExternalStore(subscribeClearance, getClearance)
 }

@@ -735,13 +735,15 @@
   }
 
   /*
-   * Toasts (`ui/ToastRegion.tsx`): bottom right, full width below 30rem. The
-   * bottom inset property it reads defaults to 0 and is set only by a page
-   * with a sticky bottom bar; the region lets clicks through between toasts.
+   * Toasts (`ui/ToastRegion.tsx`): bottom right, full width below 30rem. With a
+   * bar registered (`keepToastsClearOf`) the region sets its own live
+   * `--toast-offset`, above the bar or below it; otherwise it reads the page's
+   * `--toast-inset-bottom`, 0 unless a page with a sticky bottom bar sets it.
+   * The region lets clicks through between toasts.
    */
   .toast-region {
     position: fixed;
-    inset-block-end: calc(var(--toast-inset-bottom, 0px) + var(--s-4));
+    inset-block-end: calc(var(--toast-offset, var(--toast-inset-bottom, 0px)) + var(--s-4));
     inset-inline-end: var(--s-4);
     z-index: 30;
     display: flex;
@@ -822,6 +824,43 @@
     .toast-region {
       inset-inline: var(--s-4);
       inline-size: auto;
+    }
+  }
+
+  /*
+   * A coarse pointer (a finger): every button, segmented option and toast link
+   * takes a tap anywhere in at least 44 × 44 px around it (WCAG 2.5.5). The area
+   * is an invisible `::after` (`::before` is a busy button's loader), so no box
+   * moves: the control's border box, grown evenly to 2.75rem each way where it
+   * is smaller. Its insets count from the padding box, whose size is 100%, and
+   * -1px takes in a 1px border. Two icon buttons side by side grow theirs away
+   * from each other; segmented options, 2px apart, grow to the width instead.
+   * A fine pointer sees none of this. The shell's Events link and the back link
+   * have their own rules (`shell.css`, `detail.css`).
+   */
+  @media (pointer: coarse) {
+    .btn,
+    .segmented label,
+    .toast-action {
+      position: relative;
+
+      &::after {
+        content: '';
+        position: absolute;
+        inset: min(-1px, calc(50% - 1.375rem));
+      }
+    }
+
+    .btn-icon:has(+ .btn-icon)::after {
+      inset-inline: min(-1px, calc(100% + 1px - 2.75rem)) -1px;
+    }
+
+    .btn-icon + .btn-icon::after {
+      inset-inline: -1px min(-1px, calc(100% + 1px - 2.75rem));
+    }
+
+    .segmented label {
+      min-inline-size: 2.75rem;
     }
   }
 }

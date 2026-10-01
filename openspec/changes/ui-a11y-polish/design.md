@@ -43,17 +43,63 @@ See proposal.md for the problem. The code this change edits, on main `bca64f2`:
 
 **Goals:**
 
-- Fix the five P5 findings inside the owned files (proposal, Impact).
+- Fix the five P5 findings inside the owned files (proposal, Impact), and the touch-target finding the
+  supervisor added.
 - Keep every other change's files at call-site edits only.
 - Give P1 a toast placement contract that holds whichever change lands first.
 
 **Non-Goals:**
 
-- No new component, no dependency, and no visual change except where the toasts sit relative to the save bar.
-  Dialogs, toasts and the missing-clip warning look exactly as before.
+- No new component, no dependency, and no visual change except where the toasts sit relative to the save bar,
+  and, under a coarse pointer only, the segmented options' width and the back link's height. Dialogs, toasts
+  and the missing-clip warning look exactly as before.
 - No change to toast lifetime, the cap, pause-on-hover/focus, or the busy-control rule.
 
 ## Research & Decisions
+
+### Supervisor decisions (before implementation)
+
+These bind the implementation and supersede the sections below where they differ. Each section they touch
+says so.
+
+- **Polish round context.** The brief is `plan/brief-polish.md`, file ownership included. Five sibling changes
+  run in parallel: `edit-mode-polish` (P1), `jobs-live-polish` (P2), `event-list-polish` (P3),
+  `event-page-polish` (P4) and `serve-clean-exit` (P6). This change (P5) stays in its own files plus the call
+  sites named in "Files and parallel changes". README hunks: whichever change lands second rebases and keeps
+  every side.
+- **The save bar stays sticky. No `position: fixed`.** The "fixed bar" alternative ("Also considered") is
+  rejected. Toast placement is this change's "switch sides" rule plus the rise term. `edit-mode-polish` lands
+  **after** this change. It keeps publishing `--toast-inset-bottom` as the bar's height (not a live band), and
+  it keeps the two registration lines this change adds to its bar effect. The contract is written out in full
+  in "The contract with `edit-mode-polish`, as decided".
+- **The one-term `shell.css` edit is accepted:** `+ var(--toast-rise-h, 0px)` in `html`'s
+  `scroll-padding-bottom`.
+- **Dialog descriptions: no required prop.** `Dialog` describes itself. Its body gets a wrapper with a
+  generated id, and `aria-describedby` points at that wrapper. Callers stay unchanged, so every existing and
+  future dialog has its consequence read. This replaces "Dialog description: a required prop" (see "Dialog
+  description: the body describes the dialog").
+- **Touch targets at phone width are taken here.** One `@media (pointer: coarse)` rule set across `shell.css`
+  and `components.css`, with `detail.css`'s `.back-link` as a one-line exception, brings the interactive
+  targets to hit areas of at least 44 × 44 px. Density under a fine pointer does not change. The finding
+  leaves "Unassigned findings" (see "Touch targets under a coarse pointer").
+- **Toasts under an open modal dialog** (inert, unseen) stay a follow-up, not this change.
+
+### Supervisor decisions (after implementation)
+
+These answer the questions the implementation report raised. None of them changes code.
+
+- **The theme options at 28 × 44 px below 24rem are accepted.** A 320 px header has no width to give them
+  (measured). From 384 px up they are 44 × 44 ("Touch targets under a coarse pointer").
+- **The spec's focus sentence keeps its scope:** one toast, or two in a window at least 844 px tall. Two
+  toasts at 320 × 700 and three at phone widths stay known limits ("Known limit: a stack too tall for the
+  window", Risks).
+- **Two comments in `edit-mode-polish`'s files are left to it.** The `edit.css` save-bar block and the comment
+  above `EventEditor`'s bar effect still say that the toast region reads `--toast-inset-bottom` to sit above
+  the bar. With the bar registered, the region sets its own `--toast-offset` instead, and the property only
+  feeds the scroll padding. P1 lands after this change and updates both comments with its own edits to
+  those lines.
+- **The proposal commit's message is fixed on the PR branch.** On the feat branch, its body runs into its
+  subject. The PR branch cherry-picks it with an edited message, as a new commit. No history is rewritten.
 
 ### Findings reproduced
 
@@ -301,9 +347,8 @@ Also considered:
   in all 13 cases up to three toasts at 320 × 700. It needs no registration, scroll listener or rise term, so it
   is the simpler contract (Principle VII), and the more robust one. It is P1's layout decision (`edit.css`,
   plus the end padding), and it changes the look on a short page: the bar sits at the window's bottom rather
-  than under the form. Raised to the supervisor. If P1 adopts it, this change drops task 2.2's placement code
-  and keeps only the documented contract ("a page that publishes `--toast-inset-bottom` holds the measured
-  bar at the window's bottom edge"); the requirement then holds by P1's bar and today's region.
+  than under the form. Raised to the supervisor, who **rejected it**: the bar stays sticky (Supervisor
+  decisions). Task 2.2's placement code and the rise term stay.
 - **Move toasts to the top while a bar shows.** They would cover the page heading and the Edit or Stop
   editing controls, and jump across the screen on entering Edit mode.
 
@@ -364,6 +409,34 @@ Merge order does not matter:
   region ignores it for placement once the bar is registered, and P5's rebase re-applies the two lines in
   P1's reshaped effect. The scroll padding then holds both terms, which only adds margin.
 
+**The contract with `edit-mode-polish`, as decided.** The supervisor fixed the order: P5 lands first, P1
+second, on top of it. The table above holds with these exact terms, which P1's implementation MUST keep:
+
+1. **Placement is P5's.** `ToastRegion`, `ui/toast.ts` and the `.toast-region` rules in `components.css`
+   decide where toasts sit. P1 MUST NOT position toasts, add a margin for them above the bar, or set
+   `--toast-offset` or `--toast-rise-h`.
+2. **`--toast-inset-bottom` is P1's, and it is the bar's height.** EventEditor's bar layout effect publishes
+   `${bar.offsetHeight}px` on `<html>` while the bar shows (the card plus its `--s-4` foot), follows it with a
+   `ResizeObserver`, and removes it in the cleanup. This is exactly what `bca64f2` does. It is **not** the live
+   band `max(0, ceil(clientHeight - bar.top))` that P1's design proposes. With the rise term the band is not
+   needed, and the static height keeps `scroll-padding-bottom` steady while the page scrolls.
+3. **The registration lines stay in that effect.** After `publish()` comes
+   `const release = keepToastsClearOf(bar)`, and the cleanup calls `release()` (with the import from
+   `../ui/toast`). The element passed is the `.save-bar` element (`barRef.current`): sticky,
+   `inset-block-end: 0`, with the card at its top, so its box top is the bar's visible top edge. If P1
+   restructures the effect, the two lines move with it. They run in the same commit that shows the bar, and
+   release in the cleanup that hides it or unmounts the editor.
+4. **What the region does with them.** While the bar is registered, the region ignores
+   `--toast-inset-bottom` for placement and uses its own `--toast-offset`, which is "above" or "below" by the
+   rule above. It publishes `--toast-rise-h` while it holds a toast. With nothing registered (no bar, or
+   another page), `--toast-inset-bottom` (default 0) places the region as on `bca64f2`.
+5. **Scroll padding is shared.** `shell.css` sets `html`'s `scroll-padding-bottom` to
+   `--toast-inset-bottom + --toast-region-h + --toast-rise-h + --s-4`. P1 MUST NOT override it in `edit.css`
+   (none does today, and `edit.css` says so), and adds no toast term of its own.
+6. **The requirement is P5's.** "Notifications never cover the save bar" lives in this change's spec delta.
+   P1 does not restate it. P1's integration check (its tasks, "If `ui-a11y-polish` is on main") runs against
+   this contract.
+
 **Rationale**:
 - Of the rules the region can apply on its own, it is the only one measured to keep the bar, the page's last
   controls and the focused control uncovered with one toast at every width, and two in a window at least
@@ -372,7 +445,7 @@ Merge order does not matter:
 - It owns toast geometry in the one layer that knows the region's height.
 - It survives the layout decisions P1 might make about the bar, including a fixed bar.
 
-### Dialog description: a required prop
+### Dialog description: the body describes the dialog
 
 **Context**: The consequence paragraph is a free child, so `Dialog` cannot know which child describes it.
 
@@ -381,16 +454,43 @@ Merge order does not matter:
 - Describing the dialog by a wrapper around all children: the description would then include the action
   buttons' names ("Cancel Render anyway").
 - Finding the first `<p>` in the DOM: implicit and fragile.
-- An explicit prop.
+- An explicit, required `description` prop. This was this design's first decision: `tsc` would enforce it
+  for every future dialog, at the cost of one moved line per call site in two other changes' files
+  (`EventEditor.tsx`, `RenderControl.tsx`), both of which P1 and P2 rewrite this round.
 
-**Decision**: `Dialog` gains a **required** (MUST) `description: ReactNode`, rendered as
-`<p id={descriptionId} className="dialog-description">` right after the title, with
-`aria-describedby={descriptionId}` on the `<dialog>`. `children` becomes only the actions (and any extra
-content). The four call sites move their paragraph's text into `description=`. Callers pass inline content
-(it sits inside a `<p>`). The existing `.dialog p` rule styles it, so no CSS changes.
+**Decision (supervisor)**: No new prop. `Dialog` describes itself, and its callers stay unchanged:
 
-**Rationale**: Required means `tsc`, the frontend gate (D-8), enforces the new requirement for every future
-dialog, as the exhaustive label maps do. The change is one moved line per call site.
+- `Dialog` renders a body wrapper, `<div id={bodyId} className="dialog-body">`, after the title, and sets
+  `aria-describedby={bodyId}` on the `<dialog>`. `bodyId` comes from `useId`.
+- The body is every child **except the actions row**: a child element whose `className` includes
+  `dialog-actions`, the design system's own class for that row (`components.css`). The actions render after
+  the body, in their order. So the description is the consequence alone, not "… Cancel Render anyway", and
+  the spec's scenarios ("described as …") hold exactly.
+- A dialog with no body content sets no `aria-describedby`.
+- No CSS changes. The wrapper is a plain block with no margin, and `.dialog p` still styles the paragraph,
+  so every dialog looks as before.
+
+```tsx
+// ui/Dialog.tsx (sketch)
+const parts = Children.toArray(children)
+const body = parts.filter((part) => !isActionsRow(part))
+const actions = parts.filter(isActionsRow)
+<dialog aria-labelledby={titleId} aria-describedby={body.length > 0 ? bodyId : undefined}>
+  <h2 id={titleId} className="dialog-title">{title}</h2>
+  <div id={bodyId} className="dialog-body">{body}</div>
+  {actions}
+</dialog>
+```
+
+**Rationale**:
+- Every existing and future dialog gets its consequence read, with no call-site edit. That also removes
+  this change's dialog lines from P1's and P2's files, which both rewrite those dialogs this round (P2's
+  cancel dialog gains a conditional lead sentence; it is still the body).
+- Leaving out the `.dialog-actions` row keeps the button names out of the description. The class is the one
+  every dialog already uses for its actions, so the rule adds no new convention.
+- If a future caller wraps its actions in a component of its own, the row lands in the body. The
+  description then also reads the button names. That is noisier, but the consequence is still read. The
+  verification checks the four dialogs on main.
 
 ### Browser UI color
 
@@ -421,26 +521,109 @@ dialog, as the exhaustive label maps do. The change is one moved line per call s
 - `<meta name="color-scheme" content="light dark">` is left as is: the built stylesheet is render-blocking, and
   `:root[data-theme]` sets `color-scheme` before the first paint, so it cannot flash.
 
+### Touch targets under a coarse pointer
+
+**Context**: The design critic measured the phone-width targets at 24-28 px: the theme options 28 × 26, the
+list's compact Render 81 × 26, the filter options 26 px tall and the back link 71 × 24. That meets WCAG 2.2's
+24 px minimum (2.5.8) but not the 44 px that phone interfaces use (WCAG 2.5.5). The supervisor gave the
+finding to this change: one `@media (pointer: coarse)` rule set across `shell.css` and `components.css`, with
+`detail.css`'s `.back-link` as a one-line exception, with no change in density under a fine pointer.
+
+**Explored**: This change's own probe (`<scratchpad>/verify/ui-a11y-polish/touch_probe.py`,
+`header_probe.py`), read-only on the agent's server of `bca64f2`, in Chromium with touch emulation
+(`has_touch`, `is_mobile`: `(pointer: coarse)` matches). For every control of the list, Grillning's page and
+its Edit mode at 390, 320 and 768 px, it measured the box, and every other control that meets the 44 × 44
+box centred on it.
+- **Below 44 px:** every `.btn` (32 px tall; the compact Render and Edit's Remove and Undo 26), every icon
+  button (32 × 32), the segmented options (26 tall; theme options 28 wide, "All" 40), the header's Events
+  link (30 tall) and the back link (24 tall).
+- **Neighbours inside the 44 px box:** only the two segmented groups (their options are 2 px apart) and
+  Edit's move up / move down pair (4 px apart). No other control comes within reach of another's box.
+- **Header room:** the header has 57 px to spare at 390, 27 at 360 and **none at 320**, where the jobs
+  status already shrinks from 84 to 71 px.
+- Growing the boxes instead was ruled out where the box sits in a track another change sized for the fine
+  pointer: Edit's handle sits in a 2rem grid column and the move pair in a 4.25rem one (`edit.css`, P1's),
+  and every row would grow. The header has no height to give a 44 px option inside its 2 px track (50 > 48).
+
+**Decision**: Under `@media (pointer: coarse)` only:
+- **A hit area, not a bigger box, for buttons and links** (`components.css`): `.btn` (every variant),
+  `.segmented label` and `.toast-action` become `position: relative` with an `::after` that is the control's
+  border box grown evenly to 2.75rem each way where it is smaller. It is invisible, takes no layout, and a
+  tap on it is a tap on its element. Nothing moves, and nothing looks different. The area is set by insets,
+  `min(-1px, calc(50% - 1.375rem))`: they count from the padding box, whose size is `100%`, and `-1px` takes
+  in the 1px border. (A first version sized the area `max(100%, 2.75rem)` and centred it with `translate`.
+  The probe found that it missed the border's 1px columns where the area reaches past the box, because
+  `100%` is the padding box.)
+- **Two icon buttons side by side** (`.btn-icon` followed by `.btn-icon`, Edit's move pair) extend their
+  areas away from each other: the first toward its start, the second toward its end. Each keeps 44 × 44 of
+  its own, and neither area reaches into the other button.
+- **Segmented options grow to 2.75rem wide** (`components.css`), so their areas never overlap the next
+  option; only their height needs the hit area. That is the one visible change: the filter's "All" grows by
+  4 px, and the theme options from 28 to 44 px.
+- **The theme control keeps 1.75rem below 24rem** (`shell.css`). Its options would need 48 px more than a
+  320 px header has. There they stay 28 px wide, with a 44 px tall area of their own width, so the three never
+  overlap. 24rem (384 px) is the narrowest window with room: 390 and wider phones get 44 × 44.
+- **The header's Events link** (`shell.css`) gets the same hit area, inside the 48 px header.
+- **The back link** (`detail.css`, one rule) grows to `min-block-size: 2.75rem`. It is alone on its line,
+  so growing it moves nothing beside it.
+
+```css
+/* components.css, @layer components */
+@media (pointer: coarse) {
+  .btn,
+  .segmented label,
+  .toast-action {
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: min(-1px, calc(50% - 1.375rem));
+    }
+  }
+  .btn-icon:has(+ .btn-icon)::after { inset-inline: min(-1px, calc(100% + 1px - 2.75rem)) -1px; }
+  .btn-icon + .btn-icon::after { inset-inline: -1px min(-1px, calc(100% + 1px - 2.75rem)); }
+  .segmented label { min-inline-size: 2.75rem; }
+}
+/* shell.css: the same area for `.app-nav a`; below 24rem the theme options keep 1.75rem and
+   their area its width (`inset-inline: -1px`). detail.css: `.back-link { min-block-size: 2.75rem }`. */
+```
+
+**Rationale**:
+- Under a fine pointer nothing changes: the rule set is inside the media query, and the probe found no
+  rect that differs from `bca64f2`.
+- A hit area fits every layout the parallel changes are reshaping (the save bar, Edit's rows, the list's
+  rows), because it changes no box.
+- `.btn`'s `::before` is the busy loader, so the hit area uses `::after`, which no `.btn` uses. The skip
+  link's `position: fixed` (`shell.css`, a later layer) still wins over `position: relative`.
+
+Not covered, and why (raised to the supervisor):
+- **Text inputs in Edit mode** are 36 px tall. `.field-input` is in `edit.css` (P1's).
+- **The list's event title links** are 17 px tall text. `event-list-polish` (P3) is making the whole row a hit
+  area for its link, which supersedes a per-link rule.
+- **The theme options below 24rem** stay 28 px wide (above). The supervisor accepted this ("Supervisor
+  decisions (after implementation)").
+
 ### Files and parallel changes
 
 **Context**: P1-P4 are implemented in parallel worktrees from `bca64f2` (brief, "File ownership").
 
 **Decision**: This change's edits outside its owned files are call sites only:
 
-- **`web/src/edit/EventEditor.tsx`** (P1):
-  - Two lines in the bar layout effect register the bar.
-  - The Discard and Overwrite dialogs each move their `<p>` into `description`.
-  - P1 is expected to edit this file heavily: save-bar publish, focus and Try again. Whichever lands second
-    re-applies the other side's lines.
-- **`web/src/jobs/RenderControl.tsx`** (P2): the Render anyway and Cancel dialogs move their `<p>` into
-  `description`. P2 changes the cancel dialog's lifetime and the hand-off after Render anyway, so the text of
-  these two blocks may move. The rebase keeps P2's text inside `description`.
+- **`web/src/edit/EventEditor.tsx`** (P1): two lines in the bar layout effect register the bar, plus the
+  import. P1 lands after this change and keeps them ("The contract with `edit-mode-polish`, as decided").
+  The dialogs are untouched: `Dialog` describes itself.
+- **`web/src/jobs/RenderControl.tsx`** (P2): untouched.
 - **`web/src/events/EventDetail.tsx`** (P4): `role="note"` on the missing-clip `Alert`. That is one attribute.
 - **`web/src/shell/shell.css`** (no owner this round): one term, `var(--toast-rise-h, 0px)`, in `html`'s
-  `scroll-padding-bottom`, and its comment. No other change of this round lists `shell.css`.
-- **`web/README.md`**: only the "Dialogs" and "Toasts" bullets and the theme sentence of "Design system".
+  `scroll-padding-bottom`, and its comment; and the coarse-pointer rules for the header's Events link and the
+  theme control below 24rem. No other change of this round lists `shell.css`.
+- **`web/src/styles/components.css`**: the toast rules (owned) and the coarse-pointer block (supervisor).
+- **`web/src/events/detail.css`** (P4): one coarse-pointer rule for `.back-link`.
+- **`web/README.md`**: only the "Dialogs" and "Toasts" bullets, the theme sentence and a touch-target
+  sentence of "Design system".
 
-The spec delta ADDs four requirements and MODIFIES only the color-scheme requirement. No other P-change of
+The spec delta ADDs five requirements and MODIFIES only the color-scheme requirement. No other P-change of
 this round is expected to touch that requirement. The gate task re-bases it anyway.
 
 **Rationale**: This keeps merge conflicts to a few known lines.
@@ -453,9 +636,9 @@ this round is expected to touch that requirement. The gate task re-bases it anyw
 - **Toasts under a modal dialog** (integration critic, not verified here). A toast raised while a `<dialog>`
   is open sits under the backdrop, is inert, and a success toast's clock runs out unseen. The fix needs the
   region in the top layer (`popover="manual"`, shown after the dialog), or deferred emission. That is a design
-  choice of its own, with a WebKit support question.
-- **Touch targets of 24-28 px at phone width** (design critic). They are in `shell.css`, `components.css`
-  (`.btn-compact`, `.segmented`) and `detail.css`, which are not this change's files.
+  choice of its own, with a WebKit support question. The supervisor kept it a follow-up.
+- **Touch targets of 24-28 px at phone width** (design critic): no longer unassigned. The supervisor gave it
+  to this change ("Touch targets under a coarse pointer").
 
 **Rationale**: Principle VIII, and the brief's ownership table.
 
@@ -487,8 +670,16 @@ this round is expected to touch that requirement. The gate task re-bases it anyw
   covering the last clip rows (measured).
 - **[A scroll listener]** → While a bar is registered: one `getBoundingClientRect` per scroll event (at most
   once per frame) and a style write only when the value changes.
-- **[A required `description` breaks a parallel change that adds a dialog]** → `tsc` reports it at rebase,
-  and the fix is to pass the text. This is intended.
+- **[A dialog whose actions are not a `.dialog-actions` child]** → Its description also reads the button
+  names. Every dialog on main uses the row, and the consequence is still read. A parallel change that adds a
+  dialog needs no edit for this change.
+- **[A touch hit area reaches past its box]** → A tap up to 6 px beside a 32 px button (9 px beside a 26 px
+  one) is that button's. The probe found no other control within reach on the screens of `bca64f2`. A later
+  layout that puts a control that close to a button shares the overlap, and the later element in the page
+  wins it. `event-list-polish`'s row-wide link is the case to recheck when it lands: a button's area must stay
+  above the row's link.
+- **[The theme options below 24rem]** → 28 × 44 px, not 44 × 44: the header has no width to give (measured).
+  Accepted by the supervisor.
 - **[The hex colors are duplicated between `index.html` and `theme.ts`]** → The verification compares each
   against the rendered `--bg`. The pre-paint script reads the metas instead of holding a third copy.
 - **[P1 restructures the save bar]** → The rule depends only on the registered element's box. The table above

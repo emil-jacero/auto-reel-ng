@@ -26,7 +26,7 @@ import { Dialog } from '../ui/Dialog'
 import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
 import { SkeletonRows } from '../ui/Skeleton'
-import { toast } from '../ui/toast'
+import { keepToastsClearOf, toast } from '../ui/toast'
 import { ClipOrderList } from './ClipOrderList'
 import type { MoveHandler, RemoveHandler, RestoreHandler } from './ClipOrderList'
 import {
@@ -526,10 +526,12 @@ export function EventEditor({
     const root = document.documentElement
     const publish = () => root.style.setProperty('--toast-inset-bottom', `${bar.offsetHeight}px`)
     publish()
+    const release = keepToastsClearOf(bar)
     const observer = new ResizeObserver(publish)
     observer.observe(bar)
     return () => {
       observer.disconnect()
+      release()
       root.style.removeProperty('--toast-inset-bottom')
     }
   }, [showBar])
