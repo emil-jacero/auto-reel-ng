@@ -98,7 +98,7 @@ function Field({
 }
 
 /** Space-separated ids, empty ones dropped; undefined when none is left. */
-function ids(...parts: (string | false | null)[]): string | undefined {
+export function ids(...parts: (string | false | null)[]): string | undefined {
   const kept = parts.filter((part): part is string => typeof part === 'string' && part !== '')
   return kept.length > 0 ? kept.join(' ') : undefined
 }

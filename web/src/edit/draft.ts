@@ -1,5 +1,6 @@
 import type { ClipStatus, EventDetail } from '../api/event'
 import type { ReelDocument, ReelWriteBody } from '../api/reel'
+import type { KnownReason } from '../cuts/times'
 
 /*
  * The editor's model, as pure functions. It has no runtime imports, only
@@ -426,15 +427,28 @@ function savedTrims(cuts: readonly DraftCut[]): SavedTrim[] {
     .map(({ in: start, out, reason }) => ({ in: start, out, reason }))
 }
 
+/** Whether two lists of saved trims are the same: start, end and reason, in order. */
+function sameTrims(a: readonly SavedTrim[], b: readonly SavedTrim[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (cut, at) => cut.in === b[at].in && cut.out === b[at].out && cut.reason === b[at].reason,
+    )
+  )
+}
+
 /**
  * `draft` with `identity`'s cuts set to `cuts`: a list back to the one read (the
- * same keys, none removed) leaves `draft.cuts`, so an edit and its reverse leave
- * nothing to save without a special case.
+ * same keys, none removed), or one that would save the read trims (a read cut
+ * removed and the same span typed again), leaves `draft.cuts`, so an edit and its
+ * reverse leave nothing to save, and nothing marked, without a special case.
  */
 function settled(baseline: Baseline, draft: Draft, identity: string, cuts: DraftCut[]): Draft {
   const read = baseline.cuts.get(identity) ?? NO_CUTS
   const asRead =
-    cuts.length === read.length && cuts.every((cut, at) => !cut.removed && cut.key === read[at].key)
+    (cuts.length === read.length &&
+      cuts.every((cut, at) => !cut.removed && cut.key === read[at].key)) ||
+    sameTrims(savedTrims(cuts), savedTrims(read))
   const next = new Map(draft.cuts)
   if (asRead) {
     next.delete(identity)
@@ -464,7 +478,9 @@ export function addCut(
   while (at > 0 && cuts[at - 1].in > span.in) {
     at -= 1
   }
-  const added: DraftCut = { key, in: span.in, out: span.out, reason: 'manual', removed: false }
+  // D-K's value for a cut made by hand (`cuts/times.ts` names it "Cut by hand").
+  const reason = 'manual' satisfies KnownReason
+  const added: DraftCut = { key, in: span.in, out: span.out, reason, removed: false }
   return settled(baseline, draft, identity, [...cuts.slice(0, at), added, ...cuts.slice(at)])
 }
 
@@ -510,29 +526,23 @@ export function changedCuts(baseline: Baseline, draft: Draft): ReadonlySet<strin
     if (draft.removed.has(identity)) {
       continue
     }
-    const now = savedTrims(cuts)
-    const read = savedTrims(baseline.cuts.get(identity) ?? NO_CUTS)
-    const same =
-      now.length === read.length &&
-      now.every(
-        (cut, at) =>
-          cut.in === read[at].in && cut.out === read[at].out && cut.reason === read[at].reason,
-      )
-    if (!same) {
+    if (!sameTrims(savedTrims(cuts), savedTrims(baseline.cuts.get(identity) ?? NO_CUTS))) {
       changed.add(identity)
     }
   }
   return changed
 }
 
-/** The cuts added and the read cuts removed, as the save bar counts them. */
+/**
+ * The cuts added and the read cuts removed, as the save bar counts them: only on the
+ * clips whose saved cuts would differ (`changedCuts`), so the counts never name a
+ * change the save would not make.
+ */
 export function cutChanges(baseline: Baseline, draft: Draft): { added: number; removed: number } {
   let added = 0
   let removed = 0
-  for (const [identity, cuts] of draft.cuts) {
-    if (draft.removed.has(identity)) {
-      continue
-    }
+  for (const identity of changedCuts(baseline, draft)) {
+    const cuts = draft.cuts.get(identity) ?? NO_CUTS
     const read = new Set((baseline.cuts.get(identity) ?? NO_CUTS).map((cut) => cut.key))
     for (const cut of cuts) {
       if (cut.removed) {

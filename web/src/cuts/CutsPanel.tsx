@@ -4,6 +4,7 @@ import { memo, useEffect, useId, useLayoutEffect, useRef, useState } from 'react
 import type { FormEvent, ReactNode } from 'react'
 
 import type { CutKey, DraftCut } from '../edit/draft'
+import { ids } from '../edit/MetadataForm'
 import { Icon } from '../ui/Icon'
 import {
   CUT_HINT,
@@ -54,9 +55,10 @@ export type CutHandlers = {
   onAnnounce(message: string): void
 }
 
-// Constant elements: rows re-render without rebuilding them.
-const SCISSORS = <Icon name="scissors" />
-const CHEVRON = (
+// Constant elements: rows re-render without rebuilding them. The event page's
+// indicator (`ReadCuts.tsx`) shows the same two.
+export const SCISSORS = <Icon name="scissors" />
+export const CHEVRON = (
   <span className="cuts-chevron" aria-hidden="true">
     <Icon name="chevron-down" />
   </span>
@@ -119,19 +121,25 @@ export function CutList<T extends ListedCut & { reason?: string | null }>({
 
 /**
  * The Cuts control: the clip's cut count and the time they cut out, or "Cuts"
- * with none; a narrow row shows the count only (`cuts.css`). It shows and hides
- * the panel and stays live while a save is in flight: that changes nothing to save.
+ * with none; a narrow row shows the count only (`cuts.css`). While its panel holds
+ * a time typed but not added, it says "typed" too, in words at every width and in
+ * its name, so a hidden panel that holds Save back is found on its row. It shows and
+ * hides the panel and stays live while a save is in flight: that changes nothing to
+ * save.
  */
 export const CutsToggle = memo(function CutsToggle({
   cuts,
   name,
   open,
+  typed,
   controls,
   onToggle,
 }: {
   cuts: readonly DraftCut[]
   name: string
   open: boolean
+  /** Its panel holds a time typed but not added. */
+  typed: boolean
   /** The panel's id while it is mounted; never an id that is not in the page. */
   controls: string | null
   onToggle: () => void
@@ -142,14 +150,16 @@ export const CutsToggle = memo(function CutsToggle({
       type="button"
       className="btn btn-ghost btn-compact cuts-toggle"
       data-cut={kept > 0 || undefined}
+      data-typed={typed || undefined}
       aria-expanded={open}
       aria-controls={controls ?? undefined}
-      aria-label={toggleName(cuts, name)}
+      aria-label={toggleName(cuts, name, typed)}
       onClick={onToggle}
     >
       {SCISSORS}
       {kept > 0 && <span className="cuts-toggle-count">{kept}</span>}
       <span className="cuts-toggle-words">{cutSummary(cuts)}</span>
+      {typed && <span className="cuts-toggle-typed">typed</span>}
       {CHEVRON}
     </button>
   )
@@ -158,12 +168,6 @@ export const CutsToggle = memo(function CutsToggle({
 /** Where focus goes once a cut edit is on screen. */
 type FocusRequest =
   { target: 'start' | 'end' } | { target: 'cut-remove' | 'cut-undo' | 'cut-control'; key: CutKey }
-
-/** Space-separated ids, empty ones dropped; undefined when none is left. */
-function ids(...parts: (string | false | null)[]): string | undefined {
-  const kept = parts.filter((part): part is string => typeof part === 'string' && part !== '')
-  return kept.length > 0 ? kept.join(' ') : undefined
-}
 
 function hasText(start: string, end: string): boolean {
   return start.trim() !== '' || end.trim() !== ''
