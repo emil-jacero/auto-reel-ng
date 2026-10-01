@@ -177,9 +177,10 @@ function notOffered(missing: number, ignored: number): string | null {
 
 /**
  * Move clips: the chapter's clips on disk as checkboxes, in play order, and the
- * other chapters as radio buttons (the only one already chosen). Space picks a
- * clip; Enter on any box or radio moves the picked clips, so a long list need
- * not be tabbed through. Asking with no clip, or no chapter, says which is
+ * other chapters as radio buttons (the only one already chosen), with a Pick all
+ * box before the clips (mixed while some are picked). Space picks a clip; Enter
+ * on any box or radio moves the picked clips, so a long list need not be tabbed
+ * through. Asking with no clip, or no chapter, says which is
  * missing at it and moves focus there.
  */
 export function MoveClipsDialog({
@@ -207,6 +208,7 @@ export function MoveClipsDialog({
   const clipsErrorId = useId()
   const targetErrorId = useId()
   const firstBoxRef = useRef<HTMLInputElement>(null)
+  const allRef = useRef<HTMLInputElement>(null)
   const firstRadioRef = useRef<HTMLInputElement>(null)
   const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set())
   const [target, setTarget] = useState<ChapterKey | null>(
@@ -216,6 +218,14 @@ export function MoveClipsDialog({
   const [clipsError, setClipsError] = useState(0)
   const [targetError, setTargetError] = useState(0)
   const hint = notOffered(missing, ignored)
+  const all = clips.length > 0 && picked.size === clips.length
+
+  // Pick all is mixed (indeterminate) while some clips are picked: a DOM property only.
+  useEffect(() => {
+    if (allRef.current !== null) {
+      allRef.current.indeterminate = picked.size > 0 && picked.size < clips.length
+    }
+  }, [picked, clips.length])
 
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -278,6 +288,24 @@ export function MoveClipsDialog({
               Pick at least one clip.
             </p>
           )}
+          {/* Every clip at once: emptying or splitting a long chapter is one press. */}
+          <label className="choice choice-all">
+            <input
+              ref={allRef}
+              type="checkbox"
+              checked={all}
+              onChange={(event) => {
+                const next = event.currentTarget.checked
+                  ? new Set(clips.map((clip) => clip.identity))
+                  : new Set<string>()
+                setPicked(next)
+                if (next.size > 0) {
+                  setClipsError(0)
+                }
+              }}
+            />
+            <span className="choice-name">Pick all</span>
+          </label>
           <ul className="choice-list choice-clips">
             {clips.map((clip, index) => (
               <li key={clip.identity}>

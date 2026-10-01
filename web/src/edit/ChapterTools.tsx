@@ -233,7 +233,7 @@ export const DeletedChapter = memo(function DeletedChapter({
       aria-labelledby={headingId}
     >
       <header className="panel-header">
-        <h2 id={headingId} tabIndex={-1}>
+        <h2 id={headingId}>
           <s>{heading}</s>
         </h2>
         <span className="badge" data-tone="warn">
