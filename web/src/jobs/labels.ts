@@ -8,10 +8,12 @@ import type { ConnectionStatus } from './store'
  * loses or renames a member, so a slug can never reach the screen verbatim.
  */
 
+// A cancel's answer, told by a toast that ends with the event's name (`eventName`):
+// '<label>: “Grillkväll med grannarna” · 2024-06-27'.
 export const CANCEL_OUTCOME_LABEL: Record<CancelOutcome, string> = {
-  'flagged-running': 'Cancelling — the worker stops at the next segment.',
-  'canceled-queued': 'Canceled before it started.',
-  'no-op-terminal': 'The job had already finished.',
+  'flagged-running': 'Render stopping at the next segment',
+  'canceled-queued': 'Render canceled before it started',
+  'no-op-terminal': 'Render had already finished',
 }
 
 export const CONNECTION_LABEL: Record<ConnectionStatus, string> = {
