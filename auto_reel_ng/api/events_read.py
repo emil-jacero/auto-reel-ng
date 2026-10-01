@@ -514,6 +514,30 @@ def get_analysis(settings: ApiSettings, event_id: str) -> AnalysisOut:
     return AnalysisOut(analyzed=analyzed, segments=segments)
 
 
+def listed_clip(settings: ApiSettings, event_id: str, clip: str) -> Path:
+    """``event_dir / clip`` for a clip discovery lists on disk in an event the list shows.
+
+    The one rule for "a clip of this event" that the per-clip media reads share (the
+    thumbnail and the clip media route). In this order, so each outcome has one answer:
+    the id must be one the events list shows (:func:`listed_event_dir`, else
+    :class:`EventNotFoundError`), and the event is listed with discovery's own rules
+    (an ``OSError`` from either walk is an :class:`EventReadError` with the list's
+    ``unreadable_disk`` kind); ``clip`` must be exactly one of the listed identities —
+    no path or Unicode normalization, so nothing from the request is joined onto a
+    path before it matched (:class:`ClipNotFoundError`). ``reel.yaml`` is never read:
+    a clip is a fact of the disk, not of the document. An unknown layout raises its
+    ``LayoutError``.
+    """
+    try:
+        event_dir = listed_event_dir(settings, event_id)
+        listing = scan_event(event_dir)
+    except OSError as exc:
+        raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
+    if clip not in listing.identities:
+        raise ClipNotFoundError(event_id, clip)
+    return event_dir / clip
+
+
 @dataclass(frozen=True)
 class ThumbnailSource:
     """A listed clip and where its thumbnail is cached, as the thumbnail route serves it."""
@@ -537,31 +561,21 @@ def thumbnail_source(settings: ApiSettings, event_id: str, clip: str) -> Thumbna
     """``GET /api/v1/events/{event_id}/thumbnail``: the clip to serve and its cache entry.
 
     Read-only, and it never runs ffmpeg or ffprobe. In this order, so each outcome
-    has one answer: the id must be one the events list shows (:func:`listed_event_dir`,
-    else :class:`EventNotFoundError`), and the event is listed with discovery's own
-    rules (an ``OSError`` from either walk is an :class:`EventReadError` with the
-    list's ``unreadable_disk`` kind); ``clip`` must be exactly one of the listed
-    identities — no path or Unicode normalization, so nothing from the request is
-    joined onto a path before it matched (:class:`ClipNotFoundError`); only then is
-    ``config.yaml`` read (``ConfigError``) and the cache path computed. ``reel.yaml``
-    is never read: a thumbnail is a fact of the clip file, not of the document.
+    has one answer: the clip must be one :func:`listed_clip` finds (an event the list
+    shows, else :class:`EventNotFoundError`; a listing that fails, an
+    :class:`EventReadError` with the list's ``unreadable_disk`` kind; an identity
+    matched exactly, else :class:`ClipNotFoundError`); only then is ``config.yaml``
+    read (``ConfigError``) and the cache path computed. ``reel.yaml`` is never read:
+    a thumbnail is a fact of the clip file, not of the document.
 
     Raises:
         ThumbnailError: the listed clip can no longer be statted (it changed after
             the listing), in the wording ``thumbs.thumbnail_for`` gives that case.
     """
-    try:
-        event_dir = listed_event_dir(settings, event_id)
-        listing = scan_event(event_dir)
-    except OSError as exc:
-        raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
-    if clip not in listing.identities:
-        raise ClipNotFoundError(event_id, clip)
-
+    clip_path = listed_clip(settings, event_id, clip)
     thumbnails = resolve_thumbnail_settings(
         load_project_config(settings.project_root), settings.project_root
     )
-    clip_path = event_dir / clip
     try:
         cache_path = thumbnail_path(
             clip_path, position=thumbnails.position, cache_dir=thumbnails.cache_dir
@@ -661,6 +675,7 @@ __all__ = [
     "get_analysis",
     "OutputCollision",
     "output_collision",
+    "listed_clip",
     "ThumbnailSource",
     "thumbnail_source",
     "classify_event_failure",

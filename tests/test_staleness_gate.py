@@ -9,13 +9,14 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from typing import Callable, Optional
 
 import pytest
 
 from auto_reel_ng.reel.document import Chapter, ClipRef, Metadata, ReelDocument
 from auto_reel_ng.render import output_relpath
 from auto_reel_ng.staleness.fingerprint import COMPONENTS, compute_fingerprint, engine_identity
-from auto_reel_ng.staleness.gate import StalenessReason, Verdict, evaluate
+from auto_reel_ng.staleness.gate import StalenessReason, Verdict, evaluate, rendered_output
 from auto_reel_ng.staleness.manifest import write_manifest
 
 FFMPEG_VERSION = (7, 1)
@@ -309,3 +310,111 @@ def test_expected_movie_present_cites_neither(tmp_path: Path) -> None:
     assert verdict.reasons == ("editorial",)
     assert _as_before(verdict.reasons) == ("editorial",)
     assert old_movie.is_file()
+
+
+# --- The movie the gate counts (change ``media-endpoints``) -----------------------------------
+
+RETITLED = Metadata(title="Grillkväll med grannarna", date=GRILLNING.date)
+
+
+def _rewrite_output(event_dir: Path, value: str) -> None:
+    """Rewrite the manifest's recorded ``output`` as a hand edit would."""
+    write_manifest(
+        event_dir,
+        _fingerprint(event_dir, document=_document_named(GRILLNING)),
+        output=value,
+        engine_identity=engine_identity(FFMPEG_VERSION),
+    )
+
+
+def _no_manifest(tmp_path: Path) -> tuple[Path, Metadata, None]:
+    """A file at the expected path but no render record: not this event's movie."""
+    event_dir = tmp_path / "event"
+    event_dir.mkdir()
+    _setup(event_dir)
+    movie = tmp_path / "out" / output_relpath(GRILLNING)
+    movie.parent.mkdir(parents=True)
+    movie.write_bytes(b"someone else's")
+    return event_dir, GRILLNING, None
+
+
+def _expected_file(tmp_path: Path) -> tuple[Path, Metadata, Path]:
+    event_dir, movie = _render_named(tmp_path, GRILLNING)
+    return event_dir, GRILLNING, movie
+
+
+def _retitled_old_kept(tmp_path: Path) -> tuple[Path, Metadata, Path]:
+    event_dir, old_movie = _render_named(tmp_path, GRILLNING)
+    return event_dir, RETITLED, old_movie
+
+
+def _retitled_old_deleted(tmp_path: Path) -> tuple[Path, Metadata, None]:
+    event_dir, old_movie = _render_named(tmp_path, GRILLNING)
+    old_movie.unlink()
+    return event_dir, RETITLED, None
+
+
+MovieCase = Callable[[Path], tuple[Path, Metadata, Optional[Path]]]
+
+
+def _recorded_value(recorded: str) -> MovieCase:
+    """A manifest whose recorded value is not a bare movie file: never a movie."""
+
+    def case(tmp_path: Path) -> tuple[Path, Metadata, None]:
+        event_dir, old_movie = _render_named(tmp_path, GRILLNING)
+        (tmp_path / "Grillning.mp4").write_bytes(b"rendered")  # what ``out/../Grillning.mp4`` names
+        _rewrite_output(event_dir, str(old_movie) if recorded == "absolute" else recorded)
+        return event_dir, RETITLED, None
+
+    return case
+
+
+MOVIE_CASES: dict[str, MovieCase] = {
+    "no manifest, a file at the expected path": _no_manifest,
+    "manifest and expected file": _expected_file,
+    "retitled, old movie kept": _retitled_old_kept,
+    "retitled, old movie deleted": _retitled_old_deleted,
+    **{
+        f"recorded {value!r}": _recorded_value(value)
+        for value in ["", ".", "..", "2024", "absolute", "../Grillning.mp4"]
+    },
+}
+
+#: The reason each named case's verdict cites besides ``editorial`` (None: no output reason).
+MOVIE_REASON = {
+    "no manifest, a file at the expected path": StalenessReason.NO_MANIFEST,
+    "manifest and expected file": None,
+    "retitled, old movie kept": StalenessReason.OUTPUT_RENAMED,
+}
+
+
+@pytest.mark.parametrize("case", list(MOVIE_CASES))
+def test_rendered_output_is_the_movie_the_verdict_counts(tmp_path: Path, case: str) -> None:
+    """A movie exists exactly when the verdict cites neither ``no_manifest`` nor ``output``."""
+    event_dir, metadata, want = MOVIE_CASES[case](tmp_path)
+    expected = tmp_path / "out" / output_relpath(metadata)
+
+    movie = rendered_output(event_dir, expected)
+    verdict = _evaluate_named(tmp_path, event_dir, metadata)
+
+    assert movie == want
+    reason = MOVIE_REASON.get(case, StalenessReason.OUTPUT)
+    if reason is not None:
+        assert reason in verdict.reasons
+    else:
+        assert verdict.reasons == ()
+    absent = {StalenessReason.NO_MANIFEST, StalenessReason.OUTPUT}
+    assert (movie is not None) == (not absent & set(verdict.reasons))
+
+
+def test_a_directory_at_the_expected_path_is_not_a_movie(tmp_path: Path) -> None:
+    """The accepted edge: the gate counts a directory as present, the movie lookup does not."""
+    event_dir, movie = _render_named(tmp_path, GRILLNING)
+    movie.unlink()
+    movie.mkdir()
+
+    verdict = _evaluate_named(tmp_path, event_dir, GRILLNING)
+
+    assert rendered_output(event_dir, movie) is None
+    assert StalenessReason.OUTPUT not in verdict.reasons
+    assert StalenessReason.OUTPUT_RENAMED not in verdict.reasons

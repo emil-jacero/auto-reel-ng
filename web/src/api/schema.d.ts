@@ -24,6 +24,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{event_id}/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Clip Media
+         * @description ``GET /api/v1/events/{event_id}/media?clip=``: one clip's file, streamed unchanged.
+         *
+         *     The clip must be one discovery lists on disk for an event the events list shows,
+         *     matched exactly: the thumbnail's lookup. 404 for an unknown event, an unlisted
+         *     identity, or a file gone by the time it is opened; 502 with the list's ``failure``
+         *     when the event cannot be listed, and with no kind for an unknown layout or a file
+         *     that cannot be read. Sync on purpose: the lookup is a listing, a stat and an open,
+         *     run in the threadpool; ``FileResponse`` then streams on the event loop.
+         */
+        get: operations["get_clip_media_api_v1_events__event_id__media_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{event_id}/movie": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Movie
+         * @description ``GET /api/v1/events/{event_id}/movie``: the event's rendered movie, streamed unchanged.
+         *
+         *     The movie is the file the staleness gate counts (``staleness.rendered_output``):
+         *     it exists exactly when the event's staleness cites neither ``no_manifest`` nor
+         *     ``output``. 404 for an unknown event, no render record, a recorded movie that is
+         *     gone, a name outside the output directory, or something other than a file; 502
+         *     with the ``failure`` the event detail gives when the event cannot be read, and with
+         *     no kind for an unknown layout or a movie that cannot be read.
+         */
+        get: operations["get_movie_api_v1_events__event_id__movie_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events": {
         parameters: {
             query?: never;
@@ -874,6 +928,236 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_clip_media_api_v1_events__event_id__media_get: {
+        parameters: {
+            query: {
+                /** @description The clip's identity as the event detail lists it: its event-relative path */
+                clip: string;
+                /** @description An opaque version a client may send to give a changed file a new URL; ignored */
+                v?: string | null;
+            };
+            header?: {
+                "If-None-Match"?: string | null;
+                Range?: string | null;
+                "If-Range"?: string | null;
+            };
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The whole file */
+            200: {
+                headers: {
+                    /** @description Strong entity-tag of the file: its size and mtime, in hex */
+                    ETag?: string;
+                    /** @description The file's modification time */
+                    "Last-Modified"?: string;
+                    /** @description Always `private, no-cache` */
+                    "Cache-Control"?: string;
+                    /** @description Always `bytes` */
+                    "Accept-Ranges"?: string;
+                    /** @description `inline`, with the file's own name */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/*": string;
+                };
+            };
+            /** @description One byte range of the file */
+            206: {
+                headers: {
+                    /** @description Strong entity-tag of the file: its size and mtime, in hex */
+                    ETag?: string;
+                    /** @description The file's modification time */
+                    "Last-Modified"?: string;
+                    /** @description Always `private, no-cache` */
+                    "Cache-Control"?: string;
+                    /** @description Always `bytes` */
+                    "Accept-Ranges"?: string;
+                    /** @description `inline`, with the file's own name */
+                    "Content-Disposition"?: string;
+                    /** @description `bytes <first>-<last>/<size>` */
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/*": string;
+                };
+            };
+            /** @description Not modified: `If-None-Match` names the current file */
+            304: {
+                headers: {
+                    /** @description Strong entity-tag of the file: its size and mtime, in hex */
+                    ETag?: string;
+                    /** @description Always `private, no-cache` */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A malformed `Range` header (plain text) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description The range starts at or past the end of the file (plain text) */
+            416: {
+                headers: {
+                    /** @description `bytes *\/<size>` */
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+        };
+    };
+    get_movie_api_v1_events__event_id__movie_get: {
+        parameters: {
+            query?: {
+                /** @description An opaque version a client may send to give a changed file a new URL; ignored */
+                v?: string | null;
+            };
+            header?: {
+                "If-None-Match"?: string | null;
+                Range?: string | null;
+                "If-Range"?: string | null;
+            };
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The whole file */
+            200: {
+                headers: {
+                    /** @description Strong entity-tag of the file: its size and mtime, in hex */
+                    ETag?: string;
+                    /** @description The file's modification time */
+                    "Last-Modified"?: string;
+                    /** @description Always `private, no-cache` */
+                    "Cache-Control"?: string;
+                    /** @description Always `bytes` */
+                    "Accept-Ranges"?: string;
+                    /** @description `inline`, with the file's own name */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/*": string;
+                };
+            };
+            /** @description One byte range of the file */
+            206: {
+                headers: {
+                    /** @description Strong entity-tag of the file: its size and mtime, in hex */
+                    ETag?: string;
+                    /** @description The file's modification time */
+                    "Last-Modified"?: string;
+                    /** @description Always `private, no-cache` */
+                    "Cache-Control"?: string;
+                    /** @description Always `bytes` */
+                    "Accept-Ranges"?: string;
+                    /** @description `inline`, with the file's own name */
+                    "Content-Disposition"?: string;
+                    /** @description `bytes <first>-<last>/<size>` */
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/*": string;
+                };
+            };
+            /** @description Not modified: `If-None-Match` names the current file */
+            304: {
+                headers: {
+                    /** @description Strong entity-tag of the file: its size and mtime, in hex */
+                    ETag?: string;
+                    /** @description Always `private, no-cache` */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A malformed `Range` header (plain text) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description The range starts at or past the end of the file (plain text) */
+            416: {
+                headers: {
+                    /** @description `bytes *\/<size>` */
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
                 };
             };
         };
