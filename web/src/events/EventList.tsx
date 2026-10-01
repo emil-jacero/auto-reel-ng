@@ -179,6 +179,8 @@ function EventRow({ event, lookAlike }: { event: EventSummary; lookAlike: boolea
         role="cell"
         className="cell-job"
         eventId={event.event_id}
+        title={event.title}
+        date={event.date}
         staleness={event.staleness}
         latestJob={event.latest_job}
         blockedReason={event.missing_count > 0 ? MISSING_BLOCKS_ROW : undefined}

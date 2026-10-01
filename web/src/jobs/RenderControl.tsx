@@ -25,6 +25,7 @@ import {
   NOT_CONFIRMED,
   NOT_QUEUED,
   SCAN_FAILED,
+  eventName,
 } from './labels'
 import { getState, isActive, load, markAnnounced, merge, subscribe, track } from './store'
 import { useEventJob } from './useJob'
@@ -51,7 +52,27 @@ type Notice =
 /** The control whose request is in flight. */
 type Pressed = 'render' | 'force' | 'cancel' | 'cancelConfirm'
 
+/**
+ * The open question. A cancel names its job, so the confirmation cancels the job
+ * it asked about, and says when the job may have started unseen (connection down).
+ */
+type Asking = { kind: 'force' } | { kind: 'cancel'; jobId: string; mayHaveStarted: boolean }
+
 const NOTHING_TO_RENDER = 'Nothing to render — the movie is up to date.'
+
+/**
+ * Focus is gone: nowhere, on <body>, on a removed node, or inside a closed
+ * <dialog> (Chromium moves it to <body> only at the next frame).
+ */
+function focusIsLost(): boolean {
+  const focused = document.activeElement
+  return (
+    focused === null ||
+    focused === document.body ||
+    !focused.isConnected ||
+    focused.closest('dialog:not([open])') !== null
+  )
+}
 
 // Whether a cancel's answer also tells how the job ended (so the ending raises
 // no second toast): a flagged running job is still to end, at the next segment.
@@ -127,12 +148,17 @@ function NoticeAlert({ notice }: { notice: Notice }) {
 
 export function RenderControl({
   eventId,
+  title,
+  date,
   staleness,
   latestJob,
   onFinished,
   blockedReason,
 }: {
   eventId: string
+  /** The event's title and date, as the page read them: a toast names the event by them. */
+  title: string | null | undefined
+  date: string | null | undefined
   staleness: Staleness
   latestJob: JobSummary | null | undefined
   /** The shown job ended, or an answer showed the page's read is out of date: re-read it. */
@@ -147,8 +173,9 @@ export function RenderControl({
   const eta = useSyncExternalStore(subscribe, () =>
     jobId === undefined ? undefined : getState().eta.get(jobId),
   )
+  const connectionLive = useSyncExternalStore(subscribe, () => getState().connection === 'live')
   const [pressed, setPressed] = useState<Pressed | null>(null)
-  const [asking, setAsking] = useState<'force' | 'cancel' | null>(null)
+  const [asking, setAsking] = useState<Asking | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
   const inFlight = useRef(false)
   const statusRef = useRef<HTMLParagraphElement>(null)
@@ -181,8 +208,7 @@ export function RenderControl({
       return
     }
     handOff.current = false
-    const focused = document.activeElement
-    if (focused === null || focused === document.body) {
+    if (focusIsLost()) {
       statusRef.current?.focus({ preventScroll: true })
     }
   })
@@ -232,7 +258,7 @@ export function RenderControl({
   const handleEnqueue = (result: EnqueueResult) => {
     switch (result.kind) {
       case 'enqueued':
-        track(result.job.id)
+        track(result.job.id, eventName(eventId, title, date))
         merge(result.job)
         break
       case 'fresh':
@@ -242,7 +268,7 @@ export function RenderControl({
         break
       case 'active':
         // Someone already started it: follow that job.
-        track(result.jobId)
+        track(result.jobId, eventName(eventId, title, date))
         load(result.jobId)
         break
       case 'collision':
@@ -301,7 +327,7 @@ export function RenderControl({
       switch (answer.kind) {
         case 'ok': {
           const { outcome } = answer.result
-          track(target)
+          track(target, eventName(eventId, title, date))
           // An answer that ended the job tells how; a toast the store already
           // raised for that ending is not repeated.
           if (!CANCEL_ENDS_JOB[outcome] || markAnnounced(target)) {
@@ -328,10 +354,27 @@ export function RenderControl({
 
   const busy = (control: Pressed) => pressed === control || undefined
   // A cancel already requested leaves nothing to press; the job shows Cancelling….
-  const cancellable = active && !(shown?.source === 'live' && shown.job.cancel_requested)
+  const cancelRequested = shown !== null && shown.source !== 'read' && shown.job.cancel_requested
+  const cancellable = active && !cancelRequested
   // An enqueue answer is newer than the page's read: after "fresh", force it is.
   const upToDate = !staleness.stale || notice?.kind === 'fresh'
   const canRender = !active && blockedReason === undefined
+
+  // A question whose subject is gone closes by itself and sends nothing: Render
+  // anyway once the page would not offer it (a job appeared, a block, no longer
+  // up to date), a cancel once its job ended, its cancel was requested elsewhere,
+  // or another job shows. Never while its own request is in flight: that answer
+  // closes it. Its opener is gone too, so focus goes to the status, which says
+  // what happened.
+  const questionGone =
+    asking !== null &&
+    pressed === null &&
+    (asking.kind === 'force' ? !(canRender && upToDate) : !(cancellable && jobId === asking.jobId))
+  useEffect(() => {
+    if (questionGone) {
+      closeDialog()
+    }
+  }, [questionGone, closeDialog])
 
   return (
     <div className="render-control">
@@ -360,7 +403,7 @@ export function RenderControl({
                     ref={watchRemoval}
                     onClick={() => {
                       if (!inFlight.current) {
-                        setAsking('force')
+                        setAsking({ kind: 'force' })
                       }
                     }}
                   >
@@ -391,9 +434,14 @@ export function RenderControl({
                     if (inFlight.current) {
                       return
                     }
-                    // A queued job has nothing to lose; a running one asks first.
-                    if (job.status === 'running') {
-                      setAsking('cancel')
+                    // A queued job has nothing to lose; a running one asks first, and so
+                    // does any job while the connection is down: it may have started.
+                    if (job.status === 'running' || !connectionLive) {
+                      setAsking({
+                        kind: 'cancel',
+                        jobId: job.id,
+                        mayHaveStarted: job.status !== 'running',
+                      })
                     } else {
                       cancel(job.id, 'cancel')
                     }
@@ -406,7 +454,10 @@ export function RenderControl({
             </div>
           )}
         </div>
-        {shown !== null && active && <JobMeter shown={shown} eta={eta} />}
+        {/* The estimate is the store's, for the store's progress: never beside a refreshed one. */}
+        {shown !== null && active && (
+          <JobMeter shown={shown} eta={shown.source === 'live' ? eta : undefined} />
+        )}
       </div>
 
       {shown !== null &&
@@ -418,7 +469,7 @@ export function RenderControl({
       {notice !== null && <NoticeAlert notice={notice} />}
 
       <Dialog
-        open={asking === 'force'}
+        open={asking?.kind === 'force'}
         title="Render anyway?"
         onClose={closeDialog}
         initialFocus={keepUpToDateRef}
@@ -448,12 +499,17 @@ export function RenderControl({
       </Dialog>
 
       <Dialog
-        open={asking === 'cancel'}
+        open={asking?.kind === 'cancel'}
         title="Cancel this render?"
         onClose={closeDialog}
         initialFocus={keepRenderingRef}
       >
-        <p>The partial render is discarded. The existing movie, if any, stays as it was.</p>
+        <p>
+          {asking?.kind === 'cancel' && asking.mayHaveStarted
+            ? 'The connection is down, so this render may have started. '
+            : ''}
+          The partial render is discarded. The existing movie, if any, stays as it was.
+        </p>
         <div className="dialog-actions">
           <button
             type="button"
@@ -470,8 +526,8 @@ export function RenderControl({
             aria-disabled={busy('cancelConfirm')}
             aria-busy={busy('cancelConfirm')}
             onClick={() => {
-              if (job !== undefined) {
-                cancel(job.id, 'cancelConfirm')
+              if (asking?.kind === 'cancel') {
+                cancel(asking.jobId, 'cancelConfirm')
               }
             }}
           >
