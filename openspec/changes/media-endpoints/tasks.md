@@ -1,6 +1,6 @@
 ## 1. Baseline
 
-- [ ] 1.1 This change has no gate. Confirm that the facts the design builds on still hold on your `main`, and
+- [x] 1.1 This change has no gate. Confirm that the facts the design builds on still hold on your `main`, and
   stop and report any that do not.
   - **Starlette** still uses `setdefault` for the `etag` header, opens the file after `http.response.start`,
     and answers 416 and 400 as `PlainTextResponse`: `grep -n 'setdefault("etag"\|anyio.open_file\|status_code=416\|status_code=400' "$(.venv/bin/python -c 'import starlette.responses as r; print(r.__file__)')"`
@@ -18,7 +18,7 @@
 
 ## 2. staleness/ — the movie the gate counts
 
-- [ ] 2.1 Add `rendered_output(event_dir, output_path) -> Optional[Path]` and `_renamed_output(manifest, expected)` to
+- [x] 2.1 Add `rendered_output(event_dir, output_path) -> Optional[Path]` and `_renamed_output(manifest, expected)` to
   `staleness/gate.py`, as design "Which file is the movie" sketches them. Rewrite `_absent_output_reason` on top of
   `_renamed_output`, and export `rendered_output` from `auto_reel_ng/staleness/__init__.py` (`__all__` included).
   Verify:
@@ -41,7 +41,7 @@
 
 ## 3. api/ — which file is served
 
-- [ ] 3.1 Move `thumbnail_source`'s first three steps into `events_read.listed_clip(settings, event_id, clip) -> Path`,
+- [x] 3.1 Move `thumbnail_source`'s first three steps into `events_read.listed_clip(settings, event_id, clip) -> Path`,
   and have `thumbnail_source` call it. Add `api/media.py` with:
   - `MEDIA_TYPES` (the design's table)
   - the frozen `MediaFile` (`name`, `media_type`, `etag`)
@@ -75,7 +75,7 @@
     - a clip deleted after the listing (wrap `events_read.scan_event` to delete it before returning, as
       `_vanish_after_listing` does in the thumbnail tests) raises `MediaGoneError`
 
-- [ ] 3.2 Add `MovieNotFoundError` and `movie_media(settings, event_id) -> MediaFile` to `api/media.py`, with the
+- [x] 3.2 Add `MovieNotFoundError` and `movie_media(settings, event_id) -> MediaFile` to `api/media.py`, with the
   design's six steps ("Which file is the movie"): listed event, metadata via `load_event_document` +
   `require_processable`, the expected path from `settings.output_dir`, `rendered_output`, lexical containment
   under the output directory (`os.path.abspath`, never `resolve()`), `open_media`. Verify in
@@ -107,7 +107,7 @@
 
 ## 4. api/ — responses, routes, schema
 
-- [ ] 4.1 Add `etag_matches(header, etag)` (weak comparison over a comma-separated list), `MEDIA_CACHE_CONTROL`
+- [x] 4.1 Add `etag_matches(header, etag)` (weak comparison over a comma-separated list), `MEDIA_CACHE_CONTROL`
   and `media_response(media, if_none_match)` to `api/media.py` (design "Validators and caching"). Make the
   thumbnail route's `_revalidated` use `etag_matches` for its tag test and keep its own `*` rule. Then add
   `api/routes/media.py` with `get_clip_media` and `get_movie` (sync `def`, the declared `v`,
@@ -131,9 +131,10 @@
     - `bytes=<size>-` → 416 with `Content-Range: bytes */<size>`
     - `lines=0-1`, `bytes=abc` and `bytes=5-3` → 400 `text/plain`
     - `bytes=-<size + 5>` and `bytes=0-<size * 10>` → 206 with the whole file; `bytes=-0` → 416
-    - the ranges browsers never send, pinned as Starlette 1.3.1 answers them (design Risks): `bytes=0-0,2-2` →
-      206 `multipart/byteranges` holding bytes 0 and 2, and `bytes=5-4` → 206 with an empty body and
-      `Content-Range: bytes 5-4/<size>` (accepted as Starlette's answer, supervisor decision)
+    - the ranges browsers never send (design Risks): `bytes=0-0,2-2` → 206 `multipart/byteranges` holding
+      bytes 0 and 2, and `bytes=5-4` → either Starlette 1.3.1's 206 with an empty body and `Content-Range:
+      bytes 5-4/<size>`, or a plain-text 400/416 with no file bytes, as Starlette 1.7.0 answers it (supervisor
+      decision: no new pin; the test accepts every answer the spec allows)
     - `If-Range` with the current `ETag` → 206, and with `"old"` → 200
     - `If-None-Match` with the tag (alone, with `Range`, and on two header lines) → 304 with an empty body
     - a replaced file (new bytes and size, `os.utime` forward) with the old tag → 200 and a new `ETag`
@@ -169,7 +170,7 @@
     and 200/206/206. One without it → 401 from the checker, with no file bytes in the body.
   - `tests/test_api_events.py` and `tests/test_api_thumbnails.py` pass unchanged.
 
-- [ ] 4.2 Declare `response_class=Response` and the design's `MEDIA_RESPONSES` on both routes. Regenerate
+- [x] 4.2 Declare `response_class=Response` and the design's `MEDIA_RESPONSES` on both routes. Regenerate
   `web/openapi.json` (`.venv/bin/python -m auto_reel_ng.api.openapi > web/openapi.json`) and
   `web/src/api/schema.d.ts` (`npm run generate:types` in `docker.io/library/node:22`). Verify:
   - `tests/test_api_openapi.py` gains both paths in `EXPECTED_PATHS`. `EXPECTED_MODELS` is unchanged: no new
@@ -190,7 +191,7 @@
 
 ## 5. Docs
 
-- [ ] 5.1 Write `docs/research/browser-playback.md` from R0. Use the session scratchpad's `research/playback.md`
+- [x] 5.1 Write `docs/research/browser-playback.md` from R0. Use the session scratchpad's `research/playback.md`
   when it is there, else design "R0 and the spike". It covers:
   - the archive survey table
   - the ten samples and what each covers
@@ -220,7 +221,7 @@
 
   Verify by rereading both against the spec, and `grep -n "media?clip=\|/movie" README.md` finds both entries.
 
-- [ ] 5.2 Edit `docs/high-level-design.md` as design "HLD: the roadmap edit and the media routes" lists:
+- [x] 5.2 Edit `docs/high-level-design.md` as design "HLD: the roadmap edit and the media routes" lists:
   - §4.9's media-routes paragraph
   - §4.10's v2 and v3 lines and the dated roadmap sentence, with the media-endpoints prerequisite
   - §6 phases 9–10
@@ -246,7 +247,7 @@
 
 ## 6. Verification against the dev library
 
-- [ ] 6.1 Run the routes for real (runbook §9, with slug `media-endpoints` and port **8129**; never 8080 or 5173,
+- [x] 6.1 Run the routes for real (runbook §9, with slug `media-endpoints` and port **8129**; never 8080 or 5173,
   never the default database `auto_reel_ng`, never `../auto-reel-dev`). There is no screen here: viewport,
   theme, keyboard and axe checks belong to `movie-player-screen` and `clip-preview-screen`.
 
@@ -308,7 +309,7 @@
 
 ## 7. Validation
 
-- [ ] 7.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`, then
+- [x] 7.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`, then
   `.venv/bin/python -m mypy auto_reel_ng`, `.venv/bin/python -m pylint auto_reel_ng` and the full
   `.venv/bin/python -m pytest`, including `requires_db` and `has_ffmpeg`. Verify:
   - all are clean or green, apart from the known cairo `no-member` noise and the environmental title-card skips

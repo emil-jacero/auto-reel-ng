@@ -616,6 +616,10 @@ roadmap lives in §4.10 and §6, and the v3 mentions elsewhere would contradict 
   5.8 ms for 400 clips. On the archive's FUSE NTFS drive it will be more, and is not measured here. → Accepted:
   a seek already reads megabytes from the same drive. Task 6.1 measures the 400-clip event. A slow result is a
   follow-up for a discovery-level membership check, as the thumbnail's Risks say.
+  Measured (task 6.1, 50 sequential `Range: bytes=0-0` requests over curl on the dev library, warm cache):
+  `2024-09-19 - Fyrahundra/f400.mp4` (400 clips) p50 8.1 ms, p95 14.5 ms; Provklipp's
+  `h264-1080p25-aac.mp4` (11 clips) p50 1.7 ms, p95 2.4 ms. Not slow on a local disk: no follow-up from
+  these numbers.
 - **[Threads for slow reads]** anyio reads each 64 KiB chunk in a worker thread from the shared pool (40 by
   default). A stalled USB drive can hold a few threads per stalled stream. → Accepted for v1: one preview plays
   at a time, and the movie player is one element.
@@ -646,7 +650,8 @@ roadmap lives in §4.10 and §6, and the v3 mentions elsewhere would contradict 
   → Accepted: none sends a byte outside the file or a 5xx, which is all the spec promises for them. The HTTP
   parser's header limit (h11's 16 KiB here; httptools is not installed) bounds the multipart set to a few
   thousand parts, so a multipart response stays small. A hand-written range parser to fix the empty 206 would be more code than the defect is worth.
-  Task 4.1 pins these answers, so a Starlette upgrade that changes them is noticed.
+  Task 4.1 tests them. Starlette 1.7.0 answers `bytes=5-4` with a plain-text 400 instead (see "Implementation
+  notes"); the test accepts either answer, since the spec allows both.
 - **[`no-cache` costs a round trip per reuse]** → Cheap on localhost, and the spike's Chrome made one 304 per
   reload. A wider bind or a slow link would favor `max-age` with `v`. That is a header change if ever needed.
 - **[Event folders named `media` or `movie`]** Their detail is shadowed, as with `/reel` and `/thumbnail`. → The
@@ -671,3 +676,29 @@ None that change the specs, the approach or the tasks. Deferred, by design:
 - A `/` in a title: `output_filename` does not refuse it and `PUT …/reel` accepts it, so a movie can land in a
   subfolder. An engine follow-up; the lexical guard here keeps such a name inside the output directory.
 - A discovery-level membership check if task 6.1's numbers are slow.
+
+## Implementation notes (2026-10-01, accepted by the supervisor)
+
+- **Starlette drift.** `pyproject.toml` pins only `fastapi>=0.139.0`, so a fresh `pip install -e .` resolves
+  FastAPI 0.142.2 with Starlette 1.7.0, not the 1.3.1 this design measured. The one difference the tests see:
+  1.7.0 refuses `bytes=5-4` (last byte = first byte − 1) with a plain-text 400 instead of 1.3.1's empty 206
+  (`start >= end` in its range parser); it also answers more than 100 ranges with the whole file. **No new
+  pin.** The test accepts every answer the spec allows for a range browsers never send (206, 400 or 416, no
+  file byte), with a comment naming both versions. The media, OpenAPI and thumbnail tests pass on the
+  pinned 1.3.1 venv and on a freshly resolved 1.7.0 venv. The implementing venv was pinned to the main
+  checkout's versions (FastAPI 0.139.0, Starlette 1.3.1, uvicorn 0.51.0) so task 1.1's baseline holds.
+- **Problem bodies.** A 502 from an unreadable file or an unknown layout carries no `failure` key at all, as
+  the thumbnail route's kindless 502s do; a 502 from an event read carries `failure`. A client reads the
+  field as absent either way.
+- **`MediaGoneError(label, reason)`.** The 404 detail is `<identity or file name>: no such file` or `…: not a
+  regular file`, path-free like `MediaReadError`'s.
+- **HLD §4.10's v3 line** keeps "drag across chapters" while `cross-chapter-drag` has not landed (task 5.2
+  forbids carrying it into v2); once that change is on `main` it is dropped from v3, since it is v1.
+- **The revalidation check runs without `page.route`.** Playwright's routing disables the browser's HTTP
+  cache, so a routed page never shows Chrome's `If-None-Match` 304s. The check loads `/healthz` (no script
+  of its own) and asserts through `page.on("request")` that only GETs were sent; the playback check, which
+  needs no cache, aborts every non-GET with a route. Recorded in `docs/research/browser-playback.md` for the
+  screens' verifications.
+- **Tests beyond the task list:** an unknown layout answers 502 with no kind on both routes (a spec
+  requirement the tasks did not list), a broken `reel.yaml` does not stop a clip over HTTP, and
+  `Last-Modified` follows a symlinked clip's target.

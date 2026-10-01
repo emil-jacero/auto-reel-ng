@@ -295,6 +295,12 @@ not a new decision, and it is the rule to quote when a response field would need
 route (`GET /api/v1/events/{event_id}/thumbnail?clip=`, change `clip-thumbnail-endpoint`, **D-11**) is a
 per-clip media read on request, not a field of the events read model, so the list and detail stay probe-free
 and gain no field: the client builds each thumbnail's URL from the event id and clip identity it already has.
+The media routes (`GET /api/v1/events/{event_id}/media?clip=` and `/movie`, change `media-endpoints`) are,
+like the thumbnail, per-request media reads, not fields of the events read model. They stream the file on disk
+unchanged with byte ranges: no transcode, no probe. The movie is the file the staleness gate counts as the
+event's movie (`staleness.rendered_output`), so a legacy movie with no render record is not served until
+`auto-reel adopt-renders` records it. `<img>` and `<video>` send no `Authorization` header, so a future token
+is a cookie or a query parameter (D-A8).
 
 **The same rule bounds content hashing.** The staleness fingerprint's clip-set component has a content-hash
 opt-in (`compute_fingerprint(use_hash=True)`) that sha256s every clip's bytes; on a per-event read that is a
@@ -311,9 +317,20 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   `reel.yaml`), **chapter edits, Move clips and dragging clips between chapters** (**D-13**), **typed cuts** (**D-14**), edit basic metadata (title/date/location/description), **schedule a render and watch
   live progress**, and **clip thumbnails** (one frame per clip, **D-11**). The resolved `look` is shown
   **read-only**; editing it is v2. No timeline, no per-frame editing.
-- **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview), **analysis review** (approve black/white/freeze
-  trims), event poster frames.
-- **v3:** **full timeline editor** — per-clip track with proxies, drag-trim in/out, scrub preview.
+- **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview); **the full
+  timeline editor, moved from v3** — a per-clip track with proxies, filmstrip, drag-trim in/out and scrub
+  preview; **analysis review built as overlays on that timeline** (approve black/white/freeze trims in place,
+  not a separate screen); event poster frames; and, beside the proxy work, chapter times in the render
+  manifest (a chapter list for the movie player) and a movie version in the event detail. v2 starts with a
+  research step: §8.11 (proxies, the PCM-audio path) and the timeline library against D-8's dependency budget.
+- **v3:** nothing is planned for the GUI: the timeline editor moved to v2 on 2026-10-01, and dragging
+  across chapters landed in v1 (D-13, `cross-chapter-drag`).
+
+**Roadmap edit (2026-10-01, user decision):** "A and B in this version, but i want C a full editor in v2".
+v1 gains the movie player (A, change `movie-player-screen`) and the clip preview with Set From / Set To at
+the playhead (B, change `clip-preview-screen`); their one `api/` prerequisite is `media-endpoints` (the media
+routes of §4.9), as `clip-thumbnail-endpoint` is for D-11. The full timeline editor (C) moves from v3 to v2,
+and v2's analysis review is built as overlays on that timeline rather than as a screen of its own.
 
 The v1 screens share one visual system in plain CSS — tokens, an app shell, and the primitives slices
 D and E build on — pulled forward from the v2 look-and-feel pass (**D-10**, change `web-design-system`).
@@ -353,9 +370,10 @@ dependency budget.** Rationale and rules:
 - **The runtime stays one Python process.** `auto-reel serve` is the whole deployment, so the frontend may
   depend on Node at **build time only**; any framework requiring a Node process at runtime (SvelteKit, Next,
   Nuxt) is disqualified. The build output is static files the API mounts.
-- **Why React.** The widest ecosystem and the deepest library/documentation coverage for the v3 timeline
-  editor (drag-trim, scrub preview) — the slice most likely to need something off the shelf. Chosen over
-  Svelte on support breadth, and over htmx/Jinja because v3 is not reachable from there without a rewrite.
+- **Why React.** The widest ecosystem and the deepest library/documentation coverage for the v2 timeline
+  editor (drag-trim, scrub preview; moved from v3 on 2026-10-01) — the slice most likely to need something
+  off the shelf. Chosen over Svelte on support breadth, and over htmx/Jinja because the timeline editor is
+  not reachable from there without a rewrite.
 - **API types are generated, never hand-written.** Every endpoint carries a pydantic `response_model`, so
   FastAPI's OpenAPI schema → `openapi-typescript` → TS types. A backend schema change becomes a frontend
   **build error** instead of a silent runtime bug. Hand-maintaining a template ⇄ schema mapping (the htmx
@@ -424,7 +442,8 @@ schema hook publishes it into the schema's components (`WsMessage` and its `WsMe
 error, and endpoint behavior is already covered by `pytest`. A later slice with logic worth unit-testing
 proposes a runner then, with its justification.
 
-> ⚠️ **Research:** §8.11 proxies and scrubbing for the timeline (v3); single-frame clip thumbnails are
+> ⚠️ **Research:** §8.11 proxies and scrubbing for the timeline (v2, the research that opens GUI v2);
+> browser playback of the archive is measured in `docs/research/browser-playback.md`; single-frame clip thumbnails are
 > **resolved** (Decision D-11). The frontend framework is now **resolved** (Decision D-8).
 
 ### 4.11 Headless CLI
@@ -527,8 +546,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
 6. **Analysis pass v1** (black/white/freeze → segments → reel.yaml trims).
 7. **Job scheduler + FastAPI service** (jobs, progress over WS, Postgres index).
 8. **GUI v1** (ingest + reorder + metadata + schedule + progress).
-9. **GUI v2** (look editor + analysis review).
-10. **GUI v3** (full timeline editor) and **ML analysis** (parallel, behind existing interfaces).
+9. **GUI v2** (look editor + the full timeline editor, with analysis review as timeline overlays; starts
+   with the §8.11 research).
+10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope since the timeline
+    editor moved to v2.
 11. **Packaging** (cross-vendor image, deployment docs).
 
 ---
@@ -601,7 +622,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     never in Postgres (D-7), and never evicted in v1 (≈15 KB per clip).
   - **Filling it:** `auto-reel thumbs` fills it in batch. The service's thumbnail route fills it on
     request (change `clip-thumbnail-endpoint`).
-  - **Still open:** proxies and scrubbing stay v3 (§8.11). (§4.10)
+  - **Still open:** proxies and scrubbing are v2, with the timeline editor (§8.11; moved from v3 on
+    2026-10-01). (§4.10)
 
 - **D-12 — NEW-clip adoption follows the clip's folder** (2026-10-01, change `adopt-into-folder-chapter`;
   amends `project-cli`'s D-CLI3). A clip that appears in an event after its `reel.yaml` exists (NEW) is
@@ -632,8 +654,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
 
 - **D-14 — Cuts are edited by typed times in GUI v1** (2026-10-01, change `clip-cuts-screen`). Edit mode
   lists, adds and removes a clip's cuts (D-D), with times typed as seconds, m:ss or h:mm:ss, pulled forward
-  from v3 at the operator's request. Scrubbing, previews and drag-trim stay v3. The page refuses what the
-  engine refuses (`out <= in`, negative), and refuses an overlap with another cut. It cannot refuse a cut past
+  from v3 at the operator's request. Scrubbing, previews and drag-trim are not part of it: the timeline
+  editor is v2 (§4.10, 2026-10-01). The page refuses what the engine refuses (`out <= in`, negative), and
+  refuses an overlap with another cut. It cannot refuse a cut past
   the clip's end, because no probe-free read gives a duration, so it states the render's rule instead (cut
   short at the end; a whole-clip cut leaves the clip out). A cut made in the GUI has the reason `manual`. The
   event page shows each clip's cuts. (§4.10)
@@ -720,8 +743,12 @@ turned into confident OpenSpec changes. Numbered to match the ⚠️ markers abo
     a hand-written hook over the existing D-A4 progress hub.
 11. **Proxy & thumbnail generation** for the timeline editor. Clip thumbnails ✅ **RESOLVED → Decision
     D-11** (§4.10): one JPEG per clip at a fraction of its duration, in a file cache outside the library.
-    Still open (v3): low-res proxies (and/or HLS) for scrubbing without touching originals; where to
-    cache them.
+    Still open (v2, the research that opens GUI v2): low-res proxies (and/or HLS) for scrubbing without
+    touching originals; where to cache them. The PCM audio path: 52 % of the archive's clips (every Sony
+    XAVC clip) carry PCM audio that Firefox does not play; the v1 media routes serve files unchanged. Facts
+    that size the proxy work: about 76 % of the archive's files keep `moov` at the end (every seek is a
+    range, the first open a tail fetch), and HEVC exists only under `original/`. See
+    `docs/research/browser-playback.md`.
 12. **Single image, all vendors** — can one container ship CUDA + intel-media-driver + Mesa/VAAPI
     userspace and select at runtime from host-passed devices; document the `--gpus` vs `/dev/dri` matrix.
 13. **Per-device targeting** — exact flags to pin a job to a chosen GPU across NVENC (`-gpu`/
