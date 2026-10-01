@@ -103,12 +103,11 @@ conflict in a short window scrolled to its top.
 
 ### Requirement: Edit mode lines up with the event page and fits a phone
 
-Entering Edit mode SHALL NOT move each clip's thumbnail, file name, status, size or modification time
-sideways from where the event page's table showed them. This SHALL hold wherever a chapter's panel is wide
-enough for both the table and Edit mode's one-line rows. Only two things SHALL move: the position number
-makes room for the drag handle, and the move controls take room from the end of the file column. The
-control that leaves Edit mode SHALL be presented like the control that entered it, and never as an
-unavailable control.
+Entering Edit mode SHALL NOT move each clip's thumbnail, name, status, size or modification time sideways from
+where the event page's table showed them. This SHALL hold wherever a chapter's panel is wide enough for both
+the table and Edit mode's one-line rows. Only two things SHALL move: the position number makes room for the
+drag handle, and the move controls take room from the end of the file column. The control that leaves Edit
+mode SHALL be presented like the control that entered it, and never as an unavailable control.
 
 In a window 320 CSS pixels wide or wider, no state of Edit mode SHALL make the page scroll horizontally.
 
@@ -176,3 +175,175 @@ service resolves from the folder name.
 - **WHEN** the operator changes the location of `2024-06-27 - Grillning med grannar` in Edit mode and saves
 - **THEN** the notification says the event was saved, and names it "Grillkväll med grannarna" with its date
   2024-06-27
+
+## MODIFIED Requirements
+
+### Requirement: The event page reorders clips within a chapter
+
+An event's page SHALL offer an **Edit** mode on the page itself. Entering or leaving it SHALL NOT change the
+page's address. Entering Edit mode SHALL read the event's editorial document from the service. When that read
+fails, the page SHALL say why, using the same words it uses for a failed event read, and SHALL offer no
+editing. Entering Edit mode SHALL keep keyboard focus on the control that entered it, and leaving Edit mode,
+by any path, SHALL move keyboard focus to the page's level-one heading.
+
+While in Edit mode, the editor's chapter lists and metadata fields SHALL take the place of the chapter tables,
+the facts and the description. Each chapter keeps its level-two heading, and each clip row keeps the facts the
+table shows: its position, the clip's name as the event page's table names it, its status in words, size and
+modification time, with absent facts shown as absent. The event's verdict and latest job stay shown. Leaving
+Edit mode, by any path, SHALL read the event again and show the tables. Only the operator's own actions SHALL
+end Edit mode or change what it holds: a read of the event that the page would start by itself while Edit mode
+is open SHALL NOT discard the edits.
+
+In Edit mode, each chapter SHALL list its clips in the order the page shows them. The operator SHALL be able
+to move a clip to any other position **within its own chapter** in each of three ways:
+
+- by dragging the clip's handle with a mouse, pen or touch. A drag SHALL start only from the handle, and a
+  tap or click on the handle SHALL NOT start one. A scroll gesture that starts anywhere else on the page
+  SHALL scroll it.
+- from the keyboard, on the clip's handle: one key lifts the clip, the arrow keys move it, one key drops it,
+  and Escape cancels, leaving the order as it was
+- with a **Move up** and a **Move down** control on every movable row. After such a move, keyboard focus SHALL
+  stay on the moved clip's row.
+
+Every keyboard or control move, and every drop or cancel, SHALL be announced to assistive technology with the
+clip's name, as the event page's table names it, and its position out of the number of clips the chapter plays
+(its ignored clips, and the missing clips the operator removed, are not counted). A clip SHALL NOT be movable
+into another chapter: a dragged clip stops at its own chapter's edge. The page SHALL count as moved the fewest
+clips whose moves explain the new order, so that moving one clip from position 1 to position 5 moves one clip,
+not five. Each clip counted as moved SHALL show its position from when Edit mode opened.
+
+Clips the event ignores are not part of the play order. Each chapter SHALL list them after its other clips,
+marked as ignored, and they SHALL NOT be movable or counted in the chapter's positions. A missing clip SHALL
+stay listed and movable, and SHALL never be dropped from its chapter, except when the operator removes it
+with its own control (see "Edit mode removes a missing clip from reel.yaml on request"). A NEW clip SHALL be
+movable like any other.
+
+#### Scenario: Dragging a clip to the front
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, the operator drags `s1710004.mp4` above
+  `s1710001.mp4`
+- **THEN** the chapter lists `s1710004.mp4`, `s1710001.mp4`, `s1710002.mp4`, `s1710003.mp4`, and
+  `s1710004.mp4` shows that it was at position 4
+
+#### Scenario: Reordering from the keyboard
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator focuses the handle of `Kvällen/s1710002.mp4`,
+  lifts it, presses Down once, and drops it
+- **THEN** `Kvällen` lists `s1710003.mp4`, `s1710002.mp4`, `s1710004.mp4`, and a screen reader hears that
+  `s1710002.mp4` moved to position 2 of 3
+
+#### Scenario: Escape cancels a keyboard move
+- **WHEN** on `2024-06-27 - Grillning med grannar`, the operator lifts `s1710001.mp4` from the keyboard, moves
+  it two places, and presses Escape
+- **THEN** the clip is back at position 1, the order is unchanged, and the cancel is announced
+
+#### Scenario: The move controls keep focus on the moved clip
+- **WHEN** on `2024-09-01 - Sommarlov`, the operator activates **Move down** on `s1710002.mp4`
+- **THEN** `s1710002.mp4` is at position 2, keyboard focus is still on its row, and its move is announced
+
+#### Scenario: A clip cannot leave its chapter
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator drags `Kvällen/s1710003.mp4` upward toward the
+  `Main` chapter, past the top of `Kvällen`, and releases it
+- **THEN** the dragged row stopped at the top edge of `Kvällen`, the clip is now first in `Kvällen`, and
+  `Main` is unchanged
+
+#### Scenario: An ignored clip is listed but cannot move
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`
+- **THEN** `Main` lists `s1710001.mp4` and then `s1710004.mp4`, marked as ignored, and `s1710004.mp4` has no
+  handle and no move controls
+
+#### Scenario: A missing clip keeps its place
+- **WHEN** Edit mode opens on `2024-09-01 - Sommarlov`, whose `reel.yaml` lists the missing `borttagen.mp4`
+  last
+- **THEN** `borttagen.mp4` is listed at position 3, marked as missing, and can be moved like the others
+
+#### Scenario: A large chapter is fully editable
+- **WHEN** an event holds 400 clips in one chapter
+- **THEN** all 400 are listed in Edit mode, and any of them can be moved to any position in the chapter
+
+#### Scenario: The editorial document cannot be read
+- **WHEN** the operator enters Edit mode on an event whose `reel.yaml` became unparseable after the page was
+  read
+- **THEN** the page shows the unparseable-document failure in words, with the service's detail, and offers
+  no editing
+
+### Requirement: Edit mode removes a missing clip from reel.yaml on request
+
+In Edit mode, every clip that `reel.yaml` lists but that is missing from disk SHALL offer a control that
+removes it from `reel.yaml`. The control SHALL say that it removes the clip, SHALL name the clip to assistive
+technology by the clip's name, as the event page's table names it, and SHALL be reachable with the keyboard.
+No other clip SHALL offer one: a clip that is on disk (included, NEW or ignored) is never removed this way,
+and nothing else in the client removes a clip from `reel.yaml`.
+
+Removing a clip SHALL:
+
+- take it out of its chapter's play order, so that the chapter's remaining clips are numbered, and their
+  positions announced, without it
+- list it under its chapter, after the clips the chapter plays, as removed from `reel.yaml` when the edits are
+  saved. The listing keeps the clip's name, as the event page's table names it, and its status in words, and
+  offers an **Undo** control that names the clip that way to assistive technology.
+- move keyboard focus to that Undo control, and announce that the clip will be removed from `reel.yaml` when
+  the edits are saved
+
+Undo SHALL return the clip to its chapter's play order, right after whichever of the clips that came before it
+when Edit mode opened comes last in the chapter's play order now, or first when none of them is still in the
+play order. With no other edit to the chapter, that is the position it had. So removals undone in any order,
+with no move between them, leave the chapter's order as read, and however the chapter was reordered meanwhile,
+each clip still in the play order that came before it when Edit mode opened comes before it again. Undo SHALL
+then move keyboard focus to the clip's remove control, and announce the clip's position out of the number of
+clips the chapter plays.
+
+A removal SHALL count as an unsaved change, like a move. The save bar says how many missing clips will be
+removed, Reset returns every removed clip to its place, and leaving with a removal unsaved asks first, as
+for any unsaved edit. While a save is in flight, the remove and Undo controls SHALL accept no presses.
+
+Saving SHALL write `reel.yaml` without each removed clip, as "Saving an edit writes only what the operator
+changed" states, and SHALL NOT create, change or delete any other file. After a successful save, the page
+SHALL show the event without the removed clips and SHALL no longer report them as missing.
+
+#### Scenario: Removing the missing clip of Sommarlov
+- **WHEN** in Edit mode on `2024-09-01 - Sommarlov`, the operator activates the control that removes
+  `borttagen.mp4` from `reel.yaml`
+- **THEN** the chapter plays `s1710002.mp4` and `s1710004.mp4`, numbered 1 and 2; `borttagen.mp4` is listed
+  under the chapter as removed when the edits are saved, still marked as missing, with an Undo control that
+  has keyboard focus; and the page says that 1 missing clip will be removed
+
+#### Scenario: Undo puts the clip back
+- **WHEN** after removing `borttagen.mp4`, the operator activates its Undo control
+- **THEN** `borttagen.mp4` is at position 3 again, keyboard focus is on its remove control, and the page
+  shows no unsaved changes
+
+#### Scenario: Undo after a move keeps the move
+- **WHEN** on `2024-09-01 - Sommarlov`, the operator removes `borttagen.mp4`, moves `s1710004.mp4` up, and
+  then undoes the removal
+- **THEN** the chapter lists `s1710004.mp4`, `s1710002.mp4` and `borttagen.mp4`, and the page says that 1 clip
+  moved, and no longer says that a missing clip will be removed
+
+#### Scenario: Removals undone in any order restore the chapter
+- **WHEN** in Edit mode on an event whose one chapter lists `s1710001.mp4` and then the missing `x.mp4` and
+  `y.mp4`, the operator removes `x.mp4`, then `y.mp4`, then undoes the removal of `x.mp4`, then of `y.mp4`
+- **THEN** the chapter lists `s1710001.mp4`, `x.mp4` and `y.mp4` as read, and the page shows no unsaved
+  changes
+
+#### Scenario: Reset puts every removed clip back
+- **WHEN** on `2024-09-01 - Sommarlov`, the operator removes `borttagen.mp4`, moves `s1710004.mp4` up, and
+  presses Reset
+- **THEN** the chapter lists `s1710002.mp4`, `s1710004.mp4` and `borttagen.mp4` as read, and the page shows
+  no unsaved changes
+
+#### Scenario: Saving takes the entry out of reel.yaml
+- **WHEN** the operator removes `borttagen.mp4` from `2024-09-01 - Sommarlov` and saves
+- **THEN** `reel.yaml` lists `s1710002.mp4` and `s1710004.mp4` only; the line for `borttagen.mp4`, with its
+  end-of-line comment, is the only line gone; and the page shows the event with no missing clip, needing a
+  render, and offers Render
+
+#### Scenario: The render succeeds once the entry is gone
+- **WHEN** after that save the operator presses Render on `2024-09-01 - Sommarlov` and a worker runs the job
+- **THEN** the job completes and the page shows the event as rendered and up to date
+
+#### Scenario: Only missing clips can be removed
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`, whose clips are included, NEW or ignored,
+  and none is missing
+- **THEN** no clip offers a control that removes it from `reel.yaml`
+
+#### Scenario: A pending removal is an unsaved edit
+- **WHEN** the operator removes `borttagen.mp4` on `2024-09-01 - Sommarlov` and presses the browser's Back
+- **THEN** the event page stays, with the removal, and asks "Discard unsaved changes?"

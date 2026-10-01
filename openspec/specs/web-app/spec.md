@@ -716,12 +716,12 @@ editing. Entering Edit mode SHALL keep keyboard focus on the control that entere
 by any path, SHALL move keyboard focus to the page's level-one heading.
 
 While in Edit mode, the editor's chapter lists and metadata fields SHALL take the place of the chapter tables,
-the facts and the description. Each chapter keeps its level-two heading, and each clip row keeps the facts
-the table shows: its position, file name, status in words, size and modification time, with absent facts
-shown as absent. The event's verdict and latest job stay shown. Leaving Edit mode, by any path, SHALL read
-the event again and show the tables. Only the operator's own actions SHALL end Edit mode or change what it
-holds: a read of the event that the page would start by itself while Edit mode is open SHALL NOT discard
-the edits.
+the facts and the description. Each chapter keeps its level-two heading, and each clip row keeps the facts the
+table shows: its position, the clip's name as the event page's table names it, its status in words, size and
+modification time, with absent facts shown as absent. The event's verdict and latest job stay shown. Leaving
+Edit mode, by any path, SHALL read the event again and show the tables. Only the operator's own actions SHALL
+end Edit mode or change what it holds: a read of the event that the page would start by itself while Edit mode
+is open SHALL NOT discard the edits.
 
 In Edit mode, each chapter SHALL list its clips in the order the page shows them. The operator SHALL be able
 to move a clip to any other position **within its own chapter** in each of three ways:
@@ -735,11 +735,11 @@ to move a clip to any other position **within its own chapter** in each of three
   stay on the moved clip's row.
 
 Every keyboard or control move, and every drop or cancel, SHALL be announced to assistive technology with the
-clip's file name and its position out of the number of clips the chapter plays (its ignored clips, and the
-missing clips the operator removed, are not counted). A clip SHALL NOT be movable into another chapter: a
-dragged clip stops at its own chapter's edge. The page SHALL count as moved the fewest clips whose
-moves explain the new order, so that moving one clip from position 1 to position 5 moves one clip, not five.
-Each clip counted as moved SHALL show its position from when Edit mode opened.
+clip's name, as the event page's table names it, and its position out of the number of clips the chapter plays
+(its ignored clips, and the missing clips the operator removed, are not counted). A clip SHALL NOT be movable
+into another chapter: a dragged clip stops at its own chapter's edge. The page SHALL count as moved the fewest
+clips whose moves explain the new order, so that moving one clip from position 1 to position 5 moves one clip,
+not five. Each clip counted as moved SHALL show its position from when Edit mode opened.
 
 Clips the event ignores are not part of the play order. Each chapter SHALL list them after its other clips,
 marked as ignored, and they SHALL NOT be movable or counted in the chapter's positions. A missing clip SHALL
@@ -1609,18 +1609,18 @@ service did not report.
 ### Requirement: Edit mode removes a missing clip from reel.yaml on request
 
 In Edit mode, every clip that `reel.yaml` lists but that is missing from disk SHALL offer a control that
-removes it from `reel.yaml`. The control SHALL say that it removes the clip, SHALL name the clip's file to
-assistive technology, and SHALL be reachable with the keyboard. No other clip SHALL offer one: a clip that is
-on disk (included, NEW or ignored) is never removed this way, and nothing else in the client removes a clip
-from `reel.yaml`.
+removes it from `reel.yaml`. The control SHALL say that it removes the clip, SHALL name the clip to assistive
+technology by the clip's name, as the event page's table names it, and SHALL be reachable with the keyboard.
+No other clip SHALL offer one: a clip that is on disk (included, NEW or ignored) is never removed this way,
+and nothing else in the client removes a clip from `reel.yaml`.
 
 Removing a clip SHALL:
 
 - take it out of its chapter's play order, so that the chapter's remaining clips are numbered, and their
   positions announced, without it
-- list it under its chapter, after the clips the chapter plays, as removed from `reel.yaml` when the edits
-  are saved. The listing keeps its file name and its status in words, and offers an **Undo** control that
-  names the clip's file to assistive technology.
+- list it under its chapter, after the clips the chapter plays, as removed from `reel.yaml` when the edits are
+  saved. The listing keeps the clip's name, as the event page's table names it, and its status in words, and
+  offers an **Undo** control that names the clip that way to assistive technology.
 - move keyboard focus to that Undo control, and announce that the clip will be removed from `reel.yaml` when
   the edits are saved
 
@@ -2183,12 +2183,11 @@ conflict in a short window scrolled to its top.
 
 ### Requirement: Edit mode lines up with the event page and fits a phone
 
-Entering Edit mode SHALL NOT move each clip's thumbnail, file name, status, size or modification time
-sideways from where the event page's table showed them. This SHALL hold wherever a chapter's panel is wide
-enough for both the table and Edit mode's one-line rows. Only two things SHALL move: the position number
-makes room for the drag handle, and the move controls take room from the end of the file column. The
-control that leaves Edit mode SHALL be presented like the control that entered it, and never as an
-unavailable control.
+Entering Edit mode SHALL NOT move each clip's thumbnail, name, status, size or modification time sideways from
+where the event page's table showed them. This SHALL hold wherever a chapter's panel is wide enough for both
+the table and Edit mode's one-line rows. Only two things SHALL move: the position number makes room for the
+drag handle, and the move controls take room from the end of the file column. The control that leaves Edit
+mode SHALL be presented like the control that entered it, and never as an unavailable control.
 
 In a window 320 CSS pixels wide or wider, no state of Edit mode SHALL make the page scroll horizontally.
 

@@ -111,13 +111,16 @@ None.
 
 ### Modified Capabilities
 
-- `web-app`: four ADDED requirements, all Edit mode's own. No MODIFIED block, so the parallel polish
-  changes cannot lose each other's wording at archive. The toast rule is `ui-a11y-polish`'s requirement
-  ("Notifications never cover the save bar"), and it is not restated here.
+- `web-app`: four ADDED requirements, all Edit mode's own, and, after the supervisor's review, once every
+  sibling change had landed, two MODIFIED ones whose "file name" became "the clip's name, as the event
+  page's table names it". The toast rule is `ui-a11y-polish`'s requirement ("Notifications never cover the
+  save bar"), and it is not restated here.
   - `Requirement: Edit mode's save bar stays compact and fits the window`
   - `Requirement: Edit mode keeps keyboard focus in view and never drops it`
   - `Requirement: Edit mode lines up with the event page and fits a phone`
   - `Requirement: Edit mode names clips and the saved event as the other screens do`
+  - MODIFIED `Requirement: The event page reorders clips within a chapter`
+  - MODIFIED `Requirement: Edit mode removes a missing clip from reel.yaml on request`
 
 ## Impact
 
@@ -131,6 +134,8 @@ None.
     - `edit.css`: the save bar, the row grid, and the field edges
   - `src/events/EventDetail.tsx`: the Edit and Stop editing toggle's class, one line. The brief assigns
     that toggle to this change.
+  - `src/events/labels.ts`: `notReachableHint(control)` beside `NOT_REACHABLE_HINT`, for Try again's
+    wording (after review; the list's and the page's wording is unchanged).
   - `web/README.md`.
 - **CLI vs API (Principle V):** untouched. No behaviour moves into `api/`.
 - **Rendered output:** unchanged. No `RENDER_GRAPH_VERSION` bump, and the fingerprint inputs are unchanged.
