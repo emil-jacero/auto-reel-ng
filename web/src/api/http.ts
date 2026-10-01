@@ -35,14 +35,28 @@ export type Unanswered =
   // an answer whose status or body the route does not publish (the message names it)
   | { kind: 'unpublished'; message: string }
 
-/** "GET /api/v1/events answered 500 Internal Server Error": what came back instead. */
+/**
+ * "GET /api/v1/events answered 500 Internal Server Error": what came back instead,
+ * with the request's path as an operator reads it (an event's folder name, not
+ * its percent-escapes).
+ */
 export function unpublishedAnswer(
   method: 'GET' | 'PUT',
   url: string,
   response: Response,
 ): Extract<Unanswered, { kind: 'unpublished' }> {
-  return {
-    kind: 'unpublished',
-    message: `${method} ${url} answered ${response.status} ${response.statusText}`.trimEnd(),
+  const status = `${response.status} ${response.statusText}`.trimEnd()
+  return { kind: 'unpublished', message: `${method} ${readablePath(url)} answered ${status}` }
+}
+
+/**
+ * A request path with its escapes decoded (`decodeURI` keeps an escaped `/`, `?`
+ * or `#` escaped), or as given when an escape is malformed.
+ */
+function readablePath(url: string): string {
+  try {
+    return decodeURI(url)
+  } catch {
+    return url
   }
 }
