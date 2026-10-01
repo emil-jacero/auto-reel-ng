@@ -318,4 +318,11 @@
     margin-inline-start: auto;
     border-radius: var(--r-md);
   }
+
+  /* Edit's place in the header's actions: the Edit button's size. */
+  .skeleton-action {
+    inline-size: 4.75rem;
+    block-size: 2rem;
+    border-radius: var(--r-md);
+  }
 }
