@@ -33,7 +33,7 @@ import { CLIP_STATUS_LOOK, FAILURE_LOOK } from './tones'
  * "Needs attention", with nothing the row does not carry. Each row's job is live
  * (`jobs/LiveJobCell`), with a Render for a row that needs one. A click anywhere
  * on an event row opens its event, as its title does; rows that would read the
- * same (`lookAlikes`) also show their folder's path.
+ * same (`lookAlikes`) also say so and show their folder's path.
  */
 
 /** `quiet`: a re-read because events changed, which keeps the rows shown. */
@@ -123,8 +123,12 @@ function openRow(event: MouseEvent<HTMLTableRowElement>): void {
   event.currentTarget.querySelector<HTMLAnchorElement>('.cell-event a[href]')?.click()
 }
 
+/** Said before a look-alike row's path: why the path is shown. */
+const LOOK_ALIKE_NOTE = 'Reads the same as another event'
+
 function EventRow({ event, lookAlike }: { event: EventSummary; lookAlike: boolean }) {
   // Called on every render, whether or not the row shows its path (rules of hooks).
+  const alikeId = useId()
   const pathId = useId()
   return (
     <tr role="row" onMouseDown={notePress} onClick={openRow}>
@@ -132,13 +136,21 @@ function EventRow({ event, lookAlike }: { event: EventSummary; lookAlike: boolea
         {event.date != null && <time dateTime={event.date}>{event.date}</time>}
       </td>
       <td role="cell" className="cell-event">
-        <a href={eventHref(event.event_id)} aria-describedby={lookAlike ? pathId : undefined}>
+        {/*
+         * A look-alike's link is described by the note, then the path: two paths
+         * can differ only in letter case, which a screen reader does not voice.
+         */}
+        <a
+          href={eventHref(event.event_id)}
+          aria-describedby={lookAlike ? `${alikeId} ${pathId}` : undefined}
+        >
           {event.title ?? folderName(event.event_id)}
         </a>
         {event.location != null && <span className="event-location"> · {event.location}</span>}
         {lookAlike && (
-          <span id={pathId} className="event-folder">
-            {event.event_id}
+          <span className="event-folder">
+            <span id={pathId}>{event.event_id}</span>
+            <span id={alikeId}>{LOOK_ALIKE_NOTE}</span>
           </span>
         )}
       </td>
