@@ -16,7 +16,8 @@ be reachable with the keyboard and SHALL name, to assistive technology, the chap
   control. At either end, the control that cannot move further SHALL say that it is unavailable.
 - **Delete** SHALL remove a chapter only once it plays no clip. Its clips must first be moved to another
   chapter, or removed when missing. The event's own chapter can be deleted only when, in addition, it lists no
-  ignored clip, because the page lists the event folder's ignored clips under that chapter whatever is saved.
+  ignored clip that the page would list under it again after the save: one from the event folder, or from a
+  folder no chapter is named after. Such a clip would bring the chapter back, holding only ignored clips.
   When a chapter cannot be deleted, pressing Delete SHALL change nothing and leave focus on Delete. The page
   SHALL show and announce why the chapter cannot be deleted.
 
@@ -108,7 +109,8 @@ change nothing when pressed.
 #### Scenario: Main stays while it lists an ignored clip
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator moves `s1710001.mp4` to `Kvällen` and presses
   Delete on `Main`
-- **THEN** nothing is deleted, and the page says that `Main` still lists 1 ignored clip from the event folder
+- **THEN** nothing is deleted, and the page says that `Main` still lists 1 ignored clip that no other chapter
+  will take
 
 #### Scenario: Saving a deleted chapter
 - **WHEN** after deleting the emptied `Kvällen` of `2024-08-20 - Två kapitel - Tjörn`, the operator saves
@@ -155,7 +157,8 @@ why:
 - an ignored clip, which is not played
 
 A chapter that plays no clip SHALL say that it has none to move. When exactly one other chapter is listed, it
-SHALL be chosen already.
+SHALL be chosen already. A **Pick all** control SHALL pick every clip offered at once, or clear them all, and
+SHALL show that it is mixed while only some are picked.
 
 The moved clips SHALL join the end of the chosen chapter's play order, in the order they had. The one
 exception is a clip that returns to the chapter it was in when Edit mode opened. It SHALL go right after
@@ -228,6 +231,13 @@ reorders clips within a chapter").
   as wide as the dialog's list, the rows do not overlap, and the dialog fits the window without scrolling the
   page horizontally
 
+#### Scenario: Picking every clip at once
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens Move clips on `Kvällen` and checks Pick all
+- **THEN** all three clips are picked and the dialog says 3 of 3 picked
+- **WHEN** the operator then clears one clip
+- **THEN** Pick all shows that it is mixed, and checking it again picks all three; checking it once more picks
+  none
+
 #### Scenario: Escape moves nothing
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens Move clips on `Kvällen`, picks
   `s1710002.mp4`, and presses Escape
@@ -251,6 +261,9 @@ until the edits are saved or undone:
   event's own chapter when none is.
 - **Deleting the event's own chapter.** Clips added to the event folder later start a new `Main` chapter at
   the end, and so do the ignored clips of a chapter renamed or deleted in the same edits.
+
+In these words the page SHALL name the event's own chapter by its heading at that moment: `Main` while
+another chapter is listed, `Clips` when it is the only one.
 
 A folder counts only while it holds a clip on disk. The page SHALL compare a name with a folder's exactly, as
 the render does. A name that differs from a folder's only in case attracts nothing from that folder, and the
@@ -276,7 +289,8 @@ page SHALL say so as for any other name.
 #### Scenario: Deleting a chapter named after its folder
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator moves the three clips of `Kvällen` to `Main` and
   deletes `Kvällen`
-- **THEN** the deleted chapter says that clips added to the folder `Kvällen` later will join `Main`
+- **THEN** the deleted chapter says that clips added to the folder `Kvällen` later will join `Clips`, as the
+  page now heads the event's own chapter, the only one left
 
 #### Scenario: Renaming a chapter that lists an ignored clip
 - **WHEN** the `reel.yaml` of `2024-08-20 - Två kapitel - Tjörn` also ignores `Kvällen/s1710004.mp4`, and the
@@ -288,8 +302,8 @@ page SHALL say so as for any other name.
 #### Scenario: Deleting a chapter that lists an ignored clip
 - **WHEN** the `reel.yaml` of `2024-08-20 - Två kapitel - Tjörn` also ignores `Kvällen/s1710004.mp4`, and the
   operator moves the two clips `Kvällen` plays to `Main` and deletes `Kvällen`
-- **THEN** the deleted chapter says that its 1 ignored clip will be listed under `Main`. After saving, the
-  page lists `Kvällen/s1710004.mp4` as ignored under the event's own chapter.
+- **THEN** the deleted chapter says that its 1 ignored clip will be listed under `Clips`, the event's own
+  chapter's heading once it is the only one. After saving, the page lists `Kvällen/s1710004.mp4` as ignored under the event's own chapter.
 
 ### Requirement: The event page shows an empty chapter as empty
 

@@ -384,7 +384,7 @@ HLD §7).
   `btn` plus `btn-primary`, `btn-secondary`, `btn-ghost` or `btn-danger` (plus
   `btn-icon`, or `btn-compact` for a control inside a row); `pill`, `badge` and
   `alert` with `data-tone`; `panel` (with `panel-header` and `panel-meta`);
-  `data-table`; `segmented`; `dialog-actions`; `visually-hidden`. The header's
+  `data-table`; `segmented`; `dialog-fields`, `dialog-actions`; `visually-hidden`. The header's
   `<div className="shell-status">` is the slot for status indicators.
 - **Busy controls.** A control the operator pressed that now waits for an answer
   gets `aria-disabled="true"` and `aria-busy="true"` and ignores clicks (a ref
@@ -396,7 +396,11 @@ HLD §7).
   is still closed. Escape calls `onClose`; a close the caller starts does not. The
   children are the consequence, then a `dialog-actions` row: everything but that row
   becomes the dialog's description (`aria-describedby`), so the consequence is read
-  when the dialog opens. No prop to pass.
+  when the dialog opens. A dialog that asks for input puts its fields in a direct
+  child with class `dialog-fields` (a `<form>`; its submit button may sit in the
+  actions row with `form=`): it is left out of the description too, and rendered
+  between the body and the actions, so a long list of choices is never read out
+  when the dialog opens (Edit mode's Move clips). No prop to pass.
 - **Toasts** appear bottom right. A page with a bar held at the bottom of the window
   registers it with `keepToastsClearOf(bar)` (and releases it in the same effect's
   cleanup): the region then sits above the bar while it is stuck, and below it at the
