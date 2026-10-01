@@ -23,25 +23,26 @@ page shows the event's facts, with the folder name beside a title that differs f
 it; one render region holding the verdict and the latest job (when the verdict says
 "movie name changed", because the title, date or location changed since the last
 render, it adds on a line of its own that the next render saves the movie under its
-new name and that the movie under its old name stays on disk); then, when the event
-has a rendered movie (its verdict cites neither `no_manifest` nor `output`), a
-**Movie** section (D-15) that plays it in the browser's own player, says whether it is
+new name and that the movie under its old name stays on disk); then the **Movie**
+section, when the event has a rendered movie; then its chapters, each listing the
+clips it plays, numbered in play order, and then its ignored clips, unnumbered. Each
+clip shows its status (an included clip's quietly, so the exceptions stand out), size
+and time; a clip from another folder is named by its path in the event folder; and any
+clip `reel.yaml` lists that is missing from disk is named. A clip with **cuts**
+(`reel.yaml`'s `trims`: spans the movie leaves out, D-D) shows, under its name, how
+many and the time they cut out ("2 cuts · −4.5 s"), a disclosure (`<details>`) that
+lists them; the page reads them with `GET …/reel` after each event read, writes
+nothing, and if that read fails shows the clips without cuts and a note that says why.
+The Movie section (D-15) shows when the verdict cites neither `no_manifest` nor
+`output`. It plays the movie in the browser's own player, says whether it is
 **Current** or **Outdated**, and names its file and size as the movie route's one-byte
-answer gives them (the old name after a rename). Nothing of the movie loads before Play
-(`preload="none"`; the poster is the first played clip's thumbnail), the player's address
-carries the file's entity-tag, so a new render gets a new player, and what it cannot
-play is said by cause (no file, unreadable, empty, no answer, no picture, a browser
-error, a file changed while it played) with a download or the new movie to load. A
-Refresh, or Edit mode, stops playback; then its chapters,
-each listing the clips it plays, numbered in play order, and then its ignored clips,
-unnumbered. Each clip shows its status (an included clip's quietly, so the
-exceptions stand out), size and time; a clip from another folder is named by its
-path in the event folder; and any clip `reel.yaml` lists that is missing from disk
-is named. A clip with **cuts** (`reel.yaml`'s `trims`: spans the movie leaves out, D-D)
-shows, under its name, how many and the time they cut out ("2 cuts · −4.5 s"), a
-disclosure (`<details>`) that lists them; the page reads them with `GET …/reel` after
-each event read, writes nothing, and if that read fails shows the clips without cuts and
-a note that says why. Both read on open and on Refresh — no timer polling (job state arrives
+answer gives them (the old name after a rename). Nothing of the movie loads before
+Play (`preload="none"`; the poster is the first played clip's thumbnail). The player's
+address carries the file's entity-tag, so a new render gets a new player. What it
+cannot play is said by cause (no file, unreadable, empty, no answer, no picture, a
+failed load or a browser error, a file changed while it played), with Try again, a
+download or the new movie to load. A Refresh, or Edit mode, stops playback. The list
+and the page read on open and on Refresh — no timer polling (job state arrives
 over the jobs WebSocket), never a cache — and report a failed read by its cause,
 telling a service that did not answer ("not reachable", with what to check) from
 one that sent an answer its route does not publish ("an unexpected answer", with

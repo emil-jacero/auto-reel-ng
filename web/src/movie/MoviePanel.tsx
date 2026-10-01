@@ -73,9 +73,27 @@ function MovieSection({ eventId, event }: { eventId: string; event: EventDetail 
   const focusNext = useRef<FocusNext>(null)
   // The version the committed player shows, for the probe's answer to compare.
   const shownVersion = useRef<string | null>(null)
+  // Bumped by Try again: a new player at the same address, after a playback error.
+  const [attempt, setAttempt] = useState(0)
+  const sectionRef = useRef<HTMLElement>(null)
 
   /** Whether keyboard focus is in the player (the `<video>` or a note's action). */
   const playerHasFocus = () => playerRef.current?.contains(document.activeElement) === true
+  /** Whether keyboard focus is in the player or in the note shown in its place. */
+  const sectionHasFocus = () =>
+    playerHasFocus() || noteRef.current?.contains(document.activeElement) === true
+
+  // A re-read that finds no movie removes the section; focus in it goes to the
+  // page's heading rather than to <body>. A layout cleanup runs while the
+  // section is still in the document.
+  useLayoutEffect(() => {
+    const section = sectionRef.current
+    return () => {
+      if (section?.contains(document.activeElement) === true) {
+        section.closest('main')?.querySelector<HTMLElement>('h1')?.focus()
+      }
+    }
+  }, [])
 
   // Each read of the event hands a new `event`: probe again. The same file keeps
   // the player as it is; a new one replaces it.
@@ -88,19 +106,20 @@ function MovieSection({ eventId, event }: { eventId: string; event: EventDetail 
         }
         if (result.kind === 'ok') {
           // The same version keeps its player (same key): position and play state stay.
+          // A new one, or a player in a note's place, takes the focus either had.
           if (shownVersion.current !== result.file.version) {
-            focusNext.current = playerHasFocus() ? 'video' : null
+            focusNext.current = sectionHasFocus() ? 'video' : null
           }
           setShown({ kind: 'file', file: result.file })
         } else {
-          focusNext.current = playerHasFocus() ? 'note' : null
+          focusNext.current = sectionHasFocus() ? 'note' : null
           setShown({ kind: 'gone', gone: result, announced: false })
         }
       })
       .catch((error: unknown) => {
         // An abort is a newer read or leaving the page, not a failure.
         if (!controller.signal.aborted) {
-          focusNext.current = playerHasFocus() ? 'note' : null
+          focusNext.current = sectionHasFocus() ? 'note' : null
           const gone: Gone = { kind: 'unreachable', message: String(error) }
           setShown({ kind: 'gone', gone, announced: false })
         }
@@ -119,7 +138,7 @@ function MovieSection({ eventId, event }: { eventId: string; event: EventDetail 
     } else if (target === 'note') {
       noteRef.current?.focus()
     }
-  }, [shown.kind, version])
+  }, [shown.kind, version, attempt])
 
   const age: MovieAge = event.staleness.stale ? 'outdated' : 'current'
   const look = MOVIE_AGE_LOOK[age]
@@ -129,7 +148,7 @@ function MovieSection({ eventId, event }: { eventId: string; event: EventDetail 
   const poster = posterClip === undefined ? undefined : thumbnailUrl(eventId, posterClip)
 
   return (
-    <section className="panel movie-panel" aria-labelledby={headingId}>
+    <section className="panel movie-panel" aria-labelledby={headingId} ref={sectionRef}>
       <header className="panel-header">
         <h2 id={headingId}>Movie</h2>
         <Pill tone={look.tone} icon={look.icon}>
@@ -144,7 +163,8 @@ function MovieSection({ eventId, event }: { eventId: string; event: EventDetail 
         ) : (
           <MoviePlayer
             // One player per file version: a new file never plays at an old address.
-            key={version ?? ''}
+            // Try again mounts a new one at the same address.
+            key={`${version ?? ''}:${attempt}`}
             eventId={eventId}
             file={shown.kind === 'file' ? shown.file : null}
             age={age}
@@ -159,6 +179,10 @@ function MovieSection({ eventId, event }: { eventId: string; event: EventDetail 
             onLoadNew={(file) => {
               focusNext.current = 'video'
               setShown({ kind: 'file', file })
+            }}
+            onRetry={() => {
+              focusNext.current = 'video'
+              setAttempt((n) => n + 1)
             }}
           />
         )}
@@ -218,7 +242,8 @@ function GoneNote({
 /** What went wrong after Play; it lives with its player, so a new player starts clean. */
 type Trouble =
   | { kind: 'no_picture' }
-  | { kind: 'cannot_play'; words: string }
+  // `cannot_play`, or `load_failed` for MediaError 2 (the network)
+  | { kind: 'cannot_play' | 'load_failed'; words: string }
   | { kind: 'changed'; next: MovieFile }
 
 /**
@@ -236,6 +261,7 @@ function MoviePlayer({
   videoRef,
   onGone,
   onLoadNew,
+  onRetry,
 }: {
   eventId: string
   file: MovieFile | null
@@ -246,6 +272,7 @@ function MoviePlayer({
   videoRef: RefObject<HTMLVideoElement | null>
   onGone: (gone: Gone) => void
   onLoadNew: (file: MovieFile) => void
+  onRetry: () => void
 }) {
   const [trouble, setTrouble] = useState<Trouble | null>(null)
   const diagnosis = useRef<AbortController | null>(null)
@@ -276,8 +303,9 @@ function MoviePlayer({
         } else if (result.file.version !== file.version) {
           setTrouble({ kind: 'changed', next: result.file })
         } else {
-          const words = mediaErrorWords(error?.code ?? 0, error?.message ?? '')
-          setTrouble({ kind: 'cannot_play', words })
+          const code = error?.code ?? 0
+          const words = mediaErrorWords(code, error?.message ?? '')
+          setTrouble({ kind: code === 2 ? 'load_failed' : 'cannot_play', words })
         }
       })
       .catch((reason: unknown) => {
@@ -325,22 +353,37 @@ function MoviePlayer({
         </p>
       )}
       {age === 'outdated' && <p className="movie-facts">{OUTDATED_NOTE}</p>}
+      {/*
+        A polite region that exists before its words do, so the warning is
+        announced when it appears (as `jobs/announce.ts`); the visible note is
+        a plain note.
+      */}
+      <p className="visually-hidden" role="status">
+        {trouble?.kind === 'no_picture' ? MOVIE_TROUBLE.no_picture.title : ''}
+      </p>
       {trouble?.kind === 'no_picture' && (
         <Alert
-          role="status"
+          role="note"
           tone={MOVIE_TROUBLE.no_picture.tone}
           title={MOVIE_TROUBLE.no_picture.title}
           detail={NO_PICTURE_DETAIL}
           action={download ?? undefined}
         />
       )}
-      {trouble?.kind === 'cannot_play' && (
+      {(trouble?.kind === 'cannot_play' || trouble?.kind === 'load_failed') && (
         <Alert
           role="alert"
-          tone={MOVIE_TROUBLE.cannot_play.tone}
-          title={MOVIE_TROUBLE.cannot_play.title}
+          tone={MOVIE_TROUBLE[trouble.kind].tone}
+          title={MOVIE_TROUBLE[trouble.kind].title}
           detail={trouble.words}
-          action={download ?? undefined}
+          action={
+            <>
+              <button type="button" className="btn btn-primary" onClick={onRetry}>
+                Try again
+              </button>
+              {download}
+            </>
+          }
         />
       )}
       {trouble?.kind === 'changed' && (

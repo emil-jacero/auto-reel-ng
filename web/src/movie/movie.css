@@ -37,6 +37,16 @@
     background: var(--media-bg);
   }
 
+  /*
+   * The native controls' inner Tab stops (play, timeline, volume…) leave the
+   * video itself unmatched by :focus-visible: the page's ring frames the player
+   * while focus is anywhere in it. A pointer click on a control shows it too.
+   */
+  .movie-frame video:focus-within {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
   .movie-facts {
     color: var(--fg-muted);
     font-size: var(--text-sm);
