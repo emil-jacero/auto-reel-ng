@@ -40,6 +40,8 @@ def test_flags_override_config_port(
     captured: dict[str, object] = {}
 
     class _FakeServer:
+        force_exit = False
+
         def __init__(self, config: object) -> None:
             captured["host"] = config.host  # type: ignore[attr-defined]
             captured["port"] = config.port  # type: ignore[attr-defined]
@@ -47,7 +49,7 @@ def test_flags_override_config_port(
         def run(self) -> None:
             return None
 
-    monkeypatch.setattr(commands.uvicorn, "Server", _FakeServer)
+    monkeypatch.setattr(commands, "ServiceServer", _FakeServer)
     assert main(["serve", str(tmp_path), "--port", "9000"]) == 0
     assert captured["port"] == 9000
 
@@ -78,14 +80,13 @@ def test_serve_starts_and_answers_healthz(
     port = _free_port()
 
     servers: list = []
-    real_server_cls = commands.uvicorn.Server
 
-    class _CapturingServer(real_server_cls):  # type: ignore[misc,valid-type]
+    class _CapturingServer(commands.ServiceServer):
         def __init__(self, config: object) -> None:
             super().__init__(config)  # type: ignore[arg-type]
             servers.append(self)
 
-    monkeypatch.setattr(commands.uvicorn, "Server", _CapturingServer)
+    monkeypatch.setattr(commands, "ServiceServer", _CapturingServer)
 
     result: dict[str, int] = {}
 
@@ -126,6 +127,8 @@ def test_serve_keeps_uvicorns_websocket_keepalive(
     captured: dict[str, object] = {}
 
     class _FakeServer:
+        force_exit = False
+
         def __init__(self, config: object) -> None:
             captured["ws_ping_interval"] = config.ws_ping_interval  # type: ignore[attr-defined]
             captured["ws_ping_timeout"] = config.ws_ping_timeout  # type: ignore[attr-defined]
@@ -133,9 +136,40 @@ def test_serve_keeps_uvicorns_websocket_keepalive(
         def run(self) -> None:
             return None
 
-    monkeypatch.setattr(commands.uvicorn, "Server", _FakeServer)
+    monkeypatch.setattr(commands, "ServiceServer", _FakeServer)
     assert main(["serve", str(tmp_path)]) == 0
     assert captured == {"ws_ping_interval": 20.0, "ws_ping_timeout": 20.0}
+
+
+def test_forced_stop_exits_130(
+    tmp_path: Path, postgres_container: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second SIGINT during the shutdown is uvicorn's force-quit: not a clean stop, so not 0."""
+    monkeypatch.setenv("DATABASE_URL", postgres_container)
+
+    class _ForcedServer:
+        force_exit = False
+
+        def __init__(self, config: object) -> None:
+            pass
+
+        def run(self) -> None:
+            self.force_exit = True  # as uvicorn's handler does for a SIGINT during its shutdown
+
+    monkeypatch.setattr(commands, "ServiceServer", _ForcedServer)
+    assert main(["serve", str(tmp_path)]) == 130
+
+
+#: ``serve`` as a terminal starts it: SIGINT at Python's default and SIGTERM at the system's, even when
+#: pytest itself runs with them ignored (a background job), which a child would otherwise inherit and
+#: which hides a re-raised signal.
+_SERVE_AS_FROM_A_TERMINAL = (
+    "import signal, sys\n"
+    "signal.signal(signal.SIGINT, signal.default_int_handler)\n"
+    "signal.signal(signal.SIGTERM, signal.SIG_DFL)\n"
+    "from auto_reel_ng.cli.main import main\n"
+    "sys.exit(main(sys.argv[1:]))\n"
+)
 
 
 def _wait_for_healthz(process: subprocess.Popen[str], port: int) -> None:
@@ -159,15 +193,16 @@ def test_one_signal_stops_serve_with_a_websocket_open(
 ) -> None:
     """``serve`` in a process of its own: only a main thread gets uvicorn's signal handlers.
 
-    The return code is not asserted. After its orderly shutdown uvicorn re-raises the
-    signal it caught, so the process ends by that signal, with or without a socket open.
+    The child starts with SIGINT and SIGTERM as a terminal leaves them, whatever pytest
+    inherited: with either one ignored, a signal uvicorn raised again after its shutdown
+    would be dropped, and the exit status below would pass without ``serve`` earning it.
     """
     port = _free_port()
     process = subprocess.Popen(
         [
             sys.executable,
-            "-m",
-            "auto_reel_ng.cli.main",
+            "-c",
+            _SERVE_AS_FROM_A_TERMINAL,
             "serve",
             str(tmp_path),
             "--host",
@@ -199,3 +234,5 @@ def test_one_signal_stops_serve_with_a_websocket_open(
         print(output)  # serve's log, shown when the test fails
     assert "Application shutdown complete" in output
     assert "Waiting for background tasks to complete" not in output
+    assert process.returncode == 0
+    assert "Traceback" not in output

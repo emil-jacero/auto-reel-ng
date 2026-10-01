@@ -34,7 +34,8 @@ See proposal.md, "Why", for the finding. The code on `main` at `bca64f2`:
   - Three tests replace the server class by monkeypatching `commands.uvicorn.Server`: two with a `_FakeServer`
     whose `run()` returns at once, and one with a capturing subclass.
 - The headless-cli spec already promises "exit zero". The api-service spec's WebSocket requirement covers
-  what one signal does to connections (1012, "within a few seconds") and is not changed.
+  what one signal does to connections (1012, "within a few seconds"). Only its sentence on a vanished peer's
+  stall changes (Supervisor decisions; "Force-quit still waits for open connections").
 
 ## Goals / Non-Goals
 
@@ -51,6 +52,34 @@ See proposal.md, "Why", for the finding. The code on `main` at `bca64f2`:
 - An exit-status check of the application shutdown (Research, "A failed application shutdown").
 
 ## Research & Decisions
+
+### Supervisor decisions (before implementation)
+
+- **A forced stop (a second Ctrl-C) exits 130.** Accepted as designed ("Exit status of a forced stop"; Open
+  Question 1).
+- **An application (lifespan) shutdown that raises exits 0, with its traceback in the log.** Accepted under
+  Principle VII: no step of today's lifespan can raise at that point, so the prototyped ASGI lifespan watch
+  is not added. The gap stays recorded ("A failed application shutdown", Failure behavior, Risks; Open
+  Question 2).
+- **The sentences that say a second Ctrl+C forces the exit past a vanished peer are corrected in this
+  change**, in README's `serve` stop paragraph and in the api-service requirement "WebSocket live job
+  updates", to say what really happens ("Force-quit still waits for open connections"). This reverses the
+  earlier plan to leave them to the follow-up, and adds the api-service delta (two capability deltas, within
+  Principle VIII's limit). The headless-cli delta states the same limit for a forced stop. Aborting the
+  remaining transports on force, so that a second Ctrl+C really ends that wait, stays a follow-up (Open
+  Question 3).
+
+### Supervisor decisions (after implementation)
+
+- **No unverified figure for a vanished peer's stall.** README no longer says "about 15 minutes": the
+  figure comes from `tcp_retries2` and the `jobs-ws-lifecycle` estimate, and was not reproduced. README says
+  the shutdown waits until the operating system gives up on that connection, which can take many minutes,
+  and that a second Ctrl+C does not shorten that wait today. The api-service delta says the same in the
+  spec's own terms ("until the host's TCP stack abandons the connection, which can take many minutes"; "does
+  not shorten that stall"), matching the wording of the requirement's keepalive bullet. Follow-up unchanged:
+  abort the remaining connections on force.
+- **The api-service MODIFIED block is re-based on the current `openspec/specs/api-service/spec.md` at
+  archive time**, since it replaces the whole "WebSocket live job updates" requirement.
 
 ### Reproduction
 
@@ -78,8 +107,10 @@ own matrix on 0.54.0 is `verify/final/sigint-matrix/*.log`.
 
 In every orderly case the shutdown itself was unchanged: "Application shutdown complete" was logged and the
 process ended 0.21–0.36 s after the signal. In the forced cases uvicorn logs "Exception in ASGI application"
-with a `CancelledError` for the handler it cut, with or without the change. That log line is truthful, and the
-spec allows it.
+with a `CancelledError` for the handler it cut, with or without the change. It also logs, as an `ERROR`
+traceback, the `CancelledError` of the application lifespan task whose shutdown the force skipped (seen at
+implementation, and in the design-phase logs of both modes). Both are truthful, neither is a
+`KeyboardInterrupt`, and the spec allows them.
 
 **Decision**: The finding reproduces on both uvicorn versions and for both signals, with or without a
 WebSocket client. The WebSocket plays no part. Nothing is dropped.
@@ -262,14 +293,43 @@ second apart. The process stayed up through all three, on today's code and with 
 still awaits `asyncio.Server.wait_closed()`, and since Python 3.12.1 that waits until every connection is
 detached (asyncio/base_events.py `wait_closed` docstring). By the same code path, the vanished WebSocket peer
 that the api-service spec and README say a "second Ctrl+C forces" would also hold the process until TCP gives
-up. That case was not reproduced here.
+up. That case was not reproduced at design time.
 
-**Decision**: Out of scope. The spec's forced scenario uses the case force does end (a handler outliving its
-client), which was measured. The follow-up is reported to the supervisor: abort the remaining transports on
-force, and correct the api-service and README sentence about the vanished peer.
+Measured at implementation, with the implemented `serve` on port 8120 (scratch launcher and probe routes in
+the session scratchpad, `verify/serve-clean-exit/`). A probe WebSocket route sent 64 frames of 256 KiB to a
+raw peer (receive buffer 4 KiB) that read the handshake and nothing else, then waited, as a feed that goes
+quiet. uvicorn's `shutdown()` writes the 1012 close frame and calls `transport.close()`, and asyncio's
+`close()` with a non-empty buffer waits for it to drain before the connection is dropped:
+
+| Signals, 1.5 s apart | uvicorn 0.54 | uvicorn 0.51 |
+|---|---|---|
+| SIGINT, SIGINT | up 1.5 s after each and 5 s later, "Waiting for connections to close"; exit 130 0.21 s after the peer closed; no "Application shutdown complete" | same; exit 130 after 0.16 s |
+| SIGTERM, SIGINT, SIGINT | same; exit 130 after 0.21 s | not run |
+| SIGINT | up 6.5 s; exit 0 0.26–0.36 s after the peer closed, after "Application shutdown complete" | same |
+| SIGTERM, SIGTERM | up 8 s; exit 0 0.31 s after the peer closed, after "Application shutdown complete", no traceback: a further SIGTERM changes nothing | not run |
+
+The peer here was alive and stopped reading, so its socket's close (with unread data, a reset) ended the
+connection. A peer that vanished sends nothing, so the connection ends only when the host's TCP stack
+abandons it. `net.ipv4.tcp_retries2` is 15 on this host, which the `jobs-ws-lifecycle` design (Risks)
+estimates at about 15 minutes. That figure was not reproduced here (a truly vanished peer needs dropped
+packets), so README and the spec give no figure: the wait lasts until the operating system gives up on the
+connection, which can take many minutes (Supervisor decisions, after implementation). On 0.51 the shutdown can instead fail, when the keepalive has already started closing that connection
+(`InvalidState`, same Risks entry). Both are what the corrected sentences say.
+
+A first probe that sent frames for ever never yielded on 0.51, which has no write back-pressure: it starved
+the event loop, so no signal was handled. That is the probe's loop, not `serve`'s behavior (the real feed
+sends one small delta per poll), and it was replaced by the bounded backlog above.
+
+**Decision**: The behavior stays out of scope: the spec's forced scenario uses the case force does end (a
+handler outliving its client). The sentences that claimed otherwise are corrected in this change
+(Supervisor decisions): README's `serve` stop paragraph and the api-service requirement "WebSocket live job
+updates" now say that the stall lasts until the host's TCP stack abandons the connection and that a second
+SIGINT does not end it. The headless-cli delta says that a forced stop still waits for its client
+connections. The follow-up stays: abort the remaining transports on force.
 
 **Rationale**: The fix means cutting in-flight requests on purpose and verifying the vanished-peer case. That
-is a separate decision in `api/`'s territory, and it would double this change.
+is a separate decision in `api/`'s territory, and it would double this change. A spec and a README that
+promise what a second Ctrl+C cannot do are wrong today, and correcting them costs no code.
 
 ### A failed application shutdown
 
@@ -305,7 +365,7 @@ happens to make that exit non-zero. With `ServiceServer` it would be 0.
   documented.
 
 **Decision**: No watch in this change. The design states the gap instead of claiming that a failed shutdown
-stays non-zero, and the supervisor decides (Open Questions).
+stays non-zero. The supervisor accepted the gap (Supervisor decisions).
 
 **Rationale**: No path in today's lifespan can raise when the lifespan shutdown runs (measured above).
 Code for an unreachable failure is the "for later" path Principle VII rules out. The cost of being wrong is
@@ -333,7 +393,35 @@ its request open kept the process up through three SIGINTs. uvicorn 0.51.0 and 0
    its options are recorded above, and the decision is the supervisor's.
 4. **README wording** (task 3.1) places the exit statuses so that "The one exception" still refers to the
    few-seconds promise. The forced-exit sentence is conditional ("When a second Ctrl+C forces the exit…"),
-   so it claims nothing about what force waits for.
+   so it claims nothing about what force waits for. Superseded at implementation: the paragraph now says
+   that force does not end the wait for a connection that has not ended ("Changed during implementation").
+
+### Changed during implementation
+
+1. **The vanished-peer sentences are corrected here** (Supervisor decisions): README's `serve` stop
+   paragraph, a new api-service delta that changes one sentence of "WebSocket live job updates", and one
+   sentence in the headless-cli delta. Task 3.1 and the proposal say so, and 4.1 gains the backed-up peer
+   check ("Force-quit still waits for open connections").
+2. **The forced stop's logged tracebacks.** Besides the cut handler's "Exception in ASGI application", uvicorn
+   logs the lifespan task's `CancelledError` when the force skips its shutdown. The headless-cli delta names
+   both as allowed error logs; neither is a `KeyboardInterrupt` traceback of the command's own.
+3. **Task 4.1 ran on the worktree's own database** on the shared dev Postgres container (the polish round's
+   per-worktree arrangement) instead of a throwaway container, with new probes run by the worktree's venv
+   (uvicorn 0.54.0). The design-phase probes use the main checkout's venv, which imports the main checkout's
+   code, so they could not run the implemented code. The 0.51 comparison ran the main checkout's venv with
+   `PYTHONPATH` set to the worktree, reading that venv only.
+
+| Task 4.1 case (uvicorn 0.54) | Result |
+|---|---|
+| Real pty, WebSocket open, `\x03` typed | exit 0 after 0.27 s; output after `^C` ends at "Finished server process"; no traceback; 1012 |
+| `kill -TERM`, WebSocket open | exit 0 after 0.31 s; no traceback; "Application shutdown complete"; 1012 |
+| Handler outlives its client; SIGINT, SIGINT | 130, 0.26 s after the second; no `KeyboardInterrupt`; no "Application shutdown complete" |
+| Same; SIGTERM, SIGINT | 130, 0.26 s after the second; same |
+| Backed-up peer | see "Force-quit still waits for open connections" |
+| Port held | exit 1; `error: could not bind 127.0.0.1:8120`; no traceback |
+
+The same orderly and forced cases on uvicorn 0.51: `kill -TERM` exit 0 with 1012; both forced cases 130
+without `KeyboardInterrupt`.
 
 ## Failure behavior and idempotency
 
@@ -344,7 +432,8 @@ its request open kept the process up through three SIGINTs. uvicorn 0.51.0 and 0
 - **An application (lifespan) shutdown that raises** is caught by uvicorn, which logs "Application shutdown
   failed" with the traceback and returns normally, so `serve` would exit **0**. No step in today's lifespan
   can raise at that point (Research, "A failed application shutdown"). Known gap; see Open Questions.
-- **Forced stop:** 130. uvicorn may log the handler it cut as "Exception in ASGI application".
+- **Forced stop:** 130, once every client connection has ended. uvicorn may log the handler it cut as
+  "Exception in ASGI application", and the lifespan task's `CancelledError` as an error traceback.
 - **Idempotency:** `serve` keeps no state across runs, and this change writes no file and no row. A restart
   behaves the same, and neither rendered output nor the job store is involved.
 - **No decision outlives the change** beyond the headless-cli requirement itself. The spec is its durable home,
@@ -353,8 +442,9 @@ its request open kept the process up through three SIGINTs. uvicorn 0.51.0 and 0
 ## Ownership (polish round)
 
 P6 owns the `serve` command in `auto_reel_ng/cli/commands.py` (the new class, `cmd_serve` and its imports),
-`tests/test_cli_serve.py`, the new `tests/test_cli_serve_signals.py`, and README's `serve` stop paragraph. No
-web file and no other change's file is touched.
+`tests/test_cli_serve.py`, the new `tests/test_cli_serve_signals.py`, README's `serve` stop paragraph, and the
+api-service requirement "WebSocket live job updates" (one sentence; no other polish change has an
+api-service delta). No web file and no other change's file is touched.
 
 ## Risks / Trade-offs
 
@@ -370,7 +460,9 @@ web file and no other change's file is touched.
   the handlers is recorded and re-raised, as today. → This is a new Ctrl-C at the moment the process exits,
   and it ends as today's traceback. Accepted.
 - **[Force-quit waits for open connections]** Pre-existing and unchanged (Research, "Force-quit still waits
-  for open connections"). → Follow-up.
+  for open connections"). A second Ctrl+C behind a vanished peer still leaves `serve` running until the host's
+  TCP stack abandons the connection. → The spec and README now say so; aborting the transports is the
+  follow-up.
 - **[A failed application shutdown exits 0]** Today the signal re-raise makes it non-zero by accident; after
   this change it is 0, with the failure in the log only. → Unreachable with today's lifespan (measured).
   The ASGI lifespan watch is prototyped if the supervisor wants it closed now (Open Questions).
@@ -380,6 +472,10 @@ web file and no other change's file is touched.
 None. The next `serve` start uses the new exit behavior. Rollback is reverting the commit.
 
 ## Open Questions
+
+All three were decided by the supervisor before implementation (Research, "Supervisor decisions"): 130 is
+accepted; a failed application shutdown exiting 0 is accepted as a recorded gap; the vanished-peer sentences
+are corrected in this change, and aborting the transports stays a follow-up. The questions are kept as asked.
 
 1. **Forced stop: 130 or 0?** This design returns 130 so that a stop that skipped the application shutdown
    is not reported as success ("Exit status of a forced stop"). The brief fixed only the orderly case, at 0.

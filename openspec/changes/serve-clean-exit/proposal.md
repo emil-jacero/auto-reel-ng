@@ -39,8 +39,16 @@ follow-up it named for `cli/`). It depends on no open §8 research item.
   asserts exit 0 and no traceback for both signals. New in-process tests pin that a handled signal is not
   raised again, that a second SIGINT still forces, and, as a canary, that plain uvicorn still re-raises.
 - **Spec:** "`serve` runs the API service" states the exit status of an orderly and of a forced stop, with
-  scenarios for each.
-- **Docs:** README's `serve` stop paragraph gains the exit status.
+  scenarios for each, and that a forced stop still waits for its client connections to end.
+- **A second Ctrl+C is no longer said to end a stall behind a vanished peer** (supervisor decision). The
+  api-service requirement "WebSocket live job updates" and README said it forces the exit. It does not:
+  with frames backed up to a peer that stopped reading, a second and a third SIGINT left `serve` running
+  until that connection ended (measured on uvicorn 0.51 and 0.54). For a vanished peer that is when the
+  host's TCP stack abandons the connection, which can take many minutes, and the force only skips the
+  application shutdown (design, "Force-quit still waits for open connections"). Both now say so, with no
+  figure for the wait: none was reproduced.
+- **Docs:** README's `serve` stop paragraph gains the exit statuses and the corrected vanished-peer
+  sentence.
 
 ## Non-goals
 
@@ -48,16 +56,18 @@ follow-up it named for `cli/`). It depends on no open §8 research item.
   `asyncio.Server.wait_closed()`, which waits for every client connection to close. A client that keeps a
   request open therefore holds the process through a second and a third Ctrl-C (measured; design, "Force-quit
   still waits for open connections"). That is pre-existing, is not what the finding reports, and needs its own
-  decision on cutting in-flight requests; it is proposed as a follow-up.
+  decision on cutting in-flight requests; it is proposed as a follow-up. This change only corrects the
+  sentences that said otherwise.
 - **No exit-status check of the application shutdown.** uvicorn logs a lifespan shutdown that raises and
   returns normally, so such a failure would exit 0 with the error in the log. Today's lifespan cannot raise
-  at that point (measured; design, "A failed application shutdown"), and a check is left to the supervisor.
+  at that point (measured; design, "A failed application shutdown"), and the supervisor accepted the gap.
 - **No `timeout_graceful_shutdown`** and no new flag or config key (Principle VII); `jobs-ws-lifecycle`'s
   reasons stand.
 - **No change to a Ctrl-C before the server runs** (while the app is being built): it still ends as an
   ordinary `KeyboardInterrupt`. It is not an orderly shutdown, and the window is short.
 - **No change to `worker`**, whose own handlers already exit zero.
-- **No change to `api/`**, the WebSocket lifecycle or the api-service spec.
+- **No change to `api/`** or to the WebSocket lifecycle. The api-service spec changes only its sentence on a
+  vanished peer's stall, to what the service already does.
 
 ## Capabilities
 
@@ -69,7 +79,10 @@ None.
 
 - `headless-cli`: `Requirement: \`serve\` runs the API service` states that an orderly stop by one SIGINT or
   SIGTERM exits zero without a traceback, that a further SIGTERM does not change that, and that a forced stop
-  (a second SIGINT) exits 130.
+  (a second SIGINT) exits 130 once its client connections have ended.
+- `api-service`: `Requirement: WebSocket live job updates` no longer says that a second SIGINT forces the
+  exit past a vanished peer with frames backed up. The stall lasts until the host's TCP stack abandons that
+  connection, and a second SIGINT only skips the application shutdown. Text only; no behavior changes.
 
 ## Impact
 
@@ -77,6 +90,7 @@ None.
 - **Packages:** `cli/` only: `commands.py` gains a small `uvicorn.Server` subclass used by `cmd_serve`, and
   `cmd_serve` returns 130 after a forced stop. Tests: `tests/test_cli_serve.py` (fakes re-pointed, return code
   asserted, forced-exit case) and a new `tests/test_cli_serve_signals.py` (no database). Docs: `README.md`.
+  The api-service delta is spec text only.
 - **CLI vs API (Principle V):** CLI only. The API app, its lifespan and its routes are untouched.
 - **Complexity (Principle VII):** a subclass of about ten lines that relies on two uvicorn internals
   (`Server.capture_signals` and its `_captured_signals` list). Both are checked by strict mypy (`@override`
@@ -88,4 +102,5 @@ None.
   `web/openapi.json` unchanged.
 - **Operators:** `serve` under systemd, podman or a shell now reports a clean stop as 0. A shell script that
   runs `serve` and then more commands continues after Ctrl-C instead of stopping (design, Risks).
-- **Size (Principle VIII):** one capability delta, one package, 7 tasks (one baseline check, two validation).
+- **Size (Principle VIII):** two capability deltas (headless-cli; api-service, text only), one package,
+  7 tasks (one baseline check, two validation).
