@@ -1,0 +1,257 @@
+/*
+ * A clip's cuts: Edit mode's Cuts control and panel (`CutsPanel.tsx`), and the
+ * event page's indicator and list (`ReadCuts.tsx`). Where the control and the
+ * panel sit in a row's grid is Edit mode's layout, in `edit/edit.css`.
+ *
+ * Every word is `--fg-muted` or stronger (4.5:1); only the quiet control's icons
+ * use `--fg-subtle` (3:1, enough for an icon). Nothing here moves: the chevron
+ * turns at once.
+ */
+@layer screens {
+  /* ------------------------------------------------------------ the Cuts control */
+
+  .cuts-toggle {
+    --_fg: var(--fg-muted);
+
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cuts-toggle:not([data-cut], [aria-expanded='true']) > :is(svg, .cuts-chevron) {
+    color: var(--fg-subtle);
+  }
+
+  .clip-item:hover .cuts-toggle > :is(svg, .cuts-chevron) {
+    color: inherit;
+  }
+
+  /* Has cuts: the count and the words say so too, never the colour alone. */
+  .cuts-toggle[data-cut] {
+    --_fg: var(--info-fg);
+  }
+
+  .cuts-chevron {
+    display: inline-flex;
+
+    & > svg {
+      inline-size: 0.875rem;
+      block-size: 0.875rem;
+    }
+  }
+
+  :is(.cuts-toggle[aria-expanded='true'], .read-cuts[open] > summary) .cuts-chevron {
+    rotate: 180deg;
+  }
+
+  /* The count is for a narrow row, the words for a wide one (`edit.css` places them). */
+  .cuts-toggle-count {
+    display: none;
+  }
+
+  @container (width < 58rem) {
+    .cuts-toggle-words,
+    .cuts-toggle .cuts-chevron {
+      display: none;
+    }
+
+    .cuts-toggle-count {
+      display: inline;
+    }
+  }
+
+  /* ------------------------------------------------------------ the panel */
+
+  /* A line of its own after the row's explicit lines, the row's width when narrow. */
+  .clip-cuts {
+    display: grid;
+    grid-row: -1 / span 1;
+    grid-column: 1 / -1;
+    gap: var(--s-3);
+    margin-block-start: var(--s-2);
+    padding: var(--s-3);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+  }
+
+  @container (width >= 58rem) {
+    .clip-cuts {
+      grid-column: file-start / -1;
+      margin-inline-end: var(--s-4);
+    }
+  }
+
+  .cut-list {
+    list-style: none;
+  }
+
+  /* The number, then the rest wrapping beside it, on the number's baseline. */
+  .cut {
+    display: grid;
+    grid-template-columns: 1.25rem minmax(0, 1fr);
+    align-content: center;
+    align-items: baseline;
+    column-gap: var(--s-3);
+    min-block-size: 2rem;
+    border-bottom: 1px solid var(--border);
+    font-size: var(--text-sm);
+  }
+
+  .cut-n {
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+  }
+
+  .cut-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-3);
+    min-inline-size: 0;
+  }
+
+  .cut-span {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A time never breaks; the span may wrap after its arrow. */
+  .cut-at {
+    white-space: nowrap;
+  }
+
+  .cut-length,
+  .cut-reason {
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cut-reason {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .cut-body > :is(.btn, .badge) {
+    margin-inline-start: auto;
+  }
+
+  .cut-body > .badge + .btn {
+    margin-inline-start: 0;
+  }
+
+  .cut-body > .cut-refusal {
+    flex-basis: 100%;
+  }
+
+  .cut[data-removed] :is(.cut-span, .cut-length, .cut-reason) {
+    color: var(--fg-muted);
+    text-decoration: line-through;
+  }
+
+  .cuts-none {
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
+  .cut-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--s-2) var(--s-3);
+  }
+
+  .cut-field {
+    flex: 1 1 7rem;
+    max-inline-size: 10rem;
+  }
+
+  /* Two classes: `edit.css` sets `.field-input`'s font and height, and may come later. */
+  .field-input.cut-time {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cut-form > :is(.field-error, .field-hint) {
+    flex-basis: 100%;
+  }
+
+  /* ------------------------------------------------------------ the event page */
+
+  .read-cuts {
+    margin-block-start: var(--s-1);
+    font-family: var(--font-sans);
+  }
+
+  /* Inline, so it wraps between its two parts (`.read-cuts-part`) in a narrow cell. */
+  .read-cuts > summary {
+    display: inline-block;
+    max-inline-size: 100%;
+    padding: 0.125rem var(--s-1);
+    margin-inline-start: calc(-1 * var(--s-1));
+    border-radius: var(--r-sm);
+    color: var(--info-fg);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    list-style: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &:hover {
+      background: var(--surface-hover);
+    }
+  }
+
+  .read-cuts-part {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-1);
+    white-space: nowrap;
+
+    & > svg {
+      flex: none;
+      inline-size: 0.875rem;
+      block-size: 0.875rem;
+    }
+  }
+
+  .read-cuts > .cut-list {
+    margin-block-start: var(--s-1);
+  }
+
+  /* ------------------------------------------------------------ touch */
+
+  /*
+   * A coarse pointer: each cut row holds its button's 44 px area, the fields are
+   * as tall, and a wrapped Add cut keeps its area clear of the fields'. The
+   * summary is a control of its own (not a `.btn`): it takes the size itself, and
+   * the square area every button has (components.css), which its rounded corners
+   * would otherwise leave to the row.
+   */
+  @media (pointer: coarse) {
+    .cut {
+      min-block-size: 2.75rem;
+    }
+
+    .field-input.cut-time {
+      min-block-size: 2.75rem;
+    }
+
+    .cut-form {
+      row-gap: var(--s-4);
+    }
+
+    .read-cuts > summary {
+      position: relative;
+      min-block-size: 2.75rem;
+      min-inline-size: 2.75rem;
+
+      &::after {
+        content: '';
+        position: absolute;
+        inset: min(-1px, calc(50% - 1.375rem));
+      }
+    }
+  }
+}

@@ -28,11 +28,15 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
 } from 'react'
 import type { ReactNode } from 'react'
 
 import type { Clip } from '../api/event'
+import { CutsPanel, CutsToggle } from '../cuts/CutsPanel'
+import type { CutHandlers, CutPanels } from '../cuts/CutsPanel'
+import { keptCuts } from '../cuts/times'
 import { ClipThumb } from '../events/ClipThumb'
 import { ClipName, clipNames, formatBytes, plural } from '../events/common'
 import { CLIP_STATUS_LABEL } from '../events/labels'
@@ -42,8 +46,8 @@ import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
 import { ChapterTools } from './ChapterTools'
 import type { ChapterToolsModel } from './ChapterTools'
-import { keptOriginal, movedSet } from './draft'
-import type { ChapterKey } from './draft'
+import { cutsOf, keptOriginal, movedSet } from './draft'
+import type { ChapterKey, Cuts, DraftCut } from './draft'
 
 /*
  * One chapter's clips, reorderable within the chapter only. Three ways to move
@@ -52,6 +56,9 @@ import type { ChapterKey } from './draft'
  * only through the chapter's Move clips dialog (`ChapterDialogs.tsx`); its row
  * then says where it came from. The chapter's tools row (`ChapterTools.tsx`)
  * sits between its header and its column strip.
+ *
+ * A clip on disk that the chapter plays also has a Cuts control after its move
+ * buttons, which shows its cuts panel under the row (`cuts/CutsPanel.tsx`).
  *
  * Each chapter has its own DndContext, so a clip cannot be dropped into another
  * chapter by construction, and the modifier below keeps a dragged row inside
@@ -133,6 +140,7 @@ const RowBody = memo(function RowBody({
   position,
   was,
   from = null,
+  badge = null,
   action,
 }: {
   eventId: string
@@ -143,6 +151,8 @@ const RowBody = memo(function RowBody({
   was: number | null
   /** The heading of the chapter it was moved in from, shown instead of `was`. */
   from?: string | null
+  /** A badge after the name: a missing clip's cut count. */
+  badge?: ReactNode
   /** A control after the facts: a missing clip's Remove, a removed one's Undo. */
   action?: ReactNode
 }) {
@@ -154,6 +164,7 @@ const RowBody = memo(function RowBody({
         <span className="clip-name">
           <ClipName name={name} />
         </span>
+        {badge}
         {/* Moved in from another chapter: where from, cut short when long (chapters.css). */}
         {from !== null && position !== null && (
           <span className="badge clip-was clip-from" data-tone="info">
@@ -188,6 +199,7 @@ const UP = <Icon name="arrow-up" />
 const DOWN = <Icon name="arrow-down" />
 const REMOVE = <Icon name="x" />
 const UNDO = <Icon name="rotate-ccw" />
+const SCISSORS = <Icon name="scissors" />
 
 /** Move up and Move down; memoised, so a drag step re-renders neither. */
 const MoveButtons = memo(function MoveButtons({
@@ -247,6 +259,10 @@ const ClipRow = memo(function ClipRow({
   from,
   locked,
   reducedMotion,
+  cuts,
+  panels,
+  resets,
+  cutHandlers,
   onStep,
   onRemove,
 }: {
@@ -260,6 +276,12 @@ const ClipRow = memo(function ClipRow({
   from: string | null
   locked: boolean
   reducedMotion: boolean
+  /** Its cuts as listed now (`cutsOf`): a stable array per clip. */
+  cuts: readonly DraftCut[]
+  panels: CutPanels
+  /** Bumped by Reset: the panel is hidden and its fields emptied. */
+  resets: number
+  cutHandlers: CutHandlers
   onStep: Step
   onRemove: (identity: string) => void
 }) {
@@ -301,6 +323,35 @@ const ClipRow = memo(function ClipRow({
       ),
     [identity, name, status, locked, onRemove],
   )
+  // A clip on disk has a Cuts control; a missing one only says how many cuts it has.
+  const cuttable = status === 'active' || status === 'new'
+  const kept = keptCuts(cuts).length
+  const badge = useMemo(
+    () =>
+      status !== 'missing' || kept === 0 ? null : (
+        <span className="badge clip-cuts-badge" data-tone="idle">
+          {SCISSORS}
+          {plural(kept, 'cut', 'cuts')}
+        </span>
+      ),
+    [status, kept],
+  )
+  // Shown or not lives in the editor's store too: Move clips mounts this row anew in
+  // its new chapter, and it opens as it was. Reset empties the store and hides it.
+  const [open, setOpen] = useState(() => panels.get(identity)?.open ?? false)
+  const [seenResets, setSeenResets] = useState(resets)
+  if (seenResets !== resets) {
+    setSeenResets(resets)
+    setOpen(false)
+  }
+  const onToggle = useCallback(() => {
+    const held = panels.get(identity)
+    panels.set(identity, { open: !open, start: held?.start ?? '', end: held?.end ?? '' })
+    setOpen(!open)
+  }, [identity, open, panels])
+  // Mounted on its first showing, and then only hidden: what was typed stays.
+  const mounted = cuttable && (open || panels.get(identity) !== undefined)
+  const panelId = `cuts-${useId()}`
   return (
     <li
       ref={setNodeRef}
@@ -329,6 +380,7 @@ const ClipRow = memo(function ClipRow({
         position={isSorting ? newIndex + 1 : position}
         was={was}
         from={from}
+        badge={badge}
         action={remove}
       />
       <MoveButtons
@@ -339,6 +391,28 @@ const ClipRow = memo(function ClipRow({
         locked={locked}
         onStep={onStep}
       />
+      {cuttable && (
+        <CutsToggle
+          cuts={cuts}
+          name={name}
+          open={open}
+          controls={mounted ? panelId : null}
+          onToggle={onToggle}
+        />
+      )}
+      {mounted && (
+        <CutsPanel
+          key={resets}
+          id={panelId}
+          identity={identity}
+          name={name}
+          cuts={cuts}
+          open={open}
+          locked={locked}
+          panels={panels}
+          handlers={cutHandlers}
+        />
+      )}
     </li>
   )
 })
@@ -445,6 +519,11 @@ export const ClipOrderList = memo(function ClipOrderList({
   lastMoved,
   locked,
   tools,
+  cuts,
+  baseCuts,
+  panels,
+  resets,
+  cutHandlers,
   onMove,
   onRemove,
   onRestore,
@@ -470,6 +549,16 @@ export const ClipOrderList = memo(function ClipOrderList({
   locked: boolean
   /** Its tools row (`ChapterTools`): what it shows and does. */
   tools: ChapterToolsModel
+  /**
+   * The draft's changed cuts and the read ones, never the draft itself: neither
+   * changes on a metadata edit, so typing in a field re-renders no list.
+   */
+  cuts: Cuts
+  baseCuts: Cuts
+  /** The editor's cut panel store and handlers (`cuts/CutsPanel.tsx`). */
+  panels: CutPanels
+  resets: number
+  cutHandlers: CutHandlers
   onMove: MoveHandler
   onRemove: RemoveHandler
   onRestore: RestoreHandler
@@ -709,6 +798,10 @@ export const ClipOrderList = memo(function ClipOrderList({
                     from={fromOf(identity)}
                     locked={locked}
                     reducedMotion={reducedMotion}
+                    cuts={cutsOf(baseCuts, cuts, identity)}
+                    panels={panels}
+                    resets={resets}
+                    cutHandlers={cutHandlers}
                     onStep={onStep}
                     onRemove={onRemoveRow}
                   />

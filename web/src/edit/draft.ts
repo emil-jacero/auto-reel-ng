@@ -59,13 +59,34 @@ export const METADATA_FIELDS: readonly MetadataField[] = [
   'description',
 ]
 
-/** What the operator changed. `clip-cuts-screen` adds its per-clip properties here. */
+/**
+ * A cut's key for the Edit-mode session: `r0`, `r1`… for a cut read from
+ * `reel.yaml` (its index in the clip's `trims`); `a1`, `a2`… for one added here.
+ */
+export type CutKey = string
+
+/** One cut of a clip as its panel lists it. */
+export type DraftCut = {
+  key: CutKey
+  in: number
+  out: number
+  reason: string | null
+  /** A read cut the save leaves out; still listed, in place, with Undo. An added one is dropped. */
+  removed: boolean
+}
+
+/** Identity → its cuts as listed, in order. */
+export type Cuts = ReadonlyMap<string, readonly DraftCut[]>
+
+/** What the operator changed. */
 export type Draft = {
   /** Every chapter in the order shown: the read ones (deleted ones in place) and the added ones. */
   chapters: readonly DraftChapter[]
   orders: Orders
   removed: Removals
   metadata: MetadataDraft
+  /** The cuts of the clips whose cuts the operator changed, only those (`settled`). */
+  cuts: Cuts
 }
 
 /** What Edit mode read: never changes during the session. */
@@ -73,6 +94,8 @@ export type Baseline = {
   read: ReelDocument
   chapters: readonly DraftChapter[]
   original: Orders
+  /** Each clip's cuts as read (`readCuts`); a clip without cuts has no entry. */
+  cuts: Cuts
 }
 
 /** The edits to the chapter list itself, as the save bar counts them. */
@@ -222,10 +245,12 @@ export function isStructural(changes: ChapterChanges): boolean {
  * - a change to the chapter list (`isStructural`): every listed chapter, so
  *   every NEW clip is adopted where the page shows it, and a chapter's name then
  *   only decides where later clips go (D-12)
- * - an order changed while the document names no chapters: every listed
- *   chapter, as a first save seeds them, an empty one (only ignored clips) too
+ * - an order or a cut changed while the document names no chapters: every
+ *   listed chapter, as a first save seeds them, an empty one (only ignored
+ *   clips) too
  * - otherwise the chapters whose order changed (reordered, a missing clip
- *   removed, a clip moved in or out); none for a metadata-only edit
+ *   removed, a clip moved in or out), and the chapter that plays a NEW clip
+ *   whose cuts changed; none for a metadata-only edit or a listed clip's cuts
  */
 export function writtenFromView(baseline: Baseline, draft: Draft): DraftChapter[] {
   const listed = listedChapters(draft.chapters)
@@ -233,11 +258,23 @@ export function writtenFromView(baseline: Baseline, draft: Draft): DraftChapter[
     return listed
   }
   const changed = reordered(baseline.original, draft.orders)
-  if (changed.size === 0) {
+  const cut = changedCuts(baseline, draft)
+  if (changed.size === 0 && cut.size === 0) {
     return []
   }
   if (baseline.read.chapters.length === 0) {
     return listed
+  }
+  // A NEW clip whose cuts changed: reel.yaml holds a clip's cuts only while a chapter
+  // lists it, so the chapter that plays it is written from the view, adopting it.
+  const inDocument = new Set(baseline.read.chapters.flatMap((chapter) => chapter.clips))
+  for (const identity of cut) {
+    if (!inDocument.has(identity)) {
+      const holder = listed.find((chapter) => draft.orders.get(chapter.key)?.includes(identity))
+      if (holder !== undefined) {
+        changed.add(holder.key)
+      }
+    }
   }
   return listed.filter((chapter) => changed.has(chapter.key))
 }
@@ -248,7 +285,8 @@ export function writtenFromView(baseline: Baseline, draft: Draft): DraftChapter[
  * - `look` and `ignore` go back as read, and so does `clips` (per-clip
  *   properties), less the entries of the `removed` clips: the engine refuses
  *   properties for a clip no chapter lists. A moved clip keeps its entry: it is
- *   keyed by identity, not by chapter.
+ *   keyed by identity, not by chapter. A clip whose cuts changed gets its new
+ *   `trims` (`withCuts`).
  * - A metadata field keeps its read value unless its draft says otherwise; an
  *   edited one is sent as typed, or unset when empty or whitespace-only.
  * - `chapters`, in the order shown: a chapter written from the view
@@ -286,11 +324,36 @@ export function buildWriteBody(baseline: Baseline, draft: Draft): ReelWriteBody 
     },
     look: read.look,
     chapters,
-    clips: Object.fromEntries(
-      Object.entries(read.clips).filter(([identity]) => !draft.removed.has(identity)),
-    ),
+    clips: withCuts(baseline, draft),
     ignore: read.ignore,
   }
+}
+
+/**
+ * The body's `clips`: as read, less the removed clips' entries, with each
+ * changed clip's `trims` as its panel lists them (removed cuts left out). Its
+ * title-clip choice, rotation and exclusion go back as read; an entry left with
+ * none of those and no cut is left out, never written empty (`{}`). Every key is
+ * listed by a chapter the body writes (`writtenFromView` adopts a NEW clip's).
+ */
+function withCuts(baseline: Baseline, draft: Draft): ReelWriteBody['clips'] {
+  const clips = Object.fromEntries(
+    Object.entries(baseline.read.clips).filter(([identity]) => !draft.removed.has(identity)),
+  )
+  for (const identity of changedCuts(baseline, draft)) {
+    const trims = savedTrims(cutsOf(baseline.cuts, draft.cuts, identity))
+    const entry = baseline.read.clips[identity]
+    if (entry !== undefined) {
+      if (trims.length === 0 && entry.title == null && entry.rotate == null && !entry.exclude) {
+        delete clips[identity]
+      } else {
+        clips[identity] = { ...entry, trims }
+      }
+    } else if (trims.length > 0) {
+      clips[identity] = { trims, exclude: false }
+    }
+  }
+  return clips
 }
 
 /** How many NEW clips a save adds to `reel.yaml`: those in the chapters written from the view. */
@@ -308,14 +371,178 @@ export function adoptedNewCount(
 }
 
 /**
- * Whether there is anything to save: a changed field, or anything a save would
- * write from the view (an order that differs, a change to the chapter list).
+ * Whether there is anything to save: a changed field, anything a save would
+ * write from the view (an order that differs, a change to the chapter list), or
+ * a clip whose saved cuts would differ.
  */
 export function isDirty(baseline: Baseline, draft: Draft): boolean {
   return (
     changedFields(baseline.read, draft.metadata).length > 0 ||
-    writtenFromView(baseline, draft).length > 0
+    writtenFromView(baseline, draft).length > 0 ||
+    changedCuts(baseline, draft).size > 0
   )
+}
+
+// A clip without cuts: one constant, so its row keeps its memoised props.
+const NO_CUTS: readonly DraftCut[] = []
+
+/** Each clip's cuts as read: `Baseline.cuts`, built once. */
+export function readCuts(read: ReelDocument): Cuts {
+  return new Map(
+    Object.entries(read.clips).flatMap(([identity, entry]): [string, DraftCut[]][] =>
+      entry.trims.length === 0
+        ? []
+        : [
+            [
+              identity,
+              entry.trims.map((trim, index) => ({
+                key: `r${index}`,
+                in: trim.in,
+                out: trim.out,
+                reason: trim.reason ?? null,
+                removed: false,
+              })),
+            ],
+          ],
+    ),
+  )
+}
+
+/**
+ * A clip's cuts as listed now: the draft's when the operator changed them, else
+ * the read ones. Takes the two maps, not a `Draft`, so a list's props never change
+ * on a metadata edit; both answers are stable references.
+ */
+export function cutsOf(base: Cuts, changed: Cuts, identity: string): readonly DraftCut[] {
+  return changed.get(identity) ?? base.get(identity) ?? NO_CUTS
+}
+
+type SavedTrim = { in: number; out: number; reason: string | null }
+
+/** The `trims` a list saves: its cuts that are not removed, as read or typed. */
+function savedTrims(cuts: readonly DraftCut[]): SavedTrim[] {
+  return cuts
+    .filter((cut) => !cut.removed)
+    .map(({ in: start, out, reason }) => ({ in: start, out, reason }))
+}
+
+/**
+ * `draft` with `identity`'s cuts set to `cuts`: a list back to the one read (the
+ * same keys, none removed) leaves `draft.cuts`, so an edit and its reverse leave
+ * nothing to save without a special case.
+ */
+function settled(baseline: Baseline, draft: Draft, identity: string, cuts: DraftCut[]): Draft {
+  const read = baseline.cuts.get(identity) ?? NO_CUTS
+  const asRead =
+    cuts.length === read.length && cuts.every((cut, at) => !cut.removed && cut.key === read[at].key)
+  const next = new Map(draft.cuts)
+  if (asRead) {
+    next.delete(identity)
+  } else {
+    next.set(identity, cuts)
+  }
+  return { ...draft, cuts: next }
+}
+
+/**
+ * `draft` with a cut added to `identity` under the new key `key`, after every
+ * listed cut (removed ones included) that starts at the same time or earlier.
+ * The caller checked it (`checkCut`, `cuts/times.ts`) against the same list.
+ */
+export function addCut(
+  baseline: Baseline,
+  draft: Draft,
+  identity: string,
+  span: { in: number; out: number },
+  key: CutKey,
+): Draft {
+  const cuts = cutsOf(baseline.cuts, draft.cuts, identity)
+  if (cuts.some((cut) => cut.key === key)) {
+    return draft
+  }
+  let at = cuts.length
+  while (at > 0 && cuts[at - 1].in > span.in) {
+    at -= 1
+  }
+  const added: DraftCut = { key, in: span.in, out: span.out, reason: 'manual', removed: false }
+  return settled(baseline, draft, identity, [...cuts.slice(0, at), added, ...cuts.slice(at)])
+}
+
+/** `draft` with cut `key` of `identity` removed: a read one marked, an added one dropped. */
+export function removeCut(baseline: Baseline, draft: Draft, identity: string, key: CutKey): Draft {
+  const cuts = cutsOf(baseline.cuts, draft.cuts, identity)
+  const cut = cuts.find((listed) => listed.key === key)
+  if (cut === undefined || cut.removed) {
+    return draft
+  }
+  const read = (baseline.cuts.get(identity) ?? NO_CUTS).some((listed) => listed.key === key)
+  return settled(
+    baseline,
+    draft,
+    identity,
+    read
+      ? cuts.map((listed) => (listed.key === key ? { ...listed, removed: true } : listed))
+      : cuts.filter((listed) => listed.key !== key),
+  )
+}
+
+/** `draft` with the removed cut `key` of `identity` back (the caller ran `checkRestore`). */
+export function restoreCut(baseline: Baseline, draft: Draft, identity: string, key: CutKey): Draft {
+  const cuts = cutsOf(baseline.cuts, draft.cuts, identity)
+  if (!cuts.some((listed) => listed.key === key && listed.removed)) {
+    return draft
+  }
+  return settled(
+    baseline,
+    draft,
+    identity,
+    cuts.map((listed) => (listed.key === key ? { ...listed, removed: false } : listed)),
+  )
+}
+
+/**
+ * The clips whose saved cuts would differ from the read ones (start, end and
+ * reason of the cuts not removed, in order); a removed clip's are left out with it.
+ */
+export function changedCuts(baseline: Baseline, draft: Draft): ReadonlySet<string> {
+  const changed = new Set<string>()
+  for (const [identity, cuts] of draft.cuts) {
+    if (draft.removed.has(identity)) {
+      continue
+    }
+    const now = savedTrims(cuts)
+    const read = savedTrims(baseline.cuts.get(identity) ?? NO_CUTS)
+    const same =
+      now.length === read.length &&
+      now.every(
+        (cut, at) =>
+          cut.in === read[at].in && cut.out === read[at].out && cut.reason === read[at].reason,
+      )
+    if (!same) {
+      changed.add(identity)
+    }
+  }
+  return changed
+}
+
+/** The cuts added and the read cuts removed, as the save bar counts them. */
+export function cutChanges(baseline: Baseline, draft: Draft): { added: number; removed: number } {
+  let added = 0
+  let removed = 0
+  for (const [identity, cuts] of draft.cuts) {
+    if (draft.removed.has(identity)) {
+      continue
+    }
+    const read = new Set((baseline.cuts.get(identity) ?? NO_CUTS).map((cut) => cut.key))
+    for (const cut of cuts) {
+      if (cut.removed) {
+        removed += 1
+      } else if (!read.has(cut.key)) {
+        added += 1
+      }
+    }
+  }
+  return { added, removed }
 }
 
 /** `order` with the clip at `from` moved to `to`. */

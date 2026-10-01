@@ -1,0 +1,329 @@
+import type { components } from '../api/schema'
+
+/*
+ * A clip's cuts in words and numbers: reading a typed time, writing one, the
+ * checks a new cut must pass, and the words the panel and the read view use.
+ *
+ * Pure, with type-only imports (erased by type stripping), so a scratch script
+ * can run it under Node as it is. A cut's times are places in its clip, in
+ * seconds from the clip's start, not moments in a day: `format.ts` does not
+ * apply to them.
+ */
+
+/** One cut as `reel.yaml` holds it: the span the movie leaves out (D-D). */
+export type Trim = components['schemas']['TrimBody']
+
+/** What a typed time can be refused for. */
+export type TimeRefusal = 'empty' | 'unreadable' | 'too-precise'
+
+/** A cut as a list shows it: removed ones stay listed, struck through, until the save. */
+export type ListedCut = { in: number; out: number; removed?: boolean }
+
+// `h:mm:ss`, `m:ss` or seconds, then an optional fraction after `.` or `,`.
+const TIME = /^(?:(\d+):([0-5]\d):([0-5]\d)|(\d+):([0-5]\d)|(\d+))(?:[.,](\d+))?$/
+
+/**
+ * A typed time, in whole milliseconds. Kept whole so that `ms / 1000` is the
+ * nearest double to what was typed (`0:58.1` is 58.1, never 58.099999999999994).
+ */
+export function parseTime(
+  typed: string,
+): { ok: true; ms: number } | { ok: false; refusal: TimeRefusal } {
+  const text = typed.trim()
+  if (text === '') {
+    return { ok: false, refusal: 'empty' }
+  }
+  const match = TIME.exec(text)
+  if (match === null) {
+    return { ok: false, refusal: 'unreadable' }
+  }
+  const [, hours, minutes, seconds, shortMinutes, shortSeconds, plain, fraction] = match
+  if (fraction !== undefined && fraction.length > 3) {
+    return { ok: false, refusal: 'too-precise' }
+  }
+  const whole =
+    plain !== undefined
+      ? Number(plain)
+      : shortMinutes !== undefined
+        ? Number(shortMinutes) * 60 + Number(shortSeconds)
+        : (Number(hours) * 60 + Number(minutes)) * 60 + Number(seconds)
+  const ms = Number((fraction ?? '').padEnd(3, '0'))
+  return { ok: true, ms: whole * 1000 + ms }
+}
+
+/** A time cut into hours, minutes, seconds and its fraction's digits (no trailing zero). */
+function parts(seconds: number): { h: number; m: number; s: number; fraction: string } {
+  const ms = Math.round(seconds * 1000)
+  const whole = Math.floor(ms / 1000)
+  return {
+    h: Math.floor(whole / 3600),
+    m: Math.floor(whole / 60) % 60,
+    s: whole % 60,
+    fraction: String(ms % 1000)
+      .padStart(3, '0')
+      .replace(/0+$/, ''),
+  }
+}
+
+const two = (n: number) => String(n).padStart(2, '0')
+
+/** A place in a clip: `0:00`, `0:01.5`, `1:02.35`, `1:01:15.5`, to the millisecond. */
+export function formatTime(seconds: number): string {
+  const { h, m, s, fraction } = parts(seconds)
+  const clock = h > 0 ? `${h}:${two(m)}:${two(s)}` : `${m}:${two(s)}`
+  return fraction === '' ? clock : `${clock}.${fraction}`
+}
+
+/** A length: `1.5 s` under a minute, as a time (`1:02.5`) from one. */
+export function formatLength(seconds: number): string {
+  const { h, m, s, fraction } = parts(seconds)
+  if (h > 0 || m > 0) {
+    return formatTime(seconds)
+  }
+  return fraction === '' ? `${s} s` : `${s}.${fraction} s`
+}
+
+/** A length as it is said: `1 second`, `1.5 seconds`, and from a minute on as a time. */
+export function spokenLength(seconds: number): string {
+  const { h, m, s, fraction } = parts(seconds)
+  if (h > 0 || m > 0) {
+    return formatTime(seconds)
+  }
+  const number = fraction === '' ? `${s}` : `${s}.${fraction}`
+  return `${number} ${number === '1' ? 'second' : 'seconds'}`
+}
+
+/**
+ * The time the cuts cut out: every span one or more of them covers, counted once,
+ * as the render merges them (sorted, overlapping or touching spans joined).
+ */
+export function cutOutSeconds(cuts: readonly { in: number; out: number }[]): number {
+  const sorted = [...cuts].sort((a, b) => a.in - b.in)
+  let total = 0
+  let start = 0
+  let end = -Infinity
+  for (const cut of sorted) {
+    if (cut.in > end) {
+      total += end > start ? end - start : 0
+      start = cut.in
+      end = cut.out
+    } else {
+      end = Math.max(end, cut.out)
+    }
+  }
+  return total + (end > start ? end - start : 0)
+}
+
+/** The cuts a list still plays out: the ones not removed. */
+export function keptCuts<T extends ListedCut>(cuts: readonly T[]): T[] {
+  return cuts.filter((cut) => cut.removed !== true)
+}
+
+/** Which field a refusal concerns: focus goes there. */
+export type CutField = 'start' | 'end'
+
+/** Why a cut is refused, at which field, with what the operator typed. */
+export type CutRefusal =
+  | { kind: TimeRefusal; field: CutField; typed: string }
+  | { kind: 'order'; field: 'end'; start: number; end: number }
+  | { kind: 'overlap'; field: 'start'; number: number; clash: { in: number; out: number } }
+
+/** Whether two spans share more than an instant (touching ones do not). */
+function overlaps(a: { in: number; out: number }, b: { in: number; out: number }): boolean {
+  return a.in < b.out && b.in < a.out
+}
+
+/**
+ * A typed cut checked against the clip's listed cuts, in this order: each time
+ * readable (the start first), the end after the start (the engine's own
+ * refusals), and no overlap with a listed cut that is not removed (the
+ * `reel-document` spec's non-overlapping spans). A cut past the clip's end
+ * passes: the page does not know the clip's length.
+ */
+export function checkCut(
+  listed: readonly ListedCut[],
+  typedIn: string,
+  typedOut: string,
+): { ok: true; in: number; out: number } | { ok: false; refusal: CutRefusal } {
+  const start = parseTime(typedIn)
+  if (!start.ok) {
+    return { ok: false, refusal: { kind: start.refusal, field: 'start', typed: typedIn.trim() } }
+  }
+  const end = parseTime(typedOut)
+  if (!end.ok) {
+    return { ok: false, refusal: { kind: end.refusal, field: 'end', typed: typedOut.trim() } }
+  }
+  const span = { in: start.ms / 1000, out: end.ms / 1000 }
+  if (end.ms <= start.ms) {
+    return { ok: false, refusal: { kind: 'order', field: 'end', start: span.in, end: span.out } }
+  }
+  const at = listed.findIndex((cut) => cut.removed !== true && overlaps(cut, span))
+  if (at !== -1) {
+    return {
+      ok: false,
+      refusal: { kind: 'overlap', field: 'start', number: at + 1, clash: listed[at] },
+    }
+  }
+  return { ok: true, ...span }
+}
+
+/** Why an Undo is refused: the cut it would bring back overlaps a cut now listed. */
+export type RestoreRefusal = {
+  number: number
+  clashNumber: number
+  clash: { in: number; out: number }
+}
+
+/**
+ * An Undo checked as adding its cut would be: null when the removed cut `key`
+ * shares no more than an instant with every other listed cut that is not removed.
+ */
+export function checkRestore(
+  listed: readonly (ListedCut & { key: string })[],
+  key: string,
+): RestoreRefusal | null {
+  const at = listed.findIndex((cut) => cut.key === key)
+  if (at === -1) {
+    return null
+  }
+  const cut = listed[at]
+  const clash = listed.findIndex(
+    (other, index) => index !== at && other.removed !== true && overlaps(other, cut),
+  )
+  return clash === -1 ? null : { number: at + 1, clashNumber: clash + 1, clash: listed[clash] }
+}
+
+/** The documented reasons of a cut (D-K): analysis findings, and a cut made by hand. */
+export const KNOWN_REASONS = ['black', 'white', 'freeze', 'manual'] as const
+export type KnownReason = (typeof KNOWN_REASONS)[number]
+
+/** The reason a cut made in the GUI is saved with (D-K). */
+export const MANUAL_REASON: KnownReason = 'manual'
+
+/** Not `REASON_LABEL`, which `events/labels.ts` exports for the staleness reasons. */
+export const CUT_REASON_LABEL: Record<KnownReason, string> = {
+  black: 'Black frames',
+  white: 'White frames',
+  freeze: 'Frozen picture',
+  manual: 'Cut by hand',
+}
+
+function isKnown(reason: string): reason is KnownReason {
+  return (KNOWN_REASONS as readonly string[]).includes(reason)
+}
+
+/**
+ * A cut's reason in words: a documented one by its label, any other as written,
+ * in quotes (it is the operator's own text, not a slug), and none as absent.
+ */
+export function reasonWords(reason: string | null | undefined): string {
+  if (reason == null || reason.trim() === '') {
+    return '—'
+  }
+  return isKnown(reason) ? CUT_REASON_LABEL[reason] : `“${reason}”`
+}
+
+/** `0:00 to 0:01.5`: a span as it is written in a sentence. */
+export function spanWords(cut: { in: number; out: number }): string {
+  return `${formatTime(cut.in)} to ${formatTime(cut.out)}`
+}
+
+function cutCount(count: number): string {
+  return `${count} ${count === 1 ? 'cut' : 'cuts'}`
+}
+
+/** The visible summary of a clip's cuts: `2 cuts · −4.5 s`; `Cuts` with none. */
+export function cutSummary(cuts: readonly ListedCut[]): string {
+  const kept = keptCuts(cuts)
+  return kept.length === 0
+    ? 'Cuts'
+    : `${cutCount(kept.length)} · −${formatLength(cutOutSeconds(kept))}`
+}
+
+/** The summary as it is said, without the minus sign: `2 cuts, 4.5 seconds cut out`. */
+export function spokenSummary(cuts: readonly ListedCut[]): string {
+  const kept = keptCuts(cuts)
+  return kept.length === 0
+    ? 'No cuts'
+    : `${cutCount(kept.length)}, ${spokenLength(cutOutSeconds(kept))} cut out`
+}
+
+/** The Cuts control's name: `Cuts of a.mp4`, or `1 cut of a.mp4, 1.5 seconds cut out`. */
+export function toggleName(cuts: readonly ListedCut[], name: string): string {
+  const kept = keptCuts(cuts)
+  return kept.length === 0
+    ? `Cuts of ${name}`
+    : `${cutCount(kept.length)} of ${name}, ${spokenLength(cutOutSeconds(kept))} cut out`
+}
+
+/** The forms a time may take, as the hint and the refusal name them. */
+export const TIME_FORMS = 'seconds (75.5), m:ss (1:15.5) or h:mm:ss (1:01:15.5)'
+
+/** What the panel says it cannot check, beside its fields. */
+export const CUT_HINT =
+  'Seconds (75.5), m:ss (1:15.5) or h:mm:ss (1:01:15.5). The page does not know the clip’s ' +
+  'length: a cut that runs past its end stops there, and a cut over the whole clip leaves the ' +
+  'clip out of the movie.'
+
+/** A clip without cuts. */
+export const NO_CUTS = 'No cuts: the whole clip plays.'
+
+/** A refused cut, in words: what to type, or which cut it overlaps. */
+export function refusalWords(refusal: CutRefusal): string {
+  switch (refusal.kind) {
+    case 'empty':
+      return refusal.field === 'start' ? 'Type where the cut starts.' : 'Type where the cut ends.'
+    case 'unreadable':
+      return `“${refusal.typed}” is not a time the page can read. Type ${TIME_FORMS}.`
+    case 'too-precise':
+      return `“${refusal.typed}” has more than three decimals. Times go to the millisecond.`
+    case 'order':
+      return (
+        `A cut must end after it starts: ${formatTime(refusal.end)} is not after ` +
+        `${formatTime(refusal.start)}.`
+      )
+    case 'overlap':
+      return (
+        `This cut overlaps cut ${refusal.number} (${spanWords(refusal.clash)}). Change the ` +
+        `times, or remove cut ${refusal.number} first.`
+      )
+  }
+}
+
+/** A refused Undo, in words: `Cut 1 overlaps cut 2 (0:01 to 0:02). Remove cut 2 first.` */
+export function restoreRefusalWords(refusal: RestoreRefusal): string {
+  return (
+    `Cut ${refusal.number} overlaps cut ${refusal.clashNumber} (${spanWords(refusal.clash)}). ` +
+    `Remove cut ${refusal.clashNumber} first.`
+  )
+}
+
+/** `Cut 0:00 to 0:01.5 added to s1710001.mp4. 1 cut, 1.5 seconds cut out.` */
+export function addedWords(
+  cut: { in: number; out: number },
+  name: string,
+  after: readonly ListedCut[],
+): string {
+  return `Cut ${spanWords(cut)} added to ${name}. ${spokenSummary(after)}.`
+}
+
+/** `Cut 1 of s1710003.mp4, 0:00 to 0:01.2, will be removed when you save.` */
+export function removedReadWords(number: number, cut: { in: number; out: number }, name: string) {
+  return `Cut ${number} of ${name}, ${spanWords(cut)}, will be removed when you save.`
+}
+
+/** `Cut 0:00 to 0:01.5 removed from s1710001.mp4. No cuts left.` (or `2 cuts left.`) */
+export function removedAddedWords(
+  cut: { in: number; out: number },
+  name: string,
+  after: readonly ListedCut[],
+): string {
+  const left = keptCuts(after).length
+  const words = left === 0 ? 'No cuts' : cutCount(left)
+  return `Cut ${spanWords(cut)} removed from ${name}. ${words} left.`
+}
+
+/** `Cut 1 of s1710003.mp4 is back.` */
+export function restoredWords(number: number, name: string): string {
+  return `Cut ${number} of ${name} is back.`
+}

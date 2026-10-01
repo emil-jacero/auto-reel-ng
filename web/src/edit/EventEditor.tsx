@@ -16,6 +16,7 @@ import type { Clip, EventDetail } from '../api/event'
 import type { EventFailure, Problem } from '../api/events'
 import { fetchReel, saveReel } from '../api/reel'
 import type { ReelDocument, ReelReadResult, ReelSaveResult, ReelWriteBody } from '../api/reel'
+import type { CutHandlers, CutPanels, PanelState } from '../cuts/CutsPanel'
 import { markEventsChanged } from '../events/changes'
 import { clipNames, folderName, plural } from '../events/common'
 import { FAILURE_LABEL, UNANSWERED_CAUSE, notReachableHint } from '../events/labels'
@@ -44,10 +45,12 @@ import { ClipOrderList } from './ClipOrderList'
 import type { MoveHandler, Origins, RemoveHandler, RestoreHandler } from './ClipOrderList'
 import {
   addChapter,
+  addCut,
   adoptedNewCount,
   buildWriteBody,
   chapterChanges,
   changedFields,
+  cutChanges,
   deleteChapter,
   detailMatchesDocument,
   draftChapters,
@@ -62,15 +65,19 @@ import {
   movedSet,
   ordersOf,
   originOf,
+  readCuts,
   removeClip,
+  removeCut,
   renameChapter,
   restoreChapter,
   restoreClip,
+  restoreCut,
 } from './draft'
 import type {
   Baseline,
   ChapterChanges,
   ChapterKey,
+  CutKey,
   Draft,
   DraftChapter,
   EditableChapter,
@@ -100,7 +107,9 @@ import {
  * The chapters themselves are edited here too: added, renamed, moved up or down,
  * deleted once empty, and clips moved between them with a chapter's Move clips
  * dialog (`ChapterTools.tsx`, `ChapterDialogs.tsx`). What a name means for clips
- * added later (D-12) is said beside the chapter (`chapterNames.ts`).
+ * added later (D-12) is said beside the chapter (`chapterNames.ts`). So are each
+ * clip's cuts, in a panel under its row (`cuts/CutsPanel.tsx`): a cut typed but
+ * not added holds Save back, as a date typed in part does.
  *
  * `event` is the page's detail, read once at mount: a later re-read of the page
  * never changes the order shown or the draft. It is null for the needs-attention
@@ -132,6 +141,10 @@ type Ready = {
   added: number
   /** The date input holds a date typed only in part (its value reads as ''). */
   dateIncomplete: boolean
+  /** The clips whose cut fields hold typed text not added as a cut: never saved. */
+  typed: ReadonlySet<string>
+  /** Cuts added so far in this session: the next one's key is `a${nextCut + 1}`. */
+  nextCut: number
   /** Bumped by Reset, which remounts the fields (a partial date has no value to reset). */
   resets: number
   /** Non-null while a save is in flight: the editor is locked. */
@@ -167,6 +180,10 @@ type Action =
   | { type: 'clips-move'; from: ChapterKey; to: ChapterKey; identities: readonly string[] }
   | { type: 'field'; field: MetadataField; value: string }
   | { type: 'date-validity'; incomplete: boolean }
+  | { type: 'cut-add'; identity: string; span: { in: number; out: number }; key: CutKey }
+  | { type: 'cut-remove'; identity: string; key: CutKey }
+  | { type: 'cut-restore'; identity: string; key: CutKey }
+  | { type: 'cut-typed'; identity: string; typed: boolean }
   | { type: 'reset' }
   | { type: 'save-start'; pressed: Pressed }
   | { type: 'save-failed'; problem: SaveProblem | null; refusal: string | null }
@@ -176,12 +193,19 @@ type Action =
  * failure: there is nothing left to save. A vanished event stays said.
  */
 function afterEdit(next: Ready): Ready {
-  const dirty = isDirty(next.baseline, next.draft) || next.dateIncomplete
+  const dirty = isDirty(next.baseline, next.draft) || unfinished(next)
   if (dirty || (next.problem === null && next.refusal === null)) {
     return next
   }
   return { ...next, problem: next.problem?.kind === 'gone' ? next.problem : null, refusal: null }
 }
+
+/** Typed but not sendable: a date typed in part, or a cut typed and not added. */
+function unfinished(ready: Ready): boolean {
+  return ready.dateIncomplete || ready.typed.size > 0
+}
+
+const NONE_TYPED: ReadonlySet<string> = new Set()
 
 /** The draft as read: nothing changed. */
 function initialDraft(baseline: Baseline): Draft {
@@ -190,6 +214,7 @@ function initialDraft(baseline: Baseline): Draft {
     orders: baseline.original,
     removed: new Map(),
     metadata: metadataDraftOf(baseline.read),
+    cuts: new Map(),
   }
 }
 
@@ -219,6 +244,7 @@ function reduce(state: State, action: Action): State {
         read: action.document,
         chapters: draftChapters(action.chapters),
         original: ordersOf(action.chapters),
+        cuts: readCuts(action.document),
       }
       return {
         status: 'ready',
@@ -228,6 +254,8 @@ function reduce(state: State, action: Action): State {
         lastMoved: null,
         added: 0,
         dateIncomplete: false,
+        typed: NONE_TYPED,
+        nextCut: 0,
         resets: 0,
         pressed: null,
         problem: null,
@@ -316,12 +344,42 @@ function reduce(state: State, action: Action): State {
       return action.incomplete === state.dateIncomplete
         ? state
         : afterEdit({ ...state, dateIncomplete: action.incomplete })
+    case 'cut-add':
+      // The key the caller took from the counter, as for an added chapter.
+      if (action.key !== `a${state.nextCut + 1}`) {
+        return state
+      }
+      return {
+        ...withDraft(
+          state,
+          addCut(state.baseline, state.draft, action.identity, action.span, action.key),
+        ),
+        nextCut: state.nextCut + 1,
+      }
+    case 'cut-remove':
+      return withDraft(state, removeCut(state.baseline, state.draft, action.identity, action.key))
+    case 'cut-restore':
+      return withDraft(state, restoreCut(state.baseline, state.draft, action.identity, action.key))
+    case 'cut-typed': {
+      if (state.typed.has(action.identity) === action.typed) {
+        return state
+      }
+      const typed = new Set(state.typed)
+      if (action.typed) {
+        typed.add(action.identity)
+      } else {
+        typed.delete(action.identity)
+      }
+      return afterEdit({ ...state, typed })
+    }
     case 'reset':
       return {
         ...state,
         draft: initialDraft(state.baseline),
         lastMoved: null,
         dateIncomplete: false,
+        typed: NONE_TYPED,
+        nextCut: 0,
         resets: state.resets + 1,
         problem: null,
         refusal: null,
@@ -498,15 +556,18 @@ function fieldWords(fields: readonly MetadataField[]): string {
 }
 
 /**
- * What the save bar lists: the changed fields, the chapter edits, the moves, the
- * removals, and what a save adds.
+ * What the save bar lists: the changed fields, what is typed but not sendable,
+ * the chapter edits, the moves, the removals, the cuts, and what a save adds.
+ * `typed` names the one clip holding a typed cut, or counts the clips.
  */
 function summarize(
   changed: readonly MetadataField[],
   dateIncomplete: boolean,
+  typed: string | number,
   chapters: ChapterChanges,
   moved: number,
   removed: number,
+  cuts: { added: number; removed: number },
   adopted: number,
 ): string {
   // An incomplete date reads as '' but is not a date left empty: it is named as such.
@@ -514,12 +575,17 @@ function summarize(
   const parts = [
     fields.length > 0 && `${fieldWords(fields)} changed`,
     dateIncomplete && 'date incomplete',
+    typeof typed === 'string'
+      ? `cut typed on ${typed}, not added`
+      : typed > 0 && `cuts typed on ${typed} clips, not added`,
     chapters.added > 0 && `${plural(chapters.added, 'chapter', 'chapters')} added`,
     chapters.renamed > 0 && `${plural(chapters.renamed, 'chapter', 'chapters')} renamed`,
     chapters.deleted > 0 && `${plural(chapters.deleted, 'chapter', 'chapters')} deleted`,
     chapters.reordered && 'chapter order changed',
     moved > 0 && `${plural(moved, 'clip', 'clips')} moved`,
     removed > 0 && `${plural(removed, 'missing clip', 'missing clips')} removed`,
+    cuts.added > 0 && `${plural(cuts.added, 'cut', 'cuts')} added`,
+    cuts.removed > 0 && `${plural(cuts.removed, 'cut', 'cuts')} removed`,
     adopted > 0 && `adds ${plural(adopted, 'new clip', 'new clips')} to reel.yaml`,
   ].filter((part): part is string => part !== false)
   const text = parts.join(' · ')
@@ -549,6 +615,31 @@ type ChapterFocus = {
 /** The statuses of a clip on disk that the chapter plays: the ones Move clips offers. */
 function onDisk(clip: Clip | undefined): boolean {
   return clip?.status === 'active' || clip?.status === 'new'
+}
+
+/**
+ * The name the row of `identity` gives it in `draft` now (ClipOrderList's `nameOf`
+ * inputs): a move, or a chapter's rename, renames it in the save bar as in its row.
+ */
+function nameNow(
+  draft: Draft,
+  original: ReadonlyMap<ChapterKey, readonly string[]>,
+  identity: string,
+  ignoredOf: ReadonlyMap<ChapterKey, readonly string[]>,
+  removedOf: ReadonlyMap<ChapterKey, readonly string[]>,
+): string {
+  const chapter = draft.chapters.find((listed) =>
+    (draft.orders.get(listed.key) ?? []).includes(identity),
+  )
+  if (chapter === undefined) {
+    return identity
+  }
+  return clipNames(chapter.name, [
+    ...(original.get(chapter.key) ?? []),
+    ...(draft.orders.get(chapter.key) ?? []),
+    ...(ignoredOf.get(chapter.key) ?? []),
+    ...(removedOf.get(chapter.key) ?? []),
+  ])(identity)
 }
 
 /** A chapter's heading in `draft` (`Main`, `Clips` or its name), for an announcement. */
@@ -873,9 +964,10 @@ export function EventEditor({
     }
   }
   const adopted = ready === null ? 0 : adoptedNewCount(ready.baseline, ready.draft, newClips)
-  // Edits to save, and edits at all (a date typed in part is one, but cannot be saved).
+  // Edits to save, and edits at all (a date typed in part, or a cut typed and not added,
+  // is one, but cannot be saved).
   const edited = ready !== null && isDirty(ready.baseline, ready.draft)
-  const dirty = edited || (ready?.dateIncomplete ?? false)
+  const dirty = edited || (ready !== null && unfinished(ready))
   // While there are edits; a vanished event keeps its alert even without any.
   const showBar = ready !== null && (dirty || ready.problem?.kind === 'gone')
 
@@ -1043,6 +1135,19 @@ export function EventEditor({
     [],
   )
 
+  // Each clip's cut panel, shown or not and its fields as typed, by identity: here, not
+  // in its row, which Move clips mounts anew in another chapter. Reset empties it.
+  const [cutPanels] = useState(() => {
+    const held = new Map<string, PanelState>()
+    const panels: CutPanels = {
+      get: (identity) => held.get(identity),
+      set: (identity, next) => {
+        held.set(identity, next)
+      },
+    }
+    return { panels, clear: () => held.clear() }
+  })
+
   // Each chapter's removed clips, in its original order; one shared empty list for the rest.
   const removals = ready?.draft.removed
   const removedByChapter = useMemo(
@@ -1103,6 +1208,25 @@ export function EventEditor({
       return (lines.get(key) ?? []).map((line) => ` ${line}`).join('')
     },
     [folders, ignoredOf],
+  )
+
+  // The cut operations: one stable object, so the rows keep their memoised props. The
+  // panel checks a cut and speaks it; a press while a save or a Move clips is pending
+  // changes nothing here either.
+  const cutHandlers = useMemo<CutHandlers>(
+    () => ({
+      onAdd: (identity, span) => {
+        const current = latest.current
+        if (current !== null && current.pressed === null && moving.current === null) {
+          dispatch({ type: 'cut-add', identity, span, key: `a${current.nextCut + 1}` })
+        }
+      },
+      onRemove: (identity, key) => dispatch({ type: 'cut-remove', identity, key }),
+      onRestore: (identity, key) => dispatch({ type: 'cut-restore', identity, key }),
+      onTyped: (identity, typed) => dispatch({ type: 'cut-typed', identity, typed }),
+      onAnnounce: announce,
+    }),
+    [announce],
   )
 
   const onAddChapter = useCallback(() => {
@@ -1376,13 +1500,14 @@ export function EventEditor({
   }
 
   function submit(pressed: Pressed, operation: Operation): void {
-    // Never a half-typed date (it would be sent as unset) and never a save of nothing.
+    // Never a half-typed date (it would be sent as unset), never without a cut typed
+    // but not added (it would be lost), and never a save of nothing.
     // Nor while a Move clips is pending: the draft shown is the one from before it.
     if (
       ready === null ||
       saving.current ||
       moving.current !== null ||
-      ready.dateIncomplete ||
+      unfinished(ready) ||
       !edited
     ) {
       return
@@ -1581,8 +1706,8 @@ export function EventEditor({
                   </strong>
                 ) : (
                   newClips.size > 0 &&
-                  ' A new clip joins reel.yaml once its chapter’s order, or the list of ' +
-                    'chapters, is saved.'
+                  ' A new clip joins reel.yaml once its chapter’s order, one of its cuts, or ' +
+                    'the list of chapters is saved.'
                 )}
               </p>
             </div>
@@ -1624,6 +1749,11 @@ export function EventEditor({
                   lastMoved={ready.lastMoved}
                   locked={listsLocked}
                   tools={model}
+                  cuts={ready.draft.cuts}
+                  baseCuts={ready.baseline.cuts}
+                  panels={cutPanels.panels}
+                  resets={ready.resets}
+                  cutHandlers={cutHandlers}
                   onMove={onMove}
                   onRemove={onRemove}
                   onRestore={onRestore}
@@ -1644,13 +1774,25 @@ export function EventEditor({
               summary={summarize(
                 changed,
                 ready.dateIncomplete,
+                ready.typed.size === 1
+                  ? nameNow(
+                      ready.draft,
+                      ready.baseline.original,
+                      [...ready.typed][0],
+                      ignoredOf,
+                      removedByChapter,
+                    )
+                  : ready.typed.size,
                 chapterEdits,
                 movedCount,
                 ready.draft.removed.size,
+                cutChanges(ready.baseline, ready.draft),
                 adopted,
               )}
-              dateIncomplete={ready.dateIncomplete}
+              unfinished={unfinished(ready)}
               onReset={() => {
+                // The panels' fields go first, so the remounted panels start empty.
+                cutPanels.clear()
                 dispatch({ type: 'reset' })
                 // The bar leaves with its buttons: focus goes to the page's heading, in place.
                 focusPageHeading({ preventScroll: true })

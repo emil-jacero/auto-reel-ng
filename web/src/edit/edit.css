@@ -282,10 +282,12 @@
    * The row's action (`ClipFacts`), in the one-line layout: under the name, in
    * the file column, so the name keeps the column's whole room as an ordinary
    * row's does and a camera name never breaks inside the word. The two hug the
-   * row's middle; every other cell spans both lines.
+   * row's middle; every other cell spans both lines. A clip on disk has its Cuts
+   * control there instead (`cuts/CutsPanel.tsx`): only a missing clip has an
+   * action, and it has no Cuts control, so the two never share the place.
    */
   @container (width >= 58rem) {
-    .clip-item:has(.clip-action) {
+    .clip-item:has(.clip-action, > .cuts-toggle) {
       grid-template-areas:
         'handle pos thumb file moves status size mtime'
         'handle pos thumb action moves status size mtime';
@@ -300,6 +302,13 @@
       grid-area: action;
       align-self: start;
       padding-inline: var(--s-3);
+    }
+
+    .clip-item > .cuts-toggle {
+      grid-area: action;
+      align-self: start;
+      justify-self: start;
+      margin-inline: var(--s-3);
     }
   }
 
@@ -471,6 +480,13 @@
       inline-size: 2rem;
     }
 
+    /* The Cuts control: the second line's empty cells, under the handle and the position. */
+    .clip-item > .cuts-toggle {
+      grid-area: 2 / 1 / 3 / 3;
+      align-self: start;
+      justify-self: start;
+    }
+
     /* The grid's gap spaces the cells here, and the facts are one flex line. */
     :is(.clip-order-head, .clip-item) > :is(.clip-pos, .clip-file),
     .clip-item > .clip-moves,
@@ -518,6 +534,16 @@
     @container (28rem <= width < 58rem) {
       .clip-action:has(> .clip-remove) {
         flex-basis: 100%;
+      }
+    }
+
+    /*
+     * Under the handle: its area reaches 6px down, a 26px compact Cuts control's
+     * 9px up; the 2px row gap and this 14px keep the two apart.
+     */
+    @container (width < 58rem) {
+      .clip-item > .cuts-toggle {
+        margin-block-start: 0.875rem;
       }
     }
   }

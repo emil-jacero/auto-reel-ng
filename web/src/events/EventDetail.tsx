@@ -5,6 +5,8 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { fetchEvent } from '../api/event'
 import type { Chapter, Clip, EventDetail as EventDetailData } from '../api/event'
 import type { EventFailure, Problem } from '../api/events'
+import { ReadCuts, ReadCutsNote, useReadCuts } from '../cuts/ReadCuts'
+import type { ClipCuts } from '../cuts/ReadCuts'
 import { EventEditor } from '../edit/EventEditor'
 import { requestLeave, useSaving } from '../edit/unsaved'
 import { formatInstant } from '../format'
@@ -429,6 +431,7 @@ function RenderPanel({
 function ReadyView({ eventId, event }: { eventId: string; event: EventDetailData }) {
   const clips = event.chapters.flatMap((chapter) => chapter.clips)
   const hasNamedChapter = event.chapters.some((chapter) => chapter.name !== '')
+  const read = useReadCuts(eventId, event)
   return (
     <>
       {event.missing.length > 0 && (
@@ -443,6 +446,7 @@ function ReadyView({ eventId, event }: { eventId: string; event: EventDetailData
           detail={event.missing.join(', ')}
         />
       )}
+      <ReadCutsNote failure={read.failure} />
 
       {clips.length === 0 ? (
         <p className="empty-state">
@@ -457,6 +461,7 @@ function ReadyView({ eventId, event }: { eventId: string; event: EventDetailData
             eventId={eventId}
             chapter={chapter}
             heading={chapter.name !== '' ? chapter.name : hasNamedChapter ? 'Main' : 'Clips'}
+            cuts={read.cuts}
           />
         ))
       )}
@@ -533,10 +538,12 @@ function ChapterPanel({
   eventId,
   chapter,
   heading,
+  cuts,
 }: {
   eventId: string
   chapter: Chapter
   heading: string
+  cuts: ClipCuts | null
 }) {
   // Chapter names hold spaces and non-ASCII letters, so the id is generated.
   const headingId = useId()
@@ -579,6 +586,7 @@ function ChapterPanel({
               </td>
               <td role="cell" className="cell-file">
                 <ClipName name={nameOf(clip.identity)} />
+                <ReadCuts cuts={cuts?.get(clip.identity)} name={nameOf(clip.identity)} />
               </td>
               <td role="cell" className="cell-status">
                 <Pill
