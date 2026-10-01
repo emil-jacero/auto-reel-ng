@@ -308,7 +308,7 @@ project MUST NOT read clip content to fill a response field, by hash any more th
 The north star is a **full timeline editor**, but we ship in thin slices:
 
 - **v1 (tiny, ship first):** scan/ingest view (events + clips), **drag-reorder clips** (persist to
-  `reel.yaml`), **chapter edits and Move clips** (**D-13**), edit basic metadata (title/date/location/description), **schedule a render and watch
+  `reel.yaml`), **chapter edits and Move clips** (**D-13**), **typed cuts** (**D-14**), edit basic metadata (title/date/location/description), **schedule a render and watch
   live progress**, and **clip thumbnails** (one frame per clip, **D-11**). The resolved `look` is shown
   **read-only**; editing it is v2. No timeline, no per-frame editing.
 - **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview), **analysis review** (approve black/white/freeze
@@ -333,7 +333,7 @@ change directories:
 | A | `web-app-scaffold` | `web/` + the static mount + schema→types pipeline; no screen |
 | B | event list screen | the scan/ingest view, over slice 0's verdicts |
 | C | event detail screen | chapters/clips read-only, using the per-clip `size`/`mtime` file facts |
-| D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency — landed in `event-edit-screen` (the event page's Edit mode). `missing-clips-screen` adds the explicit removal of a MISSING clip's entry (never automatic) and holds Render back while an event lists one. `chapter-management-screen` adds the chapter edits (add, rename, move, delete when empty) and Move clips between chapters (D-13) |
+| D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency — landed in `event-edit-screen` (the event page's Edit mode). `missing-clips-screen` adds the explicit removal of a MISSING clip's entry (never automatic) and holds Render back while an event lists one. `chapter-management-screen` adds the chapter edits (add, rename, move, delete when empty) and Move clips between chapters (D-13). `clip-cuts-screen` adds a clip's cuts, listed, added from typed times and removed in Edit mode, and shown on the event page (D-14) |
 | E | render + live progress | `POST /jobs` (201 / 200-fresh / 409), the WS hook, cancel — landed in `render-progress-screen` |
 
 C, D and E were designed only after A and B had been used against a real library; all three have
@@ -628,6 +628,14 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   changes the chapter list writes every chapter as shown, so every NEW clip is adopted where the page shows
   it; a chapter's name then only decides where later clips go (D-12). The event's own chapter keeps no name,
   and a chapter is deleted only once empty. (§4.10)
+
+- **D-14 — Cuts are edited by typed times in GUI v1** (2026-10-01, change `clip-cuts-screen`). Edit mode
+  lists, adds and removes a clip's cuts (D-D), with times typed as seconds, m:ss or h:mm:ss, pulled forward
+  from v3 at the operator's request. Scrubbing, previews and drag-trim stay v3. The page refuses what the
+  engine refuses (`out <= in`, negative), and refuses an overlap with another cut. It cannot refuse a cut past
+  the clip's end, because no probe-free read gives a duration, so it states the render's rule instead (cut
+  short at the end; a whole-clip cut leaves the clip out). A cut made in the GUI has the reason `manual`. The
+  event page shows each clip's cuts. (§4.10)
 
 ---
 
