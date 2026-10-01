@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef } from 'react'
 
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
-import { dismissToast, pauseToasts, useToasts } from './toast'
+import { dismissToast, pauseToasts, useToastClearance, useToasts } from './toast'
 import type { Toast, ToastTone } from './toast'
 
 const TONE_ICON: Record<ToastTone, IconName> = {
@@ -11,22 +11,30 @@ const TONE_ICON: Record<ToastTone, IconName> = {
   error: 'alert-triangle',
 }
 
-function ToastItem({ toast }: { toast: Toast }) {
+/** Dismiss a toast; the button is the one pressed, for the focus hand-off. */
+type DismissHandler = (id: number, button: HTMLElement) => void
+
+function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: DismissHandler }) {
+  const messageId = useId()
   return (
     <div className="toast" data-tone={toast.tone}>
       <Icon name={TONE_ICON[toast.tone]} />
       <div className="toast-body">
-        <p className="toast-message">{toast.message}</p>
+        <p id={messageId} className="toast-message">
+          {toast.message}
+        </p>
         {toast.action !== undefined && (
           <a className="toast-action" href={toast.action.href}>
             {toast.action.label}
           </a>
         )}
       </div>
+      {/* Described by its message: landing on it says which toast it clears. */}
       <button
         type="button"
         className="btn btn-ghost btn-icon toast-dismiss"
-        onClick={() => dismissToast(toast.id)}
+        aria-describedby={messageId}
+        onClick={(event) => onDismiss(toast.id, event.currentTarget)}
       >
         <Icon name="x" label="Dismiss" />
       </button>
@@ -35,21 +43,61 @@ function ToastItem({ toast }: { toast: Toast }) {
 }
 
 /**
+ * Focus the first candidate that takes it, without scrolling: a removed node, an
+ * element in a hidden page or a disabled control is skipped.
+ */
+function focusFirst(candidates: readonly (HTMLElement | null | undefined)[]): void {
+  for (const target of candidates) {
+    if (target == null || !target.isConnected) {
+      continue
+    }
+    target.focus({ preventScroll: true })
+    if (document.activeElement === target) {
+      return
+    }
+  }
+}
+
+/** The shown page's level-one heading (the selector `focusPageHeading` uses; ui/ cannot import shell/). */
+function pageHeading(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('main:not([hidden]) h1')
+}
+
+/**
  * Where toasts appear; the shell renders it once. Two live containers are
  * always present, so a toast added to one is announced: `role="status"`
- * (polite) for success and info, `role="alert"` for errors. A pointer or focus
- * inside the region pauses the auto-dismiss clocks.
+ * (polite) for success and info, `role="alert"` for errors. Neither is atomic,
+ * so a new toast is announced alone, not with the ones still shown. A pointer
+ * or focus inside the region pauses the auto-dismiss clocks.
  *
- * Its bottom offset follows a custom property (see `.toast-region`), 0 unless
- * a page sets it, so a page with a sticky bar at the bottom can lift the toasts
- * above it. The region's own height is published on <html> as
- * `--toast-region-h` (removed when empty); the page's bottom scroll padding
- * adds it, so a control focused by keyboard never scrolls under a toast.
+ * Focus never falls to <body> when a toast goes. Dismissing the toast that
+ * holds focus hands it to the next toast's Dismiss, else the previous one's,
+ * else the control focus came from, else the page's h1; a toast displaced by a
+ * newer one hands it on the same way. Every move is `preventScroll`, so a
+ * pointer dismissal (Chromium focuses a clicked button) leaves the page where
+ * it is.
+ *
+ * Its bottom offset follows a custom property (see `.toast-region`). With a
+ * bar registered (`keepToastsClearOf`), the region places itself: above the bar
+ * while the bar is held at the window's bottom edge, and in the room below it
+ * once the bar rests in the page with room to spare. Otherwise it reads
+ * `--toast-inset-bottom`, 0 unless a page sets it. The region's own height is
+ * published on <html> as `--toast-region-h` (removed when empty), and, while a
+ * bar is registered, its height plus the gap as `--toast-rise-h`; the page's
+ * bottom scroll padding adds both, so a control focused by keyboard never
+ * scrolls under a toast, including toasts that rise with a bar on its way up.
  */
 export function ToastRegion() {
   const toasts = useToasts()
+  const bar = useToastClearance()
   const regionRef = useRef<HTMLDivElement>(null)
   const pointerInside = useRef(false)
+  // The control focus came from when it entered the region (null: from nowhere).
+  const returnTo = useRef<HTMLElement | null>(null)
+  // The last element inside the region to take focus; cleared once focus or a
+  // pointer press goes elsewhere. Never by a focusout: Chromium fires one, with
+  // no related target, when the focused node itself is removed.
+  const lastFocused = useRef<HTMLElement | null>(null)
 
   const updatePause = useCallback(() => {
     const region = regionRef.current
@@ -57,8 +105,33 @@ export function ToastRegion() {
     pauseToasts(pointerInside.current || focusInside)
   }, [])
 
+  /** Where focus goes when the toast holding it leaves: `first`, then out of the region. */
+  const handOff = useCallback((first: readonly (HTMLElement | undefined)[]) => {
+    const region = regionRef.current
+    const back = returnTo.current
+    const outside = back !== null && region !== null && !region.contains(back) ? back : null
+    focusFirst([...first, outside, pageHeading()])
+    // A move within the region is not an entry: keep where focus came from.
+    returnTo.current = back
+  }, [])
+
+  // Focus moves before the toast goes, so it is never on a removed node.
+  const dismiss = useCallback<DismissHandler>(
+    (id, button) => {
+      const region = regionRef.current
+      if (region !== null && region.contains(document.activeElement)) {
+        const buttons = [...region.querySelectorAll<HTMLElement>('.toast-dismiss')]
+        const at = buttons.indexOf(button)
+        handOff(at < 0 ? [] : [buttons[at + 1], buttons[at - 1]])
+      }
+      dismissToast(id)
+    },
+    [handOff],
+  )
+
   // Hover is read from where the pointer arrives, not from enter/leave pairs:
   // a toast dismissed under the pointer disappears without any leave event.
+  // Focus or a press anywhere else ends the region's hold on focus.
   useEffect(() => {
     const onOver = (event: PointerEvent) => {
       const region = regionRef.current
@@ -75,16 +148,38 @@ export function ToastRegion() {
         updatePause()
       }
     }
+    const onElsewhere = (event: Event) => {
+      const region = regionRef.current
+      if (region !== null && event.target instanceof Node && !region.contains(event.target)) {
+        lastFocused.current = null
+      }
+    }
     document.addEventListener('pointerover', onOver)
     document.addEventListener('pointerout', onOut)
+    document.addEventListener('pointerdown', onElsewhere)
+    document.addEventListener('focusin', onElsewhere)
     return () => {
       document.removeEventListener('pointerover', onOver)
       document.removeEventListener('pointerout', onOut)
+      document.removeEventListener('pointerdown', onElsewhere)
+      document.removeEventListener('focusin', onElsewhere)
     }
   }, [updatePause])
 
-  // A dismissed toast takes its focused button with it, and no blur fires; an
-  // empty region cannot be hovered.
+  // A toast that held focus and went for another reason (a newer toast took its
+  // place) leaves focus on <body>: hand it on, before the next paint.
+  useLayoutEffect(() => {
+    const last = lastFocused.current
+    const active = document.activeElement
+    if (last === null || last.isConnected || (active !== null && active !== document.body)) {
+      return
+    }
+    lastFocused.current = null
+    handOff([regionRef.current?.querySelector<HTMLElement>('.toast-dismiss') ?? undefined])
+  }, [toasts, handOff])
+
+  // A removed toast takes its focused button with it (the browser's blur then
+  // finds no related target inside); an empty region cannot be hovered.
   useEffect(() => {
     if (toasts.length === 0) {
       pointerInside.current = false
@@ -114,11 +209,69 @@ export function ToastRegion() {
     }
   }, [])
 
+  // Keep clear of a registered bar, live: above it while it is held at the
+  // window's bottom edge, below it once the room under it fits the toasts. The
+  // gap is the region's own (its CSS), read back from where it sits.
+  useLayoutEffect(() => {
+    const region = regionRef.current
+    if (bar === null || region === null) {
+      return
+    }
+    const root = document.documentElement
+    let offset = 0
+    let rise: number | null = null
+    region.style.setProperty('--toast-offset', '0px')
+    const place = () => {
+      const viewport = root.clientHeight
+      const box = bar.getBoundingClientRect()
+      const height = region.offsetHeight
+      const gap = viewport - region.getBoundingClientRect().bottom - offset
+      const next =
+        viewport - box.bottom >= height + gap ? 0 : Math.max(0, Math.ceil(viewport - box.top))
+      if (next !== offset) {
+        offset = next
+        region.style.setProperty('--toast-offset', `${next}px`)
+      }
+      const nextRise = height > 0 ? Math.ceil(height + gap) : null
+      if (nextRise !== rise) {
+        rise = nextRise
+        if (nextRise === null) {
+          root.style.removeProperty('--toast-rise-h')
+        } else {
+          root.style.setProperty('--toast-rise-h', `${nextRise}px`)
+        }
+      }
+    }
+    place()
+    window.addEventListener('scroll', place, { passive: true })
+    window.addEventListener('resize', place)
+    const observer = new ResizeObserver(place)
+    observer.observe(bar)
+    observer.observe(region)
+    return () => {
+      window.removeEventListener('scroll', place)
+      window.removeEventListener('resize', place)
+      observer.disconnect()
+      region.style.removeProperty('--toast-offset')
+      root.style.removeProperty('--toast-rise-h')
+    }
+  }, [bar])
+
   return (
     <div
       ref={regionRef}
       className="toast-region"
-      onFocus={updatePause}
+      onFocus={(event) => {
+        const region = event.currentTarget
+        const from = event.relatedTarget
+        if (!(from instanceof Node && region.contains(from))) {
+          returnTo.current = from instanceof HTMLElement ? from : null
+        }
+        if (event.target instanceof HTMLElement) {
+          lastFocused.current = event.target
+        }
+        updatePause()
+      }}
       onBlur={(event) => {
         // Focus moving to another control in the region keeps it paused.
         if (!event.currentTarget.contains(event.relatedTarget)) {
@@ -126,18 +279,18 @@ export function ToastRegion() {
         }
       }}
     >
-      <div role="alert" className="toast-stack">
+      <div role="alert" aria-atomic="false" className="toast-stack">
         {toasts
           .filter((shown) => shown.tone === 'error')
           .map((shown) => (
-            <ToastItem key={shown.id} toast={shown} />
+            <ToastItem key={shown.id} toast={shown} onDismiss={dismiss} />
           ))}
       </div>
-      <div role="status" className="toast-stack">
+      <div role="status" aria-atomic="false" className="toast-stack">
         {toasts
           .filter((shown) => shown.tone !== 'error')
           .map((shown) => (
-            <ToastItem key={shown.id} toast={shown} />
+            <ToastItem key={shown.id} toast={shown} onDismiss={dismiss} />
           ))}
       </div>
     </div>

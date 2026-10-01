@@ -60,6 +60,13 @@
     }
   }
 
+  /* A coarse pointer: a 44px tall target (components.css, "A coarse pointer"). */
+  @media (pointer: coarse) {
+    .back-link {
+      min-block-size: 2.75rem;
+    }
+  }
+
   /*
    * Text, so muted, never --fg-subtle. The separator is hidden from assistive
    * technology (empty alternative text after the slash); an engine without that

@@ -1,5 +1,14 @@
-import { useEffect, useId, useRef } from 'react'
+import { Children, isValidElement, useEffect, useId, useRef } from 'react'
 import type { ReactNode, RefObject } from 'react'
+
+/** The `.dialog-actions` row: the one child left out of the dialog's description. */
+function isActionsRow(child: ReactNode): boolean {
+  if (!isValidElement<{ className?: unknown }>(child)) {
+    return false
+  }
+  const { className } = child.props
+  return typeof className === 'string' && className.split(/\s+/).includes('dialog-actions')
+}
 
 /**
  * A modal dialog over the native `<dialog>` and `showModal()`: focus stays
@@ -17,7 +26,10 @@ import type { ReactNode, RefObject } from 'react'
  *   queues a `close` event that fires after the remount has reopened the
  *   dialog; the guard keeps it from closing a dialog that mounted open.
  *
- * `children` are the body and the action buttons.
+ * `children` are the body and a `.dialog-actions` row of buttons. The body,
+ * every child but that row, is the dialog's accessible description
+ * (`aria-describedby`), so its consequence is read when it opens even though
+ * focus goes straight to a button; the row follows it.
  */
 export function Dialog({
   open,
@@ -34,6 +46,7 @@ export function Dialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const titleId = useId()
+  const bodyId = useId()
   // Set before a close this component starts; the next `close` event clears it.
   const closingItself = useRef(false)
   const onCloseRef = useRef(onClose)
@@ -66,11 +79,16 @@ export function Dialog({
     }
   }, [open, initialFocus])
 
+  const parts = Children.toArray(children)
+  const body = parts.filter((part) => !isActionsRow(part))
+  const actions = parts.filter(isActionsRow)
+
   return (
     <dialog
       ref={dialogRef}
       className="dialog"
       aria-labelledby={titleId}
+      aria-describedby={body.length > 0 ? bodyId : undefined}
       onClose={() => {
         if (closingItself.current) {
           closingItself.current = false
@@ -82,7 +100,10 @@ export function Dialog({
       <h2 id={titleId} className="dialog-title">
         {title}
       </h2>
-      {children}
+      <div id={bodyId} className="dialog-body">
+        {body}
+      </div>
+      {actions}
     </dialog>
   )
 }
