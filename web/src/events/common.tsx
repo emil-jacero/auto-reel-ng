@@ -1,6 +1,6 @@
 import type { Staleness } from '../api/events'
 import { Pill } from '../ui/Pill'
-import { REASON_LABEL, UNANSWERED_CAUSE } from './labels'
+import { REASON_LABEL, REASON_NOTE, UNANSWERED_CAUSE } from './labels'
 import { VERDICT_LOOK } from './tones'
 
 /** Helpers both event screens share. */
@@ -80,7 +80,14 @@ export function formatBytes(bytes: number): string {
 }
 
 /** The render verdict: a pill, and every reason in words when stale. */
-export function StalenessCell({ staleness }: { staleness: Staleness }) {
+export function StalenessCell({
+  staleness,
+  explain = false,
+}: {
+  staleness: Staleness
+  /** The event page: each cited reason's note, when it has one, on a line of its own. */
+  explain?: boolean
+}) {
   const look = staleness.stale ? VERDICT_LOOK.stale : VERDICT_LOOK.fresh
   return (
     <span className="verdict">
@@ -92,6 +99,18 @@ export function StalenessCell({ staleness }: { staleness: Staleness }) {
           {staleness.reasons.map((reason) => REASON_LABEL[reason]).join(', ')}
         </span>
       )}
+      {explain &&
+        staleness.stale &&
+        staleness.reasons.map((reason) => {
+          const note = REASON_NOTE[reason]
+          return (
+            note !== null && (
+              <span key={reason} className="reason-note">
+                {note}
+              </span>
+            )
+          )
+        })}
     </span>
   )
 }
