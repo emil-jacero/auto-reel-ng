@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Confirm the base. This change has no gate, but it starts from main at `bca64f2` or later. It runs in parallel with `jobs-live-polish`, `event-list-polish`, `event-page-polish`, `ui-a11y-polish` and `serve-clean-exit`.
+- [x] 1.1 Confirm the base. This change has no gate, but it starts from main at `bca64f2` or later. It runs in parallel with `jobs-live-polish`, `event-list-polish`, `event-page-polish`, `ui-a11y-polish` and `serve-clean-exit`.
 
   Re-check the names the design cites, and stop and report to the supervisor on any mismatch:
   - `web/src/edit/SaveBar.tsx`: `controlState`, `CONFLICT_DETAIL`, Save as `btn btn-primary`, and the conflict's "Reload latest (discard my changes)" as `btn-primary`
@@ -27,7 +27,7 @@
 
 ## 2. web/ — the save bar
 
-- [ ] 2.1 Make the save bar compact, with one primary action (design, "The save bar: compact in place, one primary action").
+- [x] 2.1 Make the save bar compact, with one primary action (design, "The save bar: compact in place, one primary action").
 
   In `src/edit/SaveBar.tsx`:
   - Save's class follows `savePrimary`
@@ -50,25 +50,21 @@
     - `document.activeElement` is Save, and its `aria-describedby` is the alert's id
   - With the same conflict at 320, 340 and 360 wide, `document.documentElement.scrollWidth <= clientWidth`, and every element inside `.save-bar-card` has `getBoundingClientRect().right <= innerWidth`
   - At 390×844, with Sommarlov's folder `chmod a-w`, saving a reorder shows "reel.yaml could not be saved.", the service's whole detail with the real library path and temporary file name (its text equals the answer's `detail`), and Retry. With the page at its top, `.save-bar`'s `offsetHeight` is at most 337 px (two fifths; the review measured 300), the page does not scroll sideways, and the card's one `.btn-primary` is Save. Restore the folder's permissions afterwards.
-- [ ] 2.2 Publish the live band in `src/edit/EventEditor.tsx` (design, "Toasts and the bar: the contract with `ui-a11y-polish`"). The bar's layout effect writes `max(0, ceil(clientHeight − bar.top))` only when it changes:
-  - synchronously when the bar shows
-  - directly from a `ResizeObserver` on the bar and on `<html>`, as today's observer does
-  - at most once per frame (`requestAnimationFrame`) on window `scroll` (passive) and `resize`
-
-  The cleanup removes the property. If `ui-a11y-polish` is on main, keep its `keepToastsClearOf(bar)` call and its `release()` inside this effect.
+- [x] 2.2 Keep the toast contract as it landed, name the saved event, and word a save with no answer (design, "Supervisor decisions", "Toasts and the bar", "The "Saved" toast names the event", "A save with no answer, and an error in the page"):
+  - `src/edit/EventEditor.tsx`: the bar effect keeps publishing `bar.offsetHeight` as `--toast-inset-bottom`, with `keepToastsClearOf(bar)` and its `release()`; only its comment changes. The success toast says `Saved <name>`, with jobs-live-polish's `eventName` format and the saved title and date (never a value the service resolves). The `.catch` after `send()` makes a `disk`-kind problem titled "The save stopped on an error in this page.", logs the error, and keeps Retry.
+  - `src/edit/SaveBar.tsx`: the `unreachable` alert shows no detail; a comment above the `disk` kind says what it covers.
 
   Verify:
   - `npx tsc --noEmit` and `npm run build` pass
-  - Playwright, on Grillning with a title edit, at 1280×900 and at 390×844:
-    - at scroll 0, 50 %, 95 % and 100 % of the way down, `getComputedStyle(document.documentElement).getPropertyValue('--toast-inset-bottom')` equals `ceil(clientHeight − .save-bar top)` within 1 px
-    - at scroll 0 it equals `.save-bar`'s `offsetHeight`
-    - a `MutationObserver` on `<html>`'s `style` attribute records no write while the page scrolls from 0 to 50 % (the bar is stuck)
-    - after Reset the property is absent
-  - If `ui-a11y-polish` is on main, `grep -n 'keepToastsClearOf\|release()' web/src/edit/EventEditor.tsx` shows both, inside this effect
+  - `grep -n 'keepToastsClearOf\|release()\|offsetHeight' web/src/edit/EventEditor.tsx` shows all three inside the bar effect
+  - Playwright, on Grillning with a title edit, at 1280×900 and at 390×844: `--toast-inset-bottom` equals `.save-bar`'s `offsetHeight`, and after Reset the property is absent
+  - Saving a location change on Grillning shows a success toast whose text is `Saved “Grillkväll med grannarna” · 2024-06-27` (with its no-break spaces and word joiners); restore its `reel.yaml` afterwards
+  - At 390×844, a reorder of Badutflykt whose `PUT …/reel` is aborted by `page.route`: the bar says "The service is not reachable.", its text has no "Failed to fetch" or "TypeError", Retry is there, focus stays on Save, and `.save-bar`'s `offsetHeight` is at most 281 px
+  - The same save with an init script that resolves a `PUT` `fetch` to `null`: the bar says "The save stopped on an error in this page.", not "not reachable", and offers Retry
 
 ## 3. web/ — keyboard focus
 
-- [ ] 3.1 Scroll a dropped row clear of the save bar (design, "The first drop keeps its row in view"). In `src/edit/ClipOrderList.tsx`:
+- [x] 3.1 Scroll a dropped row clear of the save bar (design, "The first drop keeps its row in view"). In `src/edit/ClipOrderList.tsx`:
   - `onDragEnd` records `dropped`, for a drop that changed the order
   - the layout effect turns it into `scrollAfter` before its `focusAfter` early return
   - the passive effect is unchanged
@@ -79,7 +75,7 @@
     - Each time, focus is on the dropped clip's handle, and none of the 5 points hits `.save-bar-card`, `.app-header` or a `.panel-header`.
     - Move down on `s1710002.mp4`, and Remove and Undo on Sommarlov's `borttagen.mp4`, still leave 0 points covered.
     - The spec's "Dragging a clip to the front" scenario still holds with a pointer drag.
-- [ ] 3.2 Keep focus on Try again (design, "Try again keeps focus"). In `src/edit/EventEditor.tsx`:
+- [x] 3.2 Keep focus on Try again (design, "Try again keeps focus"). In `src/edit/EventEditor.tsx`:
   - the `retrying` flag and action, and `readReel(retry)`
   - Try again `aria-disabled` and `aria-busy` while retrying, and its click ignored meanwhile
   - "Reading reel.yaml…" in the status region while retrying
@@ -98,7 +94,7 @@
 
 ## 4. web/ — rows and headings
 
-- [ ] 4.1 Build Edit mode's grid from the table's tracks, and move the row action after the facts (design, "One grid with the table", "A missing clip's row: its action after its facts").
+- [x] 4.1 Build Edit mode's grid from the table's tracks, and move the row action after the facts (design, "One grid with the table", "A missing clip's row: its action after its facts").
 
   In `src/edit/edit.css`:
   - the one-line track list and areas, reading `--clip-col-pos`, `--clip-thumb-w`, `--clip-col-status`, `--clip-col-size` and `--clip-col-mtime` with today's widths as fallbacks
@@ -108,7 +104,7 @@
 
   The new base rules go before the `(width < 58rem)` and `(width < 30rem)` blocks, so the narrow areas win by source order (design, "Cascade order matters").
 
-  In `src/edit/ClipOrderList.tsx`, `RowBody` passes `action` to `ClipFacts`, which renders it after `.clip-mtime`. This covers `ClipRow`'s Remove and `RemovedRow`'s Undo.
+  In `src/edit/ClipOrderList.tsx`, `RowBody` passes `action` to `ClipFacts`, which renders it after `.clip-mtime`, in a `.clip-action` wrapper. This covers `ClipRow`'s Remove and `RemovedRow`'s Undo. Under a coarse pointer, from a 28rem panel to the one-line layout, a Remove takes a facts line of its own (design, "A missing clip's row", changed at implementation).
 
   Verify:
   - `npx tsc --noEmit` and `npm run build` pass, and `grep -rn ' disabled=' web/src/edit` prints nothing
@@ -116,7 +112,7 @@
   - At 390, Sommarlov's `borttagen.mp4` row is at most 8 px taller than `s1710002.mp4`'s, and its Remove's left edge is at or right of its box's right edge
   - Sweep from 320 to 1440 px, in steps of 40, over Sommarlov with `borttagen.mp4` removed, and over Två kapitel: `scrollWidth <= clientWidth` throughout
   - The pointer-drag and keyboard-reorder scenarios of the spec still hold
-- [ ] 4.2 Finish the headings, the toggle and the fields (design, "Chapter headings stay one line", "Stop editing, and field edges"):
+- [x] 4.2 Finish the headings, the toggle and the fields (design, "Chapter headings stay one line", "Stop editing, and field edges"):
   - in `src/edit/ClipOrderList.tsx`: `panel-meta` holds only the count, and both captions carry their counts
   - in `src/edit/edit.css`: `.edit-chapter > .panel-header > h2` gets `min-inline-size: 0; overflow-wrap: anywhere`; `.field-input` gets a `--fg-subtle` edge and a `--fg-muted` hover
   - in `src/events/EventDetail.tsx`: the toggle's `className="btn btn-secondary"`, the one line
@@ -131,26 +127,33 @@
     - **The toggle**: it has `btn btn-secondary` as Edit and as Stop editing, and focus stays on it when Edit mode starts
     - **The fields**: the edges of the empty Location and Description measure at least 3:1 against their panel in light and in dark (the canvas method of the design's "Findings, reproduced")
 
-## 5. Docs
-
-- [ ] 5.1 Update `web/README.md`:
-  - the Edit-mode paragraph:
-    - the save bar's one primary action
-    - its compact failure at phone width
-    - the rows sharing the table's columns
-    - the headings' clip count, and the counts on the removed and ignored lists. The quoted caption "Removed from reel.yaml when you save" becomes the counted one, for example "1 clip removed from reel.yaml when you save"
-    - Try again keeping focus
-  - the "Toasts" bullet's sentence: a page with a sticky bar publishes `--toast-inset-bottom` as the band from the bar's top edge to the window's bottom, live while the page scrolls. If `ui-a11y-polish` already edited this bullet, merge the sentence into its text.
+- [x] 4.3 Name clips as the table does (design, "Clip names, as the table names them"). In `src/edit/ClipOrderList.tsx`, one `clipNames(chapter, [...original, ...ignored])` per chapter names every row (`ClipName`), its frame (`ClipThumb`'s `name`), the handle's, Move's, Remove's and Undo's labels, and the drag and button announcements. `fileName` is no longer used there.
 
   Verify:
-  - `grep -n "toast-inset-bottom" web/README.md` shows the new sentence
+  - `npx tsc --noEmit` and `npm run build` pass, and `grep -n 'fileName' web/src/edit/ClipOrderList.tsx` prints nothing
+  - Playwright, with `Två kapitel`'s `reel.yaml` listing `Kvällen/s1710004.mp4` after `s1710001.mp4` in its default chapter (restored afterwards): in the read view and in Edit mode, `Main`'s rows read `s1710001.mp4`, `Kvällen/s1710004.mp4` and the ignored `s1710004.mp4`; the second's handle is named "Reorder Kvällen/s1710004.mp4"; its Move up announces "Kvällen/s1710004.mp4 moved to position 1 of 2."; and after the move the names are unchanged
+  - On Grillning (one folder) every Edit row's name equals its file name, as before
+
+## 5. Docs
+
+- [x] 5.1 Update `web/README.md`, the Edit-mode paragraph:
+  - the save bar's one primary action
+  - its compact failure at phone width
+  - the rows sharing the table's columns, and naming clips as the table does
+  - the headings' clip count, and the counts on the removed and ignored lists. The quoted caption "Removed from reel.yaml when you save" becomes the counted one, for example "1 clip removed from reel.yaml when you save"
+  - Try again keeping focus
+
+  The "Toasts" bullet, as `ui-a11y-polish` rewrote it, already says that the page sets `--toast-inset-bottom` to the bar's height, which stays true (supervisor decision), so it is left as it is.
+
+  Verify:
+  - `grep -n "toast-inset-bottom" web/README.md` still shows the Toasts bullet's sentence, unchanged
   - `grep -n "primary" web/README.md` hits the Edit-mode paragraph
   - `grep -n '"Removed from reel.yaml when you save"' web/README.md` prints nothing
   - `git diff --stat main -- docs` is empty
 
 ## 6. Verification against the dev library
 
-- [ ] 6.1 Run the whole pass in the agent's own environment (design, "Verification fixtures"): `SLUG=edit-mode-polish`, `N=15`, database `arel_edit_mode_polish`, library `../dev-edit-mode-polish`, `serve` on 8115, and no worker. Never use port 8080 or 5173, the default database, `../auto-reel-dev`, `auto-reel-media/`, or another agent's database, library or port.
+- [x] 6.1 Run the whole pass in the agent's own environment (design, "Verification fixtures"): `SLUG=edit-mode-polish`, `N=15`, database `arel_edit_mode_polish`, library `../dev-edit-mode-polish`, `serve` on 8115, and no worker. Never use port 8080 or 5173, the default database, `../auto-reel-dev`, `auto-reel-media/`, or another agent's database, library or port.
 
   The Playwright scripts live in `<scratchpad>/verify/edit-mode-polish/` and are never committed. Run them in `mcr.microsoft.com/playwright/python:v1.49.0-noble` with `--network host`, with locators scoped to `main:not([hidden])`.
 
@@ -164,17 +167,16 @@
 
     Look at every one.
   - **axe-core**, injected ad hoc: no serious or critical violation in Edit mode with the conflict shown, and with Sommarlov's missing row, in both schemes
-  - **The tasks' checks**: run once more the checks of 2.1, 2.2, 3.1, 3.2, 4.1 and 4.2 on the final build
-  - **If `ui-a11y-polish` is on main**, two integration checks. Hold an error toast, from the row Render of `2024-07-14 - kalas` (the real 409):
+  - **The tasks' checks**: run once more the checks of 2.1, 2.2, 3.1, 3.2, 4.1, 4.2 and 4.3 on the final build
+  - **`ui-a11y-polish` is on main**, so two integration checks. Hold an error toast, from the row Render of `2024-07-14 - kalas` (the real 409):
     - From the top of Grillning's Edit mode at 1280×900 and at 390×844, a Tab walk to Save finds no focused control with any of its 5 sample points under `.toast`, `.save-bar-card` or `.app-header`.
     - On Grillning and on the Omöjligt datum fix form, at 1280, 390 and 320, at scroll 0, 50, 90, 97 and 100 %, no `.toast` rect intersects `.save-bar-card`.
-
-    If `ui-a11y-polish` is not on main, still run the second check: the live band then places the toasts at the bar's top edge (design, "Toasts and the bar", Decision 5), so none may intersect the card. Write down that the first check, and the page-end controls, are left to `ui-a11y-polish`'s verification.
-  - **If `event-page-polish` is on main**: at 1280, both views show 128 px frames, and the alignment check of 4.1 holds
+  - **Touch**: `ui-a11y-polish`'s touch probe (every point of each control's 44 × 44 area reaches that control), under a coarse pointer, over Grillning's, Sommarlov's and Två kapitel's Edit mode at 1280, 768, 390 and 320, and over the conflict bar at 390 and 320
+  - **`event-page-polish` is on main**: at 1280, both views show 128 px frames, and the alignment check of 4.1 holds
 
 ## 7. Validation
 
-- [ ] 7.1 Run the gates. Verify all pass:
+- [x] 7.1 Run the gates. Verify all pass:
   - `npx tsc --noEmit` and `npm run build` in the node:22 container
   - the motion grep gate (web/README.md, "Motion") over `web/src/edit`. This change adds no animation.
   - `grep -rn 'autoFocus' web/src/edit` prints nothing

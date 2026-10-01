@@ -104,13 +104,15 @@ type Ready = {
 
 type State =
   | { status: 'loading' }
-  | ({ status: 'failed' } & ReadFailure)
+  // `retrying`: Try again's read runs, and the failure stays shown with its button busy.
+  | ({ status: 'failed'; retrying?: true } & ReadFailure)
   // The page's chapters no longer agree with the document just read.
   | { status: 'changed' }
   | Ready
 
 type Action =
   | { type: 'reading' }
+  | { type: 'retrying' }
   | { type: 'read-failed'; failure: ReadFailure }
   | { type: 'read'; document: ReelDocument; etag: string; chapters: EditableChapter[] | null }
   | { type: 'move'; chapter: string; from: number; to: number }
@@ -138,6 +140,8 @@ function reduce(state: State, action: Action): State {
   switch (action.type) {
     case 'reading':
       return { status: 'loading' }
+    case 'retrying':
+      return state.status === 'failed' ? { ...state, retrying: true } : { status: 'loading' }
     case 'read-failed':
       return { status: 'failed', ...action.failure }
     case 'read': {
@@ -346,6 +350,46 @@ const CHANGED_DETAIL =
   'Its clips or chapters no longer match what the page shows. ' +
   'Read it again to edit what is on disk now.'
 
+// A toast's text is a string: these keep its line breaks out of the name's date.
+const NO_BREAK_SPACE = '\u00a0'
+const WORD_JOINER = '\u2060' // invisible; no line break before or after it
+
+/**
+ * How a toast names an event, in the render toasts' format: its title, then its
+ * date, since titles repeat; with no title, its folder name, which starts with
+ * the date. The "·" never ends or starts a line, and the date never breaks at its
+ * hyphens.
+ */
+function eventName(eventId: string, title: string | null, date: string | null): string {
+  if (title === null) {
+    return `“${folderName(eventId)}”`
+  }
+  if (date === null) {
+    return `“${title}”`
+  }
+  const unbroken = date.split('-').join(`-${WORD_JOINER}`)
+  return `“${title}”${NO_BREAK_SPACE}·${NO_BREAK_SPACE}${unbroken}`
+}
+
+/**
+ * The title or date a save leaves the event with, as far as the page knows it:
+ * the value written; else, for a field reel.yaml left unset and still leaves
+ * unset, the value the page resolved from the folder name. A field the operator
+ * emptied is resolved by the service, from the folder name: null, never a guess.
+ */
+function savedValue(
+  field: 'title' | 'date',
+  read: ReelDocument,
+  body: ReelWriteBody,
+  resolved: Resolved | null,
+): string | null {
+  const written = body.metadata[field]
+  if (written != null) {
+    return written
+  }
+  return read.metadata[field] == null ? (resolved?.[field] ?? null) : null
+}
+
 /** "Title", "Title and date", "Title, date and location": the changed fields in words. */
 function fieldWords(fields: readonly MetadataField[]): string {
   const words = fields.map((field, index) =>
@@ -415,6 +459,10 @@ export function EventEditor({
   const refusalRef = useRef<HTMLDivElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const keepEditingRef = useRef<HTMLButtonElement>(null)
+  // Try again was pressed and its answer is still to come; a press meanwhile sends nothing.
+  const retried = useRef(false)
+  const detailsHeadingRef = useRef<HTMLHeadingElement>(null)
+  const readAgainRef = useRef<HTMLButtonElement>(null)
 
   const chapters = useMemo(() => editableChapters(detail), [detail])
   const clips = useMemo(
@@ -442,11 +490,12 @@ export function EventEditor({
     [detail],
   )
 
-  const readReel = useCallback(() => {
+  // Try again keeps the failure, and its button, shown while it reads (`retry`).
+  const readReel = useCallback((retry = false) => {
     inFlight.current?.abort()
     const controller = new AbortController()
     inFlight.current = controller
-    dispatch({ type: 'reading' })
+    dispatch({ type: retry ? 'retrying' : 'reading' })
     fetchReel(eventId, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) {
@@ -515,10 +564,12 @@ export function EventEditor({
     return () => setSaving(false)
   }, [locked])
 
-  // The bar's height, for the toasts (they sit above it) and the bottom scroll
-  // padding (focus never hides under it). Published in the commit that shows the
-  // bar, so the scroll a move makes right after (a passive effect) already clears
-  // it; it wraps when narrow, so a ResizeObserver follows later changes.
+  // The bar's height, for the bottom scroll padding (focus never hides under it),
+  // and the toast region's offset when no bar is registered. Published in the
+  // commit that shows the bar, so the scroll a move or a drop makes right after (a
+  // passive effect) already clears it; it wraps when narrow, so a ResizeObserver
+  // follows later changes. Registered, the bar has the toasts place themselves
+  // above it while it is held at the window's bottom, below it once it rests.
   useLayoutEffect(() => {
     const bar = barRef.current
     if (!showBar || bar === null) {
@@ -558,6 +609,34 @@ export function EventEditor({
     setAnnouncement('')
     window.requestAnimationFrame(() => setAnnouncement(message))
   }, [])
+
+  // Try again's answer. A failure keeps focus on Try again and is said again (the
+  // alert's text did not change, so its role does not repeat it); a read moves
+  // focus to the fields' heading, a changed event to Read again, and the failure
+  // said before leaves the live region. A layout effect: a read unmounts the
+  // focused button, and no frame may paint with focus on <body>.
+  useLayoutEffect(() => {
+    if (!retried.current || state.status === 'loading') {
+      return
+    }
+    if (state.status === 'failed') {
+      if (state.retrying === true) {
+        return
+      }
+      // The cause and its kind, as the alert's title says them.
+      announce(
+        state.failure === undefined ? state.cause : `${state.cause} ${FAILURE_LABEL[state.failure]}`,
+      )
+    } else {
+      setAnnouncement('')
+      if (state.status === 'ready') {
+        detailsHeadingRef.current?.focus()
+      } else {
+        readAgainRef.current?.focus()
+      }
+    }
+    retried.current = false
+  }, [state, announce])
 
   const onMove = useCallback<MoveHandler>(
     (chapter, from, to) => dispatch({ type: 'move', chapter, from, to }),
@@ -606,18 +685,33 @@ export function EventEditor({
       ready.metadata,
       new Set(ready.removed.keys()),
     )
+    const name = eventName(
+      eventId,
+      savedValue('title', ready.read, body, resolved),
+      savedValue('date', ready.read, body, resolved),
+    )
     send(eventId, body, ready.etag, operation)
-      .catch((error: unknown) => ({
-        saved: false as const,
-        problem: { kind: 'unreachable' as const, detail: String(error), retry: operation },
-        refusal: null,
-      }))
+      .catch((error: unknown) => {
+        // An error in this page: send() returns a missing or unexpected answer as a value.
+        console.error('Edit mode: the save stopped on an error', error)
+        return {
+          saved: false as const,
+          problem: {
+            kind: 'disk' as const,
+            title: 'The save stopped on an error in this page.',
+            failure: null,
+            detail: String(error),
+            retry: operation,
+          },
+          refusal: null,
+        }
+      })
       .then((outcome) => {
         saving.current = false
         if (outcome.saved) {
           // Even after an unmount: the list learns of the save, and the page, if it is
           // still shown, reads the event again (its exit does nothing once it is gone).
-          toast.success('Saved')
+          toast.success(`Saved ${name}`)
           markEventsChanged()
           onSaved()
         } else if (mounted.current) {
@@ -626,6 +720,7 @@ export function EventEditor({
       })
   }
 
+  const retrying = state.status === 'failed' && state.retrying === true
   const hasNamedChapter = chapters.some((chapter) => chapter.name !== '')
   const hasIgnored = chapters.some((chapter) => chapter.ignored.length > 0)
   const hasMissing = [...clips.values()].some((clip) => clip.status === 'missing')
@@ -636,7 +731,7 @@ export function EventEditor({
       {/* The one live region for the reel read, the button moves, removals and Undos; dnd-kit
           speaks the drags. */}
       <p role="status" className="visually-hidden">
-        {state.status === 'loading' ? 'Reading reel.yaml…' : announcement}
+        {state.status === 'loading' || retrying ? 'Reading reel.yaml…' : announcement}
       </p>
 
       {state.status === 'loading' && (
@@ -667,7 +762,19 @@ export function EventEditor({
           detail={state.detail}
           action={
             <>
-              <button type="button" className="btn btn-secondary" onClick={readReel}>
+              {/* Busy, not disabled, while it reads: it keeps keyboard focus. */}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                aria-disabled={retrying || undefined}
+                aria-busy={retrying || undefined}
+                onClick={() => {
+                  if (!retried.current) {
+                    retried.current = true
+                    readReel(true)
+                  }
+                }}
+              >
                 <Icon name="refresh" />
                 Try again
               </button>
@@ -688,7 +795,7 @@ export function EventEditor({
           title="This event changed on disk since the page was read."
           detail={CHANGED_DETAIL}
           action={
-            <button type="button" className="btn btn-primary" onClick={onReload}>
+            <button ref={readAgainRef} type="button" className="btn btn-primary" onClick={onReload}>
               <Icon name="refresh" />
               Read again
             </button>
@@ -700,7 +807,10 @@ export function EventEditor({
         <>
           <section className="panel edit-details" aria-labelledby={detailsId}>
             <header className="panel-header">
-              <h2 id={detailsId}>{heading}</h2>
+              {/* Focused by script after Try again reads the document. */}
+              <h2 ref={detailsHeadingRef} id={detailsId} tabIndex={-1}>
+                {heading}
+              </h2>
             </header>
             <div className="panel-body">
               <p className="edit-lede">

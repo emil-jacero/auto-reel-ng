@@ -20,6 +20,11 @@ In a window 390 × 844 CSS pixels, with the bar held at the window's bottom edge
 a third of the window's height. This includes the times it shows a conflict. A failure to save SHALL show
 the service's detail in full, and the bar SHALL then take at most two fifths of the window's height.
 
+The bar SHALL NOT show the browser's own error text. When a save gets no answer at all, the bar SHALL say
+that the service is not reachable and offer Retry, without the text the browser gave for the failed request.
+An error in the page itself SHALL be shown as a failed save with Retry, and SHALL NOT be reported as an
+unreachable service.
+
 #### Scenario: A conflict at phone width
 - **WHEN** in a window 390 × 844, the operator is editing the location of
   `2024-06-27 - Grillning med grannar`, its `reel.yaml` title is changed by hand, and the operator saves
@@ -32,6 +37,13 @@ the service's detail in full, and the bar SHALL then take at most two fifths of 
 - **WHEN** the same conflict is answered in a window 320 pixels wide
 - **THEN** the page does not scroll horizontally, and the alert's title, both choices and the note that the
   edits are kept are all inside the window
+
+#### Scenario: No answer at phone width
+- **WHEN** in a window 390 × 844, the operator saves a reorder of `2024-08-02 - Badutflykt - Varberg` and the
+  request gets no answer
+- **THEN** the save bar says that the service is not reachable, offers Retry, keeps the reorder and shows no
+  browser error text such as "Failed to fetch". Save is its one primary action, and the bar takes at most a
+  third of the window's height.
 
 #### Scenario: A failed write at phone width
 - **WHEN** in a window 390 × 844, the operator saves a reorder of `2024-09-01 - Sommarlov` while its folder
@@ -130,3 +142,28 @@ around it, so that an empty field is visible.
 - **WHEN** Edit mode opens on `2024-06-27 - Grillning med grannar`, in the light and in the dark scheme
 - **THEN** the edges of the empty Location and Description fields measure at least 3:1 against the panel
   around them
+
+### Requirement: Edit mode names clips and the saved event as the other screens do
+
+Edit mode SHALL name each clip as the event page's table names it: by its file name while every clip its
+chapter lists lies in the chapter's own folder, and otherwise by its path inside the event folder. The same
+name SHALL be used in the clip's row, in the names of its controls (its handle, its move controls, and its
+remove or undo control), and in what Edit mode announces about the clip. Moving or removing a clip SHALL NOT
+change how its chapter names its clips.
+
+When a save succeeds, the notification that confirms it SHALL name the event by the title the save left it
+with, followed by that date when it is known, since titles repeat. When the title is not known to the page,
+the notification SHALL name the event by its folder name. The page SHALL NOT guess a title or a date that the
+service resolves from the folder name.
+
+#### Scenario: A chapter that lists a clip from another folder
+- **WHEN** the `reel.yaml` of `2024-08-20 - Två kapitel - Tjörn` lists `Kvällen/s1710004.mp4` in its default
+  chapter after `s1710001.mp4`, and the operator opens Edit mode
+- **THEN** `Main` names its clips `s1710001.mp4` and `Kvällen/s1710004.mp4`, and its ignored clip
+  `s1710004.mp4`, as the page's table named them, and the handle of the second is named
+  "Reorder Kvällen/s1710004.mp4"
+
+#### Scenario: The saved event is named by its title and date
+- **WHEN** the operator changes the location of `2024-06-27 - Grillning med grannar` in Edit mode and saves
+- **THEN** the notification says the event was saved, and names it "Grillkväll med grannarna" with its date
+  2024-06-27
