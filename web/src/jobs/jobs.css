@@ -201,6 +201,12 @@
     font-weight: 600;
   }
 
+  /* A list row's "Starting…", in the percentage's place: worded like the job's words. */
+  .job-starting {
+    color: var(--fg);
+    font-weight: 500;
+  }
+
   /*
    * The bar: a native <progress>, restyled. Its fill is the accent, muted while
    * a cancel is pending. With no value it is indeterminate: diagonal stripes,
@@ -440,18 +446,26 @@
       font-size: var(--text-xs);
     }
 
-    /* A row's narrow cell: the time after an active job's words takes its own line, with no dot. */
-    & .job-words + .job-when {
+    /*
+     * A row's narrow cell: an active job's time takes its own line, with no dot
+     * after its words, so the row keeps its lines while the words come and go.
+     */
+    & .job-state:is([data-status='queued'], [data-status='running']) > .job-when {
       flex-basis: 100%;
-
-      &::before {
-        content: none;
-      }
     }
 
+    & .job-words + .job-when::before {
+      content: none;
+    }
+
+    /*
+     * The meter's line is its figures' line from the first active state ("Starting…"
+     * is a figure here), so the row does not change height when progress starts.
+     */
     & .job-meter {
       flex: 1 1 100%;
       column-gap: var(--s-2);
+      min-block-size: calc(var(--text-xs) * var(--lh-normal));
     }
 
     & .job-bar {
