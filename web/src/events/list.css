@@ -167,15 +167,6 @@
     .event-table .live-job .job-when {
       flex-basis: 100%;
     }
-
-    /*
-     * Stop-gap until jobs-live-polish lands its own separator rule (it deletes
-     * this one): the time is on its own line here, so the dot that ends an
-     * active job's words would dangle.
-     */
-    .event-table .live-job .job-words::after {
-      content: none;
-    }
   }
 
   /*
