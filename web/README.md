@@ -319,8 +319,11 @@ HLD §7).
   not the current one, never seconds, in the browser's locale; the exact instant
   stays in `<time dateTime>`. Event dates are calendar dates and stay `YYYY-MM-DD`,
   as the folders write them.
-- **Hover means a target.** Only rows that open something take a hover fill (the
-  list's event rows); "Needs attention" rows and clip rows do not.
+- **Hover means a target.** Only table rows that open something take a hover fill
+  (the list's event rows), and only for a pointer that hovers (`@media (hover:
+  hover)`), since a touch screen keeps `:hover` on the last row tapped; "Needs
+  attention" rows and the event page's clip table take none. Edit mode's clip rows
+  keep their own hover, which brings out their drag handle and move buttons.
 - **Shared pieces, by fixed name.** `ui/Icon` (`<Icon name="…" />`, decorative unless
   given a `label`), `ui/Pill`, `ui/Alert` (with an `action` slot; `role="alert"` by
   default), `ui/Skeleton` (`SkeletonRows`, `LoadStatus`), `ui/Dialog`, `ui/toast`
