@@ -10,17 +10,23 @@ When one SIGINT or one SIGTERM has stopped the service and its orderly shutdown 
 SHALL exit with status 0 and SHALL NOT end with a traceback. This SHALL hold whichever of the two signals
 stopped it, with or without WebSocket clients connected, and whether it runs in a terminal (Ctrl-C) or under
 a supervisor that sends SIGTERM. A further SIGTERM while the shutdown is still running SHALL NOT change the
-outcome.
+outcome. Once the service has finished its shutdown, a further SIGINT or SIGTERM that arrives while the
+command exits SHALL NOT change it either.
 
-A SIGINT that arrives while the shutdown is still running, whichever signal started it, is the operator's
-force-quit: the service no longer waits for request handlers that are still running, and skips its
-application shutdown if that has not started yet. It still waits for its client connections to end, so a
-connection the server cannot finish closing (api-service, "WebSocket live job updates": a vanished peer
-with frames backed up) keeps the command running through further SIGINTs until that connection ends.
-When the command then ends, it SHALL exit with status 130, never 0, so that a forced stop is not reported
-as a clean one, and it SHALL NOT end with a `KeyboardInterrupt` traceback of its own. A request handler
-that the forced stop cancels, and the application lifespan whose shutdown it skips, MAY still be logged
-as errors with their tracebacks.
+The orderly shutdown waits for the request handlers that are still running. A SIGINT that arrives while the
+shutdown is still running, whichever signal started it, is the operator's force-quit: the service stops
+waiting for those handlers, including one blocked in a worker thread (any synchronous route, for example on
+a stalled database), which the command abandons when it exits instead of waiting for it to return. uvicorn's
+application shutdown step is skipped if it has not started yet, so the log has no "Application shutdown
+complete". The application's own cleanup (the WebSocket poller stopped, the database connections released)
+still runs, when its lifespan is cancelled as the service exits, and the command waits for it. The force
+also still waits for the service's client connections to end, so a connection the server cannot finish
+closing (api-service, "WebSocket live job updates": a vanished peer with frames backed up) keeps the
+command running through further SIGINTs until that connection ends. When the command then ends, it SHALL
+exit with status 130, never 0, so that a forced stop is not reported as a clean one, and it SHALL NOT end
+with a `KeyboardInterrupt` traceback of its own, however many further SIGINTs arrived. A request handler
+that the forced stop cancels, and the application lifespan, cancelled at exit or interrupted by a further
+SIGINT while its cleanup still waits, MAY still be logged as errors with their tracebacks.
 
 #### Scenario: Serve starts and answers
 - **WHEN** `auto-reel serve` runs against a project root and a reachable database
@@ -48,6 +54,19 @@ as errors with their tracebacks.
 #### Scenario: A second Ctrl-C forces the exit and reports it
 - **WHEN** one Ctrl-C has started the shutdown of `auto-reel serve`, the shutdown is still waiting for a
   request handler that keeps running after its client left, and the operator presses Ctrl-C again
-- **THEN** the service stops waiting and skips its application shutdown, so its log has no "Application
-  shutdown complete"
+- **THEN** the service stops waiting without uvicorn's application shutdown step, so its log has no
+  "Application shutdown complete"
 - **AND** the command exits with status 130 and does not end with a `KeyboardInterrupt` traceback
+
+#### Scenario: A forced stop does not wait for a handler blocked in a worker thread
+- **WHEN** a `GET /healthz` is blocked in a worker thread on a database that accepts the connection and
+  never answers, its client has given up, one Ctrl-C has started the shutdown of `auto-reel serve`, and
+  the operator presses Ctrl-C twice more
+- **THEN** the command exits with status 130 within a few seconds of the second Ctrl-C, while that handler
+  is still blocked
+- **AND** its output holds no `KeyboardInterrupt` traceback
+
+#### Scenario: A late signal does not change the exit status
+- **WHEN** one SIGTERM or one Ctrl-C has stopped `auto-reel serve` and its orderly shutdown has completed,
+  and a further SIGINT or SIGTERM arrives while the command exits
+- **THEN** the command still exits with status 0, and its output holds no traceback

@@ -503,8 +503,8 @@ connection releases its subscription at once, whichever side ends it:
   No second signal SHALL be needed. The exception is a connection to such a vanished peer with frames still
   backed up. The server cannot finish closing it, so it can make the shutdown fail, or stall it until the
   host's TCP stack abandons the connection, which can take many minutes. A second SIGINT does not shorten
-  that stall: it skips the application shutdown, but the process still exits only once that connection has
-  ended.
+  that stall: the process still exits only once that connection has ended. Like any stop, it also waits for
+  HTTP requests still being handled (headless-cli, "`serve` runs the API service").
 
 #### Scenario: Snapshot on connect
 - **WHEN** a client connects while two jobs are active

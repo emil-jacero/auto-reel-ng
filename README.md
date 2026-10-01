@@ -415,15 +415,20 @@ auto-reel serve <root> --host 127.0.0.1 --port 8080
 One SIGINT (Ctrl+C) or SIGTERM (`systemctl stop`, `podman stop`) stops `serve`,
 GUI tabs connected or not: every WebSocket client gets close code 1012, and the
 service finishes its orderly shutdown (poller stopped, database connections
-released) within a few seconds, and `serve` exits with status 0. The one exception
-is a connection to a peer that vanished while frames were still backed up for it:
-the server cannot finish closing it, so the shutdown can fail before its orderly
-part, or wait until the operating system gives up on that connection, which can
-take many minutes. When a second Ctrl+C forces the exit, the application
-shutdown is skipped and `serve` exits with status 130. The force ends the wait
-for request handlers that are still running, not the wait for a connection that
-has not ended: a second Ctrl+C does not shorten the wait behind such a vanished
-peer today.
+released) within a few seconds, and `serve` exits with status 0. There are two
+exceptions. A request still being handled holds the shutdown until it returns,
+for example one blocked on a database that stopped answering. And a connection
+to a peer that vanished while frames were still backed up for it cannot be
+closed: the shutdown can fail before its orderly part, or wait until the
+operating system gives up on that connection, which can take many minutes.
+
+A second Ctrl+C forces the exit: `serve` stops waiting for the requests still
+being handled, including a blocked one, and exits with status 130. uvicorn then
+skips its application shutdown step, so the log has no "Application shutdown
+complete", but the application's own cleanup still runs. The force does not end
+the wait for a connection that has not ended: a second Ctrl+C does not shorten
+the wait behind such a vanished peer today. Once `serve` is exiting, a further
+signal changes nothing.
 
 Settings resolve through the same config-then-flag layering as `worker`:
 `api.host`/`api.port`/`api.poll_interval` in `config.yaml`, overridden by
