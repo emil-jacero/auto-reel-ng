@@ -15,6 +15,31 @@
 - **The control's words** are "Watch" / "Watch <name>", the region "Player for <name>", and Close "Close the player
   of <name>". This keeps "preview" away from the thumbnails' "No preview" / "No preview for <name>" on the same row.
 
+## Supervisor decisions after verification (2026-10-01)
+
+Every deviation found while implementing and verifying was accepted. Each is recorded where it applies:
+
+- **Skip cuts looks two frame intervals ahead** ("Skip cuts", implementation note), with the measured numbers.
+- **Task 4.3's budgets, as measured** ("Performance", implementation note): a CutsPanel commit per
+  `durationchange`, the typed mark's row and list commits on Set From into an empty field, and a frame update
+  batched into a drag step's commit. Task 4.3's text says what is measured.
+- **Task 4.2's fine-pointer check**: the panel's Watch row (38 px) moves what lies under an open panel down by
+  that height; every box keeps its size and inline place ("Layout, look and motion", implementation note).
+- **Two scenario rewordings** in the spec: "Watching from the row in one press" (the rows after the opened row
+  move down by the height its panel added) and "In Edit mode a clip's frame is a Watch button" (its example is
+  "Watch s1710002.mp4" in `Kvällen`, which the default fixture has).
+- **`preview/playback.ts` imports `formatTime` and `parseTime` from `cuts/times.ts` at runtime** ("Files and the
+  seams"): `playheadWords`, `typedSpan` and `setWords` write and read times exactly as the panel does, and a
+  second copy of either would drift. It is still pure (no DOM, no React); the ad hoc Node check resolves the
+  extensionless import with a scratch resolve hook.
+- **No-answer words** say "press Try again", not `unansweredFailure`'s "press Refresh" ("Copy").
+- **CSS beyond the design's block**: the Loading badge in the light scheme, a note's Download that wraps, and a
+  1 rem row gap under a coarse pointer ("Layout, look and motion", implementation note).
+- **A visible line** for "Nothing plays: the cuts cover the whole clip." besides its announcement, and **no bar
+  span** for a cut that starts at or past the clip's end ("Skip cuts", "The clip's length").
+- **Alert tones**: no sound is `info`; no picture, a format this browser does not play and no answer are `warn`;
+  gone, changed, empty and unreadable are `err` ("What the browser cannot do").
+
 ## Context
 
 See proposal.md, "Why". This change starts from main **after** both `media-endpoints` and `cross-chapter-drag`
@@ -499,6 +524,17 @@ export function playFrom(spans: readonly Skip[], atMs: number, lengthMs: number)
 - **Seeks are not skipped while paused.** The operator may park the playhead inside a cut to set a time. While
   playing, the next frame leaves the cut.
 - **Skip cuts off**: the loop only moves the head.
+- **Implementation note (verification, 2026-10-01): two frame intervals ahead.** The loop passes
+  `skipAt` the step `max(step, 2 × interval)`, where `interval` is the shortest step seen in that
+  playback (the clip's frame interval). Headless Chrome drops single frames often: with one frame ahead,
+  2 of 12 runs showed the cut's first frame (1.00 after a dropped 0.98, the frame before the cut never
+  presented). Two intervals ahead: 0 of 18 Chrome runs and 0 of 3 Firefox runs showed a cut frame, and the
+  "between two frames" and "to the end" scenarios behave as above (one seek; stop at the cut's start). The
+  cost: the one kept frame just before a cut (20 ms at 50 fps, 40 ms at 25 fps) may go unshown. `skipAt`
+  itself is unchanged (pure, its checks as task 2.1 lists them). Accepted by the supervisor.
+- **Implementation note: Play over cuts that cover the whole clip** also shows "Nothing plays: the cuts cover
+  the whole clip." under the actions (`.preview-said`) until the next play, seek or Skip cuts change, since the
+  spec says the page says so; the announcement is unchanged.
 
 **Rationale**:
 - One frame ahead is the only strategy that showed **no** frame of a cut, in both browsers at 25 and 50 fps
@@ -666,7 +702,7 @@ it scrolls nothing and leaves `cross-chapter-drag`'s handle scroll alone. Under 
 | 416 | **The file of `<name>` is empty.** There is nothing to play. |
 | 502 | **`<name>` could not be read** + the failure kind's pill (`FAILURE_LABEL`) when there is one. The service's detail. |
 | 200 / 206, same time | **This browser cannot play `<name>`.** Its format is not one this browser plays. The clip is unchanged on disk. Action: `Download <file name>` |
-| no usable answer | `unansweredFailure`'s cause and detail. Action: `Try again` |
+| no usable answer | `UNANSWERED_CAUSE`'s cause; detail `notReachableHint('Try again')`, or the unpublished answer's message and "The service's log may say why; press Try again." (implementation note: `unansweredFailure` says "press Refresh", which leaves Edit mode). Action: `Try again` |
 
 The two "Stop editing" rows never say "Refresh": in Edit mode the header's Refresh asks about unsaved changes and
 then leaves Edit mode (`EventDetail.tsx` 265), which the words name instead. The note changes nothing itself;
@@ -752,6 +788,18 @@ origin makes `download` save the file under its own name, whatever the route's `
   6 px into the transport's 8 px gap, and the actions wrap with a 1 rem row gap (components.css's rule for
   stacked buttons). Close's area reaches 6 px into the 8 px gap above the stage.
 - **Motion.** No `transition` or `animation` in `preview.css`. The head moves with the video's time only.
+- **Implementation notes (task 4.2; accepted by the supervisor):**
+  - **The Loading badge** (`.preview-status`) has `color-scheme: light`: the dark scheme's raised surface is
+    1.27:1 on the black stage. In the light scheme it is 21:1, and its words 6.85:1.
+  - **A note's Download** (`.clip-preview .alert-action > .btn`) wraps (`white-space: normal`,
+    `overflow-wrap: anywhere`, `max-inline-size: 100%`): an HEVC file name widened the whole panel at 320 px.
+  - **Under a coarse pointer** `.clip-preview` has a 1 rem row gap: a compact button's tap area reaches 8 px out,
+    and Skip cuts' reached Play's.
+  - **The fine-pointer check** compares boxes with main's build: every box keeps its size and inline place, and
+    what lies under an open panel (its fields, Add cut, the rows after it and the save bar) moves down by the
+    Watch row the panel gained (38 px).
+  - **Tones**: the no-sound note is `info`; no picture, a format this browser does not play and no answer are
+    `warn`; gone, changed, empty and unreadable are `err`.
 
 ### Performance
 
@@ -765,6 +813,19 @@ origin makes `download` save the file under its own name, whatever the route's `
   - typing in Title re-renders no list, as G1 and G2 require
 - **Measuring.** Task 4.3 measures on `Stor dag` with `cross-chapter-drag`'s commit hook, adding `section.clip-preview`
   (`ClipPreview`) and `div.clip-cuts` (`CutsPanel`) to its host-child table.
+- **Implementation note (task 4.3, measured on the production build; accepted by the supervisor).** Three of
+  the task's first budgets are what the spec itself requires, not a cost of the preview:
+  - **About one `CutsPanel` commit while playing**: Chrome raises the length it reads, 6.02 → 6.04, with one
+    `durationchange` once the clip has played, and the panel follows the latest length (spec). 5 s of playback
+    with Skip cuts on: 0 `ClipRow`, 0 `ClipOrderList`, 0 `EventEditor` commits, 1 `CutsPanel` commit (one
+    `durationchange`), about 160 `ClipPreview` commits, no long task.
+  - **Set From into an empty field**: the text flips the typed mark (G2), which re-renders that clip's row and
+    its list (1 `ClipRow`, 2 `ClipOrderList` commits), as typing the first character does; 25–29 ms from Enter to
+    the announcement. Into a field that holds text: 0 row and list commits, 11–13 ms.
+  - **A drag step while a clip plays**: in 1 of 10 steps a pending frame update was rendered in the step's
+    commit (React batches both). The same ten steps with the clip paused render `ClipPreview` and `CutsPanel` 0
+    times. Each step re-renders `RowBody` for the 2 rows it renumbers, as `cross-chapter-drag` measured.
+    Median 38–62 ms per step.
 
 ### Files and the seams
 
@@ -772,7 +833,7 @@ origin makes `download` save the file under its own name, whatever the route's `
 |---|---|
 | `api/clipMedia.ts` (new) | `clipMediaUrl(eventId, clip)`, checked against the generated `paths` like `thumbnail.ts`; `MediaCheck`, `checkClipMedia`, `changedSince` |
 | `preview/previews.ts` (new, pure) | `ClipPreviews`, `createClipPreviews` |
-| `preview/playback.ts` (new, pure, type-only imports) | `Skip`, `skipSpans`, `skipAt`, `playFrom`, `seekKey`, `along`, `playheadWords`, `typedSpan`, and the preview's copy |
+| `preview/playback.ts` (new, pure; imports `formatTime` and `parseTime` from `cuts/times.ts` at runtime, a supervisor-accepted deviation from "type-only") | `Skip`, `skipSpans`, `skipAt`, `playFrom`, `seekKey`, `along`, `playheadWords`, `typedSpan`, and the preview's copy |
 | `preview/ClipPreview.tsx` (new) | `ClipPreview` (`memo`), `CutBar`, `usePreviewOpen`, `useClipLength` |
 | `preview/preview.css` (new) | the rules above, and `.clip-thumb-watch` |
 | `cuts/times.ts` | `checkCut`'s `length`, the `past-end` refusal and words, `lengthHint`, `pastEnd`, `PAST_END` |
