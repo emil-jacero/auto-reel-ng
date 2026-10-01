@@ -353,6 +353,42 @@ render, or job logic lives in the web tier.
   stop every uncached thumbnail (cached ones and every other route keep answering)
   until `serve` is restarted. The events list and detail gain no thumbnail field
   and stay probe-free.
+- **`GET /api/v1/events/{event_id}/media?clip=<identity>`** streams one clip's
+  file, and **`GET /api/v1/events/{event_id}/movie`** streams the event's rendered
+  movie, both exactly as they are on disk, for a `<video src>` to play and seek.
+  `clip` is the identity the thumbnail route takes, found the same way: one of the
+  clips the detail lists on disk (IGNORED ones included), percent-encoded as a query
+  value — a literal `+` reads as a space. The movie is the file the staleness gate
+  counts as the event's movie: it needs a render record (the manifest), then it is
+  the file at the event's expected output path, else the movie the last render
+  wrote under the event's old name (`output_renamed`). So a movie exists exactly
+  when the event's staleness cites neither `no_manifest` nor `output`; a legacy
+  movie with no render record is **not** served until `auto-reel adopt-renders`
+  records it, a directory at the movie's path is answered as absent, and a name
+  whose `..` segments climb out of the output directory is never served. An
+  optional `v` is accepted and ignored on both, so a client can give a rewritten
+  file a new URL. **Ranges:** no `Range` is a 200 with the whole file; one byte
+  range (`bytes=0-99`, `bytes=1000-`, `bytes=-500`) is a 206 with `Content-Range`;
+  a range starting at or past the end is a **416** (`Content-Range: bytes */<size>`)
+  and a malformed `Range` or another unit a **400** — both plain text, not problem
+  bodies; `If-Range` is honored. **Validators:** a strong `ETag` (the file's size
+  and mtime), `Last-Modified`, `Cache-Control: private, no-cache` (the browser
+  revalidates before it reuses stored bytes) and `Content-Disposition: inline`
+  with the file's own name; an `If-None-Match` naming the current tag (weak
+  comparison, or `*`) is a **304** with no body, even with a `Range`.
+  `Content-Type` comes from a fixed table by extension (`video/mp4`,
+  `video/quicktime`, …), never the host's MIME database. **Failures** answer by
+  cause and carry no caching headers: **404** for an id the events list does not
+  show as an event, a clip that is not on disk in it, an event with no rendered
+  movie, or a file that vanished before it was opened; **502** with the `failure`
+  the event detail reports when the event folder cannot be listed
+  (`unreadable_disk`) or, for the movie, its `reel.yaml` cannot be parsed or its
+  metadata is unusable; **502** with no kind when a file exists but cannot be
+  read (the detail names the clip's identity or the movie's file name, never a
+  server path). Both routes need **no database**, run no ffmpeg, write nothing,
+  and stream in bounded chunks, so a 449 MB clip never sits in memory. Files are
+  served **unchanged**: the PCM audio of Sony XAVC clips plays in Chrome but is
+  silent in Firefox (`docs/research/browser-playback.md`).
 - **Jobs lifecycle over REST** is a thin wrapper over the job store:
   `POST /api/v1/jobs` (gated like `enqueue` — 201 on a stale event, 409 on an
   active duplicate carrying the active job's id in `job_id`, 200
