@@ -314,7 +314,7 @@ project MUST NOT read clip content to fill a response field, by hash any more th
 The north star is a **full timeline editor**, but we ship in thin slices:
 
 - **v1 (tiny, ship first):** scan/ingest view (events + clips), **drag-reorder clips** (persist to
-  `reel.yaml`), **chapter edits, Move clips and dragging clips between chapters** (**D-13**), **typed cuts** (**D-14**), edit basic metadata (title/date/location/description), **schedule a render and watch
+  `reel.yaml`), **chapter edits, Move clips and dragging clips between chapters** (**D-13**), **typed cuts** (**D-14**), **a clip's preview with Set From / Set To** (**D-16**), edit basic metadata (title/date/location/description), **schedule a render and watch
   live progress**, **clip thumbnails** (one frame per clip, **D-11**), and **the rendered movie on the event
   page** (**D-15**). The resolved `look` is shown
   **read-only**; editing it is v2. No timeline, no per-frame editing.
@@ -350,7 +350,7 @@ change directories:
 | A | `web-app-scaffold` | `web/` + the static mount + schema→types pipeline; no screen |
 | B | event list screen | the scan/ingest view, over slice 0's verdicts |
 | C | event detail screen | chapters/clips read-only, using the per-clip `size`/`mtime` file facts. `movie-player-screen` plays the event's rendered movie (D-15) |
-| D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency — landed in `event-edit-screen` (the event page's Edit mode). `missing-clips-screen` adds the explicit removal of a MISSING clip's entry (never automatic) and holds Render back while an event lists one. `chapter-management-screen` adds the chapter edits (add, rename, move, delete when empty) and Move clips between chapters (D-13). `clip-cuts-screen` adds a clip's cuts, listed, added from typed times and removed in Edit mode, and shown on the event page (D-14). `cross-chapter-drag` lets a clip be dragged into another chapter (D-13) |
+| D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency — landed in `event-edit-screen` (the event page's Edit mode). `missing-clips-screen` adds the explicit removal of a MISSING clip's entry (never automatic) and holds Render back while an event lists one. `chapter-management-screen` adds the chapter edits (add, rename, move, delete when empty) and Move clips between chapters (D-13). `clip-cuts-screen` adds a clip's cuts, listed, added from typed times and removed in Edit mode, and shown on the event page (D-14). `cross-chapter-drag` lets a clip be dragged into another chapter (D-13). `clip-preview-screen` plays a clip in its Cuts panel, sets a cut at the playhead, skips cuts as the movie will, and refuses a cut past the length the browser reads (D-16) |
 | E | render + live progress | `POST /jobs` (201 / 200-fresh / 409), the WS hook, cancel — landed in `render-progress-screen` |
 
 C, D and E were designed only after A and B had been used against a real library; all three have
@@ -655,12 +655,12 @@ Rough dependency order; each becomes one or more OpenSpec changes:
 
 - **D-14 — Cuts are edited by typed times in GUI v1** (2026-10-01, change `clip-cuts-screen`). Edit mode
   lists, adds and removes a clip's cuts (D-D), with times typed as seconds, m:ss or h:mm:ss, pulled forward
-  from v3 at the operator's request. Scrubbing, previews and drag-trim are not part of it: the timeline
-  editor is v2 (§4.10, 2026-10-01). The page refuses what the engine refuses (`out <= in`, negative), and
+  from v3 at the operator's request. A clip's preview followed in GUI v1 (D-16). Scrubbing and drag-trim
+  are the v2 timeline editor's (§4.10, 2026-10-01). The page refuses what the engine refuses (`out <= in`, negative), and
   refuses an overlap with another cut. It cannot refuse a cut past
-  the clip's end, because no probe-free read gives a duration, so it states the render's rule instead (cut
-  short at the end; a whole-clip cut leaves the clip out). A cut made in the GUI has the reason `manual`. The
-  event page shows each clip's cuts. (§4.10)
+  the clip's end, because no probe-free read gives a duration, unless the clip was previewed in that Edit
+  mode (D-16); otherwise it states the render's rule instead (cut short at the end; a whole-clip cut leaves the
+  clip out). A cut made in the GUI has the reason `manual`. The event page shows each clip's cuts. (§4.10)
 
 - **D-15 — The event page plays its rendered movie in GUI v1** (2026-10-01, change `movie-player-screen`). The
   event page's read view shows the movie the staleness gate counts (`GET …/movie`, `media-endpoints`) in the
@@ -672,6 +672,24 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   shortcuts, no captions and no chapter list: the manifest records no chapter times and browsers expose none.
   Chapter times in the render manifest and a movie version in the event detail are v2 items beside the proxy
   work. A Refresh stops playback in v1. Edit mode shows no movie. (§4.10)
+
+- **D-16 — A clip is previewed in Edit mode in GUI v1** (2026-10-01, change `clip-preview-screen`).
+  - **What.** A clip's Cuts panel plays the clip itself, its file streamed unchanged by the media route
+    (`media-endpoints`, §4.9). Its Watch control, or one press on the clip's thumbnail in Edit mode, opens it.
+    It has a cut bar, Set From and Set To at the playhead (to the millisecond, written as typed times, D-14),
+    and Skip cuts, which plays the clip as the movie will (the render's merge, D-D), showing no frame that lies
+    wholly inside a cut; a cut within 0.1 s of the clip's end stops playback at its start.
+  - **Loading.** A `<video>` exists only while a preview is open, one at a time: Edit mode holds at most one
+    video, and shows no movie player (D-15).
+  - **Notes, not alerts.** What the browser cannot do is said by cause in a note, announced through Edit mode's
+    one live region (polite) rather than as an alert, unlike D-15's playback failures, because Edit mode already
+    speaks every edit there.
+  - **The length.** The length the browser reads from the file refuses a cut that ends past the clip's end,
+    for that clip, while Edit mode stays open. The API still carries no duration, so a clip never previewed
+    keeps D-14's rule. Measured on five files: Chrome's length equals ffprobe's, and Firefox's runs up to 60 ms
+    longer, never shorter, so the check never refused a cut the render keeps in full.
+  - **What stays v2.** Firefox plays PCM audio silently (52 % of the archive), and the preview says so. Proxies,
+    the PCM audio path, scrubbing and drag-trim stay the v2 timeline editor's (§4.10, §8.11).
 
 ---
 
