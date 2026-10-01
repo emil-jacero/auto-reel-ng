@@ -1901,12 +1901,12 @@ window width:
   sit either above the bar or in the room below it.
 
 While the bar moves from the bottom of the window to its resting place, notifications that sit above it MAY
-move with it. While the bar takes two fifths of the window's height or less, so that it is held whenever the
-page is not scrolled to its resting place, and while no save bar is shown, a control that receives keyboard
-focus SHALL NOT be left under a notification at any scroll position, including while the bar moves, while one
-notification is shown, or two in a window at least 844 pixels tall. While the bar rests in the page because it
-would take more than two fifths of the window's height, a notification MAY cover a control just above the bar,
-such as the last clip row's; it still SHALL NOT overlap the bar.
+move with it. While the bar is held whenever the page is not scrolled to its resting place (see "Edit mode's
+save bar rests in the page when it would hide the editor"), and while no save bar is shown, a control that
+receives keyboard focus SHALL NOT be left under a notification at any scroll position, including while the bar
+moves, while one notification is shown, or two in a window at least 844 pixels tall. While the bar rests in the
+page because, held, it would hide the editor, a notification MAY cover a control just above the bar, such as
+the last clip row's; it still SHALL NOT overlap the bar.
 
 When a page is scrolled to its end, no notification SHALL cover any of the page's controls, with or without a
 save bar. With no save bar shown, notifications keep their place at the bottom of the window.
@@ -2314,10 +2314,15 @@ movie file that the service's response does not carry.
 
 ### Requirement: Edit mode's save bar rests in the page when it would hide the editor
 
-Edit mode's save bar SHALL be held at the window's bottom edge only while it takes two fifths of the window's
-height or less. When it would take more than two fifths, it SHALL NOT be held there. It SHALL rest in the page
-after the editor's last chapter, and scroll with the page. It SHALL be held again as soon as it takes two
-fifths or less.
+Edit mode's save bar SHALL be held at the window's bottom edge only while both of these hold:
+
+- it takes two fifths of the window's height or less;
+- the window is at least 28rem tall (448 pixels at the default text size), so that a held bar, the sticky header
+  and a chapter heading leave room for a whole clip row.
+
+Otherwise it SHALL NOT be held there. It SHALL rest in the page after the editor's last chapter, and scroll with
+the page. It SHALL be held again as soon as both hold again. Which of the two it is depends only on the bar's
+height and the window's, never on where keyboard focus is.
 The bar SHALL follow each change of its own height and of the window's, in both directions. Such changes
 include:
 
@@ -2334,6 +2339,13 @@ The control that holds keyboard focus SHALL NOT leave the window because the bar
   into the window. When that control is in the bar, such as Save, the page scrolls to the bar.
 - When a resized or zoomed window makes the bar rest while one of the bar's controls holds keyboard focus,
   that control SHALL be scrolled fully into the window.
+- While the bar rests and one of its controls holds keyboard focus, every further resize or zoom of the window
+  SHALL leave that control fully inside the window, step by step. A change of what the bar says, or of its own
+  height, SHALL NOT scroll the page.
+
+When keyboard focus moves to a control of the editor that is partly outside the window, such as the description
+field, whose caret alone the browser would bring into view, that control SHALL be scrolled fully into the
+window.
 
 No notification SHALL overlap the bar while it is held or while it rests.
 
@@ -2379,11 +2391,20 @@ share of a 390 × 844 window it may take while it is held.
 - **AND** at each size, Save keeps keyboard focus and is fully inside the window
 
 #### Scenario: Zooming in after a failed save
-- **WHEN** in a window 1280 × 1024, using only the keyboard, the operator moves the first clip of
+- **WHEN** in a window 1280 × 1024 or 1920 × 968, using only the keyboard, the operator moves the first clip of
   `2024-09-01 - Sommarlov` down and saves, the save is answered with a conflict or with a failure to write
-  `reel.yaml`, and the operator then zooms to 400 %, so that the window becomes 320 × 256
-- **THEN** the save bar rests after the last chapter, and Save keeps keyboard focus and is fully inside the
-  window
+  `reel.yaml`, and the operator then zooms in one browser step at a time, through 110, 125, 150, 175, 200,
+  250 and 300 % to 400 %
+- **THEN** after every step Save keeps keyboard focus and is fully inside the window, and at 400 % the save bar
+  rests after the last chapter
+
+#### Scenario: The first edit in a short, wide window
+- **WHEN** in a window 480 × 242 (a 1920 × 1080 screen at 400 % zoom), the operator enters Edit mode on
+  `2024-09-01 - Sommarlov` and moves its first clip down with the keyboard, or lifts it with the keyboard and
+  drops it one place down
+- **THEN** the save bar, which says only that there are unsaved changes and takes less than two fifths of the
+  window, rests after the last chapter, and the moved clip's focused control and its whole row are fully
+  visible
 
 #### Scenario: A notification and a resting bar
 - **WHEN** an error notification is shown, and the operator answers a conflict on `2024-09-01 - Sommarlov`
