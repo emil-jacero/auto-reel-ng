@@ -337,9 +337,10 @@ HLD §7).
 - **Touch.** Under `@media (pointer: coarse)` every `btn`, `segmented` option, toast
   link, the header's Events link and the back link take a tap in at least 44 × 44 px:
   an invisible `::after` around the control, so no box moves (segmented options grow
-  to 44 px wide, the theme options only from a 24rem window, and the back link to
-  44 px tall). A fine pointer sees none of it. A new control class that is smaller
-  than 44 px joins that rule.
+  to 44 px wide, the theme options only from a 26rem window, and the back link to
+  44 px tall). The brand name waits for a 34rem window, so the jobs status keeps
+  its words beside the wider theme options. A fine pointer sees none of it. A new
+  control class that is smaller than 44 px joins that rule.
 - **Motion.** Every `transition` takes its duration from a `--dur-*` token; the
   tokens become `0ms` under `prefers-reduced-motion: reduce`. Every `animation` and
   its `@keyframes` sit inside `@media (prefers-reduced-motion: no-preference)`, with
