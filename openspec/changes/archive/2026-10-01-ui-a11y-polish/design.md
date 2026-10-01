@@ -89,7 +89,8 @@ says so.
 These answer the questions the implementation report raised. None of them changes code.
 
 - **The theme options at 28 × 44 px below 24rem are accepted.** A 320 px header has no width to give them
-  (measured). From 384 px up they are 44 × 44 ("Touch targets under a coarse pointer").
+  (measured). From 384 px up they are 44 × 44 ("Touch targets under a coarse pointer"). (Changed in review:
+  below 26rem, so 44 × 44 from 416 px up. See "Changed during review".)
 - **The spec's focus sentence keeps its scope:** one toast, or two in a window at least 844 px tall. Two
   toasts at 320 × 700 and three at phone widths stay known limits ("Known limit: a stack too tall for the
   window", Risks).
@@ -184,6 +185,9 @@ focused button is removed, with a null `relatedTarget` and the target still conn
 That is the same signature as a click on the page background. So:
 - `lastFocused` is cleared by a `focusin` outside the region (a document listener) and by a `pointerdown`
   outside it (the existing document pointer listeners are the place). It is never cleared by a `focusout`.
+  (Changed in review: a `pointerdown` no longer clears it, because a touch scroll fires one without moving
+  focus. A `focusout` from inside the region does, decided in a microtask: only when its node is still
+  connected and focus is outside the region. See "Changed during review".)
 - `returnTo` is set on every entry into the region from outside it: to the `relatedTarget` when that is an
   element outside the region, and to `null` when focus came from nowhere (`relatedTarget` null). A stale
   control from an earlier visit is never restored.
@@ -539,8 +543,11 @@ box centred on it.
   link (30 tall) and the back link (24 tall).
 - **Neighbours inside the 44 px box:** only the two segmented groups (their options are 2 px apart) and
   Edit's move up / move down pair (4 px apart). No other control comes within reach of another's box.
+  (Changed in review: the probe never reached the save bar's conflict state, where two buttons wrap 8 px
+  apart. See "Changed during review".)
 - **Header room:** the header has 57 px to spare at 390, 27 at 360 and **none at 320**, where the jobs
-  status already shrinks from 84 to 71 px.
+  status already shrinks from 84 to 71 px. (Changed in review: measured with the jobs pill reading "Live".
+  "Connecting…" and "Reconnecting…" are wider. See "Changed during review".)
 - Growing the boxes instead was ruled out where the box sits in a track another change sized for the fine
   pointer: Edit's handle sits in a 2rem grid column and the move pair in a 4.25rem one (`edit.css`, P1's),
   and every row would grow. The header has no height to give a 44 px option inside its 2 px track (50 > 48).
@@ -562,7 +569,9 @@ box centred on it.
   4 px, and the theme options from 28 to 44 px.
 - **The theme control keeps 1.75rem below 24rem** (`shell.css`). Its options would need 48 px more than a
   320 px header has. There they stay 28 px wide, with a 44 px tall area of their own width, so the three never
-  overlap. 24rem (384 px) is the narrowest window with room: 390 and wider phones get 44 × 44.
+  overlap. 24rem (384 px) is the narrowest window with room: 390 and wider phones get 44 × 44. (Changed in
+  review: 26rem, and under a coarse pointer the brand name stays hidden up to 34rem. See "Changed during
+  review".)
 - **The header's Events link** (`shell.css`) gets the same hit area, inside the 48 px header.
 - **The back link** (`detail.css`, one rule) grows to `min-block-size: 2.75rem`. It is alone on its line,
   so growing it moves nothing beside it.
@@ -602,7 +611,7 @@ Not covered, and why (raised to the supervisor):
 - **The list's event title links** are 17 px tall text. `event-list-polish` (P3) is making the whole row a hit
   area for its link, which supersedes a per-link rule.
 - **The theme options below 24rem** stay 28 px wide (above). The supervisor accepted this ("Supervisor
-  decisions (after implementation)").
+  decisions (after implementation)"). (Changed in review: below 26rem.)
 
 ### Files and parallel changes
 
@@ -617,7 +626,8 @@ Not covered, and why (raised to the supervisor):
 - **`web/src/events/EventDetail.tsx`** (P4): `role="note"` on the missing-clip `Alert`. That is one attribute.
 - **`web/src/shell/shell.css`** (no owner this round): one term, `var(--toast-rise-h, 0px)`, in `html`'s
   `scroll-padding-bottom`, and its comment; and the coarse-pointer rules for the header's Events link and the
-  theme control below 24rem. No other change of this round lists `shell.css`.
+  theme control below 24rem. No other change of this round lists `shell.css`. (After review: the theme
+  control below 26rem, the brand name up to 34rem, and the row gap of `.page-actions` and `.toolbar`.)
 - **`web/src/styles/components.css`**: the toast rules (owned) and the coarse-pointer block (supervisor).
 - **`web/src/events/detail.css`** (P4): one coarse-pointer rule for `.back-link`.
 - **`web/README.md`**: only the "Dialogs" and "Toasts" bullets, the theme sentence and a touch-target
@@ -641,6 +651,113 @@ this round is expected to touch that requirement. The gate task re-bases it anyw
   to this change ("Touch targets under a coarse pointer").
 
 **Rationale**: Principle VIII, and the brief's ownership table.
+
+### Changed during review
+
+The supervisor's review (two Opus lenses, then skeptics) found one major and three minor defects. Two of them,
+the major one included, share one cause in the header. All four were fixed on `pr/ui-a11y-polish` in new
+commits. The scripts named below are in `<scratchpad>/verify/ui-a11y-polish/rf/`.
+
+1. **Under a coarse pointer, the jobs status ran into the theme control** (one major and one minor finding).
+   The 44 px theme options take 48 px more from 24rem up. The jobs stylesheet hides the pill's words only
+   below 23.5rem, a step sized for 28 px options. The "Header room" figure above was measured with the pill
+   reading "Live". `header_sweep.py` measured this branch's first build under a coarse pointer, at 1 px steps
+   from 320 to 600 px:
+   - "Connecting…" ran past its pill at 384–392 px, by up to 9.1 px.
+   - "Reconnecting…" ran past its pill at 384–405 px and at 480–487 px, by up to 21.3 px. At 384–393 px it
+     ran into the theme control, by up to 9.3 px.
+   - Live, with 3 jobs rendering and 12 queued, the indicator took two lines at 384–414 px, where main keeps
+     one. At 480–519 px, where the brand name returns, it took three lines: 61 px high, from y −7.1 to 54.1,
+     in the 48 px header.
+   - Main, and this branch under a fine pointer, showed none of this at any width.
+
+   The fix keeps the words and gives the header its room back where it has none, in `shell.css` only:
+   - Under a coarse pointer the theme options keep 1.75rem below **26rem**, not 24rem. Their area stays as
+     wide as the option and 44 px tall. "Reconnecting…" needs 116.5 px, and with the wide options the slot
+     beside it is the window minus 296.8 px, so the words fit from 414 px. That leaves 2.7 px to spare at
+     416 px and 14–16 px at 428–430 px, the large iPhones.
+   - Under a coarse pointer the brand name stays visually hidden up to **34rem**:
+     `(width < 30rem), (pointer: coarse) and (width < 34rem)`. With the name and the wide options, the counts
+     in words fit in two lines from 520 px. The last rem is for wider fonts: 33rem, tried first, still stacked
+     the counts in three lines at 528–537 px with Liberation Sans.
+   - So, under a coarse pointer:
+     - below 26rem the header is the fine pointer's at the same width
+     - from 26rem the wide options take 48 px, which the words have room for
+     - from 30rem to 34rem the hidden brand name gives back more than the options take
+     - from 34rem the header is the fine pointer's at a window 48 px narrower, which main's sweep shows clean
+       from 480 px
+
+   After the fix, `header_sweep.py` covered connecting, reconnecting, live with counts and plain live, from
+   320 to 600 px at 1 px steps, under both pointers, on main and on this branch. Nothing ran past its pill,
+   into the theme control or out of the header, and nothing scrolled sideways, at any width. The fine
+   pointer's rects are still identical to main's (324/324).
+
+   Chromium in the container resolves `system-ui` to WenQuanYi Zen Hei, so the sweep was run again with the
+   whole page forced to Liberation Sans (Arial's metrics) and to FreeSans (Helvetica's):
+   - **Coarse pointer:** clean in both fonts.
+   - **Fine pointer, Liberation Sans:** the counts take three lines at 480–485 px, on main and on this branch
+     alike. That is the fine pointer's own 30rem step, not this change's; it is listed as a follow-up.
+
+   Rejected:
+   - **Hiding the pill's words under a coarse pointer up to about 26rem** (the minor finding's second option).
+     This hides "Reconnecting…" on the most common phones (390–412 px) exactly while the service is down. The
+     jobs requirement says the header shows the connection's state in words, and Connecting and Reconnecting
+     would then differ by tone alone.
+   - **A container query on the status slot** (the major finding's robust option). It has the same effect at
+     those widths. It also needs `.shell-status` to become a size container that fills the header, a layout
+     change under the fine pointer, and it still needs a fixed width threshold.
+   - **One cycling theme button.** It changes the control for a mouse too, which is out of scope for a review
+     fix.
+2. **A touch scroll cancelled the displaced-toast hand-off** (minor). Any `pointerdown` outside the region
+   cleared `lastFocused`, and a touch scroll fires one without moving focus. A newer toast that then displaced
+   the focused toast left focus on `<body>`. The record is now cleared only when focus leaves:
+   - A document `focusout` from inside the region is decided in a microtask. It clears the record only when
+     its node is still connected and `document.activeElement` is outside the region.
+   - The focusout Chromium fires for a removed node is not a leave. By the time the microtask runs, the node is
+     disconnected and the layout effect has already handed focus on. A browser that fires no focusout there
+     keeps the record anyway. Only Chromium was measured.
+   - The `focusin` rule stays.
+
+   `focus_record.py` passed 9/9:
+   - **Focus handed on to a remaining Dismiss:** with no gesture, after a touch scroll of the page or one
+     starting on a toast, after a wheel scroll, and after Tab between Dismiss buttons.
+   - **Focus left alone:** after a tap or a mouse click on the page background (`<body>` stays focused), Tab
+     out to the `h1`, and a tap on Refresh.
+
+   The reviewer's `displace_after_tap.py` and `displace_after_scroll.py` now end on a remaining Dismiss after
+   the touch scroll.
+3. **Two stacked buttons less than 12 px apart shared their areas** (minor). Each 32 px button's area reaches
+   6 px past its box. In the save bar's 412 conflict alert at phone width, "Reload latest (discard my changes)"
+   wraps 8 px above "Overwrite with mine". Overwrite's area, painted later, took 7 of the 8 gap rows, so a tap
+   just below Reload opened Overwrite (its confirmation dialog still caught it). The probe behind "Neighbours
+   inside the 44 px box" never reached the conflict state.
+   - Under a coarse pointer, the shared rows that can wrap buttons onto a second line now keep `row-gap:
+     var(--s-4)` (1rem): `.alert-action` and `.dialog-actions` in `components.css`, and `.page-actions` and
+     `.toolbar` in `shell.css`, after their base rule. Each area reaches 6 px into the gap and 4 px stay free.
+   - 0.75rem, where the areas meet exactly halfway, was tried first. With the bar at a half-pixel offset,
+     Chromium's hit test still gave the boundary row to the later button.
+   - A fine pointer keeps the 8 px gap.
+
+   `touch_rf.py` passed 98/98: every v52 touch check, plus the conflict state on Grillning and on the
+   Omöjligt datum fix form at 320, 360, 390 and 768 px. Every point of Reload's and Overwrite's areas reaches
+   that button, the stacked pair is 16 px apart, and under a fine pointer the gap is still 8 px. The header at
+   412, 414, 416 and 430 px gives the theme options 28, 28, 44 and 44 px. The reviewer's `conflict_touch.py`
+   no longer reports Reload losing points to Overwrite.
+
+**Spec.** The touch requirement now:
+- reads 416 pixels for the color-scheme exception, not 384
+- says that no area reaches into another control stacked above or below it, and that making room for the
+  areas pushes no text out of its box and nothing out of the header
+- has a "list on a phone" scenario that gives the color-scheme options their option-wide area at 390
+- adds two scenarios: the header keeping the connection's state in words, and the conflict alert's stacked
+  buttons
+
+**Found while verifying, not fixed here:**
+- **At 320 px, the conflict alert scrolls the page 20 px sideways** (`conflict_hscroll_ab.py`). Its 241 px
+  `nowrap` "Reload latest (discard my changes)" is wider than the save-bar card. Main does the same under
+  both pointers. This is `edit-mode-polish`'s alert, which it is reshaping.
+- **The fine pointer's 30rem step depends on the font.** With Liberation Sans the live counts stack in three
+  lines at 480–485 px, on main as well. That step is the jobs indicator's and the shell's.
 
 ## Failure behavior and idempotency
 
@@ -677,9 +794,11 @@ this round is expected to touch that requirement. The gate task re-bases it anyw
   one) is that button's. The probe found no other control within reach on the screens of `bca64f2`. A later
   layout that puts a control that close to a button shares the overlap, and the later element in the page
   wins it. `event-list-polish`'s row-wide link is the case to recheck when it lands: a button's area must stay
-  above the row's link.
+  above the row's link. (Changed in review: the shared rows that wrap buttons keep 1rem between lines under
+  a coarse pointer. See "Changed during review".)
 - **[The theme options below 24rem]** → 28 × 44 px, not 44 × 44: the header has no width to give (measured).
-  Accepted by the supervisor.
+  Accepted by the supervisor. (Changed in review: below 26rem, which keeps the jobs status in words. See
+  "Changed during review".)
 - **[The hex colors are duplicated between `index.html` and `theme.ts`]** → The verification compares each
   against the rendered `--bg`. The pre-paint script reads the metas instead of holding a third copy.
 - **[P1 restructures the save bar]** → The rule depends only on the registered element's box. The table above
