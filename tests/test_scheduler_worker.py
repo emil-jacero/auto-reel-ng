@@ -3,6 +3,7 @@ shutdown, and cooperative cancellation (real Postgres — D-P1/T3, stubbed engin
 
 from __future__ import annotations
 
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -23,6 +24,7 @@ from auto_reel_ng.persistence.job_store import JobStore
 from auto_reel_ng.persistence.models import Job, JobStatus
 from auto_reel_ng.probe import probe_media
 from auto_reel_ng.probe.metadata import ClipMetadata
+from auto_reel_ng.reel import load_document
 from auto_reel_ng.reel.document import Metadata
 from auto_reel_ng.render import RenderJob, RenderOptions, RenderResult
 from auto_reel_ng.scheduler.pools import CapacityPools
@@ -349,6 +351,51 @@ def test_claimed_job_renders_from_current_disk_state_not_enqueue_time(
     assert job.status == JobStatus.DONE
     assert (default_output_dir(tmp_path) / "2024" / "2024-01-01 - Edited Title.mp4").exists()
     assert not (default_output_dir(tmp_path) / "2024" / "2024-01-01 - Original Title.mp4").exists()
+
+
+@pytest.mark.has_ffmpeg
+def test_worker_adopts_a_new_clip_into_its_folders_chapter(
+    jobs_session_factory, runtime, make_clip, tmp_path: Path
+) -> None:
+    # D-12: a GUI Render (a job the worker runs) adopts as `render` does. The NEW
+    # Kvällen/s1710004.mp4 joins the Kvällen chapter reel.yaml names, third, and the
+    # default chapter is left as it was. The table holds only this job.
+    store = JobStore(jobs_session_factory)
+    event_dir = tmp_path / "2024-08-20 - Två kapitel - Tjörn"
+    clip = make_clip("source.mp4", width=320, height=240, duration=1.0)
+    for identity in (
+        "s1710001.mp4",
+        "Kvällen/s1710002.mp4",
+        "Kvällen/s1710003.mp4",
+        "Kvällen/s1710004.mp4",
+    ):
+        (event_dir / identity).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(clip, event_dir / identity)
+    reel_path = event_dir / "reel.yaml"
+    reel_path.write_text(
+        "version: 0\nchapters:\n- name: ''\n  clips:\n  - s1710001.mp4\n"
+        "- name: Kvällen\n  clips:\n  - Kvällen/s1710002.mp4\n  - Kvällen/s1710003.mp4\n",
+        encoding="utf-8",
+    )
+    job_id = store.enqueue(str(tmp_path), event_dir.name)
+
+    def build(job: Job) -> RenderJob:
+        return default_build_job(job, runtime=runtime, profile=CPUProfile(), render_node=None)
+
+    worker = Worker(store, worker_id="w1", pools=_solo_pools(), poll_interval=0.01, build_job=build)
+    assert worker.process_next() is True
+
+    job = store.get(job_id)
+    assert job is not None
+    assert job.status == JobStatus.DONE, job.error
+    chapters = [
+        (chapter.name, [ref.identity for ref in chapter.clips])
+        for chapter in load_document(reel_path).chapters
+    ]
+    assert chapters == [
+        ("", ["s1710001.mp4"]),
+        ("Kvällen", ["Kvällen/s1710002.mp4", "Kvällen/s1710003.mp4", "Kvällen/s1710004.mp4"]),
+    ]
 
 
 # --------------------------------------------------------------------------- #
