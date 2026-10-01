@@ -238,6 +238,11 @@
     }
   }
 
+  /* The line after a chapter's last row is placed against the chapter (drag.css). */
+  .edit-chapter {
+    position: relative;
+  }
+
   /* The last row rounds the panel's bottom corners. */
   .edit-chapter > .clip-order:last-child > .clip-item:last-child {
     border-bottom: 0;
@@ -404,15 +409,14 @@
     }
   }
 
-  /* Lifted: the row floats above its chapter while it moves. */
+  /*
+   * Lifted: a copy follows the pointer (drag.css); the row stays as the place the
+   * clip leaves, its size and its text's colours kept, marked by a dashed outline.
+   */
   .clip-item[data-dragging] {
-    z-index: 4;
-    border-bottom-color: transparent;
-    border-radius: var(--r-md);
-    background: var(--surface-raised);
-    box-shadow:
-      var(--shadow-lg),
-      0 0 0 1px color-mix(in oklab, var(--accent) 55%, transparent);
+    outline: 1px dashed var(--accent);
+    outline-offset: -1px;
+    background: var(--accent-soft);
 
     & .drag-handle {
       --_fg: var(--accent);

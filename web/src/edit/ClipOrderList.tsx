@@ -1,24 +1,5 @@
-import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
-import type {
-  Announcements,
-  DragEndEvent,
-  Modifier,
-  ScreenReaderInstructions,
-  UniqueIdentifier,
-} from '@dnd-kit/core'
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
+import { useDroppable } from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS as DndCss } from '@dnd-kit/utilities'
 import {
   memo,
@@ -29,9 +10,8 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from 'react'
-import type { ReactNode } from 'react'
+import type { ReactNode, RefObject } from 'react'
 
 import type { Clip } from '../api/event'
 import { CutsPanel, CutsToggle } from '../cuts/CutsPanel'
@@ -44,65 +24,32 @@ import { CLIP_STATUS_LOOK } from '../events/tones'
 import { formatInstant } from '../format'
 import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
+import { useReducedMotion } from './ChapterDrag'
 import { ChapterTools } from './ChapterTools'
 import type { ChapterToolsModel } from './ChapterTools'
 import { cutsOf, keptOriginal, movedSet } from './draft'
 import type { ChapterKey, Cuts, DraftCut } from './draft'
+import { CHAPTER_DROP } from './dragSlots'
 
 /*
- * One chapter's clips, reorderable within the chapter only. Three ways to move
- * a clip: drag its handle (pointer, pen or touch), lift it from the keyboard on
- * its handle, or press its Move up / Move down buttons. A clip changes chapter
- * only through the chapter's Move clips dialog (`ChapterDialogs.tsx`); its row
- * then says where it came from. The chapter's tools row (`ChapterTools.tsx`)
- * sits between its header and its column strip.
+ * One chapter's clips. Three ways to move a clip within the chapter: drag its
+ * handle (pointer, pen or touch), lift it from the keyboard on its handle, or
+ * press its Move up / Move down buttons. A drag can also take it into another
+ * chapter (`ChapterDrag.tsx`, the one drag-and-drop context, around every
+ * chapter); so can the chapter's Move clips dialog (`ChapterDialogs.tsx`). Its
+ * row then says where it came from. Move up and Move down never leave the
+ * chapter. The chapter's tools row (`ChapterTools.tsx`) sits between its header
+ * and its column strip.
  *
  * A clip on disk that the chapter plays also has a Cuts control after its move
  * buttons, which shows its cuts panel under the row (`cuts/CutsPanel.tsx`).
  *
- * Each chapter has its own DndContext, so a clip cannot be dropped into another
- * chapter by construction, and the modifier below keeps a dragged row inside
- * its own list. Two lists follow, neither numbered nor movable, since neither
- * is played: the missing clips the operator removed (Save leaves them out of
- * reel.yaml, and each has an Undo until then), then the ignored clips.
+ * The chapter is a drop target as a whole (`ChapterDrop`): after its last clip,
+ * or anywhere in it while it plays none. Two lists follow the played clips,
+ * neither numbered nor movable, since neither is played: the missing clips the
+ * operator removed (Save leaves them out of reel.yaml, and each has an Undo
+ * until then), then the ignored clips.
  */
-
-const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
-
-function subscribeMotion(listener: () => void): () => void {
-  const query = window.matchMedia(REDUCED_MOTION)
-  query.addEventListener('change', listener)
-  return () => query.removeEventListener('change', listener)
-}
-
-/** Whether the system asks for reduced motion, kept current. */
-function useReducedMotion(): boolean {
-  return useSyncExternalStore(subscribeMotion, () => window.matchMedia(REDUCED_MOTION).matches)
-}
-
-/**
- * Up and down only, and never past the chapter's own list: a dragged row stops
- * at its chapter's edge. Without the clamp, the collision detection would pick
- * the chapter's nearest clip while the pointer is over another chapter, and a
- * release there would move the clip to the end of its own. The container is
- * the row's parent element, the chapter's <ol>.
- */
-const withinChapter: Modifier = ({ transform, draggingNodeRect, containerNodeRect }) => {
-  if (draggingNodeRect === null || containerNodeRect === null) {
-    return { ...transform, x: 0 }
-  }
-  const top = containerNodeRect.top - draggingNodeRect.top
-  const bottom = containerNodeRect.bottom - draggingNodeRect.bottom
-  return { ...transform, x: 0, y: Math.min(Math.max(transform.y, top), bottom) }
-}
-
-const MODIFIERS = [withinChapter]
-
-const INSTRUCTIONS: ScreenReaderInstructions = {
-  draggable:
-    'Press Space or Enter to pick up a clip, the Up and Down arrows to move it, ' +
-    'Space or Enter to drop it, Escape to cancel.',
-}
 
 /**
  * Size and time as the read view shows them; absent (a missing clip) shows as
@@ -298,6 +245,9 @@ const ClipRow = memo(function ClipRow({
     isDragging,
     isSorting,
     newIndex,
+    isOver,
+    active,
+    data,
   } = useSortable({
     id: clip.identity,
     disabled: locked,
@@ -355,6 +305,12 @@ const ClipRow = memo(function ClipRow({
   // Mounted on its first showing, and then only hidden: what was typed stays.
   const mounted = cuttable && (open || panels.get(identity) !== undefined)
   const panelId = `cuts-${useId()}`
+  // The target of a clip dragged in from another chapter: a line marks the gap above
+  // this row (drag.css). Within its own chapter the rows make room instead.
+  const dropBefore =
+    isOver &&
+    active !== null &&
+    active.data.current?.sortable?.containerId !== data.sortable.containerId
   return (
     <li
       ref={setNodeRef}
@@ -363,6 +319,7 @@ const ClipRow = memo(function ClipRow({
       data-status={clip.status}
       data-moved={was !== null || from !== null || undefined}
       data-dragging={isDragging || undefined}
+      data-drop-before={dropBefore || undefined}
       style={{ transform: DndCss.Translate.toString(transform), transition }}
     >
       <button
@@ -498,7 +455,7 @@ export type RemoveHandler = (chapter: ChapterKey, identity: string) => void
 export type RestoreHandler = (identity: string) => void
 
 // A chapter that plays no clip says so, and how clips get in (Move clips is per chapter).
-const MOVE_IN = 'Move clips here with another chapter’s Move clips.'
+const MOVE_IN = 'Drag clips here, or move them here with another chapter’s Move clips.'
 const LEFT_OUT = 'A chapter without clips is left out of the movie.'
 const NO_CLIPS = `No clips. ${MOVE_IN} ${LEFT_OUT}`
 const NO_CLIPS_PLAYED = `It plays no clip. ${MOVE_IN} ${LEFT_OUT}`
@@ -508,6 +465,53 @@ type FocusTarget = 'move-up' | 'move-down' | 'clip-remove' | 'clip-undo'
 
 /** Each clip's chapter when Edit mode opened, and that chapter's heading now. */
 export type Origins = ReadonlyMap<string, { key: ChapterKey; heading: string }>
+
+/**
+ * The chapter as a drop target for a clip dragged in from another chapter
+ * (`/chapter/<key>`, dragSlots.ts): its whole section, so a release anywhere in
+ * it, past its last row, lands after that row. It shows the line after the last
+ * row while it is the target, or, while the chapter plays no clip, the area that
+ * takes one, drag or not. Its own component: it re-renders on every new target
+ * (dnd-kit's context), and the chapter's 400-row list must not.
+ */
+const ChapterDrop = memo(function ChapterDrop({
+  chapterKey,
+  sectionRef,
+  plays,
+  words,
+}: {
+  chapterKey: ChapterKey
+  sectionRef: RefObject<HTMLElement | null>
+  plays: boolean
+  /** What the area says while the chapter plays no clip. */
+  words: string
+}) {
+  const { setNodeRef, isOver, active } = useDroppable({ id: `${CHAPTER_DROP}${chapterKey}` })
+  // The section is the parent's element: its ref is attached only after this child's
+  // layout effects have run, so the droppable takes it in a passive effect.
+  useEffect(() => {
+    setNodeRef(sectionRef.current)
+  }, [setNodeRef, sectionRef])
+  const across = isOver && active !== null
+  const lineRef = useRef<HTMLSpanElement>(null)
+  // At the list's end, measured against the section (`.edit-chapter` is positioned).
+  useLayoutEffect(() => {
+    const line = lineRef.current
+    const list = sectionRef.current?.querySelector<HTMLElement>(':scope > .clip-order')
+    if (line !== null && list != null) {
+      line.style.top = `${list.offsetTop + list.offsetHeight}px`
+    }
+  })
+  if (!plays) {
+    return (
+      <p className="chapter-drop" data-over={across || undefined}>
+        {words}
+      </p>
+    )
+  }
+  // Before the list, so the list stays the section's last child (its last row's corners).
+  return across ? <span ref={lineRef} className="chapter-drop-end" aria-hidden="true" /> : null
+})
 
 export const ClipOrderList = memo(function ClipOrderList({
   eventId,
@@ -585,8 +589,6 @@ export const ClipOrderList = memo(function ClipOrderList({
   const focusAfter = useRef<{ identity: string; target: FocusTarget } | null>(null)
   // That button's row, to scroll into view whole once every layout effect has run.
   const scrollAfter = useRef<HTMLElement | null>(null)
-  // The clip a drop just moved: its row is scrolled into view as a button move's is.
-  const dropped = useRef<string | null>(null)
   const reducedMotion = useReducedMotion()
   const items = useMemo(() => [...order], [order])
   // Against the original order without the clips it no longer holds: a removal, or a
@@ -616,50 +618,6 @@ export const ClipOrderList = memo(function ClipOrderList({
   const nameOf = useMemo(
     () => clipNames(chapterName, [...original, ...order, ...ignored, ...removed]),
     [chapterName, original, order, ignored, removed],
-  )
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-      // It scrolls a lifted clip into view: at once under reduced motion.
-      scrollBehavior: reducedMotion ? 'auto' : 'smooth',
-    }),
-  )
-
-  const announcements = useMemo<Announcements>(() => {
-    const total = order.length
-    const name = (id: UniqueIdentifier) => nameOf(String(id))
-    const at = (id: UniqueIdentifier) => order.indexOf(String(id)) + 1
-    return {
-      onDragStart: ({ active }) =>
-        `Picked up ${name(active.id)}, position ${at(active.id)} of ${total}.`,
-      onDragOver: ({ active, over }) =>
-        over === null
-          ? undefined
-          : `${name(active.id)} is over position ${at(over.id)} of ${total}.`,
-      onDragEnd: ({ active, over }) =>
-        over === null || over.id === active.id
-          ? `${name(active.id)} dropped at position ${at(active.id)} of ${total}, unchanged.`
-          : `${name(active.id)} moved to position ${at(over.id)} of ${total}.`,
-      onDragCancel: ({ active }) =>
-        `Move cancelled. ${name(active.id)} is back at position ${at(active.id)} of ${total}.`,
-    }
-  }, [nameOf, order])
-
-  const onDragEnd = useCallback(
-    ({ active, over }: DragEndEvent) => {
-      if (over === null || over.id === active.id) {
-        return
-      }
-      const from = order.indexOf(String(active.id))
-      const to = order.indexOf(String(over.id))
-      if (from !== -1 && to !== -1) {
-        dropped.current = String(active.id)
-        onMove(chapterKey, from, to)
-      }
-    },
-    [chapterKey, onMove, order],
   )
 
   const onStep = useCallback<Step>(
@@ -694,28 +652,17 @@ export const ClipOrderList = memo(function ClipOrderList({
   // its focus: put it back on the same button. At an end that button is
   // aria-disabled, not disabled, so it still takes focus. After a removal or an
   // Undo the row is a new node in the other list: focus its Undo or its Remove.
-  // After a drop dnd-kit puts focus back on the handle itself, a frame later; only
-  // the row's scroll is needed, as for a button move (the first drop brings the
-  // save bar in, and focus alone does not scroll a handle already in the window).
+  // A drop's focus and scroll are ChapterDrag's, for every chapter.
   useLayoutEffect(() => {
     const section = sectionRef.current
-    const rowOf = (identity: string) =>
-      section === null
-        ? undefined
-        : [...section.querySelectorAll<HTMLElement>('.clip-item')].find(
-            (item) => item.dataset.identity === identity,
-          )
-    const drop = dropped.current
-    dropped.current = null
-    if (drop !== null) {
-      scrollAfter.current = rowOf(drop) ?? null
-    }
     const request = focusAfter.current
     if (request === null || section === null) {
       return
     }
     focusAfter.current = null
-    const row = rowOf(request.identity)
+    const row = [...section.querySelectorAll<HTMLElement>('.clip-item')].find(
+      (item) => item.dataset.identity === request.identity,
+    )
     const button = row?.querySelector<HTMLButtonElement>(`.${request.target}`)
     button?.focus({ preventScroll: true })
     scrollAfter.current = row ?? null
@@ -758,7 +705,6 @@ export const ClipOrderList = memo(function ClipOrderList({
         <span className="panel-meta">{plural(order.length, 'clip', 'clips')}</span>
       </header>
       <ChapterTools chapterKey={chapterKey} heading={heading} headingId={headingId} {...tools} />
-      {empty && <p className="chapter-empty">{NO_CLIPS}</p>}
       {/* The column names, in the rows' own cells (edit.css places them by class). */}
       {!empty && (
         <div className="clip-order-head" aria-hidden="true">
@@ -771,53 +717,44 @@ export const ClipOrderList = memo(function ClipOrderList({
           </span>
         </div>
       )}
-      {!plays && !empty && <p className="chapter-empty">{NO_CLIPS_PLAYED}</p>}
+      <ChapterDrop
+        chapterKey={chapterKey}
+        sectionRef={sectionRef}
+        plays={plays}
+        words={empty ? NO_CLIPS : NO_CLIPS_PLAYED}
+      />
       {plays && (
-        <DndContext
-          id={`chapter-${chapterKey}`}
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          modifiers={MODIFIERS}
-          // Its instructions and live region go to <body>, outside the chapter's markup.
-          accessibility={{
-            announcements,
-            screenReaderInstructions: INSTRUCTIONS,
-            container: document.body,
-          }}
-          onDragEnd={onDragEnd}
-        >
-          <SortableContext items={items} strategy={verticalListSortingStrategy}>
-            <ol className="clip-order" aria-labelledby={headingId}>
-              {order.map((identity, at) => {
-                const clip = clips.get(identity)
-                if (clip === undefined) {
-                  return null
-                }
-                return (
-                  <ClipRow
-                    key={identity}
-                    eventId={eventId}
-                    clip={clip}
-                    name={nameOf(identity)}
-                    position={at + 1}
-                    total={order.length}
-                    was={moved.has(identity) ? (originalPosition.get(identity) ?? null) : null}
-                    from={fromOf(identity)}
-                    locked={locked}
-                    reducedMotion={reducedMotion}
-                    cuts={cutsOf(baseCuts, cuts, identity)}
-                    typed={typed.has(identity)}
-                    panels={panels}
-                    resets={resets}
-                    cutHandlers={cutHandlers}
-                    onStep={onStep}
-                    onRemove={onRemoveRow}
-                  />
-                )
-              })}
-            </ol>
-          </SortableContext>
-        </DndContext>
+        <SortableContext id={chapterKey} items={items} strategy={verticalListSortingStrategy}>
+          <ol className="clip-order" aria-labelledby={headingId}>
+            {order.map((identity, at) => {
+              const clip = clips.get(identity)
+              if (clip === undefined) {
+                return null
+              }
+              return (
+                <ClipRow
+                  key={identity}
+                  eventId={eventId}
+                  clip={clip}
+                  name={nameOf(identity)}
+                  position={at + 1}
+                  total={order.length}
+                  was={moved.has(identity) ? (originalPosition.get(identity) ?? null) : null}
+                  from={fromOf(identity)}
+                  locked={locked}
+                  reducedMotion={reducedMotion}
+                  cuts={cutsOf(baseCuts, cuts, identity)}
+                  typed={typed.has(identity)}
+                  panels={panels}
+                  resets={resets}
+                  cutHandlers={cutHandlers}
+                  onStep={onStep}
+                  onRemove={onRemoveRow}
+                />
+              )
+            })}
+          </ol>
+        </SortableContext>
       )}
       {removed.length > 0 && (
         <>

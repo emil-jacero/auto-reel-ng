@@ -1,0 +1,133 @@
+/*
+ * Dragging a clip between chapters (`ChapterDrag.tsx`, `ClipOrderList.tsx`): the
+ * copy that follows the pointer, the line where a drop lands in another chapter,
+ * and the area of a chapter that plays no clip. Nothing here changes a box's size
+ * or place: the line and its dot are drawn over the rows, and the area exists
+ * before a drag starts, marked only by its colours while it is the target.
+ */
+@layer screens {
+  /* dnd-kit's wrapper: fixed, the row's width, above the header and the save bar. */
+  .clip-drag-overlay {
+    pointer-events: none;
+  }
+
+  /*
+   * The copy: the handle's grip, the clip's name and, over another chapter, where it
+   * goes. As narrow as its words, and at least 3rem short of the row's end, so the
+   * line under it shows there with its dot; the badge wraps under the name when narrow.
+   */
+  .clip-drag-preview {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-2);
+    inline-size: fit-content;
+    max-inline-size: min(24rem, calc(100% - 3rem));
+    min-block-size: 2.75rem;
+    padding: var(--s-2) var(--s-3);
+    border-radius: var(--r-md);
+    background: var(--surface-raised);
+    box-shadow:
+      var(--shadow-lg),
+      0 0 0 1px color-mix(in oklab, var(--accent) 55%, transparent);
+    color: var(--fg);
+    cursor: grabbing;
+  }
+
+  .clip-drag-grip {
+    display: inline-flex;
+    color: var(--accent);
+  }
+
+  .clip-drag-name {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    font-family: var(--font-mono);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .clip-drag-target {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /*
+   * The line where a drop lands: centred on the top edge of the row it goes before,
+   * inset from the row's sides, with a dot at its end; under the sticky chapter
+   * heading (z-index 2). Drawn over the rows, never between them.
+   */
+  .clip-item[data-drop-before] {
+    &::before,
+    &::after {
+      content: '';
+      position: absolute;
+      z-index: 1;
+      background: var(--accent);
+      pointer-events: none;
+    }
+
+    &::before {
+      inset-inline: var(--s-2);
+      top: -1px;
+      block-size: 2px;
+    }
+
+    &::after {
+      inset-inline-end: var(--s-2);
+      top: -4px;
+      inline-size: 8px;
+      block-size: 8px;
+      border-radius: var(--r-full);
+    }
+  }
+
+  /* After the last row: placed at the list's end by ChapterDrop (style.top). */
+  .chapter-drop-end {
+    position: absolute;
+    z-index: 1;
+    inset-inline: var(--s-2);
+    block-size: 2px;
+    margin-block-start: -1px;
+    background: var(--accent);
+    pointer-events: none;
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset-inline-end: 0;
+      top: -3px;
+      inline-size: 8px;
+      block-size: 8px;
+      border-radius: var(--r-full);
+      background: var(--accent);
+    }
+  }
+
+  /* A chapter that plays no clip: the place to drop one, drag or not. */
+  .chapter-drop {
+    margin: var(--s-3) var(--s-4);
+    padding: var(--s-3) var(--s-4);
+    border: 1px dashed var(--fg-subtle);
+    border-radius: var(--r-md);
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+
+    &[data-over] {
+      border-style: solid;
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--fg);
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .chapter-drop {
+      transition:
+        border-color var(--dur-fast) var(--ease-out),
+        background-color var(--dur-fast) var(--ease-out),
+        color var(--dur-fast) var(--ease-out);
+    }
+  }
+}
