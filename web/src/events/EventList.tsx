@@ -55,12 +55,49 @@ function describeProblem(problem: Problem): { cause: string; detail: string | nu
   return { cause: problem.title, detail: problem.detail }
 }
 
+/** How far, in CSS pixels, a press may move and still be a click rather than a drag. */
+const CLICK_SLOP = 4
+
+/** Where a press on a row began, and the text selection it found there. */
+type Press = { x: number; y: number; selection: readonly unknown[] }
+
+const presses = new WeakMap<EventTarget, Press>()
+
+/** The selection's ends, or none when nothing is selected. */
+function selectionNow(): readonly unknown[] {
+  const selection = window.getSelection()
+  if (selection === null || selection.isCollapsed) {
+    return []
+  }
+  return [selection.anchorNode, selection.anchorOffset, selection.focusNode, selection.focusOffset]
+}
+
+function sameSelection(a: readonly unknown[], b: readonly unknown[]): boolean {
+  return a.length === b.length && a.every((end, index) => end === b[index])
+}
+
+function notePress(event: MouseEvent<HTMLTableRowElement>): void {
+  presses.set(event.currentTarget, {
+    x: event.clientX,
+    y: event.clientY,
+    selection: selectionNow(),
+  })
+}
+
 /**
  * A plain click on a row, not on a control and not ending a text selection, opens
  * its title's link. The row gets no role, tab stop or key handler of its own: the
  * title link stays its one keyboard stop.
+ *
+ * Whether the click ended a selection is told from its press (`notePress`), not
+ * from the selection alone: a click inside text already selected keeps that
+ * selection until after the click in Chromium and WebKit, and still opens the
+ * event. A press that moved, or that changed the selection, does not.
  */
 function openRow(event: MouseEvent<HTMLTableRowElement>): void {
+  // Every click ends its press, whatever it does next.
+  const press = presses.get(event.currentTarget)
+  presses.delete(event.currentTarget)
   if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
     return
   }
@@ -71,7 +108,16 @@ function openRow(event: MouseEvent<HTMLTableRowElement>): void {
   ) {
     return
   }
-  if (window.getSelection()?.isCollapsed === false) {
+  const selection = selectionNow()
+  if (press === undefined) {
+    // No press seen (a click not made with a pointer): only an empty selection opens.
+    if (selection.length > 0) {
+      return
+    }
+  } else if (
+    Math.hypot(event.clientX - press.x, event.clientY - press.y) > CLICK_SLOP ||
+    (selection.length > 0 && !sameSelection(selection, press.selection))
+  ) {
     return
   }
   event.currentTarget.querySelector<HTMLAnchorElement>('.cell-event a[href]')?.click()
@@ -81,7 +127,7 @@ function EventRow({ event, lookAlike }: { event: EventSummary; lookAlike: boolea
   // Called on every render, whether or not the row shows its path (rules of hooks).
   const pathId = useId()
   return (
-    <tr role="row" onClick={openRow}>
+    <tr role="row" onMouseDown={notePress} onClick={openRow}>
       <td role="cell" className="cell-date">
         {event.date != null && <time dateTime={event.date}>{event.date}</time>}
       </td>
