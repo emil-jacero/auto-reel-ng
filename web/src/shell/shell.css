@@ -136,11 +136,12 @@
   }
 
   /*
-   * Below 24rem the header has no room for 44 px theme options (it is full at
-   * 320px): they keep their width, and their tap area keeps it too, so the three
-   * never overlap. It is still 44px tall.
+   * Below 26rem the header has no room for 44 px theme options beside the
+   * longest jobs status, "Reconnecting…" (it is full at 320px, and with the wide
+   * options the words fit only from 414px): they keep their width, and their tap
+   * area keeps it too, so the three never overlap. It is still 44px tall.
    */
-  @media (pointer: coarse) and (width < 24rem) {
+  @media (pointer: coarse) and (width < 26rem) {
     .theme-control label {
       min-inline-size: 0;
 
@@ -150,8 +151,13 @@
     }
   }
 
-  /* A phone keeps the mark and hides the name, which stays in the accessibility tree. */
-  @media (width < 30rem) {
+  /*
+   * A phone keeps the mark and hides the name, which stays in the accessibility
+   * tree. Under a coarse pointer the wide theme options take 48px more, so the
+   * name stays hidden up to 34rem: below about 33rem the jobs counts in words
+   * would need a third line beside them, and the last rem is for wider fonts.
+   */
+  @media (width < 30rem), (pointer: coarse) and (width < 34rem) {
     .app-header-inner {
       gap: var(--s-3);
     }
