@@ -148,6 +148,7 @@
     - in every row, the date's, verdict pill's and job pill's tops are within 3 px of the title link's top. Firefox draws both pills 3.1 px above it, from the shared `ui/Pill`, and that was accepted by the supervisor (design, "Supervisor decisions").
     - every Render's vertical center is within 3 px of the title's, and every "Blocked by missing clips" note's top is within 3 px of the title's top (the note wraps to two lines and is top-aligned, so its center sits lower)
     - every Render and every "Blocked by missing clips" note shares one right edge (±1 px) per table
+    - (added in review) what is drawn ends there too: the note's words (their line boxes, not the note's box), and every active job's meter and percent, each within 1 px of the job cell's content edge
     - at 1024 and up, each finished job's time starts on the line below its pill, and no row's job cell holds more than two text lines apart from an active job's bar
   - **768 and 600:**
     - each card's date starts at most 8 px below the last line of its event cell's text (title, location or path), including the 38-clip row whose verdict runs to three lines
@@ -163,6 +164,7 @@
   - **Row target**, in Chromium, Firefox **and WebKit**, at 1280 and 390:
     - a click on Två kapitel's clip count opens its page
     - a drag across a row's date selects it and stays on the list
+    - (added in review) a plain click inside that selected date then opens the event, as do a click elsewhere in the row after the drag and a row click after selecting text outside the row; a second drag over the same text, and a short drag that selects two letters, stay on the list (also at 768 px)
     - pressing a row's Render (its POST answered by an in-browser mocked 201) stays on the list
     - a click on the "Needs attention" row's fix text stays on the list
   - **Controls above the row target**, at 1280, 768 and 390, with a fine pointer in Chromium, Firefox and WebKit, and with a coarse pointer in Chromium (`has_touch`, `is_mobile`) with `ui-a11y-polish`'s hit-area rules injected:
@@ -172,6 +174,7 @@
   - **Hover:**
     - hovering an event row changes its cells' computed background
     - hovering a "Needs attention" row or an event page's clip row changes nothing
+    - (added in review) under touch emulation (WebKit and Chromium, 390 and 820 px), no row keeps a fill after its Render is tapped, or after a card is tapped open and Back is pressed; with a mouse, in all three engines, a hovered row still takes its fill (headless Firefox reports no pointer, so its case runs headed under Xvfb)
   - **Empty states:**
     - a mocked `[]` read shows no `.stats` and the "No events yet" text
     - a patched all-fresh read with Needs render chosen shows "Nothing needs rendering" and "Show all events"; Tab to it and Enter shows every row, with `document.activeElement` the All radio, never `<body>`

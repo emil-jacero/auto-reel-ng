@@ -138,6 +138,8 @@ other-year and no-job rows and a 38-clip long-title row (`p2_proto.py`, `p6_prot
   - `.live-job > .job-progress` goes in `1 / 1`
   - `.live-job > :is(.btn, .row-blocked)` goes in `1 / 2` with `justify-self: end`
   - `.row-blocked` gets `max-inline-size: 7.5rem`, so it wraps to two lines
+  - *Changed during review:* the space before the action is its own margin, not the grid's gap, and
+    the note's words end at the edge (see "Changed during review", item 3)
   - `.live-job .job-when` gets `flex-basis: 100%`, so the time is the job's second line, for finished
     jobs too
   - **The separator is `jobs-live-polish`'s.** Its design ("The separator") replaces today's
@@ -218,6 +220,10 @@ still exist.
   }
   ```
 
+  *Changed during review:* the selection test is now told from the press (`notePress`), not from the
+  selection alone, so that a click inside text already selected opens the event in every engine (see
+  "Changed during review", item 1).
+
   - `.click()` follows the hash exactly as a click on the title does, so routing, scroll restore and the
     focus move to the page's h1 are unchanged.
   - The synthetic click bubbles back to the `<tr>`. Its target is the `<a>`, so the `closest(…)` test
@@ -240,6 +246,8 @@ still exist.
   - the card-layout `tbody tr:hover` / `tr:hover > td` pair (lines 301-307)
 
   So "Needs attention" rows and the event page's clip rows no longer highlight.
+- *Changed during review:* both row hover rules sit in `@media (hover: hover)` (see "Changed during
+  review", item 5).
 - "Needs attention" rows get no row click. Their fix text is instructions the operator may want to
   select and copy, and a row target would navigate on the first click of a double-click. Their folder
   link stays.
@@ -286,7 +294,9 @@ follows what the rows show, not the engine's key.
   hook order and throw. Only the markup is conditional: a look-alike row adds
   `<span id={pathId} className="event-folder">{event.event_id}</span>` after the location, and the title
   link gets `aria-describedby={lookAlike ? pathId : undefined}`, so two "Kalas" links are told apart by
-  assistive technology too. The span is `display: block`, muted and `--text-xs`, and the cell's existing
+  assistive technology too. (*Changed during review:* the path is followed by a note, "Reads the same
+  as another event", which the link's description names first. See "Changed during review", item 4.)
+  The span is `display: block`, muted and `--text-xs`, and the cell's existing
   `overflow-wrap: anywhere` breaks a long path.
 
 **Rationale**: This targets the one conflict v1 asks the operator to resolve by hand, and the line it adds
@@ -382,6 +392,7 @@ so it is recorded there, and the HLD gains no D-n entry.
   export function unansweredFailure(result: Unanswered): { cause: string; detail: string }
   //   unreachable → { cause, detail: NOT_REACHABLE_HINT }   (never the browser's error text)
   //   unpublished → { cause, detail: result.message }       ("GET … answered 500 …")
+  //   (changed during review: the message, then UNPUBLISHED_HINT; the path decoded. Item 6.)
   ```
 
   - `common.tsx`'s `UNREACHABLE_CAUSE` becomes `= UNANSWERED_CAUSE.unreachable`. There is one source
@@ -467,6 +478,8 @@ GUI trims only what its own row already shows, and MUST NOT rewrite the fix itse
     - "None of the 11 events needs rendering."
     - with error rows, a following " 1 needs attention."
     - with no rows, "No events found."
+    - (changed during review: "No events yet." with no rows, and "1 event needs attention; no other
+      events." with error rows only. See "Changed during review", item 7.)
   - It is visually hidden because the stat chips already show the same counts.
 
 **Rationale**: `LoadStatus` belongs to `ui/` (`ui-a11y-polish`) and keeps its contract: the read's
@@ -624,6 +637,127 @@ Recorded after implementation (Phase 2), binding on this change:
   This was checked by hit-testing every control of every list row at 1280, 768 and 390 px:
   - with a fine pointer in Chromium, Firefox and WebKit
   - with a coarse pointer in Chromium (touch emulation), with `ui-a11y-polish`'s hit-area rules injected
+
+## Changed during review
+
+The supervisor's review of the pr branch (two Opus review lenses, then a skeptic on each finding) found
+seven minor defects. All seven were fixed with new commits on the pr branch. None changes a spec
+requirement: fixes 1 and 5 restore what "Each event opens on its own page" already asks for, and the rest
+change wording, layout or documentation under the existing requirements.
+
+1. **A click inside text already selected in a row did not open the event in Chromium or WebKit.**
+   `openRow` skipped every click that found a non-collapsed selection. Those two engines clear a
+   selection that is clicked inside only after the click event has run, so the first click was
+   swallowed and only a second one opened the event. Firefox clears it first and opened it.
+   - The row now records each press. `onMouseDown` (`notePress`) stores the pointer's position and the
+     selection's anchor and focus in a module-level `WeakMap` keyed by the row, so `openRow` stays at
+     module level.
+   - `openRow` skips a click only when the press moved more than 4 px (`CLICK_SLOP`), or when the
+     selection at click time is non-empty and differs from the one the press found.
+   - A click with no recorded press (not made with a pointer) keeps the old test: it opens only with
+     nothing selected. Every click consumes its press, including one that returns early on a control.
+   - Verified with `select.py` in Chromium, Firefox and WebKit at 1280, 768 and 390 px (63 checks):
+     - a drag across Två kapitel's date selects it and stays on the list
+     - a click inside that selection opens the event
+     - a drag, then a click on the clip count, opens it
+     - text selected in the Needs attention fix, then a row click, opens it
+     - a second drag over the same selection stays
+     - a short drag that selects two letters stays
+     - a plain click on the date opens it
+
+     The reviewer's probe showed the second case staying on the list in Chromium and WebKit before
+     the fix.
+2. **`web/README.md`'s hover rule was false for Edit mode's clip rows.** "Clip rows do not" take a hover
+   fill, but `edit.css` (`edit-mode-polish`'s file) gives every Edit-mode clip row one, and uses it to
+   bring out the drag handle and the move buttons. A later slice following the README could have
+   deleted that affordance. The bullet now says that only table rows that open something take a fill,
+   and only for a pointer that hovers (fix 5). "Needs attention" rows and the event page's clip table
+   take none, and Edit mode's rows keep theirs.
+3. **The job column had three right edges at table widths.** The boxes shared one edge, but the
+   drawing did not. Measured at 1280 px, with the cell's content edge at 1199:
+   - Render ended at 1199.
+   - An active job's bar and percent ended at 1187. Its second track was empty (0 px), but the 12 px
+     `column-gap` was still reserved.
+   - "Blocked by missing clips" had its box at the edge, but its wrapped words were left-aligned and
+     ended at 1167.
+
+   The changes:
+   - The space before the action is now the action's own `margin-inline-start: var(--s-3)`, so a row
+     with no action gives its job the whole cell.
+   - The grid's `column-gap` is set to 0 explicitly. Without that, `jobs.css`'s
+     `.live-job { gap: var(--s-2) }` shows through and leaves the bar 8 px short.
+   - The note is `display: block; text-align: end` in its 7.5rem box, with its icon inline
+     (`vertical-align: middle`, `margin-inline-end: var(--s-1)`). Both lines end at the edge, and the
+     icon stays beside "Blocked by".
+
+   Verified with `edges.py` in all three engines at 1440, 1280, 1024 and 900 px (204 checks):
+   - every Render box, the note's words (their line boxes), every meter and every percent end within
+     1 px of the job cell's content edge
+   - the note's top is within 3 px of the title's
+   - the note's icon is on its first line, beside the words
+
+   Task 6.1's right-edge check (`layout.py`) now measures what is drawn (the note's words and every
+   meter) against the cell's content edge, not only the action's box.
+4. **Look-alike rows sounded the same to a screen reader.** Both Kalas links are named "Kalas", and their
+   path descriptions differ only in a letter's case, which NVDA, JAWS and VoiceOver do not voice by
+   default.
+   - Under the path, a look-alike row now shows a second muted line: "Reads the same as another
+     event", the spec's own words for the rule.
+   - The title link's `aria-describedby` names the note first, then the path. That takes two `useId`
+     calls, both unconditional. The conflict is announced whatever the paths' case.
+   - The path and the note each have their own line (`.event-folder > span { display: block }`). Put
+     on one line, the path broke at " - " at 1280 and 390 px, splitting the one fact the line exists
+     to show.
+   - The note is muted, not warn-toned. Look-alikes do not always collide on output (see "Look-alike
+     rows show their folder's path"), so the note states a fact, not a failure.
+   - Not adopted: describing the pair as "folder 1 of 2". That is positional, and it gives the operator
+     nothing to act on.
+   - Verified with `alike.py` and `layout.py`:
+     - Chromium's accessibility tree describes the links as "Reads the same as another event
+       2024/2024-07-14 - Kalas" and "… - kalas"
+     - no other list link has a description
+     - in all three engines, at 1280, 1024, 768 and 390 px in light (1280 and 390 also in dark),
+       exactly the two Kalas rows carry the path and the note, each on one line
+5. **The row hover stuck after a tap on touch.** In WebKit with touch emulation, `:hover` stayed on the
+   last row tapped, both after its Render was tapped and after the card was tapped open and Back was
+   pressed. The row then read as selected.
+   - Both row hover rules, for the table and the card layout, now sit in `@media (hover: hover)`.
+   - The pointer cursor stays ungated, because it does nothing on touch.
+   - No `:active` fill was added for touch. A tap on a row opens its page at once, and `:active` would
+     also light the row while its Render is pressed, as if the row were the target.
+   - Verified with `touchhover.py`:
+     - with touch emulation in WebKit and Chromium at 390 and 820 px, no row keeps a fill after a tap
+       on Render (its POST answered by an in-browser 201 mock), or after a card is tapped open and Back
+       is pressed
+     - with a mouse in all three engines at 1280 and 390 px, hovering a row still changes its fill
+     - headless Firefox reports `(pointer: none)` and `(hover: none)`, so its mouse case runs headed
+       under Xvfb, where it reports a mouse as a desktop Firefox does
+     - `behaviour.py`'s hover and contrast-on-hover checks run in Chromium, which reports a mouse
+6. **The unexpected answer's detail was a percent-encoded request line with no next step.** The event
+   page and the save bar showed "GET /api/v1/events/2024/2024-06-27%20-%20Grillning%20med%20grannar
+   answered 500 …".
+   - `unpublishedAnswer` now decodes the path with `decodeURI`. That keeps an escaped `/`, `?` or `#`
+     escaped, and a malformed escape is shown as given. This reaches every consumer: the list, the
+     page, Edit mode's read and the save bar.
+   - `labels.ts` gains `UNPUBLISHED_HINT`: "The service's log may say why; press Refresh to try again."
+     `unansweredFailure` appends it after the request and the status, for the list's and the page's
+     reads only, as the not-reachable case has `NOT_REACHABLE_HINT`.
+   - Edit mode's read and the save bar keep their own Try again and Retry, without the hint.
+   - The hint says "may" because the answer can come from something other than the service: Vite's
+     dev proxy answers 500 itself (see "Risks / Trade-offs").
+   - Verified:
+     - node checks of `unpublishedAnswer`: decoded, non-ASCII decoded, `%2F` and `%23` kept, a
+       malformed escape kept, and no trailing space without a status text
+     - node checks of `unansweredFailure`
+     - in the browser, bare 500s on the list, the page, Edit mode's read and the save show decoded paths
+       with no `%20`, and the hint appears only on the list and the page
+7. **The result announcement's wording did not fit two states.**
+   - A read of error rows only announced "No other events. 1 needs attention.". On screen, "No other
+     events." sits under the Needs attention panel. Spoken first, its "other" referred to nothing the
+     listener had heard yet. It now says "1 event needs attention; no other events."
+   - An empty read announced "No events found." while the visible title says "No events yet". It now
+     announces "No events yet."
+   - Verified in `behaviour.py`'s empty section, at 1280 and 390 px.
 
 ## Open Questions
 
