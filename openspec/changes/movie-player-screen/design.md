@@ -7,6 +7,12 @@
 - **The keyboard requirement's list of level-two headings** ("a year group, 'Needs attention', or a chapter",
   "The screens are operable by keyboard") is not amended for the "Movie" heading. This change's own requirement
   states the heading.
+- **The section's pill stays the event's verdict** (2026-10-01, after implementation). It says Current or Outdated
+  from the event read, also while a probe note says the service has no movie file. The pill states what the read
+  found; the note explains what the later probe found. Hiding the pill under a note was considered and left out.
+- **Fixtures for the render and cancel scenarios** (after implementation): `2024-06-21 - Midsommar - Dalarna` and
+  `2024-06-27 - Grillning med grannar`, not Kalas, which `POST /api/v1/jobs` refuses with 409 `output_collision`
+  on the dev library ("Verification fixtures").
 
 ## Context
 
@@ -339,14 +345,14 @@ cuts note and the chapters: the movie belongs with the render story, and the cli
   </header>
   <div className="movie-body">
     {/* a fetch trouble: <div tabIndex={-1} ref={noteRef}><Alert role=…/></div> in place of the figure */}
-    <figure className="movie-figure">
+    <div className="movie-figure">
       <div className="movie-frame">
         <video controls preload="none" poster={poster} src={src} aria-labelledby={headingId} />
       </div>
-      {facts && <figcaption className="movie-facts"><span className="movie-file">{name}</span> · {size}</figcaption>}
+      {facts && <p className="movie-facts"><span className="movie-file">{name}</span> · {size}</p>}
       {age === 'outdated' && <p className="movie-facts">{OUTDATED_NOTE}</p>}
       {/* a playback trouble: <Alert role="alert" | "status" …/> */}
-    </figure>
+    </div>
   </div>
 </section>
 ```
@@ -604,11 +610,14 @@ symlinked):
   - **502:** `chmod 000` the movie
   - **unanswered:** `page.route` aborts the probe
 - A replaced file: `os.replace` of Provklipp's movie by a copy of Grillning's, undone afterwards.
-- A render from elsewhere: `POST /api/v1/jobs` with `{"event_id": "2024/2024-07-14 - Kalas", "force": true}` and a
-  worker (`auto-reel worker <library> --device cpu`). `make_dev_library.py` leaves a queued `2024/Blandat` job with
+- A render from elsewhere: `POST /api/v1/jobs` with `{"event_id": "2024/2024-06-21 - Midsommar - Dalarna", "force":
+  true}` and a worker (`auto-reel worker <library> --device cpu`). `make_dev_library.py` leaves a queued `2024/Blandat` job with
   no worker, so that job is cancelled first (`auto-reel jobs cancel <library> <id>`): otherwise the worker renders
   Blandat too, and Blandat, a "no movie" fixture, gains a movie and a rewritten `reel.yaml`. For the cancelled
-  case, no worker runs while the job is queued, and `POST /api/v1/jobs/{id}/cancel` follows.
+  case, on `2024-06-27 - Grillning med grannar`, no worker runs while the job is queued, and `POST
+  /api/v1/jobs/{id}/cancel` follows. Neither runs on Kalas: `POST /api/v1/jobs` refuses it with 409
+  `output_collision`, because `2024-07-14 - kalas` claims the same file (`jobs-project-guards`). Grillning's 24 s
+  movie outlasts the cancel check; Midsommar's runs 6 s.
 - **Browsers:** Chrome (channel `chrome`) for every playback check, in the mandated container with
   `playwright install chrome`. One Firefox pass covers what differs: the PCM-sourced movie plays its sound, Space
   plays, and nothing scrolls sideways.
@@ -669,3 +678,27 @@ None that change the specs, the approach or the tasks. Deferred, by supervisor d
 - **A movie version in the event detail** (size and mtime, a stat) would remove the probe. With chapter times in the
   render manifest, it is a v2 item beside the proxy work.
 - **Keeping a playing movie across a Refresh** needs `load()` to keep `ReadyView` mounted: a follow-up.
+
+## Implementation deviations (accepted by the supervisor, 2026-10-01)
+
+1. **A `<div className="movie-figure">`, not `<figure>` with `<figcaption>`.** The section's first sketch put the
+   outdated sentence and the trouble alerts after the `<figcaption>`, which HTML does not allow: a `figcaption` is
+   the first or last child of its `figure`. The `<video>` is named by the heading, so the figure added no meaning.
+   The markup above shows the shipped form.
+2. **Task 5.1's teardown** (stop `serve`, drop the database, remove the dev library) runs in the supervisor's
+   cleanup step after the PR is merged, not inside the validation task, so the library stays available for review.
+3. **The verification container** is the prebuilt Chrome image the supervisor named (`localhost/playback-research:
+   chrome`, the Containerfile of `docs/research/browser-playback.md`) rather than `playwright install chrome` on
+   each run, and the scripts send their `POST /api/v1/jobs` with Python's `urllib` from that container, not curl.
+4. **Focus after a note replaces the player** moves to the note's wrapper when focus was anywhere in the player
+   (the `<video>`, or a trouble note's Download or Load action), not only on the `<video>`. Likewise a new version
+   takes focus to the new `<video>` when focus was anywhere in the old player.
+
+Verification findings worth keeping for the next player change (`clip-preview-screen`):
+- Any catch-all Playwright route (`**/*`, or a URL predicate) makes Playwright intercept the media range requests,
+  and Chrome's playback then stalls at `currentTime` 0. The scripts route only the write endpoints
+  (`**/api/v1/jobs`, `**/api/v1/jobs/**`, `**/reel`) to abort unintended writes, and log every request passively.
+- With Playwright's sync API, `time.sleep` delivers no events: a request log read after it misses what happened
+  during it. The scripts wait with `page.wait_for_timeout`.
+- Chrome draws its native loading arc over the poster for a moment after the player mounts with its `src`
+  (`networkState` 1, `readyState` 0, no request); it is gone within 1.5 s.

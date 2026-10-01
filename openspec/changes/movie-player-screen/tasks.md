@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Confirm that the gate is archived on `main`: `ls openspec/changes/archive/ | grep -E -- '-media-endpoints$'` must
+- [x] 1.1 Confirm that the gate is archived on `main`: `ls openspec/changes/archive/ | grep -E -- '-media-endpoints$'` must
   print one directory. Stop and report to the supervisor if it does not. Then re-check what this change builds on
   (design, "Context") against the landed code. Stop and report on any mismatch that moves a name, a status or a
   mount point, and rename nothing here.
@@ -45,7 +45,7 @@
 
 ## 2. web/ — the address, the probe and the words
 
-- [ ] 2.1 Add `web/src/api/headers.ts` (`contentRangeSize`, `dispositionName`, with no imports) and
+- [x] 2.1 Add `web/src/api/headers.ts` (`contentRangeSize`, `dispositionName`, with no imports) and
   `web/src/api/movie.ts`, as design "One address per movie file" gives them:
   - `MOVIE_PATH` checked with `satisfies keyof paths`, and the `v` query typed from `paths`
   - `movieUrl(eventId, version)`
@@ -68,7 +68,7 @@
       - `"inline; filename*=utf-8''%E0%A4%A.mp4"` (a malformed escape), `'inline'` and `null` → `null`
   - `grep -rn "/movie'" web/src --include=*.ts --include=*.tsx | grep -v schema.d.ts` prints only `movie.ts`
 
-- [ ] 2.2 Add `web/src/movie/labels.ts`, `web/src/movie/MoviePanel.tsx` and `web/src/movie/movie.css`, and the
+- [x] 2.2 Add `web/src/movie/labels.ts`, `web/src/movie/MoviePanel.tsx` and `web/src/movie/movie.css`, and the
   `--media-bg` token in `web/src/styles/tokens.css`, per design:
   - **labels:** `MovieAge` with `MOVIE_AGE_LABEL` and `MOVIE_AGE_LOOK`, `OUTDATED_NOTE`, `MovieTrouble` with
     `MOVIE_TROUBLE` (title and tone), and `MEDIA_ERROR_WORDS`, with the exact words of the design's tables
@@ -82,7 +82,8 @@
 
   Verify:
   - `tsc --noEmit` and `npm run build` pass
-  - `grep -nE 'autoPlay|autoplay|loop|muted|\.play\(' web/src/movie` prints nothing
+  - `grep -nE 'autoPlay|autoplay|loop|[^-]muted|\.play\(' web/src/movie` prints nothing (`[^-]`: the
+    `--fg-muted` token is not the `muted` attribute)
   - `grep -nE '#[0-9a-fA-F]{3}|oklch|rgb|black' web/src/movie/movie.css` prints nothing
   - the three motion grep commands of `web/README.md`, run over `web/src/movie`, print nothing at all
   - `git diff main -- web/src/styles/tokens.css` adds exactly the token, as one `light-dark()` value, and its
@@ -91,7 +92,7 @@
 
 ## 3. web/ — mount point and docs
 
-- [ ] 3.1 Mount `<MoviePanel eventId={eventId} event={event} />` as the first child of `ReadyView` in
+- [x] 3.1 Mount `<MoviePanel eventId={eventId} event={event} />` as the first child of `ReadyView` in
   `web/src/events/EventDetail.tsx`, with its import.
 
   Verify:
@@ -100,7 +101,7 @@
     render region and the first chapter, and `2024-09-01 - Sommarlov` shows none
   - `git diff --stat main -- web/src` lists only the files of design "File ownership"
 
-- [ ] 3.2 Update `web/README.md` and `docs/high-level-design.md`, as design "File ownership" and "HLD: D-15" list:
+- [x] 3.2 Update `web/README.md` and `docs/high-level-design.md`, as design "File ownership" and "HLD: D-15" list:
   - **`web/README.md`:**
     - the event page paragraph gains the Movie section: when it shows, Current or Outdated, the file and size,
       nothing loaded before Play, and failures by cause
@@ -129,7 +130,7 @@ Run each check as an ad hoc Playwright script in `<verify>`, **never committed**
 - a request log comes from `page.on("request")`, alongside the serve access log
 - screenshots are saved in `<verify>/shots/`; look at every one
 
-- [ ] 4.1 Read view: layout, loading, keyboard and access (`check_read.py`).
+- [x] 4.1 Read view: layout, loading, keyboard and access (`check_read.py`).
   - **Widths and schemes:** `2024-07-14 - Kalas` (Current), `2024-06-27 - Grillning med grannar` (Outdated) and
     Provklipp, at 320, 390, 768 and 1280 px wide (800 tall), in light and dark (24 PNGs). For each:
     - `document.documentElement.scrollWidth <= innerWidth`
@@ -173,7 +174,7 @@ Run each check as an ad hoc Playwright script in `<verify>`, **never committed**
 
   Verify: every item passes, and the PNGs and the script's output are in `<verify>`.
 
-- [ ] 4.2 Playback and versions (`check_play.py`):
+- [x] 4.2 Playback and versions (`check_play.py`):
   - **It plays:** Provklipp's movie from the keyboard, then at least 1 s of advance in 2 s, and a seek to 50 % fires
     `seeked`. `duration` is within 0.1 s of `ffprobe -show_entries format=duration`.
   - **Refresh starts over.** Play Kalas's movie for 2 s and mark the element, then press Refresh. The page shows
@@ -182,17 +183,19 @@ Run each check as an ad hoc Playwright script in `<verify>`, **never committed**
   - **A finished render replaces the player.** First cancel the dev library's queued `2024/Blandat` job
     (`auto-reel jobs list <library> --status queued`, then `auto-reel jobs cancel <library> <id>`), so the worker
     renders nothing else. Then start `auto-reel worker <library> --device cpu` with the same `DATABASE_URL`. On
-    Kalas:
+    `2024-06-21 - Midsommar - Dalarna` (Kalas cannot be enqueued on the dev library: `POST /api/v1/jobs` refuses it
+    with 409 `output_collision`, since `2024-07-14 - kalas` claims the same file):
     - play and pause from the keyboard, so that focus stays on the `<video>`
     - mark the element (`v.dataset.mark = 'old'`)
-    - `POST /api/v1/jobs` `{"event_id": "2024/2024-07-14 - Kalas", "force": true}` with curl
+    - `POST /api/v1/jobs` `{"event_id": "2024/2024-06-21 - Midsommar - Dalarna", "force": true}` with curl
     - wait until the render region shows the job as rendered and the page's probe after it is logged (no toast:
       the tab did not start this job)
     - check that the `<video>` has no mark, its `src` carries the new file's `ETag`, `document.activeElement` is
       the new `<video>`, and it plays
 
     Stop the worker afterwards.
-  - **A re-read that finds the same file keeps playing.** With no worker running, play Kalas's movie and mark the
+  - **A re-read that finds the same file keeps playing.** With no worker running, play the movie of
+    `2024-06-27 - Grillning med grannar` (24 s, so it outlasts the check; Midsommar's runs 6 s) and mark the
     element. Enqueue a forced job with curl, then cancel it with `POST /api/v1/jobs/{id}/cancel` while it is
     queued. After the page's re-read and its probe (request log), the marked element is still there, `paused` is
     false, and `currentTime` did not go back.
@@ -215,7 +218,7 @@ Run each check as an ad hoc Playwright script in `<verify>`, **never committed**
   Verify: every item passes, the script's output and screenshots are in `<verify>`, and Provklipp's movie has the
   `sha256sum` recorded in 1.1 again.
 
-- [ ] 4.3 Failures by cause (`check_fail.py`), each fixture made and undone around its own check on Kalas:
+- [x] 4.3 Failures by cause (`check_fail.py`), each fixture made and undone around its own check on Kalas:
   - **404:** move `2024/2024-07-14 - Kalas.mp4` aside in `library-output` and `mkdir` that name. The page's
     staleness still cites no reason. The section shows "The service has no movie file for this event." with the
     service's detail, no `<video>`, and no element with `role="alert"` in the section.
@@ -236,14 +239,14 @@ Run each check as an ad hoc Playwright script in `<verify>`, **never committed**
     movie" (Julafton) and on "Load the new movie" (the replacement fixture) reaches that control, using
     `document.elementFromPoint`.
 
-  Before the first fixture, copy Kalas's movie to `<verify>/kalas.mp4` (task 4.2 rendered it anew).
+  Before the first fixture, copy Kalas's movie to `<verify>/kalas.mp4` (the fixtures must restore exactly this file).
 
   Verify: every item passes, each fixture is undone (the movie `cmp`-equal to that copy, its mode restored), and
   `git status` shows no Playwright, fixture or screenshot file in the repository.
 
 ## 5. Validation
 
-- [ ] 5.1 Run the gates:
+- [x] 5.1 Run the gates:
   - `npx tsc --noEmit` and `npm run build` in the node:22 container
   - the full `.venv/bin/python -m pytest`, which keeps the web-mount and OpenAPI drift tests green
   - no Python file changed, so these run only to confirm that nothing changed:

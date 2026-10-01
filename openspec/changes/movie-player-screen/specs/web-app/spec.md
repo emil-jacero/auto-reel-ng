@@ -81,15 +81,15 @@ row uses. The page SHALL show no poster when there is no such clip, or when that
 - **THEN** none of these pages shows a "Movie" section, and none of them requests a movie
 
 #### Scenario: A finished render replaces the player
-- **WHEN** the operator plays the movie of `2024-07-14 - Kalas` from the keyboard and pauses it, keyboard focus
-  stays on the player, and a forced render of the event, started from elsewhere (another tab, or `POST
+- **WHEN** the operator plays the movie of `2024-06-21 - Midsommar - Dalarna` from the keyboard and pauses it,
+  keyboard focus stays on the player, and a forced render of the event, started from elsewhere (another tab, or `POST
   /api/v1/jobs`), finishes while the page is shown
 - **THEN** after the page's read the player loads from an address with the new file's entity-tag, keyboard focus is
   on the new player, and it plays the new movie
 
 #### Scenario: A read that finds the same movie keeps playing
-- **WHEN** the movie of `2024-07-14 - Kalas` is playing, and a forced render of the event is queued from elsewhere
-  and cancelled before it starts, so the page reads the event again
+- **WHEN** the movie of `2024-06-27 - Grillning med grannar` is playing, and a forced render of the event is
+  queued from elsewhere and cancelled before it starts, so the page reads the event again
 - **THEN** the player is the same one, still playing, and its position did not jump back
 
 #### Scenario: Edit mode shows no movie
