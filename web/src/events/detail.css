@@ -60,13 +60,6 @@
     }
   }
 
-  /* A coarse pointer: a 44px tall target (components.css, "A coarse pointer"). */
-  @media (pointer: coarse) {
-    .back-link {
-      min-block-size: 2.75rem;
-    }
-  }
-
   /*
    * Text, so muted, never --fg-subtle. The separator is hidden from assistive
    * technology (empty alternative text after the slash); an engine without that
@@ -85,6 +78,23 @@
       content: '/';
       content: '/' / '';
       margin-inline-end: var(--s-2);
+    }
+  }
+
+  /*
+   * A coarse pointer: the back link is a 44px tall target (components.css, "A coarse
+   * pointer"), with its words centred in it. The folder's first line drops by as
+   * much, so the two first lines still share a line: both are text-sm at one line
+   * height, so 1lh is the link's line too. After the folder's own rule, which it
+   * overrides.
+   */
+  @media (pointer: coarse) {
+    .back-link {
+      min-block-size: 2.75rem;
+    }
+
+    .crumb-folder {
+      padding-block-start: calc((2.75rem - 1lh) / 2);
     }
   }
 

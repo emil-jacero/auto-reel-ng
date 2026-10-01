@@ -338,7 +338,8 @@ HLD §7).
   link, the header's Events link and the back link take a tap in at least 44 × 44 px:
   an invisible `::after` around the control, so no box moves (segmented options grow
   to 44 px wide, the theme options only from a 26rem window, and the back link to
-  44 px tall). The shared action rows (an alert's, a dialog's, `page-actions`,
+  44 px tall, with the folder beside it padded down to keep its first line on the
+  link's). The shared action rows (an alert's, a dialog's, `page-actions`,
   `toolbar`) keep 1rem between wrapped lines, so two stacked areas never meet; a
   new row that can stack buttons does the same. The brand name waits for a 34rem
   window, so the jobs status keeps its words beside the wider theme options. A fine
