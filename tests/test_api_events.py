@@ -832,3 +832,30 @@ def test_detail_chapters_are_the_chapters_render_adopts(client: TestClient, proj
     assert new_first == {"Kvällen/s1710004.mp4", "Dag 2/s1710005.mp4", "s1710006.mp4"}
     assert all(second_status[identity] == "active" for identity in new_first)
     assert second_status["s1710009.mp4"] == "ignored"
+
+
+def test_detail_orders_entering_clips_by_the_current_config_sort(
+    client: TestClient, project: Path
+) -> None:
+    # The service started with no config.yaml (datetime). A render re-reads config.yaml
+    # for every job, so the detail must place entering clips by the sort rule on disk
+    # now, re-read per request, not the one `serve` started with.
+    from auto_reel_ng.cli.adoption import prepare_event
+    from auto_reel_ng.config.project import load_project_config
+
+    # Entering clips whose datetime order (b, c, a) is neither name order nor its reverse.
+    clips = {"s1710001.mp4": 1, "a.mp4": 4, "Dag 2/b.mp4": 2, "c.mp4": 3}
+    event_dir = _placed_event(project, _DEFAULT_ONLY_REEL, clips)
+    config = project / "config.yaml"
+
+    config.write_text("sort:\n  method: filename\n  reverse: true\n", encoding="utf-8")
+    reversed_order = _listed(_detail_chapters(client))
+    config.write_text("sort:\n  method: filename\n", encoding="utf-8")
+    by_name = _listed(_detail_chapters(client))
+
+    assert reversed_order == [("", ["s1710001.mp4", "c.mp4", "Dag 2/b.mp4", "a.mp4"])]
+    assert by_name == [("", ["s1710001.mp4", "a.mp4", "Dag 2/b.mp4", "c.mp4"])]
+    render_order = prepare_event(event_dir, order=load_project_config(project).sort).authored
+    assert [
+        (chapter.name, [ref.identity for ref in chapter.clips]) for chapter in render_order.chapters
+    ] == by_name

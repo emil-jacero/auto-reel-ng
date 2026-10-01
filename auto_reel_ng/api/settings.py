@@ -40,7 +40,8 @@ class ApiSettings:
     walks from (``project_root`` unless ``config.yaml`` sets ``input``);
     ``output_dir`` is where the staleness gate (§8.14) expects rendered output
     (``project_root`` unless ``config.yaml`` sets ``output``, mirroring the CLI);
-    ``clip_order`` is the project's ``sort`` rule, used wherever a read seeds.
+    ``clip_order`` is the project's ``sort`` rule as resolved at startup, used
+    wherever a read seeds; the event detail re-reads it per request instead (D-12).
     """
 
     project_root: Path

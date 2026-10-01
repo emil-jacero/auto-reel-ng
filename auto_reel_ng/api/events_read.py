@@ -437,13 +437,19 @@ def get_event(
     is resolved first, so it stays :class:`EventNotFoundError`; the job store and
     the project config are read outside the catch, as the list reads them before
     its loop, so neither is ever reported as this event's failure.
+
+    ``config.yaml`` is read once per request (D-A3), for the look defaults and for
+    the sort rule: the chapters place the clips a render will adopt in the order
+    that render uses, and the worker re-reads ``config.yaml`` for every job (D-12),
+    so a ``sort`` edit shows on the next request, not after a restart.
     """
     event_dir = resolve_event_dir(settings, event_id)
-    look_defaults = project_look_defaults(settings)
+    config = load_project_config(settings.project_root)
+    look_defaults = resolve_look_defaults(config)
     try:
-        document, listing, result = _load_for_reconcile(event_dir, settings.clip_order)
+        document, listing, result = _load_for_reconcile(event_dir, config.sort)
         title, event_date, location = _title_date_location(event_dir, document)
-        chapters = _build_chapters(document, listing, result, event_dir, settings.clip_order)
+        chapters = _build_chapters(document, listing, result, event_dir, config.sort)
         staleness = staleness_for(settings, event_dir, document, runtime, look_defaults)
     except (ReelError, OSError) as exc:
         raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
