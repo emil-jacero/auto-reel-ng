@@ -759,6 +759,36 @@ change wording, layout or documentation under the existing requirements.
      announces "No events yet."
    - Verified in `behaviour.py`'s empty section, at 1280 and 390 px.
 
+## Rebuilt on main
+
+`event-page-polish` (#15), `serve-clean-exit` (#16) and `ui-a11y-polish` (#20) merged first. The change was
+cherry-picked onto that main as `pr/event-list-polish-2`, with every commit kept and none rewritten.
+
+- **Conflicts, each resolved by keeping both sides:**
+  - `EventDetail.tsx`'s import from `./common`: main's `ClipName` and `clipNames` stay. `UNREACHABLE_CAUSE`
+    (this change) and `fileName` (main) go, because the merged file uses neither.
+  - `web/README.md`'s first paragraph: this change's list sentences and main's event-page sentences, with
+    the decoded-path wording of review fix 6.
+  - `web/README.md`'s "Design system": main's "Status" and "Clip columns" bullets, then this change's
+    "Times" and "Hover means a target".
+  - `openspec/specs/web-app/spec.md`: both sides appended ADDED requirements at the end. The merged spec
+    keeps `ui-a11y-polish`'s five, then this change's two.
+- **The call sites listed in "Files and parallel changes" are all present** in main's rewritten
+  `EventDetail.tsx`. The "Read" time and the clip time use `formatInstant`, and `describeProblem` uses
+  `failureDetail` and `detail: null`. `load()` handles `unpublished`. No `toLocale*String` is left outside
+  `format.ts`.
+- **The coarse-pointer hit test now uses `ui-a11y-polish`'s own rules.** `hittest.py` injects its copy
+  only into a build that lacks them, and none was injected. It ran in Chromium and in WebKit (touch
+  emulation; `(pointer: coarse)` matches in both) at 1280, 768 and 390 px, and passed 90/90 in each:
+  - Every point of each Render's box and of its 44 px area hit-tests to that Render.
+  - A tap at its centre or in the area's margin sends the POST and stays on the list.
+  - A tap on a row's title or date still opens that row's event.
+
+  List rows hold no Cancel. The 1 px reach onto the divider above at table widths ("Risks / Trade-offs")
+  is the same with the real rules. `ui-a11y-polish`'s own `touch_rf.py` also passed 98/98 against this
+  branch.
+- **The separator stop-gap stays:** `jobs-live-polish` has still not landed.
+
 ## Open Questions
 
 None that change the specs or the tasks. The coordination notes above are for the supervisor.
