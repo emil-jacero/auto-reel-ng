@@ -29,8 +29,9 @@ Every deviation found while implementing and verifying was accepted. Each is rec
   move down by the height its panel added) and "In Edit mode a clip's frame is a Watch button" (its example is
   "Watch s1710002.mp4" in `Kvällen`, which the default fixture has).
 - **`preview/playback.ts` imports `formatTime` and `parseTime` from `cuts/times.ts` at runtime** ("Files and the
-  seams"): `playheadWords`, `typedSpan` and `setWords` write and read times exactly as the panel does, and a
-  second copy of either would drift. It is still pure (no DOM, no React); the ad hoc Node check resolves the
+  seams"): `playheadWords`, `readyWords` and `setWords` write times exactly as the panel does, and a second
+  copy would drift (`typedSpan` and with it `parseTime` left after the review: the bar's typed span is now
+  `checkCut`'s). It is still pure (no DOM, no React); the ad hoc Node check resolves the
   extensionless import with a scratch resolve hook.
 - **No-answer words** say "press Try again", not `unansweredFailure`'s "press Refresh" ("Copy").
 - **CSS beyond the design's block**: the Loading badge in the light scheme, a note's Download that wraps, and a
@@ -39,6 +40,49 @@ Every deviation found while implementing and verifying was accepted. Each is rec
   span** for a cut that starts at or past the clip's end ("Skip cuts", "The clip's length").
 - **Alert tones**: no sound is `info`; no picture, a format this browser does not play and no answer are `warn`;
   gone, changed, empty and unreadable are `err` ("What the browser cannot do").
+
+## Review fixes (2026-10-01, supervisor decisions)
+
+The PR review confirmed 3 major and 13 minor findings (several duplicates). `movie-player-screen` landed on main
+first (f2175af), so this change landed second and was rebuilt on it. Every fix below is in the code, the spec and
+this design:
+
+- **Try again focuses Play.** Pressing Try again removes the note and its button; a layout effect keyed on the
+  attempt moves keyboard focus to the reopened transport's Play (it was left on `<body>`, where Escape no longer
+  closed the preview). Spec: "Try again SHALL move keyboard focus to the reopened preview's Play", scenario "Try
+  again opens the preview anew".
+- **The second lander's duties** ("`movie-player-screen` seam"): main's `--media-bg` line and README bullet are
+  kept and this change's are dropped; `download` exists once (this change adds it; `movie-player-screen` added no
+  icon); D-16 follows D-15 in HLD §7, and the §4.10 v1 bullet and slice rows C/D keep D-15's text; the two ADDED
+  and two MODIFIED requirements are synced onto main's spec. **Decision: one shared response-to-kind helper**,
+  `api/probe.ts` `probeFirstByte(url, signal, read)`: the `Range: bytes=0-0`, `no-store` fetch, then 200/206
+  whose facts the caller can `read` → `served`, 416 → `empty`, 404/502 with a problem body → `problem`, a
+  rejected fetch → `unreachable`, anything else → `unpublished`. `probeMovie` passes a reader that needs the
+  entity-tag (a 200/206 without one stays an unpublished answer, as before); `checkClipMedia` reads
+  `Last-Modified` from any 200/206. Before, `checkClipMedia` read a problem body for every other status; it now
+  reads it only for 404 and 502, as the movie does, so the table is identical.
+- **Space on the playhead** plays or pauses, as Play does, and never scrolls the page (it scrolled a screen).
+  `PLAYHEAD_KEYS` names it.
+- **The bar's typed span** is drawn only while `checkCut(cuts, start, end, length)` accepts the fields, as the
+  spec says ("that the panel would accept as a cut"); `typedSpan` is gone.
+- **The legend** names only the kinds the bar draws: the spans are filtered once (a span that starts at or past
+  the clip's end has nothing to draw) and the same list feeds the bar and the legend.
+- **The README and the frame loop's comment** say two frame intervals ahead.
+- **A kept playhead is not overwritten** by an element that has not read its metadata (a StrictMode remount in
+  a dev build, a second move before the first element loaded): the cleanup keeps `currentTime` only when
+  `readyState >= HAVE_METADATA`, and forgets the playhead only when the preview is no longer open.
+- **"Past the clip's end" and "Removed when you save"** stay together at the row's end with its action
+  (`cuts.css`: `.cut-body > .badge + :is(.badge, .btn)` has no auto margin).
+- **Forced colors**: the slider's track gets a `CanvasText` border, its knob `CanvasText`, and Skip cuts' pressed
+  state `Highlight` / `HighlightText` (`forced-color-adjust: none`), so on and off differ.
+- **Play is not unavailable while the clip loads.** A press before `loadedmetadata` is kept (a second press takes
+  it back) and plays the clip once the metadata is read, Skip cuts applied. A preview opened with Watch, its
+  thumbnail or Try again announces once "`<name>` is ready to play, `0:06.02`." (a remount after a move does not).
+  The editor's live region holds one message, so a note found at `loadedmetadata` (no sound, no picture) and the
+  readiness are announced as one message, the note first (found in Firefox: a second announcement in the same
+  handler replaced the no-sound note's).
+- **The Watch toggle shows its state.** While the preview is open, its words are "Hide player" with the `x` icon,
+  and its name "Hide player of `<name>`"; closed, "Watch" and "Watch `<name>`". `aria-expanded` stays.
 
 ## Context
 
@@ -469,9 +513,8 @@ Focus stays on the pressed button.
   writes it to the panel store, so it survives hiding and a move.
 - No new rule is needed for the save bar, the guard or Reset.
 
-**The typed span on the bar** is `typedSpan(start, end)`: the parsed span when both fields parse and the end
-is after the start, else null. It is memoised on the two strings, and it is a hint only. Add cut still runs the
-full `checkCut`.
+**The typed span on the bar** is the span `checkCut(cuts, start, end, length)` accepts, else null (review fix:
+first `typedSpan`, which drew spans Add cut refuses). It is memoised on the cuts, the fields and the length.
 
 ### Skip cuts: one frame ahead, the render's merge
 
@@ -677,14 +720,15 @@ it scrolls nothing and leaves `cross-chapter-drag`'s handle scroll alone. Under 
 
 | Where | Words |
 |---|---|
-| Watch control (panel) | `Watch`; name `Watch <name>` |
+| Watch control (panel) | `Watch`; name `Watch <name>`. While open: `Hide player`; name `Hide player of <name>` (review fix) |
+| an opened preview has read the clip (announced) | `s1710001.mp4 is ready to play, 0:06.02.` (review fix) |
 | thumbnail in Edit mode | no words of its own (the frame, or the "No preview" box); name `Watch <name>` |
 | region | name `Player for <name>` |
 | Close / Play / Pause | names `Close the player of <name>` / `Play <name>` / `Pause <name>` |
 | loading (on the picture) | `Loading…` |
 | time (visible) | `0:01.234 / 0:06.02`; `0:00 / —` before the length |
 | playhead | name `Playhead of <name>`; value `0:01.234 of 0:06.02`, `…, in cut 2` |
-| playhead keys (its description) | Arrows move 0.1 seconds, Page Up and Page Down one second, Home and End to the start and the end. |
+| playhead keys (its description) | Space plays or pauses. Arrows move 0.1 seconds, Page Up and Page Down one second, Home and End to the start and the end. |
 | Skip cuts | `Skip cuts`; name `Skip cuts of <name>`; pressed or not |
 | Set From / Set To | `Set From` / `Set To`; names `Set From at the playhead of <name>` / `Set To at the playhead of <name>` |
 | after Set From / Set To (announced) | `From set to 0:01.234.` / `To set to 0:02.5.` |
@@ -833,7 +877,7 @@ origin makes `download` save the file under its own name, whatever the route's `
 |---|---|
 | `api/clipMedia.ts` (new) | `clipMediaUrl(eventId, clip)`, checked against the generated `paths` like `thumbnail.ts`; `MediaCheck`, `checkClipMedia`, `changedSince` |
 | `preview/previews.ts` (new, pure) | `ClipPreviews`, `createClipPreviews` |
-| `preview/playback.ts` (new, pure; imports `formatTime` and `parseTime` from `cuts/times.ts` at runtime, a supervisor-accepted deviation from "type-only") | `Skip`, `skipSpans`, `skipAt`, `playFrom`, `seekKey`, `along`, `playheadWords`, `typedSpan`, and the preview's copy |
+| `preview/playback.ts` (new, pure; imports `formatTime` and `parseTime` from `cuts/times.ts` at runtime, a supervisor-accepted deviation from "type-only") | `Skip`, `skipSpans`, `skipAt`, `playFrom`, `seekKey`, `along`, `playheadWords`, `readyWords`, and the preview's copy |
 | `preview/ClipPreview.tsx` (new) | `ClipPreview` (`memo`), `CutBar`, `usePreviewOpen`, `useClipLength` |
 | `preview/preview.css` (new) | the rules above, and `.clip-thumb-watch` |
 | `cuts/times.ts` | `checkCut`'s `length`, the `past-end` refusal and words, `lengthHint`, `pastEnd`, `PAST_END` |
@@ -863,7 +907,8 @@ advance.
 - **One-byte checks.** `movie-player-screen` has its own one-byte read of `/movie` (`api/movie.ts`, with
   `api/headers.ts`). Both map the same answers to the same kinds. Whichever change lands second reuses the
   other's status mapping (and `contentRangeSize`) rather than restating it, and the response-to-kind table stays
-  identical (task 1.1). The two changes' trouble words stay separate vocabularies.
+  identical (task 1.1). The two changes' trouble words stay separate vocabularies. **As landed:**
+  `movie-player-screen` merged first; the shared table is `api/probe.ts` (review fixes), used by both.
 - **The download icon.** This change adds `download` to `Icon.tsx` and uses it on its Download. If
   `movie-player-screen` lands second, its "Download the movie" uses it too.
 

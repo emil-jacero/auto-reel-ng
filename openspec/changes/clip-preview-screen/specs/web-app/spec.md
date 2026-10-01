@@ -6,7 +6,9 @@ In Edit mode, the Cuts panel of every clip that offers one (an included or new c
 **Watch** control as the panel's first control. Pressing it SHALL open the clip's preview, a player for the
 clip, in the panel, above the clip's cuts, and pressing it while the preview is open SHALL close it. The
 control SHALL be named "Watch <name>", where <name> is the clip's name as its row names it, and SHALL say to
-assistive technology whether the preview is open. The preview SHALL be a region named "Player for <name>".
+assistive technology whether the preview is open. While the preview is open, the control SHALL show that a press
+closes it: its words SHALL be "Hide player", and its name "Hide player of <name>". The preview SHALL be a region
+named "Player for <name>".
 
 **From the row.** In Edit mode, the thumbnail of every clip that offers a Cuts panel SHALL also be a button
 named "Watch <name>" that opens the same preview in one press. Pressing it SHALL show the clip's Cuts panel
@@ -48,7 +50,12 @@ preview, SHALL close the preview and move keyboard focus to the control that ope
 the clip's thumbnail. Hiding the Cuts panel SHALL close its preview, leaving keyboard focus on the Cuts
 control. No control of a closed preview SHALL keep focus.
 
+**Play** SHALL be usable from the moment the preview opens. Pressed before the browser has read the clip, it
+SHALL play the clip once the browser can. A preview opened with Watch, its thumbnail or Try again SHALL announce,
+once, that the clip is ready to play, with its length.
+
 **The playhead.**
+- Space on it SHALL play or pause the clip, as Play does, and SHALL NOT scroll the page.
 - It SHALL take the Left and Down arrows to step back 0.1 seconds and the Right and Up arrows to step on 0.1
   seconds. Page Down and Page Up SHALL step one second, and Home and End SHALL go to the clip's start and
   end. Each step SHALL stay within the clip.
@@ -98,7 +105,7 @@ Close when the control that held it went:
   - that this browser cannot play the clip's format, offering the file as a download, when the service serves
     it
   - that the service gave no usable answer, saying which, with a Try again that opens the preview anew, when it
-    gives none
+    gives none. Try again SHALL move keyboard focus to the reopened preview's Play.
 
   A failure SHALL NOT be retried by itself.
 
@@ -132,6 +139,8 @@ Close when the control that held it went:
   length as 6.02 seconds
 - **WHEN** the operator presses End, then Page Down
 - **THEN** the playhead says `0:05.02 of 0:06.02`
+- **WHEN** the operator presses Space on the playhead
+- **THEN** the clip plays and the page does not scroll; Space again pauses it
 
 #### Scenario: Opening another preview closes the first
 - **WHEN** the preview of `s1710001.mp4` of `2024-06-27 - Grillning med grannar` is playing, and the operator
@@ -190,6 +199,14 @@ Close when the control that held it went:
   opens its preview
 - **THEN** the preview says that the clip's file is empty and that there is nothing to play. The page shows no
   alert, the words are announced once, and keyboard focus is in the preview.
+
+#### Scenario: Try again opens the preview anew
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, the service gives no answer when the operator
+  opens the preview of `s1710001.mp4`, and then answers again
+- **THEN** the preview says that the service is not reachable and offers Try again
+- **WHEN** the operator presses Try again
+- **THEN** the preview opens anew, ready to play, with keyboard focus on "Play s1710001.mp4", and Escape closes
+  it
 
 #### Scenario: A clip removed from disk since the page was read
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, `s1710004.mp4` is deleted from disk and the

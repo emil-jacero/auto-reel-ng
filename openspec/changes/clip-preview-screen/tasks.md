@@ -27,7 +27,7 @@
     - `checkCut` takes an optional `length` (seconds) and refuses `past-end` after `order` and before `overlap`
     - `CutRefusal` gains `{ kind: 'past-end'; field: CutField; at: number; length: number }`
     - `refusalWords` handles it, and add `lengthHint`, `pastEnd` and `PAST_END`
-  - `playback.ts`, with type-only imports: `Skip`, `END_SLACK_MS`, `toEnd`, `skipSpans`, `skipAt`, `playFrom`, `seekKey`, `along`, `playheadWords`, `typedSpan` and the preview's copy constants.
+  - `playback.ts`, with type-only imports: `Skip`, `END_SLACK_MS`, `toEnd`, `skipSpans`, `skipAt`, `playFrom`, `seekKey`, `along`, `playheadWords` and the preview's copy constants (`typedSpan` was removed in the review fixes: the bar's typed span is `checkCut`'s; `playback.ts` imports `formatTime` at runtime, accepted).
 
   Verify: a scratch script in `<scratchpad>/verify/clip-preview-screen/`, never committed, runs under `node --experimental-strip-types` in `docker.io/library/node:22`, imports both files, and asserts:
   - `checkCut`:
@@ -80,7 +80,7 @@
     - `ArrowUp` and `ArrowRight` agree
     - `Enter` → null
   - `playheadWords(1234, 6020, [{in: 1, out: 2}])` → `0:01.234 of 0:06.02, in cut 1`, and at 300 → `0:00.3 of 0:06.02`
-  - `typedSpan('0:01.2', '2.5')` → `{in: 1.2, out: 2.5}`, and `typedSpan('3', '2')`, `typedSpan('', '2')` and `typedSpan('1:5', '2')` → null
+  - (review fixes) the bar's typed span is `checkCut`'s: `checkCut([], '0:01.2', '2.5', 6.02)` accepts 1.2–2.5, and an overlapping or past-end span is refused (so not drawn); `readyWords('a.mp4', 6.02)` → `a.mp4 is ready to play, 0:06.02.`
   - `formatTime(1.2) === '0:01.2'`, and `parseTime(formatTime(2.6074729)).ms === 2607`
 - [x] 2.2 Add `src/preview/previews.ts` (`ClipPreviews`, `createClipPreviews`; no runtime import) and `src/api/clipMedia.ts` (`clipMediaUrl`, `MediaCheck`, `checkClipMedia`, `changedSince`) (design, "One preview at a time", "What the browser cannot do: by cause, with one byte"). `clipMediaUrl` checks its path and query against the generated `paths` with `satisfies`, as `thumbnail.ts` does.
 
@@ -173,6 +173,7 @@
       - Play toggles `paused`
       - abort the route afterwards: the draft is kept
     - "A clip removed from disk since the page was read": delete only the library's own symlink, and restore it after. The note's words say to stop editing, never "Refresh".
+    - (review fixes) "Try again opens the preview anew": abort `**/media?*` so the check finds no answer (focus on Close), unroute, press Enter on Try again: `document.activeElement` is Play once ready, readiness is announced, and Escape closes the preview. Space on the playhead plays and pauses with `scrollY` unchanged. A press on Play while the media request is held plays the clip once it is released. The Watch toggle reads "Hide player" while open. The bar draws no typed span for an overlapping or past-end typed cut, and the legend names no kind the bar does not draw. Move clips with the preview at 2.5 s keeps 2.5 in a StrictMode dev build (vite dev server proxied to the serve) as in the production build.
   - **Saving a cut set at the playhead:** after "Setting a cut at the playhead", Save. The captured body gives `s1710001.mp4` `trims: [{in: 1.2, out: 2.5, reason: manual}]`, and the Grillning `reel.yaml` `diff` against its normalised copy shows only that cut's lines.
   - "A clip changed on disk since the page was read": after Edit mode opened, type a title change and `2` in the start field of `s1710001.mp4`, replace the library's `s1710002.mp4` symlink of Grillning by a regular file of 1 MiB of random bytes, then open its preview. The note says to stop editing (save first), never "Refresh", and the title field, the typed `2`, the save bar and the editor are untouched until the operator acts; no `PUT` and no read of the event is sent. Afterwards, restore the symlink and confirm with `ls -l`.
   - **Firefox** (the same image's bundled Firefox 132, keyboard only):
