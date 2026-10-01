@@ -54,9 +54,10 @@ type Pressed = 'render' | 'force' | 'cancel' | 'cancelConfirm'
 
 /**
  * The open question. A cancel names its job, so the confirmation cancels the job
- * it asked about, and says when the job may have started unseen (connection down).
+ * it asked about. Whether it may have started unseen is read from the state as it
+ * is now, not as it was when the question opened: a reconnect makes it untrue.
  */
-type Asking = { kind: 'force' } | { kind: 'cancel'; jobId: string; mayHaveStarted: boolean }
+type Asking = { kind: 'force' } | { kind: 'cancel'; jobId: string }
 
 const NOTHING_TO_RENDER = 'Nothing to render — the movie is up to date.'
 
@@ -189,9 +190,12 @@ export function RenderControl({
   })
 
   // A control removed while focused (Render once its job shows, Cancel once the
-  // cancel is requested or the job ends, a dialog closed after its opener went)
-  // hands focus to the status element, so a keyboard user keeps their place.
+  // cancel is requested, the job ends or another job shows, a dialog closed after
+  // its opener went) hands focus to the status element, so a keyboard user keeps
+  // their place. A dialog that closed by itself always does, even when its opener
+  // is still there: its subject is gone, and the status says what replaced it.
   const handOff = useRef(false)
+  const selfClosed = useRef(false)
   const watchRemoval = useCallback((node: HTMLElement | null) => {
     if (node === null) {
       return undefined
@@ -208,7 +212,9 @@ export function RenderControl({
       return
     }
     handOff.current = false
-    if (focusIsLost()) {
+    const closedItself = selfClosed.current
+    selfClosed.current = false
+    if (closedItself || focusIsLost()) {
       statusRef.current?.focus({ preventScroll: true })
     }
   })
@@ -327,11 +333,12 @@ export function RenderControl({
       switch (answer.kind) {
         case 'ok': {
           const { outcome } = answer.result
-          track(target, eventName(eventId, title, date))
-          // An answer that ended the job tells how; a toast the store already
-          // raised for that ending is not repeated.
+          const name = eventName(eventId, title, date)
+          track(target, name)
+          // An answer that ended the job tells how, naming the event as the store's
+          // ending toast would; a toast the store already raised is not repeated.
           if (!CANCEL_ENDS_JOB[outcome] || markAnnounced(target)) {
-            toast.info(CANCEL_OUTCOME_LABEL[outcome])
+            toast.info(`${CANCEL_OUTCOME_LABEL[outcome]}: ${name}`)
           }
           // Shows "Cancelling…" or the ending at once, live connection or not.
           load(target, { force: true })
@@ -364,17 +371,22 @@ export function RenderControl({
   // anyway once the page would not offer it (a job appeared, a block, no longer
   // up to date), a cancel once its job ended, its cancel was requested elsewhere,
   // or another job shows. Never while its own request is in flight: that answer
-  // closes it. Its opener is gone too, so focus goes to the status, which says
-  // what happened.
+  // closes it. Focus goes to the status, which says what happened — also when
+  // the opener is still there (another job's Cancel), whose next press would act
+  // on a subject the operator was never asked about.
   const questionGone =
     asking !== null &&
     pressed === null &&
     (asking.kind === 'force' ? !(canRender && upToDate) : !(cancellable && jobId === asking.jobId))
   useEffect(() => {
     if (questionGone) {
+      selfClosed.current = true
       closeDialog()
     }
   }, [questionGone, closeDialog])
+  // The cancel question says the render may have started only while that is so:
+  // the connection is down and the job is not shown running.
+  const mayHaveStarted = !connectionLive && job?.status !== 'running'
 
   return (
     <div className="render-control">
@@ -424,7 +436,10 @@ export function RenderControl({
                   </button>
                 ))}
               {cancellable && job !== undefined && (
+                // Keyed by its job: another job's Cancel is another control, so
+                // a focused Cancel whose job gave way hands focus to the status.
                 <button
+                  key={job.id}
                   type="button"
                   className="btn btn-danger"
                   ref={watchRemoval}
@@ -437,11 +452,7 @@ export function RenderControl({
                     // A queued job has nothing to lose; a running one asks first, and so
                     // does any job while the connection is down: it may have started.
                     if (job.status === 'running' || !connectionLive) {
-                      setAsking({
-                        kind: 'cancel',
-                        jobId: job.id,
-                        mayHaveStarted: job.status !== 'running',
-                      })
+                      setAsking({ kind: 'cancel', jobId: job.id })
                     } else {
                       cancel(job.id, 'cancel')
                     }
@@ -505,9 +516,7 @@ export function RenderControl({
         initialFocus={keepRenderingRef}
       >
         <p>
-          {asking?.kind === 'cancel' && asking.mayHaveStarted
-            ? 'The connection is down, so this render may have started. '
-            : ''}
+          {mayHaveStarted ? 'The connection is down, so this render may have started. ' : ''}
           The partial render is discarded. The existing movie, if any, stays as it was.
         </p>
         <div className="dialog-actions">
