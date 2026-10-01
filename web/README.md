@@ -8,12 +8,17 @@ service starts normally when `dist/` is absent.
 Two screens so far. The **event list** (slice B of §4.10) answers
 "which events need a render, and why": every event grouped by year, its clip
 counts, its staleness verdict with reasons in words, and its latest job. Each
-event's title opens its **event page** (slice C) at `#/event/<id>`: its chapters
-and clips in play order, each clip's status, size and time, and any clip
-`reel.yaml` lists that is missing from disk. Both read on open and on Refresh — no
+event's title opens its **event page** (slice C) at `#/event/<id>`: its facts, with
+the folder name beside a title that differs from it; one render region holding the
+verdict and the latest job; then its chapters, each listing the clips it plays,
+numbered in play order, and then its ignored clips, unnumbered. Each clip shows its
+status (an included clip's quietly, so the exceptions stand out), size and time; a
+clip from another folder is named by its path in the event folder; and any clip
+`reel.yaml` lists that is missing from disk is named. Both read on open and on Refresh — no
 timer polling (job state arrives over the jobs WebSocket), never a cache — and
 report a failed read by its cause. Each clip row, on the event page and in Edit
-mode, shows a frame from its clip (the service's thumbnail, D-11): requested only
+mode, shows a frame from its clip (the service's thumbnail, D-11; 128 × 72 at desktop
+width, 80 × 45 in narrower tables and cards): requested only
 as its row nears the view and behind the page's own requests, in a box sized before
 it arrives, and kept by the browser while the clip is unchanged. A frame the service
 cannot give shows "No preview"; a missing clip asks for none and shows an empty
@@ -125,9 +130,9 @@ src/
     ├── EventDetail.tsx   the event page: status, counts, clip panels, the Edit toggle and the needs-attention form
     ├── ClipThumb.tsx     a clip row's thumbnail: lazy, loading, "No preview", missing
     ├── list.css          the list's layout and column widths
-    ├── detail.css        the event page's layout and column widths
+    ├── detail.css        the event page's layout, render region and clip column properties
     ├── thumbs.css        the thumbnail's 16:9 box and its states
-    ├── common.tsx        helpers both screens share (file names, sizes, verdict, failure sentences)
+    ├── common.tsx        helpers both screens share (file names, sizes, verdict, failure sentences) and clip names
     ├── changes.ts        "an event changed": markEventsChanged(), useEventsVersion()
     ├── grouping.ts       groupByYear, needsRender (pure)
     ├── labels.ts         words for reasons, job statuses, failures, clip statuses
@@ -287,6 +292,12 @@ HLD §7).
   by the inline script in `index.html`).
 - **Status is never color alone.** A status is a `Pill`: an icon and its words, on
   its tone. Tone and icon come from `events/tones.ts`, the words from `labels.ts`.
+  The usual state of a clip row, included, keeps its words and icon without the
+  pill's fill and edge (`events/detail.css`, in both views), so the exceptions stand out.
+- **Clip columns.** The clip tables publish their widths as `--clip-col-pos`,
+  `--clip-thumb-w`, `--clip-col-status`, `--clip-col-size` and `--clip-col-mtime` on
+  `.event-detail` (`events/detail.css`; an 8rem frame in a panel of 64rem or more,
+  else 5rem), for Edit mode's grid to line up with them.
 - **Shared pieces, by fixed name.** `ui/Icon` (`<Icon name="…" />`, decorative unless
   given a `label`), `ui/Pill`, `ui/Alert` (with an `action` slot; `role="alert"` by
   default), `ui/Skeleton` (`SkeletonRows`, `LoadStatus`), `ui/Dialog`, `ui/toast`

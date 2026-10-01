@@ -1,8 +1,46 @@
 /* The event page (`EventDetail.tsx`). */
 @layer screens {
+  /*
+   * The clip columns, read by the tables here and by Edit mode's grid (`edit.css`):
+   * the file column takes the rest. Fixed 39rem: at the 50rem card breakpoint the
+   * file column still has 11rem, room for an 18-character camera name
+   * (`YYYYMMDDhhmmss.mp4`) on one line; from a 64rem panel, with the wider frame,
+   * it has 22rem.
+   */
+  .event-detail {
+    --clip-col-pos: 3.5rem;
+    --clip-thumb-w: 5rem;
+    --clip-col-status: 12.5rem;
+    --clip-col-size: 6.5rem;
+    --clip-col-mtime: 11.5rem;
+  }
+
+  /*
+   * A wide panel: a larger frame (128 × 72; the service's 320 × 180 source stays
+   * sharp at 2×). Set on the panel's children, whose query container is the panel,
+   * and inherited by its table or Edit mode's rows.
+   */
+  @container (width >= 64rem) {
+    .event-detail .panel > * {
+      --clip-thumb-w: 8rem;
+    }
+  }
+
+  /*
+   * The back link, then the event's folder: the event's place on disk. Top-aligned
+   * (the link's own baseline would be its icon's bottom edge), the folder padded as
+   * the link is, so the two first lines share a line however the folder wraps.
+   */
+  .page-crumbs {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--s-1);
+    min-inline-size: 0;
+  }
+
   .back-link {
     display: inline-flex;
-    align-self: flex-start;
+    flex: none;
     align-items: center;
     gap: 0.125rem;
     margin-inline-start: -0.375rem;
@@ -22,8 +60,32 @@
     }
   }
 
-  .event-facts {
+  /*
+   * Text, so muted, never --fg-subtle. The separator is hidden from assistive
+   * technology (empty alternative text after the slash); an engine without that
+   * syntax keeps the plain declaration before it. The heading's description is
+   * the inner span, so the separator never reaches it in either engine.
+   */
+  .crumb-folder {
+    min-inline-size: 0;
+    padding-block: 0.125rem;
     color: var(--fg-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+
+    &::before {
+      content: '/';
+      content: '/' / '';
+      margin-inline-end: var(--s-2);
+    }
+  }
+
+  /* The event's facts lead its meta line; the counts and read time follow, muted. */
+  .event-facts {
+    color: var(--fg);
+    font-size: var(--text-base);
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
   }
 
@@ -32,43 +94,59 @@
     white-space: pre-line;
   }
 
-  .status-line {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--s-2) var(--s-5);
-  }
-
-  .counts {
-    color: var(--fg);
-    font-weight: 600;
-  }
-
   /*
-   * Column widths; the file column takes the rest. Fixed 39rem: at the 50rem
-   * card breakpoint the file column still has 11rem, room for an 18-character
-   * camera name (`YYYYMMDDhhmmss.mp4`) on one line.
+   * The render region (`RenderPanel`): the verdict, the latest job and Render or
+   * Cancel in one frame. `RenderControl` keeps its card's markup; its frame moves
+   * here. The screen layer wins over `jobs.css`'s components layer outright.
    */
-  .clip-table {
-    & .col-pos {
-      inline-size: 3.5rem;
+  .render-panel {
+    display: grid;
+    gap: var(--s-3);
+    min-inline-size: 0;
+    padding: var(--s-3) var(--s-4);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    transition: border-color var(--dur-med) var(--ease-out);
+
+    /* A job in progress: the region takes the accent's edge, as the card did. */
+    &:has(.render-card[data-active]) {
+      border-color: color-mix(in oklab, var(--accent) 45%, var(--border));
     }
 
-    /* The thumbnail's box (`ClipThumb.tsx`): 5rem wide, 16:9, in every layout. */
+    & .render-card {
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: none;
+    }
+
+    /* The job line's words, at the size of the job's own time. */
+    & :is(.render-none, .render-blocked) {
+      font-size: var(--text-sm);
+    }
+  }
+
+  .clip-table {
+    & .col-pos {
+      inline-size: var(--clip-col-pos);
+    }
+
+    /* The thumbnail's box (`ClipThumb.tsx`) fills it: 16:9, as wide as --clip-thumb-w. */
     & .col-thumb {
-      inline-size: 5rem;
+      inline-size: var(--clip-thumb-w);
     }
 
     & .col-status {
-      inline-size: 12.5rem;
+      inline-size: var(--clip-col-status);
     }
 
     & .col-size {
-      inline-size: 6.5rem;
+      inline-size: var(--clip-col-size);
     }
 
     & .col-mtime {
-      inline-size: 11.5rem;
+      inline-size: var(--clip-col-mtime);
     }
   }
 
@@ -105,9 +183,33 @@
     white-space: nowrap;
   }
 
+  /* A clip from another folder: its folder part muted (`ClipName`). */
+  .clip-dir {
+    color: var(--fg-muted);
+  }
+
   /* An ignored clip stays listed, dimmed. */
   .clip-row[data-status='ignored'] > td {
     color: var(--fg-muted);
+  }
+
+  /*
+   * An included clip, the usual case: its words and icon, without a label's fill
+   * and edge, so the new, missing and ignored ones stand out. Both views: the
+   * table's rows here and Edit mode's (`li.clip-item[data-status]`), whose only
+   * pill is its status. Never hidden: status is never color alone.
+   */
+  :is(.clip-row, .clip-item)[data-status='active'] .pill {
+    --_bg: transparent;
+    --_fg: var(--fg-muted);
+
+    padding-inline: 0;
+    box-shadow: none;
+    font-weight: 400;
+
+    & > svg {
+      color: var(--fg-subtle);
+    }
   }
 
   /*
@@ -120,7 +222,7 @@
    */
   @container (width < 50rem) {
     .clip-table tbody tr {
-      grid-template-columns: 2rem 5rem minmax(0, 1fr) auto;
+      grid-template-columns: 2rem var(--clip-thumb-w) minmax(0, 1fr) auto;
       grid-template-areas:
         'pos thumb file status'
         'pos thumb size mtime';
@@ -170,5 +272,50 @@
         'pos status status status'
         'pos size mtime mtime';
     }
+  }
+
+  /*
+   * The placeholders while the page reads (`EventDetail.tsx`): `.skeleton` bars
+   * sized like what they stand for, with no animation of their own. The heading's
+   * bar is a length, never a percentage: the h1 is a shrink-to-fit flex item.
+   */
+  .skeleton-h1 {
+    display: inline-block;
+    inline-size: 18rem;
+    max-inline-size: 100%;
+    block-size: 1.25rem;
+    vertical-align: middle;
+  }
+
+  /* Inline, so the facts and the cells keep their own line heights. */
+  .skeleton-facts,
+  .clip-table td > .skeleton {
+    display: inline-block;
+    max-inline-size: 100%;
+    vertical-align: middle;
+  }
+
+  .skeleton-facts {
+    inline-size: 12rem;
+  }
+
+  /* The region's two lines; their text bars give way first, so a narrow page never widens. */
+  .skeleton-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-3);
+  }
+
+  .skeleton-verdict {
+    inline-size: 5.5rem;
+    block-size: 1.25rem;
+  }
+
+  .skeleton-button {
+    inline-size: 6.5rem;
+    block-size: 2rem;
+    margin-inline-start: auto;
+    border-radius: var(--r-md);
   }
 }

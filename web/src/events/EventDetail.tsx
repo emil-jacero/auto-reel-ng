@@ -13,13 +13,14 @@ import { LIST_HREF } from '../route'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
-import { LoadStatus, SkeletonRows } from '../ui/Skeleton'
+import { LoadStatus } from '../ui/Skeleton'
 import { ClipThumb } from './ClipThumb'
 import {
+  ClipName,
   DATABASE_CAUSE,
   StalenessCell,
   UNREACHABLE_CAUSE,
-  fileName,
+  clipNames,
   folderName,
   formatBytes,
   plural,
@@ -200,15 +201,47 @@ export function EventDetail({ eventId }: { eventId: string }) {
 
   const loading = state.status === 'loading'
   const updating = state.status === 'ready' && state.updating === true && !editing
+  // The folder name beside a title that differs from it, which tells look-alike
+  // titles apart; while reading, from the address. A failed read's heading is it.
+  const folderId = useId()
+  const title = state.status === 'ready' ? state.event.title : null
+  const folderShown = loading || (title != null && title !== folderName(eventId))
+  const facts = state.status === 'ready' && !editing ? factsOf(state.event) : null
   return (
     <main className="page event-detail">
       <header className="page-header">
-        <a className="back-link" href={LIST_HREF}>
-          <Icon name="chevron-left" />
-          Events
-        </a>
+        <div className="page-crumbs">
+          <a className="back-link" href={LIST_HREF}>
+            <Icon name="chevron-left" />
+            Events
+          </a>
+          {/* The description is the inner span: it leaves out the separator before it. */}
+          {folderShown && (
+            <span className="crumb-folder">
+              <span id={folderId}>
+                <span className="visually-hidden">Folder: </span>
+                {folderName(eventId)}
+              </span>
+            </span>
+          )}
+        </div>
         <div className="page-title-row">
-          <h1 ref={headingRef} tabIndex={-1}>{name}</h1>
+          {/* Focus lands here, so the folder line is read as the heading's description. */}
+          <h1
+            ref={headingRef}
+            tabIndex={-1}
+            aria-describedby={!loading && folderShown ? folderId : undefined}
+          >
+            {loading ? (
+              // No name the read may replace: a bar, named by the folder (the address).
+              <>
+                <span className="visually-hidden">{folderName(eventId)}</span>
+                <span className="skeleton skeleton-h1" aria-hidden="true" />
+              </>
+            ) : (
+              name
+            )}
+          </h1>
           <div className="page-actions">
             {/* Busy, not disabled, while reading: it keeps keyboard focus. */}
             <button
@@ -251,31 +284,35 @@ export function EventDetail({ eventId }: { eventId: string }) {
             )}
           </div>
         </div>
-        {state.status === 'ready' && (
-          <EventFacts
-            eventId={eventId}
-            event={state.event}
-            editing={editing}
-            onFinished={reread}
-          />
-        )}
+        {/* The event's facts (Edit mode's fields take the date and location's place). */}
         <div className="page-meta">
+          {loading && (
+            <span className="event-facts">
+              <span className="skeleton skeleton-facts" aria-hidden="true" />
+            </span>
+          )}
+          {facts !== null && <span className="event-facts">{facts}</span>}
           {state.status === 'ready' && (
             <Counts clips={state.event.chapters.flatMap((chapter) => chapter.clips)} />
           )}
           {state.status === 'ready' && <span>Read {state.fetchedAt.toLocaleTimeString()}</span>}
           <LoadStatus message={loading ? 'Reading event…' : updating ? 'Updating…' : ''} />
         </div>
+        {state.status === 'ready' && !editing && state.event.description != null && (
+          <p className="description">{state.event.description}</p>
+        )}
+        {state.status === 'ready' && (
+          <RenderPanel
+            eventId={eventId}
+            event={state.event}
+            editing={editing}
+            onFinished={reread}
+          />
+        )}
+        {loading && <RenderPanelPlaceholder />}
       </header>
 
-      {loading && (
-        <div className="panel" aria-hidden="true">
-          <div className="panel-header">
-            <span className="skeleton skeleton-heading" />
-          </div>
-          <SkeletonRows rows={4} />
-        </div>
-      )}
+      {loading && <ChapterPlaceholder />}
 
       {state.status === 'failed' && (
         <Alert
@@ -329,11 +366,18 @@ export function EventDetail({ eventId }: { eventId: string }) {
   )
 }
 
+/** `date · location`, from the facts the event has; null when it has neither. */
+function factsOf(event: EventDetailData): string | null {
+  const facts = [event.date, event.location].filter((fact) => fact != null)
+  return facts.length > 0 ? facts.join(' · ') : null
+}
+
 /**
- * The header's facts: date and location, description, verdict, and the render
- * region. In Edit mode the editor's fields take the place of the first two.
+ * The render region, one frame for the whole render story: the verdict and its
+ * reasons, then the latest job and Render or Cancel. `RenderControl` keeps its
+ * own card; the page's frame replaces that card's (`detail.css`).
  */
-function EventFacts({
+function RenderPanel({
   eventId,
   event,
   editing,
@@ -344,26 +388,19 @@ function EventFacts({
   editing: boolean
   onFinished: () => void
 }) {
-  const facts = [event.date, event.location].filter((fact) => fact != null)
   return (
-    <>
-      {!editing && facts.length > 0 && <p className="event-facts">{facts.join(' · ')}</p>}
-      {!editing && event.description != null && (
-        <p className="description">{event.description}</p>
-      )}
-      <div className="status-line">
-        <StalenessCell staleness={event.staleness} />
-        <RenderControl
-          eventId={eventId}
-          staleness={event.staleness}
-          latestJob={event.latest_job}
-          onFinished={onFinished}
-          blockedReason={
-            editing ? 'Save or leave Edit mode to render' : missingClipsReason(event.missing)
-          }
-        />
-      </div>
-    </>
+    <div className="render-panel">
+      <StalenessCell staleness={event.staleness} />
+      <RenderControl
+        eventId={eventId}
+        staleness={event.staleness}
+        latestJob={event.latest_job}
+        onFinished={onFinished}
+        blockedReason={
+          editing ? 'Save or leave Edit mode to render' : missingClipsReason(event.missing)
+        }
+      />
+    </div>
   )
 }
 
@@ -423,7 +460,45 @@ function Counts({ clips }: { clips: Clip[] }) {
       parts.push(`${n} ${label}`)
     }
   }
-  return <strong className="counts">{parts.join(' · ')}</strong>
+  return <span className="counts">{parts.join(' · ')}</span>
+}
+
+/** The clip tables' columns and headers: each chapter's, and the placeholder's. */
+function ClipTableHead() {
+  return (
+    <>
+      <colgroup>
+        <col className="col-pos" />
+        <col className="col-thumb" />
+        <col className="col-file" />
+        <col className="col-status" />
+        <col className="col-size" />
+        <col className="col-mtime" />
+      </colgroup>
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader" scope="col">
+            #
+          </th>
+          <th role="columnheader" scope="col">
+            <span className="visually-hidden">Preview</span>
+          </th>
+          <th role="columnheader" scope="col">
+            File
+          </th>
+          <th role="columnheader" scope="col">
+            Status
+          </th>
+          <th role="columnheader" scope="col">
+            Size
+          </th>
+          <th role="columnheader" scope="col">
+            Modified
+          </th>
+        </tr>
+      </thead>
+    </>
+  )
 }
 
 function ChapterPanel({
@@ -437,54 +512,33 @@ function ChapterPanel({
 }) {
   // Chapter names hold spaces and non-ASCII letters, so the id is generated.
   const headingId = useId()
+  // The clips it plays, numbered; then the ones the event ignores, which have no
+  // place in the play order (Edit mode's order: `editableChapters`).
+  const played = chapter.clips.filter((clip) => clip.status !== 'ignored')
+  const ignored = chapter.clips.filter((clip) => clip.status === 'ignored')
+  const nameOf = clipNames(chapter.name, chapter.clips.map((clip) => clip.identity))
+  const count = plural(played.length, 'clip', 'clips')
   return (
     <section className="panel">
       <header className="panel-header">
         <h2 id={headingId}>{heading}</h2>
-        <span className="panel-meta">{plural(chapter.clips.length, 'clip', 'clips')}</span>
+        <span className="panel-meta">
+          {ignored.length > 0 ? `${count} · ${ignored.length} ignored` : count}
+        </span>
       </header>
       <table className="data-table clip-table" role="table" aria-labelledby={headingId}>
-        <colgroup>
-          <col className="col-pos" />
-          <col className="col-thumb" />
-          <col className="col-file" />
-          <col className="col-status" />
-          <col className="col-size" />
-          <col className="col-mtime" />
-        </colgroup>
-        <thead role="rowgroup">
-          <tr role="row">
-            <th role="columnheader" scope="col">
-              #
-            </th>
-            <th role="columnheader" scope="col">
-              <span className="visually-hidden">Preview</span>
-            </th>
-            <th role="columnheader" scope="col">
-              File
-            </th>
-            <th role="columnheader" scope="col">
-              Status
-            </th>
-            <th role="columnheader" scope="col">
-              Size
-            </th>
-            <th role="columnheader" scope="col">
-              Modified
-            </th>
-          </tr>
-        </thead>
+        <ClipTableHead />
         <tbody role="rowgroup">
-          {chapter.clips.map((clip, index) => (
+          {[...played, ...ignored].map((clip, index) => (
             <tr role="row" key={clip.identity} className="clip-row" data-status={clip.status}>
               <td role="cell" className="cell-pos">
-                {index + 1}
+                {index < played.length ? index + 1 : null}
               </td>
               <td role="cell" className="cell-thumb">
-                <ClipThumb eventId={eventId} clip={clip} />
+                <ClipThumb eventId={eventId} clip={clip} name={nameOf(clip.identity)} />
               </td>
               <td role="cell" className="cell-file">
-                {fileName(clip.identity)}
+                <ClipName name={nameOf(clip.identity)} />
               </td>
               <td role="cell" className="cell-status">
                 <Pill
@@ -503,6 +557,75 @@ function ChapterPanel({
                 ) : (
                   <time dateTime={clip.mtime}>{new Date(clip.mtime).toLocaleString()}</time>
                 )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  )
+}
+
+/*
+ * What the page shows while it reads: placeholders in the loaded page's shape,
+ * carrying no event data and hidden from assistive technology (`LoadStatus` says
+ * what is happening). The bars are `.skeleton`, whose shimmer rests under reduced
+ * motion; their sizes are in `detail.css`.
+ */
+
+/** A placeholder bar for a line of text, `width` wide at most. */
+function Bar({ width }: { width: string }) {
+  return <span className="skeleton" style={{ inlineSize: width }} />
+}
+
+/** The render region's shape: the verdict line, then the job line with its button. */
+function RenderPanelPlaceholder() {
+  return (
+    <div className="render-panel" aria-hidden="true">
+      <div className="skeleton-line">
+        <span className="skeleton skeleton-verdict" />
+        <span className="skeleton skeleton-title" style={{ inlineSize: '16rem' }} />
+      </div>
+      <div className="skeleton-line">
+        <span className="skeleton skeleton-title" style={{ inlineSize: '12rem' }} />
+        <span className="skeleton skeleton-button" />
+      </div>
+    </div>
+  )
+}
+
+// Varied name widths, so the placeholder reads as rows of file names.
+const FILE_WIDTHS = ['7.5rem', '6rem', '8.5rem', '6.75rem']
+
+/** One chapter's shape: the real table, so its rows lay out as loaded rows at every width. */
+function ChapterPlaceholder() {
+  return (
+    <section className="panel" aria-hidden="true">
+      <header className="panel-header">
+        <span className="skeleton skeleton-heading" />
+      </header>
+      <table className="data-table clip-table">
+        <ClipTableHead />
+        <tbody>
+          {FILE_WIDTHS.map((width, index) => (
+            <tr className="clip-row" key={index}>
+              <td className="cell-pos">
+                <Bar width="0.75rem" />
+              </td>
+              <td className="cell-thumb">
+                <span className="clip-thumb" data-state="loading" />
+              </td>
+              <td className="cell-file">
+                <Bar width={width} />
+              </td>
+              <td className="cell-status">
+                <Bar width="4.25rem" />
+              </td>
+              <td className="cell-size">
+                <Bar width="4rem" />
+              </td>
+              <td className="cell-mtime">
+                <Bar width="8.5rem" />
               </td>
             </tr>
           ))}

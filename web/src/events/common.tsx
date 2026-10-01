@@ -19,6 +19,46 @@ export function fileName(identity: string): string {
   return identity.split('/').pop() ?? identity
 }
 
+/** The identity's folder: '' for a file at the event folder's root. */
+function folderOf(identity: string): string {
+  const slash = identity.lastIndexOf('/')
+  return slash === -1 ? '' : identity.slice(0, slash)
+}
+
+/**
+ * How a chapter names its clips: by file name while every clip it lists lies in its
+ * own folder (the event folder for the default chapter ''), else each by its path in
+ * the event folder, so that no two of its rows read alike. Identities are unique
+ * within an event, and the names come from them alone, never from a guess about
+ * where a chapter's folder is. Edit mode's rows adopt it too, with `ClipName`, so both
+ * keep their names, signatures and markup.
+ */
+export function clipNames(
+  chapter: string,
+  identities: readonly string[],
+): (identity: string) => string {
+  const own = identities.every((identity) => folderOf(identity) === chapter)
+  return own ? fileName : (identity) => identity
+}
+
+/**
+ * A name, its folder part muted: <span class="clip-dir">Kvällen/</span>s1710004.mp4.
+ * A narrow cell breaks it after the folder, before it breaks inside the file name.
+ */
+export function ClipName({ name }: { name: string }) {
+  const cut = name.lastIndexOf('/') + 1
+  if (cut === 0) {
+    return name
+  }
+  return (
+    <>
+      <span className="clip-dir">{name.slice(0, cut)}</span>
+      <wbr />
+      {name.slice(cut)}
+    </>
+  )
+}
+
 export function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`
 }
