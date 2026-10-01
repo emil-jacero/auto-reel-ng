@@ -317,7 +317,8 @@ clips the chapter plays, and the ignored ones after them: `plural(played.length,
 `` ` · ${ignored.length} ignored` `` when there are any. So the heading's count is the last position
 number, as in Edit mode, whose heading counts the clips the chapter plays (`edit-mode-polish`). The page's
 counts line keeps counting every listed clip, with the ignored ones as a part (`5 clips · … · 1 ignored`):
-2 + 2 played and 1 ignored add up to it.
+2 + 2 played and 1 ignored add up to it. (Changed in review: the counts line counts the played clips too,
+with their size, and the ignored ones after them. See "Changed during review".)
 
 **Rationale**: This is exactly Edit mode's order (`editableChapters`): played in detail order, then
 ignored. The two views of a chapter now list the same clips in the same order with the same numbers. An
@@ -478,6 +479,9 @@ carry no event data (the folder name comes from the address):
   the cell padding, exactly as a loaded row. The status bar keeps the card layouts' status line from
   collapsing: without it a 320 px placeholder row was 99 px against 142 px loaded (about 120 px with it).
 
+(Changed in review: the header's actions keep Edit's place while reading, and the placeholders fill with
+`GrayText` in forced colors. See "Changed during review".)
+
 The page stops importing `SkeletonRows` (`ui/Skeleton.tsx` is unchanged, and the list still uses it).
 Every bar is the existing `.skeleton` class, whose shimmer is already gated behind
 `prefers-reduced-motion: no-preference`. The box reuses the thumbnail's own loading state, which is gated
@@ -608,13 +612,87 @@ Smaller choices, within the decisions:
 - **`clipNames` and `ClipName` stay exported and stable** for `edit-mode-polish`. The contract is their
   names, their signatures, `span.clip-dir` around the folder part, and the `<wbr />` after it.
 
+### Changed during review
+
+The supervisor's review (two Opus lenses, with skeptics re-checking each finding) confirmed four minor
+findings and refuted none. All four were fixed on the pr branch, each in its own commit. None changes a
+spec sentence.
+
+1. **The README gave Edit mode's frames as 128 × 72.** Edit mode's grid keeps a literal `5rem` thumbnail
+   track (`edit/edit.css`) until `edit-mode-polish` reads `--clip-thumb-w` (Risks). The review measured
+   80 × 45 boxes in Edit mode at 1280 against 128 × 72 in the read view. The sentence in `web/README.md`
+   now says "80 × 45, and 128 × 72 in the chapter tables at desktop width", which is true today.
+   `edit-mode-polish` updates it when its rows adopt the property.
+2. **Forced colors erased the loading page.** Every placeholder is a background: the `.skeleton` bars and
+   the loading `.clip-thumb`, whose edge is a box-shadow. Forced colors drop both. So the h1 showed nothing
+   (main showed the folder name there), the facts bar and the render region were empty, and the chapter
+   placeholder showed real column headers over four blank rows. It read as an empty event rather than a
+   loading one, against the requirement's "the heading SHALL show a placeholder". `detail.css` now adds,
+   in `@layer screens`:
+
+   ```css
+   @media (forced-colors: active) {
+     .event-detail :is(.skeleton, .clip-thumb[data-state='loading']) {
+       forced-color-adjust: none;
+       background: GrayText;
+     }
+   }
+   ```
+
+   This also covers a frame still loading in a loaded row and in Edit mode, which forced colors left blank
+   in the same way. Measured with Chromium's forced colors at 1280 and 390, in the light and dark schemes:
+   - all 32 placeholders paint (`GrayText` is rgb(96, 0, 0) on white, and rgb(63, 242, 63) on black)
+   - the heading's bar is 288 × 20
+   - the loaded page shows its four frames and no placeholder
+
+   Without forced colors the placeholders keep their own fill (the shimmer's gradient, or `--border` under
+   reduced motion), and `forced-color-adjust` stays `auto`.
+3. **Refresh moved 88 px during every read.** The Edit button exists only in `ready`, so a plain read
+   (opening the page, Refresh, leaving Edit mode) laid out Refresh alone at the end of the row. At 1280,
+   Refresh went from x=1027 to 1115 and back, and the busy button left the pointer that pressed it. This
+   was already so on main, but it was the one part of the header the placeholders still previewed wrong.
+   While reading, `.page-actions` now holds `<span className="skeleton skeleton-action" aria-hidden="true" />`
+   after Refresh (4.75rem × 2rem, `--r-md`). It is a sibling of the buttons, so `edit-mode-polish`'s Edit /
+   Stop editing `<button>` stays byte-identical.
+
+   The finding's fix kept the place on every read. That would move Refresh 88 px the other way when the
+   operator retries a failed read, since a failed page has no Edit. So the loading state carries
+   `editPlace`: true on the first read and after a ready page, false after a failure, and kept when a
+   read restarts a read. Measured at 1280, 1024, 768 and 390 (Grillning):
+   - Refresh's position is the same, within 0.4 px, on the first read, before, during and after a
+     Refresh, and while the read that leaves Edit mode runs
+   - the point that was pressed is still Refresh during the read
+   - the place is 76 × 32, against Edit's 75.6 × 32 (Noto Sans in the container)
+   - after a failed read (Omöjligt datum), there is no place and Refresh stays at x=1114.8 throughout
+   - reduced motion still shows 0 animations while the read is held
+4. **"N clips" meant two things on one screen.** The page's line counted every listed clip, with the
+   ignored ones inside it. Each chapter's heading, and Edit mode's, counts the clips it plays, with the
+   ignored ones after them. So Två kapitel (partition fixture) read "6 clips · 194.4 MiB · 1 new · 1
+   ignored" above "3 clips · 1 ignored" and "2 clips", which looks like an arithmetic error. `Counts` now
+   counts the played clips (`status !== 'ignored'`, so the new and missing ones are among them), then
+   adds "· N ignored" as the headings do. Its size is now the played clips' size too. With the old total,
+   "5 clips · 194.4 MiB" would include a clip that the five do not. Measured:
+   - partition fixture: "5 clips · 162.0 MiB · 1 new · 1 ignored" (the chapters add up to 5, and 5 rows
+     are numbered)
+   - shipped library: "4 clips · 129.4 MiB · 1 new · 1 ignored" over "1 clip · 1 ignored" and "3 clips"
+   - Edit mode: the same headings and the same line
+   - Grillning, with no ignored clip: unchanged ("4 clips · 129.4 MiB")
+   - Sommarlov: its missing clip is counted ("3 clips · 65.0 MiB · 1 missing")
+
+   The requirement's "counts of its clips, their total size, and its new, missing and ignored clips"
+   reads the same under this convention. The event list still counts every clip: its `clip_count` is the
+   service's classification count, ignored clips included. So the shipped Två kapitel reads "5 clips"
+   there and "4 clips · … · 1 ignored" here. The list never shows an ignored count, and aligning it is a
+   service and list change, left as a follow-up (Risks).
+
 ## Failure behavior and idempotency
 
 - **The page writes nothing.** No request is added: the thumbnail addresses and the reads are unchanged.
   A re-run, a `--force` render or a worker restart has no interaction with this change.
 - **A failed read** replaces the page as today, with the h1 set to the folder name and no folder line,
   region or placeholder. The placeholders exist only in `loading`, so the page never shows an earlier
-  state as current.
+  state as current. A Refresh from a failed read keeps no place for Edit, so Refresh stays where it was
+  (Changed during review, item 3).
 - **A failed thumbnail** still shows "No preview for <name>", now with the row's name.
 - **No new fallback invents a fact.** The folder name comes from the address, and the names come from the
   detail's identities.
@@ -628,7 +706,16 @@ Smaller choices, within the decisions:
   which both views already render for this purpose. Task 5.1 checks Edit mode too.
 - [Edit mode keeps bare names, and 5rem frames at desktop, until `edit-mode-polish` adopts the helpers and
   properties] → Recorded for the supervisor ("Open Questions"). Each side is correct on its own, since
-  Edit mode's rows name what they show, and neither blocks the other.
+  Edit mode's rows name what they show, and neither blocks the other. `web/README.md` gives the sizes as
+  they are until then (Changed during review, item 1).
+- [Edit's place is a fixed 4.75rem] → It matches the Edit button in the container's font (76 against
+  75.6 px). In the operator's `system-ui` font the two may differ by a pixel or two, which moves Refresh by
+  as much during a read, not by 88 px.
+- [The event list counts ignored clips, the page does not] → The list's "N clips" is the service's
+  `clip_count`, every classified clip, while the page's line is the played clips plus "· N ignored"
+  (Changed during review, item 4). The page's own figures now agree with each other, and its line names the
+  difference. Counting played clips in the list is a service change (`clip_count`) and an `EventList.tsx`
+  change, left as a follow-up.
 - [Taller rows: 89 px against 62 px at desktop] → A 380-clip chapter is about 10k px longer. Lazy loading
   still bounds the requests to rows near the view (the existing requirement). Card layouts keep 80×45.
 - [Chapter-wide full paths make a folder chapter verbose when a hand edit adds one outside clip] → That is
