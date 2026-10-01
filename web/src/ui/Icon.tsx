@@ -26,7 +26,8 @@ import type { ReactNode } from 'react'
  *
  * These icons are derived from the Feather project, under the MIT License:
  * alert-triangle, arrow-down, arrow-right, arrow-up, check, chevron-down,
- * chevron-left, clock, info, monitor, moon, plus, scissors, square and x.
+ * chevron-left, clock, download, info, monitor, moon, pause, plus, scissors,
+ * skip-forward, square and x.
  *
  *   The MIT License (MIT)
  *
@@ -60,12 +61,14 @@ export type IconName =
   | 'chevron-down'
   | 'chevron-left'
   | 'clock'
+  | 'download'
   | 'film'
   | 'grip-vertical'
   | 'info'
   | 'loader'
   | 'monitor'
   | 'moon'
+  | 'pause'
   | 'pencil'
   | 'play'
   | 'plus'
@@ -73,6 +76,7 @@ export type IconName =
   | 'rotate-ccw'
   | 'save'
   | 'scissors'
+  | 'skip-forward'
   | 'square'
   | 'sun'
   | 'x'
@@ -111,6 +115,13 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <circle cx="12" cy="12" r="10" />
       <path d="M12 6v6l4 2" />
+    </>
+  ),
+  download: (
+    <>
+      <path d="M12 15V3" />
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="m7 10 5 5 5-5" />
     </>
   ),
   film: (
@@ -152,6 +163,12 @@ const PATHS: Record<IconName, ReactNode> = {
   ),
   moon: (
     <path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+  ),
+  pause: (
+    <>
+      <rect x="14" y="3" width="5" height="18" rx="1" />
+      <rect x="5" y="3" width="5" height="18" rx="1" />
+    </>
   ),
   pencil: (
     <>
@@ -199,6 +216,12 @@ const PATHS: Record<IconName, ReactNode> = {
     </>
   ),
   square: <rect width="18" height="18" x="3" y="3" rx="2" />,
+  'skip-forward': (
+    <>
+      <path d="M21 4v16" />
+      <path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z" />
+    </>
+  ),
   sun: (
     <>
       <circle cx="12" cy="12" r="4" />

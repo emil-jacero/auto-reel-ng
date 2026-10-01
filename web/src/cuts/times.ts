@@ -127,6 +127,8 @@ export type CutRefusal =
   | { kind: TimeRefusal; field: CutField; typed: string }
   | { kind: 'order'; field: 'end'; start: number; end: number }
   | { kind: 'overlap'; field: 'start'; number: number; clash: { in: number; out: number } }
+  // Ends after the clip's length as the browser read it (`at`: the time at `field`, in seconds).
+  | { kind: 'past-end'; field: CutField; at: number; length: number }
 
 /** A time in whole milliseconds: the precision a time is typed and shown in. */
 function ms(seconds: number): number {
@@ -151,14 +153,18 @@ function isRead(key: string): boolean {
 /**
  * A typed cut checked against the clip's listed cuts, in this order: each time
  * readable (the start first), the end after the start (the engine's own
- * refusals), and no overlap with a listed cut that is not removed (the
- * `reel-document` spec's non-overlapping spans). A cut past the clip's end
- * passes: the page does not know the clip's length.
+ * refusals), the end not after the clip's `length` when it is known, and no
+ * overlap with a listed cut that is not removed (the `reel-document` spec's
+ * non-overlapping spans). `length` is the clip's length as the browser read it
+ * from the file in its preview (D-16), in seconds, compared to the millisecond
+ * as `formatTime` writes it, so an end set at the clip's end is never refused.
+ * Without it a cut past the clip's end passes: the page does not know the length.
  */
 export function checkCut(
   listed: readonly ListedCut[],
   typedIn: string,
   typedOut: string,
+  length?: number,
 ): { ok: true; in: number; out: number } | { ok: false; refusal: CutRefusal } {
   const start = parseTime(typedIn)
   if (!start.ok) {
@@ -171,6 +177,12 @@ export function checkCut(
   const span = { in: start.ms / 1000, out: end.ms / 1000 }
   if (end.ms <= start.ms) {
     return { ok: false, refusal: { kind: 'order', field: 'end', start: span.in, end: span.out } }
+  }
+  if (length !== undefined && end.ms > ms(length)) {
+    // A start at or after the end: no end could fix it.
+    const field = start.ms >= ms(length) ? 'start' : 'end'
+    const at = field === 'start' ? span.in : span.out
+    return { ok: false, refusal: { kind: 'past-end', field, at, length } }
   }
   const at = listed.findIndex((cut) => cut.removed !== true && overlaps(cut, span))
   if (at !== -1) {
@@ -289,10 +301,27 @@ export const CUT_HINT =
   'length: a cut that runs past its end stops there, and a cut over the whole clip leaves the ' +
   'clip out of the movie.'
 
+/** The hint once the clip's preview has read its length (D-16): where the clip ends. */
+export function lengthHint(length: number): string {
+  return (
+    `Seconds (75.5), m:ss (1:15.5) or h:mm:ss (1:01:15.5). This clip ends at ` +
+    `${formatTime(length)}, as this browser reads it: a cut must end by then, and a cut over ` +
+    'the whole clip leaves the clip out of the movie.'
+  )
+}
+
+/** Whether a listed cut ends after the clip's known length, compared to the millisecond. */
+export function pastEnd(cut: { in: number; out: number }, length: number): boolean {
+  return ms(cut.out) > ms(length)
+}
+
+/** The badge of a listed cut that ends after the clip's known length. */
+export const PAST_END = 'Past the clip’s end'
+
 /** A clip without cuts. */
 export const NO_CUTS = 'No cuts: the whole clip plays.'
 
-/** A refused cut, in words: what to type, or which cut it overlaps. */
+/** A refused cut, in words: what to type, which cut it overlaps, or where the clip ends. */
 export function refusalWords(refusal: CutRefusal): string {
   switch (refusal.kind) {
     case 'empty':
@@ -311,6 +340,12 @@ export function refusalWords(refusal: CutRefusal): string {
         `This cut overlaps cut ${refusal.number} (${spanWords(refusal.clash)}). Change the ` +
         `times, or remove cut ${refusal.number} first.`
       )
+    case 'past-end':
+      return refusal.field === 'end'
+        ? `This cut ends at ${formatTime(refusal.at)}, after the clip’s end at ` +
+            `${formatTime(refusal.length)}. Type an end up to ${formatTime(refusal.length)}.`
+        : `This cut starts at ${formatTime(refusal.at)}, at or after the clip’s end at ` +
+            `${formatTime(refusal.length)}. A cut must start before the clip ends.`
   }
 }
 
