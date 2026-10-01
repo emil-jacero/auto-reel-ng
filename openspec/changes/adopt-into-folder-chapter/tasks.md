@@ -20,6 +20,8 @@
   - an identity's folder chapter comes from `listing.by_chapter`
   - its target is the folder chapter if `document.chapter(folder) is not None`, else `DEFAULT_CHAPTER_NAME`
   - groups come in document chapter order, then `""` last when the document lacks it, with no empty groups
+  - a document that names no chapters (user decision, "Seed like a new event"): the target is always the
+    folder chapter, and groups come in `listing.by_chapter` order
   - each group is sorted with `order_clips(…, document.sort or order)`
   - an identity the listing does not hold raises `ReconcileError`
 
@@ -27,7 +29,9 @@
   - a clip in `Kvällen/` → `Kvällen` when the document names it
   - a clip in `Dag 2/` → `""` when the document names only `""`
   - a root clip → `""`
-  - a document that names no chapters: every clip → `""`
+  - a document that names no chapters, with `s1710001.mp4`, `Kvällen/s1710002.mp4` and `Kvällen/s1710003.mp4`:
+    `(("", ("s1710001.mp4",)), ("Kvällen", ("Kvällen/s1710002.mp4", "Kvällen/s1710003.mp4")))`, equal to
+    `seed_document`'s chapters for the same disk; with only `Kvällen/` clips there is no `""` group
   - the document names only `Kvällen`, with NEW `b.mp4` (12:00) and `Dag 2/c.mp4` (11:00) under `DEFAULT_CLIP_ORDER`: the result is `(("", ("Dag 2/c.mp4", "b.mp4")),)`; a NEW `Kvällen/d.mp4` added to that case yields `Kvällen`'s group first
   - the same case with the document's own `sort: {method: filename}` orders by name
   - an identity not in the listing raises `ReconcileError`
@@ -44,7 +48,7 @@
   - `test_new_clip_joins_its_folders_chapter`, the spec's `2024-08-20 - Två kapitel - Tjörn` case: `Kvällen` becomes `Kvällen/s1710002.mp4`, `Kvällen/s1710003.mp4`, `Kvällen/s1710004.mp4`, and `""` stays `s1710001.mp4` alone
   - `test_new_clips_in_a_folder_without_a_chapter_join_the_default_chapter`: `Dag 2/…` is appended to `""` and no `Dag 2` chapter appears
   - `test_clips_from_two_folders_enter_the_default_chapter_in_rule_order`, the spec scenario: `""` is appended after `Kvällen`, listing `Dag 2/c.mp4`, `b.mp4`
-  - `test_document_naming_no_chapters_adopts_every_clip_into_the_default_chapter`, for a `reel.yaml` of `version: 0` plus `metadata` only
+  - `test_document_naming_no_chapters_is_seeded_like_a_new_event`, for a `reel.yaml` of `version: 0` plus `metadata` only, with `s1710001.mp4`, `Kvällen/s1710002.mp4` and `Kvällen/s1710003.mp4`: `prepared.authored.chapters == seed_document(event_dir, order=…).chapters`, and after `persist` the file still holds its `metadata` as written (no resolved folder-name fields)
   - `test_a_clip_adopted_earlier_stays_where_it_is`: a `reel.yaml` with `Kvällen/s1710004.mp4` in `""`. `prepared.adopted == ()`, `prepared.changed is False`, `persist(prepared) is None`, and the file's bytes are unchanged.
 
   Verify:
@@ -60,6 +64,7 @@
      - `load_document(reel.yaml)` has exactly the chapters `""` = [`s1710001.mp4`, `Dag 2/s1710005.mp4`] and `Kvällen` = [`Kvällen/s1710002.mp4`, `Kvällen/s1710003.mp4`, `Kvällen/s1710004.mp4`], and no `Dag 2` chapter
      - `runtime.run_ffprobe(["-v", "error", "-show_chapters", "-print_format", "json", <movie>])` reports two chapters. The second is titled `Kvällen` and spans 3.0 s ± 0.3, and the first spans 2.0 s ± 0.3.
   3. A third render prints `FRESH` for the event and leaves `reel.yaml` byte-identical.
+  4. A second event, `2024/2024-09-10 - Utan kapitel`, has a `reel.yaml` of `version: 0` plus `metadata` only (written before the first render), with `s1710001.mp4`, `Kvällen/s1710002.mp4` and `Kvällen/s1710003.mp4`. After the first render, its `reel.yaml` has the chapters `""` = [`s1710001.mp4`] and `Kvällen` = [`Kvällen/s1710002.mp4`, `Kvällen/s1710003.mp4`] and keeps its `metadata`, and its movie has two chapters, the second titled `Kvällen` and spanning 2.0 s ± 0.3.
 
   Verify: `.venv/bin/python -m pytest tests/test_cli_render_adoption.py -v` passes on this host. The test is collected under `-m has_ffmpeg` and deselected by `-m "not has_ffmpeg"`.
 
@@ -70,7 +75,7 @@
   Add tests to `tests/test_api_events.py` (the module is `requires_db`). Each builds its own event under the `project` fixture's root with touched files and a literal `reel.yaml`, and reads `GET /api/v1/events/{event_id}`:
   - `test_detail_shows_a_new_clip_in_its_folders_chapter`, the spec's `Två kapitel` case, with names and statuses per chapter
   - `test_detail_shows_a_folder_without_a_chapter_in_the_default_chapter`: exactly one chapter, `""`, and no `Dag 2`
-  - `test_detail_of_a_document_naming_no_chapters_is_one_default_chapter`
+  - `test_detail_of_a_document_naming_no_chapters_is_its_folder_seed`, the spec scenario: the detail lists `""` = [`s1710001.mp4`] and `Kvällen` = [`Kvällen/s1710002.mp4`, `Kvällen/s1710003.mp4`], all new; after `persist(prepare_event(...))` the `reel.yaml` chapters equal that listing, and a second GET lists them all active
   - `test_detail_places_an_ignored_clip_like_a_new_one`: an ignored `Dag 2/s1710002.mp4` is listed in `""` with status `ignored`
   - `test_detail_chapters_are_the_chapters_render_adopts`, the spec scenario "The page's chapters are the movie's chapters":
     - setup: one event with a NEW clip in a named folder chapter, a NEW clip in a folder with no chapter, a NEW root clip, an ignored root clip, and `datetime` mtimes set with `os.utime`
@@ -104,12 +109,13 @@
      - `Kvällen` ends with `Kvällen/s1710004.mp4 new`
      - `""` holds `s1710001.mp4 active` and `s1710004.mp4 ignored`
   5. For Badutflykt, the same query lists `Dag 2/s1710002.mp4 new` in `""` and no `Dag 2` chapter.
+  5b. For the document that names no chapters (user decision): link `<scratch>/dev/clips/s1710004.mp4` into a new `Kväll/` folder of `2024/Blandat` (its `reel.yaml` names no chapters). The same query for `2024/Blandat` lists `""` with the root clip(s) and then a `Kväll` chapter with `Kväll/s1710004.mp4 new`. The worker renders `Blandat` from the job the dev library left queued.
   6. **Before rendering**, in Playwright (`podman run --rm --network host -v <scratch>:/work:Z mcr.microsoft.com/playwright/python:v1.49.0-noble …`, with a script in the scratch directory, never in the repo), open `http://127.0.0.1:8122/#/event/2024/2024-08-20%20-%20Tv%C3%A5%20kapitel%20-%20Tj%C3%B6rn` at 1280×900 and take the "before" screenshot. Check:
      - the `Kvällen` table lists `s1710004.mp4` as new
      - the `Main` table has no `Kvällen/` row
   7. Render both events with `curl -s -X POST -H 'Content-Type: application/json' -d '{"event_id": "<id>"}' http://127.0.0.1:8122/api/v1/jobs`. Poll `GET /api/v1/jobs/<job id>` until `done`.
   8. After the render:
-     - each `reel.yaml` lists the clips exactly where step 4 or 5 showed them, ignored clips aside
+     - each `reel.yaml` lists the clips exactly where step 4, 5 or 5b showed them, ignored clips aside, and `Blandat`'s `reel.yaml` now names `""` and `Kväll`
      - the GETs of steps 4 and 5 show the same chapters and order, with every clip that was `new` now `active`
      - `ffprobe -v error -show_chapters -print_format json "<scratch>/dev/library-output/2024/2024-08-20 - Två Kapitel - Tjörn.mp4"` reports the untitled default chapter about one clip long (≈6 s) and `Kvällen` about three clips long (≈18 s of 6 s cuts)
      - the same Playwright script, run again, takes the "after" screenshot: the `Kvällen` table lists `s1710004.mp4` as included, and the `Main` table still has no `Kvällen/` row

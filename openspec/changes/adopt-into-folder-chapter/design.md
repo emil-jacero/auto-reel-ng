@@ -59,6 +59,34 @@ chapter, else `Clips` (`web/src/edit/EventEditor.tsx` lines 424–426). In Edit 
 - The "Needs attention" metadata form (web-app, "Events that need attention…": it "SHALL write no chapters
   the event's `reel.yaml` does not already hold").
 
+## Supervisor decisions (2026-10-01)
+
+Recorded before implementation. Where they differ from a section below, they win, and that section says
+so.
+
+- **The rule (brief `plan/brief-decisions.md`, Z1).** The user agreed on 2026-10-01: a NEW clip in a
+  subfolder joins the chapter named after its folder, and falls back to the default chapter when `reel.yaml`
+  has no such chapter.
+- **USER DECISION on the edge case (2026-10-01, "Seed like a new event").** When `reel.yaml` names **no
+  chapters at all**, adoption builds the chapters exactly as first discovery seeds them: the event folder's
+  clips into the default chapter, each subfolder's clips into a chapter of its own, the chapters in seeding
+  order (default first, then subfolders by name), and each chapter's clips in the sort rule's order. Every
+  other document follows the agreed rule unchanged: the folder's chapter if `reel.yaml` names it, else the
+  default chapter. The first draft of this design offered this as option (a') of an open risk, which
+  "Risks / Trade-offs" now replaces with the decision. The GUI keeps its folder-chapter view of a document
+  that names no chapters, because the read model's view of it is the seed, and that is now what a render
+  adopts.
+- **Confirmed:**
+  - The deltas stay MODIFIED headless-cli and ADDED api-service. event-reconcile is cited, not changed.
+  - HLD records the amendment as a new §7 **D-12** plus one sentence in §4.6.
+  - Ignored clips are placed by the same rule on the event page.
+  - `prepare_event`'s unused `adopt_chapter` parameter is removed.
+  - No migration of clips that earlier renders placed in the default chapter.
+- **Follow-up, not here:** the web-app scenario "A clip from another folder is named by its path" describes
+  its setup with the old adoption wording. Its outcome still holds.
+- **Not this change:** `test_editorial_write_save_stale_render_cycle` can fail when run together with
+  `test_api_events.py` only (pre-existing test order; "Spiked in review" below).
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -66,6 +94,7 @@ chapter, else `Clips` (`web/src/edit/EventEditor.tsx` lines 424–426). In Edit 
 - One placement rule for clips the document does not list. Adoption and the read model call the same
   function, so they cannot drift apart again.
 - The rule the user agreed to: the folder's chapter when `reel.yaml` names it, else the default chapter.
+  A `reel.yaml` that names no chapters is adopted into as a new event is seeded (user decision).
 - Ordering stays the event-reconcile rule, applied per target chapter.
 
 **Non-Goals:**
@@ -117,8 +146,13 @@ A fourth check covered the GUI's metadata-only first save (`repro_metadata_save.
 
 **Decision**: Today, a NEW clip whose folder's chapter `reel.yaml` does not name is shown **in a chapter
 named after its folder, which the detail invents and lists after the document's chapters**. The render
-puts it in the default chapter. Under the agreed fallback, the render keeps doing that, so the read model
-must change to show such a clip in the default chapter.
+puts it in the default chapter. Under the agreed fallback, the render keeps doing that for a `reel.yaml`
+that names any chapter, so the read model must change to show such a clip in the default chapter.
+
+For a `reel.yaml` that names no chapters (`Utan kapitel`), the detail already shows the folder seed: one
+chapter per folder group, in `listing.by_chapter` order. Under the user's decision ("Seed like a new
+event"), that is what the render now adopts, so for this row the engine changes and the read model's view
+stays as it is.
 
 **Rationale**: The brief asks for the read model to be aligned only if that stays within two packages. It
 does: `cli/` and `api/`. The web client needs no change (see "The web client needs no change").
@@ -139,15 +173,22 @@ There is also the default chapter itself being absent, for a root clip or a fall
 **Decision**: A clip's *folder chapter* is the `DiskListing.by_chapter` group it was found in: `""` for the
 event folder, the subfolder's name otherwise. Its *target* is the folder chapter when
 `document.chapter(folder) is not None`, else `DEFAULT_CHAPTER_NAME`. The match is exact and case-sensitive,
-as seeding names chapters exactly after folders. A target that the document lacks can only be the default
-chapter. It is appended after the document's chapters, as `_ensure_chapter` does today. No other chapter is
-ever created.
+as seeding names chapters exactly after folders. In a document that names any chapter, a target that the
+document lacks can only be the default chapter. It is appended after the document's chapters, as
+`_ensure_chapter` does today, and no other chapter is created.
 
-**Rationale**: This is the agreed rule taken literally. It keeps the per-chapter sort rule
-(event-reconcile), the chapter order rules, and `_ensure_chapter`'s existing placement unchanged. A
-document that names no chapters falls under "has no such chapter", so every clip goes to the default
-chapter. This is called out as a risk below, because it is the one case the folder convention does not
-reach.
+The one exception is the user's decision: when the document names **no chapters at all**, every clip's
+target is its folder chapter, and the targets come in `listing.by_chapter` order (the default chapter
+first, then subfolders by name). Adoption then creates each of those chapters, in that order, and writes
+exactly the chapters and clip order that `seed_document` would write for the same disk under the same sort
+rule. The document's own `sort`, when it sets one, is that rule, as for every other adoption.
+
+**Rationale**: This is the agreed rule taken literally, plus the edge case decided by the user. It keeps
+the per-chapter sort rule (event-reconcile), the chapter order rules, and `_ensure_chapter`'s existing
+placement unchanged. A document that names no chapters has never stated a structure, so it gets the
+structure a new event gets: HLD §2's chapter-from-subdirectory convention reaches legacy imports and
+metadata-only first saves, as it reaches every event without a `reel.yaml`. Once a document names any
+chapter, it has stated its structure, and the folder rule with its default-chapter fallback applies.
 
 event-reconcile says "Chapters SHALL keep their existing order: the default chapter first, then subfolders
 by name". That sentence says the sort rule never re-orders chapters, and how seeding orders them. It does not
@@ -190,6 +231,10 @@ def place_disk_clips(
     chapters in its order, then the default chapter when the document does not name it. Each
     group's clips are in ``order_clips(..., document.sort or order)`` order.
 
+    A document that names no chapters is placed as a new event is seeded: every clip enters
+    its folder's chapter, in ``listing.by_chapter`` order (the default chapter first, then
+    subfolders by name).
+
     Raises:
         ReconcileError: an identity ``listing`` does not hold (a caller bug; fail loud).
     """
@@ -197,9 +242,10 @@ def place_disk_clips(
 
 The implementation builds `folder_of = {identity: name for name, clips in listing.by_chapter for identity in
 clips}`. It buckets identities by target, then emits the buckets in
-`[c.name for c in document.chapters] + ([""] if document.chapter("") is None else [])` order. Each bucket
-is sorted with `order_clips`. It is pure apart from the `stat` that `order_clips` already does for
-`datetime`, and it never probes.
+`[c.name for c in document.chapters] + ([""] if document.chapter("") is None else [])` order. For a
+document that names no chapters, the target is always the folder chapter, and the emit order is
+`[name for name, _ in listing.by_chapter]`. Each bucket is sorted with `order_clips`. It is pure apart from
+the `stat` that `order_clips` already does for `datetime`, and it never probes.
 
 `prepare_event` becomes:
 
@@ -210,7 +256,7 @@ def prepare_event(event_dir: Path, *, order: ClipOrder, adopt: bool = True) -> P
     if adopt and result.new:
         placed = place_disk_clips(authored, listing, result.new, event_dir=event_dir, order=order)
         for chapter, clips in placed:
-            authored = _ensure_chapter(authored, chapter)   # creates only "" (appended last)
+            authored = _ensure_chapter(authored, chapter)   # "" (appended last), or a seed chapter
             for identity in clips:
                 authored = add_clip(authored, identity, chapter)
             adopted += clips
@@ -240,7 +286,8 @@ seed branch (no document) is unchanged.
 import direction.
 
 **Spiked in review** on a scratch export of `main` (`93721b3`), never the checkout: this function, the
-`prepare_event` loop and the `_build_chapters` replacement above, as written.
+`prepare_event` loop and the `_build_chapters` replacement above, as written before the user's decision on
+documents that name no chapters. That branch came later, and tasks 2.1–2.3 and 3.1 test it.
 
 - The `Två kapitel` case failed on unmodified `main` (the clip landed in `""`) and passed with the spike.
 - The two-folder case gave `Kvällen` = `Kvällen/a.mp4`, `Kvällen/d.mp4` and a trailing `""` = `Dag 2/c.mp4`,
@@ -277,8 +324,8 @@ ignored clips.
 **Decision**: The read model passes every disk-only clip, NEW and IGNORED, through `place_disk_clips`.
 Adoption passes only `result.new`, because ignored clips are never adopted.
 
-**Rationale**: The detail then never lists a chapter that `reel.yaml` lacks, except the default chapter.
-Edit mode's `detailMatchesDocument` still holds: ignored clips appear only after a chapter's listed clips,
+**Rationale**: The detail then never lists a chapter that `reel.yaml` lacks, except the default chapter, or
+the seed chapters of a `reel.yaml` that names none. Edit mode's `detailMatchesDocument` still holds: ignored clips appear only after a chapter's listed clips,
 and every one is in `ignore`.
 
 ### The web client needs no change
@@ -297,8 +344,9 @@ and every one is in `ignore`.
 - A NEW clip that falls back into the default chapter sits after that chapter's listed clips, which
   `detailMatchesDocument` accepts.
 - Reordering the default chapter and saving writes it there, the same place a render would put it.
-- For a document with no chapters, the page shows one default chapter, and a first reorder writes just that.
-  This is the GUI path to folder chapters that the alignment removes (see Risks).
+- For a document with no chapters, the page keeps showing the folder seed, as on `main`, and a first reorder
+  writes every chapter shown (`writtenFromView`). That is now also what a render would adopt, so the GUI
+  keeps its path to folder chapters, and the page and the render agree on it.
 
 **Rationale**: The page and Edit mode follow the service's placement as they already do. The response
 shape does not change, so `web/openapi.json` and `web/src/api/schema.d.ts` are not regenerated.
@@ -372,20 +420,24 @@ config rule says a decision that outlives a change is folded into the HLD as a D
 >   amends `project-cli`'s D-CLI3). A clip that appears in an event after its `reel.yaml` exists (NEW) is
 >   adopted by the next render, from the CLI or the worker, into the chapter named after the folder it is
 >   in: the event folder's clips into the default chapter, and a subfolder's into the chapter of that name.
->   It goes into the default chapter only when `reel.yaml` has no chapter of that name. Adoption creates no
->   chapter except the default one, appended last when absent. It never moves a clip the document lists,
->   and it appends a chapter's entering clips in the sort rule's order. The events detail places every clip
->   `reel.yaml` does not list (NEW or ignored) by this same rule, so it shows each NEW clip where the render
->   will adopt it.
+>   It goes into the default chapter only when `reel.yaml` has no chapter of that name. A `reel.yaml` that
+>   names no chapters at all (a legacy import, a metadata-only first save) is adopted into as a new event is
+>   seeded: the event folder's clips into the default chapter and each subfolder's into a chapter of its
+>   own, in seeding order. Otherwise adoption creates no chapter except the default one, appended last when
+>   absent. It never moves a clip the document lists, and it appends a chapter's entering clips in the sort
+>   rule's order. The events detail places every clip `reel.yaml` does not list (NEW or ignored) by this
+>   same rule, so it shows each NEW clip where the render will adopt it.
 >
 >   *Amended 2026-10-01:* D-CLI3 adopted every NEW clip into the default chapter ("configurable", never
 >   wired). The GUI v1 end-to-end pass found `Kvällen/s1710004.mp4` shown under `Kvällen` and played in
->   Main after Render, and the operator chose the folder rule. Adoption writes `reel.yaml`, which the
->   editorial component already fingerprints, so this is no render-graph change. (§4.6)
+>   Main after Render, and the operator chose the folder rule, and seeding for a `reel.yaml` that names no
+>   chapters. Adoption writes `reel.yaml`, which the editorial component already fingerprints, so this is no
+>   render-graph change. (§4.6)
 
 §4.6, after "Folder-name parsing **seeds** a `reel.yaml` on first scan; thereafter the file wins.", gains:
 "A clip added later is adopted by the next render into its folder's chapter, or the default chapter when
-the file names no such chapter (D-12)."
+the file names no such chapter; a file that names no chapters at all is adopted into as a first scan seeds
+it (D-12)."
 
 **Rationale**: This is where future readers look for locked decisions. The archived design is not edited.
 
@@ -403,20 +455,21 @@ the file names no such chapter (D-12)."
 - Its cost: a hand-renamed chapter (`Kvällen` → `Evening`) gets a new `Kvällen` chapter for clips added
   later. The page shows that before the render, as it does today.
 
-**Decision**: Not taken. The user agreed to the default-chapter fallback. Rule B is recorded here, and
-surfaced to the supervisor, because it would change the specs. With it, the api-service delta and the
-`api/` task drop out.
+**Decision**: Not taken. The user agreed to the default-chapter fallback, and decided the one case where
+Rule B's benefit mattered most, a document that names no chapters, separately: it is seeded like a new
+event ("Supervisor decisions"). Rule B is recorded here so the hand-renamed-chapter trade-off can be
+revisited deliberately.
 
-**Rationale**: A decision the user made is not reversed inside a spec. The trade-off is stated so it can be
-revisited deliberately (see Risks).
+**Rationale**: A decision the user made is not reversed inside a spec.
 
 ## Failure behavior and idempotency
 
 - **Raises:**
   - `place_disk_clips` raises `ReconcileError` for an identity the listing does not hold. This is a caller
     bug, never a user state: both callers pass identities taken from the same listing.
-  - `add_clip` keeps raising `ReconcileError` for an already-listed or ignored clip. The rule passes only NEW
-    clips and creates only the default chapter, so neither path is reachable.
+  - `add_clip` keeps raising `ReconcileError` for an already-listed or ignored clip. Adoption passes only NEW
+    clips, and `_ensure_chapter` creates every target the document lacks (the default chapter, or the seed
+    chapters of a document that names none), so neither path is reachable.
 - **Where such an error would go** (unchanged paths, as for `add_clip`'s errors today):
   - `ReconcileError` is a `ReelError`, so in the read model it becomes `EventReadError` through `get_event`'s
     `except (ReelError, OSError)` (`events_read.py` line 444).
@@ -435,31 +488,25 @@ revisited deliberately (see Risks).
 
 ## Risks / Trade-offs
 
-- **[Risk] Documents that name no chapters lose their folder structure on the next render, and after this
-  change the GUI can no longer restore it.**
+- **[Decided] Documents that name no chapters are seeded like a new event** (user decision 2026-10-01,
+  "Seed like a new event"; this replaces the open risk and its three options).
   - These are legacy imports, versionless legacy `reel.yaml`s, GUI metadata-only first saves, and
-    "Needs attention" fixes.
-  - Under the agreed rule, every subfolder's clips go to the default chapter. The render already does that
-    on `main`, so the *render* is not a regression. HLD §2's carried-over "chapter-from-subdirectory
-    convention" still does not reach these events.
-  - After this change the page shows that outcome before the render. Right after a metadata-only save, the
-    page's folder tables merge into one `Clips` table.
-  - **The aligned read model removes a GUI path that `main` has.** On `main`, the detail of such an event
-    lists the folder chapters (invented, lines 372–375). Edit mode's first reorder then writes every chapter
-    shown (`draft.ts` `writtenFromView` lines 136–142, `buildWriteBody` line 176), so `reel.yaml` gains the
-    folder chapters and later renders keep them. After this change the detail lists one default chapter.
-    Edit mode cannot move a clip into another chapter, so a first reorder writes only that one chapter.
-    Restoring folder chapters then takes a hand edit of `reel.yaml`.
+    "Needs attention" fixes. On `main`, their next render put every clip in the default chapter, while the
+    detail showed the folder chapters (invented, lines 372–375).
+  - Now the render adopts them into the folder seed's chapters, which is what the detail already shows. The
+    read model's view of such a document does not change, and Edit mode's first reorder still writes every
+    chapter shown (`draft.ts` `writtenFromView` lines 136–142), now the same chapters a render would write.
+    HLD §2's carried-over "chapter-from-subdirectory convention" reaches these events too.
+  - → A behavior change on the next render of such an event: a `Kvällen/` clip that `main` would have put in
+    Main now gets a `Kvällen` chapter. That is what the page has shown all along. Events that `main` already
+    rendered have chapters now, so the rule for documents that name a chapter applies to them, and nothing
+    is migrated.
+  - → An operator who wants one chapter for such an event names the default chapter in `reel.yaml` (a
+    `chapters` entry with `name: ""`). Every folder's clips then fall back to it. The GUI cannot express
+    that, because Edit mode does not move clips between chapters (v3).
   - The real archive has 9 legacy `metadata.yaml` events and at least one legacy `reel.yaml` (`2025-01-13 -
     Resa till Gran Canaria`). Whether any of them have chapter subfolders was not checked: MOL was not
-    mounted.
-  - → There is no mitigation within the agreed rule: the page now tells the truth before Render, but the
-    operator has no GUI way to change that truth. **Supervisor decision requested:**
-    - keep the rule as agreed, accepting this loss
-    - (a') treat a document that names no chapters like seeding: its NEW clips enter (and create) their
-      folders' chapters, and the read model keeps showing the folder seed. This keeps the GUI path, and it
-      changes nothing for a document that names any chapter.
-    - rule B ("Alternative: create the folder's chapter")
+    mounted. Any that do get the chapters a new event would get.
 - **[Risk] Clips adopted under the old rule stay in Main**, for example on any library rendered with
   `Kvällen/…` clips adopted before this change. → Intended: an existing order is never re-sorted. The page
   names such rows by path (web-app, "A clip from another folder is named by its path"), and Edit mode can

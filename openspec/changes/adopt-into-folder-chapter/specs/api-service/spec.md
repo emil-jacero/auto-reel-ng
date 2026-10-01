@@ -5,12 +5,14 @@
 `GET /api/v1/events/{event_id}` SHALL list every clip on disk that the event's `reel.yaml` does not list,
 whether NEW or IGNORED, in the chapter that a render's adoption rule names for it (headless-cli, "NEW-clip
 adoption policy"). That is the chapter named after the clip's folder when `reel.yaml` names that chapter, and
-the default chapter otherwise. A NEW clip is therefore shown in the chapter a render adopts it into.
+the default chapter otherwise. When `reel.yaml` names no chapters at all, it is the chapter named after the
+clip's folder, as seeding places it. A NEW clip is therefore shown in the chapter a render adopts it into.
 
 Within a chapter, those clips SHALL follow the clips that `reel.yaml` lists. Among themselves they SHALL be
 in the sort rule's order, which is the order a render appends them in. When `reel.yaml` does not name the
 default chapter and a clip is placed there, the detail SHALL list the default chapter after the chapters
-`reel.yaml` names. The detail SHALL list no other chapter that `reel.yaml` does not name. An event without a
+`reel.yaml` names. When `reel.yaml` names no chapters, the detail SHALL list the chapters its folders seed,
+in seeding order. The detail SHALL list no other chapter that `reel.yaml` does not name. An event without a
 `reel.yaml` SHALL keep listing the chapters its folders seed, which are the chapters a render seeds.
 
 Leaving ignored clips aside, the detail read before a render SHALL therefore list the same chapters, in the
@@ -34,12 +36,14 @@ without adopting anything, and SHALL stay read-only and probe-free.
 - **THEN** the detail lists exactly one chapter, the default chapter, holding `s1710001.mp4` (active) and then
   both `Dag 2` clips (new) in the sort rule's order, and lists no `Dag 2` chapter
 
-#### Scenario: A document that names no chapters is shown as one default chapter
+#### Scenario: A document that names no chapters is shown as its folder seed
 
 - **WHEN** an event's `reel.yaml` holds only `metadata`, and the event holds `s1710001.mp4` in its folder and
-  `Kvällen/s1710002.mp4`
-- **THEN** the detail lists one chapter, the default chapter, holding both clips as new in the sort rule's
-  order, and lists no `Kvällen` chapter
+  `Kvällen/s1710002.mp4` and `Kvällen/s1710003.mp4` in a subfolder
+- **THEN** the detail lists the default chapter holding `s1710001.mp4` (new), then a `Kvällen` chapter holding
+  `Kvällen/s1710002.mp4` and `Kvällen/s1710003.mp4` (new) in the sort rule's order
+- **AND** after `auto-reel render` adopts them, `reel.yaml` lists the same two chapters with the same clips
+  in the same order, and the detail lists them again with every clip active
 
 #### Scenario: An ignored clip in a folder without a chapter is shown in the default chapter
 

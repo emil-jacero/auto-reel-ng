@@ -11,11 +11,18 @@ SHALL adopt exactly as `render` does.
 Each `NEW` clip SHALL be adopted into the chapter named after the folder it was found in. A clip in the
 event folder itself goes into the default chapter. A clip in a chapter subfolder goes into the chapter with
 that subfolder's name. When `reel.yaml` names no chapter of that name, the clip SHALL be adopted into the
-default chapter instead. This includes a `reel.yaml` that names no chapters at all. When `reel.yaml` does
-not name the default chapter and a clip enters it, the default chapter SHALL be added after the chapters
-`reel.yaml` names. Adoption SHALL NOT create any other chapter. It SHALL NOT move, remove or re-order a clip
-that `reel.yaml` already lists, wherever an earlier adoption or a hand edit put it. The adoption target is
-set by this rule alone and is not configurable.
+default chapter instead. When `reel.yaml` does not name the default chapter and a clip enters it, the
+default chapter SHALL be added after the chapters `reel.yaml` names.
+
+A `reel.yaml` that names no chapters at all SHALL be adopted into as first discovery seeds a new event.
+Each `NEW` clip SHALL enter the chapter named after its folder, the default chapter for the event folder's
+clips. Those chapters SHALL be added in seeding order: the default chapter first, then the subfolders'
+chapters by name. The result SHALL be the chapters and clip order that seeding the same event would write
+under the same sort rule.
+
+Apart from these, adoption SHALL NOT create any chapter. It SHALL NOT move, remove or re-order a clip that
+`reel.yaml` already lists, wherever an earlier adoption or a hand edit put it. The adoption target is set by
+this rule alone and is not configurable.
 
 The clips entering one chapter SHALL be appended after the clips that chapter already lists. Among
 themselves they SHALL be in the sort rule's order (event-reconcile, "Clips enter a document in the
@@ -56,13 +63,15 @@ configured sort order"), whichever folders they came from.
 - **THEN** `render` adds the default chapter after `Kvällen`, listing `Dag 2/c.mp4` then `b.mp4`, and leaves
   `Kvällen` as `Kvällen/a.mp4` alone
 
-#### Scenario: A document that names no chapters adopts into the default chapter
+#### Scenario: A document that names no chapters is seeded like a new event
 
 - **WHEN** an event's `reel.yaml` holds only `metadata`, as `import` writes a legacy document or as a
   metadata-only first save from the GUI writes it, and the event holds `s1710001.mp4` in its folder and
-  `Kvällen/s1710002.mp4`
-- **THEN** `render` writes one default chapter listing both clips in the sort rule's order, and no `Kvällen`
-  chapter
+  `Kvällen/s1710002.mp4` and `Kvällen/s1710003.mp4` in a subfolder
+- **THEN** `render` writes the default chapter listing `s1710001.mp4`, then a `Kvällen` chapter listing
+  `Kvällen/s1710002.mp4` and `Kvällen/s1710003.mp4` in the sort rule's order, which are the chapters a first
+  render of the event without a `reel.yaml` seeds, and the movie has both chapters
+- **AND** `reel.yaml` keeps its `metadata` as written
 
 #### Scenario: A clip adopted earlier stays where it is
 

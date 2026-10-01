@@ -16,7 +16,9 @@ The read model places the same clip by folder instead (`api/events_read.py` `_bu
 operator's statement of where a clip belongs.
 
 On 2026-10-01 the user agreed to amend D-CLI3: a NEW clip is adopted into the chapter named after its
-folder, and falls back to the default chapter only when `reel.yaml` has no chapter of that name.
+folder, and falls back to the default chapter only when `reel.yaml` has no chapter of that name. For a
+`reel.yaml` that names no chapters at all, the user decided the same day to "seed like a new event":
+adoption builds the chapters exactly as first discovery seeds them.
 
 This was reproduced on a scratch library through the real `auto-reel render`, comparing the read model
 before and after (design, "Reproduction"). The same split appears in two more cases:
@@ -27,9 +29,10 @@ before and after (design, "Reproduction"). The same split appears in two more ca
 | names only the default chapter; NEW clips in `Dag 2/` | in a chapter `Dag 2` that `reel.yaml` lacks, listed last | the default chapter |
 | names no chapters (legacy import, or a metadata-only first save); clips at the root and in `Kvällen/` | in `''` and in a chapter `Kvällen` that `reel.yaml` lacks | the default chapter, both |
 
-The amended rule fixes the first row in the engine. For the other two rows the agreed fallback is the
-default chapter, so the read model must show those clips there too. This change aligns it. That stays
-within two packages: `cli/` and `api/`.
+The amended rule fixes the first row in the engine. The user's decision fixes the third row in the engine
+too: the render now adopts into the folder chapters that the detail already shows. For the second row the
+agreed fallback is the default chapter, so the read model must show those clips there too. This change
+aligns it. That stays within two packages: `cli/` and `api/`.
 
 ## What Changes
 
@@ -39,18 +42,21 @@ within two packages: `cli/` and `api/`.
     with that subfolder's name.
   - When `reel.yaml` has no chapter of that name, the clip goes into the default chapter. The default
     chapter is appended after the others if `reel.yaml` lacks it, as it is today.
-  - Adoption creates no other chapter. It never moves or re-sorts a clip `reel.yaml` already lists.
+  - **A `reel.yaml` that names no chapters is seeded like a new event** (user decision). Its NEW clips
+    build the chapters first discovery would seed: the event folder's clips into the default chapter, each
+    subfolder's into a chapter of its own, in seeding order (default first, then subfolders by name).
+  - Otherwise adoption creates no other chapter. It never moves or re-sorts a clip `reel.yaml` already
+    lists.
   - The clips entering one chapter are appended after its existing clips, in the sort rule's order among
     themselves, whichever folder they came from. This is event-reconcile's per-chapter rule, unchanged.
 - **The event detail shows each clip where a render will adopt it.**
   - `GET /api/v1/events/{event_id}` places every disk clip that `reel.yaml` does not list (NEW or IGNORED)
     by the same rule and in the same order. It therefore lists no chapter that `reel.yaml` lacks, except
-    the default chapter.
+    the default chapter, or the seed chapters of a `reel.yaml` that names none.
   - An event without a `reel.yaml` still shows the folder seed, which is what a render seeds.
-  - For a `reel.yaml` that names no chapters, the detail now shows one default chapter. Edit mode's first
-    reorder then writes that one chapter, where on `main` it writes the folder chapters the detail invents.
-    The GUI therefore loses its only way to give such an event folder chapters (design, Risks; open for a
-    supervisor decision).
+  - For a `reel.yaml` that names no chapters, the detail keeps showing the folder seed, as on `main`. A
+    render now adopts exactly those chapters, and Edit mode's first reorder still writes them, so the GUI
+    keeps its way to give such an event folder chapters.
   - The response shape does not change, so `web/openapi.json` and `web/src/api/schema.d.ts` stay as they
     are.
 - **The adoption target is no longer configurable.** `prepare_event`'s `adopt_chapter` parameter is removed.
@@ -62,11 +68,13 @@ within two packages: `cli/` and `api/`.
 
 ## Non-goals
 
-- **No chapter creation from folders after seeding.** A folder whose chapter `reel.yaml` lacks does not
-  become a chapter. This is the agreed fallback (design, "Alternative: create the folder's chapter").
+- **No chapter creation from folders once `reel.yaml` names a chapter.** A folder whose chapter `reel.yaml`
+  lacks does not become a chapter. This is the agreed fallback (design, "Alternative: create the folder's
+  chapter"). Only a `reel.yaml` that names no chapters gets folder chapters, as a new event does.
 - **No re-homing of clips adopted earlier.** A clip that an earlier render put in the default chapter stays
   there. An existing order is never re-sorted (event-reconcile).
-- **No change to seeding**, to `scan`'s output, to the `adopted N new clip(s)` line, to `enqueue`, or to the
+- **No change to seeding** (a chapterless `reel.yaml` reuses its rule, it does not change it), to `scan`'s
+  output, to the `adopted N new clip(s)` line, to `enqueue`, or to the
   editorial write API.
 - **No web change.** The page renders the chapters the service returns (`web/src/events/EventDetail.tsx`
   line 454). Edit mode's model (`web/src/edit/draft.ts` `detailMatchesDocument`, `buildWriteBody`) accepts
@@ -83,9 +91,11 @@ None.
 
 - `headless-cli`: `Requirement: NEW-clip adoption policy`. NEW clips enter their folder's chapter, with the
   default chapter as the fallback. The requirement also covers the ordering of clips from several folders,
-  clips adopted earlier, documents that name no chapters, and the worker's render.
+  clips adopted earlier, documents that name no chapters (seeded like a new event), and the worker's
+  render.
 - `api-service`: a new requirement, "The event detail places clips not in reel.yaml by the render's adoption
-  rule". It covers placement, ordering, ignored clips, and agreement with `reel.yaml` after a render.
+  rule". It covers placement, ordering, ignored clips, documents that name no chapters, and agreement with
+  `reel.yaml` after a render.
 
 `event-reconcile` is not modified. Its "Clips enter a document in the configured sort order" already says
 the rule "SHALL be applied per chapter, to the clips entering that chapter", which this change honors as
