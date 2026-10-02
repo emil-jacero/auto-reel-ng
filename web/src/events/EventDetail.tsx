@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
 import { fetchEvent } from '../api/event'
 import type { Chapter, Clip, EventDetail as EventDetailData } from '../api/event'
-import type { EventFailure, Problem } from '../api/events'
+import type { Problem } from '../api/events'
 import { ReadCuts, ReadCutsNote, useReadCuts } from '../cuts/ReadCuts'
 import type { ClipCuts } from '../cuts/ReadCuts'
 import { EventEditor } from '../edit/EventEditor'
@@ -30,6 +30,8 @@ import {
   plural,
 } from './common'
 import { FAILURE_LABEL, PREVIEWS_UNAVAILABLE, failureDetail, unansweredFailure } from './labels'
+import { readingState, movieOf } from './loadState'
+import type { Failure, LoadOptions, LoadState } from './loadState'
 import { ThumbHealthContext, useThumbHealth } from './thumbHealth'
 import { FAILURE_LOOK } from './tones'
 
@@ -47,37 +49,6 @@ import { FAILURE_LOOK } from './tones'
  * its render region (`jobs/RenderControl`) enqueues or cancels only through its
  * own controls. Mounted once per event (keyed by id).
  */
-
-type Failure = {
-  cause: string
-  detail: string | null
-  /** The failure kind, shown in the list's "Needs attention" words. */
-  failure?: EventFailure
-  /** The event does not exist: offer the way back. */
-  notFound?: boolean
-}
-
-/**
- * `quiet`: a re-read the page starts by itself, which keeps the content shown.
- * `keepMovie`: an operator's Refresh, which keeps the Movie section's player.
- */
-type LoadOptions = { quiet?: boolean; keepMovie?: boolean }
-
-type LoadState =
-  // `editPlace`: the header keeps Edit's place, so Refresh stays where it was
-  // pressed. Set when the page showed Edit before this read, or reads for the
-  // first time; not after a failure, which has no Edit.
-  // `movie`: the event whose Movie section stays through a Refresh, so its player
-  // is the same element when the read answers.
-  | { status: 'loading'; editPlace: boolean; movie?: EventDetailData }
-  // `updating`: a quiet re-read runs, and the content shown is the last read's.
-  | { status: 'ready'; event: EventDetailData; fetchedAt: Date; updating?: boolean }
-  | ({ status: 'failed' } & Failure)
-
-/** The event whose Movie section a page in this state shows, if any. */
-function movieOf(state: LoadState): EventDetailData | undefined {
-  return state.status === 'ready' ? state.event : state.status === 'loading' ? state.movie : undefined
-}
 
 function describeProblem(problem: Problem, eventId: string): Failure {
   if (problem.status === 404) {
@@ -101,6 +72,22 @@ function describeProblem(problem: Problem, eventId: string): Failure {
 }
 
 export function EventDetail({ eventId }: { eventId: string }) {
+  // Whether the previews of the clips shown fail for the service's reason (one note).
+  const { health, unavailable } = useThumbHealth()
+  return (
+    <ThumbHealthContext value={health}>
+      <EventDetailBody eventId={eventId} previewsUnavailable={unavailable} />
+    </ThumbHealthContext>
+  )
+}
+
+function EventDetailBody({
+  eventId,
+  previewsUnavailable,
+}: {
+  eventId: string
+  previewsUnavailable: boolean
+}) {
   const [state, setState] = useState<LoadState>({ status: 'loading', editPlace: true })
   const [editing, setEditing] = useState(false)
   // While a save is in flight, Refresh and Stop editing wait for its answer.
@@ -117,9 +104,10 @@ export function EventDetail({ eventId }: { eventId: string }) {
 
   /**
    * Read the event. A plain read (first, Refresh) aborts any read and shows
-   * placeholders; with `keepMovie` (Refresh) the Movie section's player stays. A quiet one keeps the content, marked as updating — unless the
-   * page shows a failure, which has no content to keep — and never restarts a
-   * read in flight: it runs once after it instead.
+   * placeholders, but a Refresh (`keepMovie`) keeps the Movie section's player. A
+   * quiet one keeps the content, marked as updating — unless the page shows a
+   * failure, which has no content to keep — and never restarts a read in flight:
+   * it runs once after it instead.
    */
   const load: (options?: LoadOptions) => void = useCallback((options = {}) => {
     const quiet = options.quiet === true
@@ -131,15 +119,7 @@ export function EventDetail({ eventId }: { eventId: string }) {
     pending.current = false
     const controller = new AbortController()
     inFlight.current = controller
-    setState((shown) =>
-      quiet && shown.status === 'ready'
-        ? { ...shown, updating: true }
-        : {
-            status: 'loading',
-            editPlace: shown.status === 'loading' ? shown.editPlace : shown.status === 'ready',
-            movie: options.keepMovie === true ? movieOf(shown) : undefined,
-          },
-    )
+    setState((shown) => readingState(shown, options))
     fetchEvent(eventId, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) {
@@ -236,191 +216,187 @@ export function EventDetail({ eventId }: { eventId: string }) {
   // The Movie section sits between the header and the content, not inside the
   // content that a read replaces, so a Refresh keeps its player (Edit mode shows none).
   const movieEvent = editing ? undefined : movieOf(state)
-  // Whether the previews of the clips shown fail for the service's reason (one note).
-  const { health, unavailable } = useThumbHealth()
   return (
-    <ThumbHealthContext value={health}>
-      <main className="page event-detail">
-        <header className="page-header">
-          <div className="page-crumbs">
-            <a className="back-link" href={LIST_HREF}>
-              <Icon name="chevron-left" />
-              Events
-            </a>
-            {/* The description is the inner span: it leaves out the separator before it. */}
-            {folderShown && (
-              <span className="crumb-folder">
-                <span id={folderId}>
-                  <span className="visually-hidden">Folder: </span>
-                  {folderName(eventId)}
-                </span>
+    <main className="page event-detail">
+      <header className="page-header">
+        <div className="page-crumbs">
+          <a className="back-link" href={LIST_HREF}>
+            <Icon name="chevron-left" />
+            Events
+          </a>
+          {/* The description is the inner span: it leaves out the separator before it. */}
+          {folderShown && (
+            <span className="crumb-folder">
+              <span id={folderId}>
+                <span className="visually-hidden">Folder: </span>
+                {folderName(eventId)}
               </span>
+            </span>
+          )}
+        </div>
+        <div className="page-title-row">
+          {/* Focus lands here, so the folder line is read as the heading's description. */}
+          <h1
+            ref={headingRef}
+            tabIndex={-1}
+            aria-describedby={!loading && folderShown ? folderId : undefined}
+          >
+            {loading ? (
+              // No name the read may replace: a bar, named by the folder (the address).
+              <>
+                <span className="visually-hidden">{folderName(eventId)}</span>
+                <span className="skeleton skeleton-h1" aria-hidden="true" />
+              </>
+            ) : (
+              name
             )}
-          </div>
-          <div className="page-title-row">
-            {/* Focus lands here, so the folder line is read as the heading's description. */}
-            <h1
-              ref={headingRef}
-              tabIndex={-1}
-              aria-describedby={!loading && folderShown ? folderId : undefined}
+          </h1>
+          <div className="page-actions">
+            {/* Busy, not disabled, while reading: it keeps keyboard focus. */}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              aria-disabled={loading || saving || undefined}
+              aria-busy={loading || undefined}
+              onClick={() => {
+                if (!loading && !saving) {
+                  requestLeave(editing ? leaveEditMode : () => load({ keepMovie: true }))
+                }
+              }}
             >
-              {loading ? (
-                // No name the read may replace: a bar, named by the folder (the address).
-                <>
-                  <span className="visually-hidden">{folderName(eventId)}</span>
-                  <span className="skeleton skeleton-h1" aria-hidden="true" />
-                </>
-              ) : (
-                name
-              )}
-            </h1>
-            <div className="page-actions">
-              {/* Busy, not disabled, while reading: it keeps keyboard focus. */}
+              <Icon name="refresh" />
+              Refresh
+            </button>
+            {/* Edit's place while the page reads, so Refresh stays under the pointer. */}
+            {state.status === 'loading' && state.editPlace && (
+              <span className="skeleton skeleton-action" aria-hidden="true" />
+            )}
+            {/* One element in both modes, so focus stays on it when Edit mode starts. */}
+            {state.status === 'ready' && (
               <button
                 type="button"
                 className="btn btn-secondary"
-                aria-disabled={loading || saving || undefined}
-                aria-busy={loading || undefined}
+                aria-disabled={saving || undefined}
                 onClick={() => {
-                  if (!loading && !saving) {
-                    requestLeave(editing ? leaveEditMode : () => load({ keepMovie: true }))
+                  if (saving) {
+                    return
+                  }
+                  if (editing) {
+                    requestLeave(leaveEditMode)
+                  } else {
+                    // A quiet re-read in flight stops; the exit's read replaces it.
+                    inFlight.current?.abort()
+                    editingRef.current = true
+                    setEditing(true)
                   }
                 }}
               >
-                <Icon name="refresh" />
-                Refresh
+                <Icon name={editing ? 'x' : 'pencil'} />
+                {editing ? 'Stop editing' : 'Edit'}
               </button>
-              {/* Edit's place while the page reads, so Refresh stays under the pointer. */}
-              {state.status === 'loading' && state.editPlace && (
-                <span className="skeleton skeleton-action" aria-hidden="true" />
-              )}
-              {/* One element in both modes, so focus stays on it when Edit mode starts. */}
-              {state.status === 'ready' && (
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  aria-disabled={saving || undefined}
-                  onClick={() => {
-                    if (saving) {
-                      return
-                    }
-                    if (editing) {
-                      requestLeave(leaveEditMode)
-                    } else {
-                      // A quiet re-read in flight stops; the exit's read replaces it.
-                      inFlight.current?.abort()
-                      editingRef.current = true
-                      setEditing(true)
-                    }
-                  }}
-                >
-                  <Icon name={editing ? 'x' : 'pencil'} />
-                  {editing ? 'Stop editing' : 'Edit'}
-                </button>
-              )}
-            </div>
+            )}
           </div>
-          {/* The event's facts (Edit mode's fields take the date and location's place). */}
-          <div className="page-meta">
-            {loading && (
-              <span className="event-facts">
-                <span className="skeleton skeleton-facts" aria-hidden="true" />
-              </span>
-            )}
-            {facts !== null && <span className="event-facts">{facts}</span>}
-            {state.status === 'ready' && (
-              <Counts clips={state.event.chapters.flatMap((chapter) => chapter.clips)} />
-            )}
-            {state.status === 'ready' && (
-              <span>
-                Read{' '}
-                <time dateTime={state.fetchedAt.toISOString()}>
-                  {formatInstant(state.fetchedAt)}
-                </time>
-              </span>
-            )}
-            <LoadStatus message={loading ? 'Reading event…' : updating ? 'Updating…' : ''} />
-          </div>
-          {state.status === 'ready' && !editing && state.event.description != null && (
-            <p className="description">{state.event.description}</p>
+        </div>
+        {/* The event's facts (Edit mode's fields take the date and location's place). */}
+        <div className="page-meta">
+          {loading && (
+            <span className="event-facts">
+              <span className="skeleton skeleton-facts" aria-hidden="true" />
+            </span>
+          )}
+          {facts !== null && <span className="event-facts">{facts}</span>}
+          {state.status === 'ready' && (
+            <Counts clips={state.event.chapters.flatMap((chapter) => chapter.clips)} />
           )}
           {state.status === 'ready' && (
-            <RenderPanel
-              eventId={eventId}
-              event={state.event}
-              editing={editing}
-              onFinished={reread}
-            />
+            <span>
+              Read{' '}
+              <time dateTime={state.fetchedAt.toISOString()}>
+                {formatInstant(state.fetchedAt)}
+              </time>
+            </span>
           )}
-          {loading && <RenderPanelPlaceholder />}
-        </header>
-
-        {movieEvent !== undefined && (
-          <MoviePanel eventId={eventId} event={movieEvent} reading={loading} />
+          <LoadStatus message={loading ? 'Reading event…' : updating ? 'Updating…' : ''} />
+        </div>
+        {state.status === 'ready' && !editing && state.event.description != null && (
+          <p className="description">{state.event.description}</p>
         )}
-
-        {unavailable && state.status === 'ready' && (
-          <Alert
-            tone="warn"
-            role="note"
-            title={PREVIEWS_UNAVAILABLE.map((part, index) =>
-              typeof part === 'string' ? part : <code key={index}>{part.code}</code>,
-            )}
+        {state.status === 'ready' && (
+          <RenderPanel
+            eventId={eventId}
+            event={state.event}
+            editing={editing}
+            onFinished={reread}
           />
         )}
+        {loading && <RenderPanelPlaceholder />}
+      </header>
 
-        {loading && <ChapterPlaceholder />}
+      {movieEvent !== undefined && (
+        <MoviePanel eventId={eventId} event={movieEvent} reading={loading} />
+      )}
 
-        {state.status === 'failed' && (
-          <Alert
-            tone="err"
-            title={
-              <>
-                {state.cause}{' '}
-                {state.failure !== undefined && (
-                  <Pill tone={FAILURE_LOOK[state.failure].tone} icon={FAILURE_LOOK[state.failure].icon}>
-                    {FAILURE_LABEL[state.failure]}
-                  </Pill>
-                )}
-              </>
-            }
-            detail={state.detail}
-            action={
-              state.notFound === true ? (
-                <a className="btn btn-secondary" href={LIST_HREF}>
-                  <Icon name="chevron-left" />
-                  Back to the event list
-                </a>
-              ) : undefined
-            }
-          />
-        )}
+      {previewsUnavailable && state.status === 'ready' && (
+        <Alert
+          tone="warn"
+          role="note"
+          title={PREVIEWS_UNAVAILABLE.map((part, index) =>
+            typeof part === 'string' ? part : <code key={index}>{part.code}</code>,
+          )}
+        />
+      )}
 
-        {state.status === 'failed' && state.failure === 'unusable_metadata' && (
+      {loading && <ChapterPlaceholder />}
+
+      {state.status === 'failed' && (
+        <Alert
+          tone="err"
+          title={
+            <>
+              {state.cause}{' '}
+              {state.failure !== undefined && (
+                <Pill tone={FAILURE_LOOK[state.failure].tone} icon={FAILURE_LOOK[state.failure].icon}>
+                  {FAILURE_LABEL[state.failure]}
+                </Pill>
+              )}
+            </>
+          }
+          detail={state.detail}
+          action={
+            state.notFound === true ? (
+              <a className="btn btn-secondary" href={LIST_HREF}>
+                <Icon name="chevron-left" />
+                Back to the event list
+              </a>
+            ) : undefined
+          }
+        />
+      )}
+
+      {state.status === 'failed' && state.failure === 'unusable_metadata' && (
+        <EventEditor
+          eventId={eventId}
+          event={null}
+          heading="Fix the date or title"
+          onSaved={leaveEditMode}
+          onReload={leaveEditMode}
+        />
+      )}
+
+      {state.status === 'ready' &&
+        (editing ? (
           <EventEditor
             eventId={eventId}
-            event={null}
-            heading="Fix the date or title"
+            event={state.event}
             onSaved={leaveEditMode}
             onReload={leaveEditMode}
           />
-        )}
-
-        {state.status === 'ready' &&
-          (editing ? (
-            <EventEditor
-              eventId={eventId}
-              event={state.event}
-              onSaved={leaveEditMode}
-              onReload={leaveEditMode}
-            />
-          ) : (
-            <div className="page-content" aria-busy={updating || undefined}>
-              <ReadyView eventId={eventId} event={state.event} />
-            </div>
-          ))}
-      </main>
-    </ThumbHealthContext>
+        ) : (
+          <div className="page-content" aria-busy={updating || undefined}>
+            <ReadyView eventId={eventId} event={state.event} />
+          </div>
+        ))}
+    </main>
   )
 }
 

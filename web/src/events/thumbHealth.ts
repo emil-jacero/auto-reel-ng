@@ -11,11 +11,14 @@ import { createContext, useCallback, useContext, useMemo, useState } from 'react
  * never counted twice), and a fixed service plus Refresh clears it.
  */
 
+/** The cause of a preview that fails for the service's reason (`api/thumbnail.ts`). */
+export const SERVICE_CAUSE = 'service'
+
 /** Failures with the same cause that make the page say previews are unavailable. */
 export const THUMB_NOTE_AT = 3
 
 export type ThumbHealth = {
-  /** The thumbnail at `src` failed because of `key` (the service's `failure`, or `none`). */
+  /** The thumbnail at `src` failed because of `key` (a cause: `SERVICE_CAUSE`). */
   report: (src: string, key: string) => void
   /** The thumbnail at `src` is no longer shown as failed. */
   clear: (src: string) => void

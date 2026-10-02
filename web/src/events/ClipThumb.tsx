@@ -6,7 +6,7 @@ import type { Clip } from '../api/event'
 import { readFailedThumbnail, thumbnailUrl } from '../api/thumbnail'
 import { Icon } from '../ui/Icon'
 import { fileName } from './common'
-import { useThumbReporter } from './thumbHealth'
+import { SERVICE_CAUSE, useThumbReporter } from './thumbHealth'
 
 /*
  * A clip's thumbnail: the frame the service extracts, in a fixed 16:9 box that
@@ -58,9 +58,10 @@ export function ClipThumb({
 type ThumbState = 'loading' | 'loaded' | 'failed'
 
 /**
- * The box and its image. No effect and no ref: React sets `loading` and
- * `fetchpriority` before `src`, and a load from the memory cache still reaches
- * `onLoad`. No fade-in, so a remounted row (Refresh, Edit mode) never flickers.
+ * The box and its image. No effect or ref on the image itself (the effect below runs
+ * only once it has failed): React sets `loading` and `fetchpriority` before `src`,
+ * and a load from the memory cache still reaches `onLoad`. No fade-in, so a remounted row
+ * (Refresh, Edit mode) never flickers.
  */
 function LoadingThumb({ src, name, dimmed }: { src: string; name: string; dimmed: boolean }) {
   const [state, setState] = useState<ThumbState>('loading')
@@ -74,7 +75,7 @@ function LoadingThumb({ src, name, dimmed }: { src: string; name: string; dimmed
     readFailedThumbnail(src, controller.signal)
       .then((why) => {
         if (why.kind === 'service' && !controller.signal.aborted) {
-          report(src, why.failure)
+          report(src, SERVICE_CAUSE)
         }
       })
       .catch(() => undefined)

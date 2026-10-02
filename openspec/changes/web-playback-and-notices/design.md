@@ -119,11 +119,12 @@ status only; (c) one `fetch` of the same address, only after an `<img>` error.
 ```ts
 export type FailedThumbnail =
   | { kind: 'clip' }                        // 502 + thumbnail_failure: 'thumbnail_failed'
-  | { kind: 'service'; failure: string }    // 502 without thumbnail_failure; `failure` or 'none'
-  | { kind: 'unknown' }                     // any other answer, none, or a 200 (it works now)
+  | { kind: 'service' }                     // 502 with neither thumbnail_failure nor an event `failure`
+  | { kind: 'unknown' }                     // any other answer (a 502 with `failure`: the event itself
+                                            // could not be read), none, or a 200 (it works now)
 export async function readFailedThumbnail(url: string, signal: AbortSignal): Promise<FailedThumbnail>
 ```
-It uses `fetch(url, { cache: 'no-store', signal })`, reads the JSON problem body of a 502 (`isProblem`,
+It uses `fetch(url, { cache: 'no-store', signal, priority: 'low' })` (behind the page's own requests, like the `<img>`), reads the JSON problem body of a 502 (`isProblem`,
 `readJson`), cancels the body of any other answer unread, and never throws except `AbortError` (an abort is a
 box that left the page, not an answer).
 **Rationale**: the extra request exists only for a box that already failed, and the 60 s marker of
@@ -135,7 +136,7 @@ an image, so "no automatic retry while the row stays shown" holds for the image.
 ### Counting: a context of the currently shown failures
 **Decision**: `events/thumbHealth.ts` exports `useThumbHealth()` and a React context. The page holds a
 `Map<src, key>` in state. A failed `LoadingThumb` runs an effect: read the answer; for a `service` answer
-`report(src, failure)`; on cleanup (unmount, new `src`) abort and `clear(src)`. The note is shown when any key
+`report(src, SERVICE_CAUSE)`; on cleanup (unmount, new `src`) abort and `clear(src)`. The note is shown when any key
 has at least `THUMB_NOTE_AT = 3` entries.
 ```ts
 export const THUMB_NOTE_AT = 3   // a module constant, no config key
@@ -148,7 +149,9 @@ reports to a no-op.
 **Rationale**: counting what is mounted now makes the count correct without a reset rule: a Refresh drops the
 rows and so the failures (the note leaves, and returns if the fault persists), entering Edit mode replaces the
 read view's rows with the editor's (the same `src`s report again; keyed by `src`, nothing is counted twice), a
-fixed cache plus Refresh clears it. Keying by `failure` value keeps a mix of unrelated faults from adding up.
+fixed cache plus Refresh clears it. The count is keyed by cause so that a cause added later never adds up with
+this one; today the page has one, the service's. A 502 that carries an event `failure` (the event's `reel.yaml`
+or folder became unreadable after the page loaded) is not counted: it would blame the thumbnail cache.
 **Alternatives**: counting every non-`thumbnail_failed` failure under one key (merges unlike faults); a "first
 failure decides" sample (a bad first clip would mask a service fault); sticky state with a reset on `load()`
 (needs the reset to cover Edit mode as well).

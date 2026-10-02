@@ -705,8 +705,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     2026-10-01). (§4.10)
   - **A page-level note** (2026-10-02, change `web-playback-and-notices`). A thumbnail that fails to show makes
     one further request for its address, to read why. When three or more on the page fail with the same
-    cause that is the service's and not the clip's (a 502 with no `thumbnail_failure`: its cache or
-    `config.yaml`), the page shows one quiet note, "Previews are unavailable", pointing to `auto-reel thumbs`.
+    cause that is the service's and not the clip's (a 502 with neither `thumbnail_failure` nor an event
+    `failure`: its cache or `config.yaml`), the page shows one quiet note, "Previews are unavailable",
+    pointing to `auto-reel thumbs`.
     A clip's own failure never raises it; the rows keep their "No preview" box. (§4.10)
 
 - **D-12 — NEW-clip adoption follows the clip's folder** (2026-10-01, change `adopt-into-folder-chapter`;
@@ -758,7 +759,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   shortcuts, no captions and no chapter list: the manifest records no chapter times and browsers expose none.
   Chapter times in the render manifest and a movie version in the event detail are v2 items beside the proxy
   work. A Refresh keeps the player (the same element, playing or paused, while the rest of the page reads;
-  2026-10-02, change `web-playback-and-notices`); Edit mode shows no movie, and entering it ends playback. (§4.10)
+  2026-10-02, change `web-playback-and-notices`); Edit mode shows no movie, and entering it ends
+  playback. (§4.10)
 
 - **D-16 — A clip is previewed in Edit mode in GUI v1** (2026-10-01, change `clip-preview-screen`).
   - **What.** A clip's Cuts panel plays the clip itself, its file streamed unchanged by the media route
