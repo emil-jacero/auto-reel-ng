@@ -47,8 +47,9 @@ connection releases its subscription at once, whichever side ends it:
   host's TCP stack abandons the connection, which can take many minutes. A second SIGINT does not shorten
   that stall: the process still exits only once that connection has ended. Like any stop, it also waits for
   HTTP requests still being handled (headless-cli, "`serve` runs the API service").
-- Stopping the service SHALL NOT wait for the database to answer, and a database that has stopped answering
-  SHALL NOT freeze the service while it stops. When a store read is stalled as the stop begins, whether the
+- The application shutdown (the event loop and the hub's stop) SHALL NOT wait for the database to answer,
+  and a database that has stopped answering SHALL NOT freeze the service while it stops; the process itself
+  exits only after an abandoned read ends (below). When a store read is stalled as the stop begins, whether the
   read of a poll or the first subscriber's snapshot read, the hub's stop completes within about a second and
   the event loop keeps serving meanwhile. The same read SHALL NOT hold a client that closes its connection
   during it: the connection's end (a client close, a lost peer, the server's own shutdown close) is observed

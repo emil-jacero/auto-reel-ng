@@ -7,6 +7,7 @@ index) opens its session through it rather than managing commit/rollback itself.
 
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -25,12 +26,18 @@ def make_engine(database_url: str) -> Engine:
     """Build the SQLAlchemy engine for ``database_url`` (see :mod:`.config`).
 
     A Postgres engine connects with ``connect_timeout`` :data:`CONNECT_TIMEOUT_SECONDS`
-    unless the URL sets its own (``?connect_timeout=30``), which wins. The failure is the
-    driver's ``OperationalError``, raised to the caller as for any unreachable database.
+    unless the URL sets its own (``?connect_timeout=30``) or the environment sets libpq's
+    ``PGCONNECT_TIMEOUT``, either of which wins (a driver keyword would otherwise override
+    the variable). The failure is the driver's ``OperationalError``, raised to the caller
+    as for any unreachable database.
     """
     url = make_url(database_url)
     connect_args: dict[str, Any] = {}
-    if url.get_backend_name() == "postgresql" and "connect_timeout" not in url.query:
+    if (
+        url.get_backend_name() == "postgresql"
+        and "connect_timeout" not in url.query
+        and "PGCONNECT_TIMEOUT" not in os.environ
+    ):
         connect_args["connect_timeout"] = CONNECT_TIMEOUT_SECONDS
     return create_engine(url, future=True, connect_args=connect_args)
 

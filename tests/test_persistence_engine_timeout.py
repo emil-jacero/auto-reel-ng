@@ -34,6 +34,7 @@ def created(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
         calls.append(kwargs)
         return object()
 
+    monkeypatch.delenv("PGCONNECT_TIMEOUT", raising=False)
     monkeypatch.setattr(engine_module, "create_engine", _record)
     return calls
 
@@ -61,6 +62,16 @@ def test_a_postgres_url_gets_the_connect_timeout(created: list[dict[str, Any]]) 
 
 def test_a_connect_timeout_in_the_url_wins(created: list[dict[str, Any]]) -> None:
     make_engine("postgresql+psycopg://u:p@db.example/arel?connect_timeout=30")
+
+    assert "connect_timeout" not in created[0].get("connect_args", {})
+
+
+def test_the_libpq_environment_timeout_wins(
+    created: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PGCONNECT_TIMEOUT", "30")
+
+    make_engine("postgresql+psycopg://u:p@db.example/arel")
 
     assert "connect_timeout" not in created[0].get("connect_args", {})
 
