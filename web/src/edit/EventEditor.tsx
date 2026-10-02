@@ -812,8 +812,10 @@ function keepInView(element: HTMLElement, bar: HTMLElement | null): void {
  * window and the window is at least 28rem tall. Otherwise (a failed save in a
  * short window, any bar at 400 % zoom) it would hide the editor, so it rests in
  * the page after it (`data-rests`). Only a held bar takes room at the window's
- * bottom: `--toast-inset-bottom` is its height then, and absent while it rests. A
- * held bar that starts to rest takes its focused control to the page's end, so
+ * bottom: its height goes in front of the page's bottom scroll padding then (an
+ * inline `scroll-padding-bottom` on <html>, absent while it rests; not a custom
+ * property, whose change restyles every row: the first edit cost ~100 ms more on
+ * 400 rows). A held bar that starts to rest takes its focused control to the page's end, so
  * the page follows it there.
  */
 function placeBar(bar: HTMLElement): void {
@@ -825,9 +827,9 @@ function placeBar(bar: HTMLElement): void {
     bar.offsetHeight > root.clientHeight * HELD_BAR_MAX_SHARE
   bar.toggleAttribute('data-rests', rests)
   if (rests) {
-    root.style.removeProperty('--toast-inset-bottom')
+    root.style.removeProperty('scroll-padding-bottom')
   } else {
-    root.style.setProperty('--toast-inset-bottom', `${bar.offsetHeight}px`)
+    root.style.setProperty('scroll-padding-bottom', `calc(${bar.offsetHeight}px + var(--scroll-pad-bottom))`)
   }
   const focused = document.activeElement
   if (rests && !rested && focused instanceof HTMLElement && bar.contains(focused)) {
@@ -993,10 +995,11 @@ export function EventEditor({
     return () => setSaving(false)
   }, [locked])
 
+  // The bar is in the page from the start and `hidden` while clean, so none of this exists
+  // until it is shown (a hidden bar has no box to place, observe or keep toasts clear of).
   // Held or resting (`placeBar`), and the held bar's height, for the bottom scroll
-  // padding (focus never hides under it) and the toast region's offset when no bar
-  // is registered; absent while the bar rests, which holds no room at the window's
-  // bottom. Decided in the commit that shows the bar, so the scroll a move or a drop
+  // padding (focus never hides under it); absent while the bar rests, which holds no
+  // room at the window's bottom. Decided in the commit that shows the bar, so the scroll a move or a drop
   // makes right after (a passive effect) already clears it; it wraps when narrow,
   // so a ResizeObserver follows later changes, and a zoom or a resized window
   // changes the window's height alone, so `resize` does too. Registered, the bar has
@@ -1054,7 +1057,7 @@ export function EventEditor({
       window.removeEventListener('resize', follow)
       observer.disconnect()
       release()
-      root.style.removeProperty('--toast-inset-bottom')
+      root.style.removeProperty('scroll-padding-bottom')
     }
   }, [showBar])
 
@@ -1090,6 +1093,25 @@ export function EventEditor({
       keepInView(focused, barRef.current)
     }
   }, [answers])
+
+  // After Reset the heading has focus (the bar went with its buttons) but the page may have
+  // shrunk and scrolled, or sit far from the heading at the top. The scroll waits for the
+  // commit that dropped the edits, because only then is the page's length and scroll
+  // position final; it moves the least distance, and none when the heading is in view
+  // (`keepInView`: under the sticky header counts as out). Before paint, so the operator
+  // never sees the heading go by.
+  const resets = ready?.resets ?? 0
+  const seenResets = useRef(resets)
+  useLayoutEffect(() => {
+    if (resets === seenResets.current) {
+      return
+    }
+    seenResets.current = resets
+    const heading = document.querySelector<HTMLElement>('main:not([hidden]) h1')
+    if (heading !== null && document.activeElement === heading) {
+      keepInView(heading, null)
+    }
+  }, [resets])
 
   // Every announcement changes the region, a repeated one too: cleared, then set a frame later.
   const announce = useCallback((message: string) => {
@@ -1841,45 +1863,52 @@ export function EventEditor({
 
           {detail !== null && <AddChapter locked={listsLocked} onAdd={onAddChapter} />}
 
-          {showBar && (
-            <SaveBar
-              barRef={barRef}
-              alertRef={alertRef}
-              edited={edited}
-              problem={ready.problem}
-              pressed={ready.pressed}
-              summary={summarize(
-                changed,
-                ready.dateIncomplete,
-                ready.typed.size === 1
-                  ? nameNow(
-                      ready.draft,
-                      ready.baseline.original,
-                      [...ready.typed][0],
-                      ignoredOf,
-                      removedByChapter,
-                    )
-                  : ready.typed.size,
-                chapterEdits,
-                movedCount,
-                ready.draft.removed.size,
-                cutChanges(ready.baseline, ready.draft),
-                adopted,
-              )}
-              unfinished={unfinished(ready)}
-              onReset={() => {
-                // The panels' fields go first, so the remounted panels start empty.
-                cutPanels.clear()
-                dispatch({ type: 'reset' })
-                // The bar leaves with its buttons: focus goes to the page's heading, in place.
-                focusPageHeading({ preventScroll: true })
-              }}
-              onSave={() => submit('save', 'save')}
-              onRetry={(operation) => submit('retry', operation)}
-              onReload={onReload}
-              onOverwrite={() => setOverwriteAsked(true)}
-            />
-          )}
+          {/*
+            In the page from the moment Edit mode is ready, `hidden` while there is nothing to
+            say: the first edit then builds nothing. The summary is only worked out while shown.
+          */}
+          <SaveBar
+            shown={showBar}
+            barRef={barRef}
+            alertRef={alertRef}
+            edited={edited}
+            problem={ready.problem}
+            pressed={ready.pressed}
+            summary={
+              showBar
+                ? summarize(
+                    changed,
+                    ready.dateIncomplete,
+                    ready.typed.size === 1
+                      ? nameNow(
+                          ready.draft,
+                          ready.baseline.original,
+                          [...ready.typed][0],
+                          ignoredOf,
+                          removedByChapter,
+                        )
+                      : ready.typed.size,
+                    chapterEdits,
+                    movedCount,
+                    ready.draft.removed.size,
+                    cutChanges(ready.baseline, ready.draft),
+                    adopted,
+                  )
+                : ''
+            }
+            unfinished={unfinished(ready)}
+            onReset={() => {
+              // The panels' fields go first, so the remounted panels start empty.
+              cutPanels.clear()
+              dispatch({ type: 'reset' })
+              // The bar leaves with its buttons: focus goes to the page's heading, in place.
+              focusPageHeading({ preventScroll: true })
+            }}
+            onSave={() => submit('save', 'save')}
+            onRetry={(operation) => submit('retry', operation)}
+            onReload={onReload}
+            onOverwrite={() => setOverwriteAsked(true)}
+          />
         </>
       )}
 

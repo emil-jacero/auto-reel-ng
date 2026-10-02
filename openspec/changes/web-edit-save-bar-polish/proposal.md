@@ -31,8 +31,11 @@ All three are in `web/src/edit/`. None changes what is saved, the API or the eng
   hides nothing and is not in the accessibility tree. The editor stops computing the bar's summary while it is
   hidden.
 - **The first edit costs what the second one does.** Measured with a 400-clip chapter in a real browser, the
-  first edit is handled within 50 ms of the second of the same kind. If hiding the mount does not reach that,
-  the cause is somewhere else; the implementation stops and reports that, rather than weakening the bound.
+  first edit is handled within 50 ms of the second of the same kind. Measured on the base (design, "Findings,
+  re-checked", 1), hiding the mount alone does not reach that: the first edit's extra ~130 ms is one write of a
+  custom property on `<html>` (`--toast-inset-bottom`), which restyles all 400 rows. So the held bar's height
+  goes into an inline `scroll-padding-bottom` on `<html>` instead, in front of a new `--scroll-pad-bottom` that
+  holds the rest of the formula (`shell.css`). A property that is not a custom property restyles only `<html>`.
 - **Reset scrolls the heading into view when it is out of view.** After Reset the heading still takes focus
   at once. Once the page has settled, the page scrolls the least distance that brings the heading fully
   into view below the sticky header, and does not scroll when it is already there.
@@ -44,9 +47,12 @@ All three are in `web/src/edit/`. None changes what is saved, the API or the eng
 
 - **No change to what a save writes**, to Reset's meaning (it restores what was read), or to where the bar
   rests or is held (`placeBar` and its rules).
-- **No change to the toast contract.** `web-toast-and-dialog-layers` owns the toast region, its placement
-  and its `--toast-rise-h`. This change keeps registering the bar with `keepToastsClearOf(bar)` only while the
-  bar is shown, as that contract assumes.
+- **No change to the toast contract a page sees.** `web-toast-and-dialog-layers` owns the toast region, its
+  placement and its `--toast-rise-h`. This change keeps registering the bar with `keepToastsClearOf(bar)` only
+  while the bar is shown, as that contract assumes. The one thing that goes is the root custom property
+  `--toast-inset-bottom` (the bar's height): the page's bottom scroll padding takes the bar's height inline
+  instead, and the region's fallback to the property is dropped, since a held bar is always registered and the
+  region then places itself from the bar.
 - **No unit-test framework is introduced here.** The empty-chapter words are a pure function so that they
   can be tested with whatever runner `web-toast-and-dialog-layers` sets up for `toast.test.ts`; the browser
   behaviour is verified in a real browser.
@@ -80,6 +86,8 @@ None.
   - `src/edit/ClipOrderList.tsx`: the empty-chapter words come from a function of "is this the only chapter"
     and "is it wholly empty".
   - `src/edit/emptyChapter.ts` (new) and its test: that function.
+  - `src/shell/shell.css`, `src/styles/components.css`, `src/ui/ToastRegion.tsx` (comment), `web/README.md`:
+    `--toast-inset-bottom` is replaced by `--scroll-pad-bottom` and an inline `scroll-padding-bottom` (above).
   - `src/edit/edit.css`: no rule changes (`[hidden]` already wins in `reset.css`); at most a comment, if the
     gate `web-toast-and-dialog-layers` leaves one that says the bar is mounted conditionally.
 - **CLI vs API (Principle V):** untouched.
@@ -97,4 +105,4 @@ None.
   - Parallel changes `web-save-shortcut` and `web-edit-verdict-refresh` also edit `EventEditor.tsx`; the
     lines this change touches (the `showBar` render, the Reset handler and one new effect) are separate from
     theirs, and the later to land rebases onto the earlier.
-- **Size (Principle VIII):** one package, one capability delta, 6 tasks.
+- **Size (Principle VIII):** one package, one capability delta, 6 tasks (the scroll padding is part of task 2.1).

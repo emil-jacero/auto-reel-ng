@@ -28,6 +28,7 @@ import type { ChapterToolsModel } from './ChapterTools'
 import { cutsOf, keptOriginal, movedSet } from './draft'
 import type { ChapterKey, Cuts, DraftCut } from './draft'
 import { CHAPTER_DROP } from './dragSlots'
+import { emptyChapterWords } from './emptyChapter'
 
 /*
  * One chapter's clips. Three ways to move a clip within the chapter: drag its
@@ -481,12 +482,6 @@ export type MoveHandler = (chapter: ChapterKey, from: number, to: number) => voi
 export type RemoveHandler = (chapter: ChapterKey, identity: string) => void
 export type RestoreHandler = (identity: string) => void
 
-// A chapter that plays no clip says so, and how clips get in (Move clips is per chapter).
-const MOVE_IN = 'Drag clips here, or move them here with another chapter’s Move clips.'
-const LEFT_OUT = 'A chapter without clips is left out of the movie.'
-const NO_CLIPS = `No clips. ${MOVE_IN} ${LEFT_OUT}`
-const NO_CLIPS_PLAYED = `It plays no clip. ${MOVE_IN} ${LEFT_OUT}`
-
 /** The button focus lands on once a row is in its new place, as a class name. */
 type FocusTarget = 'move-up' | 'move-down' | 'clip-remove' | 'clip-undo'
 
@@ -751,7 +746,8 @@ export const ClipOrderList = memo(function ClipOrderList({
         chapterKey={chapterKey}
         sectionRef={sectionRef}
         plays={plays}
-        words={empty ? NO_CLIPS : NO_CLIPS_PLAYED}
+        // Move clips is per chapter and absent on a lone one (ChapterTools): no pointing at it.
+        words={emptyChapterWords(tools.moveClips === null, empty)}
       />
       {plays && (
         <SortableContext id={chapterKey} items={items} strategy={verticalListSortingStrategy}>

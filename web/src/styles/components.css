@@ -737,8 +737,7 @@
   /*
    * Toasts (`ui/ToastRegion.tsx`): bottom right, full width below 30rem. With a
    * bar registered (`keepToastsClearOf`) the region sets its own live
-   * `--toast-offset`, above the bar or below it; otherwise it reads the page's
-   * `--toast-inset-bottom`, 0 unless a page with a sticky bottom bar sets it.
+   * `--toast-offset`, above the bar or below it; with none it sits at the bottom edge.
    * The region lets clicks through between toasts. It is a manual popover
    * (shown in the top layer, above a modal dialog); `display: flex` here beats
    * the user agent's `display: none` for a popover that is not open, so a
@@ -748,7 +747,7 @@
     position: fixed;
     /* A manual popover (top layer): drop the user-agent popover box, which centers it. */
     inset: auto;
-    inset-block-end: calc(var(--toast-offset, var(--toast-inset-bottom, 0px)) + var(--s-4));
+    inset-block-end: calc(var(--toast-offset, 0px) + var(--s-4));
     inset-inline-end: var(--s-4);
     z-index: 30;
     display: flex;

@@ -561,16 +561,18 @@
   /* ------------------------------------------------------------ the save bar */
 
   /*
-   * Sticky at the bottom of the viewport while there are unsaved changes, as
+   * In the page from the start of Edit mode, `hidden` (reset.css) while clean. Sticky at the bottom
+   * of the viewport while there are unsaved changes, as
    * long as it takes at most two fifths of the window and the window is at least
    * 28rem tall; otherwise it rests in the page after the editor (`data-rests`,
    * below), where it hides nothing. The bar itself is transparent
    * and lets clicks through; its card floats a gap above the edge. While it is
-   * held, its whole height (card and gap) is published on <html> as
-   * `--toast-inset-bottom` (EventEditor.tsx `placeBar`); while it rests, the
-   * property is absent. The page's `scroll-padding-bottom` in shell.css adds the
-   * toasts' height and a gap to it: a focused or dragged row never scrolls under
-   * the bar. No rule here overrides that padding. The bar is registered with the
+   * held, its whole height (card and gap) goes in front of the page's
+   * `scroll-padding-bottom` on <html> (EventEditor.tsx `placeBar`, an inline value
+   * on <html>, never a custom property, which would restyle every row); while it
+   * rests, that inline value is absent. shell.css adds the toasts' height and a gap
+   * to it: a focused or dragged row never scrolls under the bar. No rule here
+   * overrides that padding. The bar is registered with the
    * toasts (`keepToastsClearOf`), which place themselves above it while it is
    * held, and above or below it once it rests: above, they take the room that
    * `--toast-room-h` keeps before the resting bar, so they cover no control.
