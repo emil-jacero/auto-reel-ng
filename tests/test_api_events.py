@@ -132,7 +132,12 @@ def test_event_detail_reports_staleness_when_fresh(client: TestClient, project: 
     event_id = quote("2024/2024-07-04 - Barbecue", safe="/")
     response = client.get(f"/api/v1/events/{event_id}")
     body = response.json()
-    assert body["staleness"] == {"stale": False, "reasons": []}
+    assert body["staleness"] == {
+        "stale": False,
+        "reasons": [],
+        "renamed_from": None,
+        "output_name": None,
+    }
 
 
 def test_getting_event_detail_never_writes_a_manifest(client: TestClient, project: Path) -> None:
@@ -487,7 +492,12 @@ def test_config_look_edit_changes_the_verdict_on_the_next_request(
     event_id = quote("2024/2024-07-04 - Barbecue", safe="/")
 
     first = client.get(f"/api/v1/events/{event_id}").json()
-    assert first["staleness"] == {"stale": False, "reasons": []}
+    assert first["staleness"] == {
+        "stale": False,
+        "reasons": [],
+        "renamed_from": None,
+        "output_name": None,
+    }
 
     (project / "config.yaml").write_text("look:\n  title_seconds: 7\n", encoding="utf-8")
 
@@ -515,7 +525,12 @@ def test_list_reports_fresh_stale_and_never_rendered_in_one_request(
 
     events = _by_id(client.get("/api/v1/events").json())
 
-    assert events["2024/2024-07-04 - Barbecue"]["staleness"] == {"stale": False, "reasons": []}
+    assert events["2024/2024-07-04 - Barbecue"]["staleness"] == {
+        "stale": False,
+        "reasons": [],
+        "renamed_from": None,
+        "output_name": None,
+    }
     changed = events["2024/2024-06-21 - Midsommar i Dalarna Åäö"]["staleness"]
     assert changed["stale"] is True
     assert changed["reasons"] == ["clip_set"]
@@ -550,6 +565,17 @@ def _edit_title(event_dir: Path, title: str) -> None:
         yaml.dump(document, handle)
 
 
+def _edit_location(event_dir: Path, location: str) -> None:
+    from ruamel.yaml import YAML
+
+    reel = event_dir / "reel.yaml"
+    yaml = YAML()
+    document = yaml.load(reel.read_text(encoding="utf-8"))
+    document["metadata"]["location"] = location
+    with reel.open("w", encoding="utf-8") as handle:
+        yaml.dump(document, handle)
+
+
 def _list_and_detail_staleness(client: TestClient, event_id: str) -> tuple[dict, dict]:
     listed = _by_id(client.get("/api/v1/events").json())[event_id]["staleness"]
     detail = client.get(f"/api/v1/events/{quote(event_id, safe='/')}").json()["staleness"]
@@ -567,13 +593,23 @@ def test_renamed_event_reads_output_renamed_on_list_and_detail(
 
     _edit_title(event_dir, "Grillkväll")
 
-    renamed = {"stale": True, "reasons": ["editorial", "output_renamed"]}
+    renamed = {
+        "stale": True,
+        "reasons": ["editorial", "output_renamed"],
+        "renamed_from": "2024-07-04 - Barbecue.mp4",
+        "output_name": "2024-07-04 - Grillkväll.mp4",
+    }
     assert _list_and_detail_staleness(client, "2024/2024-07-04 - Barbecue") == (renamed, renamed)
     assert old_movie.read_bytes() == b"already-rendered"  # a read never touches the old movie
 
     old_movie.unlink()
 
-    missing = {"stale": True, "reasons": ["editorial", "output"]}
+    missing = {
+        "stale": True,
+        "reasons": ["editorial", "output"],
+        "renamed_from": None,
+        "output_name": None,
+    }
     assert _list_and_detail_staleness(client, "2024/2024-07-04 - Barbecue") == (missing, missing)
 
 
@@ -582,8 +618,40 @@ def test_deleted_movie_still_reads_output(client: TestClient, project: Path) -> 
     _make_fresh(project, event_dir)
     (default_output_dir(project) / "2024" / "2024-07-04 - Barbecue.mp4").unlink()
 
-    missing = {"stale": True, "reasons": ["output"]}
+    missing = {"stale": True, "reasons": ["output"], "renamed_from": None, "output_name": None}
     assert _list_and_detail_staleness(client, "2024/2024-07-04 - Barbecue") == (missing, missing)
+
+
+def test_a_location_only_change_names_both_movie_files(client: TestClient, project: Path) -> None:
+    """The names are the gate's: the old file as rendered, the new one as the next render writes it."""
+    event_dir = project / "2024" / "2024-06-21 - Midsommar i Dalarna Åäö"
+    _make_fresh(project, event_dir)
+    _edit_location(event_dir, "Leksand")
+
+    listed, detail = _list_and_detail_staleness(client, "2024/2024-06-21 - Midsommar i Dalarna Åäö")
+
+    assert listed == detail
+    assert listed["reasons"] == ["editorial", "output_renamed"]
+    assert listed["renamed_from"] == "2024-06-21 - Midsommar i Dalarna Åäö.mp4"
+    assert listed["output_name"] == "2024-06-21 - Midsommar i Dalarna Åäö - Leksand.mp4"
+    assert "/" not in listed["renamed_from"] and "/" not in listed["output_name"]
+
+
+def test_a_verdict_without_output_renamed_names_no_file(client: TestClient, project: Path) -> None:
+    """Both keys are present and null unless the reason is cited: a changed clip set names none."""
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _make_fresh(project, event_dir)
+    _touch(event_dir / "00501.mp4")
+
+    listed, detail = _list_and_detail_staleness(client, "2024/2024-07-04 - Barbecue")
+
+    expected = {
+        "stale": True,
+        "reasons": ["clip_set"],
+        "renamed_from": None,
+        "output_name": None,
+    }
+    assert listed == detail == expected
 
 
 def test_a_completed_job_is_not_freshness(
@@ -692,6 +760,58 @@ def test_a_running_latest_job_loses_its_start_time_when_requeued(
         assert summary["status"] == "queued"
         assert summary["started_at"] is None
         assert summary["finished_at"] is None
+
+
+def _assert_summary_matches_job(
+    listed: dict, detail: dict, job: dict, *, requeues: int, cancel: bool
+):
+    for summary in (listed, detail):
+        assert summary["requeue_count"] == job["requeue_count"] == requeues
+        assert summary["cancel_requested"] is job["cancel_requested"] is cancel
+
+
+def test_a_latest_job_never_requeued_or_cancelled_reports_the_defaults(
+    client: TestClient, project: Path, job_store
+) -> None:
+    job_id = job_store.enqueue(str(project), _BARBECUE)
+
+    listed, detail, job = _latest_job_reads(client, job_id)
+
+    _assert_summary_matches_job(listed, detail, job, requeues=0, cancel=False)
+
+
+def test_a_requeued_latest_job_reports_its_requeue_count(
+    client: TestClient, project: Path, job_store
+) -> None:
+    """A requeue is invisible in the status alone (it is queued again): the count tells."""
+    job_id = job_store.enqueue(str(project), _BARBECUE)
+    job_store.claim_next("worker-1")
+    job_store.requeue(job_id)
+
+    listed, detail, job = _latest_job_reads(client, job_id)
+
+    assert job["status"] == "queued" and job["started_at"] is None
+    _assert_summary_matches_job(listed, detail, job, requeues=1, cancel=False)
+    for summary in (listed, detail):
+        assert summary["status"] == "queued"
+
+
+def test_a_cancel_requested_while_running_is_visible_in_the_latest_job(
+    client: TestClient, project: Path, job_store
+) -> None:
+    job_id = job_store.enqueue(str(project), _BARBECUE)
+    job_store.claim_next("worker-1")
+    assert client.post(f"/api/v1/jobs/{job_id}/cancel").status_code == 200
+
+    listed, detail, job = _latest_job_reads(client, job_id)
+
+    assert job["status"] == "running"
+    _assert_summary_matches_job(listed, detail, job, requeues=0, cancel=True)
+
+    job_store.requeue(job_id)  # a requeue leaves a pending cancel in place
+
+    listed, detail, job = _latest_job_reads(client, job_id)
+    _assert_summary_matches_job(listed, detail, job, requeues=1, cancel=True)
 
 
 def test_serving_the_list_writes_nothing(client: TestClient, project: Path) -> None:

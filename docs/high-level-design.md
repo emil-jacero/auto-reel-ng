@@ -328,6 +328,10 @@ The north star is a **full timeline editor**, but we ship in thin slices:
 - **v3:** nothing is planned for the GUI: the timeline editor moved to v2 on 2026-10-01, and dragging
   across chapters landed in v1 (D-13, `cross-chapter-drag`).
 
+An event's `latest_job` carries the job's `cancel_requested` and `requeue_count`, and a staleness verdict names the
+two movie files behind `output_renamed` (`renamed_from`, `output_name`), so the GUI follows a requeue and a pending
+cancel from a read alone and says which files a rename concerns.
+
 **Roadmap edit (2026-10-01, user decision):** "A and B in this version, but i want C a full editor in v2".
 v1 gains the movie player (A, change `movie-player-screen`) and the clip preview with Set From / Set To at
 the playhead (B, change `clip-preview-screen`); their one `api/` prerequisite is `media-endpoints` (the media

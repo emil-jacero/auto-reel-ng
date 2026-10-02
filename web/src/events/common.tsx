@@ -138,7 +138,14 @@ export function StalenessCell({
           return (
             note !== null && (
               <span key={reason} className="reason-note">
-                {note}
+                {note(staleness).map((part, index) =>
+                  typeof part === 'string' ? (
+                    part
+                  ) : (
+                    // The parts are fixed by the verdict: the index is their identity.
+                    <code key={index}>{part.code}</code>
+                  ),
+                )}
               </span>
             )
           )

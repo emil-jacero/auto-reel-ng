@@ -1,5 +1,5 @@
 import type { ClipStatus } from '../api/event'
-import type { EventFailure, JobStatus, StalenessReason } from '../api/events'
+import type { EventFailure, JobStatus, Staleness, StalenessReason } from '../api/events'
 import type { Unanswered } from '../api/http'
 
 /*
@@ -18,16 +18,30 @@ export const REASON_LABEL: Record<StalenessReason, string> = {
   engine: 'render engine updated',
 }
 
+/** A piece of a note: plain words, or a file name that is shown apart from the words. */
+export type NotePart = string | { code: string }
+
 /**
  * What the event page adds, on a line of its own, for a reason whose words alone
  * do not say what the next render does; null for the others. Exhaustive like the
- * labels, so a new reason is a decision here too.
+ * labels, so a new reason is a decision here too. A note is made of parts (no JSX
+ * here), from the verdict the page was given and nothing else.
  */
-export const REASON_NOTE: Record<StalenessReason, string | null> = {
+export const REASON_NOTE: Record<StalenessReason, ((verdict: Staleness) => NotePart[]) | null> = {
   no_manifest: null,
   output: null,
-  output_renamed:
-    'The next render saves the movie under its new name. The movie under its old name stays on disk.',
+  output_renamed: ({ output_name, renamed_from }) =>
+    output_name != null && renamed_from != null
+      ? [
+          'The next render saves the movie as ',
+          { code: output_name },
+          '. The movie ',
+          { code: renamed_from },
+          ' stays on disk.',
+        ]
+      : [
+          'The next render saves the movie under its new name. The movie under its old name stays on disk.',
+        ],
   editorial: null,
   defaults: null,
   clip_set: null,

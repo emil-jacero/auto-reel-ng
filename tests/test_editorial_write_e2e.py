@@ -196,4 +196,9 @@ def test_a_cancelled_render_after_a_rename_changes_nothing(
         )
         assert read_manifest(root / EVENT_ID) == manifest_before
         verdict = client.get(f"/api/v1/events/{encoded_id}").json()["staleness"]
-        assert verdict == {"stale": True, "reasons": ["editorial", "output_renamed"]}
+        assert verdict == {
+            "stale": True,
+            "reasons": ["editorial", "output_renamed"],
+            "renamed_from": "2024-06-21 - Original Title.mp4",
+            "output_name": "2024-06-21 - Renamed Trip.mp4",
+        }

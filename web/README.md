@@ -23,7 +23,8 @@ page shows the event's facts, with the folder name beside a title that differs f
 it; one render region holding the verdict and the latest job (when the verdict says
 "movie name changed", because the title, date or location changed since the last
 render, it adds on a line of its own that the next render saves the movie under its
-new name and that the movie under its old name stays on disk); then the **Movie**
+new name and that the movie under its old name stays on disk, naming both files as the
+service sent them); then the **Movie**
 section, when the event has a rendered movie; then its chapters, each listing the
 clips it plays, numbered in play order, and then its ignored clips, unnumbered. Each
 clip shows its status (an included clip's quietly, so the exceptions stand out), size
@@ -285,6 +286,8 @@ src/
 ├── jobs/
 │   ├── store.ts          the one jobs WebSocket: live jobs, reconnect + silence watchdog, endings (toasts, re-reads)
 │   ├── useJob.ts         which job an event shows (live or last read); the connection's counts
+│   ├── shownJob.ts       the rule that picks the job version to show: a read's requeue and cancel request are followed while the connection is down (pure, + shownJob.test.ts)
+│   ├── status.ts         which job statuses are active (pure)
 │   ├── eta.ts            the time-left estimate (pure)
 │   ├── labels.ts         words for cancel outcomes, the connection and a held-back render
 │   ├── JobsIndicator.tsx the header's connection state and counts

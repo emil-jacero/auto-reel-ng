@@ -67,7 +67,7 @@ report "not requeued".
 ### D2. The choice rule: a higher `requeue_count` is a newer fact
 In the active-active, not-live branch, `choose` advances the held copy when any of these hold:
 `latest.requeue_count > live.requeue_count`; `isFurther(latest, live)` (as today); or `latest.cancel_requested &&
-!live.cancel_requested`. `requeue_count` only grows, so a higher value is always the newer fact, and no client clock
+!live.cancel_requested`. `requeue_count` only grows, so a higher value is always the newer fact and a lower one an older read that never advances the copy (it could otherwise win on progress against a run that was requeued again), and no client clock
 is involved (the same reasoning as `standing()`). The advanced copy is `{...live, status, progress, started_at,
 finished_at, cancel_requested, requeue_count}`; the fields a summary lacks (`worker_id`, `error`, `device`...) stay
 from the held copy. `worker_id` is left as held although a requeue cleared it: the client shows no worker today
