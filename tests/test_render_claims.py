@@ -119,6 +119,62 @@ def test_a_three_way_collision_lists_both_others_sorted(root: Path) -> None:
     assert collision.claimed_by == (aaa, zed)  # sorted by path
 
 
+def test_the_others_are_sorted_whatever_order_the_layout_walks(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    named = _event(root, MIDSOMMAR_LOWER)
+    zed = _event(root, "2024/2024-06-21 - ZZZ", _titled("Midsommar"))
+    aaa = _event(root, "2024/2024-06-21 - AAA", _titled("Midsommar"))
+    forward = get_layout(LAYOUT)
+
+    def reversed_walk(walk_root: Path) -> list[EventRef]:
+        return list(reversed(list(forward(walk_root))))
+
+    monkeypatch.setattr(claims_module, "get_layout", lambda _name: reversed_walk)
+
+    collision = _collision(root, named)
+
+    assert collision is not None
+    assert collision.claimed_by == (aaa, zed)
+
+
+def test_a_symlinked_alias_is_a_claimant_of_its_own(root: Path) -> None:
+    """Aliases are never resolved: the alias claims its own folder-name path."""
+    original = _event(root, MIDSOMMAR, _titled("Midsommar"))
+    alias = root / "2024/2024-06-21 - Midsommar copy"
+    alias.symlink_to(original, target_is_directory=True)
+    # The alias carries the original's reel.yaml, so both claim the same output path.
+
+    collision = _collision(root, original)
+
+    assert collision == OutputCollision(SHARED_PATH, (alias,))
+
+
+def test_the_named_event_spelled_from_another_base_is_not_its_own_claimant(
+    root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    only = _event(root, MIDSOMMAR)
+    monkeypatch.chdir(tmp_path)
+    relative_root = Path("proj")
+    spellings = [
+        only,  # absolute event_dir, relative walk root
+        tmp_path / "proj" / "2024" / ".." / "2024" / "2024-06-21 - Midsommar",
+    ]
+
+    for spelling in spellings:
+        assert (
+            output_collision(
+                spelling,
+                walk_root=relative_root,
+                layout=LAYOUT,
+                order=DEFAULT_CLIP_ORDER,
+                today=TODAY,
+            )
+            is None
+        ), spelling
+    assert _collision(root, only) is None
+
+
 def test_a_named_event_the_layout_does_not_walk_still_claims(root: Path) -> None:
     """``year-event`` walks ``<year>/<event>``; a folder one level up is not reached."""
     walked = _event(root, MIDSOMMAR)

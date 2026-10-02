@@ -13,6 +13,7 @@ walk and the output-naming rule, and ``event/`` is a lower layer than either.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path, PurePosixPath
@@ -44,7 +45,11 @@ def output_collision(
     fails on its own claims nothing (:func:`..event.claims.checked_claim`), so ``None``
     is returned, without walking, when ``event_dir`` itself fails. Claimants are keyed by
     the path as the layout spells it, never resolved: a symlinked alias is a claimant of
-    its own, claiming the path its own folder name and ``reel.yaml`` give it.
+    its own, claiming the path its own folder name and ``reel.yaml`` give it. The named
+    event is recognised in the walk by its *lexically* normalised path (``os.path.abspath``:
+    relative vs absolute, ``..`` segments), never by resolving symlinks, so a caller may
+    spell ``event_dir`` and ``walk_root`` from different bases without the event
+    colliding with itself.
 
     The walk's own failure (``LayoutError`` for an unknown layout, ``OSError``)
     propagates: a caller must not enqueue or render an event whose collision it could not
@@ -55,8 +60,9 @@ def output_collision(
         return None
     target = output_relpath(document.metadata)
     claims: Dict[Path, PurePosixPath] = {event_dir: target}
+    named = os.path.abspath(event_dir)
     for ref in get_layout(layout)(walk_root):
-        if ref.event_dir == event_dir:
+        if os.path.abspath(ref.event_dir) == named:
             continue  # the named event itself: already claimed above
         other, _reason = checked_claim(ref.event_dir, order=order, today=today)
         if other is not None:
