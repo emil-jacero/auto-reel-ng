@@ -100,8 +100,8 @@ function pageHeading(): HTMLElement | null {
  * bottom edge. The region's own height is
  * published on <html> as `--toast-region-h` (removed when empty), and, while a
  * bar is registered, its height plus the gap as `--toast-rise-h`; the page's
- * bottom scroll padding adds both (`--scroll-pad-bottom`), so a control focused by keyboard never
- * scrolls under a toast, including toasts that rise with a bar on its way up.
+ * bottom scroll padding adds both (`--scroll-pad-bottom`), so a control focused by
+ * keyboard never scrolls under a toast, including toasts that rise with a bar on its way up.
  * While the toasts sit above the bar, the same height is published as
  * `--toast-room-h`; a bar that rests in the page keeps that much room before
  * it (edit.css), so the toasts cover that room and no control. `place()` also

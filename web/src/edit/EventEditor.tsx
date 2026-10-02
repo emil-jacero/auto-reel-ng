@@ -815,8 +815,8 @@ function keepInView(element: HTMLElement, bar: HTMLElement | null): void {
  * bottom: its height goes in front of the page's bottom scroll padding then (an
  * inline `scroll-padding-bottom` on <html>, absent while it rests; not a custom
  * property, whose change restyles every row: the first edit cost ~100 ms more on
- * 400 rows). A held bar that starts to rest takes its focused control to the page's end, so
- * the page follows it there.
+ * 400 rows). A held bar that starts to rest takes its focused control to the page's
+ * end, so the page follows it there.
  */
 function placeBar(bar: HTMLElement): void {
   const root = document.documentElement
@@ -829,7 +829,8 @@ function placeBar(bar: HTMLElement): void {
   if (rests) {
     root.style.removeProperty('scroll-padding-bottom')
   } else {
-    root.style.setProperty('scroll-padding-bottom', `calc(${bar.offsetHeight}px + var(--scroll-pad-bottom))`)
+    const padding = `calc(${bar.offsetHeight}px + var(--scroll-pad-bottom))`
+    root.style.setProperty('scroll-padding-bottom', padding)
   }
   const focused = document.activeElement
   if (rests && !rested && focused instanceof HTMLElement && bar.contains(focused)) {
@@ -999,8 +1000,9 @@ export function EventEditor({
   // until it is shown (a hidden bar has no box to place, observe or keep toasts clear of).
   // Held or resting (`placeBar`), and the held bar's height, for the bottom scroll
   // padding (focus never hides under it); absent while the bar rests, which holds no
-  // room at the window's bottom. Decided in the commit that shows the bar, so the scroll a move or a drop
-  // makes right after (a passive effect) already clears it; it wraps when narrow,
+  // room at the window's bottom. Decided in the commit that shows the bar, so the
+  // scroll a move or a drop makes right after (a passive effect) already clears it;
+  // it wraps when narrow,
   // so a ResizeObserver follows later changes, and a zoom or a resized window
   // changes the window's height alone, so `resize` does too. Registered, the bar has
   // the toasts place themselves above it while it is held at the window's bottom,
@@ -1901,7 +1903,8 @@ export function EventEditor({
               // The panels' fields go first, so the remounted panels start empty.
               cutPanels.clear()
               dispatch({ type: 'reset' })
-              // The bar leaves with its buttons: focus goes to the page's heading, in place.
+              // The bar leaves with its buttons: focus goes to the page's heading now; the
+              // effect on `resets` scrolls it into view once the page has settled.
               focusPageHeading({ preventScroll: true })
             }}
             onSave={() => submit('save', 'save')}
