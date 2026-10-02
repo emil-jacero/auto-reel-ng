@@ -1,0 +1,104 @@
+# Local test stack (HLD D-17): Postgres, migration, scratch-library seed, API service + GUI, worker.
+#
+#   podman compose up -d                  # build from this checkout (cached) and start everything
+#   then open http://127.0.0.1:8132/      # the GUI (AR_PORT in .env changes the port)
+#   podman compose logs -f worker         # follow renders
+#   podman compose down                   # stop; edits, renders and job history are kept
+#   podman compose down -v && podman compose run --rm seed --reset && podman compose up -d
+#                                         # reset: fresh database + library re-seeded from the fixture
+#   podman compose -f compose.yaml -f compose.cpu.yaml up -d   # host without /dev/dri: CPU worker
+#
+# The auto-reel-media fixture is mounted READ-ONLY and never relabeled; the seed builds a writable
+# scratch library of symlinks over it under ${AR_DATA_DIR:-./data}. See README "Run the stack
+# with compose". The image is local only and MUST NOT be pushed (Containerfile header).
+name: auto-reel-stack
+
+x-app: &app
+  image: localhost/auto-reel-ng:compose
+  # Built once by `server` (pull_policy: build); every other app service only uses the tag.
+  pull_policy: never
+  environment:
+    DATABASE_URL: postgresql+psycopg://auto_reel_ng:${AR_DB_PASSWORD:-auto_reel_ng}@db:5432/auto_reel_ng
+    # Thumbnails and the Mesa shader cache land in ./data/cache, not in the container layer.
+    XDG_CACHE_HOME: /data/cache
+    # Render scratch (normalized segments, up to GBs for 4K) lands in ./data/tmp, not in the
+    # container's writable layer. The bind mount below guarantees the directory exists: Python's
+    # tempfile silently falls back to /tmp when TMPDIR is missing.
+    TMPDIR: /data/tmp
+  # container_t cannot read the fixture's user_home_t files, and the z/Z relabel options would
+  # rewrite the user's directory tree, so the services that mount it run without SELinux
+  # separation instead.
+  security_opt: [label=disable]
+  volumes:
+    # Read-only. A missing AR_MEDIA_DIR is created empty by the podman provider (it ignores
+    # long-syntax `create_host_path: false`), and the seed then fails loud on its missing input/.
+    - ${AR_MEDIA_DIR:-../auto-reel-media}:/media/auto-reel-media:ro
+    - ${AR_DATA_DIR:-./data}/library:/data/library
+    - ${AR_DATA_DIR:-./data}/library-output:/data/library-output
+    - ${AR_DATA_DIR:-./data}/cache:/data/cache
+    - ${AR_DATA_DIR:-./data}/tmp:/data/tmp
+
+services:
+  db:
+    image: docker.io/library/postgres:16-alpine
+    environment:
+      POSTGRES_USER: auto_reel_ng
+      # Dev default, not a secret (the database is reachable only on the project network).
+      # Postgres applies it only when it initialises an empty pgdata: changing it needs `down -v`.
+      POSTGRES_PASSWORD: ${AR_DB_PASSWORD:-auto_reel_ng}
+      POSTGRES_DB: auto_reel_ng
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Not published: only the stack reaches it (no clash with a dev database on host port 5432).
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auto_reel_ng -d auto_reel_ng"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    entrypoint: ["python3", "-m", "alembic", "-c", "/app/alembic.ini", "upgrade", "head"]
+    # Mounts nothing, so it keeps SELinux confinement.
+    volumes: []
+    security_opt: []
+    depends_on:
+      db: {condition: service_healthy}
+    restart: "no"
+
+  seed:
+    <<: *app
+    entrypoint: ["python3", "/app/scripts/seed_compose_library.py"]
+    restart: "no"
+
+  server:
+    <<: *app
+    build:
+      context: .
+      dockerfile: Containerfile
+    # Every `up` rebuilds from the checkout (cached) and never tries to pull the local tag.
+    pull_policy: build
+    command: ["serve", "/data/library", "--host", "0.0.0.0", "--port", "8080"]
+    # Loopback only: the API has no authentication and the GUI writes reel.yaml.
+    ports:
+      - "127.0.0.1:${AR_PORT:-8132}:8080"
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      seed: {condition: service_completed_successfully}
+    restart: unless-stopped
+
+  worker:
+    <<: *app
+    command: ["worker", "/data/library"]
+    # AMD/Intel VAAPI: jellyfin-ffmpeg bundles its own VA drivers. A render node that is not
+    # world-writable (0660) also needs `group_add: [keep-groups]` (README, untested in compose).
+    devices:
+      - /dev/dri:/dev/dri
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      seed: {condition: service_completed_successfully}
+    restart: unless-stopped
+
+volumes:
+  pgdata:

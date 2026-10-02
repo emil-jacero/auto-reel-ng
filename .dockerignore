@@ -1,0 +1,31 @@
+# Build context for the Containerfile. It is .dockerignore, not .containerignore: the docker-compose
+# client behind `podman compose` packs the context itself and reads only .dockerignore, and buildah
+# (`podman build`) reads it too when no .containerignore exists. Do not add a .containerignore.
+
+# The compose stack's scratch data (rendered movies) and local settings
+data/
+.env
+
+# Tooling and caches
+.git/
+.venv/
+.claude/
+.mypy_cache/
+.pytest_cache/
+**/__pycache__/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# The web stage runs its own `npm ci` + build
+web/node_modules/
+web/dist/
+
+# Trees the image never runs (a docs or spec edit does not rebuild the image). README.md too: the
+# dependency layer installs against a stub README.md (pyproject's `readme`), and nothing reads it later.
+README.md
+experiments/
+docs/
+openspec/
+tests/

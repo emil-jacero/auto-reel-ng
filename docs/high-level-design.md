@@ -399,7 +399,9 @@ dependency budget.** Rationale and rules:
   down.
 - **The Node toolchain runs in podman** (`node:22`), mirroring the containerized-Postgres test fixture —
   nothing is layered onto the immutable host.
-- **Shipping `web/dist` in the wheel/image is deferred to §6 phase 11 packaging**; it is not a v1 concern.
+- **`web/dist` in the image.** The local image (`Containerfile`, **D-17**) builds `web/dist` in a `node:22`
+  stage and serves it through an editable install in `/app`, so `web_dist_dir()` needs no change. A wheel or
+  a published image that carries the client is still §6 phase 11 packaging.
 
 #### The schema → types pipeline, and what checks it (slice A, 2026-09-01)
 
@@ -471,12 +473,27 @@ binary-agnostic.** Rationale and rules:
   Python app keeps its own (MIT) license — but the **published image must carry the GPL source offer + the exact
   configure line**. **Never** bundle the `nonfree`/fdk-aac variant in a published image. (Note: this Fedora dev
   host's system ffmpeg 7.1.3 is an `--enable-nonfree` build → dev-only, must not be redistributed.)
+- **How the image gets it** (2026-10-02, change `compose-stack`). No `jellyfin/jellyfin-ffmpeg` image exists
+  on any registry: Jellyfin ships jellyfin-ffmpeg only as `.deb` packages. The `Containerfile` installs
+  `jellyfin-ffmpeg8` from the Jellyfin apt repo on `debian:trixie-slim`, pinned by
+  `ARG JELLYFIN_FFMPEG_VERSION` (default `8.1.3-1-trixie`, `ffmpeg version 8.1.3-Jellyfin`). The package
+  bundles its own libva and the `radeonsi`, `iHD` and `i965` VA drivers under `/usr/lib/jellyfin-ffmpeg`, so
+  the image installs no host VA driver or Mesa package.
+- ⚠️ **Pre-publish blocker.** `jellyfin-ffmpeg8` 8.1.3 is built with `--enable-libfdk-aac` (and without
+  `--enable-nonfree`; `ffmpeg -L` prints GPLv3), and `-encoders` lists `libfdk_aac`. That conflicts with the
+  rule above. The local compose image (D-17) is a dev-only build that is never pushed; **no image may be
+  published** until this is settled (a jellyfin build without fdk-aac, or a different binary).
 
 #### Deployment
 
 - NVIDIA needs `nvidia-container-toolkit` + `--gpus`; Intel/AMD need `/dev/dri` passthrough + drivers
   (intel-media-driver / Mesa). One image can support all three if it ships the userspace drivers and the
   host passes the right devices.
+- **Local compose stack (D-17).** `compose.yaml` at the repo root runs Postgres, the migration, a seed of a
+  scratch library, `serve` and one `worker` from the local image. The worker gets `/dev/dri`; with
+  jellyfin-ffmpeg's bundled VA drivers that is all VAAPI needs (measured on a Radeon 860M, radeonsi, rootless
+  podman with SELinux enforcing, no `group_add` for a `0666` render node). `compose.cpu.yaml` runs the worker
+  with `--device cpu` for a host without `/dev/dri`. Usage: README, "Run the stack with compose".
 
 > ⚠️ **Research:** §8.12 one-image-all-vendors feasibility (ship CUDA + intel-media-driver + Mesa/VAAPI userspace,
 > select at runtime). The jellyfin-ffmpeg choice and its licensing are now **resolved** (Decision D-1).
@@ -551,7 +568,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    with the §8.11 research).
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
-11. **Packaging** (cross-vendor image, deployment docs).
+11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
+    D-17): a local image and a test stack, nothing published; the published image waits for the D-1
+    fdk-aac blocker (§4.12).
 
 ---
 
@@ -690,6 +709,21 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     longer, never shorter, so the check never refused a cut the render keeps in full.
   - **What stays v2.** Firefox plays PCM audio silently (52 % of the archive), and the preview says so. Proxies,
     the PCM audio path, scrubbing and drag-trim stay the v2 timeline editor's (§4.10, §8.11).
+- **D-17 — A local compose stack for testing** (2026-10-02, change `compose-stack`; the first, local-only
+  slice of §6 phase 11). `podman compose up -d` at the repo root brings up Postgres, the migration, a seed,
+  `serve` and one `worker`.
+  - **The fixture is read, never written.** `auto-reel-media` is mounted read-only, and a one-shot seed builds
+    a writable scratch library over it: absolute symlinks to the clips, real copies of `reel.yaml`, no
+    `.auto-reel/` cache. Re-seeding never overwrites an edit, and `seed --reset` starts over. The services that
+    mount the fixture run with `label=disable`, never `:z`/`:Z`, because relabeling would rewrite the
+    context of the user's directory tree, and a confined container cannot read `user_home_t`.
+  - **The client** is served from the image through an editable install in `/app` (§4.10), with no
+    settings key for `web_dist_dir()`.
+  - **Exposure.** Postgres is not published, and the GUI binds `127.0.0.1` only, because the API has no
+    authentication and the GUI writes `reel.yaml`.
+  - **Always the checked-out code.** Every `up` rebuilds the image from the checkout (`pull_policy: build`,
+    cached), and `.dockerignore` keeps the scratch data and the non-runtime trees out of the build context.
+  - **Local only.** The image is never pushed while D-1's fdk-aac blocker stands (§4.12). (§4.12)
 
 ---
 
@@ -781,6 +815,9 @@ turned into confident OpenSpec changes. Numbered to match the ⚠️ markers abo
     `docs/research/browser-playback.md`.
 12. **Single image, all vendors** — can one container ship CUDA + intel-media-driver + Mesa/VAAPI
     userspace and select at runtime from host-passed devices; document the `--gpus` vs `/dev/dri` matrix.
+    Data point (2026-10-02, `compose-stack`): the VAAPI userspace comes bundled with jellyfin-ffmpeg8 (libva +
+    radeonsi/iHD/i965, Mesa 26.0.8), so AMD/Intel need only `/dev/dri`; VAAPI rendered on a Radeon 860M in
+    rootless podman. RDNA4 and Intel were not run. NVIDIA (`--gpus`, CUDA userspace) is still open.
 13. **Per-device targeting** — exact flags to pin a job to a chosen GPU across NVENC (`-gpu`/
     `-hwaccel_device`), QSV, and VAAPI (`-init_hw_device` per render node); behavior on hosts with
     multiple render nodes / mixed vendors; how to enumerate stable device IDs that survive reboots.
