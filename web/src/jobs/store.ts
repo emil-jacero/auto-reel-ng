@@ -265,8 +265,9 @@ function parseFrame(data: unknown): WsMessage | null {
 function onFrame(opened: WebSocket, data: unknown): void {
   const frame = parseFrame(data)
   if (frame === null) {
-    // A protocol error, never half-applied. Closing runs the reconnect path, and
-    // the backoff keeps growing: only a valid frame resets it.
+    // A protocol error, never half-applied. Closing runs the reconnect path; only a
+    // valid frame resets the backoff, so a service that sends nothing but garbage
+    // backs off (one that sends a snapshot first, then garbage, does not).
     console.error('jobs WebSocket: malformed frame; reconnecting', data)
     opened.close()
     return

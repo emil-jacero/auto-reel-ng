@@ -44,6 +44,9 @@
   reconnect bullet gains the silence rule).
   Verify: `tsc --noEmit` and `npm run build` pass in `node:22` after `npm ci`, and
   `grep -n "setTimeout" web/src/jobs/store.ts` lists only the retry, release and watchdog timers.
+  A `node:test` file, `src/jobs/store.test.ts` (stub `WebSocket`, `mock.timers`), covers: 40 s of silence
+  reconnects once and closes the socket, a heartbeat re-arms the window and commits no state, and a close
+  after the store dropped the socket schedules no second reconnect.
 - [x] 3.2 Verify in a real browser with an ad hoc Playwright script kept outside the repo
   (`<scratch>/check_heartbeat.py`, the `playwright/python` image, `page.clock` for time, the jobs socket
   mocked with `route_web_socket`, scoped to `**/api/v1/ws/jobs`), against a served build:

@@ -160,9 +160,11 @@ the web-app spec states both numbers.
   drops a healthy socket] → the cost is one reconnect with a fresh snapshot, which the store already
   reconciles; detection only ever gets later when throttled, never wrongly skipped.
 - [An older web bundle, cached in a tab across the upgrade, treats `heartbeat` as a malformed frame and
-  reconnects, backing off up to 30 s] → the service serves its own bundle and a reload fixes it; a
-  malformed-frame reconnect loop is the existing, loud failure for an unknown type, and the exhaustive
-  `Record` is what keeps a new bundle from ever missing one.
+  reconnects] → the valid snapshot resets that bundle's backoff, so the stale tab loops: snapshot, a
+  malformed heartbeat 15 s later, a reconnect within 500 ms, and the header flaps Live/Reconnecting about
+  every 15 s until the tab is reloaded. The service serves its own bundle, so a reload fixes it; a
+  malformed-frame reconnect is the existing, loud failure for an unknown type, and the exhaustive `Record`
+  is what keeps a new bundle from ever missing one.
 - [A heartbeat says the connection is alive, not that the hub is polling successfully] → out of scope
   (proposal Non-goals); a wedged poller shows as no progress, as it does today.
 - [A busy connection sends no heartbeats, so its liveness rests on delta frames] → intended: any frame

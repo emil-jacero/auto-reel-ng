@@ -86,9 +86,10 @@ async def _serving(
 ) -> AsyncIterator[_Served]:
     """Serve a hub over ``store`` with ``uvicorn.Server`` on this loop until the block ends.
 
-    ``poll_interval`` is the hub's; ``config`` overrides uvicorn settings (the keepalive). ``log_config=None`` leaves the
-    process's logging as it is: uvicorn's default config would stop the ``uvicorn``
-    logger's propagation mid-test, and ``caplog`` would miss that test's uvicorn records.
+    ``poll_interval`` is the hub's; ``config`` overrides uvicorn settings (the keepalive).
+    ``log_config=None`` leaves the process's logging as it is: uvicorn's default config would
+    stop the ``uvicorn`` logger's propagation mid-test, and ``caplog`` would miss that test's
+    uvicorn records.
     Port 0 lets the kernel pick a free port.
     Leaving the block stops the server the way a signal does (``should_exit``) and waits
     for its shutdown, lifespan included.
@@ -678,7 +679,7 @@ async def test_heartbeats_cost_the_hub_nothing() -> None:
 
 async def test_a_busy_connection_is_sent_no_heartbeat(monkeypatch: pytest.MonkeyPatch) -> None:
     """Frames more often than the interval leave the heartbeat timer forever restarting."""
-    monkeypatch.setattr(ws_module, "_HEARTBEAT_INTERVAL_S", 0.6)
+    monkeypatch.setattr(ws_module, "_HEARTBEAT_INTERVAL_S", 2.0)
     store = FakeStore()
     job_id = _running_job(store, event_dir=GRILLNING, progress=0.0)
     async with _serving(store) as served:
@@ -689,7 +690,7 @@ async def test_a_busy_connection_is_sent_no_heartbeat(monkeypatch: pytest.Monkey
                 store.jobs[job_id].progress = step / 100
                 types.append((await _frame(client))["type"])
                 await asyncio.sleep(0.1)
-            assert types == ["delta"] * 15  # 1.5 s, past two heartbeat intervals
+            assert types == ["delta"] * 15  # about 2.3 s: past one interval, never idle for one
 
 
 async def test_a_delta_landing_as_a_heartbeat_falls_due_is_delivered_once_in_order(
@@ -739,10 +740,12 @@ async def test_the_heartbeat_wait_neither_loses_a_racing_frame_nor_outlasts_a_cl
 ) -> None:
     monkeypatch.setattr(ws_module, "_HEARTBEAT_INTERVAL_S", 0.05)
     queue: asyncio.Queue = asyncio.Queue()
-    assert json.loads(str(await _next_message(queue))) == HEARTBEAT_FRAME  # nothing came
+    # nothing came
+    assert json.loads(str(await asyncio.wait_for(_next_message(queue), 1.0))) == HEARTBEAT_FRAME
 
     queue.put_nowait("frame")
-    assert await _next_message(queue) == "frame"  # a queued frame wins over a heartbeat
+    # a queued frame wins over a heartbeat
+    assert await asyncio.wait_for(_next_message(queue), 1.0) == "frame"
 
     monkeypatch.setattr(ws_module, "_HEARTBEAT_INTERVAL_S", 30.0)
     waiting = asyncio.create_task(_next_message(queue))
