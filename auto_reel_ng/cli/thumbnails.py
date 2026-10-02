@@ -60,10 +60,10 @@ def cmd_thumbs(args: argparse.Namespace) -> int:
     ffmpeg version. Up to ``--jobs`` extractions run at once in one shared pool;
     each distinct thumbnail file of an event is extracted once, however many clips
     link to it (the first in listing order counts as generated, the rest as cached,
-    or all as failed); each event is a barrier, so its line prints when all its clips are done and a
-    clip shared with a later event is already cached by then. A failed clip or an
-    unreadable event is reported and the run continues; a cache error or an
-    interrupt cancels every queued clip and propagates.
+    or all as failed); each event is a barrier, so its line prints when all its
+    clips are done and a clip shared with a later event is already cached by then.
+    A failed clip or an unreadable event is reported and the run continues; a cache
+    error or an interrupt cancels every queued clip and propagates.
     """
     ctx = project_context(args)
     settings = resolve_thumbnail_settings(ctx.config, ctx.project_root)
