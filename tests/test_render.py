@@ -13,6 +13,8 @@ import dataclasses
 import json
 import logging
 import shutil
+import sys
+import time
 import unicodedata
 from datetime import date
 from pathlib import Path, PurePosixPath
@@ -30,13 +32,16 @@ from auto_reel_ng.accel.models import (
 from auto_reel_ng.accel.profiles import CPUProfile, NvencProfile, QsvProfile, VaapiProfile
 from auto_reel_ng.accel.profiles.cpu import CPU_TONEMAP_FILTER
 from auto_reel_ng.errors import (
+    FfmpegCancelledError,
     FfmpegError,
+    FfmpegStalledError,
     RenderCancelledError,
     RenderError,
     RenderVerificationError,
 )
 from auto_reel_ng.event import seed_document
 from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
+from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
 from auto_reel_ng.probe import probe_media
 from auto_reel_ng.probe.metadata import AudioStream, ClipMetadata
 from auto_reel_ng.reel.document import Metadata, Trim
@@ -1684,19 +1689,28 @@ class _RecordingRuntime:
     ``fail`` maps a call (the argument tuple) to the stderr to fail it with, or ``None``.
     """
 
-    def __init__(self, real, good: Path, fail) -> None:
+    def __init__(self, real, good: Path, fail, raises=None) -> None:
         self._real = real
         self._good = good
         self._fail = fail
+        self._raises = raises  # maps a call (the argument tuple) to an exception to raise, or None
         self.calls: list[tuple[str, ...]] = []
+        self.stall_timeouts: list[Optional[float]] = []
+        self.cancel_checks: list[object] = []
 
     def __getattr__(self, name: str):
         return getattr(self._real, name)
 
-    def run_with_progress(self, args, *, duration, on_progress=None) -> None:
+    def run_with_progress(
+        self, args, *, duration, on_progress=None, stall_timeout=None, should_cancel=None
+    ) -> None:
         del duration, on_progress
         args = tuple(args)
         self.calls.append(args)
+        self.stall_timeouts.append(stall_timeout)
+        self.cancel_checks.append(should_cancel)
+        if self._raises is not None and (exc := self._raises(args)) is not None:
+            raise exc
         stderr = self._fail(args)
         if stderr is not None:
             raise FfmpegError(f"Command exited 187: ffmpeg {' '.join(args)}\nstderr:\n{stderr}")
@@ -2277,7 +2291,7 @@ def test_software_decode_retry_does_not_move_progress_backwards(
     raw: list[float] = []
 
     class _Scripted(_RecordingRuntime):
-        def run_with_progress(self, args, *, duration, on_progress=None) -> None:
+        def run_with_progress(self, args, *, duration, on_progress=None, **_limits) -> None:
             failing = self._fail(tuple(args)) is not None
             if on_progress is not None:
                 for local in (0.2, 0.6) if failing else (0.0, 0.3, 1.0):
@@ -2303,3 +2317,182 @@ def test_software_decode_retry_does_not_move_progress_backwards(
     assert raw.index(0.6) < len(raw) - 1 and raw[raw.index(0.6) + 1] == 0.0  # the rewind happened
     assert seen == sorted(set(seen))
     assert seen[-1] == 1.0
+
+
+# --------------------------------------------------------------------------- #
+# render-stall-watchdog: stall limit + mid-segment cancel                      #
+# --------------------------------------------------------------------------- #
+
+
+def _stall_error(stderr: str = "") -> FfmpegStalledError:
+    return FfmpegStalledError(
+        "ffmpeg stalled: no progress for 600s (limit 600s): ffmpeg -nostats\n"
+        f"stderr:\n{stderr}".rstrip()
+    )
+
+
+def test_segment_encodes_get_the_stall_limit_and_the_jobs_cancel_check(
+    runtime, good_segment, tmp_path
+) -> None:
+    fake = _RecordingRuntime(runtime, good_segment, lambda args: None)
+    options = _retry_options(fake, tmp_path, {"a.mp4": "h264", "b.mp4": "h264"})
+    options.should_cancel = lambda: False
+    render_movie(_two_chapter_plan(_RETRY_LOOK), _amd_profile(), options)
+    assert len(fake.calls) == 2
+    assert fake.stall_timeouts == [orch.SEGMENT_STALL_TIMEOUT_S] * 2
+    assert orch.SEGMENT_STALL_TIMEOUT_S == 600.0
+    assert fake.cancel_checks == [options.should_cancel] * 2
+
+
+def test_a_cancel_killed_mid_segment_ends_the_render_canceled(
+    runtime, good_segment, tmp_path
+) -> None:
+    fake = _RecordingRuntime(
+        runtime,
+        good_segment,
+        lambda args: None,
+        raises=lambda args: FfmpegCancelledError("ffmpeg canceled: ffmpeg"),
+    )
+    options = _retry_options(fake, tmp_path, {"a.mp4": "h264", "b.mp4": "h264"})
+    with pytest.raises(RenderCancelledError, match=r"canceled during segment 0 .'a.mp4'."):
+        render_movie(_two_chapter_plan(_RETRY_LOOK), _amd_profile(), options)
+    assert len(fake.calls) == 1  # not wrapped as a failure, not retried, no second segment
+    assert not list((tmp_path / "out").rglob("*.mp4"))
+    assert not list((tmp_path / "out").rglob("*.part"))
+
+
+def test_a_cancel_during_the_software_decode_retry_is_still_a_cancel(
+    runtime, good_segment, tmp_path
+) -> None:
+    fake = _RecordingRuntime(
+        runtime,
+        good_segment,
+        lambda args: _HW_INIT_STDERR if "-hwaccel" in args else None,
+        raises=lambda args: None if "-hwaccel" in args else FfmpegCancelledError("canceled"),
+    )
+    options = _retry_options(fake, tmp_path, {"a.mp4": "h264", "b.mp4": "h264"})
+    with pytest.raises(RenderCancelledError, match="canceled during segment 0"):
+        render_movie(_two_chapter_plan(_RETRY_LOOK), _amd_profile(), options)
+    assert len(fake.calls) == 2
+
+
+def test_a_stalled_segment_fails_the_render_naming_the_stall(
+    runtime, good_segment, tmp_path
+) -> None:
+    fake = _RecordingRuntime(
+        runtime, good_segment, lambda args: None, raises=lambda args: _stall_error()
+    )
+    options = _retry_options(fake, tmp_path, {"a.mp4": "h264", "b.mp4": "h264"})
+    with pytest.raises(RenderError) as caught:
+        render_movie(_two_chapter_plan(_RETRY_LOOK), _amd_profile(), options)
+    assert not isinstance(caught.value, RenderCancelledError)
+    assert "normalize failed for segment 0 ('a.mp4')" in str(caught.value)
+    assert "ffmpeg stalled" in str(caught.value)
+    assert not list((tmp_path / "out").rglob("*.mp4"))
+    assert not list((tmp_path / "out").rglob("*.part"))
+    assert read_manifest(tmp_path) is None
+
+
+def test_a_stall_is_not_retried_in_software_even_with_the_init_phrase_in_its_stderr(
+    runtime, good_segment, tmp_path
+) -> None:
+    """A hang after a hardware-decode warning would otherwise be retried: twice the wait."""
+    fake = _RecordingRuntime(
+        runtime,
+        good_segment,
+        lambda args: None,
+        raises=lambda args: _stall_error(_HW_INIT_STDERR),
+    )
+    options = _retry_options(fake, tmp_path, {"a.mp4": "h264", "b.mp4": "h264"})
+    with pytest.raises(RenderError, match="normalize failed for segment 0") as caught:
+        render_movie(_two_chapter_plan(_RETRY_LOOK), _amd_profile(), options)
+    assert "stalled" in str(caught.value)
+    assert len(fake.calls) == 1
+    assert "-hwaccel" in fake.calls[0]  # a hardware-decode command: the retry was possible
+
+
+#: A stand-in ffmpeg for the end-to-end stall/cancel tests: answers ``-version``, then, for
+#: an encode, reports one progress line, records that it started, and hangs.
+_HANGING_FFMPEG = f"""#!{sys.executable}
+import os, sys, time
+args = sys.argv[1:]
+if "-version" in args:
+    print("ffmpeg version 8.1 fake")
+    sys.exit(0)
+print("out_time_us=100000", flush=True)
+open(os.environ["HANG_STARTED"], "w").close()
+time.sleep(120)
+"""
+
+
+@pytest.fixture
+def hanging_runtime(runtime, tmp_path, monkeypatch):
+    fake = tmp_path / "hanging-ffmpeg"
+    fake.write_text(_HANGING_FFMPEG, encoding="utf-8")
+    fake.chmod(0o755)
+    monkeypatch.setenv("HANG_STARTED", str(tmp_path / "started"))
+    return FfmpegRuntime(ffmpeg_path=str(fake), ffprobe_path=runtime.ffprobe_path)
+
+
+@pytest.mark.has_ffmpeg
+def test_a_hung_ffmpeg_fails_the_render_and_leaves_nothing(
+    runtime, hanging_runtime, make_clip, tmp_path, monkeypatch
+) -> None:
+    clip = make_clip("a.mp4", width=320, height=240)
+    facts = {"a.mp4": probe_media(clip, runtime=runtime)}
+    monkeypatch.setattr(orch, "SEGMENT_STALL_TIMEOUT_S", 0.5)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    out_dir = tmp_path / "out"
+    options = RenderOptions(
+        event_dir=tmp_path,
+        output_dir=out_dir,
+        clip_facts=facts,
+        runtime=hanging_runtime,
+        temp_dir=scratch,
+    )
+    plan = RenderPlan(
+        metadata=Metadata(title="Movie"),
+        look={"target_resolution": [640, 480]},
+        chapters=(ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4"),)),),
+    )
+    started = time.monotonic()
+    with pytest.raises(RenderError, match=r"normalize failed for segment 0") as caught:
+        render_movie(plan, CPUProfile(), options)
+    assert time.monotonic() - started < 10
+    assert "ffmpeg stalled" in str(caught.value)
+    assert not (out_dir / "Movie.mp4").exists()
+    assert not (out_dir / "Movie.mp4.part").exists()
+    assert list(scratch.iterdir()) == []
+
+
+@pytest.mark.has_ffmpeg
+def test_a_cancel_kills_a_hung_ffmpeg_mid_segment(
+    runtime, hanging_runtime, make_clip, tmp_path
+) -> None:
+    clip = make_clip("a.mp4", width=320, height=240)
+    facts = {"a.mp4": probe_media(clip, runtime=runtime)}
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    out_dir = tmp_path / "out"
+    started_marker = tmp_path / "started"
+    options = RenderOptions(
+        event_dir=tmp_path,
+        output_dir=out_dir,
+        clip_facts=facts,
+        runtime=hanging_runtime,
+        temp_dir=scratch,
+        should_cancel=started_marker.exists,  # true only once the fake ffmpeg has started
+    )
+    plan = RenderPlan(
+        metadata=Metadata(title="Movie"),
+        look={"target_resolution": [640, 480]},
+        chapters=(ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4"),)),),
+    )
+    started = time.monotonic()
+    with pytest.raises(RenderCancelledError, match="canceled during segment 0"):
+        render_movie(plan, CPUProfile(), options)
+    assert time.monotonic() - started < 5
+    assert not (out_dir / "Movie.mp4").exists()
+    assert not (out_dir / "Movie.mp4.part").exists()
+    assert list(scratch.iterdir()) == []

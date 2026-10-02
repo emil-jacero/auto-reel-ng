@@ -41,7 +41,7 @@ This is part of the pre-v1 bug round that follows HLD §6 phase 7 (scheduler) an
 - **Docs and spec.** `ffmpeg-runtime` states the watchdog and cancel contract; `job-scheduler`'s cancellation
   requirement is renamed and widened from "between segments" to "of a running render" (cancel latency and the
   mid-ffmpeg kill that README says does not exist), and gains a requirement for the stalled job's outcome.
-  README corrects the cancel-latency and hung-worker sentences; HLD gets **D-18** so the policy and the
+  README corrects the cancel-latency and hung-worker sentences; HLD gets **D-19** so the policy and the
   deferral outlive the change.
 
 ## Non-goals
@@ -91,7 +91,8 @@ that capability and leaves `movie-assembly` alone (the two-delta limit).
 - **Packages:** `ffmpeg/` (`runtime.py`: the wait loop, two keyword arguments, the kill) and `render/`
   (`orchestrator.py`: one constant, the call site, the error mapping). `errors.py` gains `FfmpegStalledError` and `FfmpegCancelledError`
   (it is the shared error module, not a package). Tests: `tests/test_runtime.py`, `tests/test_render.py`.
-  Docs: `README.md`, `docs/high-level-design.md` (D-18).
+  Docs: `README.md`, `docs/high-level-design.md` (D-19). Wording only, no behaviour: the `jobs cancel` CLI message (`cli/commands.py`) and a `JobStore.request_cancel` docstring
+  (`persistence/job_store.py`) said "between segments".
 - **CLI vs API (Principle V):** both, through the engine and with no surface of their own. `auto-reel render`
   gets the stall watchdog (a stalled event is reported failed by the batch, the rest still render);
   `worker` and therefore the API's jobs get that plus mid-segment cancel, because only the worker supplies
