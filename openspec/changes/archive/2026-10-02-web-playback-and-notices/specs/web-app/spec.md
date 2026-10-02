@@ -334,14 +334,18 @@ earlier. It SHALL be saved with the reason `manual`. After an addition:
 - both fields SHALL be empty again, with keyboard focus on the start field
 - the addition SHALL be announced with the cut's times, the clip's name and its new cut count
 
-**The clip's length.** No read of the service gives a clip's length. The page knows it only once the clip's
-preview has read it from the clip's file in this Edit mode ("Edit mode previews a clip on request"). Until
-then, the panel SHALL say that the page does not know the clip's length, that a cut that runs past the clip's
-end stops there, and that a cut over the whole clip leaves the clip out of the movie, and it SHALL NOT refuse
-a cut for its length. Once the page knows the length, the panel SHALL state it beside its fields, SHALL refuse
-a cut that ends after it, and SHALL mark each listed cut that ends after it ("A clip's preview sets cut times
-at the playhead and plays the clip as the movie will"), and it SHALL still say that a cut over the whole clip
-leaves the clip out of the movie.
+**The clip's length.** The page knows a clip's length from one of two places, and the first it has wins: the
+length the clip's preview has read from the clip's file in this Edit mode ("Edit mode previews a clip on
+request"), else the duration the event detail gives the clip when it is not null (a thumbnail of the clip was
+made before). The preview's length wins because it is the one Set From and Set To write times from, so a cut
+set at the end of the clip is never refused. A null duration is unknown, never zero. When the page knows the
+length from neither, the panel SHALL say that the page does not know the clip's length, that a cut that runs
+past the clip's end stops there, and that a cut over the whole clip leaves the clip out of the movie, and it
+SHALL NOT refuse a cut for its length. Once the page knows the length, from either place, the panel SHALL
+state it beside its fields, SHALL refuse a cut that ends after it, and SHALL mark each listed cut that ends
+after it ("A clip's preview sets cut times at the playhead and plays the clip as the movie will"), and
+it SHALL still say that a cut over the whole clip leaves the clip out of the movie. The
+duration of a clip the event detail gives SHALL NOT be sent anywhere, and neither length SHALL be saved.
 
 **What a whole-clip cut does to a title card.** Wherever the panel says that a cut over the whole clip leaves
 the clip out of the movie, it SHALL add that when the clip is its chapter's title clip, the chapter's title card
@@ -413,10 +417,18 @@ window 320 or 390 pixels wide. No panel SHALL make the page scroll horizontally 
   it starts, and no cut is added
 
 #### Scenario: A clip never previewed is not checked for length
-- **WHEN** on `s1710002.mp4` of `2024-06-27 - Grillning med grannar`, whose preview was not opened in this Edit
-  mode, the operator adds a cut from `5` to `7`
+- **WHEN** on `s1710002.mp4` of `2024-06-27 - Grillning med grannar`, whose detail gives a duration of `null`
+  and whose preview was not opened in this Edit mode, the operator adds a cut from `5` to `7`
 - **THEN** the cut is accepted and listed, and the panel says that the page does not know the clip's length and
   that a cut that runs past the clip's end stops there
+
+#### Scenario: A clip whose duration the service gives is checked before any preview
+- **WHEN** on `s1710001.mp4` of `2024-06-27 - Grillning med grannar`, whose detail gives a duration of `6.02`
+  and whose preview was not opened in this Edit mode, the operator adds a cut from `5` to `7`
+- **THEN** the panel says that the clip ends at `0:06.02`, the cut is refused at the end field, which receives
+  keyboard focus, saying that `0:07` is after the clip's end at `0:06.02`, and no cut is added
+- **WHEN** the operator types `0:06.02` as the end and adds the cut
+- **THEN** the cut from `0:05` to `0:06.02` is listed
 
 #### Scenario: The panel says where a whole-clip cut sends the title card
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, the operator opens the Cuts panel of
@@ -518,4 +530,3 @@ window 320 or 390 pixels wide. No panel SHALL make the page scroll horizontally 
 - **WHEN** the operator opens that panel and adds a cut from `0` to `1`
 - **THEN** the page does not scroll horizontally, and a tap anywhere in a 44 × 44 pixel area around each of the
   panel's fields, Add cut and the cut's Remove reaches that control and no other
-
