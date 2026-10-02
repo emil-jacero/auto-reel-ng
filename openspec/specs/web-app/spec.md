@@ -704,6 +704,12 @@ The one exception is a re-read the client starts by itself because events change
 shown or when a hidden list is shown again (see "A shown screen re-reads in place when events change").
 There, the screen keeps its current content, marked as updating, instead of showing placeholders.
 
+The other exception is the player of an event page's "Movie" section. An operator's Refresh of an event page
+that shows the section SHALL keep it, with its player as it is, while the page reads, as "The event page plays
+the event's rendered movie" requires. The section SHALL show nothing of the earlier read that the read may
+change while it runs: not its verdict, its file name, its size or its outdated sentence. Its heading and its
+player SHALL remain, so that the page never shows an earlier state of the event as current.
+
 #### Scenario: A slow list read
 - **WHEN** the events list response takes two seconds
 - **THEN** during those seconds the list shows placeholder rows and the announced message "Scanning events…",
@@ -713,6 +719,13 @@ There, the screen keeps its current content, marked as updating, instead of show
 - **WHEN** the operator opens `2024-09-01 - Sommarlov` and its read takes two seconds
 - **THEN** during those seconds the page shows its heading, placeholder rows and the announced message
   "Reading event…"
+
+#### Scenario: A Refresh keeps the movie player and nothing else
+- **WHEN** the movie of `2024-07-14 - Kalas` is playing and the operator presses Refresh, and the read takes
+  two seconds
+- **THEN** during those seconds the page shows its heading as a placeholder, placeholder rows and the announced
+  message "Reading event…", and the "Movie" section shows its heading and its player, still playing, with no
+  "Current" or "Outdated", no file name, no size and no outdated sentence
 
 #### Scenario: A re-read after a finished render keeps the rows
 - **WHEN** the list is shown, the render of `2024-06-27 - Grillning med grannar` completes, and the
@@ -1817,14 +1830,58 @@ for assistive technology, where <name> is the clip's name as its row shows it (s
 frame from its clip"). The failure SHALL NOT raise an alert or a toast, SHALL NOT change the
 clip's status, and SHALL NOT be retried automatically while the row stays shown.
 
+**When no preview can be made at all.** A failed image says nothing about why. For each thumbnail that fails to
+show, the page SHALL therefore make one further request for the same address, only to read the service's answer,
+and SHALL NOT show anything of that answer's body in the clip's row. The answer is the clip's own failure when
+it is a 502 that carries the thumbnail failure kind `thumbnail_failed`. A 502 that carries no thumbnail failure
+kind and no event `failure` (the service's thumbnail cache or its `config.yaml` is at fault, so that no clip
+could have a preview) SHALL be counted as the service's. Any other answer is counted nowhere, as is none: a 502
+whose `failure` says that the event itself could not be read is not a thumbnail fault. The further request SHALL
+be made behind the page's own requests (low priority).
+
+When at least three thumbnails shown on the page have failed as the service's, the page SHALL show
+one note, once for the page and not per clip: "Previews are unavailable. The service could not make thumbnails;
+run `auto-reel thumbs` on the server to see why." The note SHALL be shown in the read view and in Edit mode, in
+the same place above the clips. It SHALL be part of the page's content: no alert, no toast and no announcement,
+and with a name for assistive technology that does not need the colour of the warning. It SHALL leave when fewer
+than three such failures are shown, such as after a Refresh that finds the service working. Failures that are
+the clips' own SHALL never raise it, however many clips fail that way.
+
 In a window 390 CSS pixels wide, the thumbnail SHALL stay in the clip's row beside its facts, without
 horizontal scroll, and no fact of a row SHALL overlap another.
 
 #### Scenario: A clip whose frame cannot be read says "No preview"
 - **WHEN** the operator opens `2024-10-05 - Trasig`, whose only clip `trasig.mp4` is an empty file
 - **THEN** the row shows the "No preview" placeholder with its icon, its status and facts read as before, the
-  page shows no alert or toast about it, and the service received exactly one thumbnail request for
-  `trasig.mp4`
+  page shows no alert, toast or note about it, and the service received at most two thumbnail requests for
+  `trasig.mp4`: the image's, and the one that reads why it failed
+
+#### Scenario: A fault of the service's thumbnail cache is said once
+- **WHEN** the service's thumbnail cache directory cannot be written, and the operator opens
+  `2024-06-27 - Grillning med grannar`, whose four clips are on disk
+- **THEN** each of the four rows shows the "No preview" placeholder, and the page shows one note, "Previews are
+  unavailable…", above the clips; no alert or toast is raised
+- **WHEN** the operator enters Edit mode
+- **THEN** the note is shown in the same place, once
+
+#### Scenario: Clips that cannot be decoded raise no note
+- **WHEN** an event of four clips is opened and the service answers each thumbnail with a 502 that carries the
+  thumbnail failure kind `thumbnail_failed`
+- **THEN** each row shows the "No preview" placeholder, and the page shows no note
+
+#### Scenario: An event that becomes unreadable raises no thumbnail note
+- **WHEN** the operator has opened `2024-06-27 - Grillning med grannar`, its `reel.yaml` is then made unreadable,
+  and the service answers the thumbnails of three of its clips with a 502 that carries an event `failure`
+- **THEN** each of the three rows shows the "No preview" placeholder, and the page shows no note
+
+#### Scenario: Two failures are not a pattern
+- **WHEN** the operator opens `2024-06-27 - Grillning med grannar` and the service answers the thumbnails of two
+  of its four clips with a 502 that carries no thumbnail failure kind, and the others with images
+- **THEN** two rows show "No preview", and the page shows no note
+
+#### Scenario: The note leaves with the fault
+- **WHEN** the note is shown, the cache directory is made writable, and the operator presses Refresh
+- **THEN** the four thumbnails are shown, and the page shows no note
 
 #### Scenario: Only rows near the view are requested
 - **WHEN** the operator opens an event of 60 clips in one chapter, in a window 1280 by 800 pixels, and then
@@ -2989,8 +3046,16 @@ length from neither, the panel SHALL say that the page does not know the clip's 
 past the clip's end stops there, and that a cut over the whole clip leaves the clip out of the movie, and it
 SHALL NOT refuse a cut for its length. Once the page knows the length, from either place, the panel SHALL
 state it beside its fields, SHALL refuse a cut that ends after it, and SHALL mark each listed cut that ends
-after it ("A clip's preview sets cut times at the playhead and plays the clip as the movie will"). The
+after it ("A clip's preview sets cut times at the playhead and plays the clip as the movie will"), and
+it SHALL still say that a cut over the whole clip leaves the clip out of the movie. The
 duration of a clip the event detail gives SHALL NOT be sent anywhere, and neither length SHALL be saved.
+
+**What a whole-clip cut does to a title card.** Wherever the panel says that a cut over the whole clip leaves
+the clip out of the movie, it SHALL add that when the clip is its chapter's title clip, the chapter's title card
+moves to the next clip of the chapter that plays. The render places a chapter's title card before the first
+clip it plays when the title clip is cut away, and adds none to a chapter in which every clip is cut away. The
+page does not know which clip is a chapter's title clip, so the sentence is conditional and the same for every
+clip.
 
 **Removing a cut.** Each cut SHALL offer **Remove**, which names the clip and the cut. A cut read from
 `reel.yaml` SHALL then stay listed in its place, marked as removed when the edits are saved, with an **Undo**
@@ -3067,6 +3132,12 @@ window 320 or 390 pixels wide. No panel SHALL make the page scroll horizontally 
   keyboard focus, saying that `0:07` is after the clip's end at `0:06.02`, and no cut is added
 - **WHEN** the operator types `0:06.02` as the end and adds the cut
 - **THEN** the cut from `0:05` to `0:06.02` is listed
+
+#### Scenario: The panel says where a whole-clip cut sends the title card
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, the operator opens the Cuts panel of
+  `s1710001.mp4`, the first clip of its chapter, before and after opening its preview
+- **THEN** both times the panel says that a cut over the whole clip leaves the clip out of the movie and that,
+  when it is the chapter's title clip, the chapter's title card moves to the next clip of the chapter that plays
 
 #### Scenario: A cut that overlaps another
 - **WHEN** `s1710001.mp4` of `2024-06-27 - Grillning med grannar` has a cut from `0:00` to `0:01.5`, and the
@@ -3500,10 +3571,21 @@ parameter. The event id SHALL be encoded segment by segment, as on every events 
 starts by itself (when the job it shows reaches a finished state, see "A shown screen re-reads in place when events
 change") finds the same entity-tag, the player SHALL stay as it is, playing or paused, at its position. When it
 finds a different one, the page SHALL replace the player with a new one at the new address. If the old player had
-keyboard focus, the new one SHALL receive it. The old address SHALL never be used for the new file. A Refresh, like
-opening the page or leaving Edit mode, replaces the page's content with placeholders while it reads (see "The event
-page shows the event's chapters and clips"). It therefore stops playback, and the section returns with a new
-player, paused at its start, at the address of the entity-tag that read finds.
+keyboard focus, the new one SHALL receive it. The old address SHALL never be used for the new file. Opening the page
+and leaving Edit mode replace the page's content with placeholders while it reads (see "The event page shows the
+event's chapters and clips"), and the section returns with a new player, paused at its start, at the address of
+the entity-tag that read finds.
+
+**A Refresh keeps the player.** An operator's Refresh of a page that shows the section SHALL replace the rest of
+the page's content with placeholders, as every read of the event does, but SHALL keep the section and its
+player while it reads, playing or paused, at its position. The player SHALL be the same one, not a new element at
+the same address, and the Refresh SHALL NOT start, stop or seek it. When the read finds the same entity-tag, the
+player SHALL stay as it is after it. When it finds a different one, the page SHALL replace the player with a new
+one at the new address, with keyboard focus as above. When it finds that the event has no movie, or it fails, the
+section SHALL go as it does for any read. While the read runs, the section SHALL show its heading and its player
+and nothing that the read may change ("A read in progress is shown as a placeholder and announced"), and SHALL be
+marked as busy; the verdict, the facts and the sentence return with the read's answer. A Refresh SHALL NOT request
+any byte of the movie while the read runs.
 
 **Nothing loads before Play.** Opening, refreshing or returning to the page SHALL NOT request any byte of the movie
 other than the one-byte answer above, and SHALL NOT start playback. Playback SHALL start only from the operator's
@@ -3588,10 +3670,28 @@ row uses. The page SHALL show no poster when there is no such clip, or when that
 - **THEN** the frame is 768 × 432 pixels and lies whole between the bottom of the shared header, which stays in
   place while the page scrolls, and the bottom of the window
 
+#### Scenario: Refresh keeps the movie playing
+- **WHEN** the movie of `2024-07-14 - Kalas` is playing, 3 seconds in, and the operator presses Refresh
+- **THEN** the page shows placeholders for the rest of its content while it reads, and the player is the same
+  element, still playing, whose position never went back; after the read the "Movie" section says "Current" again
+  and its player's address carries the same entity-tag as before
+- **AND** the only request for the movie during and after the Refresh is one `Range: bytes=0-0` request, made when
+  the read answered
+
 #### Scenario: Refresh starts the player over
-- **WHEN** the movie of `2024-07-14 - Kalas` is playing and the operator presses Refresh
-- **THEN** the page shows its placeholders while it reads, and then a "Movie" section whose player is paused at its
-  start, at an address that carries the same entity-tag as before
+- **WHEN** the movie of `2024-07-14 - Kalas` is playing and a forced render of the event, started from elsewhere,
+  replaces its file, and then the operator presses Refresh
+- **THEN** after the read the page shows a new player, paused at its start, at an address that carries the new
+  entity-tag, and the old address is not used again
+
+#### Scenario: Refresh finds no movie
+- **WHEN** the movie of `2024-07-14 - Kalas` is playing and its render record is removed from disk before the
+  operator presses Refresh
+- **THEN** after the read the page shows no "Movie" section, and keyboard focus stays on the Refresh button
+
+#### Scenario: Refresh that fails takes the movie with the rest
+- **WHEN** the movie of `2024-07-14 - Kalas` is playing and the service is stopped before the operator presses Refresh
+- **THEN** the page shows its failure as for any read, and no "Movie" section
 
 ### Requirement: The movie player says what it cannot play
 
