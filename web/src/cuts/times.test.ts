@@ -43,6 +43,6 @@ test('a listed cut past the detail duration is marked', () => {
 })
 
 test('the hint names where the clip ends and whose length it is', () => {
-  assert.match(lengthHint(6.02, false), /ends at 0:06\.02, as measured for its thumbnail/)
+  assert.match(lengthHint(6.02, false), /ends at 0:06\.02, as recorded for this clip/)
   assert.match(lengthHint(6.08), /ends at 0:06\.08, as this browser reads it/)
 })
