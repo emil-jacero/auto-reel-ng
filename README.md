@@ -153,8 +153,9 @@ enqueued, or completed without rendering).
   The next render writes the movie under the new name and **keeps
   the old file** — the engine never deletes, moves or renames it. Delete the old
   movie by hand if you do not want both, but first check that it is not another
-  event's current movie: an event that now has the renamed event's old name
-  renders into that very file, replacing the kept movie.
+  event's current movie. An event that now has the renamed event's old name is
+  refused (`movie ... is recorded as the output of ...`) rather than replacing the
+  kept movie; `render --force` (or a job's `force`) replaces it.
 - **`--force`** bypasses the gate entirely: `render --force` re-renders and
   replaces output even if fresh; `enqueue --force` / `POST /api/v1/jobs {"force":
   true}` enqueues even a fresh event, carrying `force` on the job row so it

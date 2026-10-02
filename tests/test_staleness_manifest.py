@@ -14,7 +14,9 @@ from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_ident
 from auto_reel_ng.staleness.manifest import (
     manifest_path,
     read_manifest,
+    recorded_movie_path,
     recorded_output_path,
+    records_output,
     write_manifest,
 )
 
@@ -125,3 +127,70 @@ def test_recorded_output_path_reads_no_disk(tmp_path: Path) -> None:
             found = recorded_output_path(output_relpath(old).name, out / output_relpath(new))
             assert found == out / output_relpath(old)
     assert not (tmp_path / "does-not-exist").exists()
+
+
+def test_recorded_movie_path_places_dated_and_undated_names(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    expected = out / "2025" / "2025-01-02 - New.mp4"
+
+    assert (
+        recorded_movie_path("2024-06-27 - Old.mp4", expected)
+        == out / "2024" / "2024-06-27 - Old.mp4"
+    )
+    assert recorded_movie_path("Undated.mp4", expected) == out / "Undated.mp4"
+    assert recorded_movie_path("Undated.mp4", out / "Other.mp4") == out / "Undated.mp4"
+
+
+@pytest.mark.parametrize("recorded", ["", ".", "..", "a/b.mp4", "2024/2024-06-27 - Old.mp4"])
+def test_recorded_movie_path_refuses_anything_but_a_bare_file_name(
+    tmp_path: Path, recorded: str
+) -> None:
+    assert recorded_movie_path(recorded, tmp_path / "2025" / "2025-01-02 - New.mp4") is None
+
+
+def _record(event_dir: Path, output: str) -> None:
+    event_dir.mkdir(parents=True, exist_ok=True)
+    write_manifest(
+        event_dir, _fingerprint(event_dir), output=output, engine_identity=engine_identity((7, 1))
+    )
+
+
+def test_records_output_matches_the_exact_file(tmp_path: Path) -> None:
+    event = tmp_path / "event"
+    event.mkdir()
+    _record(event, "2024-06-27 - Old.mp4")
+    out = tmp_path / "out"
+
+    assert records_output(event, out / "2024" / "2024-06-27 - Old.mp4")
+    assert not records_output(event, out / "2023" / "2024-06-27 - Old.mp4")  # another year folder
+    assert not records_output(event, out / "2024" / "2024-06-27 - Other.mp4")  # another name
+
+
+def test_records_output_is_case_and_unicode_insensitive(tmp_path: Path) -> None:
+    event = tmp_path / "event"
+    event.mkdir()
+    _record(event, "2024-06-27 - Gr\u00e5 Kv\u00e4ll.mp4")  # precomposed
+    out = tmp_path / "out"
+
+    assert records_output(
+        event, out / "2024" / "2024-06-27 - gra\u030a kva\u0308ll.mp4"
+    )  # NFD, lower
+
+
+def test_records_output_is_false_without_a_usable_manifest(tmp_path: Path) -> None:
+    out = tmp_path / "out" / "2024" / "2024-06-27 - Old.mp4"
+    absent = tmp_path / "absent"
+    absent.mkdir()
+    malformed = tmp_path / "malformed"
+    _record(malformed, "2024-06-27 - Old.mp4")
+    manifest_path(malformed).write_text("{not json", encoding="utf-8")
+    wrong_version = tmp_path / "wrong-version"
+    _record(wrong_version, "2024-06-27 - Old.mp4")
+    payload = json.loads(manifest_path(wrong_version).read_text(encoding="utf-8"))
+    payload["version"] = 999
+    manifest_path(wrong_version).write_text(json.dumps(payload), encoding="utf-8")
+    dotdot = tmp_path / "dotdot"
+    _record(dotdot, "..")
+
+    for event in (absent, malformed, wrong_version, dotdot):
+        assert not records_output(event, out)

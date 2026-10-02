@@ -15,10 +15,21 @@ import pytest
 
 from auto_reel_ng.api import events_read
 from auto_reel_ng.api.settings import resolve_api_settings
+from auto_reel_ng.errors import ClaimedMovieError, EngineError
 from auto_reel_ng.event import DEFAULT_CLIP_ORDER
 from auto_reel_ng.ingest import EventRef, LayoutError, get_layout
+from auto_reel_ng.reel.document import Metadata, ReelDocument
 from auto_reel_ng.render import claims as claims_module
-from auto_reel_ng.render.claims import OutputCollision, output_collision, output_collision_message
+from auto_reel_ng.render.claims import (
+    ClaimedMovie,
+    OutputCollision,
+    claimed_movie,
+    claimed_movie_message,
+    output_collision,
+    output_collision_message,
+)
+from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
+from auto_reel_ng.staleness.manifest import manifest_path, write_manifest
 
 TODAY = date(2026, 9, 30)
 LAYOUT = "year-event"
@@ -299,3 +310,146 @@ def test_the_engine_answer_equals_the_apis_for_every_event(root: Path) -> None:
             )
     finally:
         locked.chmod(0o755)
+
+
+# --- claimed_movie: a recorded, no-longer-current path (render-refuses-claimed-movie) ---
+
+
+OLD_NAME = "2024-06-27 - Grillning med grannar.mp4"
+
+
+def _record(event_dir: Path, output: str) -> None:
+    """Write a render manifest for ``event_dir`` that records ``output`` as its movie."""
+    fingerprint = compute_fingerprint(
+        ReelDocument(metadata=Metadata(title="x")),
+        event_dir=event_dir,
+        look_defaults={},
+        ffmpeg_version=(7, 1),
+    )
+    write_manifest(event_dir, fingerprint, output=output, engine_identity=engine_identity((7, 1)))
+
+
+def _movie(tmp_path: Path, name: str = OLD_NAME) -> Path:
+    """An existing movie at ``<out>/<year>/<name>``."""
+    movie = tmp_path / "out" / name[:4] / name
+    movie.parent.mkdir(parents=True, exist_ok=True)
+    movie.write_bytes(b"movie")
+    return movie
+
+
+def _claim(event_dir: Path, movie: Path, root: Path) -> ClaimedMovie | None:
+    return claimed_movie(event_dir, movie, events=[ref.event_dir for ref in _walk(root)])
+
+
+def test_a_file_another_event_records_is_claimed(root: Path, tmp_path: Path) -> None:
+    renamed = _event(root, "2024/2024-06-27 - Grillkvall")
+    taker = _event(root, "2024/2024-06-27 - Grillning")
+    _record(renamed, OLD_NAME)
+    movie = _movie(tmp_path)
+
+    assert _claim(taker, movie, root) == ClaimedMovie(movie, (renamed,))
+
+
+def test_every_claimant_is_listed_sorted_by_path(root: Path, tmp_path: Path) -> None:
+    taker = _event(root, "2024/2024-06-27 - C")
+    second = _event(root, "2024/2024-06-27 - B")
+    first = _event(root, "2024/2024-06-27 - A")
+    _record(second, OLD_NAME)
+    _record(first, OLD_NAME)
+    movie = _movie(tmp_path)
+
+    found = _claim(taker, movie, root)
+
+    assert found is not None and found.recorded_by == (first, second)
+
+
+def test_nothing_is_claimed_when_the_file_does_not_exist(root: Path, tmp_path: Path) -> None:
+    renamed = _event(root, "2024/2024-06-27 - Grillkvall")
+    taker = _event(root, "2024/2024-06-27 - Grillning")
+    _record(renamed, OLD_NAME)
+
+    assert _claim(taker, tmp_path / "out" / "2024" / OLD_NAME, root) is None
+
+
+def test_the_event_itself_is_never_its_own_claimant(root: Path, tmp_path: Path) -> None:
+    own = _event(root, "2024/2024-06-27 - Grillning")
+    _record(own, OLD_NAME)
+
+    assert _claim(own, _movie(tmp_path), root) is None
+    # lexically the same directory spelled from another base
+    other_spelling = Path(os.path.relpath(own, Path.cwd()))
+    assert claimed_movie(other_spelling, _movie(tmp_path), events=[own]) is None
+
+
+def test_a_file_nobody_records_is_not_claimed(root: Path, tmp_path: Path) -> None:
+    renamed = _event(root, "2024/2024-06-27 - Grillkvall")
+    taker = _event(root, "2024/2024-06-27 - Grillning")
+    _record(renamed, "2024-06-27 - Something else.mp4")
+    bare = _event(root, "2024/2024-06-27 - No manifest")
+
+    assert bare.is_dir()
+    assert _claim(taker, _movie(tmp_path), root) is None
+
+
+def test_the_claim_ends_once_the_renamed_event_records_its_new_name(
+    root: Path, tmp_path: Path
+) -> None:
+    renamed = _event(root, "2024/2024-06-27 - Grillkvall")
+    taker = _event(root, "2024/2024-06-27 - Grillning")
+    _record(renamed, OLD_NAME)
+    movie = _movie(tmp_path)
+    assert _claim(taker, movie, root) is not None
+
+    _record(renamed, "2024-06-27 - Grillkvall.mp4")  # it re-rendered under its new name
+
+    assert _claim(taker, movie, root) is None
+
+
+def test_a_corrupt_manifest_claims_nothing(root: Path, tmp_path: Path) -> None:
+    renamed = _event(root, "2024/2024-06-27 - Grillkvall")
+    taker = _event(root, "2024/2024-06-27 - Grillning")
+    _record(renamed, OLD_NAME)
+    manifest_path(renamed).write_text("{not json", encoding="utf-8")
+
+    assert _claim(taker, _movie(tmp_path), root) is None
+
+
+@pytest.mark.parametrize("recorded", ["..", ".", "", "2024/" + OLD_NAME])
+def test_a_recorded_value_that_is_not_a_file_name_claims_nothing(
+    root: Path, tmp_path: Path, recorded: str
+) -> None:
+    renamed = _event(root, "2024/2024-06-27 - Grillkvall")
+    taker = _event(root, "2024/2024-06-27 - Grillning")
+    _record(renamed, recorded)
+
+    assert _claim(taker, _movie(tmp_path), root) is None
+
+
+def test_a_claimant_whose_reel_yaml_does_not_parse_still_claims(root: Path, tmp_path: Path) -> None:
+    renamed = _event(root, "2024/2024-06-27 - Grillkvall", "version: 0\nmetadata: [unclosed\n")
+    taker = _event(root, "2024/2024-06-27 - Grillning")
+    _record(renamed, OLD_NAME)
+
+    found = _claim(taker, _movie(tmp_path), root)
+
+    assert found is not None and found.recorded_by == (renamed,)
+
+
+def test_a_case_different_name_is_a_claim(root: Path, tmp_path: Path) -> None:
+    renamed = _event(root, "2024/2024-06-27 - Grillkvall")
+    taker = _event(root, "2024/2024-06-27 - Grillning")
+    _record(renamed, OLD_NAME.lower())
+
+    assert _claim(taker, _movie(tmp_path), root) is not None
+
+
+def test_the_message_names_the_file_every_claimant_and_the_way_past() -> None:
+    message = claimed_movie_message(PurePosixPath("2024") / OLD_NAME, ["Grillkvall", "proj/B"])
+
+    assert f"2024/{OLD_NAME}" in message
+    assert "Grillkvall, proj/B" in message
+    assert "force" in message
+
+
+def test_the_error_is_a_typed_engine_error() -> None:
+    assert issubclass(ClaimedMovieError, EngineError)

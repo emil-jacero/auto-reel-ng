@@ -66,8 +66,10 @@ be read claims nothing. The event being rendered is never its own claimant, and 
 
 When another event claims the file, the render SHALL fail that event with a typed engine error that names the
 file and the claiming event(s) and says that a forced render replaces it. The refusal SHALL be decided before
-anything is written or probed for the event: no `.part`, no manifest, no ffmpeg invocation, and no clip adopted
-into its `reel.yaml`. It SHALL NOT stop the other events of a batch. It SHALL hold for the CLI's `render` and for
+anything is rendered or probed for the event: no `.part`, no manifest and no ffmpeg invocation, and, in the
+worker, no clip adopted into its `reel.yaml`. (The CLI's reconcile step runs before its gate for every event, so
+it may already have seeded or adopted into `reel.yaml`, as it does for an event refused by the collision rule; the
+refusal itself writes nothing.) It SHALL NOT stop the other events of a batch. It SHALL hold for the CLI's `render` and for
 the worker; a forced render (`--force`, a job's `force`) SHALL skip the check, and so SHALL a dry run, which
 checks nothing on disk. A render that would create a new file, or whose output path holds a file nobody records,
 replaces nothing and is unaffected. The engine SHALL NOT delete, move or rename the claimed movie in any case.

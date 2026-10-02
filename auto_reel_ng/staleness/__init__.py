@@ -23,7 +23,9 @@ from .manifest import (
     RenderManifest,
     manifest_path,
     read_manifest,
+    recorded_movie_path,
     recorded_output_path,
+    records_output,
     write_manifest,
 )
 
@@ -40,7 +42,9 @@ __all__ = [
     "RenderManifest",
     "manifest_path",
     "read_manifest",
+    "recorded_movie_path",
     "recorded_output_path",
+    "records_output",
     "write_manifest",
     # gate
     "StalenessReason",
