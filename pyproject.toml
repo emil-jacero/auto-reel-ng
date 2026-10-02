@@ -40,6 +40,9 @@ dev = [
     "mypy>=1.18.0",
     "pylint>=3.3.8",
     "pre-commit>=4.0.0",
+    # starlette.testclient prefers httpx2 (and warns when it falls back to httpx);
+    # httpx stays for the live-server tests (tests/test_cli_serve*.py).
+    "httpx2>=2.13.1",
     "httpx>=0.28.0",
 ]
 

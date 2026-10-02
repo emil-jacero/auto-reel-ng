@@ -22,8 +22,11 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from .document import SCHEMA_VERSION, ClipOrder, ReelDocument
 
 
-def _yaml() -> YAML:
+def round_trip_yaml() -> YAML:
     """A ruamel round-trip YAML in the engine's canonical block style.
+
+    The single definition of that style: the writer and any tooling that must rewrite a
+    ``reel.yaml`` outside :func:`write_document` (``scripts/make_dev_library.py``) use it.
 
     The indentation (2-space mappings, 4-space sequences, offset 2) is the style
     a hand-authored ``reel.yaml`` is expected to use; documents in this style
@@ -45,7 +48,7 @@ def document_to_data(doc: ReelDocument) -> CommentedMap:
     canonical order. Empty sections are omitted; ``version`` is always present.
     """
     if doc.raw is not None:
-        data = _yaml().load(_dump_to_str(doc.raw))  # cheap structural deep copy
+        data = round_trip_yaml().load(_dump_to_str(doc.raw))  # cheap structural deep copy
         data["version"] = SCHEMA_VERSION
         return data  # type: ignore[no-any-return]
     return _build_fresh(doc)
@@ -91,7 +94,7 @@ def write_document(doc: ReelDocument, path: Union[str, Path]) -> None:
 def _dump_to_str(data: Any) -> str:
     """Dump a ruamel structure (or plain data) to a string."""
     stream = io.StringIO()
-    _yaml().dump(data, stream)
+    round_trip_yaml().dump(data, stream)
     return stream.getvalue()
 
 

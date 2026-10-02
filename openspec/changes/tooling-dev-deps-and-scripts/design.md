@@ -9,7 +9,7 @@ Current state, re-checked against `origin/main` (6a7fe16):
   `filterwarnings`. The main venv has Starlette 1.3.1, FastAPI 0.139.0, httpx 0.28.1, no `httpx2`.
   `starlette/testclient.py` (1.3.1 and every release from 1.4.1 to 1.7.0 checked) does
   `try: import httpx2 as httpx / except ModuleNotFoundError: import httpx` and, on the fallback, warns
-  `StarletteDeprecationWarning` (a `DeprecationWarning` subclass) with `stacklevel=2`, so pytest attributes it
+  `StarletteDeprecationWarning` (a `UserWarning` subclass in 1.7.0, not a `DeprecationWarning` as the triage note assumed) with `stacklevel=2`, so pytest attributes it
   to `fastapi/testclient.py:1`. If neither is installed it raises `RuntimeError`. The triage note's claim that
   1.3.1 prints no warning is wrong: `pytest tests/test_api_app.py` on the main venv shows it today.
 - `auto_reel_ng/reel/writer.py` `_yaml()` (lines 25-35) is the single place the canonical block style is set:
@@ -48,7 +48,7 @@ tests enforce, stated in the same terms a spec would use.
      without a `StarletteDeprecationWarning` in the warnings summary.
    - Scenario, `httpx`-only environment (the state today): the dependency test fails with the warning text,
      naming `httpx2`, instead of the suite passing quietly.
-2. `import starlette.testclient` in a fresh interpreter run with `-W error::DeprecationWarning` SHALL succeed in
+2. `import starlette.testclient` in a fresh interpreter with `StarletteDeprecationWarning` turned into an error SHALL succeed in
    the dev environment.
 3. `round_trip_yaml()` SHALL return a ruamel round-trip `YAML` with `preserve_quotes` and
    `indent(mapping=2, sequence=4, offset=2)`, and SHALL be the only place that style is set. `write_document`,
@@ -81,7 +81,7 @@ Starlette dropping the fallback. The 2.13.1 floor is the version verified; the u
 
 ### httpx2 vs a `filterwarnings` entry
 **Context**: the triage sketch offered both.
-**Explored**: `filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`...:DeprecationWarning"]`.
+**Explored**: `filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`...:UserWarning"]`.
 **Decision**: not taken (kept as the fallback the proposal names only if httpx2 had changed `TestClient`
 behaviour, which it did not).
 **Rationale**: a filter hides the symptom and leaves the suite exposed to the day the fallback is removed; it
@@ -96,7 +96,9 @@ warnings recorder inside the process cannot see it.
 unrelated Starlette deprecation into a suite-wide collection error); an in-process `importlib.reload`
 (mutates global module state other tests share); a subprocess.
 **Decision**: one test, `tests/test_dev_dependencies.py`, runs
-`[sys.executable, "-W", "error::DeprecationWarning", "-c", "import starlette.testclient"]` and asserts a zero
+`[sys.executable, "-c", code]`, where `code` calls `warnings.simplefilter("error", StarletteDeprecationWarning)` and then
+imports `starlette.testclient` (a `-W` flag cannot name the class, and `-W error::DeprecationWarning` would not catch
+a `UserWarning`), and asserts a zero
 return code, with the captured stderr as the assertion message. It also asserts `import httpx` still works
 (the live-server tests need it).
 **Rationale**: isolated, no global state, loud and specific. Tests already spawn subprocesses
