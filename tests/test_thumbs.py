@@ -654,3 +654,15 @@ def test_one_line_cause_of_a_timeout_names_no_server_path(tmp_path: Path) -> Non
         one_line_cause(reason, clip)
         == "ffmpeg timed out extracting the frame at 15.360s: Command timed out after 60s"
     )
+
+
+def test_one_line_cause_of_a_timeout_leaves_out_its_stderr(tmp_path: Path) -> None:
+    clip = tmp_path / "clip.mp4"
+    reason = (
+        f"ffmpeg timed out extracting the frame at 15.360s: Command timed out after 60s: "
+        f"/usr/bin/ffmpeg -ss 15.360 -i {clip}\nstderr:\nError reading {clip}: I/O error\n"
+    )
+    assert (
+        one_line_cause(reason, clip)
+        == "ffmpeg timed out extracting the frame at 15.360s: Command timed out after 60s"
+    )

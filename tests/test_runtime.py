@@ -305,6 +305,10 @@ if mode == "one-second":
     sys.exit(0)
 if mode == "sleep":
     time.sleep(60)
+if mode == "log-then-sleep":
+    sys.stderr.write("Error reading /lib/clip.mp4: Input/output error\\n")
+    sys.stderr.flush()
+    time.sleep(60)
 """
 
 
@@ -414,6 +418,15 @@ def test_a_hung_command_is_killed_and_reported(
     assert "timed out after 0.5s" in str(excinfo.value)
     assert "fakebin" in str(excinfo.value)
     assert not _alive(_child_pid(tmp_path))
+
+
+def test_a_timeout_keeps_what_the_hung_command_logged(bin_runtime: FfmpegRuntime) -> None:
+    with pytest.raises(FfmpegTimeoutError) as excinfo:
+        bin_runtime.with_timeout(1.0).run(["log-then-sleep"])
+    message = str(excinfo.value)
+    assert "timed out after 1s" in message
+    assert message.rstrip().endswith("Error reading /lib/clip.mp4: Input/output error")
+    assert "\nstderr:\n" in message
 
 
 def test_a_command_within_its_bound_is_unaffected(bin_runtime: FfmpegRuntime) -> None:
