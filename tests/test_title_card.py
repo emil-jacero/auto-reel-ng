@@ -24,7 +24,7 @@ from auto_reel_ng.errors import FontResolutionError, RenderError, TitleCardError
 from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
 from auto_reel_ng.probe import probe_media
 from auto_reel_ng.probe.metadata import AudioStream, ClipMetadata
-from auto_reel_ng.reel.document import Metadata
+from auto_reel_ng.reel.document import Metadata, Trim
 from auto_reel_ng.render import (
     ProducedSegment,
     RenderOptions,
@@ -300,6 +300,128 @@ def test_chapter_without_title_clip_gets_no_card() -> None:
     segments = build_segments(plan, Path("/ev"))
     out = apply_decorators(("title",), plan, _target(), segments)
     assert not any(s.is_synthetic for s in out)
+
+
+def _facts(*identities: str, duration: float = 10.0) -> dict[str, ClipMetadata]:
+    """Probe facts for ``identities`` (cuts need the probed duration)."""
+    return {
+        identity: ClipMetadata(
+            path=Path(identity),
+            duration=duration,
+            fps=30.0,
+            video_codec="h264",
+            profile="high",
+            width=1920,
+            height=1080,
+            sample_aspect_ratio=None,
+            display_aspect_ratio=None,
+            pix_fmt="yuv420p",
+            video_bitrate=None,
+            rotation=None,
+            color_transfer=None,
+            is_hdr=False,
+            audio=AudioStream("aac", 48000, 2, "stereo"),
+            creation_time=None,
+        )
+        for identity in identities
+    }
+
+
+def _decorate(plan: RenderPlan, *identities: str) -> tuple[Segment, ...]:
+    segments = build_segments(plan, Path("/ev"), _facts(*identities))
+    return apply_decorators(("title",), plan, _target(), segments)
+
+
+def _order(out: tuple[Segment, ...]) -> list[str]:
+    return ["<card>" if s.is_synthetic else s.identity or "?" for s in out]
+
+
+def test_fully_cut_title_clip_moves_card_to_next_clip() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(
+            name="Ch1",
+            clips=(
+                ResolvedClip(identity="a.mp4", is_title=True, cut_spans=(Trim(0.0, 10.0),)),
+                ResolvedClip(identity="b.mp4"),
+            ),
+        ),
+    )
+    out = _decorate(plan, "a.mp4", "b.mp4")
+    assert _order(out) == ["<card>", "b.mp4"]
+    assert out[0].chapter == "Ch1"
+    request = out[0].producer_config
+    assert isinstance(request, TitleCardRequest)
+    assert request.content.heading == "Ch1"
+
+
+def test_fully_cut_later_title_clip_anchors_at_chapter_start() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(
+            name="Ch1",
+            clips=(
+                ResolvedClip(identity="a.mp4"),
+                ResolvedClip(identity="b.mp4"),
+                ResolvedClip(identity="c.mp4", is_title=True, cut_spans=(Trim(0.0, 10.0),)),
+            ),
+        ),
+    )
+    out = _decorate(plan, "a.mp4", "b.mp4", "c.mp4")
+    assert _order(out) == ["<card>", "a.mp4", "b.mp4"]
+
+
+def test_fully_cut_chapter_gets_no_card_and_other_chapter_keeps_its_own() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(
+            name="Gone",
+            clips=(
+                ResolvedClip(identity="a.mp4", is_title=True, cut_spans=(Trim(0.0, 10.0),)),
+                ResolvedClip(identity="b.mp4", cut_spans=(Trim(0.0, 12.0),)),
+            ),
+        ),
+        ResolvedChapter(name="Kept", clips=(ResolvedClip(identity="c.mp4", is_title=True),)),
+    )
+    out = _decorate(plan, "a.mp4", "b.mp4", "c.mp4")
+    assert _order(out) == ["<card>", "c.mp4"]
+    assert [s.chapter for s in out] == ["Kept", "Kept"]
+
+
+def test_partially_cut_title_clip_keeps_anchor_with_one_card() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(
+            name="Ch1",
+            clips=(
+                ResolvedClip(identity="x.mp4"),
+                ResolvedClip(
+                    identity="a.mp4",
+                    is_title=True,
+                    cut_spans=(Trim(0.0, 3.0), Trim(5.0, 6.0)),
+                ),
+            ),
+        ),
+    )
+    out = _decorate(plan, "x.mp4", "a.mp4")
+    # Two kept spans (3-5, 6-10) yield one card, immediately before the first kept span.
+    assert _order(out) == ["x.mp4", "<card>", "a.mp4", "a.mp4"]
+    assert sum(1 for s in out if s.is_synthetic) == 1
+
+
+def test_chapter_without_title_clip_stays_cardless_when_clips_are_cut() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(
+            name="Ch1",
+            clips=(
+                ResolvedClip(identity="a.mp4", cut_spans=(Trim(0.0, 10.0),)),
+                ResolvedClip(identity="b.mp4"),
+            ),
+        ),
+    )
+    out = _decorate(plan, "a.mp4", "b.mp4")
+    assert _order(out) == ["b.mp4"]
 
 
 # --------------------------------------------------------------------------- #

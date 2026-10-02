@@ -32,7 +32,8 @@ PathLike = Union[str, Path]
 #: archive re-render — accepted trade-off (D-C8).
 #: 2: render-target-format (1920x1080 / highest-clip-fps canvas, not the first clip's).
 #: 3: vaapi-pad-fill (padded clips render black bars, not pad_vaapi's green, on Mesa).
-RENDER_GRAPH_VERSION = 3
+#: 4: title-card-whole-clip-cut (a chapter whose title clip is wholly cut keeps its title card).
+RENDER_GRAPH_VERSION = 4
 
 #: The four fingerprint components, in the fixed order the combined hash uses.
 COMPONENTS = ("editorial", "defaults", "clip_set", "engine")

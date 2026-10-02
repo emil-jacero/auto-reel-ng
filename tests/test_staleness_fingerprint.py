@@ -30,8 +30,8 @@ FFMPEG_VERSION = (7, 1)
 PINNED_EDITORIAL = "cfb295abf2c9f44e4ec05e5634beaf1b9b21235c21d65d0109a944509d848de4"
 PINNED_DEFAULTS = "9d1a9bf4432fae2ec90ade0e7eb1552455abd6da0fac7974d78a16d63113f555"
 PINNED_CLIP_SET = "b1c642b3cd29b949070b357534bae6e2077121b032f93fa34c7aa0df957b6663"
-PINNED_ENGINE = "6b33c1854f377de7a817a286dcded9064c1eb6253000e564bb23274587f8b794"
-PINNED_COMBINED = "5f3f2ebc1ba60b5f357a93aad641cce507e027cd122d119f4dabe1002c8943db"
+PINNED_ENGINE = "6f469eebaebec6539d78ded69207f8c6c9ed924bdac8d6acf031b28dfa04ffa1"
+PINNED_COMBINED = "e87cf6878848a102e817c0abbe673155daed86d26e6da09f9422e92a133978ce"
 
 
 def _document(title: str = "Party") -> ReelDocument:
@@ -124,6 +124,28 @@ def test_version_2_manifest_is_engine_stale(
         old = _fingerprint(event_dir)
         identity = fingerprint_module.engine_identity(FFMPEG_VERSION)
     assert identity.startswith("render_graph_version=2 ")
+    write_manifest(event_dir, old, output=output.name, engine_identity=identity)
+
+    verdict = evaluate(event_dir, output, _fingerprint(event_dir))
+
+    assert verdict.stale is True
+    assert verdict.reasons == (StalenessReason.ENGINE,)
+
+
+def test_version_3_manifest_is_engine_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # title-card-whole-clip-cut bumped RENDER_GRAPH_VERSION to 4: an output rendered
+    # under version 3 must re-render, for the engine reason alone.
+    event_dir = _event_dir(tmp_path)
+    output = event_dir / "Party.mp4"
+    output.write_bytes(b"rendered")
+    with monkeypatch.context() as patch:
+        patch.setattr(fingerprint_module, "RENDER_GRAPH_VERSION", 3)
+        old = _fingerprint(event_dir)
+        identity = fingerprint_module.engine_identity(FFMPEG_VERSION)
+    assert identity.startswith("render_graph_version=3 ")
+    assert fingerprint_module.RENDER_GRAPH_VERSION == 4
     write_manifest(event_dir, old, output=output.name, engine_identity=identity)
 
     verdict = evaluate(event_dir, output, _fingerprint(event_dir))
