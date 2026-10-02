@@ -13,10 +13,10 @@ import { Pill } from '../ui/Pill'
  * The save bar, shown while Edit mode holds unsaved changes (or a vanished event's
  * alert) and in the page, `hidden`, from the moment Edit mode is ready, so the
  * first edit does not build it. Held at the bottom of the viewport while it takes
- * at most two fifths of the window and the window is at least 28rem tall; otherwise it rests after the editor (EventEditor.tsx
- * `placeBar`). It says what changed, offers Reset and Save, and shows the last
- * save's failure above them with that failure's own choices (Retry, Reload
- * latest, Overwrite with mine).
+ * at most two fifths of the window and the window is at least 28rem tall; otherwise
+ * it rests after the editor (EventEditor.tsx `placeBar`). It says what changed,
+ * offers Reset and Save, and shows the last save's failure above them with that
+ * failure's own choices (Retry, Reload latest, Overwrite with mine).
  *
  * Every control here follows the busy-control rule: one that cannot act now is
  * aria-disabled and ignores presses, never `disabled`, which would drop focus
