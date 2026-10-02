@@ -26,9 +26,9 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, Select, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -77,6 +77,21 @@ class FinishedJobs:
     as_of: datetime
     #: Every job with ``finished_at >= (since or as_of) - overlap``, by ``finished_at`` ascending.
     jobs: list[Job]
+
+
+def _latest_by_project_stmt(project_root: str) -> Select[Any]:
+    """The newest job of each event under ``project_root`` (ranked, rank 1 kept)."""
+    ranked = (
+        select(
+            Job.id,
+            func.row_number()  # pylint: disable=not-callable
+            .over(partition_by=Job.event_dir, order_by=(Job.created_at.desc(), Job.id.desc()))
+            .label("rn"),
+        )
+        .where(Job.project_root == project_root)
+        .subquery()
+    )
+    return select(Job).join(ranked, Job.id == ranked.c.id).where(ranked.c.rn == 1)
 
 
 class JobStore:
@@ -291,18 +306,17 @@ class JobStore:
     def latest_by_project(self, project_root: str) -> dict[str, Job]:
         """The most recent job (any status) per ``event_dir`` under ``project_root``.
 
-        One query (Postgres ``DISTINCT ON``) rather than a per-event lookup or a
-        full-table scan per status — the events-list read model (API, D-A3) needs
-        "latest job per event" for a project without an N+1 query per event.
+        One query rather than a per-event lookup or a full-table scan per status —
+        the events-list read model (API, D-A3) needs "latest job per event" for a
+        project without an N+1 query per event. It ranks each event's jobs with
+        ``row_number() OVER (PARTITION BY event_dir ORDER BY created_at DESC, id DESC)``
+        and keeps rank 1, which behaves the same on SQLAlchemy 2.0.x and 2.1 (the
+        ``DISTINCT ON`` spelling is deprecated in 2.1). Two jobs of one event with
+        an identical ``created_at`` resolve by ``id``, so a repeated read answers
+        the same.
         """
         with session_scope(self._session_factory) as session:
-            stmt = (
-                select(Job)
-                .where(Job.project_root == project_root)
-                .distinct(Job.event_dir)
-                .order_by(Job.event_dir, Job.created_at.desc())
-            )
-            jobs = session.execute(stmt).scalars().all()
+            jobs = session.execute(_latest_by_project_stmt(project_root)).scalars().all()
             return {job.event_dir: job for job in jobs}
 
     def cancel_queued(self, job_id: uuid.UUID) -> Optional[Job]:

@@ -7,17 +7,23 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable, TypeVar
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from auto_reel_ng.errors import IllegalJobTransitionError
 from auto_reel_ng.persistence.engine import session_scope
-from auto_reel_ng.persistence.job_store import CancelOutcome, JobStore, Submission
+from auto_reel_ng.persistence.job_store import (
+    CancelOutcome,
+    JobStore,
+    Submission,
+    _latest_by_project_stmt,
+)
 from auto_reel_ng.persistence.models import Job, JobStatus
 
 pytestmark = pytest.mark.requires_db
@@ -780,3 +786,90 @@ def test_requeue_rejects_a_terminal_job(job_store: JobStore) -> None:
 
     with pytest.raises(IllegalJobTransitionError):
         job_store.requeue(job_id)
+
+
+# --------------------------------------------------------------------------- #
+# Latest job per event in a project (job-store-latest-by-project)
+# --------------------------------------------------------------------------- #
+
+_T0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+
+
+def _insert_job(
+    factory: sessionmaker,
+    event_dir: str,
+    *,
+    project_root: str | None = LIBRARY_A,
+    status: JobStatus = JobStatus.DONE,
+    minutes: int = 0,
+    job_id: uuid.UUID | None = None,
+) -> uuid.UUID:
+    """Insert a job with an explicit ``created_at`` so ordering is not left to transaction timing."""
+    job = Job(
+        project_root=project_root,
+        event_dir=event_dir,
+        status=status,
+        created_at=_T0 + timedelta(minutes=minutes),
+    )
+    if job_id is not None:
+        job.id = job_id
+    with session_scope(factory) as session:
+        session.add(job)
+        session.flush()
+        return job.id
+
+
+def test_latest_by_project_returns_the_newest_job_of_each_event_whatever_its_status(
+    job_store: JobStore, jobs_session_factory: sessionmaker
+) -> None:
+    _insert_job(jobs_session_factory, GRILLNING, status=JobStatus.DONE, minutes=1)
+    _insert_job(jobs_session_factory, GRILLNING, status=JobStatus.FAILED, minutes=2)
+    newest = _insert_job(jobs_session_factory, GRILLNING, status=JobStatus.QUEUED, minutes=3)
+    only = _insert_job(jobs_session_factory, BLANDAT, status=JobStatus.FAILED, minutes=0)
+
+    latest = job_store.latest_by_project(LIBRARY_A)
+
+    assert set(latest) == {GRILLNING, BLANDAT}
+    assert latest[GRILLNING].id == newest
+    assert latest[GRILLNING].status == JobStatus.QUEUED
+    assert latest[BLANDAT].id == only
+
+
+def test_latest_by_project_excludes_other_projects_and_unrooted_jobs(
+    job_store: JobStore, jobs_session_factory: sessionmaker
+) -> None:
+    own = _insert_job(jobs_session_factory, BLANDAT, minutes=1)
+    foreign = _insert_job(jobs_session_factory, BLANDAT, project_root=LIBRARY_B, minutes=5)
+    _insert_job(jobs_session_factory, TRASIG, project_root=None, minutes=5)
+
+    assert {event: job.id for event, job in job_store.latest_by_project(LIBRARY_A).items()} == {
+        BLANDAT: own
+    }
+    assert {event: job.id for event, job in job_store.latest_by_project(LIBRARY_B).items()} == {
+        BLANDAT: foreign
+    }
+    assert job_store.latest_by_project("/dev/c/library") == {}
+
+
+def test_latest_by_project_resolves_a_created_at_tie_the_same_way_every_time(
+    job_store: JobStore, jobs_session_factory: sessionmaker
+) -> None:
+    low = uuid.UUID(int=1)
+    high = uuid.UUID(int=2)
+    # Inserted high-first so insertion order cannot be what decides it.
+    _insert_job(jobs_session_factory, BLANDAT, minutes=1, job_id=high)
+    _insert_job(jobs_session_factory, BLANDAT, minutes=1, job_id=low)
+
+    first = job_store.latest_by_project(LIBRARY_A)[BLANDAT].id
+    second = job_store.latest_by_project(LIBRARY_A)[BLANDAT].id
+
+    assert first == second == high  # id DESC breaks the tie
+
+
+def test_latest_by_project_statement_does_not_use_the_deprecated_distinct_on() -> None:
+    # SQLAlchemy 2.0.x still runs DISTINCT ON without a warning, so only the rendered SQL
+    # can catch a regression to the spelling 2.1 deprecates.
+    sql = str(_latest_by_project_stmt("/p").compile(dialect=postgresql.dialect()))
+
+    assert "row_number()" in sql.lower()
+    assert "DISTINCT ON" not in sql.upper()
