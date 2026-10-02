@@ -480,7 +480,7 @@ operating system gives up on that connection, which can take many minutes.
 A database that has stopped answering does not hold the stop of the live feed: the
 WebSocket hub abandons a read it is stalled in, and a client that closes during
 the first snapshot's read is released at once. Connecting to Postgres gives up
-after 5 s (`?connect_timeout=N` in `DATABASE_URL` changes it). A query already
+after 5 s (`?connect_timeout=N` in `DATABASE_URL`, or libpq's `PGCONNECT_TIMEOUT`, changes it). A query already
 running on an established connection is not interrupted, though, and the process
 exits only after it ends.
 

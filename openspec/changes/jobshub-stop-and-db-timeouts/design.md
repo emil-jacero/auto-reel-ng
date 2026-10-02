@@ -119,10 +119,12 @@ shutdown closed the connection), the handler cancels `subscribing`, awaits it, a
 subscribe releases the lock and abandons the seed, exactly as a cancelled start does today. If `incoming`
 finished first with an ordinary message, the handler drops it, starts a new `receive()` task, and keeps
 waiting. If `subscribing` finished first, the handler continues as today (push task, then the receive loop,
-reusing the pending `incoming` task as its first read). The existing rule "only the push task is ever
-cancelled, never `receive()`" is kept: the `incoming` task is awaited to completion on every path, and the
-handler's own cancellation (TestClient) goes through the same `finally` that releases the subscription before
-its first suspension.
+reusing the pending `incoming` task as its first read). The old rule "only the push task is ever
+cancelled, never `receive()`" is narrowed: while the handler runs normally the `incoming` task is awaited to
+the connection's end, and it is cancelled only when the handler ends before the connection does (the
+handler's own cancellation, as TestClient's session exit causes, or a first subscribe that fails). Both go
+through the same `finally`, which releases the subscription before its first suspension and then cancels the
+pending `receive()`; uvicorn's `receive` is cancel-safe.
 **Rationale**: a client that closes its tab during a database stall is released at once instead of when the
 database answers, and the shutdown reaches `stop()` on the close the server already
 sends. Cost: the handler body gains a second task and a wait. Principle V is unaffected: this is WebSocket
@@ -137,14 +139,18 @@ connection handling, which only the API has.
 def make_engine(database_url: str) -> Engine:
     url = make_url(database_url)
     connect_args: dict[str, object] = {}
-    if url.get_backend_name() == "postgresql" and "connect_timeout" not in url.query:
+    if (
+        url.get_backend_name() == "postgresql"
+        and "connect_timeout" not in url.query
+        and "PGCONNECT_TIMEOUT" not in os.environ
+    ):
         connect_args["connect_timeout"] = CONNECT_TIMEOUT_SECONDS
     return create_engine(url, future=True, connect_args=connect_args)
 ```
 
 **Rationale**: a key in `config.yaml` has no use no one has asked for (Principle VII), and `DATABASE_URL`
 already is the operator's override: `?connect_timeout=30` in the URL wins (psycopg would otherwise let the
-keyword override the conninfo, so the guard matters). Only Postgres gets the argument: other drivers reject it.
+keyword override the conninfo, so the guard matters). libpq's `PGCONNECT_TIMEOUT` environment variable is honoured the same way: when it is set, no keyword is passed (the keyword would silently beat it). Only Postgres gets the argument: other drivers reject it.
 `make_url(...)` is passed to `create_engine` as given, so the password is not re-rendered or logged. 5 s covers
 a cold container and a LAN and is short enough to sit inside the "few seconds" of the stop contract.
 **Failure behavior** (Principle I): the connect raises the driver's `OperationalError` with its libpq text

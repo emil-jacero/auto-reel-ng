@@ -446,8 +446,9 @@ async def ws_jobs(websocket: WebSocket) -> None:
     Anything else the client sends meanwhile is dropped.
 
     The push task is cancelled whenever the handler ends. ``receive()`` is awaited to the
-    connection's end and abandoned only when the handler itself is cancelled (the test
-    harness' session exit), never while the handler is running normally. The push task
+    connection's end while the handler runs normally; if the handler ends before the
+    connection does (the handler is cancelled, as the test harness' session exit does, or
+    the first subscribe fails), the pending ``receive()`` is cancelled with it. The push task
     also releases the subscription itself, for the one ending the receive loop learns of
     late (:func:`_push_frames`). The handler's own release comes first in its cleanup,
     before anything can suspend: a cancel landing on an earlier await would skip it.
