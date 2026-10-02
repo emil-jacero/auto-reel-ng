@@ -26,7 +26,8 @@ This change is the **engine and API half** of both items. Its consumers are sepa
 refinements of D-11, and depends on no §8 research item.
 
 It builds on the merged gate change `thumbs-hdr-and-cache-hygiene`, which edits the same file
-(`thumbs/thumbnail.py`). That change adds an HDR flag to the cache key payload for HDR clips only,
+(`thumbs/thumbnail.py`). That change tone-maps HDR clips in `thumbnail_args` (`THUMBNAIL_VERSION` 3; the key is computed before
+any probe, so it carries no HDR flag),
 `ThumbnailCacheError` on "No space left on device", and a once-per-process sweep of stale
 `.<key>.<hex>.tmp` files. This change is written to compose with all three (see design, "Interaction with
 the merged gate").

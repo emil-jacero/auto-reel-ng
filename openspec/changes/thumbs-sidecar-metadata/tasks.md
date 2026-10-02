@@ -11,7 +11,7 @@ and need no marker unless stated. A marker's age is set with `os.utime`, never `
   gate's sweep matches), `fsync`s, then `os.replace`s, and removes the temporary on any failure.
   Test (`tests/test_thumbs.py`): the file appears complete under the right name, no temporary remains, a
   read-only directory raises `OSError` from the helper.
-- [x] 1.2 Duration: after `_probe_duration` and `_create_temporary` succeed, and before `_extract`, write
+- [x] 1.2 Duration: after `_probe_clip` and `_create_temporary` succeed, and before `_extract`, write
   `{"duration": d}` to `<key>.json`; an `OSError` becomes `ThumbnailCacheError` naming the directory (the
   temporary files are removed). Add `recorded_duration(target) -> Optional[float]` per design: `None` for
   absent, unreadable, invalid JSON, non-object, non-numeric, bool, non-finite or `<= 0`; never raises, never
