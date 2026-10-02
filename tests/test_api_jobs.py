@@ -322,14 +322,14 @@ def _cli_refused(project: Path, capsys: pytest.CaptureFixture[str]) -> set[str]:
 @pytest.mark.parametrize(
     ("real", "authored", "answers"),
     [
-        # The alias claims the path its own folder name gives it, as the worker renders
-        # it: it and the real fest refuse each other; Kalas itself collides with nothing.
-        ((KALAS, FEST_LOWER), False, {FEST: [FEST_LOWER], FEST_LOWER: [FEST], KALAS: None}),
-        # Nothing else claims the alias's path: it enqueues while Kalas's twins refuse.
-        ((KALAS, KALAS_LOWER), False, {FEST: None, KALAS: [KALAS_LOWER], KALAS_LOWER: [KALAS]}),
-        # The alias reads the folder's authored reel.yaml: both claim Kalas.mp4, so
-        # neither gets a job (no second render of one folder past the one-active-job rule).
-        ((KALAS,), True, {KALAS: [FEST], FEST: [KALAS]}),
+        # The alias is dropped from the walk (layout-alias-dedupe), so it claims no path:
+        # the real fest and Kalas collide with nothing, as the CLI's enqueue finds them.
+        ((KALAS, FEST_LOWER), False, {FEST_LOWER: None, KALAS: None}),
+        # Nothing else claims Kalas's path: its case-only twins refuse each other as before.
+        ((KALAS, KALAS_LOWER), False, {KALAS: [KALAS_LOWER], KALAS_LOWER: [KALAS]}),
+        # The alias reads the folder's authored reel.yaml but is no row, so it does not
+        # claim Kalas.mp4 a second time: Kalas enqueues.
+        ((KALAS,), True, {KALAS: None}),
     ],
     ids=[
         "alias-beside-its-name-twin",
@@ -338,7 +338,7 @@ def _cli_refused(project: Path, capsys: pytest.CaptureFixture[str]) -> set[str]:
     ],
 )
 @pytest.mark.usefixtures("cli_database")
-def test_an_in_project_alias_is_answered_as_the_cli_answers_it(
+def test_a_dropped_in_project_alias_claims_nothing_as_the_cli_sees_it(
     client: TestClient,
     store: JobStore,
     project: Path,

@@ -127,6 +127,120 @@ def test_removing_the_marker_restores_the_event(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# aliases of one real event directory are walked once
+# --------------------------------------------------------------------------- #
+
+LOGGER = "auto_reel_ng.ingest.layouts"
+
+
+def _alias_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+
+
+def test_symlinked_alias_beside_its_target_is_dropped(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    kalas = _mkevent(tmp_path, "2024", "2024-07-20 - Kalas")
+    (tmp_path / "2024" / "2024-07-20 - Fest").symlink_to(kalas, target_is_directory=True)
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        refs = list(year_event_layout(tmp_path))
+
+    assert [r.event_dir for r in refs] == [kalas]
+    fest = tmp_path / "2024" / "2024-07-20 - Fest"
+    assert _alias_warnings(caplog) == [f"skipping {fest}: alias of {kalas} (-> {kalas.resolve()})"]
+
+
+def test_the_real_directory_wins_even_when_the_alias_sorts_first(tmp_path: Path) -> None:
+    kalas = _mkevent(tmp_path, "2024-07-20 - Kalas")
+    (tmp_path / "2024-07-20 - Fest").symlink_to(kalas, target_is_directory=True)
+    assert [r.event_dir for r in flat_layout(tmp_path)] == [kalas]
+
+
+def test_alias_in_another_year_is_dropped_under_a_year_filter(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    target = _mkevent(tmp_path, "2024", "2024-07-20 - Kalas")
+    _mkevent(tmp_path, "2025")
+    alias = tmp_path / "2025" / "2024-07-20 - Kalas"
+    alias.symlink_to(target, target_is_directory=True)
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        refs = list(year_event_layout(tmp_path, years=["2025"]))
+
+    assert refs == []
+    assert _alias_warnings(caplog) == [f"skipping {alias}: alias of {target} (-> {target})"]
+
+
+def test_symlinked_year_directory_yields_each_event_once_under_the_real_year(
+    tmp_path: Path,
+) -> None:
+    a = _mkevent(tmp_path, "2024", "2024-06-21 - A")
+    b = _mkevent(tmp_path, "2024", "2024-07-04 - B")
+    (tmp_path / "2023").symlink_to(tmp_path / "2024", target_is_directory=True)
+    assert [r.event_dir for r in year_event_layout(tmp_path)] == [a, b]
+
+
+def test_root_behind_a_symlink_still_keeps_the_canonical_path(tmp_path: Path) -> None:
+    real_root = tmp_path / "real"
+    kalas = _mkevent(real_root, "2024", "2024-07-20 - Kalas")
+    (real_root / "2024" / "2024-07-20 - Fest").symlink_to(kalas, target_is_directory=True)
+    linked_root = tmp_path / "linked"
+    linked_root.symlink_to(real_root, target_is_directory=True)
+
+    refs = list(year_event_layout(linked_root))
+    assert [r.event_dir for r in refs] == [linked_root / "2024" / "2024-07-20 - Kalas"]
+
+
+def test_unduplicated_symlink_to_an_outside_directory_is_kept_silently(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    outside = _mkevent(tmp_path, "elsewhere", "2024-07-20 - Kalas")
+    root = tmp_path / "proj"
+    _mkevent(root, "2024")
+    link = root / "2024" / "2024-07-20 - Kalas"
+    link.symlink_to(outside, target_is_directory=True)
+
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        refs = list(year_event_layout(root))
+
+    assert [r.event_dir for r in refs] == [link]
+    assert caplog.records == []
+
+
+def test_two_symlinks_to_an_outside_target_keep_the_first_in_walk_order(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    outside = _mkevent(tmp_path, "elsewhere", "Kalas")
+    root = tmp_path / "proj"
+    root.mkdir()
+    first, second = root / "A", root / "B"
+    first.symlink_to(outside, target_is_directory=True)
+    second.symlink_to(outside, target_is_directory=True)
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        refs = list(flat_layout(root))
+
+    assert [r.event_dir for r in refs] == [first]
+    assert _alias_warnings(caplog) == [f"skipping {second}: alias of {first} (-> {outside})"]
+
+
+def test_an_ignored_target_takes_its_aliases_with_it(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    kalas = _mkevent(tmp_path, "2024", "2024-07-20 - Kalas")
+    (kalas / ".reelignore").touch()
+    (tmp_path / "2024" / "2024-07-20 - Fest").symlink_to(kalas, target_is_directory=True)
+
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        refs = list(year_event_layout(tmp_path))
+
+    assert refs == []
+    assert {r.levelno for r in caplog.records} == {logging.INFO}
+    assert len(caplog.records) == 2
+
+
+# --------------------------------------------------------------------------- #
 # registry
 # --------------------------------------------------------------------------- #
 

@@ -15,6 +15,7 @@ import pytest
 from auto_reel_ng.cli.adoption import REEL_FILENAME, persist, place_disk_clips, prepare_event
 from auto_reel_ng.errors import ReconcileError
 from auto_reel_ng.event import DEFAULT_CLIP_ORDER, ClipOrder, SortMethod, scan_event, seed_document
+from auto_reel_ng.ingest import get_layout
 from auto_reel_ng.reel import load_document, write_document
 from auto_reel_ng.reel.document import DEFAULT_CHAPTER_NAME, Chapter, ClipRef, ReelDocument
 
@@ -337,3 +338,38 @@ def test_a_clip_adopted_earlier_stays_where_it_is(tmp_path: Path) -> None:
     assert prepared.changed is False
     assert persist(prepared) is None
     assert (event / REEL_FILENAME).read_bytes() == before
+
+
+# --------------------------------------------------------------------------- #
+# a symlinked alias of an event never seeds the shared reel.yaml (layout-alias-dedupe)
+# --------------------------------------------------------------------------- #
+
+
+def _kalas_and_fest(root: Path) -> Path:
+    kalas = root / "2024" / "2024-07-20 - Kalas"
+    _touch(kalas / "a.mp4")
+    (root / "2024" / "2024-07-20 - Fest").symlink_to(kalas, target_is_directory=True)
+    return kalas
+
+
+def _prepare_and_persist_every_event(root: Path) -> None:
+    for ref in get_layout("year-event")(root):
+        persist(prepare_event(ref.event_dir, order=DEFAULT_CLIP_ORDER))
+
+
+def test_alias_does_not_seed_its_own_name_into_the_targets_reel_yaml(tmp_path: Path) -> None:
+    kalas = _kalas_and_fest(tmp_path)
+
+    _prepare_and_persist_every_event(tmp_path)
+
+    assert load_document(kalas / REEL_FILENAME).metadata.title == "Kalas"
+
+
+def test_alias_leaves_an_existing_reel_yaml_byte_identical(tmp_path: Path) -> None:
+    kalas = _kalas_and_fest(tmp_path)
+    _prepare_and_persist_every_event(tmp_path)
+    before = (kalas / REEL_FILENAME).read_bytes()
+
+    _prepare_and_persist_every_event(tmp_path)
+
+    assert (kalas / REEL_FILENAME).read_bytes() == before

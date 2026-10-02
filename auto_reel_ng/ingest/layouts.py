@@ -105,30 +105,70 @@ def _subdirs(directory: Path) -> list[Path]:
     return sorted((p for p in directory.iterdir() if p.is_dir()), key=lambda p: p.name)
 
 
-def _event_refs(event_dirs: Iterable[Path]) -> Iterable[EventRef]:
-    """Yield an :class:`EventRef` per directory, skipping (and logging) ``.reelignore`` ones."""
-    for event_dir in event_dirs:
+def _is_canonical(root: Path, event_dir: Path) -> bool:
+    """True when ``event_dir`` is reached from ``root`` without crossing a symlink."""
+    return event_dir.resolve() == root.resolve() / event_dir.relative_to(root)
+
+
+def _walk_dirs(root: Path, rows: Iterable[Path]) -> list[Path]:
+    """The event directories to yield: ``.reelignore`` skipped, then aliases collapsed.
+
+    Rows that resolve to the same real directory are one event. The row reached without
+    crossing a symlink wins, else the first in walk order; every other row is dropped with
+    a WARNING naming it, the kept row and the real target. Walk order is preserved.
+    """
+    live: list[Path] = []
+    for event_dir in rows:
         if is_reelignored(event_dir):
             logger.info("skipping %s: %s", event_dir, IGNORE_MARKER)
             continue
+        live.append(event_dir)
+
+    groups: dict[Path, list[Path]] = {}
+    for event_dir in live:
+        groups.setdefault(event_dir.resolve(), []).append(event_dir)
+
+    kept: set[Path] = set()
+    for target, members in groups.items():
+        if len(members) == 1:
+            kept.add(members[0])
+            continue
+        winner = next((m for m in members if _is_canonical(root, m)), members[0])
+        kept.add(winner)
+        for alias in members:
+            if alias is not winner:
+                logger.warning("skipping %s: alias of %s (-> %s)", alias, winner, target)
+
+    return [event_dir for event_dir in live if event_dir in kept]
+
+
+def _event_refs(event_dirs: Iterable[Path]) -> Iterable[EventRef]:
+    """Yield an :class:`EventRef` per (already filtered and de-aliased) directory."""
+    for event_dir in event_dirs:
         yield EventRef(event_dir=event_dir, metadata_hint=_folder_hint(event_dir.name))
 
 
 def year_event_layout(root: Path, years: Optional[Iterable[str]] = None) -> Iterable[EventRef]:
-    """Walk ``<root>/<year>/<event>/``; optionally restrict to ``years`` (D-6)."""
+    """Walk ``<root>/<year>/<event>/``; optionally restrict to ``years`` (D-6).
+
+    Aliases are collapsed over *every* year before the year filter applies, so an alias
+    of an event in an excluded year is still recognised (and dropped, with a WARNING).
+    """
     root = Path(root)
     year_filter = {str(y) for y in years} if years is not None else None
-    for year_dir in _subdirs(root):
-        if year_filter is not None and year_dir.name not in year_filter:
-            continue
-        yield from _event_refs(_subdirs(year_dir))
+    rows = [event_dir for year_dir in _subdirs(root) for event_dir in _subdirs(year_dir)]
+    event_dirs = _walk_dirs(root, rows)
+    if year_filter is not None:
+        event_dirs = [d for d in event_dirs if d.parent.name in year_filter]
+    yield from _event_refs(event_dirs)
 
 
 def flat_layout(root: Path, years: Optional[Iterable[str]] = None) -> Iterable[EventRef]:
     """Yield each immediate subdirectory of ``root`` as an event (no year level)."""
     if years:
         logger.debug("flat layout has no year level; ignoring the year filter %s", list(years))
-    yield from _event_refs(_subdirs(Path(root)))
+    root = Path(root)
+    yield from _event_refs(_walk_dirs(root, _subdirs(root)))
 
 
 register_layout("year-event", year_event_layout)

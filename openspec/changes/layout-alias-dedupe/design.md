@@ -58,8 +58,9 @@ def _dedupe_aliases(root: Path, rows: list[Path]) -> list[Path]: ...
 ```
 
 `year_event_layout` builds `rows` for all years, calls `_dedupe_aliases`, then applies the year
-filter to the survivors; `flat_layout` calls it on its single level. `_event_refs` is unchanged
-except that it receives already-deduped rows.
+filter to the survivors; `flat_layout` calls it on its single level. As built, the helper is
+`_walk_dirs(root, rows)`: it also owns the `.reelignore` skip (moved out of `_event_refs`, which now
+only maps already-filtered rows to refs) so the skip runs before the alias comparison.
 
 ## Failure behaviour and idempotency
 

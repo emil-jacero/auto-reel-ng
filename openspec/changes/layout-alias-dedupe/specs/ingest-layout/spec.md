@@ -47,6 +47,7 @@ Symlinks that point outside the project root and are not duplicated by another r
 - **WHEN** the real event contains a `.reelignore` and a symlink alias points to it
 - **THEN** neither is yielded, and no alias WARNING is emitted
 
-#### Scenario: Service lookup of a dropped alias
-- **WHEN** the events service is asked for the id of a dropped alias
-- **THEN** the lookup reports the event as not found
+#### Scenario: Listed-event lookup of a dropped alias
+- **WHEN** a service read that accepts only ids the events list shows (for example the media
+  endpoints) is asked for the id of a dropped alias
+- **THEN** the lookup reports the event as not found, and the events list does not show it
