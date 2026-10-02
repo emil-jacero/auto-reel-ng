@@ -76,6 +76,42 @@ def test_has_version_is_true_only_for_a_key_in_a_mapping(tmp_path: Path) -> None
     assert commands._has_version(legacy) is False
 
 
+@pytest.mark.parametrize(
+    "content", [b"", b"- a\n", b"just text\n"], ids=["empty", "list", "scalar"]
+)
+def test_has_version_is_false_for_an_empty_or_non_mapping_root(
+    tmp_path: Path, content: bytes
+) -> None:
+    path = tmp_path / "reel.yaml"
+    path.write_bytes(content)
+
+    assert commands._has_version(path) is False
+
+
+@pytest.mark.parametrize(
+    "content", [b"\xff\xfe\xfa", b"a: [unclosed\n"], ids=["not-utf8", "malformed"]
+)
+def test_has_version_still_raises_for_an_unparseable_file(tmp_path: Path, content: bytes) -> None:
+    path = tmp_path / "reel.yaml"
+    path.write_bytes(content)
+
+    with pytest.raises(ReelParseError, match="reel.yaml"):
+        commands._has_version(path)
+
+
+def test_a_malformed_yaml_reason_is_one_line_naming_the_file_only(tmp_path: Path) -> None:
+    path = tmp_path / "metadata.yaml"
+    path.write_bytes(b"a: [unclosed\nb: 1\n")
+
+    with pytest.raises(ReelParseError) as info:
+        commands._read_legacy_mapping(path)
+
+    message = str(info.value)
+    assert "\n" not in message
+    assert message.startswith("metadata.yaml: malformed YAML")
+    assert str(tmp_path) not in message
+
+
 # --------------------------------------------------------------------------- #
 # the batch
 # --------------------------------------------------------------------------- #
@@ -126,6 +162,32 @@ def test_a_malformed_reel_yaml_without_metadata_is_that_events_error(
     assert "imported 1 event(s), 1 failed" in out
     assert (broken / "reel.yaml").read_text(encoding="utf-8") == "a: [unclosed\n"
     assert load_document(last / "reel.yaml").metadata.title == "Last"
+
+
+@pytest.mark.parametrize("overwrite", [False, True], ids=["plain", "overwrite"])
+@pytest.mark.parametrize("reel_content", ["", "- a\n"], ids=["empty", "list"])
+def test_an_empty_or_non_mapping_reel_yaml_beside_metadata_is_still_imported(
+    root: Path, capsys: pytest.CaptureFixture[str], reel_content: str, overwrite: bool
+) -> None:
+    event = _event(root, "2024-05-01 - First", _good("New"))
+    (event / "reel.yaml").write_text(reel_content, encoding="utf-8")
+
+    assert main(["import", str(root), *(["--overwrite"] if overwrite else [])]) == 0
+
+    out = capsys.readouterr().out
+    assert "OK     2024-05-01 - First" in out
+    assert load_document(event / "reel.yaml").metadata.title == "New"
+
+
+def test_overwrite_heals_a_malformed_reel_yaml_beside_metadata(
+    root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    event = _event(root, "2024-05-01 - First", _good("New"))
+    (event / "reel.yaml").write_text("a: [unclosed\n", encoding="utf-8")
+
+    assert main(["import", str(root), "--overwrite"]) == 0
+
+    assert load_document(event / "reel.yaml").metadata.title == "New"
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")

@@ -5,9 +5,10 @@
 The `scan` subcommand SHALL report, per selected event, its clips and their reconcile
 classification (`NEW`/`ACTIVE`/`IGNORED`/`MISSING`) and its staleness verdict — fresh, or stale with the
 changed components as reasons — without running any render or ffmpeg encode. An event whose folder or
-`reel.yaml` cannot be read for lack of permission SHALL be reported as an `ERROR` for that event, naming the folder and the permission failure. It
-MUST NOT be listed as an empty or folder-seeded event, and it MUST NOT end the command: the remaining events
-are still listed and the command exits non-zero. Whether a `reel.yaml` exists SHALL be decided by the disk
+`reel.yaml` cannot be read for lack of permission SHALL be reported as an `ERROR` for that event, naming
+the folder and the permission failure. It MUST NOT be listed as an empty or folder-seeded event, and it
+MUST NOT end the command: the remaining
+events are still listed and the command exits non-zero. Whether a `reel.yaml` exists SHALL be decided by the disk
 answering, never by a lookup the disk refused.
 
 #### Scenario: Scan lists events and clip status
@@ -46,10 +47,10 @@ legacy source or must be checked for a `version` key) cannot be read, is not val
 is not a mapping, cannot be imported by `import_legacy`, or whose `reel.yaml` cannot be written, SHALL be
 reported as `ERROR <event>: <reason>`. `import` SHALL then continue with the remaining events. A failed
 event keeps whatever `reel.yaml` it had (the write is atomic). `import` SHALL print its final count line
-even when events failed, stating how many failed, and SHALL exit non-zero when any event failed. Skipping an event
-(no legacy source, or a v2 `reel.yaml` without `--overwrite`) is not a failure. Whether an event's
+even when events failed, stating how many failed, and SHALL exit non-zero when any event failed. Skipping an
+event (no legacy source, or a v2 `reel.yaml` without `--overwrite`) is not a failure. Whether an event's
 `metadata.yaml` or `reel.yaml` exists SHALL be decided by the disk answering: a lookup the disk refused is
-that event's `ERROR`, not "no such file".
+that event's `ERROR`, not "no such file". The `ERROR` reason SHALL be one line naming the file.
 
 #### Scenario: Legacy metadata imported to v2
 
@@ -73,11 +74,19 @@ that event's `ERROR`, not "no such file".
 - **THEN** the event is reported as `ERROR` naming the parse failure, nothing is written for it, and the
   events after it are still imported
 
+#### Scenario: An empty or non-mapping reel.yaml beside a metadata.yaml is not an error
+
+- **WHEN** an event has a valid `metadata.yaml` and a `reel.yaml` that is empty or whose root is not a
+  mapping, and `import` runs with or without `--overwrite`
+- **THEN** the `reel.yaml` is treated as having no `version` key, the event is imported from
+  `metadata.yaml`, and the command exits zero
+
 #### Scenario: A skipped event does not fail the command
 - **WHEN** `import` runs over one legacy event and one event with a v2 `reel.yaml` and no `--overwrite`
 - **THEN** the second prints `SKIP`, the first is imported, and the command exits zero
 
 ### Requirement: `enqueue` records jobs without rendering
+
 `auto-reel enqueue` SHALL scan the project via the configured ingest layout (honoring `--years` and
 `--device`), apply the staleness gate, and insert one `queued` job per **stale** selected event — storing
 the root-relative event identity, the project root, the event's fingerprint, and the force flag. Fresh
