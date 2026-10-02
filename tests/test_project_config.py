@@ -166,6 +166,11 @@ def test_builtin_errors_from_the_yaml_load_are_config_errors(text: str) -> None:
     assert "/lib/config.yaml" in str(caught.value)
 
 
+def test_an_unknown_bool_message_names_the_exception_type() -> None:
+    with pytest.raises(ConfigError, match="KeyError: 'maybe'"):
+        loads_project_config("a: !!bool maybe\n")
+
+
 def test_an_impossible_date_through_the_file_form_names_the_file(tmp_path: Path) -> None:
     (tmp_path / "config.yaml").write_text("look: {a: 2024-02-30}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="malformed YAML") as caught:
@@ -187,6 +192,11 @@ def test_an_impossible_date_through_the_file_form_names_the_file(tmp_path: Path)
         (f"look: {{a: {_HEX_5000}}}\n", "look.a"),
         ("look: &a {x: *a}\n", "look.x"),
         ("worker: &w [*w]\n", "worker[0]"),
+        (f"worker:\n  ? {_HEX_5000}\n  : a\n", "worker[<int key>]"),
+        (f"look:\n  ? {_HEX_5000}\n  : a\n", "look[<int key>]"),
+        (f"? {_HEX_5000}\n: a\n", "[<int key>]"),
+        (f"worker:\n  ? [{_HEX_5000}]\n  : a\n", "worker[<int key>]"),
+        (f"look:\n  t:\n    ? {_HEX_5000}\n    : a\n", "look.t[<int key>]"),
     ],
     ids=[
         "layout-surrogate",
@@ -200,6 +210,11 @@ def test_an_impossible_date_through_the_file_form_names_the_file(tmp_path: Path)
         "huge-hex-int",
         "self-referencing-mapping",
         "self-referencing-list",
+        "huge-int-key-under-worker",
+        "huge-int-key-under-look",
+        "huge-int-key-top-level",
+        "huge-int-in-sequence-key",
+        "huge-int-key-nested-under-look",
     ],
 )
 def test_content_that_breaks_later_is_refused_at_load_with_its_path(text: str, path: str) -> None:
@@ -216,6 +231,8 @@ def test_the_refusal_messages_say_why() -> None:
         loads_project_config("look: {2024-01-01: x}\n")
     with pytest.raises(ConfigError, match="too large to print"):
         loads_project_config(f"look: {{a: {_HEX_5000}}}\n")
+    with pytest.raises(ConfigError, match="integer key is too large to print"):
+        loads_project_config(f"look:\n  ? {_HEX_5000}\n  : a\n")
     with pytest.raises(ConfigError, match="refers to itself"):
         loads_project_config("look: &a {x: *a}\n")
 

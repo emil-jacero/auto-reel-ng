@@ -2,14 +2,14 @@
 
 - [x] 1.1 In `loads_project_config`, keep `except YAMLError` and add a final `except Exception`
   (pylint-disabled with the parser's comment) raising `ConfigError(f"{source}: malformed YAML: {reason}")`,
-  `reason = str(exc) or type(exc).__name__`. Add tests in `tests/test_project_config.py` (parametrised) for
+  `reason` being the exception type and text (the type alone when the text is empty). Add tests in `tests/test_project_config.py` (parametrised) for
   `look: {a: 2024-02-30}`, `a: !!bool maybe` and 100000 nested `[`, each asserting `ConfigError` and that
   the message contains the source; run `.venv/bin/python -m pytest tests/test_project_config.py`.
 
 ## 2. config/ - tree validation
 
-- [x] 2.1 Add private `_validate_tree(data, source)` (design: lone surrogate anywhere, unprintable int,
-  non-str key under `look`, self-referencing container, `RecursionError` -> "nested too deeply"; path-set
+- [x] 2.1 Add private `_validate_tree(data, source)` (design: lone surrogate anywhere, unprintable int (as a value or as a mapping key, checked before any scan that prints keys),
+  non-str key under `look`, self-referencing container, `RecursionError` is mapped to `ConfigError` at the YAML load, as "malformed YAML"; path-set
   cycle detection plus a done set) and call it in `loads_project_config` right after the mapping check,
   before any field parser. Surrogates and `look` key types call `find_lone_surrogate` / `find_non_str_key`
   from `auto_reel_ng.reel.values` (merged by `reel-schema-value-validation`); integers and cycles are a
