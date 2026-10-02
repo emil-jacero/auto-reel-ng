@@ -539,17 +539,24 @@ def test_a_dropped_in_project_alias_claims_nothing_as_the_cli_sees_it(
     assert _cli_refused(project, capsys) == refused  # the CLI's own answer
 
 
-def test_an_alias_is_gated_at_its_own_output(client: TestClient, project: Path) -> None:
-    """The gate judges the path the job names, as the worker will: not the alias's target."""
+def test_a_dropped_alias_is_unknown_and_its_target_is_still_gated(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    """The walk lists an event once (layout-alias-dedupe): an alias of it is not an event.
+
+    The enqueue names an event the list shows, so the alias is the 404 of an unknown event and
+    nothing is written, while the folder it points at is judged at its own output as before.
+    """
     _touch(project / KALAS / "00400.mp4")
-    # No authored metadata: each row takes its title and date from its own folder name.
     (project / KALAS / "reel.yaml").write_text("version: 0\n", encoding="utf-8")
     _adopt_and_write_manifest(project, KALAS)  # Kalas.mp4 rendered: Kalas is fresh
     (project / FEST).symlink_to(project / KALAS)
 
     assert client.post("/api/v1/jobs", json={"event_id": KALAS}).status_code == 200  # fresh
-    # Fest.mp4 was never rendered: the alias is stale, not "fresh" by its target's movie.
-    assert client.post("/api/v1/jobs", json={"event_id": FEST}).status_code == 201
+    refused = client.post("/api/v1/jobs", json={"event_id": FEST})
+    assert refused.status_code == 404
+    assert refused.json()["event_id"] == FEST
+    assert _all_jobs(store) == []
 
 
 def test_an_id_spelled_through_a_missing_folder_is_unknown(

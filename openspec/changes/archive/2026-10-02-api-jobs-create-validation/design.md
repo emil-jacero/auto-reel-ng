@@ -20,8 +20,9 @@ configured layout and requires `any(event_id_for(settings, ref.event_dir) == eve
 is against the id **as sent**, so it is the canonical-id check. A scratch project on `6a7fe16` shows it
 refusing `2024/./A`, `2024/A/`, `2024/A/original`, `2024/A/../A`, `2024` and `` while accepting the id
 itself, and listing `2024/NoDate` (an event with an error row, which is why the processable check is a
-separate item). A symbolic link inside the project is listed by the walk under its own in-root id, so an
-in-project alias still resolves, as `jobs-project-guards` requires.
+separate item). The walk lists a folder reached through an in-project symbolic link once
+(`layout-alias-dedupe`), so such an alias is not an event of its own and its id is a 404; the folder it
+points at is enqueued under its own id.
 
 **What a processable load looks like.** `api/media.py:~190-200` already does, for the movie route:
 `load_event_document` + `require_processable`, `except (ReelError, OSError)` -> `EventReadError(event_id,
@@ -75,8 +76,7 @@ unknown event gets (`event_id` as sent). `named_event_dir` stays (it is `listed_
 
 **Rationale**: One rule across the jobs, media and thumbnail routes: an id is an event when the list shows
 it. No new code path; a `..` spelling, a trailing `/`, `original/`, the year folder and a `.reelignore`d
-event stop being enqueueable with no special cases. In-project symlinks keep working because the walk lists
-them. The cost is one year's listing per enqueue, which the collision check already exceeds (it lists the
+event stop being enqueueable with no special cases. A dropped in-project alias is a 404 like any other id the list does not show (`layout-alias-dedupe`). The cost is one year's listing per enqueue, which the collision check already exceeds (it lists the
 whole project).
 
 **Consequence worth stating:** the "a `..` spelling is a claimant of its own" and "a folder outside

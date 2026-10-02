@@ -665,9 +665,9 @@ def output_collision(
     ``None`` when nothing else claims the path, or when ``event_dir`` fails on its own.
 
     ``event_dir`` is the event as its job names it (:func:`named_event_dir`), and every
-    claimant is keyed by its own path, never the folder a symlink resolves to: a symlinked
-    alias is a claimant of its own, claiming the path its own folder name and ``reel.yaml``
-    give it, and it is named by its in-root id wherever it points.
+    claimant is keyed by its own path, never the folder a symlink resolves to. The walk
+    collapses symlinked aliases of one folder to a single row, so an alias that was dropped
+    claims nothing and the row that was kept is named by its in-root id.
 
     The walk's own failure (``LayoutError``, ``OSError``) propagates: the caller must not
     enqueue an event whose collision it could not check (Principle I).
