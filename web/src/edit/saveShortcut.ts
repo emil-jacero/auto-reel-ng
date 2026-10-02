@@ -68,3 +68,33 @@ export function holdWords(hold: SaveHold, dateIncomplete: boolean, cutsTyped: bo
       return 'Not saved: this event no longer exists.'
   }
 }
+
+/** What a held-back Ctrl+S says while a clip is lifted. */
+export const LIFTED_WORDS = 'Not saved: drop or cancel the lifted clip first.'
+
+/** What a Ctrl+S press does: nothing, say why Save is held back, say a clip is lifted, or save. */
+export type SaveKeyAction = 'ignore' | 'announce' | 'lifted' | 'save'
+
+/**
+ * The order of the guards for a Ctrl+S press. A repeat, a save in flight (`saving`, or the
+ * button pressed), a Move clips pending and an open dialog send nothing and say nothing; a
+ * lifted clip sends nothing too but says so (the order shown is not the order that would be
+ * sent); then Save's own hold.
+ */
+export function saveKeyAction(state: {
+  repeat: boolean
+  saving: boolean
+  pressed: boolean
+  moving: boolean
+  lifted: boolean
+  dialogOpen: boolean
+  hold: SaveHold | null
+}): SaveKeyAction {
+  if (state.repeat || state.saving || state.pressed || state.moving || state.dialogOpen) {
+    return 'ignore'
+  }
+  if (state.lifted) {
+    return 'lifted'
+  }
+  return state.hold === null ? 'save' : 'announce'
+}
