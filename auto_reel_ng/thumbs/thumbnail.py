@@ -10,11 +10,11 @@ The pure pieces — :func:`thumbnail_key`, :func:`thumbnail_path` and
 :func:`thumbnail_for` composes them around one probe and one ffmpeg run through
 :class:`FfmpegRuntime`. The cache key covers the resolved file's name (not its
 directory), its size and ``mtime_ns``, the position, the box and
-:data:`THUMBNAIL_VERSION`, so a changed clip gets a new file by itself, a library that
-is moved, copied or remounted keeps its cache, and a cache hit costs one ``stat`` and
-one hash. Files are
-written like ``reel/writer.write_document``: a uniquely named hidden temporary file,
-``fsync``, then ``os.replace``, so ``<key>.jpg`` only ever appears complete.
+:data:`THUMBNAIL_VERSION`, so a changed clip gets a new file by itself, a library
+that is moved, copied or remounted keeps its cache, and a cache hit costs one
+``stat`` and one hash. Files are written like ``reel/writer.write_document``: a
+uniquely named hidden temporary file, ``fsync``, then ``os.replace``, so
+``<key>.jpg`` only ever appears complete.
 """
 
 from __future__ import annotations
