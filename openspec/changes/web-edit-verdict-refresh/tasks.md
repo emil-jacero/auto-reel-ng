@@ -1,6 +1,6 @@
 ## 1. web/ — the verdict-only refresh
 
-- [ ] 1.1 In `src/events/EventDetail.tsx`, add the verdict slice and `refreshVerdict` (design, "Where the refreshed fields live" and "The verdict read"):
+- [x] 1.1 In `src/events/EventDetail.tsx`, add the verdict slice and `refreshVerdict` (design, "Where the refreshed fields live" and "The verdict read"):
   - `ready` gains optional `verdict?: { staleness; latest_job }` and `verdictUnread?: string | null`; `RenderPanel` gets `staleness` and `latestJob` from `state.verdict ?? state.event`, and nothing else changes in what it is given
   - `refreshVerdict()` with its own `verdictFlight` controller and `verdictPending` flag: one read in flight, one more after it; an `ok` answer that is not aborted and arrives while `editingRef.current` is true merges only `verdict` and clears `verdictUnread`; any other answer (not an abort) sets only `verdictUnread`, from `describeProblem` / `unansweredFailure` words; neither touches `event`, `fetchedAt`, `updating` or the `failed` state
   - `reread` calls `refreshVerdict()` while Edit mode is open and `load({ quiet: true })` otherwise
@@ -9,16 +9,16 @@
   - the comments on `reread` and in the file's header doc say what the page now does in Edit mode
 
   Verify: `npm test`, `npx tsc --noEmit` and `npm run build` pass in the node:22 container, and `git diff --stat` shows only `web/src/events/EventDetail.tsx`, `loadState.ts` and `loadState.test.ts` (plus `detail.css` only if 1.2 needs one rule).
-- [ ] 1.2 Show a failed refresh in the render region (design, "A failed verdict read is said, in the region"): when `verdictUnread` is set, `RenderPanel` renders an `Alert` (`tone="warn"`, `role="status"`) under `RenderControl` titled "The render verdict may be out of date", with the failure's detail and "Stop editing to read the event again."; it is gone after a successful refresh or a plain read.
+- [x] 1.2 Show a failed refresh in the render region (design, "A failed verdict read is said, in the region"): when `verdictUnread` is set, `RenderPanel` renders an `Alert` (`tone="warn"`, `role="status"`) under `RenderControl` titled "The render verdict may be out of date", with the failure's detail and "Stop editing to read the event again."; it is gone after a successful refresh or a plain read.
 
   Verify: `npx tsc --noEmit` and `npm run build` pass; the note is checked in 2.1.
-- [ ] 1.3 Keep a re-read that Edit interrupts (design, "Edit pressed with a re-read on its way"): the Edit button notes whether `inFlight.current !== null || pending.current`, aborts and nulls `inFlight`, clears `pending`, sets `editingRef.current`, and when a read was on its way calls `refreshVerdict()`.
+- [x] 1.3 Keep a re-read that Edit interrupts (design, "Edit pressed with a re-read on its way"): the Edit button notes whether `inFlight.current !== null || pending.current`, aborts and nulls `inFlight`, clears `pending`, sets `editingRef.current`, and when a read was on its way calls `refreshVerdict()`.
 
   Verify: `npx tsc --noEmit` and `npm run build` pass; the behaviour is checked in 2.1.
 
 ## 2. Verification in a real browser
 
-- [ ] 2.1 Build `web/` and serve `$DEV` with `auto-reel serve` on port 8245 (database `arel_web_edit_verdict_refresh`; schema via `alembic upgrade head`). Drive it with a Playwright script kept in `$SCRATCH` (never in the repo; container, locators scoped to `main:not([hidden])`, `page.wait_for_timeout`). Start `auto-reel worker $DEV --device cpu` only for the first check and stop it with SIGINT after. Route only `**/api/v1/events/**` (the event read), `**/reel`, `**/reel?*`, `**/api/v1/jobs` and `**/api/v1/jobs/**`, never a catch-all. Assert on `2024-06-27 - Grillning med grannar`:
+- [x] 2.1 Build `web/` and serve `$DEV` with `auto-reel serve` on port 8245 (database `arel_web_edit_verdict_refresh`; schema via `alembic upgrade head`). Drive it with a Playwright script kept in `$SCRATCH` (never in the repo; container, locators scoped to `main:not([hidden])`, `page.wait_for_timeout`). Start `auto-reel worker $DEV --device cpu` only for the first check and stop it with SIGINT after. Route only `**/api/v1/events/**` (the event read), `**/reel`, `**/reel?*`, `**/api/v1/jobs` and `**/api/v1/jobs/**`, never a catch-all. Assert on `2024-06-27 - Grillning med grannar`:
   - **Verdict only, real render:** press Render, press Edit while the job runs, move a clip to another chapter without saving, and let the render finish. The render region changes from stale to up to date with the job rendered; the chapters, clip rows, counts line, facts, "Read" time and the unsaved move are exactly as before (compare their text before and after); the page never shows "Updating…"; the refresh makes no request to `/reel`.
   - **Baseline untouched:** with the event read routed to answer a different clip order and title after the job ends, the editor still shows the draft's order and title, and the `PUT /reel` body Save sends (intercepted, then aborted) is built from the original baseline.
   - **Failure:** route the refresh to a network failure, then to a 503: Edit mode and its changes stay, the region keeps its words and shows the "may be out of date" note (`role="status"`), no `role="alert"` appears; a later successful refresh removes the note. After Stop editing (discard) the page reads and shows the event as up to date.
@@ -31,7 +31,7 @@
 
 ## 3. Validation
 
-- [ ] 3.1 Run the gates and verify that all pass:
+- [x] 3.1 Run the gates and verify that all pass:
   - `npm test`, `npx tsc --noEmit` and `npm run build` in the node:22 container
   - `grep -rn 'autoFocus' web/src` prints nothing new, and `git diff --stat origin/main -- auto_reel_ng tests scripts web/openapi.json web/src/api web/src/jobs web/src/edit web/package.json web/package-lock.json` is empty
   - `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`, then `.venv/bin/python -m mypy auto_reel_ng`, then `.venv/bin/python -m pylint auto_reel_ng`

@@ -30,8 +30,14 @@ import {
   plural,
 } from './common'
 import { FAILURE_LABEL, PREVIEWS_UNAVAILABLE, failureDetail, unansweredFailure } from './labels'
-import { readingState, movieOf } from './loadState'
-import type { Failure, LoadOptions, LoadState } from './loadState'
+import {
+  movieOf,
+  readingState,
+  verdictOf,
+  withVerdict,
+  withVerdictUnread,
+} from './loadState'
+import type { Failure, LoadOptions, LoadState, Verdict, VerdictUnread } from './loadState'
 import { ThumbHealthContext, useThumbHealth } from './thumbHealth'
 import { FAILURE_LOOK } from './tones'
 
@@ -44,7 +50,10 @@ import { FAILURE_LOOK } from './tones'
  * shown as current. The exceptions: a Refresh keeps the Movie section's player
  * (its verdict and facts are hidden meanwhile), and a re-read the page starts by
  * itself — its job ended, or an enqueue answer showed its read is out of date — which
- * keeps the content, marked as updating, until the new read answers. Its Edit
+ * keeps the content, marked as updating, until the new read answers. In Edit mode
+ * that re-read is narrower: the editor's baseline is `state.event`, so only the
+ * render region's verdict and latest job are refreshed (`refreshVerdict`), and
+ * everything else waits for the read that leaving Edit mode makes. Its Edit
  * mode (`edit/EventEditor.tsx`) writes `reel.yaml` only on an explicit Save, and
  * its render region (`jobs/RenderControl`) enqueues or cancels only through its
  * own controls. Mounted once per event (keyed by id).
@@ -99,6 +108,10 @@ function EventDetailBody({
   // Whether Edit mode is open, for the page's own re-reads however late they run:
   // set together with `editing` at its two changes, never during render.
   const editingRef = useRef(false)
+  // The verdict read of Edit mode (`refreshVerdict`): at most one in flight, and a
+  // request made meanwhile leads to one more after it.
+  const verdictFlight = useRef<AbortController | null>(null)
+  const verdictPending = useRef(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const focusHeading = useRef(false)
 
@@ -156,20 +169,78 @@ function EventDetailBody({
       })
   }, [eventId])
 
+  /**
+   * The re-read of Edit mode: the same read, but only the event's verdict and latest job
+   * reach the render region. `state.event` is the editor's baseline, so it, the time it
+   * was read and the updating mark are never written here; the read that leaving Edit mode
+   * makes replaces everything. An answer that comes after that, or after an abort, is
+   * dropped. A read with no usable answer says so in the region and never replaces the
+   * page. Never more than one in flight: a request meanwhile leads to one more after it.
+   */
+  const refreshVerdict = useCallback(() => {
+    if (verdictFlight.current !== null) {
+      verdictPending.current = true
+      return
+    }
+    const controller = new AbortController()
+    verdictFlight.current = controller
+    const settle = (update: (shown: LoadState) => LoadState) => {
+      if (!controller.signal.aborted && editingRef.current) {
+        setState(update)
+      }
+    }
+    const unread = (failure: VerdictUnread) =>
+      settle((shown) => withVerdictUnread(shown, failure))
+    fetchEvent(eventId, controller.signal)
+      .then((result) => {
+        switch (result.kind) {
+          case 'ok':
+            settle((shown) => withVerdict(shown, result.event))
+            break
+          case 'problem':
+            unread(describeProblem(result.problem, eventId))
+            break
+          case 'unreachable':
+          case 'unpublished':
+            unread(unansweredFailure(result))
+            break
+        }
+      })
+      .catch((error: unknown) => {
+        // An abort is leaving Edit mode or navigating away, not a failure.
+        unread({ cause: 'The event could not be read.', detail: String(error) })
+      })
+      .finally(() => {
+        if (controller.signal.aborted || verdictFlight.current !== controller) {
+          return
+        }
+        verdictFlight.current = null
+        if (verdictPending.current) {
+          verdictPending.current = false
+          refreshVerdict()
+        }
+      })
+  }, [eventId])
+
   // The page's own re-read: its job ended, or an enqueue answer showed its read is
   // out of date. Quiet, so the page keeps its content while it runs.
-  // While Edit mode is open it reads nothing: the exit's unconditional `load()` is
-  // the deferred re-read.
+  // While Edit mode is open only the render region's verdict is read (see
+  // `refreshVerdict`): the exit's unconditional `load()` is the deferred re-read of
+  // the rest.
   const reread = useCallback(() => {
-    if (!editingRef.current) {
+    if (editingRef.current) {
+      refreshVerdict()
+    } else {
       load({ quiet: true })
     }
-  }, [load])
+  }, [load, refreshVerdict])
 
   useEffect(() => {
     load()
     return () => inFlight.current?.abort()
   }, [load])
+
+  useEffect(() => () => verdictFlight.current?.abort(), [])
 
   useEffect(() => {
     shown.current = true
@@ -186,6 +257,10 @@ function EventDetailBody({
       return
     }
     editingRef.current = false
+    // A verdict read still on its way is dropped: the read below is newer.
+    verdictFlight.current?.abort()
+    verdictFlight.current = null
+    verdictPending.current = false
     setEditing(false)
     load()
     focusHeading.current = true
@@ -284,10 +359,19 @@ function EventDetailBody({
                   if (editing) {
                     requestLeave(leaveEditMode)
                   } else {
-                    // A quiet re-read in flight stops; the exit's read replaces it.
+                    // A quiet re-read in flight stops: its answer would replace the
+                    // editor's baseline. It was the page's only record of a job that
+                    // ended, so the verdict read takes its place; the exit's read
+                    // replaces everything else.
+                    const wasReading = inFlight.current !== null || pending.current
                     inFlight.current?.abort()
+                    inFlight.current = null
+                    pending.current = false
                     editingRef.current = true
                     setEditing(true)
+                    if (wasReading) {
+                      refreshVerdict()
+                    }
                   }
                 }}
               >
@@ -325,6 +409,8 @@ function EventDetailBody({
           <RenderPanel
             eventId={eventId}
             event={state.event}
+            verdict={verdictOf(state)}
+            unread={state.verdictUnread}
             editing={editing}
             onFinished={reread}
           />
@@ -414,23 +500,29 @@ function factsOf(event: EventDetailData): string | null {
 function RenderPanel({
   eventId,
   event,
+  verdict,
+  unread,
   editing,
   onFinished,
 }: {
   eventId: string
   event: EventDetailData
+  /** The verdict and latest job shown: the event's, or a newer read's in Edit mode. */
+  verdict: Verdict
+  /** Edit mode's verdict read got no usable answer: the verdict may be out of date. */
+  unread: VerdictUnread | undefined
   editing: boolean
   onFinished: () => void
 }) {
   return (
     <div className="render-panel">
-      <StalenessCell staleness={event.staleness} explain />
+      <StalenessCell staleness={verdict.staleness} explain />
       <RenderControl
         eventId={eventId}
         title={event.title}
         date={event.date}
-        staleness={event.staleness}
-        latestJob={event.latest_job}
+        staleness={verdict.staleness}
+        latestJob={verdict.latest_job}
         onFinished={onFinished}
         blockedReason={
           editing
@@ -438,6 +530,14 @@ function RenderPanel({
             : missingClipsReason(event.blocking_missing)
         }
       />
+      {editing && unread !== undefined && (
+        <Alert
+          tone="warn"
+          role="status"
+          title="The render verdict may be out of date. Stop editing to read the event again."
+          detail={unread.detail === null ? unread.cause : `${unread.cause} ${unread.detail}`}
+        />
+      )}
     </div>
   )
 }
