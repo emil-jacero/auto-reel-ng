@@ -10,7 +10,7 @@ the event root, an immediate subdirectory of the event that may hold a chapter, 
 because the engine was not permitted to look.
 
 An entry the disk positively says is not there stays skipped, exactly as before: a dangling symlink, a
-non-video file, and a subdirectory without videos. Seeding is a listing, so it raises the same way.
+symlink loop, a non-video file, and a subdirectory without videos. Seeding is a listing, so it raises the same way.
 
 The service SHALL report such an event the way it reports any event whose files cannot be read: the events
 list answers 200 with a row for that event carrying the `unreadable_disk` failure kind, the other events
@@ -40,6 +40,6 @@ not changed: the folder is still listed there, so it can be reported.
 - **THEN** the listing raises a permission error naming the clip rather than omitting it
 
 #### Scenario: Entries the disk says are absent are still skipped
-- **WHEN** a searchable event folder holds `dangling.mp4`, a symlink to a file that does not exist, a
-  `notes.txt`, and one real clip
+- **WHEN** a searchable event folder holds `dangling.mp4`, a symlink to a file that does not exist, `loop.mp4`, a symlink
+  to itself, a `notes.txt`, and one real clip
 - **THEN** the listing contains only the real clip and no error is raised

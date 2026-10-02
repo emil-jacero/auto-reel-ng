@@ -24,7 +24,7 @@ fails too, so the cost is a silently wrong read, not data loss. That is why it i
   never a seed from the folder name.
 - `scan_event` stops reading `EACCES` as "not a file / not a directory": an event root, a chapter subfolder
   or a `.reelignore` marker lookup it cannot stat raises the permission error instead of yielding an empty
-  listing. A dangling symlink and a non-clip entry are skipped exactly as before.
+  listing. A dangling symlink, a symlink loop and a non-clip entry are skipped exactly as before.
 - Callers need no change to be loud: the events list and detail already map an `OSError` to the
   `unreadable_disk` failure kind. The remaining `exists()` call sites (`event/editorial.py`,
   `api/events_read.py`, `cli/commands.py`, `cli/adoption.py`) are swapped to the helper by the changes that
@@ -48,7 +48,8 @@ None.
 ## Impact
 
 - Code: `auto_reel_ng/event/metadata.py` (helper, `load_authored_document`), `auto_reel_ng/event/discovery.py`
-  (`scan_event` and its private helpers), `auto_reel_ng/event/__init__.py` export if the helper is public.
+  (`scan_event`, its private helpers and the shared `stat_if_present`). `reel_exists` is exported from
+  `event.metadata` only; `event/__init__.py` is unchanged.
 - Tests: `tests/test_event_metadata.py`, `tests/test_event_reconcile.py`, `tests/test_api_events_failures.py`.
 - Behaviour: an unsearchable event now reads as a per-event failure. The events list reports an
   `unreadable_disk` error row where it showed an empty summary; the detail answers 502 with the same kind.

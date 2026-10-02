@@ -24,6 +24,7 @@ from .discovery import (
     FolderNameProblem,
     parse_folder_name,
     seed_document,
+    stat_if_present,
 )
 
 #: The editorial document file name within an event directory.
@@ -54,11 +55,7 @@ def reel_exists(path: Path) -> bool:
     seeds a document from the folder name over a ``reel.yaml`` that was never looked at. ``stat``
     follows symlinks, so a dangling link is absent and a symlinked file is present.
     """
-    try:
-        Path(path).stat()
-    except (FileNotFoundError, NotADirectoryError):
-        return False
-    return True
+    return stat_if_present(path) is not None
 
 
 def load_authored_document(event_dir: Path, *, order: ClipOrder) -> Tuple[ReelDocument, bool]:

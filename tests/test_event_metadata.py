@@ -211,6 +211,12 @@ def test_reel_exists_follows_symlinks(tmp_path: Path) -> None:
     assert reel_exists(event_dir / REEL_FILENAME) is True
 
 
+def test_reel_exists_is_false_for_a_symlink_loop(tmp_path: Path) -> None:
+    event_dir = _event(tmp_path, "2024-06-21 - Fest")
+    (event_dir / REEL_FILENAME).symlink_to(REEL_FILENAME)
+    assert reel_exists(event_dir / REEL_FILENAME) is False
+
+
 @skip_as_root
 def test_reel_exists_raises_for_a_folder_that_cannot_be_searched(tmp_path: Path) -> None:
     event_dir = _event(tmp_path, "2024-06-21 - Fest", _REAL_REEL)
