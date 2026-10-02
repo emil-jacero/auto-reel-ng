@@ -1809,7 +1809,9 @@ def test_unbuildable_segment_is_named_in_the_error(runtime, good_segment, tmp_pa
             profile=_amd_profile(),
             options=_retry_options(fake, tmp_path, {}),  # no clip facts for b.mp4
             scratch=tmp_path,
-            progress=orch._Progress(1, None),  # pylint: disable=protected-access
+            progress=orch._Progress(
+                None, {0: 1.0}, normalize_end=0.95
+            ),  # pylint: disable=protected-access
         )
     text = str(caught.value)
     assert "normalize failed for segment 1" in text and "b.mp4" in text
@@ -1845,7 +1847,9 @@ def test_synthetic_segment_is_never_retried(runtime, good_segment, tmp_path, mon
             profile=_amd_profile(),
             options=_retry_options(fake, tmp_path, {}),
             scratch=tmp_path,
-            progress=orch._Progress(1, None),  # pylint: disable=protected-access
+            progress=orch._Progress(
+                None, {0: 1.0}, normalize_end=0.95
+            ),  # pylint: disable=protected-access
         )
     assert len(fake.calls) == 1
 
@@ -2023,3 +2027,208 @@ def test_mpeg4_avi_renders_through_the_vaapi_profile(runtime, tmp_path: Path) ->
     assert not result.warnings  # chosen up front, not recovered by the retry
     meta = probe_media(result.output_path, runtime=runtime)
     assert (meta.width, meta.height, meta.video_codec) == (640, 480, "h264")
+
+
+# --------------------------------------------------------------------------- #
+# Render progress: non-decreasing and weighted by expected work                #
+# --------------------------------------------------------------------------- #
+
+
+def _progress_log(weights: dict[int, float], *, normalize_end: float = 0.95):
+    seen: list[float] = []
+    return seen, orch._Progress(seen.append, weights, normalize_end=normalize_end)
+
+
+def test_progress_never_delivers_a_value_at_or_below_the_highest_so_far() -> None:
+    seen, progress = _progress_log({0: 1.0})
+    step = progress.step(0)
+    assert step is not None
+    for local in (0.5, 0.2, 0.5, 0.9, 0.1, 1.0, 0.0):  # a re-run step rewinds and repeats
+        step(local)
+    assert seen == [pytest.approx(0.475), pytest.approx(0.855), pytest.approx(0.95)]
+    progress.advance_to_concat()  # 0.95 again: already delivered
+    progress.finish()
+    progress.finish()
+    assert seen[-1] == 1.0 and seen.count(1.0) == 1
+
+
+def test_progress_weights_segments_by_duration() -> None:
+    seen, progress = _progress_log({0: 10.0, 1: 30.0})
+    first, second = progress.step(0), progress.step(1)
+    assert first is not None and second is not None
+    first(1.0)
+    assert seen == [pytest.approx(0.25 * 0.95)]  # a quarter of the span, not one half
+    second(0.5)
+    second(1.0)
+    assert seen[-1] == pytest.approx(0.95)
+
+
+def test_progress_ignores_zero_weight_steps_and_a_missing_callback() -> None:
+    seen, progress = _progress_log({0: 0.0, 1: 0.0})  # an all-copy pass has nothing to scale
+    assert progress.step(0) is None
+    assert progress.step(5) is None  # never registered
+    assert seen == []
+    silent = orch._Progress(None, {0: 1.0}, normalize_end=0.95)
+    assert silent.step(0) is None
+    silent.advance_to_concat()
+    silent.finish()
+
+
+def test_reencode_pass_starts_at_the_high_water_mark() -> None:
+    seen, progress = _progress_log({0: 10.0, 1: 0.0, 2: 0.0}, normalize_end=0.80)
+    normalize = progress.step(0)
+    assert normalize is not None
+    normalize(1.0)
+    progress.begin_reencode({1: 5.0, 2: 15.0}, end=0.95)
+    for index, local in ((1, 1.0), (2, 0.5), (2, 1.0)):
+        step = progress.step(index)
+        assert step is not None
+        step(local)
+    assert seen == [
+        pytest.approx(0.80),
+        pytest.approx(0.80 + 0.15 * 0.25),
+        pytest.approx(0.80 + 0.15 * 0.625),
+        pytest.approx(0.95),
+    ]
+
+
+def _copyable_plan(runtime, make_clip, names: list[str], **clip_args):
+    """A plan of fully conforming (copy-eligible) clips, one per name, and their facts."""
+    facts = {}
+    for name in names:
+        facts[name] = probe_media(
+            make_clip(name, width=640, height=480, fps=30, **clip_args), runtime=runtime
+        )
+    audio = facts[names[0]].audio
+    assert audio is not None
+    look = {
+        "target_resolution": [640, 480],
+        "video_codec": "h264",
+        "audio_sample_rate": audio.sample_rate,
+        "audio_channels": audio.channels,
+    }
+    plan = RenderPlan(
+        metadata=Metadata(title="Movie"),
+        look=look,
+        chapters=(ResolvedChapter(name="", clips=tuple(ResolvedClip(identity=n) for n in names)),),
+    )
+    return plan, facts
+
+
+def _render_recording_progress(runtime, tmp_path, plan, facts, monkeypatch, uniform=None):
+    """Render with a recording ``on_progress``; return the shared event log.
+
+    The log interleaves ``("uniform", result)`` probe results with ``("progress", value)``
+    callbacks in call order. ``uniform`` overrides the pre-flight's answer per call number.
+    """
+    events: list[tuple[str, object]] = []
+    real = orch.is_copy_uniform
+    calls = {"n": 0}
+
+    def _check(rt, paths):
+        calls["n"] += 1
+        result = real(rt, paths) if uniform is None else uniform(calls["n"])
+        events.append(("uniform", result))
+        return result
+
+    monkeypatch.setattr(orch, "is_copy_uniform", _check)
+    options = RenderOptions(
+        event_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        clip_facts=facts,
+        runtime=runtime,
+        on_progress=lambda value: events.append(("progress", value)),
+    )
+    render_movie(plan, CPUProfile(), options)
+    return events
+
+
+def _values(events) -> list[float]:
+    return [value for kind, value in events if kind == "progress"]  # type: ignore[misc]
+
+
+def test_reencode_after_failed_preflight_never_moves_progress_backwards(
+    runtime, make_clip, tmp_path, monkeypatch
+) -> None:
+    # The reproduced bug: four copy-eligible clips, the first uniformity check fails, the
+    # copied segments are re-normalized and used to map back onto their early slots
+    # (0.8 -> 0.187 on the old equal-slot model).
+    plan, facts = _copyable_plan(runtime, make_clip, ["a.mp4", "b.mp4", "c.mp4", "d.mp4"])
+    events = _render_recording_progress(
+        runtime, tmp_path, plan, facts, monkeypatch, uniform=lambda n: n != 1
+    )
+    values = _values(events)
+    assert values == sorted(set(values))  # strictly increasing
+    assert values[-1] == 1.0 and max(values) <= 1.0
+    assert 0.0 < values[0] < 0.95  # the re-encode sweeps forward from the start
+    assert all(value > 0.0 for value in values)
+    assert 0.95 in values  # the concat share starts only once the re-check has passed
+
+
+def test_all_copy_event_reports_nothing_until_the_preflight_passes(
+    runtime, make_clip, tmp_path, monkeypatch
+) -> None:
+    names = [f"c{i}.mp4" for i in range(6)]
+    plan, facts = _copyable_plan(runtime, make_clip, names, duration=0.5)
+    events = _render_recording_progress(runtime, tmp_path, plan, facts, monkeypatch)
+    # No jump to n/(n+1) (6/7) from the stream-copied segments: the first value follows the
+    # passing pre-flight and is the start of the concat share.
+    assert events[0] == ("uniform", True)
+    assert _values(events) == [pytest.approx(0.95), 1.0]
+    assert [kind for kind, _ in events].index("progress") > 0
+
+
+def test_mixed_event_spends_its_reencode_share_only_when_needed(
+    runtime, make_clip, tmp_path, monkeypatch
+) -> None:
+    plan, facts = _copyable_plan(runtime, make_clip, ["a.mp4", "b.mp4", "c.mp4"])
+    for name in ("big1.mp4", "big2.mp4"):  # not conforming: normalized
+        facts[name] = probe_media(
+            make_clip(name, width=320, height=240, fps=30, duration=1.0), runtime=runtime
+        )
+    clips = ["big1.mp4", "a.mp4", "big2.mp4", "b.mp4", "c.mp4"]
+    plan = dataclasses.replace(
+        plan,
+        chapters=(ResolvedChapter(name="", clips=tuple(ResolvedClip(identity=n) for n in clips)),),
+    )
+    events = _render_recording_progress(runtime, tmp_path, plan, facts, monkeypatch)
+    values = _values(events)
+    assert values == sorted(set(values)) and values[-1] == 1.0
+    assert events.index(("uniform", True)) < events.index(("progress", pytest.approx(0.95)))
+    before_preflight = values[: values.index(pytest.approx(0.95))]
+    assert max(before_preflight) == pytest.approx(0.80)  # the normalize pass ends at its share
+    assert not [v for v in values if 0.80 < v < 0.95]  # the unused re-encode share is skipped
+
+
+def test_software_decode_retry_does_not_move_progress_backwards(
+    runtime, good_segment, tmp_path
+) -> None:
+    raw: list[float] = []
+
+    class _Scripted(_RecordingRuntime):
+        def run_with_progress(self, args, *, duration, on_progress=None) -> None:
+            failing = self._fail(tuple(args)) is not None
+            if on_progress is not None:
+                for local in (0.2, 0.6) if failing else (0.0, 0.3, 1.0):
+                    raw.append(local)
+                    on_progress(local)
+            super().run_with_progress(args, duration=duration)
+
+    def fail(args):
+        # b.mp4 reports 0.6 of its hardware attempt, then the driver rejects it.
+        return (
+            _HW_INIT_STDERR
+            if "-hwaccel" in args and "b.mp4" in args[args.index("-i") + 1]
+            else None
+        )
+
+    seen: list[float] = []
+    fake = _Scripted(runtime, good_segment, fail)
+    options = _retry_options(fake, tmp_path, {"a.mp4": "h264", "b.mp4": "h264"})
+    options.on_progress = seen.append
+    render_movie(_two_chapter_plan(_RETRY_LOOK), _amd_profile(), options)
+
+    assert len(fake.source_calls("b.mp4")) == 2  # the retry really ran
+    assert raw.index(0.6) < len(raw) - 1 and raw[raw.index(0.6) + 1] == 0.0  # the rewind happened
+    assert seen == sorted(set(seen))
+    assert seen[-1] == 1.0

@@ -4,7 +4,9 @@
 far more often than the job row needs updating. :class:`ThrottledProgress` wraps
 it into a rate-limited writer so ``set_progress`` is called at most once per
 ``min_interval_s`` or ``min_delta`` of fractional advance, while still
-guaranteeing the terminal ``1.0`` is never dropped by the throttle.
+guaranteeing the terminal ``1.0`` is never dropped by the throttle. It also keeps the
+stored row non-decreasing: a fraction below the highest one received is dropped, so no
+engine path (a re-run step, a retry) can walk the job's progress backwards.
 """
 
 from __future__ import annotations
@@ -35,11 +37,19 @@ class ThrottledProgress:
         self._min_delta = min_delta
         self._min_interval_s = min_interval_s
         self._clock = clock
+        self._high = 0.0
         self._last_written: Optional[float] = None
         self._last_written_at: Optional[float] = None
 
     def __call__(self, fraction: float) -> None:
-        """Write ``fraction`` if due (first call, delta, interval, or terminal)."""
+        """Write ``fraction`` if due (first call, delta, interval, or terminal).
+
+        A fraction below the highest one seen (written or throttled away) is dropped
+        before the clock is read, so the stored progress never decreases.
+        """
+        if fraction < self._high:
+            return
+        self._high = fraction
         now = self._clock()
         due_to_delta = (
             self._last_written is None or (fraction - self._last_written) >= self._min_delta

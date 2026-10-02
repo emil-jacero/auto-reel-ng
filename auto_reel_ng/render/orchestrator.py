@@ -214,29 +214,94 @@ def resolve_target(
     return derive_target(plan.look, _plan_clip_facts(plan, clip_facts), profile)
 
 
-class _Progress:
-    """Maps per-step fractions into one overall 0.0-1.0 callback."""
+# The overall progress span: the normalize pass fills [0, normalize_end], a possible re-encode
+# pass has its own reserved stretch above it (only when a segment is copy-eligible), and the
+# concat owns the top _CONCAT_SHARE. Weights are an estimate of work, not of wall-clock time.
+_CONCAT_SHARE = 0.05
+_REENCODE_SHARE = 0.15
 
-    def __init__(self, total_steps: int, callback: Optional[ProgressCallback]) -> None:
-        self._total = max(1, total_steps)
+
+def _segment_weight(segment: Segment, clip_facts: Mapping[str, ClipMetadata]) -> float:
+    """The expected work to normalize ``segment``: its intended duration, else ``0.0``.
+
+    A kept span or a synthetic segment weighs its duration; a whole clip weighs its probed
+    duration. An unknown duration weighs nothing (the weight only paces progress; a source
+    segment without facts fails loudly when its command is built).
+    """
+    duration = segment.span_duration
+    if duration is None and segment.identity is not None:
+        facts = clip_facts.get(segment.identity)
+        duration = facts.duration if facts is not None else None
+    return max(0.0, duration) if duration is not None else 0.0
+
+
+class _Progress:
+    """Maps per-step fractions into one overall, non-decreasing 0.0-1.0 callback.
+
+    Every value goes through :meth:`_emit`, which drops anything not above the highest
+    value delivered so far, so a re-run step (the re-encode pass, a software-decode retry)
+    can only hold or raise the reported progress (movie-assembly: render progress).
+    """
+
+    def __init__(
+        self,
+        callback: Optional[ProgressCallback],
+        weights: Mapping[int, float],
+        *,
+        normalize_end: float,
+    ) -> None:
         self._callback = callback
+        self._high = 0.0
+        self._set_pass(weights, start=0.0, end=normalize_end)
+
+    def _set_pass(self, weights: Mapping[int, float], *, start: float, end: float) -> None:
+        """Map the segments in ``weights`` onto ``[start, end]`` in proportion to their weight."""
+        self._start = start
+        self._end = max(start, end)
+        self._before: dict[int, float] = {}
+        total = 0.0
+        for index in sorted(weights):
+            self._before[index] = total
+            total += weights[index]
+        self._weights = dict(weights)
+        self._total = total
+
+    def _emit(self, value: float) -> None:
+        value = min(1.0, value)
+        if value <= self._high:
+            return
+        self._high = value
+        if self._callback is not None:
+            self._callback(value)
 
     def step(self, index: int) -> Optional[ProgressCallback]:
-        """Return a callback scaling a step's local fraction into the global one."""
-        if self._callback is None:
+        """Return a callback scaling a step's local fraction into the global one.
+
+        ``None`` when nobody listens or the step carries no weight (nothing to report).
+        """
+        weight = self._weights.get(index, 0.0)
+        if self._callback is None or weight <= 0.0 or self._total <= 0.0:
             return None
-        callback = self._callback
-        total = self._total
+        before = self._before[index]
+        span = self._end - self._start
 
         def scaled(local: float) -> None:
-            callback(min(1.0, (index + local) / total))
+            done = before + weight * min(1.0, max(0.0, local))
+            self._emit(self._start + span * done / self._total)
 
         return scaled
 
-    def complete(self, index: int) -> None:
-        """Report a step finished (used for instant copy-eligible/concat steps)."""
-        if self._callback is not None:
-            self._callback(min(1.0, (index + 1) / self._total))
+    def begin_reencode(self, weights: Mapping[int, float], *, end: float) -> None:
+        """Start the re-encode pass: it moves forward from the highest value so far to ``end``."""
+        self._set_pass(weights, start=self._high, end=end)
+
+    def advance_to_concat(self) -> None:
+        """Report the start of the concat share (the pre-flight has passed)."""
+        self._emit(1.0 - _CONCAT_SHARE)
+
+    def finish(self) -> None:
+        """Report the render's work finished (the concat has completed)."""
+        self._emit(1.0)
 
 
 def render_movie(plan: RenderPlan, profile: AccelProfile, options: RenderOptions) -> RenderResult:
@@ -500,6 +565,17 @@ def _check_cancelled(options: RenderOptions, *, before: str) -> None:
         raise RenderCancelledError(f"render canceled before {before}")
 
 
+def _plan_progress(segments: tuple[Segment, ...], options: RenderOptions) -> _Progress:
+    """Build the progress mapper: weights by expected work, copy-eligible segments weigh nothing."""
+    copyable = [bool(s.copy_eligible and s.source_path is not None) for s in segments]
+    weights = {
+        index: 0.0 if copyable[index] else _segment_weight(segment, options.clip_facts)
+        for index, segment in enumerate(segments)
+    }
+    normalize_end = 1.0 - _CONCAT_SHARE - (_REENCODE_SHARE if any(copyable) else 0.0)
+    return _Progress(options.on_progress, weights, normalize_end=normalize_end)
+
+
 def _execute(
     segments: tuple[Segment, ...],
     target: TargetSpec,
@@ -509,7 +585,7 @@ def _execute(
 ) -> RenderResult:
     """Run the full pipeline: normalize/copy, equivalence-guard, assemble, verify, finalize."""
     runtime = options.runtime
-    progress = _Progress(len(segments) + 1, options.on_progress)
+    progress = _plan_progress(segments, options)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     part_path = _part_path(output_path)
 
@@ -525,7 +601,6 @@ def _execute(
             if segment.copy_eligible and segment.source_path is not None:
                 intermediates.append(segment.source_path)
                 copied_indices.append(index)
-                progress.complete(index)
                 continue
             intermediate, segment_warnings = _normalize_segment(
                 index,
@@ -547,6 +622,10 @@ def _execute(
                 "Segment set not copy-uniform; re-encoding %d copied segment(s)",
                 len(copied_indices),
             )
+            progress.begin_reencode(
+                {i: _segment_weight(segments[i], options.clip_facts) for i in copied_indices},
+                end=1.0 - _CONCAT_SHARE,
+            )
             for index in copied_indices:
                 intermediate, segment_warnings = _normalize_segment(
                     index,
@@ -563,6 +642,7 @@ def _execute(
             raise RenderError(
                 "segments could not be made copy-uniform; refusing a silent-broken concat"
             )
+        progress.advance_to_concat()
 
         _check_cancelled(options, before="final assembly")
         measured = [probe_media(Path(p), runtime=runtime).duration for p in intermediates]
@@ -577,7 +657,7 @@ def _execute(
             runtime.run(concat_command)
         except EngineError as exc:
             raise RenderError(f"concat failed assembling {output_path.name}: {exc}") from exc
-        progress.complete(len(segments))
+        progress.finish()
 
         # Verify the .part file, not the final path: a file only ever appears at
         # output_path once it is known-complete (the atomic-finalize guarantee).
