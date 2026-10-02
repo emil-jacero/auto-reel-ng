@@ -7,7 +7,10 @@ fresh mapping from the desired state alone, which would retain a plain mapping a
 the document's source structure and silently strip every comment from a
 hand-authored ``reel.yaml`` on first save. List entries get the same care: an
 unchanged chapter clip list or ``ignore`` list is left untouched, and in a changed
-one every entry keeps its own comments wherever it lands. The merged result is
+one every entry keeps its own comments and quotes wherever it lands. A chapter renamed
+in the same write is paired with its existing node by its clips, so it keeps its comments,
+and the comment lines between chapters stay with the chapter below them through a reorder
+or a removal. The merged result is
 validated exactly as a loaded document is (fail-loud, schema + cross-references)
 *before* anything is written, so a rejected write leaves the existing file
 untouched.
@@ -33,7 +36,7 @@ from ..reel.document import ReelDocument
 from ..reel.parser import load_document
 from ..reel.schema import build_document
 from ..reel.writer import document_to_data, write_document
-from .metadata import require_processable, with_resolved_metadata
+from .metadata import reel_exists, require_processable, with_resolved_metadata
 
 #: The editorial document file name within an event directory (mirrors cli/adoption.py;
 #: not imported from there to avoid a cli <-> event import cycle).
@@ -63,10 +66,13 @@ def apply_editorial_write(
     day). Otherwise :class:`~auto_reel_ng.errors.EventMetadataError` is raised and
     nothing is written. The resolution is only checked, never persisted: the file
     holds the document as authored.
+
+    An event folder the process may not search raises its :class:`PermissionError`
+    (nothing is written) rather than reading as an event with no ``reel.yaml``.
     """
     event_dir = Path(event_dir)
     reel_path = event_dir / REEL_FILENAME
-    current = load_document(reel_path) if reel_path.exists() else ReelDocument()
+    current = load_document(reel_path) if reel_exists(reel_path) else ReelDocument()
 
     data = document_to_data(current)
     _apply_metadata(data, desired_data.get("metadata"))
@@ -167,14 +173,18 @@ def _apply_ignore(data: CommentedMap, desired: Optional[Iterable[str]]) -> None:
 
 
 def _apply_chapters(data: CommentedMap, desired: Optional[Iterable[Mapping[str, Any]]]) -> None:
-    """Rebuild the ``chapters`` sequence, reusing existing chapter nodes by name.
+    """Rebuild the ``chapters`` sequence, reusing existing chapter nodes.
 
-    A chapter whose name matches an existing entry keeps that entry's own node
-    (and whatever comments it carries); only its ``clips`` list is rewritten, each
-    clip keeping its own comments — even one moved in from another existing
-    chapter. A chapter with no match in the current structure is a fresh node. A
-    chapter absent from ``desired`` is dropped — "coarse" describes the request, not
-    the write, but the request is still the complete desired structure (D-E2).
+    A desired chapter takes an existing node by name; failing that, by its clips (see
+    :func:`_pair_by_clips`), which makes it that node *renamed*. A reused node keeps
+    whatever comments it carries; only its ``clips`` list is rewritten, each clip keeping
+    its own comments — even one moved in from another existing chapter. A chapter with no
+    node to take is a fresh one. A chapter absent from ``desired`` is dropped with its own
+    comments — "coarse" describes the request, not the write, but the request is still the
+    complete desired structure (D-E2).
+
+    When the sequence has to be replaced, the comment lines between chapters travel with
+    the chapter below them (:func:`_rehome_chapter_comments`).
     """
     desired_chapters = list(desired or [])
     current = data.get("chapters")
@@ -183,33 +193,36 @@ def _apply_chapters(data: CommentedMap, desired: Optional[Iterable[Mapping[str, 
             data.pop("chapters", None)
         return
 
-    existing_by_name: dict[Any, CommentedMap] = {}
     comments: dict[str, _EntryComments] = {}
-    ends: dict[Any, _ListComments] = {}
-    if isinstance(current, (list, tuple)):
-        for entry in current:
-            if isinstance(entry, CommentedMap):
-                name = entry.get("name")
-                existing_by_name[name] = entry
-                # Collected before any list is rewritten. An identity appears in at most
-                # one chapter, so a clip moved between chapters still finds its own.
-                chapter_comments, ends[name] = _entry_comments(entry, "clips")
-                comments.update(chapter_comments)
+    ends: dict[int, _ListComments] = {}  # by node: a renamed chapter has no name to find it by
+    existing = [
+        entry
+        for entry in (current if isinstance(current, (list, tuple)) else ())
+        if isinstance(entry, CommentedMap)
+    ]
+    for entry in existing:
+        # Collected before any list is rewritten. An identity appears in at most one
+        # chapter, so a clip moved between chapters still finds its own.
+        chapter_comments, ends[id(entry)] = _entry_comments(entry, "clips")
+        comments.update(chapter_comments)
+    nodes = _match_chapters(existing, desired_chapters)
 
     rebuilt = CommentedSeq()
-    for desired_chapter in desired_chapters:
+    for desired_chapter, node in zip(desired_chapters, nodes):
         name = desired_chapter["name"]
         clips = list(desired_chapter.get("clips") or [])
-        entry = existing_by_name.get(name)
-        if entry is None:
-            entry = CommentedMap()
-            entry["name"] = name
-            entry["clips"] = CommentedSeq(clips)
-        elif isinstance(entry.get("clips"), CommentedSeq):
-            _rewrite_identity_list(entry, "clips", clips, comments, ends[name])
-        elif clips:  # a missing or bare ``clips`` stays as written while it lists nothing
-            entry["clips"] = CommentedSeq(clips)
-        rebuilt.append(entry)
+        if node is None:
+            node = CommentedMap()
+            node["name"] = name
+            node["clips"] = CommentedSeq(clips)
+        else:
+            if node.get("name") != name:  # a renamed chapter keeps its name line's comment
+                node["name"] = name
+            if isinstance(node.get("clips"), CommentedSeq):
+                _rewrite_identity_list(node, "clips", clips, comments, ends[id(node)])
+            elif clips:  # a missing or bare ``clips`` stays as written while it lists nothing
+                node["clips"] = CommentedSeq(clips)
+        rebuilt.append(node)
 
     # Existing chapters that all keep their place, with any new ones appended after them,
     # keep their sequence node: it can hold comment lines between two chapters (after a
@@ -220,7 +233,10 @@ def _apply_chapters(data: CommentedMap, desired: Optional[Iterable[Mapping[str, 
         and all(old is new for old, new in zip(current, rebuilt))
     )
     if not in_place:
-        data["chapters"] = rebuilt
+        if isinstance(current, CommentedSeq):
+            _rehome_chapter_comments(data, current, rebuilt, ends)
+        else:
+            data["chapters"] = rebuilt
         return
     appended = rebuilt[len(current) :]
     if current and appended:
@@ -231,6 +247,108 @@ def _apply_chapters(data: CommentedMap, desired: Optional[Iterable[Mapping[str, 
             _set_trailing(current[-1], "clips", "")
             _set_trailing(appended[-1], "clips", moved)
     current.extend(appended)
+
+
+def _match_chapters(
+    existing: list[CommentedMap], desired: list[Mapping[str, Any]]
+) -> list[Optional[CommentedMap]]:
+    """For each desired chapter, the existing node it reuses (``None``: a fresh chapter).
+
+    By name first; a chapter that matches no name is then paired by its clips
+    (:func:`_pair_by_clips`) with an existing node no chapter took by name.
+    """
+    by_name = {entry.get("name"): entry for entry in existing}
+    nodes: list[Optional[CommentedMap]] = [by_name.get(chapter["name"]) for chapter in desired]
+    claimed = {id(node) for node in nodes if node is not None}
+    wanted = [
+        (index, list(chapter.get("clips") or []))
+        for index, chapter in enumerate(desired)
+        if nodes[index] is None
+    ]
+    paired = _pair_by_clips(wanted, [e for e in existing if id(e) not in claimed])
+    return [node or paired.get(index) for index, node in enumerate(nodes)]
+
+
+def _pair_by_clips(
+    wanted: list[tuple[int, list[str]]], unclaimed: list[CommentedMap]
+) -> dict[int, CommentedMap]:
+    """Pair each wanted chapter (``(desired index, clips)``) with an unclaimed existing node.
+
+    A renamed chapter arrives as a name that matches nothing, with clips that were
+    somewhere. It takes the node whose clip list equals its own (same order), else the one
+    it shares the most clips with (at least one), so it keeps that node's comments. The
+    pairing is greedy and total-ordered — exact matches, larger overlaps, then desired
+    order, then existing order — and takes each node at most once. A chapter with no clips
+    pairs with nothing.
+    """
+    candidates = []
+    for existing_index, node in enumerate(unclaimed):
+        clips = node.get("clips")
+        held = [str(clip) for clip in clips] if isinstance(clips, CommentedSeq) else []
+        for index, desired_clips in wanted:
+            overlap = len(set(held) & set(desired_clips))
+            if overlap:
+                exact = held == desired_clips
+                candidates.append((not exact, -overlap, index, existing_index))
+    taken: set[int] = set()
+    paired: dict[int, CommentedMap] = {}
+    for _, _, index, existing_index in sorted(candidates):
+        if index not in paired and existing_index not in taken:
+            paired[index] = unclaimed[existing_index]
+            taken.add(existing_index)
+    return paired
+
+
+def _rehome_chapter_comments(
+    data: CommentedMap,
+    current: CommentedSeq,
+    rebuilt: CommentedSeq,
+    ends: Mapping[int, _ListComments],
+) -> None:
+    """Replace ``data["chapters"]`` with ``rebuilt``; each chapter keeps the lines above it.
+
+    ruamel files the lines between two chapters by where the previous chapter's list ends:
+    on its last clip, on its flow list's key, or on the ``chapters`` sequence by index. A
+    reader takes them as introducing the chapter below, so they are collected per old node
+    before anything moves, written back above that node at its new index, and dropped with
+    it if it is. The lines under ``chapters:`` are the first chapter's, and the lines after
+    the last chapter stay after whichever chapter ends up last.
+    """
+    above: dict[int, str] = {}
+    previous = ""  # the previous chapter's trailing lines
+    for index, node in enumerate(current):
+        if index == 0:
+            text = _header_text(data, "chapters", current) or _key_token_tail(data, "chapters")
+        else:
+            slot = current.ca.items.get(index)
+            text = previous + _render_tokens(slot[1] if slot else None)
+        above[id(node)] = text
+        previous = ends[id(node)].trailing if id(node) in ends else ""
+    after_last = previous
+    end_comment = current.ca.end
+
+    for node in rebuilt:
+        if id(node) in ends and isinstance(node.get("clips"), CommentedSeq):
+            _set_trailing(node, "clips", "")  # now carried above the chapter below it
+
+    data["chapters"] = rebuilt
+    if end_comment:
+        # ruamel's representer appends the end comment to the sequence's own comment list, and
+        # drops it silently when there is none.
+        rebuilt.ca.comment = rebuilt.ca.comment or [None, None]
+        rebuilt.ca.end = end_comment
+    first = above.get(id(rebuilt[0]), "")
+    _set_key_tail(data, "chapters", rebuilt, "")  # a block list's key tail was its old header
+    _set_header(data, "chapters", rebuilt, first)
+    for index in range(1, len(rebuilt)):
+        text = above.get(id(rebuilt[index]), "")
+        if text:
+            rebuilt.ca.items[index] = [None, [CommentToken(text, CommentMark(0))], None, None]
+    if after_last:
+        last = rebuilt[-1]
+        if not isinstance(last.get("clips"), CommentedSeq):
+            last["clips"] = CommentedSeq()
+        _set_trailing(last, "clips", after_last)
 
 
 def _apply_clips(data: CommentedMap, desired: Optional[Mapping[str, Mapping[str, Any]]]) -> None:
@@ -324,6 +442,7 @@ class _EntryComments:
     above: str = ""  # own-line comments / blank lines above the entry, verbatim (indented)
     eol: str = ""  # end-of-line comment text, e.g. "# MISSING" ("" when none)
     column: int = 0  # the column the eol comment's '#' was written at
+    stored: Any = None  # the scalar as loaded, quotes included (``None`` for an added entry)
 
 
 @dataclass(frozen=True)
@@ -360,7 +479,7 @@ def _entry_comments(
         slot = seq.ca.items.get(index)
         value, column = (slot[0].value, slot[0].column) if slot and slot[0] else ("", 0)
         eol, _, below = value.partition("\n")
-        comments[identity] = _EntryComments(above, eol, column if eol else 0)
+        comments[identity] = _EntryComments(above, eol, column if eol else 0, identity)
         above = below
     if flow:
         return comments, _ListComments(header, _key_token_tail(parent, key))
@@ -377,7 +496,13 @@ def _header_text(parent: CommentedMap, key: str, seq: CommentedSeq) -> str:
     block list's are the tail of that comment's token instead.
     """
     slot = parent.ca.items.get(key)
-    tokens = (slot[3] if slot else None) or (seq.ca.comment[1] if seq.ca.comment else None)
+    return _render_tokens(
+        (slot[3] if slot else None) or (seq.ca.comment[1] if seq.ca.comment else None)
+    )
+
+
+def _render_tokens(tokens: Optional[Iterable[CommentToken]]) -> str:
+    """Comment-line tokens as verbatim text: each line indented to the column it was written at."""
     return "".join(
         t.value if t.value.startswith("\n") else " " * t.column + t.value for t in tokens or ()
     )
@@ -402,9 +527,10 @@ def _rewrite_identity_list(
     An unchanged list is left untouched, so its bytes are too. A changed list is
     refilled in place, which keeps its node and the key's own comment, and its
     comment tokens are rebuilt from ``comments``: every entry keeps its end-of-line
-    comment, at its column, and the lines above it, wherever it lands. An entry
-    missing from ``comments`` (an added one) gets none, and a removed entry's
-    comments are not written. The list's own lines (``own``) stay at its top and end.
+    comment, at its column, and the lines above it, wherever it lands, and it is written
+    as stored (quotes included). An entry missing from ``comments`` (an added one) gets
+    none and is plain, and a removed entry's comments are not written. The list's own
+    lines (``own``) stay at its top and end.
 
     A list with no entry comment to carry is written flow style when it is emptied
     or already was flow: ruamel would emit entry comments inside a flow list's
@@ -416,9 +542,12 @@ def _rewrite_identity_list(
         return
     del seq[:]
     seq.ca.items.clear()
-    seq.extend(desired)
-
     entries = [comments.get(identity, _EntryComments()) for identity in desired]
+    # A retained entry is written as it was stored, so ``"a.mp4"`` keeps its quotes.
+    seq.extend(
+        entry.stored if entry.stored is not None else identity
+        for identity, entry in zip(desired, entries)
+    )
     carries = any(entry.above or entry.eol for entry in entries)
     if not carries and (not entries or seq.fa.flow_style()):
         seq.fa.set_flow_style()

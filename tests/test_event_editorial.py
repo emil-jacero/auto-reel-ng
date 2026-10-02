@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -221,6 +222,37 @@ def test_fresh_build_fallback_when_no_reel_yaml(tmp_path: Path) -> None:
     assert reloaded.metadata.title == "New Event"
     text = (event_dir / REEL_FILENAME).read_text(encoding="utf-8")
     assert text.startswith("version: 0")
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_unsearchable_event_folder_refuses_the_write_instead_of_seeding(tmp_path: Path) -> None:
+    """A folder that lists but cannot be searched once read as "no reel.yaml" and was overwritten."""
+    event_dir = _write_event(tmp_path, SIMPLE)
+    desired = {
+        "metadata": {"title": "Seeded", "date": date(2024, 6, 21)},
+        "chapters": [{"name": "", "clips": ["x.mp4"]}],
+    }
+    event_dir.chmod(0o600)
+    try:
+        with pytest.raises(PermissionError) as raised:
+            apply_editorial_write(event_dir, desired)
+    finally:
+        event_dir.chmod(0o755)
+    # Refused at the existence check, naming the file it could not examine; a seeded document
+    # would only have failed later, at the write, naming a temporary file.
+    assert raised.value.filename == str(event_dir / REEL_FILENAME)
+    assert (event_dir / REEL_FILENAME).read_text(encoding="utf-8") == SIMPLE
+
+
+def test_event_without_a_reel_yaml_in_a_searchable_folder_is_still_written_fresh(
+    tmp_path: Path,
+) -> None:
+    event_dir = tmp_path / "2024-06-21 - Fresh"
+    event_dir.mkdir()
+
+    apply_editorial_write(event_dir, {"chapters": [{"name": "", "clips": ["a.mp4"]}]})
+
+    assert load_document(event_dir / REEL_FILENAME).chapter("") is not None
 
 
 # --------------------------------------------------------------------------- #
@@ -623,14 +655,6 @@ def test_comment_after_the_last_clip_stays_at_the_end(tmp_path: Path) -> None:
     _assert_write(event_dir, desired, _annotated(root=root))
 
 
-def test_renamed_chapter_is_written_fresh_without_clip_comments(tmp_path: Path) -> None:
-    event_dir, desired = _annotated_event(tmp_path)
-    next(c for c in desired["chapters"] if c["name"] == "Kvällen")["name"] = "Natten"
-
-    kvallen = "  - name: Natten\n    clips:\n      - Kvällen/b.mp4\n      - Kvällen/c.mp4\n"
-    _assert_write(event_dir, desired, _annotated(kvallen=kvallen))
-
-
 def test_changed_ignore_list_keeps_its_entries_comments(tmp_path: Path) -> None:
     event_dir, desired = _annotated_event(tmp_path, IGNORE_ONLY)
     desired["ignore"] = ["blurry.mp4", "junk.mp4", "ny.mp4"]
@@ -774,6 +798,335 @@ def test_non_canonical_entry_counts_as_a_change(tmp_path: Path) -> None:
     assert _chapter_clips(desired, "")[0] == "s1710002.mp4"
 
     _assert_write(event_dir, desired, SOMMARLOV)
+
+
+QUOTED_CHAPTERS = (
+    SOMMARLOV_METADATA
+    + "chapters:\n"
+    + "  - name: ''\n"
+    + "    clips:\n"
+    + '      - "a.mp4"  # first\n'
+    + "      - 'b.mp4'\n"
+    + "  - name: Kvällen\n"
+    + "    clips:\n"
+    + "      - c.mp4\n"
+)
+
+
+def test_retained_entries_of_a_changed_list_keep_their_quotes(tmp_path: Path) -> None:
+    event_dir, desired = _annotated_event(tmp_path, QUOTED_CHAPTERS)
+    _chapter_clips(desired, "").append("d.mp4")
+
+    expected = QUOTED_CHAPTERS.replace("      - 'b.mp4'\n", "      - 'b.mp4'\n      - d.mp4\n")
+    assert expected != QUOTED_CHAPTERS
+    _assert_write(event_dir, desired, expected)
+
+
+def test_quoted_clip_moved_to_another_chapter_keeps_its_quotes_and_comment(
+    tmp_path: Path,
+) -> None:
+    event_dir, desired = _annotated_event(tmp_path, QUOTED_CHAPTERS)
+    _chapter_clips(desired, "").remove("a.mp4")
+    _chapter_clips(desired, "Kvällen").insert(0, "a.mp4")
+
+    expected = (
+        SOMMARLOV_METADATA
+        + "chapters:\n  - name: ''\n    clips:\n      - 'b.mp4'\n"
+        + '  - name: Kvällen\n    clips:\n      - "a.mp4"  # first\n      - c.mp4\n'
+    )
+    _assert_write(event_dir, desired, expected)
+
+
+def test_quoted_ignore_entry_keeps_its_quotes_when_another_is_added(tmp_path: Path) -> None:
+    text = SOMMARLOV_METADATA + 'ignore:\n  - "junk.mp4"  # never render\n'
+    event_dir, desired = _annotated_event(tmp_path, text)
+    desired["ignore"] = ["junk.mp4", "ny.mp4"]
+
+    _assert_write(event_dir, desired, text + "  - ny.mp4\n")
+
+
+# --------------------------------------------------------------------------- #
+# Chapter pairing: a rename keeps the chapter's node, and so its comments
+# --------------------------------------------------------------------------- #
+
+RECEPTION = (
+    SOMMARLOV_METADATA
+    + "chapters:\n"
+    + "  - name: Reception   # the first chapter\n"
+    + "    clips:\n"
+    + "      - a.mp4   # keep me: the best shot\n"
+    + "      # before b\n"
+    + "      - b.mp4\n"
+    + "  - name: Dinner\n"
+    + "    clips:\n"
+    + "      - c.mp4   # dinner clip\n"
+)
+
+
+def _rename(desired: dict, old: str, new: str) -> None:
+    next(c for c in desired["chapters"] if c["name"] == old)["name"] = new
+
+
+def test_renamed_chapter_with_the_same_clips_keeps_its_comments(tmp_path: Path) -> None:
+    event_dir, desired = _annotated_event(tmp_path, RECEPTION)
+    _rename(desired, "Reception", "Party")
+
+    expected = RECEPTION.replace("name: Reception ", "name: Party     ")
+    assert expected != RECEPTION
+    _assert_write(event_dir, desired, expected)
+
+
+def test_renamed_chapter_keeps_the_style_of_its_flow_list(tmp_path: Path) -> None:
+    text = SOMMARLOV_METADATA + "chapters:\n  - name: A\n    clips: [a.mp4]\n"
+    event_dir, desired = _annotated_event(tmp_path, text)
+    _rename(desired, "A", "B")
+
+    _assert_write(event_dir, desired, text.replace("name: A", "name: B"))
+
+
+def test_chapter_renamed_and_edited_in_one_save_pairs_by_overlap(tmp_path: Path) -> None:
+    event_dir, desired = _annotated_event(tmp_path)
+    _rename(desired, "Kvällen", "Natten")
+    _chapter_clips(desired, "Natten").append("Kvällen/d.mp4")
+
+    kvallen = KVALLEN_CHAPTER.replace("Kvällen\n", "Natten\n") + "      - Kvällen/d.mp4\n"
+    _assert_write(event_dir, desired, _annotated(kvallen=kvallen))
+
+
+def test_chapters_renamed_together_pair_with_the_one_they_overlap_most(tmp_path: Path) -> None:
+    text = (
+        SOMMARLOV_METADATA
+        + "chapters:\n"
+        + "  - name: A\n    clips:\n      - a1.mp4  # a1\n      - a2.mp4  # a2\n"
+        + "  - name: B\n    clips:\n      - b1.mp4  # b1\n      - b2.mp4\n      - b3.mp4  # b3\n"
+    )
+    event_dir, desired = _annotated_event(tmp_path, text)
+    _rename(desired, "A", "Y")
+    _rename(desired, "B", "X")
+    _chapter_clips(desired, "X").remove("b3.mp4")
+    desired["chapters"].reverse()  # X (B's, trimmed), then Y (A's)
+
+    expected = (
+        SOMMARLOV_METADATA
+        + "chapters:\n"
+        + "  - name: X\n    clips:\n      - b1.mp4  # b1\n      - b2.mp4\n"
+        + "  - name: Y\n    clips:\n      - a1.mp4  # a1\n      - a2.mp4  # a2\n"
+    )
+    _assert_write(event_dir, desired, expected)
+
+
+def test_a_chapter_with_no_clips_is_not_paired(tmp_path: Path) -> None:
+    text = SOMMARLOV_METADATA + "chapters:\n  - name: A   # empty\n    clips: []\n"
+    event_dir, desired = _annotated_event(tmp_path, text)
+    _rename(desired, "A", "B")
+
+    _assert_write(
+        event_dir, desired, SOMMARLOV_METADATA + "chapters:\n  - name: B\n    clips: []\n"
+    )
+
+
+def test_renamed_chapter_sharing_no_clip_is_a_new_chapter(tmp_path: Path) -> None:
+    event_dir, desired = _annotated_event(tmp_path)
+    _rename(desired, "Kvällen", "Natten")
+    _chapter_clips(desired, "Natten")[:] = ["Natten/d.mp4"]
+
+    # Kvällen takes the lines above itself with it ('# between chapters'), as any removed chapter.
+    root = ROOT_CHAPTER.replace("  # between chapters\n", "")
+    kvallen = "  - name: Natten\n    clips:\n      - Natten/d.mp4\n"
+    _assert_write(event_dir, desired, _annotated(root=root, kvallen=kvallen))
+
+
+# --------------------------------------------------------------------------- #
+# The lines between chapters follow the chapter below them
+# --------------------------------------------------------------------------- #
+
+#: How ruamel files the lines after a chapter's clips depends on the list: on the last clip's
+#: comment token (block), on the sequence by index (flow), or on the key's token (flow + comment).
+LIST_STYLES = {
+    "block": "    clips:\n      - {c}.mp4  # e{c}\n",
+    "flow": "    clips: [{c}.mp4]\n",
+    "flow_with_comment": "    clips: [{c}.mp4]  # f{c}\n",
+}
+
+
+def _chapter(style: str, name: str) -> str:
+    return f"  - name: {name.upper()}\n" + LIST_STYLES[style].format(c=name)
+
+
+def _abc(style: str, order: str = "abc", *, dismissed: bool = False, header: str = "") -> str:
+    """Chapters A, B, C (clips ``a.mp4``...), each with ``# --- the X section ---`` above it,
+    except the first, which has ``header`` above it; in ``order``.
+    """
+    lines = SOMMARLOV_METADATA + "chapters:\n" + header
+    for index, name in enumerate(order):
+        if index and name != "a":
+            lines += f"  # --- the {name.upper()} section ---\n"
+        lines += _chapter(style, name)
+    return lines + ("# dismissed clips\n" if dismissed else "")
+
+
+def _reorder(
+    style: str, order: str, tmp_path: Path, *, dismissed: bool = False, header: str = ""
+) -> tuple[Path, dict]:
+    """An event of ``_abc(style)`` and the desired state with its chapters in ``order``."""
+    event_dir, desired = _annotated_event(tmp_path, _abc(style, dismissed=dismissed, header=header))
+    by_name = {c["name"].lower(): c for c in desired["chapters"]}
+    desired["chapters"] = [by_name[name] for name in order]
+    return event_dir, desired
+
+
+@pytest.mark.parametrize("style", LIST_STYLES)
+def test_a_comment_between_chapters_follows_the_chapter_below_it_through_a_swap(
+    tmp_path: Path, style: str
+) -> None:
+    event_dir, desired = _reorder(style, "cba", tmp_path)
+
+    expected = (
+        SOMMARLOV_METADATA
+        + "chapters:\n  # --- the C section ---\n"
+        + _chapter(style, "c")
+        + "  # --- the B section ---\n"
+        + _chapter(style, "b")
+        + _chapter(style, "a")
+    )
+    _assert_write(event_dir, desired, expected)
+
+
+@pytest.mark.parametrize("style", LIST_STYLES)
+def test_removing_the_middle_chapter_drops_only_the_lines_above_it(
+    tmp_path: Path, style: str
+) -> None:
+    event_dir, desired = _reorder(style, "ac", tmp_path)
+
+    expected = (
+        SOMMARLOV_METADATA
+        + "chapters:\n"
+        + _chapter(style, "a")
+        + "  # --- the C section ---\n"
+        + _chapter(style, "c")
+    )
+    _assert_write(event_dir, desired, expected)
+
+
+@pytest.mark.parametrize("style", LIST_STYLES)
+def test_removing_the_first_chapter_keeps_the_comment_above_the_next_one(
+    tmp_path: Path, style: str
+) -> None:
+    event_dir, desired = _reorder(style, "bc", tmp_path, header="  # the chapters\n")
+
+    expected = (
+        SOMMARLOV_METADATA
+        + "chapters:\n  # --- the B section ---\n"
+        + _chapter(style, "b")
+        + "  # --- the C section ---\n"
+        + _chapter(style, "c")
+    )
+    _assert_write(event_dir, desired, expected)
+
+
+@pytest.mark.parametrize("style", LIST_STYLES)
+def test_removing_the_last_chapter_keeps_the_lines_after_it_after_the_new_last(
+    tmp_path: Path, style: str
+) -> None:
+    event_dir, desired = _reorder(style, "ab", tmp_path, dismissed=True)
+
+    expected = (
+        SOMMARLOV_METADATA
+        + "chapters:\n"
+        + _chapter(style, "a")
+        + "  # --- the B section ---\n"
+        + _chapter(style, "b")
+        + "# dismissed clips\n"
+    )
+    _assert_write(event_dir, desired, expected)
+
+
+@pytest.mark.parametrize("style", LIST_STYLES)
+def test_the_lines_after_the_last_chapter_stay_after_it_through_a_swap(
+    tmp_path: Path, style: str
+) -> None:
+    event_dir, desired = _reorder(style, "cba", tmp_path, dismissed=True)
+
+    expected = (
+        SOMMARLOV_METADATA
+        + "chapters:\n  # --- the C section ---\n"
+        + _chapter(style, "c")
+        + "  # --- the B section ---\n"
+        + _chapter(style, "b")
+        + _chapter(style, "a")
+        + "# dismissed clips\n"
+    )
+    _assert_write(event_dir, desired, expected)
+
+
+@pytest.mark.parametrize("style", LIST_STYLES)
+def test_the_header_under_chapters_goes_with_the_first_chapter(tmp_path: Path, style: str) -> None:
+    event_dir, desired = _reorder(style, "bac", tmp_path, header="  # the chapters\n")
+
+    expected = (
+        SOMMARLOV_METADATA
+        + "chapters:\n  # --- the B section ---\n"
+        + _chapter(style, "b")
+        + "  # the chapters\n"
+        + _chapter(style, "a")
+        + "  # --- the C section ---\n"
+        + _chapter(style, "c")
+    )
+    _assert_write(event_dir, desired, expected)
+
+
+@pytest.mark.parametrize("style", ["flow", "flow_with_comment"])
+def test_renaming_a_flow_list_chapter_keeps_the_comment_line_after_it(
+    tmp_path: Path, style: str
+) -> None:
+    """The triage repro: renaming ``B`` used to drop ``# --- the B section ---`` and block the list."""
+    event_dir, desired = _annotated_event(tmp_path, _abc(style))
+    _rename(desired, "B", "Bee")
+
+    expected = _abc(style).replace("name: B\n", "name: Bee\n")
+    assert expected != _abc(style)
+    _assert_write(event_dir, desired, expected)
+
+
+@pytest.mark.parametrize(
+    ("dismissed", "bare"),
+    [("# dismissed clips\n", "    clips: []\n# dismissed clips\n"), ("", "    clips:\n")],
+    ids=["text_to_carry", "nothing_to_carry"],
+)
+def test_a_new_last_chapter_with_bare_clips_gets_a_list_only_to_carry_text(
+    tmp_path: Path, dismissed: str, bare: str
+) -> None:
+    """The lines after the chapters need a list to hang on; a bare ``clips:`` has none."""
+    head = SOMMARLOV_METADATA + "chapters:\n  - name: B\n"
+    text = head + "    clips:\n" + _chapter("block", "a") + dismissed
+    event_dir, desired = _annotated_event(tmp_path, text)
+    desired["chapters"] = [c for c in desired["chapters"] if c["name"] == "B"]
+
+    _assert_write(event_dir, desired, head + bare)
+
+
+@pytest.mark.parametrize("order", ["cba", "ac", "bc", "ab"])
+@pytest.mark.parametrize("style", LIST_STYLES)
+def test_chapter_reshuffle_is_idempotent_and_same_state_as_a_comment_free_file(
+    tmp_path: Path, style: str, order: str
+) -> None:
+    """Comments are not editorial state: the reshuffled file holds what a stripped one would."""
+    for name in ("commented", "stripped"):
+        (tmp_path / name).mkdir()
+    event_dir, desired = _reorder(style, order, tmp_path / "commented", dismissed=True)
+    stripped_dir, _ = _reorder(style, order, tmp_path / "stripped", dismissed=True)
+    (stripped_dir / REEL_FILENAME).write_text(
+        _without_comments((stripped_dir / REEL_FILENAME).read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+
+    written = apply_editorial_write(event_dir, desired)
+    twice = (event_dir / REEL_FILENAME).read_text(encoding="utf-8")
+    apply_editorial_write(event_dir, desired)
+
+    assert (event_dir / REEL_FILENAME).read_text(encoding="utf-8") == twice
+    assert written.to_dict() == apply_editorial_write(stripped_dir, desired).to_dict()
+    assert editorial_hash(written) == editorial_hash(load_document(stripped_dir / REEL_FILENAME))
 
 
 def test_emptied_ignore_keeps_the_comment_that_follows_it(tmp_path: Path) -> None:

@@ -456,3 +456,46 @@ def test_unmodified_save_keeps_a_comment_on_a_clip_entry(client: TestClient, pro
     assert written.status_code == 200
     assert reel_path.read_bytes() == SOMMARLOV_REEL_YAML.encode("utf-8")
     assert written.headers["ETag"] == read.headers["ETag"]
+
+
+# --- editorial-chapter-comments 5.1: a chapter rename keeps its comments ---
+
+RECEPTION_REEL_YAML = """\
+version: 0
+metadata:
+  title: Party
+  date: 2024-09-01
+chapters:
+  - name: Reception   # the first chapter
+    clips:
+      - a.mp4   # keep me: the best shot
+      # before b
+      - b.mp4
+  # --- the dinner ---
+  - name: Dinner
+    clips: [c.mp4]   # dinner clip
+"""
+
+
+def test_renaming_a_chapter_changes_only_its_name_line(client: TestClient, project: Path) -> None:
+    event_dir = project / "2024" / "2024-09-01 - Party"
+    for clip in ("a.mp4", "b.mp4", "c.mp4"):
+        _touch(event_dir / clip)
+    reel_path = event_dir / "reel.yaml"
+    reel_path.write_text(RECEPTION_REEL_YAML, encoding="utf-8")
+    event_id = quote("2024/2024-09-01 - Party", safe="/")
+
+    read = client.get(f"/api/v1/events/{event_id}/reel")
+    assert read.status_code == 200
+    body = read.json()
+    body["chapters"][0]["name"] = "Welcome"
+    written = client.put(
+        f"/api/v1/events/{event_id}/reel", json=body, headers={"If-Match": read.headers["ETag"]}
+    )
+
+    assert written.status_code == 200
+    chapter = written.json()["document"]["chapters"][0]
+    assert (chapter["name"], chapter["clips"]) == ("Welcome", ["a.mp4", "b.mp4"])
+    assert reel_path.read_text(encoding="utf-8") == RECEPTION_REEL_YAML.replace(
+        "name: Reception ", "name: Welcome   "
+    )
