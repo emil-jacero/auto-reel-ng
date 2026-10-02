@@ -3,6 +3,8 @@ independence, and no-ffprobe (task 1.1)."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import subprocess
 from datetime import date
@@ -32,6 +34,8 @@ PINNED_DEFAULTS = "9d1a9bf4432fae2ec90ade0e7eb1552455abd6da0fac7974d78a16d63113f
 PINNED_CLIP_SET = "b1c642b3cd29b949070b357534bae6e2077121b032f93fa34c7aa0df957b6663"
 PINNED_ENGINE = "6f469eebaebec6539d78ded69207f8c6c9ed924bdac8d6acf031b28dfa04ffa1"
 PINNED_COMBINED = "e87cf6878848a102e817c0abbe673155daed86d26e6da09f9422e92a133978ce"
+#: ``_hash_json({1: "a", "b": "c"})``: the fallback path, which tags every key with its type.
+PINNED_FALLBACK = "43ef72b9709103ca8e6941bcc4ae7e089a867d856cf5f73300d83181f52e17e1"
 
 
 def _document(title: str = "Party") -> ReelDocument:
@@ -279,3 +283,61 @@ def test_file_added_under_originals_leaves_fingerprint_unchanged(tmp_path: Path)
     (event_dir / "original" / "clip.MTS").write_bytes(b"camera-original")
 
     assert _fingerprint(event_dir) == baseline
+
+
+# --------------------------------------------------------------------------- #
+# _hash_json: total over key types, unchanged for native keys (config-yaml-hardening)
+# --------------------------------------------------------------------------- #
+
+
+def _old_hash(value: object) -> str:
+    """The pre-change formula, recomputed here so a drift in the native path is caught."""
+    canonical = json.dumps(value, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"b": 1, "a": {"y": [1, 2], "x": None}},
+        {1: "a", 2: "b"},
+        {True: "a", False: "b"},
+        [{"k": 1}, "text", 3.5],
+    ],
+    ids=["str-keys", "int-keys", "bool-keys", "list"],
+)
+def test_native_key_content_hashes_exactly_as_before(value: object) -> None:
+    assert fingerprint_module._hash_json(value) == _old_hash(value)
+
+
+def test_a_date_key_in_the_defaults_does_not_crash_the_fingerprint(tmp_path: Path) -> None:
+    event_dir = _event_dir(tmp_path)
+    defaults = {date(2024, 1, 1): "x"}
+    first = _fingerprint(event_dir, look_defaults=defaults)
+    assert _fingerprint(event_dir, look_defaults=defaults) == first
+    moved = _fingerprint(event_dir, look_defaults={date(2024, 1, 1): "y"})
+    assert moved.defaults != first.defaults
+    assert moved.editorial == first.editorial
+
+
+def test_mixed_int_and_str_look_keys_do_not_crash_the_editorial_hash() -> None:
+    def hashed(one: str, b: str) -> str:
+        return editorial_hash(
+            ReelDocument(metadata=Metadata(title="Party"), look={1: one, "b": b})  # type: ignore[dict-item]
+        )
+
+    baseline = hashed("a", "b")
+    assert hashed("a", "b") == baseline
+    assert hashed("changed", "b") != baseline
+    assert hashed("a", "changed") != baseline
+
+
+def test_keys_that_differ_only_in_type_are_not_conflated() -> None:
+    one = fingerprint_module._hash_json({1: "a", "1": "b"})
+    other = fingerprint_module._hash_json({1: "b", "1": "a"})
+    assert one != other
+
+
+def test_the_fallback_hash_is_pinned() -> None:
+    """The tag format (``<type>:<key>``) is hashed content; it must not drift silently."""
+    assert fingerprint_module._hash_json({1: "a", "b": "c"}) == PINNED_FALLBACK
