@@ -23,7 +23,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import uvicorn
 from ruamel.yaml import YAML
@@ -39,7 +39,7 @@ from ..event import ClipOrder, ReconcileResult, reconcile, scan_event
 from ..event.claims import checked_claim
 from ..event.metadata import reel_exists
 from ..ffmpeg.runtime import FfmpegRuntime
-from ..ingest import EventRef
+from ..ingest import EventRef, get_layout
 from ..persistence.config import resolve_database_url
 from ..persistence.engine import make_engine, make_session_factory
 from ..persistence.job_store import JobStore
@@ -150,7 +150,11 @@ def cmd_render(args: argparse.Namespace) -> int:
     if not (args.force or args.dry_run):
         # A render must not silently replace a kept, old-named movie another event's manifest
         # still records; --force replaces it, a dry run touches nothing on disk.
-        claimed = _claimed_movies(candidates, output_dir=ctx.output_dir, events=ctx.events)
+        claimed = _claimed_movies(
+            candidates,
+            output_dir=ctx.output_dir,
+            walk=lambda: get_layout(ctx.layout_name)(ctx.walk_root),
+        )
         build_failures.extend(claimed.items())
         candidates = [c for c in candidates if c.ref.event_dir not in claimed]
     for candidate in candidates:
@@ -195,15 +199,23 @@ def _output_collisions(metadata_by_event: Mapping[Path, Metadata]) -> dict[Path,
 
 
 def _claimed_movies(
-    candidates: Sequence[_Candidate], *, output_dir: Path, events: Sequence[EventRef]
+    candidates: Sequence[_Candidate],
+    *,
+    output_dir: Path,
+    walk: Callable[[], Iterable[EventRef]],
 ) -> dict[Path, str]:
     """Map each candidate that would replace a movie another event records to its ``ERROR`` text.
 
     The shared rule is :func:`~..render.claims.claimed_movie` (read-only, decided before any
     build, probe or write for the event). Claimants are named by their folder name, as
-    :func:`_output_collisions` names its claimants.
+    :func:`_output_collisions` names its claimants. ``walk`` yields the project's whole layout
+    walk, never narrowed by ``--years``: a kept movie is claimed by its recording event
+    wherever it is filed, as the worker (which walks everything) sees it. The walk is made
+    only when there is a candidate, and a failure of it propagates (Principle I).
     """
-    all_dirs = [ref.event_dir for ref in events]
+    if not candidates:
+        return {}
+    all_dirs = [ref.event_dir for ref in walk()]
     refused: dict[Path, str] = {}
     for candidate in candidates:
         relpath = output_relpath(candidate.event.document.metadata)

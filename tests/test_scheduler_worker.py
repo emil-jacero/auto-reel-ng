@@ -1690,3 +1690,28 @@ def test_a_claim_check_that_cannot_walk_fails_the_job(job_store: JobStore, tmp_p
 
     assert "unknown ingest layout 'no-such-layout'" in _failed_error(job_store, job_id)
     assert renders == []
+
+
+def test_a_job_for_the_owner_of_a_movie_a_stale_manifest_also_records_is_not_refused(
+    job_store: JobStore, runtime, make_clip, tmp_path: Path
+) -> None:
+    root, movie = _claimed_project(tmp_path, unlisted=())
+    owner = root / "2024/b"
+    fingerprint = compute_fingerprint(
+        ReelDocument(metadata=Metadata(title="x")),
+        event_dir=owner,
+        look_defaults={},
+        ffmpeg_version=(7, 1),
+    )
+    write_manifest(  # b owns the movie after a forced takeover; a's manifest still records it
+        owner, fingerprint, output=movie.name, engine_identity=engine_identity((7, 1))
+    )
+    make_clip("proj/2024/b/a.mp4", width=320, height=240, duration=1.0)
+    job_id = job_store.enqueue(str(root), "2024/b")
+    worker, renders, _builds = _guard_worker(job_store, runtime=runtime)
+
+    assert worker.process_next() is True
+
+    job = job_store.get(job_id)
+    assert job is not None and job.status == JobStatus.DONE, job and job.error
+    assert renders == [1]

@@ -58,10 +58,12 @@ event's movie.
 
 Before a render replaces a regular file at its event's expected output path, and unless the render is forced, the
 engine SHALL check whether the render manifest of any *other* event of the project records exactly that file as
-its output. The events checked are those of the project's own layout walk; the comparison is on the full path,
+its output. The events checked are those of the project's own layout walk, whole: the CLI's `--years` filter
+narrows what is rendered, never who may claim. The comparison is on the full path,
 NFC-normalised and case-insensitive, and an event's recorded name is placed by the naming rule
 (`recorded_output_path`), so a recorded name is a match only when it is a bare file name. A manifest that cannot
-be read claims nothing. The event being rendered is never its own claimant, and an unparseable or unprocessable
+be read claims nothing. The event being rendered is never its own claimant, and a file its own manifest records is its own movie, so
+it is not refused even while another event's manifest still records the same file. An unparseable or unprocessable
 `reel.yaml` of the other event does not stop its manifest from claiming.
 
 When another event claims the file, the render SHALL fail that event with a typed engine error that names the
@@ -88,6 +90,16 @@ refused, and succeeds in a later run.
 - **THEN** the second event fails with an error naming `2024/2024-06-27 - Grillning med grannar.mp4` and the
   retitled event, the file is unchanged with no `.part` beside it, no manifest is written for the second event,
   and the exit status of `render` is non-zero
+
+#### Scenario: The owner of a movie is not refused for a stale record
+- **WHEN** a forced render gave event A the movie `F`, event B's manifest still records `F` too, and A is rendered
+  again without force
+- **THEN** A is not refused, in the CLI or the worker
+
+#### Scenario: A claimant outside the years filter still claims
+- **WHEN** `render --years 2024` renders an event whose output file is recorded by an event filed under a
+  folder the filter excludes
+- **THEN** the render is refused and names that event
 
 #### Scenario: The other events of the batch still render
 - **WHEN** the refused event shares a `render` batch with a renderable third event
