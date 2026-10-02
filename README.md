@@ -369,7 +369,8 @@ render, or job logic lives in the web tier.
   wrote under the event's old name (`output_renamed`). So a movie exists exactly
   when the event's staleness cites neither `no_manifest` nor `output`; a legacy
   movie with no render record is **not** served until `auto-reel adopt-renders`
-  records it, a directory at the movie's path is answered as absent (and the event is stale, `output`; a render refuses to write over it), and a name
+  records it, a directory at the movie's path is answered as absent (and the
+  event is stale, `output`; a render refuses to write over it), and a name
   whose `..` segments climb out of the output directory is never served. An
   optional `v` is accepted and ignored on both, so a client can give a rewritten
   file a new URL. **Ranges:** no `Range` is a 200 with the whole file; one byte
