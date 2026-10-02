@@ -21,6 +21,7 @@ import { LoadStatus } from '../ui/Skeleton'
 import { ClipThumb } from './ClipThumb'
 import {
   ClipName,
+  ClipStatusPills,
   DATABASE_CAUSE,
   StalenessCell,
   clipNames,
@@ -28,8 +29,8 @@ import {
   formatBytes,
   plural,
 } from './common'
-import { CLIP_STATUS_LABEL, FAILURE_LABEL, failureDetail, unansweredFailure } from './labels'
-import { CLIP_STATUS_LOOK, FAILURE_LOOK } from './tones'
+import { FAILURE_LABEL, failureDetail, unansweredFailure } from './labels'
+import { FAILURE_LOOK } from './tones'
 
 /**
  * One event's page: its chapters and clips in play order, and whether it needs
@@ -422,7 +423,9 @@ function RenderPanel({
         latestJob={event.latest_job}
         onFinished={onFinished}
         blockedReason={
-          editing ? 'Save or leave Edit mode to render' : missingClipsReason(event.missing)
+          editing
+            ? 'Save or leave Edit mode to render'
+            : missingClipsReason(event.blocking_missing)
         }
       />
     </div>
@@ -445,7 +448,11 @@ function ReadyView({ eventId, event }: { eventId: string; event: EventDetailData
               <code>reel.yaml</code> lists clips that are not on disk
             </>
           }
-          detail={event.missing.join(', ')}
+          detail={event.missing
+            .map((identity) =>
+              event.blocking_missing.includes(identity) ? identity : `${identity} (excluded)`,
+            )
+            .join(', ')}
         />
       )}
       <ReadCutsNote failure={read.failure} />
@@ -472,9 +479,10 @@ function ReadyView({ eventId, event }: { eventId: string; event: EventDetailData
 }
 
 /**
- * `N clips · <their size> · k new · m missing · i ignored`, zero counts omitted.
- * The N clips are the ones the event plays, the new and missing among them, as
- * each chapter's heading and Edit mode count them; its ignored clips come after.
+ * `N clips · <their size> · k new · m missing · e excluded · i ignored`, zero
+ * counts omitted. The N clips are the ones the event lists and does not ignore,
+ * the new, missing and excluded among them, as each chapter's heading and Edit
+ * mode count them; its ignored clips come after.
  */
 function Counts({ clips }: { clips: Clip[] }) {
   const count = (status: Clip['status']) => clips.filter((clip) => clip.status === status).length
@@ -485,12 +493,13 @@ function Counts({ clips }: { clips: Clip[] }) {
   if (sizes.length > 0) {
     parts.push(formatBytes(sizes.reduce((sum, size) => sum + size, 0)))
   }
-  for (const [status, label] of [
-    ['new', 'new'],
-    ['missing', 'missing'],
-    ['ignored', 'ignored'],
+  const excluded = clips.filter((clip) => clip.excluded).length
+  for (const [n, label] of [
+    [count('new'), 'new'],
+    [count('missing'), 'missing'],
+    [excluded, 'excluded'],
+    [count('ignored'), 'ignored'],
   ] as const) {
-    const n = count(status)
     if (n > 0) {
       parts.push(`${n} ${label}`)
     }
@@ -579,7 +588,13 @@ function ChapterPanel({
         <ClipTableHead />
         <tbody role="rowgroup">
           {[...played, ...ignored].map((clip, index) => (
-            <tr role="row" key={clip.identity} className="clip-row" data-status={clip.status}>
+            <tr
+              role="row"
+              key={clip.identity}
+              className="clip-row"
+              data-status={clip.status}
+              data-excluded={clip.excluded || undefined}
+            >
               <td role="cell" className="cell-pos">
                 {index < played.length ? index + 1 : null}
               </td>
@@ -588,15 +603,14 @@ function ChapterPanel({
               </td>
               <td role="cell" className="cell-file">
                 <ClipName name={nameOf(clip.identity)} />
-                <ReadCuts cuts={cuts?.get(clip.identity)} name={nameOf(clip.identity)} />
+                {/* An excluded clip is not in the movie, so its cuts do not apply. */}
+                <ReadCuts
+                  cuts={clip.excluded ? undefined : cuts?.get(clip.identity)}
+                  name={nameOf(clip.identity)}
+                />
               </td>
               <td role="cell" className="cell-status">
-                <Pill
-                  tone={CLIP_STATUS_LOOK[clip.status].tone}
-                  icon={CLIP_STATUS_LOOK[clip.status].icon}
-                >
-                  {CLIP_STATUS_LABEL[clip.status]}
-                </Pill>
+                <ClipStatusPills clip={clip} />
               </td>
               <td role="cell" className="cell-size">
                 {clip.size == null ? '—' : formatBytes(clip.size)}

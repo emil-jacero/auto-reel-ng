@@ -214,6 +214,14 @@
     font-size: var(--text-sm);
   }
 
+  /* A clip's status label(s): a missing, excluded clip has two, side by side while they fit. */
+  .status-pills {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--s-1) var(--s-2);
+    align-items: center;
+  }
+
   /* A clip from another folder: its folder part muted (`ClipName`). */
   .clip-dir {
     color: var(--fg-muted);
@@ -230,7 +238,7 @@
    * table's rows here and Edit mode's (`li.clip-item[data-status]`), whose only
    * pill is its status. Never hidden: status is never color alone.
    */
-  :is(.clip-row, .clip-item)[data-status='active'] .pill {
+  :is(.clip-row, .clip-item)[data-status='active']:not([data-excluded]) .pill {
     --_bg: transparent;
     --_fg: var(--fg-muted);
 

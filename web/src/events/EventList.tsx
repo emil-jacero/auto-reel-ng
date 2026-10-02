@@ -156,7 +156,10 @@ function EventRow({ event, lookAlike }: { event: EventSummary; lookAlike: boolea
       </td>
       <td role="cell" className="cell-clips">
         <span className="clip-counts">
-          <span className="clip-count">{plural(event.clip_count, 'clip', 'clips')}</span>
+          <span className="clip-count">
+            {plural(event.clip_count, 'clip', 'clips')}
+            {event.ignored_count > 0 && ` · ${event.ignored_count} ignored`}
+          </span>
           {/* The same tone and icon as the clip statuses on the event page. */}
           {event.new_count > 0 && (
             <span className="badge" data-tone={CLIP_STATUS_LOOK.new.tone}>
@@ -183,7 +186,7 @@ function EventRow({ event, lookAlike }: { event: EventSummary; lookAlike: boolea
         date={event.date}
         staleness={event.staleness}
         latestJob={event.latest_job}
-        blockedReason={event.missing_count > 0 ? MISSING_BLOCKS_ROW : undefined}
+        blockedReason={event.blocking_missing_count > 0 ? MISSING_BLOCKS_ROW : undefined}
       />
     </tr>
   )

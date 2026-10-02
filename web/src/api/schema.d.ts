@@ -457,6 +457,13 @@ export interface components {
          *     ``status`` is typed with reconcile's own closed vocabulary, so the schema
          *     publishes the enumeration and generated clients get an exhaustive union
          *     (D-8, §4.10). ``ClipStatus`` is a ``StrEnum``: the wire values are unchanged.
+         *
+         *     ``excluded`` is a flag **beside** ``status``, not a member of it: it is true when the
+         *     document's ``clips`` map marks the identity ``exclude: true``, so a render drops the
+         *     clip from the movie without probing it. An excluded clip reports its own status (an
+         *     excluded clip whose file is gone is ``missing`` and ``excluded``). It is false for a
+         *     NEW or IGNORED clip (the document holds no properties for a clip no chapter lists)
+         *     and for every clip of an event without a ``reel.yaml``.
          */
         ClipOut: {
             /** Identity */
@@ -466,6 +473,11 @@ export interface components {
             size?: number | null;
             /** Mtime */
             mtime?: string | null;
+            /**
+             * Excluded
+             * @default false
+             */
+            excluded: boolean;
         };
         /**
          * ClipPropertiesBody
@@ -611,6 +623,11 @@ export interface components {
          * EventDetailOut
          * @description One event's full detail: metadata, ordered chapters/clips, reconcile state,
          *     and its staleness verdict (change-detection, §8.14).
+         *
+         *     ``missing`` lists every clip the document lists that disk does not have, excluded or
+         *     not. ``blocking_missing`` is the subset a render needs: the missing clips the document
+         *     does not exclude (an excluded clip is never probed, so its absence cannot fail a
+         *     render).
          */
         EventDetailOut: {
             /** Event Id */
@@ -633,6 +650,11 @@ export interface components {
              * @default []
              */
             missing: string[];
+            /**
+             * Blocking Missing
+             * @default []
+             */
+            blocking_missing: string[];
             latest_job?: components["schemas"]["JobSummaryOut"] | null;
             staleness: components["schemas"]["StalenessOut"];
         };
@@ -664,6 +686,11 @@ export interface components {
         /**
          * EventSummaryOut
          * @description One event as listed by ``GET /api/v1/events``.
+         *
+         *     ``clip_count`` is the clips the event lists that are not ignored (ACTIVE, NEW and
+         *     MISSING), the number the event's detail page counts; ``ignored_count`` is the IGNORED
+         *     ones, which ``clip_count`` leaves out. ``missing_count`` counts every missing clip;
+         *     ``blocking_missing_count`` only those a render needs (the detail's ``blocking_missing``).
          */
         EventSummaryOut: {
             /**
@@ -681,10 +708,14 @@ export interface components {
             location?: string | null;
             /** Clip Count */
             clip_count: number;
+            /** Ignored Count */
+            ignored_count: number;
             /** New Count */
             new_count: number;
             /** Missing Count */
             missing_count: number;
+            /** Blocking Missing Count */
+            blocking_missing_count: number;
             latest_job?: components["schemas"]["JobSummaryOut"] | null;
             staleness: components["schemas"]["StalenessOut"];
         };

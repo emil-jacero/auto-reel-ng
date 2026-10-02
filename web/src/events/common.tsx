@@ -1,7 +1,14 @@
+import type { Clip } from '../api/event'
 import type { Staleness } from '../api/events'
 import { Pill } from '../ui/Pill'
-import { REASON_LABEL, REASON_NOTE, UNANSWERED_CAUSE } from './labels'
-import { VERDICT_LOOK } from './tones'
+import {
+  CLIP_STATUS_LABEL,
+  EXCLUDED_LABEL,
+  REASON_LABEL,
+  REASON_NOTE,
+  UNANSWERED_CAUSE,
+} from './labels'
+import { CLIP_STATUS_LOOK, EXCLUDED_LOOK, VERDICT_LOOK } from './tones'
 
 /** Helpers both event screens share. */
 
@@ -77,6 +84,31 @@ export function formatBytes(bytes: number): string {
     unit += 1
   }
   return `${value.toFixed(1)} ${BYTE_UNITS[unit]}`
+}
+
+/**
+ * A clip's status label(s), one vocabulary for the event page's table and Edit
+ * mode's rows. An excluded clip is dropped from the movie, so it says Excluded in
+ * place of the quiet "Included"; an excluded missing clip says Missing and then
+ * Excluded, since both are true. Words and an icon, never color alone.
+ */
+export function ClipStatusPills({ clip }: { clip: Pick<Clip, 'status' | 'excluded'> }) {
+  const look = CLIP_STATUS_LOOK[clip.status]
+  const excluded = clip.excluded
+  return (
+    <span className="status-pills">
+      {!(excluded && clip.status === 'active') && (
+        <Pill tone={look.tone} icon={look.icon}>
+          {CLIP_STATUS_LABEL[clip.status]}
+        </Pill>
+      )}
+      {excluded && (
+        <Pill tone={EXCLUDED_LOOK.tone} icon={EXCLUDED_LOOK.icon}>
+          {EXCLUDED_LABEL}
+        </Pill>
+      )}
+    </span>
+  )
 }
 
 /** The render verdict: a pill, and every reason in words when stale. */
