@@ -99,7 +99,9 @@ with no date SHALL form their own group after every dated group. Each event SHAL
 - its date
 - its title, or the event's folder name when it has no title
 - its location when it has one
-- its clip count
+- its clip count: the clips it lists that are not ignored, the new and missing ones among them, as the
+  event's page counts them
+- its ignored clip count, when it is non-zero
 - its NEW and MISSING clip counts when either is non-zero
 - whether it needs a render and, if so, every reason the verdict cites, in words
 - its latest job's status, when it has one
@@ -137,6 +139,10 @@ present a missing fact (no date, no title, no job) as a value.
 #### Scenario: NEW and MISSING clips are visible
 - **WHEN** an event has one NEW clip, and another references one clip that is absent from disk
 - **THEN** the first row shows one new clip and the second shows one missing clip
+
+#### Scenario: Ignored clips are counted apart
+- **WHEN** an event lists two clips and its folder holds a third that `reel.yaml` ignores
+- **THEN** its row shows 2 clips and 1 ignored, the same two numbers its page shows, and not 3 clips
 
 #### Scenario: The latest job's outcome is visible
 - **WHEN** one event's latest job failed, another's is queued, and a third has no job
@@ -369,7 +375,7 @@ An event's page SHALL show, from the event detail the service returns:
   description, so that two events with the same title and date can be told apart.
 - whether it needs a render, with every reason in words, or that it is up to date
 - its latest job's status and time, when it has one
-- counts of its clips, their total size, and its new, missing and ignored clips
+- counts of its clips, their total size, and its new, missing, excluded and ignored clips
 
 The verdict and the latest job SHALL be shown together, in the one region that holds the page's render
 controls, between the page's heading and its chapters. The clip counts SHALL be shown with the event's facts
@@ -385,7 +391,9 @@ time. A new, missing or ignored clip SHALL show its status as a status label. An
 case, SHALL show its status as quiet words with its icon, without a label's fill or edge, so that the other
 statuses stand out. A clip the service reports without a size or time (a missing clip) SHALL show those as
 absent, never as zero or a placeholder date. When `reel.yaml` lists clips that are missing from disk, the
-page SHALL name them in a warning above the chapters.
+page SHALL name them in a warning above the chapters, and SHALL mark each one that `reel.yaml` excludes as
+excluded there. A clip that `reel.yaml` excludes SHALL be marked in its row, as "A clip that reel.yaml excludes
+is marked as excluded" says.
 
 A clip's name SHALL be its file name while every clip its chapter lists lies in the chapter's own folder
 (the event folder, for the default chapter). A chapter that lists a clip from another folder SHALL name each
@@ -444,6 +452,11 @@ loaded page does, without horizontal scroll from 320 CSS pixels up.
 - **THEN** "Needs render" with its reasons, the latest job "Rendered" with its time, and Render are shown
   in one region between the heading and the `Clips` table, and the line with its clip count and total size
   is shown under the heading
+
+#### Scenario: The counts name the excluded clips
+- **WHEN** the operator opens an event that lists three clips, one of which `reel.yaml` excludes
+- **THEN** the facts line reads "3 clips" with the total size and "1 excluded", and the excluded clip is
+  one of the three numbered rows
 
 #### Scenario: A missing clip shows no invented facts
 - **WHEN** `reel.yaml` lists `borttagen.mp4` and the file is not on disk
@@ -1229,155 +1242,6 @@ channel, not polling.
 - **THEN** the header shows that the client is reconnecting, without job counts, and it becomes live again,
   with no reload, once the service is back
 
-### Requirement: An event's page schedules its render
-
-An event's page SHALL offer, as explicit controls that name what they do:
-
-- a **Render** control when the event needs a render, has no queued or running job, lists no clip that is
-  missing from disk, and the page is not in Edit mode
-- when the event is up to date, has no queued or running job, lists no clip that is missing from disk, and
-  the page is not in Edit mode: its up-to-date state plus a secondary **Render anyway** control, which asks
-  for confirmation before it forces a render
-
-While the page is in Edit mode, it SHALL offer neither control and SHALL instead say that the edits must be
-saved, or Edit mode left, before rendering: a render reads the saved `reel.yaml`, not the unsaved edits. A
-queued or running job's progress and its Cancel control stay offered in Edit mode.
-
-While the event lists a clip that `reel.yaml` names but that is missing from disk, and the page is not in
-Edit mode, the page SHALL offer neither control, because a render fails on a missing clip that it plays.
-This holds for every missing clip, including one that `reel.yaml` excludes and that a render would skip,
-since the page's read does not say which missing clips are excluded. The page SHALL instead say, in words,
-that the clip is missing from disk and that it must be restored, or removed in Edit mode, before rendering.
-For one missing clip the words SHALL name it; for several they SHALL give their number. A queued or running
-job's progress and its Cancel control stay offered.
-
-Pressing a control SHALL send one enqueue request, and SHALL NOT send another while that one is
-unanswered. Until the answer arrives, the pressed control SHALL stay in place, keep keyboard focus, be
-marked busy, and ignore further presses. The page SHALL handle every answer the service publishes:
-
-- **job created:** the page follows the new job
-- **up to date, not enqueued:** the page says there is nothing to render, and offers Render anyway
-- **a job is already active for the event:** the page follows that job, not an error
-- **another event claims the same movie file:** the page names each other event, with a link to its page,
-  and says the fix: a distinct title or location in `reel.yaml`
-- **unknown event:** the page says the event no longer exists
-- **the project could not be scanned** (so the service could not check for another claimant): the page
-  says so, with the service's detail, and that nothing was queued
-- **the service cannot reach its database** (a 503 whose problem body names the database as the failing
-  dependency): the page says the render was not queued because the service can't reach its database, with
-  the service's detail
-- **any other answer, or none:** the page says the render was not queued, with the status it received or
-  that the service is not reachable. It MUST NOT name a cause the answer does not carry; a server error
-  without a problem body is not reported as a database failure.
-
-The page MUST tell these outcomes apart by the published status, conflict kind and failing dependency, not by
-the problem's prose. Only an event page that shows the event's render state offers these controls; a page whose read
-failed offers none.
-
-Render anyway's confirmation asks about an event that is up to date and has no queued or running job. While
-it is open and no enqueue request is in flight, if the page would no longer offer Render anyway (a queued or
-running job for the event reaches the page, the event no longer reads as up to date, or a missing clip now
-holds the render back), the dialog SHALL close by itself and send nothing. Whenever a
-dialog of the page's render region closes after the control that opened it is gone (Render anyway, once the
-job it started shows, or any dialog that closed by itself), keyboard focus SHALL move to the page's job
-status, whose words say how the job stands. Focus SHALL NOT fall to the document's body.
-
-#### Scenario: A stale event is rendered
-- **WHEN** the operator opens `2024-06-27 - Grillning med grannar`, which needs a render, and presses Render
-- **THEN** one job is enqueued for it, and the page shows that job as queued
-
-#### Scenario: An up-to-date event is rendered only on purpose
-- **WHEN** the operator opens `2024-06-21 - Midsommar - Dalarna`, which is up to date
-- **THEN** the page shows it as up to date and offers Render anyway, and a render is enqueued only after
-  the operator confirms it
-
-#### Scenario: The event became fresh since the page was read
-- **WHEN** the page of `2024/Blandat` showed it as needing a render, a job queued elsewhere then rendered
-  it while the page had no live connection, and the operator presses Render
-- **THEN** no job is enqueued, the page says there is nothing to render and offers Render anyway, and it
-  re-reads to show the event as up to date
-
-#### Scenario: A job is already active
-- **WHEN** a job for `2024-08-02 - Badutflykt - Varberg` was enqueued elsewhere after the page was read,
-  before the page learned of it, and the operator presses Render
-- **THEN** the page shows that existing job's state, with no error and no second job
-
-#### Scenario: Two events claim the same movie file
-- **WHEN** the operator presses Render on `2024-07-14 - kalas`
-- **THEN** no job is enqueued, and the page names `2024-07-14 - Kalas` as the other claimant, links to it,
-  and says to give one of them a distinct title or location in `reel.yaml`
-
-#### Scenario: A double click enqueues once
-- **WHEN** the operator double-clicks Render on `2024-08-20 - Två kapitel - Tjörn`
-- **THEN** one enqueue request is sent
-
-#### Scenario: Render keeps focus while it waits
-- **WHEN** the operator presses Enter on Render on `2024-08-20 - Två kapitel - Tjörn`, and the service takes
-  two seconds to answer
-- **THEN** during those seconds focus stays on Render, which is marked busy, and pressing Enter again sends
-  nothing
-
-#### Scenario: Edit mode holds Render back
-- **WHEN** the operator opens `2024-06-27 - Grillning med grannar`, which needs a render, and enters Edit mode
-- **THEN** the page offers no Render control and says to save or leave Edit mode to render, and once Edit
-  mode ends, Render is offered again
-
-#### Scenario: An unreadable event offers no Render
-- **WHEN** the operator opens the page of `2024-02-30 - Omöjligt datum`, whose read fails
-- **THEN** the page shows the failure and offers no Render control
-
-#### Scenario: A missing clip holds Render back
-- **WHEN** the operator opens `2024-09-01 - Sommarlov`, which needs a render and whose `reel.yaml` lists the
-  missing `borttagen.mp4`
-- **THEN** the page offers neither Render nor Render anyway, and says that `borttagen.mp4` is missing from
-  disk and to restore it, or remove it in Edit mode
-
-#### Scenario: Several missing clips are counted
-- **WHEN** the operator opens `2024-09-02 - Två saknade`, whose `reel.yaml` lists two missing clips
-- **THEN** the page offers no Render, and says that 2 clips are missing from disk and to restore them, or
-  remove them in Edit mode
-
-#### Scenario: An excluded missing clip still holds Render back
-- **WHEN** the operator opens `2024-09-03 - Utesluten`, whose `reel.yaml` lists the missing `borta.mp4` and
-  excludes it
-- **THEN** the page offers neither Render nor Render anyway, and says that `borta.mp4` is missing from disk
-  and to restore it, or remove it in Edit mode
-
-#### Scenario: Edit mode's reason takes the place of the missing clip's
-- **WHEN** the operator enters Edit mode on `2024-09-01 - Sommarlov`
-- **THEN** the page says to save or leave Edit mode to render, and once Edit mode ends with nothing saved, it
-  says again that `borttagen.mp4` is missing from disk
-
-#### Scenario: A job queued for such an event can still be cancelled
-- **WHEN** a job for `2024-09-02 - Två saknade` was queued before its page was opened, and no worker is
-  running
-- **THEN** the page shows the job waiting for a worker, with its Cancel control, says that clips are missing
-  from disk, and offers no Render
-
-#### Scenario: Confirming Render anyway keeps the keyboard's place
-- **WHEN** the operator opens `2024-06-21 - Midsommar - Dalarna`, which is up to date, presses Render anyway
-  with the keyboard, and confirms it with the keyboard
-- **THEN** one job is enqueued, the page shows it queued, keyboard focus is on the page's job status, and the
-  next Tab reaches Cancel
-
-#### Scenario: Render anyway's question closes when a render starts elsewhere
-- **WHEN** the Render anyway dialog is open on `2024-06-21 - Midsommar - Dalarna`, and a job for that event,
-  queued by another client, reaches the page over the connection
-- **THEN** the dialog closes by itself, the page sends no enqueue request, and it shows that job queued, with
-  keyboard focus on its job status
-
-#### Scenario: The database is down when Render is pressed
-- **WHEN** the operator presses Render on `2024-06-27 - Grillning med grannar` and the service answers 503
-  naming the database as the failing dependency
-- **THEN** no job is shown, and the page says the render was not queued because the service can't reach its
-  database, with the service's detail, and not that the project could not be scanned
-
-#### Scenario: A server error without a problem body is not a database failure
-- **WHEN** the operator presses Render on `2024-06-27 - Grillning med grannar` and the service answers 500
-  with no problem body, or answers 503 without naming the database
-- **THEN** the page says the render was not queued, with the status it received, and does not say that the
-  service can't reach its database
-
 ### Requirement: A render's progress is shown live
 
 Wherever a job is shown for an event, the client SHALL show the newest job it knows for that event. That is
@@ -1565,8 +1429,8 @@ finished. An unknown job SHALL be reported as not found.
 Each event row the list shows with its render state SHALL show that event's job as the progress
 requirement describes, and SHALL keep its height when the job's first percentage arrives. The job the
 connection carries SHALL be matched to the row whose event id equals the
-job's event directory. A row that needs a render, has no queued or running job, and lists no clip that is
-missing from disk SHALL offer a compact **Render** control, whose accessible name names the event ("Render"
+job's event directory. A row that needs a render, has no queued or running job, and lists no missing clip that
+blocks a render (one that `reel.yaml` does not exclude) SHALL offer a compact **Render** control, whose accessible name names the event ("Render"
 followed by the event's folder name), so that a list of Render controls is told apart by assistive
 technology. At phone width, the row's job state keeps its "Last job" label whenever the row shows a job,
 including one the connection reported after the list was read, and a row that shows no job has no such
@@ -1590,9 +1454,11 @@ has no title. The output-collision notification is the exception: it SHALL name 
 other events by their folder names, since events that claim the same movie file share their date, title
 and location.
 
-A row that needs a render, has no queued or running job, but lists a clip that is missing from disk SHALL
+A row that needs a render, has no queued or running job, but lists a missing clip that blocks a render SHALL
 NOT offer Render, for the same reason as the event's page. In its place, the row SHALL say, in words with an
-icon, that missing clips block its render. The row's count of missing clips stays shown.
+icon, that missing clips block its render. The row SHALL take which missing clips block from the list
+response's `blocking_missing_count`. The row's count of missing clips, which includes an excluded one,
+stays shown.
 
 Error rows under "Needs attention" SHALL NOT offer Render.
 
@@ -1625,6 +1491,12 @@ Error rows under "Needs attention" SHALL NOT offer Render.
 - **WHEN** the list shows `2024-09-01 - Sommarlov`, which needs a render and lists one missing clip
 - **THEN** its row shows 1 missing clip and its verdict, offers no Render, and says that missing clips block
   its render
+
+#### Scenario: A row whose only missing clip is excluded offers Render
+- **WHEN** the list shows `2024-09-03 - Utesluten`, which needs a render and whose only missing clip is one
+  that `reel.yaml` excludes
+- **THEN** its row shows 1 missing clip and its verdict, offers Render, and does not say that missing clips
+  block its render
 
 #### Scenario: A missing-clip row fits a phone-width window
 - **WHEN** the list is shown 390 pixels wide
@@ -2968,7 +2840,7 @@ the movie. A chapter without clips has no title card and no chapter marker in th
 ### Requirement: Edit mode lists, adds and removes a clip's cuts
 
 A clip's cuts are the spans of it that the movie leaves out. Each has a start and an end, in seconds from the
-clip's start, and may have a reason. In Edit mode, every included or new clip (a clip on disk that a chapter
+clip's start, and may have a reason. In Edit mode, every included or new clip that `reel.yaml` does not exclude (a clip on disk that a chapter
 lists, or will list once the edits are saved) SHALL offer a **Cuts** control. The control SHALL say how many
 cuts the clip has and, when it has any, how much time they cut out. Pressing it SHALL show or hide a panel
 under the clip's row and SHALL leave keyboard focus on the control. The control SHALL say to assistive
@@ -2976,10 +2848,13 @@ technology whether the panel is shown, and SHALL name the clip as its row names 
 Cuts control SHALL come after the row's other controls, and the panel's controls straight after it.
 
 The panel SHALL list the clip's cuts in their order, each with its number in the list, its start and end, its
-length and its reason in words. A clip without cuts SHALL say that the whole clip plays. A missing clip SHALL
-show, in its row, how many cuts it has, and SHALL offer no Cuts control: its file is not on disk to cut, and
+length and its reason in words. A clip without cuts SHALL say that the whole clip plays. A missing clip that
+`reel.yaml` does not exclude SHALL show, in its row, how many cuts it has, and SHALL offer no Cuts control: its file is not on disk to cut, and
 removing it from `reel.yaml` takes its cuts with it. Once the operator removes it, its row SHALL NOT show its
 cuts any more, since the save drops them. An ignored clip SHALL have no cuts and no Cuts control.
+An excluded clip is not in the movie, so its cuts do not apply: its row SHALL show no cuts and SHALL offer no
+Cuts control, whether the clip is on disk or missing. Its cuts stay in `reel.yaml`, and a save SHALL write
+them back unchanged.
 
 **Times.** A cut's times are places in the clip, not moments in a day, so the format for moments ("Times are
 written one way on every screen") does not apply to them. The page SHALL write a time as minutes and seconds
@@ -3133,6 +3008,12 @@ window 320 or 390 pixels wide. No panel SHALL make the page scroll horizontally 
 - **WHEN** the operator presses Remove on `borttagen.mp4`
 - **THEN** its row is listed as removed when the edits are saved and no longer says that it has a cut
 
+#### Scenario: An excluded clip offers no cuts
+- **WHEN** the operator enters Edit mode on an event whose `reel.yaml` excludes `s1710002.mp4`, which is on
+  disk and has a cut from `0` to `1.5`
+- **THEN** its row offers no Cuts control and shows no cut count, the other clips of the chapter still offer
+  theirs, and saving another edit writes the cut back unchanged
+
 #### Scenario: An ignored clip has no cuts
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`
 - **THEN** the ignored `s1710004.mp4` offers no Cuts control, and every clip `Main` and `Kvällen` play offers one,
@@ -3177,10 +3058,12 @@ window 320 or 390 pixels wide. No panel SHALL make the page scroll horizontally 
 
 ### Requirement: The event page shows each clip's cuts
 
-The event page SHALL show, beside the name of each clip that has cuts in `reel.yaml`, how many cuts it has and
+The event page SHALL show, beside the name of each clip that has cuts in `reel.yaml` and that `reel.yaml`
+does not exclude, how many cuts it has and
 how much time they cut out ("2 cuts · −4.5 s"), counted as Edit mode counts them. On request, the page SHALL
 show the clip's cuts there, as Edit mode lists them, without any control that changes them. A clip without
-cuts SHALL show nothing more than before. The indicator SHALL be operable from the keyboard. It SHALL say to
+cuts SHALL show nothing more than before, and so SHALL an excluded clip: it is not in the movie, so its cuts
+do not apply. The indicator SHALL be operable from the keyboard. It SHALL say to
 assistive technology whether the list is shown, and it SHALL be read as the number of cuts and the time cut
 out, not as a minus sign. When the primary pointer is coarse, it SHALL take a tap anywhere in an area of at
 least 44 × 44 CSS pixels around it, reaching no other control. No shown list SHALL make the page scroll
@@ -3199,6 +3082,10 @@ alert.
 - **WHEN** the operator activates that indicator from the keyboard
 - **THEN** it says that its list is shown, and lists the cut from `0:00` to `0:01.5`, 1.5 s long, "Cut by hand",
   with no control to change it
+
+#### Scenario: An excluded clip shows no cuts
+- **WHEN** `reel.yaml` excludes `s1710002.mp4` and holds a cut from `0` to `1.5` on it
+- **THEN** the event page shows no cut indicator beside `s1710002.mp4`
 
 #### Scenario: The cuts cannot be read
 - **WHEN** the operator opens `2024-06-27 - Grillning med grannar` and the service does not answer the read of
@@ -4185,3 +4072,199 @@ meanwhile moved to a control outside the dialog, closing the dialog SHALL leave 
   a script listening to that event does), keyboard focus is moved to another control outside the dialog, such
   as Save
 - **THEN** keyboard focus stays on that control and is not moved back to the control that opened the dialog
+
+### Requirement: A clip that reel.yaml excludes is marked as excluded
+
+A clip that `reel.yaml` excludes (`clips.<identity>.exclude: true`) is listed in its chapter and kept in the
+document, but a render drops it from the movie. The event page and Edit mode SHALL say so for every such clip,
+whatever its status, from the clip's `excluded` flag in the event read:
+
+- Its row SHALL carry an **Excluded** status label, in words and with an icon of its own, never by color alone.
+  The label SHALL be a status label like New and Missing, with the fill and edge those have.
+- An excluded clip on disk SHALL show the Excluded label in place of the quiet word "Included", since the
+  clip is not included in the movie. An excluded missing clip SHALL show both its Missing label and the
+  Excluded label.
+- The clip keeps its place and its position number in its chapter's list, as `reel.yaml` has it, on the
+  event page and in Edit mode alike, so that the two screens number the same rows. Moving, dragging and
+  removing a missing clip work on it as on any other.
+- The clip counts of the facts line SHALL give the number of excluded clips ("1 excluded") when it is
+  non-zero. The excluded clips stay among the clips counted, as the new and missing ones do.
+- Its row SHALL show no cuts and offer none ("Edit mode lists, adds and removes a clip's cuts").
+
+The client SHALL take the mark from the event read's `excluded` flag. It MUST NOT infer exclusion from the
+editorial document read for Edit mode, so that both screens show the one fact the service reports.
+
+#### Scenario: An excluded clip is marked on the event page
+- **WHEN** the operator opens an event whose `reel.yaml` lists `s1710001.mp4`, `s1710002.mp4` and
+  `s1710003.mp4` in one chapter and excludes `s1710002.mp4`
+- **THEN** the chapter's table lists the three clips at positions 1, 2 and 3, `s1710002.mp4` with the
+  Excluded label and the other two as "Included", and the facts line reads "3 clips" with "1 excluded"
+
+#### Scenario: An excluded missing clip shows both labels
+- **WHEN** `reel.yaml` lists `borta.mp4`, excludes it, and the file is not on disk
+- **THEN** its row shows the Missing label and the Excluded label, no size and no time
+
+#### Scenario: Edit mode marks the same clip
+- **WHEN** the operator enters Edit mode on that event
+- **THEN** `s1710002.mp4` is listed at position 2 with the Excluded label, and the Included word is not shown
+  for it
+
+#### Scenario: The mark is not by color alone
+- **WHEN** the Excluded label is shown in light and in dark mode
+- **THEN** it reads "Excluded" in words and has an icon, and its fill and edge differ from the Included word's
+
+### Requirement: An event's page schedules its render, held back only by clips a render needs
+
+An event's page SHALL offer, as explicit controls that name what they do:
+
+- a **Render** control when the event needs a render, has no queued or running job, lists no missing clip
+  that blocks a render, and the page is not in Edit mode
+- when the event is up to date, has no queued or running job, lists no missing clip that blocks a render,
+  and the page is not in Edit mode: its up-to-date state plus a secondary **Render anyway** control, which asks
+  for confirmation before it forces a render
+
+While the page is in Edit mode, it SHALL offer neither control and SHALL instead say that the edits must be
+saved, or Edit mode left, before rendering: a render reads the saved `reel.yaml`, not the unsaved edits. A
+queued or running job's progress and its Cancel control stay offered in Edit mode.
+
+A missing clip *blocks* a render when `reel.yaml` names it and does not exclude it, because a render fails
+on a missing clip that it plays. A missing clip that `reel.yaml` excludes does not block one: a render skips
+it. The page SHALL take which missing clips block from the event read's `blocking_missing`, never from the
+list of all missing clips. While the event lists a blocking missing clip, and the page is not in Edit mode,
+the page SHALL offer neither control. It SHALL instead say, in words, that the clip is missing from disk and
+that it must be restored, or removed in Edit mode, before rendering. For one blocking clip the words SHALL
+name it; for several they SHALL give their number, and an excluded missing clip SHALL NOT be counted in
+them. A queued or running job's progress and its Cancel control stay offered.
+
+Pressing a control SHALL send one enqueue request, and SHALL NOT send another while that one is
+unanswered. Until the answer arrives, the pressed control SHALL stay in place, keep keyboard focus, be
+marked busy, and ignore further presses. The page SHALL handle every answer the service publishes:
+
+- **job created:** the page follows the new job
+- **up to date, not enqueued:** the page says there is nothing to render, and offers Render anyway
+- **a job is already active for the event:** the page follows that job, not an error
+- **another event claims the same movie file:** the page names each other event, with a link to its page,
+  and says the fix: a distinct title or location in `reel.yaml`
+- **unknown event:** the page says the event no longer exists
+- **the project could not be scanned** (so the service could not check for another claimant): the page
+  says so, with the service's detail, and that nothing was queued
+- **the service cannot reach its database** (a 503 whose problem body names the database as the failing
+  dependency): the page says the render was not queued because the service can't reach its database, with
+  the service's detail
+- **any other answer, or none:** the page says the render was not queued, with the status it received or
+  that the service is not reachable. It MUST NOT name a cause the answer does not carry; a server error
+  without a problem body is not reported as a database failure.
+
+The page MUST tell these outcomes apart by the published status, conflict kind and failing dependency, not by
+the problem's prose. Only an event page that shows the event's render state offers these controls; a page whose read
+failed offers none.
+
+Render anyway's confirmation asks about an event that is up to date and has no queued or running job. While
+it is open and no enqueue request is in flight, if the page would no longer offer Render anyway (a queued or
+running job for the event reaches the page, the event no longer reads as up to date, or a missing clip that blocks
+a render now holds it back), the dialog SHALL close by itself and send nothing. Whenever a
+dialog of the page's render region closes after the control that opened it is gone (Render anyway, once the
+job it started shows, or any dialog that closed by itself), keyboard focus SHALL move to the page's job
+status, whose words say how the job stands. Focus SHALL NOT fall to the document's body.
+
+#### Scenario: A stale event is rendered
+- **WHEN** the operator opens `2024-06-27 - Grillning med grannar`, which needs a render, and presses Render
+- **THEN** one job is enqueued for it, and the page shows that job as queued
+
+#### Scenario: An up-to-date event is rendered only on purpose
+- **WHEN** the operator opens `2024-06-21 - Midsommar - Dalarna`, which is up to date
+- **THEN** the page shows it as up to date and offers Render anyway, and a render is enqueued only after
+  the operator confirms it
+
+#### Scenario: The event became fresh since the page was read
+- **WHEN** the page of `2024/Blandat` showed it as needing a render, a job queued elsewhere then rendered
+  it while the page had no live connection, and the operator presses Render
+- **THEN** no job is enqueued, the page says there is nothing to render and offers Render anyway, and it
+  re-reads to show the event as up to date
+
+#### Scenario: A job is already active
+- **WHEN** a job for `2024-08-02 - Badutflykt - Varberg` was enqueued elsewhere after the page was read,
+  before the page learned of it, and the operator presses Render
+- **THEN** the page shows that existing job's state, with no error and no second job
+
+#### Scenario: Two events claim the same movie file
+- **WHEN** the operator presses Render on `2024-07-14 - kalas`
+- **THEN** no job is enqueued, and the page names `2024-07-14 - Kalas` as the other claimant, links to it,
+  and says to give one of them a distinct title or location in `reel.yaml`
+
+#### Scenario: A double click enqueues once
+- **WHEN** the operator double-clicks Render on `2024-08-20 - Två kapitel - Tjörn`
+- **THEN** one enqueue request is sent
+
+#### Scenario: Render keeps focus while it waits
+- **WHEN** the operator presses Enter on Render on `2024-08-20 - Två kapitel - Tjörn`, and the service takes
+  two seconds to answer
+- **THEN** during those seconds focus stays on Render, which is marked busy, and pressing Enter again sends
+  nothing
+
+#### Scenario: Edit mode holds Render back
+- **WHEN** the operator opens `2024-06-27 - Grillning med grannar`, which needs a render, and enters Edit mode
+- **THEN** the page offers no Render control and says to save or leave Edit mode to render, and once Edit
+  mode ends, Render is offered again
+
+#### Scenario: An unreadable event offers no Render
+- **WHEN** the operator opens the page of `2024-02-30 - Omöjligt datum`, whose read fails
+- **THEN** the page shows the failure and offers no Render control
+
+#### Scenario: A missing clip holds Render back
+- **WHEN** the operator opens `2024-09-01 - Sommarlov`, which needs a render and whose `reel.yaml` lists the
+  missing `borttagen.mp4`
+- **THEN** the page offers neither Render nor Render anyway, and says that `borttagen.mp4` is missing from
+  disk and to restore it, or remove it in Edit mode
+
+#### Scenario: Several missing clips are counted
+- **WHEN** the operator opens `2024-09-02 - Två saknade`, whose `reel.yaml` lists two missing clips
+- **THEN** the page offers no Render, and says that 2 clips are missing from disk and to restore them, or
+  remove them in Edit mode
+
+#### Scenario: An excluded missing clip does not hold Render back
+- **WHEN** the operator opens `2024-09-03 - Utesluten`, which needs a render and whose `reel.yaml` lists the
+  missing `borta.mp4` and excludes it
+- **THEN** the page offers Render, and its warning above the chapters names `borta.mp4` as missing and
+  excluded
+
+#### Scenario: Only the missing clip a render needs is named
+- **WHEN** the operator opens an event that lists the missing `borta.mp4`, which `reel.yaml` excludes, and
+  the missing `borttagen.mp4`, which it does not
+- **THEN** the page offers neither Render nor Render anyway, and says that `borttagen.mp4` is missing from
+  disk and to restore it, or remove it in Edit mode, without naming or counting `borta.mp4`
+
+#### Scenario: Edit mode's reason takes the place of the missing clip's
+- **WHEN** the operator enters Edit mode on `2024-09-01 - Sommarlov`
+- **THEN** the page says to save or leave Edit mode to render, and once Edit mode ends with nothing saved, it
+  says again that `borttagen.mp4` is missing from disk
+
+#### Scenario: A job queued for such an event can still be cancelled
+- **WHEN** a job for `2024-09-02 - Två saknade` was queued before its page was opened, and no worker is
+  running
+- **THEN** the page shows the job waiting for a worker, with its Cancel control, says that clips are missing
+  from disk, and offers no Render
+
+#### Scenario: Confirming Render anyway keeps the keyboard's place
+- **WHEN** the operator opens `2024-06-21 - Midsommar - Dalarna`, which is up to date, presses Render anyway
+  with the keyboard, and confirms it with the keyboard
+- **THEN** one job is enqueued, the page shows it queued, keyboard focus is on the page's job status, and the
+  next Tab reaches Cancel
+
+#### Scenario: Render anyway's question closes when a render starts elsewhere
+- **WHEN** the Render anyway dialog is open on `2024-06-21 - Midsommar - Dalarna`, and a job for that event,
+  queued by another client, reaches the page over the connection
+- **THEN** the dialog closes by itself, the page sends no enqueue request, and it shows that job queued, with
+  keyboard focus on its job status
+
+#### Scenario: The database is down when Render is pressed
+- **WHEN** the operator presses Render on `2024-06-27 - Grillning med grannar` and the service answers 503
+  naming the database as the failing dependency
+- **THEN** no job is shown, and the page says the render was not queued because the service can't reach its
+  database, with the service's detail, and not that the project could not be scanned
+
+#### Scenario: A server error without a problem body is not a database failure
+- **WHEN** the operator presses Render on `2024-06-27 - Grillning med grannar` and the service answers 500
+  with no problem body, or answers 503 without naming the database
+- **THEN** the page says the render was not queued, with the status it received, and does not say that the
+  service can't reach its database
