@@ -655,11 +655,15 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     with no frame there has no thumbnail.
   - **Extraction** uses CPU decode through the engine's ffmpeg runtime: input seek, one frame,
     SAR-corrected, the display rotation applied and the editorial `rotate` not, fitted inside 320×180.
+    A clip the probe flags HDR (PQ or HLG) is tone-mapped to SDR first, on the CPU, with the render's own
+    chain (`CPU_TONEMAP_FILTER`).
   - **The cache** is derived state in a file cache outside the library:
     `$XDG_CACHE_HOME/auto-reel/thumbnails/` (else `~/.cache/…`), or `thumbnails.cache_dir`. It is keyed
     by the resolved file's name (not its path), size, mtime, position, box and `THUMBNAIL_VERSION`,
     so a move, copy or remount of the library keeps the cache; written atomically, never in Postgres
-    (D-7), and never evicted in v1 (≈15 KB per clip).
+    (D-7), and never evicted in v1 (≈15 KB per clip). A full cache disk is one cache error, not a
+    failure of the clip; hidden temporaries a killed extraction left behind, older than a day, are swept
+    once per process.
     - *2026-10-02, change `thumbs-cache-key-and-count`:* the key used to hold the absolute resolved
       path, so every remount regenerated every thumbnail. `THUMBNAIL_VERSION` is now 2; the files
       written under version 1 are orphaned and stay (never evicted), and every clip regenerates once.
@@ -668,6 +672,12 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     A host CLI and a container service share one cache when they see the same directory (the compose
     stack's `XDG_CACHE_HOME=/data/cache` bind mount, or `thumbnails.cache_dir` in `config.yaml`); the
     library may sit at different paths on each side, since the key no longer hashes the path.
+    - *2026-10-02, change `thumbs-hdr-and-cache-hygiene`:* an HDR clip's thumbnail used to be
+      range-clipped; it is tone-mapped now. The key is computed before any probe (a cache hit runs no
+      ffprobe), so it cannot carry an HDR flag: `THUMBNAIL_VERSION` is now 3, the files written under
+      earlier versions are orphaned and stay (never evicted), and every clip regenerates once. An HDR
+      clip that declares only a transfer function (no primaries or matrix) has no thumbnail, as its
+      render fails the same way; nothing is guessed.
   - **Filling it:** `auto-reel thumbs` fills it in batch. The service's thumbnail route fills it on
     request (change `clip-thumbnail-endpoint`).
   - **Still open:** proxies and scrubbing are v2, with the timeline editor (§8.11; moved from v3 on

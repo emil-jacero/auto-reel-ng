@@ -15,6 +15,11 @@ that is moved, copied or remounted keeps its cache, and a cache hit costs one
 ``stat`` and one hash. Files are written like ``reel/writer.write_document``: a
 uniquely named hidden temporary file, ``fsync``, then ``os.replace``, so
 ``<key>.jpg`` only ever appears complete.
+
+A clip the engine's probe flags as HDR (PQ or HLG) is tone-mapped to SDR on the CPU with the
+renderer's own chain before it is scaled. A full cache disk is one :class:`ThumbnailCacheError`,
+not a failure of the clip, and temporaries that a killed extraction left behind are swept once
+per process (:func:`sweep_stale_temporaries`).
 """
 
 from __future__ import annotations
@@ -26,10 +31,13 @@ import logging
 import math
 import os
 import re
+import threading
+import time
 import uuid
 from pathlib import Path
-from typing import List, Optional
+from typing import List, NamedTuple, Optional, Set
 
+from ..accel.profiles.cpu import CPU_TONEMAP_FILTER
 from ..errors import (
     FfmpegError,
     FfmpegTimeoutError,
@@ -47,9 +55,25 @@ logger = logging.getLogger(__name__)
 #: read stalls (a removable drive that went away). Fixed: not a ``config.yaml`` setting.
 THUMBNAIL_TIMEOUT = 60.0
 
-#: Bump whenever :func:`thumbnail_args` changes the output bytes or the key's payload
-#: changes: it re-keys every file. 2: the key holds the file's name, not its path.
-THUMBNAIL_VERSION = 2
+#: Bump whenever :func:`thumbnail_args` changes the output bytes for any input class, or the
+#: key's payload changes: it re-keys every file. 2: the key holds the file's name, not its
+#: path. 3: an HDR clip is tone-mapped (the key is computed before any probe, so it cannot
+#: carry an ``hdr`` flag; a cache hit must not run ffprobe).
+THUMBNAIL_VERSION = 3
+
+#: A hidden temporary file older than this many seconds belongs to an extraction that was
+#: killed, not to a live writer (an extraction is bounded to :data:`THUMBNAIL_TIMEOUT`).
+STALE_TEMPORARY_AGE = 24 * 60 * 60
+
+#: The engine's temporary-file name: ``.<sha256 key>.<uuid4 hex>.tmp``.
+_TEMPORARY_NAME = re.compile(r"^\.[0-9a-f]{64}\.[0-9a-f]{32}\.tmp$")
+
+#: What ffmpeg (the C library's ``strerror``) prints when the cache's disk or quota is full.
+_FULL_DISK_PHRASES = ("No space left on device", "Disk quota exceeded")
+
+#: Cache directories this process has already swept, and the lock that guards the set.
+_swept: Set[Path] = set()
+_swept_lock = threading.Lock()
 
 #: The ``(width, height)`` box a thumbnail is fitted inside, keeping its aspect ratio.
 THUMBNAIL_BOX = (320, 180)
@@ -117,7 +141,7 @@ def is_cached(target: Path) -> bool:
         raise ThumbnailCacheError(f"{target.parent}: cannot read thumbnails: {exc}") from exc
 
 
-def thumbnail_args(clip: Path, *, at: float, output: Path) -> List[str]:
+def thumbnail_args(clip: Path, *, at: float, output: Path, hdr: bool = False) -> List[str]:
     """The ffmpeg arguments that write the frame at ``at`` seconds of ``clip`` as a JPEG.
 
     Input seek (``-ss`` before ``-i``) lands on the frame at ``at``; CPU decode (no
@@ -125,8 +149,16 @@ def thumbnail_args(clip: Path, *, at: float, output: Path) -> List[str]:
     first ``scale`` makes pixels square so anamorphic footage is not squashed, the
     second fits the box keeping the aspect ratio. ``-update 1`` makes ``image2``
     write ``output`` literally, so a ``%`` in the cache path is never a pattern.
+
+    With ``hdr`` (the probe flagged the clip PQ or HLG) the render's CPU tone-map chain comes
+    first, ahead of both scales, so the frame is SDR before it is resized; otherwise the
+    arguments are exactly those of an SDR clip.
     """
     width, height = THUMBNAIL_BOX
+    scales = (
+        "scale=trunc(iw*sar/2)*2:ih,"
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease,setsar=1"
+    )
     return [
         "-hide_banner",
         "-nostdin",
@@ -141,10 +173,7 @@ def thumbnail_args(clip: Path, *, at: float, output: Path) -> List[str]:
         "-frames:v",
         "1",
         "-vf",
-        (
-            "scale=trunc(iw*sar/2)*2:ih,"
-            f"scale={width}:{height}:force_original_aspect_ratio=decrease,setsar=1"
-        ),
+        f"{CPU_TONEMAP_FILTER},{scales}" if hdr else scales,
         "-c:v",
         "mjpeg",
         "-q:v",
@@ -169,15 +198,16 @@ def thumbnail_for(
 
     A cache hit returns without running ffprobe or ffmpeg. A miss probes the
     clip's resolved path for its duration, extracts the frame at
-    ``position × duration`` into a temporary file in ``cache_dir`` (created when
-    absent), ``fsync``s it and renames it to ``<key>.jpg``. The source clip is only
+    ``position × duration`` (tone-mapped first when the probe flags the clip HDR) into a
+    temporary file in ``cache_dir`` (created when absent, and swept of stale temporaries
+    once per process), ``fsync``s it and renames it to ``<key>.jpg``. The source clip is only
     read. On any failure, interruption included, the temporary file is removed.
 
     Raises:
         ThumbnailError: the clip cannot be statted or probed, has no usable
             duration, or gave no frame at that time; the message starts with the
             clip's path, and ``reason`` names the cause without it.
-        ThumbnailCacheError: ``cache_dir`` cannot be created, read or written.
+        ThumbnailCacheError: ``cache_dir`` cannot be created, read or written, or is full.
     """
     clip_path = Path(clip_path)
     cache_dir = Path(cache_dir)
@@ -192,13 +222,14 @@ def thumbnail_for(
     runtime = (runtime or get_default_runtime()).with_timeout(THUMBNAIL_TIMEOUT)
     # The resolved, absolute path: a relative ``file:x.mp4`` would be read as a protocol.
     source = clip_path.resolve()
-    duration = _probe_duration(clip_path, source, runtime)
+    probed = _probe_clip(clip_path, source, runtime)
+    duration = probed.duration
     at = position * duration
 
     tmp = cache_dir / f".{key}.{uuid.uuid4().hex}.tmp"
     try:
         _create_temporary(cache_dir, tmp)
-        _extract(clip_path, source, runtime, at=at, duration=duration, output=tmp)
+        _extract(clip_path, source, runtime, at=at, duration=duration, hdr=probed.hdr, output=tmp)
         _finalize(cache_dir, tmp, target)
     except BaseException:
         with contextlib.suppress(OSError):
@@ -208,16 +239,24 @@ def thumbnail_for(
     return target
 
 
-def _probe_duration(clip_path: Path, source: Path, runtime: FfmpegRuntime) -> float:
-    """The clip's ffprobe duration; a probe failure or no usable duration raises."""
+class _Probed(NamedTuple):
+    """What a thumbnail takes from the one probe of a clip."""
+
+    duration: float
+    hdr: bool
+
+
+def _probe_clip(clip_path: Path, source: Path, runtime: FfmpegRuntime) -> _Probed:
+    """The clip's ffprobe duration and HDR flag; a probe failure or no usable duration raises."""
     try:
-        duration = probe_media(source, runtime=runtime).duration
+        metadata = probe_media(source, runtime=runtime)
     except ProbeError as exc:
         raise ThumbnailError(str(clip_path), _probe_reason(exc, source)) from exc
+    duration = metadata.duration
     # The probe reports 0.0 when neither the format nor the stream carries one.
     if not math.isfinite(duration) or duration <= 0:
         raise ThumbnailError(str(clip_path), f"ffprobe reported no usable duration ({duration})")
-    return duration
+    return _Probed(duration, bool(metadata.is_hdr))
 
 
 def _probe_reason(exc: ProbeError, source: Path) -> str:
@@ -298,10 +337,13 @@ def _create_temporary(cache_dir: Path, tmp: Path) -> None:
     """Create the cache directory and an empty ``tmp`` in it, or raise a cache error.
 
     Creating the file before ffmpeg runs classifies a missing, read-only or
-    forbidden cache as the cache's fault, not as ffmpeg failing on this clip.
+    forbidden cache as the cache's fault, not as ffmpeg failing on this clip. The first
+    time this process gets here for a directory it also sweeps that directory's stale
+    temporaries; a process that only serves cache hits never reaches this.
     """
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
+        _sweep_once(cache_dir)
         os.close(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666))  # umask applies
     except OSError as exc:
         raise ThumbnailCacheError(f"{cache_dir}: cannot write thumbnails: {exc}") from exc
@@ -314,23 +356,95 @@ def _extract(
     *,
     at: float,
     duration: float,
+    hdr: bool,
     output: Path,
 ) -> None:
-    """Run the one extraction; no frame (any ffmpeg failure, or nothing written) raises."""
+    """Run the one extraction; no frame (any ffmpeg failure, or nothing written) raises.
+
+    A failure that ffmpeg's own stderr says is a full disk or quota is the cache's fault,
+    raised as :class:`ThumbnailCacheError`, not as this clip's.
+    """
     no_frame = f"no frame extracted at {at:.3f}s of {duration:.3f}s"
     try:
-        runtime.run(thumbnail_args(source, at=at, output=output))
+        runtime.run(thumbnail_args(source, at=at, output=output, hdr=hdr))
     except FfmpegTimeoutError as exc:
         # Nothing is known about the frame: the read did not finish, so say that.
         raise ThumbnailError(
             str(clip_path), f"ffmpeg timed out extracting the frame at {at:.3f}s: {exc}"
         ) from exc
     except FfmpegError as exc:
+        full = _full_disk_phrase(exc)
+        if full is not None:
+            raise ThumbnailCacheError(f"{output.parent}: cannot write thumbnails: {full}") from exc
         # ffmpeg reports "nothing decoded at t" as an encoder-open error; lead with
         # the real cause and keep the command and stderr after it.
         raise ThumbnailError(str(clip_path), f"{no_frame}: {exc}") from exc
     if not output.is_file() or output.stat().st_size == 0:
         raise ThumbnailError(str(clip_path), f"{no_frame}: ffmpeg exited 0 but wrote no image")
+
+
+def _full_disk_phrase(exc: FfmpegError) -> Optional[str]:
+    """The full-disk phrase in the stderr part of a failed command's message, if any.
+
+    Only the text after ``stderr:`` counts: the quoted command above it holds the clip's
+    file name, which may say anything.
+    """
+    _, _, stderr = str(exc).partition("\nstderr:\n")
+    return next((phrase for phrase in _FULL_DISK_PHRASES if phrase in stderr), None)
+
+
+def sweep_stale_temporaries(
+    cache_dir: Path,
+    *,
+    older_than: float = STALE_TEMPORARY_AGE,
+    now: Optional[float] = None,
+) -> int:
+    """Delete the engine's hidden temporaries in ``cache_dir`` untouched for ``older_than`` s.
+
+    A candidate is a regular file (not a symlink or directory) directly in ``cache_dir``
+    named ``.<64 hex>.<32 hex>.tmp`` whose modification time is more than ``older_than``
+    seconds before ``now`` (epoch seconds, default the current time). A younger file may
+    belong to a concurrent writer; ``<key>.jpg`` and every other name are never touched.
+    Never raises: an unreadable directory or a file that will not go is logged and left.
+
+    Returns:
+        How many files were removed.
+    """
+    now = time.time() if now is None else now
+    removed = 0
+    try:
+        with os.scandir(cache_dir) as entries:
+            for entry in entries:
+                try:
+                    if not _TEMPORARY_NAME.match(entry.name):
+                        continue
+                    if entry.is_symlink() or not entry.is_file(follow_symlinks=False):
+                        continue
+                    if now - entry.stat(follow_symlinks=False).st_mtime <= older_than:
+                        continue
+                    os.unlink(entry.path)
+                    removed += 1
+                except OSError as exc:
+                    logger.debug("Cannot sweep %s: %s", entry.path, exc)
+    except OSError as exc:
+        logger.debug("Cannot sweep %s: %s", cache_dir, exc)
+    return removed
+
+
+def _sweep_once(cache_dir: Path) -> None:
+    """Sweep ``cache_dir`` the first time this process asks, and never raise."""
+    try:
+        key = cache_dir.resolve()
+        with _swept_lock:
+            if key in _swept:
+                return
+            _swept.add(key)  # marked before the scan: a failing scan is not retried in a loop
+        removed = sweep_stale_temporaries(cache_dir)
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.debug("Cannot sweep %s: %s", cache_dir, exc)
+        return
+    if removed:
+        logger.info("Removed %d stale thumbnail temporaries from %s", removed, cache_dir)
 
 
 def _finalize(cache_dir: Path, tmp: Path, target: Path) -> None:
@@ -347,11 +461,13 @@ def _finalize(cache_dir: Path, tmp: Path, target: Path) -> None:
 
 
 __all__ = [
+    "STALE_TEMPORARY_AGE",
     "THUMBNAIL_BOX",
     "THUMBNAIL_TIMEOUT",
     "THUMBNAIL_VERSION",
     "is_cached",
     "one_line_cause",
+    "sweep_stale_temporaries",
     "thumbnail_args",
     "thumbnail_for",
     "thumbnail_key",
