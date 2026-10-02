@@ -145,8 +145,12 @@ enqueued, or completed without rendering).
   never on a skip, a dry run, or a failure.
 - **Renaming an event** (a new title, date or location after a render) changes
   its movie's path. While the last render's movie is still on disk under the old
-  name, the verdict cites `output_renamed`; plain `output` means the movie is
-  really gone. The next render writes the movie under the new name and **keeps
+  name, the verdict cites `output_renamed` and `auto-reel scan` names both
+  movies on one line: `stale: editorial, output_renamed (was '2024-06-27 -
+  Grillning med Grannar.mp4', now '2024-06-27 - Grillkväll med grannarna.mp4')`
+  (the file on disk, then the file the next render writes; no folders). Plain
+  `output` means the movie is really gone, and names no files.
+  The next render writes the movie under the new name and **keeps
   the old file** — the engine never deletes, moves or renames it. Delete the old
   movie by hand if you do not want both, but first check that it is not another
   event's current movie: an event that now has the renamed event's old name

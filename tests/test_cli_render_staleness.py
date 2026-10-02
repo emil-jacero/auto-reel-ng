@@ -103,7 +103,10 @@ def test_retitle_scans_as_renamed_and_render_keeps_the_old_movie(
     reel_path.write_text(
         reel_path.read_text(encoding="utf-8").replace("Party", "Party Renamed"), encoding="utf-8"
     )
-    assert _scan_line(root, capsys) == "stale: editorial, output_renamed"
+    assert _scan_line(root, capsys) == (
+        "stale: editorial, output_renamed "
+        "(was '2024-06-21 - Party.mp4', now '2024-06-21 - Party Renamed.mp4')"
+    )
 
     # A failed render (an unreadable clip) changes nothing: no new movie, same manifest.
     clip = event_dir / "00400.mp4"
@@ -116,7 +119,10 @@ def test_retitle_scans_as_renamed_and_render_keeps_the_old_movie(
     new = year_dir / "2024-06-21 - Party Renamed.mp4"
     assert not new.exists()
     assert (old.stat().st_size, old.stat().st_mtime_ns) == (old_stat.st_size, old_stat.st_mtime_ns)
-    assert _scan_line(root, capsys) == "stale: editorial, clip_set, output_renamed"
+    assert _scan_line(root, capsys) == (
+        "stale: editorial, clip_set, output_renamed "
+        "(was '2024-06-21 - Party.mp4', now '2024-06-21 - Party Renamed.mp4')"
+    )
 
     # A successful render writes the new name beside the old movie and records it.
     clip.write_bytes(clip_bytes)

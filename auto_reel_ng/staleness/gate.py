@@ -61,10 +61,21 @@ class StalenessReason(StrEnum):
 
 @dataclass(frozen=True)
 class Verdict:
-    """A staleness decision: whether the event is stale, and why."""
+    """A staleness decision: whether the event is stale, and why.
+
+    ``renamed_from`` and ``output_name`` name the two movie files an ``output_renamed``
+    verdict refers to, so a reader need not work them out again from the event's metadata.
+    Both are bare file names (no folder part) and both are set exactly when
+    :attr:`StalenessReason.OUTPUT_RENAMED` is cited, ``None`` otherwise: ``renamed_from`` is
+    the file the gate found for the last render's recorded name (it exists, and is not the
+    manifest's raw string), ``output_name`` is the expected output's name, which the next
+    render writes. They never affect ``stale`` or ``reasons``.
+    """
 
     stale: bool
     reasons: tuple[StalenessReason, ...] = ()
+    renamed_from: Optional[str] = None
+    output_name: Optional[str] = None
 
 
 def evaluate(event_dir: PathLike, output_path: PathLike, fingerprint: Fingerprint) -> Verdict:
@@ -74,8 +85,9 @@ def evaluate(event_dir: PathLike, output_path: PathLike, fingerprint: Fingerprin
     (no reasons) requires the manifest to exist, every component sub-hash to match,
     and the output to be a regular file. An output that is not a file (absent, or a folder
     or other non-file in its place) cites exactly one reason, ``output_renamed`` or
-    ``output`` (:func:`_absent_output_reason`); which one never changes whether the event
-    is stale.
+    ``output``; which one never changes whether the event is stale. The old movie is looked
+    up once (:func:`_renamed_output`); when it is found the verdict also names it and the
+    expected output (``renamed_from``, ``output_name``), and carries neither name otherwise.
 
     A changed component is mapped through :class:`StalenessReason`, so a component
     with no reason member raises :class:`ValueError` here rather than reaching a
@@ -91,10 +103,22 @@ def evaluate(event_dir: PathLike, output_path: PathLike, fingerprint: Fingerprin
         if fingerprint.component(name) != manifest.components.get(name)
     ]
     expected = Path(output_path)
+    renamed_from: Optional[str] = None
+    output_name: Optional[str] = None
     if not expected.is_file():
-        reasons.append(_absent_output_reason(manifest, expected))
+        old_movie = _renamed_output(manifest, expected)
+        if old_movie is None:
+            reasons.append(StalenessReason.OUTPUT)
+        else:
+            reasons.append(StalenessReason.OUTPUT_RENAMED)
+            renamed_from, output_name = old_movie.name, expected.name
 
-    return Verdict(stale=bool(reasons), reasons=tuple(reasons))
+    return Verdict(
+        stale=bool(reasons),
+        reasons=tuple(reasons),
+        renamed_from=renamed_from,
+        output_name=output_name,
+    )
 
 
 def rendered_output(event_dir: PathLike, output_path: PathLike) -> Optional[Path]:
@@ -114,13 +138,6 @@ def rendered_output(event_dir: PathLike, output_path: PathLike) -> Optional[Path
     if expected.is_file():
         return expected
     return _renamed_output(manifest, expected)
-
-
-def _absent_output_reason(manifest: RenderManifest, expected: Path) -> StalenessReason:
-    """Explain an absent expected movie: renamed since the last render, or gone."""
-    if _renamed_output(manifest, expected) is not None:
-        return StalenessReason.OUTPUT_RENAMED
-    return StalenessReason.OUTPUT
 
 
 def _renamed_output(manifest: RenderManifest, expected: Path) -> Optional[Path]:

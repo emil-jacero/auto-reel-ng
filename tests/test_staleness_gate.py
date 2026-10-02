@@ -206,6 +206,8 @@ def test_retitle_cites_output_renamed(tmp_path: Path) -> None:
     assert verdict.reasons == ("editorial", "output_renamed")
     assert _as_before(verdict.reasons) == ("editorial", "output")
     assert old_movie.read_bytes() == b"rendered"
+    assert verdict.renamed_from == "2024-06-27 - Grillning med Grannar.mp4"
+    assert verdict.output_name == "2024-06-27 - Grillkväll med grannarna.mp4"
 
 
 def test_location_change_cites_output_renamed(tmp_path: Path) -> None:
@@ -217,6 +219,8 @@ def test_location_change_cites_output_renamed(tmp_path: Path) -> None:
     assert verdict.stale is True
     assert verdict.reasons == ("editorial", "output_renamed")
     assert _as_before(verdict.reasons) == ("editorial", "output")
+    assert verdict.renamed_from == "2024-06-21 - Midsommar - Dalarna.mp4"
+    assert verdict.output_name == "2024-06-21 - Midsommar - Leksand.mp4"
 
 
 def test_date_moved_to_another_year_cites_output_renamed(tmp_path: Path) -> None:
@@ -230,6 +234,9 @@ def test_date_moved_to_another_year_cites_output_renamed(tmp_path: Path) -> None
     assert verdict.stale is True
     assert verdict.reasons == ("editorial", "output_renamed")
     assert _as_before(verdict.reasons) == ("editorial", "output")
+    # Bare file names: the year folders are not part of either.
+    assert verdict.renamed_from == "2023-06-23 - Midsommar - Dalarna.mp4"
+    assert verdict.output_name == "2022-06-23 - Midsommar - Dalarna.mp4"
 
 
 @pytest.mark.parametrize("recorded", ["", "2024", "absolute", "../Grillning.mp4"])
@@ -254,6 +261,7 @@ def test_a_recorded_value_that_is_not_a_bare_movie_file_cites_output(
     assert verdict.reasons == ("editorial", "output")
     assert _as_before(verdict.reasons) == ("editorial", "output")
     assert old_movie.is_file()
+    assert (verdict.renamed_from, verdict.output_name) == (None, None)
 
 
 @pytest.mark.parametrize("recorded", ["", ".", ".."])
@@ -286,6 +294,7 @@ def test_a_recorded_value_naming_a_folder_is_never_looked_up(
     verdict = evaluate(event_dir, expected, fingerprint)
 
     assert verdict.reasons == ("editorial", "output")
+    assert (verdict.renamed_from, verdict.output_name) == (None, None)
     assert looked_up == [expected]  # the gate's own test of the expected path, nothing else
 
 
@@ -299,6 +308,7 @@ def test_renamed_with_old_movie_deleted_cites_output(tmp_path: Path) -> None:
     assert verdict.stale is True
     assert verdict.reasons == ("editorial", "output")
     assert _as_before(verdict.reasons) == ("editorial", "output")
+    assert (verdict.renamed_from, verdict.output_name) == (None, None)
 
 
 def test_expected_movie_present_cites_neither(tmp_path: Path) -> None:
@@ -313,6 +323,40 @@ def test_expected_movie_present_cites_neither(tmp_path: Path) -> None:
     assert verdict.reasons == ("editorial",)
     assert _as_before(verdict.reasons) == ("editorial",)
     assert old_movie.is_file()
+    assert (verdict.renamed_from, verdict.output_name) == (None, None)
+
+
+def test_the_names_are_set_exactly_when_the_rename_is_cited(tmp_path: Path) -> None:
+    """Fresh, missing-manifest, deleted-movie and component-only verdicts carry no names."""
+    event_dir, movie = _render_named(tmp_path, GRILLNING)
+    fresh = _evaluate_named(tmp_path, event_dir, GRILLNING)
+    assert fresh == Verdict(stale=False)
+    assert (fresh.renamed_from, fresh.output_name) == (None, None)
+
+    movie.unlink()
+    deleted = _evaluate_named(tmp_path, event_dir, GRILLNING)
+    assert deleted.reasons == ("output",)
+    assert (deleted.renamed_from, deleted.output_name) == (None, None)
+
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    _setup(bare)
+    no_manifest = evaluate(bare, tmp_path / "out" / "x.mp4", _fingerprint(bare))
+    assert no_manifest.reasons == ("no_manifest",)
+    assert (no_manifest.renamed_from, no_manifest.output_name) == (None, None)
+
+
+def test_the_names_are_the_bare_files_found_not_the_recorded_string(tmp_path: Path) -> None:
+    """``renamed_from`` is the name of the file the gate found, ``output_name`` the expected one."""
+    event_dir, old_movie = _render_named(tmp_path, GRILLNING)
+    retitled = Metadata(title="Grillkväll med grannarna", date=GRILLNING.date)
+
+    verdict = _evaluate_named(tmp_path, event_dir, retitled)
+
+    assert verdict.renamed_from == old_movie.name
+    assert verdict.output_name == (tmp_path / "out" / output_relpath(retitled)).name
+    assert verdict.renamed_from != verdict.output_name
+    assert "/" not in verdict.renamed_from and "/" not in verdict.output_name
 
 
 # --- The movie the gate counts (change ``media-endpoints``) -----------------------------------
@@ -449,6 +493,8 @@ def test_a_folder_at_the_new_path_does_not_hide_the_kept_movie(tmp_path: Path) -
 
     assert verdict.reasons == ("editorial", "output_renamed")
     assert old_movie.is_file()
+    assert verdict.renamed_from == old_movie.name
+    assert verdict.output_name == "2024-06-27 - Grillkväll med grannarna.mp4"
 
 
 # --- By-design lookup rules, pinned (change ``staleness-output-lookup``) ----------------------

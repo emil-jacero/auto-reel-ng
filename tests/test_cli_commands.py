@@ -208,3 +208,97 @@ def test_config_layout_used_when_no_cli_override(tmp_path: Path) -> None:
     ctx = context.project_context(args)
 
     assert ctx.layout_name == "flat"
+
+
+# --------------------------------------------------------------------------- #
+# scan names the old and the new movie file of a renamed event
+# --------------------------------------------------------------------------- #
+
+_GRILLNING = "2024-06-27 - Grillning med Grannar"
+
+
+def _render_record(root: Path, event_dir: Path) -> Path:
+    """Adopt ``event_dir`` and leave a manifest + movie at its current fingerprint (no real
+    render). Returns the movie."""
+    from auto_reel_ng.config import default_output_dir
+    from auto_reel_ng.config.project import load_project_config, resolve_look_defaults
+    from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
+    from auto_reel_ng.render import output_relpath
+    from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
+    from auto_reel_ng.staleness.manifest import write_manifest
+
+    event = prepare_event(event_dir, order=DEFAULT_CLIP_ORDER, adopt=True)
+    persist(event)
+    version = FfmpegRuntime().version
+    fingerprint = compute_fingerprint(
+        event.document,
+        event_dir=event_dir,
+        look_defaults=resolve_look_defaults(load_project_config(root)),
+        ffmpeg_version=version,
+    )
+    movie = default_output_dir(root) / output_relpath(event.document.metadata)
+    movie.parent.mkdir(parents=True, exist_ok=True)
+    movie.write_bytes(b"rendered")
+    write_manifest(
+        event_dir, fingerprint, output=movie.name, engine_identity=engine_identity(version)
+    )
+    return movie
+
+
+def _retitle(event_dir: Path, old: str, new: str) -> None:
+    reel = event_dir / "reel.yaml"
+    text = reel.read_text(encoding="utf-8")
+    assert f"title: {old}\n" in text
+    reel.write_text(text.replace(f"title: {old}\n", f"title: {new}\n"), encoding="utf-8")
+
+
+def _stale_line(capsys: pytest.CaptureFixture[str]) -> str:
+    lines = [line.strip() for line in capsys.readouterr().out.splitlines()]
+    (line,) = [line for line in lines if line == "fresh" or line.startswith("stale: ")]
+    return line
+
+
+def test_scan_names_the_old_and_new_movie_of_a_renamed_event(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "proj"
+    event = root / "2024" / _GRILLNING
+    _touch(event / "00400.mp4")
+    movie = _render_record(root, event)
+    _retitle(event, "Grillning med Grannar", "Grillkväll med grannarna")
+
+    assert main(["scan", str(root)]) == 0
+
+    assert _stale_line(capsys) == (
+        "stale: editorial, output_renamed "
+        "(was '2024-06-27 - Grillning med Grannar.mp4', "
+        "now '2024-06-27 - Grillkväll med grannarna.mp4')"
+    )
+    assert movie.read_bytes() == b"rendered"  # scan renders and deletes nothing
+    assert [p.name for p in movie.parent.iterdir()] == [movie.name]
+
+
+def test_scan_prints_a_deleted_movie_as_output_without_names(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "proj"
+    event = root / "2024" / _GRILLNING
+    _touch(event / "00400.mp4")
+    _render_record(root, event).unlink()
+
+    assert main(["scan", str(root)]) == 0
+
+    assert _stale_line(capsys) == "stale: output"
+
+
+def test_scan_prints_a_fresh_event_as_before(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "proj"
+    event = root / "2024" / _GRILLNING
+    _touch(event / "00400.mp4")
+    _render_record(root, event)
+
+    assert main(["scan", str(root)]) == 0
+
+    assert _stale_line(capsys) == "fresh"
