@@ -445,8 +445,8 @@ def test_an_escape_that_names_no_character_is_a_parse_error(tmp_path: Path) -> N
 def test_a_document_nested_too_deep_is_a_parse_error(tmp_path: Path, depth: int) -> None:
     reel, error = _load_file(tmp_path, "version: 0\nlook: " + "[" * depth + "]" * depth + "\n")
 
-    assert str(error).startswith(f"{reel}: malformed YAML: ")
-    assert "recursion" in str(error)
+    assert str(error).startswith(f"{reel}: nested too deeply to load (")
+    assert "maximum recursion depth exceeded" in str(error)
 
 
 def test_a_reel_yaml_that_is_not_utf8_is_a_parse_error(tmp_path: Path) -> None:
@@ -624,3 +624,96 @@ def test_a_character_beyond_the_bmp_loads() -> None:
     doc = loads_document('version: 0\nmetadata: {title: "Fest \\U0001F386"}\n')
 
     assert doc.metadata.title == "Fest \U0001f386"
+
+
+PLACEHOLDER = "<unicode string>"
+
+
+@pytest.mark.parametrize(
+    ("text", "line"),
+    [
+        pytest.param('version: 0\ntitle: "\\x"\n', 2, id="scanner-error"),
+        pytest.param("version: 0\ntitle: x\n\t- a\n", 3, id="tab-starting-a-line"),
+        pytest.param("version: 0\ntitle: [a\nb: : :\n", 3, id="unclosed-flow-sequence"),
+        pytest.param("version: 0\ntitle: a\ntitle: b\n", 3, id="repeated-top-level-key"),
+    ],
+)
+def test_a_positioned_yaml_error_names_the_document_not_the_stand_in(
+    tmp_path: Path, text: str, line: int
+) -> None:
+    path = tmp_path / "reel.yaml"
+    path.write_text(text, encoding="utf-8")
+
+    with pytest.raises(ReelParseError) as from_file:
+        load_document(path)
+    with pytest.raises(ReelParseError) as from_text:
+        loads_document(text, source="draft-reel")
+
+    for error, source in ((from_file, str(path)), (from_text, "draft-reel")):
+        message = str(error.value)
+        assert PLACEHOLDER not in message
+        assert f'in "{source}", line' in message
+        assert f", line {line}," in message
+
+
+def test_a_renamed_excerpt_leaves_the_documents_own_text_alone() -> None:
+    """Only the reader's stream name is replaced, never a copy of it inside the document."""
+    text = f'version: 0\ntitle: "{PLACEHOLDER} \\x"\n'
+
+    with pytest.raises(ReelParseError) as exc:
+        loads_document(text, source="draft-reel")
+
+    assert 'in "draft-reel", line 2' in str(exc.value)
+    assert PLACEHOLDER in str(exc.value)  # the excerpt of the user's own line
+
+
+def test_a_scanner_failure_without_a_position_says_how_far_reading_got(tmp_path: Path) -> None:
+    path = tmp_path / "reel.yaml"
+    path.write_text('version: 0\nmetadata:\n  title: x\n  extra: "\\U00110000"\n', encoding="utf-8")
+
+    with pytest.raises(ReelParseError) as exc:
+        load_document(path)
+
+    message = str(exc.value)
+    assert message.startswith(f"{path}: malformed YAML: chr() arg not in range")
+    assert "reading got as far as line 4" in message
+
+
+def test_a_valid_document_is_never_scanned_twice(monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse(self: object, text: str) -> None:
+        raise AssertionError("the re-scan ran for a document that loads")
+
+    monkeypatch.setattr("auto_reel_ng.reel.parser.YAML.scan", refuse)
+
+    assert loads_document(VALID_DOC).metadata.title == "Midsummer"
+
+
+def test_a_failing_rescan_still_raises_the_original_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken(self: object, text: str) -> None:
+        raise RuntimeError("scan is broken")
+
+    monkeypatch.setattr("auto_reel_ng.reel.parser.YAML.scan", broken)
+
+    with pytest.raises(ReelParseError, match=r"x\.yaml: malformed YAML: chr\(\) arg") as exc:
+        loads_document('version: 0\ntitle: "\\U00110000"\n', source="x.yaml")
+
+    assert "reading got as far as" not in str(exc.value)
+
+
+def test_a_document_nested_too_deeply_is_named_as_such(tmp_path: Path) -> None:
+    path = tmp_path / "reel.yaml"
+    path.write_text("version: 0\ntitle: " + "[" * 250 + "]" * 250 + "\n", encoding="utf-8")
+
+    with pytest.raises(ReelParseError) as exc:
+        load_document(path)
+
+    message = str(exc.value)
+    assert message.startswith(f"{path}: nested too deeply to load")
+    assert "maximum recursion depth exceeded" in message
+    assert "line" not in message.replace(str(path), "")
+
+
+def test_a_document_nested_fifty_deep_still_loads() -> None:
+    text = "version: 0\nlook: {future: " + "[" * 50 + "]" * 50 + "}\n"
+
+    assert loads_document(text).version == 0

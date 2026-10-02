@@ -153,6 +153,11 @@ def test_unparseable_reel_yaml_on_the_list_is_an_error_row(client, project: Path
             "not UTF-8 text",
             id="latin-1",
         ),
+        pytest.param(
+            b'version: 0\ntitle: "\\x"\n',
+            'reel.yaml", line 2',
+            id="scanner-error-names-the-file",
+        ),
     ],
 )
 def test_an_impossible_reel_yaml_date_is_an_error_row_not_a_500(
@@ -169,6 +174,7 @@ def test_an_impossible_reel_yaml_date_is_an_error_row_not_a_500(
     assert error["event_id"] == EVENT_ID
     assert error["failure"] == "unparseable_reel_yaml"
     assert named in error["detail"]
+    assert "<unicode string>" not in error["detail"]
 
     # The event's own reads are the classified 502, the document read included.
     for path in (f"/api/v1/events/{quote(EVENT_ID)}", f"/api/v1/events/{quote(EVENT_ID)}/reel"):
@@ -176,6 +182,7 @@ def test_an_impossible_reel_yaml_date_is_an_error_row_not_a_500(
         assert problem.event_id == EVENT_ID
         assert problem.failure == "unparseable_reel_yaml"
         assert named in problem.detail
+        assert "<unicode string>" not in problem.detail
 
 
 @pytest.mark.requires_db
