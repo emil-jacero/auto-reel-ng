@@ -4,9 +4,10 @@ Importing this module registers two seams: the ``title`` **producer** (which
 renders the card image via :func:`render_title_card` and returns a
 :class:`ProducedSegment`) and the ``title`` **decorator** (an inserter that places
 one synthetic title segment immediately before each chapter's title clip, or
-before the chapter's first surviving segment when cuts remove that clip entirely). The
-card config is parsed from ``look.title_card`` at decorate time and carried on the
-synthetic segment as an opaque :class:`TitleCardRequest` the producer interprets.
+before the chapter's first surviving segment when cuts remove that clip entirely).
+The card config is parsed from ``look.title_card`` at decorate time and carried on
+the synthetic segment as an opaque :class:`TitleCardRequest` the producer
+interprets.
 """
 
 from __future__ import annotations
