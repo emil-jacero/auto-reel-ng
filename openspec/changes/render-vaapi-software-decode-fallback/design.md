@@ -76,7 +76,7 @@ unverified except the AMD h264/mpeg4 facts from the reproduction:
 `mpeg4`, `mjpeg`, `mpeg2video` and `vc1` are deliberately absent for AMD: VCN generations differ and only
 `mpeg4` was reproduced as failing. Chroma and depth come from a small pure function
 `pix_fmt_traits(pix_fmt) -> (bit_depth, is_420)` in `accel/` (`yuv420p`, `yuvj420p`, `nv12` -> 8-bit 4:2:0;
-`yuv420p10le`, `p010le` -> 10-bit 4:2:0; `yuv422p`, `yuv444p10le` -> not 4:2:0).
+`yuv420p10le`, `p010le` -> 10-bit 4:2:0; `yuv422p`, `yuv444p10le` -> not 4:2:0). A format the function does not recognise (`gray`, `rgb24`) returns `None`, and `can_hw_decode` treats it as not hardware-decodable: software decode is correct for every format, and the engine does not guess a depth or chroma it cannot name.
 
 #### Software decode on a hardware encode uses the existing composition
 

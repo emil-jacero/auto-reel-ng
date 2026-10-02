@@ -346,12 +346,14 @@ def _build_segment_command(
     profile: AccelProfile,
     options: RenderOptions,
     scratch: Path,
+    force_software_decode: bool = False,
 ) -> NormalizeCommand:
     """Build the normalize command for one segment (synthetic or source).
 
     A synthetic segment is first materialized through its producer (rendering its
     card image into ``scratch`` as a side effect), then built overlay-free; a
-    source segment takes the probe-driven normalize path.
+    source segment takes the probe-driven normalize path, with ``force_software_decode``
+    set only for the retry of a failed hardware-decode initialisation.
     """
     intermediate = scratch / f"seg_{index:03d}.mp4"
     if segment.is_synthetic:
@@ -367,8 +369,27 @@ def _build_segment_command(
             f"segment {index} ({_segment_label(segment)}) has no clip facts to normalize"
         )
     return build_normalize_command(
-        segment, clip, target, profile, intermediate, render_node=options.render_node
+        segment,
+        clip,
+        target,
+        profile,
+        intermediate,
+        render_node=options.render_node,
+        force_software_decode=force_software_decode,
     )
+
+
+#: ffmpeg phrases for a hardware decoder that could not be set up for a stream. Only these
+#: are retried in software; any other failure (a corrupt input, say) is raised as it is.
+_HW_DECODE_INIT_FAILURES = ("hwaccel initialisation returned error", "Failed setup for format")
+
+
+def _hw_decode_init_failure(exc: EngineError) -> Optional[str]:
+    """The first ffmpeg line naming a hardware-decode initialisation failure, else ``None``."""
+    for line in str(exc).splitlines():
+        if any(phrase in line for phrase in _HW_DECODE_INIT_FAILURES):
+            return line.strip()
+    return None
 
 
 def _normalize_segment(
@@ -381,7 +402,11 @@ def _normalize_segment(
     scratch: Path,
     progress: _Progress,
 ) -> tuple[Path, tuple[str, ...]]:
-    """Normalize one segment (synthetic or source) to an intermediate; return ``(path, warnings)``."""
+    """Normalize one segment (synthetic or source) to an intermediate; return ``(path, warnings)``.
+
+    A source segment whose hardware decode fails to initialise is run once more with
+    software decode (``_retry_in_software``); every other failure is raised as it is.
+    """
     command = _build_segment_command(
         index, segment, target=target, profile=profile, options=options, scratch=scratch
     )
@@ -392,10 +417,69 @@ def _normalize_segment(
             command.args, duration=command.duration, on_progress=progress.step(index)
         )
     except EngineError as exc:
-        raise RenderError(
-            f"normalize failed for segment {index} ({_segment_label(segment)}): {exc}"
-        ) from exc
+        failure = _hw_decode_init_failure(exc) if command.hardware_decode else None
+        if failure is None:
+            raise RenderError(
+                f"normalize failed for segment {index} ({_segment_label(segment)}): {exc}"
+            ) from exc
+        return _retry_in_software(
+            index,
+            segment,
+            first=exc,
+            target=target,
+            profile=profile,
+            options=options,
+            scratch=scratch,
+            progress=progress,
+        )
     return command.output_path, command.warnings
+
+
+def _retry_in_software(
+    index: int,
+    segment: Segment,
+    *,
+    first: EngineError,
+    target: TargetSpec,
+    profile: AccelProfile,
+    options: RenderOptions,
+    scratch: Path,
+    progress: _Progress,
+) -> tuple[Path, tuple[str, ...]]:
+    """Run one segment again with software decode after its hardware decode failed to start.
+
+    The retry writes the same intermediate (``-y`` replaces the failed attempt's partial
+    file) and happens at most once. The recovered first failure is logged and returned as
+    a warning so it reaches the render result; a failed retry is raised with both
+    attempts' detail, never dropped.
+    """
+    label = _segment_label(segment)
+    failure = _hw_decode_init_failure(first) or str(first)
+    warning = f"segment {label}: hardware decode failed, retrying with software decode: {failure}"
+    logger.warning(warning)
+    try:
+        command = _build_segment_command(
+            index,
+            segment,
+            target=target,
+            profile=profile,
+            options=options,
+            scratch=scratch,
+            force_software_decode=True,
+        )
+    except RenderError as rebuild_error:
+        # The profile cannot express the software path (e.g. no verified upload device).
+        raise rebuild_error from first
+    try:
+        options.runtime.run_with_progress(
+            command.args, duration=command.duration, on_progress=progress.step(index)
+        )
+    except EngineError as exc:
+        raise RenderError(
+            f"normalize failed for segment {index} ({label}) in software decode, after its "
+            f"hardware decode failed first ({failure}): {exc}"
+        ) from exc
+    return command.output_path, (*command.warnings, warning)
 
 
 def _check_cancelled(options: RenderOptions, *, before: str) -> None:
