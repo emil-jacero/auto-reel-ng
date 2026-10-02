@@ -578,9 +578,10 @@ connection releases its subscription at once, whichever side ends it:
   and the database connections released) and exit within a few seconds, however many connections are open.
   No second signal SHALL be needed. The exception is a connection to such a vanished peer with frames still
   backed up. The server cannot finish closing it, so it can make the shutdown fail, or stall it until the
-  host's TCP stack abandons the connection, which can take many minutes. A second SIGINT does not shorten
-  that stall: the process still exits only once that connection has ended. Like any stop, it also waits for
-  HTTP requests still being handled (headless-cli, "`serve` runs the API service").
+  host's TCP stack abandons the connection, which can take many minutes. A second SIGINT ends that stall:
+  the forced stop drops the connection without waiting for it to close, and the process exits (headless-cli,
+  "`serve` runs the API service"). Like any stop, a stop with one signal also waits for HTTP requests still
+  being handled.
 - The application shutdown (the event loop and the hub's stop) SHALL NOT wait for the database to answer,
   and a database that has stopped answering SHALL NOT freeze the service while it stops; the process itself
   exits only after an abandoned read ends (below). When a store read is stalled as the stop begins, whether the
@@ -675,6 +676,12 @@ connection releases its subscription at once, whichever side ends it:
 - **THEN** the client receives close code 1012
 - **AND** the service completes its application shutdown and the process exits within five seconds,
   without a second signal
+
+#### Scenario: A second SIGINT ends the stall behind a vanished peer
+- **WHEN** `auto-reel serve` has a connection whose peer stopped reading with frames still backed up for
+  it, one SIGINT has started the shutdown and it waits for that connection, and a second SIGINT arrives
+- **THEN** the service drops that connection at once and the process exits with status 130 within a few
+  seconds of the second SIGINT, without waiting for the peer or the host's TCP stack
 
 #### Scenario: A stalled poll does not freeze the stop
 - **WHEN** a client is connected and the poller's store read has been waiting on a database that dropped
