@@ -44,6 +44,7 @@ import {
   overIdOf,
   pointerTarget,
   slotOf,
+  stepChapter,
   stepSlot,
 } from './dragSlots'
 import type { Slot, Span } from './dragSlots'
@@ -82,17 +83,23 @@ const INSTRUCTIONS =
   'Press Space or Enter to pick up a clip, the Up and Down arrows to move it, ' +
   'Space or Enter to drop it, Escape to cancel.'
 const ACROSS =
-  ' Past a chapter’s first or last clip, the arrows move it into the chapter before or after.'
+  ' Past a chapter’s first or last clip, the arrows move it into the chapter before or after.' +
+  ' Page Down and Page Up move it to the first position of the next or the previous chapter.'
 
 /*
  * Auto-scroll while a clip is held near the window's top or bottom edge. dnd-kit scrolls
  * by `acceleration` times the pointer's depth into the edge zone (`threshold`, a share of
- * the window's height) per tick, and about one tick lands per frame while the rows
- * re-render on each new target, so its default (10) crossed a 400-clip chapter in about
- * 40 s. The speed still ramps from nothing at the zone's inner edge, so a slight hold
+ * the window's height) per tick. The depth ratio is not capped (1 at the window's edge,
+ * more beyond it), and with dnd-kit's default 5 ms timer the tick rate swung with page
+ * load: the default acceleration (10) crossed a 400-clip chapter in about 40 s while the
+ * rows re-rendered (the timer starved to a tick per frame or fewer), and 25 made the edge
+ * cross several screens a second when it was not. A 20 ms `interval` caps the rate at 50
+ * ticks a second, so at the edge the speed is at most 34 x 50 = 1,700 px/s, and about
+ * 750 px/s measured on a 400-row page, where re-rendering holds it to ~22 ticks a
+ * second. The speed still ramps from nothing at the zone's inner edge, so a slight hold
  * scrolls a little. One constant object: a new one per render would restart the interval.
  */
-const AUTO_SCROLL = { acceleration: 25, threshold: { x: 0.2, y: 0.2 } } as const
+const AUTO_SCROLL = { acceleration: 34, interval: 20, threshold: { x: 0.2, y: 0.2 } } as const
 
 /** The copy stays in its column at every width. */
 const vertical: Modifier = ({ transform }) => ({ ...transform, x: 0 })
@@ -331,15 +338,20 @@ export function ChapterDrag({
   )
 
   /*
-   * Up and Down step through the slots in page order (dragSlots.ts); every other key
-   * does nothing here (Space, Enter and Tab drop, Escape cancels: the sensor's own).
-   * The copy goes where the drop will be: in the own chapter on the target row's top,
-   * or its bottom when moving down past the clip (sortable's rule); elsewhere centred
-   * on the gap's line, or on an empty chapter's area. The sensor scrolls from there.
+   * Up and Down step through the slots in page order (dragSlots.ts); Page Down and Page
+   * Up jump to the first slot of the next or the previous chapter and are always
+   * consumed, so the page does not scroll under the clip; every other key does nothing
+   * here (Space, Enter and Tab drop, Escape cancels: the sensor's own). The copy goes
+   * where the drop will be: in the own chapter on the target row's top, or its bottom
+   * when moving down past the clip (sortable's rule); elsewhere centred on the gap's
+   * line, or on an empty chapter's area. The sensor scrolls from there for the arrows;
+   * it does not for the Page keys, so a target outside the window is scrolled to here.
    */
   const coordinateGetter = useCallback<KeyboardCoordinateGetter>(
     (event, { active, context, currentCoordinates }) => {
-      const delta = event.code === KeyboardCode.Down ? 1 : event.code === KeyboardCode.Up ? -1 : 0
+      const page = event.code === 'PageDown' ? 1 : event.code === 'PageUp' ? -1 : 0
+      const arrow = event.code === KeyboardCode.Down ? 1 : event.code === KeyboardCode.Up ? -1 : 0
+      const delta = page || arrow
       if (delta === 0) {
         return undefined
       }
@@ -351,7 +363,13 @@ export function ChapterDrag({
         return undefined
       }
       const from = slot.current ?? { chapter: own, index: order.indexOf(identity) }
-      const next = stepSlot(now, identity, home(identity), from, delta)
+      const next = (page === 0 ? stepSlot : stepChapter)(
+        now,
+        identity,
+        home(identity),
+        from,
+        delta,
+      )
       if (next === null) {
         return undefined
       }
@@ -380,9 +398,18 @@ export function ChapterDrag({
         return undefined
       }
       slot.current = next
+      if (page !== 0 && (y < 0 || y + height > window.innerHeight)) {
+        // The sensor scrolls only for the arrows: bring the target to the copy instead.
+        const scroller = document.scrollingElement ?? document.documentElement
+        scroller.scrollBy({
+          top: y - currentCoordinates.y,
+          behavior: reducedMotion ? 'auto' : 'smooth',
+        })
+        return undefined
+      }
       return { x: currentCoordinates.x, y }
     },
-    [homeOf],
+    [homeOf, reducedMotion],
   )
 
   const pointerOptions = useMemo(() => ({ activationConstraint: { distance: 6 } }), [])

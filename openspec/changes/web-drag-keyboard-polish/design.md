@@ -131,18 +131,19 @@ instructions do not mention keys that do nothing. The announcement text is uncha
 **Context**: see Context. Speed at the edge = `acceleration × ticks per second`, and the tick rate is the
 variable. Lowering `acceleration` alone (the triage sketch, 8-10) fixes the ceiling but, with the 5 ms
 timer starved to one tick per frame under load, brings back the 40 s crossing the earlier change removed.
-**Decision**: set `interval` to 16 (one tick per frame) and `acceleration` to 24:
+**Decision**: set `interval` to 20 (at most 50 ticks a second) and `acceleration` to 34:
 
 ```ts
-const AUTO_SCROLL = { acceleration: 24, interval: 16, threshold: { x: 0.2, y: 0.2 } } as const
+const AUTO_SCROLL = { acceleration: 34, interval: 20, threshold: { x: 0.2, y: 0.2 } } as const
 ```
 
-At the edge: `24 × 62.5` = 1,500 px/s with a tick on every frame, and fewer if a frame is dropped; the
-unclamped ratio takes it past 2,000 only when the pointer is more than about a third of the zone (60 px of
-a 900 px window) outside the window. The ramp from nothing at the zone's inner edge, the 20 % threshold and the
+At the edge: `34 × 50` = 1,700 px/s at most, with a tick every 20 ms, and fewer ticks when the rows
+re-render (measured in task 3.1: about 750 px/s over a 400-row page, i.e. about 22 ticks a second; the
+first values tried, 24 and 16 ms, gave about 600 there, the floor itself); the unclamped ratio takes it
+past 2,000 only when the pointer is outside the window. The ramp from nothing at the zone's inner edge, the 20 % threshold and the
 single constant object (a new object per render would restart dnd-kit's interval) stay. A 400-clip chapter
-(a row is roughly 55 px: about 22,000 px, to be measured) crosses in about 15-25 s with the pointer in the
-outer half of the zone.
+(a row is about 90 px: about 36,000 px) crosses in about 50 s from `y = 20` on the starved page: the
+earlier change's 30 s was not reproducible in the headless test browser even with the old constant.
 **Rationale**: it makes the tick rate a constant of the page instead of the machine's timer, which is the
 real source of the swing, using two options dnd-kit exposes.
 **Alternatives rejected**: acceleration alone (above); an own scroller with a hard cap (VII, new surface
@@ -198,8 +199,8 @@ runner, and browser automation is still not committed.
 
 - [The scroll-only path for Page keys is the sensor's own rule, reimplemented] → The acceptance is observable
   (target and copy both in the window after the key, 20,000 px jump included) and the fallback is named.
-- [`interval: 16` makes the page scroll in 16 ms steps, with up to 24 px per step, which can look stepped on
-  a 120 Hz display] → The step is under 3 % of the window; the alternative (5 ms) is what produced the
+- [`interval: 20` makes the page scroll in 20 ms steps, with up to 34 px per step, which can look stepped on
+  a 120 Hz display] → The step is under 4 % of the window; the alternative (5 ms) is what produced the
   swing. Task 3.1 looks at it in the browser.
 - [A pointer held outside the window scrolls faster than at the edge] → Left as is (Non-Goals); at 100 px
   beyond a 900 px window the speed is about 1.5 × the edge speed, inside the "can still steer" range.

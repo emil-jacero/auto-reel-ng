@@ -104,6 +104,31 @@ export function stepSlot(
   return null
 }
 
+/**
+ * The first slot of the listed chapter after (1) or before (-1) `from`'s, or null at either end.
+ * A chapter the clip plays is entered at its position 1; any other at its first gap. A clip
+ * that stays home, and an event listing one chapter, have no other chapter to go to.
+ */
+export function stepChapter(
+  model: DragModel,
+  identity: string,
+  staysHome: boolean,
+  from: Slot,
+  delta: -1 | 1,
+): Slot | null {
+  const chapters = reachable(model, identity, staysHome)
+  const at = chapters.indexOf(from.chapter)
+  if (at === -1) {
+    return null
+  }
+  for (let next = at + delta; next >= 0 && next < chapters.length; next += delta) {
+    if (slotCount(model, identity, chapters[next]) > 0) {
+      return { chapter: chapters[next], index: 0 }
+    }
+  }
+  return null
+}
+
 /** The droppable a slot stands for: a row's identity, or `/chapter/<key>` after the last clip. */
 export function overIdOf(model: DragModel, identity: string, slot: Slot): string {
   const order = orderOf(model, slot.chapter)
