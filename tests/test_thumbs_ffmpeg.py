@@ -334,4 +334,5 @@ def test_the_stderr_of_a_real_full_disk_is_classified_as_one(
     clip = make_clip("clip.mp4")
     with pytest.raises(FfmpegError) as exc:
         runtime.run(thumbnail_args(clip, at=0.25, output=Path("/dev/full")))
-    assert thumbnail_module._full_disk_phrase(exc.value) is not None  # pylint: disable=W0212
+    phrase = thumbnail_module._full_disk_phrase(exc.value)  # pylint: disable=protected-access
+    assert phrase is not None

@@ -10,7 +10,7 @@ displayed aspect ratio includes:
 - the sample aspect ratio, so an anamorphic clip is not squashed
 
 The clip's editorial `rotate` property SHALL NOT be applied. A clip that the engine's probe flags as HDR
-is tone-mapped first, as the next requirement says. Extraction SHALL:
+is tone-mapped first, as the requirement "An HDR clip's thumbnail is tone-mapped to SDR" says. Extraction SHALL:
 
 - seek on the input, with `-ss <t>` placed before `-i`
 - decode on the CPU, with no hardware acceleration argument
@@ -61,7 +61,7 @@ A clip that the engine's media probe reports as HDR, meaning a PQ (`smpte2084`) 
 transfer, SHALL have its frame tone-mapped to SDR on the CPU before it is scaled. The tone-map SHALL be the
 chain the renderer uses for an HDR segment on the CPU, so a thumbnail and its movie agree. The chain SHALL come first in the
 filter graph, ahead of the square-pixel and fit-in-box scaling. A clip that the probe does not report as HDR
-SHALL be extracted with exactly the arguments of the previous requirement, unchanged. Whether a clip is HDR
+SHALL be extracted with exactly the arguments of the requirement "A thumbnail fits a 320×180 box as the clip is displayed", unchanged. Whether a clip is HDR
 SHALL come from the probe that a cache miss already runs: a cache hit SHALL still run neither ffprobe nor
 ffmpeg, and the system SHALL NOT read the transfer function of a clip any other way.
 
