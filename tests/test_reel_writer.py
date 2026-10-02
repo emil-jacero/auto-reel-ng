@@ -5,7 +5,9 @@ from __future__ import annotations
 import io
 import os
 import stat
+import time
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -300,3 +302,103 @@ def test_read_only_folder_raises_and_touches_nothing(tmp_path) -> None:
         tmp_path.chmod(mode)
     assert out.read_bytes() == before
     assert _leftovers(tmp_path) == []
+
+
+# --------------------------------------------------------------------------- #
+# Sweeping abandoned temporaries (editorial-trims-and-noop 3.1)
+# --------------------------------------------------------------------------- #
+
+OLD_TEMPORARY = ".reel.yaml.0123456789abcdef0123456789abcdef.tmp"
+YOUNG_TEMPORARY = ".reel.yaml.fedcba9876543210fedcba9876543210.tmp"
+AFTER = "version: 0\nmetadata:\n  title: After\n"
+
+
+def _plant(folder, name: str, *, age_days: float = 0.0, content: str = "abandoned"):  # type: ignore[no-untyped-def]
+    path = folder / name
+    path.write_text(content, encoding="utf-8")
+    when = time.time() - age_days * 86400
+    os.utime(path, (when, when))
+    return path
+
+
+def _save(folder) -> None:  # type: ignore[no-untyped-def]
+    out = folder / "reel.yaml"
+    out.write_text(PREVIOUS, encoding="utf-8")
+    write_document(loads_document(AFTER), out)
+    assert "title: After" in out.read_text(encoding="utf-8")
+
+
+def test_a_day_old_temporary_is_removed_by_the_next_write(tmp_path) -> None:
+    old = _plant(tmp_path, OLD_TEMPORARY, age_days=2)
+    _save(tmp_path)
+    assert not old.exists()
+
+
+def test_a_young_temporary_is_left_alone(tmp_path) -> None:
+    young = _plant(tmp_path, YOUNG_TEMPORARY, age_days=60 / 86400)
+    just_under = _plant(tmp_path, ".reel.yaml.00000000000000000000000000000001.tmp", age_days=0.9)
+    _save(tmp_path)
+    assert young.exists() and just_under.exists()
+
+
+def test_other_hidden_files_are_never_touched(tmp_path) -> None:
+    names = [
+        ".reel.yaml.bak",
+        ".reel.yaml.1234.tmp",
+        ".other.0123456789abcdef0123456789abcdef.tmp",
+        ".reel.yaml.0123456789ABCDEF0123456789abcdef.tmp",
+        "reel.yaml.0123456789abcdef0123456789abcdef.tmp",
+        ".reel.yaml.0123456789abcdef0123456789abcdef.tmp.keep",
+    ]
+    planted = [_plant(tmp_path, name, age_days=3) for name in names]
+    _save(tmp_path)
+    assert all(path.exists() for path in planted)
+
+
+def test_a_matching_symlink_is_not_followed_or_removed(tmp_path) -> None:
+    target = _plant(tmp_path, "elsewhere.txt", age_days=3)
+    link = tmp_path / OLD_TEMPORARY
+    link.symlink_to(target)
+    os.utime(link, (time.time() - 3 * 86400,) * 2, follow_symlinks=False)
+    _save(tmp_path)
+    assert link.is_symlink() and target.exists()
+
+
+def test_a_matching_directory_is_left_alone(tmp_path) -> None:
+    (tmp_path / OLD_TEMPORARY).mkdir()
+    _save(tmp_path)
+    assert (tmp_path / OLD_TEMPORARY).is_dir()
+
+
+def test_a_failed_write_sweeps_nothing(tmp_path, monkeypatch) -> None:
+    old = _plant(tmp_path, OLD_TEMPORARY, age_days=2)
+
+    def failing_fsync(fd: int) -> None:
+        raise OSError(5, "Input/output error")
+
+    monkeypatch.setattr(os, "fsync", failing_fsync)
+    with pytest.raises(OSError, match="Input/output error"):
+        write_document(loads_document(AFTER), tmp_path / "reel.yaml")
+    assert old.exists()
+
+
+def test_a_sweep_that_cannot_remove_a_file_does_not_fail_the_write(tmp_path, monkeypatch) -> None:
+    old = _plant(tmp_path, OLD_TEMPORARY, age_days=2)
+    real_unlink = Path.unlink
+
+    def forbidding_unlink(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if self.name == OLD_TEMPORARY:
+            raise PermissionError(13, "Permission denied")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", forbidding_unlink)
+    _save(tmp_path)
+    assert old.exists()
+
+
+def test_a_sweep_that_cannot_list_the_folder_does_not_fail_the_write(tmp_path, monkeypatch) -> None:
+    def failing_listdir(path="."):  # type: ignore[no-untyped-def]
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(os, "listdir", failing_listdir)
+    _save(tmp_path)

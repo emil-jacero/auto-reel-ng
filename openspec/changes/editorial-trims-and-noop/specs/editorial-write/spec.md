@@ -63,19 +63,21 @@ numbers (so an integer `0` and a float `0.0` are equal), and `reason`.
   numbers (`in: 0` stays `in: 0`, never `0.0`), its end-of-line comment at its column, and the own-line
   comments and blank lines directly above it are persisted as they were, wherever the span lands in the
   list.
-- **A span that is edited SHALL be edited in place.** Only the keys whose value differs are rewritten (a
+- **A span that is edited SHALL be edited in place.** A desired span is matched to the existing span of
+  equal value, else one with the same `in`, else one with the same `out`, else the next one left, so a
+  span with one bound changed is the same span. Only the keys whose value differs are rewritten (a
   key whose value is numerically equal keeps its stored spelling); a `reason` that is added, changed or
-  removed changes only that key. The span keeps its style and the comments at its position.
+  removed changes only that key. The span keeps its style and its comments.
 - **A removed span SHALL take only its own comments with it**, and no other span's comment is lost.
-- **An added span SHALL carry no comment** and is written as a block mapping with `in`, `out` and, when
-  set, `reason`.
+- **An added span SHALL carry no comment** and is written with `in`, `out` and, when set, `reason`, in the
+  style of the span before it: a flow mapping after a flow-style span, a block mapping after a block one.
 - **Comment lines after the last span SHALL stay at the end of the list.**
 - **A list that is unchanged by value SHALL be persisted exactly as it was.**
 
 Changing a clip's other properties (`title`, `rotate`, `exclude`) leaves its `trims` untouched. The
 operation leaves overlapping or adjacent spans exactly as given: whether cuts overlap is the renderer's
-concern, not the writer's, and the engine continues to treat overlapping cuts as their union. A pure
-reorder of spans keeps each comment at its position rather than moving it with the span's value.
+concern, not the writer's, and the engine continues to treat overlapping cuts as their union. A span that
+moves takes its comments with it.
 
 None of this changes the editorial state a write persists, so it never moves the event's staleness verdict
 or its editorial-read `ETag`.
@@ -97,11 +99,22 @@ or its editorial-read `ETag`.
 - **THEN** the persisted list holds the first and third spans, each with its own comment, and `# second` is
   gone
 
+#### Scenario: A moved span takes its comments with it
+- **WHEN** a desired state swaps the first and third of three commented spans
+- **THEN** each span is persisted with its own end-of-line comment and the own-line comments that were above
+  it, at its new position
+
+#### Scenario: Removing one span while editing another edits the right one
+- **WHEN** a clip has three commented block-style spans and a desired state removes the second and changes
+  the third span's `out`
+- **THEN** the first span is persisted as written, the third span carries the new `out` and its own
+  comment, and the second span and its comments are gone
+
 #### Scenario: Adding a span leaves the existing ones untouched
 - **WHEN** a desired state appends a third span `{in: 20, out: 22, reason: manual}` to a clip with two
   commented flow-style spans
-- **THEN** the two existing span lines are persisted unchanged, and the new span is a block mapping with no
-  comment
+- **THEN** the two existing span lines are persisted unchanged, and the new span is a flow mapping, like
+  the spans before it, with no comment
 
 #### Scenario: Changing another property leaves the trims alone
 - **WHEN** a desired state changes only a clip's `title` while its flow-style commented trims are

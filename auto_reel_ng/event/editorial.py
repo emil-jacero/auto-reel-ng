@@ -10,7 +10,9 @@ unchanged chapter clip list or ``ignore`` list is left untouched, and in a chang
 one every entry keeps its own comments and quotes wherever it lands. A chapter renamed
 in the same write is paired with its existing node by its clips, so it keeps its comments,
 and the comment lines between chapters stay with the chapter below them through a reorder
-or a removal. The merged result is
+or a removal. A clip's cut list is edited span by span: each span keeps its node (style,
+number spelling, comments) unless its value changed, and a span that moved takes its comments with it.
+A save that changes nothing writes nothing. The merged result is
 validated exactly as a loaded document is (fail-loud, schema + cross-references)
 *before* anything is written, so a rejected write leaves the existing file
 untouched.
@@ -26,7 +28,7 @@ from dataclasses import dataclass
 from datetime import date as DateType
 from datetime import datetime as DateTimeType
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional
 
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.error import CommentMark
@@ -35,7 +37,7 @@ from ruamel.yaml.tokens import CommentToken
 from ..reel.document import ReelDocument
 from ..reel.parser import load_document
 from ..reel.schema import build_document
-from ..reel.writer import document_to_data, write_document
+from ..reel.writer import document_to_data, dumps_document, write_document
 from .metadata import reel_exists, require_processable, with_resolved_metadata
 
 #: The editorial document file name within an event directory (mirrors cli/adoption.py;
@@ -67,12 +69,19 @@ def apply_editorial_write(
     nothing is written. The resolution is only checked, never persisted: the file
     holds the document as authored.
 
+    A save that changes nothing writes nothing: when the event already has a ``reel.yaml``
+    and the merged document dumps, through the one canonical writer, to the same text as the
+    loaded one, the file is left as it is (bytes, mtime and any foreign indentation) and the
+    merged document is returned. Validation runs first, so a refused state is refused either
+    way; an event with no ``reel.yaml`` is always written.
+
     An event folder the process may not search raises its :class:`PermissionError`
     (nothing is written) rather than reading as an event with no ``reel.yaml``.
     """
     event_dir = Path(event_dir)
     reel_path = event_dir / REEL_FILENAME
-    current = load_document(reel_path) if reel_exists(reel_path) else ReelDocument()
+    existed = reel_exists(reel_path)
+    current = load_document(reel_path) if existed else ReelDocument()
 
     data = document_to_data(current)
     _apply_metadata(data, desired_data.get("metadata"))
@@ -84,6 +93,8 @@ def apply_editorial_write(
     document = build_document(data, source=f"<editorial write: {event_dir}>")
     resolved = with_resolved_metadata(document, event_dir).metadata
     require_processable(event_dir, resolved, today=today or DateType.today())
+    if existed and dumps_document(current) == dumps_document(document):
+        return document  # nothing changed: the file stays as authored, whatever its indentation
     write_document(document, reel_path)
     return document
 
@@ -394,40 +405,122 @@ def _apply_clip_properties(entry: CommentedMap, desired: Mapping[str, Any]) -> N
 
 
 def _apply_trims(entry: CommentedMap, desired: Optional[Iterable[Mapping[str, Any]]]) -> None:
-    """Replace ``trims`` only if its content actually changed.
+    """Make ``entry["trims"]`` hold ``desired``, changing only the spans that differ.
 
-    Rebuilding unconditionally would replace an unchanged, hand-authored flow-style
-    span (``{in: 0, out: 3.2, reason: black}``) with a fresh block-style mapping —
-    same content, different formatting, which is exactly the spurious diff the
-    round-trip guarantee forbids. Leaving the existing node alone when nothing
-    changed keeps its original style.
+    Spans are compared by value (:func:`_span_key`: numbers numerically, so ``0 == 0.0``).
+    A list equal by value is left alone, so its bytes are too. Otherwise each desired span
+    takes an existing node (:func:`_match_spans`): an equal span keeps its node untouched
+    (flow or block style, number spelling, comments); a changed one has the node edited in
+    place, key by key; a span with no node to take is a fresh mapping, written in the style
+    of the span before it, and a node no span takes is dropped with its own comments. A
+    span's comments follow its node (:func:`_refill_list`).
     """
     desired_list = [dict(t) for t in (desired or [])]
     if not desired_list:
         entry.pop("trims", None)
         return
     current = entry.get("trims")
-    if isinstance(current, (list, tuple)) and _trims_equal(current, desired_list):
+    if not isinstance(current, CommentedSeq):
+        entry["trims"] = CommentedSeq(_trim_entry(t) for t in desired_list)
         return
-    entry["trims"] = CommentedSeq(_trim_entry(t) for t in desired_list)
+    have = [_span_key(node) for node in current]
+    want = [_span_key(span) for span in desired_list]
+    if have == want:
+        return
+
+    comments, own = _list_comments(entry, "trims")  # before any node is edited
+    nodes: list[Any] = []
+    for span, key, index in zip(desired_list, want, _match_spans(have, want)):
+        if index is None:
+            nodes.append(_trim_entry(span, flow=_flow_like(nodes or list(current[:1]))))
+        elif have[index] == key:
+            nodes.append(current[index])
+        else:
+            nodes.append(_edit_span(current[index], span))
+    if len(nodes) == len(current) and all(new is old for new, old in zip(nodes, current)):
+        return  # every difference was an in-place edit: the list and its comments stay as they are
+
+    by_node = {id(item.stored): item for item in comments}
+    _refill_list(entry, "trims", nodes, [by_node.get(id(n), _EntryComments()) for n in nodes], own)
 
 
-def _trims_equal(current: Iterable[Any], desired: list) -> bool:
-    """Compare trims by content (``in``/``out``/``reason``), ignoring node style."""
-    current_norm = [
-        {"in": c.get("in"), "out": c.get("out"), "reason": c.get("reason")}
-        for c in current
-        if isinstance(c, Mapping)
-    ]
-    desired_norm = [
-        {"in": d.get("in"), "out": d.get("out"), "reason": d.get("reason")} for d in desired
-    ]
-    return current_norm == desired_norm
+def _match_spans(have: list[tuple], want: list[tuple]) -> list[Optional[int]]:
+    """For each wanted span, the index of the existing span whose node it takes (``None``: none).
+
+    A span first takes an existing span of the same value; then, among those left, one with
+    the same ``in``, then one with the same ``out`` (a span whose other bound was nudged);
+    what remains pairs in order, as an edit of that span. Each existing span is taken at
+    most once, and a moved span's node, and so its comments, moves with it.
+    """
+    taken: list[Optional[int]] = [None] * len(want)
+    free = list(range(len(have)))
+
+    def claim(same: Callable[[tuple, tuple], bool]) -> None:
+        for wanted, key in enumerate(want):
+            if taken[wanted] is None:
+                for index in free:
+                    if same(have[index], key):
+                        taken[wanted] = index
+                        free.remove(index)
+                        break
+
+    claim(lambda old, new: old == new)
+    claim(lambda old, new: old[0] == new[0])
+    claim(lambda old, new: old[1] == new[1])
+    for wanted, index in zip([w for w, t in enumerate(taken) if t is None], free):
+        taken[wanted] = index
+    return taken
 
 
-def _trim_entry(trim: Mapping[str, Any]) -> CommentedMap:
-    """Build one cut-span mapping using the YAML vocabulary (``in``/``out``)."""
+def _flow_like(nodes: list[Any]) -> bool:
+    """Whether a span added after ``nodes`` is written flow style: as the one before it."""
+    return bool(nodes) and isinstance(nodes[-1], CommentedMap) and bool(nodes[-1].fa.flow_style())
+
+
+def _number(value: Any) -> Any:
+    """A span bound as a comparable value: numbers numerically, anything else by ``repr``."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return repr(value)
+
+
+def _span_key(span: Any) -> tuple[Any, Any, Any]:
+    """A cut span's value (``in``, ``out``, ``reason``), whatever its style or spelling."""
+    if not isinstance(span, Mapping):
+        return ("not a span", repr(span), None)
+    return (_number(span.get("in")), _number(span.get("out")), span.get("reason"))
+
+
+def _edit_span(node: Any, span: Mapping[str, Any]) -> Any:
+    """Edit the existing span ``node`` to hold ``span``, touching only the keys that differ.
+
+    A key whose value is numerically equal keeps its stored spelling (``in: 0`` stays
+    ``0``). A node that is not a mapping is replaced by a fresh one.
+    """
+    if not isinstance(node, CommentedMap):
+        return _trim_entry(span)
+    below = _node_tail(node)  # rides on the last key, which an edit may change
+    _set_node_tail(node, "")
+    for key in ("in", "out"):
+        if _number(node.get(key)) != _number(span[key]):
+            node[key] = span[key]
+    reason = span.get("reason")
+    if reason is None:
+        node.pop("reason", None)
+    elif node.get("reason") != reason:
+        node["reason"] = reason
+    _set_node_tail(node, below)
+    return node
+
+
+def _trim_entry(trim: Mapping[str, Any], *, flow: bool = False) -> CommentedMap:
+    """Build one cut-span mapping using the YAML vocabulary (``in``/``out``).
+
+    ``flow`` writes it ``{in: 0, out: 1}``, the style of the spans around it.
+    """
     entry = CommentedMap()
+    if flow:
+        entry.fa.set_flow_style()
     entry["in"] = trim["in"]
     entry["out"] = trim["out"]
     if trim.get("reason") is not None:
@@ -461,7 +554,18 @@ class _ListComments:
 def _entry_comments(
     parent: CommentedMap, key: str
 ) -> tuple[dict[str, _EntryComments], _ListComments]:
-    """Split ``parent[key]``'s comments by entry; also return the list's own lines.
+    """Split ``parent[key]``'s comments by identity; also return the list's own lines.
+
+    A list of identity strings (chapter clips, ``ignore``): see :func:`_list_comments`.
+    """
+    entries, own = _list_comments(parent, key)
+    return {entry.stored: entry for entry in entries}, own
+
+
+def _list_comments(parent: CommentedMap, key: str) -> tuple[list[_EntryComments], _ListComments]:
+    """Split ``parent[key]``'s comments by entry (``stored`` is the entry itself).
+
+    Also returns the list's own lines.
 
     ruamel files the lines *between* two entries in the comment token of the entry
     above them, after that entry's end-of-line comment, while a reader takes them as
@@ -472,23 +576,59 @@ def _entry_comments(
     entry's. A flow or empty list (``[a.mp4, b.mp4]``, ``[]``) keeps the lines above
     it as its own header, and the lines after it trail the key's end-of-line comment
     token, which follows its ``]``.
+
+    An entry that is a block-style mapping (a cut span) keeps its end-of-line comment
+    inside itself, with the node, so its ``eol`` is empty; only the lines after it are
+    lifted (:func:`_node_tail`).
     """
     seq = parent.get(key)
     if not isinstance(seq, CommentedSeq):
-        return {}, _ListComments()
+        return [], _ListComments()
     flow = not seq or bool(seq.fa.flow_style())
     header = _header_text(parent, key, seq)
     above = "" if flow else header or _key_token_tail(parent, key)
-    comments: dict[str, _EntryComments] = {}
-    for index, identity in enumerate(seq):
-        slot = seq.ca.items.get(index)
-        value, column = (slot[0].value, slot[0].column) if slot and slot[0] else ("", 0)
-        eol, _, below = value.partition("\n")
-        comments[identity] = _EntryComments(above, eol, column if eol else 0, identity)
+    entries: list[_EntryComments] = []
+    for index, item in enumerate(seq):
+        if _is_block_map(item):
+            eol, column, below = "", 0, _node_tail(item)
+        else:
+            slot = seq.ca.items.get(index)
+            value, column = (slot[0].value, slot[0].column) if slot and slot[0] else ("", 0)
+            eol, _, below = value.partition("\n")
+        entries.append(_EntryComments(above, eol, column if eol else 0, item))
         above = below
     if flow:
-        return comments, _ListComments(header, _key_token_tail(parent, key))
-    return comments, _ListComments(trailing=above)
+        return entries, _ListComments(header, _key_token_tail(parent, key))
+    return entries, _ListComments(trailing=above)
+
+
+def _is_block_map(node: Any) -> bool:
+    """Whether ``node`` is a non-empty block-style mapping (comments on its last key)."""
+    return isinstance(node, CommentedMap) and bool(node) and not node.fa.flow_style()
+
+
+def _node_tail(node: CommentedMap) -> str:
+    """The lines after a block mapping, which ruamel files on its last key's comment token."""
+    if not node:
+        return ""
+    slot = node.ca.items.get(list(node)[-1])
+    return "" if not slot or slot[2] is None else str(slot[2].value.partition("\n")[2])
+
+
+def _set_node_tail(node: CommentedMap, text: str) -> None:
+    """Make ``text`` the lines after a block mapping; its last key's own comment stays."""
+    if not node:
+        return
+    last = list(node)[-1]
+    slot = node.ca.items.get(last)
+    token = slot[2] if slot else None
+    eol, column = (token.value.partition("\n")[0], token.column) if token else ("", 0)
+    if eol or text:
+        node.ca.items.setdefault(last, [None, None, None, None])[2] = CommentToken(
+            f"{eol}\n{text}", CommentMark(column)
+        )
+    elif slot:
+        slot[2] = None
 
 
 def _header_text(parent: CommentedMap, key: str, seq: CommentedSeq) -> str:
@@ -529,13 +669,35 @@ def _rewrite_identity_list(
 ) -> None:
     """Make ``parent[key]`` (a ``CommentedSeq``) hold ``desired``, keeping each entry's comments.
 
-    An unchanged list is left untouched, so its bytes are too. A changed list is
-    refilled in place, which keeps its node and the key's own comment, and its
-    comment tokens are rebuilt from ``comments``: every entry keeps its end-of-line
-    comment, at its column, and the lines above it, wherever it lands, and it is written
-    as stored (quotes included). An entry missing from ``comments`` (an added one) gets
-    none and is plain, and a removed entry's comments are not written. The list's own
-    lines (``own``) stay at its top and end.
+    An unchanged list is left untouched, so its bytes are too. A retained entry is written
+    as stored (quotes included); an entry missing from ``comments`` (an added one) gets no
+    comment and is plain, and a removed entry's comments are not written.
+    See :func:`_refill_list`.
+    """
+    if list(parent[key]) == desired:
+        return
+    entries = [comments.get(identity, _EntryComments()) for identity in desired]
+    # A retained entry is written as it was stored, so ``"a.mp4"`` keeps its quotes.
+    values = [
+        entry.stored if entry.stored is not None else identity
+        for identity, entry in zip(desired, entries)
+    ]
+    _refill_list(parent, key, values, entries, own)
+
+
+def _refill_list(
+    parent: CommentedMap,
+    key: str,
+    values: list[Any],
+    entries: list[_EntryComments],
+    own: _ListComments,
+) -> None:
+    """Refill ``parent[key]`` in place with ``values``, each carrying its ``entries`` comments.
+
+    Refilling keeps the list node and the key's own comment. The list's comment tokens are
+    rebuilt from ``entries``: every entry keeps its end-of-line comment, at its column, and
+    the lines above it, wherever it lands. The list's own lines (``own``) stay at its top
+    and end.
 
     A list with no entry comment to carry is written flow style when it is emptied
     or already was flow: ruamel would emit entry comments inside a flow list's
@@ -543,16 +705,9 @@ def _rewrite_identity_list(
     is block style, with a flow list's header above its first entry.
     """
     seq = parent[key]
-    if list(seq) == desired:
-        return
     del seq[:]
     seq.ca.items.clear()
-    entries = [comments.get(identity, _EntryComments()) for identity in desired]
-    # A retained entry is written as it was stored, so ``"a.mp4"`` keeps its quotes.
-    seq.extend(
-        entry.stored if entry.stored is not None else identity
-        for identity, entry in zip(desired, entries)
-    )
+    seq.extend(values)
     carries = any(entry.above or entry.eol for entry in entries)
     if not carries and (not entries or seq.fa.flow_style()):
         seq.fa.set_flow_style()
@@ -563,7 +718,9 @@ def _rewrite_identity_list(
         _set_header(parent, key, seq, own.header + entries[0].above)
         for index, entry in enumerate(entries):
             below = entries[index + 1].above if index + 1 < len(entries) else ""
-            if entry.eol or below:
+            if _is_block_map(values[index]):
+                _set_node_tail(values[index], below)
+            elif entry.eol or below:
                 token = CommentToken(f"{entry.eol}\n{below}", CommentMark(entry.column))
                 seq.ca.items[index] = [token, None, None, None]
     _set_trailing(parent, key, own.trailing)
@@ -582,6 +739,9 @@ def _set_trailing(parent: CommentedMap, key: str, text: str) -> None:
         _set_key_tail(parent, key, seq, text)
         return
     last = len(seq) - 1
+    if _is_block_map(seq[last]):
+        _set_node_tail(seq[last], text)
+        return
     slot = seq.ca.items.get(last)
     eol, column = "", 0
     if slot and slot[0] is not None:

@@ -499,3 +499,78 @@ def test_renaming_a_chapter_changes_only_its_name_line(client: TestClient, proje
     assert reel_path.read_text(encoding="utf-8") == RECEPTION_REEL_YAML.replace(
         "name: Reception ", "name: Welcome   "
     )
+
+
+# --- editorial-trims-and-noop 1.2: a PUT of the document just read changes nothing on disk ---
+
+FOREIGN_REEL_YAML = """\
+version: 0
+metadata:
+    title: Midsommar   # keep
+    date: 2024-06-21
+chapters:
+-   name: ''
+    clips:
+    - 00400.mp4
+"""
+
+
+def test_put_of_the_document_just_read_leaves_a_foreign_indented_file_untouched(
+    client: TestClient, project: Path
+) -> None:
+    event_dir = project / "2024" / "2024-06-21 - Midsommar i Dalarna Åäö"
+    reel_path = event_dir / "reel.yaml"
+    reel_path.write_text(FOREIGN_REEL_YAML, encoding="utf-8")
+    event_id = quote("2024/2024-06-21 - Midsommar i Dalarna Åäö", safe="/")
+
+    read = client.get(f"/api/v1/events/{event_id}/reel")
+    assert read.status_code == 200
+    written = client.put(
+        f"/api/v1/events/{event_id}/reel",
+        json=read.json(),
+        headers={"If-Match": read.headers["ETag"]},
+    )
+
+    assert written.status_code == 200
+    assert written.json()["document"] == read.json()
+    assert written.headers["ETag"] == read.headers["ETag"]
+    assert reel_path.read_text(encoding="utf-8") == FOREIGN_REEL_YAML
+
+
+TRIMMED_REEL_YAML = """\
+version: 0
+metadata:
+  title: Midsommar
+chapters:
+  - name: ""
+    clips:
+      - 00400.mp4
+clips:
+  00400.mp4:
+    trims:
+      - {in: 0, out: 3.2, reason: black}   # black start
+      - {in: 10, out: 12}   # shake
+"""
+
+
+def test_changing_one_cut_over_the_api_leaves_the_other_cuts_as_authored(
+    client: TestClient, project: Path
+) -> None:
+    reel_path = project / "2024" / "2024-06-21 - Midsommar i Dalarna Åäö" / "reel.yaml"
+    reel_path.write_text(TRIMMED_REEL_YAML, encoding="utf-8")
+    event_id = quote("2024/2024-06-21 - Midsommar i Dalarna Åäö", safe="/")
+
+    read = client.get(f"/api/v1/events/{event_id}/reel")
+    assert read.status_code == 200
+    body = read.json()
+    body["clips"]["00400.mp4"]["trims"][1]["out"] = 13  # JSON: the other numbers arrive as floats
+    written = client.put(
+        f"/api/v1/events/{event_id}/reel", json=body, headers={"If-Match": read.headers["ETag"]}
+    )
+
+    assert written.status_code == 200
+    lines = reel_path.read_text(encoding="utf-8").splitlines()
+    assert "      - {in: 0, out: 3.2, reason: black}   # black start" in lines
+    assert any(
+        line.startswith("      - {in: 10, out: 13") and line.endswith("# shake") for line in lines
+    )
