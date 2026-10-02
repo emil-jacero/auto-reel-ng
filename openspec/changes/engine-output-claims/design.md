@@ -61,8 +61,8 @@ The layout-aware check needs `ingest.get_layout` and `render.output_relpath`.
 `reel` and `errors`. `render/claims.py` holds `OutputCollision`, `output_collision` and
 `output_collision_message`, importing `ingest`, `event.claims` and `render.orchestrator`.
 **Rationale**: It keeps the layering intact and still touches only two packages. `render/` is the lowest
-package that may see both the layout and the output-naming rule. A test pins that importing
-`event.claims` does not import `auto_reel_ng.render` (task 1.2).
+package that may see both the layout and the output-naming rule. An `ast` test pins
+`event/claims.py`'s package-relative imports to `..errors` and `..reel` (task 1.2).
 **Alternatives**: `event/claims.py` for both (violates VI; cyclic with `ingest`); a new top-level `claims/`
 package (a sixth layer for two functions, Principle VII); putting the check in `scheduler/` or `api/` (the
 reason for this change).
