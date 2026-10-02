@@ -819,3 +819,43 @@ def test_flow_list_keeps_the_comment_above_it(tmp_path: Path) -> None:
         "      - Kvällen/b.mp4\n"
     )
     _assert_write(event_dir, desired, _annotated(root=root, kvallen=kvallen))
+
+
+# --------------------------------------------------------------------------- #
+# Value validation reaches every writer through build_document
+# --------------------------------------------------------------------------- #
+
+IGNORING = """\
+version: 0
+metadata:
+  title: Original
+chapters:
+  - name: ""
+    clips: [a.mp4]
+ignore:
+  - x.mp4   # first
+"""
+
+
+def test_a_duplicate_ignore_entry_is_refused_and_writes_nothing(tmp_path: Path) -> None:
+    event_dir = _write_event(tmp_path, IGNORING)
+    original = (event_dir / REEL_FILENAME).read_bytes()
+    desired = _desired_from(load_document(event_dir / REEL_FILENAME))
+    desired["ignore"] = ["x.mp4", "x.mp4"]
+
+    with pytest.raises(ReelParseError, match="duplicate ignore entry 'x.mp4'"):
+        apply_editorial_write(event_dir, desired)
+
+    assert (event_dir / REEL_FILENAME).read_bytes() == original
+
+
+def test_a_lone_surrogate_title_is_refused_and_writes_nothing(tmp_path: Path) -> None:
+    event_dir = _write_event(tmp_path, SIMPLE)
+    original = (event_dir / REEL_FILENAME).read_bytes()
+    desired = _desired_from(load_document(event_dir / REEL_FILENAME))
+    desired["metadata"] = {"title": "Fest \ud800", "date": date(2024, 6, 21)}
+
+    with pytest.raises(ReelParseError, match="metadata.title.*lone surrogate"):
+        apply_editorial_write(event_dir, desired)
+
+    assert (event_dir / REEL_FILENAME).read_bytes() == original

@@ -25,7 +25,8 @@ from ruamel.yaml.nodes import ScalarNode
 from ..errors import ReelParseError
 from .document import ReelDocument
 from .legacy import import_legacy_data
-from .schema import build_document
+from .schema import build_document, lone_surrogate_message
+from .values import find_lone_surrogate
 
 __all__ = ["load_document", "loads_document", "build_document"]
 
@@ -133,7 +134,11 @@ def loads_document(text: str, *, source: str = "<string>") -> ReelDocument:
         )
 
     if "version" not in data:
-        # No version key => auto-reel legacy format; import into a v0 document.
+        # No version key => auto-reel legacy format; import into a v0 document. The importer
+        # copies only the fields it maps, so scan the raw mapping for what it would drop.
+        surrogate = find_lone_surrogate(data)
+        if surrogate is not None:
+            raise ReelParseError(lone_surrogate_message(source, surrogate))
         return import_legacy_data(data, source=source)
 
     return build_document(data, source=source)
