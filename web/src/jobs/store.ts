@@ -470,8 +470,7 @@ export function markAnnounced(jobId: string): boolean {
  * Read one job and merge the answer. Without `force`, an id read before is not
  * read again, so an effect can never loop on a job that keeps failing. A 404
  * drops the job; an unanswered read (including a 503 naming the database) keeps the
- * last known copy, retried only by a
- * later forced load — never on a timer.
+ * last known copy, retried only by a later forced load — never on a timer.
  */
 export function load(jobId: string, options: LoadOptions = {}): void {
   if (requested.has(jobId) && options.force !== true) {
