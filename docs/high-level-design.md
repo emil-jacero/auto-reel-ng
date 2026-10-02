@@ -649,8 +649,14 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     SAR-corrected, the display rotation applied and the editorial `rotate` not, fitted inside 320×180.
   - **The cache** is derived state in a file cache outside the library:
     `$XDG_CACHE_HOME/auto-reel/thumbnails/` (else `~/.cache/…`), or `thumbnails.cache_dir`. It is keyed
-    by the resolved clip path, size, mtime, position, box and `THUMBNAIL_VERSION`, written atomically,
-    never in Postgres (D-7), and never evicted in v1 (≈15 KB per clip).
+    by the resolved file's name (not its path), size, mtime, position, box and `THUMBNAIL_VERSION`,
+    so a move, copy or remount of the library keeps the cache; written atomically, never in Postgres
+    (D-7), and never evicted in v1 (≈15 KB per clip).
+    - *2026-10-02, change `thumbs-cache-key-and-count`:* the key used to hold the absolute resolved
+      path, so every remount regenerated every thumbnail. `THUMBNAIL_VERSION` is now 2; the files
+      written under version 1 are orphaned and stay (never evicted), and every clip regenerates once.
+      Two different files with the same name, size and mtime would share a thumbnail (accepted;
+      deleting the cache directory repairs it). `auto-reel thumbs` extracts one file once per event.
   - **Filling it:** `auto-reel thumbs` fills it in batch. The service's thumbnail route fills it on
     request (change `clip-thumbnail-endpoint`).
   - **Still open:** proxies and scrubbing are v2, with the timeline editor (§8.11; moved from v3 on

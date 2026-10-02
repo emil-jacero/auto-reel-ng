@@ -9,6 +9,7 @@ monkeypatched. The real extraction is covered by ``test_thumbs_ffmpeg.py``.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import threading
 from pathlib import Path
@@ -185,6 +186,34 @@ def test_two_symlinks_to_one_file_share_a_key(tmp_path: Path) -> None:
         link.parent.mkdir()
         link.symlink_to(clip)
     assert thumbnail_key(first, position=0.25) == thumbnail_key(second, position=0.25)
+
+
+def test_a_copy_that_keeps_size_and_mtime_keeps_the_key(tmp_path: Path) -> None:
+    clip = _clip(tmp_path / "library")
+    moved = tmp_path / "elsewhere" / "mounted" / clip.name
+    moved.parent.mkdir(parents=True)
+    shutil.copy2(clip, moved)  # same size and mtime_ns, another directory
+    assert moved.stat().st_mtime_ns == clip.stat().st_mtime_ns
+    assert thumbnail_key(moved, position=0.25) == thumbnail_key(clip, position=0.25)
+
+
+def test_a_copy_under_another_name_gets_another_key(tmp_path: Path) -> None:
+    clip = _clip(tmp_path / "library")
+    renamed = tmp_path / "library" / "s1710009.mp4"
+    shutil.copy2(clip, renamed)
+    assert thumbnail_key(renamed, position=0.25) != thumbnail_key(clip, position=0.25)
+
+
+def test_a_symlink_hashes_the_name_of_the_file_it_points_to(tmp_path: Path) -> None:
+    clip = _clip(tmp_path / "clips", name="s1710001.mp4")
+    link = tmp_path / "Kvällen" / "grillen, del 1.mp4"
+    link.parent.mkdir()
+    link.symlink_to(clip)
+    assert thumbnail_key(link, position=0.25) == thumbnail_key(clip, position=0.25)
+
+
+def test_the_thumbnail_version_was_bumped_for_the_name_based_key() -> None:
+    assert thumbnail_module.THUMBNAIL_VERSION > 1
 
 
 def test_a_missing_clip_raises_file_not_found_unchanged(tmp_path: Path) -> None:
@@ -563,6 +592,25 @@ def test_symlinks_in_two_events_share_one_thumbnail(
 
     assert results[0] == results[1]
     assert len(runtime.calls) == 1  # ffmpeg runs only for the first
+
+
+def test_a_library_copied_elsewhere_is_a_cache_hit(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path / "library" / "2024-06-27 - Grillning med grannar")
+    cache_dir = tmp_path / "cache"
+    calls = probe_calls()
+    runtime = FakeRuntime()
+    first = thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
+
+    copied = tmp_path / "elsewhere" / "2024-06-27 - Grillning med grannar" / clip.name
+    copied.parent.mkdir(parents=True)
+    shutil.copy2(clip, copied)
+    second = thumbnail_for(copied, position=0.25, cache_dir=cache_dir, runtime=runtime)
+
+    assert second == first
+    assert len(calls) == 1 and len(runtime.calls) == 1  # the copy ran neither probe nor ffmpeg
+    assert _leftovers(cache_dir) == [first.name]
 
 
 def test_two_concurrent_generations_of_one_thumbnail(

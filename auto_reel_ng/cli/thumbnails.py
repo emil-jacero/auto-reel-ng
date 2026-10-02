@@ -4,7 +4,9 @@ Walks the project like ``scan`` (the same :func:`~.context.project_context`) and
 makes a thumbnail for every clip discovery lists on disk, IGNORED ones included,
 skipping cached ones. It never reads ``reel.yaml``, so a MISSING clip is never
 requested, and it writes only into the thumbnail cache, never under the project
-root. Kept apart from :mod:`.commands`, which holds the render/scan/job family.
+root. Clips that resolve to one thumbnail file (symlinks to one clip) are extracted
+once per event: the first in listing order counts as generated, the others as cached.
+Kept apart from :mod:`.commands`, which holds the render/scan/job family.
 
 Each failed clip gets exactly one ``ERROR  <event>/<clip>: <cause>`` line, the cause
 cut to one line by :func:`~auto_reel_ng.thumbs.one_line_cause` (the service's detail
@@ -56,7 +58,9 @@ def cmd_thumbs(args: argparse.Namespace) -> int:
 
     Settings are validated before anything runs, then one runtime asserts the
     ffmpeg version. Up to ``--jobs`` extractions run at once in one shared pool;
-    each event is a barrier, so its line prints when all its clips are done and a
+    each distinct thumbnail file of an event is extracted once, however many clips
+    link to it (the first in listing order counts as generated, the rest as cached,
+    or all as failed); each event is a barrier, so its line prints when all its clips are done and a
     clip shared with a later event is already cached by then. A failed clip or an
     unreadable event is reported and the run continues; a cache error or an
     interrupt cancels every queued clip and propagates.
@@ -109,34 +113,44 @@ def _thumbs_event(
 
     identities = listing.identities
     errors: Dict[str, str] = {}
-    futures: Dict[str, Future[Path]] = {}
-    cached = 0
+    groups: Dict[Path, List[str]] = {}  # thumbnail file -> the identities that share it
     for identity in identities:
-        clip = ref.event_dir / identity
         try:
-            target = thumbnail_path(clip, position=settings.position, cache_dir=settings.cache_dir)
+            target = thumbnail_path(
+                ref.event_dir / identity, position=settings.position, cache_dir=settings.cache_dir
+            )
         except OSError as exc:  # the clip vanished between the listing and the stat
             errors[identity] = f"cannot stat the clip: {_os_reason(exc)}"
             continue
+        groups.setdefault(target, []).append(identity)
+
+    # One extraction per distinct file, for its first identity: the others resolve to the
+    # same file, so the one attempt serves them all.
+    cached = 0
+    futures: Dict[Path, Future[Path]] = {}
+    for target, members in groups.items():
         if is_cached(target):
-            cached += 1
+            cached += len(members)
             continue
-        futures[identity] = pool.submit(
+        futures[target] = pool.submit(
             thumbnail_for,
-            clip,
+            ref.event_dir / members[0],
             position=settings.position,
             cache_dir=settings.cache_dir,
             runtime=runtime,
         )
 
     generated = 0
-    for identity, future in futures.items():
+    for target, future in futures.items():
+        members = groups[target]
         try:
             future.result()
         except ThumbnailError as exc:
-            errors[identity] = exc.reason  # the line names the clip itself
+            for member in members:  # each ERROR line names the clip itself
+                errors[member] = exc.reason
         else:
-            generated += 1
+            generated += 1  # the first member made the file; the rest share it
+            cached += len(members) - 1
 
     # Collected per event and printed in identity order, so the output is deterministic.
     for identity in sorted(errors):
