@@ -1307,6 +1307,30 @@ def _collision_project(tmp_path: Path) -> Path:
     return root
 
 
+def test_two_colliding_jobs_claimed_together_both_fail_with_the_shared_reason(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    root = _collision_project(tmp_path)
+    job_a = job_store.enqueue(str(root), "2024/a")
+    job_b = job_store.enqueue(str(root), "2024/b")
+    _write_event(root, "2024/b", title="Midsommar", unlisted=("new.mp4",))  # the edit
+    worker, renders, _builds = _guard_worker(job_store)
+
+    claimed_a = job_store.claim_next("w1")  # both rows are running before either is checked
+    claimed_b = job_store.claim_next("w1")
+    assert claimed_a is not None and claimed_b is not None
+    worker._process(claimed_a)  # pylint: disable=protected-access
+    worker._process(claimed_b)  # pylint: disable=protected-access
+
+    assert _failed_error(job_store, job_a) == output_collision_message(
+        PurePosixPath(_MIDSOMMAR), ["2024/b"]
+    )
+    assert _failed_error(job_store, job_b) == output_collision_message(
+        PurePosixPath(_MIDSOMMAR), ["2024/a"]
+    )
+    assert renders == []
+
+
 @pytest.mark.parametrize("force", [False, True], ids=["plain", "forced"])
 def test_job_edited_into_a_collision_after_enqueue_fails_with_the_shared_reason(
     job_store: JobStore, tmp_path: Path, force: bool

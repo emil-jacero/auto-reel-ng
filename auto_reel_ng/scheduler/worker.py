@@ -21,7 +21,12 @@ from typing import Callable, NamedTuple, Optional
 
 from ..accel.profiles.base import AccelProfile
 from ..cli.build import build_render_job_from_event, prepare_and_persist
-from ..config.project import default_output_dir, load_project_config, resolve_look_defaults
+from ..config.project import (
+    ProjectConfig,
+    default_output_dir,
+    load_project_config,
+    resolve_look_defaults,
+)
 from ..errors import (
     EngineError,
     IllegalJobTransitionError,
@@ -90,21 +95,7 @@ def default_build_job(
     # D-9: no other event of the project may claim this output path. Checked before
     # ``prepare_and_persist`` so a refused job writes nothing (not even an adopted clip);
     # ``force`` never reads here, as it does not for the CLI and the API.
-    walk_root = project_root / config.input_dir if config.input_dir else project_root
-    collision = output_collision(
-        event_dir,
-        walk_root=walk_root,
-        layout=config.layout or DEFAULT_LAYOUT,
-        order=config.sort,
-        today=date.today(),
-    )
-    if collision is not None:
-        raise OutputCollisionError(
-            output_collision_message(
-                collision.output_path,
-                [_claimant_name(path, project_root) for path in collision.claimed_by],
-            )
-        )
+    _refuse_disk_collision(project_root, event_dir, config)
     event = prepare_and_persist(event_dir, order=config.sort)
     fingerprint = compute_fingerprint(
         event.document,
@@ -122,6 +113,29 @@ def default_build_job(
         overwrite=True,
         fingerprint=fingerprint,
     )
+
+
+def _refuse_disk_collision(project_root: Path, event_dir: Path, config: ProjectConfig) -> None:
+    """Raise :class:`OutputCollisionError` when another event of the project claims the output.
+
+    The disk rule (D-9): the event's own project is walked with the project's layout and
+    sort, so the answer is the one the API gives at enqueue. ``force`` never bypasses it.
+    """
+    walk_root = project_root / config.input_dir if config.input_dir else project_root
+    collision = output_collision(
+        event_dir,
+        walk_root=walk_root,
+        layout=config.layout or DEFAULT_LAYOUT,
+        order=config.sort,
+        today=date.today(),
+    )
+    if collision is not None:
+        raise OutputCollisionError(
+            output_collision_message(
+                collision.output_path,
+                [_claimant_name(path, project_root) for path in collision.claimed_by],
+            )
+        )
 
 
 def _claimant_name(event_dir: Path, project_root: Path) -> str:
@@ -376,6 +390,12 @@ class Worker:
         rivals = find_output_collisions(claims).get(job.id, ())
         if not rivals:
             return
+        # A rival that is itself claimed on disk is not writing: the disk rule names the
+        # real reason (and the shared sentence), so it is decided first.
+        project_root = Path(job.project_root) if job.project_root else Path.cwd()
+        _refuse_disk_collision(
+            project_root, project_root / job.event_dir, load_project_config(project_root)
+        )
         rival = running[rivals[0]]
         where = (
             f" of project {rival.project_root}" if rival.project_root != job.project_root else ""
