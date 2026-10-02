@@ -150,7 +150,7 @@ def get_clip_media(
     _range: Optional[str] = Header(default=None, alias="Range"),
     _if_range: Optional[str] = Header(default=None, alias="If-Range"),
 ) -> Response:
-    """``GET`` and ``HEAD /api/v1/events/{event_id}/media?clip=``: one clip's file, streamed unchanged.
+    """``GET`` and ``HEAD /api/v1/events/{event_id}/media?clip=``: one clip's file, unchanged.
 
     ``HEAD`` is the ``GET`` without its body: the same lookup, open and status, the same
     headers (``FileResponse`` drops the body). ``If-None-Match`` and ``If-Modified-Since``
