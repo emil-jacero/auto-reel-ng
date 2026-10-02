@@ -243,13 +243,14 @@ def test_a_symlinked_twin_outside_the_root_is_named_by_its_in_root_id(
 @pytest.mark.parametrize(
     ("real", "authored", "refusals"),
     [
-        # The alias claims the path its own folder name gives it (the path a worker
-        # renders it to), so it collides with the real fest, and fest with it.
-        ((KALAS, FEST_LOWER), False, {FEST: (FEST_LOWER,), FEST_LOWER: (FEST,)}),
-        # Nothing else claims the alias's path: only Kalas and its twin collide.
+        # The alias is dropped from the walk (layout-alias-dedupe), so it claims no path:
+        # the real fest is not refused for it.
+        ((KALAS, FEST_LOWER), False, {}),
+        # Nothing else claims Kalas's path: only Kalas and its case-only twin collide.
         ((KALAS, KALAS_LOWER), False, {KALAS: (KALAS_LOWER,), KALAS_LOWER: (KALAS,)}),
-        # The alias reads the folder's authored reel.yaml: both rows claim Kalas.mp4.
-        ((KALAS,), True, {KALAS: (FEST,), FEST: (KALAS,)}),
+        # The alias reads the folder's authored reel.yaml but is no row: Kalas claims
+        # Kalas.mp4 alone.
+        ((KALAS,), True, {}),
     ],
     ids=[
         "alias-beside-its-name-twin",
@@ -257,13 +258,13 @@ def test_a_symlinked_twin_outside_the_root_is_named_by_its_in_root_id(
         "alias-of-an-authored-folder",
     ],
 )
-def test_an_in_project_alias_is_a_claimant_of_its_own(
+def test_a_dropped_in_project_alias_is_a_claimant_of_nothing(
     root: Path,
     real: tuple[str, ...],
     authored: bool,
     refusals: dict[str, tuple[str, ...]],
 ) -> None:
-    """A symlinked event folder is a row of its own, as the CLI keys it by its walk path."""
+    """A symlinked event folder is no row of the walk, so it claims no path."""
     for event_id in real:
         _event(root, event_id)
     if authored:

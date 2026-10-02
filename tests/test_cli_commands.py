@@ -89,6 +89,21 @@ def test_scan_skips_reelignored_event_and_originals(
     assert "original" not in out
 
 
+def test_scan_lists_a_symlinked_alias_once_under_its_real_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "proj"
+    kalas = root / "2024" / "2024-07-20 - Kalas"
+    _touch(kalas / "a.mp4")
+    (root / "2024" / "2024-07-20 - Fest").symlink_to(kalas, target_is_directory=True)
+
+    assert main(["scan", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert out.count("Kalas") >= 1
+    assert "Fest" not in out
+    assert not (kalas / "reel.yaml").exists()
+
+
 def test_scan_never_writes_a_manifest(tmp_path: Path) -> None:
     root = tmp_path / "proj"
     event = root / "2024" / "2024-06-21 - Midsummer"

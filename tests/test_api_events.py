@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from auto_reel_ng.api.app import create_app
+from auto_reel_ng.api.events_read import EventNotFoundError, listed_event_dir
 from auto_reel_ng.api.settings import resolve_api_settings
 from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.event import DEFAULT_CLIP_ORDER
@@ -139,6 +140,19 @@ def test_getting_event_detail_never_writes_a_manifest(client: TestClient, projec
     client.get(f"/api/v1/events/{event_id}")
     event_dir = project / "2024" / "2024-07-04 - Barbecue"
     assert not (event_dir / ".auto-reel" / "cache" / "render-manifest.json").exists()
+
+
+def test_symlinked_alias_is_not_listed_and_its_id_is_not_found(
+    client: TestClient, project: Path
+) -> None:
+    real = project / "2024" / "2024-07-04 - Barbecue"
+    (project / "2024" / "2024-07-01 - Alias").symlink_to(real, target_is_directory=True)
+
+    ids = [event["event_id"] for event in client.get("/api/v1/events").json()]
+    assert ids.count("2024/2024-07-04 - Barbecue") == 1
+    assert "2024/2024-07-01 - Alias" not in ids
+    with pytest.raises(EventNotFoundError):
+        listed_event_dir(client.app.state.settings, "2024/2024-07-01 - Alias")
 
 
 def test_unknown_event_yields_404(client: TestClient) -> None:
