@@ -39,8 +39,8 @@
   `except SystemExit` branch says "application startup failed" when the watch has failed, not "could not bind". Verify: the
   2.1 tests pass; `tests/test_cli_serve.py` cases that patch `commands.ServiceServer` with fakes still pass;
   strict mypy and pylint clean.
-- [x] 2.3 Unit tests for `LifespanWatch` in `tests/test_cli_serve_signals.py` (or a new
-  `tests/test_cli_serve_lifespan.py` if the file would pass ~350 lines), no server: an `http` scope reaches
+- [x] 2.3 Unit tests for `LifespanWatch` in `tests/test_cli_serve_signals.py` (the unit
+  cases share its imports, so they stay in that file), no server: an `http` scope reaches
   the app with its own `receive`/`send`; `lifespan.startup.complete` and `lifespan.shutdown.complete` leave
   `failed` false and are forwarded; each `*.failed` message sets it and is forwarded with its `message`.
   Verify: `.venv/bin/python -m pytest tests/test_cli_serve_signals.py -k lifespan` passes.
@@ -55,4 +55,4 @@
   the README sentences match the two spec deltas.
 - [x] 3.2 Run `black`/`isort`, `mypy auto_reel_ng`, `pylint auto_reel_ng` (no new warnings beyond the known
   cairo noise), the full suite in the background, and `openspec validate cli-serve-forced-stop-and-lifespan
-  --strict`. Verify: all green; record the uvicorn version(s) the child tests ran against in the PR notes.
+  --strict`. Verify: all green.

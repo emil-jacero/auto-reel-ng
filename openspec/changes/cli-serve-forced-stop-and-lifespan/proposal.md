@@ -45,7 +45,7 @@ re-checked against `main` (ac30bc2, uvicorn 0.51.0):
 
 - `auto_reel_ng/cli/serving.py` (new), `auto_reel_ng/cli/commands.py` (serve code moved out, `cmd_serve`
   wraps the app and reads the watch), `README.md`.
-- Tests: `tests/test_cli_serve_signals.py` (new child-process cases and unit cases for the watch),
-  `tests/test_cli_serve.py` (`cmd_serve` exit-status cases).
+- Tests: `tests/test_cli_serve_signals.py` only (new child-process cases, unit cases for the watch and
+  the `cmd_serve` exit-status cases); `tests/test_cli_serve.py` is unchanged.
 - Builds on `cli-batch-isolation-and-claims` and `cli-project-context-module` (both on `main`, they edited
   `commands.py` elsewhere). No overlap in the `serve` section.
