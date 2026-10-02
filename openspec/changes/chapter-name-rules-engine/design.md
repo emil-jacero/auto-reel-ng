@@ -37,7 +37,7 @@ not; the web change aligns to it. Normalization would be a second rule nobody as
 `str.casefold()` equals the argument's (at most one, by the uniqueness rule). `place_disk_clips` keys its buckets by the **matched
 chapter's name** (`matched.name`), not the folder's spelling, so `names`, `_ensure_chapter` and `add_clip`
 see one spelling and `events_read._build_chapters` extends the right `ChapterOut`.
-**Rationale**: exact first keeps documents loaded before this change (none can hold two casefold-equal
+**Rationale**: exact first is a defensive ordering that cannot change the result for a loaded document (names are casefold-unique); its precedence is proved only on an in-memory document (`tests/test_reel_document.py`). It keeps documents loaded before this change (none can hold two casefold-equal
 names after it) behaving identically; the casefold step only adds a match where there was none. A folder
 spelled with padding is not stripped: padded names are invalid for chapters, so it has no chapter and falls
 to the default chapter, the rule for any folder without one. The default chapter `""` is found exactly.
@@ -49,6 +49,11 @@ to the default chapter, the rule for any folder without one. The default chapter
   are untouched (Principle I, per-event isolation).
 - Write: `write_document` raises `ReelParseError` before opening the temporary file, so the previous
   `reel.yaml` is untouched and no `.tmp` is left.
+- Seeding: the seeded document is built in memory and checked only when it is written, so for an event
+  with no `reel.yaml` and folders `Party/` and `party/` the read paths (scan, the staleness fingerprint,
+  the events read model) still show the seed as two chapters; `render`, `enqueue` and the worker fail at
+  persist time. This fail-late behaviour is accepted: the requirement is that the write fails and leaves
+  no file.
 - Adoption: a `NEW` clip in a folder that would create a duplicate raises through `_ensure_chapter`; nothing
   is persisted (`persist` runs after `prepare_event`).
 
@@ -69,6 +74,6 @@ Adoption by casefold is stable: after it, the clip is listed, so it is no longer
 ## HLD
 
 Amend **D-12** with an "Amended 2026-10-02" paragraph: adoption matches a folder to a chapter by exact name,
-then `str.casefold()`; and add a sentence under the §4.1 `chapters` schema block: names other than `""` are
+then `str.casefold()`; and add a sentence under the §4.6 `chapters` schema block: names other than `""` are
 unpadded and non-blank, and unique under `str.casefold()` (user decision 2026-10-02, change
 `chapter-name-rules-engine`).

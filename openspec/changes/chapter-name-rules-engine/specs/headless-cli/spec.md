@@ -104,11 +104,11 @@ configured sort order"), whichever folders they came from.
 - **THEN** `render` appends `party/b.mp4` to `Party`, `reel.yaml` still names the single chapter `Party`, and
   no `party` chapter is created
 
-#### Scenario: An exact folder match wins
+#### Scenario: A folder reaches its one matching chapter
 
 - **WHEN** an event's `reel.yaml` names the chapters `Party` and `PARTY2`, and a new clip appears in a
   folder spelled `Party`
-- **THEN** the clip is adopted into `Party`, by the exact name, without a case-insensitive search
+- **THEN** the clip is adopted into `Party` and `PARTY2` receives nothing (the match is unique)
 
 #### Scenario: A padded folder name does not match a chapter
 
