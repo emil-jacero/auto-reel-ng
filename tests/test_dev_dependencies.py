@@ -13,9 +13,19 @@ from __future__ import annotations
 import subprocess
 import sys
 
-STRICT_TESTCLIENT_IMPORT = """
+import pytest
+
+# Exit code the child uses when this Starlette predates the fallback warning altogether.
+NO_FALLBACK_WARNING = 3
+
+STRICT_TESTCLIENT_IMPORT = f"""
+import sys
 import warnings
-from starlette.exceptions import StarletteDeprecationWarning
+
+try:
+    from starlette.exceptions import StarletteDeprecationWarning
+except ImportError:
+    sys.exit({NO_FALLBACK_WARNING})
 
 warnings.simplefilter("error", StarletteDeprecationWarning)
 import starlette.testclient
@@ -28,6 +38,8 @@ def _run(code: str) -> subprocess.CompletedProcess[str]:
 
 def test_testclient_imports_without_the_httpx_fallback_warning() -> None:
     result = _run(STRICT_TESTCLIENT_IMPORT)
+    if result.returncode == NO_FALLBACK_WARNING:
+        pytest.skip("this Starlette predates StarletteDeprecationWarning; there is no fallback")
     assert result.returncode == 0, (
         "starlette.testclient fell back to httpx; install httpx2 "
         '(`pip install -e ".[dev]"`):\n' + result.stderr
