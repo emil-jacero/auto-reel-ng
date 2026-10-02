@@ -11,7 +11,11 @@ from __future__ import annotations
 
 import contextlib
 import io
+import logging
 import os
+import re
+import stat
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Union
@@ -20,6 +24,12 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from .document import SCHEMA_VERSION, ClipOrder, ReelDocument
+
+_LOG = logging.getLogger(__name__)
+
+#: How old an abandoned ``.reel.yaml.<hex>.tmp`` must be before a later write removes it. Far
+#: longer than any write takes, so a concurrent writer's live temporary is never in range.
+TEMPORARY_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
 def round_trip_yaml() -> YAML:
@@ -68,7 +78,9 @@ def write_document(doc: ReelDocument, path: Union[str, Path]) -> None:
     never a truncated one. The name is unique (``O_EXCL``) because the API can run
     two saves at once in one process. On any failure the temporary file is removed
     when the filesystem still allows it, and the error propagates. A leftover is
-    never read as the document: loaders read only ``reel.yaml``.
+    never read as the document: loaders read only ``reel.yaml``. A leftover from a write
+    that was killed outright is removed by a later successful write once it is a day old
+    (:func:`sweep_abandoned_temporaries`).
     """
     path = Path(path)
     text = dumps_document(doc)
@@ -84,6 +96,34 @@ def write_document(doc: ReelDocument, path: Union[str, Path]) -> None:
         with contextlib.suppress(OSError):
             tmp.unlink()
         raise
+    sweep_abandoned_temporaries(path)
+
+
+def sweep_abandoned_temporaries(path: Union[str, Path]) -> None:
+    """Remove the hidden temporaries an earlier write of ``path`` left behind.
+
+    Only regular files (not symlinks) named exactly ``.<name>.<32 lowercase hex>.tmp`` in
+    ``path``'s folder, last modified more than :data:`TEMPORARY_MAX_AGE_SECONDS` ago: a
+    younger one may be a concurrent write in progress, and any other name is not ours.
+    Housekeeping only, so an ``OSError`` listing, inspecting or removing is logged at
+    debug level and never fails the write that already succeeded.
+    """
+    path = Path(path)
+    pattern = re.compile(rf"\.{re.escape(path.name)}\.[0-9a-f]{{32}}\.tmp")
+    cutoff = time.time() - TEMPORARY_MAX_AGE_SECONDS
+    try:
+        names = [name for name in os.listdir(path.parent) if pattern.fullmatch(name)]
+    except OSError as exc:
+        _LOG.debug("not sweeping %s: %s", path.parent, exc)
+        return
+    for name in names:
+        candidate = path.parent / name
+        try:
+            info = candidate.lstat()
+            if stat.S_ISREG(info.st_mode) and info.st_mtime < cutoff:
+                candidate.unlink()
+        except OSError as exc:
+            _LOG.debug("not removing %s: %s", candidate, exc)
 
 
 # --------------------------------------------------------------------------- #

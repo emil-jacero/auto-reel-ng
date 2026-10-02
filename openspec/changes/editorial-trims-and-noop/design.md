@@ -67,7 +67,7 @@ its `ETag` (`editorial_hash`) is unchanged, so the existing scenario "An unmodif
 was given" still holds. `reel.yaml`'s mtime no longer moves on a no-op; nothing reads that mtime
 (staleness hashes typed fields and clip signals).
 
-### 2. Cut spans: align, keep retained nodes, edit differing ones in place
+### 2. Cut spans: each desired span takes an existing node; edit differing ones in place
 
 **Context**: `_apply_trims` must change as few lines as the user's edit does, and keep each span's comments
 with that span, the same promise the identity lists already make (`_rewrite_identity_list`).
@@ -75,38 +75,46 @@ with that span, the same promise the identity lists already make (`_rewrite_iden
 **Explored**: (a) pair by index and mutate every pair; simple, but removing a middle span moves later
 content into earlier nodes while the comments stay behind, attaching `# shake` to the wrong span. (b) match
 by exact content only, rebuild the rest fresh; keeps style for unchanged spans but still reformats the one
-edited span (the bug's second half). (c) align old and new spans, then keep, edit in place, insert or
-remove.
+edited span (the bug's second half). (c) align with `difflib.SequenceMatcher`; keeps order but, for a
+removal plus an edit in one save, pairs the wrong spans by index inside the differing run (found while
+implementing: the edit landed on the span before the removed one). (d) match each desired span to an
+existing node by value, then by shared bound, then in order; keep, edit in place, add or drop.
 
-**Decision**: (c).
+**Decision**: (d).
 
 1. Normalise each span to `(float(in), float(out), reason)`; the comparison is numeric, so `0 == 0.0` and a
-   JSON float never counts as a change.
-2. Align current and desired normalised lists with `difflib.SequenceMatcher(autojunk=False)`. `equal`
-   blocks retain the existing `CommentedMap` node untouched (flow style, scalar spelling, comments).
-   Within a `replace` block, spans pair by index: a paired node is mutated in place, setting `in`/`out`
-   only if numerically different and `reason` added, changed or removed; surplus desired spans become fresh
-   block mappings (`_trim_entry`), surplus current spans are dropped. `insert` makes fresh mappings;
-   `delete` drops nodes.
-3. The list keeps its `CommentedSeq` (and the key's own comment). Comments follow the node: a retained or
-   in-place-edited span keeps its end-of-line comment and the own-line comments above it; a dropped span
-   takes only its own; a fresh span has none; lines after the last span stay at the end. ruamel files
-   these in `seq.ca.items` by index and puts the lines between two entries into the earlier entry's token,
-   so the list's comment tokens are rebuilt from per-node comments exactly as `_rewrite_identity_list` does
-   for identities. The helper that lifts them (`_entry_comments`) is keyed by identity scalar today; if the
-   gate leaves it so, add an index-keyed variant beside it that shares the token-splitting code rather than
-   duplicating it.
+   JSON float never counts as a change. A non-number stays comparable (by `repr`), so a bad value still
+   reaches `build_document`'s own validation.
+2. Each desired span, in order, takes the first unclaimed existing span of equal value; the spans left take,
+   by the same rule, one with the same `in`, then one with the same `out` (a bound that was nudged); what
+   remains pairs in order, as an edit. A node is claimed at most once. An equal span keeps its node
+   untouched (flow style, scalar spelling, comments); a paired node is edited in place, setting `in`/`out`
+   only if numerically different and `reason` added, changed or removed; a span with no node to take is
+   fresh (`_trim_entry`); an unclaimed node is dropped.
+3. The list keeps its `CommentedSeq` (and the key's own comment). Comments follow the node, wherever it
+   lands: a retained, moved or in-place-edited span keeps its end-of-line comment and the own-line comments
+   above it; a dropped span takes only its own; a fresh span has none; lines after the last span stay at the
+   end. ruamel files the comments of a flow-style span in `seq.ca.items` by index (the lines between two
+   entries in the earlier entry's token), and those of a block-mapping span on its last key. The identity
+   lists' helpers were generalised for this rather than copied: `_entry_comments` is now a keyed view of
+   `_list_comments` (entries in order), and `_rewrite_identity_list` is `_refill_list` plus the identity
+   bookkeeping. For a block-mapping entry the lines after it are lifted from, and written back to, its last
+   key (`_node_tail` / `_set_node_tail`); its own end-of-line comment never leaves the node.
 4. A span mapping with no `reason` and a desired `reason: None` stays reason-less; a fresh mapping omits
    `reason` when `None` (as `_trim_entry` does).
-5. If the aligned result equals the current list node for node, `entry["trims"]` is not assigned at all, so
-   an unchanged list keeps its bytes (today's behaviour, kept).
+5. A fresh span is written in the style of the span before it (flow `{in: 30, out: 31}` after a flow span,
+   a block mapping after a block one). Besides matching the hand-written list, this avoids a ruamel emitter
+   fault: a block mapping appended after flow-style spans under a header comment is emitted on one line
+   (`- in: 30.0 out: 31.0`), which does not parse. A hand-authored list that mixes the two styles under a
+   header comment already trips that fault in `document_to_data`, before this change.
+6. If every desired span took its own node, in order (only in-place edits), `entry["trims"]` is not
+   refilled, so comments stay where they are; an unchanged list is not touched at all (today's behaviour,
+   kept).
 
-**Rationale**: the user's mental model of an edit is "this span moved, that one stays"; alignment gives
-that for the common cases (edit one bound, add, remove, split) without a diff library beyond the stdlib.
-An in-place edit keeps the comment at that position, which is the right call when the user nudged a span's
-bound; it is wrong only for a pure reorder, where the `replace` block pairs by index and each span's
-comment stays at its position. That limitation is accepted (spans are ordered cuts; the GUI does not
-reorder them) and written in the spec scenarios.
+**Rationale**: the user's mental model of an edit is "this span moved, that one stays"; matching by value
+gives that for the common cases (edit one bound, add, remove, remove-and-edit, reorder, split) with the
+stdlib only. A nudged span keeps its comment because it is paired by its other bound; a span whose two
+bounds both changed is paired in order, which is the right call when nothing else identifies it.
 
 ### 3. Sweep: after a successful replace, strict name, age floor, best effort
 
@@ -146,8 +154,8 @@ the atomic-write requirement because they belong to how the file is persisted.
 
 ## Risks / Trade-offs
 
-- [Alignment leaves a comment on the wrong span after a pure reorder] -> accepted and specified; spans are
-  not reordered by any client today.
+- [A span whose bounds both change is paired in order, so its comment may stay on the wrong span when
+  several change at once] -> accepted; nothing else identifies such a span, and a single edit is exact.
 - [Comment-token surgery on spans is fiddly in ruamel] -> reuse the identity-list token-splitting code;
   tests cover eol comment, own-line comment above, a comment between spans, and the last-span trailing
   lines before and after each operation.

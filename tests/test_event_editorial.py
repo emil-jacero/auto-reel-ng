@@ -1225,3 +1225,404 @@ def test_a_lone_surrogate_title_is_refused_and_writes_nothing(tmp_path: Path) ->
         apply_editorial_write(event_dir, desired)
 
     assert (event_dir / REEL_FILENAME).read_bytes() == original
+
+
+# --------------------------------------------------------------------------- #
+# editorial-trims-and-noop: a save that changes nothing writes nothing
+# --------------------------------------------------------------------------- #
+
+# Hand-authored in a foreign style: 4-space mappings, an un-indented chapter sequence and
+# end-of-line comments padded to their own column.
+FOREIGN_INDENT = """\
+version: 0
+metadata:
+    title: Midsommar   # keep
+    date: 2024-06-21
+chapters:
+-   name: ''
+    clips:
+    - a.mp4
+    - b.mp4    # best shot
+"""
+
+# The auto-reel legacy format: no ``version`` key, a top-level ``title``.
+LEGACY = """\
+title: Midsommar
+"""
+
+
+def _stat_ns(path: Path) -> tuple[int, int]:
+    info = path.stat()
+    return info.st_size, info.st_mtime_ns
+
+
+def _hidden_temporaries(event_dir: Path) -> list[str]:
+    return sorted(p.name for p in event_dir.iterdir() if p.name.endswith(".tmp"))
+
+
+def test_unmodified_save_of_a_foreign_indented_file_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    event_dir = _write_event(tmp_path, FOREIGN_INDENT)
+    reel_path = event_dir / REEL_FILENAME
+    os.utime(reel_path, ns=(1_000_000_000, 1_000_000_000))
+    before_stat = _stat_ns(reel_path)
+    desired = _desired_from(load_document(reel_path))
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("write_document called for an unmodified state")
+
+    monkeypatch.setattr("auto_reel_ng.event.editorial.write_document", refuse)
+    document = apply_editorial_write(event_dir, desired)
+
+    assert reel_path.read_text(encoding="utf-8") == FOREIGN_INDENT
+    assert _stat_ns(reel_path) == before_stat
+    assert _hidden_temporaries(event_dir) == []
+    assert document.metadata.title == "Midsommar"
+
+
+def test_a_real_change_to_a_foreign_indented_file_is_written_canonically(tmp_path: Path) -> None:
+    event_dir = _write_event(tmp_path, FOREIGN_INDENT)
+    desired = _desired_from(load_document(event_dir / REEL_FILENAME))
+    desired["metadata"]["title"] = "Midsommar 2"
+
+    apply_editorial_write(event_dir, desired)
+
+    assert (event_dir / REEL_FILENAME).read_text(encoding="utf-8") == (
+        "version: 0\n"
+        "metadata:\n"
+        "  title: Midsommar 2   # keep\n"
+        "  date: 2024-06-21\n"
+        "chapters:\n"
+        "  - name: ''\n"
+        "    clips:\n"
+        "      - a.mp4\n"
+        "      - b.mp4  # best shot\n"
+    )
+
+
+def test_an_invalid_unmodified_looking_state_is_still_refused(tmp_path: Path) -> None:
+    event_dir = _write_event(tmp_path, FOREIGN_INDENT)
+    desired = _desired_from(load_document(event_dir / REEL_FILENAME))
+    desired["clips"] = {"zzz.mp4": {"trims": [], "exclude": False}}
+    desired["chapters"][0]["clips"].append("zzz.mp4")
+    desired["chapters"][0]["clips"].append("zzz.mp4")  # a duplicate reference is invalid
+
+    with pytest.raises(ReelParseError):
+        apply_editorial_write(event_dir, desired)
+
+    assert (event_dir / REEL_FILENAME).read_text(encoding="utf-8") == FOREIGN_INDENT
+
+
+def test_an_empty_state_for_an_event_without_a_reel_yaml_still_creates_one(
+    tmp_path: Path,
+) -> None:
+    event_dir = _event_folder(tmp_path, "2024-06-21 - Trip")
+
+    apply_editorial_write(event_dir, {})
+
+    assert (event_dir / REEL_FILENAME).read_text(encoding="utf-8").startswith("version: 0")
+
+
+def test_unmodified_save_leaves_a_legacy_file_alone_until_something_changes(
+    tmp_path: Path,
+) -> None:
+    event_dir = _event_folder(tmp_path, "2024-06-21 - Midsommar", LEGACY)
+    reel_path = event_dir / REEL_FILENAME
+    desired = _desired_from(load_document(reel_path))
+
+    apply_editorial_write(event_dir, desired)
+    assert reel_path.read_text(encoding="utf-8") == LEGACY
+
+    desired["metadata"]["title"] = "Midsommar 2"
+    apply_editorial_write(event_dir, desired)
+    assert reel_path.read_text(encoding="utf-8").startswith("version: 0")
+    assert load_document(reel_path).metadata.title == "Midsommar 2"
+
+
+# --------------------------------------------------------------------------- #
+# editorial-trims-and-noop: a changed cut list edits only the spans that differ
+# --------------------------------------------------------------------------- #
+
+_TRIMS_HEAD = """\
+version: 0
+metadata:
+  title: Midsommar
+  date: 2024-06-21
+chapters:
+  - name: ""
+    clips:
+      - 00400.mp4
+clips:
+  00400.mp4:
+"""
+
+TRIMS_FLOW = """\
+    trims:
+      - {in: 0, out: 3.2, reason: black}   # black start
+      - {in: 10, out: 12}   # shake
+    title: true
+"""
+
+TRIMS_FLOW_THREE = """\
+    trims:
+      # above first
+      - {in: 0, out: 3.2}   # first
+      # above second
+      - {in: 10, out: 12}   # second
+      - {in: 20, out: 22}   # third
+      # after last
+    title: true
+"""
+
+TRIMS_BLOCK = """\
+    trims:
+      - in: 0
+        out: 3.2   # first
+      # above second
+      - in: 10   # second
+        out: 12
+      - in: 20
+        out: 22   # third
+      # after last
+    title: true
+"""
+
+_CLIP = "00400.mp4"
+
+
+def _trims_event(tmp_path: Path, trims: str) -> tuple[Path, dict]:
+    event_dir = _write_event(tmp_path, _TRIMS_HEAD + trims)
+    desired = _desired_from(load_document(event_dir / REEL_FILENAME))
+    return event_dir, desired
+
+
+def _spans(desired: dict) -> list[dict]:
+    return desired["clips"][_CLIP]["trims"]
+
+
+def _trim_lines(event_dir: Path) -> str:
+    """The persisted file below the clip key (the clip's own lines)."""
+    return (event_dir / REEL_FILENAME).read_text(encoding="utf-8").split(f"  {_CLIP}:\n", 1)[1]
+
+
+@pytest.mark.parametrize("number", [13, 13.0], ids=["int", "float"])
+def test_editing_one_span_leaves_the_others_as_authored(tmp_path: Path, number: float) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW)
+    _spans(desired)[1]["out"] = number
+
+    apply_editorial_write(event_dir, desired)
+
+    lines = _trim_lines(event_dir).splitlines()
+    assert lines[1] == "      - {in: 0, out: 3.2, reason: black}   # black start"
+    assert lines[2].startswith("      - {in: 10, out: 13") and lines[2].endswith("# shake")
+    assert load_document(event_dir / REEL_FILENAME).clips[_CLIP].trims[1].end == 13
+
+
+def test_a_float_from_the_api_does_not_respell_an_unchanged_number(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW)
+    first, second = _spans(desired)
+    first["in"], second["in"], second["out"] = 0.0, 10.0, 13.0  # JSON numbers arrive as floats
+
+    apply_editorial_write(event_dir, desired)
+
+    lines = _trim_lines(event_dir).splitlines()
+    assert lines[1] == "      - {in: 0, out: 3.2, reason: black}   # black start"
+    assert lines[2].startswith("      - {in: 10, out: 13.0}")
+
+
+def test_a_float_for_the_same_numbers_is_no_change_at_all(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW)
+    first, second = _spans(desired)
+    first["in"], second["in"], second["out"] = 0.0, 10.0, 12.0
+
+    apply_editorial_write(event_dir, desired)
+
+    assert (event_dir / REEL_FILENAME).read_text(encoding="utf-8") == _TRIMS_HEAD + TRIMS_FLOW
+
+
+def test_a_reason_added_to_one_span_touches_only_that_span(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW)
+    _spans(desired)[1]["reason"] = "manual"
+
+    apply_editorial_write(event_dir, desired)
+
+    lines = _trim_lines(event_dir).splitlines()
+    assert lines[1] == "      - {in: 0, out: 3.2, reason: black}   # black start"
+    assert lines[2].startswith("      - {in: 10, out: 12, reason: manual}")
+    assert lines[2].endswith("# shake")
+
+
+def test_a_reason_removed_from_one_span_touches_only_that_span(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW)
+    _spans(desired)[0]["reason"] = None
+
+    apply_editorial_write(event_dir, desired)
+
+    lines = _trim_lines(event_dir).splitlines()
+    assert lines[1].startswith("      - {in: 0, out: 3.2}") and lines[1].endswith("# black start")
+    assert lines[2] == "      - {in: 10, out: 12}   # shake"
+
+
+def test_changing_another_property_leaves_the_trims_alone(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW)
+    desired["metadata"]["title"] = "Midsommar 2"
+    desired["clips"][_CLIP]["title"] = False
+
+    apply_editorial_write(event_dir, desired)
+
+    assert _trim_lines(event_dir) == TRIMS_FLOW.replace("title: true", "title: false")
+
+
+def test_removing_the_middle_span_drops_only_its_comments(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW_THREE)
+    del _spans(desired)[1]
+
+    apply_editorial_write(event_dir, desired)
+
+    assert _trim_lines(event_dir) == (
+        "    trims:\n"
+        "      # above first\n"
+        "      - {in: 0, out: 3.2}   # first\n"
+        "      - {in: 20, out: 22}   # third\n"
+        "      # after last\n"
+        "    title: true\n"
+    )
+    assert [t.start for t in load_document(event_dir / REEL_FILENAME).clips[_CLIP].trims] == [0, 20]
+
+
+def test_removing_the_first_span_hands_its_lines_up_with_it(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW_THREE)
+    del _spans(desired)[0]
+
+    apply_editorial_write(event_dir, desired)
+
+    assert _trim_lines(event_dir) == (
+        "    trims:\n"
+        "      # above second\n"
+        "      - {in: 10, out: 12}   # second\n"
+        "      - {in: 20, out: 22}   # third\n"
+        "      # after last\n"
+        "    title: true\n"
+    )
+
+
+def test_an_added_span_carries_no_comment_and_the_lines_after_the_last_stay_last(
+    tmp_path: Path,
+) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW_THREE)
+    _spans(desired).append({"in": 30.0, "out": 31.0, "reason": "manual"})
+
+    apply_editorial_write(event_dir, desired)
+
+    assert _trim_lines(event_dir) == TRIMS_FLOW_THREE.replace(
+        "      # after last\n",
+        "      - {in: 30.0, out: 31.0, reason: manual}\n      # after last\n",
+    )
+
+
+def test_a_span_added_to_block_style_spans_is_a_block_mapping(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_BLOCK)
+    _spans(desired).append({"in": 30, "out": 31, "reason": "manual"})
+
+    apply_editorial_write(event_dir, desired)
+
+    assert _trim_lines(event_dir) == TRIMS_BLOCK.replace(
+        "      # after last\n",
+        "      - in: 30\n        out: 31\n        reason: manual\n      # after last\n",
+    )
+
+
+def test_block_style_spans_keep_their_comments_through_removal_and_edit(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_BLOCK)
+    spans = _spans(desired)
+    spans[2]["out"] = 23
+    del spans[1]
+
+    apply_editorial_write(event_dir, desired)
+
+    assert _trim_lines(event_dir) == (
+        "    trims:\n"
+        "      - in: 0\n"
+        "        out: 3.2   # first\n"
+        "      - in: 20\n"
+        "        out: 23   # third\n"
+        "      # after last\n"
+        "    title: true\n"
+    )
+
+
+def test_block_span_gaining_a_reason_keeps_the_lines_after_it(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_BLOCK)
+    _spans(desired)[0]["reason"] = "manual"
+
+    apply_editorial_write(event_dir, desired)
+
+    assert _trim_lines(event_dir) == TRIMS_BLOCK.replace(
+        "        out: 3.2   # first\n", "        out: 3.2   # first\n        reason: manual\n"
+    )
+
+
+def test_overlapping_spans_are_written_as_given(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW)
+    desired["clips"][_CLIP]["trims"] = [
+        {"in": 5.0, "out": 9.0, "reason": None},
+        {"in": 7.0, "out": 12.0, "reason": None},
+    ]
+
+    apply_editorial_write(event_dir, desired)
+
+    trims = load_document(event_dir / REEL_FILENAME).clips[_CLIP].trims
+    assert [(t.start, t.end) for t in trims] == [(5, 9), (7, 12)]
+
+
+def test_a_changed_cut_list_loads_back_to_the_desired_state(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW_THREE)
+    spans = _spans(desired)
+    spans[0]["out"] = 4.0
+    del spans[1]
+    spans.append({"in": 40.0, "out": 41.0, "reason": "manual"})
+
+    apply_editorial_write(event_dir, desired)
+
+    reloaded = _desired_from(load_document(event_dir / REEL_FILENAME))
+    assert [(t["in"], t["out"], t["reason"]) for t in _spans(reloaded)] == [
+        (0, 4.0, None),
+        (20, 22, None),
+        (40.0, 41.0, "manual"),
+    ]
+
+
+def test_an_old_temporary_is_swept_by_a_save_that_changes_something_only(tmp_path: Path) -> None:
+    old_name = ".reel.yaml.0123456789abcdef0123456789abcdef.tmp"
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW)
+    stale = event_dir / old_name
+    stale.write_text("abandoned", encoding="utf-8")
+    two_days_ago = stale.stat().st_mtime - 2 * 86400
+    os.utime(stale, (two_days_ago, two_days_ago))
+
+    apply_editorial_write(event_dir, desired)  # nothing changed: nothing written, nothing swept
+    assert stale.exists()
+
+    desired["metadata"]["title"] = "Midsommar 2"
+    apply_editorial_write(event_dir, desired)
+    assert not stale.exists()
+
+
+def test_a_reordered_span_takes_its_comments_with_it(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW_THREE)
+    spans = _spans(desired)
+    spans[0], spans[2] = spans[2], spans[0]
+
+    apply_editorial_write(event_dir, desired)
+
+    assert _trim_lines(event_dir) == (
+        "    trims:\n"
+        "      - {in: 20, out: 22}   # third\n"
+        "      # above second\n"
+        "      - {in: 10, out: 12}   # second\n"
+        "      # above first\n"
+        "      - {in: 0, out: 3.2}   # first\n"
+        "      # after last\n"
+        "    title: true\n"
+    )
