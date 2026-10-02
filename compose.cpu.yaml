@@ -1,0 +1,6 @@
+# CPU-only worker, for a host without /dev/dri (or to render a codec the GPU cannot decode).
+# Slow on real footage.   podman compose -f compose.yaml -f compose.cpu.yaml up -d
+services:
+  worker:
+    devices: !reset []
+    command: ["worker", "/data/library", "--device", "cpu"]

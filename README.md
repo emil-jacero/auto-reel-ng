@@ -614,3 +614,73 @@ by `DATABASE_URL` or `config.yaml`'s `database.url` — see
 ```bash
 DATABASE_URL=postgresql+psycopg://... alembic upgrade head
 ```
+
+### Run the stack with compose
+
+`compose.yaml` at the repository root brings up a complete local stack for trying the GUI:
+Postgres, the migration, a seeded scratch library, `auto-reel serve` and one `auto-reel worker`
+(HLD **D-17**). It needs rootless **podman** with `podman compose` (the docker-compose provider)
+and the shared fixture `auto-reel-media` next to the checkout (`../auto-reel-media`).
+
+```bash
+cp .env.example .env            # optional: every value there is the default
+podman compose up -d            # build the image from this checkout, then start everything
+# then open http://127.0.0.1:8132/
+podman compose logs -f worker   # follow renders
+podman compose exec server auto-reel enqueue /data/library   # or press Render in the GUI
+podman compose exec server auto-reel jobs list /data/library
+podman compose down             # stop; edits, movies and job history are kept
+```
+
+- **Always the checked-out code.** Every `up` rebuilds the image `localhost/auto-reel-ng:compose`
+  (cached: a few seconds when nothing changed) and recreates `server` and `worker` when it changed,
+  so after a `git pull` the same command runs the new code. The first build takes about a minute.
+- **Settings** (`.env`): `AR_PORT` is the GUI port (default 8132), `AR_MEDIA_DIR` the fixture,
+  `AR_DATA_DIR` where the scratch data lives (default `./data`; put any other value outside the
+  repository, or add it to `.dockerignore`, so rendered movies are not sent to every image build).
+  `AR_DB_PASSWORD` applies only when
+  the database volume is created, so changing it needs `podman compose down -v`.
+- **Where things live.** `./data/library` is the scratch library the GUI edits and the worker
+  renders, `./data/library-output` holds the movies, `./data/cache` the thumbnails and the Mesa
+  shader cache, and `./data/tmp` a render's temporary segments (`TMPDIR`, emptied after each
+  render). The database is the `pgdata` volume. Postgres is not published on the host.
+- **The fixture is never changed.** `auto-reel-media` is mounted read-only at
+  `/media/auto-reel-media`. The `seed` service links its clips into `./data/library` (absolute
+  symlinks, plus a real copy of each `reel.yaml`, which GUI saves write to) and never carries its
+  `.auto-reel/` cache. The `samples/` clips become the event `2025-01-15 - Provklipp`, and the old
+  MPEG-4 Part 2 render `legacy-render-mpeg4-mp3.mp4` becomes `2025-01-16 - Gammal rendering`.
+  Re-running the seed (on every `up`) adds only what is missing and never overwrites an edit. The
+  services that mount the fixture run with `security_opt: [label=disable]`: a confined container
+  cannot read files labelled `user_home_t`, and the `z`/`Z` mount options would relabel the
+  directory tree on the host. A missing `AR_MEDIA_DIR` is created empty by the podman provider; the
+  seed then fails, naming `/media/auto-reel-media/input`, and `server` and `worker` do not start.
+- **Reset** to the fixture's state (drops edits, movies and job history):
+
+  ```bash
+  podman compose down -v && podman compose run --rm seed --reset && podman compose up -d
+  ```
+
+- **GPU.** The worker gets `/dev/dri`. jellyfin-ffmpeg brings its own VA drivers, so nothing else is
+  needed when the render node is world-writable (`crw-rw-rw-`, as on the dev host). A host whose
+  render node is `0660` likely also needs `group_add: [keep-groups]` on the worker (untested in
+  compose). Measured on an AMD Radeon 860M (radeonsi); RDNA4 cards are not yet tested.
+  `2025-01-16 - Gammal rendering` **fails on VAAPI** because of a known engine gap: radeonsi cannot
+  decode MPEG-4 Part 2, and normalize has no software-decode fallback yet, so that one event's job
+  fails with `Function not implemented`. It renders with the CPU override.
+- **CPU only** (no `/dev/dri`, or a codec the GPU cannot decode). Much slower on real footage:
+
+  ```bash
+  podman compose -f compose.yaml -f compose.cpu.yaml up -d worker   # CPU worker
+  podman compose up -d worker                                        # back to the GPU worker
+  ```
+
+  A host without `/dev/dri` starts the whole stack with
+  `podman compose -f compose.yaml -f compose.cpu.yaml up -d`.
+- **Loopback only.** The API has no authentication and the GUI writes `reel.yaml`, so the port binds
+  `127.0.0.1`. Change the `ports:` line in `compose.yaml` only on a network you trust.
+- **After a reboot** the containers stay stopped unless the user service is enabled:
+  `systemctl --user enable podman-restart.service`. Crashes are restarted either way.
+- **Rootful Docker** is untested; it would write root-owned files under `./data` (the reset above
+  still works, because it runs inside a container).
+- **Local only.** The image must never go to a registry: the bundled jellyfin-ffmpeg includes
+  `libfdk_aac`, a blocker for any published image (HLD §4.12, D-1).
