@@ -138,16 +138,26 @@ def test_the_others_are_sorted_whatever_order_the_layout_walks(
     assert collision.claimed_by == (aaa, zed)
 
 
-def test_a_symlinked_alias_is_a_claimant_of_its_own(root: Path) -> None:
-    """Aliases are never resolved: the alias claims its own folder-name path."""
+def test_a_walked_symlinked_alias_is_not_a_claimant(root: Path) -> None:
+    """The layout drops an alias of an event directory, so it claims nothing of its own."""
     original = _event(root, MIDSOMMAR, _titled("Midsommar"))
     alias = root / "2024/2024-06-21 - Midsommar copy"
     alias.symlink_to(original, target_is_directory=True)
-    # The alias carries the original's reel.yaml, so both claim the same output path.
 
-    collision = _collision(root, original)
+    assert alias not in [ref.event_dir for ref in _walk(root)]
+    assert _collision(root, original) is None
 
-    assert collision == OutputCollision(SHARED_PATH, (alias,))
+
+def test_a_named_symlinked_alias_still_collides_with_its_target(root: Path) -> None:
+    """A caller that names the alias itself is not walked past it: it claims its own path."""
+    original = _event(root, MIDSOMMAR, _titled("Midsommar"))
+    alias = root / "2024/2024-06-21 - Midsommar copy"
+    alias.symlink_to(original, target_is_directory=True)
+
+    collision = _collision(root, alias)
+
+    assert collision is not None
+    assert collision.claimed_by == (original,)
 
 
 def test_the_named_event_spelled_from_another_base_is_not_its_own_claimant(

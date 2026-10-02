@@ -44,8 +44,9 @@ def output_collision(
     itself, which a caller may name although the walk does not reach it. An event that
     fails on its own claims nothing (:func:`..event.claims.checked_claim`), so ``None``
     is returned, without walking, when ``event_dir`` itself fails. Claimants are keyed by
-    the path as the layout spells it, never resolved: a symlinked alias is a claimant of
-    its own, claiming the path its own folder name and ``reel.yaml`` give it. The named
+    the path as the layout spells it, never resolved: a symlinked alias the caller names (the
+    layout itself walks each real directory once) is a claimant of its own, claiming the path
+    its own folder name and ``reel.yaml`` give it. The named
     event is recognised in the walk by its *lexically* normalised path (``os.path.abspath``:
     relative vs absolute, ``..`` segments), never by resolving symlinks, so a caller may
     spell ``event_dir`` and ``walk_root`` from different bases without the event
