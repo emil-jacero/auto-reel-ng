@@ -6,7 +6,7 @@ from __future__ import annotations
 import shutil
 import threading
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import List, Tuple
 from unittest.mock import Mock
 
@@ -15,6 +15,7 @@ import pytest
 from auto_reel_ng.accel.models import AcceleratorCapabilities, Device, Vendor
 from auto_reel_ng.accel.profiles import CPUProfile, VaapiProfile
 from auto_reel_ng.cli.adoption import persist, prepare_event
+from auto_reel_ng.cli.build import missing_clips_message
 from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.errors import ProbeError, RenderCancelledError, RenderError
 from auto_reel_ng.event import DEFAULT_CLIP_ORDER
@@ -27,6 +28,7 @@ from auto_reel_ng.probe.metadata import ClipMetadata
 from auto_reel_ng.reel import load_document
 from auto_reel_ng.reel.document import Metadata
 from auto_reel_ng.render import RenderJob, RenderOptions, RenderResult
+from auto_reel_ng.render.claims import output_collision_message
 from auto_reel_ng.scheduler.pools import CapacityPools
 from auto_reel_ng.scheduler.worker import RunRender, Worker, _render_job, default_build_job
 
@@ -1228,3 +1230,292 @@ def test_a_failing_backstop_write_is_logged_and_does_not_stop_the_worker(
     token = pools.token_for(video_encoder="libx264", render_node=None)
     assert token.acquire(blocking=False)
     token.release()
+
+
+# --------------------------------------------------------------------------- #
+# Claim-time guards (worker-claim-guards): collision, running job, missing clip
+# --------------------------------------------------------------------------- #
+
+_MIDSOMMAR = "2024/2024-06-21 - Midsommar.mp4"
+
+
+def _write_event(
+    root: Path,
+    rel: str,
+    *,
+    title: str,
+    day: str = "2024-06-21",
+    clips: Tuple[str, ...] = ("a.mp4",),
+    unlisted: Tuple[str, ...] = (),
+) -> Path:
+    """An event folder with a ``reel.yaml``; a listed or unlisted clip is an empty file unless present."""
+    event_dir = root / rel
+    event_dir.mkdir(parents=True, exist_ok=True)
+    for name in (*clips, *unlisted):
+        if not (event_dir / name).exists():
+            (event_dir / name).parent.mkdir(parents=True, exist_ok=True)
+            (event_dir / name).write_bytes(b"")
+    listed = "".join(f"      - {name}\n" for name in clips)
+    (event_dir / "reel.yaml").write_text(
+        f'version: 0\nmetadata:\n  title: {title}\n  date: {day}\nchapters:\n  - name: ""\n'
+        f"    clips:\n{listed}",
+        encoding="utf-8",
+    )
+    return event_dir
+
+
+def _guard_worker(
+    job_store: JobStore, *, runtime=None, pools=None, worker_id: str = "w1"
+) -> Tuple[Worker, List[int], List[str]]:
+    """A worker on the real ``default_build_job`` that counts renders and builds."""
+    renders: List[int] = []
+    builds: List[str] = []
+    rt = runtime if runtime is not None else Mock(name="runtime", version=(7, 1))
+
+    def build(job: Job) -> RenderJob:
+        builds.append(job.event_dir)
+        return default_build_job(job, runtime=rt, profile=CPUProfile(), render_node=None)
+
+    def render(rj: RenderJob) -> RenderResult:
+        renders.append(1)
+        return RenderResult(output_path=rj.options.output_dir / "m.mp4")
+
+    worker = Worker(
+        job_store,
+        worker_id=worker_id,
+        pools=pools or _solo_pools(),
+        poll_interval=0.01,
+        build_job=build,
+        render=render,
+    )
+    return worker, renders, builds
+
+
+def _failed_error(job_store: JobStore, job_id) -> str:
+    job = job_store.get(job_id)
+    assert job is not None
+    assert job.status == JobStatus.FAILED, (job.status, job.error)
+    assert job.error is not None
+    return job.error
+
+
+def _collision_project(tmp_path: Path) -> Path:
+    """Two events enqueued with distinct paths; ``b`` is then edited into ``a``'s path."""
+    root = tmp_path / "proj"
+    _write_event(root, "2024/a", title="Midsommar", unlisted=("new.mp4",))
+    _write_event(root, "2024/b", title="Midsommar 2", unlisted=("new.mp4",))
+    return root
+
+
+@pytest.mark.parametrize("force", [False, True], ids=["plain", "forced"])
+def test_job_edited_into_a_collision_after_enqueue_fails_with_the_shared_reason(
+    job_store: JobStore, tmp_path: Path, force: bool
+) -> None:
+    root = _collision_project(tmp_path)
+    job_a = job_store.enqueue(str(root), "2024/a", force=force)
+    job_b = job_store.enqueue(str(root), "2024/b", force=force)
+    _write_event(root, "2024/b", title="Midsommar", unlisted=("new.mp4",))  # the edit
+    before = {rel: (root / rel / "reel.yaml").read_bytes() for rel in ("2024/a", "2024/b")}
+    worker, renders, _builds = _guard_worker(job_store)
+
+    assert worker.process_next() is True
+    assert worker.process_next() is True
+
+    assert _failed_error(job_store, job_a) == output_collision_message(
+        PurePosixPath(_MIDSOMMAR), ["2024/b"]
+    )
+    assert _failed_error(job_store, job_b) == output_collision_message(
+        PurePosixPath(_MIDSOMMAR), ["2024/a"]
+    )
+    assert renders == []
+    for rel, content in before.items():  # no NEW clip adopted, nothing rewritten
+        assert (root / rel / "reel.yaml").read_bytes() == content
+    assert not (default_output_dir(root)).exists()  # no output dir, no .part
+    assert not list(root.rglob("render-manifest.json"))
+
+
+def test_a_refused_collision_leaves_an_existing_movie_untouched(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    root = _collision_project(tmp_path)
+    existing = default_output_dir(root) / _MIDSOMMAR
+    existing.parent.mkdir(parents=True)
+    existing.write_bytes(b"the movie that was already there")
+    _write_event(root, "2024/b", title="Midsommar", unlisted=("new.mp4",))
+    ids = [job_store.enqueue(str(root), rel, force=rel == "2024/b") for rel in ("2024/a", "2024/b")]
+    worker, renders, _builds = _guard_worker(job_store)
+
+    assert worker.process_next() and worker.process_next()
+
+    for job_id in ids:
+        assert "is also claimed by" in _failed_error(job_store, job_id)
+    assert existing.read_bytes() == b"the movie that was already there"
+    assert [p.name for p in existing.parent.iterdir()] == [existing.name]  # no .part
+    assert renders == []
+
+
+def test_an_unparseable_third_event_does_not_change_the_collision_outcome(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    root = _collision_project(tmp_path)
+    _write_event(root, "2024/b", title="Midsommar")
+    broken = root / "2024" / "c"
+    broken.mkdir()
+    (broken / "reel.yaml").write_text("version: [unterminated\n", encoding="utf-8")
+    job_a = job_store.enqueue(str(root), "2024/a")
+    worker, _renders, _builds = _guard_worker(job_store)
+
+    assert worker.process_next() is True
+
+    assert _failed_error(job_store, job_a) == output_collision_message(
+        PurePosixPath(_MIDSOMMAR), ["2024/b"]
+    )
+
+
+def test_a_collision_free_claim_still_renders_and_ends_done(
+    job_store: JobStore, runtime, make_clip, tmp_path: Path
+) -> None:
+    root = tmp_path / "proj"
+    (root / "2024" / "a").mkdir(parents=True)
+    make_clip("proj/2024/a/a.mp4", width=320, height=240, duration=1.0)
+    _write_event(root, "2024/a", title="Midsommar")
+    _write_event(root, "2024/b", title="Midsommar 2")  # a sibling with its own path
+    job_id = job_store.enqueue(str(root), "2024/a")
+    worker, renders, _builds = _guard_worker(job_store, runtime=runtime)
+
+    assert worker.process_next() is True
+
+    job = job_store.get(job_id)
+    assert job is not None and job.status == JobStatus.DONE, job and job.error
+    assert renders == [1]
+
+
+def test_an_unknown_layout_fails_the_job_instead_of_rendering_unchecked(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    root = tmp_path / "proj"
+    _write_event(root, "2024/a", title="Midsommar")
+    (root / "config.yaml").write_text("layout: no-such-layout\n", encoding="utf-8")
+    job_id = job_store.enqueue(str(root), "2024/a")
+    worker, renders, _builds = _guard_worker(job_store)
+
+    assert worker.process_next() is True
+
+    assert "unknown ingest layout 'no-such-layout'" in _failed_error(job_store, job_id)
+    assert renders == []
+
+
+def test_a_missing_clip_fails_the_job_with_the_cli_text(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    root = tmp_path / "proj"
+    event_dir = _write_event(
+        root, "2024/a", title="Midsommar", clips=("a.mp4", "borttagen.mp4", "Dag 2/c.mp4")
+    )
+    (event_dir / "borttagen.mp4").unlink()
+    (event_dir / "Dag 2" / "c.mp4").unlink()
+    job_id = job_store.enqueue(str(root), "2024/a")
+    worker, renders, _builds = _guard_worker(job_store)
+
+    assert worker.process_next() is True
+
+    error = _failed_error(job_store, job_id)
+    assert error == missing_clips_message(["borttagen.mp4", "Dag 2/c.mp4"])
+    assert "File does not exist" not in error and str(tmp_path) not in error
+    assert renders == []
+
+
+def _two_projects(
+    tmp_path: Path, *, other_title: str = "Midsommar", unlisted: Tuple[str, ...] = ()
+) -> Tuple[Path, Path, Path]:
+    """P1 and P2 share one output directory; each has one event."""
+    shared = tmp_path / "shared-out"
+    p1, p2 = tmp_path / "p1", tmp_path / "p2"
+    for root, title, rel in ((p1, "Midsommar", "2024/x"), (p2, other_title, "2024/y")):
+        _write_event(root, rel, title=title, unlisted=unlisted)
+        (root / "config.yaml").write_text(f"output: {shared}\n", encoding="utf-8")
+    return p1, p2, shared
+
+
+@pytest.mark.parametrize("force", [False, True], ids=["plain", "forced"])
+def test_a_job_whose_output_a_running_job_writes_is_refused(
+    job_store: JobStore, tmp_path: Path, force: bool
+) -> None:
+    p1, p2, _shared = _two_projects(tmp_path, unlisted=("new.mp4",))
+    running_id = job_store.enqueue(str(p1), "2024/x")
+    assert job_store.claim_next("other-worker") is not None  # P1's job is rendering elsewhere
+    refused_id = job_store.enqueue(str(p2), "2024/y", force=force)
+    reel_before = (p2 / "2024" / "y" / "reel.yaml").read_bytes()
+    pools = _solo_pools(cpu_cap=1)
+    worker, renders, builds = _guard_worker(job_store, pools=pools)
+
+    assert worker.process_next() is True
+
+    error = _failed_error(job_store, refused_id)
+    assert _MIDSOMMAR in error and "2024/x" in error and str(p1) in error
+    assert builds == [] and renders == []  # refused before the plan was rebuilt
+    assert (p2 / "2024" / "y" / "reel.yaml").read_bytes() == reel_before  # nothing adopted
+    running = job_store.get(running_id)
+    assert running is not None and running.status == JobStatus.RUNNING  # never interrupted
+    token = pools.token_for(video_encoder="libx264", render_node=None)
+    assert token.acquire(blocking=False), "a refusal must not hold a capacity token"
+    token.release()
+
+
+def test_the_refused_event_renders_once_the_running_job_has_ended(
+    job_store: JobStore, runtime, make_clip, tmp_path: Path
+) -> None:
+    (tmp_path / "p2" / "2024" / "y").mkdir(parents=True)
+    make_clip("p2/2024/y/a.mp4", width=320, height=240, duration=1.0)
+    p1, p2, _shared = _two_projects(tmp_path)
+    running_id = job_store.enqueue(str(p1), "2024/x")
+    assert job_store.claim_next("other-worker") is not None
+    refused_id = job_store.enqueue(str(p2), "2024/y")
+    worker, renders, _builds = _guard_worker(job_store, runtime=runtime)
+    assert worker.process_next() is True
+    assert "is also being written by the running job" in _failed_error(job_store, refused_id)
+
+    job_store.transition(running_id, JobStatus.DONE)
+    again_id = job_store.enqueue(str(p2), "2024/y")
+    assert worker.process_next() is True
+
+    again = job_store.get(again_id)
+    assert again is not None and again.status == JobStatus.DONE, again and again.error
+    assert renders == [1]
+
+
+def test_a_running_job_with_a_different_output_does_not_refuse(
+    job_store: JobStore, runtime, make_clip, tmp_path: Path
+) -> None:
+    (tmp_path / "p2" / "2024" / "y").mkdir(parents=True)
+    make_clip("p2/2024/y/a.mp4", width=320, height=240, duration=1.0)
+    p1, p2, _shared = _two_projects(tmp_path, other_title="Annan dag")
+    job_store.enqueue(str(p1), "2024/x")
+    assert job_store.claim_next("other-worker") is not None
+    job_id = job_store.enqueue(str(p2), "2024/y")
+    worker, renders, _builds = _guard_worker(job_store, runtime=runtime)
+
+    assert worker.process_next() is True
+
+    job = job_store.get(job_id)
+    assert job is not None and job.status == JobStatus.DONE, job and job.error
+    assert renders == [1]
+
+
+def test_a_running_job_whose_event_is_gone_claims_nothing(
+    job_store: JobStore, runtime, make_clip, tmp_path: Path
+) -> None:
+    (tmp_path / "p2" / "2024" / "y").mkdir(parents=True)
+    make_clip("p2/2024/y/a.mp4", width=320, height=240, duration=1.0)
+    p1, p2, _shared = _two_projects(tmp_path)
+    job_store.enqueue(str(p1), "2024/x")
+    assert job_store.claim_next("other-worker") is not None
+    shutil.rmtree(p1 / "2024" / "x")
+    job_id = job_store.enqueue(str(p2), "2024/y")
+    worker, renders, _builds = _guard_worker(job_store, runtime=runtime)
+
+    assert worker.process_next() is True
+
+    job = job_store.get(job_id)
+    assert job is not None and job.status == JobStatus.DONE, job and job.error
+    assert renders == [1]

@@ -263,3 +263,115 @@ def test_render_persists_seed_in_configured_clip_order(
     chapter = load_document(event_dir / "reel.yaml").chapter(DEFAULT_CHAPTER_NAME)
     assert chapter is not None
     assert [ref.identity for ref in chapter.clips] == expected
+
+
+# --------------------------------------------------------------------------- #
+# A referenced clip missing from disk fails its event by identity
+# --------------------------------------------------------------------------- #
+
+
+def _reel_yaml(clips: List[str], *, exclude: tuple[str, ...] = ()) -> str:
+    listed = "".join(f"      - {identity}\n" for identity in clips)
+    props = "".join(f"  {identity}:\n    exclude: true\n" for identity in exclude)
+    return (
+        "version: 0\nmetadata:\n  title: Gammal\n  date: 2025-01-16\n"
+        f'chapters:\n  - name: ""\n    clips:\n{listed}' + (f"clips:\n{props}" if props else "")
+    )
+
+
+def _event_with_reel(root: Path, name: str, clips: List[str], present: List[str], **kw) -> Path:
+    event_dir = root / "2025" / name
+    for identity in present:
+        _touch(event_dir / identity)
+    event_dir.mkdir(parents=True, exist_ok=True)
+    (event_dir / "reel.yaml").write_text(_reel_yaml(clips, **kw), encoding="utf-8")
+    return event_dir
+
+
+def _ok_batch(jobs: List[RenderJob]) -> List[BatchOutcome]:
+    return [
+        BatchOutcome(job=job, result=RenderResult(output_path=job.options.output_dir / "m.mp4"))
+        for job in jobs
+    ]
+
+
+def test_render_names_a_missing_clip_by_identity_and_renders_the_other_event(
+    tmp_path: Path, patched_engine: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "proj"
+    _event_with_reel(
+        root, "2025-01-16 - Gammal", ["clip1.avi", "borttagen.mp4"], present=["clip1.avi"]
+    )
+    _touch(root / "2025" / "2025-01-17 - Bra" / "a.mp4")
+    probed: List[str] = []
+    patched_engine.setattr(
+        build_module, "probe_media", lambda path, **_: probed.append(path.name) or Mock()
+    )
+    patched_engine.setattr(commands, "render_batch", _ok_batch)
+
+    assert main(["render", str(root), "--device", "cpu"]) == 1
+
+    out = capsys.readouterr().out
+    assert (
+        "ERROR  2025-01-16 - Gammal: clip 'borttagen.mp4' is listed in reel.yaml but is missing "
+        "from the event folder; restore the file, or remove the clip from the event "
+        "(Edit mode, or reel.yaml)"
+    ) in out
+    error_line = next(line for line in out.splitlines() if line.startswith("ERROR"))
+    assert "File does not exist" not in out and str(tmp_path) not in error_line
+    assert "OK     2025-01-17 - Bra" in out
+    assert "clip1.avi" not in probed and "borttagen.mp4" not in probed  # no probe for it
+
+
+def test_render_lists_every_missing_clip_in_document_order(
+    tmp_path: Path, patched_engine: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "proj"
+    _event_with_reel(
+        root,
+        "2025-01-16 - Gammal",
+        ["a.mp4", "b.mp4", "Dag 2/c.mp4", "d.mp4"],
+        present=["a.mp4", "d.mp4"],
+    )
+    patched_engine.setattr(commands, "render_batch", _ok_batch)
+
+    assert main(["render", str(root), "--device", "cpu"]) == 1
+
+    out = capsys.readouterr().out
+    assert (
+        "2 clips are listed in reel.yaml but missing from the event folder: "
+        "'b.mp4', 'Dag 2/c.mp4'; restore the files, or remove the clips from the event "
+        "(Edit mode, or reel.yaml)"
+    ) in out
+
+
+def test_render_does_not_check_an_excluded_missing_clip(
+    tmp_path: Path, patched_engine: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "proj"
+    _event_with_reel(
+        root,
+        "2025-01-16 - Gammal",
+        ["clip1.avi", "borttagen.mp4"],
+        present=["clip1.avi"],
+        exclude=("borttagen.mp4",),
+    )
+    patched_engine.setattr(commands, "render_batch", _ok_batch)
+
+    assert main(["render", str(root), "--device", "cpu"]) == 0
+    assert "OK     2025-01-16 - Gammal" in capsys.readouterr().out
+
+
+def test_render_reports_a_dangling_symlink_as_missing(
+    tmp_path: Path, patched_engine: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "proj"
+    event_dir = _event_with_reel(
+        root, "2025-01-16 - Gammal", ["a.mp4", "gone.mp4"], present=["a.mp4"]
+    )
+    (event_dir / "gone.mp4").symlink_to(tmp_path / "nowhere.mp4")
+    patched_engine.setattr(commands, "render_batch", _ok_batch)
+
+    assert main(["render", str(root), "--device", "cpu"]) == 1
+    out = capsys.readouterr().out
+    assert "clip 'gone.mp4' is listed in reel.yaml but is missing" in out

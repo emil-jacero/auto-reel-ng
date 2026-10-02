@@ -107,12 +107,12 @@ contract forbids; the claimed job's own output is therefore resolved from disk b
 others', before the build.
 **Decision**: In `_process_job`, inside the existing `try` and ahead of `self._build_job(job)`, call
 `self._refuse_running_output(job)`. It resolves the claimed job's output with a module function
-`_job_output_path(job, today)` and, when that is not `None`, lists the running rows, skips the claiming job's
+`_job_output(job, today=today)` and, when that is not `None`, lists the running rows, skips the claiming job's
 id, resolves each other row the same way, and asks `find_output_collisions({job.id: own, **others})` (any
 hashable key works, so the rule's case-insensitive, NFC comparison is reused):
 
 ```python
-def _job_output_path(job: Job, *, today: date) -> Optional[PurePosixPath]:
+def _job_output(job: Job, *, today: date) -> Optional[_JobOutput]:
     """The output a job writes, as an absolute path, or None when it claims nothing."""
     project_root = Path(job.project_root) if job.project_root else Path.cwd()
     try:
