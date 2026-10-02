@@ -130,8 +130,12 @@ SHALL adopt exactly as `render` does.
 
 Each `NEW` clip SHALL be adopted into the chapter named after the folder it was found in. A clip in the
 event folder itself goes into the default chapter. A clip in a chapter subfolder goes into the chapter with
-that subfolder's name. When `reel.yaml` names no chapter of that name, the clip SHALL be adopted into the
-default chapter instead. When `reel.yaml` does not name the default chapter and a clip enters it, the
+that subfolder's name: the chapter whose name equals the folder name exactly, else, when none does, the
+chapter whose name equals it under `str.casefold()` (reel-document, "Chapter names are unpadded, non-blank
+and unique ignoring case", makes that match unique). The clip is listed in that chapter under the name
+`reel.yaml` gives it, never the folder's spelling. When `reel.yaml` names no chapter of that name, the clip
+SHALL be adopted into the default chapter instead; a folder name with leading or trailing whitespace is
+never trimmed to find a chapter. When `reel.yaml` does not name the default chapter and a clip enters it, the
 default chapter SHALL be added after the chapters `reel.yaml` names.
 
 A `reel.yaml` that names no chapters at all SHALL be adopted into as first discovery seeds a new event.
@@ -212,6 +216,30 @@ configured sort order"), whichever folders they came from.
 
 - **WHEN** a `reel.yaml` references a clip that no longer exists on disk
 - **THEN** the system reports the `MISSING` clip and does not remove it from the document
+
+#### Scenario: A folder matches a chapter ignoring case
+
+- **WHEN** an event's `reel.yaml` names the chapter `Party` listing `Party/a.mp4`, and `party/b.mp4` appears
+  on disk in a folder spelled `party`
+- **THEN** `render` appends `party/b.mp4` to `Party`, `reel.yaml` still names the single chapter `Party`, and
+  no `party` chapter is created
+
+#### Scenario: A folder reaches its one matching chapter
+
+- **WHEN** an event's `reel.yaml` names the chapters `Party` and `PARTY2`, and a new clip appears in a
+  folder spelled `Party`
+- **THEN** the clip is adopted into `Party` and `PARTY2` receives nothing (the match is unique)
+
+#### Scenario: A padded folder name does not match a chapter
+
+- **WHEN** an event's `reel.yaml` names the chapter `Party` and a new clip appears in a folder spelled
+  `Party ` (a trailing space)
+- **THEN** the clip is adopted into the default chapter, and no chapter named `Party ` is created
+
+#### Scenario: Seeding a document that names no chapters refuses case-variant folders
+
+- **WHEN** an event's `reel.yaml` holds only `metadata`, and the event holds `Party/a.mp4` and `party/b.mp4`
+- **THEN** `render` fails that event with the duplicate chapter name error and leaves `reel.yaml` as it was
 
 ### Requirement: `analyze` runs detection and reports suggestions
 
