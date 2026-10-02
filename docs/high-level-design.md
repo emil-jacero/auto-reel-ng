@@ -619,7 +619,15 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   case-insensitive filesystem replaces the old movie, as before, and so does the render of another
   event that now has the renamed event's old name (the collision check compares only current paths);
   the renamed event's verdict then still cites `output_renamed`, for a file that is now the other
-  event's movie. (§4.3/§4.11)
+  event's movie.
+  *Amended 2026-10-02, change `engine-output-claims`:* which events claim an output path, and who else
+  claims it, is decided by one engine rule (`event/claims.py` `checked_claim`, `render/claims.py`
+  `output_collision`), not by caller-private copies. An event claims a path only when it loads and is
+  processable; one that fails to load (an unparseable `reel.yaml`, a folder or file the process cannot
+  list or read) claims nothing and is reported on its own. The CLI, `POST /api/v1/jobs` and the worker
+  adopt it in the changes `cli-batch-isolation-and-claims`, `api-jobs-create-validation` and
+  `worker-claim-guards`; the worker's claim-time recheck fails a colliding job rather than requeueing
+  it. (§4.3/§4.11)
 
 - **D-10 — GUI v1 visual system** (2026-09-30, change `web-design-system`). GUI v1 ships a modern visual
   design, overriding event-list-screen's deferral of look and feel to v2, and does it inside D-8's budget:
