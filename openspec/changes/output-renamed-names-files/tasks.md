@@ -17,7 +17,7 @@
   verdict prints as before. Only `scan`/`list` formats reasons, so no other command changes.
 - [ ] 2.2 CLI tests: update the two exact `stale: ...output_renamed` assertions in
   `tests/test_cli_render_staleness.py` to the new line (names asserted literally); add a `scan` test in
-  `tests/test_cli_scan.py` with a non-ASCII old and new name that pins the one-line format, and one that a
+  `tests/test_cli_commands.py` with a non-ASCII old and new name that pins the one-line format, and one that a
   deleted movie prints `stale: output` with no names. `tests/test_cli_jobs.py` keeps passing unchanged (prefix
   match).
 
