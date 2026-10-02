@@ -70,7 +70,10 @@ item and depends on none. It reuses D-9 (output identity) and the D-CLI isolatio
 - **No new flag, config key, dependency or `JobStore` method.** `JobStore.enqueue` stays for its other
   callers; only the CLI stops using it.
 - **`import` does not change what it imports.** `import_legacy` and the `--overwrite` rule for a v2
-  `reel.yaml` are unchanged.
+  `reel.yaml` are unchanged; the `version` probe treats an empty or non-mapping `reel.yaml` as not v2
+  (as before), and `--overwrite` skips the probe.
+- **Other `reel.yaml` lookups.** `event/editorial.py` (the save path) and `api/events_read.py` (the read
+  model) still use `Path.exists()`; they are API-side and out of scope here, owned by a later change.
 
 ## Capabilities
 

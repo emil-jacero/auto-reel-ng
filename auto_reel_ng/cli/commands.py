@@ -472,7 +472,7 @@ def _import_event(event_dir: Path, *, overwrite: bool) -> Optional[ImportResult]
     reel_path = event_dir / REEL_FILENAME
     # Refuse to clobber an existing *v2* reel.yaml unless asked; a legacy reel.yaml
     # (no version key) is the migration source and is rewritten in place.
-    if reel_exists(reel_path) and _has_version(reel_path) and not overwrite:
+    if not overwrite and reel_exists(reel_path) and _has_version(reel_path):
         print(f"SKIP   {event_dir.name}: a v2 reel.yaml already exists (use --overwrite)")
         return None
 
@@ -513,33 +513,52 @@ def _report_import(event_dir: Path, result: ImportResult) -> None:
         print(f"  unmapped: {field_name}")
 
 
-def _read_legacy_mapping(path: Path) -> Mapping[str, object]:
-    """Read ``path`` as a YAML mapping; raise :class:`ReelParseError` (path in the message) if not.
+def _read_yaml(path: Path) -> object:
+    """Read and parse ``path``; raise :class:`ReelParseError` if it cannot be read or parsed.
 
     One reader for ``import`` and for the ``version`` probe, so a file that cannot be read,
-    is not UTF-8, is not valid YAML or is not a mapping is always that event's ``ERROR``.
+    is not UTF-8 or is not valid YAML is always that event's ``ERROR``. The reason names the
+    file, not its folder (the event name is already printed) and is a single line.
     """
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
-        raise ReelParseError(f"{path}: not valid UTF-8 text: {exc.reason}") from exc
+        raise ReelParseError(f"{path.name}: not valid UTF-8 text: {exc.reason}") from exc
     except OSError as exc:
-        raise ReelParseError(f"{path}: cannot read: {exc.strerror or exc}") from exc
+        raise ReelParseError(f"{path.name}: cannot read: {exc.strerror or exc}") from exc
     try:
-        data = YAML(typ="safe").load(text)
+        return YAML(typ="safe").load(text)
     except Exception as exc:  # pylint: disable=broad-exception-caught
         # ruamel's YAMLError, and the odd non-YAMLError it raises with no node to blame
         # (as reel/parser.loads_document): either way the file is malformed.
-        raise ReelParseError(f"{path}: malformed YAML: {str(exc) or type(exc).__name__}") from exc
+        raise ReelParseError(f"{path.name}: malformed YAML: {_first_line(exc)}") from exc
+
+
+def _first_line(exc: Exception) -> str:
+    """The first non-blank line of ``exc`` (ruamel's message carries a source excerpt)."""
+    for line in str(exc).splitlines():
+        if line.strip():
+            return line.strip()
+    return type(exc).__name__
+
+
+def _read_legacy_mapping(path: Path) -> Mapping[str, object]:
+    """Read ``path`` as a YAML mapping; raise :class:`ReelParseError` if it is not one."""
+    data = _read_yaml(path)
     if not isinstance(data, Mapping):
         shape = "empty" if data is None else type(data).__name__
-        raise ReelParseError(f"{path}: legacy metadata must be a mapping, got {shape}")
+        raise ReelParseError(f"{path.name}: legacy metadata must be a mapping, got {shape}")
     return data
 
 
 def _has_version(path: Path) -> bool:
-    """True when a YAML file declares a top-level ``version`` key (i.e. is v2, not legacy)."""
-    return "version" in _read_legacy_mapping(path)
+    """True when a YAML file declares a top-level ``version`` key (i.e. is v2, not legacy).
+
+    An empty or non-mapping root declares nothing, so it is not v2; an unreadable, non-UTF-8
+    or malformed file still raises.
+    """
+    data = _read_yaml(path)
+    return isinstance(data, Mapping) and "version" in data
 
 
 # --------------------------------------------------------------------------- #
