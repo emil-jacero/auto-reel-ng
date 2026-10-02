@@ -26,7 +26,9 @@ cause:
 - "no frame" at the requested time, with the failing ffmpeg command and its stderr
 - or the time-out of the probe or of the extraction
 
-A clip that fails SHALL leave no thumbnail file behind.
+A clip that fails SHALL leave no thumbnail image behind: no `<key>.jpg`. It MAY leave the short-lived
+failure marker that the requirement "A failed clip is remembered for 60 seconds" defines, and the
+duration file that "The probed duration is recorded beside the thumbnail" defines. Neither is a thumbnail.
 
 The probe and the extraction SHALL each be bounded to 60 seconds. A clip whose probe or extraction does not
 finish within that bound, such as one on a stalled removable drive, SHALL have no thumbnail and SHALL be
@@ -52,7 +54,7 @@ invalid bytes shown as backslash escapes.
 #### Scenario: A zero-byte clip has no thumbnail
 - **WHEN** the thumbnail of `trasig.mp4` in `2024-10-05 - Trasig` is requested, and the file is zero bytes
 - **THEN** a thumbnail error is raised, naming `trasig.mp4` and reporting that the file is empty
-- **AND** no thumbnail file for it exists in the cache
+- **AND** no `<key>.jpg` for it exists in the cache
 
 #### Scenario: A clip with no usable duration is not guessed at
 - **WHEN** the probe of a clip succeeds but reports no duration
@@ -62,26 +64,26 @@ invalid bytes shown as backslash escapes.
 - **WHEN** the thumbnail of `caf\xe9.mp4`, a file of text whose name holds the raw byte `0xE9`, is requested
 - **THEN** a thumbnail error is raised, naming the clip, whose cause is ffprobe's own message (for example
   `Invalid data found when processing input`) and not a decoding error
-- **AND** no thumbnail file for it exists in the cache
+- **AND** no `<key>.jpg` for it exists in the cache
 
 #### Scenario: A probe that hangs times out
 - **WHEN** ffprobe has not exited 60 seconds after it started on `s1710003.mp4`
 - **THEN** ffprobe is killed, a thumbnail error is raised naming the clip and the time-out, and ffmpeg is not
   run
-- **AND** no thumbnail file for it exists in the cache
+- **AND** no `<key>.jpg` for it exists in the cache
 
 #### Scenario: An extraction that hangs times out
 - **WHEN** the probe of `s1710003.mp4` succeeds and ffmpeg has not exited 60 seconds after it started
 - **THEN** ffmpeg is killed, and a thumbnail error is raised naming the clip, the requested time and the
   time-out
-- **AND** no thumbnail file for it exists in the cache, no temporary file remains, and no other timestamp is
+- **AND** no `<key>.jpg` for it exists in the cache, no temporary file remains, and no other timestamp is
   tried
 
 #### Scenario: A truncated copy whose frame time lies past the cut
 - **WHEN** a clip was cut short by an interrupted copy, the probe still reports its full duration, and
   `position × duration` lies past the last frame in the file
 - **THEN** a thumbnail error is raised, naming the clip, the requested time and ffmpeg's error
-- **AND** no other timestamp is tried, and no thumbnail file is left behind
+- **AND** no other timestamp is tried, and no `<key>.jpg` is left behind
 
 ### Requirement: A thumbnail fits a 320×180 box as the clip is displayed
 
@@ -161,12 +163,16 @@ The file SHALL be written atomically:
 2. flushed to disk
 3. renamed to `<key>.jpg`
 
-A killed or failed extraction SHALL therefore never leave a partial `<key>.jpg`. The system SHALL:
+A killed or failed extraction SHALL therefore never leave a partial `<key>.jpg`. Beside `<key>.jpg` the
+cache directory MAY hold two small files with the same `<key>`, `<key>.json` and `<key>.fail`, that the
+next two requirements define. They SHALL be written the same atomic way, through a uniquely named
+temporary file, and SHALL be named by the same key, so a changed clip, file name, position, box or format
+version gets new ones and the old ones are never read. The system SHALL:
 
-- write no thumbnail state into the library, `reel.yaml` or the database
+- write no thumbnail state, sidecars included, into the library, `reel.yaml` or the database
 - create the cache directory when it is absent
-- evict nothing, so a thumbnail file whose key no longer occurs, such as one written under an earlier format
-  version, stays in the cache directory unread
+- evict nothing, so a file whose key no longer occurs, a sidecar or a thumbnail written under an earlier
+  format version, stays in the cache directory unread
 
 A cache directory that cannot be created, read or written SHALL be reported with a typed cache error,
 naming the directory. That error SHALL be distinct from a clip's thumbnail error.
@@ -396,3 +402,128 @@ file SHALL NOT fail the thumbnail request; it SHALL leave that file in place and
 #### Scenario: A cache of hits writes and removes nothing
 - **WHEN** every requested thumbnail is already cached
 - **THEN** no temporary file is created, no sweep runs, and nothing is removed
+
+### Requirement: The probed duration is recorded beside the thumbnail
+
+When generating a thumbnail probes a clip and the probe reports a usable duration, the system SHALL record
+that duration in `<key>.json` in the thumbnail cache directory, as a JSON object with one member,
+`duration`, the number of seconds the probe reported. It SHALL write the file atomically, before it runs the
+extraction, so that a clip that probed fine but has no frame at `position × duration` still has a known
+duration. The system SHALL NOT write it when the probe failed or reported no usable duration.
+
+A reader, `recorded_duration`, SHALL return that duration from the file with no ffprobe and no ffmpeg
+process, and SHALL write nothing. It SHALL return no duration, never zero and never an estimate, when:
+
+- the file is absent
+- the file cannot be read
+- the file is not a JSON object with a numeric `duration`
+- the duration is not positive and finite
+
+A cache hit SHALL still run no ffprobe, so it SHALL NOT create a missing duration file: a thumbnail made
+before this requirement has none until its key changes. If the duration file cannot be written after the
+cache directory was created, the system SHALL raise the typed cache error, not the clip's thumbnail error.
+
+#### Scenario: A generated thumbnail leaves its duration beside it
+- **WHEN** the thumbnail of `s1710001.mp4` in `2024-06-27 - Grillning med grannar` is generated, and the
+  probe reports 61.44 s
+- **THEN** `<key>.json` holds a `duration` of 61.44 next to `<key>.jpg`, and no temporary file remains
+
+#### Scenario: The duration is read without a probe
+- **WHEN** `recorded_duration` is called for that thumbnail's cache path
+- **THEN** it returns 61.44, and neither ffprobe nor ffmpeg runs
+
+#### Scenario: A clip with no frame at the requested time still has a duration
+- **WHEN** a truncated copy probes at 27.84 s and ffmpeg gives no frame at 6.960 s
+- **THEN** a thumbnail error is raised for the clip, and `<key>.json` holds a `duration` of 27.84
+
+#### Scenario: A failed probe records no duration
+- **WHEN** the probe of `trasig.mp4` in `2024-10-05 - Trasig` fails because the file is empty
+- **THEN** no `<key>.json` is written
+
+#### Scenario: A cached thumbnail from before this requirement has no duration
+- **WHEN** `<key>.jpg` exists with no `<key>.json`, and the thumbnail is requested
+- **THEN** the thumbnail is returned with no ffprobe, no `<key>.json` is created, and `recorded_duration`
+  returns no duration
+
+#### Scenario: A damaged duration file is not a duration
+- **WHEN** `<key>.json` holds `not json`, or `{"duration": 0}`, or `{"duration": "61"}`, or is unreadable
+- **THEN** `recorded_duration` returns no duration and does not raise
+
+#### Scenario: A changed clip does not inherit the old duration
+- **WHEN** a clip's modification time changes after its duration was recorded
+- **THEN** `recorded_duration` for the clip's new cache path returns no duration, and the old file is left
+  in place
+
+### Requirement: A failed clip is remembered for 60 seconds
+
+When generating a thumbnail raises the clip's thumbnail error, because of a probe failure, no usable
+duration, no frame or a time-out of the probe or the extraction, the system SHALL record the error's reason in `<key>.fail` in the thumbnail cache
+directory, as a JSON object with one member, `reason`. For 60 seconds after that file was written, a request
+for the same key whose `<key>.jpg` does not exist SHALL raise the thumbnail error for that clip with the
+recorded reason, without running ffprobe or ffmpeg. The 60 seconds SHALL be a constant of the engine, not a
+setting.
+
+Reading a recorded failure SHALL NOT renew it: the window runs from the failed attempt. After the window,
+or when the file is damaged or its modification time lies in the future, the clip SHALL be attempted
+again. A successful generation SHALL remove the clip's `<key>.fail`. A `<key>.jpg` that exists SHALL be
+returned whatever `<key>.fail` holds.
+
+The system SHALL NOT record a failure for:
+
+- the typed cache error, which is the cache's fault and not the clip's
+- a clip that cannot be statted, which has no key
+- an interrupted attempt
+
+Failing to write `<key>.fail` SHALL NOT replace the clip's error: it is logged, and the clip's thumbnail
+error is raised as it would have been. Reading a failure marker in an unreadable cache directory SHALL
+raise the typed cache error, as reading `<key>.jpg` does.
+
+A recorded failure SHALL carry the same typed error, the same reason and the same one-line cause as the
+live failure did, to the CLI and to the service.
+
+#### Scenario: A failing clip is not attempted again within the window
+- **WHEN** the thumbnail of `trasig.mp4` in `2024-10-05 - Trasig` fails because the file is empty, and it is
+  requested again 5 s later
+- **THEN** the second request raises a thumbnail error with the same reason, and neither ffprobe nor ffmpeg
+  runs
+- **AND** `<key>.fail` exists and no `<key>.jpg` exists
+
+#### Scenario: The window ends after 60 seconds
+- **WHEN** a clip's recorded failure is 61 s old, and the clip is requested again
+- **THEN** the probe and the extraction run again
+
+#### Scenario: Reading does not extend the window
+- **WHEN** a clip's recorded failure is 50 s old and it is requested, and then requested again 20 s later
+- **THEN** the first request raises the recorded error without a process, and the second runs the probe and
+  extraction again, because 70 s have passed since the failed attempt
+
+#### Scenario: A repaired clip is not held back
+- **WHEN** a clip failed, then was replaced by a good recording, changing its size and modification time,
+  and its thumbnail is requested within the window
+- **THEN** its key is a new one, there is no marker for it, and the thumbnail is generated
+
+#### Scenario: A success removes the marker
+- **WHEN** a clip's recorded failure is 90 s old and the next attempt succeeds
+- **THEN** `<key>.jpg` exists and `<key>.fail` does not
+
+#### Scenario: A cache fault is never remembered
+- **WHEN** the cache directory is read-only, and an uncached clip is requested twice
+- **THEN** each request raises the cache error naming the directory, and no `<key>.fail` is written
+
+#### Scenario: A full disk is never remembered against a clip
+- **WHEN** generating a thumbnail raises the cache error because the disk is full
+- **THEN** no `<key>.fail` is written
+
+#### Scenario: A marker that cannot be written does not hide the clip's error
+- **WHEN** a clip fails to give a frame and `<key>.fail` cannot be written
+- **THEN** the thumbnail error for the clip is raised with its real reason, and the failure to write the
+  marker is logged
+
+#### Scenario: A damaged marker is ignored
+- **WHEN** `<key>.fail` holds `not json`, and the thumbnail is requested
+- **THEN** the clip is attempted as if no marker existed
+
+#### Scenario: The CLI reports a remembered failure as it reported the live one
+- **WHEN** `auto-reel thumbs` fails on `trasig.mp4` and is run again 10 s later
+- **THEN** the second run prints the same ERROR line for the clip and exits 1, and runs no ffprobe or
+  ffmpeg for it

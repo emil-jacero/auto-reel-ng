@@ -1277,6 +1277,9 @@ the event, without running ffmpeg or ffprobe and without reading any file outsid
 - At most two extractions SHALL run at once in one service process. Further requests SHALL wait for a
   slot, not fail.
 - Concurrent requests that need the same thumbnail SHALL share a single extraction.
+- A clip whose failure the engine recorded less than 60 seconds ago, and whose thumbnail is not cached,
+  SHALL be answered with that failure without ffprobe or ffmpeg and without waiting for a slot. The 60
+  seconds SHALL run from the failed attempt: a request that reads the recorded failure does not renew it.
 - The endpoint SHALL NOT block the service's event loop on disk or ffmpeg work, so other endpoints keep
   answering while thumbnails are extracted.
 - A requester that disconnects SHALL NOT abort an extraction that other requests share.
@@ -1284,15 +1287,19 @@ the event, without running ffmpeg or ffprobe and without reading any file outsid
 **Failures, by cause.** Each SHALL be a problem body naming the event:
 - **502 with the thumbnail failure kind:** the engine cannot produce a thumbnail. For example, the clip is
   empty or undecodable, it has no frame at the configured position, or it can no longer be statted
-  because it changed after the event was listed. The detail SHALL name the clip by its requested identity
-  and give the engine's reason cut to one line, without server paths, commands or tool output. No
-  placeholder image is returned.
+  because it changed after the event was listed, or its failure was recorded less than 60 seconds ago. The
+  detail SHALL name the clip by its requested identity and give the engine's reason cut to one line,
+  without server paths, commands or tool output. A recorded failure SHALL answer exactly as the failed
+  attempt did. No placeholder image is returned.
 - **502 with the unreadable-disk failure kind the events reads use:** the event's folder cannot be listed.
 - **502 whose detail names the problem, with no failure kind:** the thumbnail cache cannot be read or
   written, or the project `config.yaml` cannot be loaded or holds an invalid thumbnail setting.
 
-A failed extraction SHALL NOT be remembered: the next request for the same clip tries again. Problem
-responses SHALL carry no caching headers.
+A clip's failed extraction SHALL be remembered for 60 seconds, by the engine's failure marker, so the
+next requests in that window for the same clip get the same 502 without a new attempt. After that window
+the next request tries again. A cache or `config.yaml` fault, and a listing failure, SHALL NOT be
+remembered: the next request for the same clip tries again. Problem responses SHALL carry no caching
+headers.
 
 **Scope.**
 - The endpoint SHALL NOT need the database: it answers while the database is unreachable, and it declares
@@ -1381,8 +1388,8 @@ responses SHALL carry no caching headers.
 #### Scenario: An undecodable clip fails loud with the thumbnail kind
 - **WHEN** the event `2024/2024-10-05 - Trasig` is asked for its zero-byte clip `trasig.mp4`
 - **THEN** the response is 502 with the thumbnail failure kind, and a detail naming `trasig.mp4` and
-  reporting that the file is empty. No image and no cache entry are produced, and a second request tries
-  again and answers the same 502.
+  reporting that the file is empty. No image is produced. A second request within 60 seconds answers the
+  same 502 without starting ffprobe or ffmpeg, and one after that window tries again.
 
 #### Scenario: A corrupt clip's detail is one line without server paths
 - **WHEN** an event holds a clip of random bytes, or an mp4 whose media data is cut short behind an intact
@@ -1395,6 +1402,21 @@ responses SHALL carry no caching headers.
 - **WHEN** the configured thumbnail cache directory is read-only and an uncached clip is requested
 - **THEN** the response is 502 whose detail names the operating-system error, with no thumbnail failure
   kind
+- **AND** the same request made again tries again, because a cache fault is not remembered
+
+#### Scenario: A recorded failure is answered without extraction or a slot
+- **WHEN** `trasig.mp4` in `2024/2024-10-05 - Trasig` has failed, two other extractions hold both slots, and
+  the clip is requested again 5 s later
+- **THEN** the response is 502 with the thumbnail failure kind and the same detail as the first, without
+  waiting for either extraction, and no ffmpeg or ffprobe process is started for it
+
+#### Scenario: A recorded failure expires
+- **WHEN** `trasig.mp4` failed 61 s ago, and the clip is requested
+- **THEN** the probe runs again and the response is whatever that attempt gives
+
+#### Scenario: A cached thumbnail wins over a recorded failure
+- **WHEN** a clip has both `<key>.jpg` and a recorded failure of the same key
+- **THEN** the response is 200 `image/jpeg`
 
 #### Scenario: A read-only library still gets thumbnails
 - **WHEN** the library is mounted read-only, as the MOL archive often is, and an uncached clip of
