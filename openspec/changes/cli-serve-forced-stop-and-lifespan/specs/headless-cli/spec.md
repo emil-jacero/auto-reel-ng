@@ -19,9 +19,10 @@ waiting for those handlers, including one blocked in a worker thread (any synchr
 a stalled database), which the command abandons when it exits instead of waiting for it to return. uvicorn's
 application shutdown step is skipped if it has not started yet, so the log has no "Application shutdown
 complete". The application's own cleanup (the WebSocket poller stopped, the database connections released)
-still runs, when its lifespan is cancelled as the service exits, and the command waits for it. The force also ends the service's client connections: every connection
-still open is dropped at once, without waiting for it to close, so none holds the command running, including one whose client sent only part of a
-request and one whose peer stopped reading with frames backed up for it (api-service, "WebSocket live job
+still runs, when its lifespan is cancelled as the service exits, and the command waits for it. The force
+also ends the service's client connections: every connection still open is dropped at once, without waiting
+for it to close, so none holds the command running, including one whose client sent only part of a request
+and one whose peer stopped reading with frames backed up for it (api-service, "WebSocket live job
 updates"). The command SHALL then exit with status 130, never 0, so that a forced stop is not reported as a
 clean one, within a few seconds of the force, and it SHALL NOT end with a `KeyboardInterrupt` traceback of its
 own, however many further SIGINTs arrived. A request handler that the forced stop cancels, and the application
@@ -30,9 +31,10 @@ logged as errors with their tracebacks.
 
 When the application's lifespan fails, the command SHALL NOT exit with status 0 and SHALL NOT report the
 failure only in its log: an application shutdown that failed after one SIGINT or SIGTERM, or an application
-startup that failed, makes the command exit with status 1 (uvicorn logs the failure, the traceback and
-"Application shutdown failed. Exiting." or "Application startup failed. Exiting." but ends normally). A forced
-stop skips the application shutdown and keeps status 130.
+startup that failed, makes the command exit with status 1. uvicorn logs the failure, the traceback and
+"Application shutdown failed. Exiting." or "Application startup failed. Exiting."; after a failed shutdown it
+returns normally, after a failed startup it exits through `SystemExit`, and neither is allowed to decide the
+status. A forced stop skips the application shutdown and keeps status 130.
 
 #### Scenario: Serve starts and answers
 - **WHEN** `auto-reel serve` runs against a project root and a reachable database

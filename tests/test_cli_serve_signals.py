@@ -399,10 +399,9 @@ def test_a_forced_stop_does_not_wait_for_a_client_that_holds_its_request_open(
         process.send_signal(signal.SIGINT)
         _wait_for_log(process, log, "Waiting for connections to close")
         process.send_signal(signal.SIGINT)
-        forced = time.monotonic()
-        # A hang fails on this timeout, never the whole suite.
-        process.wait(timeout=max(0.0, forced + 5 - time.monotonic()))
-        assert client.fileno() != -1  # the client never closed it: the server dropped it
+        # The client still holds its connection open here, so this return is the evidence; a
+        # hang fails on the timeout, never the whole suite.
+        process.wait(timeout=5)
     finally:
         client.close()
         output = _end(process, log)
@@ -471,9 +470,7 @@ def test_a_forced_stop_does_not_wait_for_a_peer_that_stopped_reading(
         process.send_signal(signal.SIGINT)
         _wait_for_log(process, log, "Waiting for connections to close")
         process.send_signal(signal.SIGINT)
-        forced = time.monotonic()
-        process.wait(timeout=max(0.0, forced + 5 - time.monotonic()))
-        assert client.fileno() != -1
+        process.wait(timeout=5)  # the client never reads or closes: the exit is the evidence
     finally:
         client.close()
         output = _end(process, log)

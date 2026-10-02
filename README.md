@@ -496,9 +496,9 @@ A second Ctrl+C forces the exit: `serve` stops waiting for the requests still
 being handled, including a blocked one, and exits with status 130. uvicorn then
 skips its application shutdown step, so the log has no "Application shutdown
 complete", but the application's own cleanup still runs. The force also drops
-every client connection still open, so none holds `serve` running, not a client
-that sent only part of a request and not the vanished peer above: `serve` exits
-130 within a few seconds of the second Ctrl+C. Once `serve` is exiting, a further
+every client connection still open, so no connection holds `serve` running:
+neither a client that sent only part of a request nor the vanished peer above.
+`serve` exits 130 within a few seconds of the second Ctrl+C. Once `serve` is exiting, a further
 signal changes nothing. If the application's startup or shutdown fails, `serve`
 exits with status 1 instead of 0 (the log has the traceback).
 
