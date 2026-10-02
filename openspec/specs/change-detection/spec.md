@@ -85,6 +85,17 @@ would otherwise have been cited. Every caller of the gate therefore makes the sa
 without it: `render`, `enqueue`, `POST /api/v1/jobs`, `adopt-renders` and the worker's claim-time recheck. When the
 expected output is a regular file, neither reason is cited, whatever name the manifest records.
 
+A verdict that cites the output-renamed reason SHALL also name the two movie files it refers to, so that no consumer
+has to work them out again from the event's metadata:
+- the **previous movie**, the file name of the regular file the gate found for the recorded name. It is the name of
+  that file as found, not the manifest's recorded string, so it is a bare file name of a file that exists;
+- the **expected output**, the file name of the event's expected output, which the next render writes.
+
+Both are file names without a folder part. They differ from each other, because the output-renamed reason requires
+the recorded name to differ from the expected one. A verdict that does not cite the output-renamed reason, whether
+fresh or stale for any other reason, SHALL carry neither name. Carrying the names MUST NOT change the verdict's
+`stale` flag or its reasons.
+
 The reasons a verdict may cite SHALL come from a **closed, named vocabulary** owned by the gate: the no-manifest,
 missing-output and output-renamed reasons, plus one reason per fingerprint component. The gate MUST NOT emit a reason
 outside that vocabulary. Any consumer that publishes reasons, such as the CLI's output or the API's responses, SHALL
@@ -116,22 +127,35 @@ removing or renaming a reason is a change to this vocabulary and MUST be made he
   title was then changed to `Grillkväll med grannarna`, so the expected output
   `<output>/2024/2024-06-27 - Grillkväll med grannarna.mp4` does not exist
 - **THEN** the verdict is stale citing `editorial` and then `output_renamed`, and it does not cite `output`
-- **AND** `auto-reel scan` prints `stale: editorial, output_renamed` for that event
+- **AND** the verdict names the previous movie `2024-06-27 - Grillning med Grannar.mp4` and the expected output
+  `2024-06-27 - Grillkväll med grannarna.mp4`
+- **AND** `auto-reel scan` prints `stale: editorial, output_renamed (was '2024-06-27 - Grillning med Grannar.mp4',
+  now '2024-06-27 - Grillkväll med grannarna.mp4')` for that event, on one line
 
 #### Scenario: A changed location is a rename in the same year folder
 - **WHEN** the fresh `2024-06-21 - Midsommar - Dalarna`, rendered to
   `<output>/2024/2024-06-21 - Midsommar - Dalarna.mp4`, has its location changed to `Leksand`
 - **THEN** the verdict is stale citing `editorial` and `output_renamed`
+- **AND** it names the previous movie `2024-06-21 - Midsommar - Dalarna.mp4` and the expected output
+  `2024-06-21 - Midsommar - Leksand.mp4`
 
 #### Scenario: A date moved to another year is a rename across year folders
 - **WHEN** `2023-06-23 - Midsommar - Dalarna`, rendered to `<output>/2023/2023-06-23 - Midsommar - Dalarna.mp4`,
   has its date changed to `2022-06-23`, so the expected output is
   `<output>/2022/2022-06-23 - Midsommar - Dalarna.mp4`
 - **THEN** the verdict cites `output_renamed`, because the recorded movie is still in the `2023` year folder
+- **AND** it names the previous movie `2023-06-23 - Midsommar - Dalarna.mp4` and the expected output
+  `2022-06-23 - Midsommar - Dalarna.mp4`, each without its year folder
 
 #### Scenario: A renamed event whose old movie was deleted is missing its movie
 - **WHEN** the retitled Grillning's `<output>/2024/2024-06-27 - Grillning med Grannar.mp4` is deleted as well
 - **THEN** the verdict cites `editorial` and `output`, and not `output_renamed`
+
+#### Scenario: A verdict that does not cite the rename names no files
+- **WHEN** the verdict is fresh, or cites only `no_manifest`, only `output`, or only fingerprint components
+  (including the retitled Grillning whose old movie was deleted, which cites `editorial` and `output`)
+- **THEN** it carries neither a previous-movie name nor an expected-output name
+- **AND** `auto-reel scan` prints its `stale:` or `fresh` line exactly as before
 
 #### Scenario: A deleted movie is still reported missing
 - **WHEN** the fresh `2024-07-14 - Kalas` has its `<output>/2024/2024-07-14 - Kalas.mp4` deleted, with no edit
@@ -157,6 +181,10 @@ removing or renaming a reason is a change to this vocabulary and MUST be made he
 - **AND** an event whose expected output exists is fresh or stale exactly as before, whatever name its manifest
   records
 
+#### Scenario: The names do not change the decision
+- **WHEN** the same retitled event is evaluated, once as the gate does now and once ignoring the two names
+- **THEN** the `stale` flag and the reasons are identical
+
 #### Scenario: The vocabulary is closed
 - **WHEN** any consumer enumerates the reasons a verdict can cite
 - **THEN** it obtains exactly the no-manifest reason, the missing-output reason, the output-renamed reason and one
@@ -171,6 +199,7 @@ removing or renaming a reason is a change to this vocabulary and MUST be made he
 - **WHEN** the retitled Grillning has a folder at its new expected path, and its previous movie is still on disk
   under the recorded name
 - **THEN** the verdict is stale citing `editorial` and `output_renamed`
+- **AND** it names the previous movie as found on disk and the expected output, whose path holds a folder
 
 #### Scenario: A movie in another output directory is not looked for
 - **WHEN** `2024-06-27 - Grillning med grannar` was rendered into one output directory and retitled, and its verdict
