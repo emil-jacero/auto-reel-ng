@@ -28,6 +28,10 @@
   for title `Mid/sommar`: the movie lands at `<output>/2025/2025-01-16 - Mid-sommar.mp4`, no
   `2025-01-16 - Mid` folder exists, and the plan's `metadata.title` still reads `Mid/sommar`.
 
+- [x] 2.4 In `tests/test_api_media.py`, make the `utbrytning` fixture force the climbing path by patching
+  `output_relpath` in the media module, since the naming rule can no longer produce one; the media lookup
+  guard stays covered (defence in depth), and title-driven climbing is covered in `tests/test_render.py`.
+
 ## 3. Validation gates
 
 - [x] 3.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`

@@ -124,7 +124,8 @@ GRILLNING_OLD_MOVIE = "2024-06-27 - Grillning med grannar.mp4"
 KALAS_MOVIE = "2024-07-14 - Kalas.mp4"
 
 #: A title with separators. The engine's naming rule now turns them into ``-``, so the
-#: media guard is exercised by forcing the climbing path (see the ``utbrytning`` fixture).
+#: media guard is exercised by forcing the climbing path (see the ``utbrytning`` fixture);
+#: title-driven climbing is covered in ``tests/test_render.py``.
 UTBRYTNING_REEL = """\
 version: 0
 metadata:
