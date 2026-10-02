@@ -32,14 +32,20 @@ from ..event.discovery import (
     scan_event,
     seed_document,
 )
-from ..event.metadata import load_event_document, require_processable, with_resolved_metadata
+from ..event.metadata import (
+    load_event_document,
+    reel_exists,
+    require_processable,
+    with_resolved_metadata,
+)
 from ..event.reconcile import ClipStatus, ReconcileResult, reconcile
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..ingest import EventRef, get_layout
 from ..persistence.job_store import JobStore
 from ..persistence.models import Job
 from ..reel import ReelDocument, load_document
-from ..render import find_output_collisions, output_relpath
+from ..render import output_relpath
+from ..render.claims import output_collision as engine_output_collision
 from ..staleness.fingerprint import compute_fingerprint
 from ..staleness.gate import evaluate
 from ..thumbs import resolve_thumbnail_settings, thumbnail_path
@@ -478,13 +484,17 @@ def get_reel(settings: ApiSettings, event_id: str) -> ReelDocument:
     read must accept exactly the set of events the write accepts. Read-only: no
     file is created and nothing is adopted. A malformed or unreadable document is
     loud (:class:`EventReadError`, classified by :func:`classify_event_failure`),
-    never an empty or partial one (Principle I).
+    never an empty or partial one (Principle I). An event folder that cannot be searched
+    is that, too (``unreadable_disk``): only an absent ``reel.yaml`` reads as empty.
     """
     event_dir = resolve_event_dir(settings, event_id)
     reel_path = event_dir / REEL_FILENAME
-    if not reel_path.exists():
-        return ReelDocument()
     try:
+        # ``reel_exists`` lets a refusal to answer through (an event folder that cannot
+        # be searched), where ``Path.exists()`` reads it as "no reel.yaml" and hands a
+        # client an empty document in place of the one it could not look at.
+        if not reel_exists(reel_path):
+            return ReelDocument()
         return load_document(reel_path)
     except (ReelError, OSError) as exc:
         raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
@@ -615,24 +625,28 @@ class OutputCollision:
     claimed_by: Tuple[str, ...]
 
 
-def _output_claim(event_dir: Path, order: ClipOrder, today: DateValue) -> Optional[PurePosixPath]:
-    """The event's output path, or ``None`` when it fails on its own and claims nothing.
+def enqueue_target(
+    settings: ApiSettings, event_id: str, *, today: DateValue
+) -> Tuple[Path, ReelDocument]:
+    """The listed event ``event_id`` names, and its processable document (resolved metadata).
 
-    The loader and the processable rule the CLI's batch commands select claimants
-    with (``cli/_checked_document``): an unparseable or unreadable ``reel.yaml``, or
-    no real date or title, claims no path. An ``OSError`` claims none either — the
-    events list's per-event isolation — where the CLI aborts its run on it. The
-    ``ValueError`` is a guard only: the loader reports every ``reel.yaml`` it cannot
-    load as a ``ReelParseError``, an impossible date and bytes that are not UTF-8
-    included, so one reaching here is a bug in reading some other event, which still
-    claims no path rather than failing this event's collision check.
+    An enqueue names an event by exactly the id the events list shows
+    (:func:`listed_event_dir`), so a job's ``event_dir`` is the one id of its event. The
+    document is the one the fingerprint and the output path are computed from, loaded
+    once as the CLI's ``_checked_document`` loads it and required processable.
+
+    Raises :class:`EventNotFoundError` for an id the list does not show; the lookup's own
+    ``OSError`` / ``LayoutError`` when the walk fails (the caller's scan-failure 502, which
+    names no event); and :class:`EventReadError` when the event itself cannot be processed,
+    carrying the kind :func:`classify_event_failure` gives it (the events list's error row).
     """
+    event_dir = listed_event_dir(settings, event_id)
     try:
-        document, _seeded = load_event_document(event_dir, order=order)
+        document, _seeded = load_event_document(event_dir, order=settings.clip_order)
         require_processable(event_dir, document.metadata, today=today)
-    except (ReelError, OSError, ValueError):  # an EventMetadataError is a ReelError
-        return None
-    return output_relpath(document.metadata)
+    except (ReelError, OSError) as exc:  # an EventMetadataError is a ReelError
+        raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
+    return event_dir, document
 
 
 def output_collision(
@@ -640,38 +654,34 @@ def output_collision(
 ) -> Optional[OutputCollision]:
     """The output collision ``event_dir`` is part of, over every event of the served project.
 
-    The batch commands' rule (D-9): the claimants are the events the configured
-    layout walks — the events list's rows — plus ``event_dir`` itself, which a caller
-    may name although the walk does not reach it; their paths are compared by
-    ``render.find_output_collisions``. ``None`` when nothing else claims the path,
-    or when ``event_dir`` fails on its own and claims none.
+    The batch commands' rule (D-9), selected by the engine's one function
+    (:func:`..render.claims.output_collision`): the claimants are the events the configured
+    layout walks from the served root, the events list's rows, and a claimant that fails on
+    its own claims nothing. This adapts it to the service: the project's walk root, layout
+    and clip order, and the other claimants named by the ids a client links to, sorted.
+    ``None`` when nothing else claims the path, or when ``event_dir`` fails on its own.
 
     ``event_dir`` is the event as its job names it (:func:`named_event_dir`), and every
-    claimant is keyed by its own id, never by the folder it resolves to, as the CLI
-    keys its walk: only the walked event with the named event's id is the named event
-    itself. A symlinked alias is therefore a claimant of its own, claiming the path its
-    own folder name and ``reel.yaml`` give it — the path a worker would render it to —
-    and it is named by its in-root id, wherever it points.
+    claimant is keyed by its own path, never the folder a symlink resolves to: a symlinked
+    alias is a claimant of its own, claiming the path its own folder name and ``reel.yaml``
+    give it, and it is named by its in-root id wherever it points.
 
-    The walk's own failure (``LayoutError``, ``OSError``) propagates: the caller must
-    not enqueue an event whose collision it could not check (Principle I).
+    The walk's own failure (``LayoutError``, ``OSError``) propagates: the caller must not
+    enqueue an event whose collision it could not check (Principle I).
     """
-    target = _output_claim(event_dir, settings.clip_order, today)
-    if target is None:
+    collision = engine_output_collision(
+        event_dir,
+        walk_root=settings.walk_root,
+        layout=settings.layout_name,
+        order=settings.clip_order,
+        today=today,
+    )
+    if collision is None:
         return None
-    named_id = event_id_for(settings, event_dir)
-    claims: Dict[str, PurePosixPath] = {named_id: target}
-    for ref in _list_event_refs(settings):
-        event_id = event_id_for(settings, ref.event_dir)
-        if event_id == named_id:
-            continue  # the named event itself: already claimed above
-        claim = _output_claim(ref.event_dir, settings.clip_order, today)
-        if claim is not None:
-            claims[event_id] = claim
-    others = find_output_collisions(claims).get(named_id, ())
-    if not others:
-        return None
-    return OutputCollision(output_path=target, claimed_by=tuple(sorted(others)))
+    return OutputCollision(
+        output_path=collision.output_path,
+        claimed_by=tuple(sorted(event_id_for(settings, other) for other in collision.claimed_by)),
+    )
 
 
 __all__ = [
@@ -687,6 +697,7 @@ __all__ = [
     "get_reel",
     "get_analysis",
     "OutputCollision",
+    "enqueue_target",
     "output_collision",
     "listed_clip",
     "ThumbnailSource",

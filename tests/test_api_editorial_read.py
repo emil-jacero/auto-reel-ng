@@ -8,6 +8,7 @@ conditional write of D-R3.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from urllib.parse import quote
 
@@ -177,6 +178,29 @@ def test_unparseable_document_is_loud(client: TestClient) -> None:
     assert "chapters" in body["detail"]
     detail = client.get(f"/api/v1/events/{event_id}").json()
     assert body["detail"] == detail["detail"]  # the reads agree word for word
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_an_unsearchable_event_folder_is_loud_not_empty(client: TestClient, project: Path) -> None:
+    """A folder whose ``reel.yaml`` cannot be looked up is not "no reel.yaml" (Principle I).
+
+    ``Path.exists()`` reads the refusal as absence, so the read answered 200 with the empty
+    document for a folder holding a real one, and a client that saved over it lost it.
+    """
+    name = "2024/2024-07-04 - Barbecue"
+    event_dir = _event_dir(project, name)
+    before = (event_dir / "reel.yaml").read_bytes()
+    event_dir.chmod(0o600)
+    try:
+        response = client.get(f"/api/v1/events/{_event_id(name)}/reel")
+    finally:
+        event_dir.chmod(0o755)
+
+    assert response.status_code == 502
+    body = response.json()
+    assert body["event_id"] == name
+    assert body["failure"] == "unreadable_disk"
+    assert (event_dir / "reel.yaml").read_bytes() == before
 
 
 def test_unprocessable_event_without_reel_yaml_is_readable_for_fixing(

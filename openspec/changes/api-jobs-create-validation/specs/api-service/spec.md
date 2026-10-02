@@ -14,7 +14,7 @@ unknown event, naming the id in `event_id`, and nothing SHALL be written. That c
 
 The job's `event_dir` is therefore the one canonical id of an event, so the one-active-job rule, the
 events reads' latest job and a client that matches jobs to events by equality all agree on it, and an event
-cannot be rendered by two jobs at once through two spellings. A year folder that cannot be listed while the
+cannot be rendered by two jobs at once through two spellings. A year folder that can be searched but not listed while the
 id is looked up SHALL be the scan-failure 502 problem body of the events list (`event scan failed`), and
 nothing SHALL be enqueued.
 

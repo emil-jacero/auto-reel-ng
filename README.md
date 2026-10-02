@@ -398,7 +398,12 @@ render, or job logic lives in the web tier.
   `POST /api/v1/jobs` (gated like `enqueue` — 201 on a stale event, 409 on an
   active duplicate carrying the active job's id in `job_id`, 200
   `"status": "fresh"` with the fingerprint and manifest reference when the event
-  is fresh and `force` is not set, 404 naming an unknown event in `event_id`),
+  is fresh and `force` is not set, 404 naming an unknown event in `event_id`;
+  the id must be exactly one `GET /api/v1/events` lists, so `2024/./x`, `2024/x/`,
+  a year folder, an event's `original/` and a `.reelignore`d event are all 404 and
+  an event never has two job ids; an event that cannot be processed is the events
+  reads' 502 with its `failure` kind (`unparseable_reel_yaml`, `unusable_metadata`,
+  `unreadable_disk`), never a 500 or a doomed job),
   `GET /api/v1/jobs` / `GET /api/v1/jobs/{id}` (includes `force` and
   `fingerprint`), and `POST /api/v1/jobs/{id}/cancel` (same semantics as
   `jobs cancel`); both of the latter answer an unknown id with a 404 carrying it
@@ -419,7 +424,7 @@ render, or job logic lives in the web tier.
   another event of the served project also claims — the rule `render`, `enqueue`
   and `adopt-renders` apply (D-9), comparing paths case-insensitively and after
   Unicode normalization, over every event the layout walks (an event that fails on
-  its own claims no path). The refusal is a 409 whose `conflict` is
+  its own claims no path, selected by the engine's one rule). The refusal is a 409 whose `conflict` is
   `output_collision`, whose `claimed_by` lists the other claimants' event ids, and
   whose detail names the shared path and the fix: a distinct title or location in
   `reel.yaml`. It is checked before anything else, so neither `force` nor a fresh
