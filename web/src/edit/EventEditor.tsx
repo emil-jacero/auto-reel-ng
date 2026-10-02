@@ -89,6 +89,7 @@ import type {
 import { FIELD_LABEL, MetadataForm } from './MetadataForm'
 import { SaveBar } from './SaveBar'
 import type { Operation, Pressed, SaveProblem } from './SaveBar'
+import { holdWords, isSaveChord, saveHold } from './saveShortcut'
 import type { Resolved } from './MetadataForm'
 import {
   discardAndLeave,
@@ -1625,6 +1626,53 @@ export function EventEditor({
         }
       })
   }
+
+  // Ctrl+S (Cmd+S on a Mac) saves from wherever focus is, so Save is not a Tab stop per control
+  // away. A listener on `document`, not on the editor: focus may be on <body> or in the header. It
+  // calls `submit`, never the button's click, so it works with the bar hidden or rested, and it
+  // asks `saveHold` first, the rule the button uses, which `submit` alone does not know (a
+  // conflict or a vanished event). Registered once per ready/not-ready; the latest handler is
+  // reached through a ref, so typing in a field does not re-register it.
+  const onSaveKey = useRef<(event: KeyboardEvent) => void>(() => undefined)
+  useLayoutEffect(() => {
+    onSaveKey.current = (event) => {
+      const current = latest.current
+      if (current === null) {
+        return
+      }
+      // preventDefault always, so the browser's Save page never opens over the editor.
+      event.preventDefault()
+      if (
+        event.repeat ||
+        saving.current ||
+        current.pressed !== null ||
+        moving.current !== null ||
+        document.querySelector('dialog[open]') !== null
+      ) {
+        return
+      }
+      const hold = saveHold(edited, unfinished(current), current.problem)
+      if (hold !== null) {
+        announce(holdWords(hold, current.dateIncomplete, current.typed.size > 0))
+        return
+      }
+      announce('Saving…')
+      submit('save', 'save')
+    }
+  })
+  const listening = ready !== null
+  useEffect(() => {
+    if (!listening) {
+      return undefined
+    }
+    const listener = (event: KeyboardEvent) => {
+      if (isSaveChord(event)) {
+        onSaveKey.current(event)
+      }
+    }
+    document.addEventListener('keydown', listener)
+    return () => document.removeEventListener('keydown', listener)
+  }, [listening])
 
   const retrying = state.status === 'failed' && state.retrying === true
   const hasIgnored = chapters.some((chapter) => chapter.ignored.length > 0)

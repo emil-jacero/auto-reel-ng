@@ -205,6 +205,9 @@ as a phone's URL bar fires, is ignored). Keyboard focus that lands partly hidden
 (outside the window, or under the sticky header, a chapter heading or the held bar;
 the description field, whose caret alone the browser would scroll to) is brought into
 view whole; focus from a pointer press never scrolls, so the press lands where made.
+Ctrl+S (Cmd+S on a Mac) saves from anywhere on the page in Edit mode, says why in the live
+region when Save is held back, and is left to the browser outside Edit mode (the button's
+`aria-keyshortcuts` and tooltip name it; the rules are in `edit/saveShortcut.ts`).
 Save sends one whole-document `PUT` under `If-Match` with only the
 operator's edits applied (`edit/draft.ts`); a failure keeps the edits and says why, in a
 compact alert inside the bar that fits a 320px window (a third of a phone's height for a
@@ -274,6 +277,7 @@ src/
 │   ├── chapterNames.ts   chapter name rules and what a name means for later clips (pure)
 │   ├── MetadataForm.tsx  title, date, location, description, and inherited values
 │   ├── SaveBar.tsx       the save bar and a failed save's alert
+│   ├── saveShortcut.ts   Ctrl/Cmd+S: when Save cannot act, the chord, what a held-back press says (pure, + saveShortcut.test.ts)
 │   ├── draft.ts          the edit model: chapters, write body, moved and removed clips, dirty (pure)
 │   ├── unsaved.ts        the unsaved-changes guard and its question
 │   ├── chapters.css      the chapter tools, the deleted placeholder and the chapter dialogs
