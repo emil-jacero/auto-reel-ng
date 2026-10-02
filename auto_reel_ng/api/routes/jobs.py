@@ -13,12 +13,15 @@ the batch commands' rule (D-9), run over the served project (jobs-project-guards
 
 from __future__ import annotations
 
+import functools
+import logging
 import uuid
 from datetime import date
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, ParamSpec, TypeVar, Union
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, Response
+from sqlalchemy.exc import SQLAlchemyError
 
 from ...cli.adoption import load_or_seed
 from ...config.project import load_project_config, resolve_look_defaults
@@ -31,7 +34,7 @@ from ...staleness.fingerprint import compute_fingerprint
 from ...staleness.gate import evaluate
 from ...staleness.manifest import manifest_path
 from .. import events_read
-from ..problem import bad_gateway, conflict, not_found
+from ..problem import bad_gateway, conflict, not_found, service_unavailable
 from ..schemas import (
     CancelResult,
     EnqueueConflict,
@@ -43,7 +46,33 @@ from ..schemas import (
 from ..serialize import job_to_out as _job_out
 from ..settings import ApiSettings
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1", tags=["jobs"])
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _job_store_unreachable(handler: Callable[_P, _R]) -> Callable[_P, Union[_R, JSONResponse]]:
+    """Answer a route's unreachable job store in the shared 503 problem shape (D-A6).
+
+    The events reads map the same failure to the same body (``check="database"``, the
+    predicate ``/healthz`` uses), so a client has one test for "the service cannot
+    reach its database". The request is never softened into a partial answer: a job
+    list without the unreadable jobs, a job reported absent, or a cancel outcome that
+    was not applied would each fabricate a fact out of "unknown" (Principle I).
+    """
+
+    @functools.wraps(handler)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> Union[_R, JSONResponse]:
+        try:
+            return handler(*args, **kwargs)
+        except SQLAlchemyError as exc:
+            logger.warning("jobs: job store unreachable: %s", exc)
+            return service_unavailable(f"job store unreachable: {exc}", check="database")
+
+    return wrapper
 
 
 @router.post(
@@ -55,8 +84,10 @@ router = APIRouter(prefix="/api/v1", tags=["jobs"])
         404: {"model": ProblemOut},
         409: {"model": ProblemOut},
         502: {"model": ProblemOut},
+        503: {"model": ProblemOut},
     },
 )
+@_job_store_unreachable
 def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, FreshResult, Response]:
     """``POST /api/v1/jobs`` (task 3.1, gated per change-detection §8.14).
 
@@ -151,7 +182,8 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
     return _job_out(job)
 
 
-@router.get("/jobs", response_model=List[JobOut])
+@router.get("/jobs", response_model=List[JobOut], responses={503: {"model": ProblemOut}})
+@_job_store_unreachable
 def list_jobs(request: Request, status: Optional[JobStatus] = Query(None)) -> List[JobOut]:
     """``GET /api/v1/jobs`` (task 3.2): the served project's jobs, by status, oldest first."""
     store: JobStore = request.app.state.job_store
@@ -183,7 +215,12 @@ def _served_job(store: JobStore, settings: ApiSettings, job_id: uuid.UUID) -> Op
     return job
 
 
-@router.get("/jobs/{job_id}", response_model=JobOut, responses={404: {"model": ProblemOut}})
+@router.get(
+    "/jobs/{job_id}",
+    response_model=JobOut,
+    responses={404: {"model": ProblemOut}, 503: {"model": ProblemOut}},
+)
+@_job_store_unreachable
 def get_job(job_id: uuid.UUID, request: Request) -> Union[JobOut, Response]:
     """``GET /api/v1/jobs/{id}`` (task 3.2): one of the served project's jobs, in full."""
     job = _served_job(request.app.state.job_store, request.app.state.settings, job_id)
@@ -193,8 +230,11 @@ def get_job(job_id: uuid.UUID, request: Request) -> Union[JobOut, Response]:
 
 
 @router.post(
-    "/jobs/{job_id}/cancel", response_model=CancelResult, responses={404: {"model": ProblemOut}}
+    "/jobs/{job_id}/cancel",
+    response_model=CancelResult,
+    responses={404: {"model": ProblemOut}, 503: {"model": ProblemOut}},
 )
+@_job_store_unreachable
 def cancel_job(job_id: uuid.UUID, request: Request) -> Union[CancelResult, Response]:
     """``POST /api/v1/jobs/{id}/cancel`` (task 3.3): the store's cancel and its outcome.
 
