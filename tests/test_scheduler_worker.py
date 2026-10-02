@@ -1151,6 +1151,30 @@ def test_a_render_that_raises_cancellation_still_ends_canceled(
     assert job.error is None
 
 
+def test_unexpected_error_during_a_pending_cancel_request_fails_the_job(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    job_id = job_store.enqueue(PROJECT_ROOT, "event")
+
+    def render(rj: RenderJob) -> RenderResult:
+        job_store.cancel(job_id)  # only sets cancel_requested on a running row
+        raise TypeError("boom")
+
+    worker = Worker(
+        job_store,
+        worker_id="w1",
+        pools=_solo_pools(),
+        poll_interval=0.01,
+        build_job=lambda job: _cpu_render_job(tmp_path),
+        render=render,
+    )
+    assert worker.process_next() is True
+    job = job_store.get(job_id)
+    assert job is not None
+    assert job.status == JobStatus.FAILED
+    assert job.error == "TypeError: boom"
+
+
 def test_shutdown_requeue_followed_by_an_unexpected_error_stays_queued(
     job_store: JobStore, tmp_path: Path
 ) -> None:
