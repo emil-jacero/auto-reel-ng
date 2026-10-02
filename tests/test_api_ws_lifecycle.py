@@ -32,7 +32,8 @@ from test_api_ws_hub import BLANDAT, PROJ, FakeJob, FakeStore
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
 
-from auto_reel_ng.api.ws import _CLOSE, JobsHub, router
+from auto_reel_ng.api import ws as ws_module
+from auto_reel_ng.api.ws import _CLOSE, JobsHub, _next_message, router
 from auto_reel_ng.persistence.models import JobStatus
 
 #: The hub's poll interval: five polls without a store query take a quarter second.
@@ -77,11 +78,15 @@ class _Served:
 
 @asynccontextmanager
 async def _serving(
-    store: Optional[FakeStore] = None, *, queue_maxsize: Optional[int] = None, **config: Any
+    store: Optional[FakeStore] = None,
+    *,
+    queue_maxsize: Optional[int] = None,
+    poll_interval: float = POLL,
+    **config: Any,
 ) -> AsyncIterator[_Served]:
     """Serve a hub over ``store`` with ``uvicorn.Server`` on this loop until the block ends.
 
-    ``config`` overrides uvicorn settings (the keepalive). ``log_config=None`` leaves the
+    ``poll_interval`` is the hub's; ``config`` overrides uvicorn settings (the keepalive). ``log_config=None`` leaves the
     process's logging as it is: uvicorn's default config would stop the ``uvicorn``
     logger's propagation mid-test, and ``caplog`` would miss that test's uvicorn records.
     Port 0 lets the kernel pick a free port.
@@ -90,7 +95,7 @@ async def _serving(
     """
     store = store if store is not None else FakeStore()
     sizing = {} if queue_maxsize is None else {"queue_maxsize": queue_maxsize}
-    hub = JobsHub(store, project_root=PROJ, poll_interval=POLL, **sizing)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=poll_interval, **sizing)
     server = uvicorn.Server(
         uvicorn.Config(
             _app(hub), host="127.0.0.1", port=0, log_level="warning", log_config=None, **config
@@ -630,3 +635,117 @@ async def test_a_message_sent_during_a_stalled_first_snapshot_is_dropped() -> No
                 assert served.hub.subscriber_count == 1
     finally:
         store.release()
+
+
+# --------------------------------------------------------------------------- #
+# api-ws-heartbeat: an idle connection is sent a heartbeat
+# --------------------------------------------------------------------------- #
+
+#: The patched heartbeat interval: a heartbeat every tenth of a second.
+BEAT = 0.1
+HEARTBEAT_FRAME = {"type": "heartbeat", "jobs": []}
+
+
+@pytest.fixture
+def quick_heartbeat(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ws_module, "_HEARTBEAT_INTERVAL_S", BEAT)
+
+
+@pytest.mark.usefixtures("quick_heartbeat")
+async def test_an_idle_connection_is_sent_heartbeats_and_stays_open() -> None:
+    async with _serving() as served:
+        async with connect(served.url) as client:
+            assert (await _frame(client))["type"] == "snapshot"  # never a heartbeat first
+            assert await _frame(client) == HEARTBEAT_FRAME
+            assert await _frame(client) == HEARTBEAT_FRAME
+            assert served.hub.subscriber_count == 1
+
+
+@pytest.mark.usefixtures("quick_heartbeat")
+async def test_heartbeats_cost_the_hub_nothing() -> None:
+    """A heartbeat is the connection's own: no store read, nothing on the subscriber's queue."""
+    async with _serving(poll_interval=60.0) as served:
+        async with connect(served.url) as client:
+            await _frame(client)  # the snapshot
+            reads = _store_reads(served.store)
+            for _ in range(4):
+                assert await _frame(client) == HEARTBEAT_FRAME
+            assert _store_reads(served.store) == reads
+            assert all(
+                queue.empty() for queue in served.hub._subscribers
+            )  # pylint: disable=protected-access
+
+
+async def test_a_busy_connection_is_sent_no_heartbeat(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Frames more often than the interval leave the heartbeat timer forever restarting."""
+    monkeypatch.setattr(ws_module, "_HEARTBEAT_INTERVAL_S", 0.6)
+    store = FakeStore()
+    job_id = _running_job(store, event_dir=GRILLNING, progress=0.0)
+    async with _serving(store) as served:
+        async with connect(served.url) as client:
+            await _frame(client)  # the snapshot
+            types = []
+            for step in range(1, 16):
+                store.jobs[job_id].progress = step / 100
+                types.append((await _frame(client))["type"])
+                await asyncio.sleep(0.1)
+            assert types == ["delta"] * 15  # 1.5 s, past two heartbeat intervals
+
+
+async def test_a_delta_landing_as_a_heartbeat_falls_due_is_delivered_once_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Poll and heartbeat intervals coincide, so the two race again and again."""
+    monkeypatch.setattr(ws_module, "_HEARTBEAT_INTERVAL_S", POLL)
+    store = FakeStore()
+    job_id = _running_job(store, event_dir=GRILLNING, progress=0.0)
+    last = 60
+    async with _serving(store) as served:
+        async with connect(served.url) as client:
+            await _frame(client)  # the snapshot
+            seen: list[float] = []
+
+            async def advance() -> None:
+                for step in range(1, last + 1):
+                    store.jobs[job_id].progress = step / 1000
+                    await asyncio.sleep(POLL)
+
+            advancing = asyncio.create_task(advance())
+            try:
+                async with asyncio.timeout(10.0):
+                    while not seen or seen[-1] < last / 1000:
+                        frame = await _frame(client)
+                        if frame["type"] != "heartbeat":
+                            seen += [job["progress"] for job in frame["jobs"]]
+            finally:
+                await advancing
+            assert seen == sorted(set(seen))  # strictly increasing: none repeated, none reordered
+            assert seen[-1] == last / 1000  # and the last change was not lost
+
+
+@pytest.mark.usefixtures("quick_heartbeat")
+async def test_a_hub_stop_during_a_heartbeat_wait_still_closes_with_1013() -> None:
+    async with _serving() as served:
+        async with connect(served.url) as client:
+            await _frame(client)  # the snapshot
+            assert await _frame(client) == HEARTBEAT_FRAME
+            await served.hub.stop()
+            assert await _close_code(client) == 1013
+            assert served.hub.subscriber_count == 0
+
+
+async def test_the_heartbeat_wait_neither_loses_a_racing_frame_nor_outlasts_a_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ws_module, "_HEARTBEAT_INTERVAL_S", 0.05)
+    queue: asyncio.Queue = asyncio.Queue()
+    assert json.loads(str(await _next_message(queue))) == HEARTBEAT_FRAME  # nothing came
+
+    queue.put_nowait("frame")
+    assert await _next_message(queue) == "frame"  # a queued frame wins over a heartbeat
+
+    monkeypatch.setattr(ws_module, "_HEARTBEAT_INTERVAL_S", 30.0)
+    waiting = asyncio.create_task(_next_message(queue))
+    await asyncio.sleep(0.05)
+    queue.put_nowait(_CLOSE)
+    assert await asyncio.wait_for(waiting, 1.0) is _CLOSE  # prompt, not after 30 s

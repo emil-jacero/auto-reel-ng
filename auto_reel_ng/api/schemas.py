@@ -372,10 +372,13 @@ class WsMessageType(StrEnum):
     SNAPSHOT = "snapshot"
     #: Every later frame: the jobs that changed since the previous poll, merged by id.
     DELTA = "delta"
+    #: Sent to a connection that has been sent no frame for 15 s, with no jobs: proof of
+    #: life for a client that cannot see the transport's pings. Changes nothing it shows.
+    HEARTBEAT = "heartbeat"
 
 
 class WsMessage(BaseModel):
-    """One frame on ``WS /api/v1/ws/jobs`` (D-A4): a snapshot or a delta batch.
+    """One frame on ``WS /api/v1/ws/jobs`` (D-A4): a snapshot, a delta batch or a heartbeat.
 
     A WebSocket route is not an HTTP operation, so no path in the schema references
     this model: the application publishes it into the schema's components itself,
@@ -384,7 +387,7 @@ class WsMessage(BaseModel):
     """
 
     type: WsMessageType
-    #: Always sent (a snapshot of no active jobs is an empty list), so declared without
+    #: Always sent (a snapshot of no active jobs, and every heartbeat, is an empty list), so declared without
     #: a default: the schema marks it required and generated clients need no fallback.
     jobs: List[JobOut]
 

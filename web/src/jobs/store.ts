@@ -18,6 +18,11 @@ import type { Sample } from './eta'
  *   delay capped at 30 s; the attempt count resets only when a valid frame
  *   arrives, so a service that accepts and then closes backs off instead of
  *   spinning. `online` reconnects at once when no socket is open or connecting.
+ * - A socket that delivers no frame for 40 s (counted from its creation and from
+ *   each frame) is lost: a connection that died without a close can stay open to
+ *   the browser for minutes. The store drops it itself and takes the same path.
+ *   The service sends a `heartbeat` frame after 15 s of silence, which changes
+ *   nothing on screen and only proves the connection alive.
  * - A snapshot replaces the active set. A job the store knew as active that the
  *   snapshot lacks ended while the socket was down: it is kept as last known and
  *   read once, so its real ending replaces it — never guessed, never shown as
@@ -58,10 +63,13 @@ const ACTIVE: Record<JobStatus, boolean> = {
 }
 
 // The frame types this client applies; a `Record`, so a new type fails `tsc` here.
-const FRAME_TYPES: Record<WsMessageType, true> = { snapshot: true, delta: true }
+const FRAME_TYPES: Record<WsMessageType, true> = { snapshot: true, delta: true, heartbeat: true }
 
 const RETRY_BASE_MS = 500
 const RETRY_CAP_MS = 30_000
+// A socket must deliver a frame within this window; the service sends one at
+// least every 15 s (`_HEARTBEAT_INTERVAL_S` in `api/ws.py`).
+const SILENCE_MS = 40_000
 
 /** Queued or running: not yet ended. */
 export function isActive(status: JobStatus): boolean {
@@ -76,6 +84,7 @@ let socket: WebSocket | null = null
 let attempt = 0
 let retryTimer: number | undefined
 let releaseTimer: number | undefined
+let watchdog: number | undefined
 
 /** Ids `load` has read; without `force` it never reads one again. */
 const requested = new Set<string>()
@@ -138,6 +147,8 @@ function stop(): void {
   window.removeEventListener('online', onOnline)
   window.clearTimeout(retryTimer)
   retryTimer = undefined
+  window.clearTimeout(watchdog)
+  watchdog = undefined
   const open = socket
   // Cleared first: the guard then drops this socket's close event, so nothing reconnects.
   socket = null
@@ -149,6 +160,7 @@ function connect(): void {
   retryTimer = undefined
   const opened = new WebSocket(jobsSocketUrl())
   socket = opened
+  armWatchdog(opened)
   opened.addEventListener('message', (event: MessageEvent) => {
     if (opened === socket) {
       onFrame(opened, event.data)
@@ -158,18 +170,40 @@ function connect(): void {
     if (opened !== socket) {
       return // closed by the store, or replaced by a newer socket
     }
-    socket = null
-    setConnection('reconnecting')
-    // Full jitter: anywhere between now and the attempt's ceiling.
-    const ceiling = Math.min(RETRY_CAP_MS, RETRY_BASE_MS * 2 ** attempt)
-    attempt += 1
-    retryTimer = window.setTimeout(connect, Math.random() * ceiling)
+    lost()
   })
   opened.addEventListener('error', () => {
     if (opened === socket) {
       opened.close()
     }
   })
+}
+
+/** The current socket is gone: say so and schedule the next attempt. */
+function lost(): void {
+  window.clearTimeout(watchdog)
+  watchdog = undefined
+  socket = null
+  setConnection('reconnecting')
+  // Full jitter: anywhere between now and the attempt's ceiling.
+  const ceiling = Math.min(RETRY_CAP_MS, RETRY_BASE_MS * 2 ** attempt)
+  attempt += 1
+  retryTimer = window.setTimeout(connect, Math.random() * ceiling)
+}
+
+/** Give `opened` another `SILENCE_MS` to deliver a frame, then drop it as lost. */
+function armWatchdog(opened: WebSocket): void {
+  window.clearTimeout(watchdog)
+  watchdog = window.setTimeout(() => {
+    if (opened !== socket) {
+      return
+    }
+    console.warn('jobs WebSocket: silent; reconnecting')
+    // `lost` first: the guard then drops the dying socket's own close event, which a
+    // peer that is gone may never deliver, or deliver late.
+    lost()
+    opened.close()
+  }, SILENCE_MS)
 }
 
 function onOnline(): void {
@@ -238,6 +272,7 @@ function onFrame(opened: WebSocket, data: unknown): void {
     return
   }
   attempt = 0
+  armWatchdog(opened)
   switch (frame.type) {
     case 'snapshot':
       applySnapshot(frame.jobs)
@@ -245,6 +280,8 @@ function onFrame(opened: WebSocket, data: unknown): void {
     case 'delta':
       absorb(frame.jobs, 'live')
       break
+    case 'heartbeat':
+      break // proof of life only: no commit, no notify, nothing on screen changes
     default: {
       const unhandled: never = frame.type
       throw new Error(`unhandled frame type ${String(unhandled)}`)

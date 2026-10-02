@@ -932,7 +932,7 @@ export interface components {
         };
         /**
          * WsMessage
-         * @description One frame on ``WS /api/v1/ws/jobs`` (D-A4): a snapshot or a delta batch.
+         * @description One frame on ``WS /api/v1/ws/jobs`` (D-A4): a snapshot, a delta batch or a heartbeat.
          *
          *     A WebSocket route is not an HTTP operation, so no path in the schema references
          *     this model: the application publishes it into the schema's components itself,
@@ -949,7 +949,7 @@ export interface components {
          * @description The closed set of frame types on ``WS /api/v1/ws/jobs`` (D-A4).
          * @enum {string}
          */
-        WsMessageType: "snapshot" | "delta";
+        WsMessageType: "snapshot" | "delta" | "heartbeat";
     };
     responses: never;
     parameters: never;

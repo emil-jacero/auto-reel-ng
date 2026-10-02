@@ -442,7 +442,7 @@ render, or job logic lives in the web tier.
   `GET /api/v1/events/{event_id}` includes the same staleness verdict (`stale` +
   `reasons`) `scan` prints, computed read-only — a GET never writes a manifest.
 - **`WS /api/v1/ws/jobs`** pushes live job progress. Every frame is
-  `{"type": "snapshot" | "delta", "jobs": [...]}`, with jobs in the shape the jobs
+  `{"type": "snapshot" | "delta" | "heartbeat", "jobs": [...]}`, with jobs in the shape the jobs
   routes return; the schema publishes it as `WsMessage`, although no HTTP path
   describes the WebSocket. A subscriber gets a full snapshot of active
   (`queued`/`running`) jobs on connect, then deltas (progress changes, status
@@ -453,6 +453,9 @@ render, or job logic lives in the web tier.
   a job that was enqueued, claimed and ended between two polls. A job that ended
   while the subscriber was disconnected is not replayed: after a reconnect's
   snapshot, a client re-reads the jobs it was tracking (`GET /api/v1/jobs/{id}`).
+  A connection sent no frame for 15 s gets a `heartbeat` (an empty job list, per connection,
+  no store read); the web client treats 40 s without any frame as a lost connection and
+  reconnects.
   The channel is push-only: anything a client sends is ignored. A connection that
   is closed or lost releases its subscription at once, so the last tab to close
   stops the poller; a peer that goes silent without closing (a suspended laptop)

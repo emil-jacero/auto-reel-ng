@@ -128,6 +128,7 @@ async def _await_ticks(store: FakeStore, count: int, *, timeout: float = 2.0) ->
 
 def test_the_frame_is_a_closed_shape() -> None:
     assert WsMessage(type="snapshot", jobs=[]).type is WsMessageType.SNAPSHOT
+    assert WsMessage(type="heartbeat", jobs=[]).type is WsMessageType.HEARTBEAT
     with pytest.raises(ValidationError):
         WsMessage(type="other", jobs=[])
     with pytest.raises(ValidationError):
