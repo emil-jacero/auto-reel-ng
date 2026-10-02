@@ -12,7 +12,7 @@ import type { JobSummary, Staleness } from '../api/events'
 import { cancelJob, enqueueJob } from '../api/jobs'
 import type { CancelOutcome, EnqueueResult } from '../api/jobs'
 import { markEventsChanged } from '../events/changes'
-import { UNREACHABLE_CAUSE, folderName } from '../events/common'
+import { DATABASE_CAUSE, UNREACHABLE_CAUSE, folderName } from '../events/common'
 import { LIST_HREF, eventHref } from '../route'
 import { Alert } from '../ui/Alert'
 import { Dialog } from '../ui/Dialog'
@@ -44,10 +44,25 @@ type Notice =
   | { kind: 'collision'; claimedBy: string[]; detail: string }
   | { kind: 'eventGone' }
   | { kind: 'scanFailed'; detail: string }
-  // `answered`: the service answered in a way it does not publish; else no answer came
-  | { kind: 'notQueued'; answered: boolean; message: string }
+  // `cause`: the service named its database; answered in a way it does not publish; or no answer came
+  | { kind: 'notQueued'; cause: Cause; message: string }
   | { kind: 'jobGone' }
-  | { kind: 'cancelUnconfirmed'; answered: boolean; message: string }
+  | { kind: 'cancelUnconfirmed'; cause: Cause; message: string }
+
+/** Why a write went unconfirmed: the sentence after its title, if the answer carries a cause. */
+type Cause = 'database' | 'unpublished' | 'unreachable'
+
+const CAUSE_SENTENCE: Record<Cause, string | undefined> = {
+  database: DATABASE_CAUSE,
+  // An answer the service does not publish names no cause: the status is the detail.
+  unpublished: undefined,
+  unreachable: UNREACHABLE_CAUSE,
+}
+
+function withCause(title: string, cause: Cause): string {
+  const sentence = CAUSE_SENTENCE[cause]
+  return sentence === undefined ? title : `${title} ${sentence}`
+}
 
 /** The control whose request is in flight. */
 type Pressed = 'render' | 'force' | 'cancel' | 'cancelConfirm'
@@ -130,7 +145,7 @@ function NoticeAlert({ notice }: { notice: Notice }) {
       return (
         <Alert
           tone="err"
-          title={notice.answered ? NOT_QUEUED : `${NOT_QUEUED} ${UNREACHABLE_CAUSE}`}
+          title={withCause(NOT_QUEUED, notice.cause)}
           detail={notice.message}
         />
       )
@@ -140,7 +155,7 @@ function NoticeAlert({ notice }: { notice: Notice }) {
       return (
         <Alert
           tone="err"
-          title={notice.answered ? NOT_CONFIRMED : `${NOT_CONFIRMED} ${UNREACHABLE_CAUSE}`}
+          title={withCause(NOT_CONFIRMED, notice.cause)}
           detail={notice.message}
         />
       )
@@ -289,13 +304,12 @@ export function RenderControl({
           setNotice({ kind: 'scanFailed', detail: result.problem.detail })
         }
         break
+      case 'database':
+        setNotice({ kind: 'notQueued', cause: 'database', message: result.problem.detail })
+        break
       case 'unreachable':
       case 'unpublished':
-        setNotice({
-          kind: 'notQueued',
-          answered: result.kind === 'unpublished',
-          message: result.message,
-        })
+        setNotice({ kind: 'notQueued', cause: result.kind, message: result.message })
         break
     }
   }
@@ -347,13 +361,12 @@ export function RenderControl({
         case 'problem':
           setNotice({ kind: 'jobGone' })
           break
+        case 'database':
+          setNotice({ kind: 'cancelUnconfirmed', cause: 'database', message: answer.problem.detail })
+          break
         case 'unreachable':
         case 'unpublished':
-          setNotice({
-            kind: 'cancelUnconfirmed',
-            answered: answer.kind === 'unpublished',
-            message: answer.message,
-          })
+          setNotice({ kind: 'cancelUnconfirmed', cause: answer.kind, message: answer.message })
           break
       }
     })

@@ -33,6 +33,8 @@ export type EnqueueResult =
   | { kind: 'collision'; claimedBy: string[]; problem: Problem }
   // 404 (unknown event) or 502 (the project walk failed), in the ProblemOut shape
   | { kind: 'problem'; problem: Problem }
+  // 503 naming the database as the failing dependency: the job's creation was not confirmed
+  | { kind: 'database'; problem: Problem }
   // no answer at all: fetch rejected (the message is the error)
   | { kind: 'unreachable'; message: string }
   // an answer whose status or body the route does not publish (the message names it)
@@ -43,6 +45,8 @@ export type JobResult =
   | { kind: 'ok'; job: JobOut }
   // 404: no such job in the served project
   | { kind: 'problem'; problem: Problem }
+  // 503 naming the database as the failing dependency
+  | { kind: 'database'; problem: Problem }
   | { kind: 'unreachable'; message: string }
   | { kind: 'unpublished'; message: string }
 
@@ -51,6 +55,8 @@ export type CancelAnswer =
   | { kind: 'ok'; result: CancelResult }
   // 404: no such job in the served project
   | { kind: 'problem'; problem: Problem }
+  // 503 naming the database as the failing dependency: no outcome was applied or reported
+  | { kind: 'database'; problem: Problem }
   | { kind: 'unreachable'; message: string }
   | { kind: 'unpublished'; message: string }
 
@@ -58,9 +64,17 @@ const JOBS_URL = '/api/v1/jobs'
 const SOCKET_PATH = '/api/v1/ws/jobs'
 
 // The problem statuses each route publishes (see the schema). 409 is not here:
-// the enqueue answer's conflict kind decides what it means.
+// the enqueue answer's conflict kind decides what it means. 503 is not here
+// either: it is a `database` kind only when its `check` field says so, and any
+// other 503 (a proxy's, or one without the field) stays unpublished, so the
+// client never claims a cause the answer does not carry.
 const ENQUEUE_PROBLEM_STATUSES = new Set([404, 502])
 const JOB_PROBLEM_STATUSES = new Set([404])
+
+/** A 503 whose problem body names the database as the failing dependency. */
+function isDatabaseDown(response: Response, body: unknown): body is Problem {
+  return response.status === 503 && isProblem(body) && body.check === 'database'
+}
 
 function unpublished(method: string, url: string, response: Response): string {
   return `${method} ${url} answered ${response.status} ${response.statusText}`.trimEnd()
@@ -91,6 +105,9 @@ export async function enqueueJob(eventId: string, force: boolean): Promise<Enque
   }
   if (response.status === 200 && isObject) {
     return { kind: 'fresh', fresh: body as FreshResult }
+  }
+  if (isDatabaseDown(response, body)) {
+    return { kind: 'database', problem: body }
   }
   if (response.status === 409 && isProblem(body)) {
     // A 409 means only what its conflict kind says; one without the kind, or
@@ -143,6 +160,9 @@ export async function fetchJob(jobId: string, signal?: AbortSignal): Promise<Job
   if (response.status === 200 && typeof body === 'object' && body !== null) {
     return { kind: 'ok', job: body as JobOut }
   }
+  if (isDatabaseDown(response, body)) {
+    return { kind: 'database', problem: body }
+  }
   if (JOB_PROBLEM_STATUSES.has(response.status) && isProblem(body)) {
     return { kind: 'problem', problem: body }
   }
@@ -162,6 +182,9 @@ export async function cancelJob(jobId: string): Promise<CancelAnswer> {
   const body = await readJson(response)
   if (response.status === 200 && typeof body === 'object' && body !== null) {
     return { kind: 'ok', result: body as CancelResult }
+  }
+  if (isDatabaseDown(response, body)) {
+    return { kind: 'database', problem: body }
   }
   if (JOB_PROBLEM_STATUSES.has(response.status) && isProblem(body)) {
     return { kind: 'problem', problem: body }
