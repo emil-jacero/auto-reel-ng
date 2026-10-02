@@ -393,11 +393,11 @@ def test_a_reelignored_event_and_one_outside_input_are_not_found(root: Path) -> 
             _target(root, event_id)
 
 
-def test_a_symbolic_link_to_an_event_resolves_under_its_own_id(root: Path) -> None:
+def test_a_symbolic_link_to_an_event_is_not_an_event_of_its_own(root: Path) -> None:
+    """The walk lists a folder once (layout-alias-dedupe): the alias is dropped, its target stays."""
     _event(root, KALAS)
     (root / FEST).symlink_to(root / KALAS)
 
-    event_dir, document = _target(root, FEST)
-
-    assert event_dir == root / FEST
-    assert document.metadata.title == "Fest"  # its own folder name, not the target's
+    assert _target(root, KALAS)[0] == root / KALAS
+    with pytest.raises(events_read.EventNotFoundError):
+        _target(root, FEST)

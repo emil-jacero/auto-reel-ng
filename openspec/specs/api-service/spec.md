@@ -2002,11 +2002,12 @@ responses in the shared problem body shape in the service's OpenAPI schema.
 - **WHEN** `2024/2024-06-22 - B` carries a `.reelignore` file and `POST /api/v1/jobs` names it
 - **THEN** the response is 404 and no job row exists
 
-#### Scenario: A symbolic link to an event, inside the project, is its own listed event
+#### Scenario: A symbolic link to an event, inside the project, is not an event of its own
 - **WHEN** `2024/2024-07-20 - Fest` is a symbolic link to the rendered, fresh `2024/2024-07-14 - Kalas`, the
-  list shows both, and `POST /api/v1/jobs` names `2024/2024-07-20 - Fest`
-- **THEN** the event is judged at the path its own id names: it is stale, because `2024-07-20 - Fest.mp4` was
-  never rendered, so the response is 201 and the job's `event_dir` is `2024/2024-07-20 - Fest`
+  list shows `Kalas` only (the layout walks a folder once), and `POST /api/v1/jobs` names
+  `2024/2024-07-20 - Fest`
+- **THEN** the response is 404 with the problem body of an unknown event, whose `event_id` is the id as sent,
+  and no job row exists; naming `2024/2024-07-14 - Kalas` is judged at its own output as before
 
 #### Scenario: An unparseable reel.yaml is a 502, not a 500
 - **WHEN** `2024/2024-06-22 - B` has a `reel.yaml` that reads `metadata: [unclosed`, and
