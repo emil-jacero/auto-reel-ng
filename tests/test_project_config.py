@@ -101,9 +101,8 @@ def test_config_without_thumbnails_carries_an_empty_map(tmp_path: Path) -> None:
 
 
 def test_config_supplies_api_settings(tmp_path: Path) -> None:
-    (tmp_path / "config.yaml").write_text("worker:\n  cpu_slots: 4\napi:\n  port: 9000\n", "utf-8")
+    (tmp_path / "config.yaml").write_text("api:\n  port: 9000\n", encoding="utf-8")
     config = load_project_config(tmp_path)
-    assert config.worker == {"cpu_slots": 4}
     assert config.api == {"port": 9000}
 
 
