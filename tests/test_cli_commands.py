@@ -278,6 +278,24 @@ def test_scan_names_the_old_and_new_movie_of_a_renamed_event(
     assert [p.name for p in movie.parent.iterdir()] == [movie.name]
 
 
+def test_scan_quotes_names_with_an_apostrophe_in_single_quotes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "proj"
+    event = root / "2024" / _GRILLNING
+    _touch(event / "00400.mp4")
+    _render_record(root, event)
+    _retitle(event, "Grillning med Grannar", "Mom's party")
+
+    assert main(["scan", str(root)]) == 0
+
+    assert _stale_line(capsys) == (
+        "stale: editorial, output_renamed "
+        "(was '2024-06-27 - Grillning med Grannar.mp4', "
+        "now '2024-06-27 - Mom's party.mp4')"
+    )
+
+
 def test_scan_prints_a_deleted_movie_as_output_without_names(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
