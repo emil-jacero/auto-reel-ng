@@ -2556,8 +2556,11 @@ operator as the words on its title card in the movie.
 A chapter the page showed when Edit mode opened SHALL, once deleted, stay listed in its place until the edits
 are saved, marked as deleted when the edits are saved. It lists none of its clips. Such a chapter offers an **Undo** control that returns it to its place, and keyboard focus SHALL move to that Undo. A
 chapter the operator added in this Edit mode and then deletes SHALL simply be gone. A chapter that plays no
-clip SHALL say so in Edit mode. It SHALL also say that clips can be dragged into it, or moved into it with
-another chapter's Move clips (see "Edit mode drags clips between chapters").
+clip SHALL say so in Edit mode, and that a chapter without clips is left out of the movie. While the event
+lists another chapter, a deleted one aside, it SHALL also say that clips can be dragged into it, or moved into
+it with another chapter's Move clips (see "Edit mode drags clips between chapters"). When it is the only
+chapter listed, a deleted one aside, it SHALL NOT say that: no other chapter has a clip to drag or to move,
+and the page offers no Move clips there.
 
 The event's own chapter SHALL be headed `Main` while any other chapter is listed, a deleted one aside, and
 `Clips` otherwise, as on the event page. Every change to the chapters SHALL count as an unsaved edit, like a
@@ -2661,6 +2664,27 @@ change nothing when pressed.
   service has not answered yet
 - **THEN** Add chapter and every chapter's Rename, Move up, Move down, Move clips and Delete say that they are
   unavailable, and pressing them changes nothing
+
+#### Scenario: A lone empty chapter does not point at Move clips
+- **WHEN** Edit mode opens on `2024-10-05 - Tom mapp`, an event whose folder holds no clip, and the operator
+  presses Add chapter, types `Kvällen vid grillen` and confirms
+- **THEN** the new chapter, the only one listed, counts 0 clips, and it says "No clips. A chapter without
+  clips is left out of the movie." It does not mention dragging clips or Move clips, and it offers no Move clips
+
+#### Scenario: A lone chapter whose only clip is ignored
+- **WHEN** Edit mode opens on `2024-10-06 - Bara ignorerad`, an event that lists one chapter, whose only clip
+  `s1710004.mp4` is ignored
+- **THEN** the chapter lists the ignored clip under its heading and says "It plays no clip. A chapter without
+  clips is left out of the movie." It does not mention dragging clips or Move clips
+
+#### Scenario: A second chapter brings the hint back
+- **WHEN** on `2024-10-05 - Tom mapp`, with `Kvällen vid grillen` added, the operator presses Add chapter,
+  types `Morgonen` and confirms
+- **THEN** both chapters say that they have no clips and that clips can be dragged into them or moved into
+  them with another chapter's Move clips
+- **WHEN** the operator then deletes `Morgonen`
+- **THEN** `Kvällen vid grillen` says again, as it did before the addition, that it has no clips and is left
+  out of the movie, without mentioning dragging or Move clips
 
 ### Requirement: Edit mode moves clips to another chapter
 
@@ -3125,9 +3149,11 @@ within its chapter SHALL do this:
   - Escape SHALL cancel and leave every chapter as it was, with the clip's handle in view again (its whole
     row, or its first line when the row is taller than the room left).
 
-A chapter that plays no clip SHALL show, in Edit mode, an area that says clips can be dragged into it. The
-area SHALL be shown whether or not a drag is under way. A clip dropped on it SHALL become the chapter's first
-clip.
+A chapter that plays no clip SHALL show, in Edit mode, an area for clips. While the event lists another
+chapter, a deleted one aside, the area SHALL say that clips can be dragged into it. When the chapter is the
+only one listed, the area SHALL say only what "Edit mode adds, renames, reorders and deletes chapters" states
+for it, because no other chapter has a clip to drag. The area SHALL be shown whether or not a drag is under
+way. A clip dropped on it SHALL become the chapter's first clip.
 
 While a clip is dragged over another chapter:
 
@@ -4337,3 +4363,78 @@ A refusal SHALL NOT create, show or announce a job, and SHALL NOT change the eve
 - **WHEN** the page of `2024-09-04 - Hämtad` is shown 390 pixels wide and shows the refusal
 - **THEN** the page does not scroll horizontally, and the refusal's words and the clip's name are fully
   visible
+
+### Requirement: Edit mode's save bar is in the page before the first edit
+
+Once Edit mode has read the editorial document, its save bar SHALL already be part of the page, hidden for as
+long as there is nothing to save and no vanished event to explain. The first edit SHALL show it. It SHALL NOT
+have to build it.
+
+While the bar is hidden:
+
+- it SHALL take no room in the page and draw nothing
+- neither the keyboard nor assistive technology SHALL reach it: Tab SHALL NOT stop on its Reset or Save, and
+  the page SHALL NOT list a region named "Unsaved changes"
+- it SHALL NOT affect where notifications sit, which stay at the bottom of the window as on a page with no
+  save bar, and the page SHALL NOT reserve room at its bottom for it
+
+It SHALL be hidden again whenever nothing is left to save, as before: when every edit is undone, and after
+Reset. Showing it SHALL change nothing else about it: what it says, where it is held or rests ("Edit mode's
+save bar rests in the page when it would hide the editor"), and that no notification overlaps it ("Notifications
+never cover the save bar").
+
+The first edit SHALL cost no more than the next one. In a chapter that plays 400 clips, in a Chromium window
+1280 × 900, the time from pressing Move down on a clip to the next painted frame, for the first edit made in
+Edit mode, SHALL be at most 50 ms longer than the same press on another clip as the second edit made. The time
+is the median of five runs, each in a fresh Edit mode.
+
+#### Scenario: No save bar before the first edit
+- **WHEN** in a window 1280 × 900, the operator opens Edit mode on `2024-06-27 - Grillning med grannar`, makes
+  no edit, and presses Tab from the Title field through every control of the page
+- **THEN** no stop is on a Reset or Save, the page lists no region named "Unsaved changes", and an error
+  notification shown at that time sits at the bottom of the window, not raised for a bar
+
+#### Scenario: The first edit shows the bar
+- **WHEN** the operator then changes the title
+- **THEN** the save bar is held at the window's bottom edge with the title "Unsaved changes", Reset and Save
+  (which is its one primary action), and its summary names the changed title
+- **AND** an error notification shown then sits above the bar and covers neither Reset nor Save
+
+#### Scenario: An undone edit hides the bar again
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, the operator moves `s1710001.mp4` down one
+  place, and then moves it up one place
+- **THEN** the save bar was shown after the first move and is hidden after the second, and the page shows no
+  unsaved changes
+
+#### Scenario: The first edit in a 400-clip chapter
+- **WHEN** in a window 1280 × 900, Edit mode is open on an event whose one chapter plays 400 clips, the
+  operator presses Move down on the first clip and then Move down on the second, and the five runs are timed
+- **THEN** the median time to the next painted frame of the first press is at most 50 ms longer than the
+  second's
+
+### Requirement: Reset leaves keyboard focus on a heading that can be seen
+
+Reset removes the save bar, with the control that was pressed, so keyboard focus SHALL move at once to the
+page's heading, never to the page's body. When that heading is not fully visible below the page header, the
+page SHALL then scroll the least distance that brings it fully into view, and keyboard focus SHALL stay on it.
+When the heading is already fully visible, the page SHALL NOT scroll. This SHALL hold whichever way Reset was
+pressed, whether the bar was held or resting, and at every window width from 320 CSS pixels up. The scroll
+SHALL be instant: it SHALL NOT animate, with or without a reduced-motion preference.
+
+#### Scenario: Reset from the bottom of a long page
+- **WHEN** in windows 1280 × 900 and 390 × 844, in Edit mode on an event whose one chapter plays 400 clips, the
+  operator moves its last clip up one place, with the page scrolled to the clip, and presses Reset from the
+  keyboard
+- **THEN** keyboard focus is on the page's heading, the heading is fully visible below the page header, and
+  the clip is back in its place
+
+#### Scenario: Reset with the heading already in view
+- **WHEN** in a window 1280 × 900 with the page scrolled to its top, the operator changes the title of
+  `2024-06-27 - Grillning med grannar` and presses Reset
+- **THEN** keyboard focus is on the page's heading, and the page's scroll position is the same as before the
+  press
+
+#### Scenario: Reset with the bar resting
+- **WHEN** in a window 320 × 256, the operator changes the title of `2024-06-27 - Grillning med grannar`,
+  scrolls to the save bar resting after the last chapter, and presses Reset
+- **THEN** keyboard focus is on the page's heading, and the heading is fully visible below the page header
