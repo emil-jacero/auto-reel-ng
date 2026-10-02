@@ -48,8 +48,9 @@ for new ones. A "joined as one removal" statement is in terms of footage kept, s
 
 ### Touching cuts
 `(1,3)` and `(3,5)` join. The cut ranges are half-open in effect (`in` inclusive, `out` exclusive), so touching
-cuts leave no frame between them, and a zero-length kept span would otherwise reach the renderer. This is what
-`start <= merged_end` already does; the spec makes it explicit.
+cuts leave no frame between them, so no zero-length kept span reaches the renderer. `kept_spans` already
+guarantees this (the merge uses `start <= merged_end`, and the complement only emits a span when
+`start > cursor`); the spec makes it explicit.
 
 ## Behaviour on failure and re-run
 

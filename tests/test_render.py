@@ -187,11 +187,40 @@ def test_mid_clip_cut_yields_two_segments() -> None:
     assert all(s.is_trimmed for s in segments)
 
 
+def test_overlapping_cuts_yield_disjoint_segments_in_source_order() -> None:
+    clip = ResolvedClip(
+        identity="a.mp4", cut_spans=(Trim(start=1.0, end=3.0), Trim(start=2.0, end=5.0))
+    )
+    plan = RenderPlan(chapters=(ResolvedChapter(name="", clips=(clip,)),))
+    facts = {"a.mp4": _clip("a.mp4", duration=10.0)}
+    segments = build_segments(plan, Path("/ev"), facts)
+    spans = [(s.start, s.end) for s in segments]
+    assert spans == [(0.0, 1.0), (5.0, 10.0)]
+    assert all(s.is_trimmed for s in segments)
+    # No footage appears in two segments.
+    assert all(a_end <= b_start for (_, a_end), (b_start, _) in zip(spans, spans[1:]))
+
+
 def test_kept_spans_complement() -> None:
     assert kept_spans((Trim(0.0, 2.0),), 10.0) == [(2.0, 10.0)]
     assert kept_spans((Trim(8.0, 10.0),), 10.0) == [(0.0, 8.0)]
     # Overlapping cuts merge.
     assert kept_spans((Trim(1.0, 3.0), Trim(2.0, 4.0)), 10.0) == [(0.0, 1.0), (4.0, 10.0)]
+
+
+def test_kept_spans_joins_overlapping_touching_nested_and_unsorted_cuts() -> None:
+    """Cuts are one union removal: overlap is accepted, never an error or a double render."""
+    expected = [(0.0, 1.0), (5.0, 10.0)]
+    assert kept_spans((Trim(1.0, 3.0), Trim(2.0, 5.0)), 10.0) == expected
+    # Touching cuts leave no zero-length kept span between them.
+    assert kept_spans((Trim(1.0, 3.0), Trim(3.0, 5.0)), 10.0) == expected
+    # A cut inside another adds nothing.
+    assert kept_spans((Trim(1.0, 9.0), Trim(2.0, 3.0)), 10.0) == [(0.0, 1.0), (9.0, 10.0)]
+    # The listed order does not matter.
+    assert kept_spans((Trim(5.0, 8.0), Trim(1.0, 3.0), Trim(2.0, 6.0)), 10.0) == [
+        (0.0, 1.0),
+        (8.0, 10.0),
+    ]
 
 
 def test_two_chapters_preserve_order() -> None:

@@ -132,9 +132,11 @@ def kept_spans(cut_spans: Sequence[Trim], duration: float) -> list[tuple[float, 
     """Return the kept ``[start, end)`` spans left after removing ``cut_spans``.
 
     Cut spans are the footage to *remove*; the kept spans are the complement
-    within ``[0, duration)``. Overlapping/adjacent cuts are merged first, so the
-    result is a disjoint, source-time-ordered list. A clip whose cuts cover its
-    whole duration yields an empty list (the clip contributes no segment).
+    within ``[0, duration)`` of the *union* of the cuts. Overlapping or touching
+    cuts are joined as one removal, whatever order they are listed in (overlap is
+    not an error), so the result is a disjoint, source-time-ordered list. A clip
+    whose cuts cover its whole duration yields an empty list (the clip
+    contributes no segment).
     """
     cuts = sorted((max(0.0, t.start), min(duration, t.end)) for t in cut_spans)
     merged: list[tuple[float, float]] = []

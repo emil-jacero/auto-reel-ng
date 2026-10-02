@@ -453,3 +453,35 @@ def test_a_reel_yaml_that_is_not_utf8_is_a_parse_error(tmp_path: Path) -> None:
     reel, error = _load_file(tmp_path, latin1)
 
     assert str(error) == f"{reel}: not UTF-8 text (invalid continuation byte at byte 32)"
+
+
+@pytest.mark.parametrize(
+    ("second", "written"),
+    [
+        ("{in: 2, out: 5}", [(1.0, 3.0), (2.0, 5.0)]),
+        ("{in: 3, out: 5}", [(1.0, 3.0), (3.0, 5.0)]),
+    ],
+    ids=["overlap", "touch"],
+)
+def test_overlapping_or_touching_cuts_are_accepted_as_written(
+    second: str, written: list[tuple[float, float]]
+) -> None:
+    """The document keeps every cut as written; the render joins them (not an error)."""
+    text = (
+        "version: 0\nchapters: [{name: '', clips: [a.mp4]}]\n"
+        f"clips: {{a.mp4: {{trims: [{{in: 1, out: 3}}, {second}]}}}}\n"
+    )
+
+    doc = loads_document(text)
+
+    assert [(t.start, t.end) for t in doc.clips["a.mp4"].trims] == written
+
+
+def test_an_invalid_cut_beside_an_overlap_still_names_its_index() -> None:
+    text = (
+        "version: 0\nchapters: [{name: '', clips: [a.mp4]}]\n"
+        "clips: {a.mp4: {trims: [{in: 1, out: 3}, {in: 2, out: 2}]}}\n"
+    )
+
+    with pytest.raises(ReelParseError, match=r"trims\[1\]"):
+        loads_document(text)
