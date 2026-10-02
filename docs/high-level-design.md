@@ -685,6 +685,13 @@ Rough dependency order; each becomes one or more OpenSpec changes:
       earlier versions are orphaned and stay (never evicted), and every clip regenerates once. An HDR
       clip that declares only a transfer function (no primaries or matrix) has no thumbnail, as its
       render fails the same way; nothing is guessed.
+    - *2026-10-02, change `thumbs-sidecar-metadata`:* beside `<key>.jpg` the cache holds two small files
+      with the same key, written atomically like it. `<key>.json` is the duration the thumbnail's probe
+      reported, read with no ffprobe (`recorded_duration`; absent for a thumbnail made earlier, and
+      unknown until one is made, never guessed). `<key>.fail` is the reason a clip failed, remembered
+      for 60 s from the failed attempt (a module constant, not a setting) so a broken clip is not
+      re-probed on every request, by the CLI and the service alike; a read does not renew it, a success
+      removes it, and a cache or config fault is never remembered. No `THUMBNAIL_VERSION` bump.
   - **Filling it:** `auto-reel thumbs` fills it in batch. The service's thumbnail route fills it on
     request (change `clip-thumbnail-endpoint`).
   - **Still open:** proxies and scrubbing are v2, with the timeline editor (§8.11; moved from v3 on

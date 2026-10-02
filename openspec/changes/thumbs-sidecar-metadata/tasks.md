@@ -5,13 +5,13 @@ and need no marker unless stated. A marker's age is set with `os.utime`, never `
 
 ## 1. thumbs/: sidecar files
 
-- [ ] 1.1 In `thumbs/thumbnail.py` add `FAILURE_TTL_SECONDS = 60.0`, a private `_sidecar(target, suffix)`
+- [x] 1.1 In `thumbs/thumbnail.py` add `FAILURE_TTL_SECONDS = 60.0`, a private `_sidecar(target, suffix)`
   (the JPEG `target` with `.jpg` replaced by `.json` / `.fail`) and a private `_write_sidecar(cache_dir,
   target, suffix, payload)` that writes through a hidden temporary named `.<key>.<hex>.tmp` (the name the
   gate's sweep matches), `fsync`s, then `os.replace`s, and removes the temporary on any failure.
   Test (`tests/test_thumbs.py`): the file appears complete under the right name, no temporary remains, a
   read-only directory raises `OSError` from the helper.
-- [ ] 1.2 Duration: after `_probe_duration` and `_create_temporary` succeed, and before `_extract`, write
+- [x] 1.2 Duration: after `_probe_duration` and `_create_temporary` succeed, and before `_extract`, write
   `{"duration": d}` to `<key>.json`; an `OSError` becomes `ThumbnailCacheError` naming the directory (the
   temporary files are removed). Add `recorded_duration(target) -> Optional[float]` per design: `None` for
   absent, unreadable, invalid JSON, non-object, non-numeric, bool, non-finite or `<= 0`; never raises, never
@@ -23,13 +23,13 @@ and need no marker unless stated. A marker's age is set with `os.utime`, never `
 
 ## 2. thumbs/: failure marker
 
-- [ ] 2.1 `recorded_failure(clip_path, target) -> Optional[ThumbnailError]` per design: valid when the
+- [x] 2.1 `recorded_failure(clip_path, target) -> Optional[ThumbnailError]` per design: valid when the
   file parses to an object with a string `reason` and `0 <= time.time() - st_mtime < FAILURE_TTL_SECONDS`;
   expired, future-dated, damaged or absent reads as `None`; any other `OSError` raises `ThumbnailCacheError`
   (`<dir>: cannot read thumbnails: ...`). Tests: valid at age 5 s; `None` at 61 s and at -10 s; `None` for
   `not json` and for `{"reason": 3}`; a directory chmod 000 raises the cache error (skip as root, like the
   existing cache-permission tests).
-- [ ] 2.2 `thumbnail_for` integration: after the `is_cached` miss and before the runtime or the probe, raise
+- [x] 2.2 `thumbnail_for` integration: after the `is_cached` miss and before the runtime or the probe, raise
   `recorded_failure(...)` if any (outside the recording handler, so a read never renews the marker). Wrap
   the probe, duration write, extraction and finalize so a `ThumbnailError` writes `<key>.fail`
   (`{"reason": exc.reason}`, best effort: create the directory, log a warning and swallow an `OSError`) and
@@ -41,7 +41,7 @@ and need no marker unless stated. A marker's age is set with `os.utime`, never `
   and the second call tries again; a `ThumbnailCacheError` from the runtime (disk-full classification of
   the gate) writes none; an unwritable marker location still raises the clip's `ThumbnailError` and logs
   a warning (`caplog`); a JPEG present wins over a marker; a stat failure writes none.
-- [ ] 2.3 Export `FAILURE_TTL_SECONDS`, `recorded_duration`, `recorded_failure` from `thumbs/__init__.py`
+- [x] 2.3 Export `FAILURE_TTL_SECONDS`, `recorded_duration`, `recorded_failure` from `thumbs/__init__.py`
   and `__all__`. Update the existing assertions that expect an empty cache after a failure to expect
   exactly the `<key>.fail` file (`tests/test_thumbs.py` `_leftovers(...) == []` after failures,
   `tests/test_thumbs_ffmpeg.py` `_cache_files(cache_dir, "*") == []`); the `*.jpg` and `.*.tmp` globs keep
@@ -49,7 +49,7 @@ and need no marker unless stated. A marker's age is set with `os.utime`, never `
 
 ## 3. thumbs/ with real ffmpeg, and the CLI
 
-- [ ] 3.1 `has_ffmpeg` tests in `tests/test_thumbs_ffmpeg.py`: a generated 1 s clip leaves a
+- [x] 3.1 `has_ffmpeg` tests in `tests/test_thumbs_ffmpeg.py`: a generated 1 s clip leaves a
   `<key>.json` whose duration equals `probe_media`'s for the clip, and a second `thumbnail_for` is a cache
   hit; a clip of random bytes fails once, leaves `<key>.fail` with the one-line-cause-able reason, and the
   second call within the window raises the same `ThumbnailError` (compare `reason`) with ffmpeg not run
@@ -59,10 +59,11 @@ and need no marker unless stated. A marker's age is set with `os.utime`, never `
 
 ## 4. api/: the route answers from the marker
 
-- [ ] 4.1 In `api/routes/events.py` `_serve_thumbnail`, after the cached read returns `None` and before
+- [x] 4.1 In `api/routes/events.py` `_serve_thumbnail`, after the cached read returns `None` and before
   `gate.produce`, call `recorded_failure(source.clip_path, source.cache_path)` in the threadpool and raise
-  the error when there is one. Update the route docstring and the header comment about failures ("A failed
-  extraction is remembered for 60 s"). `ThumbnailGate` (`api/thumbnails.py`) is unchanged. Tests in
+  the error when there is one. Update `_serve_thumbnail`'s docstring; the route's own docstring is the published
+  OpenAPI description and stays word for word, so the schema and `web/openapi.json` do not change (a
+  comment above the route says so). `ThumbnailGate` (`api/thumbnails.py`) is unchanged. Tests in
   `tests/test_api_thumbnails.py` (fake runtime as in the existing tests): a failing clip is requested
   twice and the second response equals the first (status, `thumbnail_failure`, detail) with the fake's
   `calls` unchanged; with both slots held by blocked extractions, a recorded failure is answered at once;
@@ -75,15 +76,15 @@ and need no marker unless stated. A marker's age is set with `os.utime`, never `
 
 ## 5. Docs
 
-- [ ] 5.1 In `docs/high-level-design.md` D-11, "The cache" bullet: add that beside `<key>.jpg` the cache
+- [x] 5.1 In `docs/high-level-design.md` D-11, "The cache" bullet: add that beside `<key>.jpg` the cache
   holds `<key>.json` (the probed duration, read probe-free) and `<key>.fail` (a failure remembered for
   60 s, never for a cache fault), keyed identically and written atomically. Check that the existing
   specs referenced there (`clip-thumbnails`, `api-service`) read consistently after sync.
 
 ## 6. Validation gates
 
-- [ ] 6.1 `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`
-- [ ] 6.2 `.venv/bin/python -m mypy auto_reel_ng`
-- [ ] 6.3 `.venv/bin/python -m pylint auto_reel_ng` (only the known cairo `no-member` noise remains)
-- [ ] 6.4 `.venv/bin/python -m pytest` (podman for the DB tests, or `-m "not requires_db"` with the reason
+- [x] 6.1 `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`
+- [x] 6.2 `.venv/bin/python -m mypy auto_reel_ng`
+- [x] 6.3 `.venv/bin/python -m pylint auto_reel_ng` (only the known cairo `no-member` noise remains)
+- [x] 6.4 `.venv/bin/python -m pytest` (podman for the DB tests, or `-m "not requires_db"` with the reason
   stated); `RENDER_GRAPH_VERSION` and `THUMBNAIL_VERSION` are unchanged.

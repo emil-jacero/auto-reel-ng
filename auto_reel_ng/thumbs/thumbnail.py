@@ -20,6 +20,13 @@ A clip the engine's probe flags as HDR (PQ or HLG) is tone-mapped to SDR on the 
 renderer's own chain before it is scaled. A full cache disk is one :class:`ThumbnailCacheError`,
 not a failure of the clip, and temporaries that a killed extraction left behind are swept once
 per process (:func:`sweep_stale_temporaries`).
+
+Two small sidecars sit beside ``<key>.jpg``, named by the same key so they inherit its
+invalidation and written atomically like it: ``<key>.json`` holds the duration the probe
+reported (:func:`recorded_duration` reads it with no process), and ``<key>.fail`` holds the
+reason a clip failed, remembered for :data:`FAILURE_TTL_SECONDS` so a broken clip is not
+re-probed on every request (:func:`recorded_failure`). Neither is a thumbnail, and a cache
+fault is never remembered against a clip.
 """
 
 from __future__ import annotations
@@ -60,6 +67,10 @@ THUMBNAIL_TIMEOUT = 60.0
 #: path. 3: an HDR clip is tone-mapped (the key is computed before any probe, so it cannot
 #: carry an ``hdr`` flag; a cache hit must not run ffprobe).
 THUMBNAIL_VERSION = 3
+
+#: Seconds a clip's failure is remembered in ``<key>.fail``, counted from the failed attempt.
+#: Fixed: not a ``config.yaml`` setting.
+FAILURE_TTL_SECONDS = 60.0
 
 #: A hidden temporary file older than this many seconds belongs to an extraction that was
 #: killed, not to a live writer (an extraction is bounded to :data:`THUMBNAIL_TIMEOUT`).
@@ -196,17 +207,20 @@ def thumbnail_for(
 ) -> Path:
     """The cached JPEG for the clip, generating it first when absent.
 
-    A cache hit returns without running ffprobe or ffmpeg. A miss probes the
-    clip's resolved path for its duration, extracts the frame at
-    ``position × duration`` (tone-mapped first when the probe flags the clip HDR) into a
-    temporary file in ``cache_dir`` (created when absent, and swept of stale temporaries
-    once per process), ``fsync``s it and renames it to ``<key>.jpg``. The source clip is only
-    read. On any failure, interruption included, the temporary file is removed.
+    A cache hit returns without running ffprobe or ffmpeg. A clip whose failure was recorded
+    less than :data:`FAILURE_TTL_SECONDS` ago raises that failure, also with no process. A
+    miss probes the clip's resolved path for its duration (recorded in ``<key>.json``),
+    extracts the frame at ``position × duration`` (tone-mapped first when the probe flags the
+    clip HDR) into a temporary file in ``cache_dir`` (created when absent, and swept of stale
+    temporaries once per process), ``fsync``s it and renames it to ``<key>.jpg``. The source
+    clip is only read. On any failure, interruption included, the temporary file is removed;
+    a :class:`ThumbnailError` is also recorded in ``<key>.fail``, a success removes it.
 
     Raises:
         ThumbnailError: the clip cannot be statted or probed, has no usable
-            duration, or gave no frame at that time; the message starts with the
-            clip's path, and ``reason`` names the cause without it.
+            duration, or gave no frame at that time (or this was recorded in the last
+            minute); the message starts with the clip's path, and ``reason`` names the
+            cause without it.
         ThumbnailCacheError: ``cache_dir`` cannot be created, read or written, or is full.
     """
     clip_path = Path(clip_path)
@@ -218,7 +232,38 @@ def thumbnail_for(
     target = cache_dir / f"{key}.jpg"
     if is_cached(target):
         return target
+    # Outside the recording handler below: reading a failure must not renew it.
+    failure = recorded_failure(clip_path, target)
+    if failure is not None:
+        raise failure
 
+    try:
+        generated = _generate(
+            clip_path,
+            key=key,
+            target=target,
+            cache_dir=cache_dir,
+            position=position,
+            runtime=runtime,
+        )
+    except ThumbnailError as exc:
+        _record_failure(target, exc.reason)
+        raise
+    with contextlib.suppress(OSError):
+        _sidecar(target, ".fail").unlink()
+    return generated
+
+
+def _generate(
+    clip_path: Path,
+    *,
+    key: str,
+    target: Path,
+    cache_dir: Path,
+    position: float,
+    runtime: Optional[FfmpegRuntime],
+) -> Path:
+    """Probe the clip, record its duration, extract the frame and rename it to ``target``."""
     runtime = (runtime or get_default_runtime()).with_timeout(THUMBNAIL_TIMEOUT)
     # The resolved, absolute path: a relative ``file:x.mp4`` would be read as a protocol.
     source = clip_path.resolve()
@@ -229,6 +274,7 @@ def thumbnail_for(
     tmp = cache_dir / f".{key}.{uuid.uuid4().hex}.tmp"
     try:
         _create_temporary(cache_dir, tmp)
+        _record_duration(cache_dir, target, duration)
         _extract(clip_path, source, runtime, at=at, duration=duration, hdr=probed.hdr, output=tmp)
         _finalize(cache_dir, tmp, target)
     except BaseException:
@@ -237,6 +283,104 @@ def thumbnail_for(
         raise
     logger.debug("Thumbnail of %s at %.3fs: %s", clip_path, at, target)
     return target
+
+
+def _sidecar(target: Path, suffix: str) -> Path:
+    """The sidecar beside the JPEG ``target``: the same key with ``.json`` or ``.fail``."""
+    return target.with_suffix(suffix)
+
+
+def _write_sidecar(cache_dir: Path, target: Path, suffix: str, payload: object) -> None:
+    """Write ``payload`` as JSON to the sidecar of ``target``: temporary, ``fsync``, rename.
+
+    The temporary has the engine's temporary-file name, so a crash mid-write is swept like
+    a crashed extraction. It is removed on any failure; an :class:`OSError` propagates.
+    """
+    destination = _sidecar(target, suffix)
+    tmp = cache_dir / f".{target.stem}.{uuid.uuid4().hex}.tmp"
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)  # umask applies
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, destination)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        raise
+
+
+def _record_duration(cache_dir: Path, target: Path, duration: float) -> None:
+    """Record the probed ``duration`` in ``<key>.json``; failing to write it is a cache error."""
+    try:
+        _write_sidecar(cache_dir, target, ".json", {"duration": duration})
+    except OSError as exc:
+        raise ThumbnailCacheError(f"{cache_dir}: cannot write thumbnails: {exc}") from exc
+
+
+def recorded_duration(target: Path) -> Optional[float]:
+    """The duration recorded beside the thumbnail ``target``, or ``None`` when unknown.
+
+    Reads ``<key>.json`` and nothing else: no ffprobe, no ffmpeg, no write. The file being
+    absent or unreadable, not a JSON object, or holding a ``duration`` that is not a number
+    (a bool is not one), not finite or not positive all read as ``None``; a damaged file is
+    never turned into a number and this never raises.
+    """
+    sidecar = _sidecar(Path(target), ".json")
+    try:
+        document = json.loads(sidecar.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:  # ValueError: invalid JSON or text
+        logger.debug("Cannot use the recorded duration %s: %s", sidecar, exc)
+        return None
+    duration = document.get("duration") if isinstance(document, dict) else None
+    if isinstance(duration, bool) or not isinstance(duration, (int, float)):
+        return None
+    if not math.isfinite(duration) or duration <= 0:
+        return None
+    return float(duration)
+
+
+def recorded_failure(clip_path: Path, target: Path) -> Optional[ThumbnailError]:
+    """The :class:`ThumbnailError` recorded for the thumbnail ``target`` if it is still fresh.
+
+    Fresh means ``<key>.fail`` is valid JSON with a string ``reason`` and was written less
+    than :data:`FAILURE_TTL_SECONDS` ago (its modification time; a time in the future counts
+    as expired). Expired, damaged or absent is ``None`` and the clip is attempted again. Runs
+    no process and writes nothing, so reading never renews the window.
+
+    Raises:
+        ThumbnailCacheError: the cache directory cannot be read.
+    """
+    marker = _sidecar(Path(target), ".fail")
+    try:
+        age = time.time() - marker.stat().st_mtime
+        if not 0 <= age < FAILURE_TTL_SECONDS:
+            return None
+        document = json.loads(marker.read_text(encoding="utf-8"))
+    except (FileNotFoundError, NotADirectoryError, IsADirectoryError):  # no such marker
+        return None
+    except ValueError as exc:  # invalid JSON or text
+        logger.debug("Cannot use the recorded failure %s: %s", marker, exc)
+        return None
+    except OSError as exc:
+        raise ThumbnailCacheError(f"{marker.parent}: cannot read thumbnails: {exc}") from exc
+    reason = document.get("reason") if isinstance(document, dict) else None
+    if not isinstance(reason, str):
+        return None
+    return ThumbnailError(str(clip_path), reason)
+
+
+def _record_failure(target: Path, reason: str) -> None:
+    """Remember a clip's failure in ``<key>.fail``; best effort, never replaces the error."""
+    cache_dir = target.parent
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        _write_sidecar(cache_dir, target, ".fail", {"reason": reason})
+    except OSError as exc:
+        logger.warning("Cannot record the thumbnail failure in %s: %s", cache_dir, exc)
 
 
 class _Probed(NamedTuple):
@@ -461,12 +605,15 @@ def _finalize(cache_dir: Path, tmp: Path, target: Path) -> None:
 
 
 __all__ = [
+    "FAILURE_TTL_SECONDS",
     "STALE_TEMPORARY_AGE",
     "THUMBNAIL_BOX",
     "THUMBNAIL_TIMEOUT",
     "THUMBNAIL_VERSION",
     "is_cached",
     "one_line_cause",
+    "recorded_duration",
+    "recorded_failure",
     "sweep_stale_temporaries",
     "thumbnail_args",
     "thumbnail_for",

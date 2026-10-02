@@ -6,6 +6,7 @@ when no ffmpeg >= 7.1 is available. Output sizes are read back with ffprobe.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -18,6 +19,10 @@ import pytest
 from auto_reel_ng.errors import FfmpegError, ThumbnailError
 from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
 from auto_reel_ng.probe import probe_media
+from auto_reel_ng.thumbs import (
+    recorded_duration,
+    recorded_failure,
+)
 from auto_reel_ng.thumbs import thumbnail as thumbnail_module
 from auto_reel_ng.thumbs import thumbnail_args, thumbnail_for, thumbnail_path
 
@@ -100,7 +105,7 @@ def test_a_corrupt_clip_with_a_non_utf8_name_reports_the_probes_failure(
     assert exc.value.reason.startswith("ffprobe could not read: Command exited 1: ")
     assert "Invalid data found when processing input" in exc.value.reason
     assert "could not be decoded" not in exc.value.reason
-    assert _cache_files(cache_dir, "*") == []
+    assert [f.suffix for f in _cache_files(cache_dir, "*")] == [".fail"]  # no .jpg, no duration
 
 
 #: A stand-in ffmpeg/ffprobe: answers ``-version``, records its pid, then hangs.
@@ -176,7 +181,7 @@ def test_an_extraction_that_hangs_times_out_naming_the_time(
     assert "timed out after 0.5s" in exc.value.reason
     assert len(_pids(tmp_path)) == 1  # one attempt, no other timestamp
     _assert_none_alive(_pids(tmp_path))
-    assert _cache_files(cache_dir, "*") == []
+    assert [f.suffix for f in _cache_files(cache_dir, "*")] == [".fail", ".json"]  # no .jpg
 
 
 def test_a_truncated_copy_past_its_cut_has_no_thumbnail(
@@ -336,3 +341,61 @@ def test_the_stderr_of_a_real_full_disk_is_classified_as_one(
         runtime.run(thumbnail_args(clip, at=0.25, output=Path("/dev/full")))
     phrase = thumbnail_module._full_disk_phrase(exc.value)  # pylint: disable=protected-access
     assert phrase is not None
+
+
+def _count_probes(monkeypatch: pytest.MonkeyPatch) -> List[Path]:
+    """Record every ``probe_media`` call the thumbnail path makes for this test only."""
+    probed: List[Path] = []
+    real_probe = thumbnail_module.probe_media
+
+    def spy(path: Path, **kwargs: object) -> object:
+        probed.append(Path(path))
+        return real_probe(path, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(thumbnail_module, "probe_media", spy)
+    return probed
+
+
+def test_a_generated_clip_records_the_duration_the_probe_reports(
+    tmp_path: Path, make_clip, runtime: FfmpegRuntime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clip = make_clip("clip.mp4", width=640, height=360, duration=1.0)
+    cache_dir = tmp_path / "cache"
+    probed = _count_probes(monkeypatch)
+    runs = _spy_on_run(runtime, monkeypatch)
+
+    jpg = thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
+
+    expected = probe_media(clip, runtime=runtime).duration
+    assert expected > 0
+    assert json.loads(jpg.with_suffix(".json").read_text()) == {"duration": expected}
+    assert recorded_duration(jpg) == expected
+    assert len(probed) == 1 and len(runs) == 1  # reading the duration ran nothing
+
+    assert thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime) == jpg
+    assert len(probed) == 1 and len(runs) == 1  # a cache hit
+
+
+def test_a_clip_that_fails_is_remembered_and_not_probed_again(
+    tmp_path: Path, runtime: FfmpegRuntime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clip = tmp_path / "random.mp4"
+    clip.write_bytes(os.urandom(4096))
+    cache_dir = tmp_path / "cache"
+    probed = _count_probes(monkeypatch)
+    runs = _spy_on_run(runtime, monkeypatch)
+
+    with pytest.raises(ThumbnailError) as first:
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
+    marker = thumbnail_path(clip, position=0.25, cache_dir=cache_dir).with_suffix(".fail")
+    assert json.loads(marker.read_text()) == {"reason": first.value.reason}
+    assert len(probed) == 1
+
+    with pytest.raises(ThumbnailError) as second:
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
+
+    assert second.value.reason == first.value.reason
+    assert str(second.value) == str(first.value)
+    assert len(probed) == 1 and runs == []  # neither ffprobe nor ffmpeg ran again
+    target = thumbnail_path(clip, position=0.25, cache_dir=cache_dir)
+    assert isinstance(recorded_failure(clip, target), ThumbnailError)

@@ -8,6 +8,8 @@ monkeypatched. The real extraction is covered by ``test_thumbs_ffmpeg.py``.
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 import shutil
 import subprocess
@@ -28,8 +30,11 @@ from auto_reel_ng.errors import (
     ThumbnailError,
 )
 from auto_reel_ng.thumbs import (
+    FAILURE_TTL_SECONDS,
     STALE_TEMPORARY_AGE,
     one_line_cause,
+    recorded_duration,
+    recorded_failure,
     sweep_stale_temporaries,
 )
 from auto_reel_ng.thumbs import thumbnail as thumbnail_module
@@ -113,6 +118,12 @@ def _clip(directory: Path, name: str = "s1710001.mp4", data: bytes = b"clip-byte
 
 def _leftovers(cache_dir: Path) -> List[str]:
     return sorted(p.name for p in cache_dir.iterdir()) if cache_dir.exists() else []
+
+
+def _beside(clip: Path, cache_dir: Path, *suffixes: str, position: float = 0.25) -> List[str]:
+    """The sorted names of the clip's cache files with these suffixes (``.jpg``, ``.json``, ``.fail``)."""
+    stem = thumbnail_path(clip, position=position, cache_dir=cache_dir).stem
+    return sorted(f"{stem}{suffix}" for suffix in suffixes)
 
 
 # --------------------------------------------------------------------------- #
@@ -315,7 +326,9 @@ def test_a_full_disk_is_a_cache_error_not_the_clips_failure(
     assert not isinstance(exc.value, ThumbnailError)
     assert str(exc.value).startswith(f"{cache_dir}: cannot write thumbnails: ")
     assert stderr.rsplit(": ", 1)[-1] in str(exc.value)
-    assert _leftovers(cache_dir) == []  # no temporary, no .jpg
+    assert _leftovers(cache_dir) == _beside(
+        clip, cache_dir, ".json"
+    )  # the probe was real; no .jpg, no .fail
 
 
 def test_a_clip_named_after_the_full_disk_error_is_still_the_clips_error(
@@ -331,7 +344,7 @@ def test_a_clip_named_after_the_full_disk_error_is_still_the_clips_error(
 
     with pytest.raises(ThumbnailError):
         thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime(error=failure))
-    assert _leftovers(cache_dir) == []
+    assert _leftovers(cache_dir) == _beside(clip, cache_dir, ".json", ".fail")
 
 
 def test_after_a_full_disk_the_same_call_generates_the_thumbnail(
@@ -346,7 +359,7 @@ def test_after_a_full_disk_the_same_call_generates_the_thumbnail(
 
     result = thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime())
     assert result.read_bytes() == FAKE_JPEG
-    assert _leftovers(cache_dir) == [result.name]
+    assert _leftovers(cache_dir) == _beside(clip, cache_dir, ".jpg", ".json")  # no .tmp remains
 
 
 # --------------------------------------------------------------------------- #
@@ -595,7 +608,7 @@ def test_a_miss_extracts_once_at_a_quarter_of_the_duration(
     assert args[args.index("-ss") + 1] == "15.360"
     assert result == thumbnail_path(clip, position=0.25, cache_dir=cache_dir)
     assert result.read_bytes() == FAKE_JPEG
-    assert _leftovers(cache_dir) == [result.name]  # no .tmp remains
+    assert _leftovers(cache_dir) == _beside(clip, cache_dir, ".jpg", ".json")  # no .tmp remains
 
 
 def test_a_clip_the_probe_flags_hdr_is_tone_mapped_first(
@@ -760,7 +773,7 @@ def test_an_extraction_that_times_out_is_the_clips_failure_and_leaves_nothing(
     assert "timed out after 60s" in exc.value.reason
     assert "no frame" not in exc.value.reason
     assert len(runtime.calls) == 1  # no other timestamp
-    assert _leftovers(cache_dir) == []
+    assert _leftovers(cache_dir) == _beside(clip, cache_dir, ".json", ".fail")
 
 
 def test_a_probe_that_times_out_is_the_clips_failure_and_runs_no_ffmpeg(
@@ -779,7 +792,7 @@ def test_a_probe_that_times_out_is_the_clips_failure_and_runs_no_ffmpeg(
 
     assert exc.value.reason == "ffprobe could not read: Command timed out after 60s: ffprobe"
     assert runtime.calls == []
-    assert _leftovers(cache_dir) == []
+    assert _leftovers(cache_dir) == _beside(clip, cache_dir, ".fail")  # no duration was learned
 
 
 def test_an_ffmpeg_failure_is_no_frame_and_leaves_nothing(
@@ -798,7 +811,7 @@ def test_an_ffmpeg_failure_is_no_frame_and_leaves_nothing(
     assert message.startswith(f"{clip}: no frame extracted at 6.960s of 27.840s")
     assert stderr in message
     assert len(runtime.calls) == 1  # one attempt, no other timestamp
-    assert _leftovers(cache_dir) == []
+    assert _leftovers(cache_dir) == _beside(clip, cache_dir, ".json", ".fail")
 
 
 def test_exit_zero_with_an_empty_output_is_no_frame(
@@ -810,7 +823,7 @@ def test_exit_zero_with_an_empty_output_is_no_frame(
     with pytest.raises(ThumbnailError) as exc:
         thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime(payload=b""))
     assert str(exc.value).startswith(f"{clip}: no frame extracted at 6.960s of 27.840s")
-    assert _leftovers(cache_dir) == []
+    assert _leftovers(cache_dir) == _beside(clip, cache_dir, ".json", ".fail")
 
 
 def test_an_uncreatable_cache_is_a_cache_error_not_a_clip_error(
@@ -903,7 +916,7 @@ def test_an_interrupt_propagates_and_leaves_nothing(
             cache_dir=cache_dir,
             runtime=FakeRuntime(error=KeyboardInterrupt()),
         )
-    assert _leftovers(cache_dir) == []
+    assert _leftovers(cache_dir) == _beside(clip, cache_dir, ".json")  # no .jpg, no .tmp, no .fail
 
 
 def test_a_changed_clip_gets_a_new_thumbnail(
@@ -962,7 +975,7 @@ def test_a_library_copied_elsewhere_is_a_cache_hit(
 
     assert second == first
     assert len(calls) == 1 and len(runtime.calls) == 1  # the copy ran neither probe nor ffmpeg
-    assert _leftovers(cache_dir) == [first.name]
+    assert _leftovers(cache_dir) == _beside(clip, cache_dir, ".jpg", ".json")
 
 
 def test_two_concurrent_generations_of_one_thumbnail(
@@ -992,7 +1005,7 @@ def test_two_concurrent_generations_of_one_thumbnail(
     assert len(runtime.calls) == 2
     assert results[0] == results[1]
     assert results[0].read_bytes() == FAKE_JPEG
-    assert _leftovers(cache_dir) == [results[0].name]
+    assert _leftovers(cache_dir) == _beside(clip, cache_dir, ".jpg", ".json")
 
 
 # --- one_line_cause: the ERROR line's and the problem detail's cause ------------
@@ -1066,3 +1079,473 @@ def test_one_line_cause_of_a_timeout_leaves_out_its_stderr(tmp_path: Path) -> No
         one_line_cause(reason, clip)
         == "ffmpeg timed out extracting the frame at 15.360s: Command timed out after 60s"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Sidecars: the duration file and the failure marker beside the JPEG
+# --------------------------------------------------------------------------- #
+
+
+def _no_frame() -> FakeRuntime:
+    """A runtime whose ffmpeg finds no frame, the failure that is the clip's own."""
+    return FakeRuntime(error=FfmpegError("Command exited 234: ffmpeg ...\nstderr:\nno frame"))
+
+
+def _age(path: Path, seconds: float) -> None:
+    """Make ``path`` look ``seconds`` old (negative: dated in the future)."""
+    when = time.time() - seconds
+    os.utime(path, (when, when))
+
+
+def _skip_as_root() -> None:
+    if os.geteuid() == 0:
+        pytest.skip("root ignores directory permissions")
+
+
+def test_a_sidecar_is_written_complete_under_the_right_name(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    target = cache_dir / ("ab" * 32 + ".jpg")
+
+    thumbnail_module._write_sidecar(  # pylint: disable=protected-access
+        cache_dir, target, ".json", {"duration": 27.84}
+    )
+
+    assert _leftovers(cache_dir) == ["ab" * 32 + ".json"]  # no temporary remains
+    assert json.loads((cache_dir / ("ab" * 32 + ".json")).read_text()) == {"duration": 27.84}
+
+
+def test_a_sidecar_that_cannot_be_written_raises_and_leaves_nothing(tmp_path: Path) -> None:
+    _skip_as_root()
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    target = cache_dir / ("ab" * 32 + ".jpg")
+    cache_dir.chmod(0o555)
+    try:
+        with pytest.raises(OSError):
+            thumbnail_module._write_sidecar(  # pylint: disable=protected-access
+                cache_dir, target, ".fail", {"reason": "x"}
+            )
+    finally:
+        cache_dir.chmod(0o755)
+    assert _leftovers(cache_dir) == []
+
+
+def test_a_generation_records_the_probed_duration_beside_the_jpeg(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    calls = probe_calls(duration=27.84)
+    runtime = FakeRuntime()
+    jpg = thumbnail_for(clip, position=0.5, cache_dir=cache_dir, runtime=runtime)
+    assert json.loads(jpg.with_suffix(".json").read_text()) == {"duration": 27.84}
+
+    # Reading it costs no process at all.
+    assert recorded_duration(jpg) == 27.84
+    assert len(calls) == 1 and len(runtime.calls) == 1
+
+
+def test_a_failed_extraction_still_records_the_duration(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    probe_calls(duration=27.84)
+    target = thumbnail_path(clip, position=0.25, cache_dir=cache_dir)
+    with pytest.raises(ThumbnailError):
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=_no_frame())
+    assert recorded_duration(target) == 27.84
+    assert not target.exists()
+
+
+@pytest.mark.parametrize("duration", [0.0, float("nan"), float("inf"), -3.0])
+def test_a_probe_without_a_usable_duration_records_none(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls], duration: float
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    probe_calls(duration=duration)
+    with pytest.raises(ThumbnailError):
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime())
+    assert _leftovers(cache_dir) == _beside(clip, cache_dir, ".fail")
+    assert recorded_duration(thumbnail_path(clip, position=0.25, cache_dir=cache_dir)) is None
+
+
+def test_a_failed_probe_and_a_vanished_clip_record_no_duration(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    probe_calls(error=ProbeError("File is empty (zero bytes)"))
+    with pytest.raises(ThumbnailError):
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime())
+    target = thumbnail_path(clip, position=0.25, cache_dir=cache_dir)
+    assert recorded_duration(target) is None
+
+    gone = tmp_path / "gone.mp4"
+    with pytest.raises(ThumbnailError, match="cannot stat the clip"):
+        thumbnail_for(gone, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime())
+    assert _leftovers(cache_dir) == _beside(clip, cache_dir, ".fail")  # only the first clip's
+
+
+def test_a_cache_hit_creates_no_duration_file_and_runs_no_probe(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    calls = probe_calls()
+    target = thumbnail_path(clip, position=0.25, cache_dir=cache_dir)
+    cache_dir.mkdir()
+    target.write_bytes(FAKE_JPEG)  # made before sidecars existed
+
+    runtime = FakeRuntime()
+    assert thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime) == target
+
+    assert calls == [] and runtime.calls == []
+    assert _leftovers(cache_dir) == [target.name]
+    assert recorded_duration(target) is None
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param("not json", id="not-json"),
+        pytest.param("", id="empty"),
+        pytest.param("[61.0]", id="not-an-object"),
+        pytest.param("{}", id="no-member"),
+        pytest.param('{"duration": 0}', id="zero"),
+        pytest.param('{"duration": -1}', id="negative"),
+        pytest.param('{"duration": "61"}', id="string"),
+        pytest.param('{"duration": true}', id="bool"),
+        pytest.param('{"duration": null}', id="null"),
+        pytest.param('{"duration": NaN}', id="nan"),
+        pytest.param('{"duration": Infinity}', id="infinite"),
+    ],
+)
+def test_a_damaged_duration_file_reads_as_unknown(tmp_path: Path, content: str) -> None:
+    target = tmp_path / ("cd" * 32 + ".jpg")
+    target.with_suffix(".json").write_text(content)
+    assert recorded_duration(target) is None
+
+
+def test_a_duration_that_is_not_a_readable_file_reads_as_unknown(tmp_path: Path) -> None:
+    target = tmp_path / ("cd" * 32 + ".jpg")
+    assert recorded_duration(target) is None  # absent
+    target.with_suffix(".json").mkdir()  # a directory in its place
+    assert recorded_duration(target) is None
+    assert recorded_duration(tmp_path / "no-such-dir" / "x.jpg") is None
+
+
+def test_an_integer_duration_reads_as_a_float(tmp_path: Path) -> None:
+    target = tmp_path / ("cd" * 32 + ".jpg")
+    target.with_suffix(".json").write_text('{"duration": 61}')
+    assert recorded_duration(target) == 61.0
+
+
+def test_a_changed_clip_does_not_inherit_the_recorded_duration(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    probe_calls(duration=27.84)
+    old = thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime())
+    stat = clip.stat()
+    os.utime(clip, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+
+    new = thumbnail_path(clip, position=0.25, cache_dir=cache_dir)
+    assert new != old
+    assert recorded_duration(new) is None
+    assert recorded_duration(old) == 27.84  # the old file is left in place
+
+
+def test_a_duration_that_cannot_be_written_is_a_cache_error(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    probe_calls()
+
+    def full(*_args: object, **_kwargs: object) -> None:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(thumbnail_module, "_write_sidecar", full)
+    runtime = FakeRuntime()
+    with pytest.raises(ThumbnailCacheError) as exc:
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
+    assert not isinstance(exc.value, ThumbnailError)
+    assert str(exc.value).startswith(f"{cache_dir}: cannot write thumbnails")
+    assert runtime.calls == []
+    assert _leftovers(cache_dir) == []  # no temporary, and the cache fault is not remembered
+
+
+def _marker(clip: Path, cache_dir: Path) -> Path:
+    return thumbnail_path(clip, position=0.25, cache_dir=cache_dir).with_suffix(".fail")
+
+
+def test_a_failure_is_recorded_and_repeated_without_a_process(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    calls = probe_calls(duration=27.84)
+    runtime = _no_frame()
+    with pytest.raises(ThumbnailError) as first:
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
+    assert json.loads(_marker(clip, cache_dir).read_text()) == {"reason": first.value.reason}
+    assert not thumbnail_path(clip, position=0.25, cache_dir=cache_dir).exists()
+    _age(_marker(clip, cache_dir), 5)
+
+    with pytest.raises(ThumbnailError) as second:
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
+
+    assert (second.value.clip, second.value.reason) == (first.value.clip, first.value.reason)
+    assert str(second.value) == str(first.value)
+    assert len(calls) == 1 and len(runtime.calls) == 1  # nothing ran the second time
+
+
+def test_a_recorded_failure_expires_after_the_window(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    calls = probe_calls()
+    with pytest.raises(ThumbnailError):
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=_no_frame())
+    _age(_marker(clip, cache_dir), FAILURE_TTL_SECONDS + 1)
+
+    with pytest.raises(ThumbnailError):
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=_no_frame())
+    assert len(calls) == 2  # tried again
+
+    _age(_marker(clip, cache_dir), FAILURE_TTL_SECONDS + 1)
+    runtime = FakeRuntime()
+    jpg = thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
+    assert len(calls) == 3 and len(runtime.calls) == 1
+    assert not _marker(clip, cache_dir).exists()  # a success removes the expired marker
+    assert jpg.read_bytes() == FAKE_JPEG
+
+
+def test_reading_a_recorded_failure_does_not_renew_it(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    calls = probe_calls()
+    with pytest.raises(ThumbnailError):
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=_no_frame())
+    marker = _marker(clip, cache_dir)
+    _age(marker, 50)
+    written = marker.stat().st_mtime_ns
+    with pytest.raises(ThumbnailError):
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=_no_frame())
+    assert len(calls) == 1  # answered from the marker
+    assert marker.stat().st_mtime_ns == written  # the read touched nothing
+
+    _age(marker, 70)  # 20 s later still: 70 s since the failed attempt
+    with pytest.raises(ThumbnailError):
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=_no_frame())
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "age,fresh",
+    [(0, True), (5, True), (59, True), (61, False), (3600, False), (-10, False)],
+)
+def test_recorded_failure_is_fresh_for_the_window_only(
+    tmp_path: Path, age: int, fresh: bool
+) -> None:
+    clip = _clip(tmp_path)
+    target = tmp_path / ("ef" * 32 + ".jpg")
+    marker = target.with_suffix(".fail")
+    marker.write_text(json.dumps({"reason": "no frame extracted at 6.960s"}))
+    _age(marker, age)
+
+    found = recorded_failure(clip, target)
+
+    if fresh:
+        assert isinstance(found, ThumbnailError)
+        assert (found.clip, found.reason) == (str(clip), "no frame extracted at 6.960s")
+    else:
+        assert found is None
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param("not json", id="not-json"),
+        pytest.param("", id="empty"),
+        pytest.param('{"reason": 3}', id="reason-not-a-string"),
+        pytest.param("{}", id="no-reason"),
+        pytest.param('["no frame"]', id="not-an-object"),
+    ],
+)
+def test_a_damaged_marker_is_ignored(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls], content: str
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    _marker(clip, cache_dir).write_text(content)
+    assert recorded_failure(clip, _marker(clip, cache_dir).with_suffix(".jpg")) is None
+
+    probe_calls()
+    jpg = thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime())
+    assert jpg.read_bytes() == FAKE_JPEG  # attempted as if no marker existed
+    assert not _marker(clip, cache_dir).exists()
+
+
+def test_a_marker_with_no_cache_directory_or_a_directory_in_its_place_is_none(
+    tmp_path: Path,
+) -> None:
+    clip = _clip(tmp_path)
+    assert recorded_failure(clip, tmp_path / "absent" / "k.jpg") is None
+    blocker = tmp_path / "file"
+    blocker.write_bytes(b"")
+    assert recorded_failure(clip, blocker / "k.jpg") is None
+    directory = tmp_path / "k.jpg"
+    directory.with_suffix(".fail").mkdir()
+    assert recorded_failure(clip, directory) is None
+
+
+def test_an_unreadable_cache_directory_is_a_cache_error_when_reading_a_marker(
+    tmp_path: Path,
+) -> None:
+    _skip_as_root()
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cache_dir.chmod(0)
+    try:
+        with pytest.raises(ThumbnailCacheError) as exc:
+            recorded_failure(clip, cache_dir / ("ab" * 32 + ".jpg"))
+    finally:
+        cache_dir.chmod(0o755)
+    assert not isinstance(exc.value, ThumbnailError)
+    assert str(exc.value).startswith(f"{cache_dir}: cannot read thumbnails")
+
+
+def test_a_cached_jpeg_wins_over_a_recorded_failure(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    calls = probe_calls()
+    target = thumbnail_path(clip, position=0.25, cache_dir=cache_dir)
+    cache_dir.mkdir()
+    target.write_bytes(FAKE_JPEG)
+    _marker(clip, cache_dir).write_text('{"reason": "no frame"}')
+
+    assert thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime()) == target
+    assert calls == []
+
+
+def test_a_read_only_cache_records_no_failure_and_tries_again(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls], caplog: pytest.LogCaptureFixture
+) -> None:
+    _skip_as_root()
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "read-only"
+    cache_dir.mkdir()
+    cache_dir.chmod(0o555)
+    calls = probe_calls()
+    try:
+        with caplog.at_level(logging.WARNING, logger=thumbnail_module.logger.name):
+            for _ in range(2):  # the cache is the fault: nothing is remembered
+                with pytest.raises(ThumbnailCacheError):
+                    thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=_no_frame())
+    finally:
+        cache_dir.chmod(0o755)
+    assert len(calls) == 2
+    assert _leftovers(cache_dir) == []
+
+
+def test_a_marker_that_cannot_be_written_does_not_replace_the_clips_error(
+    tmp_path: Path,
+    probe_calls: Callable[..., ProbeCalls],
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _skip_as_root()
+    # An earlier test's logging config (alembic's ``fileConfig``) may have disabled this logger.
+    monkeypatch.setattr(thumbnail_module.logger, "disabled", False)
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "read-only"
+    cache_dir.mkdir()
+    cache_dir.chmod(0o555)
+    calls = probe_calls(error=ProbeError("File is empty (zero bytes)"))  # fails before any write
+    try:
+        with caplog.at_level(logging.WARNING, logger=thumbnail_module.logger.name):
+            with pytest.raises(ThumbnailError) as first:
+                thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime())
+            with pytest.raises(ThumbnailError) as second:
+                thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime())
+    finally:
+        cache_dir.chmod(0o755)
+    assert first.value.reason == second.value.reason == "File is empty (zero bytes)"
+    assert len(calls) == 2  # nothing was remembered, so the second call tried again
+    assert any("Cannot record the thumbnail failure" in r.getMessage() for r in caplog.records)
+    assert _leftovers(cache_dir) == []
+
+
+def test_a_cache_error_from_the_runtime_is_never_remembered(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    probe_calls()
+    full = FakeRuntime(error=_ffmpeg_failure("No space left on device"))
+    with pytest.raises(ThumbnailCacheError):
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=full)
+    assert not _marker(clip, cache_dir).exists()
+
+
+def test_an_interrupted_attempt_records_no_failure(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    probe_calls()
+    with pytest.raises(KeyboardInterrupt):
+        thumbnail_for(
+            clip, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime(error=KeyboardInterrupt())
+        )
+    assert not _marker(clip, cache_dir).exists()
+
+
+def test_a_clip_that_cannot_be_statted_records_no_failure(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "cache"
+    with pytest.raises(ThumbnailError, match="cannot stat the clip"):
+        thumbnail_for(tmp_path / "gone.mp4", position=0.25, cache_dir=cache_dir)
+    assert _leftovers(cache_dir) == []
+
+
+def test_a_timed_out_clip_is_remembered_like_any_other_failure(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    calls = probe_calls()
+    runtime = FakeRuntime(error=FfmpegTimeoutError("Command timed out after 60s: ffmpeg -i x"))
+    with pytest.raises(ThumbnailError) as first:
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
+    with pytest.raises(ThumbnailError) as second:
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
+    assert second.value.reason == first.value.reason
+    assert "timed out" in second.value.reason
+    assert len(calls) == 1 and len(runtime.calls) == 1
+
+
+def test_a_repaired_clip_is_not_held_back_by_the_old_marker(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    probe_calls()
+    with pytest.raises(ThumbnailError):
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=_no_frame())
+    clip.write_bytes(b"a good recording, a different size")  # new size and mtime: a new key
+
+    jpg = thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime())
+
+    assert jpg.read_bytes() == FAKE_JPEG

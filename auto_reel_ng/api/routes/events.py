@@ -25,7 +25,7 @@ from ...event.editorial import apply_editorial_write
 from ...ingest import LayoutError
 from ...reel.document import ReelDocument
 from ...staleness.fingerprint import editorial_hash
-from ...thumbs import is_cached, one_line_cause, thumbnail_for
+from ...thumbs import is_cached, one_line_cause, recorded_failure, thumbnail_for
 from .. import events_read
 from ..media import etag_matches
 from ..problem import (
@@ -271,16 +271,20 @@ def _read_extracted_thumbnail(path: Path) -> bytes:
 async def _serve_thumbnail(
     request: Request, source: events_read.ThumbnailSource, if_none_match: Optional[str]
 ) -> Response:
-    """The 304, the cached 200, or the 200 of an extraction under the gate.
+    """The 304, the cached 200, a recorded failure, or the 200 of an extraction under the gate.
 
-    A cached thumbnail never waits for a slot. The engine's errors propagate to the
-    route, which answers them by cause.
+    A cached thumbnail never waits for a slot, and neither does a clip whose failure the
+    engine recorded in the last minute: that failure is raised here with no process and no
+    slot. The engine's errors propagate to the route, which answers them by cause.
     """
     if if_none_match is not None and await _revalidated(if_none_match, source):
         return Response(status_code=304, headers=_thumbnail_headers(source.etag))
     body = await run_in_threadpool(_read_cached_thumbnail, source.cache_path)
     if body is not None:
         return Response(body, media_type="image/jpeg", headers=_thumbnail_headers(source.etag))
+    failure = await run_in_threadpool(recorded_failure, source.clip_path, source.cache_path)
+    if failure is not None:
+        raise failure
 
     gate: ThumbnailGate = request.app.state.thumbnail_gate
     extract = partial(
@@ -320,6 +324,9 @@ def _clip_failed(event_id: str, clip: str, exc: ThumbnailError) -> JSONResponse:
     )
 
 
+# The docstring below is the published OpenAPI description, so it is left as the contract's
+# wording; the engine remembers a clip's failure for 60 s and ``_serve_thumbnail`` answers it
+# again with no attempt (never a cache or ``config.yaml`` fault).
 @router.get(
     "/events/{event_id:path}/thumbnail",
     response_class=Response,

@@ -40,9 +40,11 @@ from auto_reel_ng.api.schemas import EventFailure
 from auto_reel_ng.api.settings import ApiSettings, resolve_api_settings
 from auto_reel_ng.api.thumbnails import MAX_CONCURRENT_EXTRACTIONS, ThumbnailGate
 from auto_reel_ng.config.project import ConfigError
-from auto_reel_ng.errors import ThumbnailCacheError, ThumbnailError
+from auto_reel_ng.errors import ProbeError, ThumbnailCacheError, ThumbnailError
 from auto_reel_ng.event.discovery import DiskListing
 from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
+from auto_reel_ng.thumbs import thumbnail as thumbnail_module
+from auto_reel_ng.thumbs import thumbnail_for as engine_thumbnail_for
 from auto_reel_ng.thumbs import thumbnail_path
 
 #: A closed port, as the schema dump uses: the thumbnail route must never need it.
@@ -713,6 +715,203 @@ def test_a_config_that_is_not_utf8_has_no_kind(
     assert fake.calls == []
 
 
+# --- the engine's failure marker: a failed clip is answered again without an attempt ----
+
+
+class _CountingProbe:
+    """Stands in for ``probe_media`` in the engine: counts calls, optionally fails them."""
+
+    def __init__(self, error: Optional[Exception] = None) -> None:
+        self.calls: List[Path] = []
+        self.error = error
+
+    def __call__(self, path: Path, **_kwargs: object) -> object:
+        self.calls.append(Path(path))
+        if self.error is not None:
+            raise self.error
+        return type("Probed", (), {"duration": 1.0, "is_hdr": False})()
+
+
+class _WritingRuntime:
+    """An FfmpegRuntime stand-in whose ffmpeg writes a JPEG at the output path."""
+
+    def __init__(self) -> None:
+        self.calls: List[List[str]] = []
+
+    def with_timeout(self, _seconds: float) -> "_WritingRuntime":
+        return self
+
+    def run(self, args: List[str]) -> None:
+        self.calls.append(list(args))
+        Path(args[-1]).write_bytes(FAKE_JPEG)
+
+
+@pytest.fixture
+def failing_probe(monkeypatch: pytest.MonkeyPatch) -> _CountingProbe:
+    """The engine's probe fails with an empty-file error and counts its calls."""
+    probe = _CountingProbe(ProbeError("File is empty (zero bytes)"))
+    monkeypatch.setattr(thumbnail_module, "probe_media", probe)
+    return probe
+
+
+@pytest.fixture
+def real_client(app: FastAPI) -> Iterator[TestClient]:
+    """A client on the real engine (no fake ``thumbnail_for``), with a fake ffmpeg runtime."""
+    app.state.runtime = _WritingRuntime()
+    thumbnail_module._swept.clear()  # pylint: disable=protected-access
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def _engine_attempt(clip_path: Path, cache_dir: Path) -> None:
+    """One engine attempt, as the route's extraction makes it: records a failure it raises."""
+    engine_thumbnail_for(
+        clip_path,
+        position=0.25,
+        cache_dir=cache_dir,
+        runtime=_WritingRuntime(),  # type: ignore[arg-type]
+    )
+
+
+def _marker_of(project: Path, cache_dir: Path, event: str, clip: str) -> Path:
+    return _cache_path(project, cache_dir, event, clip).with_suffix(".fail")
+
+
+def test_a_failing_clip_is_answered_again_without_an_attempt(
+    real_client: TestClient, failing_probe: _CountingProbe, project: Path, cache_dir: Path
+) -> None:
+    first = real_client.get(_url(GRILLNING, "s1710001.mp4"))
+    second = real_client.get(_url(GRILLNING, "s1710001.mp4"))
+
+    assert first.status_code == second.status_code == 502
+    assert second.json() == first.json()
+    assert first.json()["thumbnail_failure"] == "thumbnail_failed"
+    assert first.json()["detail"] == "s1710001.mp4: File is empty (zero bytes)"
+    _assert_no_caching_headers(second)
+    assert len(failing_probe.calls) == 1  # the second request ran no probe
+    assert _marker_of(project, cache_dir, GRILLNING, "s1710001.mp4").is_file()
+    assert not _cache_path(project, cache_dir, GRILLNING, "s1710001.mp4").exists()
+
+
+def test_a_recorded_failure_is_answered_at_once_while_both_slots_are_held(
+    client: TestClient,
+    fake: FakeThumbnailFor,
+    failing_probe: _CountingProbe,
+    project: Path,
+    cache_dir: Path,
+) -> None:
+    clip_path = _event_dir(project, GRILLNING) / "s1710004.mp4"
+    with pytest.raises(ThumbnailError):  # the engine records the failure, as the route would
+        _engine_attempt(clip_path, cache_dir)
+    assert len(failing_probe.calls) == 1
+    fake.release.clear()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        slow = [
+            pool.submit(client.get, _url(GRILLNING, clip))
+            for clip in ("s1710001.mp4", "s1710002.mp4")
+        ]
+        deadline = time.monotonic() + 5
+        while fake.running < 2:
+            assert time.monotonic() < deadline, "the extractions never started"
+            time.sleep(0.005)
+
+        recorded = client.get(_url(GRILLNING, "s1710004.mp4"))
+        still_held = fake.running == 2 and not any(future.done() for future in slow)
+        fake.release.set()
+        for future in slow:
+            future.result(timeout=10)
+
+    assert still_held
+    assert recorded.status_code == 502
+    assert recorded.json()["thumbnail_failure"] == "thumbnail_failed"
+    assert recorded.json()["detail"] == "s1710004.mp4: File is empty (zero bytes)"
+    assert len(failing_probe.calls) == 1  # no ffprobe for the recorded clip
+    assert clip_path not in fake.calls  # and it never took a slot
+
+
+def test_a_recorded_failure_expires_after_sixty_seconds(
+    client: TestClient,
+    fake: FakeThumbnailFor,
+    failing_probe: _CountingProbe,
+    project: Path,
+    cache_dir: Path,
+) -> None:
+    clip_path = _event_dir(project, GRILLNING) / "s1710001.mp4"
+    with pytest.raises(ThumbnailError):
+        _engine_attempt(clip_path, cache_dir)
+    marker = _marker_of(project, cache_dir, GRILLNING, "s1710001.mp4")
+    when = time.time() - 5
+    os.utime(marker, (when, when))
+    assert client.get(_url(GRILLNING, "s1710001.mp4")).status_code == 502
+    assert fake.calls == []
+
+    when = time.time() - 61
+    os.utime(marker, (when, when))
+    response = client.get(_url(GRILLNING, "s1710001.mp4"))
+
+    assert response.status_code == 200  # tried again: the fake extraction ran
+    assert fake.calls == [clip_path]
+
+
+def test_a_cached_thumbnail_wins_over_a_recorded_failure(
+    client: TestClient, fake: FakeThumbnailFor, project: Path, cache_dir: Path
+) -> None:
+    assert client.get(_url(GRILLNING, "s1710001.mp4")).status_code == 200
+    marker = _marker_of(project, cache_dir, GRILLNING, "s1710001.mp4")
+    marker.write_text(json.dumps({"reason": "no frame extracted"}))
+
+    again = client.get(_url(GRILLNING, "s1710001.mp4"))
+
+    assert again.status_code == 200
+    assert again.content == FAKE_JPEG
+    assert len(fake.calls) == 1
+
+
+def test_revalidation_is_decided_before_a_recorded_failure(
+    client: TestClient, fake: FakeThumbnailFor, project: Path, cache_dir: Path
+) -> None:
+    key = _cache_path(project, cache_dir, GRILLNING, "s1710001.mp4").stem
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    _marker_of(project, cache_dir, GRILLNING, "s1710001.mp4").write_text('{"reason": "x"}')
+
+    response = client.get(_url(GRILLNING, "s1710001.mp4"), headers={"If-None-Match": f'"{key}"'})
+
+    assert response.status_code == 304
+    assert fake.calls == []
+
+
+def test_a_cache_fault_is_never_remembered_over_http(
+    real_client: TestClient,
+    app: FastAPI,
+    project: Path,
+    cache_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _skip_as_root()
+    probe = _CountingProbe()
+    monkeypatch.setattr(thumbnail_module, "probe_media", probe)
+    cache_dir.mkdir()
+    cache_dir.chmod(0o555)
+    try:
+        first = real_client.get(_url(GRILLNING, "s1710001.mp4"))
+        second = real_client.get(_url(GRILLNING, "s1710001.mp4"))
+    finally:
+        cache_dir.chmod(0o755)
+
+    for response in (first, second):
+        assert response.status_code == 502
+        assert "thumbnail_failure" not in response.json()
+        assert str(cache_dir) in response.json()["detail"]
+    assert len(probe.calls) == 2  # tried again: nothing was remembered
+    assert not _marker_of(project, cache_dir, GRILLNING, "s1710001.mp4").exists()
+
+
+def test_the_thumbnail_failure_kinds_are_unchanged() -> None:
+    from auto_reel_ng.api.schemas import ThumbnailFailure  # pylint: disable=import-outside-toplevel
+
+    assert [kind.value for kind in ThumbnailFailure] == ["thumbnail_failed"]
+
+
 def test_the_other_events_routes_keep_their_order(client: TestClient) -> None:
     """The suffix route shadows nothing: the detail and ``/reel`` still reach their own."""
     event = quote(GRILLNING, safe="/")
@@ -985,7 +1184,7 @@ def test_real_thumbnails_from_a_read_only_library(
             wide = client.get(_url(GRILLNING, "wide.mp4"))
             portrait = client.get(_url(GRILLNING, "portrait.mp4"))
             trasig = client.get(_url(GRILLNING, "trasig.mp4"))
-            retried = client.get(_url(GRILLNING, "trasig.mp4"))  # not remembered: tried again
+            retried = client.get(_url(GRILLNING, "trasig.mp4"))  # answered from the failure marker
         after = _tree_snapshot(root)
     finally:
         for path, mode in sorted(modes.items(), key=lambda item: len(item[0].parts)):
@@ -1006,6 +1205,14 @@ def test_real_thumbnails_from_a_read_only_library(
     assert body["detail"].startswith("trasig.mp4: ")
     assert "empty" in body["detail"]
     assert retried.json() == body
-    assert sorted(path.name for path in cache.iterdir()) == sorted(
-        [wide_jpeg.name, portrait_jpeg.name]
-    )
+    # The cache holds the two JPEGs, the two duration files beside them, and the one failure
+    # marker of the empty clip (the probe failed, so it has no duration file).
+    assert sorted(path.suffix for path in cache.iterdir()) == [
+        ".fail",
+        ".jpg",
+        ".jpg",
+        ".json",
+        ".json",
+    ]
+    assert (cache / wide_jpeg.with_suffix(".json").name).is_file()
+    assert (cache / portrait_jpeg.with_suffix(".json").name).is_file()
