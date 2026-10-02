@@ -21,7 +21,6 @@ import os
 from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
 from pathlib import Path, PurePosixPath
-from types import SimpleNamespace
 from typing import Callable, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import quote
 
@@ -51,6 +50,7 @@ from auto_reel_ng.api.schemas import EventFailure
 from auto_reel_ng.api.settings import ApiSettings, resolve_api_settings
 from auto_reel_ng.event.discovery import VIDEO_EXTENSIONS, DiskListing
 from auto_reel_ng.event.metadata import load_event_document
+from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
 from auto_reel_ng.reel.document import Metadata
 from auto_reel_ng.render import output_relpath
 from auto_reel_ng.staleness import COMPONENTS, manifest_path, rendered_output
@@ -437,6 +437,7 @@ def test_a_directory_at_the_expected_path_is_not_the_movie(
     settings: ApiSettings,
     movies: Dict[str, Path],
     tmp_path: Path,
+    runtime: FfmpegRuntime,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     movies[KALAS].rename(tmp_path / "aside.mp4")
@@ -455,9 +456,7 @@ def test_a_directory_at_the_expected_path_is_not_the_movie(
         movie_media(settings, KALAS)
     assert opened == []
     # The verdict agrees: a folder is a missing movie, exactly as an absent file is.
-    verdict = events_read.staleness_for(
-        settings, settings.project_root / KALAS, None, SimpleNamespace(version=(7, 1)), {}  # type: ignore[arg-type]
-    )
+    verdict = events_read.staleness_for(settings, settings.project_root / KALAS, None, runtime, {})
     assert "output" in verdict.reasons
 
 
