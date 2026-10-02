@@ -157,8 +157,13 @@ function EventRow({ event, lookAlike }: { event: EventSummary; lookAlike: boolea
       <td role="cell" className="cell-clips">
         <span className="clip-counts">
           <span className="clip-count">
-            {plural(event.clip_count, 'clip', 'clips')}
-            {event.ignored_count > 0 && ` · ${event.ignored_count} ignored`}
+            <span className="nowrap">{plural(event.clip_count, 'clip', 'clips')}</span>
+            {event.ignored_count > 0 && (
+              <>
+                {' '}
+                <span className="nowrap">{`· ${event.ignored_count} ignored`}</span>
+              </>
+            )}
           </span>
           {/* The same tone and icon as the clip statuses on the event page. */}
           {event.new_count > 0 && (

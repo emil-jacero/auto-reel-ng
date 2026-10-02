@@ -92,6 +92,16 @@ class ClipProperties:
         }
 
 
+def is_excluded(clips: Mapping[str, ClipProperties], identity: str) -> bool:
+    """Whether ``clips`` marks ``identity`` ``exclude: true`` (a clip with no entry is not).
+
+    The one definition of the rule: the engine's missing-clip check and plan, and the
+    API's read model, all ask this, so they cannot drift apart.
+    """
+    props = clips.get(identity)
+    return props is not None and props.exclude
+
+
 @dataclass(frozen=True)
 class Chapter:
     """An ordered chapter: a name and an ordered list of clip references (D-B)."""

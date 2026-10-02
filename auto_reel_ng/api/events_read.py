@@ -43,7 +43,7 @@ from ..ffmpeg.runtime import FfmpegRuntime
 from ..ingest import EventRef, get_layout
 from ..persistence.job_store import JobStore
 from ..persistence.models import Job
-from ..reel import ReelDocument, load_document
+from ..reel import ReelDocument, is_excluded, load_document
 from ..render import output_relpath
 from ..render.claims import output_collision as engine_output_collision
 from ..staleness.fingerprint import compute_fingerprint
@@ -324,10 +324,7 @@ def _file_facts(path: Path) -> Tuple[Optional[int], Optional[datetime]]:
 
 def _is_excluded(document: Optional[ReelDocument], identity: str) -> bool:
     """Whether the document marks ``identity`` ``exclude: true`` (``False`` with no document)."""
-    if document is None:
-        return False
-    props = document.clips.get(identity)
-    return props is not None and props.exclude
+    return document is not None and is_excluded(document.clips, identity)
 
 
 def blocking_missing(document: Optional[ReelDocument], result: ReconcileResult) -> Tuple[str, ...]:

@@ -15,6 +15,7 @@ from .document import (
     Metadata,
     ReelDocument,
     Trim,
+    is_excluded,
 )
 from .legacy import ImportResult, import_legacy, import_legacy_data
 from .parser import load_document, loads_document
@@ -31,6 +32,7 @@ __all__ = [
     "ClipRef",
     "ClipProperties",
     "Trim",
+    "is_excluded",
     # load / validate
     "load_document",
     "loads_document",

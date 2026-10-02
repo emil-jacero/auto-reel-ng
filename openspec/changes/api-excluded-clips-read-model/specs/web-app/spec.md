@@ -75,12 +75,15 @@ marked busy, and ignore further presses. The page SHALL handle every answer the 
 - **unknown event:** the page says the event no longer exists
 - **the project could not be scanned** (so the service could not check for another claimant): the page
   says so, with the service's detail, and that nothing was queued
+- **the service cannot reach its database** (a 503 whose problem body names the database as the failing
+  dependency): the page says the render was not queued because the service can't reach its database, with
+  the service's detail
 - **any other answer, or none:** the page says the render was not queued, with the status it received or
   that the service is not reachable. It MUST NOT name a cause the answer does not carry; a server error
   without a problem body is not reported as a database failure.
 
-The page MUST tell these outcomes apart by the published status and conflict kind, not by the problem's
-prose. Only an event page that shows the event's render state offers these controls; a page whose read
+The page MUST tell these outcomes apart by the published status, conflict kind and failing dependency, not by
+the problem's prose. Only an event page that shows the event's render state offers these controls; a page whose read
 failed offers none.
 
 Render anyway's confirmation asks about an event that is up to date and has no queued or running job. While
@@ -180,6 +183,18 @@ status, whose words say how the job stands. Focus SHALL NOT fall to the document
   queued by another client, reaches the page over the connection
 - **THEN** the dialog closes by itself, the page sends no enqueue request, and it shows that job queued, with
   keyboard focus on its job status
+
+#### Scenario: The database is down when Render is pressed
+- **WHEN** the operator presses Render on `2024-06-27 - Grillning med grannar` and the service answers 503
+  naming the database as the failing dependency
+- **THEN** no job is shown, and the page says the render was not queued because the service can't reach its
+  database, with the service's detail, and not that the project could not be scanned
+
+#### Scenario: A server error without a problem body is not a database failure
+- **WHEN** the operator presses Render on `2024-06-27 - Grillning med grannar` and the service answers 500
+  with no problem body, or answers 503 without naming the database
+- **THEN** the page says the render was not queued, with the status it received, and does not say that the
+  service can't reach its database
 
 ## MODIFIED Requirements
 
