@@ -11,7 +11,7 @@ import { Icon } from '../ui/Icon'
 import { toast } from '../ui/toast'
 import { JobProgress } from './JobProgress'
 import { announce } from './announce'
-import { NOT_QUEUED, SCAN_FAILED, eventName } from './labels'
+import { NOT_QUEUED, SCAN_FAILED, eventName, missingClipNames } from './labels'
 import { isActive, load, merge, track } from './store'
 import { useEventJob } from './useJob'
 
@@ -22,7 +22,8 @@ import { useEventJob } from './useJob'
  * toast would cover the Render controls of the rows below it. Every other answer
  * needs the operator's attention and raises a toast: the row has no room for an
  * alert. `name` is the event's title and date (`eventName`); a collision names
- * folders instead, since the events it names share their title and date.
+ * folders instead, since the events it names share their title and date. A refusal for
+ * missing clips names them (three, and how many more) and re-reads the list.
  */
 function tellRowAnswer(eventId: string, name: string, result: EnqueueResult): void {
   const open = { action: { label: 'Open', href: eventHref(eventId) } }
@@ -48,6 +49,15 @@ function tellRowAnswer(eventId: string, name: string, result: EnqueueResult): vo
       toast.error(`“${folderName(eventId)}” shares its movie file with ${others}`, open)
       break
     }
+    case 'missingClips':
+      // The row's read is out of date: name the clips, link to the page, and re-read so the
+      // row says that missing clips block its render instead of offering Render again.
+      toast.error(
+        `${name}: ${NOT_QUEUED} Missing from disk: ${missingClipNames(result.missing, 3)}.`,
+        open,
+      )
+      markEventsChanged()
+      break
     case 'problem':
       if (result.problem.status === 404) {
         toast.error(`No longer exists: ${name}`)
@@ -66,6 +76,11 @@ function tellRowAnswer(eventId: string, name: string, result: EnqueueResult): vo
     case 'unpublished':
       toast.error(`${name}: ${NOT_QUEUED} ${result.message}`)
       break
+    default: {
+      // A new answer kind is a `tsc --noEmit` error here until it is handled.
+      const unhandled: never = result
+      throw new Error(`unhandled enqueue answer ${String(unhandled)}`)
+    }
   }
 }
 

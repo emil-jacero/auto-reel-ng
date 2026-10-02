@@ -1600,7 +1600,7 @@
           "jobs"
         ],
         "summary": "Create Job",
-        "description": "``POST /api/v1/jobs`` (task 3.1, gated per change-detection §8.14).\n\nIdempotent enqueue, 409 on active duplicate, 200 \"fresh — not enqueued\" when\nthe event is fresh and ``force`` is false. The API never transitions job\nstatus itself (D-A6) — the gate decision is made here, at enqueue, the same\nas the CLI's own ``enqueue``.\n\nThe id must be one the events list shows, spelled as it spells it (else the 404 of an\nunknown event), and the event must be processable (else the events reads' 502 with its\nfailure kind). The output-collision check comes next, as the CLI decides it before\nanything else: an event whose output path another event of the project claims is a 409\n``output_collision``, fresh or stale, forced or not — never gated, never \"already\nactive\". A walk that fails leaves the rule unchecked, so it is the events list's\nscan-failure 502 and nothing is enqueued (Principle I).",
+        "description": "``POST /api/v1/jobs`` (task 3.1, gated per change-detection §8.14).\n\nIdempotent enqueue, 409 on active duplicate or a missing played clip, 200 \"fresh — not enqueued\" when\nthe event is fresh and ``force`` is false. The API never transitions job\nstatus itself (D-A6) — the gate decision is made here, at enqueue, the same\nas the CLI's own ``enqueue``.\n\nThe id must be one the events list shows, spelled as it spells it (else the 404 of an\nunknown event), and the event must be processable (else the events reads' 502 with its\nfailure kind). The output-collision check comes next, as the CLI decides it before\nanything else: an event whose output path another event of the project claims is a 409\n``output_collision``, fresh or stale, forced or not — never gated, never \"already\nactive\". A walk that fails leaves the rule unchecked, so it is the events list's\nscan-failure 502 and nothing is enqueued (Principle I). An active job is answered next, and\nthen an event that plays a clip missing from disk is a 409 ``missing_clips`` naming the\nclips — fresh or stale, forced or not, since that render could only fail at probe.",
         "operationId": "create_job_api_v1_jobs_post",
         "requestBody": {
           "required": true,
@@ -2187,7 +2187,8 @@
         "type": "string",
         "enum": [
           "active_job",
-          "output_collision"
+          "output_collision",
+          "missing_clips"
         ],
         "title": "EnqueueConflict",
         "description": "Why ``POST /api/v1/jobs`` refused an event with a 409: the API's classification."
@@ -2812,6 +2813,20 @@
               }
             ],
             "title": "Claimed By"
+          },
+          "missing": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing"
           },
           "thumbnail_failure": {
             "anyOf": [

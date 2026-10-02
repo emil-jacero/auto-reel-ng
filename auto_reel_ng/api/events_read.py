@@ -338,6 +338,17 @@ def blocking_missing(document: Optional[ReelDocument], result: ReconcileResult) 
     return tuple(i for i in result.missing if not _is_excluded(document, i))
 
 
+def played_missing_clips(event_dir: Path, document: ReelDocument) -> List[str]:
+    """:func:`blocking_missing` for ``document`` against ``event_dir``'s listing, sorted.
+
+    What ``POST /jobs`` refuses an event for: a clip the render would probe that is not
+    on disk. A seeded document (no ``reel.yaml``) lists exactly what the listing holds,
+    so it can never be missing. The listing's ``OSError`` propagates: an unlistable
+    folder is never read as "nothing missing" (Principle I).
+    """
+    return list(blocking_missing(document, reconcile(scan_event(event_dir).identities, document)))
+
+
 def _clip_out(
     event_dir: Path, identity: str, status: ClipStatus, *, excluded: bool = False
 ) -> ClipOut:
@@ -727,6 +738,8 @@ __all__ = [
     "OutputCollision",
     "enqueue_target",
     "output_collision",
+    "blocking_missing",
+    "played_missing_clips",
     "listed_clip",
     "ThumbnailSource",
     "thumbnail_source",

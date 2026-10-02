@@ -1075,6 +1075,70 @@ def test_an_event_without_exclusions_blocks_on_every_missing_clip(
     assert body["blocking_missing"] == body["missing"] == ["gone.mp4"]
 
 
+# --- played_missing_clips: the enqueue refusal's one definition of "played and missing" ----
+
+
+def _played_missing(event_dir: Path) -> list[str]:
+    from auto_reel_ng.api.events_read import played_missing_clips
+    from auto_reel_ng.event.metadata import load_event_document
+
+    document, _seeded = load_event_document(event_dir, order=DEFAULT_CLIP_ORDER)
+    return played_missing_clips(event_dir, document)
+
+
+def test_played_missing_clips_is_the_details_blocking_list(
+    client: TestClient, project: Path
+) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _write_reel(
+        event_dir,
+        ["00500.mp4", "gone.mp4", "gone2.mp4"],
+        props="clips:\n  gone.mp4:\n    exclude: true\n",
+    )
+
+    body = _detail(client)
+
+    assert _played_missing(event_dir) == ["gone2.mp4"]
+    assert body["blocking_missing"] == _played_missing(event_dir)
+    assert body["missing"] == ["gone.mp4", "gone2.mp4"]
+
+
+def test_played_missing_clips_are_sorted_across_chapters(project: Path) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    (event_dir / "reel.yaml").write_text(
+        "version: 0\nmetadata:\n  title: Barbecue\nchapters:\n"
+        "  - name: ''\n    clips:\n      - 00500.mp4\n      - gone-b.mp4\n"
+        "  - name: Kväll\n    clips:\n      - Kväll/gone-a.mp4\n",
+        encoding="utf-8",
+    )
+
+    assert _played_missing(event_dir) == ["Kväll/gone-a.mp4", "gone-b.mp4"]
+
+
+def test_a_new_ignored_or_unlisted_event_has_no_played_missing_clip(project: Path) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _touch(event_dir / "00501.mp4")  # NEW
+    _touch(event_dir / "00600.mp4")  # IGNORED
+    _write_reel(event_dir, ["00500.mp4"], ignore="ignore:\n- 00600.mp4\n")
+    assert _played_missing(event_dir) == []
+
+    (event_dir / "reel.yaml").unlink()  # seeded from the listing: nothing can be absent
+    assert _played_missing(event_dir) == []
+
+
+def test_an_unlistable_folder_propagates_rather_than_reading_as_nothing_missing(
+    project: Path,
+) -> None:
+    from auto_reel_ng.api.events_read import played_missing_clips
+    from auto_reel_ng.event.metadata import load_event_document
+
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    document, _seeded = load_event_document(event_dir, order=DEFAULT_CLIP_ORDER)
+
+    with pytest.raises(OSError):
+        played_missing_clips(project / "2024" / "no such event", document)
+
+
 def test_list_clip_count_is_the_pages_and_ignored_clips_are_counted_apart(
     client: TestClient, project: Path
 ) -> None:

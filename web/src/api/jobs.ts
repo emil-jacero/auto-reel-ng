@@ -31,6 +31,8 @@ export type EnqueueResult =
   | { kind: 'active'; jobId: string; problem: Problem }
   // 409 `output_collision`: other events claim the same movie file
   | { kind: 'collision'; claimedBy: string[]; problem: Problem }
+  // 409 `missing_clips`: the event plays clips that are absent from disk (never bypassed by force)
+  | { kind: 'missingClips'; missing: string[]; problem: Problem }
   // 404 (unknown event) or 502 (the project walk failed), in the ProblemOut shape
   | { kind: 'problem'; problem: Problem }
   // 503 naming the database as the failing dependency: the job's creation was not confirmed
@@ -80,9 +82,14 @@ function unpublished(method: string, url: string, response: Response): string {
   return `${method} ${url} answered ${response.status} ${response.statusText}`.trimEnd()
 }
 
+/** A `missing` list the client can name: at least one clip, every entry a string. */
+function isNonEmptyStrings(value: unknown): value is string[] {
+  return Array.isArray(value) && value.length > 0 && value.every((entry) => typeof entry === 'string')
+}
+
 /**
  * Enqueue a render of one event; `force` bypasses the staleness gate (never the
- * output-collision check). The device is left to the service's default. Not
+ * output-collision check, nor the refusal for a played clip missing from disk). The device is left to the service's default. Not
  * abortable: it is a write, and its answer still matters after the caller leaves.
  */
 export async function enqueueJob(eventId: string, force: boolean): Promise<EnqueueResult> {
@@ -124,6 +131,11 @@ export async function enqueueJob(eventId: string, force: boolean): Promise<Enque
         case 'output_collision':
           if (Array.isArray(body.claimed_by)) {
             return { kind: 'collision', claimedBy: body.claimed_by, problem: body }
+          }
+          break
+        case 'missing_clips':
+          if (isNonEmptyStrings(body.missing)) {
+            return { kind: 'missingClips', missing: body.missing, problem: body }
           }
           break
         default: {
