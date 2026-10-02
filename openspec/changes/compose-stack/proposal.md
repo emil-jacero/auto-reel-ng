@@ -43,7 +43,8 @@ driver or Mesa package is needed in the image.
   - The Python dependencies are installed in their own layer before the source is copied, so a source edit
     rebuilds quickly.
   - A new `.dockerignore` keeps `data/`, `.env`, `.git`, `.venv`, `web/node_modules`, `web/dist` and the
-    non-runtime trees (`experiments/`, `docs/`, `openspec/`, `tests/`) out of the build context. It is
+    non-runtime trees (`experiments/`, `docs/`, `openspec/`, `tests/`, `README.md`, coverage files) out of
+    the build context. It is
     `.dockerignore` rather than `.containerignore` because the docker-compose client behind `podman compose`
     reads only `.dockerignore`. Measured in review: with `.containerignore` it uploaded 629 MB of `data/`,
     and with `.dockerignore` 418 B.
@@ -68,7 +69,8 @@ driver or Mesa package is needed in the image.
     - the `samples/` clips as event `2025/2025-01-15 - Provklipp`;
     - the MPEG-4 Part 2 legacy render as an event of its own, `2025/2025-01-16 - Gammal rendering`.
   - Re-running `seed` never overwrites an edit. `seed --reset` wipes the scratch library and outputs.
-  - Movies go to `./data/library-output`, and thumbnails and the Mesa shader cache go to `./data/cache`.
+  - Movies go to `./data/library-output`, thumbnails and the Mesa shader cache go to `./data/cache`, and a
+    render's temporary segments go to `./data/tmp` (`TMPDIR`).
 - **The CPU-only override is `compose.cpu.yaml`.** It sets `devices: !reset []` and runs
   `worker … --device cpu`, for a host without `/dev/dri`.
 - **The new `.env.example`** holds `AR_PORT`, `AR_MEDIA_DIR`, `AR_DATA_DIR` and `AR_DB_PASSWORD`, all dev
