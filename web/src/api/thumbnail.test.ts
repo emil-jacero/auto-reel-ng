@@ -55,13 +55,13 @@ const read = () => thumbnail.readFailedThumbnail(URL_OF_CLIP, new AbortControlle
 
 describe('readFailedThumbnail', () => {
   it('asks again for the same address, uncached', async () => {
-    let asked: { url: unknown; cache: unknown } | null = null
+    let asked: { url: unknown; cache: unknown; priority: unknown } | null = null
     globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
-      asked = { url, cache: init?.cache }
+      asked = { url, cache: init?.cache, priority: init?.priority }
       return new Response(null, { status: 404 })
     }) as typeof fetch
     await read()
-    assert.deepEqual(asked, { url: URL_OF_CLIP, cache: 'no-store' })
+    assert.deepEqual(asked, { url: URL_OF_CLIP, cache: 'no-store', priority: 'low' })
   })
 
   it('reads a 502 with the thumbnail failure kind as the clip’s own', async () => {
@@ -69,11 +69,14 @@ describe('readFailedThumbnail', () => {
     assert.deepEqual(await read(), { kind: 'clip' })
   })
 
-  it('reads a 502 with no kind as the service’s, under its failure when it has one', async () => {
+  it('reads a 502 with no thumbnail kind and no event failure as the service’s', async () => {
     answer(502, problem({}))
-    assert.deepEqual(await read(), { kind: 'service', failure: 'none' })
-    answer(502, problem({ failure: 'unreadable_disk' }))
-    assert.deepEqual(await read(), { kind: 'service', failure: 'unreadable_disk' })
+    assert.deepEqual(await read(), { kind: 'service' })
+  })
+
+  it('reads a 502 that says the event could not be read as neither', async () => {
+    answer(502, problem({ failure: 'unusable_metadata' }))
+    assert.deepEqual(await read(), { kind: 'unknown' })
   })
 
   it('reads every other answer as unknown', async () => {

@@ -57,7 +57,7 @@ as its row nears the view and behind the page's own requests, in a box sized bef
 it arrives, and kept by the browser while the clip is unchanged. A frame the service
 cannot give shows "No preview"; a missing clip asks for none and shows an empty
 outline. A frame that failed asks once more why: when three or more fail with the
-service's own cause (a 502 with no thumbnail failure kind), the page adds one quiet
+service's own cause (a 502 with no thumbnail failure kind and no event failure), the page adds one quiet
 note, "Previews are unavailable", pointing to `auto-reel thumbs`. The list stays mounted while an event page is
 open, so Back returns to it without a new read —
 unless the client recorded meanwhile that an event changed (`markEventsChanged()`
@@ -313,6 +313,7 @@ src/
     ├── list.css          the list's layout and column widths
     ├── detail.css        the event page's layout, render region and clip column properties
     ├── thumbs.css        the thumbnail's 16:9 box and its states
+    ├── loadState.ts      what the event page shows while it reads, and what a Refresh carries (pure, + loadState.test.ts)
     ├── thumbHealth.ts    the page's count of previews failing for the service's reason (the note), + thumbHealth.test.ts
     ├── common.tsx        helpers both screens share (file names, sizes, verdict, failure sentences) and clip names
     ├── changes.ts        "an event changed": markEventsChanged(), useEventsVersion()

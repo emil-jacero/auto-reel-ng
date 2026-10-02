@@ -59,8 +59,9 @@
   - `events/thumbHealth.ts`: `THUMB_NOTE_AT = 3`, the context with `report` and `clear`, `useThumbHealth()`
     returning the context value and `unavailable`, `useThumbReporter()` for a thumbnail, `isUnavailable()` as the
     pure counting rule, and a no-op default for a thumbnail outside a provider
-  - unit tests (`api/thumbnail.test.ts`, `events/thumbHealth.test.ts`, `cuts/times.test.ts`, node runner): the
-    reader's three kinds against a stubbed `fetch`, the counting rule (three of one key, mixed keys, `clear`), and
+  - unit tests (`api/thumbnail.test.ts`, `events/thumbHealth.test.ts`, `events/loadState.test.ts`,
+    `cuts/times.test.ts`, node runner): the reader's three kinds against a stubbed `fetch` (a 502 with an event
+    `failure` is the third), what a Refresh carries into the reading state (`readingState`, `movieOf`), the counting rule (three of one key, mixed keys, `clear`), and
     both hints' title-card sentence; each fails without its code
 
   Verify:
@@ -70,7 +71,7 @@
   - `grep -rn "thumbnail_failure" web/src` prints only `api/thumbnail.ts`
 - [x] 4.2 Wire it in:
   - `events/ClipThumb.tsx`: a failed `LoadingThumb` runs the effect of the design (read; `report` a `service`
-    answer under `failure`; on cleanup abort and `clear`), keeps showing "No preview" throughout, and the header
+    answer under `SERVICE_CAUSE`; on cleanup abort and `clear`), keeps showing "No preview" throughout, and the header
     comment says what changed ("no alert and no retry" stays true of the image)
   - `events/EventDetail.tsx`: create the hook, provide the context around the main's content, render the note
     (`Alert tone="warn" role="note"`, words `PREVIEWS_UNAVAILABLE` in `events/labels.ts`, with `auto-reel thumbs`
@@ -136,8 +137,8 @@
     thumbnail requests for `trasig.mp4`. With `page.route` on `**/thumbnail*` answering every thumbnail of
     Grillning 502 with `thumbnail_failure: thumbnail_failed`: four boxes, no note.
   - **Two are not a pattern:** `page.route` answering two of Grillning's four thumbnails 502 with no kind and
-    letting the others through: two boxes, no note. Three: the note. A mix of two answers with `failure:
-    unreadable_disk` and two with none: no note.
+    letting the others through: two boxes, no note. Three: the note. Four answers that carry an event
+    `failure` (`unusable_metadata`): four boxes, no note.
   - **Other answers count nowhere:** four thumbnails answered 404, then four with the route aborted: no note.
   - **Rows are untouched:** with the note shown, every row's box has the size and place it has without the
     fault (bounding boxes compared), and Tab order through the clips is unchanged.

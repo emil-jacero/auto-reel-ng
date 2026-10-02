@@ -33,13 +33,14 @@ export function thumbnailUrl(eventId: string, clip: Pick<Clip, 'identity' | 'mti
 /**
  * Why a thumbnail the browser could not show failed, by who is at fault:
  * the clip's own failure (the service answers a 502 with `thumbnail_failure`), the
- * service's (a 502 with none: its thumbnail cache or `config.yaml`, so that no clip could
- * have a preview, named by the problem's `failure` when it has one, `none` otherwise), or
- * anything else (another status, no answer, or an answer that works now).
+ * service's (a 502 with neither that nor an event `failure`: its thumbnail cache or
+ * `config.yaml`, so that no clip could have a preview), or anything else (another status,
+ * no answer, an answer that works now, or a 502 that says the event itself could not be
+ * read, which is not a thumbnail fault).
  */
 export type FailedThumbnail =
   | { kind: 'clip' }
-  | { kind: 'service'; failure: string }
+  | { kind: 'service' }
   | { kind: 'unknown' }
 
 /**
@@ -54,7 +55,7 @@ export async function readFailedThumbnail(
 ): Promise<FailedThumbnail> {
   let response: Response
   try {
-    response = await fetch(url, { cache: 'no-store', signal })
+    response = await fetch(url, { cache: 'no-store', signal, priority: 'low' })
   } catch (error) {
     if (signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
       throw error
@@ -72,8 +73,8 @@ export async function readFailedThumbnail(
   if (body.thumbnail_failure === 'thumbnail_failed') {
     return { kind: 'clip' }
   }
-  if (body.thumbnail_failure == null) {
-    return { kind: 'service', failure: body.failure ?? 'none' }
+  if (body.thumbnail_failure == null && body.failure == null) {
+    return { kind: 'service' }
   }
   return { kind: 'unknown' }
 }

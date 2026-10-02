@@ -12,18 +12,18 @@ describe('isUnavailable', () => {
   it('needs three failures of one cause', () => {
     assert.equal(THUMB_NOTE_AT, 3)
     assert.equal(isUnavailable([]), false)
-    assert.equal(isUnavailable(['none']), false)
-    assert.equal(isUnavailable(['none', 'none']), false)
-    assert.equal(isUnavailable(['none', 'none', 'none']), true)
-    assert.equal(isUnavailable(['unreadable_disk', 'unreadable_disk', 'unreadable_disk', 'x']), true)
+    assert.equal(isUnavailable(['service']), false)
+    assert.equal(isUnavailable(['service', 'service']), false)
+    assert.equal(isUnavailable(['service', 'service', 'service']), true)
+    assert.equal(isUnavailable(['other', 'other', 'other', 'x']), true)
   })
 
   it('does not add up unlike causes', () => {
-    assert.equal(isUnavailable(['unreadable_disk', 'none', 'unreadable_disk', 'none']), false)
+    assert.equal(isUnavailable(['other', 'service', 'other', 'service']), false)
     assert.equal(isUnavailable(['a', 'b', 'c', 'd']), false)
   })
 
   it('counts the threshold it is given', () => {
-    assert.equal(isUnavailable(['none', 'none'], 2), true)
+    assert.equal(isUnavailable(['service', 'service'], 2), true)
   })
 })

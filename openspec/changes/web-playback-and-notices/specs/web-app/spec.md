@@ -212,11 +212,12 @@ clip's status, and SHALL NOT be retried automatically while the row stays shown.
 show, the page SHALL therefore make one further request for the same address, only to read the service's answer,
 and SHALL NOT show anything of that answer's body in the clip's row. The answer is the clip's own failure when
 it is a 502 that carries the thumbnail failure kind `thumbnail_failed`. A 502 that carries no thumbnail failure
-kind (the service's thumbnail cache or its `config.yaml` is at fault, so that no clip could have a preview)
-SHALL be counted, under the answer's `failure` field when it has one and under none otherwise. Any other answer,
-or none, is counted nowhere.
+kind and no event `failure` (the service's thumbnail cache or its `config.yaml` is at fault, so that no clip
+could have a preview) SHALL be counted as the service's. Any other answer is counted nowhere, as is none: a 502
+whose `failure` says that the event itself could not be read is not a thumbnail fault. The further request SHALL
+be made behind the page's own requests (low priority).
 
-When at least three thumbnails shown on the page have failed with the same counted answer, the page SHALL show
+When at least three thumbnails shown on the page have failed as the service's, the page SHALL show
 one note, once for the page and not per clip: "Previews are unavailable. The service could not make thumbnails;
 run `auto-reel thumbs` on the server to see why." The note SHALL be shown in the read view and in Edit mode, in
 the same place above the clips. It SHALL be part of the page's content: no alert, no toast and no announcement,
@@ -245,6 +246,11 @@ horizontal scroll, and no fact of a row SHALL overlap another.
 - **WHEN** an event of four clips is opened and the service answers each thumbnail with a 502 that carries the
   thumbnail failure kind `thumbnail_failed`
 - **THEN** each row shows the "No preview" placeholder, and the page shows no note
+
+#### Scenario: An event that becomes unreadable raises no thumbnail note
+- **WHEN** the operator has opened `2024-06-27 - Grillning med grannar`, its `reel.yaml` is then made unreadable,
+  and the service answers the thumbnails of three of its clips with a 502 that carries an event `failure`
+- **THEN** each of the three rows shows the "No preview" placeholder, and the page shows no note
 
 #### Scenario: Two failures are not a pattern
 - **WHEN** the operator opens `2024-06-27 - Grillning med grannar` and the service answers the thumbnails of two
