@@ -26,7 +26,7 @@ import type { ReactNode } from 'react'
  *
  * These icons are derived from the Feather project, under the MIT License:
  * alert-triangle, arrow-down, arrow-right, arrow-up, check, chevron-down,
- * chevron-left, clock, download, eye-off, info, monitor, moon, pause, plus, scissors,
+ * chevron-left, clock, download, info, monitor, moon, pause, plus, scissors,
  * skip-forward, square and x.
  *
  *   The MIT License (MIT)

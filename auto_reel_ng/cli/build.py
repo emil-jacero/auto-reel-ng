@@ -19,7 +19,7 @@ from ..event import ClipOrder, resolve
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..probe import probe_media
 from ..probe.metadata import ClipMetadata
-from ..reel import ReelDocument
+from ..reel import ReelDocument, is_excluded
 from ..render import RenderJob, RenderOptions
 from ..render.orchestrator import ProgressCallback, ShouldCancel
 from ..staleness.fingerprint import Fingerprint
@@ -56,7 +56,7 @@ def _probe_clips(
     included = [
         identity
         for identity in document.referenced_identities()
-        if not (document.clips.get(identity) is not None and document.clips[identity].exclude)
+        if not is_excluded(document.clips, identity)
     ]  # excluded clips never reach the plan, so do not check or probe them
     missing = [identity for identity in included if not (Path(event_dir) / identity).exists()]
     if missing:

@@ -15,7 +15,7 @@ from typing import Iterable, Mapping, Optional
 
 from ..errors import ReelError
 from ..probe.metadata import ClipMetadata
-from ..reel.document import ClipProperties, ReelDocument
+from ..reel.document import ClipProperties, ReelDocument, is_excluded
 from .plan import RenderPlan, ResolvedChapter, ResolvedClip
 
 
@@ -50,9 +50,9 @@ def _resolve_chapter(
     """Materialize one chapter: drop excluded clips, then mark the title clip."""
     included: list[tuple[str, ClipProperties]] = []
     for ref in refs:
-        props = clip_props.get(ref.identity, ClipProperties())
-        if props.exclude:
+        if is_excluded(clip_props, ref.identity):
             continue
+        props = clip_props.get(ref.identity, ClipProperties())
         if clip_facts is not None and ref.identity not in clip_facts:
             raise ReelError(
                 f"resolve: clip {ref.identity!r} in chapter {name!r} has no probed "

@@ -86,6 +86,11 @@
     gap: var(--s-1) var(--s-2);
   }
 
+  /* A line break falls between "n clips" and "· k ignored", never inside either. */
+  .clip-count .nowrap {
+    white-space: nowrap;
+  }
+
   .event-list .empty-title {
     color: var(--fg);
     font-weight: 600;
