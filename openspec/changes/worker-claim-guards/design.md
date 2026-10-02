@@ -213,7 +213,7 @@ reported bug).
   process, but the worker only sees `config.yaml`; the job row records no layout. → The worker's walk uses
   the configured layout, as the rest of `default_build_job` already does.
 - **Races remain narrow, not zero.** A `reel.yaml` edited after the claim-time check can still collide, and
-  two jobs claimed in the same moment are both refused. The finalize `os.replace` stays the last line of
+  two jobs claimed in the same moment may both be refused (at most one renders). The finalize `os.replace` stays the last line of
   defence; the running guard narrows the window further.
 - **A stale `running` row can refuse a cross-project job** (above). → Documented; re-enqueue after the next
   worker start.
