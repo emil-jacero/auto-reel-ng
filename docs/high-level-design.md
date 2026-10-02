@@ -803,6 +803,21 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **`RENDER_GRAPH_VERSION` is not bumped.** Only inputs that failed before change behaviour; every input that
     rendered still produces the same command. The capability cache schema is bumped so `hw_decode` is detected
     once on upgrade.
+- **D-19 — A stalled render fails and a cancel kills ffmpeg** (2026-10-02, change `render-stall-watchdog`).
+  A render whose ffmpeg is alive but not progressing used to hold its job `running` forever, and `cancel`
+  was read only between segments (D-S5/D-S6).
+  - **In-process, no heartbeat.** `FfmpegRuntime.run_with_progress` kills ffmpeg when its reported output time
+    has not strictly advanced for `SEGMENT_STALL_TIMEOUT_S` (10 minutes, a constant in `render/orchestrator.py`,
+    counted from launch) and raises `FfmpegStalledError`; the job ends `failed` through the ordinary path, with
+    no output and no manifest. A slow but advancing encode is never killed. The same loop polls `should_cancel`
+    about once a second and raises `FfmpegCancelledError`, which the render layer turns into
+    `RenderCancelledError` (`canceled`).
+  - **The kill is bounded.** After it the runtime waits `KILL_GRACE_SECONDS` and then abandons a process the
+    kernel will not release, logging its pid, so the failure is not itself a hang.
+  - **Never retried.** A stall is not retried in software (a retry would double the wait), whatever its stderr said.
+  - **Deferred.** A `jobs.heartbeat_at` column, a reaper and a worker registry wait for multi-worker support;
+    the final concat and the ffprobe calls are not watched (the opt-in `timeout` of `run`/`run_ffprobe` is the
+    route); reconcile still assumes one worker. No `RENDER_GRAPH_VERSION` bump: nothing that finished changes.
 
 ---
 

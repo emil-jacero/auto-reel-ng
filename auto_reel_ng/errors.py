@@ -27,6 +27,25 @@ class FfmpegTimeoutError(FfmpegError):
     """
 
 
+class FfmpegStalledError(FfmpegError):
+    """A progress-streaming ffmpeg run made no progress within its stall limit.
+
+    The child process was killed. The message names how long the output time did not
+    advance, the limit, the executed command and the stderr captured so far. A distinct
+    type so a caller that retries on the failure's text (the software-decode retry) can
+    tell a hang from a failure: retrying a stall would only double the wait.
+    """
+
+
+class FfmpegCancelledError(FfmpegError):
+    """A progress-streaming ffmpeg run was stopped because its cancel check reported true.
+
+    The child process was killed. Distinct from a failed command so the caller can end the
+    work as canceled rather than failed (the render layer turns it into
+    :class:`RenderCancelledError`; the layers below may not import that one).
+    """
+
+
 class FfmpegVersionError(FfmpegError):
     """The resolved ffmpeg is older than the required minimum or unparseable."""
 
@@ -106,12 +125,13 @@ class RenderVerificationError(RenderError):
 
 
 class RenderCancelledError(RenderError):
-    """A render was stopped between segments by a cooperative cancel request.
+    """A render was stopped by a cooperative cancel request.
 
-    Raised by the orchestrator's segment loop when ``RenderOptions.should_cancel``
-    reports true at a segment boundary (job-scheduler, D-S6); the caller
-    distinguishes this from a genuine failure and transitions the job to
-    ``canceled`` rather than ``failed``.
+    Raised when ``RenderOptions.should_cancel`` reports true, either at a segment
+    boundary (job-scheduler, D-S6) or while a segment is being encoded, where ffmpeg
+    is killed and the runtime's cancellation error is turned into this one. The caller
+    distinguishes this from a genuine failure and transitions the job to ``canceled``
+    rather than ``failed``.
     """
 
 

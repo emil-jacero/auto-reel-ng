@@ -345,7 +345,7 @@ class JobStore:
 
         - ``running``: only ``cancel_requested`` is set — the worker remains the sole
           writer of ``status`` and performs the terminal transition itself once it
-          next checks the flag between segments (``FLAGGED_RUNNING``);
+          next checks the flag (about once a second, even mid-segment) (``FLAGGED_RUNNING``);
         - ``queued``: canceled directly, as :meth:`cancel_queued` does
           (``CANCELED_QUEUED``); a ``claim_next`` meeting the lock skips the row and
           finds it ``canceled`` afterwards;

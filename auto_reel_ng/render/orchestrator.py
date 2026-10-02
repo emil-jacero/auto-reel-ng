@@ -20,7 +20,13 @@ from pathlib import Path, PurePosixPath
 from typing import Callable, Hashable, Mapping, Optional, Sequence, TypeVar
 
 from ..accel.profiles.base import AccelProfile
-from ..errors import EngineError, RenderCancelledError, RenderError
+from ..errors import (
+    EngineError,
+    FfmpegCancelledError,
+    FfmpegStalledError,
+    RenderCancelledError,
+    RenderError,
+)
 from ..event.plan import RenderPlan
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..probe import probe_media
@@ -47,6 +53,12 @@ logger = logging.getLogger(__name__)
 ProgressCallback = Callable[[float], None]
 ShouldCancel = Callable[[], bool]
 
+#: How long a segment encode may go without ffmpeg's reported output time advancing before it
+#: is killed and the render fails (render-stall-watchdog, D-19). A policy constant, not a
+#: config key: ffmpeg reports about twice a second while it works, so ten minutes is far past
+#: any healthy gap, yet bounds a hung driver or a dead mount. Not a measurement of a real hang.
+SEGMENT_STALL_TIMEOUT_S = 600.0
+
 
 @dataclass
 class RenderOptions:  # pylint: disable=too-many-instance-attributes
@@ -58,9 +70,10 @@ class RenderOptions:  # pylint: disable=too-many-instance-attributes
     executing or writing, ``render_node`` targets a specific GPU, ``on_progress``
     receives an overall 0.0-1.0 fraction, and ``temp_dir`` overrides the base for
     the ephemeral per-render scratch directory. ``should_cancel``, when given, is
-    polled at each segment boundary (job-scheduler, D-S6); a true result stops the
-    render before the next segment starts and raises :class:`RenderCancelledError`
-    rather than completing or failing the render. ``fingerprint``, when given, is
+    polled at each segment boundary (job-scheduler, D-S6) and about once a second while
+    a segment is encoded; a true result stops the render (before the next segment, or by
+    killing the running ffmpeg) and raises :class:`RenderCancelledError` rather than
+    completing or failing the render. ``fingerprint``, when given, is
     the caller's pre-render staleness fingerprint (change-detection, D-C5); the
     render manifest is written from it immediately after the atomic finalize
     succeeds, and never on skip/dry-run/failure/absent fingerprint.
@@ -457,11 +470,46 @@ _HW_DECODE_INIT_FAILURES = ("hwaccel initialisation returned error", "Failed set
 
 
 def _hw_decode_init_failure(exc: EngineError) -> Optional[str]:
-    """The first ffmpeg line naming a hardware-decode initialisation failure, else ``None``."""
+    """The first ffmpeg line naming a hardware-decode initialisation failure, else ``None``.
+
+    A stalled run never counts, whatever stderr it had printed before it hung: retrying it
+    would only double the wait.
+    """
+    if isinstance(exc, FfmpegStalledError):
+        return None
     for line in str(exc).splitlines():
         if any(phrase in line for phrase in _HW_DECODE_INIT_FAILURES):
             return line.strip()
     return None
+
+
+def _run_segment(
+    index: int,
+    segment: Segment,
+    command: NormalizeCommand,
+    *,
+    options: RenderOptions,
+    progress: _Progress,
+) -> None:
+    """Run one segment's normalize command under the stall limit and the cancel check.
+
+    Raises:
+        RenderCancelledError: the cancel check reported true while ffmpeg was encoding;
+            ffmpeg was killed (a cancel is never retried or reported as a failure).
+        EngineError: any other failure, including a stall (:class:`FfmpegStalledError`).
+    """
+    try:
+        options.runtime.run_with_progress(
+            command.args,
+            duration=command.duration,
+            on_progress=progress.step(index),
+            stall_timeout=SEGMENT_STALL_TIMEOUT_S,
+            should_cancel=options.should_cancel,
+        )
+    except FfmpegCancelledError as exc:
+        raise RenderCancelledError(
+            f"render canceled during segment {index} ({_segment_label(segment)})"
+        ) from exc
 
 
 def _normalize_segment(
@@ -490,9 +538,9 @@ def _normalize_segment(
     for warning in command.warnings:
         logger.warning("segment %s: %s", _segment_label(segment), warning)
     try:
-        options.runtime.run_with_progress(
-            command.args, duration=command.duration, on_progress=progress.step(index)
-        )
+        _run_segment(index, segment, command, options=options, progress=progress)
+    except RenderCancelledError:
+        raise  # a cancel is not a failure to wrap, nor a hardware-decode failure to retry
     except EngineError as exc:
         failure = _hw_decode_init_failure(exc) if command.hardware_decode else None
         if failure is None:
@@ -551,9 +599,9 @@ def _retry_in_software(
             f"({failure}) and the software retry cannot be built: {rebuild_error}"
         ) from first
     try:
-        options.runtime.run_with_progress(
-            command.args, duration=command.duration, on_progress=progress.step(index)
-        )
+        _run_segment(index, segment, command, options=options, progress=progress)
+    except RenderCancelledError:
+        raise  # a cancel is not a failure to wrap, nor a hardware-decode failure to retry
     except EngineError as exc:
         raise RenderError(
             f"normalize failed for segment {index} ({label}) in software decode, after its "
@@ -565,8 +613,8 @@ def _retry_in_software(
 def _check_cancelled(options: RenderOptions, *, before: str) -> None:
     """Raise :class:`RenderCancelledError` if a cancel was requested (D-S6).
 
-    Polled at each segment boundary (and once more before the final assembly), so
-    a cooperative cancel takes effect between segments rather than mid-ffmpeg.
+    Polled at each segment boundary (and once more before the final assembly); a cancel
+    during a segment's encode is caught by the runtime's own poll (:func:`_run_segment`).
     """
     if options.should_cancel is not None and options.should_cancel():
         raise RenderCancelledError(f"render canceled before {before}")

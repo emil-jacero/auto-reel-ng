@@ -14,7 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from auto_reel_ng.errors import FfmpegError, FfmpegTimeoutError, FfmpegVersionError
+from auto_reel_ng.errors import (
+    FfmpegCancelledError,
+    FfmpegError,
+    FfmpegStalledError,
+    FfmpegTimeoutError,
+    FfmpegVersionError,
+)
 from auto_reel_ng.ffmpeg import runtime as runtime_module
 from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime, parse_ffmpeg_version
 
@@ -309,6 +315,24 @@ if mode == "log-then-sleep":
     sys.stderr.write("Error reading /lib/clip.mp4: Input/output error\\n")
     sys.stderr.flush()
     time.sleep(60)
+if mode == "progress-then-sleep":
+    print("out_time_us=100000", flush=True)
+    time.sleep(60)
+if mode == "repeat":
+    while True:
+        print("out_time_us=2000000", flush=True)
+        print("progress=continue", flush=True)
+        time.sleep(0.1)
+if mode in ("steady", "steady-long"):
+    for step in range(1, 16 if mode == "steady" else 26):
+        print(f"out_time_us={step * 100000}", flush=True)
+        print("progress=continue", flush=True)
+        time.sleep(0.1)
+    print("progress=end", flush=True)
+    sys.exit(0)
+if mode == "close-stdout-then-sleep":
+    os.close(1)
+    time.sleep(60)
 """
 
 
@@ -459,3 +483,154 @@ def test_a_child_that_cannot_be_killed_does_not_hold_the_caller(
         assert 1.0 <= time.monotonic() - started < 10
     finally:
         os.kill(_child_pid(tmp_path), signal.SIGKILL)
+
+
+# -- stall watchdog, cancel poll, bounded kill --------------------------------
+
+
+def _progress(runtime: FfmpegRuntime, mode: str, **kwargs):  # type: ignore[no-untyped-def]
+    """``run_with_progress`` on the fake binary in ``mode``, bounded so a hang fails the test."""
+    kwargs.setdefault("duration", 1.0)
+    outcome = _within(30, lambda: runtime.run_with_progress([mode], **kwargs))
+    return outcome[0]
+
+
+@pytest.mark.parametrize("mode", ["progress-then-sleep", "sleep", "repeat"])
+def test_a_run_whose_output_time_stops_advancing_is_killed_as_stalled(
+    bin_runtime: FfmpegRuntime, tmp_path: Path, mode: str
+) -> None:
+    """One line then silence, no output at all, and an unchanged output time all stall."""
+    fractions: list[float] = []
+    started = time.monotonic()
+    kind, exc = _progress(
+        bin_runtime, mode, duration=10.0, on_progress=fractions.append, stall_timeout=0.5
+    )
+    assert time.monotonic() - started < 10
+    assert kind == "raised" and isinstance(exc, FfmpegStalledError)
+    assert isinstance(exc, FfmpegError)
+    message = str(exc)
+    assert "ffmpeg stalled: no progress for" in message and "(limit 0.5s)" in message
+    assert "fakebin" in message and "-progress" in message
+    assert fractions == {"sleep": [], "progress-then-sleep": [0.01], "repeat": [0.2]}[mode]
+    assert not _alive(_child_pid(tmp_path))
+
+
+def test_a_steady_encode_is_never_stalled(bin_runtime: FfmpegRuntime) -> None:
+    """Output time advancing every 0.1 s for 3x the limit ends normally."""
+    fractions: list[float] = []
+    started = time.monotonic()
+    outcome = _progress(
+        bin_runtime, "steady", duration=1.5, on_progress=fractions.append, stall_timeout=0.5
+    )
+    assert outcome == ("ok", None)
+    assert time.monotonic() - started >= 1.0
+    assert fractions == sorted(fractions) and fractions[-1] == 1.0
+
+
+def test_the_stall_clock_does_not_need_a_duration(bin_runtime: FfmpegRuntime) -> None:
+    """A zero-duration request yields no fraction, yet an advancing output time is progress."""
+    fractions: list[float] = []
+    outcome = _progress(
+        bin_runtime, "steady", duration=0, on_progress=fractions.append, stall_timeout=0.5
+    )
+    assert outcome == ("ok", None)
+    assert fractions == [1.0]  # only the final completion callback
+
+
+def test_a_failure_with_a_stall_limit_is_the_ordinary_error(bin_runtime: FfmpegRuntime) -> None:
+    kind, exc = _progress(bin_runtime, "fail", stall_timeout=30)
+    assert kind == "raised" and type(exc) is FfmpegError
+    assert "exited 7" in str(exc) and "boom" in str(exc)
+
+
+def test_a_cancel_check_that_turns_true_kills_the_run(
+    bin_runtime: FfmpegRuntime, tmp_path: Path
+) -> None:
+    began = time.monotonic()
+    started = time.monotonic()
+
+    def check() -> bool:
+        return time.monotonic() - began > 0.3
+
+    kind, exc = _progress(bin_runtime, "progress-then-sleep", should_cancel=check)
+    assert time.monotonic() - started < 3
+    assert kind == "raised" and isinstance(exc, FfmpegCancelledError)
+    assert not isinstance(exc, FfmpegStalledError) and "canceled" in str(exc)
+    assert not _alive(_child_pid(tmp_path))
+
+
+def test_a_cancel_check_is_polled_about_once_a_second(bin_runtime: FfmpegRuntime) -> None:
+    calls: list[float] = []
+
+    def check() -> bool:
+        calls.append(time.monotonic())
+        return False
+
+    outcome = _progress(bin_runtime, "steady-long", duration=3.0, should_cancel=check)
+    assert outcome == ("ok", None)
+    assert 1 <= len(calls) <= 4
+
+
+def test_a_raising_cancel_check_kills_the_run_and_propagates(
+    bin_runtime: FfmpegRuntime, tmp_path: Path
+) -> None:
+    def check() -> bool:
+        raise RuntimeError("database unreachable")
+
+    kind, exc = _progress(bin_runtime, "sleep", should_cancel=check)
+    assert kind == "raised" and isinstance(exc, RuntimeError)
+    assert "database unreachable" in str(exc)
+    assert not _alive(_child_pid(tmp_path))
+
+
+def test_a_cancel_wins_over_a_simultaneous_stall(
+    bin_runtime: FfmpegRuntime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both deadlines fall due on the same wake: the operator's request is the reported cause."""
+    monkeypatch.setattr(runtime_module, "CANCEL_POLL_INTERVAL_S", 0.5)
+    kind, exc = _progress(bin_runtime, "sleep", stall_timeout=0.5, should_cancel=lambda: True)
+    assert kind == "raised" and isinstance(exc, FfmpegCancelledError)
+
+
+class _StuckProcess:
+    """A stand-in ``Popen`` that cannot be killed and never produces output."""
+
+    pid = 424242
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        self.stdout = os.fdopen(os.pipe()[0], "r")
+        self.stderr = os.fdopen(os.pipe()[0], "r")
+        self.returncode = None
+
+    def kill(self) -> None:
+        """Ignore SIGKILL, as a process in uninterruptible sleep does."""
+
+    def wait(self, timeout: float | None = None) -> int:
+        raise subprocess.TimeoutExpired("stuck", timeout or 0)
+
+
+def test_an_unkillable_process_is_abandoned_and_the_stall_still_raised(
+    bin_runtime: FfmpegRuntime, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # An Alembic ``fileConfig`` run by an earlier test disables every logger that already exists.
+    monkeypatch.setattr(runtime_module.logger, "disabled", False)
+    monkeypatch.setattr(subprocess, "Popen", _StuckProcess)
+    monkeypatch.setattr(runtime_module, "KILL_GRACE_SECONDS", 0.2)
+    started = time.monotonic()
+    with caplog.at_level("ERROR", logger=runtime_module.logger.name):
+        kind, exc = _progress(bin_runtime, "anything", stall_timeout=0.3)
+    assert time.monotonic() - started < 10
+    assert kind == "raised" and isinstance(exc, FfmpegStalledError)
+    assert any("424242" in record.getMessage() for record in caplog.records)
+
+
+def test_a_process_that_closes_its_output_but_never_exits_is_stalled(
+    bin_runtime: FfmpegRuntime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(runtime_module, "KILL_GRACE_SECONDS", 0.5)
+    started = time.monotonic()
+    kind, exc = _progress(bin_runtime, "close-stdout-then-sleep")
+    assert time.monotonic() - started < 10
+    assert kind == "raised" and isinstance(exc, FfmpegStalledError)
+    assert "closed its progress output but did not exit" in str(exc)
+    assert not _alive(_child_pid(tmp_path))

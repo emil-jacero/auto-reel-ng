@@ -785,7 +785,7 @@ def cmd_jobs_cancel(args: argparse.Namespace) -> int:
         print(f"job {job_id}: already in a terminal state (or does not exist); no change")
         return 0
     if result.status == JobStatus.RUNNING:
-        print(f"job {job_id}: cancel requested; the worker will stop between segments")
+        print(f"job {job_id}: cancel requested; the worker will stop it within about a second")
     else:
         print(f"job {job_id}: {result.status.value}")
     return 0

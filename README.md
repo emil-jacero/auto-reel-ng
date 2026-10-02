@@ -203,18 +203,21 @@ CLI invocation and survive a crash or restart without losing or duplicating work
   requeued, already-finished orphan without a redundant re-render.
 - **`jobs list`/`show`/`cancel`** are a read-only view plus cancellation. `cancel`
   on a `running` job only sets its `cancel_requested` flag — the worker remains the
-  sole writer of `status` and stops itself between segments (**cancel latency is
-  about one segment's encode**, seconds to roughly a minute on VAAPI; there is no
-  mid-ffmpeg kill in this version). `cancel` on a `queued` job cancels it directly.
+  sole writer of `status`, and a running render notices the flag about once a second
+  and kills its ffmpeg, so a cancel takes effect within **about a second**, inside a
+  segment as well as between segments. `cancel` on a `queued` job cancels it directly.
 
 **Requeue-on-restart:** every `worker` process boot gets a fresh `host:pid:nonce`
 identity and, before claiming any work, resets every `running` row not owned by a
 *live* worker back to `queued` — unconditionally, with no verification step. This
 is sound because output finalization is atomic (below): a truly-finished orphan
 re-runs, hits the engine's skip-if-exists check, and completes as `done` in
-milliseconds instead of re-rendering. There is currently **no heartbeat / hung-worker
-detection** — this reconcile only catches a crashed or cleanly-restarted worker, not
-one that is still alive but stuck.
+milliseconds instead of re-rendering. A segment encode whose
+ffmpeg output time has not advanced for **10 minutes** is killed and its job fails
+(`ffmpeg stalled: …`; the output is not written, so the event stays stale and can be
+enqueued again). There is still **no heartbeat**: this reconcile only catches a
+crashed or cleanly-restarted worker, so a worker process that is itself wedged (not just
+its ffmpeg) is recovered only by the next boot.
 
 **Capacity:** the worker selects its acceleration profile once at startup (like
 `render`) and enforces two pools — one semaphore per hardware render node (default
@@ -414,7 +417,7 @@ render, or job logic lives in the web tier.
   by the insertion, so two requests racing for one event get one 201 and one 409
   naming the job the 201 created, never two 201s. A cancel answers the `outcome`
   the store applied — `flagged-running` (a running job's `cancel_requested` is
-  set; the worker stops it between segments), `canceled-queued` or
+  set; the worker stops it within about a second), `canceled-queued` or
   `no-op-terminal` — with the job's `status` after that same transaction, decided
   under a lock on the job's row, so a worker claiming the job at that moment can
   neither be mislabeled nor overwritten. A job's `event_dir` is the event's id: the
