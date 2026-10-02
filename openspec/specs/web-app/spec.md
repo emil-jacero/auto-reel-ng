@@ -464,6 +464,7 @@ loaded page does, without horizontal scroll from 320 CSS pixels up.
   names the heading `2024-06-27 - Grillning med grannar`, and each placeholder clip row is as tall as a
   loaded row; when the read answers, the heading reads `Grillkväll med grannarna` and the `Clips` table
   starts within 8 pixels of where the placeholder table started
+
 ### Requirement: The event page reports failures by cause
 
 When an event's page cannot show the event, it SHALL say why, taking the distinction from the published
@@ -1154,7 +1155,14 @@ or rows show job state, and SHALL NOT poll any jobs or events endpoint on a time
 channel, not polling.
 
 - A **snapshot** frame SHALL replace the client's set of active jobs. A **delta** frame SHALL update only the
-  jobs it carries.
+  jobs it carries. A **heartbeat** frame SHALL change nothing the client shows: it only proves the
+  connection is alive.
+- The client SHALL treat a connection that has delivered no frame, of any type, for 40 seconds as lost,
+  counted from the moment the connection was created and again from each frame. It SHALL then drop that
+  connection and reconnect exactly as after a close, without waiting for the browser to report one,
+  because a connection that died without a close can stay open to the browser for minutes. An idle but
+  healthy connection stays well inside the window, since the service sends a frame at least every 15
+  seconds.
 - A job the client knew as queued or running that is absent from a new snapshot ended while the connection
   was down. The client SHALL read that job once from the service and show its real terminal state. It MUST
   NOT keep showing that job as active, and MUST NOT guess its outcome.
@@ -1178,6 +1186,19 @@ channel, not polling.
 - **WHEN** a job for `2024-06-27 - Grillning med grannar` was running, the service was restarted, and the
   worker finished the job before the connection came back
 - **THEN** after reconnecting, the event's job shows as rendered, not as running, and no toast announces it
+
+#### Scenario: An idle connection stays live
+- **WHEN** the connection is live, no job is active, and the service sends nothing but heartbeats for
+  several minutes
+- **THEN** the header keeps showing the connection as live, the tab opens no second connection, and
+  nothing on any screen changes
+
+#### Scenario: A connection that went silent is dropped
+- **WHEN** the connection is live and the service stops sending frames without closing the connection (a
+  laptop that was suspended and woke on a dead network, a path that dropped silently)
+- **THEN** within 40 seconds of the last frame the header shows that the client is reconnecting, without
+  job counts, and the client opens a new connection after its randomized delay
+- **AND** when the new connection delivers its snapshot, the header shows live again, with no reload
 
 #### Scenario: A lost connection says so
 - **WHEN** the service stops answering while the app is open
@@ -2072,6 +2093,7 @@ save bar. With no save bar shown, notifications keep their place at the bottom o
   (a chapter being added before it, or a clip list growing by one row) moves the bar down the page without
   the window being scrolled or resized
 - **THEN** the notification is still directly above the bar, does not overlap it, and covers no control
+
 ### Requirement: A confirmation dialog states its consequence
 
 Every dialog that asks the operator to confirm an action SHALL have a title that asks the question and a
