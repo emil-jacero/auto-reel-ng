@@ -477,6 +477,13 @@ to a peer that vanished while frames were still backed up for it cannot be
 closed: the shutdown can fail before its orderly part, or wait until the
 operating system gives up on that connection, which can take many minutes.
 
+A database that has stopped answering does not hold the stop of the live feed: the
+WebSocket hub abandons a read it is stalled in, and a client that closes during
+the first snapshot's read is released at once. Connecting to Postgres gives up
+after 5 s (`?connect_timeout=N` in `DATABASE_URL` changes it). A query already
+running on an established connection is not interrupted, though, and the process
+exits only after it ends.
+
 A second Ctrl+C forces the exit: `serve` stops waiting for the requests still
 being handled, including a blocked one, and exits with status 130. uvicorn then
 skips its application shutdown step, so the log has no "Application shutdown
