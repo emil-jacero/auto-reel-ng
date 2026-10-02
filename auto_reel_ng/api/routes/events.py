@@ -164,9 +164,19 @@ def get_events(request: Request) -> Union[List[EventRowOut], Response]:
     return result
 
 
-@router.get("/events/{event_id:path}/analysis", response_model=AnalysisOut)
+@router.get(
+    "/events/{event_id:path}/analysis",
+    response_model=AnalysisOut,
+    responses={404: {"model": ProblemOut}, 502: {"model": ProblemOut}},
+)
 def get_analysis(event_id: str, request: Request) -> Union[AnalysisOut, Response]:
     """``GET /api/v1/events/{event_id}/analysis`` (task 2.4): cached segments only.
+
+    Answers only for an id the events list shows, like the thumbnail and media
+    routes: 404 for any other directory (a year folder, an event's ``original/``, a
+    ``.reelignore``d event). 502 for an event folder that cannot be listed (with the
+    list's ``failure`` kind) and for a layout the service cannot resolve (with no
+    kind). The database is never touched.
 
     Registered *before* the ``{event_id:path}`` detail route below: both patterns
     are greedy over ``/``, and Starlette matches routes in registration order, so
@@ -180,6 +190,10 @@ def get_analysis(event_id: str, request: Request) -> Union[AnalysisOut, Response
         return not_found(
             f"no event {event_id!r} under the configured project root", event_id=event_id
         )
+    except events_read.EventReadError as exc:
+        return _event_read_failed(exc, event_id)
+    except LayoutError as exc:
+        return bad_gateway(str(exc), event_id=event_id)
 
 
 @router.get(
@@ -425,7 +439,7 @@ def put_reel(
     payload: EditorialDocumentBody,
     request: Request,
     response: Response,
-    if_match: Optional[str] = Header(default=None, alias="If-Match"),
+    _if_match: Optional[str] = Header(default=None, alias="If-Match"),
 ) -> Union[EditorialWriteResult, Response]:
     """``PUT /api/v1/events/{event_id}/reel``: apply a desired editorial state (D-E2).
 
@@ -443,6 +457,11 @@ def put_reel(
     client may chain conditional writes with no intervening read. A ``412`` carries
     none: a client that lost the race must re-read before it overwrites.
 
+    ``If-Match`` is published as a parameter, but read from every header line the
+    request carries (RFC 9110: repeated lines are one comma-separated list): the
+    parameter would hold only the first. A request that carries the header at all,
+    even empty, is conditional.
+
     Failures answer by cause and write nothing: 400 for an invalid submitted state
     (with ``failure: unusable_metadata`` when the engine refuses a state that
     leaves the event without a real date or title), 404, 412, and 502 for the disk:
@@ -450,6 +469,8 @@ def put_reel(
     reads report it) or a save the filesystem refuses (naming the OS error).
     """
     settings = _settings(request)
+    if_match_lines = request.headers.getlist("if-match")
+    if_match = ", ".join(if_match_lines) if if_match_lines else None
     try:
         event_dir = events_read.resolve_event_dir(settings, event_id)
     except events_read.EventNotFoundError:

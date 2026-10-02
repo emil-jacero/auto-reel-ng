@@ -115,6 +115,12 @@ export interface paths {
          * Get Analysis
          * @description ``GET /api/v1/events/{event_id}/analysis`` (task 2.4): cached segments only.
          *
+         *     Answers only for an id the events list shows, like the thumbnail and media
+         *     routes: 404 for any other directory (a year folder, an event's ``original/``, a
+         *     ``.reelignore``d event). 502 for an event folder that cannot be listed (with the
+         *     list's ``failure`` kind) and for a layout the service cannot resolve (with no
+         *     kind). The database is never touched.
+         *
          *     Registered *before* the ``{event_id:path}`` detail route below: both patterns
          *     are greedy over ``/``, and Starlette matches routes in registration order, so
          *     the more specific ``/analysis`` suffix must be tried first or the detail route
@@ -164,6 +170,11 @@ export interface paths {
          *     computed from the returned document by the same helper ``get_reel`` uses, so a
          *     client may chain conditional writes with no intervening read. A ``412`` carries
          *     none: a client that lost the race must re-read before it overwrites.
+         *
+         *     ``If-Match`` is published as a parameter, but read from every header line the
+         *     request carries (RFC 9110: repeated lines are one comma-separated list): the
+         *     parameter would hold only the first. A request that carries the header at all,
+         *     even empty, is conditional.
          *
          *     Failures answer by cause and write nothing: 400 for an invalid submitted state
          *     (with ``failure: unusable_metadata`` when the engine refuses a state that
@@ -1220,6 +1231,15 @@ export interface operations {
                     "application/json": components["schemas"]["AnalysisOut"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -1227,6 +1247,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
                 };
             };
         };

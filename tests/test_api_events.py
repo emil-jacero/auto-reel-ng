@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 from datetime import datetime
 from pathlib import Path
@@ -210,6 +211,106 @@ def test_analysis_populated_returns_segments(client: TestClient, project: Path) 
 def test_unknown_event_analysis_yields_404(client: TestClient) -> None:
     response = client.get("/api/v1/events/2024/does-not-exist/analysis")
     assert response.status_code == 404
+
+
+MIDSOMMAR = "2024/2024-06-21 - Midsommar i Dalarna Åäö"
+
+
+def _assert_analysis_problem(response, status: int, event_id: str) -> dict:
+    assert response.status_code == status
+    assert response.headers["content-type"] == "application/json"
+    body = response.json()
+    assert body["status"] == status
+    assert body["event_id"] == event_id
+    return body
+
+
+def _cache_one_segment(event_dir: Path, identity: str) -> None:
+    from auto_reel_ng.analysis.cache import clip_signal, write_entry
+    from auto_reel_ng.analysis.models import Segment, SegmentKind
+
+    write_entry(
+        event_dir,
+        identity,
+        clip_signal(event_dir / identity),
+        [Segment(start=0.0, end=1.0, kind=SegmentKind.BLACK, confidence=0.9)],
+    )
+
+
+def test_analysis_of_a_year_folder_is_not_found(client: TestClient) -> None:
+    body = _assert_analysis_problem(client.get("/api/v1/events/2024/analysis"), 404, "2024")
+    assert "2024" in body["detail"]
+
+
+def test_analysis_of_an_events_original_folder_is_not_found(
+    client: TestClient, project: Path
+) -> None:
+    (project / MIDSOMMAR / "original").mkdir()
+    folder = f"{MIDSOMMAR}/original"
+
+    analysis = client.get(f"/api/v1/events/{quote(folder, safe='/')}/analysis")
+
+    _assert_analysis_problem(analysis, 404, folder)
+
+
+def test_analysis_of_a_chapter_folder_is_not_found(client: TestClient) -> None:
+    folder = "2024/2024-07-04 - Barbecue/clips"
+
+    analysis = client.get(f"/api/v1/events/{quote(folder, safe='/')}/analysis")
+
+    _assert_analysis_problem(analysis, 404, folder)
+
+
+def test_analysis_of_a_reelignored_event_is_not_found(client: TestClient, project: Path) -> None:
+    event_dir = project / MIDSOMMAR
+    _cache_one_segment(event_dir, "00400.mp4")
+    _touch(event_dir / ".reelignore")
+
+    analysis = client.get(f"/api/v1/events/{quote(MIDSOMMAR, safe='/')}/analysis")
+
+    _assert_analysis_problem(analysis, 404, MIDSOMMAR)
+
+
+def test_analysis_never_reads_the_document(client: TestClient, project: Path) -> None:
+    event_dir = project / MIDSOMMAR
+    _cache_one_segment(event_dir, "00400.mp4")
+    (event_dir / "reel.yaml").write_text("chapters: [unterminated\n", encoding="utf-8")
+
+    analysis = client.get(f"/api/v1/events/{quote(MIDSOMMAR, safe='/')}/analysis")
+
+    assert analysis.status_code == 200
+    body = analysis.json()
+    assert body["analyzed"] is True
+    assert body["segments"]["00400.mp4"][0]["kind"] == "black"
+
+
+def test_analysis_of_an_unlistable_event_is_a_502_unreadable_disk(
+    client: TestClient, project: Path
+) -> None:
+    if os.geteuid() == 0:
+        pytest.skip("root ignores file permissions")
+    event_dir = project / MIDSOMMAR
+    event_dir.chmod(0)
+    try:
+        analysis = client.get(f"/api/v1/events/{quote(MIDSOMMAR, safe='/')}/analysis")
+    finally:
+        event_dir.chmod(0o755)
+
+    body = _assert_analysis_problem(analysis, 502, MIDSOMMAR)
+    assert body["failure"] == "unreadable_disk"
+
+
+def test_analysis_with_an_unknown_layout_is_a_502_without_a_kind(
+    project: Path, postgres_container: str, jobs_schema_engine
+) -> None:
+    settings = resolve_api_settings(project, env={"DATABASE_URL": postgres_container})
+    broken = dataclasses.replace(settings, layout_name="no-such-layout")
+    with TestClient(create_app(broken)) as client:
+        analysis = client.get(f"/api/v1/events/{quote(MIDSOMMAR, safe='/')}/analysis")
+
+    body = _assert_analysis_problem(analysis, 502, MIDSOMMAR)
+    assert body.get("failure") is None
+    assert "no-such-layout" in body["detail"]
 
 
 FACTS_REEL_YAML = """\
