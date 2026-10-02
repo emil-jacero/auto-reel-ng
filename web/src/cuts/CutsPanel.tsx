@@ -17,6 +17,7 @@ import {
   addedWords,
   checkCut,
   checkRestore,
+  clipLength,
   cutSummary,
   formatLength,
   formatTime,
@@ -45,7 +46,8 @@ import type { CutField, CutRefusal, ListedCut } from './times'
  *
  * The panel's first control is Watch: the clip's preview (`preview/`, D-16) opens
  * there, above the cuts, and sets the fields at its playhead. The length it reads
- * from the clip's file then refuses a cut past the clip's end.
+ * from the clip's file then refuses a cut past the clip's end; before any preview, the
+ * duration the detail gives the clip (when it has one) does.
  */
 
 /** What one clip's panel holds: whether it is shown, and its two fields as typed. */
@@ -200,6 +202,7 @@ export const CutsPanel = memo(function CutsPanel({
   eventId,
   identity,
   mtime,
+  duration,
   name,
   cuts,
   open,
@@ -213,6 +216,11 @@ export const CutsPanel = memo(function CutsPanel({
   identity: string
   /** The clip's modification time as the detail gives it: its media address's `v`. */
   mtime: string | null
+  /**
+   * The clip's duration in seconds as the detail gives it (the thumbnail operation's number,
+   * never probed by the service), or `null` when unknown: never zero.
+   */
+  duration: number | null
   /** The clip's name as its row names it. */
   name: string
   cuts: readonly DraftCut[]
@@ -248,7 +256,9 @@ export const CutsPanel = memo(function CutsPanel({
   const previewOpen = usePreviewOpen(previews, identity)
   // The length this browser read from the clip's file in a preview of this Edit mode;
   // keyed by the media address, so a replaced file (a new `mtime`) has none.
-  const length = useClipLength(previews, clipMediaUrl(eventId, { identity, mtime }))
+  const previewed = useClipLength(previews, clipMediaUrl(eventId, { identity, mtime }))
+  // It wins; else the detail's duration (it belongs to the file the detail reported), else unknown.
+  const length = clipLength(previewed, duration)
   // The bar's typed span: only one Add cut would accept (the panel's own checks).
   const typed = useMemo(() => {
     const checked = checkCut(cuts, start, end, length)
@@ -565,7 +575,7 @@ export const CutsPanel = memo(function CutsPanel({
           </p>
         )}
         <p className="field-hint" id={hintId}>
-          {length === undefined ? CUT_HINT : lengthHint(length)}
+          {length === undefined ? CUT_HINT : lengthHint(length, previewed !== undefined)}
         </p>
       </form>
     </div>

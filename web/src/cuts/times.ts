@@ -301,12 +301,34 @@ export const CUT_HINT =
   'length: a cut that runs past its end stops there, and a cut over the whole clip leaves the ' +
   'clip out of the movie.'
 
-/** The hint once the clip's preview has read its length (D-16): where the clip ends. */
-export function lengthHint(length: number): string {
+/**
+ * The clip's length for the panel: what its preview has read from the file (D-16), else
+ * the duration the event detail gives (the length the thumbnail operation measured), else
+ * unknown. The preview's wins because Set From and Set To write times in it, and a browser
+ * can read up to 60 ms more than the probe. A `null`, absent, zero, negative or non-finite
+ * duration is unknown, never a length of zero.
+ */
+export function clipLength(
+  previewed: number | undefined,
+  duration: number | null | undefined,
+): number | undefined {
+  if (previewed !== undefined) {
+    return previewed
+  }
+  return typeof duration === 'number' && Number.isFinite(duration) && duration > 0
+    ? duration
+    : undefined
+}
+
+/**
+ * The hint once the page knows the clip's length: where the clip ends, and whose length it is
+ * (the browser's, once the preview read it, else the one measured when its thumbnail was made).
+ */
+export function lengthHint(length: number, previewed = true): string {
   return (
     `Seconds (75.5), m:ss (1:15.5) or h:mm:ss (1:01:15.5). This clip ends at ` +
-    `${formatTime(length)}, as this browser reads it: a cut must end by then, and a cut over ` +
-    'the whole clip leaves the clip out of the movie.'
+    `${formatTime(length)}, ${previewed ? 'as this browser reads it' : 'as measured for its thumbnail'}: ` +
+    'a cut must end by then, and a cut over the whole clip leaves the clip out of the movie.'
   )
 }
 

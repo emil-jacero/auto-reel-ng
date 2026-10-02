@@ -394,6 +394,7 @@ const ClipRow = memo(function ClipRow({
           eventId={eventId}
           identity={identity}
           mtime={clip.mtime ?? null}
+          duration={clip.duration ?? null}
           name={name}
           cuts={cuts}
           open={open}

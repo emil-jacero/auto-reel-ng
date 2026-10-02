@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -1353,3 +1354,196 @@ def test_reading_excluded_flags_probes_and_writes_nothing(
     assert detail["blocking_missing"] == []
     assert not marker.exists()
     assert {p: p.read_bytes() for p in project.rglob("*") if p.is_file()} == before
+
+
+# --- ClipOut.duration: the thumbnail sidecar's number, never a probe --------------------------
+
+
+def _write_cache_config(project: Path, cache_dir: Path, *, position: object = None) -> None:
+    """``config.yaml`` with a thumbnail cache outside the library (JSON is YAML)."""
+    thumbnails: dict[str, object] = {"cache_dir": str(cache_dir)}
+    if position is not None:
+        thumbnails["position"] = position
+    (project / "config.yaml").write_text(json.dumps({"thumbnails": thumbnails}), encoding="utf-8")
+
+
+def _record_duration(clip: Path, cache_dir: Path, payload: object, position: float = 0.25) -> Path:
+    """Seed the sidecar the thumbnail operation writes beside the clip's JPEG; return it."""
+    from auto_reel_ng.thumbs import thumbnail_path
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    sidecar = thumbnail_path(clip, position=position, cache_dir=cache_dir).with_suffix(".json")
+    sidecar.write_text(
+        payload if isinstance(payload, str) else json.dumps(payload), encoding="utf-8"
+    )
+    return sidecar
+
+
+def _forbid_media_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """Put an ``ffprobe`` and an ``ffmpeg`` on PATH that leave a marker when run."""
+    marker = tmp_path / "media-tool-ran"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    for tool in ("ffprobe", "ffmpeg"):
+        fake = fake_bin / tool
+        fake.write_text(f"#!/bin/sh\ntouch '{marker}'\nexit 1\n", encoding="utf-8")
+        fake.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+    return marker
+
+
+def _listing(directory: Path) -> list[tuple[str, int]]:
+    return sorted((str(p), p.stat().st_mtime_ns) for p in directory.rglob("*"))
+
+
+def test_a_clip_with_a_recorded_duration_reports_it_and_no_media_tool_runs(
+    client: TestClient, project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = tmp_path / "cache"
+    _write_cache_config(project, cache)
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _record_duration(event_dir / "00500.mp4", cache, {"duration": 6.02})
+    marker = _forbid_media_tools(monkeypatch, tmp_path)
+    before = _listing(cache)
+
+    clips = _clips_by_identity(_detail(client))
+
+    assert clips["00500.mp4"]["duration"] == 6.02
+    assert clips["clips/00600.mp4"]["duration"] is None
+    assert not marker.exists()
+    assert _listing(cache) == before  # nothing written, created or refreshed
+
+
+def test_a_clip_whose_thumbnail_was_never_made_has_a_null_duration(
+    client: TestClient, project: Path, tmp_path: Path
+) -> None:
+    cache = tmp_path / "cache"
+    _write_cache_config(project, cache)
+
+    clips = _clips_by_identity(_detail(client))
+
+    assert {clip["duration"] for clip in clips.values()} == {None}
+    assert all(clip["size"] is not None for clip in clips.values())
+    assert not cache.exists()  # reading the detail does not even create the cache directory
+
+
+def test_a_replaced_file_does_not_keep_the_old_files_duration(
+    client: TestClient, project: Path, tmp_path: Path
+) -> None:
+    cache = tmp_path / "cache"
+    _write_cache_config(project, cache)
+    clip = project / "2024" / "2024-07-04 - Barbecue" / "00500.mp4"
+    _record_duration(clip, cache, {"duration": 6.02})
+    assert _clips_by_identity(_detail(client))["00500.mp4"]["duration"] == 6.02
+
+    clip.write_bytes(b"replaced by a larger file")  # a new size
+    assert _clips_by_identity(_detail(client))["00500.mp4"]["duration"] is None
+
+    _record_duration(clip, cache, {"duration": 7.5})
+    os.utime(clip, ns=(1_000_000_000, 1_000_000_000))  # then a new mtime alone
+    assert _clips_by_identity(_detail(client))["00500.mp4"]["duration"] is None
+
+
+@pytest.mark.parametrize(
+    "payload",
+    ["{not json", {"duration": 0}, {"duration": -3}, {"duration": "6.02"}, {"duration": True}, []],
+    ids=["invalid-json", "zero", "negative", "string", "bool", "not-an-object"],
+)
+def test_an_unusable_sidecar_is_unknown_not_an_error(
+    client: TestClient, project: Path, tmp_path: Path, payload: object
+) -> None:
+    cache = tmp_path / "cache"
+    _write_cache_config(project, cache)
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _record_duration(event_dir / "00500.mp4", cache, payload)
+    _record_duration(event_dir / "clips" / "00600.mp4", cache, {"duration": 2.5})
+
+    response = client.get(f"/api/v1/events/{quote(_BBQ, safe='/')}")
+
+    assert response.status_code == 200
+    clips = _clips_by_identity(response.json())
+    assert clips["00500.mp4"]["duration"] is None
+    assert clips["00500.mp4"]["size"] == 0
+    assert clips["clips/00600.mp4"]["duration"] == 2.5
+
+
+def test_an_unusable_thumbnails_configuration_leaves_every_duration_unknown(
+    client: TestClient, project: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    cache = tmp_path / "cache"
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _record_duration(event_dir / "00500.mp4", cache, {"duration": 6.02})
+    _write_cache_config(project, cache, position=2)
+
+    with caplog.at_level("WARNING", logger="auto_reel_ng.api.events_read"):
+        response = client.get(f"/api/v1/events/{quote(_BBQ, safe='/')}")
+
+    assert response.status_code == 200
+    clips = _clips_by_identity(response.json())
+    assert {clip["duration"] for clip in clips.values()} == {None}
+    assert clips["00500.mp4"]["size"] == 0
+    assert [r.getMessage() for r in caplog.records if "thumbnails.position" in r.getMessage()]
+
+
+def test_a_missing_clip_and_an_event_without_a_document_have_no_duration(
+    client: TestClient, project: Path, tmp_path: Path
+) -> None:
+    cache = tmp_path / "cache"
+    _write_cache_config(project, cache)
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    # A sidecar for a name that is not on disk must not surface for the missing clip.
+    (event_dir / "reel.yaml").write_text(FACTS_REEL_YAML, encoding="utf-8")
+    _record_duration(event_dir / "00500.mp4", cache, {"duration": 6.02})
+
+    with_document = _clips_by_identity(_detail(client))
+    assert with_document["00500.mp4"]["duration"] == 6.02
+    assert with_document["gone.mp4"]["status"] == "missing"
+    assert with_document["gone.mp4"]["duration"] is None
+
+    (event_dir / "reel.yaml").unlink()  # seeding: no document yet
+    assert _clips_by_identity(_detail(client))["00500.mp4"]["duration"] == 6.02
+
+
+def test_a_vanished_clip_has_a_null_duration_not_a_failed_event(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from auto_reel_ng.api import events_read
+    from auto_reel_ng.thumbs import ThumbnailSettings
+
+    cache = tmp_path / "cache"
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _record_duration(event_dir / "00500.mp4", cache, {"duration": 6.02})
+    document, listing, result = events_read._load_for_reconcile(event_dir, DEFAULT_CLIP_ORDER)
+    real_stat = Path.stat
+
+    def vanished(self: Path, *args: object, **kwargs: object):
+        if self.name == "00500.mp4":
+            raise FileNotFoundError("clip vanished mid-request")
+        return real_stat(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "stat", vanished)
+    chapters = events_read._build_chapters(
+        document,
+        listing,
+        result,
+        event_dir,
+        DEFAULT_CLIP_ORDER,
+        ThumbnailSettings(position=0.25, cache_dir=cache),
+    )
+
+    clips = {clip.identity: clip for chapter in chapters for clip in chapter.clips}
+    assert clips["00500.mp4"].duration is None
+
+
+def test_the_events_list_carries_no_duration(
+    client: TestClient, project: Path, tmp_path: Path
+) -> None:
+    cache = tmp_path / "cache"
+    _write_cache_config(project, cache)
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _record_duration(event_dir / "00500.mp4", cache, {"duration": 6.02})
+
+    barbecue = _by_id(client.get("/api/v1/events").json())[_BBQ]
+
+    assert "chapters" not in barbecue
+    assert "duration" not in json.dumps(barbecue)

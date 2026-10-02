@@ -289,7 +289,10 @@ The service serves one project; its jobs views are scoped to it; the queue is sh
 
 **The events read model is probe-free.** File facts (byte size, mtime) come from the clip's own directory
 entry — a `stat` — and may be served per request. Media facts (duration, dimensions, codec) require decoding
-and therefore belong to the analysis cache; no events read may probe a clip to fill a response field. This is
+and therefore belong to the analysis cache; no events read may probe a clip to fill a response field. The one
+exception is the detail's per-clip `duration` (change `api-clip-duration`): not a probe but a read of the
+number the thumbnail operation already measured, kept in the sidecar beside the clip's cached thumbnail
+(D-11), `null` (unknown, never zero) until a thumbnail of the file as it is now has been made. This is
 D-A3 (scanned per request) plus Principle IV (the staleness path never decodes) applied to the read model,
 not a new decision, and it is the rule to quote when a response field would need an `ffprobe`. The thumbnail
 route (`GET /api/v1/events/{event_id}/thumbnail?clip=`, change `clip-thumbnail-endpoint`, **D-11**) is a
@@ -732,10 +735,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   lists, adds and removes a clip's cuts (D-D), with times typed as seconds, m:ss or h:mm:ss, pulled forward
   from v3 at the operator's request. A clip's preview followed in GUI v1 (D-16). Scrubbing and drag-trim
   are the v2 timeline editor's (§4.10, 2026-10-01). The page refuses what the engine refuses (`out <= in`, negative), and
-  refuses an overlap with another cut. It cannot refuse a cut past
-  the clip's end, because no probe-free read gives a duration, unless the clip was previewed in that Edit
-  mode (D-16); otherwise it states the render's rule instead (cut short at the end; a whole-clip cut leaves the
-  clip out). A cut made in the GUI has the reason `manual`. The event page shows each clip's cuts.
+  refuses an overlap with another cut. It refuses a cut past the clip's end when it knows the length: from
+  the clip's preview in that Edit mode (D-16), else from the duration the event detail gives the clip (§4.9,
+  `api-clip-duration`); otherwise it states the render's rule instead (cut short at the end; a whole-clip cut
+  leaves the clip out). A cut made in the GUI has the reason `manual`. The event page shows each clip's cuts.
   The refusal of a new overlapping cut is an editing aid, not an engine rule: `reel.yaml` and the engine accept
   overlap and join overlapping or touching cuts as one removal, and cuts already overlapping show as their
   union. (§4.10)
@@ -763,8 +766,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     one live region (polite) rather than as an alert, unlike D-15's playback failures, because Edit mode already
     speaks every edit there.
   - **The length.** The length the browser reads from the file refuses a cut that ends past the clip's end,
-    for that clip, while Edit mode stays open. The API still carries no duration, so a clip never previewed
-    keeps D-14's rule. Measured on five files: Chrome's length equals ffprobe's, and Firefox's runs up to 60 ms
+    for that clip, while Edit mode stays open, and wins over the detail's duration (the probe's number, from
+    the thumbnail sidecar) because Set From and Set To write times in it. A clip with neither (no preview,
+    no thumbnail yet) keeps D-14's rule. Measured on five files: Chrome's length equals ffprobe's, and Firefox's runs up to 60 ms
     longer, never shorter, so the check never refused a cut the render keeps in full.
   - **What stays v2.** Firefox plays PCM audio silently (52 % of the archive), and the preview says so. Proxies,
     the PCM audio path, scrubbing and drag-trim stay the v2 timeline editor's (§4.10, §8.11).
