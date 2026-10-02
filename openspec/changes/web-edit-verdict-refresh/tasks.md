@@ -1,15 +1,15 @@
 ## 1. web/ — the verdict-only refresh
 
 - [x] 1.1 In `src/events/EventDetail.tsx`, add the verdict slice and `refreshVerdict` (design, "Where the refreshed fields live" and "The verdict read"):
-  - `ready` gains optional `verdict?: { staleness; latest_job }` and `verdictUnread?: string | null`; `RenderPanel` gets `staleness` and `latestJob` from `state.verdict ?? state.event`, and nothing else changes in what it is given
-  - `refreshVerdict()` with its own `verdictFlight` controller and `verdictPending` flag: one read in flight, one more after it; an `ok` answer that is not aborted and arrives while `editingRef.current` is true merges only `verdict` and clears `verdictUnread`; any other answer (not an abort) sets only `verdictUnread`, from `describeProblem` / `unansweredFailure` words; neither touches `event`, `fetchedAt`, `updating` or the `failed` state
+  - `ready` gains optional `verdict?: { staleness; latest_job }` and `verdictUnread?: { cause; detail }`; `RenderPanel` gets its verdict and latest job from `verdictOf(state)` (the refreshed slice, else the event's), and nothing else changes in what it is given
+  - `refreshVerdict()` with its own flight (`verdictFlight.ts`, pure and covered by `verdictFlight.test.ts`): one read in flight, one more after it; an `ok` answer that is not aborted and arrives while `editingRef.current` is true merges only `verdict` and clears `verdictUnread`; any other answer (not an abort) sets only `verdictUnread`, from `describeProblem` / `unansweredFailure` words; neither touches `event`, `fetchedAt`, `updating` or the `failed` state
   - `reread` calls `refreshVerdict()` while Edit mode is open and `load({ quiet: true })` otherwise
-  - `leaveEditMode` and the unmount cleanup abort `verdictFlight` and clear `verdictPending`
+  - `leaveEditMode` and the unmount cleanup abort `verdictFlight` (which also drops the request waiting)
   - the pure slice (`withVerdict`, `withVerdictUnread`, `verdictOf`, and the `LoadState` fields) lives in `src/events/loadState.ts`, with tests in `loadState.test.ts` (each transition leaves `event`, `fetchedAt` and `updating` alone; a non-`ready` state is returned unchanged; a later `withVerdict` clears the note; a new `readingState` read drops both)
   - the comments on `reread` and in the file's header doc say what the page now does in Edit mode
 
   Verify: `npm test`, `npx tsc --noEmit` and `npm run build` pass in the node:22 container, and `git diff --stat` shows only `web/src/events/EventDetail.tsx`, `loadState.ts` and `loadState.test.ts` (plus `detail.css` only if 1.2 needs one rule).
-- [x] 1.2 Show a failed refresh in the render region (design, "A failed verdict read is said, in the region"): when `verdictUnread` is set, `RenderPanel` renders an `Alert` (`tone="warn"`, `role="status"`) under `RenderControl` titled "The render verdict may be out of date", with the failure's detail and "Stop editing to read the event again."; it is gone after a successful refresh or a plain read.
+- [x] 1.2 Show a failed refresh in the render region (design, "A failed verdict read is said, in the region"): when `verdictUnread` is set, `RenderPanel` renders an `Alert` (`tone="warn"`, `role="note"`) under `RenderControl` titled "The render verdict may be out of date. Stop editing to read the event again." with the failure's cause and detail as its detail, and puts the same title into a persistent visually-hidden `<p role="status">` so it is announced; both are empty or gone after a successful refresh or a plain read.
 
   Verify: `npx tsc --noEmit` and `npm run build` pass; the note is checked in 2.1.
 - [x] 1.3 Keep a re-read that Edit interrupts (design, "Edit pressed with a re-read on its way"): the Edit button notes whether `inFlight.current !== null || pending.current`, aborts and nulls `inFlight`, clears `pending`, sets `editingRef.current`, and when a read was on its way calls `refreshVerdict()`.

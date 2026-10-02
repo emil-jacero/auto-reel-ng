@@ -40,6 +40,7 @@ import {
 import type { Failure, LoadOptions, LoadState, Verdict, VerdictUnread } from './loadState'
 import { ThumbHealthContext, useThumbHealth } from './thumbHealth'
 import { FAILURE_LOOK } from './tones'
+import { createVerdictFlight } from './verdictFlight'
 
 /**
  * One event's page: its chapters and clips in play order, and whether it needs
@@ -110,8 +111,7 @@ function EventDetailBody({
   const editingRef = useRef(false)
   // The verdict read of Edit mode (`refreshVerdict`): at most one in flight, and a
   // request made meanwhile leads to one more after it.
-  const verdictFlight = useRef<AbortController | null>(null)
-  const verdictPending = useRef(false)
+  const verdictFlight = useRef(createVerdictFlight()).current
   const headingRef = useRef<HTMLHeadingElement>(null)
   const focusHeading = useRef(false)
 
@@ -178,12 +178,10 @@ function EventDetailBody({
    * page. Never more than one in flight: a request meanwhile leads to one more after it.
    */
   const refreshVerdict = useCallback(() => {
-    if (verdictFlight.current !== null) {
-      verdictPending.current = true
+    const controller = verdictFlight.request()
+    if (controller === null) {
       return
     }
-    const controller = new AbortController()
-    verdictFlight.current = controller
     const settle = (update: (shown: LoadState) => LoadState) => {
       if (!controller.signal.aborted && editingRef.current) {
         setState(update)
@@ -211,16 +209,11 @@ function EventDetailBody({
         unread({ cause: 'The event could not be read.', detail: String(error) })
       })
       .finally(() => {
-        if (controller.signal.aborted || verdictFlight.current !== controller) {
-          return
-        }
-        verdictFlight.current = null
-        if (verdictPending.current) {
-          verdictPending.current = false
+        if (verdictFlight.finish(controller)) {
           refreshVerdict()
         }
       })
-  }, [eventId])
+  }, [eventId, verdictFlight])
 
   // The page's own re-read: its job ended, or an enqueue answer showed its read is
   // out of date. Quiet, so the page keeps its content while it runs.
@@ -240,7 +233,7 @@ function EventDetailBody({
     return () => inFlight.current?.abort()
   }, [load])
 
-  useEffect(() => () => verdictFlight.current?.abort(), [])
+  useEffect(() => () => verdictFlight.abort(), [verdictFlight])
 
   useEffect(() => {
     shown.current = true
@@ -258,13 +251,11 @@ function EventDetailBody({
     }
     editingRef.current = false
     // A verdict read still on its way is dropped: the read below is newer.
-    verdictFlight.current?.abort()
-    verdictFlight.current = null
-    verdictPending.current = false
+    verdictFlight.abort()
     setEditing(false)
     load()
     focusHeading.current = true
-  }, [load])
+  }, [load, verdictFlight])
 
   // After the commit, and after a closing dialog has returned focus to its opener.
   useEffect(() => {
@@ -492,6 +483,9 @@ function factsOf(event: EventDetailData): string | null {
   return facts.length > 0 ? facts.join(' · ') : null
 }
 
+const VERDICT_UNREAD_TITLE =
+  'The render verdict may be out of date. Stop editing to read the event again.'
+
 /**
  * The render region, one frame for the whole render story: the verdict and its
  * reasons, then the latest job and Render or Cancel. `RenderControl` keeps its
@@ -514,6 +508,7 @@ function RenderPanel({
   editing: boolean
   onFinished: () => void
 }) {
+  const note = editing && unread !== undefined
   return (
     <div className="render-panel">
       <StalenessCell staleness={verdict.staleness} explain />
@@ -530,11 +525,15 @@ function RenderPanel({
             : missingClipsReason(event.blocking_missing)
         }
       />
-      {editing && unread !== undefined && (
+      {/* Always in the page, so the words put into it are announced (ui/ToastRegion.tsx). */}
+      <p role="status" className="visually-hidden">
+        {note ? VERDICT_UNREAD_TITLE : ''}
+      </p>
+      {note && (
         <Alert
           tone="warn"
-          role="status"
-          title="The render verdict may be out of date. Stop editing to read the event again."
+          role="note"
+          title={VERDICT_UNREAD_TITLE}
           detail={unread.detail === null ? unread.cause : `${unread.cause} ${unread.detail}`}
         />
       )}
