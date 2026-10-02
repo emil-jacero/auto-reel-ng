@@ -135,7 +135,8 @@ test('renaming to a different name leaves the folder unnamed, in the folder’s 
   const lower = [chapter('r0', ''), chapter('r1', 'kvällen', { name: 'Kväll' })]
   const notes = laterClipNotes({ chapters: lower, folders, ignored: noIgnored })
   assert.deepEqual(notes.get('r1'), [
-    'No chapter will be named after the folder “Kvällen”, so clips added to it later will join Main.',
+    'No chapter will be named after the folder “Kvällen”, ' +
+      'so clips added to it later will join Main.',
   ])
 })
 
