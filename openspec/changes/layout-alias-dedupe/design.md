@@ -49,7 +49,14 @@ stable between runs.
 explains why. `.reelignore` first means an ignored target and its aliases are all just skipped
 (each logged by the existing INFO line) with no extra alias warning.
 **Trade-off**: the year-event walk now lists every year directory even when filtered (directory
-listing only, no clip access; layouts still never open clips).
+listing only, no clip access; layouts still never open clips). Listing a year *outside* the filter
+is best-effort: an `OSError` there (unreadable year, `lost+found`, stale mount) is logged at
+WARNING and the year is skipped, so a filtered walk and the per-clip API lookups never fail on a
+directory they did not ask for. A selected year, or the root, that cannot be listed still raises.
+
+Filtering by the name of a symlinked year (`2023 -> 2024`, `--year 2023`) yields nothing: the
+kept path is under `2024/`, which the filter excludes, and the WARNING names it. Select the real
+year instead. This is the same rule as the `--year 2025` alias-of-2024 case.
 
 ```python
 def _dedupe_aliases(root: Path, rows: list[Path]) -> list[Path]: ...
@@ -77,4 +84,9 @@ only maps already-filtered rows to refs) so the skip runs before the alias compa
 - [A user relied on the alias name for the output file name] -> the WARNING names the kept path;
   rename the real folder instead of symlinking it.
 - [Pairs of symlinks to an outside target pick the first by name] -> deterministic, logged.
-- [Full-walk listing under a year filter] -> negligible cost, directory entries only.
+- [Full-walk listing under a year filter] -> directory entries only; excluded years that cannot be
+  listed are skipped with a WARNING instead of failing the walk.
+- [`POST /api/v1/jobs` with an explicit alias id, and jobs queued under an alias before upgrade]
+  -> still enqueue and seed through the alias: the jobs route and worker take the id as spelled.
+  Out of scope here; follow-up change: require `listed_event_dir` in the route (and optionally on
+  claim) or refuse a path whose `resolve()` differs from its walked canonical path.

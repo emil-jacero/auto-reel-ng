@@ -99,7 +99,7 @@ def test_scan_lists_a_symlinked_alias_once_under_its_real_name(
 
     assert main(["scan", str(root)]) == 0
     out = capsys.readouterr().out
-    assert out.count("Kalas") >= 1
+    assert out.count("2024-07-20 - Kalas") == 1
     assert "Fest" not in out
     assert not (kalas / "reel.yaml").exists()
 

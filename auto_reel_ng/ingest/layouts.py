@@ -152,11 +152,21 @@ def year_event_layout(root: Path, years: Optional[Iterable[str]] = None) -> Iter
     """Walk ``<root>/<year>/<event>/``; optionally restrict to ``years`` (D-6).
 
     Aliases are collapsed over *every* year before the year filter applies, so an alias
-    of an event in an excluded year is still recognised (and dropped, with a WARNING).
+    of an event in an excluded year is still recognised (and dropped, with a WARNING). A
+    year outside the filter is listed best-effort: one that cannot be read is logged and
+    skipped, while a selected year (or the root) that cannot be read still raises.
     """
     root = Path(root)
     year_filter = {str(y) for y in years} if years is not None else None
-    rows = [event_dir for year_dir in _subdirs(root) for event_dir in _subdirs(year_dir)]
+    rows: list[Path] = []
+    for year_dir in _subdirs(root):
+        if year_filter is None or year_dir.name in year_filter:
+            rows.extend(_subdirs(year_dir))
+            continue
+        try:
+            rows.extend(_subdirs(year_dir))
+        except OSError as exc:
+            logger.warning("not listing %s (outside the year filter): %s", year_dir, exc)
     event_dirs = _walk_dirs(root, rows)
     if year_filter is not None:
         event_dirs = [d for d in event_dirs if d.parent.name in year_filter]
