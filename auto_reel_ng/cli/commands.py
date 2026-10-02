@@ -55,7 +55,7 @@ from ..scheduler import (
     worker_identity,
 )
 from ..staleness.fingerprint import Fingerprint, compute_fingerprint, engine_identity
-from ..staleness.gate import Verdict, evaluate
+from ..staleness.gate import StalenessReason, Verdict, evaluate
 from ..staleness.manifest import write_manifest
 from .adoption import REEL_FILENAME, PreparedEvent
 from .build import build_render_job_from_event, prepare_and_persist
@@ -386,9 +386,21 @@ def _print_inventory(ref: EventRef, title: str, result: ReconcileResult, verdict
         if result.missing:
             print(f"  ! {len(result.missing)} MISSING clip(s) referenced but absent from disk")
     if verdict.stale:
-        print(f"  stale: {', '.join(verdict.reasons)}")
+        print(f"  stale: {_format_reasons(verdict)}")
     else:
         print("  fresh")
+
+
+def _format_reasons(verdict: Verdict) -> str:
+    """The reasons of a stale verdict, ``output_renamed`` followed by the two movie files it names."""
+    return ", ".join(
+        (
+            f"{reason} (was {verdict.renamed_from!r}, now {verdict.output_name!r})"
+            if reason == StalenessReason.OUTPUT_RENAMED
+            else str(reason)
+        )
+        for reason in verdict.reasons
+    )
 
 
 # --------------------------------------------------------------------------- #
