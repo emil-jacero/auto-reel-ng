@@ -62,7 +62,7 @@ inputs, the manifest schema, `reel.yaml` and `config.yaml`: unchanged. No Alembi
 
 - Packages: `auto_reel_ng/staleness` (`gate.py`), `auto_reel_ng/cli` (`commands.py`). CLI only; the API is not
   touched (Principle V: the engine and CLI surface lands first, the API follows).
-- Tests: `tests/test_staleness_gate.py`, `tests/test_cli_render_staleness.py`, `tests/test_cli_scan.py`.
+- Tests: `tests/test_staleness_gate.py`, `tests/test_cli_render_staleness.py`, `tests/test_cli_commands.py`.
 - Docs: the `README.md` paragraph on `output_renamed` and its `scan` example.
 - Ordering: both gates, `staleness-output-lookup` (same `gate.py`) and `cli-serve-forced-stop-and-lifespan` (same
   `commands.py`), are already on `main`; the change builds on them.
