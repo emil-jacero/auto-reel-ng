@@ -63,13 +63,13 @@ The write endpoint SHALL accept an optional `If-Match` request header carrying a
 editorial read endpoint. The header SHALL be evaluated across every `If-Match` header line the request
 carries, as RFC 9110 defines repeated lines to be one comma-separated list: a request with the lines
 `If-Match: "stale"` and `If-Match: "<current>"` is the same request as one line holding both tags, and
-matches. A request that carries the header at all, even with an empty value, is conditional. When the header is present and matches the event's current editorial state, the write
-SHALL proceed. When it is present and does not match, the service SHALL respond `412 Precondition Failed` with
-a problem body and leave `reel.yaml` byte-for-byte unchanged. When the header is absent, the write SHALL be
-unconditional exactly as before, so scripted clients and any CLI-equivalent caller keep working without it.
-The ETag SHALL identify the **editorial** state canonically: a comment-only or formatting-only edit to
-`reel.yaml` MUST NOT change it, while any change to metadata, chapters, clip order, per-clip properties,
-`ignore`, or `look` MUST change it.
+matches. A request that carries the header at all, even with an empty value, is conditional. When the header
+is present and matches the event's current editorial state, the write SHALL proceed. When it is present and
+does not match, the service SHALL respond `412 Precondition Failed` with a problem body and leave `reel.yaml`
+byte-for-byte unchanged. When the header is absent, the write SHALL be unconditional exactly as before, so
+scripted clients and any CLI-equivalent caller keep working without it. The ETag SHALL identify the
+**editorial** state canonically: a comment-only or formatting-only edit to `reel.yaml` MUST NOT change it,
+while any change to metadata, chapters, clip order, per-clip properties, `ignore`, or `look` MUST change it.
 
 A **successful** write SHALL carry an `ETag` response header identifying the editorial state it persisted —
 the same value a read of that event would then return. A client may therefore chain conditional writes,
