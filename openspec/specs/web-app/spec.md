@@ -2980,13 +2980,17 @@ earlier. It SHALL be saved with the reason `manual`. After an addition:
 - both fields SHALL be empty again, with keyboard focus on the start field
 - the addition SHALL be announced with the cut's times, the clip's name and its new cut count
 
-**The clip's length.** No read of the service gives a clip's length. The page knows it only once the clip's
-preview has read it from the clip's file in this Edit mode ("Edit mode previews a clip on request"). Until
-then, the panel SHALL say that the page does not know the clip's length, that a cut that runs past the clip's
-end stops there, and that a cut over the whole clip leaves the clip out of the movie, and it SHALL NOT refuse
-a cut for its length. Once the page knows the length, the panel SHALL state it beside its fields, SHALL refuse
-a cut that ends after it, and SHALL mark each listed cut that ends after it ("A clip's preview sets cut times
-at the playhead and plays the clip as the movie will").
+**The clip's length.** The page knows a clip's length from one of two places, and the first it has wins: the
+length the clip's preview has read from the clip's file in this Edit mode ("Edit mode previews a clip on
+request"), else the duration the event detail gives the clip when it is not null (a thumbnail of the clip was
+made before). The preview's length wins because it is the one Set From and Set To write times from, so a cut
+set at the end of the clip is never refused. A null duration is unknown, never zero. When the page knows the
+length from neither, the panel SHALL say that the page does not know the clip's length, that a cut that runs
+past the clip's end stops there, and that a cut over the whole clip leaves the clip out of the movie, and it
+SHALL NOT refuse a cut for its length. Once the page knows the length, from either place, the panel SHALL
+state it beside its fields, SHALL refuse a cut that ends after it, and SHALL mark each listed cut that ends
+after it ("A clip's preview sets cut times at the playhead and plays the clip as the movie will"). The
+duration of a clip the event detail gives SHALL NOT be sent anywhere, and neither length SHALL be saved.
 
 **Removing a cut.** Each cut SHALL offer **Remove**, which names the clip and the cut. A cut read from
 `reel.yaml` SHALL then stay listed in its place, marked as removed when the edits are saved, with an **Undo**
@@ -3051,10 +3055,18 @@ window 320 or 390 pixels wide. No panel SHALL make the page scroll horizontally 
   it starts, and no cut is added
 
 #### Scenario: A clip never previewed is not checked for length
-- **WHEN** on `s1710002.mp4` of `2024-06-27 - Grillning med grannar`, whose preview was not opened in this Edit
-  mode, the operator adds a cut from `5` to `7`
+- **WHEN** on `s1710002.mp4` of `2024-06-27 - Grillning med grannar`, whose detail gives a duration of `null`
+  and whose preview was not opened in this Edit mode, the operator adds a cut from `5` to `7`
 - **THEN** the cut is accepted and listed, and the panel says that the page does not know the clip's length and
   that a cut that runs past the clip's end stops there
+
+#### Scenario: A clip whose duration the service gives is checked before any preview
+- **WHEN** on `s1710001.mp4` of `2024-06-27 - Grillning med grannar`, whose detail gives a duration of `6.02`
+  and whose preview was not opened in this Edit mode, the operator adds a cut from `5` to `7`
+- **THEN** the panel says that the clip ends at `0:06.02`, the cut is refused at the end field, which receives
+  keyboard focus, saying that `0:07` is after the clip's end at `0:06.02`, and no cut is added
+- **WHEN** the operator types `0:06.02` as the end and adds the cut
+- **THEN** the cut from `0:05` to `0:06.02` is listed
 
 #### Scenario: A cut that overlaps another
 - **WHEN** `s1710001.mp4` of `2024-06-27 - Grillning med grannar` has a cut from `0:00` to `0:01.5`, and the
@@ -3962,7 +3974,10 @@ panel's cuts and fields at once.
   time can be set from inside a cut.
 
 **The clip's length.** The page SHALL take a clip's length from its preview, as the browser reads it from the
-clip's file, and from nowhere else.
+clip's file, when the preview has read it, else from the duration the event detail gives the clip when that is
+not null, and from nowhere else. The preview's length SHALL win over the detail's whenever both exist, because
+Set From and Set To write times in the preview's length, and a browser can read up to 60 ms more than the
+probe's duration. A detail duration of `null` SHALL be treated as unknown, never as zero.
 - Once it has the length, the clip's panel SHALL say where the clip ends beside its fields (`This clip ends at
   0:06.02`).
 - The panel SHALL refuse a cut that ends after the clip's length, compared to the millisecond as the panel
@@ -3971,11 +3986,13 @@ clip's file, and from nowhere else.
   ends exactly at the length SHALL be accepted.
 - Each cut the panel lists that ends after the length SHALL be marked as running past the clip's end. Nothing
   SHALL refuse it, and its Undo SHALL NOT be refused for it.
-- The page SHALL keep the length for the clip while Edit mode stays open: after the preview closes, after
-  another opens, and after the clip moves to another chapter. It SHALL forget it when the clip's modification
-  time changes, and when Edit mode closes.
+- The page SHALL keep the length the preview read for the clip while Edit mode stays open: after the preview
+  closes, after another opens, and after the clip moves to another chapter. It SHALL forget it when the
+  clip's modification time changes, and when Edit mode closes. The detail's duration belongs to the clip's
+  current file, so a replaced file's old duration SHALL NOT be used: the next detail gives the new one, or
+  `null`.
 - When the browser reads a different length for the clip while it plays, the panel SHALL use the latest.
-- The length SHALL NOT be saved, sent to the service or shown anywhere outside Edit mode.
+- Neither length SHALL be saved, sent to the service or shown anywhere outside Edit mode.
 
 #### Scenario: The bar shows the clip's cuts
 - **WHEN** the `reel.yaml` of `2024-06-27 - Grillning med grannar` gives `s1710003.mp4` a cut from 0 to 1.2
@@ -4046,6 +4063,19 @@ clip's file, and from nowhere else.
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens and closes the preview of `s1710001.mp4`,
   moves that clip to `Kvällen` with Move clips, and adds a cut from `5` to `7` on it there
 - **THEN** the cut is refused for ending after the clip's length
+
+#### Scenario: The preview's length wins over the service's duration
+- **WHEN** the detail gives `s1710001.mp4` of `2024-06-27 - Grillning med grannar` a duration of `6.02`, and in
+  Firefox, which reads its length as 6.08 seconds, the operator opens the preview, presses Set To at the end of
+  the clip and adds the cut from `5`
+- **THEN** the panel says that the clip ends at `0:06.08`, and the cut from `0:05` to `0:06.08` is listed, not
+  refused
+
+#### Scenario: A listed cut past the end is marked from the service's duration
+- **WHEN** the `reel.yaml` of `2024-06-27 - Grillning med grannar` gives `s1710002.mp4` a cut from 3723.125 to
+  3725.5 seconds, the detail gives that clip a duration of `6.02`, and no preview was opened
+- **THEN** the cut is listed as running past the clip's end, and removing it and pressing its Undo is not
+  refused
 
 ### Requirement: A cancel or a job read that meets a database outage says so
 When the service answers a cancel request with a 503 whose problem body names the database as the failing
