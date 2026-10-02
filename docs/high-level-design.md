@@ -496,7 +496,9 @@ binary-agnostic.** Rationale and rules:
   with `--device cpu` for a host without `/dev/dri`. Usage: README, "Run the stack with compose".
 
 > ⚠️ **Research:** §8.12 one-image-all-vendors feasibility (ship CUDA + intel-media-driver + Mesa/VAAPI userspace,
-> select at runtime). The jellyfin-ffmpeg choice and its licensing are now **resolved** (Decision D-1).
+> select at runtime). The jellyfin-ffmpeg choice and its licensing are now **resolved** (Decision D-1),
+> but publishing an image waits for the fdk-aac pre-publish blocker in D-1 above (`jellyfin-ffmpeg8`
+> 8.1.3 ships `libfdk_aac`).
 
 ### 4.13 Change detection — don't render unless something changed
 
@@ -723,7 +725,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     authentication and the GUI writes `reel.yaml`.
   - **Always the checked-out code.** Every `up` rebuilds the image from the checkout (`pull_policy: build`,
     cached), and `.dockerignore` keeps the scratch data and the non-runtime trees out of the build context.
-  - **Local only.** The image is never pushed while D-1's fdk-aac blocker stands (§4.12). (§4.12)
+  - **Local only.** The image is never pushed while D-1's fdk-aac blocker stands (§4.12).
 
 ---
 
@@ -799,6 +801,8 @@ turned into confident OpenSpec changes. Numbered to match the ⚠️ markers abo
 8. **ffmpeg distribution.** ✅ **RESOLVED → Decision D-1 (§4.12, LOCKED).** Default = **jellyfin-ffmpeg**
    (bundled), engine binary-agnostic, **≥ 7.1** asserted at startup, treated as **GPL** (publish source +
    configure line), `nonfree`/fdk-aac never shipped. Details in `docs/research/cross-vendor-ffmpeg.md`.
+   ⚠️ Reopened for publishing only (2026-10-02, `compose-stack`): `jellyfin-ffmpeg8` 8.1.3 ships
+   `libfdk_aac`, so no image may be published until the D-1 pre-publish blocker (§4.12) is settled.
 9. **GPU concurrency limits** — NVENC simultaneous-session caps per GPU class, VRAM budgeting, and the
    QSV/VAAPI equivalents, to size the scheduler. Plus `ffmpeg -progress` parsing for accurate %.
 10. **Frontend framework.** ✅ **RESOLVED → Decision D-8 (§4.10, LOCKED).** **React 19 + Vite +

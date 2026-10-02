@@ -51,6 +51,8 @@ def _media(tmp_path: Path) -> Path:
     (two / "Kvällen").mkdir(parents=True)
     (two / "s1.mp4").write_bytes(b"s1")
     (two / "Kvällen" / "s2.mp4").write_bytes(b"s2")
+    (two / "Kvällen" / ".auto-reel" / "cache").mkdir(parents=True)
+    (two / "Kvällen" / ".auto-reel" / "cache" / "x").write_text("nested cache")
     samples = media / "samples"
     samples.mkdir()
     for name in ("a.mp4", "b.mov", "legacy-x.mp4"):
@@ -71,7 +73,9 @@ def _listing(root: Path) -> list[tuple[str, int, int]]:
 
 
 def _run(seeder: ModuleType, media: Path, tmp_path: Path, *, reset: bool = False) -> object:
-    return seeder.seed(media, tmp_path / "library", tmp_path / "library-output", reset=reset)
+    return seeder.seed(
+        media, tmp_path / "library", tmp_path / "library-output", reset=reset, tmp=tmp_path / "tmp"
+    )
 
 
 def test_layout_links_clips_copies_reel_and_drops_the_cache(
@@ -91,6 +95,7 @@ def test_layout_links_clips_copies_reel_and_drops_the_cache(
     assert reel.is_file() and not reel.is_symlink()
     assert reel.read_bytes() == (media / "input" / GRILL / "reel.yaml").read_bytes()
     assert not any(p.name == ".auto-reel" for p in library.rglob("*"))
+    assert sorted(p.name for p in (library / TWO_CHAPTERS / "Kvällen").iterdir()) == ["s2.mp4"]
 
     chapter = library / TWO_CHAPTERS / "Kvällen"
     assert chapter.is_dir() and not chapter.is_symlink()
@@ -120,6 +125,10 @@ def test_reseeding_keeps_edits_and_engine_files(
     manifest = grill / ".auto-reel" / "cache" / "render-manifest.json"
     manifest.parent.mkdir(parents=True)
     manifest.write_text("{}")
+    # A render in flight while `up` re-seeds: its scratch must survive a plain re-seed.
+    scratch = tmp_path / "tmp" / "auto-reel-render-abc" / "seg_000.mp4"
+    scratch.parent.mkdir(parents=True)
+    scratch.write_bytes(b"segment")
 
     counts = _run(seeder, media, tmp_path)
 
@@ -127,10 +136,11 @@ def test_reseeding_keeps_edits_and_engine_files(
     assert counts.reel_kept == 1 and counts.link_kept == 7
     assert (grill / "reel.yaml").read_text() == "title: Grillning (GUI-sparad)\n"
     assert manifest.read_text() == "{}"
+    assert scratch.read_bytes() == b"segment"
     assert _listing(media) == before
 
 
-def test_reset_empties_library_and_output_and_restores_the_fixture_reel(
+def test_reset_empties_library_output_and_tmp_and_restores_the_fixture_reel(
     seeder: ModuleType, media: Path, tmp_path: Path
 ) -> None:
     before = _listing(media)
@@ -139,12 +149,16 @@ def test_reset_empties_library_and_output_and_restores_the_fixture_reel(
     (grill / "reel.yaml").write_text("title: edited\n")
     (grill / "stray.txt").write_text("engine wrote this")
     (tmp_path / "library-output" / "movie.mp4").write_bytes(b"rendered")
+    killed = tmp_path / "tmp" / "auto-reel-render-killed"
+    killed.mkdir(parents=True)
+    (killed / "seg_000.mp4").write_bytes(b"left behind by a killed render")
 
     counts = _run(seeder, media, tmp_path, reset=True)
 
     assert (grill / "reel.yaml").read_text() == REEL
     assert not (grill / "stray.txt").exists()
     assert list((tmp_path / "library-output").iterdir()) == []
+    assert list((tmp_path / "tmp").iterdir()) == []
     assert counts.reel_copied == 1 and counts.link_new == 7
     # Removing a clip symlink never follows it: the fixture is byte-identical.
     assert _listing(media) == before
