@@ -273,9 +273,11 @@ state — metadata, ordered chapters with their clip identities, per-clip proper
 `reel.yaml` as parsed at request time, and the response SHALL carry an `ETag` identifying that editorial
 state. An event whose directory resolves but which has no `reel.yaml` yet SHALL return 200 with the empty
 editorial document, mirroring the write endpoint's own seeding behaviour — not 404. An unknown event SHALL
-yield 404 with a problem body. A `reel.yaml` that cannot be read or parsed SHALL fail loud with the
+yield 404 with a problem body. A `reel.yaml` that cannot be read or parsed, and an event folder that cannot be
+searched so that the existence of its `reel.yaml` cannot be established, SHALL fail loud with the
 scan-failure problem body. That body names the event and carries the same failure kind the events reads
-would report, rather than an empty or partial document. The endpoint SHALL be read-only: it MUST NOT create
+would report (`unparseable_reel_yaml`, or `unreadable_disk` for a permission failure), rather than an empty
+or partial document. Only a `reel.yaml` that is absent reads as the empty document. The endpoint SHALL be read-only: it MUST NOT create
 or modify `reel.yaml` and MUST NOT write a render manifest. It SHALL publish its 404 and 502 responses, the
 shared problem body shape, and its `ETag` header in the service's OpenAPI schema.
 
@@ -306,6 +308,12 @@ shared problem body shape, and its `ETag` header in the service's OpenAPI schema
 - **WHEN** the event's `reel.yaml` cannot be parsed
 - **THEN** the response is the scan-failure 502 naming the failing event, with the unparseable-`reel.yaml`
   failure kind, never an empty or partial document
+
+#### Scenario: An unsearchable event folder is loud, not empty
+- **WHEN** the event folder `2024/2024-06-21 - A`, which holds a `reel.yaml` with the title `Real`, has mode
+  `0600`, so that the file inside it cannot be looked up
+- **THEN** the response is the scan-failure 502 naming the event, with the unreadable-disk failure kind, not
+  200 with the empty editorial document, and the folder and the file are unchanged
 
 #### Scenario: An unprocessable event can still be read for fixing
 - **WHEN** the event folder `2004/2004 - Yngve berättar om skövde`, whose name has a year only, has no
@@ -983,14 +991,19 @@ plain string continues to read the same strings.
 SHALL be refused when its output path is also the output path of another event of the served project. Paths
 SHALL be compared exactly as the batch commands compare them: case-insensitively and after Unicode
 normalization. The claimants SHALL be every event the configured layout walks from the served root, the
-same events the events list shows, plus the named event itself. There is no selection: the check covers the
-whole project, as `auto-reel enqueue <root>` does without `--years`. An event whose `reel.yaml` cannot be
-read, whose files cannot be listed, or whose resolved metadata lacks a real date or a title (or carries a
-future date) SHALL claim no path. Such an event fails on its own, as the events list's error row already
-reports.
+same events the events list shows; the named event is one of them, because the route only accepts a listed
+id and has already found it processable ("Enqueue names an event the events list shows and refuses one it
+cannot process"). There is no selection: the check covers the whole project, as `auto-reel enqueue <root>`
+does without `--years`. An event whose `reel.yaml` cannot be read, whose files cannot be listed, or whose
+resolved metadata lacks a real date or a title (or carries a future date) SHALL claim no path. Such an
+event fails on its own, as the events list's error row already reports. The service SHALL choose claimants by
+the one rule the batch commands state ("headless-cli"), so that an event which cannot be read or listed
+claims no path and is never the reason the check fails; the failure of a claimant other than the named
+event SHALL NOT fail the check.
 
-The check SHALL run before the active-job check and before the staleness gate. An event that collides and
-also has an active job SHALL therefore be answered as a collision. `force` SHALL NOT override the check,
+The check SHALL run after the named event is found processable, before the active-job check and before
+the staleness gate. An event that collides and also has an active job SHALL therefore be answered as a
+collision. `force` SHALL NOT override the check,
 and it SHALL apply whether the event is fresh or stale. A refused event SHALL be answered with **409** and
 a problem body that:
 
@@ -1048,6 +1061,12 @@ scan-failure 502 that the events list uses, and SHALL NOT enqueue. The schema SH
   an event whose `reel.yaml` cannot be parsed is added beside it
 - **THEN** neither is counted as a claimant, the check does not fail because of them, and
   `POST /api/v1/jobs` for `2024/2024-06-27 - Grillning med grannar` answers 201
+
+#### Scenario: A sibling that cannot be listed claims no path
+- **WHEN** `2024/2024-07-14 - kalas`, which would collide with `2024/2024-07-14 - Kalas`, has mode `0000`,
+  and `POST /api/v1/jobs` names `2024/2024-07-14 - Kalas`
+- **THEN** the sibling claims no path, the check does not fail because of it, and the response is not an
+  unshaped server error
 
 #### Scenario: The CLI and the service refuse the same events
 - **WHEN** `auto-reel enqueue <library>` runs over the dev library
@@ -1923,3 +1942,95 @@ of that body from the generated types.
 - **WHEN** the service's OpenAPI schema is generated
 - **THEN** the enqueue, the jobs list, the job detail and cancel each declare a 503 response described by the
   shared problem body shape
+
+### Requirement: Enqueue names an event the events list shows and refuses one it cannot process
+`POST /api/v1/jobs` SHALL enqueue only an event whose id is exactly an id that `GET /api/v1/events` lists
+for the served project, spelled as the list spells it. The configured layout decides what an event is, as it
+does for the list and for the media routes. Every other id SHALL be answered with the 404 problem body of an
+unknown event, naming the id in `event_id`, and nothing SHALL be written. That covers:
+
+- an alternative spelling of a listed event: a `./` segment, a trailing `/`, a `..` segment, a different
+  letter case or Unicode normalization form
+- a directory the list does not show: the project root, a year folder, an event's `original/` or a chapter
+  folder, an event with a `.reelignore` marker, a folder outside the configured `input`
+- an id that names no directory
+
+The job's `event_dir` is therefore the one canonical id of an event, so the one-active-job rule, the
+events reads' latest job and a client that matches jobs to events by equality all agree on it, and an event
+cannot be rendered by two jobs at once through two spellings. A year folder that can be searched but not listed while the
+id is looked up SHALL be the scan-failure 502 problem body of the events list (`event scan failed`), and
+nothing SHALL be enqueued.
+
+Once the id is found, the service SHALL load the event's document and require it processable, as the batch
+commands do, before it checks anything else about the event. An event it cannot process SHALL be answered
+with the scan-failure **502** problem body of the events reads: it names the event in `event_id` and carries
+the `failure` kind the events list gives that event, and a `detail` that is the engine's own message, which
+names the fix. The kinds are:
+
+- `unparseable_reel_yaml`: a `reel.yaml` that cannot be parsed or fails validation
+- `unusable_metadata`: resolved metadata without a real date or without a title, or with a date in the
+  future
+- `unreadable_disk`: a `reel.yaml` or event folder that cannot be read or listed
+
+Such a request SHALL NOT be answered with an unshaped server error, with 201, with 200 "fresh" or with 409,
+and SHALL write nothing: no job row and no render manifest. The processable check SHALL run after the
+lookup and before the output-collision check, the active-job check and the staleness gate, because an event
+that cannot be processed claims no path and could not be rendered. The route SHALL declare its 404 and 502
+responses in the shared problem body shape in the service's OpenAPI schema.
+
+#### Scenario: A listed event enqueues under its id
+- **WHEN** `POST /api/v1/jobs` names `2024/2024-06-21 - A`, which `GET /api/v1/events` lists
+- **THEN** the response is 201 and the job's `event_dir` is `2024/2024-06-21 - A`
+
+#### Scenario: Alternative spellings of a listed event are unknown
+- **WHEN** `POST /api/v1/jobs` names `2024/./2024-06-21 - A`, `2024/2024-06-21 - A/` or
+  `2024/2024-06-21 - A/../2024-06-21 - A`, each of which resolves to the listed folder `2024/2024-06-21 - A`
+- **THEN** each response is 404 with the problem body of an unknown event, whose `event_id` is the id as
+  sent, and no job row exists
+
+#### Scenario: A directory that is not an event is unknown
+- **WHEN** `POST /api/v1/jobs` names the year folder `2024`, the folder `2024/2024-06-21 - A/original`, or
+  the project root
+- **THEN** each response is 404 and no job row exists
+
+#### Scenario: A folder outside the configured input is unknown
+- **WHEN** `config.yaml` sets `input: input`, the folder `2024/2024-07-14 - Kalas` exists beside `input/`
+  rather than in it, and `POST /api/v1/jobs` names it
+- **THEN** the response is 404, and no job row exists
+
+#### Scenario: An event with a .reelignore marker is unknown
+- **WHEN** `2024/2024-06-22 - B` carries a `.reelignore` file and `POST /api/v1/jobs` names it
+- **THEN** the response is 404 and no job row exists
+
+#### Scenario: A symbolic link to an event, inside the project, is its own listed event
+- **WHEN** `2024/2024-07-20 - Fest` is a symbolic link to the rendered, fresh `2024/2024-07-14 - Kalas`, the
+  list shows both, and `POST /api/v1/jobs` names `2024/2024-07-20 - Fest`
+- **THEN** the event is judged at the path its own id names: it is stale, because `2024-07-20 - Fest.mp4` was
+  never rendered, so the response is 201 and the job's `event_dir` is `2024/2024-07-20 - Fest`
+
+#### Scenario: An unparseable reel.yaml is a 502, not a 500
+- **WHEN** `2024/2024-06-22 - B` has a `reel.yaml` that reads `metadata: [unclosed`, and
+  `POST /api/v1/jobs` names it
+- **THEN** the response is 502 whose `event_id` is that id and whose `failure` is `unparseable_reel_yaml`,
+  with the same `detail` as `GET /api/v1/events/{event_id}` gives, and no job row exists
+
+#### Scenario: An event without a date is refused up front
+- **WHEN** `POST /api/v1/jobs` names `2024/NoDate`, whose folder name has no date and which has no
+  `reel.yaml`
+- **THEN** the response is 502 whose `failure` is `unusable_metadata` and whose `detail` is the events
+  list's error row's, and no job row exists
+
+#### Scenario: An event with a future date is refused up front
+- **WHEN** `2024/2024-06-21 - A` has a `reel.yaml` setting `metadata.date` to a date after today, and
+  `POST /api/v1/jobs` names it
+- **THEN** the response is 502 whose `failure` is `unusable_metadata`
+
+#### Scenario: An event folder that cannot be searched is refused up front
+- **WHEN** the folder `2024/2024-06-21 - A` has mode `0600`, and `POST /api/v1/jobs` names it
+- **THEN** the response is 502 whose `failure` is `unreadable_disk`, and no job row exists
+
+#### Scenario: A failing event outranks an active job
+- **WHEN** `2024/2024-06-21 - A` has a `queued` job, then its `reel.yaml` is changed so that it cannot be
+  parsed, and `POST /api/v1/jobs` names it
+- **THEN** the response is 502 with `unparseable_reel_yaml`, not 409 `active_job`, and the queued job is
+  unchanged
