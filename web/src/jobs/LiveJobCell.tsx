@@ -5,7 +5,7 @@ import type { JobSummary, Staleness } from '../api/events'
 import { enqueueJob } from '../api/jobs'
 import type { EnqueueResult } from '../api/jobs'
 import { markEventsChanged } from '../events/changes'
-import { UNREACHABLE_CAUSE, folderName } from '../events/common'
+import { DATABASE_CAUSE, UNREACHABLE_CAUSE, folderName } from '../events/common'
 import { eventHref } from '../route'
 import { Icon } from '../ui/Icon'
 import { toast } from '../ui/toast'
@@ -55,6 +55,10 @@ function tellRowAnswer(eventId: string, name: string, result: EnqueueResult): vo
       } else {
         toast.error(`${name}: ${SCAN_FAILED} ${result.problem.detail}`)
       }
+      break
+    case 'database':
+      // Not about the event, so no link to it.
+      toast.error(`${name}: ${NOT_QUEUED} ${DATABASE_CAUSE}`)
       break
     case 'unreachable':
       toast.error(`${name}: ${NOT_QUEUED} ${UNREACHABLE_CAUSE} (${result.message})`)
