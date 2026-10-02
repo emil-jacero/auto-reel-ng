@@ -757,6 +757,54 @@ def test_output_relpath_reproduces_a_legacy_archive_name(tmp_path: Path) -> None
     )
 
 
+@pytest.mark.parametrize(
+    ("metadata", "expected"),
+    [
+        (
+            Metadata(title="Mid/sommar", date=date(2025, 1, 16)),
+            "2025/2025-01-16 - Mid-sommar.mp4",
+        ),
+        (
+            Metadata(title="T", date=date(2025, 1, 16), location="Gamla/stan"),
+            "2025/2025-01-16 - T - Gamla-stan.mp4",
+        ),
+        (
+            Metadata(title="a/../../../escaped", date=date(2025, 1, 16)),
+            "2025/2025-01-16 - a-..-..-..-escaped.mp4",
+        ),
+        (Metadata(title="Back\\slash", date=date(2025, 1, 16)), "2025/2025-01-16 - Back-slash.mp4"),
+        (
+            Metadata(title="nul\x00and\nnewline\x7f", date=date(2025, 1, 16)),
+            "2025/2025-01-16 - nul-and-newline-.mp4",
+        ),
+        (Metadata(title="/", date=date(2025, 1, 16)), "2025/2025-01-16 - -.mp4"),
+        (Metadata(title="../../x"), "..-..-x.mp4"),
+    ],
+)
+def test_output_relpath_is_always_one_name_component(metadata: Metadata, expected: str) -> None:
+    relpath = output_relpath(metadata)
+    assert relpath == PurePosixPath(expected)
+    assert len(relpath.parts) == (2 if metadata.date else 1)
+    assert ".." not in relpath.parts
+
+
+def test_output_naming_does_not_alter_the_metadata() -> None:
+    metadata = Metadata(title="Mid/sommar", date=date(2025, 1, 16), location="Gamla/stan")
+    output_relpath(metadata)
+    assert metadata.title == "Mid/sommar"
+    assert metadata.location == "Gamla/stan"
+
+
+def test_separator_sanitising_collisions_are_still_caught() -> None:
+    day = date(2025, 1, 16)
+    claims = {
+        "slash": output_relpath(Metadata(title="A/B", date=day)),
+        "dash": output_relpath(Metadata(title="A-B", date=day)),
+    }
+    assert claims["slash"] == claims["dash"]
+    assert find_output_collisions(claims) == {"slash": ("dash",), "dash": ("slash",)}
+
+
 def test_find_output_collisions_same_year_pair() -> None:
     claims = {
         "a": PurePosixPath("2024/Midsommar.mp4"),
@@ -1020,6 +1068,67 @@ def test_existing_output_not_overwritten(runtime, make_clip, tmp_path) -> None:
     result = render_movie(plan, CPUProfile(), options)
     assert result.skipped is True
     assert existing.read_text() == "untouched"
+
+
+def _simple_plan(metadata: Metadata) -> RenderPlan:
+    return RenderPlan(
+        metadata=metadata,
+        look={"target_resolution": [640, 480]},
+        chapters=(ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4"),)),),
+    )
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_output_outside_the_output_dir_is_refused(
+    runtime, make_clip, tmp_path, monkeypatch, dry_run
+) -> None:
+    clip_a = make_clip("a.mp4", width=320, height=240)
+    facts = {"a.mp4": probe_media(clip_a, runtime=runtime)}
+    out_dir = tmp_path / "out"
+    monkeypatch.setattr(orch, "output_relpath", lambda _m: PurePosixPath("../escaped.mp4"))
+    options = RenderOptions(
+        event_dir=tmp_path, output_dir=out_dir, clip_facts=facts, runtime=runtime, dry_run=dry_run
+    )
+    before = sorted(p.name for p in tmp_path.iterdir())
+    with pytest.raises(RenderError, match="outside the output directory"):
+        render_movie(_simple_plan(Metadata(title="Movie")), CPUProfile(), options)
+    assert not (tmp_path / "escaped.mp4").exists()
+    assert not out_dir.exists()
+    assert sorted(p.name for p in tmp_path.iterdir()) == before
+    assert not list(tmp_path.glob("*.part"))
+
+
+def test_symlinked_year_folder_is_not_refused(runtime, make_clip, tmp_path) -> None:
+    clip_a = make_clip("a.mp4", width=320, height=240)
+    facts = {"a.mp4": probe_media(clip_a, runtime=runtime)}
+    out_dir = tmp_path / "out"
+    elsewhere = tmp_path / "other-disk"
+    out_dir.mkdir()
+    elsewhere.mkdir()
+    (out_dir / "2024").symlink_to(elsewhere, target_is_directory=True)
+    options = RenderOptions(
+        event_dir=tmp_path, output_dir=out_dir, clip_facts=facts, runtime=runtime
+    )
+    plan = _simple_plan(Metadata(title="Movie", date=date(2024, 6, 21)))
+    result = render_movie(plan, CPUProfile(), options)
+    assert result.output_path == out_dir / "2024" / "2024-06-21 - Movie.mp4"
+    assert (elsewhere / "2024-06-21 - Movie.mp4").is_file()
+
+
+def test_slash_in_title_renders_one_file_and_no_folder(runtime, make_clip, tmp_path) -> None:
+    clip_a = make_clip("a.mp4", width=320, height=240)
+    facts = {"a.mp4": probe_media(clip_a, runtime=runtime)}
+    out_dir = tmp_path / "out"
+    options = RenderOptions(
+        event_dir=tmp_path, output_dir=out_dir, clip_facts=facts, runtime=runtime
+    )
+    plan = _simple_plan(Metadata(title="Mid/sommar", date=date(2025, 1, 16)))
+    result = render_movie(plan, CPUProfile(), options)
+    assert result.output_path == out_dir / "2025" / "2025-01-16 - Mid-sommar.mp4"
+    assert result.output_path.is_file()
+    assert sorted(p.name for p in (out_dir / "2025").iterdir()) == ["2025-01-16 - Mid-sommar.mp4"]
+    assert not (out_dir / "2025" / "2025-01-16 - Mid").exists()
+    assert plan.metadata.title == "Mid/sommar"
 
 
 def test_dry_run_produces_commands_and_no_output(runtime, make_clip, tmp_path) -> None:

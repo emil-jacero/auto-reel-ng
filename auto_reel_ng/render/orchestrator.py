@@ -108,17 +108,32 @@ class BatchOutcome:
     error: Optional[str] = None
 
 
+def _name_part(text: str) -> str:
+    """``text`` made safe as part of ONE path component: separators and controls become ``-``.
+
+    ``/`` and ``\\`` (a separator on the SMB side of the archive) and every control
+    character (code point < 0x20, 0x7f; NUL included) are replaced by ``-`` one for
+    one, so a title can never add a folder or form a ``..`` component. Only the file
+    name is affected; the authored text is never altered.
+    """
+    return "".join(
+        "-" if char in "/\\" or ord(char) < 0x20 or ord(char) == 0x7F else char for char in text
+    )
+
+
 def output_filename(metadata: Metadata) -> str:
     """``[<YYYY-MM-DD> - ]<title>[ - <location>].mp4``, the legacy auto-reel name.
 
     A dated event's name starts with its ISO date (legacy ``directory.py:220``);
-    an undated event has no prefix. The location, when present, is appended.
+    an undated event has no prefix. The location, when present, is appended. The
+    title and location are sanitised (:func:`_name_part`) so the result is always a
+    single path component.
     """
-    stem = metadata.title or "Untitled"
+    stem = _name_part(metadata.title) if metadata.title else "Untitled"
     if metadata.date is not None:
         stem = f"{metadata.date.isoformat()} - {stem}"
     if metadata.location:
-        return f"{stem} - {metadata.location}.mp4"
+        return f"{stem} - {_name_part(metadata.location)}.mp4"
     return f"{stem}.mp4"
 
 
@@ -245,6 +260,7 @@ def render_movie(plan: RenderPlan, profile: AccelProfile, options: RenderOptions
         raise RenderError("render plan produced no segments to render")
 
     output_path = Path(options.output_dir) / output_relpath(plan.metadata)
+    _require_inside(output_path, Path(options.output_dir))
 
     if options.dry_run:
         return _plan_only(segments, target, profile, options, output_path)
@@ -262,6 +278,19 @@ def render_movie(plan: RenderPlan, profile: AccelProfile, options: RenderOptions
         if part_path.exists():
             part_path.unlink()
         raise
+
+
+def _require_inside(output_path: Path, output_dir: Path) -> None:
+    """Refuse an output path that lies outside ``output_dir`` (lexical; no filesystem access).
+
+    Backstop for :func:`output_filename`: ``..`` or absolute components must never
+    reach a directory creation or a write. Lexical on purpose — a symlinked year
+    folder is a legitimate archive layout that ``resolve()`` would wrongly refuse.
+    """
+    root = os.path.abspath(output_dir)
+    candidate = os.path.abspath(output_path)
+    if candidate != root and not candidate.startswith(root.rstrip(os.sep) + os.sep):
+        raise RenderError(f"output path {output_path} is outside the output directory {output_dir}")
 
 
 def _plan_only(

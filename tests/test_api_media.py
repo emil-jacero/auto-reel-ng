@@ -19,7 +19,7 @@ import json
 import logging
 import os
 from email.utils import parsedate_to_datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import quote
 
@@ -49,6 +49,7 @@ from auto_reel_ng.api.schemas import EventFailure
 from auto_reel_ng.api.settings import ApiSettings, resolve_api_settings
 from auto_reel_ng.event.discovery import VIDEO_EXTENSIONS, DiskListing
 from auto_reel_ng.event.metadata import load_event_document
+from auto_reel_ng.reel.document import Metadata
 from auto_reel_ng.render import output_relpath
 from auto_reel_ng.staleness import COMPONENTS, manifest_path, rendered_output
 
@@ -122,7 +123,8 @@ chapters:
 GRILLNING_OLD_MOVIE = "2024-06-27 - Grillning med grannar.mp4"
 KALAS_MOVIE = "2024-07-14 - Kalas.mp4"
 
-#: A title that climbs out of the output directory through the naming rule.
+#: A title with separators. The engine's naming rule now turns them into ``-``, so the
+#: media guard is exercised by forcing the climbing path (see the ``utbrytning`` fixture).
 UTBRYTNING_REEL = """\
 version: 0
 metadata:
@@ -478,12 +480,24 @@ def test_a_recorded_name_that_is_not_a_bare_file_name_is_never_served(
 
 
 @pytest.fixture
-def utbrytning(project: Path, output_dir: Path, tmp_path: Path) -> Path:
-    """An event whose title climbs out of the output directory to ``outside.mp4``.
+def utbrytning(
+    project: Path, output_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """An event whose expected path climbs out of the output directory to ``outside.mp4``.
 
-    The folder ``2024/2024-07-15 - x/`` exists, so the OS resolves the ``..`` segments of
-    the expected path ``proj-output/2024/2024-07-15 - x/../../../outside.mp4``.
+    ``output_filename`` no longer lets a title form ``..`` components, so the media
+    guard (defence in depth) is exercised by making the naming rule the lookup uses
+    return the climbing path ``2024/2024-07-15 - x/../../../outside.mp4``. The folder
+    ``2024/2024-07-15 - x/`` exists, so the OS resolves its ``..`` segments.
     """
+    real_relpath = output_relpath
+
+    def climbing(metadata: Metadata) -> PurePosixPath:
+        if metadata.title.startswith("x/"):
+            return PurePosixPath("2024/2024-07-15 - x/../../../outside.mp4")
+        return real_relpath(metadata)
+
+    monkeypatch.setattr(media_module, "output_relpath", climbing)
     event_dir = project / UTBRYTNING
     _write(event_dir / "s1710001.mp4", _content("utbrytning"))
     (event_dir / "reel.yaml").write_text(UTBRYTNING_REEL, encoding="utf-8")
@@ -496,7 +510,8 @@ def utbrytning(project: Path, output_dir: Path, tmp_path: Path) -> Path:
 def test_a_title_cannot_climb_out_of_the_output_directory(
     settings: ApiSettings, project: Path, utbrytning: Path
 ) -> None:
-    expected = _expected_movie(settings, UTBRYTNING)
+    document, _seeded = load_event_document(project / UTBRYTNING, order=settings.clip_order)
+    expected = settings.output_dir / media_module.output_relpath(document.metadata)
     found = rendered_output(project / UTBRYTNING, expected)
     assert found is not None  # the gate counts it: the guard, not the gate, refuses it
     assert os.path.samefile(found, utbrytning)
