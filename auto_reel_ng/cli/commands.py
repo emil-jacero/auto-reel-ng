@@ -38,9 +38,10 @@ from ..analysis import Segment, analyze_event
 from ..api.app import create_app
 from ..api.settings import resolve_api_settings
 from ..config import load_project_config, resolve_look_defaults
-from ..errors import EngineError, EventMetadataError, ReelError
+from ..errors import EngineError, ReelError, ReelParseError
 from ..event import ClipOrder, ReconcileResult, reconcile, scan_event
-from ..event.metadata import require_processable
+from ..event.claims import checked_claim
+from ..event.metadata import reel_exists
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..ingest import EventRef
 from ..persistence.config import resolve_database_url
@@ -60,7 +61,7 @@ from ..scheduler import (
 from ..staleness.fingerprint import Fingerprint, compute_fingerprint, engine_identity
 from ..staleness.gate import Verdict, evaluate
 from ..staleness.manifest import write_manifest
-from .adoption import REEL_FILENAME, PreparedEvent, load_or_seed
+from .adoption import REEL_FILENAME, PreparedEvent
 from .build import build_render_job_from_event, prepare_and_persist
 from .context import project_context, resolve_project_root
 
@@ -70,19 +71,23 @@ logger = logging.getLogger(__name__)
 def _checked_document(
     ref: EventRef, today: date, order: ClipOrder
 ) -> Tuple[Optional[ReelDocument], Optional[str]]:
-    """(document, None) for a processable event, or (None, reason) — never raises ReelError.
+    """(document, None) for a processable event, or (None, reason) — never raises ReelError/OSError.
 
     The per-event isolation point for document errors (headless-cli): an event whose
-    ``reel.yaml`` cannot be parsed, or whose resolved metadata lacks a real date or a
-    title, is reported by the caller and skipped; the batch continues.
+    ``reel.yaml`` cannot be parsed, whose folder or file cannot be read, or whose resolved
+    metadata lacks a real date or a title, is reported by the caller and skipped; the batch
+    continues. The claim rule is the engine's (:func:`checked_claim`), shared with the API.
     """
+    document, reason = checked_claim(ref.event_dir, order=order, today=today)
+    if document is None:
+        return None, reason
     try:
-        document, _seeded = load_or_seed(ref.event_dir, order=order)
-        require_processable(ref.event_dir, document.metadata, today=today)
-    except EventMetadataError as exc:
-        return None, exc.reason
-    except ReelError as exc:
-        return None, str(exc)
+        # Every command lists the folder again (fingerprint, reconcile, adoption). A folder
+        # that holds a readable reel.yaml but cannot be listed passes the claim rule; fail
+        # here, for this event, instead of in a step none of the four commands guards.
+        scan_event(ref.event_dir)
+    except OSError as exc:
+        return None, f"cannot read {ref.event_dir}: {exc.strerror or exc}"
     return document, None
 
 
@@ -354,7 +359,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
             continue
 
         # Reconcile disk against the persisted reel.yaml (none -> every clip NEW).
-        persisted = (ref.event_dir / REEL_FILENAME).exists()
+        persisted = reel_exists(ref.event_dir / REEL_FILENAME)
         listing = scan_event(ref.event_dir)
         result = reconcile(listing.identities, fp_document if persisted else None)
 
@@ -440,13 +445,21 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 0
 
     imported = 0
+    failed = 0
     for ref in ctx.events:
-        result = _import_event(ref.event_dir, overwrite=args.overwrite)
+        # Per-event isolation (Principle I): the reader maps every content problem to a
+        # ReelError and the disk's refusals are OSError; anything else is a bug and propagates.
+        try:
+            result = _import_event(ref.event_dir, overwrite=args.overwrite)
+        except (OSError, ReelError) as exc:
+            print(f"ERROR  {ref.event_dir.name}: {exc}")
+            failed += 1
+            continue
         if result is not None:
             imported += 1
             _report_import(ref.event_dir, result)
-    print(f"\nimported {imported} event(s)")
-    return 0
+    print(f"\nimported {imported} event(s)" + (f", {failed} failed" if failed else ""))
+    return 1 if failed else 0
 
 
 def _import_event(event_dir: Path, *, overwrite: bool) -> Optional[ImportResult]:
@@ -459,11 +472,11 @@ def _import_event(event_dir: Path, *, overwrite: bool) -> Optional[ImportResult]
     reel_path = event_dir / REEL_FILENAME
     # Refuse to clobber an existing *v2* reel.yaml unless asked; a legacy reel.yaml
     # (no version key) is the migration source and is rewritten in place.
-    if reel_path.exists() and _has_version(reel_path) and not overwrite:
+    if reel_exists(reel_path) and _has_version(reel_path) and not overwrite:
         print(f"SKIP   {event_dir.name}: a v2 reel.yaml already exists (use --overwrite)")
         return None
 
-    data = _read_yaml(legacy_path)
+    data = _read_legacy_mapping(legacy_path)
     result = import_legacy(data, source=str(legacy_path))
     write_document(result.document, reel_path)
     return result
@@ -472,10 +485,10 @@ def _import_event(event_dir: Path, *, overwrite: bool) -> Optional[ImportResult]
 def _legacy_source(event_dir: Path) -> Optional[Path]:
     """The legacy file to import: ``metadata.yaml``, else a versionless ``reel.yaml``."""
     metadata = event_dir / "metadata.yaml"
-    if metadata.exists():
+    if reel_exists(metadata):
         return metadata
     reel = event_dir / REEL_FILENAME
-    if reel.exists() and not _has_version(reel):
+    if reel_exists(reel) and not _has_version(reel):
         return reel
     return None
 
@@ -500,21 +513,33 @@ def _report_import(event_dir: Path, result: ImportResult) -> None:
         print(f"  unmapped: {field_name}")
 
 
-def _read_yaml(path: Path) -> Mapping[str, object]:
-    """Read a YAML mapping from ``path`` for the legacy importer."""
-    data = YAML(typ="safe").load(path.read_text(encoding="utf-8"))
+def _read_legacy_mapping(path: Path) -> Mapping[str, object]:
+    """Read ``path`` as a YAML mapping; raise :class:`ReelParseError` (path in the message) if not.
+
+    One reader for ``import`` and for the ``version`` probe, so a file that cannot be read,
+    is not UTF-8, is not valid YAML or is not a mapping is always that event's ``ERROR``.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ReelParseError(f"{path}: not valid UTF-8 text: {exc.reason}") from exc
+    except OSError as exc:
+        raise ReelParseError(f"{path}: cannot read: {exc.strerror or exc}") from exc
+    try:
+        data = YAML(typ="safe").load(text)
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        # ruamel's YAMLError, and the odd non-YAMLError it raises with no node to blame
+        # (as reel/parser.loads_document): either way the file is malformed.
+        raise ReelParseError(f"{path}: malformed YAML: {str(exc) or type(exc).__name__}") from exc
     if not isinstance(data, Mapping):
-        raise ValueError(f"{path}: legacy metadata must be a mapping, got {type(data).__name__}")
+        shape = "empty" if data is None else type(data).__name__
+        raise ReelParseError(f"{path}: legacy metadata must be a mapping, got {shape}")
     return data
 
 
 def _has_version(path: Path) -> bool:
     """True when a YAML file declares a top-level ``version`` key (i.e. is v2, not legacy)."""
-    try:
-        data = YAML(typ="safe").load(path.read_text(encoding="utf-8"))
-    except OSError:
-        return False
-    return isinstance(data, Mapping) and "version" in data
+    return "version" in _read_legacy_mapping(path)
 
 
 # --------------------------------------------------------------------------- #
@@ -589,22 +614,20 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
             print(f".  {ref.event_dir.name}: fresh, not enqueued")
             continue
 
-        # Best-effort classification for the report only (a concurrent enqueue for
-        # the same identity could race this check); the DB-level idempotency
-        # guarantee itself comes from enqueue()'s own unique-index fallback.
-        was_active = store.active_job(project_root_str, event_dir) is not None
-        job_id = store.enqueue(
+        # The report is the insertion's own verdict (the unique index decides), never an
+        # earlier read: of two concurrent enqueues exactly one says created.
+        submission = store.submit(
             project_root_str,
             event_dir,
             device=device,
             force=force,
             fingerprint=fingerprint.combined,
         )
-        if was_active:
-            print(f"=  {ref.event_dir.name}: already queued/running ({job_id})")
-        else:
+        if submission.created:
             created += 1
-            print(f"+  {ref.event_dir.name}: queued ({job_id})")
+            print(f"+  {ref.event_dir.name}: queued ({submission.job_id})")
+        else:
+            print(f"=  {ref.event_dir.name}: already queued/running ({submission.job_id})")
 
     print(
         f"\n{created}/{len(ctx.events)} event(s) newly queued "
