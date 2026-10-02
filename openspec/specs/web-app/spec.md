@@ -423,8 +423,8 @@ loaded page does, without horizontal scroll from 320 CSS pixels up.
 
 #### Scenario: A clip from another folder is named by its path
 - **WHEN** `reel.yaml` of `2024-08-20 - Två kapitel - Tjörn` lists `Kvällen/s1710004.mp4` in its root
-  chapter and ignores the root clip `s1710004.mp4`, as a hand edit or a render's adoption of that NEW clip
-  leaves it
+  chapter and ignores the root clip `s1710004.mp4`, as a hand edit leaves it (a render adopts no ignored
+  clip, D-12)
 - **THEN** `Main` names its rows `s1710001.mp4`, `Kvällen/s1710004.mp4` and `s1710004.mp4`, and `Kvällen`
   still names its rows `s1710002.mp4` and `s1710003.mp4`
 
@@ -464,7 +464,6 @@ loaded page does, without horizontal scroll from 320 CSS pixels up.
   names the heading `2024-06-27 - Grillning med grannar`, and each placeholder clip row is as tall as a
   loaded row; when the read answers, the heading reads `Grillkväll med grannarna` and the `Clips` table
   starts within 8 pixels of where the placeholder table started
-
 ### Requirement: The event page reports failures by cause
 
 When an event's page cannot show the event, it SHALL say why, taking the distinction from the published
