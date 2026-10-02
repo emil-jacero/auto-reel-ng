@@ -44,6 +44,9 @@ ENV_FFPROBE = "AUTO_REEL_NG_FFPROBE"
 #: is abandoned to the kernel rather than waited for.
 KILL_GRACE_SECONDS = 5.0
 
+#: How much of a killed command's stderr (its tail) a timeout error keeps as evidence.
+_TIMEOUT_STDERR_CHARS = 2000
+
 #: Every command's output is decoded as UTF-8; a byte that is not (a Latin-1 file name
 #: that ffmpeg echoes on stderr) shows as its backslash escape instead of raising.
 _ENCODING = "utf-8"
@@ -168,7 +171,7 @@ class FfmpegRuntime:
         """The bound, in seconds, that :meth:`run` and :meth:`run_ffprobe` apply (None: none)."""
         return self._timeout
 
-    def with_timeout(self, seconds: float) -> "FfmpegRuntime":
+    def with_timeout(self, seconds: float) -> FfmpegRuntime:
         """A view of this runtime whose ``run`` and ``run_ffprobe`` are bounded to ``seconds``.
 
         The view shares the resolved binaries and the detected version; this runtime, which
@@ -254,11 +257,12 @@ class FfmpegRuntime:
             )
         return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
 
-    def _timed_out(self, proc: "subprocess.Popen[str]", cmd: Sequence[str]) -> FfmpegTimeoutError:
+    def _timed_out(self, proc: subprocess.Popen[str], cmd: Sequence[str]) -> FfmpegTimeoutError:
         """Kill the overrunning ``proc``, wait a bounded time for it to go, and build the error."""
         proc.kill()
+        stderr = ""
         try:
-            proc.communicate(timeout=KILL_GRACE_SECONDS)
+            _, stderr = proc.communicate(timeout=KILL_GRACE_SECONDS)
         except subprocess.TimeoutExpired:
             logger.warning(
                 "Abandoning a killed command that did not exit within %gs: %s",
@@ -268,7 +272,11 @@ class FfmpegRuntime:
             for pipe in (proc.stdout, proc.stderr):
                 if pipe is not None:
                     pipe.close()
-        return FfmpegTimeoutError(f"Command timed out after {self._timeout:g}s: {' '.join(cmd)}")
+        message = f"Command timed out after {self._timeout:g}s: {' '.join(cmd)}"
+        evidence = (stderr or "").strip()
+        if evidence:
+            message += f"\nstderr:\n{evidence[-_TIMEOUT_STDERR_CHARS:]}"
+        return FfmpegTimeoutError(message)
 
     def run_with_progress(
         self,

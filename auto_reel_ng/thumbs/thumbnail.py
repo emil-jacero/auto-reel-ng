@@ -271,7 +271,7 @@ def _shorten(text: str, source: Path) -> str:
     return text
 
 
-def _escaped(path: "Path | str") -> str:
+def _escaped(path: Path | str) -> str:
     """``path`` with the bytes that are not valid UTF-8 as backslash escapes, as stderr shows."""
     return os.fsencode(path).decode("utf-8", "backslashreplace")
 
