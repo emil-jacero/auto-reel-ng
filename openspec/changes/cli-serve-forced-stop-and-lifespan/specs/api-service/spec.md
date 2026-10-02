@@ -17,12 +17,19 @@ The poller SHALL send each such job's terminal row in that poll's delta unless a
 carried the job as terminal, so the overlap never sends a job twice. A job that became terminal before the
 poller started is not sent; a client reconciles such jobs after the snapshot.
 
-Every message SHALL be one frame shape: a `type` drawn from the closed set `snapshot` | `delta`, and the
-list of jobs in the same job shape the jobs routes return. The list SHALL always be present (a snapshot
-of no active jobs carries an empty list). Although a WebSocket route is not an HTTP operation, the
+Every message SHALL be one frame shape: a `type` drawn from the closed set `snapshot` | `delta` |
+`heartbeat`, and the list of jobs in the same job shape the jobs routes return. The list SHALL always be
+present (a snapshot of no active jobs carries an empty list, and a heartbeat always carries one). Although a WebSocket route is not an HTTP operation, the
 service's OpenAPI schema SHALL publish this frame shape and its type set as named schema components, with
 both fields required, so a client generated from the schema has the frame's type without declaring it by
 hand. The schema SHALL NOT describe the WebSocket as an HTTP path.
+
+A connection that has been sent no frame for 15 s SHALL be sent a `heartbeat` frame with no jobs, so a
+client can tell an idle connection from a lost one: every frame, of any type, is proof of life, and a
+connection that is receiving frames at least that often needs no heartbeat. A heartbeat is a property of
+its connection alone. It SHALL NOT start the poller or read the store, SHALL NOT change which jobs any
+frame carries, and SHALL NOT count against the connection's outbound queue, so it never causes a
+slow-consumer drop. A heartbeat is never the first frame: a connection's first frame is its snapshot.
 
 The service SHALL watch the client side of every connection for as long as it is open, so the end of a
 connection releases its subscription at once, whichever side ends it:
@@ -85,6 +92,23 @@ connection releases its subscription at once, whichever side ends it:
 - **THEN** subscribers receive, within approximately one poll interval, a delta whose row for that job has
   `cancel_requested` true and status `running`
 
+#### Scenario: An idle connection is sent heartbeats
+- **WHEN** a client is connected while no job is active, and nothing changes for 40 s
+- **THEN** after its snapshot it receives two `heartbeat` frames, each with an empty job list, about 15 s
+  apart
+- **AND** the store is read no more often than without the heartbeat, and the connection stays open
+
+#### Scenario: A busy connection needs no heartbeat
+- **WHEN** the `running` job of `2024/2024-08-02 - Badutflykt - Varberg` advances its progress every second
+  for 30 s
+- **THEN** the client receives a delta for each change and no heartbeat, because no 15 s passes without a
+  frame
+
+#### Scenario: A heartbeat does not cost a job
+- **WHEN** a job's progress changes at the moment a connection's heartbeat falls due
+- **THEN** the client receives that delta exactly once, before or after the heartbeat, and no later frame
+  repeats it
+
 #### Scenario: Idle service does not poll
 - **WHEN** no WebSocket subscriber is connected
 - **THEN** the central poller issues no store queries
@@ -92,7 +116,7 @@ connection releases its subscription at once, whichever side ends it:
 #### Scenario: The schema publishes the frame
 - **WHEN** the service's OpenAPI schema is generated
 - **THEN** its components include the frame shape, whose required `type` references the enumeration
-  `snapshot` | `delta` and whose required `jobs` items reference the published job shape, and no path
+  `snapshot` | `delta` | `heartbeat` and whose required `jobs` items reference the published job shape, and no path
   describes `/api/v1/ws/jobs`
 
 #### Scenario: Closing the last tab stops the poller
