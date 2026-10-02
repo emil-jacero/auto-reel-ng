@@ -14,13 +14,16 @@ service runs it from the image before ``server`` and ``worker`` start:
                     2025/2025-01-15 - Provklipp/         samples/* except legacy-*
                     2025/2025-01-16 - Gammal rendering/  samples/legacy-*
     OUTPUT  (rw)  /data/library-output/        the server's default output directory
+    TMP     (rw)  /data/tmp/                   TMPDIR: a render's temporary segments
 
 Every service mounts the fixture at the same path, so the links resolve in each of them.
 
 Idempotent: a re-run creates only missing folders and links and copies a ``reel.yaml`` only into
 an event that has none. It never replaces, re-links or deletes an existing entry, so GUI edits,
 the engine's generated ``reel.yaml`` and its ``.auto-reel/`` cache survive. ``--reset`` empties
-the library and the output first (never following a link into the fixture), then seeds.
+the library, the output and the render scratch first (never following a link into the fixture),
+then seeds. A render empties its own scratch when it finishes or is cancelled cleanly; one that was
+killed leaves its ``auto-reel-render-*`` directory behind until a reset.
 
 Stdlib only: it runs on the image's system Python. Usage::
 
@@ -39,6 +42,7 @@ from pathlib import Path
 MEDIA = Path("/media/auto-reel-media")
 LIBRARY = Path("/data/library")
 OUTPUT = Path("/data/library-output")
+TMP = Path("/data/tmp")
 
 REEL = "reel.yaml"
 CACHE_DIR = ".auto-reel"
@@ -108,8 +112,12 @@ def _seed_samples(
     counts.events += 1
 
 
-def seed(media: Path, library: Path, output: Path, *, reset: bool = False) -> SeedCounts:
+def seed(
+    media: Path, library: Path, output: Path, *, reset: bool = False, tmp: Path | None = None
+) -> SeedCounts:
     """Seed ``library`` and ``output`` from ``media``; see the module docstring for the layout.
+
+    ``reset`` also empties ``tmp`` (the stack's TMPDIR) when given and present.
 
     ``media/input`` must exist (``main`` checks it first); any ``OSError`` propagates.
     """
@@ -119,6 +127,8 @@ def seed(media: Path, library: Path, output: Path, *, reset: bool = False) -> Se
     if reset:
         _clear(library)
         _clear(output)
+        if tmp is not None and tmp.is_dir():
+            _clear(tmp)
     counts = SeedCounts()
     for year in sorted((media / "input").iterdir()):
         if not year.is_dir() or year.name.startswith("."):
@@ -140,18 +150,19 @@ def seed(media: Path, library: Path, output: Path, *, reset: bool = False) -> Se
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
-    parser.add_argument("--reset", action="store_true", help="empty library and output first")
+    parser.add_argument("--reset", action="store_true", help="empty library, output and tmp first")
     parser.add_argument("--media", type=Path, default=MEDIA, help=f"fixture (default {MEDIA})")
     parser.add_argument("--library", type=Path, default=LIBRARY, help=f"(default {LIBRARY})")
     parser.add_argument("--output", type=Path, default=OUTPUT, help=f"(default {OUTPUT})")
+    parser.add_argument("--tmp", type=Path, default=TMP, help=f"render scratch (default {TMP})")
     args = parser.parse_args(argv)
     media: Path = args.media
     if not (media / "input").is_dir():
         print(f"seed: {media}/input not found — is auto-reel-media mounted?", file=sys.stderr)
         return 1
-    counts = seed(media, args.library, args.output, reset=args.reset)
+    counts = seed(media, args.library, args.output, reset=args.reset, tmp=args.tmp)
     if args.reset:
-        print(f"seed: reset {args.library} and {args.output}")
+        print(f"seed: reset {args.library}, {args.output} and {args.tmp}")
     print(
         f"seed: {counts.events} events under {args.library}: reel_copied={counts.reel_copied}"
         f" reel_kept={counts.reel_kept} link_new={counts.link_new} link_kept={counts.link_kept}"

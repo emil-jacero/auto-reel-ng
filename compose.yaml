@@ -4,9 +4,14 @@
 #   then open http://127.0.0.1:8132/      # the GUI (AR_PORT in .env changes the port)
 #   podman compose logs -f worker         # follow renders
 #   podman compose down                   # stop; edits, renders and job history are kept
-#   podman compose down -v && podman compose run --rm seed --reset && podman compose up -d
-#                                         # reset: fresh database + library re-seeded from the fixture
-#   podman compose -f compose.yaml -f compose.cpu.yaml up -d   # host without /dev/dri: CPU worker
+#   podman compose down -v && podman compose build && podman compose run --rm seed --reset \
+#     && podman compose up -d             # reset: fresh database + library re-seeded from the fixture
+#   podman compose -f compose.yaml -f compose.cpu.yaml up -d   # CPU worker (or no /dev/dri)
+#   podman compose up -d                  # back to the GPU worker
+#
+# One stack per checkout under this project name. A second checkout runs its own stack with
+# `-p <name>` plus AR_IMAGE_TAG=<name> (and its own AR_PORT/AR_DATA_DIR) so the two never share
+# containers, volumes or the image tag.
 #
 # The auto-reel-media fixture is mounted READ-ONLY and never relabeled; the seed builds a writable
 # scratch library of symlinks over it under ${AR_DATA_DIR:-./data}. See README "Run the stack
@@ -14,7 +19,7 @@
 name: auto-reel-stack
 
 x-app: &app
-  image: localhost/auto-reel-ng:compose
+  image: localhost/auto-reel-ng:${AR_IMAGE_TAG:-compose}
   # Built once by `server` (pull_policy: build); every other app service only uses the tag.
   pull_policy: never
   environment:
@@ -51,7 +56,8 @@ services:
       - pgdata:/var/lib/postgresql/data
     # Not published: only the stack reaches it (no clash with a dev database on host port 5432).
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U auto_reel_ng -d auto_reel_ng"]
+      # Over TCP: the socket answers during initdb's temporary server, before the real one is up.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U auto_reel_ng -d auto_reel_ng"]
       interval: 2s
       timeout: 3s
       retries: 30

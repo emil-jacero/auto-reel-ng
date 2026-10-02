@@ -18,13 +18,19 @@ data/
 htmlcov/
 coverage.xml
 
+# Crash debris (as in .gitignore)
+gpucore*
+core.[0-9]*
+vgcore.*
+
 # The web stage runs its own `npm ci` + build
 web/node_modules/
 web/dist/
 
-# Trees the image never runs (a docs or spec edit does not rebuild the image). README.md too: the
-# dependency layer installs against a stub README.md (pyproject's `readme`), and nothing reads it later.
-README.md
+# Trees and files the image never runs (a docs or spec edit does not rebuild the image). Markdown
+# too: the dependency layer installs against a stub README.md (pyproject's `readme`), and nothing
+# reads README.md or web/README.md later.
+**/*.md
 experiments/
 docs/
 openspec/

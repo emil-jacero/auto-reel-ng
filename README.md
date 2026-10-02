@@ -635,15 +635,21 @@ podman compose down             # stop; edits, movies and job history are kept
 - **Always the checked-out code.** Every `up` rebuilds the image `localhost/auto-reel-ng:compose`
   (cached: a few seconds when nothing changed) and recreates `server` and `worker` when it changed,
   so after a `git pull` the same command runs the new code. The first build takes about a minute.
+- **One stack per checkout.** The project name (`auto-reel-stack`) and the image tag are shared by
+  every checkout. A second checkout (a worktree) runs its own stack with `-p <name>` on every
+  command plus `AR_IMAGE_TAG=<name>` and its own `AR_PORT` and `AR_DATA_DIR`, so the two never
+  share containers, volumes or the image.
 - **Settings** (`.env`): `AR_PORT` is the GUI port (default 8132), `AR_MEDIA_DIR` the fixture,
   `AR_DATA_DIR` where the scratch data lives (default `./data`; put any other value outside the
   repository, or add it to `.dockerignore`, so rendered movies are not sent to every image build).
-  `AR_DB_PASSWORD` applies only when
-  the database volume is created, so changing it needs `podman compose down -v`.
+  `AR_DB_PASSWORD` applies only when the database volume is created, so changing it needs
+  `podman compose down -v`. It goes into `DATABASE_URL` unescaped, so keep it URL-safe: letters,
+  digits, `-`, `_` and `.` only. `AR_IMAGE_TAG` is the image tag (default `compose`).
 - **Where things live.** `./data/library` is the scratch library the GUI edits and the worker
   renders, `./data/library-output` holds the movies, `./data/cache` the thumbnails and the Mesa
-  shader cache, and `./data/tmp` a render's temporary segments (`TMPDIR`, emptied after each
-  render). The database is the `pgdata` volume. Postgres is not published on the host.
+  shader cache, and `./data/tmp` a render's temporary segments (`TMPDIR`). A render empties its
+  own directory when it finishes or is cancelled cleanly; a killed render leaves its
+  `auto-reel-render-*` directory behind until a reset. The database is the `pgdata` volume. Postgres is not published on the host.
 - **The fixture is never changed.** `auto-reel-media` is mounted read-only at
   `/media/auto-reel-media`. The `seed` service links its clips into `./data/library` (absolute
   symlinks, plus a real copy of each `reel.yaml`, which GUI saves write to) and never carries its
@@ -654,10 +660,11 @@ podman compose down             # stop; edits, movies and job history are kept
   cannot read files labelled `user_home_t`, and the `z`/`Z` mount options would relabel the
   directory tree on the host. A missing `AR_MEDIA_DIR` is created empty by the podman provider; the
   seed then fails, naming `/media/auto-reel-media/input`, and `server` and `worker` do not start.
-- **Reset** to the fixture's state (drops edits, movies and job history):
+- **Reset** to the fixture's state (drops edits, movies, render scratch and job history; the
+  `build` makes sure the seed runs from the checked-out code):
 
   ```bash
-  podman compose down -v && podman compose run --rm seed --reset && podman compose up -d
+  podman compose down -v && podman compose build && podman compose run --rm seed --reset && podman compose up -d
   ```
 
 - **GPU.** The worker gets `/dev/dri`. jellyfin-ffmpeg brings its own VA drivers, so nothing else is
@@ -670,12 +677,9 @@ podman compose down             # stop; edits, movies and job history are kept
 - **CPU only** (no `/dev/dri`, or a codec the GPU cannot decode). Much slower on real footage:
 
   ```bash
-  podman compose -f compose.yaml -f compose.cpu.yaml up -d worker   # CPU worker
-  podman compose up -d worker                                        # back to the GPU worker
+  podman compose -f compose.yaml -f compose.cpu.yaml up -d   # CPU worker (also: a host without /dev/dri)
+  podman compose up -d                                       # back to the GPU worker
   ```
-
-  A host without `/dev/dri` starts the whole stack with
-  `podman compose -f compose.yaml -f compose.cpu.yaml up -d`.
 - **Loopback only.** The API has no authentication and the GUI writes `reel.yaml`, so the port binds
   `127.0.0.1`. Change the `ports:` line in `compose.yaml` only on a network you trust.
 - **After a reboot** the containers stay stopped unless the user service is enabled:
