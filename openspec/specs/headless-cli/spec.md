@@ -349,6 +349,14 @@ Because a dated event's file name begins with its date, a collision needs two ev
 title and location. An event without a real date never reaches the check: it fails on its own first and
 cannot claim a path.
 
+Which events claim a path SHALL be decided by one rule, whichever surface checks. An event claims the output
+path its resolved metadata gives it only when it can be loaded and is processable ("An event without a real
+date and title fails on its own"). An event that fails in any other way, such as an unparseable `reel.yaml` or
+a folder or file the process is not permitted to list or read, SHALL claim no path and SHALL fail on its own
+with its reason. Such a failure MUST NOT abort the command and MUST NOT stop the collision check of any other
+event. The same rule SHALL apply to the other surfaces that check for collisions: `POST /api/v1/jobs` and the
+worker's claim-time recheck.
+
 Every event in a collision SHALL be reported as an error. The report SHALL name the shared output path and
 the other events that claim it. For these events the command MUST NOT render, enqueue, adopt, or overwrite
 anything; an output file that already exists at the shared path SHALL be left untouched. Events outside
@@ -392,6 +400,14 @@ Events outside the selection are not examined.
 - **WHEN** two events with folder name `Blandat` and no `reel.yaml` date are selected
 - **THEN** no collision is reported: each fails on its own as an error for having no date, and neither
   claims an output path
+
+#### Scenario: An unreadable sibling claims nothing and does not stop the check
+- **WHEN** `render` runs over `2024/2024-06-21 - Midsommar`, `2024/2024-06-21 - midsommar` and
+  `2024/2024-06-21 - Fest`, where the `Fest` folder has no `reel.yaml` and its permissions are `000`
+- **THEN** `2024-06-21 - Fest` is reported as `ERROR` with the operating system's reason (permission denied)
+  and no traceback, it claims no path, and the two Midsommar events are still reported as colliding with each
+  other
+- **AND** the command exits non-zero
 
 #### Scenario: Force does not override a collision
 - **WHEN** `render --force` runs over two colliding events
@@ -466,7 +482,9 @@ date is not after the current day. When one of these fails, the event SHALL be r
 names the event, the reason and the fix. The reason is the folder name's stated problem when the date or
 title was expected from the folder: an impossible date, a year only, no date, or no title. It can also be a
 date in the future. The fix is to set the field in `reel.yaml` or to correct the folder name. An event
-whose `reel.yaml` cannot be parsed SHALL be reported the same way.
+whose `reel.yaml` cannot be parsed SHALL be reported the same way, and so SHALL an event whose folder or
+`reel.yaml` the process cannot list or read (permission denied, or another operating-system error): the reason
+is the operating system's, and no traceback is printed.
 
 `scan`, `render`, `enqueue` and `adopt-renders` SHALL isolate these errors per event. They SHALL:
 
@@ -498,6 +516,11 @@ body.
 - **WHEN** `scan` runs over three events and one has an unparseable `reel.yaml`
 - **THEN** that event is reported as `ERROR` with the parse failure, the other two are listed, and the
   command exits non-zero
+
+#### Scenario: An unreadable event folder fails only its event
+- **WHEN** `scan` runs over three events and one is a folder with no `reel.yaml` whose permissions are `000`
+- **THEN** that event is reported as `ERROR` with the permission-denied reason and no traceback, the other two
+  are listed, and the command exits non-zero
 
 #### Scenario: A failing event never reaches adoption
 - **WHEN** `adopt-renders --dry-run` runs over an archive containing the three bad folder names
