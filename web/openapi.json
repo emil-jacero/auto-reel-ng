@@ -2014,6 +2014,17 @@
             ],
             "title": "Mtime"
           },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
           "excluded": {
             "type": "boolean",
             "title": "Excluded",
@@ -2026,7 +2037,7 @@
           "status"
         ],
         "title": "ClipOut",
-        "description": "One clip: identity, reconcile status, and the file facts a reorder view needs.\n\n``size`` (bytes) and ``mtime`` (timezone-aware UTC) come from the clip's own\ndirectory entry — **file** facts, never media facts. Nothing here is decoded or\nprobed, so the detail response stays probe-free (Principle IV); duration,\ndimensions and codec belong to the analysis cache, not this shape. Both are\n``None`` for a clip the document references but disk does not have: absence is\nreported, never fabricated as a zero or an epoch (Principle I).\n\n``status`` is typed with reconcile's own closed vocabulary, so the schema\npublishes the enumeration and generated clients get an exhaustive union\n(D-8, §4.10). ``ClipStatus`` is a ``StrEnum``: the wire values are unchanged.\n\n``excluded`` is a flag **beside** ``status``, not a member of it: it is true when the\ndocument's ``clips`` map marks the identity ``exclude: true``, so a render drops the\nclip from the movie without probing it. An excluded clip reports its own status (an\nexcluded clip whose file is gone is ``missing`` and ``excluded``). It is false for a\nNEW or IGNORED clip (the document holds no properties for a clip no chapter lists)\nand for every clip of an event without a ``reel.yaml``."
+        "description": "One clip: identity, reconcile status, and the file facts a reorder view needs.\n\n``size`` (bytes) and ``mtime`` (timezone-aware UTC) come from the clip's own\ndirectory entry — **file** facts, never media facts. Nothing here is decoded or\nprobed, so the detail response stays probe-free (Principle IV); dimensions and codec\nbelong to the analysis cache, not this shape. Both are ``None`` for a clip the\ndocument references but disk does not have: absence is reported, never fabricated as\na zero or an epoch (Principle I).\n\n``duration`` (seconds) is the one media fact, and it is **not probed here**: it is the\nnumber the thumbnail operation measured for this exact file (name, size, mtime), read\nfrom the thumbnail cache's sidecar. ``None`` means unknown — a missing clip, a\nthumbnail not yet made for the file as it is now, an unusable sidecar or\n``thumbnails`` configuration — never zero or a guess. It is the probe's number, so a\nbrowser may read a few tens of milliseconds more from the same file.\n\n``status`` is typed with reconcile's own closed vocabulary, so the schema\npublishes the enumeration and generated clients get an exhaustive union\n(D-8, §4.10). ``ClipStatus`` is a ``StrEnum``: the wire values are unchanged.\n\n``excluded`` is a flag **beside** ``status``, not a member of it: it is true when the\ndocument's ``clips`` map marks the identity ``exclude: true``, so a render drops the\nclip from the movie without probing it. An excluded clip reports its own status (an\nexcluded clip whose file is gone is ``missing`` and ``excluded``). It is false for a\nNEW or IGNORED clip (the document holds no properties for a clip no chapter lists)\nand for every clip of an event without a ``reel.yaml``."
       },
       "ClipPropertiesBody": {
         "properties": {

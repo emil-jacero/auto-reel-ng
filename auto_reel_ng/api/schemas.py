@@ -32,10 +32,17 @@ class ClipOut(BaseModel):
 
     ``size`` (bytes) and ``mtime`` (timezone-aware UTC) come from the clip's own
     directory entry — **file** facts, never media facts. Nothing here is decoded or
-    probed, so the detail response stays probe-free (Principle IV); duration,
-    dimensions and codec belong to the analysis cache, not this shape. Both are
-    ``None`` for a clip the document references but disk does not have: absence is
-    reported, never fabricated as a zero or an epoch (Principle I).
+    probed, so the detail response stays probe-free (Principle IV); dimensions and codec
+    belong to the analysis cache, not this shape. Both are ``None`` for a clip the
+    document references but disk does not have: absence is reported, never fabricated as
+    a zero or an epoch (Principle I).
+
+    ``duration`` (seconds) is the one media fact, and it is **not probed here**: it is the
+    number the thumbnail operation measured for this exact file (name, size, mtime), read
+    from the thumbnail cache's sidecar. ``None`` means unknown — a missing clip, a
+    thumbnail not yet made for the file as it is now, an unusable sidecar or
+    ``thumbnails`` configuration — never zero or a guess. It is the probe's number, so a
+    browser may read a few tens of milliseconds more from the same file.
 
     ``status`` is typed with reconcile's own closed vocabulary, so the schema
     publishes the enumeration and generated clients get an exhaustive union
@@ -53,6 +60,7 @@ class ClipOut(BaseModel):
     status: ClipStatus
     size: Optional[int] = None
     mtime: Optional[datetime] = None
+    duration: Optional[float] = None
     excluded: bool = False
 
 

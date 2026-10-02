@@ -176,6 +176,14 @@ def test_the_excluded_clip_read_model_is_published() -> None:
         assert name in summary["required"]
 
 
+def test_the_clip_duration_is_published_as_a_nullable_optional_number() -> None:
+    """A client treats a null and an absent ``duration`` alike as "not known"."""
+    clip = build_openapi_schema()["components"]["schemas"]["ClipOut"]
+
+    assert clip["properties"]["duration"]["anyOf"] == [{"type": "number"}, {"type": "null"}]
+    assert "duration" not in clip["required"]
+
+
 def test_job_status_fields_are_published_as_the_job_status_enumeration() -> None:
     """Every job-status response field references the store's own enum, not ``string``."""
     schema = build_openapi_schema()

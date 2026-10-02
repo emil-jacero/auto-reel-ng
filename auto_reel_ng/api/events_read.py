@@ -22,7 +22,12 @@ from typing import Dict, List, Mapping, Optional, Tuple
 
 from ..analysis.cache import CACHE_SUBDIR, clip_signal, read_entry
 from ..cli.adoption import REEL_FILENAME, place_disk_clips
-from ..config.project import load_project_config, resolve_look_defaults
+from ..config.project import (
+    ConfigError,
+    ProjectConfig,
+    load_project_config,
+    resolve_look_defaults,
+)
 from ..errors import EventMetadataError, ReelError, ThumbnailError
 from ..event.discovery import (
     ClipOrder,
@@ -48,7 +53,12 @@ from ..render import output_relpath
 from ..render.claims import output_collision as engine_output_collision
 from ..staleness.fingerprint import compute_fingerprint
 from ..staleness.gate import evaluate
-from ..thumbs import resolve_thumbnail_settings, thumbnail_path
+from ..thumbs import (
+    ThumbnailSettings,
+    recorded_duration,
+    resolve_thumbnail_settings,
+    thumbnail_path,
+)
 from .schemas import (
     AnalysisOut,
     ChapterOut,
@@ -351,16 +361,63 @@ def played_missing_clips(event_dir: Path, document: ReelDocument) -> List[str]:
     return list(blocking_missing(document, reconcile(scan_event(event_dir).identities, document)))
 
 
+def _recorded_duration(path: Path, thumbnails: Optional[ThumbnailSettings]) -> Optional[float]:
+    """The duration the thumbnail operation recorded for the clip at ``path``, else ``None``.
+
+    Reads the sidecar beside the clip's cached thumbnail (``thumbs.recorded_duration``) and
+    nothing else: no ffprobe, no ffmpeg, no cache write. The cache key covers the file's name,
+    size and mtime, so a replaced file has no entry until its thumbnail is made again. ``None``
+    (unknown, never zero) also covers a clip that cannot be statted for the key and the
+    ``thumbnails`` settings being unresolved (``thumbnails`` is ``None``).
+    """
+    if thumbnails is None:
+        return None
+    try:
+        target = thumbnail_path(path, position=thumbnails.position, cache_dir=thumbnails.cache_dir)
+    except OSError:
+        return None
+    return recorded_duration(target)
+
+
 def _clip_out(
-    event_dir: Path, identity: str, status: ClipStatus, *, excluded: bool = False
+    event_dir: Path,
+    identity: str,
+    status: ClipStatus,
+    *,
+    excluded: bool = False,
+    thumbnails: Optional[ThumbnailSettings] = None,
 ) -> ClipOut:
-    """One clip with its file facts; a MISSING clip has no file, so it is not statted."""
+    """One clip with its file facts and recorded duration; a MISSING clip is not statted."""
     if status is ClipStatus.MISSING:
         return ClipOut(identity=identity, status=status, excluded=excluded)
     # The identity *is* the event-relative POSIX path (the mapping render/ uses),
     # so a clip in a named chapter subdirectory resolves inside that directory.
-    size, mtime = _file_facts(event_dir / identity)
-    return ClipOut(identity=identity, status=status, size=size, mtime=mtime, excluded=excluded)
+    path = event_dir / identity
+    size, mtime = _file_facts(path)
+    return ClipOut(
+        identity=identity,
+        status=status,
+        size=size,
+        mtime=mtime,
+        duration=_recorded_duration(path, thumbnails),
+        excluded=excluded,
+    )
+
+
+def _thumbnail_settings(
+    settings: ApiSettings, config: ProjectConfig
+) -> Optional[ThumbnailSettings]:
+    """The resolved ``thumbnails`` settings, or ``None`` (one warning) when they are unusable.
+
+    The detail's durations are a hint, so a ``thumbnails`` section the thumbnail endpoint
+    refuses leaves them unknown instead of failing the response; the endpoint still fails
+    loud on the same configuration.
+    """
+    try:
+        return resolve_thumbnail_settings(config, settings.project_root)
+    except ConfigError as exc:
+        logger.warning("clip durations unknown: %s", exc)
+        return None
 
 
 def _build_chapters(
@@ -369,6 +426,7 @@ def _build_chapters(
     result: ReconcileResult,
     event_dir: Path,
     order: ClipOrder,
+    thumbnails: Optional[ThumbnailSettings] = None,
 ) -> List[ChapterOut]:
     """Ordered chapters/clips (D-A3): the document's structure when one exists,
 
@@ -379,14 +437,15 @@ def _build_chapters(
     clips, in the document's own ``sort`` when it sets one, else the project's sort
     rule ``order``. The disk listing's own grouping when there is no document yet
     (the seeding case). Nothing is adopted or written here.
-    Each clip carries the file facts ``_clip_out`` stats — never a probe.
+    Each clip carries the file facts ``_clip_out`` stats and the duration it reads from the
+    thumbnail cache's sidecar under ``thumbnails`` — never a probe.
     """
     if document is None:
         return [
             ChapterOut(
                 name=name,
                 clips=[
-                    _clip_out(event_dir, i, ClipStatus.NEW)
+                    _clip_out(event_dir, i, ClipStatus.NEW, thumbnails=thumbnails)
                     for i in order_clips(identities, event_dir, order)
                 ],
             )
@@ -402,7 +461,11 @@ def _build_chapters(
             status = result.classification.get(ref.identity, ClipStatus.MISSING)
             clips.append(
                 _clip_out(
-                    event_dir, ref.identity, status, excluded=_is_excluded(document, ref.identity)
+                    event_dir,
+                    ref.identity,
+                    status,
+                    excluded=_is_excluded(document, ref.identity),
+                    thumbnails=thumbnails,
                 )
             )
         chapters.append(ChapterOut(name=chapter.name, clips=clips))
@@ -413,7 +476,9 @@ def _build_chapters(
         document, listing, disk_only, event_dir=event_dir, order=order
     ):
         clips = [
-            _clip_out(event_dir, i, result.classification.get(i, ClipStatus.NEW))
+            _clip_out(
+                event_dir, i, result.classification.get(i, ClipStatus.NEW), thumbnails=thumbnails
+            )
             for i in identities
         ]
         if name in by_name:
@@ -499,7 +564,9 @@ def get_event(
     try:
         document, listing, result = _load_for_reconcile(event_dir, config.sort)
         title, event_date, location = _title_date_location(event_dir, document)
-        chapters = _build_chapters(document, listing, result, event_dir, config.sort)
+        chapters = _build_chapters(
+            document, listing, result, event_dir, config.sort, _thumbnail_settings(settings, config)
+        )
         staleness = staleness_for(settings, event_dir, document, runtime, look_defaults)
     except (ReelError, OSError) as exc:
         raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
