@@ -110,7 +110,9 @@ def recorded_output_path(recorded: str, expected_output: PathLike) -> Path:
     ``recorded`` name lives in its own date's year folder, an undated one directly in
     ``<output>``. ``recorded`` is a bare file name; the gate checks that before calling. Pure:
     no filesystem access. An undated title that itself starts with ``YYYY-MM-DD - `` is placed
-    in that year's folder, where it is not (gate: ``output``).
+    in that year's folder, where it is not (gate: ``output``). That case is unreachable through
+    the CLI, the worker and the API: ``require_processable`` refuses an event without a real date
+    before any render or verdict, so only direct library use meets it.
     """
     expected = Path(expected_output)
     expected_year = _year_folder(expected.name)

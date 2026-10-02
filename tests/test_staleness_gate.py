@@ -8,7 +8,7 @@ of ``output``, and never changes whether the event is stale.
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable, Optional
 
 import pytest
@@ -260,7 +260,10 @@ def test_a_recorded_value_that_is_not_a_bare_movie_file_cites_output(
 def test_a_recorded_value_naming_a_folder_is_never_looked_up(
     tmp_path: Path, recorded: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``""``, ``.`` and ``..`` name the output root or its parent: nothing is stat'ed for them."""
+    """``""``, ``.`` and ``..`` name the output root or its parent: nothing is stat'ed for them.
+
+    The only lookup is the gate's own test of the expected path.
+    """
     event_dir, _ = _render_named(tmp_path, GRILLNING)
     write_manifest(
         event_dir,
@@ -283,7 +286,7 @@ def test_a_recorded_value_naming_a_folder_is_never_looked_up(
     verdict = evaluate(event_dir, expected, fingerprint)
 
     assert verdict.reasons == ("editorial", "output")
-    assert looked_up == []
+    assert looked_up == [expected]  # the gate's own test of the expected path, nothing else
 
 
 def test_renamed_with_old_movie_deleted_cites_output(tmp_path: Path) -> None:
@@ -354,6 +357,21 @@ def _retitled_old_deleted(tmp_path: Path) -> tuple[Path, Metadata, None]:
     return event_dir, RETITLED, None
 
 
+def _folder_at_expected(tmp_path: Path) -> tuple[Path, Metadata, None]:
+    """A folder where the rendered movie belongs: not a movie."""
+    event_dir, movie = _render_named(tmp_path, GRILLNING)
+    movie.unlink()
+    movie.mkdir()
+    return event_dir, GRILLNING, None
+
+
+def _folder_at_expected_old_kept(tmp_path: Path) -> tuple[Path, Metadata, Path]:
+    """The retitled event has a folder where its new movie belongs; the old movie is kept."""
+    event_dir, old_movie = _render_named(tmp_path, GRILLNING)
+    (tmp_path / "out" / output_relpath(RETITLED)).mkdir()
+    return event_dir, RETITLED, old_movie
+
+
 MovieCase = Callable[[Path], tuple[Path, Metadata, Optional[Path]]]
 
 
@@ -374,6 +392,8 @@ MOVIE_CASES: dict[str, MovieCase] = {
     "manifest and expected file": _expected_file,
     "retitled, old movie kept": _retitled_old_kept,
     "retitled, old movie deleted": _retitled_old_deleted,
+    "folder at the expected path": _folder_at_expected,
+    "folder at the expected path, old movie kept": _folder_at_expected_old_kept,
     **{
         f"recorded {value!r}": _recorded_value(value)
         for value in ["", ".", "..", "2024", "absolute", "../Grillning.mp4"]
@@ -385,6 +405,7 @@ MOVIE_REASON = {
     "no manifest, a file at the expected path": StalenessReason.NO_MANIFEST,
     "manifest and expected file": None,
     "retitled, old movie kept": StalenessReason.OUTPUT_RENAMED,
+    "folder at the expected path, old movie kept": StalenessReason.OUTPUT_RENAMED,
 }
 
 
@@ -407,8 +428,8 @@ def test_rendered_output_is_the_movie_the_verdict_counts(tmp_path: Path, case: s
     assert (movie is not None) == (not absent & set(verdict.reasons))
 
 
-def test_a_directory_at_the_expected_path_is_not_a_movie(tmp_path: Path) -> None:
-    """The accepted edge: the gate counts a directory as present, the movie lookup does not."""
+def test_a_folder_at_the_expected_path_is_a_missing_movie(tmp_path: Path) -> None:
+    """The gate counts only a regular file, as the movie lookup does."""
     event_dir, movie = _render_named(tmp_path, GRILLNING)
     movie.unlink()
     movie.mkdir()
@@ -416,5 +437,60 @@ def test_a_directory_at_the_expected_path_is_not_a_movie(tmp_path: Path) -> None
     verdict = _evaluate_named(tmp_path, event_dir, GRILLNING)
 
     assert rendered_output(event_dir, movie) is None
-    assert StalenessReason.OUTPUT not in verdict.reasons
-    assert StalenessReason.OUTPUT_RENAMED not in verdict.reasons
+    assert verdict.stale is True
+    assert verdict.reasons == ("output",)
+
+
+def test_a_folder_at_the_new_path_does_not_hide_the_kept_movie(tmp_path: Path) -> None:
+    event_dir, old_movie = _render_named(tmp_path, GRILLNING)
+    (tmp_path / "out" / output_relpath(RETITLED)).mkdir()
+
+    verdict = _evaluate_named(tmp_path, event_dir, RETITLED)
+
+    assert verdict.reasons == ("editorial", "output_renamed")
+    assert old_movie.is_file()
+
+
+# --- By-design lookup rules, pinned (change ``staleness-output-lookup``) ----------------------
+
+
+def test_a_movie_in_another_output_directory_is_not_looked_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The verdict is about the output directory in use: the earlier render elsewhere is not found."""
+    event_dir, old_movie = _render_named(tmp_path, GRILLNING)  # rendered into tmp_path / "out"
+    other = tmp_path / "out_b"
+    expected = other / output_relpath(RETITLED)
+    fingerprint = _fingerprint(event_dir, document=_document_named(RETITLED))
+    looked_up: list[Path] = []
+    real_is_file = Path.is_file
+
+    def spy(path: Path) -> bool:
+        looked_up.append(path)
+        return real_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", spy)  # only the gate runs from here on
+
+    verdict = evaluate(event_dir, expected, fingerprint)
+
+    assert verdict.reasons == ("editorial", "output")
+    assert rendered_output(event_dir, expected) is None
+    assert not [path for path in looked_up if tmp_path / "out" in (path, *path.parents)]
+    monkeypatch.undo()
+    assert old_movie.is_file()  # still there; just not this directory's movie
+
+
+def test_a_title_with_a_separator_is_found_after_a_retitle(tmp_path: Path) -> None:
+    """The name builder keeps the output name one path component, so the lookup finds it."""
+    slashed = Metadata(title="Jul/Nyar", date=date(2024, 12, 24), location="Sk/ane")
+    event_dir, old_movie = _render_named(tmp_path, slashed)
+    old_name = output_relpath(slashed).name
+    assert PurePosixPath(old_name).name == old_name  # one component, whatever the title held
+    assert old_movie.parent == tmp_path / "out" / "2024"
+    retitled = Metadata(title="Jul Nyar", date=slashed.date, location=slashed.location)
+
+    verdict = _evaluate_named(tmp_path, event_dir, retitled)
+
+    assert verdict.reasons == ("editorial", "output_renamed")
+    expected = tmp_path / "out" / output_relpath(retitled)
+    assert rendered_output(event_dir, expected) == old_movie

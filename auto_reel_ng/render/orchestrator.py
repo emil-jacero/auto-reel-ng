@@ -330,6 +330,13 @@ def render_movie(plan: RenderPlan, profile: AccelProfile, options: RenderOptions
     if options.dry_run:
         return _plan_only(segments, target, profile, options, output_path)
 
+    if output_path.exists() and not output_path.is_file():
+        # A folder (or other non-file) where the movie belongs is not a render to skip or to
+        # replace: the engine never removes what it did not write (change-detection).
+        raise RenderError(
+            f"{output_path} exists and is not a regular file; refusing to render over it"
+        )
+
     if output_path.exists() and not options.overwrite:
         logger.info("Output %s exists and overwrite not requested; skipping", output_path)
         return RenderResult(output_path=output_path, skipped=True)

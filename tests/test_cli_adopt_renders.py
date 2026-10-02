@@ -63,6 +63,25 @@ def test_adopt_renders_skips_an_unrendered_event(
     assert read_manifest(event_dir) is None
 
 
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_adopt_renders_does_not_adopt_a_folder_at_the_output_path(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], dry_run: bool
+) -> None:
+    root = _project(tmp_path, "2024-06-21 - Party")
+    event_dir = root / "2024" / "2024-06-21 - Party"
+    folder = default_output_dir(root) / "2024" / "2024-06-21 - Party.mp4"
+    _touch(folder / "inside.txt")
+
+    assert main(["adopt-renders", str(root), *(["--dry-run"] if dry_run else [])]) == 0
+
+    out = capsys.readouterr().out
+    verb = "would adopt" if dry_run else "adopted"
+    assert f"0 {verb}, 0 already fresh, 1 unrendered" in out
+    assert "unrendered, nothing to adopt" in out
+    assert read_manifest(event_dir) is None
+    assert (folder / "inside.txt").is_file()
+
+
 def test_adopt_renders_is_idempotent_and_reports_already_fresh(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

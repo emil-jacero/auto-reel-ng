@@ -21,6 +21,7 @@ import os
 from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
 from pathlib import Path, PurePosixPath
+from types import SimpleNamespace
 from typing import Callable, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import quote
 
@@ -453,6 +454,11 @@ def test_a_directory_at_the_expected_path_is_not_the_movie(
     with pytest.raises(MovieNotFoundError):
         movie_media(settings, KALAS)
     assert opened == []
+    # The verdict agrees: a folder is a missing movie, exactly as an absent file is.
+    verdict = events_read.staleness_for(
+        settings, settings.project_root / KALAS, None, SimpleNamespace(version=(7, 1)), {}  # type: ignore[arg-type]
+    )
+    assert "output" in verdict.reasons
 
 
 def test_a_deleted_movie_is_not_found(settings: ApiSettings, movies: Dict[str, Path]) -> None:

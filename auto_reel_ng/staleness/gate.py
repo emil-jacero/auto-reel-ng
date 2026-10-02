@@ -1,7 +1,7 @@
 """The staleness gate: one function, three call sites (decision D-C3).
 
 Stale ⇔ no manifest, or the current fingerprint differs from the manifest's, or the
-event's expected output file is missing (with the rename told apart: a movie the last
+event's expected output is not a regular file (with the rename told apart: a movie the last
 render wrote under the event's old name is cited as ``output_renamed``, never deleted).
 The verdict names which components changed (by comparing sub-hashes) so ``scan``/the
 API can explain *why* an event is stale. A force request bypasses this gate entirely — that is a
@@ -72,9 +72,10 @@ def evaluate(event_dir: PathLike, output_path: PathLike, fingerprint: Fingerprin
 
     ``output_path`` is the event's expected rendered output file. A fresh verdict
     (no reasons) requires the manifest to exist, every component sub-hash to match,
-    and the output file to exist. An absent output file cites exactly one reason,
-    ``output_renamed`` or ``output`` (:func:`_absent_output_reason`); which one never
-    changes whether the event is stale.
+    and the output to be a regular file. An output that is not a file (absent, or a folder
+    or other non-file in its place) cites exactly one reason, ``output_renamed`` or
+    ``output`` (:func:`_absent_output_reason`); which one never changes whether the event
+    is stale.
 
     A changed component is mapped through :class:`StalenessReason`, so a component
     with no reason member raises :class:`ValueError` here rather than reaching a
@@ -90,7 +91,7 @@ def evaluate(event_dir: PathLike, output_path: PathLike, fingerprint: Fingerprin
         if fingerprint.component(name) != manifest.components.get(name)
     ]
     expected = Path(output_path)
-    if not expected.exists():
+    if not expected.is_file():
         reasons.append(_absent_output_reason(manifest, expected))
 
     return Verdict(stale=bool(reasons), reasons=tuple(reasons))
@@ -104,10 +105,7 @@ def rendered_output(event_dir: PathLike, output_path: PathLike) -> Optional[Path
     event's old name (the ``output_renamed`` case, :func:`_renamed_output`). This is the
     gate's own rule made callable, so a reader of "the movie" (the API's movie route)
     cannot disagree with a verdict. Reads the filesystem; never raises for a missing file.
-
-    A directory at the expected path is not a movie here, although :func:`evaluate`
-    counts it as present (``exists()``): no real library has one, and a verdict change
-    is not this function's to make.
+    A folder (or any non-file) at the expected path is no movie, here and in the verdict.
     """
     manifest = read_manifest(event_dir)
     if manifest is None:
@@ -126,7 +124,13 @@ def _absent_output_reason(manifest: RenderManifest, expected: Path) -> Staleness
 
 
 def _renamed_output(manifest: RenderManifest, expected: Path) -> Optional[Path]:
-    """The recorded movie under its old name, when the gate would cite ``output_renamed``."""
+    """The recorded movie under its old name, when the gate would cite ``output_renamed``.
+
+    Only the output directory in use is searched: a movie the last render wrote into
+    another output directory is not looked for (the verdict then cites ``output``). A movie
+    an older engine wrote into a nested folder (a title with a path separator) is recorded
+    by its last component only, so it reads ``output`` as a missing movie does.
+    """
     recorded = manifest.output
     if (
         recorded != expected.name
