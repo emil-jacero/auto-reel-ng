@@ -260,6 +260,84 @@ def test_refused_write_hands_back_no_precondition(client: TestClient, project: P
     assert (_event_dir(project) / "reel.yaml").read_text(encoding="utf-8") == text_before
 
 
+# --- api-event-lookup-scope: If-Match across header lines --------------------
+
+
+def _retitled(title: str) -> dict:
+    return {**BASE_BODY, "metadata": {**BASE_BODY["metadata"], "title": title}}
+
+
+def test_a_matching_tag_on_a_later_if_match_line_writes(client: TestClient, project: Path) -> None:
+    etag = client.get(f"/api/v1/events/{_event_id()}/reel").headers["ETag"]
+
+    response = client.put(
+        f"/api/v1/events/{_event_id()}/reel",
+        json=_retitled("Two Lines"),
+        headers=[("If-Match", '"stale"'), ("If-Match", etag)],
+    )
+
+    assert response.status_code == 200
+    assert "Two Lines" in (_event_dir(project) / "reel.yaml").read_text(encoding="utf-8")
+
+
+def test_a_matching_tag_on_an_earlier_if_match_line_writes(client: TestClient) -> None:
+    etag = client.get(f"/api/v1/events/{_event_id()}/reel").headers["ETag"]
+
+    response = client.put(
+        f"/api/v1/events/{_event_id()}/reel",
+        json=_retitled("First Line"),
+        headers=[("If-Match", etag), ("If-Match", '"stale"')],
+    )
+
+    assert response.status_code == 200
+
+
+def test_repeated_lines_equal_the_same_tags_comma_joined(client: TestClient) -> None:
+    etag = client.get(f"/api/v1/events/{_event_id()}/reel").headers["ETag"]
+
+    joined = client.put(
+        f"/api/v1/events/{_event_id()}/reel",
+        json=BASE_BODY,
+        headers={"If-Match": f'"stale", {etag}'},
+    )
+    lines = client.put(
+        f"/api/v1/events/{_event_id()}/reel",
+        json=BASE_BODY,
+        headers=[("If-Match", '"stale"'), ("If-Match", etag)],
+    )
+
+    assert joined.status_code == lines.status_code == 200
+
+
+def test_no_matching_if_match_line_is_refused_and_writes_nothing(
+    client: TestClient, project: Path
+) -> None:
+    text_before = (_event_dir(project) / "reel.yaml").read_text(encoding="utf-8")
+
+    response = client.put(
+        f"/api/v1/events/{_event_id()}/reel",
+        json=_retitled("Never Written"),
+        headers=[("If-Match", '"stale"'), ("If-Match", '"other"')],
+    )
+
+    assert response.status_code == 412
+    assert "ETag" not in response.headers
+    assert (_event_dir(project) / "reel.yaml").read_text(encoding="utf-8") == text_before
+
+
+def test_an_empty_if_match_is_still_a_precondition(client: TestClient, project: Path) -> None:
+    text_before = (_event_dir(project) / "reel.yaml").read_text(encoding="utf-8")
+
+    response = client.put(
+        f"/api/v1/events/{_event_id()}/reel",
+        json=_retitled("Never Written"),
+        headers={"If-Match": ""},
+    )
+
+    assert response.status_code == 412
+    assert (_event_dir(project) / "reel.yaml").read_text(encoding="utf-8") == text_before
+
+
 # --- editorial-client-contract 2.2: status by cause --------------------------
 
 

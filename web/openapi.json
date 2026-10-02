@@ -583,7 +583,7 @@
           "events"
         ],
         "summary": "Get Analysis",
-        "description": "``GET /api/v1/events/{event_id}/analysis`` (task 2.4): cached segments only.\n\nRegistered *before* the ``{event_id:path}`` detail route below: both patterns\nare greedy over ``/``, and Starlette matches routes in registration order, so\nthe more specific ``/analysis`` suffix must be tried first or the detail route\nwould swallow it (``event_id`` ending in literal ``/analysis``).",
+        "description": "``GET /api/v1/events/{event_id}/analysis`` (task 2.4): cached segments only.\n\nAnswers only for an id the events list shows, like the thumbnail and media\nroutes: 404 for any other directory (a year folder, an event's ``original/``, a\n``.reelignore``d event). 502 for an event folder that cannot be listed (with the\nlist's ``failure`` kind) and for a layout the service cannot resolve (with no\nkind). The database is never touched.\n\nRegistered *before* the ``{event_id:path}`` detail route below: both patterns\nare greedy over ``/``, and Starlette matches routes in registration order, so\nthe more specific ``/analysis`` suffix must be tried first or the detail route\nwould swallow it (``event_id`` ending in literal ``/analysis``).",
         "operationId": "get_analysis_api_v1_events__event_id__analysis_get",
         "parameters": [
           {
@@ -606,6 +606,26 @@
                 }
               }
             }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
           },
           "422": {
             "description": "Validation Error",
@@ -695,7 +715,7 @@
           "events"
         ],
         "summary": "Put Reel",
-        "description": "``PUT /api/v1/events/{event_id}/reel``: apply a desired editorial state (D-E2).\n\nA coarse whole-document write: ``payload`` is the complete desired editorial\nstate, merged onto the event's existing structure (never replacing the file\noutright, D-E1) and validated fail-loud before anything is persisted. The\nroute carries no editorial logic of its own (D-E6) — it resolves the event,\ndelegates to the engine operation, and echoes the persisted document plus the\nevent's resulting staleness verdict (computed free, D-E5) so the client needs\nno follow-up GET. The write never enqueues and never touches the render\nmanifest.\n\nA successful write carries an ``ETag`` for the state it just persisted,\ncomputed from the returned document by the same helper ``get_reel`` uses, so a\nclient may chain conditional writes with no intervening read. A ``412`` carries\nnone: a client that lost the race must re-read before it overwrites.\n\nFailures answer by cause and write nothing: 400 for an invalid submitted state\n(with ``failure: unusable_metadata`` when the engine refuses a state that\nleaves the event without a real date or title), 404, 412, and 502 for the disk:\nan existing document that cannot be read (with its ``failure`` kind, as the\nreads report it) or a save the filesystem refuses (naming the OS error).",
+        "description": "``PUT /api/v1/events/{event_id}/reel``: apply a desired editorial state (D-E2).\n\nA coarse whole-document write: ``payload`` is the complete desired editorial\nstate, merged onto the event's existing structure (never replacing the file\noutright, D-E1) and validated fail-loud before anything is persisted. The\nroute carries no editorial logic of its own (D-E6) — it resolves the event,\ndelegates to the engine operation, and echoes the persisted document plus the\nevent's resulting staleness verdict (computed free, D-E5) so the client needs\nno follow-up GET. The write never enqueues and never touches the render\nmanifest.\n\nA successful write carries an ``ETag`` for the state it just persisted,\ncomputed from the returned document by the same helper ``get_reel`` uses, so a\nclient may chain conditional writes with no intervening read. A ``412`` carries\nnone: a client that lost the race must re-read before it overwrites.\n\n``If-Match`` is published as a parameter, but read from every header line the\nrequest carries (RFC 9110: repeated lines are one comma-separated list): the\nparameter would hold only the first. A request that carries the header at all,\neven empty, is conditional.\n\nFailures answer by cause and write nothing: 400 for an invalid submitted state\n(with ``failure: unusable_metadata`` when the engine refuses a state that\nleaves the event without a real date or title), 404, 412, and 502 for the disk:\nan existing document that cannot be read (with its ``failure`` kind, as the\nreads report it) or a save the filesystem refuses (naming the OS error).",
         "operationId": "put_reel_api_v1_events__event_id__reel_put",
         "parameters": [
           {

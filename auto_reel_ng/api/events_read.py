@@ -493,24 +493,35 @@ def get_analysis(settings: ApiSettings, event_id: str) -> AnalysisOut:
 
     Never triggers analysis. ``analyzed`` is true when at least one clip in the
     event has a valid cache entry for its current on-disk signal.
-    """
-    event_dir = resolve_event_dir(settings, event_id)
-    listing = scan_event(event_dir)
 
-    segments: Dict[str, List[SegmentOut]] = {}
-    analyzed = (event_dir / CACHE_SUBDIR).is_dir()
-    for identity in listing.identities:
-        clip_path = event_dir / identity
-        if not clip_path.exists():
-            continue
-        signal = clip_signal(clip_path)
-        cached = read_entry(event_dir, identity, signal)
-        if cached is not None:
-            analyzed = True
-            segments[identity] = [
-                SegmentOut(start=s.start, end=s.end, kind=s.kind.value, confidence=s.confidence)
-                for s in cached
-            ]
+    Answers only for an id the events list shows (:func:`listed_event_dir`, else
+    :class:`EventNotFoundError`), as the thumbnail and media reads do: a year folder,
+    an event's ``original/`` or chapter folder and a ``.reelignore``d event are
+    not events. An ``OSError`` from the walk, the scan or the signal stat is an
+    :class:`EventReadError` with the list's ``unreadable_disk`` kind; an unknown
+    layout raises its ``LayoutError``. ``reel.yaml`` is never read: analysis is a
+    fact of the sidecar cache and the clip files.
+    """
+    try:
+        event_dir = listed_event_dir(settings, event_id)
+        listing = scan_event(event_dir)
+
+        segments: Dict[str, List[SegmentOut]] = {}
+        analyzed = (event_dir / CACHE_SUBDIR).is_dir()
+        for identity in listing.identities:
+            clip_path = event_dir / identity
+            if not clip_path.exists():
+                continue
+            signal = clip_signal(clip_path)
+            cached = read_entry(event_dir, identity, signal)
+            if cached is not None:
+                analyzed = True
+                segments[identity] = [
+                    SegmentOut(start=s.start, end=s.end, kind=s.kind.value, confidence=s.confidence)
+                    for s in cached
+                ]
+    except OSError as exc:
+        raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
     return AnalysisOut(analyzed=analyzed, segments=segments)
 
 

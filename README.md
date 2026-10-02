@@ -263,7 +263,9 @@ render, or job logic lives in the web tier.
   as its error row, never a 500. A database or walk failure still fails the whole
   list (503 or 502).
   `GET /api/v1/events/{event_id}/analysis` exposes the read-only analysis sidecar
-  cache; it never triggers analysis.
+  cache; it never triggers analysis. It answers only for an id the list shows
+  as an event (a year folder, an event's `original/` or a `.reelignore`d event is
+  404), and an unlistable event folder is a 502 with the list's `failure` kind.
 - **`GET /api/v1/events/{event_id}/reel`** returns the event's **complete**
   editorial document — metadata, ordered chapters/clips, per-clip properties,
   `ignore` and `look` — in exactly the shape the `PUT` below accepts, parsed

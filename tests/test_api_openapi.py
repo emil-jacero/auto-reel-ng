@@ -225,6 +225,16 @@ def test_editorial_routes_declare_their_responses_and_etag() -> None:
         assert "ETag" in responses["200"]["headers"], method
 
 
+def test_the_analysis_route_publishes_its_problem_responses() -> None:
+    """A 404 and a 502 in the shared problem shape; no 503, the route never needs the database."""
+    operation = build_openapi_schema()["paths"]["/api/v1/events/{event_id}/analysis"]["get"]
+    responses = operation["responses"]
+    assert set(responses) - {"422"} == {"200", "404", "502"}
+    for code in ("404", "502"):
+        ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
+        assert ref.endswith("/ProblemOut"), code
+
+
 def test_the_thumbnail_route_publishes_its_parameters_and_responses() -> None:
     """``clip`` required, ``v`` and ``If-None-Match`` optional; a JPEG 200, a 304; problems."""
     operation = build_openapi_schema()["paths"]["/api/v1/events/{event_id}/thumbnail"]["get"]
