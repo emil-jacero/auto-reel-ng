@@ -6,8 +6,8 @@
   `thumbnails` map is carried as written, an absent map is empty, and `api` / `worker` keys are carried
   (the wrong-typed `thumbnails` and `worker` tests exist; keep them); verify
   `.venv/bin/python -m pytest tests/test_project_config.py` passes.
-- [x] 1.3 Verify the reworded web-app scenario still describes what the existing web test for "A clip from
-  another folder is named by its path" asserts (same rows, same chapters); no test change is expected.
+- [x] 1.3 Verify the reworded web-app scenario's rows still match `tests/test_api_events.py` and the naming
+  rule in `web/src/events/common.tsx` (same rows, same chapters); no test change is expected.
 
 ## 2. Docs and test wording
 

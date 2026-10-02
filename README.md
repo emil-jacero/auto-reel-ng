@@ -542,7 +542,8 @@ them. Several clips that link to one file share its thumbnail and are extracted 
 Each thumbnail is ≈15 KB (≈100 MB for 6,500 clips) and nothing is evicted: delete the
 directory to reset it. When `serve` runs as another user or in a
 container, it has its own `XDG_CACHE_HOME` — set `thumbnails.cache_dir` in the
-project's `config.yaml` so the CLI and the service share one cache.
+project's `config.yaml` so both sides use one directory (they also need the same clip
+paths, below).
 
 One cache for the host CLI and a container service needs the same directory and the same
 clip paths on both sides, because the file name hashes the *resolved* clip path. The

@@ -64,8 +64,8 @@ loaded page does, without horizontal scroll from 320 CSS pixels up.
 
 #### Scenario: A clip from another folder is named by its path
 - **WHEN** `reel.yaml` of `2024-08-20 - Två kapitel - Tjörn` lists `Kvällen/s1710004.mp4` in its root
-  chapter and ignores the root clip `s1710004.mp4`, as a hand edit leaves it (a render never ignores a clip:
-  it adopts a NEW clip into the chapter of its own folder, D-12)
+  chapter and ignores the root clip `s1710004.mp4`, as a hand edit leaves it (a render adopts no ignored
+  clip, D-12)
 - **THEN** `Main` names its rows `s1710001.mp4`, `Kvällen/s1710004.mp4` and `s1710004.mp4`, and `Kvällen`
   still names its rows `s1710002.mp4` and `s1710003.mp4`
 
