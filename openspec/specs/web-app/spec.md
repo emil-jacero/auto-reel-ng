@@ -2699,11 +2699,14 @@ When the browser's primary pointer is coarse, each of these controls, Add chapte
 anywhere in an area of at least 44 × 44 CSS pixels around it that reaches no other control, as every button
 does ("Every control is large enough to touch").
 
-A name SHALL be accepted only when both of these hold, once the spaces around it are removed:
+A name SHALL be accepted only when both of these hold, once the spaces around it are removed. The spaces are
+the characters the engine removes from a chapter's name, so a name the page accepts is a name `reel.yaml`
+loads:
 
 - it is not empty
-- ignoring case, it differs from the name of every other chapter of the event, including a deleted chapter not
-  yet saved, and from `Main`, the name the page shows for the event's own chapter
+- compared by full Unicode case folding, the comparison the engine makes, it differs from the name of every
+  other chapter of the event, including a deleted chapter not yet saved, and from `Main`, the name the page
+  shows for the event's own chapter. So `ß`, `ss`, `SS` and `ẞ` are one name, as are `Kvällen` and `KVÄLLEN`.
 
 A refused name SHALL be explained at the name field, which keeps keyboard focus, and nothing SHALL change. The
 name saved is the accepted name without the spaces around it. A chapter's name SHALL be described to the
@@ -2749,6 +2752,18 @@ change nothing when pressed.
 - **THEN** each is refused at the name field, which keeps keyboard focus. `kvällen` is refused because a
   chapter called `Kvällen` exists. The blank name is refused because a chapter needs a name. `main` is refused
   because `Main` is the page's name for the event's own chapter. No chapter is added.
+
+#### Scenario: A name the engine would fold into another is refused
+- **WHEN** on `2024-09-14 - Gatufest`, an event with a chapter `Straße`, the operator adds a chapter named
+  `STRASSE`, then one named `strasse`
+- **THEN** each is refused at the name field, which keeps keyboard focus, because a chapter called `Straße`
+  exists. No chapter is added. A name that merely resembles it, such as `Strasse 2`, is accepted.
+
+#### Scenario: The spaces the engine removes are removed
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator adds a chapter named with a next-line character
+  (U+0085) before and after `Hamnen`
+- **THEN** the chapter is added as `Hamnen`, without those characters, and the next save writes `Hamnen` to
+  `reel.yaml`, which loads
 
 #### Scenario: Renaming a chapter
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator renames `Kvällen` to ` Kväll på stranden `,
@@ -2944,7 +2959,8 @@ clips within a chapter").
 ### Requirement: Edit mode says what a chapter's name means for clips added later
 
 A clip that appears in an event's folder after its `reel.yaml` exists joins, at the next render, the chapter
-named exactly after the folder it is in, or the event's own chapter when no chapter has that name. So a
+named after the folder it is in (by case folding, as below), or the event's own chapter when no chapter has
+that name. So a
 chapter's name decides where clips added to that folder later go. Edit mode SHALL say so wherever an edit
 changes that. It SHALL say it in the name dialog, as the name is typed, and beside the chapter after the edit,
 until the edits are saved or undone:
@@ -2963,9 +2979,11 @@ until the edits are saved or undone:
 In these words the page SHALL name the event's own chapter by its heading at that moment: `Main` while
 another chapter is listed, `Clips` when it is the only one.
 
-A folder counts only while it holds a clip on disk. The page SHALL compare a name with a folder's exactly, as
-the render does. A name that differs from a folder's only in case attracts nothing from that folder, and the
-page SHALL say so as for any other name.
+A folder counts only while it holds a clip on disk. The page SHALL compare a name with a folder's by full
+Unicode case folding, as the engine does: a chapter takes the clips of every folder whose name folds to its
+own. A name that differs from a folder's only in case therefore attracts that folder's clips, and a chapter
+renamed between two spellings of a folder's name keeps them. The page SHALL say what the edit changes, in the
+folder's own spelling, and nothing when it changes nothing.
 
 #### Scenario: Renaming a chapter named after its folder
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens Rename on `Kvällen` and types `Kväll`
@@ -2975,8 +2993,13 @@ page SHALL say so as for any other name.
 
 #### Scenario: A name that differs from the folder's only in case
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator renames `Kvällen` to `kvällen`
-- **THEN** the rename is accepted, and the page says that no chapter will be named after the folder
-  `Kvällen`, so clips added to it later will join `Main`
+- **THEN** the rename is accepted, and the page says nothing about later clips, since the folder `Kvällen`
+  still joins this chapter
+
+#### Scenario: A new chapter whose name differs from a folder's only in case
+- **WHEN** after renaming `Kvällen` to `Kväll` on `2024-08-20 - Två kapitel - Tjörn`, the operator adds a
+  chapter and types `KVÄLLEN`
+- **THEN** the dialog says that clips added to the folder `Kvällen` later will join this chapter
 
 #### Scenario: A new chapter named after a folder
 - **WHEN** after renaming `Kvällen` to `Kväll` on `2024-08-20 - Två kapitel - Tjörn`, the operator adds a
