@@ -23,6 +23,7 @@ import pytest
 from auto_reel_ng.cli import thumbnails as thumbs_cli
 from auto_reel_ng.cli.main import main
 from auto_reel_ng.errors import ThumbnailCacheError, ThumbnailError
+from auto_reel_ng.thumbs import thumbnail as thumbnail_module
 from auto_reel_ng.thumbs import thumbnail_path
 
 GRILLNING = "2024/2024-06-27 - Grillning med grannar"
@@ -630,6 +631,41 @@ def test_non_utf8_names_fail_as_their_own_clips_with_the_real_runtime(
 
 
 @pytest.mark.has_ffmpeg
+def test_a_corrupt_clip_is_reported_again_without_running_a_probe(
+    tmp_path: Path,
+    make_clip,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    root = tmp_path / "library"
+    good = make_clip("good.mp4", width=640, height=360, duration=1.5)
+    (root / TRASIG).mkdir(parents=True)
+    shutil.copy2(good, root / TRASIG / "good.mp4")
+    _write(root / TRASIG / "random.mp4", b"this is not a video " * 50)
+    probed: List[Path] = []
+    real_probe = thumbnail_module.probe_media
+
+    def spy(path: Path, **kwargs: object) -> object:
+        probed.append(Path(path))
+        return real_probe(path, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(thumbnail_module, "probe_media", spy)
+
+    assert main(["thumbs", str(root)]) == 1
+    first = _error_lines(capsys.readouterr().out)
+    assert len(first) == 1 and first[0].startswith("ERROR  2024-10-05 - Trasig/random.mp4: ")
+    assert len(probed) == 2  # one probe per clip
+
+    assert main(["thumbs", str(root)]) == 1  # 10 s later, say: the marker is still fresh
+    out = capsys.readouterr().out
+    assert _error_lines(out) == first  # the same line
+    assert len(probed) == 2  # no probe or extraction for either clip
+    assert "1 cached, 1 failed" in out.splitlines()[-1]
+
+
+@pytest.mark.has_ffmpeg
 def test_thumbs_end_to_end_over_a_read_only_library(
     tmp_path: Path,
     make_clip,
@@ -704,7 +740,7 @@ def test_a_symlink_pair_runs_the_real_extraction_once(
 
     out = capsys.readouterr().out
     assert "2024-09-14 - Kräftskiva: 2 clips, 1 generated, 1 cached" in out.splitlines()
-    assert [p.suffix for p in cache_dir.iterdir()] == [".jpg"]  # one file, no .tmp
+    assert sorted(p.suffix for p in cache_dir.iterdir()) == [".jpg", ".json"]  # no .tmp
 
 
 @pytest.mark.has_ffmpeg
@@ -727,7 +763,7 @@ def test_a_library_copied_to_another_path_regenerates_nothing(
     assert main(["thumbs", str(source)]) == 0
     capsys.readouterr()
     written = sorted(p.name for p in cache_dir.iterdir())
-    assert len(written) == 2
+    assert len(written) == 4  # a .jpg and a .json per clip
 
     moved = tmp_path / "mnt" / "other-host" / "library"
     moved.parent.mkdir(parents=True)
