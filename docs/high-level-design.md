@@ -753,7 +753,11 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   an empty chapter too, by pointer and keyboard. A missing clip stays in its chapter. A save that
   changes the chapter list writes every chapter as shown, so every NEW clip is adopted where the page shows
   it; a chapter's name then only decides where later clips go (D-12). The event's own chapter keeps no name,
-  and a chapter is deleted only once empty. (§4.10)
+  and a chapter is deleted only once empty. The page follows the engine's chapter-name rules
+  (2026-10-02, change `chapter-name-rules-web`, after the user's answer "Enforce in engine" and
+  `chapter-name-rules-engine`): it strips a typed name as Python's `str.strip()` does, refuses an empty one,
+  compares names and folders under `str.casefold()` (a generated full-case-folding table, no dependency), and
+  keeps only `Main` as its own reservation. (§4.10)
 
 - **D-14 — Cuts are edited by typed times in GUI v1** (2026-10-01, change `clip-cuts-screen`). Edit mode
   lists, adds and removes a clip's cuts (D-D), with times typed as seconds, m:ss or h:mm:ss, pulled forward
