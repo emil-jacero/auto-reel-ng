@@ -74,3 +74,48 @@ def test_terminal_fraction_always_writes_despite_throttle() -> None:
     progress(0.10)
     progress(1.0)  # neither delta nor interval threshold met, but terminal
     assert store.writes == [(job_id, 0.10), (job_id, 1.0)]
+
+
+def test_lower_fraction_is_dropped_even_after_the_interval() -> None:
+    store = _FakeStore()
+    job_id = uuid.uuid4()
+    # The 5 s gap would make 0.19 due by interval; it is still below the high-water mark.
+    progress = ThrottledProgress(store, job_id, clock=_clock([0.0, 5.0, 10.0]))
+    progress(0.80)
+    progress(0.19)
+    progress(0.85)
+    assert store.writes == [(job_id, 0.80), (job_id, 0.85)]
+
+
+def test_dropped_fraction_costs_no_clock_read() -> None:
+    store = _FakeStore()
+    job_id = uuid.uuid4()
+    progress = ThrottledProgress(store, job_id, clock=_clock([0.0]))  # a second read would raise
+    progress(0.80)
+    progress(0.19)
+    assert store.writes == [(job_id, 0.80)]
+
+
+def test_throttled_high_value_still_raises_the_floor() -> None:
+    store = _FakeStore()
+    job_id = uuid.uuid4()
+    # 0.805 is throttled away. 0.803 is above the last write (0.80) and due by interval, but
+    # it is compared with the high-water mark (0.805), not with the last write.
+    progress = ThrottledProgress(store, job_id, clock=_clock([0.0, 0.0, 2.0, 2.0]))
+    progress(0.80)
+    progress(0.805)
+    progress(0.803)
+    progress(0.85)
+    assert store.writes == [(job_id, 0.80), (job_id, 0.85)]
+
+
+def test_terminal_fraction_writes_after_a_throttled_one() -> None:
+    store = _FakeStore()
+    job_id = uuid.uuid4()
+    progress = ThrottledProgress(
+        store, job_id, min_delta=0.5, min_interval_s=100.0, clock=_clock([0.0, 0.0, 0.0])
+    )
+    progress(0.10)
+    progress(0.30)  # throttled: delta and interval both short
+    progress(1.0)
+    assert store.writes == [(job_id, 0.10), (job_id, 1.0)]
