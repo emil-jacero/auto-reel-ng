@@ -3,7 +3,7 @@
 Mirrors :func:`auto_reel_ng.scheduler.config.resolve_worker_config`: CLI-flag
 overrides layer over a project's ``config.yaml`` ``api.*`` map, which layers over
 built-in defaults. ``project_root``/``layout_name`` reuse the same resolution the
-CLI's ``_project_context`` performs, so the API walks exactly the events ``scan``
+CLI's :func:`~auto_reel_ng.cli.context.project_context` performs, so the API walks exactly the events ``scan``
 would report for the same root.
 """
 
@@ -90,6 +90,27 @@ def _resolve_float(
     raise ConfigError(f"api.{key} must be a number, got {type(config_value).__name__}")
 
 
+def require_output_outside_walk_root(
+    output_dir: Path, walk_root: Path, project_root: Optional[Path] = None
+) -> None:
+    """Raise :class:`ConfigError` when ``output_dir`` is ``walk_root`` or inside it.
+
+    The ingest layouts read the walked root's subfolders and a render files movies
+    into ``<output>/<YYYY>/``, so an output inside that tree is scanned back in as
+    bogus events (``project-config``). Both paths are resolved for the comparison
+    only (relative, ``..`` and symlinks), so a not-yet-created output is fine; an
+    output that contains the walked root, or sits beside it, is allowed. The suggested
+    folder is the default sibling of ``project_root`` (``walk_root`` when not given). The CLI's
+    ``project_context`` and :func:`resolve_api_settings` share this one check.
+    """
+    out, walk = output_dir.resolve(), walk_root.resolve()
+    if out == walk or walk in out.parents:
+        raise ConfigError(
+            f"output directory {output_dir} is inside the walked root {walk_root}; "
+            f"choose a folder outside it, for example {default_output_dir(project_root or walk_root)}"
+        )
+
+
 def resolve_api_settings(
     project_root: Path,
     *,
@@ -118,6 +139,7 @@ def resolve_api_settings(
         if resolved_config.output_dir
         else default_output_dir(project_root)
     )
+    require_output_outside_walk_root(output_dir, walk_root, project_root)
 
     api_cfg = resolved_config.api
     return ApiSettings(
@@ -141,6 +163,7 @@ def resolve_api_settings(
 __all__ = [
     "ApiSettings",
     "resolve_api_settings",
+    "require_output_outside_walk_root",
     "DEFAULT_HOST",
     "DEFAULT_PORT",
     "DEFAULT_POLL_INTERVAL_S",

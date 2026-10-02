@@ -61,7 +61,65 @@ def test_input_dir_shifts_walk_root(tmp_path: Path) -> None:
 
 def test_output_dir_shifts_with_config(tmp_path: Path) -> None:
     # The staleness gate's expected-output path (change-detection, §8.14) follows
-    # the same D-2 layering as the CLI's own `_project_context` output resolution.
-    config = loads_project_config("output: renders\n")
+    # the same D-2 layering as the CLI's own `project_context` output resolution.
+    config = loads_project_config("input: media\noutput: renders\n")
     settings = resolve_api_settings(tmp_path, config=config, env={})
     assert settings.output_dir == tmp_path / "renders"
+
+
+# --------------------------------------------------------------------------- #
+# project-config: the output directory never lies inside the walked root
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("output", ["out", "out/renders", "."])
+def test_output_inside_or_equal_to_the_walked_root_is_refused(tmp_path: Path, output: str) -> None:
+    config = loads_project_config(f"output: {output}\n")
+    with pytest.raises(ConfigError, match="inside the walked root") as excinfo:
+        resolve_api_settings(tmp_path, config=config, env={})
+    message = str(excinfo.value)
+    assert str(tmp_path) in message  # names the walked root
+    assert str(default_output_dir(tmp_path)) in message  # and the sibling to use
+
+
+def test_output_symlinked_into_the_walked_root_is_refused(tmp_path: Path) -> None:
+    root = tmp_path / "proj"
+    (root / "out").mkdir(parents=True)
+    (tmp_path / "shortcut").symlink_to(root / "out")
+    config = loads_project_config("output: ../shortcut\n")
+    with pytest.raises(ConfigError, match="inside the walked root"):
+        resolve_api_settings(root, config=config, env={})
+
+
+def test_output_symlinked_out_of_the_walked_root_is_allowed(tmp_path: Path) -> None:
+    root = tmp_path / "proj"
+    (root).mkdir()
+    (tmp_path / "elsewhere").mkdir()
+    (root / "out").symlink_to(tmp_path / "elsewhere")
+    config = loads_project_config("output: out\n")
+    settings = resolve_api_settings(root, config=config, env={})
+    assert settings.output_dir == root / "out"
+
+
+@pytest.mark.parametrize(
+    "yaml_text, expected",
+    [
+        ("output: ../renders\n", "../renders"),
+        ("input: media\noutput: out\n", "out"),
+        ("input: media\noutput: .\n", "."),
+    ],
+)
+def test_output_outside_the_walked_root_is_allowed(
+    tmp_path: Path, yaml_text: str, expected: str
+) -> None:
+    root = tmp_path / "proj"
+    root.mkdir()
+    settings = resolve_api_settings(root, config=loads_project_config(yaml_text), env={})
+    assert settings.output_dir == root / expected
+
+
+def test_refusal_under_input_suggests_the_project_root_sibling(tmp_path: Path) -> None:
+    config = loads_project_config("input: media\noutput: media/out\n")
+    with pytest.raises(ConfigError) as excinfo:
+        resolve_api_settings(tmp_path, config=config, env={})
+    assert str(default_output_dir(tmp_path)) in str(excinfo.value)

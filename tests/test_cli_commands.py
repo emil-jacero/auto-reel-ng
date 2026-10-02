@@ -9,7 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 from auto_reel_ng.analysis import Segment, SegmentKind
-from auto_reel_ng.cli import commands
+from auto_reel_ng.cli import commands, context
 from auto_reel_ng.cli.adoption import persist, prepare_event
 from auto_reel_ng.cli.main import main
 from auto_reel_ng.event import DEFAULT_CLIP_ORDER
@@ -177,7 +177,7 @@ def test_cli_layout_overrides_config(tmp_path: Path) -> None:
     (root / "2024-06-21 - X").mkdir()  # an event directly under root (flat shape)
 
     args = argparse.Namespace(root=str(root), output=None, years=None, layout="flat")
-    ctx = commands._project_context(args)
+    ctx = context.project_context(args)
 
     assert ctx.layout_name == "flat"  # CLI flag wins over config.yaml
     assert len(ctx.events) == 1
@@ -190,6 +190,6 @@ def test_config_layout_used_when_no_cli_override(tmp_path: Path) -> None:
     (root / "2024-06-21 - X").mkdir()
 
     args = argparse.Namespace(root=str(root), output=None, years=None, layout=None)
-    ctx = commands._project_context(args)
+    ctx = context.project_context(args)
 
     assert ctx.layout_name == "flat"

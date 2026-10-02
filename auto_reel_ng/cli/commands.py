@@ -37,17 +37,12 @@ from ..accel.profiles.hardware import HardwareProfile
 from ..analysis import Segment, analyze_event
 from ..api.app import create_app
 from ..api.settings import resolve_api_settings
-from ..config import (
-    ProjectConfig,
-    default_output_dir,
-    load_project_config,
-    resolve_look_defaults,
-)
+from ..config import load_project_config, resolve_look_defaults
 from ..errors import EngineError, EventMetadataError, ReelError
 from ..event import ClipOrder, ReconcileResult, reconcile, scan_event
 from ..event.metadata import require_processable
 from ..ffmpeg.runtime import FfmpegRuntime
-from ..ingest import DEFAULT_LAYOUT, EventRef, get_layout
+from ..ingest import EventRef
 from ..persistence.config import resolve_database_url
 from ..persistence.engine import make_engine, make_session_factory
 from ..persistence.job_store import JobStore
@@ -67,62 +62,9 @@ from ..staleness.gate import Verdict, evaluate
 from ..staleness.manifest import write_manifest
 from .adoption import REEL_FILENAME, PreparedEvent, load_or_seed
 from .build import build_render_job_from_event, prepare_and_persist
+from .context import project_context, resolve_project_root
 
 logger = logging.getLogger(__name__)
-
-
-# --------------------------------------------------------------------------- #
-# Shared project context
-# --------------------------------------------------------------------------- #
-
-
-@dataclass(frozen=True)
-class ProjectContext:
-    """The resolved settings for one CLI invocation (layout, paths, events)."""
-
-    project_root: Path
-    walk_root: Path
-    output_dir: Path
-    layout_name: str
-    config: ProjectConfig
-    events: List[EventRef]
-
-
-def _project_context(args: argparse.Namespace) -> ProjectContext:
-    """Resolve the project root, config, layout, paths, and enumerate events.
-
-    Precedence (D-CLI2): a CLI flag wins over ``config.yaml``, which wins over the
-    built-in default. ``config.yaml`` is read from the project root the layout walks.
-    """
-    project_root = Path(args.root).resolve() if args.root else Path.cwd()
-    if not project_root.is_dir():
-        raise FileNotFoundError(
-            f"project root does not exist or is not a directory: {project_root}"
-        )
-
-    config = load_project_config(project_root)
-    walk_root = (project_root / config.input_dir) if config.input_dir else project_root
-
-    if args.output:
-        output_dir = Path(args.output)
-    elif config.output_dir:
-        output_dir = project_root / config.output_dir
-    else:
-        output_dir = default_output_dir(project_root)
-
-    layout_name = args.layout or config.layout or DEFAULT_LAYOUT
-    layout = get_layout(layout_name)
-    years = args.years  # a tuple parsed by the CLI, or None
-    events = list(layout(walk_root, years))
-
-    return ProjectContext(
-        project_root=project_root,
-        walk_root=walk_root,
-        output_dir=output_dir,
-        layout_name=layout_name,
-        config=config,
-        events=events,
-    )
 
 
 def _checked_document(
@@ -166,7 +108,7 @@ def _checked_documents(
 
 def cmd_render(args: argparse.Namespace) -> int:
     """``render``: scan -> reconcile -> [staleness gate] -> probe -> resolve -> render_batch."""
-    ctx = _project_context(args)
+    ctx = project_context(args)
     if not ctx.events:
         print(f"No events found under {ctx.walk_root} (layout: {ctx.layout_name})")
         return 0
@@ -393,7 +335,7 @@ def _report_render(
 
 def cmd_scan(args: argparse.Namespace) -> int:
     """``scan``/``list``: report events, clip reconcile status, and staleness; render nothing."""
-    ctx = _project_context(args)
+    ctx = project_context(args)
     if not ctx.events:
         print(f"No events found under {ctx.walk_root} (layout: {ctx.layout_name})")
         return 0
@@ -454,7 +396,7 @@ def _print_inventory(ref: EventRef, title: str, result: ReconcileResult, verdict
 
 def cmd_analyze(args: argparse.Namespace) -> int:
     """``analyze``: run detection over selected events; print + cache; never touch reel.yaml."""
-    ctx = _project_context(args)
+    ctx = project_context(args)
     if not ctx.events:
         print(f"No events found under {ctx.walk_root} (layout: {ctx.layout_name})")
         return 0
@@ -492,7 +434,7 @@ def _print_analysis(event_dir: Path, results: Dict[str, List[Segment]]) -> None:
 
 def cmd_import(args: argparse.Namespace) -> int:
     """``import``: adopt auto-reel legacy metadata into a v2 ``reel.yaml``."""
-    ctx = _project_context(args)
+    ctx = project_context(args)
     if not ctx.events:
         print(f"No events found under {ctx.walk_root} (layout: {ctx.layout_name})")
         return 0
@@ -580,16 +522,6 @@ def _has_version(path: Path) -> bool:
 # --------------------------------------------------------------------------- #
 
 
-def _resolve_project_root(args: argparse.Namespace) -> Path:
-    """Resolve the project root positional arg (shared by worker/jobs, D-CLI2)."""
-    project_root = Path(args.root).resolve() if args.root else Path.cwd()
-    if not project_root.is_dir():
-        raise FileNotFoundError(
-            f"project root does not exist or is not a directory: {project_root}"
-        )
-    return project_root
-
-
 def _job_store(project_root: Path) -> JobStore:
     """Build a :class:`JobStore` bound to the ``DATABASE_URL`` resolved for ``project_root``."""
     database_url = resolve_database_url(project_root)
@@ -618,7 +550,7 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
     layering as ``render``/``scan``. Fresh events are reported and not enqueued
     unless ``--force``, which enqueues every event with its ``force`` flag set.
     """
-    ctx = _project_context(args)
+    ctx = project_context(args)
     if not ctx.events:
         print(f"No events found under {ctx.walk_root} (layout: {ctx.layout_name})")
         return 0
@@ -688,7 +620,7 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
 
 def cmd_worker(args: argparse.Namespace) -> int:
     """``worker``: run the job-scheduler loop until SIGINT/SIGTERM triggers a clean exit."""
-    project_root = _resolve_project_root(args)
+    project_root = resolve_project_root(args)
     config = load_project_config(project_root)
     worker_config = resolve_worker_config(
         config,
@@ -747,7 +679,7 @@ def cmd_worker(args: argparse.Namespace) -> int:
 
 def cmd_jobs_list(args: argparse.Namespace) -> int:
     """``jobs list``: print jobs (optionally filtered by ``--status``), oldest first."""
-    project_root = _resolve_project_root(args)
+    project_root = resolve_project_root(args)
     store = _job_store(project_root)
     if args.status:
         jobs = store.list_by_status(JobStatus(args.status))
@@ -766,7 +698,7 @@ def cmd_jobs_list(args: argparse.Namespace) -> int:
 
 def cmd_jobs_show(args: argparse.Namespace) -> int:
     """``jobs show <id>``: print one job's full detail."""
-    project_root = _resolve_project_root(args)
+    project_root = resolve_project_root(args)
     job_id = _parse_job_id(args.job_id)
     if job_id is None:
         print(f"error: {args.job_id!r} is not a valid job id", file=sys.stderr)
@@ -802,7 +734,7 @@ def cmd_jobs_cancel(args: argparse.Namespace) -> int:
     performs the terminal transition itself once it next checks between
     segments. A ``queued`` job is canceled immediately.
     """
-    project_root = _resolve_project_root(args)
+    project_root = resolve_project_root(args)
     job_id = _parse_job_id(args.job_id)
     if job_id is None:
         print(f"error: {args.job_id!r} is not a valid job id", file=sys.stderr)
@@ -892,7 +824,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     bind failure is reported loudly, naming the attempted host:port, and the command
     exits non-zero.
     """
-    project_root = _resolve_project_root(args)
+    project_root = resolve_project_root(args)
     settings = resolve_api_settings(
         project_root, host=args.host, port=args.port, poll_interval=args.poll_interval
     )
@@ -935,7 +867,7 @@ def cmd_adopt_renders(args: argparse.Namespace) -> int:
     writes nothing, so it is safe on a read-only archive.
     """
     dry_run: bool = args.dry_run
-    ctx = _project_context(args)
+    ctx = project_context(args)
     if not ctx.events:
         print(f"No events found under {ctx.walk_root} (layout: {ctx.layout_name})")
         return 0
