@@ -53,8 +53,9 @@ screen as current, which "A read in progress is shown as a placeholder and annou
   their neutral "No preview" box and the note is never an alert or a toast.
 - **Spec and docs:** four MODIFIED requirements in `web-app` (see Capabilities); HLD D-15 ("A Refresh stops
   playback in v1"), D-11 and D-14 are brought in line.
-- **Tests:** real-browser Playwright checks from the session scratchpad (never committed; the client has no
-  unit-test runner), `tsc --noEmit` and `npm run build`.
+- **Tests:** node unit tests (`npm test`) for the pure parts (the failed-thumbnail reader, the counting rule and
+  the cut hints), real-browser Playwright checks from the session scratchpad (never committed), `tsc --noEmit`
+  and `npm run build`.
 
 ### Rendered output, fingerprint, schema
 

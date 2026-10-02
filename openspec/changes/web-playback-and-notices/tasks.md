@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Confirm the gates are archived on `main`, re-check what this change builds on, and set up:
+- [x] 1.1 Confirm the gates are archived on `main`, re-check what this change builds on, and set up:
   `ls openspec/changes/archive/ | grep -E -- '-(title-card-whole-clip-cut|thumbs-sidecar-metadata|api-excluded-clips-read-model|api-job-summary-and-renamed-fields)$'`
   must print four directories. Stop and report to the supervisor if any is missing.
   - **Re-read** `web/src/events/EventDetail.tsx`: this change edits `LoadState`, `load()`, the Refresh `onClick`,
@@ -21,7 +21,7 @@
 
 ## 2. web/ — a Refresh keeps the movie
 
-- [ ] 2.1 In `events/EventDetail.tsx` and `movie/MoviePanel.tsx` (design, "State: `loading` carries the event
+- [x] 2.1 In `events/EventDetail.tsx` and `movie/MoviePanel.tsx` (design, "State: `loading` carries the event
   whose Movie section stays"):
   - `LoadState.loading` gains `movie?: EventDetailData`; `LoadOptions` gains `keepMovie`; `load()` fills `movie`
     from a `ready` (or an already `loading`) state only when `keepMovie` is set
@@ -40,7 +40,7 @@
 
 ## 3. web/ — the cut editor's hints
 
-- [ ] 3.1 In `cuts/times.ts`, end the whole-clip sentence of `CUT_HINT` and of `lengthHint` with "If it is its
+- [x] 3.1 In `cuts/times.ts`, end the whole-clip sentence of `CUT_HINT` and of `lengthHint` with "If it is its
   chapter’s title clip, the chapter’s title card moves to the next clip that plays." (design, "The cut
   editor's words"), and check that no spec or test text quotes the old ending.
 
@@ -52,19 +52,23 @@
 
 ## 4. web/ — the thumbnail note
 
-- [ ] 4.1 Add the reader and the counter (design, "How a failed thumbnail's cause is read", "Counting"):
+- [x] 4.1 Add the reader and the counter (design, "How a failed thumbnail's cause is read", "Counting"):
   - `api/thumbnail.ts`: `FailedThumbnail` and `readFailedThumbnail(url, signal)`, using `isProblem` and
     `readJson` from `api/http.ts`; the three kinds `clip`, `service` and `unknown`; only `AbortError` is
     rethrown; a 200 or any body that is not a problem reads as `unknown`, its body cancelled
   - `events/thumbHealth.ts`: `THUMB_NOTE_AT = 3`, the context with `report` and `clear`, `useThumbHealth()`
-    returning the context value and `unavailable`, and a no-op default for a thumbnail outside a provider
+    returning the context value and `unavailable`, `useThumbReporter()` for a thumbnail, `isUnavailable()` as the
+    pure counting rule, and a no-op default for a thumbnail outside a provider
+  - unit tests (`api/thumbnail.test.ts`, `events/thumbHealth.test.ts`, `cuts/times.test.ts`, node runner): the
+    reader's three kinds against a stubbed `fetch`, the counting rule (three of one key, mixed keys, `clear`), and
+    both hints' title-card sentence; each fails without its code
 
   Verify:
   - `tsc --noEmit` passes
   - temporarily changing `'thumbnail_failed'` in the reader to another string, or the problem field it reads,
     makes `tsc` fail or the check of 7.2 fail; restore it
   - `grep -rn "thumbnail_failure" web/src` prints only `api/thumbnail.ts`
-- [ ] 4.2 Wire it in:
+- [x] 4.2 Wire it in:
   - `events/ClipThumb.tsx`: a failed `LoadingThumb` runs the effect of the design (read; `report` a `service`
     answer under `failure`; on cleanup abort and `clear`), keeps showing "No preview" throughout, and the header
     comment says what changed ("no alert and no retry" stays true of the image)
@@ -80,7 +84,7 @@
 
 ## 5. Docs
 
-- [ ] 5.1 Bring the docs in line, and verify that each edit is the only change to its section:
+- [x] 5.1 Bring the docs in line, and verify that each edit is the only change to its section:
   - `docs/high-level-design.md`: D-15's "A Refresh stops playback in v1" becomes "A Refresh keeps the player;
     Edit mode shows no movie, and entering it ends playback"; D-11 gains a bullet for the page-level note
     (three failures of one non-clip cause, a quiet note, `auto-reel thumbs`); D-14's "a whole-clip cut leaves
@@ -92,7 +96,7 @@
 
 ## 6. Browser verification
 
-- [ ] 6.1 Run an ad-hoc Playwright pass for playback from `$SCRATCH`, **never committed**:
+- [x] 6.1 Run an ad-hoc Playwright pass for playback from `$SCRATCH`, **never committed**:
   - script: `$SCRATCH/check_playback.py`, container `localhost/playback-research:chrome`, `--network host --ipc host`,
     target the built client on port 8242, locators scoped to `main:not([hidden])`, waits with
     `page.wait_for_timeout`
@@ -122,7 +126,7 @@
 
   Verify: every item passes; the PNGs and the script's output are in `$SCRATCH`; `git status` shows no
   Playwright, fixture or screenshot file in the repository.
-- [ ] 6.2 Run the notice and hint checks with the same setup, script `$SCRATCH/check_notices.py`:
+- [x] 6.2 Run the notice and hint checks with the same setup, script `$SCRATCH/check_notices.py`:
   - **A real cache fault:** start a second `serve` on the same library with `XDG_CACHE_HOME` pointing to an
     unwritable directory (`chmod 0500`; restore it afterwards). Open `2024-06-27 - Grillning med grannar`: the four
     boxes read "No preview", exactly one `role="note"` "Previews are unavailable…" is shown above the clips,
@@ -147,8 +151,9 @@
 
 ## 7. Validation
 
-- [ ] 7.1 Run the gates:
+- [x] 7.1 Run the gates:
   - `npx tsc --noEmit` and `npm run build` in the node:22 container
+  - `npm test` in the node:22 container
   - the full `.venv/bin/python -m pytest` (the web-mount and OpenAPI drift tests must stay green); no Python
     file changed, so black, isort, mypy and pylint run only to confirm that nothing changed:
     `.venv/bin/python -m black --check auto_reel_ng tests`, `.venv/bin/python -m isort --check auto_reel_ng tests`,

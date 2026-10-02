@@ -121,3 +121,13 @@ export function failureDetail(eventId: string, detail: string): string {
   }
   return rest.charAt(0).toUpperCase() + rest.slice(1)
 }
+
+/**
+ * The page's one note when the service cannot make thumbnails at all (`thumbHealth.ts`):
+ * what is wrong, and where to look. Parts, like the reasons' notes: the command apart.
+ */
+export const PREVIEWS_UNAVAILABLE: NotePart[] = [
+  'Previews are unavailable. The service could not make thumbnails; run ',
+  { code: 'auto-reel thumbs' },
+  ' on the server to see why.',
+]

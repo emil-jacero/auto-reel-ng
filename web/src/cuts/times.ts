@@ -295,11 +295,18 @@ export const TYPED_SUFFIX = ', a cut typed, not added'
 /** The forms a time may take, as the hint and the refusal name them. */
 export const TIME_FORMS = 'seconds (75.5), m:ss (1:15.5) or h:mm:ss (1:01:15.5)'
 
+/**
+ * What a cut over the whole clip does, said after both hints. The page cannot tell
+ * which clip is its chapter's title clip, so the sentence is conditional.
+ */
+export const WHOLE_CLIP_CUT =
+  'a cut over the whole clip leaves the clip out of the movie. If it is its chapter’s ' +
+  'title clip, the chapter’s title card moves to the next clip that plays.'
+
 /** What the panel says it cannot check, beside its fields. */
 export const CUT_HINT =
   'Seconds (75.5), m:ss (1:15.5) or h:mm:ss (1:01:15.5). The page does not know the clip’s ' +
-  'length: a cut that runs past its end stops there, and a cut over the whole clip leaves the ' +
-  'clip out of the movie.'
+  `length: a cut that runs past its end stops there, and ${WHOLE_CLIP_CUT}`
 
 /**
  * The clip's length for the panel: what its preview has read from the file (D-16), else
@@ -328,7 +335,7 @@ export function lengthHint(length: number, previewed = true): string {
   return (
     `Seconds (75.5), m:ss (1:15.5) or h:mm:ss (1:01:15.5). This clip ends at ` +
     `${formatTime(length)}, ${previewed ? 'as this browser reads it' : 'as recorded for this clip'}: ` +
-    'a cut must end by then, and a cut over the whole clip leaves the clip out of the movie.'
+    `a cut must end by then, and ${WHOLE_CLIP_CUT}`
   )
 }
 

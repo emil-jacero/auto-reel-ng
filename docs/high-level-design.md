@@ -703,6 +703,11 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     request (change `clip-thumbnail-endpoint`).
   - **Still open:** proxies and scrubbing are v2, with the timeline editor (§8.11; moved from v3 on
     2026-10-01). (§4.10)
+  - **A page-level note** (2026-10-02, change `web-playback-and-notices`). A thumbnail that fails to show makes
+    one further request for its address, to read why. When three or more on the page fail with the same
+    cause that is the service's and not the clip's (a 502 with no `thumbnail_failure`: its cache or
+    `config.yaml`), the page shows one quiet note, "Previews are unavailable", pointing to `auto-reel thumbs`.
+    A clip's own failure never raises it; the rows keep their "No preview" box. (§4.10)
 
 - **D-12 — NEW-clip adoption follows the clip's folder** (2026-10-01, change `adopt-into-folder-chapter`;
   amends `project-cli`'s D-CLI3). A clip that appears in an event after its `reel.yaml` exists (NEW) is
@@ -738,7 +743,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   refuses an overlap with another cut. It refuses a cut past the clip's end when it knows the length: from
   the clip's preview in that Edit mode (D-16), else from the duration the event detail gives the clip (§4.9,
   `api-clip-duration`); otherwise it states the render's rule instead (cut short at the end; a whole-clip cut
-  leaves the clip out). A cut made in the GUI has the reason `manual`. The event page shows each clip's cuts.
+  leaves the clip out and moves its chapter's title card to the next clip that plays). A cut made in the GUI has the reason `manual`. The event page shows each clip's cuts.
   The refusal of a new overlapping cut is an editing aid, not an engine rule: `reel.yaml` and the engine accept
   overlap and join overlapping or touching cuts as one removal, and cuts already overlapping show as their
   union. (§4.10)
@@ -752,7 +757,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   picture the browser cannot show (a legacy MPEG-4 movie plays its sound only). There are no custom controls or
   shortcuts, no captions and no chapter list: the manifest records no chapter times and browsers expose none.
   Chapter times in the render manifest and a movie version in the event detail are v2 items beside the proxy
-  work. A Refresh stops playback in v1. Edit mode shows no movie. (§4.10)
+  work. A Refresh keeps the player (the same element, playing or paused, while the rest of the page reads;
+  2026-10-02, change `web-playback-and-notices`); Edit mode shows no movie, and entering it ends playback. (§4.10)
 
 - **D-16 — A clip is previewed in Edit mode in GUI v1** (2026-10-01, change `clip-preview-screen`).
   - **What.** A clip's Cuts panel plays the clip itself, its file streamed unchanged by the media route

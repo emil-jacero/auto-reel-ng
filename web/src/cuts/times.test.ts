@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
+import { describe, it, test } from 'node:test'
 
-import { checkCut, clipLength, lengthHint, pastEnd } from './times.ts'
+import { checkCut, clipLength, CUT_HINT, lengthHint, pastEnd } from './times.ts'
 
 test('the preview length wins over the detail duration', () => {
   assert.equal(clipLength(6.08, 6.02), 6.08)
@@ -45,4 +45,28 @@ test('a listed cut past the detail duration is marked', () => {
 test('the hint names where the clip ends and whose length it is', () => {
   assert.match(lengthHint(6.02, false), /ends at 0:06\.02, as recorded for this clip/)
   assert.match(lengthHint(6.08), /ends at 0:06\.08, as this browser reads it/)
+})
+
+/*
+ * The Cuts panel's two hints, run by `npm test`: both say that a cut over the whole clip
+ * leaves the clip out of the movie, and where the chapter's title card goes when it is
+ * that chapter's title clip (the render's rule, `title-card-whole-clip-cut`).
+ */
+
+const LEAVES_OUT = 'a cut over the whole clip leaves the clip out of the movie.'
+const CARD_MOVES =
+  'If it is its chapter’s title clip, the chapter’s title card moves to the next clip that plays.'
+
+describe('the whole-clip cut sentence', () => {
+  it('ends the hint before the clip’s length is known', () => {
+    assert.ok(CUT_HINT.includes(`${LEAVES_OUT} ${CARD_MOVES}`))
+    assert.ok(CUT_HINT.endsWith(CARD_MOVES))
+  })
+
+  it('ends the hint once the clip’s length is known, which still names the end', () => {
+    const hint = lengthHint(75.5)
+    assert.ok(hint.includes('This clip ends at 1:15.5'))
+    assert.ok(hint.includes(`${LEAVES_OUT} ${CARD_MOVES}`))
+    assert.ok(hint.endsWith(CARD_MOVES))
+  })
 })

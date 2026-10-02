@@ -42,7 +42,9 @@ Play (`preload="none"`; the poster is the first played clip's thumbnail). The pl
 address carries the file's entity-tag, so a new render gets a new player. What it
 cannot play is said by cause (no file, unreadable, empty, no answer, no picture, a
 failed load or a browser error, a file changed while it played), with Try again, a
-download or the new movie to load. A Refresh, or Edit mode, stops playback. The list
+download or the new movie to load. A Refresh keeps the player (the same `<video>`,
+playing or paused, while the rest of the page reads; its verdict and facts are hidden
+until the read answers); Edit mode stops playback. The list
 and the page read on open and on Refresh — no timer polling (job state arrives
 over the jobs WebSocket), never a cache — and report a failed read by its cause,
 telling a service that did not answer ("not reachable", with what to check) from
@@ -54,7 +56,9 @@ requested only
 as its row nears the view and behind the page's own requests, in a box sized before
 it arrives, and kept by the browser while the clip is unchanged. A frame the service
 cannot give shows "No preview"; a missing clip asks for none and shows an empty
-outline. The list stays mounted while an event page is
+outline. A frame that failed asks once more why: when three or more fail with the
+service's own cause (a 502 with no thumbnail failure kind), the page adds one quiet
+note, "Previews are unavailable", pointing to `auto-reel thumbs`. The list stays mounted while an event page is
 open, so Back returns to it without a new read —
 unless the client recorded meanwhile that an event changed (`markEventsChanged()`
 in `events/changes.ts`, called by the slices that write or render): then the list
@@ -143,7 +147,8 @@ detail read after that carries it, so on a first visit to an event the thumbnail
 asks for show up in the detail only on the next read, for example a reload). With a length
 the panel says where the clip ends, refuses a cut that ends after that, and marks a listed
 one that does ("Past the clip’s end"); without one it says the render stops a cut past the
-clip's end there and that a cut over the whole clip leaves the clip out, and accepts the cut.
+clip's end there and that a cut over the whole clip leaves the clip out (and, if it is its chapter's
+title clip, moves the chapter's title card to the next clip that plays), and accepts the cut.
 A cut made here is saved with the reason
 `manual`. **Remove** keeps a cut read from `reel.yaml` listed, struck through, with
 **Undo** (refused, in words, when another cut now overlaps it); a cut added in this Edit
@@ -257,7 +262,7 @@ src/
 │   ├── movie.ts          the event's movie URL (typed from the schema) and its one-byte probe
 │   ├── headers.ts        Content-Range and Content-Disposition parsers (pure, no imports)
 │   ├── probe.ts          one byte of a media route: the response-to-kind table the movie and a clip share
-│   ├── thumbnail.ts      a clip's thumbnail URL, typed from the schema (no fetch: an <img> asks)
+│   ├── thumbnail.ts      a clip's thumbnail URL, typed from the schema; readFailedThumbnail reads why a failed one failed
 │   └── clipMedia.ts      a clip's media URL, and the one-byte read that says why it cannot play
 ├── edit/
 │   ├── EventEditor.tsx   Edit mode: the reel read, chapter edits, the save bar, saves and failures
@@ -275,7 +280,7 @@ src/
 │   ├── drag.css          the dragged copy, the line where a drop lands, an empty chapter's area
 │   └── edit.css          Edit mode's fields, rows and save bar
 ├── cuts/
-│   ├── times.ts          typed times read and written, a cut's checks, the cut words and reasons (pure)
+│   ├── times.ts          typed times read and written, a cut's checks, the cut words and reasons (pure, + times.test.ts)
 │   ├── CutsPanel.tsx     Edit mode's Cuts control and panel, and the cut list both views share
 │   ├── ReadCuts.tsx      the event page's cut indicator and list, and the read of its cuts
 │   └── cuts.css          the control, the panel and the event page's indicator
@@ -308,6 +313,7 @@ src/
     ├── list.css          the list's layout and column widths
     ├── detail.css        the event page's layout, render region and clip column properties
     ├── thumbs.css        the thumbnail's 16:9 box and its states
+    ├── thumbHealth.ts    the page's count of previews failing for the service's reason (the note), + thumbHealth.test.ts
     ├── common.tsx        helpers both screens share (file names, sizes, verdict, failure sentences) and clip names
     ├── changes.ts        "an event changed": markEventsChanged(), useEventsVersion()
     ├── grouping.ts       groupByYear, needsRender, lookAlikes (pure)

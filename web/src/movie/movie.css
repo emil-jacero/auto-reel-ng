@@ -58,6 +58,18 @@
     font-family: var(--font-mono);
   }
 
+  /*
+   * While the page reads the event again, the verdict, the file's name and size and the
+   * outdated sentence are the earlier read's: hidden (not removed, so nothing below moves,
+   * and out of the accessibility tree) until the read answers. The heading and the player stay.
+   */
+  .movie-panel[data-reading] {
+    & .panel-header .pill,
+    & .movie-facts {
+      visibility: hidden;
+    }
+  }
+
   /* A fetch trouble in the player's place. */
   .movie-body > :not(.movie-figure) {
     margin-block: var(--s-4);
