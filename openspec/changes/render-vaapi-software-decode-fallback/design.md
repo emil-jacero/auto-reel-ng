@@ -119,7 +119,8 @@ decode and are never retried.
 **Failure behaviour (Principle I)**: any other `EngineError` raises `RenderError` exactly as today. If the
 retry itself fails, the raised `RenderError` names the segment and carries the retry's ffmpeg failure, and
 says that the hardware-decode attempt failed first. If rebuilding the command raises a `RenderError`
-(NVENC/QSV: no verified upload device), that error propagates chained from the original failure; the
+(NVENC/QSV: no verified upload device), that error is re-raised with the segment and the first failure in its
+message, chained from the original failure; the
 original failure is never swallowed. A segment is never dropped or replaced.
 **Idempotency**: the retry writes the same `seg_NNN.mp4` in the scratch directory with `-y`, overwriting any
 partial file from the failed attempt; the final `.part` -> verify -> rename is untouched, so a killed process
@@ -134,12 +135,14 @@ owns monotonic progress and its test should cover a retried segment.
 
 #### Where this meets the NVENC/QSV profiles
 
-`NvencProfile` and `QsvProfile` need no code beyond inheriting the `HardwareProfile` behaviour, because the
-routing sits in the base class. Their NORMALIZE fragments take `CUDA`/`QSV` frames, so a software-decoded
-clip is composed as `format=nv12,hwupload,scale_cuda…`, which requires an upload device they cannot name
-(`upload_device_flags` returns `()`). `_upload_device_flags` then raises its existing loud `RenderError`
-("…render with --device cpu"). That is no worse than today's opaque ffmpeg failure and is honest about the
-gap; a verified recipe is future work on that hardware.
+`NvencProfile` and `QsvProfile` have no verified upload device (`upload_device_flags` returns `()`), so a
+software-decoded clip could not be composed for them (`format=nv12,hwupload,scale_cuda…` needs a device they
+cannot name). `build_normalize_command` therefore does not make the per-clip software choice for a profile
+with an empty `upload_device_flags`: such a profile keeps attempting its own hardware decode for every clip,
+exactly as before this change. Their `hw_decode` tables are recorded but inert until a recipe is verified on
+their hardware. A forced software build (the retry) still reaches `_upload_device_flags` and raises its loud
+`RenderError` ("…render with --device cpu"); the orchestrator re-raises it with the segment label and the first
+ffmpeg failure in the message text, not only in `__cause__`.
 
 ### Fold-back
 

@@ -761,9 +761,12 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     software. `render/` stays vendor-free and asks the profile. A missing table entry costs speed, never
     correctness.
   - **No new graph shape.** A clip the hardware cannot decode takes the CPU DECODE fragment, and the existing
-    frame-location composition adds `format=nv12,hwupload` plus the one named upload device. NVIDIA and Intel have
-    no verified upload device, so such a clip fails loud naming `--device cpu` instead of emitting a command ffmpeg
-    would reject.
+    frame-location composition adds `format=nv12,hwupload` plus the one named upload device. **NVIDIA and Intel are
+    unchanged:** they have no verified upload device, so the choice is not made for them; a profile with an empty
+    `upload_device_flags` keeps attempting its own hardware decode for every clip, exactly as before. Their
+    `hw_decode` tables are recorded but take effect only once an upload recipe is verified on their hardware.
+    A forced software build for such a profile (the retry) fails loud naming `--device cpu`, with the segment and
+    the first ffmpeg failure in the message.
   - **One retry for a wrong table.** If a hardware-decode normalize fails with `hwaccel initialisation returned
     error` or `Failed setup for format`, that segment is rebuilt with software decode and run once; the recovered
     failure is logged and returned in `RenderResult.warnings`. Nothing else is retried (not `-38` alone, not a
