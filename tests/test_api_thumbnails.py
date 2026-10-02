@@ -51,15 +51,16 @@ from auto_reel_ng.thumbs import thumbnail_path
 UNREACHABLE_DATABASE_URL = "postgresql+psycopg://thumbs:thumbs@127.0.0.1:1/thumbs"
 
 GRILLNING = "2024/2024-06-27 - Grillning med grannar"
-# Constant bytes that are no media container: ffprobe exits non-zero on them every time, unlike
-# random bytes, about 1 in 300 of which some demuxer accepts.
-NOT_MEDIA = b"This is not a media file.\n" * 800
 KALAS = "2024/2024-07-14 - Kalas"
 TJORN = "2024/2024-08-20 - Två kapitel - Tjörn"
 SOMMARLOV = "2024/2024-09-01 - Sommarlov"
 SKILJETECKEN = "2024/2024-09-10 - Skiljetecken"
 TRASIG_YAML = "2024/2024-09-15 - Trasig yaml"
 IGNORED_EVENT = "2024/2024-09-20 - Aldrig"  # holds .reelignore: not an event of the list
+
+# Constant bytes that are no media container: ffprobe exits non-zero on them every time, unlike
+# random bytes, about 1 in 300 of which some demuxer accepts.
+NOT_MEDIA = b"This is not a media file.\n" * 800
 
 #: A chapter-folder identity with spaces, punctuation, a ``+`` and Swedish letters.
 PUNCTUATED = "Kväll, del 2/a+b & c #1.mp4"
