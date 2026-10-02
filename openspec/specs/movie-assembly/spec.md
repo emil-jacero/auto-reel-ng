@@ -89,8 +89,8 @@ directory as the final output path** (same filesystem) and moved into the final 
 only after post-render verification passes — so a file existing at the final output path guarantees a
 complete, verified render, even across a hard kill (SIGKILL, OOM, power loss) mid-assembly. When the
 output already exists, the engine SHALL skip rendering unless an explicit overwrite (force) is requested,
-in which case it SHALL replace the file; the skip decision MAY trust bare existence because finalization is
-atomic. A dry-run mode SHALL build and report the planned commands without executing them or writing
+in which case it SHALL replace the file, except as "A render refuses to replace a movie another event records"
+(change-detection) states; the skip decision MAY trust bare existence because finalization is atomic. A dry-run mode SHALL build and report the planned commands without executing them or writing
 output, and SHALL NOT create the year folder.
 
 #### Scenario: Output filename includes location when present
