@@ -46,9 +46,24 @@ function hasMovie(staleness: Staleness): boolean {
   return !staleness.reasons.includes('no_manifest') && !staleness.reasons.includes('output')
 }
 
-/** The section, or nothing when the event has no movie (and no request is made). */
-export function MoviePanel({ eventId, event }: { eventId: string; event: EventDetail }) {
-  return hasMovie(event.staleness) ? <MovieSection eventId={eventId} event={event} /> : null
+/**
+ * The section, or nothing when the event has no movie (and no request is made).
+ * `reading`: the page is reading the event again (an operator's Refresh) and the
+ * section stays with its player; the verdict and the file's facts are the earlier
+ * read's, so they are hidden until it answers.
+ */
+export function MoviePanel({
+  eventId,
+  event,
+  reading = false,
+}: {
+  eventId: string
+  event: EventDetail
+  reading?: boolean
+}) {
+  return hasMovie(event.staleness) ? (
+    <MovieSection eventId={eventId} event={event} reading={reading} />
+  ) : null
 }
 
 /** A probe answer that is not a file: the note shown in the player's place. */
@@ -64,7 +79,15 @@ type Shown =
 /** Where keyboard focus goes after the next commit, when the focused player is replaced. */
 type FocusNext = 'video' | 'note' | null
 
-function MovieSection({ eventId, event }: { eventId: string; event: EventDetail }) {
+function MovieSection({
+  eventId,
+  event,
+  reading,
+}: {
+  eventId: string
+  event: EventDetail
+  reading: boolean
+}) {
   const headingId = useId()
   const [shown, setShown] = useState<Shown>({ kind: 'probing' })
   const playerRef = useRef<HTMLDivElement>(null)
@@ -148,7 +171,13 @@ function MovieSection({ eventId, event }: { eventId: string; event: EventDetail 
   const poster = posterClip === undefined ? undefined : thumbnailUrl(eventId, posterClip)
 
   return (
-    <section className="panel movie-panel" aria-labelledby={headingId} ref={sectionRef}>
+    <section
+      className="panel movie-panel"
+      aria-labelledby={headingId}
+      aria-busy={reading || undefined}
+      data-reading={reading || undefined}
+      ref={sectionRef}
+    >
       <header className="panel-header">
         <h2 id={headingId}>Movie</h2>
         <Pill tone={look.tone} icon={look.icon}>

@@ -1,11 +1,12 @@
 import './thumbs.css'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import type { Clip } from '../api/event'
-import { thumbnailUrl } from '../api/thumbnail'
+import { readFailedThumbnail, thumbnailUrl } from '../api/thumbnail'
 import { Icon } from '../ui/Icon'
 import { fileName } from './common'
+import { useThumbReporter } from './thumbHealth'
 
 /*
  * A clip's thumbnail: the frame the service extracts, in a fixed 16:9 box that
@@ -15,8 +16,13 @@ import { fileName } from './common'
  * It never gets in the page's way: the image is requested only near the view
  * (native lazy loading), behind the page's own requests (low fetch priority),
  * and the box has its final size before any byte arrives. Any failure shows one
- * neutral "No preview" box, with no alert and no retry: the clip's real
+ * neutral "No preview" box, with no alert and no retry of the image: the clip's real
  * problems are reported where they already are (its status, its job).
+ *
+ * A failed box asks once, for the same address, why it failed, and tells the page when
+ * the cause is the service's and not the clip's (`thumbHealth.ts`), so that a page of
+ * "No preview" boxes can say once that previews are unavailable. The box shows nothing
+ * of that answer.
  */
 
 /**
@@ -58,6 +64,25 @@ type ThumbState = 'loading' | 'loaded' | 'failed'
  */
 function LoadingThumb({ src, name, dimmed }: { src: string; name: string; dimmed: boolean }) {
   const [state, setState] = useState<ThumbState>('loading')
+  const { report, clear } = useThumbReporter()
+  const failed = state === 'failed'
+  useEffect(() => {
+    if (!failed) {
+      return
+    }
+    const controller = new AbortController()
+    readFailedThumbnail(src, controller.signal)
+      .then((why) => {
+        if (why.kind === 'service' && !controller.signal.aborted) {
+          report(src, why.failure)
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      controller.abort()
+      clear(src)
+    }
+  }, [failed, src, report, clear])
   return (
     <span className="clip-thumb" data-state={state} data-dimmed={dimmed || undefined}>
       {state === 'failed' ? (
