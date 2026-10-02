@@ -717,3 +717,61 @@ def test_a_document_nested_fifty_deep_still_loads() -> None:
     text = "version: 0\nlook: {future: " + "[" * 50 + "]" * 50 + "}\n"
 
     assert loads_document(text).version == 0
+
+
+# --------------------------------------------------------------------------- #
+# chapter names: unpadded, non-blank, unique ignoring case (chapter-name-rules-engine)
+# --------------------------------------------------------------------------- #
+
+
+def _chapters_text(*names: str) -> str:
+    """A ``reel.yaml`` listing one empty chapter per name, each name a JSON-quoted scalar."""
+    import json
+
+    body = "".join(f"  - name: {json.dumps(name)}\n    clips: []\n" for name in names)
+    return f"version: 0\nchapters:\n{body}"
+
+
+@pytest.mark.parametrize("blank", ["  ", "\t", "   "])
+def test_a_blank_chapter_name_is_refused(blank: str) -> None:
+    with pytest.raises(ReelParseError, match=r"chapters\[1\]: blank chapter name"):
+        loads_document(_chapters_text("", blank))
+
+
+@pytest.mark.parametrize("padded", [" Party", "Party ", "\tParty"])
+def test_a_padded_chapter_name_is_refused_and_not_trimmed(padded: str) -> None:
+    with pytest.raises(ReelParseError, match=r"chapters\[0\].*leading or trailing whitespace") as e:
+        loads_document(_chapters_text(padded))
+    assert repr(padded) in str(e.value)
+
+
+def test_names_equal_ignoring_case_are_duplicates_naming_both() -> None:
+    with pytest.raises(ReelParseError) as caught:
+        loads_document(_chapters_text("Party", "party"))
+    message = str(caught.value)
+    assert "chapters[1]" in message and "chapters[0]" in message
+    assert "'Party'" in message and "'party'" in message
+    assert "duplicate chapter name" in message and "ignoring case" in message
+
+
+def test_case_folding_follows_str_casefold() -> None:
+    # str.lower() leaves the sharp s alone; str.casefold() folds it to "ss".
+    with pytest.raises(ReelParseError, match="duplicate chapter name"):
+        loads_document(_chapters_text("Straße", "STRASSE"))
+
+
+def test_exact_duplicate_chapter_names_and_two_default_chapters_are_still_refused() -> None:
+    with pytest.raises(ReelParseError, match="duplicate chapter name 'Reception'"):
+        loads_document(_chapters_text("Reception", "Reception"))
+    with pytest.raises(ReelParseError, match=r"chapters\[1\]: duplicate chapter name ''"):
+        loads_document(_chapters_text("", ""))
+
+
+def test_the_default_chapter_and_ordinary_names_load_unchanged() -> None:
+    document = loads_document(_chapters_text("", "Reception", "Dag 2", "Party night"))
+    assert [chapter.name for chapter in document.chapters] == [
+        "",
+        "Reception",
+        "Dag 2",
+        "Party night",
+    ]

@@ -188,9 +188,18 @@ class ReelDocument:  # pylint: disable=too-many-instance-attributes
         return self._data
 
     def chapter(self, name: str) -> Optional[Chapter]:
-        """Return the chapter with ``name``, or ``None`` if absent."""
+        """Return the chapter named ``name``, or ``None`` if absent.
+
+        The exact name wins; otherwise the chapter whose name equals ``name`` under
+        ``str.casefold()``. Chapter names are unique under that fold, so at most one chapter
+        can match. Whitespace is never trimmed: a padded name matches nothing.
+        """
         for chapter in self.chapters:
             if chapter.name == name:
+                return chapter
+        folded = name.casefold()
+        for chapter in self.chapters:
+            if chapter.name.casefold() == folded:
                 return chapter
         return None
 

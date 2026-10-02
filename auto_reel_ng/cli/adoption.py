@@ -6,12 +6,13 @@ the policy lives here:
 - No ``reel.yaml`` -> seed a document from disk structure (the seeding case, D-F).
 - A ``reel.yaml`` plus ``NEW`` clips on disk -> adopt each ``NEW`` clip into the
   chapter named after its folder (the event folder's clips into the default
-  chapter), or into the default chapter when the document names no such chapter,
-  so an added file is never silently dropped. A document that names no chapters
-  at all is adopted into as a new event is seeded: each folder becomes its own
-  chapter. Entering clips are appended after the chapter's existing clips, in the
-  sort rule's order among themselves (the document's own ``sort`` when set, else
-  the project's); an existing order is never re-sorted.
+  chapter; the folder matches a chapter exactly, else ignoring case), or into the
+  default chapter when the document names no such chapter, so an added file is
+  never silently dropped. A document that names no chapters at all is adopted
+  into as a new event is seeded: each folder becomes its own chapter. Entering
+  clips are appended after the chapter's existing clips, in the sort rule's order
+  among themselves (the document's own ``sort`` when set, else the project's); an
+  existing order is never re-sorted.
   :func:`place_disk_clips` is that placement, which the events read model shares
   so the page shows each clip where a render adopts it.
 - ``MISSING`` clips (referenced, absent from disk) are reported by the caller and
@@ -95,10 +96,12 @@ def place_disk_clips(
 
     ``identities`` are clips ``listing`` holds that ``document`` does not list (NEW, or for the
     read model also IGNORED). Each enters the chapter named after its ``listing`` folder group
-    (the event root is the default chapter) when ``document`` names that chapter, else the
-    default chapter. Returns ``((chapter, clips), ...)`` with no empty groups: the document's
-    chapters in its order, then the default chapter when the document does not name it. Each
-    group's clips are in ``order_clips(..., document.sort or order)`` order.
+    (the event root is the default chapter) when ``document`` has that chapter, matched by
+    ``ReelDocument.chapter`` (exact name, then ``str.casefold()``) and listed under the
+    chapter's own name, else the default chapter (a padded folder name is never trimmed to find
+    one). Returns ``((chapter, clips), ...)`` with no empty groups: the document's chapters in
+    its order, then the default chapter when the document does not name it. Each group's clips
+    are in ``order_clips(..., document.sort or order)`` order.
 
     A document that names no chapters is placed as a new event is seeded: every clip enters
     its folder's chapter, in ``listing.by_chapter`` order (the default chapter first, then
@@ -114,8 +117,12 @@ def place_disk_clips(
         folder = folder_of.get(identity)
         if folder is None:
             raise ReconcileError(f"place: clip {identity!r} is not in the event's disk listing")
-        named = seed_like or document.chapter(folder) is not None
-        buckets.setdefault(folder if named else DEFAULT_CHAPTER_NAME, []).append(identity)
+        if seed_like:
+            target = folder
+        else:
+            matched = document.chapter(folder)
+            target = DEFAULT_CHAPTER_NAME if matched is None else matched.name
+        buckets.setdefault(target, []).append(identity)
 
     if seed_like:
         names = [name for name, _ in listing.by_chapter]
@@ -181,9 +188,10 @@ def _ensure_chapter(document: ReelDocument, name: str) -> ReelDocument:
     Adopting a ``NEW`` clip needs its target chapter to exist; a freshly authored
     or subdir-only document may lack the default chapter, and a document that names
     no chapters lacks every seed chapter, so create it rather than let
-    :func:`add_clip` fail.
+    :func:`add_clip` fail. The check is by exact name: a name equal to a chapter's only
+    ignoring case is a second chapter, which :func:`build_document` refuses as a duplicate.
     """
-    if document.chapter(name) is not None:
+    if any(chapter.name == name for chapter in document.chapters):
         return document
     data = document_to_data(document)
     chapters = data.get("chapters")

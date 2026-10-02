@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from auto_reel_ng.errors import ReelParseError
+from auto_reel_ng.reel.document import Chapter, ReelDocument
 from auto_reel_ng.reel.legacy import import_legacy
 from auto_reel_ng.reel.parser import loads_document
 from auto_reel_ng.reel.writer import dumps_document, round_trip_yaml, write_document
@@ -402,3 +404,56 @@ def test_a_sweep_that_cannot_list_the_folder_does_not_fail_the_write(tmp_path, m
 
     monkeypatch.setattr(os, "listdir", failing_listdir)
     _save(tmp_path)
+
+
+# --------------------------------------------------------------------------- #
+# the writer applies the chapter-name rules (chapter-name-rules-engine)
+# --------------------------------------------------------------------------- #
+
+
+def _document_with_chapters(*names: str) -> ReelDocument:
+    return ReelDocument(chapters=tuple(Chapter(name=name) for name in names))
+
+
+@pytest.mark.parametrize(
+    ("names", "message"),
+    [
+        pytest.param(("", "Party "), "leading or trailing whitespace", id="padded"),
+        pytest.param(("", "  "), "blank chapter name", id="blank"),
+        pytest.param(("Party", "party"), "duplicate chapter name", id="case-variant"),
+    ],
+)
+def test_a_refused_write_keeps_the_old_file_and_leaves_no_temporary(
+    tmp_path: Path, names: tuple[str, ...], message: str
+) -> None:
+    path = tmp_path / "reel.yaml"
+    path.write_text(HANDWRITTEN, encoding="utf-8")
+    before = path.read_bytes()
+
+    with pytest.raises(ReelParseError, match=message):
+        write_document(_document_with_chapters(*names), path)
+
+    assert path.read_bytes() == before
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == ["reel.yaml"]
+
+
+def test_a_refused_first_write_creates_nothing(tmp_path: Path) -> None:
+    path = tmp_path / "reel.yaml"
+
+    with pytest.raises(ReelParseError, match="duplicate chapter name"):
+        write_document(_document_with_chapters("Party", "PARTY"), path)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_valid_document_still_writes_and_round_trips(tmp_path: Path) -> None:
+    path = tmp_path / "reel.yaml"
+    document = _document_with_chapters("", "Reception", "Dag 2")
+
+    write_document(document, path)
+
+    assert [c.name for c in loads_document(path.read_text(encoding="utf-8")).chapters] == [
+        "",
+        "Reception",
+        "Dag 2",
+    ]
