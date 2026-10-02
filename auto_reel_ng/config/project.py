@@ -94,7 +94,8 @@ def loads_project_config(text: str, *, source: str = "<string>") -> ProjectConfi
         # ruamel's safe constructors leak builtin errors for a well-formed node they cannot
         # build (ValueError: 2024-02-30, KeyError: !!bool maybe), and RecursionError for a
         # document nested too deeply; none is a YAMLError, all are the file's fault.
-        reason = str(exc) or type(exc).__name__
+        # A KeyError's text is only the quoted token, so the type name goes in front of it.
+        reason = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
         raise ConfigError(f"{source}: malformed YAML: {reason}") from exc
 
     if data is None:
@@ -127,6 +128,12 @@ def _validate_tree(data: Mapping[str, object], source: str) -> None:
     limit cannot be printed; a structure that contains itself cannot be serialised. Values
     stay uninterpreted otherwise (D-I/D-J).
     """
+    # First, because the scans below repr() every key and would raise a bare ValueError on an
+    # integer key past the digit limit (the explicit-key syntax ``? 0xfff...`` writes one).
+    problem = _find_unusable_structure(data)
+    if problem is not None:
+        what, path = problem
+        raise ConfigError(f"{source}: {path}: {what}")
     surrogate = find_lone_surrogate(data)
     if surrogate is not None:
         raise ConfigError(
@@ -136,14 +143,11 @@ def _validate_tree(data: Mapping[str, object], source: str) -> None:
     bad_key = find_non_str_key(data.get("look"), root="look")
     if bad_key is not None:
         article = "an" if bad_key.kind[0] in "aeiou" else "a"
+        # Safe to print: an integer key too large to print was refused above.
         raise ConfigError(
             f"{source}: {bad_key.path}: key {bad_key.key} is {article} {bad_key.kind}, not a "
             f"string (quote it to keep it as text)"
         )
-    problem = _find_unusable_structure(data)
-    if problem is not None:
-        what, path = problem
-        raise ConfigError(f"{source}: {path}: {what}")
 
 
 def _find_unusable_structure(tree: object) -> Optional[tuple[str, str]]:
@@ -164,6 +168,9 @@ def _find_unusable_structure(tree: object) -> Optional[tuple[str, str]]:
 
     if not isinstance(tree, (Mapping, list)):
         return _check_scalar(tree, "document")
+    found = _check_keys(tree, "")
+    if found is not None:
+        return found
     enter(tree)
     while stack:
         node, children = stack[-1]
@@ -172,6 +179,9 @@ def _find_unusable_structure(tree: object) -> Optional[tuple[str, str]]:
                 if id(child) in on_path:
                     return "the structure refers to itself", _join(path, segment)
                 if id(child) not in done:
+                    found = _check_keys(child, _join(path, segment))
+                    if found is not None:
+                        return found
                     path.append(segment)
                     enter(child)
                     break
@@ -186,6 +196,22 @@ def _find_unusable_structure(tree: object) -> Optional[tuple[str, str]]:
             if path:
                 path.pop()
     return None
+
+
+def _check_keys(node: object, path: str) -> Optional[tuple[str, str]]:
+    """The first mapping key of ``node`` that is an integer too large to print (tuple keys too)."""
+    if not isinstance(node, Mapping):
+        return None
+    for key in node:
+        if _unprintable_key(key):
+            return "integer key is too large to print", _join([path], "[<int key>]")
+    return None
+
+
+def _unprintable_key(key: object) -> bool:
+    if isinstance(key, (tuple, frozenset)):
+        return any(_unprintable_key(item) for item in key)
+    return _check_scalar(key, "") is not None
 
 
 def _children(node: object) -> Iterator[tuple[str, object]]:

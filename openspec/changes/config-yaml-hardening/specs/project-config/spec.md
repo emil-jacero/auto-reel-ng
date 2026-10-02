@@ -11,7 +11,7 @@ After a successful load and before any field is read, the system SHALL validate 
 configuration error, naming the key path, for each of the following:
 
 - a string, as a key or a value anywhere in the file, that cannot be encoded as UTF-8 (a lone surrogate);
-- an integer too large to be printed;
+- an integer too large to be printed, as a value or as a mapping key (the explicit `? 0x...` key syntax);
 - under `look`, a mapping key that is not a string (a date, a number, a boolean), at any depth;
 - a mapping or list that contains itself through an alias.
 
@@ -44,8 +44,8 @@ Values under `look`, `worker`, `api` and `thumbnails` SHALL otherwise stay unint
 
 - **WHEN** `config.yaml` contains `layout: "x\ud800"`, or the same escape in a `look` value, a `look` key or
   a `database.url`
-- **THEN** loading raises the configuration error naming the key path and stating the string is not valid
-  Unicode text, and no `UnicodeEncodeError` can occur later when the value is printed, logged, hashed or
+- **THEN** loading raises the configuration error naming the key path and stating the text contains a lone
+  surrogate that cannot be encoded as UTF-8, and no `UnicodeEncodeError` can occur later when the value is printed, logged, hashed or
   sent as JSON
 
 #### Scenario: A huge hexadecimal integer is refused
