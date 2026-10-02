@@ -1834,9 +1834,8 @@ and nothing else:
   outside it. Symbolic links inside the output directory are followed, as the gate follows them.
 
 An event therefore has a rendered movie exactly when its staleness verdict cites neither `no_manifest` nor
-`output`. There are three exceptions:
+`output`. There are two exceptions:
 - a file removed between the two reads
-- a directory, not a file, at the expected path, which the gate counts as present
 - an expected path whose name climbs out of the output directory
 A client SHALL be able to decide from the event detail alone whether to offer a player.
 
@@ -1892,6 +1891,7 @@ A client SHALL be able to decide from the event detail alone whether to offer a 
 - **WHEN** `2024/2024-07-14 - Kalas` has a render record, and its expected movie path in the output directory is a
   directory rather than a file, and its movie is requested
 - **THEN** the response is 404 with a problem body naming the event, and nothing under that directory is opened
+- **AND** the event's staleness cites `output`, as it does for an absent file
 
 #### Scenario: A render record cannot point outside the output directory
 - **WHEN** an event's render record names `../elsewhere.mp4`, an absolute path or an empty name, and its expected

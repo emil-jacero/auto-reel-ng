@@ -56,13 +56,14 @@ schema-incompatible manifest SHALL be treated as absent (fail open to stale, nev
 The system SHALL provide a single gate that evaluates an event as **stale** if and only if one of these holds:
 - no manifest exists;
 - the current fingerprint differs from the manifest's;
-- the event's **expected output** does not exist. The expected output is the path the output-naming rule derives
-  from the event's current metadata under the output directory in use.
+- the event's **expected output** is not a regular file: it is missing, or a folder or other non-file is at that
+  path. The expected output is the path the output-naming rule derives from the event's current metadata under
+  the output directory in use.
 
 The verdict SHALL carry the changed components (by comparing sub-hashes) as human-readable reasons. A force
 request SHALL bypass the gate entirely. All staleness decisions in the system MUST go through this gate.
 
-When the expected output does not exist, the verdict SHALL cite exactly one reason for it:
+When the expected output is not a regular file, the verdict SHALL cite exactly one reason for it:
 - **output renamed**, when all of these hold:
   - the file name the manifest records for the last render differs from the expected output's file name;
   - the recorded name is a bare file name, with no folder part, and is not empty, `.` or `..`;
@@ -73,6 +74,8 @@ When the expected output does not exist, the verdict SHALL cite exactly one reas
   This means the event's name (its title, date or location) changed after the render that wrote the movie still on
   disk. The next render writes the expected output under the new name and leaves the recorded file where it is.
   Only another event's render can replace that file (see "A renamed event keeps its previous movie").
+  Only the output directory in use is searched. A movie the last render wrote into another output directory is not
+  looked for, so an event whose last render went elsewhere cites the missing-output reason.
 - **missing output**, otherwise. Either the recorded name is the expected one, or no regular file with the
   recorded name is at that place, or the recorded value is not a bare file name. A recorded value that is not a
   bare file name, or that is empty, `.` or `..`, is never looked up: nothing is checked on disk for it.
@@ -80,7 +83,7 @@ When the expected output does not exist, the verdict SHALL cite exactly one reas
 The output-renamed reason MUST NOT change whether an event is stale. It is cited only where the missing-output reason
 would otherwise have been cited. Every caller of the gate therefore makes the same stale or fresh decision with it as
 without it: `render`, `enqueue`, `POST /api/v1/jobs`, `adopt-renders` and the worker's claim-time recheck. When the
-expected output exists, neither reason is cited, whatever name the manifest records.
+expected output is a regular file, neither reason is cited, whatever name the manifest records.
 
 The reasons a verdict may cite SHALL come from a **closed, named vocabulary** owned by the gate: the no-manifest,
 missing-output and output-renamed reasons, plus one reason per fingerprint component. The gate MUST NOT emit a reason
@@ -159,8 +162,24 @@ removing or renaming a reason is a change to this vocabulary and MUST be made he
 - **THEN** it obtains exactly the no-manifest reason, the missing-output reason, the output-renamed reason and one
   reason per fingerprint component, and no other value can appear in a verdict
 
+#### Scenario: A folder at the expected path is a missing movie
+- **WHEN** the manifest matches the current fingerprint and records the expected output's file name, but a folder
+  is at the expected path where the movie belongs
+- **THEN** the verdict is stale citing only the missing output, as it is for an absent file
+
+#### Scenario: A folder at the expected path does not hide a kept movie
+- **WHEN** the retitled Grillning has a folder at its new expected path, and its previous movie is still on disk
+  under the recorded name
+- **THEN** the verdict is stale citing `editorial` and `output_renamed`
+
+#### Scenario: A movie in another output directory is not looked for
+- **WHEN** `2024-06-27 - Grillning med grannar` was rendered into one output directory and retitled, and its verdict
+  is then evaluated against a different output directory that holds no movie of the event
+- **THEN** the verdict is stale citing `editorial` and `output`, and not `output_renamed`
+- **AND** nothing outside the output directory in use is checked on disk
+
 ### Requirement: Manifest adoption
-The system SHALL support explicit adoption: for an event whose output file exists, writing a manifest at
+The system SHALL support explicit adoption: for an event whose output file exists as a regular file, writing a manifest at
 the current fingerprint as the operator's assertion that the existing output reflects the current inputs.
 Adoption MUST be explicit (operator-invoked), MUST skip events with no output file, and MUST NOT render
 anything.
@@ -172,7 +191,10 @@ anything.
 #### Scenario: Unrendered event is not adopted
 - **WHEN** adoption runs over an event with no output file
 - **THEN** no manifest is written and the event remains stale
-</content>
+
+#### Scenario: A folder at the output path is not adopted
+- **WHEN** adoption runs over an event whose expected output path is a folder
+- **THEN** no manifest is written, the event is reported as unrendered, and it remains stale
 
 ### Requirement: A renamed event keeps its previous movie
 When an event's output path has changed since its last render, because its title, date or location changed under
@@ -246,3 +268,24 @@ conflated by the fallback.
 
 - **WHEN** the hash fallback is used for `{1: "a", "1": "b"}` and for `{1: "b", "1": "a"}`
 - **THEN** the two hashes differ
+
+### Requirement: A render refuses a non-file at its output path
+When the expected output path of an event exists but is not a regular file, such as a folder, a render of that
+event SHALL fail with a typed render error that names the path. This SHALL hold whether or not an overwrite is
+requested, so a skip never reports a non-file as an up-to-date movie. The render SHALL fail before it executes
+any ffmpeg invocation, SHALL NOT remove or replace what is at the path, SHALL NOT write a manifest, and SHALL be
+reported as that event's failure without stopping the other events of a batch. A dry run is unchanged: it builds
+and reports the planned commands and checks nothing on disk.
+
+#### Scenario: A folder where the movie belongs fails the render
+- **WHEN** a forced render of an event whose expected output path is a folder is requested
+- **THEN** the render fails with a render error naming that path, the folder and its contents are unchanged, no
+  manifest is written, and no ffmpeg invocation was made
+
+#### Scenario: Without overwrite a non-file is not a skip
+- **WHEN** a render without overwrite is requested for an event whose expected output path is a folder
+- **THEN** the render fails with the same error and does not report the render as skipped
+
+#### Scenario: A batch continues past it
+- **WHEN** a batch holds an event whose expected output path is a folder and a second, renderable event
+- **THEN** the first is reported as failed with the error, and the second is rendered

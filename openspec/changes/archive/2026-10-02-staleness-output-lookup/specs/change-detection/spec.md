@@ -139,7 +139,6 @@ anything.
 #### Scenario: Unrendered event is not adopted
 - **WHEN** adoption runs over an event with no output file
 - **THEN** no manifest is written and the event remains stale
-</content>
 
 #### Scenario: A folder at the output path is not adopted
 - **WHEN** adoption runs over an event whose expected output path is a folder
