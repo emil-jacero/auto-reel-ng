@@ -8,9 +8,11 @@ first frame or placeholder is tried in its place.
 The pure pieces — :func:`thumbnail_key`, :func:`thumbnail_path` and
 :func:`thumbnail_args` — compute the cache location and the ffmpeg arguments;
 :func:`thumbnail_for` composes them around one probe and one ffmpeg run through
-:class:`FfmpegRuntime`. The cache key covers the resolved clip path, its size and
-``mtime_ns``, the position, the box and :data:`THUMBNAIL_VERSION`, so a changed clip
-gets a new file by itself and a cache hit costs one ``stat`` and one hash. Files are
+:class:`FfmpegRuntime`. The cache key covers the resolved file's name (not its
+directory), its size and ``mtime_ns``, the position, the box and
+:data:`THUMBNAIL_VERSION`, so a changed clip gets a new file by itself, a library that
+is moved, copied or remounted keeps its cache, and a cache hit costs one ``stat`` and
+one hash. Files are
 written like ``reel/writer.write_document``: a uniquely named hidden temporary file,
 ``fsync``, then ``os.replace``, so ``<key>.jpg`` only ever appears complete.
 """
@@ -45,8 +47,9 @@ logger = logging.getLogger(__name__)
 #: read stalls (a removable drive that went away). Fixed: not a ``config.yaml`` setting.
 THUMBNAIL_TIMEOUT = 60.0
 
-#: Bump whenever :func:`thumbnail_args` changes the output bytes: it re-keys every file.
-THUMBNAIL_VERSION = 1
+#: Bump whenever :func:`thumbnail_args` changes the output bytes or the key's payload
+#: changes: it re-keys every file. 2: the key holds the file's name, not its path.
+THUMBNAIL_VERSION = 2
 
 #: The ``(width, height)`` box a thumbnail is fitted inside, keeping its aspect ratio.
 THUMBNAIL_BOX = (320, 180)
@@ -63,9 +66,13 @@ _ABSOLUTE_PATH = re.compile(r"(?:^|(?<=[\s'\"(\[=]))/(?=[^\s/])")
 
 
 def thumbnail_key(clip_path: Path, *, position: float) -> str:
-    """The cache key: sha256 hex over the clip's resolved path, stat signal and settings.
+    """The cache key: sha256 hex over the clip's file name, stat signal and settings.
 
-    Symlinks are followed, so every link to one file shares one key. The stat's
+    Symlinks are followed, so every link to one file shares one key, and the name
+    hashed is the file's own, not a link's. The directory is left out on purpose: a
+    library that is moved, copied or remounted keeps its cache. Two different files
+    with the same name, size and ``mtime_ns`` would share a key (negligible for camera
+    clips; deleting the cache directory repairs it). The stat's
     :class:`OSError` propagates unchanged (``FileNotFoundError`` for a vanished clip);
     each caller decides what it means.
     """
@@ -75,7 +82,7 @@ def thumbnail_key(clip_path: Path, *, position: float) -> str:
     # non-UTF-8 file name (surrogate escapes) encodable.
     payload = json.dumps(
         [
-            str(resolved),
+            resolved.name,
             stat.st_size,
             stat.st_mtime_ns,
             position,

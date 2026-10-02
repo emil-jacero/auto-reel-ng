@@ -530,11 +530,12 @@ thumbnail route, `GET /api/v1/events/{event_id}/thumbnail`, reads the same keys 
 every request);
 `cache_dir` must be absolute (`~` is expanded), and the directory — configured or
 default — must lie outside the project root and the `input` directory, or the
-command refuses to start. Files are named by a hash of the clip's resolved path,
-size, mtime, the position and the extraction version, so an edited clip gets a new
-thumbnail by itself; moving or remounting the library at another path regenerates
-them all. Each thumbnail is ≈15 KB (≈100 MB for 6,500 clips) and nothing is evicted:
-delete the directory to reset it. When `serve` runs as another user or in a
+command refuses to start. Files are named by a hash of the clip's file name (not its
+directory), size, mtime, the position and the extraction version, so an edited clip
+gets a new thumbnail by itself, while moving, copying or remounting the library keeps
+them. Several clips that link to one file share its thumbnail and are extracted once.
+Each thumbnail is ≈15 KB (≈100 MB for 6,500 clips) and nothing is evicted: delete the
+directory to reset it. When `serve` runs as another user or in a
 container, it has its own `XDG_CACHE_HOME` — set `thumbnails.cache_dir` in the
 project's `config.yaml` so the CLI and the service share one cache.
 

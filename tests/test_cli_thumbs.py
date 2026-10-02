@@ -8,8 +8,10 @@ zero-byte clip). The last test runs the real extraction over a read-only library
 
 from __future__ import annotations
 
+import itertools
 import logging
 import os
+import shutil
 import stat
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -68,9 +70,17 @@ ignore:
 Snapshot = Dict[str, Tuple[int, int, Optional[bytes]]]
 
 
+#: Every file the fixture writes gets the next ``mtime_ns``: the key no longer holds the
+#: directory, so same-named, same-sized clips in different folders must differ here, not
+#: by the clock's granularity.
+_MTIMES = itertools.count(1_700_000_000_000_000_000, 1_000_000_000)
+
+
 def _write(path: Path, data: bytes = b"") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
+    stamp = next(_MTIMES)
+    os.utime(path, ns=(stamp, stamp))
 
 
 def _build_library(root: Path) -> None:
@@ -332,6 +342,87 @@ def test_a_clip_that_vanishes_before_its_stat_is_one_failure(
     assert out.splitlines()[-1].startswith("thumbnails: 14 clips in 6 events: 12 generated")
 
 
+KRAFTSKIVA = "2024/2024-09-14 - Kräftskiva"
+
+
+def _linked_event(root: Path, target: Path) -> Path:
+    """An event holding ``a.mp4`` and a symlink ``b.mp4`` to one file ``target``."""
+    event = root / KRAFTSKIVA
+    event.mkdir(parents=True)
+    for name in ("a.mp4", "b.mp4"):
+        (event / name).symlink_to(target)
+    return event
+
+
+def test_two_links_to_one_clip_are_extracted_once_and_counted_once(
+    tmp_path: Path,
+    library: Path,
+    cache_dir: Path,
+    fake: Callable[..., FakeCalls],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "linked"
+    clip = tmp_path / "clips" / "s1710004.mp4"
+    _write(clip, b"one clip")
+    _linked_event(root, clip)
+    calls = fake()
+
+    assert main(["thumbs", str(root)]) == 0
+
+    out = capsys.readouterr().out
+    assert [c.name for c in calls] == ["a.mp4"]  # the first of them in listing order
+    assert "2024-09-14 - Kräftskiva: 2 clips, 1 generated, 1 cached" in out.splitlines()
+    assert out.splitlines()[-1] == (
+        f"thumbnails: 2 clips in 1 event: 1 generated, 1 cached, 0 failed (cache: {cache_dir})"
+    )
+    assert len(list(cache_dir.glob("*.jpg"))) == 1
+
+
+def test_a_second_run_counts_every_link_as_cached(
+    tmp_path: Path,
+    library: Path,
+    fake: Callable[..., FakeCalls],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "linked"
+    clip = tmp_path / "clips" / "s1710004.mp4"
+    _write(clip, b"one clip")
+    _linked_event(root, clip)
+    fake()
+    main(["thumbs", str(root)])
+    capsys.readouterr()
+
+    calls = fake()
+    assert main(["thumbs", str(root)]) == 0
+
+    assert calls == []
+    assert "2024-09-14 - Kräftskiva: 2 clips, 2 cached" in capsys.readouterr().out.splitlines()
+
+
+def test_two_links_to_a_broken_clip_fail_as_two_clips_from_one_attempt(
+    tmp_path: Path,
+    library: Path,
+    fake: Callable[..., FakeCalls],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "linked"
+    clip = tmp_path / "clips" / "trasig.mp4"
+    _write(clip)  # zero bytes
+    _linked_event(root, clip)
+    calls = fake()
+
+    assert main(["thumbs", str(root)]) == 1
+
+    out = capsys.readouterr().out
+    assert len(calls) == 1  # one attempt for the one file
+    assert _error_lines(out) == [
+        "ERROR  2024-09-14 - Kräftskiva/a.mp4: File is empty (zero bytes)",
+        "ERROR  2024-09-14 - Kräftskiva/b.mp4: File is empty (zero bytes)",
+    ]
+    assert "2024-09-14 - Kräftskiva: 2 clips, 2 failed" in out.splitlines()
+    assert "2 clips in 1 event: 0 generated, 0 cached, 2 failed" in out.splitlines()[-1]
+
+
 def test_an_unreadable_event_folder_is_reported_and_the_run_continues(
     library: Path,
     fake: Callable[..., FakeCalls],
@@ -591,3 +682,60 @@ def test_thumbs_end_to_end_over_a_read_only_library(
     finally:
         for directory in reversed(directories):
             directory.chmod(modes[directory])
+
+
+@pytest.mark.has_ffmpeg
+def test_a_symlink_pair_runs_the_real_extraction_once(
+    tmp_path: Path,
+    make_clip,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    cache_dir = tmp_path / "xdg" / "auto-reel" / "thumbnails"
+    real = make_clip("real.avi", width=640, height=360, duration=1.5)
+    event = tmp_path / "proj" / KRAFTSKIVA
+    event.mkdir(parents=True)
+    (event / "real.avi").symlink_to(real)
+    (event / "link.avi").symlink_to(real)
+
+    assert main(["thumbs", str(tmp_path / "proj"), "--jobs", "2"]) == 0
+
+    out = capsys.readouterr().out
+    assert "2024-09-14 - Kräftskiva: 2 clips, 1 generated, 1 cached" in out.splitlines()
+    assert [p.suffix for p in cache_dir.iterdir()] == [".jpg"]  # one file, no .tmp
+
+
+@pytest.mark.has_ffmpeg
+def test_a_library_copied_to_another_path_regenerates_nothing(
+    tmp_path: Path,
+    make_clip,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    cache_dir = tmp_path / "xdg" / "auto-reel" / "thumbnails"
+    first = make_clip("first.mp4", width=640, height=360, duration=1.5)
+    second = make_clip("second.mp4", width=640, height=360, duration=2.0)
+    source = tmp_path / "mol" / "library"
+    event = source / KRAFTSKIVA
+    event.mkdir(parents=True)
+    shutil.copy2(first, event / "s1710001.mp4")  # real files, not links
+    shutil.copy2(second, event / "s1710002.mp4")
+    assert main(["thumbs", str(source)]) == 0
+    capsys.readouterr()
+    written = sorted(p.name for p in cache_dir.iterdir())
+    assert len(written) == 2
+
+    moved = tmp_path / "mnt" / "other-host" / "library"
+    moved.parent.mkdir(parents=True)
+    shutil.copytree(source, moved)  # keeps sizes and mtime_ns, changes the path
+
+    assert main(["thumbs", str(moved)]) == 0
+
+    out = capsys.readouterr().out
+    assert "2024-09-14 - Kräftskiva: 2 clips, 2 cached" in out.splitlines()
+    assert "0 generated" in out.splitlines()[-1]
+    assert sorted(p.name for p in cache_dir.iterdir()) == written
