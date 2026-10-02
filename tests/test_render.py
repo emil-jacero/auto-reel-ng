@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
+import shutil
 import unicodedata
 from datetime import date
 from pathlib import Path, PurePosixPath
@@ -25,9 +27,14 @@ from auto_reel_ng.accel.models import (
     OpParams,
     Vendor,
 )
-from auto_reel_ng.accel.profiles import CPUProfile, VaapiProfile
+from auto_reel_ng.accel.profiles import CPUProfile, NvencProfile, QsvProfile, VaapiProfile
 from auto_reel_ng.accel.profiles.cpu import CPU_TONEMAP_FILTER
-from auto_reel_ng.errors import RenderCancelledError, RenderError, RenderVerificationError
+from auto_reel_ng.errors import (
+    FfmpegError,
+    RenderCancelledError,
+    RenderError,
+    RenderVerificationError,
+)
 from auto_reel_ng.event import seed_document
 from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
 from auto_reel_ng.probe import probe_media
@@ -89,6 +96,7 @@ def _amd_caps() -> AcceleratorCapabilities:
         can_tonemap_hw=False,
         usable_encoders={"h264": "h264_vaapi", "hevc": "hevc_vaapi", "av1": "av1_vaapi"},
         decode_method="vaapi",
+        hw_decode={"h264": 8, "hevc": 10},
     )
 
 
@@ -548,6 +556,189 @@ def test_software_decode_names_the_device_hwupload_needs() -> None:
     ]
     assert args.count("-init_hw_device") == 1
     assert args.index("-init_hw_device") < args.index("-i")
+
+
+_VAAPI_UPLOAD = ["-init_hw_device", "vaapi=va:/dev/dri/renderD128", "-filter_hw_device", "va"]
+
+
+def _mpeg4(**overrides: object) -> ClipMetadata:
+    """A 1280x720 MPEG-4 Part 2 clip (what an old camcorder ``.avi`` probes as)."""
+    values: dict[str, object] = dict(identity="old.avi", width=1280, height=720, codec="mpeg4")
+    values.update(overrides)
+    return _clip(**values)  # type: ignore[arg-type]
+
+
+def test_mpeg4_clip_on_vaapi_decodes_in_software_and_uploads() -> None:
+    """The reproduced failure: the AMD decoder lacks mpeg4, so decode on the CPU and hwupload."""
+    command = build_normalize_command(
+        _source_segment(), _mpeg4(), _target(), _amd_profile(), Path("/t/seg.mp4")
+    )
+    args = command.args
+    assert "-hwaccel" not in args
+    assert args.count("-init_hw_device") == 1
+    assert list(args[1:5]) == _VAAPI_UPLOAD
+    assert args.index("-init_hw_device") < args.index("-i")
+    assert _vf(command) == (
+        "format=nv12,hwupload,scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease"
+    )
+    assert _subseq(args, ["-c:v", "h264_vaapi"])
+    assert command.hardware_decode is False
+
+
+def test_hardware_decodable_clip_is_unchanged_and_marked_hardware_decode() -> None:
+    command = build_normalize_command(
+        _source_segment(), _clip(), _target(), _amd_profile(), Path("/t/seg.mp4")
+    )
+    assert _subseq(command.args, ["-hwaccel", "vaapi", "-hwaccel_device", "va"])
+    assert "hwupload" not in _vf(command)
+    assert command.hardware_decode is True
+
+
+def test_rotated_mpeg4_clip_transposes_then_uploads() -> None:
+    command = build_normalize_command(
+        _source_segment(rotate=90),
+        _mpeg4(width=720, height=1280),
+        _target(),
+        _amd_profile(),
+        Path("/t/seg.mp4"),
+    )
+    assert "-hwaccel" not in command.args
+    assert command.args.count("-init_hw_device") == 1
+    assert _vf(command) == (
+        "transpose=1,format=nv12,hwupload,"
+        "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease"
+    )
+
+
+def test_mpeg4_clip_needing_bars_with_faulty_fill_pads_on_cpu_then_uploads() -> None:
+    command = build_normalize_command(
+        _source_segment(),
+        _mpeg4(width=640, height=480),
+        _target(),
+        _faulty_fill_profile(),
+        Path("/t/seg.mp4"),
+    )
+    assert _vf(command) == (
+        "scale=w=1920:h=1080:force_original_aspect_ratio=decrease,"
+        "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=nv12,hwupload"
+    )
+    assert command.args.count("-init_hw_device") == 1
+    assert "-hwaccel" not in command.args
+
+
+def test_mpeg4_clip_needing_bars_with_correct_fill_pads_on_gpu_after_upload() -> None:
+    command = build_normalize_command(
+        _source_segment(),
+        _mpeg4(width=640, height=480),
+        _target(),
+        _amd_profile(),
+        Path("/t/seg.mp4"),
+    )
+    assert _vf(command).startswith("format=nv12,hwupload,scale_vaapi=")
+    assert _vf(command).endswith("pad_vaapi=w=1920:h=1080:x=(ow-iw)/2:y=(oh-ih)/2:color=black")
+
+
+def test_ten_bit_h264_clip_decodes_in_software_and_reaches_the_encoder_as_nv12() -> None:
+    command = build_normalize_command(
+        _source_segment(),
+        _clip(pix_fmt="yuv420p10le"),
+        _target(),
+        _amd_profile(),
+        Path("/t/seg.mp4"),
+    )
+    assert "-hwaccel" not in command.args
+    assert _vf(command).startswith("format=nv12,hwupload,scale_vaapi=")
+    assert list(command.args[1:5]) == _VAAPI_UPLOAD
+
+
+def test_mpeg4_clip_on_the_cpu_profile_is_the_cpu_command() -> None:
+    command = build_normalize_command(
+        _source_segment(), _mpeg4(), _target(), CPUProfile(), Path("/t/seg.mp4")
+    )
+    assert "-hwaccel" not in command.args and "-init_hw_device" not in command.args
+    assert "hwupload" not in _vf(command)
+    assert _subseq(command.args, ["-pix_fmt", "yuv420p"])
+    assert command.hardware_decode is False
+
+
+def test_force_software_decode_overrides_a_hardware_decodable_clip() -> None:
+    command = build_normalize_command(
+        _source_segment(),
+        _clip(),
+        _target(),
+        _amd_profile(),
+        Path("/t/seg.mp4"),
+        force_software_decode=True,
+    )
+    assert "-hwaccel" not in command.args
+    assert command.args.count("-init_hw_device") == 1
+    assert _vf(command).startswith("format=nv12,hwupload,scale_vaapi=")
+    assert command.hardware_decode is False
+
+
+@pytest.fixture
+def render_logs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the render loggers enabled: an Alembic ``fileConfig`` run by an earlier test
+    disables every logger that already exists (``disable_existing_loggers``)."""
+    for name in ("auto_reel_ng.render.normalize", "auto_reel_ng.render.orchestrator"):
+        monkeypatch.setattr(logging.getLogger(name), "disabled", False)
+
+
+def test_software_decode_of_a_clip_the_profile_cannot_decode_is_logged_at_info(
+    render_logs: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO, logger="auto_reel_ng.render.normalize"):
+        build_normalize_command(
+            _source_segment(), _mpeg4(), _target(), _amd_profile(), Path("/t/seg.mp4")
+        )
+    records = [r for r in caplog.records if "not hardware-decodable" in r.getMessage()]
+    assert len(records) == 1
+    assert records[0].levelno == logging.INFO
+    assert "mpeg4" in records[0].getMessage()
+
+
+def test_hardware_decodable_and_cpu_clips_log_no_software_decode_line(
+    render_logs: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO, logger="auto_reel_ng.render.normalize"):
+        build_normalize_command(
+            _source_segment(), _clip(), _target(), _amd_profile(), Path("/t/seg.mp4")
+        )
+        build_normalize_command(
+            _source_segment(), _mpeg4(), _target(), CPUProfile(), Path("/t/seg.mp4")
+        )
+    assert not [r for r in caplog.records if "not hardware-decodable" in r.getMessage()]
+
+
+@pytest.mark.parametrize(
+    ("profile_cls", "vendor", "method", "encoder"),
+    [
+        (NvencProfile, Vendor.NVIDIA, "cuda", "h264_nvenc"),
+        (QsvProfile, Vendor.INTEL, "qsv", "h264_qsv"),
+    ],
+)
+def test_vendor_without_a_verified_upload_device_fails_loud_for_undecodable_clip(
+    profile_cls: type, vendor: Vendor, method: str, encoder: str
+) -> None:
+    caps = AcceleratorCapabilities(
+        vendor=vendor,
+        usable=True,
+        device=None,
+        pad_filter="pad",
+        can_overlay_hw=False,
+        can_tonemap_hw=False,
+        usable_encoders={"h264": encoder},
+        decode_method=method,
+        hw_decode={"h264": 8},
+    )
+    with pytest.raises(RenderError, match="--device cpu"):
+        build_normalize_command(
+            _source_segment(), _mpeg4(), _target(), profile_cls(caps), Path("/t/seg.mp4")
+        )
+    # A clip the vendor does decode in hardware still builds.
+    build_normalize_command(
+        _source_segment(), _clip(), _target(), profile_cls(caps), Path("/t/seg.mp4")
+    )
 
 
 def test_vaapi_upload_device_without_a_known_node_uses_the_default() -> None:
@@ -1394,6 +1585,238 @@ def test_normalize_failure_is_surfaced_naming_segment(runtime, tmp_path) -> None
 
 
 # --------------------------------------------------------------------------- #
+# render-vaapi-software-decode-fallback: the reactive software-decode retry    #
+# --------------------------------------------------------------------------- #
+
+_HW_INIT_STDERR = (
+    "[h264 @ 0x1] No support for codec h264 profile 100.\n"
+    "[h264 @ 0x1] Failed setup for format vaapi: hwaccel initialisation returned error.\n"
+    "Conversion failed!"
+)
+
+
+class _RecordingRuntime:
+    """Wraps a real runtime; ``run_with_progress`` is scripted and never starts ffmpeg.
+
+    A successful call copies a conforming 640x480 segment to the command's output path,
+    so the rest of the pipeline (probe, concat, verify, finalize) runs for real.
+    ``fail`` maps a call (the argument tuple) to the stderr to fail it with, or ``None``.
+    """
+
+    def __init__(self, real, good: Path, fail) -> None:
+        self._real = real
+        self._good = good
+        self._fail = fail
+        self.calls: list[tuple[str, ...]] = []
+
+    def __getattr__(self, name: str):
+        return getattr(self._real, name)
+
+    def run_with_progress(self, args, *, duration, on_progress=None) -> None:
+        del duration, on_progress
+        args = tuple(args)
+        self.calls.append(args)
+        stderr = self._fail(args)
+        if stderr is not None:
+            raise FfmpegError(f"Command exited 187: ffmpeg {' '.join(args)}\nstderr:\n{stderr}")
+        shutil.copyfile(self._good, args[-1])
+
+    def source_calls(self, name: str) -> list[tuple[str, ...]]:
+        return [c for c in self.calls if str(Path(c[c.index("-i") + 1]).name) == name]
+
+
+@pytest.fixture
+def good_segment(runtime, tmp_path) -> Path:
+    """A real segment that conforms to the 640x480 target the retry tests render to."""
+    out = tmp_path / "good.mp4"
+    runtime.run(
+        [
+            *("-y", "-f", "lavfi", "-i", "testsrc=size=640x480:rate=30:duration=1"),
+            *("-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1"),
+            *("-vf", "setsar=1", "-c:v", "libx264", "-pix_fmt", "yuv420p"),
+            *("-c:a", "aac", "-ar", "48000", "-ac", "2", "-shortest", str(out)),
+        ]
+    )
+    return out
+
+
+def _retry_options(runtime, tmp_path, clips: dict[str, str]) -> RenderOptions:
+    facts = {
+        name: _clip(name, width=1280, height=720, codec=codec) for name, codec in clips.items()
+    }
+    return RenderOptions(
+        event_dir=tmp_path, output_dir=tmp_path / "out", clip_facts=facts, runtime=runtime
+    )
+
+
+_RETRY_LOOK = {"target_resolution": [640, 480], "video_codec": "h264"}
+
+
+def test_hardware_decode_init_failure_is_retried_once_in_software(
+    render_logs, runtime, good_segment, tmp_path, caplog
+) -> None:
+    def fail(args):
+        # The driver rejects b.mp4's hardware decode; the table said h264 was fine.
+        return (
+            _HW_INIT_STDERR
+            if "-hwaccel" in args and args[args.index("-i") + 1].endswith("b.mp4")
+            else None
+        )
+
+    fake = _RecordingRuntime(runtime, good_segment, fail)
+    options = _retry_options(fake, tmp_path, {"a.mp4": "h264", "b.mp4": "h264"})
+    with caplog.at_level(logging.WARNING, logger="auto_reel_ng.render.orchestrator"):
+        result = render_movie(_two_chapter_plan(_RETRY_LOOK), _amd_profile(), options)
+
+    assert result.output_path.exists()
+    assert len(fake.source_calls("a.mp4")) == 1  # the other segment runs once, in hardware
+    assert "-hwaccel" in fake.source_calls("a.mp4")[0]
+    first, second = fake.source_calls("b.mp4")
+    assert "-hwaccel" in first
+    assert "-hwaccel" not in second
+    assert second.count("-init_hw_device") == 1
+    assert "format=nv12,hwupload" in second[second.index("-vf") + 1]
+    assert second[-1] == first[-1]  # the retry replaces the failed attempt's output
+    assert len(result.warnings) == 1
+    assert "'b.mp4'" in result.warnings[0]
+    assert "hardware decode failed" in result.warnings[0]
+    assert "Failed setup for format vaapi" in result.warnings[0]
+    assert [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING] == [
+        result.warnings[0]
+    ]
+
+
+def test_each_init_phrase_triggers_the_retry(runtime, good_segment, tmp_path) -> None:
+    for phrase in ("hwaccel initialisation returned error", "Failed setup for format vaapi"):
+        fake = _RecordingRuntime(
+            runtime,
+            good_segment,
+            lambda args, phrase=phrase: phrase if "-hwaccel" in args else None,
+        )
+        options = _retry_options(fake, tmp_path, {"a.mp4": "h264", "b.mp4": "h264"})
+        options.overwrite = True
+        render_movie(_two_chapter_plan(_RETRY_LOOK), _amd_profile(), options)
+        assert len(fake.source_calls("a.mp4")) == 2, phrase
+        assert len(fake.source_calls("b.mp4")) == 2, phrase
+
+
+def test_unrelated_hardware_decode_failure_is_not_retried(runtime, good_segment, tmp_path) -> None:
+    fake = _RecordingRuntime(
+        runtime,
+        good_segment,
+        lambda args: "moov atom not found\ninvalid data found" if "-hwaccel" in args else None,
+    )
+    options = _retry_options(fake, tmp_path, {"a.mp4": "h264", "b.mp4": "h264"})
+    with pytest.raises(RenderError, match=r"normalize failed for segment 0 .'a.mp4'.") as caught:
+        render_movie(_two_chapter_plan(_RETRY_LOOK), _amd_profile(), options)
+    assert "moov atom not found" in str(caught.value)
+    assert len(fake.calls) == 1
+    assert not list((tmp_path / "out").rglob("*.mp4"))
+
+
+def test_exit_code_alone_does_not_trigger_the_retry(runtime, good_segment, tmp_path) -> None:
+    """-38 is a generic errno; only the two initialisation phrases count."""
+    fake = _RecordingRuntime(
+        runtime,
+        good_segment,
+        lambda args: "Task finished with error code: -38 (Function not implemented)",
+    )
+    options = _retry_options(fake, tmp_path, {"a.mp4": "h264", "b.mp4": "h264"})
+    with pytest.raises(RenderError, match="normalize failed for segment 0"):
+        render_movie(_two_chapter_plan(_RETRY_LOOK), _amd_profile(), options)
+    assert len(fake.calls) == 1
+
+
+def test_software_decode_failure_is_not_retried(runtime, good_segment, tmp_path) -> None:
+    """An mpeg4 clip already decodes in software, so even the init phrase is raised, once."""
+    fake = _RecordingRuntime(runtime, good_segment, lambda args: _HW_INIT_STDERR)
+    options = _retry_options(fake, tmp_path, {"a.mp4": "mpeg4", "b.mp4": "mpeg4"})
+    with pytest.raises(RenderError, match=r"normalize failed for segment 0 .'a.mp4'."):
+        render_movie(_two_chapter_plan(_RETRY_LOOK), _amd_profile(), options)
+    assert len(fake.calls) == 1
+    assert "-hwaccel" not in fake.calls[0]
+
+
+def test_failed_retry_reports_both_attempts_and_finalizes_nothing(
+    runtime, good_segment, tmp_path
+) -> None:
+    def fail(args):
+        if "-hwaccel" in args:
+            return _HW_INIT_STDERR
+        return "[mpeg4 @ 0x2] corrupt frame header"
+
+    fake = _RecordingRuntime(runtime, good_segment, fail)
+    options = _retry_options(fake, tmp_path, {"a.mp4": "h264", "b.mp4": "h264"})
+    with pytest.raises(RenderError) as caught:
+        render_movie(_two_chapter_plan(_RETRY_LOOK), _amd_profile(), options)
+    message = str(caught.value)
+    assert "segment 0" in message and "'a.mp4'" in message
+    assert "corrupt frame header" in message  # the retry's detail
+    assert "hardware decode failed first" in message
+    assert "Failed setup for format vaapi" in message  # the first attempt's failure
+    assert len(fake.calls) == 2  # exactly one retry, never a third attempt
+    assert not list((tmp_path / "out").rglob("*.mp4"))
+    assert not list((tmp_path / "out").rglob("*.part"))
+
+
+def test_retry_that_cannot_be_rebuilt_raises_chained_from_the_first_failure(
+    runtime, good_segment, tmp_path
+) -> None:
+    """NVENC has no verified upload device: the software command cannot be built, loudly."""
+    caps = AcceleratorCapabilities(
+        vendor=Vendor.NVIDIA,
+        usable=True,
+        device=None,
+        pad_filter="pad",
+        can_overlay_hw=False,
+        can_tonemap_hw=False,
+        usable_encoders={"h264": "h264_nvenc"},
+        decode_method="cuda",
+        hw_decode={"h264": 8},
+    )
+    fake = _RecordingRuntime(runtime, good_segment, lambda args: _HW_INIT_STDERR)
+    options = _retry_options(fake, tmp_path, {"a.mp4": "h264", "b.mp4": "h264"})
+    with pytest.raises(RenderError, match="--device cpu") as caught:
+        render_movie(_two_chapter_plan(_RETRY_LOOK), NvencProfile(caps), options)
+    assert isinstance(caught.value.__cause__, FfmpegError)
+    assert "Failed setup for format" in str(caught.value.__cause__)
+    assert len(fake.calls) == 1
+
+
+def test_synthetic_segment_is_never_retried(runtime, good_segment, tmp_path, monkeypatch) -> None:
+    from auto_reel_ng.render import producers  # pylint: disable=import-outside-toplevel
+
+    image = tmp_path / "card.png"
+    monkeypatch.setitem(
+        producers._REGISTRY,  # pylint: disable=protected-access
+        "stub",
+        lambda segment, target, dest: producers.ProducedSegment(image_path=image, duration=2.0),
+    )
+    fake = _RecordingRuntime(runtime, good_segment, lambda args: _HW_INIT_STDERR)
+    segment = Segment(chapter="", producer="stub", duration=2.0)
+    command = orch._build_segment_command(  # pylint: disable=protected-access
+        0,
+        segment,
+        target=_target(),
+        profile=_amd_profile(),
+        options=_retry_options(fake, tmp_path, {}),
+        scratch=tmp_path,
+    )
+    assert command.hardware_decode is False
+    with pytest.raises(RenderError, match="normalize failed for segment 0"):
+        orch._normalize_segment(  # pylint: disable=protected-access
+            0,
+            segment,
+            target=_target(),
+            profile=_amd_profile(),
+            options=_retry_options(fake, tmp_path, {}),
+            scratch=tmp_path,
+            progress=orch._Progress(1, None),  # pylint: disable=protected-access
+        )
+    assert len(fake.calls) == 1
+
+
+# --------------------------------------------------------------------------- #
 # 8.3 GPU integration (skipped without a usable hardware accelerator)         #
 # --------------------------------------------------------------------------- #
 
@@ -1531,3 +1954,38 @@ def test_rotated_clip_renders_through_the_vaapi_profile(runtime, tmp_path: Path)
     assert left["YAVG"] < 64 < 192 < right["YAVG"], (left, right)
     corner = _region_stats(runtime, output, "64:64:0:0")
     assert abs(corner["UAVG"] - 128) <= 8, corner
+
+
+@pytest.mark.gpu
+@pytest.mark.has_ffmpeg
+def test_mpeg4_avi_renders_through_the_vaapi_profile(runtime, tmp_path: Path) -> None:
+    """The reproduced bug: an MPEG-4 Part 2 ``.avi`` fails VAAPI hardware decode (-38).
+
+    The profile must decode it in software and upload it, so the event renders on the GPU
+    host without ``--device cpu`` and without needing the reactive retry.
+    """
+    profile = _hardware_profile(runtime)
+    clip = tmp_path / "old.avi"
+    runtime.run(
+        ["-y", "-f", "lavfi", "-i", "testsrc=size=640x480:rate=30:duration=1"]
+        + ["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1"]
+        + ["-c:v", "mpeg4", "-pix_fmt", "yuv420p", "-c:a", "mp3", "-shortest", str(clip)]
+    )
+    facts = {clip.name: probe_media(clip, runtime=runtime)}
+    assert facts[clip.name].video_codec == "mpeg4"
+    assert profile.can_hw_decode("mpeg4", facts[clip.name].pix_fmt) is False
+
+    plan = RenderPlan(
+        metadata=Metadata(title="Old"),
+        look={"target_resolution": [640, 480], "video_codec": "h264"},
+        chapters=(ResolvedChapter(name="", clips=(ResolvedClip(identity=clip.name),)),),
+    )
+    options = RenderOptions(
+        event_dir=tmp_path, output_dir=tmp_path / "out", clip_facts=facts, runtime=runtime
+    )
+    result = render_movie(plan, profile, options)
+
+    assert result.output_path.exists()
+    assert not result.warnings  # chosen up front, not recovered by the retry
+    meta = probe_media(result.output_path, runtime=runtime)
+    assert (meta.width, meta.height, meta.video_codec) == (640, 480, "h264")

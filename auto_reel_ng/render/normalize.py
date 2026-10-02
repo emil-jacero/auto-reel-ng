@@ -53,6 +53,9 @@ class NormalizeCommand:
     output_path: Path
     duration: float
     warnings: tuple[str, ...] = ()
+    #: Whether the decode runs on the accelerator (its DECODE fragment leaves frames in
+    #: hardware memory). The orchestrator retries only such a command in software.
+    hardware_decode: bool = False
 
 
 @dataclass(frozen=True)
@@ -224,6 +227,7 @@ def build_normalize_command(
     output_path: Path,
     *,
     render_node: Optional[str] = None,
+    force_software_decode: bool = False,
 ) -> NormalizeCommand:
     """Build the ffmpeg command that normalizes ``segment`` to ``target``.
 
@@ -234,6 +238,11 @@ def build_normalize_command(
     its producer and built by :func:`build_synthetic_normalize_command` instead, so
     routing a synthetic segment through the source path fails loud rather than
     silently mis-encoding it.
+
+    The decode is chosen per clip: a clip the profile reports as not hardware-decodable
+    (its codec or pixel format is outside the accelerator's decoder), or any clip when
+    ``force_software_decode`` is set, is decoded in software and uploaded through the
+    ordinary frame-location transfers. A hardware-decodable clip is unchanged.
     """
     if segment.is_synthetic:
         raise RenderError(
@@ -249,6 +258,19 @@ def build_normalize_command(
         fill_color=target.fill_color,
         needs_pad=_needs_pad(clip, segment.rotate, target),
     )
+    hw_decodable = profile.can_hw_decode(clip.video_codec, clip.pix_fmt)
+    if not hw_decodable and profile.fragment(OpClass.DECODE, params).frames_out is not (
+        FrameLocation.SYSTEM
+    ):
+        # Expected, not an error: the accelerator decodes some codecs, just not this one.
+        logger.info(
+            "%s: %s %s is not hardware-decodable on the %s profile; decoding in software",
+            segment.identity,
+            clip.video_codec,
+            clip.pix_fmt or "(unknown pix_fmt)",
+            profile.vendor.value,
+        )
+    params = replace(params, software_decode=force_software_decode or not hw_decodable)
     decode = profile.fragment(OpClass.DECODE, params)
     encode = profile.fragment(OpClass.ENCODE, params)
 
@@ -322,6 +344,7 @@ def build_normalize_command(
         output_path=Path(output_path),
         duration=duration,
         warnings=tuple(warnings),
+        hardware_decode=decode.frames_out is not FrameLocation.SYSTEM,
     )
 
 

@@ -117,6 +117,10 @@ class AcceleratorCapabilities:  # pylint: disable=too-many-instance-attributes
     #: Whether this accelerator's pad fills with the requested colour. Measured for
     #: ``pad_vaapi`` (exp 006: Mesa paints green); true for CPU ``pad``-based vendors.
     pad_fill_ok: bool = True
+    #: source codec name (``"h264"``/``"hevc"``/...) -> the highest bit depth its hardware
+    #: decoder handles. Empty when hardware decode did not pass the self-test; the codec
+    #: set is a static per-vendor table, only kept when the decode probe worked.
+    hw_decode: Mapping[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         """Plain-dict view for logging."""
@@ -130,6 +134,7 @@ class AcceleratorCapabilities:  # pylint: disable=too-many-instance-attributes
             "usable_encoders": dict(self.usable_encoders),
             "decode_method": self.decode_method,
             "pad_fill_ok": self.pad_fill_ok,
+            "hw_decode": dict(self.hw_decode),
         }
 
 
@@ -245,3 +250,6 @@ class OpParams:
     #: ``NORMALIZE`` only: the clip's pixel or display aspect differs from the canvas, so
     #: the normalize must pad. Stated by ``render/`` as a geometric fact about the clip.
     needs_pad: bool = False
+    #: ``DECODE`` only: decode in software even where the profile has a hardware decoder,
+    #: because the clip is not hardware-decodable (or its hardware decode just failed).
+    software_decode: bool = False

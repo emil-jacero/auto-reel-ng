@@ -38,6 +38,15 @@ class AccelProfile(ABC):
                 without a target resolution).
         """
 
+    def can_hw_decode(self, codec: str, pix_fmt: Optional[str]) -> bool:
+        """Whether this profile's hardware decoder can decode a clip of ``codec``/``pix_fmt``.
+
+        The default (and the CPU profile) has no hardware decoder, so the answer is no.
+        A hardware profile overrides this from its self-tested capabilities.
+        """
+        del codec, pix_fmt
+        return False
+
     def upload_device_flags(self, params: OpParams) -> tuple[str, ...]:
         """Global flags that give a filter graph a device to ``hwupload`` frames into.
 

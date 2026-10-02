@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Optional
 
 from ..models import AcceleratorCapabilities, OpClass, OpFragment, OpParams
+from ..pixfmt import pix_fmt_traits
 from .base import AccelProfile
 from .cpu import CPUProfile
 
@@ -43,8 +44,32 @@ class HardwareProfile(AccelProfile):
             ops.add(OpClass.ENCODE)
         return frozenset(ops)
 
+    def can_hw_decode(self, codec: str, pix_fmt: Optional[str]) -> bool:
+        """Whether the self-tested hardware decoder handles ``codec`` in ``pix_fmt``.
+
+        Requires a passing decode self-test, a codec in ``hw_decode``, and, when the probe
+        reported a pixel format, 4:2:0 chroma within the codec's bit-depth limit. An absent
+        pixel format is decided by the codec alone; an unrecognised one is not hardware
+        decodable (software decode is correct for every format).
+        """
+        caps = self.capabilities
+        if not caps.decode_method:
+            return False
+        max_depth = caps.hw_decode.get(codec)
+        if max_depth is None:
+            return False
+        if pix_fmt is None:
+            return True
+        traits = pix_fmt_traits(pix_fmt)
+        if traits is None:
+            return False
+        depth, is_420 = traits
+        return is_420 and depth <= max_depth
+
     def fragment(self, op: OpClass, params: OpParams) -> OpFragment:
         """Return the hardware fragment for ``op``, or the CPU fallback if unusable."""
+        if op is OpClass.DECODE and params.software_decode:
+            return self._cpu.fragment(op, params)
         builders = {
             OpClass.DECODE: self._decode,
             OpClass.NORMALIZE: self._normalize,

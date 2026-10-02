@@ -38,9 +38,37 @@ _DECODE_METHOD = {Vendor.AMD: "vaapi", Vendor.NVIDIA: "cuda", Vendor.INTEL: "qsv
 #: vendor -> the pad filter its normalize uses (CPU ``pad`` for the no-native-pad vendors).
 _PAD_FILTER = {Vendor.AMD: "pad_vaapi", Vendor.NVIDIA: "pad", Vendor.INTEL: "pad"}
 
+#: vendor -> source codec -> the highest bit depth its hardware decoder handles. A static
+#: table (the self-test keeps its single h264 decode probe), kept only when that probe
+#: passed. A missing entry costs speed (software decode); a wrong one costs one logged
+#: retry in the orchestrator. AMD lists only what the Mesa VAAPI stack is known to decode;
+#: ``mpeg4`` was reproduced failing on the RX 9070 XT. NVIDIA and Intel are unverified here.
+_HW_DECODE: Mapping[Vendor, Mapping[str, int]] = {
+    Vendor.AMD: {"h264": 8, "hevc": 10, "vp9": 10, "av1": 10},
+    Vendor.NVIDIA: {
+        "h264": 8,
+        "hevc": 10,
+        "vp9": 10,
+        "av1": 10,
+        "mpeg2video": 8,
+        "vc1": 8,
+        "mpeg4": 8,
+        "mjpeg": 8,
+    },
+    Vendor.INTEL: {
+        "h264": 8,
+        "hevc": 10,
+        "vp9": 10,
+        "av1": 10,
+        "mpeg2video": 8,
+        "vc1": 8,
+        "mjpeg": 8,
+    },
+}
+
 #: Bumped whenever what detection records changes, so an older cache file is re-detected.
-#: 2 = ``pad_fill_ok`` (vaapi-pad-fill).
-_CACHE_SCHEMA = 2
+#: 2 = ``pad_fill_ok`` (vaapi-pad-fill); 3 = ``hw_decode`` (render-vaapi-software-decode-fallback).
+_CACHE_SCHEMA = 3
 
 #: Process-wide cache keyed by host fingerprint.
 _INVENTORY_CACHE: dict[tuple[object, ...], CapabilityInventory] = {}
@@ -133,6 +161,7 @@ def compute_accelerator(
         usable_encoders=usable_encoders,
         decode_method=decode_method,
         pad_fill_ok=pad_fill_ok,
+        hw_decode=dict(_HW_DECODE[vendor]) if decode_method else {},
     )
 
 
@@ -328,6 +357,7 @@ def _accelerator_from_dict(data: Mapping[str, object]) -> AcceleratorCapabilitie
         decode_method=data["decode_method"],  # type: ignore[arg-type]
         # Indexed, not .get(): a cache written before the flag existed is a mismatch.
         pad_fill_ok=bool(data["pad_fill_ok"]),
+        hw_decode={str(k): int(v) for k, v in _as_dict(data["hw_decode"]).items()},
     )
 
 

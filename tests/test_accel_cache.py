@@ -31,7 +31,11 @@ def _sample_inventory():
         hwaccels=frozenset({"vaapi"}),
         filters=frozenset({"scale_vaapi", "pad_vaapi"}),
         devices=(device,),
-        selftest={"amd.encode.hevc": OpStatus.WORKING, "amd.overlay": OpStatus.UNSUPPORTED},
+        selftest={
+            "amd.decode": OpStatus.WORKING,
+            "amd.encode.hevc": OpStatus.WORKING,
+            "amd.overlay": OpStatus.UNSUPPORTED,
+        },
         ffmpeg_version=(7, 1),
     )
 
@@ -92,6 +96,45 @@ def test_cache_without_pad_fill_ok_is_redetected(tmp_path: Path) -> None:
     cache_path.write_text(json.dumps(payload), encoding="utf-8")
 
     assert _load_cache(cache_path, fingerprint) is None
+
+
+def test_hw_decode_round_trips_through_the_file_cache(tmp_path: Path) -> None:
+    """The hardware-decodable codec set survives the cache file."""
+    cache_path = tmp_path / "caps.json"
+    _write_cache(cache_path, ("host",), _sample_inventory())
+    loaded = _load_cache(cache_path, ("host",))
+    assert loaded is not None
+    amd = loaded.accelerator(Vendor.AMD)
+    assert amd is not None
+    assert amd.hw_decode == {"h264": 8, "hevc": 10, "vp9": 10, "av1": 10}
+
+
+def test_cache_without_hw_decode_is_redetected(tmp_path: Path) -> None:
+    """A cache written before the decoder set was recorded is not reused."""
+    cache_path = tmp_path / "caps.json"
+    _write_cache(cache_path, ("host",), _sample_inventory())
+    payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    for accel in payload["inventory"]["accelerators"]:
+        del accel["hw_decode"]
+    cache_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert _load_cache(cache_path, ("host",)) is None
+
+
+def test_schema_two_cache_is_not_reused(
+    runtime: FfmpegRuntime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cache fingerprinted under schema 2 (before hw_decode) is re-detected on schema 3."""
+    clear_cache()
+    cache_path = tmp_path / "caps.json"
+    monkeypatch.setattr(detection, "_CACHE_SCHEMA", 2)
+    detect_capabilities(runtime=runtime, selftest=False, cache_path=cache_path)
+
+    monkeypatch.undo()
+    clear_cache()
+    assert detection._CACHE_SCHEMA == 3  # pylint: disable=protected-access
+    detect_capabilities(runtime=runtime, selftest=False, cache_path=cache_path)
+    assert json.loads(cache_path.read_text(encoding="utf-8"))["fingerprint"][0] == 3
 
 
 def test_old_cache_schema_triggers_redetection(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from auto_reel_ng.accel.detection import (
     build_inventory,
     compute_accelerator,
@@ -167,3 +169,23 @@ def test_pad_fill_ok_is_true_for_cpu_pad_vendors() -> None:
     for vendor in (Vendor.NVIDIA, Vendor.INTEL):
         caps = compute_accelerator(vendor, None, {f"{vendor.value}.normalize": OpStatus.WORKING})
         assert caps.pad_fill_ok is True
+
+
+def test_hw_decode_table_is_filled_when_the_decode_probe_works() -> None:
+    """The per-vendor hardware-decodable codec set is recorded only on a passing decode."""
+    amd = compute_accelerator(Vendor.AMD, None, {"amd.decode": OpStatus.WORKING})
+    assert amd.hw_decode == {"h264": 8, "hevc": 10, "vp9": 10, "av1": 10}
+    assert "mpeg4" not in amd.hw_decode  # reproduced failing on the RX 9070 XT
+    for vendor in (Vendor.NVIDIA, Vendor.INTEL):
+        caps = compute_accelerator(vendor, None, {f"{vendor.value}.decode": OpStatus.WORKING})
+        assert caps.hw_decode["h264"] == 8
+        assert caps.hw_decode["hevc"] == 10
+
+
+@pytest.mark.parametrize("status", [OpStatus.UNSUPPORTED, OpStatus.FAULTING, None])
+def test_hw_decode_is_empty_when_the_decode_probe_did_not_pass(status: object) -> None:
+    """A host whose hardware decode failed (or never ran) records no hardware-decodable codec."""
+    selftest = {} if status is None else {"amd.decode": status}
+    caps = compute_accelerator(Vendor.AMD, None, selftest)  # type: ignore[arg-type]
+    assert caps.decode_method is None
+    assert not caps.hw_decode

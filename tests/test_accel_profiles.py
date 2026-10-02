@@ -16,7 +16,9 @@ from auto_reel_ng.accel.models import (
     TransferMarker,
     Vendor,
 )
+from auto_reel_ng.accel.pixfmt import pix_fmt_traits
 from auto_reel_ng.accel.profiles import (
+    AccelProfile,
     CPUProfile,
     NvencProfile,
     QsvProfile,
@@ -44,7 +46,25 @@ def _amd_caps() -> AcceleratorCapabilities:
         can_tonemap_hw=False,
         usable_encoders={"h264": "h264_vaapi", "hevc": "hevc_vaapi", "av1": "av1_vaapi"},
         decode_method="vaapi",
+        hw_decode={"h264": 8, "hevc": 10},
     )
+
+
+def _caps_for(vendor: Vendor, method: str, **overrides: object) -> AcceleratorCapabilities:
+    """Hardware capabilities for ``vendor`` with a decoder set of h264 8-bit and hevc 10-bit."""
+    values: dict[str, object] = {
+        "vendor": vendor,
+        "usable": True,
+        "device": None,
+        "pad_filter": "pad",
+        "can_overlay_hw": False,
+        "can_tonemap_hw": False,
+        "usable_encoders": {"h264": "x"},
+        "decode_method": method,
+        "hw_decode": {"h264": 8, "hevc": 10},
+    }
+    values.update(overrides)
+    return AcceleratorCapabilities(**values)  # type: ignore[arg-type]
 
 
 # -- CPU profile -------------------------------------------------------------
@@ -212,6 +232,91 @@ def test_intel_fragments() -> None:
     encode = profile.fragment(OpClass.ENCODE, OpParams(codec="hevc"))
     assert encode.output_flags == ("-c:v", "hevc_qsv")
     assert encode.frames_in is FrameLocation.QSV
+
+
+# -- per-clip hardware decode choice -----------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("pix_fmt", "expected"),
+    [
+        ("yuv420p", (8, True)),
+        ("yuvj420p", (8, True)),
+        ("nv12", (8, True)),
+        ("yuv420p10le", (10, True)),
+        ("p010le", (10, True)),
+        ("yuv422p", (8, False)),
+        ("yuv444p10le", (10, False)),
+        ("gray", None),
+        ("rgb24", None),
+    ],
+)
+def test_pix_fmt_traits(pix_fmt: str, expected: object) -> None:
+    """Bit depth and 4:2:0-ness come from the format name; an unknown format is unknown."""
+    assert pix_fmt_traits(pix_fmt) == expected
+
+
+def _profiles() -> list[AccelProfile]:
+    return [
+        VaapiProfile(_amd_caps()),
+        NvencProfile(_caps_for(Vendor.NVIDIA, "cuda")),
+        QsvProfile(_caps_for(Vendor.INTEL, "qsv")),
+    ]
+
+
+@pytest.mark.parametrize("profile", _profiles(), ids=lambda p: p.vendor.value)
+@pytest.mark.parametrize(
+    ("codec", "pix_fmt", "expected"),
+    [
+        ("mpeg4", "yuv420p", False),  # codec not in the decoder set
+        ("h264", "yuv420p", True),
+        ("h264", "yuvj420p", True),
+        ("h264", "yuv420p10le", False),  # deeper than the h264 limit of 8
+        ("hevc", "yuv420p10le", True),  # exactly the hevc limit
+        ("hevc", "yuv420p12le", False),
+        ("h264", "yuv422p", False),  # not 4:2:0 whatever the table says
+        ("hevc", "yuv444p10le", False),
+        ("h264", "gray", False),  # unrecognised format: software is always correct
+        ("h264", None, True),  # no pix_fmt reported: codec alone, nothing invented
+        ("mpeg4", None, False),
+    ],
+)
+def test_hardware_profiles_decide_hw_decode_per_clip(
+    profile: AccelProfile, codec: str, pix_fmt: object, expected: bool
+) -> None:
+    assert profile.can_hw_decode(codec, pix_fmt) is expected  # type: ignore[arg-type]
+
+
+def test_hw_decode_is_false_when_the_decode_self_test_failed() -> None:
+    """No decode_method (the probe did not pass) -> nothing is hardware-decodable."""
+    failed = VaapiProfile(dataclasses.replace(_amd_caps(), decode_method=None, hw_decode={}))
+    assert failed.can_hw_decode("h264", "yuv420p") is False
+    # A stale non-empty set is still ignored without a passing probe.
+    stale = VaapiProfile(dataclasses.replace(_amd_caps(), decode_method=None))
+    assert stale.can_hw_decode("h264", "yuv420p") is False
+    assert stale.fragment(OpClass.DECODE, HD) == CPUProfile().fragment(OpClass.DECODE, HD)
+
+
+def test_cpu_profile_never_hw_decodes() -> None:
+    assert CPUProfile().can_hw_decode("h264", "yuv420p") is False
+    assert CPUProfile().can_hw_decode("h264", None) is False
+
+
+@pytest.mark.parametrize("profile", _profiles(), ids=lambda p: p.vendor.value)
+def test_software_decode_param_yields_the_cpu_decode_fragment(profile: AccelProfile) -> None:
+    """software_decode=True -> no hardware flags, system frames; unset keeps the hardware one."""
+    soft = profile.fragment(OpClass.DECODE, dataclasses.replace(HD, software_decode=True))
+    assert soft == OpFragment(op=OpClass.DECODE)
+    assert soft.frames_out is FrameLocation.SYSTEM
+    hard = profile.fragment(OpClass.DECODE, HD)
+    assert hard.input_flags and hard.frames_out is not FrameLocation.SYSTEM
+
+
+def test_software_decode_leaves_other_ops_alone() -> None:
+    """The flag only concerns DECODE: normalize stays the hardware fragment."""
+    profile = VaapiProfile(_amd_caps())
+    params = dataclasses.replace(HD, software_decode=True)
+    assert profile.fragment(OpClass.NORMALIZE, params) == profile.fragment(OpClass.NORMALIZE, HD)
 
 
 # -- frame-location tracking & transfer insertion ----------------------------
