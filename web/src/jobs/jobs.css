@@ -77,6 +77,8 @@
    * not fit side by side, needs 19.2ch of the slot's font in DejaVu Sans and
    * 19.7ch in Liberation Sans, the widest of the fonts checked; the rest is a
    * margin of about 10%.
+   * Counts are sized for 99: three digits at 320-330 px overflow the slot rather than
+   * being clipped, which would show a wrong number (design.md, Risks).
    */
   @container shell-status (inline-size < 22ch) {
     .jobs-counts {
