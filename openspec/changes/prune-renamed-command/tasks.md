@@ -1,6 +1,6 @@
 ## 1. Baseline
 
-- [ ] 1.1 Confirm the code this change was designed against, on `origin/main` after the gate
+- [x] 1.1 Confirm the code this change was designed against, on `origin/main` after the gate
   `render-refuses-claimed-movie` merged: `write_manifest` has no `superseded` parameter or field,
   `recorded_output_in` does not exist, `main.py` has ten subcommands and no `prune-renamed`, the `headless-cli`
   and `change-detection` specs have no requirement named "`prune-renamed` removes superseded movies only on
@@ -10,7 +10,7 @@
 
 ## 2. staleness/ — the manifest remembers superseded names
 
-- [ ] 2.1 Red first, in `tests/test_staleness_manifest.py`: a second `write_manifest` with a different
+- [x] 2.1 Red first, in `tests/test_staleness_manifest.py`: a second `write_manifest` with a different
   `output` records the first as `superseded`; three renames give `[A, B]` in order; a write with the same
   `output` keeps the list unchanged; renaming back to a listed name removes it from the list; a manifest
   without the field, and one whose field is a string or a list holding a number, read with `superseded == ()`
@@ -18,7 +18,7 @@
   and `written_at` handling are unchanged; `recorded_output_in("2024-06-27 - X.mp4", out) == out/"2024"/…` and an
   undated name is directly under `out`, and `recorded_output_path` agrees with it on the existing cases.
   Verify they fail on the unchanged code.
-- [ ] 2.2 Add `superseded: Tuple[str, ...] = ()` to `RenderManifest`, the carry-over to `write_manifest`, the
+- [x] 2.2 Add `superseded: Tuple[str, ...] = ()` to `RenderManifest`, the carry-over to `write_manifest`, the
   tolerant read to `read_manifest`, and `recorded_output_in` (with `recorded_output_path` rebuilt on it) in
   `auto_reel_ng/staleness/manifest.py`, exported from `auto_reel_ng/staleness/__init__.py`, as in the design.
   Verify the 2.1 tests pass and `.venv/bin/python -m pytest tests/test_staleness_manifest.py
@@ -26,7 +26,7 @@
 
 ## 3. cli/ — `prune-renamed`
 
-- [ ] 3.1 Red first, new `tests/test_cli_prune_renamed.py` (scratch projects on `tmp_path`, manifests written
+- [x] 3.1 Red first, new `tests/test_cli_prune_renamed.py` (scratch projects on `tmp_path`, manifests written
   with `write_manifest` and empty `.mp4` files as movies, no ffmpeg): the planner and a dry run list the
   superseded movie with its event and replacement and delete nothing; an event retitled but not re-rendered, an
   event whose current movie is missing or a folder, an event without the field, and an event whose manifest is
@@ -35,10 +35,10 @@
   renamed-back event and a case-only rename list nothing; `../x.mp4`, `a/b.mp4`, `..`, a symlinked year folder
   pointing outside the output, a symlink at the old name and a folder at the old name list nothing and leave
   the outside file unchanged. Verify they fail (the module does not exist).
-- [ ] 3.2 Add `auto_reel_ng/cli/prune.py` with `PruneCandidate`, `plan_prune` and the listing printer, using the
+- [x] 3.2 Add `auto_reel_ng/cli/prune.py` with `PruneCandidate`, `plan_prune` and the listing printer, using the
   gate's lookup for the manifest-claim set where task 1.1 found it fits (design, "Claims"). Verify the 3.1
   planner and dry-run tests pass.
-- [ ] 3.3 Red first, same file: `--yes` deletes the old movie and leaves the new movie and the manifest
+- [x] 3.3 Red first, same file: `--yes` deletes the old movie and leaves the new movie and the manifest
   byte-for-byte unchanged, prints the deleted file, and exits 0; a second run lists nothing; a delete that fails
   (a read-only year folder, or `unlink` patched to raise `PermissionError` for one file) is reported with the
   operating system's reason, the other file is still deleted, and the exit code is 1; a layout walk that raises
@@ -46,14 +46,14 @@
   output directory; a project with no events exits 0 with the standard message; `--help` lists
   `prune-renamed` (eleven subcommands, updating the existing count assertion in `tests/test_cli_main.py`) and
   `--yes`. Verify they fail on the 3.2 module.
-- [ ] 3.4 Add `cmd_prune_renamed` (delete with the design's re-check, per-file error report, exit codes) to
+- [x] 3.4 Add `cmd_prune_renamed` (delete with the design's re-check, per-file error report, exit codes) to
   `auto_reel_ng/cli/prune.py` and register `prune-renamed` and `--yes` in `auto_reel_ng/cli/main.py` (module
   docstring updated). Verify the 3.3 tests pass and `.venv/bin/python -m pytest tests/test_cli_main.py
   tests/test_cli_adopt_renders.py tests/test_cli_commands.py` stays green.
 
 ## 4. Docs
 
-- [ ] 4.1 Add `auto-reel prune-renamed <root> [--yes]` to the command list and a short "Removing superseded
+- [x] 4.1 Add `auto-reel prune-renamed <root> [--yes]` to the command list and a short "Removing superseded
   movies" paragraph in `README.md` (dry run first, what is protected, movies renamed before this version are
   not known), one amendment sentence on **D-9** in `docs/high-level-design.md` (dated, change
   `prune-renamed-command`: the engine still never deletes; the operator command removes superseded movies; the
@@ -62,7 +62,7 @@
 
 ## 5. Validation
 
-- [ ] 5.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`,
+- [x] 5.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`,
   then `.venv/bin/python -m mypy auto_reel_ng`, `.venv/bin/python -m pylint auto_reel_ng`, and the full
   `.venv/bin/python -m pytest` including `requires_db` (podman). Then run
   `openspec validate prune-renamed-command --strict`. Verify all are clean or green, apart from the known cairo

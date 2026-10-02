@@ -15,6 +15,7 @@ from auto_reel_ng.staleness.manifest import (
     manifest_path,
     read_manifest,
     recorded_movie_path,
+    recorded_output_in,
     recorded_output_path,
     records_output,
     write_manifest,
@@ -194,3 +195,131 @@ def test_records_output_is_false_without_a_usable_manifest(tmp_path: Path) -> No
 
     for event in (absent, malformed, wrong_version, dotdot):
         assert not records_output(event, out)
+
+
+# --- superseded names (change prune-renamed-command) -------------------------------------------
+
+
+def _write(event: Path, output: str) -> None:
+    event.mkdir(exist_ok=True)
+    write_manifest(event, _fingerprint(event), output=output, engine_identity="x")
+
+
+def _superseded(event: Path) -> tuple[str, ...]:
+    manifest = read_manifest(event)
+    assert manifest is not None
+    return manifest.superseded
+
+
+def test_first_manifest_has_no_superseded_names(tmp_path: Path) -> None:
+    _write(tmp_path / "e", "A.mp4")
+
+    assert _superseded(tmp_path / "e") == ()
+
+
+def test_a_rename_records_the_previous_output_as_superseded(tmp_path: Path) -> None:
+    event = tmp_path / "e"
+    _write(event, "2024-06-27 - Grillning med Grannar.mp4")
+    _write(event, "2024-06-27 - Grillkv\u00e4ll med grannarna.mp4")
+
+    manifest = read_manifest(event)
+    assert manifest is not None
+    assert manifest.output == "2024-06-27 - Grillkv\u00e4ll med grannarna.mp4"
+    assert manifest.superseded == ("2024-06-27 - Grillning med Grannar.mp4",)
+
+
+def test_several_renames_accumulate_in_order(tmp_path: Path) -> None:
+    event = tmp_path / "e"
+    for name in ("A.mp4", "B.mp4", "C.mp4"):
+        _write(event, name)
+
+    assert _superseded(event) == ("A.mp4", "B.mp4")
+
+
+def test_a_write_under_the_same_name_keeps_the_list(tmp_path: Path) -> None:
+    event = tmp_path / "e"
+    for name in ("A.mp4", "B.mp4", "B.mp4", "B.mp4"):
+        _write(event, name)
+
+    assert _superseded(event) == ("A.mp4",)
+
+
+def test_renaming_back_removes_the_current_name_from_the_list(tmp_path: Path) -> None:
+    event = tmp_path / "e"
+    for name in ("A.mp4", "B.mp4", "A.mp4"):
+        _write(event, name)
+
+    manifest = read_manifest(event)
+    assert manifest is not None
+    assert manifest.output == "A.mp4"
+    assert manifest.superseded == ("B.mp4",)
+
+
+def test_a_name_is_listed_once(tmp_path: Path) -> None:
+    event = tmp_path / "e"
+    for name in ("A.mp4", "B.mp4", "A.mp4", "B.mp4", "C.mp4"):
+        _write(event, name)
+
+    assert _superseded(event) == ("A.mp4", "B.mp4")
+
+
+def test_a_manifest_without_the_field_reads_as_empty(tmp_path: Path) -> None:
+    event = tmp_path / "e"
+    _write(event, "A.mp4")
+    payload = json.loads(manifest_path(event).read_text(encoding="utf-8"))
+    payload.pop("superseded", None)
+    manifest_path(event).write_text(json.dumps(payload), encoding="utf-8")
+
+    assert _superseded(event) == ()
+
+
+@pytest.mark.parametrize("value", ["x", ["A.mp4", 3], {"a": "b"}, 7, None])
+def test_a_malformed_superseded_field_reads_as_empty_and_stays_valid(
+    tmp_path: Path, value: object
+) -> None:
+    event = tmp_path / "e"
+    _write(event, "B.mp4")
+    payload = json.loads(manifest_path(event).read_text(encoding="utf-8"))
+    payload["superseded"] = value
+    manifest_path(event).write_text(json.dumps(payload), encoding="utf-8")
+
+    manifest = read_manifest(event)
+    assert manifest is not None
+    assert manifest.output == "B.mp4"
+    assert manifest.superseded == ()
+
+
+def test_an_unreadable_previous_manifest_contributes_nothing(tmp_path: Path) -> None:
+    event = tmp_path / "e"
+    _write(event, "A.mp4")
+    manifest_path(event).write_text("{ not json", encoding="utf-8")
+    _write(event, "B.mp4")
+
+    assert _superseded(event) == ()
+
+
+def test_the_superseded_list_is_not_part_of_the_fingerprint(tmp_path: Path) -> None:
+    event = tmp_path / "e"
+    _write(event, "A.mp4")
+    first = read_manifest(event)
+    _write(event, "B.mp4")
+    second = read_manifest(event)
+
+    assert first is not None and second is not None
+    assert second.fingerprint == first.fingerprint
+    assert dict(second.components) == dict(first.components)
+    assert second.written_at
+
+
+def test_recorded_output_in_places_dated_and_undated_names(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+
+    assert recorded_output_in("2024-06-27 - X.mp4", out) == out / "2024" / "2024-06-27 - X.mp4"
+    assert recorded_output_in("Party.mp4", out) == out / "Party.mp4"
+
+
+def test_recorded_output_path_agrees_with_recorded_output_in(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    for expected in (out / "2023" / "2023-01-02 - Z.mp4", out / "Undated.mp4"):
+        for recorded in ("2024-06-27 - X.mp4", "Party.mp4"):
+            assert recorded_output_path(recorded, expected) == recorded_output_in(recorded, out)
