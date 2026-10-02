@@ -25,7 +25,7 @@ found by the bug triage of main at `6a7fe16` and re-checked against the code for
   lift, only while more than one chapter is listed) say so.
 - **The pointer auto-scroll has a bounded speed.** At the window's very edge it is between 600 and
   2,000 CSS pixels per second, and it still ramps from nothing at the zone's inner edge. Two constants
-  change (`acceleration`, and an explicit `interval` of one frame), so the speed no longer depends on
+  change (`acceleration`, and an explicit `interval` of 20 ms), so the speed no longer depends on
   how fast the browser's timer fires.
 - No engine, API, schema or dependency change. A zero-dependency unit test of the new pure function
   runs under Node's built-in `node:test` (design, "A test for the pure part"). The same round's
