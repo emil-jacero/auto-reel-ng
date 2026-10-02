@@ -45,14 +45,31 @@ def resolve_metadata(authored: Metadata, folder: FolderName) -> Metadata:
     )
 
 
+def reel_exists(path: Path) -> bool:
+    """Whether the disk has a ``reel.yaml`` at ``path``; a refusal to answer is not "no".
+
+    ``False`` only when the disk says there is no such file (including a parent that is not a
+    directory). Any other failure, a :class:`PermissionError` for an event folder that can be
+    listed but not searched above all, propagates: ``Path.exists()`` reads it as absent, which
+    seeds a document from the folder name over a ``reel.yaml`` that was never looked at. ``stat``
+    follows symlinks, so a dangling link is absent and a symlinked file is present.
+    """
+    try:
+        Path(path).stat()
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    return True
+
+
 def load_authored_document(event_dir: Path, *, order: ClipOrder) -> Tuple[ReelDocument, bool]:
     """``<event>/reel.yaml`` as authored if present, else a folder seed; ``(doc, seeded)``.
 
     A seed places each chapter's clips in ``order`` (the project's sort rule); an
-    existing ``reel.yaml`` keeps its own order.
+    existing ``reel.yaml`` keeps its own order. A folder the disk will not let us look into
+    raises its :class:`PermissionError` rather than seeding (see :func:`reel_exists`).
     """
     reel_path = Path(event_dir) / REEL_FILENAME
-    if reel_path.exists():
+    if reel_exists(reel_path):
         return load_document(reel_path), False
     return seed_document(event_dir, order=order), True
 
@@ -112,6 +129,7 @@ __all__ = [
     "REEL_FILENAME",
     "load_authored_document",
     "load_event_document",
+    "reel_exists",
     "require_processable",
     "resolve_metadata",
     "with_resolved_metadata",

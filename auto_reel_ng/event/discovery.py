@@ -13,11 +13,12 @@ from __future__ import annotations
 import logging
 import os
 import re
+import stat
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 from ..reel.document import (
     DEFAULT_CHAPTER_NAME,
@@ -131,7 +132,7 @@ def scan_event(event_dir: Path) -> DiskListing:
     if root_clips:
         groups.append((DEFAULT_CHAPTER_NAME, root_clips))
 
-    subdirs = (p for p in event_dir.iterdir() if p.is_dir() and _is_chapter_dir(p))
+    subdirs = (p for p in event_dir.iterdir() if _is_dir(p) and _is_chapter_dir(p))
     for subdir in sorted(subdirs, key=lambda p: p.name):
         sub_clips = _video_identities(subdir, event_dir)
         if sub_clips:
@@ -141,13 +142,39 @@ def scan_event(event_dir: Path) -> DiskListing:
 
 
 def is_reelignored(directory: Path) -> bool:
-    """True when ``directory`` carries the legacy ``.reelignore`` marker (contents unread)."""
+    """True when ``directory`` carries the legacy ``.reelignore`` marker (contents unread).
+
+    Lenient on purpose: a folder that cannot be searched answers ``False`` rather than raising,
+    because the ingest walk calls this on every event folder and one such folder must not fail
+    the whole project walk. :func:`scan_event` looks the marker up strictly instead.
+    """
     return (directory / IGNORE_MARKER).is_file()
+
+
+def _stat_says_present(path: Path, kind: Callable[[int], bool]) -> bool:
+    """Whether ``path`` exists and is of ``kind``; only "not there" is ``False``.
+
+    ``Path.is_dir()`` / ``is_file()`` read an ``EACCES`` as "no", so a listable but unsearchable
+    folder looked like one without clips. A permission error here propagates, naming the path.
+    """
+    try:
+        mode = path.stat().st_mode
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    return kind(mode)
+
+
+def _is_dir(path: Path) -> bool:
+    return _stat_says_present(path, stat.S_ISDIR)
+
+
+def _is_file(path: Path) -> bool:
+    return _stat_says_present(path, stat.S_ISREG)
 
 
 def _is_chapter_dir(subdir: Path) -> bool:
     """An event subdirectory contributes clips unless it holds originals or is ignored."""
-    return subdir.name.casefold() != ORIGINALS_DIR and not is_reelignored(subdir)
+    return subdir.name.casefold() != ORIGINALS_DIR and not _is_file(subdir / IGNORE_MARKER)
 
 
 _DIGITS_RE = re.compile(r"(\d+)")
@@ -330,6 +357,6 @@ def _video_identities(directory: Path, event_root: Path) -> tuple[str, ...]:
     identities = [
         path.relative_to(event_root).as_posix()
         for path in directory.iterdir()
-        if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
+        if _is_file(path) and path.suffix.lower() in VIDEO_EXTENSIONS
     ]
     return tuple(sorted(identities))
