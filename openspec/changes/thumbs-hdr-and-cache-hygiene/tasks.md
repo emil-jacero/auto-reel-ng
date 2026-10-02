@@ -5,25 +5,25 @@ Real-ffmpeg tests carry `@pytest.mark.has_ffmpeg` and use the `runtime` and `mak
 
 ## 1. thumbs/ — HDR tone-mapping
 
-- [ ] 1.1 `thumbnail_args` (`thumbs/thumbnail.py`): add keyword `hdr: bool = False`; when true, the `-vf`
+- [x] 1.1 `thumbnail_args` (`thumbs/thumbnail.py`): add keyword `hdr: bool = False`; when true, the `-vf`
   value is `CPU_TONEMAP_FILTER` (imported from `accel/profiles/cpu.py`), a comma, then the existing scale
   chain; with `hdr=False` the list is unchanged. Extend the docstring (module and function) to say HDR input
   is tone-mapped first. Tests in `tests/test_thumbs.py`: the existing golden-list test passes untouched; a
   second golden list for `hdr=True` equals the SDR list with only the `-vf` value changed, and the value
   starts with `zscale=t=linear:npl=100,tonemap=hable,` and ends with the existing scale chain.
-- [ ] 1.2 `thumbnail_for`: replace `_probe_duration` with `_probe_clip`, which returns the probed duration and
+- [x] 1.2 `thumbnail_for`: replace `_probe_duration` with `_probe_clip`, which returns the probed duration and
   `is_hdr` (a small `NamedTuple`) under the same validation and the same `ThumbnailError`s; pass `hdr` through
   `_extract` to `thumbnail_args`. The `probe_calls` fixture in `tests/test_thumbs.py` gains an `is_hdr`
   parameter (default `False`) on the namespace it returns. Tests: a probe reporting `is_hdr=True` makes the
   recorded ffmpeg args carry the tone-map chain and `is_hdr=False` does not; a cache hit with an HDR probe
   installed runs neither probe nor ffmpeg; the probe-error, no-duration and timeout tests (from the gate)
   still pass with the same reasons.
-- [ ] 1.3 Bump `THUMBNAIL_VERSION` by one from its value on main (2 after `thumbs-cache-key-and-count`) and
+- [x] 1.3 Bump `THUMBNAIL_VERSION` by one from its value on main (2 after `thumbs-cache-key-and-count`) and
   extend its comment: the version also changes when the extraction filter graph does for any input class.
   Test: a pinned assertion that the constant is greater than the gate's value (3 or more), and one that a
   thumbnail generated under the previous version's key is not a hit (monkeypatch the constant down, generate,
   restore, request: the fake runtime runs again).
-- [ ] 1.4 Real-ffmpeg test in `tests/test_thumbs_ffmpeg.py`: build a 640×360 HLG clip with the runtime's ffmpeg
+- [x] 1.4 Real-ffmpeg test in `tests/test_thumbs_ffmpeg.py`: build a 640×360 HLG clip with the runtime's ffmpeg
   (`lavfi testsrc`, `-vf setparams=color_primaries=bt2020:color_trc=arib-std-b67:colorspace=bt2020nc`,
   `libx264 -pix_fmt yuv420p`; skip if the encode fails), probe it to confirm `is_hdr`, and `thumbnail_for` it
   with the real runtime: the result is a 320×180 JPEG that differs byte-wise from a plain extraction of the
@@ -34,7 +34,7 @@ Real-ffmpeg tests carry `@pytest.mark.has_ffmpeg` and use the `runtime` and `mak
 
 ## 2. thumbs/ — cache hygiene
 
-- [ ] 2.1 `_extract` (`thumbs/thumbnail.py`): take the cache directory (the output's parent); after the gate's
+- [x] 2.1 `_extract` (`thumbs/thumbnail.py`): take the cache directory (the output's parent); after the gate's
   `FfmpegTimeoutError` branch and before the generic `FfmpegError` branch, when the error message's part after
   `"\nstderr:\n"` contains `No space left on device` or `Disk quota exceeded`, raise
   `ThumbnailCacheError(f"{cache_dir}: cannot write thumbnails: <the matched phrase>")`. Tests in
@@ -49,7 +49,7 @@ Real-ffmpeg tests carry `@pytest.mark.has_ffmpeg` and use the `runtime` and `mak
   runs the runtime on `thumbnail_args(..., output=Path("/dev/full"))` (skip when `/dev/full` is absent) and
   asserts the raised `FfmpegError` is classified as a full disk by the same predicate (export it privately and
   import it in the test), so the match is pinned to the stderr a real ffmpeg prints.
-- [ ] 2.2 Add `STALE_TEMPORARY_AGE = 24 * 60 * 60` and `sweep_stale_temporaries(cache_dir, *, older_than=
+- [x] 2.2 Add `STALE_TEMPORARY_AGE = 24 * 60 * 60` and `sweep_stale_temporaries(cache_dir, *, older_than=
   STALE_TEMPORARY_AGE, now=None) -> int` (`now` is epoch seconds, default `time.time()`; returns the number
   removed) in `thumbs/thumbnail.py`: `os.scandir` the directory; remove regular, non-symlink files whose name
   matches `^\.[0-9a-f]{64}\.[0-9a-f]{32}\.tmp$` and whose `st_mtime` is more than `older_than` seconds before
@@ -59,7 +59,7 @@ Real-ffmpeg tests carry `@pytest.mark.has_ffmpeg` and use the `runtime` and `mak
   is kept; a two-day-old `<key>.jpg`, `notes.tmp`, `.keep`, a directory named like a temporary and a
   symlink named like one are all kept; a file dated tomorrow is kept; a missing directory returns 0; an
   `os.unlink` that raises `PermissionError` (monkeypatched) neither raises nor aborts the other removals.
-- [ ] 2.3 Wire the sweep: `_create_temporary` calls it right after `cache_dir.mkdir(...)`, once per process per
+- [x] 2.3 Wire the sweep: `_create_temporary` calls it right after `cache_dir.mkdir(...)`, once per process per
   resolved directory (a module-level set under a `threading.Lock`, marked before the scan), logging the count
   at info level when it is above zero. Tests in `tests/test_thumbs.py` (an autouse fixture clears the set
   between tests): `thumbnail_for` on a miss with an old temporary in the cache removes it and writes the
@@ -71,7 +71,7 @@ Real-ffmpeg tests carry `@pytest.mark.has_ffmpeg` and use the `runtime` and `mak
 
 ## 3. docs
 
-- [ ] 3.1 `docs/high-level-design.md` D-11: in "Extraction" say HDR clips are tone-mapped on the CPU with the
+- [x] 3.1 `docs/high-level-design.md` D-11: in "Extraction" say HDR clips are tone-mapped on the CPU with the
   render's chain; in "The cache" say a full disk is a cache error and temporaries older than a day are swept
   once per process; add a dated sub-bullet naming the change `thumbs-hdr-and-cache-hygiene`, the version
   bump and that older files are orphaned, not evicted. Verify with `grep -n "thumbs-hdr-and-cache-hygiene"
@@ -79,10 +79,10 @@ Real-ffmpeg tests carry `@pytest.mark.has_ffmpeg` and use the `runtime` and `mak
 
 ## 4. Validation gates
 
-- [ ] 4.1 `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`
+- [x] 4.1 `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`
   leave no diff; `.venv/bin/python -m mypy auto_reel_ng` and `.venv/bin/python -m pylint auto_reel_ng` are
   clean (known cairo `no-member` aside).
-- [ ] 4.2 `.venv/bin/python -m pytest` passes in full (podman for the DB tests, else
+- [x] 4.2 `.venv/bin/python -m pytest` passes in full (podman for the DB tests, else
   `-m "not requires_db"` with the reason stated), including `tests/test_thumbs.py`,
   `tests/test_thumbs_ffmpeg.py`, `tests/test_cli_thumbs.py` and `tests/test_api_thumbnails.py`, whose
   expectations on thumbnails and the cache are unchanged. `RENDER_GRAPH_VERSION` is not bumped (thumbnails

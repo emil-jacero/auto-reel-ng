@@ -15,11 +15,11 @@ from typing import List, Optional, Sequence
 
 import pytest
 
-from auto_reel_ng.errors import ThumbnailError
+from auto_reel_ng.errors import FfmpegError, ThumbnailError
 from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
 from auto_reel_ng.probe import probe_media
 from auto_reel_ng.thumbs import thumbnail as thumbnail_module
-from auto_reel_ng.thumbs import thumbnail_for, thumbnail_path
+from auto_reel_ng.thumbs import thumbnail_args, thumbnail_for, thumbnail_path
 
 pytestmark = pytest.mark.has_ffmpeg
 
@@ -259,3 +259,79 @@ def test_the_source_clip_is_only_read_and_a_second_call_is_cached(
     second = thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
     assert second == first
     assert runs == []
+
+
+# --------------------------------------------------------------------------- #
+# HDR tone-mapping and a full disk, against the real ffmpeg
+# --------------------------------------------------------------------------- #
+
+
+def _hlg_clip(runtime: FfmpegRuntime, path: Path) -> Path:
+    """A 640x360 clip fully tagged BT.2020 / HLG / bt2020nc, or skip when it cannot be made."""
+    try:
+        subprocess.run(
+            [
+                runtime.ffmpeg_path,
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=640x360:rate=30:duration=1",
+                "-vf",
+                "setparams=color_primaries=bt2020:color_trc=arib-std-b67:colorspace=bt2020nc",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                str(path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, OSError) as exc:
+        pytest.skip(f"cannot encode a tagged HLG clip: {exc}")
+    return path
+
+
+def test_an_hlg_clip_is_tone_mapped_into_a_320x180_jpeg(
+    tmp_path: Path, runtime: FfmpegRuntime
+) -> None:
+    clip = _hlg_clip(runtime, tmp_path / "hlg.mp4")
+    assert probe_media(clip, runtime=runtime).is_hdr
+    jpg = thumbnail_for(clip, position=0.25, cache_dir=tmp_path / "cache", runtime=runtime)
+    assert _size(runtime, jpg) == "320,180"
+
+    plain = tmp_path / "plain.jpg"
+    runtime.run(thumbnail_args(clip.resolve(), at=0.25, output=plain, hdr=False))
+    assert plain.read_bytes() != jpg.read_bytes()  # the plain chain range-clips the HDR signal
+
+
+def test_a_pq_clip_tagged_only_with_a_transfer_has_no_thumbnail(
+    tmp_path: Path, make_clip, runtime: FfmpegRuntime
+) -> None:
+    clip = make_clip("pq.mp4", color_trc="smpte2084")
+    cache_dir = tmp_path / "cache"
+    with pytest.raises(ThumbnailError) as exc:
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
+    assert str(exc.value).startswith(f"{clip}: no frame extracted at 0.250s of ")
+    assert _cache_files(cache_dir, "*.jpg") == []
+    assert _cache_files(cache_dir, ".*.tmp") == []
+
+
+def test_an_sdr_clip_still_has_its_thumbnail(
+    tmp_path: Path, make_clip, runtime: FfmpegRuntime
+) -> None:
+    clip = make_clip("sdr.mp4", width=640, height=360)
+    jpg = thumbnail_for(clip, position=0.25, cache_dir=tmp_path / "cache", runtime=runtime)
+    assert _size(runtime, jpg) == "320,180"
+
+
+@pytest.mark.skipif(not Path("/dev/full").exists(), reason="no /dev/full")
+def test_the_stderr_of_a_real_full_disk_is_classified_as_one(
+    tmp_path: Path, make_clip, runtime: FfmpegRuntime
+) -> None:
+    clip = make_clip("clip.mp4")
+    with pytest.raises(FfmpegError) as exc:
+        runtime.run(thumbnail_args(clip, at=0.25, output=Path("/dev/full")))
+    assert thumbnail_module._full_disk_phrase(exc.value) is not None  # pylint: disable=W0212
