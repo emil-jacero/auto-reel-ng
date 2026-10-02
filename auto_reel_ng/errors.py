@@ -20,6 +20,13 @@ class FfmpegError(EngineError):
     """
 
 
+class FfmpegTimeoutError(FfmpegError):
+    """A bounded ffmpeg/ffprobe command did not exit within its time bound.
+
+    The child process was killed. The message names the bound and the command.
+    """
+
+
 class FfmpegVersionError(FfmpegError):
     """The resolved ffmpeg is older than the required minimum or unparseable."""
 
@@ -105,7 +112,8 @@ class ThumbnailError(EngineError):
     """A clip could not give a thumbnail (D-11).
 
     Raised when the clip cannot be statted, its probe fails, the probe reports no
-    usable duration, or ffmpeg produces no frame at the requested time. The engine
+    usable duration, ffmpeg produces no frame at the requested time, or the probe or
+    the extraction does not finish within its time bound. The engine
     makes exactly one attempt and never substitutes another timestamp or a
     placeholder. The message is ``<clip>: <reason>``; ``reason`` carries the cause
     without the clip's path, for a caller that names the clip itself (the CLI).

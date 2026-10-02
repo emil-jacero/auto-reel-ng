@@ -12,7 +12,10 @@ system ``PATH``.
 
 from __future__ import annotations
 
+import contextlib
+import copy
 import logging
+import math
 import os
 import re
 import shutil
@@ -21,7 +24,7 @@ import threading
 from pathlib import Path
 from typing import IO, Callable, List, Optional, Sequence
 
-from ..errors import FfmpegError, FfmpegVersionError
+from ..errors import FfmpegError, FfmpegTimeoutError, FfmpegVersionError
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,17 @@ JELLYFIN_FFMPEG_DIR = "/usr/lib/jellyfin-ffmpeg"
 
 ENV_FFMPEG = "AUTO_REEL_NG_FFMPEG"
 ENV_FFPROBE = "AUTO_REEL_NG_FFPROBE"
+
+#: How long a bounded command is given, after it was killed, to be reaped and to hand back
+#: its output. A child stuck in the kernel (a read from a stalled removable drive) ignores
+#: ``SIGKILL`` until that I/O returns; the caller is released after this and the child
+#: is abandoned to the kernel rather than waited for.
+KILL_GRACE_SECONDS = 5.0
+
+#: Every command's output is decoded as UTF-8; a byte that is not (a Latin-1 file name
+#: that ffmpeg echoes on stderr) shows as its backslash escape instead of raising.
+_ENCODING = "utf-8"
+_ERRORS = "backslashreplace"
 
 ProgressCallback = Callable[[float], None]
 
@@ -131,6 +145,7 @@ class FfmpegRuntime:
         self._ffprobe_path = _resolve_binary("ffprobe", ffprobe_path, ENV_FFPROBE)
         logger.debug("Resolved ffmpeg=%s ffprobe=%s", self._ffmpeg_path, self._ffprobe_path)
 
+        self._timeout: Optional[float] = None
         self._version = self._assert_version()
 
     @property
@@ -148,6 +163,27 @@ class FfmpegRuntime:
         """Detected ffmpeg ``(major, minor)`` version."""
         return self._version
 
+    @property
+    def timeout(self) -> Optional[float]:
+        """The bound, in seconds, that :meth:`run` and :meth:`run_ffprobe` apply (None: none)."""
+        return self._timeout
+
+    def with_timeout(self, seconds: float) -> "FfmpegRuntime":
+        """A view of this runtime whose ``run`` and ``run_ffprobe`` are bounded to ``seconds``.
+
+        The view shares the resolved binaries and the detected version; this runtime, which
+        other threads use, is not changed. A command that overruns is killed and raises
+        :class:`FfmpegTimeoutError`. ``run_with_progress`` is not bounded.
+
+        Raises:
+            ValueError: ``seconds`` is not a positive, finite number.
+        """
+        if not math.isfinite(seconds) or seconds <= 0:
+            raise ValueError(f"A timeout must be a positive, finite number of seconds: {seconds}")
+        bounded = copy.copy(self)
+        bounded._timeout = float(seconds)  # pylint: disable=protected-access
+        return bounded
+
     # -- version gate --------------------------------------------------------
 
     def _query_version_text(self) -> str:
@@ -155,8 +191,10 @@ class FfmpegRuntime:
         result = subprocess.run(
             [self._ffmpeg_path, "-version"],
             capture_output=True,
-            text=True,
             check=False,
+            text=True,
+            encoding=_ENCODING,
+            errors=_ERRORS,
         )
         return result.stdout or result.stderr
 
@@ -189,16 +227,48 @@ class FfmpegRuntime:
         """
         return self._run(self._ffprobe_path, args)
 
-    @staticmethod
-    def _run(executable: str, args: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    def _run(self, executable: str, args: Sequence[str]) -> subprocess.CompletedProcess[str]:
         cmd = [executable, *args]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if result.returncode != 0:
+        # Not ``subprocess.run`` (nor a ``with Popen`` block): both ``wait()`` on the child
+        # after killing it, which never returns while it is stuck in the kernel.
+        proc = subprocess.Popen(  # pylint: disable=consider-using-with
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding=_ENCODING,
+            errors=_ERRORS,
+        )
+        try:
+            stdout, stderr = proc.communicate(timeout=self._timeout)
+        except subprocess.TimeoutExpired as exc:
+            raise self._timed_out(proc, cmd) from exc
+        except BaseException:
+            proc.kill()  # never leave ffmpeg running behind a failed caller
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=KILL_GRACE_SECONDS)
+            raise
+        if proc.returncode != 0:
             raise FfmpegError(
-                f"Command exited {result.returncode}: {' '.join(cmd)}\n"
-                f"stderr:\n{result.stderr.strip()}"
+                f"Command exited {proc.returncode}: {' '.join(cmd)}\nstderr:\n{stderr.strip()}"
             )
-        return result
+        return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+
+    def _timed_out(self, proc: "subprocess.Popen[str]", cmd: Sequence[str]) -> FfmpegTimeoutError:
+        """Kill the overrunning ``proc``, wait a bounded time for it to go, and build the error."""
+        proc.kill()
+        try:
+            proc.communicate(timeout=KILL_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "Abandoning a killed command that did not exit within %gs: %s",
+                KILL_GRACE_SECONDS,
+                " ".join(cmd),
+            )
+            for pipe in (proc.stdout, proc.stderr):
+                if pipe is not None:
+                    pipe.close()
+        return FfmpegTimeoutError(f"Command timed out after {self._timeout:g}s: {' '.join(cmd)}")
 
     def run_with_progress(
         self,
@@ -221,6 +291,8 @@ class FfmpegRuntime:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding=_ENCODING,
+            errors=_ERRORS,
         ) as proc:
             last_fraction = 0.0
             assert proc.stdout is not None and proc.stderr is not None

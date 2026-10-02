@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import signal
 import stat
+import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
 
-from auto_reel_ng.errors import FfmpegError, FfmpegVersionError
+from auto_reel_ng.errors import FfmpegError, FfmpegTimeoutError, FfmpegVersionError
+from auto_reel_ng.ffmpeg import runtime as runtime_module
 from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime, parse_ffmpeg_version
 
 # -- 2.x discovery & version gate -------------------------------------------
@@ -257,3 +262,187 @@ def test_failing_callback_kills_ffmpeg_and_propagates(fake_runtime: FfmpegRuntim
     )
     kind, exc = outcome[0]
     assert kind == "raised" and isinstance(exc, RuntimeError)
+
+
+# -- lossless decoding: a non-UTF-8 byte never raises -------------------------
+
+#: A stand-in binary acting by its last argument. Written to a plain (non-f) string so
+#: the byte escapes below reach the child verbatim. ``FAKE_PIDFILE`` receives the pid.
+FAKE_BINARY = """
+import os, sys, time
+args = sys.argv[1:]
+pidfile = os.environ.get("FAKE_PIDFILE")
+if pidfile:
+    with open(pidfile, "w") as handle:
+        handle.write(str(os.getpid()))
+if "-version" in args:
+    sys.stdout.buffer.write(os.environb.get(b"FAKE_VERSION", b"ffmpeg version 8.1 fake") + b"\\n")
+    sys.exit(0)
+mode = args[-1]
+if mode == "latin1-fail":
+    sys.stderr.buffer.write(b"Error opening /lib/caf\\xe9.mp4\\nInvalid data\\n")
+    sys.stderr.flush()
+    sys.exit(1)
+if mode == "latin1-ok":
+    sys.stdout.buffer.write(b"caf\\xe9\\n")
+    sys.stdout.flush()
+    sys.exit(0)
+if mode == "latin1-progress-fail":
+    print("out_time_us=100000", flush=True)
+    sys.stderr.buffer.write(b"Error opening /lib/caf\\xe9.mp4\\n")
+    sys.stderr.flush()
+    sys.exit(1)
+if mode == "fail":
+    sys.stderr.write("boom\\n")
+    sys.exit(7)
+if mode == "fast":
+    time.sleep(0.1)
+    print("done")
+    sys.exit(0)
+if mode == "one-second":
+    time.sleep(1)
+    print("done")
+    sys.exit(0)
+if mode == "sleep":
+    time.sleep(60)
+"""
+
+
+@pytest.fixture
+def fake_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    path = tmp_path / "fakebin"
+    path.write_text(f"#!{sys.executable}\n{FAKE_BINARY}", encoding="utf-8")
+    path.chmod(0o755)
+    monkeypatch.setenv("FAKE_PIDFILE", str(tmp_path / "pid"))
+    return path
+
+
+@pytest.fixture
+def bin_runtime(fake_binary: Path) -> FfmpegRuntime:
+    return FfmpegRuntime(ffmpeg_path=str(fake_binary), ffprobe_path=str(fake_binary))
+
+
+def _child_pid(tmp_path: Path) -> int:
+    return int((tmp_path / "pid").read_text())
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def test_non_utf8_stderr_is_escaped_in_the_typed_error(bin_runtime: FfmpegRuntime) -> None:
+    for call in (bin_runtime.run, bin_runtime.run_ffprobe):
+        with pytest.raises(FfmpegError) as excinfo:
+            call(["latin1-fail"])
+        assert "exited 1" in str(excinfo.value)
+        assert "caf\\xe9.mp4" in str(excinfo.value)
+        assert "Invalid data" in str(excinfo.value)
+
+
+def test_non_utf8_stdout_is_returned_escaped(bin_runtime: FfmpegRuntime) -> None:
+    assert bin_runtime.run(["latin1-ok"]).stdout == "caf\\xe9\n"
+
+
+def test_progress_run_with_non_utf8_stderr_keeps_it_and_kills_no_reader(
+    bin_runtime: FfmpegRuntime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    thread_failures: list[object] = []
+    monkeypatch.setattr(threading, "excepthook", thread_failures.append)
+    with pytest.raises(FfmpegError) as excinfo:
+        bin_runtime.run_with_progress(["latin1-progress-fail"], duration=1.0)
+    assert "exited 1" in str(excinfo.value)
+    assert str(excinfo.value).rstrip().endswith("Error opening /lib/caf\\xe9.mp4")
+    assert not thread_failures
+
+
+def test_version_reply_with_a_non_utf8_byte_still_parses(
+    fake_binary: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_VERSION", "ffmpeg version 8.1 caf\udce9")  # the raw byte 0xE9
+    built = FfmpegRuntime(ffmpeg_path=str(fake_binary), ffprobe_path=str(fake_binary))
+    assert built.version == (8, 1)
+
+
+def test_real_ffprobe_on_a_latin1_named_file_is_a_typed_error(
+    runtime: FfmpegRuntime, tmp_path: Path
+) -> None:
+    clip = tmp_path / os.fsdecode(b"caf\xe9.mp4")
+    clip.write_text("not a video")
+    with pytest.raises(FfmpegError) as excinfo:
+        runtime.run_ffprobe(["-v", "error", str(clip)])
+    assert not isinstance(excinfo.value, UnicodeDecodeError)
+    assert "caf\\xe9.mp4" in str(excinfo.value)
+
+
+# -- the opt-in time bound ------------------------------------------------------
+
+
+def test_with_timeout_is_a_view_that_leaves_the_original_unbounded(
+    bin_runtime: FfmpegRuntime,
+) -> None:
+    bounded = bin_runtime.with_timeout(5.0)
+    assert bounded is not bin_runtime
+    assert bounded.timeout == 5.0
+    assert bin_runtime.timeout is None
+    assert bounded.ffmpeg_path == bin_runtime.ffmpeg_path
+    assert bounded.ffprobe_path == bin_runtime.ffprobe_path
+    assert bounded.version == bin_runtime.version
+
+
+@pytest.mark.parametrize("seconds", [0, -1, float("nan"), float("inf")])
+def test_with_timeout_rejects_a_non_positive_or_non_finite_bound(
+    bin_runtime: FfmpegRuntime, seconds: float
+) -> None:
+    with pytest.raises(ValueError):
+        bin_runtime.with_timeout(seconds)
+
+
+@pytest.mark.parametrize("method", ["run", "run_ffprobe"])
+def test_a_hung_command_is_killed_and_reported(
+    bin_runtime: FfmpegRuntime, tmp_path: Path, method: str
+) -> None:
+    bounded = bin_runtime.with_timeout(0.5)
+    started = time.monotonic()
+    with pytest.raises(FfmpegTimeoutError) as excinfo:
+        getattr(bounded, method)(["sleep"])
+    assert time.monotonic() - started < 10
+    assert isinstance(excinfo.value, FfmpegError)
+    assert "timed out after 0.5s" in str(excinfo.value)
+    assert "fakebin" in str(excinfo.value)
+    assert not _alive(_child_pid(tmp_path))
+
+
+def test_a_command_within_its_bound_is_unaffected(bin_runtime: FfmpegRuntime) -> None:
+    result = bin_runtime.with_timeout(30).run(["fast"])
+    assert result.returncode == 0 and result.stdout == "done\n"
+
+
+def test_an_unbounded_runtime_waits_for_the_child(bin_runtime: FfmpegRuntime) -> None:
+    started = time.monotonic()
+    assert bin_runtime.run(["one-second"]).stdout == "done\n"
+    assert time.monotonic() - started >= 1.0
+
+
+def test_a_failure_under_a_bound_is_the_ordinary_error(bin_runtime: FfmpegRuntime) -> None:
+    with pytest.raises(FfmpegError) as excinfo:
+        bin_runtime.with_timeout(30).run(["fail"])
+    assert type(excinfo.value) is FfmpegError
+    assert "exited 7" in str(excinfo.value) and "boom" in str(excinfo.value)
+
+
+def test_a_child_that_cannot_be_killed_does_not_hold_the_caller(
+    bin_runtime: FfmpegRuntime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(subprocess.Popen, "kill", lambda self: None)
+    monkeypatch.setattr(runtime_module, "KILL_GRACE_SECONDS", 0.5)
+    started = time.monotonic()
+    try:
+        with pytest.raises(FfmpegTimeoutError):
+            bin_runtime.with_timeout(0.5).run(["sleep"])
+        assert 1.0 <= time.monotonic() - started < 10
+    finally:
+        os.kill(_child_pid(tmp_path), signal.SIGKILL)

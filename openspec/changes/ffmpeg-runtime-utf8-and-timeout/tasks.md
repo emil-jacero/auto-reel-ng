@@ -1,6 +1,6 @@
 ## 1. Lossless decoding in the runtime
 
-- [ ] 1.1 In `auto_reel_ng/ffmpeg/runtime.py`, pass `encoding="utf-8", errors="backslashreplace"` (alongside
+- [x] 1.1 In `auto_reel_ng/ffmpeg/runtime.py`, pass `encoding="utf-8", errors="backslashreplace"` (alongside
   `text=True`) in `_run`, in the `run_with_progress` `Popen`, and in `_query_version_text`. Verify with
   `tests/test_runtime.py` using a fake binary that writes the raw byte `0xE9` on stdout and on stderr and
   exits 0 / 1: `run` returns text containing `\xe9` and raises `FfmpegError` (not `UnicodeDecodeError`)
@@ -11,12 +11,12 @@
 
 ## 2. Opt-in time bound
 
-- [ ] 2.1 Add `FfmpegTimeoutError(FfmpegError)` to `auto_reel_ng/errors.py` with a docstring, and
+- [x] 2.1 Add `FfmpegTimeoutError(FfmpegError)` to `auto_reel_ng/errors.py` with a docstring, and
   `FfmpegRuntime.with_timeout(seconds)` returning a shallow copy whose `run`/`run_ffprobe` apply that
   default timeout (`None` stays unbounded; `seconds` must be positive, else `ValueError`). Verify with a
   test that the copy shares the resolved paths and version, the original stays unbounded, and
   `with_timeout(0)` raises.
-- [ ] 2.2 Rewrite `_run` on `Popen` + `communicate(timeout=)` per design D3: on `TimeoutExpired` kill the
+- [x] 2.2 Rewrite `_run` on `Popen` + `communicate(timeout=)` per design D3: on `TimeoutExpired` kill the
   child, `communicate(timeout=KILL_GRACE_SECONDS)` once, abandon (close pipes, no `wait`) if that also
   times out, log a WARNING, raise `FfmpegTimeoutError("Command timed out after <n>s: <cmd>")`; any other
   `BaseException` kills the child and re-raises. Verify in `tests/test_runtime.py` with fake binaries:
@@ -28,7 +28,7 @@
 
 ## 3. Bounded thumbnail generation
 
-- [ ] 3.1 In `auto_reel_ng/thumbs/thumbnail.py` add `THUMBNAIL_TIMEOUT = 60.0`; in `thumbnail_for`, after the
+- [x] 3.1 In `auto_reel_ng/thumbs/thumbnail.py` add `THUMBNAIL_TIMEOUT = 60.0`; in `thumbnail_for`, after the
   cache check, derive `runtime.with_timeout(THUMBNAIL_TIMEOUT)` and use it for the probe and the
   extraction. In `_extract` catch `FfmpegTimeoutError` before `FfmpegError` and raise
   `ThumbnailError(clip, "ffmpeg timed out extracting the frame at <t>s: <exc>")`. Verify in
@@ -37,7 +37,7 @@
   gives a `ThumbnailError` naming the clip, the time and "timed out" with no temporary file left; a probe
   that raises `ProbeError` wrapping a timeout gives a `ThumbnailError` whose reason says "timed out" and
   does not run ffmpeg; the cache is untouched in both.
-- [ ] 3.2 Subprocess-level timeout tests in `tests/test_thumbs_ffmpeg.py`, with `THUMBNAIL_TIMEOUT`
+- [x] 3.2 Subprocess-level timeout tests in `tests/test_thumbs_ffmpeg.py`, with `THUMBNAIL_TIMEOUT`
   monkeypatched to 0.5 and a `FfmpegRuntime` built from a fake script that answers `-version` and sleeps on
   anything else: with the fake as ffprobe, `thumbnail_for` raises `ThumbnailError` ("timed out") within a few
   seconds and ffmpeg is never run; with a real ffprobe and the fake as ffmpeg, it raises `ThumbnailError`
@@ -45,8 +45,8 @@
 
 ## 4. Remove the decoding workarounds
 
-- [ ] 4.1 Delete the two `except UnicodeDecodeError` branches in `_probe_duration` and `_extract`. Make
-  `_shorten` and `_probe_reason` also match the backslash-escaped spelling of the clip path
+- [x] 4.1 Delete the two `except UnicodeDecodeError` branches in `_probe_duration` and `_extract`. Make
+  `_shorten` also match the backslash-escaped spelling of the clip path
   (`os.fsencode(path).decode("utf-8", "backslashreplace")`). Verify: replace
   `test_an_undecodable_probe_output_is_the_clips_failure` and
   `test_an_undecodable_ffmpeg_output_is_no_frame_and_leaves_nothing` in `tests/test_thumbs.py` with
@@ -59,7 +59,7 @@
 
 ## 5. Quality gates
 
-- [ ] 5.1 `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`,
+- [x] 5.1 `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`,
   `.venv/bin/python -m mypy auto_reel_ng`, `.venv/bin/python -m pylint auto_reel_ng` (known cairo
   `no-member` noise only) and the full `.venv/bin/python -m pytest` all pass; confirm
   `RENDER_GRAPH_VERSION` and `THUMBNAIL_VERSION` are unchanged.
