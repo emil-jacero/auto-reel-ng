@@ -495,10 +495,12 @@ exits only after it ends.
 A second Ctrl+C forces the exit: `serve` stops waiting for the requests still
 being handled, including a blocked one, and exits with status 130. uvicorn then
 skips its application shutdown step, so the log has no "Application shutdown
-complete", but the application's own cleanup still runs. The force does not end
-the wait for a connection that has not ended: a second Ctrl+C does not shorten
-the wait behind such a vanished peer today. Once `serve` is exiting, a further
-signal changes nothing.
+complete", but the application's own cleanup still runs. The force also drops
+every client connection still open, so none holds `serve` running, not a client
+that sent only part of a request and not the vanished peer above: `serve` exits
+130 within a few seconds of the second Ctrl+C. Once `serve` is exiting, a further
+signal changes nothing. If the application's startup or shutdown fails, `serve`
+exits with status 1 instead of 0 (the log has the traceback).
 
 Settings resolve through the same config-then-flag layering as `worker`:
 `api.host`/`api.port`/`api.poll_interval` in `config.yaml`, overridden by
