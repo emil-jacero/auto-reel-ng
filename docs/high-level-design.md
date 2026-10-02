@@ -115,7 +115,7 @@ Legend: ✅ verified on dev host, ⚠️ verified-broken on dev host, ❓ untest
 
 | Logical op | NVIDIA (CUDA/NVENC) ❓ | Intel (QSV/VAAPI) ❓ | AMD (VAAPI) — tested | CPU |
 |---|---|---|---|---|
-| decode | `-hwaccel cuda -hwaccel_output_format cuda` | `-hwaccel qsv` / `vaapi` | ✅ `-init_hw_device vaapi=va:<node> -filter_hw_device va -hwaccel vaapi -hwaccel_device va -hwaccel_output_format vaapi` (one named device shared with filters, exp 006) | software |
+| decode | `-hwaccel cuda -hwaccel_output_format cuda` | `-hwaccel qsv` / `vaapi` | ✅ `-init_hw_device vaapi=va:<node> -filter_hw_device va -hwaccel vaapi -hwaccel_device va -hwaccel_output_format vaapi` (one named device shared with filters, exp 006) **for the codecs in the profile's `hw_decode` set** (h264 8-bit, hevc/vp9/av1 10-bit; 4:2:0 only); any other clip (MPEG-4 Part 2, MJPEG, 10-bit H.264, 4:2:2) is decoded in software and goes through `format=nv12,hwupload` (D-18) | software |
 | scale + pad | `scale_cuda`/`scale_npp` (+`pad`?) | `vpp_qsv` scale **only** (no pad) → libplacebo or CPU pad | `scale_vaapi` ✅; `pad_vaapi` ⚠️ geometry correct, **fill colour ignored on Mesa** (exp 006) — the self-test's `pad_fill_ok` decides; clips needing bars fall back to CPU `scale,pad` | `scale,pad` |
 | overlay (title) | `overlay_cuda` | `overlay_qsv` | ⚠️ `overlay_vaapi` **unsupported on Mesa** → CPU bridge / title-as-segment | `overlay` |
 | tonemap HDR→SDR | `libplacebo` / CUDA | `tonemap_vaapi` / QSV | ⚠️ **all GPU paths fail** → CPU only | `zscale,tonemap` |
@@ -750,6 +750,27 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Always the checked-out code.** Every `up` rebuilds the image from the checkout (`pull_policy: build`,
     cached), and `.dockerignore` keeps the scratch data and the non-runtime trees out of the build context.
   - **Local only.** The image is never pushed while D-1's fdk-aac blocker stands (§4.12).
+- **D-18 — Decode is chosen per clip, with one software retry** (2026-10-02, change
+  `render-vaapi-software-decode-fallback`). The startup self-test proves hardware decode with one h264 clip, which
+  says nothing about the other codecs the archive holds; an MPEG-4 Part 2 `.avi` failed the whole event on the
+  RX 9070 XT (`Failed setup for format vaapi`, -38) while `--device cpu` rendered it.
+  - **A capability, not a render rule.** `AcceleratorCapabilities.hw_decode` maps a source codec to the highest
+    bit depth the hardware decoder handles, from a static per-vendor table kept only when the decode probe
+    passed. `AccelProfile.can_hw_decode(codec, pix_fmt)` answers per clip: the codec must be listed, the format
+    4:2:0 and within the depth; an absent `pix_fmt` is decided by the codec alone and an unrecognised one is
+    software. `render/` stays vendor-free and asks the profile. A missing table entry costs speed, never
+    correctness.
+  - **No new graph shape.** A clip the hardware cannot decode takes the CPU DECODE fragment, and the existing
+    frame-location composition adds `format=nv12,hwupload` plus the one named upload device. NVIDIA and Intel have
+    no verified upload device, so such a clip fails loud naming `--device cpu` instead of emitting a command ffmpeg
+    would reject.
+  - **One retry for a wrong table.** If a hardware-decode normalize fails with `hwaccel initialisation returned
+    error` or `Failed setup for format`, that segment is rebuilt with software decode and run once; the recovered
+    failure is logged and returned in `RenderResult.warnings`. Nothing else is retried (not `-38` alone, not a
+    synthetic or already-software segment), and a failed retry is raised with both attempts' detail.
+  - **`RENDER_GRAPH_VERSION` is not bumped.** Only inputs that failed before change behaviour; every input that
+    rendered still produces the same command. The capability cache schema is bumped so `hw_decode` is detected
+    once on upgrade.
 
 ---
 
