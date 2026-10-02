@@ -628,8 +628,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   list or read) claims nothing and is reported on its own. The CLI, `POST /api/v1/jobs` and the worker
   adopt it in the changes `cli-batch-isolation-and-claims`, `api-jobs-create-validation` (landed: the API's
   copy is gone, and an enqueue names an event by exactly the id the list shows and answers the events
-  reads' 502 for one it cannot process) and `worker-claim-guards`; the worker's claim-time recheck fails a colliding job rather than requeueing
-  it. (§4.3/§4.11)
+  reads' 502 for one it cannot process) and `worker-claim-guards`; the worker's claim-time recheck
+  fails a colliding job rather than requeueing it. (§4.3/§4.11)
 
 - **D-10 — GUI v1 visual system** (2026-09-30, change `web-design-system`). GUI v1 ships a modern visual
   design, overriding event-list-screen's deferral of look and feel to v2, and does it inside D-8's budget:

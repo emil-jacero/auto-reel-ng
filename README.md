@@ -424,8 +424,8 @@ render, or job logic lives in the web tier.
   another event of the served project also claims — the rule `render`, `enqueue`
   and `adopt-renders` apply (D-9), comparing paths case-insensitively and after
   Unicode normalization, over every event the layout walks (an event that fails on
-  its own claims no path, selected by the engine's one rule). The refusal is a 409 whose `conflict` is
-  `output_collision`, whose `claimed_by` lists the other claimants' event ids, and
+  its own claims no path, selected by the engine's one rule). The refusal is a 409
+  whose `conflict` is `output_collision`, whose `claimed_by` lists the other claimants' event ids, and
   whose detail names the shared path and the fix: a distinct title or location in
   `reel.yaml`. It is checked before anything else, so neither `force` nor a fresh
   event's 200 overrides it, and nothing is written. Every 409 of

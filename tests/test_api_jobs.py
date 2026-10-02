@@ -147,8 +147,10 @@ A_ID = "2024/2024-06-21 - A"
         "2024/2024-06-21 - A/original",
         "2024",
         "",
+        "2024/2024-06-21 - A\x00",
+        "\x00",
     ],
-    ids=["dot", "trailing-slash", "dotdot", "original", "year-folder", "root"],
+    ids=["dot", "trailing-slash", "dotdot", "original", "year-folder", "root", "nul", "only-nul"],
 )
 def test_a_spelling_the_list_does_not_show_is_unknown(
     client: TestClient, store: JobStore, project: Path, event_id: str
@@ -251,6 +253,7 @@ def test_an_event_folder_that_cannot_be_searched_is_refused_up_front(
 def test_a_sibling_that_cannot_be_listed_claims_no_path(
     client: TestClient, store: JobStore, project: Path
 ) -> None:
+    """A regression pin: the engine's rule already behaved so; it must stay that way."""
     _add_case_only_twins(project)
     (project / KALAS_LOWER).chmod(0o000)  # would collide with Kalas, if it could be listed
     try:
@@ -266,6 +269,7 @@ def test_a_sibling_that_cannot_be_listed_claims_no_path(
 def test_a_year_folder_that_cannot_be_listed_is_the_scan_failure(
     client: TestClient, store: JobStore, project: Path
 ) -> None:
+    """A regression pin: the lookup's walk failing was already the scan-failure 502."""
     (project / "2024").chmod(0o111)  # the id resolves; the lookup's listing is refused
     try:
         response = client.post("/api/v1/jobs", json={"event_id": A_ID})
@@ -274,7 +278,9 @@ def test_a_year_folder_that_cannot_be_listed_is_the_scan_failure(
 
     assert response.status_code == 502
     assert "event scan failed" in response.json()["detail"]
-    assert "failure" not in response.json() or response.json()["failure"] is None
+    # the walk's failure names no event and carries no failure kind
+    assert "failure" not in response.json()
+    assert "event_id" not in response.json()
     assert _all_jobs(store) == []
 
 

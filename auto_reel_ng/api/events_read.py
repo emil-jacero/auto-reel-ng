@@ -115,10 +115,10 @@ def resolve_event_dir(settings: ApiSettings, event_id: str) -> Path:
     an unknown directory is rejected: :class:`EventNotFoundError`.
     """
     root = settings.project_root.resolve()
-    candidate = (root / event_id).resolve()
     try:
+        candidate = (root / event_id).resolve()
         candidate.relative_to(root)
-    except ValueError:
+    except ValueError:  # outside the root, or not a path at all (an embedded NUL byte)
         raise EventNotFoundError(event_id) from None
     if not candidate.is_dir():
         raise EventNotFoundError(event_id)
@@ -632,8 +632,10 @@ def enqueue_target(
 
     An enqueue names an event by exactly the id the events list shows
     (:func:`listed_event_dir`), so a job's ``event_dir`` is the one id of its event. The
-    document is the one the fingerprint and the output path are computed from, loaded
-    once as the CLI's ``_checked_document`` loads it and required processable.
+    document is the one the fingerprint and the output path are computed from, loaded as
+    the CLI's ``_checked_document`` loads it and required processable. It does not use the
+    engine's ``checked_claim`` because the failure's exception type is needed for
+    :func:`classify_event_failure`; the collision check reads the event itself.
 
     Raises :class:`EventNotFoundError` for an id the list does not show; the lookup's own
     ``OSError`` / ``LayoutError`` when the walk fails (the caller's scan-failure 502, which
@@ -644,7 +646,8 @@ def enqueue_target(
     try:
         document, _seeded = load_event_document(event_dir, order=settings.clip_order)
         require_processable(event_dir, document.metadata, today=today)
-    except (ReelError, OSError) as exc:  # an EventMetadataError is a ReelError
+    # An EventMetadataError is a ReelError; ValueError is the guard ``checked_claim`` has too.
+    except (ReelError, OSError, ValueError) as exc:
         raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
     return event_dir, document
 
