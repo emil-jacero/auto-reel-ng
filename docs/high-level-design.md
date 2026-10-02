@@ -663,6 +663,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
       written under version 1 are orphaned and stay (never evicted), and every clip regenerates once.
       Two different files with the same name, size and mtime would share a thumbnail (accepted;
       deleting the cache directory repairs it). `auto-reel thumbs` extracts one file once per event.
+    A host CLI and a container service share one cache when they see the same directory (the compose
+    stack's `XDG_CACHE_HOME=/data/cache` bind mount, or `thumbnails.cache_dir` in `config.yaml`); the
+    library may sit at different paths on each side, since the key no longer hashes the path.
   - **Filling it:** `auto-reel thumbs` fills it in batch. The service's thumbnail route fills it on
     request (change `clip-thumbnail-endpoint`).
   - **Still open:** proxies and scrubbing are v2, with the timeline editor (§8.11; moved from v3 on

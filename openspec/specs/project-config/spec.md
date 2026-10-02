@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Load a project-level `config.yaml` of shared, all-optional defaults — a `look` map, the ingest layout name, default input/output paths, and the clip `sort` rule — tolerating missing or partial files while failing loud on malformed ones. Resolve effective settings through a defined layered order (folder/layout seed → project `config.yaml` → event `reel.yaml` → command-line overrides) so each later layer overrides the earlier, passing the resolved `look` map to `resolve()` as `look_defaults`.
+Load a project-level `config.yaml` of shared, all-optional defaults — a `look` map, the ingest layout name, default input/output paths, the clip `sort` rule, and the `database`, `worker`, `api` and `thumbnails` maps of the components that read their own settings from it — tolerating missing or partial files while failing loud on malformed ones. Resolve effective settings through a defined layered order (folder/layout seed → project `config.yaml` → event `reel.yaml` → command-line overrides) so each later layer overrides the earlier, passing the resolved `look` map to `resolve()` as `look_defaults`.
 
 ## Requirements
 

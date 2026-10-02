@@ -86,6 +86,32 @@ def test_wrong_typed_worker_fails_loud() -> None:
         loads_project_config("worker: not-a-mapping\n")
 
 
+def test_config_supplies_thumbnail_settings(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text(
+        "thumbnails:\n  position: 0.5\n  cache_dir: /data/cache/auto-reel/thumbnails\n",
+        encoding="utf-8",
+    )
+    config = load_project_config(tmp_path)
+    assert config.thumbnails == {"position": 0.5, "cache_dir": "/data/cache/auto-reel/thumbnails"}
+
+
+def test_config_without_thumbnails_carries_an_empty_map(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("layout: flat\n", encoding="utf-8")
+    assert load_project_config(tmp_path).thumbnails == {}
+
+
+def test_config_supplies_api_settings(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("worker:\n  cpu_slots: 4\napi:\n  port: 9000\n", "utf-8")
+    config = load_project_config(tmp_path)
+    assert config.worker == {"cpu_slots": 4}
+    assert config.api == {"port": 9000}
+
+
+def test_wrong_typed_api_fails_loud() -> None:
+    with pytest.raises(ConfigError, match="'api'"):
+        loads_project_config("api: 9000\n")
+
+
 def test_wrong_typed_thumbnails_fails_loud() -> None:
     with pytest.raises(ConfigError, match="'thumbnails'"):
         loads_project_config("thumbnails: 3\n")

@@ -55,5 +55,5 @@ strictness, pruning superseded movies).
 - [The sharing caveat (resolved clip path is in the cache key) could be wrong or stale] -> the task
   re-reads `auto_reel_ng/thumbs/` for the key before writing the sentence, and the README states only what
   the key hashes.
-- [Reworded scenario drifts from the page again] -> unchanged THEN; scenario is already covered by the
-  existing web test for it.
+- [Reworded scenario drifts from the page again] -> unchanged THEN; the page's naming rule is `web/src/events/common.tsx`
+  and the rows' placement is covered by `tests/test_api_events.py`; the web app has no unit tests.
