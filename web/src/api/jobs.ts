@@ -84,13 +84,16 @@ function unpublished(method: string, url: string, response: Response): string {
 
 /** A `missing` list the client can name: at least one clip, every entry a string. */
 function isNonEmptyStrings(value: unknown): value is string[] {
-  return Array.isArray(value) && value.length > 0 && value.every((entry) => typeof entry === 'string')
+  return (
+    Array.isArray(value) && value.length > 0 && value.every((entry) => typeof entry === 'string')
+  )
 }
 
 /**
  * Enqueue a render of one event; `force` bypasses the staleness gate (never the
- * output-collision check, nor the refusal for a played clip missing from disk). The device is left to the service's default. Not
- * abortable: it is a write, and its answer still matters after the caller leaves.
+ * output-collision check, nor the refusal for a played clip missing from disk). The
+ * device is left to the service's default. Not abortable: it is a write, and its
+ * answer still matters after the caller leaves.
  */
 export async function enqueueJob(eventId: string, force: boolean): Promise<EnqueueResult> {
   const request: Pick<EnqueueRequest, 'event_id' | 'force'> = { event_id: eventId, force }

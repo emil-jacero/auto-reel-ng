@@ -303,10 +303,10 @@ export interface paths {
          * Create Job
          * @description ``POST /api/v1/jobs`` (task 3.1, gated per change-detection §8.14).
          *
-         *     Idempotent enqueue, 409 on active duplicate or a missing played clip, 200 "fresh — not enqueued" when
-         *     the event is fresh and ``force`` is false. The API never transitions job
-         *     status itself (D-A6) — the gate decision is made here, at enqueue, the same
-         *     as the CLI's own ``enqueue``.
+         *     Idempotent enqueue, 409 on active duplicate or a missing played clip, 200 "fresh —
+         *     not enqueued" when the event is fresh and ``force`` is false. The API never
+         *     transitions job status itself (D-A6) — the gate decision is made here, at enqueue,
+         *     the same as the CLI's own ``enqueue``.
          *
          *     The id must be one the events list shows, spelled as it spells it (else the 404 of an
          *     unknown event), and the event must be processable (else the events reads' 502 with its
@@ -314,9 +314,9 @@ export interface paths {
          *     anything else: an event whose output path another event of the project claims is a 409
          *     ``output_collision``, fresh or stale, forced or not — never gated, never "already
          *     active". A walk that fails leaves the rule unchecked, so it is the events list's
-         *     scan-failure 502 and nothing is enqueued (Principle I). An active job is answered next, and
-         *     then an event that plays a clip missing from disk is a 409 ``missing_clips`` naming the
-         *     clips — fresh or stale, forced or not, since that render could only fail at probe.
+         *     scan-failure 502 and nothing is enqueued (Principle I). An active job is answered next,
+         *     and then an event that plays a clip missing from disk is a 409 ``missing_clips`` naming
+         *     the clips — fresh or stale, forced or not, since that render could only fail at probe.
          */
         post: operations["create_job_api_v1_jobs_post"];
         delete?: never;
