@@ -2,7 +2,14 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef } from 'react'
 
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
-import { dismissToast, onModalOpened, pauseToasts, useToastClearance, useToasts } from './toast'
+import {
+  dismissToast,
+  onModalOpened,
+  pauseToasts,
+  useModalOpen,
+  useToastClearance,
+  useToasts,
+} from './toast'
 import type { Toast, ToastTone } from './toast'
 
 const TONE_ICON: Record<ToastTone, IconName> = {
@@ -83,6 +90,9 @@ function pageHeading(): HTMLElement | null {
  * pointer dismissal (Chromium focuses a clicked button) leaves the page where
  * it is.
  *
+ * While a modal dialog is open the region is inert, so `data-under-modal` is set
+ * and its Dismiss buttons and links are drawn unavailable (see components.css).
+ *
  * Its bottom offset follows a custom property (see `.toast-region`). With a
  * bar registered (`keepToastsClearOf`), the region places itself: above the bar
  * while the bar is held at the window's bottom edge, and in the room below it
@@ -100,6 +110,7 @@ function pageHeading(): HTMLElement | null {
 export function ToastRegion() {
   const toasts = useToasts()
   const bar = useToastClearance()
+  const underModal = useModalOpen()
   const regionRef = useRef<HTMLDivElement>(null)
   const pointerInside = useRef(false)
   // The control focus came from when it entered the region (null: from nowhere).
@@ -288,7 +299,13 @@ export function ToastRegion() {
       const box = bar.getBoundingClientRect()
       const height = region.offsetHeight
       const gap = viewport - region.getBoundingClientRect().bottom - offset
-      const below = viewport - box.bottom >= height + gap
+      // Decided on the bar as it would sit with no room before it (a resting bar
+      // carries the room as its margin; a held one has none), so the choice does
+      // not depend on the room it has already made: the above/below switch is at
+      // one scroll position in both directions, with no band where either holds.
+      const kept = Number.parseFloat(getComputedStyle(bar).marginBlockStart)
+      const bare = box.bottom - (Number.isFinite(kept) ? kept : 0)
+      const below = viewport - bare >= height + gap
       const next = below ? 0 : Math.max(0, Math.ceil(viewport - box.top))
       if (next !== offset) {
         offset = next
@@ -344,6 +361,7 @@ export function ToastRegion() {
       ref={regionRef}
       className="toast-region"
       popover="manual"
+      data-under-modal={underModal ? '' : undefined}
       onFocus={(event) => {
         const region = event.currentTarget
         const from = event.relatedTarget

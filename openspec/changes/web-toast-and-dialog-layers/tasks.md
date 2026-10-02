@@ -1,7 +1,9 @@
 ## 1. web/ - a runner for the pure rules, and the store's eviction rule
 
-- [x] 1.1 Add the runner. In `web/package.json` add `"test": "node --test --experimental-strip-types src/**/*.test.ts"`;
-  in `web/tsconfig.json` add `"exclude": ["src/**/*.test.ts"]` (`node:test` has no types here; no `@types/node`).
+- [x] 1.1 Add the runner. In `web/package.json` add `"test": "node --test --experimental-strip-types \"src/**/*.test.ts\""` (the glob quoted, so Node
+  expands it recursively and `sh` does not); `web/tsconfig.json` excludes `src/**/*.test.ts` from the app
+  program, and `web/tsconfig.test.json` (with `@types/node` as a dev dependency) type-checks them; `check` and
+  `build` run both programs.
   Create `web/src/ui/toast.test.ts` (imports `node:test` and `node:assert/strict`; sets
   `globalThis.window = globalThis`, then `await import('./toast.ts')`; each case starts from an empty store by
   dismissing every held toast; `mock.timers.enable({ apis: ['setTimeout', 'Date'] })` for clocks) with the
@@ -54,7 +56,8 @@
 ## 5. web/ - room above a resting save bar
 
 - [x] 5.1 In `ToastRegion.tsx` `place()` also publish `--toast-room-h` on `<html>` (the value of
-  `--toast-rise-h`, only while `offset > 0`; removed otherwise and in the cleanup), and observe
+  `--toast-rise-h`, only while the region sits above the bar, the fit test `below` being false; removed
+  otherwise and in the cleanup), and observe
   `document.documentElement` and `bar.parentElement` with the existing `ResizeObserver` so `place()` reruns when the
   page above the bar moves it. In `edit/edit.css` give `.save-bar[data-rests]`
   `margin-block-start: var(--toast-room-h, 0px)` and update the save-bar comment; update the `shell.css`
@@ -88,3 +91,8 @@
   `--toast-room-h` property) and the `ui/` file list (`returnFocus.ts`, `toast.test.ts`, `returnFocus.test.ts`),
   and the build/test commands. Then `openspec validate web-toast-and-dialog-layers --strict`. Verify: all
   clean, and no Playwright script, screenshot or `.playwright` directory is in the worktree.
+
+Verification note: the Dialog focus hand-off, the popover, the under-modal marker and `--toast-room-h` have no
+committed test; only the pure rules do (`toast.test.ts`, `returnFocus.test.ts`). Those behaviours are verified
+by the scratch browser pass of 6.1, which includes a scroll sweep at 320 x 568 with one toast (the bar's top and
+the room recorded every 8 px from the page end upward and back: one switch, at the same position both ways).

@@ -128,6 +128,18 @@ export function pauseToasts(paused: boolean): void {
 }
 
 const modalListeners = new Set<() => void>()
+const modalChangeListeners = new Set<() => void>()
+
+function notifyModalChange(): void {
+  for (const listener of modalChangeListeners) {
+    listener()
+  }
+}
+
+/** Whether a modal dialog is open now (the region is inert then: nothing in it takes a press). */
+export function isModalOpen(): boolean {
+  return modalDepth > 0
+}
 
 /**
  * A modal dialog opened: success and info clocks stop (an error has none) until
@@ -141,6 +153,7 @@ export function enterModal(): () => void {
   for (const listener of modalListeners) {
     listener()
   }
+  notifyModalChange()
   let released = false
   return () => {
     if (released) {
@@ -149,6 +162,7 @@ export function enterModal(): () => void {
     released = true
     modalDepth -= 1
     syncClocks()
+    notifyModalChange()
   }
 }
 
@@ -158,6 +172,18 @@ export function onModalOpened(listener: () => void): () => void {
   return () => {
     modalListeners.delete(listener)
   }
+}
+
+export function subscribeModal(listener: () => void): () => void {
+  modalChangeListeners.add(listener)
+  return () => {
+    modalChangeListeners.delete(listener)
+  }
+}
+
+/** Whether a modal dialog is open; the region marks its controls as unavailable meanwhile. */
+export function useModalOpen(): boolean {
+  return useSyncExternalStore(subscribeModal, isModalOpen)
 }
 
 function subscribe(listener: () => void): () => void {

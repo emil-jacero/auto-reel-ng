@@ -820,6 +820,11 @@
     margin-block: -0.1875rem;
   }
 
+  /* Under a modal dialog the region is inert (shown, not operable): its controls look it. */
+  .toast-region[data-under-modal] :is(.toast-dismiss, .toast-action) {
+    opacity: 0.5;
+  }
+
   @media (width < 30rem) {
     .toast-region {
       inset-inline: var(--s-4);

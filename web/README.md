@@ -325,6 +325,7 @@ podman run --rm -v "$PWD/web:/app:Z" -w /app docker.io/library/node:22 npx tsc -
 
 # the unit tests (Node's built-in runner, no DOM: the toast store, the dialog's focus rule)
 podman run --rm -v "$PWD/web:/app:Z" -w /app docker.io/library/node:22 npm test
+# `npm run check` (and `build`) also type-checks the tests (`tsconfig.test.json`)
 ```
 
 `npm run dev` expects a running `auto-reel serve` on `127.0.0.1:8080` (its default
@@ -531,6 +532,11 @@ HLD §7).
   message, and dismissing the focused toast hands focus to the next toast, else the
   previous one, else the control it came from, else the page's `h1`, without
   scrolling.
+  While a modal dialog is open the region is inert and carries `data-under-modal`
+  (its Dismiss buttons and links are drawn at half opacity); an error raised then is
+  not announced. The above/below choice reads the bar as it would sit without the room
+  it carries, so it switches at one scroll position in both directions. The pure rules
+  have unit tests; the dialog, popover and room behaviour is checked only in a browser.
 - **Touch.** Under `@media (pointer: coarse)` every `btn`, `segmented` option, toast
   link, the header's Events link and the back link take a tap in at least 44 × 44 px:
   an invisible `::after` around the control, so no box moves (segmented options grow
