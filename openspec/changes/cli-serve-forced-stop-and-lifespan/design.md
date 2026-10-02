@@ -18,7 +18,9 @@ per the archived review):
 - `handle_exit` only sets flags (`should_exit`, `force_exit`) and appends to `_captured_signals`.
 - On a shutdown that raises, Starlette sends `lifespan.shutdown.failed`; uvicorn's `LifespanOn` logs
   "Application shutdown failed. Exiting." and `Server.serve()` returns normally. `lifespan.startup.failed`
-  likewise sets `should_exit` and returns normally. `cmd_serve` sees neither.
+  likewise sets `should_exit` and, on the start path, `Server.startup` ends in `sys.exit(3)`: `cmd_serve`'s
+  `except SystemExit` turned that into status 1 but printed "could not bind", the wrong cause. `cmd_serve`
+  sees a failed shutdown not at all.
 - `cli/commands.py` is 969 lines against pylint's 1000-line cap. Adding ~45 lines of serve code there does
   not fit.
 
@@ -86,9 +88,10 @@ watch.failed else 0`.
 
 - Uses only the ASGI lifespan protocol. Alternative `server.lifespan.shutdown_failed` is an untyped uvicorn
   internal (the archived design rejected it for the same reason).
-- Startup failure is covered by the same hook because it has the same outcome (uvicorn returns normally
-  and the command would exit 0), costs one more message type, and keeps the requirement symmetric. It is
-  not reachable from today's lifespan either; both are tested with a failing scratch app.
+- Startup failure goes through the same hook. uvicorn already ends it with `sys.exit(3)`, which
+  `cmd_serve` reported as status 1 but as a bind failure; the watch lets it name the real cause
+  (`app.failed`). It is not reachable from today's lifespan either; both paths are tested with a failing
+  scratch app.
 - Precedence: a forced stop skips the application shutdown, so the two rarely meet. When they do,
   130 wins, and on the main thread the process has already ended with it.
 - `uvicorn.Config.load()` decides the ASGI interface from the app's callable; an instance with an async

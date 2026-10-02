@@ -95,6 +95,7 @@ stop skips the application shutdown and keeps status 130.
 #### Scenario: A failed application startup does not exit zero
 - **WHEN** the application's lifespan raises while `auto-reel serve` starts
 - **THEN** the command exits with status 1, not 0
+- **AND** it names the failed application startup, not a failure to bind the port
 
 #### Scenario: A late signal does not change the exit status
 - **WHEN** one SIGTERM or one Ctrl-C has stopped `auto-reel serve` and its orderly shutdown has completed,

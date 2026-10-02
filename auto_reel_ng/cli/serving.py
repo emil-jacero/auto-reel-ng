@@ -6,6 +6,7 @@ the name tests patch there) so the subcommand module stays under pylint's line c
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import os
@@ -16,6 +17,34 @@ import threading
 from typing import Iterator, List, NoReturn, Optional, override
 
 import uvicorn
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+
+class LifespanWatch:
+    """An ASGI wrapper that notes whether the application's lifespan failed.
+
+    uvicorn logs a failed startup or shutdown ("Application shutdown failed. Exiting.")
+    and then returns normally, so ``serve`` could not tell it from a clean stop. This
+    forwards every scope untouched and, for the lifespan scope, watches the messages the
+    application sends: only the ASGI protocol, no uvicorn internals. ``failed`` is set once
+    the application has sent ``lifespan.startup.failed`` or ``lifespan.shutdown.failed``.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+        self.failed = False
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "lifespan":
+            await self.app(scope, receive, send)
+            return
+
+        async def watching_send(message: Message) -> None:
+            if message["type"] in ("lifespan.startup.failed", "lifespan.shutdown.failed"):
+                self.failed = True
+            await send(message)
+
+        await self.app(scope, receive, watching_send)
 
 
 class ServiceServer(uvicorn.Server):
@@ -36,6 +65,30 @@ class ServiceServer(uvicorn.Server):
             yield
             # The shutdown the captured signals asked for has completed.
             self._captured_signals.clear()
+
+    @override
+    async def _wait_tasks_to_complete(self) -> None:
+        """uvicorn's wait for connections and tasks, which a forced stop also cuts short.
+
+        uvicorn's two wait loops honour ``force_exit``, but the method ends with an
+        unconditional ``wait_closed()`` on each listening server, which (Python 3.12.1 and
+        later) returns only once every accepted connection is gone. A client that sent half
+        a request, or a peer that stopped reading, never closes its end: the force left
+        ``serve`` waiting for it. Once forced, every connection still open is aborted, its
+        unsent output dropped, until uvicorn's wait returns (headless-cli, "`serve` runs
+        the API service"). Repeated, because a connection can be accepted after the force.
+        """
+        waiting = asyncio.ensure_future(super()._wait_tasks_to_complete())
+        try:
+            while not waiting.done():
+                if self.force_exit:
+                    for server in self.servers:
+                        server.abort_clients()
+                await asyncio.wait({waiting}, timeout=0.1)
+        finally:
+            if not waiting.done():
+                waiting.cancel()
+        await waiting
 
     @override
     def run(self, sockets: Optional[List[socket.socket]] = None) -> None:

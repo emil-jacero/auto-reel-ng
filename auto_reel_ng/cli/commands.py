@@ -60,7 +60,7 @@ from ..staleness.manifest import write_manifest
 from .adoption import REEL_FILENAME, PreparedEvent
 from .build import build_render_job_from_event, prepare_and_persist
 from .context import project_context, resolve_project_root
-from .serving import ServiceServer
+from .serving import LifespanWatch, ServiceServer
 
 logger = logging.getLogger(__name__)
 
@@ -802,17 +802,17 @@ def cmd_serve(args: argparse.Namespace) -> int:
     Resolves :class:`~auto_reel_ng.api.settings.ApiSettings` through the same D-2
     layering as ``worker``, then runs uvicorn programmatically; uvicorn handles
     SIGINT/SIGTERM with a graceful shutdown (the WS hub's poller is cancelled via the
-    app's lifespan), after which ``serve`` exits 0, or 130 when a second SIGINT forced
-    the exit (on the main thread :meth:`ServiceServer.run` ends the process itself
-    then, without waiting for request handlers still running in worker threads). A
-    bind failure is reported loudly, naming the attempted host:port, and the command
-    exits non-zero.
+    app's lifespan), after which ``serve`` exits 0, 1 when the app's lifespan failed
+    (:class:`~.serving.LifespanWatch`), or 130 when a second SIGINT forced the exit (on
+    the main thread :meth:`ServiceServer.run` ends the process itself then, without
+    waiting for request handlers still running in worker threads). A bind failure is
+    reported loudly, naming the attempted host:port, and the command exits non-zero.
     """
     project_root = resolve_project_root(args)
     settings = resolve_api_settings(
         project_root, host=args.host, port=args.port, poll_interval=args.poll_interval
     )
-    app = create_app(settings)
+    app = LifespanWatch(create_app(settings))
 
     logger.info(
         "Starting API service on %s:%s (project_root=%s)",
@@ -825,12 +825,21 @@ def cmd_serve(args: argparse.Namespace) -> int:
     try:
         server.run()
     except SystemExit:
-        print(f"error: could not bind {settings.host}:{settings.port}", file=sys.stderr)
+        # uvicorn exits with STARTUP_FAILURE for a failed bind and for a failed lifespan
+        # startup alike; the watch tells them apart so the message names the real cause.
+        if app.failed:
+            print("error: application startup failed", file=sys.stderr)
+        else:
+            print(f"error: could not bind {settings.host}:{settings.port}", file=sys.stderr)
         return 1
     # A SIGINT during the shutdown made uvicorn skip the rest of it (its force-quit):
     # 130 = 128 + SIGINT, a shell's status for an interrupted command. On the main
-    # thread ServiceServer.run() has already ended the process with it.
-    return 130 if server.force_exit else 0
+    # thread ServiceServer.run() has already ended the process with it. A forced stop
+    # skips the application shutdown, so 130 is checked first. Otherwise uvicorn logs a
+    # failed lifespan and returns normally: the watch is what turns that into 1.
+    if server.force_exit:
+        return 130
+    return 1 if app.failed else 0
 
 
 # --------------------------------------------------------------------------- #
