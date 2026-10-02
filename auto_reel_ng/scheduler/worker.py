@@ -16,18 +16,33 @@ import threading
 import time
 import uuid
 from datetime import date
-from pathlib import Path
-from typing import Callable, Optional
+from pathlib import Path, PurePosixPath
+from typing import Callable, NamedTuple, Optional
 
 from ..accel.profiles.base import AccelProfile
 from ..cli.build import build_render_job_from_event, prepare_and_persist
 from ..config.project import default_output_dir, load_project_config, resolve_look_defaults
-from ..errors import EngineError, IllegalJobTransitionError, RenderCancelledError
+from ..errors import (
+    EngineError,
+    IllegalJobTransitionError,
+    OutputCollisionError,
+    RenderCancelledError,
+)
+from ..event.claims import checked_claim
 from ..event.metadata import load_event_document, require_processable
 from ..ffmpeg.runtime import FfmpegRuntime
+from ..ingest import DEFAULT_LAYOUT
 from ..persistence.job_store import JobStore
 from ..persistence.models import Job, JobStatus
-from ..render import RenderJob, RenderResult, output_relpath, render_movie, resolve_target
+from ..render import (
+    RenderJob,
+    RenderResult,
+    find_output_collisions,
+    output_relpath,
+    render_movie,
+    resolve_target,
+)
+from ..render.claims import output_collision, output_collision_message
 from ..staleness.fingerprint import compute_fingerprint
 from ..staleness.gate import evaluate
 from .pools import CapacityPools
@@ -72,6 +87,24 @@ def default_build_job(
     # The same processable-event rule as the CLI: a failure fails the job with the reason.
     document = load_event_document(event_dir, order=config.sort)[0]
     require_processable(event_dir, document.metadata, today=date.today())
+    # D-9: no other event of the project may claim this output path. Checked before
+    # ``prepare_and_persist`` so a refused job writes nothing (not even an adopted clip);
+    # ``force`` never reads here, as it does not for the CLI and the API.
+    walk_root = project_root / config.input_dir if config.input_dir else project_root
+    collision = output_collision(
+        event_dir,
+        walk_root=walk_root,
+        layout=config.layout or DEFAULT_LAYOUT,
+        order=config.sort,
+        today=date.today(),
+    )
+    if collision is not None:
+        raise OutputCollisionError(
+            output_collision_message(
+                collision.output_path,
+                [_claimant_name(path, project_root) for path in collision.claimed_by],
+            )
+        )
     event = prepare_and_persist(event_dir, order=config.sort)
     fingerprint = compute_fingerprint(
         event.document,
@@ -89,6 +122,47 @@ def default_build_job(
         overwrite=True,
         fingerprint=fingerprint,
     )
+
+
+def _claimant_name(event_dir: Path, project_root: Path) -> str:
+    """A claimant as the project spells it (``2024/a``), or the full path outside the root."""
+    try:
+        return event_dir.relative_to(project_root).as_posix()
+    except ValueError:
+        return str(event_dir)
+
+
+class _JobOutput(NamedTuple):
+    """Where a job writes: its output directory and the file the event's metadata names."""
+
+    output_dir: Path
+    relpath: PurePosixPath
+
+    @property
+    def path(self) -> PurePosixPath:
+        """The absolute output path, as the collision rule compares it."""
+        return PurePosixPath(self.output_dir / self.relpath)
+
+
+def _job_output(job: Job, *, today: date) -> Optional[_JobOutput]:
+    """The output ``job`` writes, or ``None`` when its project or event claims nothing.
+
+    Read-only, from disk (``Job.output_path`` is never recorded). A project config that
+    will not load, or an event that is not processable, claims no path: the job's own
+    build reports that reason.
+    """
+    project_root = Path(job.project_root) if job.project_root else Path.cwd()
+    try:
+        config = load_project_config(project_root)
+    except (EngineError, OSError):
+        return None
+    document, _reason = checked_claim(project_root / job.event_dir, order=config.sort, today=today)
+    if document is None:
+        return None
+    output_dir = (
+        project_root / config.output_dir if config.output_dir else default_output_dir(project_root)
+    )
+    return _JobOutput(output_dir, output_relpath(document.metadata))
 
 
 class Worker:
@@ -242,6 +316,7 @@ class Worker:
 
     def _process_job(self, job: Job) -> None:
         try:
+            self._refuse_running_output(job)
             render_job = self._build_job(job)
         except EngineError as exc:
             logger.error("job %s failed to build: %s", job.id, exc)
@@ -274,6 +349,41 @@ class Worker:
             self._render_and_finish(job, render_job)
         finally:
             token.release()
+
+    def _refuse_running_output(self, job: Job) -> None:
+        """Raise when another ``running`` job writes the output ``job`` would (D-9).
+
+        Before the plan is rebuilt, so a refusal has adopted, probed and written nothing.
+        The job's own row is ``running`` too and is skipped. This sees what the disk rule
+        of :func:`default_build_job` cannot: another project with the same output
+        directory, or an event the layout walk does not reach. Two jobs claimed together
+        may both be refused; at most one renders.
+        """
+        today = date.today()
+        own = _job_output(job, today=today)
+        if own is None:
+            return
+        running = {
+            other.id: other
+            for other in self._store.list_by_status(JobStatus.RUNNING)
+            if other.id != job.id
+        }
+        claims = {job.id: own.path}
+        for other in running.values():
+            other_output = _job_output(other, today=today)
+            if other_output is not None:
+                claims[other.id] = other_output.path
+        rivals = find_output_collisions(claims).get(job.id, ())
+        if not rivals:
+            return
+        rival = running[rivals[0]]
+        where = (
+            f" of project {rival.project_root}" if rival.project_root != job.project_root else ""
+        )
+        raise OutputCollisionError(
+            f"output path {own.relpath} is also being written by the running job for "
+            f"{rival.event_dir}{where}; enqueue this event again once that job has ended"
+        )
 
     @staticmethod
     def _is_fresh(render_job: RenderJob) -> bool:

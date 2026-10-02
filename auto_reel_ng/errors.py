@@ -40,6 +40,23 @@ class ProbeError(EngineError):
     """
 
 
+class MissingClipsError(EngineError):
+    """Clips an event's ``reel.yaml`` references are absent from its folder.
+
+    Raised by the shared build path before any probe, naming every missing clip by its
+    identity (its path relative to the event folder) and the fix, so the CLI line and a
+    worker job's error are one text with no machine path in it.
+    """
+
+
+class OutputCollisionError(EngineError):
+    """A claimed job's output path is also written by another event or another running job.
+
+    Raised by the worker at claim time (D-9), before anything is written. The message is
+    the one wording of the refusal, naming the shared output path and the other claimant.
+    """
+
+
 class AccelError(EngineError):
     """Hardware-acceleration capability detection or selection failed.
 

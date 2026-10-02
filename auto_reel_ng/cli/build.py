@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, Mapping, Optional, Tuple
+from typing import Dict, Mapping, Optional, Sequence, Tuple
 
 from ..accel.profiles.base import AccelProfile
+from ..errors import MissingClipsError
 from ..event import ClipOrder, resolve
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..probe import probe_media
@@ -27,17 +28,42 @@ from .adoption import PreparedEvent, persist, prepare_event
 logger = logging.getLogger(__name__)
 
 
+def missing_clips_message(identities: Sequence[str]) -> str:
+    """The one wording of the missing-clip refusal: every identity, and the fix."""
+    names = ", ".join(f"'{identity}'" for identity in identities)
+    fix = "(Edit mode, or reel.yaml)"
+    if len(identities) == 1:
+        return (
+            f"clip {names} is listed in reel.yaml but is missing from the event folder; "
+            f"restore the file, or remove the clip from the event {fix}"
+        )
+    return (
+        f"{len(identities)} clips are listed in reel.yaml but missing from the event folder: "
+        f"{names}; restore the files, or remove the clips from the event {fix}"
+    )
+
+
 def _probe_clips(
     document: ReelDocument, event_dir: Path, runtime: FfmpegRuntime
 ) -> Dict[str, ClipMetadata]:
-    """Probe every included clip into facts keyed by identity (fail loud on a bad clip)."""
-    facts: Dict[str, ClipMetadata] = {}
-    for identity in document.referenced_identities():
-        props = document.clips.get(identity)
-        if props is not None and props.exclude:
-            continue  # excluded clips never reach the plan, so do not probe them
-        facts[identity] = probe_media(Path(event_dir) / identity, runtime=runtime)
-    return facts
+    """Probe every included clip into facts keyed by identity (fail loud on a bad clip).
+
+    Clips the document references but the folder lacks are refused first, all at once and
+    by identity, so no ffprobe runs for an event that cannot render (``MissingClipsError``).
+    ``exists`` follows symlinks, so a dangling one is missing; a directory or special file
+    named like a clip is left to ``probe_media``, which reports it as not a regular file.
+    """
+    included = [
+        identity
+        for identity in document.referenced_identities()
+        if not (document.clips.get(identity) is not None and document.clips[identity].exclude)
+    ]  # excluded clips never reach the plan, so do not check or probe them
+    missing = [identity for identity in included if not (Path(event_dir) / identity).exists()]
+    if missing:
+        raise MissingClipsError(missing_clips_message(missing))
+    return {
+        identity: probe_media(Path(event_dir) / identity, runtime=runtime) for identity in included
+    }
 
 
 def prepare_and_persist(
