@@ -2,11 +2,11 @@
 
 Starlette's ``TestClient`` cannot show how the end of a connection reaches the hub: it
 has no transport, no keepalive and no server shutdown, and its session exit cancels
-the handler. These tests serve the app in-process with ``uvicorn.Server``, the server
-``auto-reel serve`` runs, on the test's own event loop and over the in-memory
-``FakeStore`` of ``test_api_ws_hub.py``, so they need no database. The clients are
-``websockets`` clients; the silent peer is a raw socket that completes the opening
-handshake and then never reads again.
+the handler. These tests serve the app in-process with ``uvicorn.Server``, the base class
+of ``ServiceServer``, the server ``auto-reel serve`` runs, on the test's own event loop and
+over the in-memory ``FakeStore`` of ``test_api_ws_hub.py``, so they need no database. The
+clients are ``websockets`` clients; the silent peer is a raw socket that completes the
+opening handshake and then never reads again.
 """
 
 from __future__ import annotations

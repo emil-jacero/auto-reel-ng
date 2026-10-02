@@ -544,6 +544,23 @@ directory to reset it. When `serve` runs as another user or in a
 container, it has its own `XDG_CACHE_HOME` — set `thumbnails.cache_dir` in the
 project's `config.yaml` so the CLI and the service share one cache.
 
+One cache for the host CLI and a container service needs the same directory and the same
+clip paths on both sides, because the file name hashes the *resolved* clip path. The
+compose stack sets `XDG_CACHE_HOME: /data/cache` for `server` and `worker` and mounts
+`./data/cache` there, so its thumbnails land in `./data/cache/auto-reel/thumbnails/`.
+To share them, bind-mount the library (and that cache directory) into the container at
+the same absolute paths the host uses, and name the directory in the project's
+`config.yaml`:
+
+```yaml
+thumbnails:
+  cache_dir: /home/me/auto-reel/data/cache/auto-reel/thumbnails   # absolute, outside the library
+```
+
+A host that sees the library at `./data/library` and a container that sees it at
+`/data/library` do not share entries even from one directory: their resolved paths
+differ, so each side fills its own files.
+
 ### Project `config.yaml`
 
 An optional `config.yaml` at the project root supplies shared defaults. Every field
