@@ -21,12 +21,9 @@ from pathlib import Path
 from typing import Optional, Union
 
 from .fingerprint import COMPONENTS, Fingerprint
-from .manifest import RenderManifest, read_manifest, recorded_output_path
+from .manifest import RenderManifest, read_manifest, recorded_movie_path
 
 PathLike = Union[str, Path]
-
-#: Recorded values that pass as a bare name but name a folder, never a movie: never looked up.
-_NOT_A_FILE_NAME = ("", ".", "..")
 
 
 class StalenessReason(StrEnum):
@@ -38,7 +35,8 @@ class StalenessReason(StrEnum):
     - ``output_renamed``: the event's movie name (its title, date or location) changed
       since the last render, and a movie is still on disk under the old name. The next
       render writes the movie under the new name and leaves the old file where it is;
-      only a render of another event that now has the old name replaces that file. The
+      a render of another event that now has the old name is refused unless forced
+      (``render.claims.claimed_movie``), because this manifest still records that file. The
       verdict then also carries ``renamed_from`` and ``output_name``, the two file names.
     - ``editorial``, ``defaults``, ``clip_set``, ``engine``: that fingerprint component
       changed since the last render (the ``reel.yaml`` document, the project's look
@@ -150,13 +148,9 @@ def _renamed_output(manifest: RenderManifest, expected: Path) -> Optional[Path]:
     by its last component only, so it reads ``output`` as a missing movie does.
     """
     recorded = manifest.output
-    if (
-        recorded != expected.name
-        and recorded not in _NOT_A_FILE_NAME  # never the output root or its parent
-        and Path(recorded).name == recorded  # a bare file name, never a path
-    ):
-        candidate = recorded_output_path(recorded, expected)
-        if candidate.is_file():  # a movie, never a folder
+    if recorded != expected.name:
+        candidate = recorded_movie_path(recorded, expected)  # None unless a bare file name
+        if candidate is not None and candidate.is_file():  # a movie, never a folder
             return candidate
     return None
 

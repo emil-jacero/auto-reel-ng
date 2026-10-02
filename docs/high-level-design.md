@@ -631,10 +631,16 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   name in the render manifest. Until then the staleness verdict cites `output_renamed` instead of
   `output` (which keeps meaning the movie is really gone). Removing the old file is the operator's
   call. A render still replaces the file at its own path, so a case-only rename on a
-  case-insensitive filesystem replaces the old movie, as before, and so does the render of another
-  event that now has the renamed event's old name (the collision check compares only current paths);
-  the renamed event's verdict then still cites `output_renamed`, for a file that is now the other
-  event's movie.
+  case-insensitive filesystem replaces the old movie, as before.
+  *Amended 2026-10-02 (change `render-refuses-claimed-movie`):* the render of another event that now
+  has the renamed event's old name no longer replaces the kept movie silently. The collision check
+  compares only current paths, so a second rule (`render/claims.py` `claimed_movie`) asks whether
+  another event's render manifest records the very file a render would replace; if so the render
+  (CLI `render` and the worker, so jobs from the API too) fails that event with a typed error naming
+  the file and the claiming event, unless forced (`--force`, a job's `force`). The engine still never
+  deletes a movie; removing superseded old-named movies is the operator's call (a separate prune
+  command is planned). A forced render still replaces the file, and the renamed event's verdict then
+  cites `output_renamed` for a file that is now the other event's movie.
   *Amended 2026-10-02, change `engine-output-claims`:* which events claim an output path, and who else
   claims it, is decided by one engine rule (`event/claims.py` `checked_claim`, `render/claims.py`
   `output_collision`), not by caller-private copies. An event claims a path only when it loads and is

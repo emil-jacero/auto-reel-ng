@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +31,9 @@ _MANIFEST_VERSION = 1
 
 #: A D-9 movie name's ISO date prefix; its year names the folder the movie lives in.
 _DATE_PREFIX = re.compile(r"([0-9]{4})-[0-9]{2}-[0-9]{2} - ")
+
+#: Recorded values that are never a movie's file name (the output root or its parent).
+_NOT_A_FILE_NAME = ("", ".", "..")
 
 
 @dataclass(frozen=True)
@@ -124,6 +128,40 @@ def recorded_output_path(recorded: str, expected_output: PathLike) -> Path:
     return output_dir / recorded_year / recorded
 
 
+def recorded_movie_path(recorded: str, expected_output: PathLike) -> Optional[Path]:
+    """Where a render recorded as ``recorded`` put its movie, beside ``expected_output``.
+
+    :func:`recorded_output_path` for a ``recorded`` that is a bare file name; ``None`` for one
+    that is not (empty, ``.``, ``..`` or anything with a path separator), so a manifest can never
+    name the output root, its parent or a file elsewhere. Pure: no filesystem access. The gate's
+    ``output_renamed`` lookup and the render claim check (:func:`records_output`) both read a
+    recorded name through this one function, so they cannot disagree on what it means.
+    """
+    if recorded in _NOT_A_FILE_NAME or Path(recorded).name != recorded:
+        return None
+    return recorded_output_path(recorded, expected_output)
+
+
+def records_output(event_dir: PathLike, output_path: PathLike) -> bool:
+    """True when ``event_dir``'s readable render manifest records exactly ``output_path``.
+
+    The recorded name is placed by :func:`recorded_movie_path` beside ``output_path`` and the two
+    full paths are compared NFC-normalised and case-insensitively (the output-collision rule's
+    comparison, so a case-insensitive archive filesystem cannot slip a clash through). An absent,
+    malformed or wrong-version manifest records nothing, the module's fail-open convention.
+    Reads the manifest only; never touches the movie.
+    """
+    manifest = read_manifest(event_dir)
+    if manifest is None:
+        return False
+    recorded = recorded_movie_path(manifest.output, output_path)
+    return recorded is not None and _path_key(recorded) == _path_key(Path(output_path))
+
+
+def _path_key(path: Path) -> str:
+    return unicodedata.normalize("NFC", str(path)).casefold()
+
+
 def _year_folder(name: str) -> Optional[str]:
     """The year folder D-9 puts a movie of this name in, or ``None`` for an undated name."""
     match = _DATE_PREFIX.match(name)
@@ -137,4 +175,6 @@ __all__ = [
     "write_manifest",
     "read_manifest",
     "recorded_output_path",
+    "recorded_movie_path",
+    "records_output",
 ]

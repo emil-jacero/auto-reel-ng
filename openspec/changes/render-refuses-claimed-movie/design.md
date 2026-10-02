@@ -129,3 +129,10 @@ restart mid-job re-claims the job and re-runs the check; nothing was written bef
 - **Unreadable manifest claims nothing.** A corrupted manifest of A lets B replace A's kept movie. This is the
   manifest module's existing fail-open convention (it evaluates stale, never skips) and the only alternative,
   refusing on any unreadable manifest, would block healthy projects.
+- **CLI reconcile precedes the refusal.** `cmd_render` prepares (seeds / adopts) every event before its gate, so
+  an event refused for a claim has had its `reel.yaml` reconciled as a collision-refused event has; only the
+  worker decides before `prepare_and_persist`. The refusal adds no write.
+- **A fresh job can be refused in the worker.** The worker check runs before the fingerprint exists, so a
+  non-forced job for an event that is already fresh, whose file a stale claimant still records, fails with the
+  refusal instead of completing as a skipped `done`. Enqueue does not create jobs for fresh events (only a race or
+  a forced-then-requeued job can), and a forced job is never checked.

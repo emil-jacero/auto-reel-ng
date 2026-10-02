@@ -23,7 +23,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 import uvicorn
 from ruamel.yaml import YAML
@@ -47,6 +47,7 @@ from ..persistence.models import JobStatus
 from ..reel import Metadata, ReelDocument, import_legacy, write_document
 from ..reel.legacy import ImportResult
 from ..render import RenderJob, find_output_collisions, output_relpath, render_batch
+from ..render.claims import claimed_movie, claimed_movie_message
 from ..scheduler import (
     CapacityPools,
     Worker,
@@ -146,6 +147,12 @@ def cmd_render(args: argparse.Namespace) -> int:
 
     jobs: List[RenderJob] = []
     build_failures: List[Tuple[Path, str]] = [*invalid, *refused.items()]
+    if not (args.force or args.dry_run):
+        # A render must not silently replace a kept, old-named movie another event's manifest
+        # still records; --force replaces it, a dry run touches nothing on disk.
+        claimed = _claimed_movies(candidates, output_dir=ctx.output_dir, events=ctx.events)
+        build_failures.extend(claimed.items())
+        candidates = [c for c in candidates if c.ref.event_dir not in claimed]
     for candidate in candidates:
         try:
             jobs.append(
@@ -185,6 +192,27 @@ def _output_collisions(metadata_by_event: Mapping[Path, Metadata]) -> dict[Path,
         )
         for event_dir, others in find_output_collisions(claims).items()
     }
+
+
+def _claimed_movies(
+    candidates: Sequence[_Candidate], *, output_dir: Path, events: Sequence[EventRef]
+) -> dict[Path, str]:
+    """Map each candidate that would replace a movie another event records to its ``ERROR`` text.
+
+    The shared rule is :func:`~..render.claims.claimed_movie` (read-only, decided before any
+    build, probe or write for the event). Claimants are named by their folder name, as
+    :func:`_output_collisions` names its claimants.
+    """
+    all_dirs = [ref.event_dir for ref in events]
+    refused: dict[Path, str] = {}
+    for candidate in candidates:
+        relpath = output_relpath(candidate.event.document.metadata)
+        found = claimed_movie(candidate.ref.event_dir, output_dir / relpath, events=all_dirs)
+        if found is not None:
+            refused[candidate.ref.event_dir] = claimed_movie_message(
+                relpath, [other.name for other in found.recorded_by]
+            )
+    return refused
 
 
 @dataclass(frozen=True)

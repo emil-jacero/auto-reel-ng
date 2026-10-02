@@ -28,6 +28,7 @@ from ..config.project import (
     resolve_look_defaults,
 )
 from ..errors import (
+    ClaimedMovieError,
     EngineError,
     IllegalJobTransitionError,
     OutputCollisionError,
@@ -36,9 +37,10 @@ from ..errors import (
 from ..event.claims import checked_claim
 from ..event.metadata import load_event_document, require_processable
 from ..ffmpeg.runtime import FfmpegRuntime
-from ..ingest import DEFAULT_LAYOUT
+from ..ingest import DEFAULT_LAYOUT, get_layout
 from ..persistence.job_store import JobStore
 from ..persistence.models import Job, JobStatus
+from ..reel import Metadata
 from ..render import (
     RenderJob,
     RenderResult,
@@ -47,7 +49,12 @@ from ..render import (
     render_movie,
     resolve_target,
 )
-from ..render.claims import output_collision, output_collision_message
+from ..render.claims import (
+    claimed_movie,
+    claimed_movie_message,
+    output_collision,
+    output_collision_message,
+)
 from ..staleness.fingerprint import compute_fingerprint
 from ..staleness.gate import evaluate
 from .pools import CapacityPools
@@ -96,6 +103,8 @@ def default_build_job(
     # ``prepare_and_persist`` so a refused job writes nothing (not even an adopted clip);
     # ``force`` never reads here, as it does not for the CLI and the API.
     _refuse_disk_collision(project_root, event_dir, config)
+    if not job.force:
+        _refuse_claimed_movie(project_root, event_dir, config, document.metadata, output_dir)
     event = prepare_and_persist(event_dir, order=config.sort)
     fingerprint = compute_fingerprint(
         event.document,
@@ -134,6 +143,33 @@ def _refuse_disk_collision(project_root: Path, event_dir: Path, config: ProjectC
             output_collision_message(
                 collision.output_path,
                 [_claimant_name(path, project_root) for path in collision.claimed_by],
+            )
+        )
+
+
+def _refuse_claimed_movie(
+    project_root: Path,
+    event_dir: Path,
+    config: ProjectConfig,
+    metadata: Metadata,
+    output_dir: Path,
+) -> None:
+    """Raise :class:`ClaimedMovieError` when the job would replace a movie another event records.
+
+    The kept, old-named movie of a renamed event is recorded in that event's render manifest
+    (D-9); an unforced render must not silently replace it. Read-only, and decided before
+    ``prepare_and_persist`` so a refused job adopts and writes nothing. The project is walked
+    with its layout, as the collision rule does, and a walk failure propagates: a job must not
+    render when the check could not be made (Principle I).
+    """
+    relpath = output_relpath(metadata)
+    walk_root = project_root / config.input_dir if config.input_dir else project_root
+    events = [ref.event_dir for ref in get_layout(config.layout or DEFAULT_LAYOUT)(walk_root)]
+    claimed = claimed_movie(event_dir, output_dir / relpath, events=events)
+    if claimed is not None:
+        raise ClaimedMovieError(
+            claimed_movie_message(
+                relpath, [_claimant_name(path, project_root) for path in claimed.recorded_by]
             )
         )
 

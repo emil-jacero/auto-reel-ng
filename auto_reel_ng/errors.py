@@ -76,6 +76,15 @@ class OutputCollisionError(EngineError):
     """
 
 
+class ClaimedMovieError(EngineError):
+    """A render would replace a movie another event's render manifest still records.
+
+    Raised before anything is written, unless the render is forced, naming the file and the
+    claiming event(s) (D-9); the one wording is
+    :func:`~auto_reel_ng.render.claims.claimed_movie_message`.
+    """
+
+
 class AccelError(EngineError):
     """Hardware-acceleration capability detection or selection failed.
 

@@ -26,11 +26,13 @@ from auto_reel_ng.persistence.models import Job, JobStatus
 from auto_reel_ng.probe import probe_media
 from auto_reel_ng.probe.metadata import ClipMetadata
 from auto_reel_ng.reel import load_document
-from auto_reel_ng.reel.document import Metadata
+from auto_reel_ng.reel.document import Metadata, ReelDocument
 from auto_reel_ng.render import RenderJob, RenderOptions, RenderResult
-from auto_reel_ng.render.claims import output_collision_message
+from auto_reel_ng.render.claims import claimed_movie_message, output_collision_message
 from auto_reel_ng.scheduler.pools import CapacityPools
 from auto_reel_ng.scheduler.worker import RunRender, Worker, _render_job, default_build_job
+from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
+from auto_reel_ng.staleness.manifest import read_manifest, write_manifest
 
 pytestmark = pytest.mark.requires_db
 
@@ -1593,3 +1595,98 @@ def test_a_running_job_whose_event_is_gone_claims_nothing(
     job = job_store.get(job_id)
     assert job is not None and job.status == JobStatus.DONE, job and job.error
     assert renders == [1]
+
+
+# --------------------------------------------------------------------------- #
+# A job refuses to replace a movie another event records (render-refuses-claimed-movie)
+# --------------------------------------------------------------------------- #
+
+
+def _claimed_project(
+    tmp_path: Path, *, unlisted: Tuple[str, ...] = ("new.mp4",)
+) -> Tuple[Path, Path]:
+    """``a`` was retitled and not re-rendered (its manifest records the old movie); ``b`` took
+    the old name; the old movie is on disk. Returns the project root and the movie."""
+    root = tmp_path / "proj"
+    renamed = _write_event(root, "2024/a", title="Grillkvall")
+    _write_event(root, "2024/b", title="Midsommar", unlisted=unlisted)
+    fingerprint = compute_fingerprint(
+        ReelDocument(metadata=Metadata(title="x")),
+        event_dir=renamed,
+        look_defaults={},
+        ffmpeg_version=(7, 1),
+    )
+    write_manifest(
+        renamed,
+        fingerprint,
+        output="2024-06-21 - Midsommar.mp4",
+        engine_identity=engine_identity((7, 1)),
+    )
+    movie = default_output_dir(root) / _MIDSOMMAR
+    movie.parent.mkdir(parents=True)
+    movie.write_bytes(b"the kept movie")
+    return root, movie
+
+
+def test_an_unforced_job_for_an_event_taking_a_recorded_name_is_refused(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    root, movie = _claimed_project(tmp_path)
+    reel_before = (root / "2024/b/reel.yaml").read_bytes()
+    job_id = job_store.enqueue(str(root), "2024/b")
+    worker, renders, _builds = _guard_worker(job_store)
+
+    assert worker.process_next() is True
+
+    assert _failed_error(job_store, job_id) == claimed_movie_message(
+        PurePosixPath(_MIDSOMMAR), ["2024/a"]
+    )
+    assert renders == []
+    assert movie.read_bytes() == b"the kept movie"
+    assert [p.name for p in movie.parent.iterdir()] == [movie.name]  # no .part
+    assert (root / "2024/b/reel.yaml").read_bytes() == reel_before  # new.mp4 not adopted
+    assert read_manifest(root / "2024/b") is None
+
+
+def test_a_forced_job_replaces_the_recorded_movie(
+    job_store: JobStore, runtime, make_clip, tmp_path: Path
+) -> None:
+    root, _movie = _claimed_project(tmp_path, unlisted=())
+    make_clip("proj/2024/b/a.mp4", width=320, height=240, duration=1.0)
+    job_id = job_store.enqueue(str(root), "2024/b", force=True)
+    worker, renders, _builds = _guard_worker(job_store, runtime=runtime)
+
+    assert worker.process_next() is True
+
+    job = job_store.get(job_id)
+    assert job is not None and job.status == JobStatus.DONE, job and job.error
+    assert renders == [1]
+
+
+def test_a_job_whose_output_nobody_records_still_renders(
+    job_store: JobStore, runtime, make_clip, tmp_path: Path
+) -> None:
+    root, movie = _claimed_project(tmp_path, unlisted=())
+    (root / "2024/a/.auto-reel/cache/render-manifest.json").unlink()  # nobody records it now
+    make_clip("proj/2024/b/a.mp4", width=320, height=240, duration=1.0)
+    job_id = job_store.enqueue(str(root), "2024/b")
+    worker, renders, _builds = _guard_worker(job_store, runtime=runtime)
+
+    assert worker.process_next() is True
+
+    job = job_store.get(job_id)
+    assert job is not None and job.status == JobStatus.DONE, job and job.error
+    assert renders == [1]
+    assert movie.exists()
+
+
+def test_a_claim_check_that_cannot_walk_fails_the_job(job_store: JobStore, tmp_path: Path) -> None:
+    root, _movie = _claimed_project(tmp_path)
+    (root / "config.yaml").write_text("layout: no-such-layout\n", encoding="utf-8")
+    job_id = job_store.enqueue(str(root), "2024/b")
+    worker, renders, _builds = _guard_worker(job_store)
+
+    assert worker.process_next() is True
+
+    assert "unknown ingest layout 'no-such-layout'" in _failed_error(job_store, job_id)
+    assert renders == []

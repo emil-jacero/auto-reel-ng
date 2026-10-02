@@ -20,8 +20,10 @@ from auto_reel_ng.cli import commands
 from auto_reel_ng.cli.main import main
 from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.persistence.job_store import Submission
+from auto_reel_ng.reel.document import Metadata, ReelDocument
 from auto_reel_ng.render import BatchOutcome, RenderJob, RenderResult
-from auto_reel_ng.staleness.manifest import read_manifest
+from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
+from auto_reel_ng.staleness.manifest import read_manifest, write_manifest
 
 
 def _touch(path: Path, content: bytes = b"") -> None:
@@ -289,3 +291,116 @@ def test_a_colliding_pair_is_still_refused_beside_an_unreadable_sibling(
     assert "ERROR  2024-06-21 - midsommar: output path" in out
     assert f"ERROR  {LOCKED}:" in out
     assert out.count("ERROR") == 3
+
+
+# --- a render refuses to replace a movie another event's manifest records ---
+
+OLD_NAME = "2024-06-27 - Grillning med Grannar.mp4"  # the folder name title-cases the title
+
+
+def _record(event_dir: Path, output: str) -> None:
+    fingerprint = compute_fingerprint(
+        ReelDocument(metadata=Metadata(title="x")),
+        event_dir=event_dir,
+        look_defaults={},
+        ffmpeg_version=(7, 1),
+    )
+    write_manifest(event_dir, fingerprint, output=output, engine_identity=engine_identity((7, 1)))
+
+
+def _claimed_project(root: Path) -> tuple[Path, Path, Path]:
+    """A renamed event (still recording the old movie), the event taking the old name, the movie."""
+    renamed = _add_event(root, "2024", "2024-06-27 - Grillkvall")
+    _record(renamed, OLD_NAME)
+    taker = _add_event(root, "2024", "2024-06-27 - Grillning med Grannar")
+    movie = default_output_dir(root) / "2024" / OLD_NAME
+    _touch(movie, b"the kept movie")
+    return renamed, taker, movie
+
+
+def test_an_unforced_render_refuses_to_replace_a_movie_another_event_records(
+    root: Path, rendered: List[RenderJob], capsys: pytest.CaptureFixture[str]
+) -> None:
+    _renamed, taker, movie = _claimed_project(root)
+    other = _add_event(root, "2024", "2024-08-01 - Kalas")
+
+    assert main(["render", str(root)]) == 1
+
+    out = capsys.readouterr().out
+    assert f"ERROR  {taker.name}: movie 2024/{OLD_NAME} is recorded as the output of" in out
+    assert "2024-06-27 - Grillkvall" in out
+    assert "force" in out
+    assert movie.read_bytes() == b"the kept movie"
+    assert not movie.with_name(movie.name + ".part").exists()
+    assert read_manifest(taker) is None
+    # the CLI's reconcile step seeds reel.yaml before any gate (collisions and fresh events too);
+    # the refusal itself writes nothing: no manifest, no .part, and a re-run changes nothing.
+    assert sorted(p.name for p in taker.iterdir()) == ["00400.mp4", "reel.yaml"]
+    seeded = (taker / "reel.yaml").read_bytes()
+    assert main(["render", str(root)]) == 1
+    assert (taker / "reel.yaml").read_bytes() == seeded
+    assert movie.read_bytes() == b"the kept movie"
+    # the refused event is never built (no probe, no render); the other events still render
+    assert taker not in [job.options.event_dir for job in rendered]
+    assert other in [job.options.event_dir for job in rendered]
+
+
+def test_force_replaces_the_claimed_movie(root: Path, rendered: List[RenderJob]) -> None:
+    _renamed, taker, _movie = _claimed_project(root)
+
+    assert main(["render", str(root), "--force"]) == 0
+
+    assert taker in [job.options.event_dir for job in rendered]
+
+
+def test_dry_run_is_not_refused_by_a_claimed_movie(
+    root: Path, rendered: List[RenderJob], capsys: pytest.CaptureFixture[str]
+) -> None:
+    _renamed, taker, _movie = _claimed_project(root)
+
+    assert main(["render", str(root), "--dry-run"]) == 0
+
+    assert taker in [job.options.event_dir for job in rendered]
+    assert "recorded as the output" not in capsys.readouterr().out
+
+
+def test_a_fresh_event_is_not_checked_for_a_claim(
+    root: Path, rendered: List[RenderJob], capsys: pytest.CaptureFixture[str]
+) -> None:
+    taker = _add_event(root, "2024", "2024-06-27 - Grillning med Grannar")
+    movie = default_output_dir(root) / "2024" / OLD_NAME
+    _touch(movie, b"its own movie")
+    assert main(["adopt-renders", str(root)]) == 0  # taker is fresh
+    renamed = _add_event(root, "2024", "2024-06-27 - Grillkvall")
+    _record(renamed, OLD_NAME)  # a stale claim on the same file
+
+    assert main(["render", str(root)]) == 0
+
+    out = capsys.readouterr().out
+    assert f"FRESH  {taker.name}" in out
+    assert "recorded as the output" not in out
+
+
+def test_a_file_nobody_records_is_replaced_as_before(root: Path, rendered: List[RenderJob]) -> None:
+    taker = _add_event(root, "2024", "2024-06-27 - Grillning med Grannar")
+    _touch(default_output_dir(root) / "2024" / OLD_NAME, b"stale movie")
+
+    assert main(["render", str(root)]) == 0
+
+    assert [job.options.event_dir for job in rendered] == [taker]
+
+
+def test_a_claimant_in_another_year_folder_is_found(
+    root: Path, rendered: List[RenderJob], capsys: pytest.CaptureFixture[str]
+) -> None:
+    renamed = _add_event(root, "2023", "2024-06-27 - Grillkvall")  # filed under another year
+    _record(renamed, OLD_NAME)
+    taker = _add_event(root, "2024", "2024-06-27 - Grillning med Grannar")
+    movie = default_output_dir(root) / "2024" / OLD_NAME
+    _touch(movie, b"the kept movie")
+
+    assert main(["render", str(root)]) == 1
+
+    assert "recorded as the output of 2024-06-27 - Grillkvall" in capsys.readouterr().out
+    assert taker not in [job.options.event_dir for job in rendered]
+    assert movie.read_bytes() == b"the kept movie"
