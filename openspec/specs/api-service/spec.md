@@ -1518,10 +1518,12 @@ headers.
   same 502 without starting ffprobe or ffmpeg, and one after that window tries again.
 
 #### Scenario: A corrupt clip's detail is one line without server paths
-- **WHEN** an event holds a clip of random bytes, or an mp4 whose media data is cut short behind an intact
-  index, and each is requested
+- **WHEN** an event holds a clip of fixed bytes that are no media container at all (for example a line of
+  plain text repeated), or an mp4 whose media data is cut short behind an intact index, and each is requested
 - **THEN** each response is 502 with the thumbnail failure kind, and its detail is the clip's identity
   followed by a one-line cause: no newline, no ffmpeg or ffprobe command, and no path of the server
+- **AND** the cause for the non-media bytes says the probe could not read the file, every time the same
+  bytes are requested, and the cause for the cut-short mp4 says no frame was extracted
 - **AND** the service's log keeps the full reason, with the failing command and its output
 
 #### Scenario: A cache that cannot be written is the service's fault, not the clip's
