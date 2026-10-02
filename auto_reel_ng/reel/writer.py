@@ -24,6 +24,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from .document import SCHEMA_VERSION, ClipOrder, ReelDocument
+from .schema import check_chapter_names
 
 _LOG = logging.getLogger(__name__)
 
@@ -81,8 +82,13 @@ def write_document(doc: ReelDocument, path: Union[str, Path]) -> None:
     never read as the document: loaders read only ``reel.yaml``. A leftover from a write
     that was killed outright is removed by a later successful write once it is a day old
     (:func:`sweep_abandoned_temporaries`).
+
+    Raises:
+        ReelParseError: a chapter name breaks the naming rules (blank, padded, or equal to
+            another ignoring case); nothing is written and the previous file is untouched.
     """
     path = Path(path)
+    check_chapter_names([chapter.name for chapter in doc.chapters], source=str(path))
     text = dumps_document(doc)
     tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:

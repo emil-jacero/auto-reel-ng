@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from auto_reel_ng.cli.adoption import REEL_FILENAME, persist, place_disk_clips, prepare_event
-from auto_reel_ng.errors import ReconcileError
+from auto_reel_ng.errors import ReconcileError, ReelParseError
 from auto_reel_ng.event import DEFAULT_CLIP_ORDER, ClipOrder, SortMethod, scan_event, seed_document
 from auto_reel_ng.ingest import get_layout
 from auto_reel_ng.reel import load_document, write_document
@@ -337,6 +337,90 @@ def test_a_clip_adopted_earlier_stays_where_it_is(tmp_path: Path) -> None:
     assert prepared.adopted == ()
     assert prepared.changed is False
     assert persist(prepared) is None
+    assert (event / REEL_FILENAME).read_bytes() == before
+
+
+# --------------------------------------------------------------------------- #
+# a folder reaches a chapter exactly, then ignoring case (chapter-name-rules-engine)
+# --------------------------------------------------------------------------- #
+
+PARTY_REEL = "version: 0\nchapters:\n- name: Party\n  clips:\n  - Party/a.mp4\n"
+
+
+def test_a_folder_matches_a_chapter_ignoring_case(tmp_path: Path) -> None:
+    event = _event(tmp_path, PARTY_REEL, {"Party/a.mp4": 9, "party/b.mp4": 10})
+
+    assert _place(event, ("party/b.mp4",)) == (("Party", ("party/b.mp4",)),)
+    prepared = prepare_event(event, order=DEFAULT_CLIP_ORDER)
+    persist(prepared)
+    assert prepared.adopted == ("party/b.mp4",)
+    assert _chapters(load_document(event / REEL_FILENAME)) == [
+        ("Party", ["Party/a.mp4", "party/b.mp4"])
+    ]
+
+
+def test_an_exact_folder_match_wins_over_a_case_variant(tmp_path: Path) -> None:
+    reel = "version: 0\nchapters:\n- name: Party\n  clips: []\n- name: PARTY2\n  clips: []\n"
+    event = _event(tmp_path, reel, {"Party/a.mp4": 9, "PARTY2/b.mp4": 10})
+
+    assert _place(event, ("Party/a.mp4", "PARTY2/b.mp4")) == (
+        ("Party", ("Party/a.mp4",)),
+        ("PARTY2", ("PARTY2/b.mp4",)),
+    )
+
+
+def test_a_padded_folder_name_falls_to_the_default_chapter(tmp_path: Path) -> None:
+    event = _event(tmp_path, PARTY_REEL, {"Party/a.mp4": 9, "Party /b.mp4": 10})
+
+    prepared = prepare_event(event, order=DEFAULT_CLIP_ORDER)
+    persist(prepared)
+
+    assert _chapters(load_document(event / REEL_FILENAME)) == [
+        ("Party", ["Party/a.mp4"]),
+        ("", ["Party /b.mp4"]),
+    ]
+
+
+def test_the_events_detail_places_a_case_variant_folder_under_its_chapter(tmp_path: Path) -> None:
+    from auto_reel_ng.api import events_read
+
+    event = _event(tmp_path, PARTY_REEL, {"Party/a.mp4": 9, "party/b.mp4": 10})
+    document, listing, result = events_read._load_for_reconcile(event, DEFAULT_CLIP_ORDER)
+
+    chapters = events_read._build_chapters(document, listing, result, event, DEFAULT_CLIP_ORDER)
+
+    assert [(c.name, [(clip.identity, clip.status) for clip in c.clips]) for c in chapters] == [
+        ("Party", [("Party/a.mp4", "active"), ("party/b.mp4", "new")])
+    ]
+
+
+@pytest.mark.parametrize(
+    "folders",
+    [
+        pytest.param(("Party", "party"), id="case-variant"),
+        pytest.param(("Party", "Party "), id="trailing-space"),
+    ],
+)
+def test_seeding_refuses_folders_that_make_invalid_chapter_names(
+    tmp_path: Path, folders: tuple[str, ...]
+) -> None:
+    event = tmp_path / "2024-06-21 - Midsummer"
+    for folder in folders:
+        _touch(event / folder / "a.mp4")
+
+    with pytest.raises(ReelParseError, match="chapters\\[\\d\\]"):
+        persist(prepare_event(event, order=DEFAULT_CLIP_ORDER))
+
+    assert not (event / REEL_FILENAME).exists()
+
+
+def test_seeding_a_metadata_only_document_refuses_case_variant_folders(tmp_path: Path) -> None:
+    event = _event(tmp_path, NO_CHAPTERS_REEL, {"Party/a.mp4": 9, "party/b.mp4": 10})
+    before = (event / REEL_FILENAME).read_bytes()
+
+    with pytest.raises(ReelParseError, match="duplicate chapter name"):
+        persist(prepare_event(event, order=DEFAULT_CLIP_ORDER))
+
     assert (event / REEL_FILENAME).read_bytes() == before
 
 

@@ -14,7 +14,7 @@ import math
 from datetime import date, datetime
 from pathlib import PurePosixPath
 from types import MappingProxyType
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Sequence
 
 from ruamel.yaml.scalarbool import ScalarBoolean
 
@@ -127,7 +127,6 @@ def _parse_chapters(raw: Any, *, source: str) -> tuple[Chapter, ...]:
         raise ReelParseError(f"{source}: 'chapters' must be a list, got {type(raw).__name__}")
 
     chapters: list[Chapter] = []
-    seen_names: set[str] = set()
     for index, entry in enumerate(raw):
         loc = f"{source}: chapters[{index}]"
         if not isinstance(entry, Mapping):
@@ -137,9 +136,6 @@ def _parse_chapters(raw: Any, *, source: str) -> tuple[Chapter, ...]:
         # only a missing or non-string name is an error.
         if not isinstance(name, str):
             raise ReelParseError(f"{loc} is missing a string 'name'")
-        if name in seen_names:
-            raise ReelParseError(f"{loc}: duplicate chapter name {name!r}")
-        seen_names.add(name)
 
         refs_raw = entry.get("clips", [])
         if refs_raw is None:
@@ -150,7 +146,38 @@ def _parse_chapters(raw: Any, *, source: str) -> tuple[Chapter, ...]:
             ClipRef(_parse_identity(ref, loc=f"{loc}.clips[{i}]")) for i, ref in enumerate(refs_raw)
         )
         chapters.append(Chapter(name=name, clips=refs))
+    check_chapter_names([chapter.name for chapter in chapters], source=source)
     return tuple(chapters)
+
+
+def check_chapter_names(names: Sequence[str], *, source: str) -> None:
+    """Refuse chapter names that break the document's naming rules (D-12, D-13).
+
+    ``""`` is the default chapter's name and always valid. Any other name must be non-blank
+    and equal its own ``str.strip()``. Names are unique under ``str.casefold()`` (no Unicode
+    normalization). Nothing is rewritten to make a document pass.
+
+    Raises:
+        ReelParseError: naming ``chapters[i]`` (and, for a duplicate, both chapters and names).
+    """
+    seen: dict[str, int] = {}
+    for index, name in enumerate(names):
+        loc = f"{source}: chapters[{index}]"
+        if name != "":
+            if not name.strip():
+                raise ReelParseError(f"{loc}: blank chapter name {name!r}")
+            if name != name.strip():
+                raise ReelParseError(
+                    f"{loc}: chapter name {name!r} has leading or trailing whitespace"
+                )
+        key = name.casefold()
+        first = seen.get(key)
+        if first is not None:
+            raise ReelParseError(
+                f"{loc}: duplicate chapter name {name!r} "
+                f"(same as chapters[{first}] {names[first]!r}, ignoring case)"
+            )
+        seen[key] = index
 
 
 def _parse_clips(raw: Any, *, source: str) -> dict[str, ClipProperties]:

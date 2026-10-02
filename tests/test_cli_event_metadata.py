@@ -170,3 +170,21 @@ def test_adopt_renders_reports_bad_names_not_untitled_claimants(
     assert "claimed by" not in out
     assert "+  2024-06-21 - Midsommar: would adopt at current fingerprint" in out
     assert "1 would adopt, 0 already fresh, 0 unrendered" in out
+
+
+def test_scan_reports_case_variant_chapters_as_an_error_and_lists_the_rest(
+    root: Path, rendered: List[RenderJob], capsys: pytest.CaptureFixture[str]
+) -> None:
+    bad = _add_event(root, "2024", "2024-06-21 - Midsommar")
+    (bad / "reel.yaml").write_text(
+        "version: 0\nchapters:\n- name: Party\n  clips: []\n- name: party\n  clips: []\n", "utf-8"
+    )
+    _add_event(root, "2024", "2024-08-01 - Fest")
+
+    assert main(["scan", str(root)]) == 1
+
+    out = capsys.readouterr().out
+    assert "ERROR  2024-06-21 - Midsommar:" in out
+    assert "chapters[1]: duplicate chapter name 'party'" in out
+    assert "chapters[0] 'Party'" in out
+    assert "Fest  [" in out

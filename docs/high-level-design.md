@@ -240,6 +240,11 @@ sort:                      # optional: this event's rule for clips ENTERING the 
   custom_order: { 00401.mp4: 1 }   # custom only: file name -> position; unlisted clips follow by filename
 ```
 
+Chapter names other than `""` (the default chapter) are unpadded and non-blank, and unique under
+`str.casefold()` (user decision 2026-10-02, "Enforce in engine", change `chapter-name-rules-engine`). Loading
+a `reel.yaml` that breaks this fails loud, naming both chapters; so does writing one. A `reel.yaml` that
+today holds case-variant or padded chapter names stops loading until one chapter is renamed in the file.
+
 Open question: how much render/look config lives per-event in `reel.yaml` vs a **project-level**
 `config.yaml` (defaults inherited by all events) — **decided: both, event overrides project (D-2).**
 
@@ -727,6 +732,13 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   Main after Render, and the operator chose the folder rule, and seeding for a `reel.yaml` that names no
   chapters. Adoption writes `reel.yaml`, which the editorial component already fingerprints, so this is no
   render-graph change. (§4.6)
+
+  *Amended 2026-10-02, change `chapter-name-rules-engine`:* the folder matches a chapter by its exact name
+  first, then by `str.casefold()`, and the clip is listed under the chapter's own name, so a folder `party/`
+  reaches the chapter `Party`. Chapter names are casefold-unique (§4.6), so at most one chapter matches. A
+  folder name with leading or trailing whitespace is never trimmed to find a chapter: it falls to the default
+  chapter. Seeding or adopting folders that differ only by case, or a folder with padding, fails loud
+  instead of writing a `reel.yaml` that no longer loads. (§4.6)
 
 - **D-13 — Chapters are edited in GUI v1** (2026-10-01, change `chapter-management-screen`). Edit mode adds,
   renames, reorders and deletes chapters, and moves clips between them with a per-chapter Move clips
