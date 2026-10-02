@@ -5,9 +5,10 @@
 A clip's `trims` SHALL be an ordered list of cut spans, each with `in` and `out` times (seconds) and an
 optional `reason`. Trims denote spans to REMOVE; all footage outside the spans is kept. A clip MAY have
 multiple spans, and spans MAY overlap or touch: the document SHALL accept them, SHALL keep every span as
-written and in the order written, and SHALL NOT reject, merge, reorder or drop any. Overlapping or touching
-spans denote ONE joined removal of everything they cover together; the footage kept is what lies outside the
-union of all the spans. An editor MAY refuse to add a new span that overlaps another, but that is an editing
+written and in the order written, and SHALL NOT reject, merge, reorder or drop a valid span because it
+overlaps or touches another. Overlapping or
+touching spans denote ONE joined removal of everything they cover together; the footage kept is what lies
+outside the union of all the spans. An editor MAY refuse to add a new span that overlaps another, but that is an editing
 aid and not a rule of the document.
 
 #### Scenario: Two cut spans on one clip
