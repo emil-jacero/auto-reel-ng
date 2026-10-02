@@ -355,13 +355,21 @@ a stalled database), which the command abandons when it exits instead of waiting
 application shutdown step is skipped if it has not started yet, so the log has no "Application shutdown
 complete". The application's own cleanup (the WebSocket poller stopped, the database connections released)
 still runs, when its lifespan is cancelled as the service exits, and the command waits for it. The force
-also still waits for the service's client connections to end, so a connection the server cannot finish
-closing (api-service, "WebSocket live job updates": a vanished peer with frames backed up) keeps the
-command running through further SIGINTs until that connection ends. When the command then ends, it SHALL
-exit with status 130, never 0, so that a forced stop is not reported as a clean one, and it SHALL NOT end
-with a `KeyboardInterrupt` traceback of its own, however many further SIGINTs arrived. A request handler
-that the forced stop cancels, and the application lifespan, cancelled at exit or interrupted by a further
-SIGINT while its cleanup still waits, MAY still be logged as errors with their tracebacks.
+also ends the service's client connections: every connection still open is dropped at once, without waiting
+for it to close, so none holds the command running, including one whose client sent only part of a request
+and one whose peer stopped reading with frames backed up for it (api-service, "WebSocket live job
+updates"). The command SHALL then exit with status 130, never 0, so that a forced stop is not reported as a
+clean one, within a few seconds of the force, and it SHALL NOT end with a `KeyboardInterrupt` traceback of its
+own, however many further SIGINTs arrived. A request handler that the forced stop cancels, and the application
+lifespan, cancelled at exit or interrupted by a further SIGINT while its cleanup still waits, MAY still be
+logged as errors with their tracebacks.
+
+When the application's lifespan fails, the command SHALL NOT exit with status 0 and SHALL NOT report the
+failure only in its log: an application shutdown that failed after one SIGINT or SIGTERM, or an application
+startup that failed, makes the command exit with status 1. uvicorn logs the failure, the traceback and
+"Application shutdown failed. Exiting." or "Application startup failed. Exiting."; after a failed shutdown it
+returns normally, after a failed startup it exits through `SystemExit`, and neither is allowed to decide the
+status. A forced stop skips the application shutdown and keeps status 130.
 
 #### Scenario: Serve starts and answers
 - **WHEN** `auto-reel serve` runs against a project root and a reachable database
@@ -400,6 +408,31 @@ SIGINT while its cleanup still waits, MAY still be logged as errors with their t
 - **THEN** the command exits with status 130 within a few seconds of the second Ctrl-C, while that handler
   is still blocked
 - **AND** its output holds no `KeyboardInterrupt` traceback
+
+#### Scenario: A forced stop does not wait for a client that holds its request open
+- **WHEN** a client has sent the headers of a `POST /api/v1/jobs` announcing a body and only part of it, and
+  keeps the connection open, one Ctrl-C has started the shutdown of `auto-reel serve` (which logs "Waiting for
+  connections to close"), and the operator presses Ctrl-C again
+- **THEN** the command exits with status 130 within a few seconds of the second Ctrl-C, while the client
+  still holds the connection open
+- **AND** its output holds no `KeyboardInterrupt` traceback and no "Application shutdown complete"
+
+#### Scenario: A forced stop does not wait for a peer that stopped reading
+- **WHEN** a client has requested a response larger than the host's socket buffers and reads none of it, one
+  Ctrl-C has started the shutdown of `auto-reel serve`, and the operator presses Ctrl-C again
+- **THEN** the command exits with status 130 within a few seconds of the second Ctrl-C, while the client has
+  not closed the connection
+
+#### Scenario: A failed application shutdown does not exit zero
+- **WHEN** the application's lifespan raises while `auto-reel serve` shuts down after one SIGTERM, or, in a
+  second run, one SIGINT
+- **THEN** the log holds "Application shutdown failed" and the traceback
+- **AND** the command exits with status 1, not 0
+
+#### Scenario: A failed application startup does not exit zero
+- **WHEN** the application's lifespan raises while `auto-reel serve` starts
+- **THEN** the command exits with status 1, not 0
+- **AND** it names the failed application startup, not a failure to bind the port
 
 #### Scenario: A late signal does not change the exit status
 - **WHEN** one SIGTERM or one Ctrl-C has stopped `auto-reel serve` and its orderly shutdown has completed,
