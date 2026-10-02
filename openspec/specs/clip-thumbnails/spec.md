@@ -23,9 +23,21 @@ cause:
 
 - the probe failure
 - the missing duration
-- or "no frame" at the requested time, with the failing ffmpeg command and its stderr
+- "no frame" at the requested time, with the failing ffmpeg command and its stderr
+- or the time-out of the probe or of the extraction
 
 A clip that fails SHALL leave no thumbnail file behind.
+
+The probe and the extraction SHALL each be bounded to 60 seconds. A clip whose probe or extraction does not
+finish within that bound, such as one on a stalled removable drive, SHALL have no thumbnail and SHALL be
+reported with the typed thumbnail error, which states that the read timed out. The system SHALL stop the
+ffprobe or ffmpeg process and SHALL return from the request, so that a stalled clip does not keep the
+caller, or a service extraction slot, occupied. The bound is fixed and is not a `config.yaml` setting. A
+timed-out clip SHALL NOT be retried at another timestamp.
+
+A file name that is not valid UTF-8 SHALL NOT change how a clip fails. ffprobe and ffmpeg echo such a name
+on stderr, and the failure SHALL be reported with the same cause as for any other name, with the name's
+invalid bytes shown as backslash escapes.
 
 #### Scenario: The default takes the frame a quarter of the way in
 - **WHEN** the thumbnail of `s1710001.mp4` in `2024-06-27 - Grillning med grannar` is requested with no
@@ -45,6 +57,25 @@ A clip that fails SHALL leave no thumbnail file behind.
 #### Scenario: A clip with no usable duration is not guessed at
 - **WHEN** the probe of a clip succeeds but reports no duration
 - **THEN** a thumbnail error is raised, naming the clip and the missing duration, and ffmpeg is not run
+
+#### Scenario: A corrupt clip with a non-UTF-8 name reports the probe's failure
+- **WHEN** the thumbnail of `caf\xe9.mp4`, a file of text whose name holds the raw byte `0xE9`, is requested
+- **THEN** a thumbnail error is raised, naming the clip, whose cause is ffprobe's own message (for example
+  `Invalid data found when processing input`) and not a decoding error
+- **AND** no thumbnail file for it exists in the cache
+
+#### Scenario: A probe that hangs times out
+- **WHEN** ffprobe has not exited 60 seconds after it started on `s1710003.mp4`
+- **THEN** ffprobe is killed, a thumbnail error is raised naming the clip and the time-out, and ffmpeg is not
+  run
+- **AND** no thumbnail file for it exists in the cache
+
+#### Scenario: An extraction that hangs times out
+- **WHEN** the probe of `s1710003.mp4` succeeds and ffmpeg has not exited 60 seconds after it started
+- **THEN** ffmpeg is killed, and a thumbnail error is raised naming the clip, the requested time and the
+  time-out
+- **AND** no thumbnail file for it exists in the cache, no temporary file remains, and no other timestamp is
+  tried
 
 #### Scenario: A truncated copy whose frame time lies past the cut
 - **WHEN** a clip was cut short by an interrupted copy, the probe still reports its full duration, and
