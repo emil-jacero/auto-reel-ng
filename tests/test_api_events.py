@@ -974,3 +974,198 @@ def test_detail_orders_entering_clips_by_the_current_config_sort(
     assert [
         (chapter.name, [ref.identity for ref in chapter.clips]) for chapter in render_order.chapters
     ] == by_name
+
+
+# --- excluded clips and the missing clips that block a render ----------------------------
+
+_BBQ = "2024/2024-07-04 - Barbecue"
+
+
+def _write_reel(event_dir: Path, clips: list[str], *, props: str = "", ignore: str = "") -> None:
+    listed = "".join(f"      - {identity}\n" for identity in clips)
+    (event_dir / "reel.yaml").write_text(
+        f"version: 0\nmetadata:\n  title: Barbecue\nchapters:\n  - name: ''\n    clips:\n{listed}"
+        f"{props}{ignore}",
+        encoding="utf-8",
+    )
+
+
+def _detail(client: TestClient, event_id: str = _BBQ) -> dict:
+    response = client.get(f"/api/v1/events/{quote(event_id, safe='/')}")
+    assert response.status_code == 200
+    return response.json()
+
+
+def _row(client: TestClient, event_id: str = _BBQ) -> dict:
+    return _by_id(client.get("/api/v1/events").json())[event_id]
+
+
+def test_an_excluded_clip_is_flagged_and_its_neighbours_are_not(
+    client: TestClient, project: Path
+) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    for name in ("a.mp4", "b.mp4", "c.mp4"):
+        _touch(event_dir / name)
+    _write_reel(
+        event_dir, ["a.mp4", "b.mp4", "c.mp4"], props="clips:\n  b.mp4:\n    exclude: true\n"
+    )
+
+    chapter = _detail(client)["chapters"][0]["clips"]
+
+    assert [(c["identity"], c["status"], c["excluded"]) for c in chapter[:3]] == [
+        ("a.mp4", "active", False),
+        ("b.mp4", "active", True),
+        ("c.mp4", "active", False),
+    ]
+
+
+def test_new_ignored_and_undocumented_clips_are_not_excluded(
+    client: TestClient, project: Path
+) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _touch(event_dir / "00501.mp4")  # NEW
+    _write_reel(event_dir, ["00500.mp4"], ignore="ignore:\n- 00600.mp4\n")
+    _touch(event_dir / "00600.mp4")
+    clips = _clips_by_identity(_detail(client))
+    assert clips["00501.mp4"]["status"] == "new"
+    assert clips["00600.mp4"]["status"] == "ignored"
+    assert [c["excluded"] for c in clips.values()] == [False] * len(clips)
+
+    # An event without a reel.yaml at all.
+    other = _detail(client, "2024/2024-06-21 - Midsommar i Dalarna Åäö")
+    assert all(not c["excluded"] for c in _clips_by_identity(other).values())
+
+
+def test_an_excluded_missing_clip_does_not_block(client: TestClient, project: Path) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _write_reel(
+        event_dir,
+        ["00500.mp4", "gone.mp4"],
+        props="clips:\n  gone.mp4:\n    exclude: true\n",
+    )
+
+    body = _detail(client)
+
+    assert body["missing"] == ["gone.mp4"]
+    assert body["blocking_missing"] == []
+    gone = _clips_by_identity(body)["gone.mp4"]
+    assert (gone["status"], gone["excluded"]) == ("missing", True)
+
+
+def test_only_the_non_excluded_missing_clip_blocks(client: TestClient, project: Path) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _write_reel(
+        event_dir,
+        ["00500.mp4", "gone.mp4", "gone2.mp4"],
+        props="clips:\n  gone.mp4:\n    exclude: true\n",
+    )
+
+    body = _detail(client)
+
+    assert body["missing"] == ["gone.mp4", "gone2.mp4"]
+    assert body["blocking_missing"] == ["gone2.mp4"]
+    assert not _clips_by_identity(body)["gone2.mp4"]["excluded"]
+
+
+def test_an_event_without_exclusions_blocks_on_every_missing_clip(
+    client: TestClient, project: Path
+) -> None:
+    _write_reel(project / "2024" / "2024-07-04 - Barbecue", ["00500.mp4", "gone.mp4"])
+    body = _detail(client)
+    assert body["blocking_missing"] == body["missing"] == ["gone.mp4"]
+
+
+def test_list_clip_count_is_the_pages_and_ignored_clips_are_counted_apart(
+    client: TestClient, project: Path
+) -> None:
+    event_dir = project / "2024" / "2024-07-05 - Ignorerat"
+    for name in ("00400.mp4", "00401.mp4", "00402.mp4"):
+        _touch(event_dir / name)
+    _write_reel(event_dir, ["00400.mp4", "00401.mp4"], ignore="ignore:\n- 00402.mp4\n")
+    event_id = "2024/2024-07-05 - Ignorerat"
+
+    row = _row(client, event_id)
+    clips = list(_clips_by_identity(_detail(client, event_id)).values())
+
+    assert (row["clip_count"], row["ignored_count"]) == (2, 1)
+    assert len(clips) == 3
+    assert sum(c["status"] != "ignored" for c in clips) == row["clip_count"]
+    assert sum(c["status"] == "ignored" for c in clips) == row["ignored_count"]
+
+
+def test_list_clip_count_includes_new_and_missing_clips(client: TestClient, project: Path) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _write_reel(event_dir, ["00500.mp4", "gone.mp4"])  # 00600 is NEW, gone is MISSING
+
+    row = _row(client)
+
+    assert (row["clip_count"], row["new_count"], row["missing_count"]) == (3, 1, 1)
+    assert row["ignored_count"] == 0
+
+
+def test_list_counts_blocking_missing_clips_apart(client: TestClient, project: Path) -> None:
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _write_reel(
+        event_dir,
+        ["00500.mp4", "gone.mp4", "gone2.mp4"],
+        props="clips:\n  gone.mp4:\n    exclude: true\n",
+    )
+
+    row = _row(client)
+
+    assert (row["missing_count"], row["blocking_missing_count"]) == (2, 1)
+    assert row["blocking_missing_count"] == len(_detail(client)["blocking_missing"])
+
+
+def test_staleness_clip_set_ignores_whether_the_absent_clip_is_excluded(
+    project: Path,
+) -> None:
+    from auto_reel_ng.config.project import load_project_config, resolve_look_defaults
+    from auto_reel_ng.reel import load_document
+    from auto_reel_ng.staleness.fingerprint import compute_fingerprint
+
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    defaults = resolve_look_defaults(load_project_config(project))
+
+    def components() -> dict:
+        document = load_document(event_dir / "reel.yaml")
+        assert document is not None
+        fingerprint = compute_fingerprint(
+            document, event_dir=event_dir, look_defaults=defaults, ffmpeg_version="x"
+        )
+        return fingerprint.to_dict()["components"]  # type: ignore[return-value]
+
+    _write_reel(event_dir, ["00500.mp4", "gone.mp4"])
+    plain = components()
+    _write_reel(
+        event_dir, ["00500.mp4", "gone.mp4"], props="clips:\n  gone.mp4:\n    exclude: true\n"
+    )
+    excluded = components()
+
+    moved = {key for key in plain if plain[key] != excluded[key]}
+    assert moved == {"editorial"}
+
+
+def test_reading_excluded_flags_probes_and_writes_nothing(
+    client: TestClient, project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = tmp_path / "ffprobe-ran"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake = fake_bin / "ffprobe"
+    fake.write_text(f"#!/bin/sh\ntouch '{marker}'\nexit 1\n", encoding="utf-8")
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    _write_reel(
+        event_dir, ["00500.mp4", "gone.mp4"], props="clips:\n  gone.mp4:\n    exclude: true\n"
+    )
+    before = {p: p.read_bytes() for p in project.rglob("*") if p.is_file()}
+
+    listed = client.get("/api/v1/events")
+    detail = _detail(client)
+
+    assert listed.status_code == 200
+    assert detail["blocking_missing"] == []
+    assert not marker.exists()
+    assert {p: p.read_bytes() for p in project.rglob("*") if p.is_file()} == before

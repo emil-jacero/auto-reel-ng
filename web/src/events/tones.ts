@@ -33,6 +33,12 @@ export const CLIP_STATUS_LOOK: Record<ClipStatus, StatusLook> = {
   ignored: { tone: 'idle', icon: 'x' },
 }
 
+/**
+ * A clip `reel.yaml` excludes: a flag beside the status (`Clip.excluded`), so it
+ * has a look of its own to show next to, or instead of, the status's.
+ */
+export const EXCLUDED_LOOK: StatusLook = { tone: 'idle', icon: 'eye-off' }
+
 export const FAILURE_LOOK: Record<EventFailure, StatusLook> = {
   unparseable_reel_yaml: { tone: 'err', icon: 'alert-triangle' },
   unusable_metadata: { tone: 'err', icon: 'alert-triangle' },

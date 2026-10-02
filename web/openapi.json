@@ -2013,6 +2013,11 @@
               }
             ],
             "title": "Mtime"
+          },
+          "excluded": {
+            "type": "boolean",
+            "title": "Excluded",
+            "default": false
           }
         },
         "type": "object",
@@ -2021,7 +2026,7 @@
           "status"
         ],
         "title": "ClipOut",
-        "description": "One clip: identity, reconcile status, and the file facts a reorder view needs.\n\n``size`` (bytes) and ``mtime`` (timezone-aware UTC) come from the clip's own\ndirectory entry — **file** facts, never media facts. Nothing here is decoded or\nprobed, so the detail response stays probe-free (Principle IV); duration,\ndimensions and codec belong to the analysis cache, not this shape. Both are\n``None`` for a clip the document references but disk does not have: absence is\nreported, never fabricated as a zero or an epoch (Principle I).\n\n``status`` is typed with reconcile's own closed vocabulary, so the schema\npublishes the enumeration and generated clients get an exhaustive union\n(D-8, §4.10). ``ClipStatus`` is a ``StrEnum``: the wire values are unchanged."
+        "description": "One clip: identity, reconcile status, and the file facts a reorder view needs.\n\n``size`` (bytes) and ``mtime`` (timezone-aware UTC) come from the clip's own\ndirectory entry — **file** facts, never media facts. Nothing here is decoded or\nprobed, so the detail response stays probe-free (Principle IV); duration,\ndimensions and codec belong to the analysis cache, not this shape. Both are\n``None`` for a clip the document references but disk does not have: absence is\nreported, never fabricated as a zero or an epoch (Principle I).\n\n``status`` is typed with reconcile's own closed vocabulary, so the schema\npublishes the enumeration and generated clients get an exhaustive union\n(D-8, §4.10). ``ClipStatus`` is a ``StrEnum``: the wire values are unchanged.\n\n``excluded`` is a flag **beside** ``status``, not a member of it: it is true when the\ndocument's ``clips`` map marks the identity ``exclude: true``, so a render drops the\nclip from the movie without probing it. An excluded clip reports its own status (an\nexcluded clip whose file is gone is ``missing`` and ``excluded``). It is false for a\nNEW or IGNORED clip (the document holds no properties for a clip no chapter lists)\nand for every clip of an event without a ``reel.yaml``."
       },
       "ClipPropertiesBody": {
         "properties": {
@@ -2278,6 +2283,14 @@
             "title": "Missing",
             "default": []
           },
+          "blocking_missing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocking Missing",
+            "default": []
+          },
           "latest_job": {
             "anyOf": [
               {
@@ -2298,7 +2311,7 @@
           "staleness"
         ],
         "title": "EventDetailOut",
-        "description": "One event's full detail: metadata, ordered chapters/clips, reconcile state,\nand its staleness verdict (change-detection, §8.14)."
+        "description": "One event's full detail: metadata, ordered chapters/clips, reconcile state,\nand its staleness verdict (change-detection, §8.14).\n\n``missing`` lists every clip the document lists that disk does not have, excluded or\nnot. ``blocking_missing`` is the subset a render needs: the missing clips the document\ndoes not exclude (an excluded clip is never probed, so its absence cannot fail a\nrender)."
       },
       "EventErrorOut": {
         "properties": {
@@ -2388,6 +2401,10 @@
             "type": "integer",
             "title": "Clip Count"
           },
+          "ignored_count": {
+            "type": "integer",
+            "title": "Ignored Count"
+          },
           "new_count": {
             "type": "integer",
             "title": "New Count"
@@ -2395,6 +2412,10 @@
           "missing_count": {
             "type": "integer",
             "title": "Missing Count"
+          },
+          "blocking_missing_count": {
+            "type": "integer",
+            "title": "Blocking Missing Count"
           },
           "latest_job": {
             "anyOf": [
@@ -2415,12 +2436,14 @@
           "kind",
           "event_id",
           "clip_count",
+          "ignored_count",
           "new_count",
           "missing_count",
+          "blocking_missing_count",
           "staleness"
         ],
         "title": "EventSummaryOut",
-        "description": "One event as listed by ``GET /api/v1/events``."
+        "description": "One event as listed by ``GET /api/v1/events``.\n\n``clip_count`` is the clips the event lists that are not ignored (ACTIVE, NEW and\nMISSING), the number the event's detail page counts; ``ignored_count`` is the IGNORED\nones, which ``clip_count`` leaves out. ``missing_count`` counts every missing clip;\n``blocking_missing_count`` only those a render needs (the detail's ``blocking_missing``)."
       },
       "FreshResult": {
         "properties": {

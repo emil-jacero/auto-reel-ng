@@ -55,6 +55,9 @@ export const CLIP_STATUS_LABEL: Record<ClipStatus, string> = {
   ignored: 'Ignored',
 }
 
+/** An excluded clip is listed in reel.yaml but a render leaves it out of the movie. */
+export const EXCLUDED_LABEL = 'Excluded'
+
 /*
  * A request with no usable answer, in the words every screen uses. Type-only
  * imports here (no `common.tsx`, which imports this module), so the helpers

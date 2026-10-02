@@ -18,13 +18,10 @@ import { CutsPanel, CutsToggle } from '../cuts/CutsPanel'
 import type { CutHandlers, CutPanels } from '../cuts/CutsPanel'
 import { keptCuts } from '../cuts/times'
 import { ClipThumb } from '../events/ClipThumb'
-import { ClipName, clipNames, formatBytes, plural } from '../events/common'
-import { CLIP_STATUS_LABEL } from '../events/labels'
-import { CLIP_STATUS_LOOK } from '../events/tones'
+import { ClipName, ClipStatusPills, clipNames, formatBytes, plural } from '../events/common'
 import { formatInstant } from '../format'
 import { watchName } from '../preview/playback'
 import { Icon } from '../ui/Icon'
-import { Pill } from '../ui/Pill'
 import { useReducedMotion } from './ChapterDrag'
 import { ChapterTools } from './ChapterTools'
 import type { ChapterToolsModel } from './ChapterTools'
@@ -57,13 +54,10 @@ import { CHAPTER_DROP } from './dragSlots'
  * absent. Then the row's action, beside the status that explains it.
  */
 function ClipFacts({ clip, action }: { clip: Clip; action?: ReactNode }) {
-  const look = CLIP_STATUS_LOOK[clip.status]
   return (
     <span className="clip-facts">
       <span className="clip-status">
-        <Pill tone={look.tone} icon={look.icon}>
-          {CLIP_STATUS_LABEL[clip.status]}
-        </Pill>
+        <ClipStatusPills clip={clip} />
       </span>
       <span className="clip-size">{clip.size == null ? '—' : formatBytes(clip.size)}</span>
       <span className="clip-mtime">
@@ -293,18 +287,21 @@ const ClipRow = memo(function ClipRow({
       ),
     [identity, name, status, locked, onRemove],
   )
-  // A clip on disk has a Cuts control; a missing one only says how many cuts it has.
-  const cuttable = status === 'active' || status === 'new'
+  // A clip on disk has a Cuts control; a missing one only says how many cuts it has. An
+  // excluded clip is not in the movie, so its cuts do not apply: neither is shown. They
+  // stay in the draft, and Save writes them back unchanged.
+  const { excluded } = clip
+  const cuttable = !excluded && (status === 'active' || status === 'new')
   const kept = keptCuts(cuts).length
   const badge = useMemo(
     () =>
-      status !== 'missing' || kept === 0 ? null : (
+      status !== 'missing' || excluded || kept === 0 ? null : (
         <span className="badge clip-cuts-badge" data-tone="idle">
           {SCISSORS}
           {plural(kept, 'cut', 'cuts')}
         </span>
       ),
-    [status, kept],
+    [status, excluded, kept],
   )
   // Shown or not lives in the editor's store too: Move clips, or a drag into another
   // chapter, mounts this row anew in its new chapter, and it opens as it was. Reset
@@ -343,6 +340,7 @@ const ClipRow = memo(function ClipRow({
       className="clip-item"
       data-identity={clip.identity}
       data-status={clip.status}
+      data-excluded={clip.excluded || undefined}
       data-moved={was !== null || from !== null || undefined}
       data-dragging={isDragging || undefined}
       data-drop-before={dropBefore || undefined}

@@ -162,6 +162,20 @@ def test_clip_status_is_published_as_a_closed_enumeration() -> None:
     assert set(published["enum"]) == {"new", "active", "missing", "ignored"}
 
 
+def test_the_excluded_clip_read_model_is_published() -> None:
+    """The flags a client reads to mark an excluded clip and to gate Render are in the schema."""
+    models = build_openapi_schema()["components"]["schemas"]
+
+    assert models["ClipOut"]["properties"]["excluded"]["type"] == "boolean"
+    blocking = models["EventDetailOut"]["properties"]["blocking_missing"]
+    assert blocking["type"] == "array"
+    assert blocking["items"]["type"] == "string"
+    summary = models["EventSummaryOut"]
+    for name in ("ignored_count", "blocking_missing_count"):
+        assert summary["properties"][name]["type"] == "integer"
+        assert name in summary["required"]
+
+
 def test_job_status_fields_are_published_as_the_job_status_enumeration() -> None:
     """Every job-status response field references the store's own enum, not ``string``."""
     schema = build_openapi_schema()

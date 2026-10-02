@@ -40,12 +40,20 @@ class ClipOut(BaseModel):
     ``status`` is typed with reconcile's own closed vocabulary, so the schema
     publishes the enumeration and generated clients get an exhaustive union
     (D-8, §4.10). ``ClipStatus`` is a ``StrEnum``: the wire values are unchanged.
+
+    ``excluded`` is a flag **beside** ``status``, not a member of it: it is true when the
+    document's ``clips`` map marks the identity ``exclude: true``, so a render drops the
+    clip from the movie without probing it. An excluded clip reports its own status (an
+    excluded clip whose file is gone is ``missing`` and ``excluded``). It is false for a
+    NEW or IGNORED clip (the document holds no properties for a clip no chapter lists)
+    and for every clip of an event without a ``reel.yaml``.
     """
 
     identity: str
     status: ClipStatus
     size: Optional[int] = None
     mtime: Optional[datetime] = None
+    excluded: bool = False
 
 
 class ChapterOut(BaseModel):
@@ -90,7 +98,13 @@ class StalenessOut(BaseModel):
 
 
 class EventSummaryOut(BaseModel):
-    """One event as listed by ``GET /api/v1/events``."""
+    """One event as listed by ``GET /api/v1/events``.
+
+    ``clip_count`` is the clips the event lists that are not ignored (ACTIVE, NEW and
+    MISSING), the number the event's detail page counts; ``ignored_count`` is the IGNORED
+    ones, which ``clip_count`` leaves out. ``missing_count`` counts every missing clip;
+    ``blocking_missing_count`` only those a render needs (the detail's ``blocking_missing``).
+    """
 
     #: The list's discriminator. Declared without a default so the schema marks it
     #: required and generated clients get a non-optional ``kind: "event"``.
@@ -100,8 +114,10 @@ class EventSummaryOut(BaseModel):
     date: Optional[DateValue] = None
     location: Optional[str] = None
     clip_count: int
+    ignored_count: int
     new_count: int
     missing_count: int
+    blocking_missing_count: int
     latest_job: Optional[JobSummaryOut] = None
     #: The same verdict shape the detail response carries, so one list request
     #: answers "which of these need a render?" without a per-event follow-up.
@@ -141,7 +157,13 @@ EventRowOut = Annotated[Union[EventSummaryOut, EventErrorOut], Field(discriminat
 
 class EventDetailOut(BaseModel):
     """One event's full detail: metadata, ordered chapters/clips, reconcile state,
-    and its staleness verdict (change-detection, §8.14)."""
+    and its staleness verdict (change-detection, §8.14).
+
+    ``missing`` lists every clip the document lists that disk does not have, excluded or
+    not. ``blocking_missing`` is the subset a render needs: the missing clips the document
+    does not exclude (an excluded clip is never probed, so its absence cannot fail a
+    render).
+    """
 
     event_id: str
     title: Optional[str] = None
@@ -150,6 +172,7 @@ class EventDetailOut(BaseModel):
     description: Optional[str] = None
     chapters: List[ChapterOut] = []
     missing: List[str] = []
+    blocking_missing: List[str] = []
     latest_job: Optional[JobSummaryOut] = None
     staleness: StalenessOut
 

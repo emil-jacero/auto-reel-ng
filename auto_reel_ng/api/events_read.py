@@ -290,9 +290,11 @@ def _event_summary(
         title=title,
         date=event_date,
         location=location,
-        clip_count=len(result.classification),
+        clip_count=len(result.classification) - len(result.ignored),
+        ignored_count=len(result.ignored),
         new_count=len(result.new),
         missing_count=len(result.missing),
+        blocking_missing_count=len(blocking_missing(document, result)),
         latest_job=_job_summary(latest_jobs.get(event_id)),
         staleness=staleness_for(settings, event_dir, document, runtime, look_defaults),
     )
@@ -320,14 +322,35 @@ def _file_facts(path: Path) -> Tuple[Optional[int], Optional[datetime]]:
     return stat.st_size, datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
 
 
-def _clip_out(event_dir: Path, identity: str, status: ClipStatus) -> ClipOut:
+def _is_excluded(document: Optional[ReelDocument], identity: str) -> bool:
+    """Whether the document marks ``identity`` ``exclude: true`` (``False`` with no document)."""
+    if document is None:
+        return False
+    props = document.clips.get(identity)
+    return props is not None and props.exclude
+
+
+def blocking_missing(document: Optional[ReelDocument], result: ReconcileResult) -> Tuple[str, ...]:
+    """The missing clips a render needs: listed, absent from disk, and not excluded.
+
+    The one definition the events reads share (and ``POST /jobs`` can reuse): an
+    excluded clip is never probed, so its absence cannot fail a render. In
+    ``result.missing`` order; empty when there is no document (nothing is listed, so
+    nothing is missing). A read-model projection of two engine facts, never a probe.
+    """
+    return tuple(i for i in result.missing if not _is_excluded(document, i))
+
+
+def _clip_out(
+    event_dir: Path, identity: str, status: ClipStatus, *, excluded: bool = False
+) -> ClipOut:
     """One clip with its file facts; a MISSING clip has no file, so it is not statted."""
     if status is ClipStatus.MISSING:
-        return ClipOut(identity=identity, status=status)
+        return ClipOut(identity=identity, status=status, excluded=excluded)
     # The identity *is* the event-relative POSIX path (the mapping render/ uses),
     # so a clip in a named chapter subdirectory resolves inside that directory.
     size, mtime = _file_facts(event_dir / identity)
-    return ClipOut(identity=identity, status=status, size=size, mtime=mtime)
+    return ClipOut(identity=identity, status=status, size=size, mtime=mtime, excluded=excluded)
 
 
 def _build_chapters(
@@ -367,7 +390,11 @@ def _build_chapters(
         for ref in chapter.clips:
             seen.add(ref.identity)
             status = result.classification.get(ref.identity, ClipStatus.MISSING)
-            clips.append(_clip_out(event_dir, ref.identity, status))
+            clips.append(
+                _clip_out(
+                    event_dir, ref.identity, status, excluded=_is_excluded(document, ref.identity)
+                )
+            )
         chapters.append(ChapterOut(name=chapter.name, clips=clips))
 
     by_name = {chapter.name: chapter for chapter in chapters}
@@ -471,6 +498,7 @@ def get_event(
         description=document.metadata.description if document is not None else None,
         chapters=chapters,
         missing=list(result.missing),
+        blocking_missing=list(blocking_missing(document, result)),
         latest_job=_job_summary(latest_jobs.get(event_id)),
         staleness=staleness,
     )
