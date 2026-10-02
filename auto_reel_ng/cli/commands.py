@@ -881,7 +881,7 @@ def cmd_adopt_renders(args: argparse.Namespace) -> int:
             continue
         document = documents[ref.event_dir]
         output_path = ctx.output_dir / output_relpath(document.metadata)
-        if not output_path.exists():
+        if not output_path.is_file():
             unrendered += 1
             print(f".  {ref.event_dir.name}: unrendered, nothing to adopt")
             continue

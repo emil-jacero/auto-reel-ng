@@ -636,7 +636,14 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   also refuses a job whose output path another `running` job writes (another project sharing the output
   directory, an event the layout walk does not reach); a refused job fails with the reason and is
   enqueued again once the cause is gone. A clip the event lists but the folder lacks fails the event by
-  identity, all of them at once, on `render` and in the worker alike. (§4.3/§4.11)
+  identity, all of them at once, on `render` and in the worker alike.
+  *Amended 2026-10-02, change `staleness-output-lookup`:* the event's movie is a regular file, for the
+  verdict, the movie route and `adopt-renders` alike: a folder at the movie's path is a missing movie (`output`),
+  is not adopted, and makes a render fail typed instead of replacing it. The previous movie is looked for only
+  in the output directory in use, so a render into another `-o` directory reads `output`. A case-only rename on
+  a case-insensitive mount is unchanged and unverified here (no such mount on the dev host); an undated title
+  that starts with a date prefix is unreachable, since every surface refuses an event without a real date.
+  (§4.3/§4.11)
 
 - **D-10 — GUI v1 visual system** (2026-09-30, change `web-design-system`). GUI v1 ships a modern visual
   design, overriding event-list-screen's deferral of look and feel to v2, and does it inside D-8's budget:

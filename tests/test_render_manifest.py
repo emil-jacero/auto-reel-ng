@@ -3,6 +3,7 @@ finalize, never on skip/dry-run/failure/no-fingerprint."""
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from auto_reel_ng.render import RenderOptions
 from auto_reel_ng.render import orchestrator as orch
 from auto_reel_ng.render import render_movie
 from auto_reel_ng.staleness.fingerprint import compute_fingerprint
+from auto_reel_ng.staleness.gate import evaluate
 from auto_reel_ng.staleness.manifest import read_manifest
 
 
@@ -132,3 +134,38 @@ def test_no_fingerprint_writes_no_manifest(runtime, make_clip, tmp_path: Path) -
 
     assert result.output_path.exists()
     assert read_manifest(tmp_path) is None
+
+
+def test_a_title_with_a_separator_renders_one_file_the_gate_finds(
+    runtime, make_clip, tmp_path: Path
+) -> None:
+    """The recorded name and the movie agree for a title with a path separator (D-9)."""
+    clip_a = make_clip("a.mp4", width=320, height=240, fps=30, duration=1.0)
+    facts = {"a.mp4": probe_media(clip_a, runtime=runtime)}
+    metadata = Metadata(title="Mid/sommar", date=date(2024, 6, 21))
+    document = ReelDocument(metadata=metadata)
+    fingerprint = compute_fingerprint(
+        document, event_dir=tmp_path, look_defaults={}, ffmpeg_version=runtime.version
+    )
+    plan = RenderPlan(
+        metadata=metadata,
+        look={"target_resolution": [320, 240]},
+        chapters=(ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4"),)),),
+    )
+    out = tmp_path / "out"
+    options = RenderOptions(
+        event_dir=tmp_path,
+        output_dir=out,
+        clip_facts=facts,
+        runtime=runtime,
+        fingerprint=fingerprint,
+    )
+
+    result = render_movie(plan, CPUProfile(), options)
+
+    manifest = read_manifest(tmp_path)
+    assert manifest is not None
+    assert manifest.output == result.output_path.name
+    assert result.output_path.parent == out / "2024"
+    assert sorted(path.name for path in out.rglob("*") if path.is_file()) == [manifest.output]
+    assert evaluate(tmp_path, result.output_path, fingerprint).reasons == ()

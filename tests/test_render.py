@@ -75,6 +75,7 @@ from auto_reel_ng.render import (
     verify_output,
 )
 from auto_reel_ng.render.normalize import NormalizeCommand, _needs_pad
+from auto_reel_ng.staleness.manifest import read_manifest
 
 # --------------------------------------------------------------------------- #
 # Fixtures / factories                                                         #
@@ -1349,6 +1350,76 @@ def test_dry_run_produces_commands_and_no_output(runtime, make_clip, tmp_path) -
     assert result.commands  # at least the normalize + concat commands
     assert not (out_dir / "Movie.mp4").exists()
     assert not out_dir.exists()
+
+
+def _folder_at_the_output_path(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """The output directory, a folder where the movie belongs, and a file inside it."""
+    out_dir = tmp_path / "out"
+    folder = out_dir / "Movie.mp4"
+    folder.mkdir(parents=True)
+    keepsake = folder / "keepsake.txt"
+    keepsake.write_text("not a movie")
+    return out_dir, folder, keepsake
+
+
+@pytest.mark.parametrize("overwrite", [True, False])
+def test_a_folder_at_the_output_path_is_refused(
+    runtime, make_clip, tmp_path, monkeypatch, overwrite
+) -> None:
+    clip_a = make_clip("a.mp4", width=320, height=240)
+    facts = {"a.mp4": probe_media(clip_a, runtime=runtime)}
+    out_dir, folder, keepsake = _folder_at_the_output_path(tmp_path)
+
+    def never(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("ffmpeg must not run for a non-file output path")
+
+    monkeypatch.setattr(orch, "_execute", never)
+    options = RenderOptions(
+        event_dir=tmp_path,
+        output_dir=out_dir,
+        clip_facts=facts,
+        runtime=runtime,
+        overwrite=overwrite,
+    )
+    with pytest.raises(RenderError, match="not a regular file"):
+        render_movie(_simple_plan(Metadata(title="Movie")), CPUProfile(), options)
+    assert folder.is_dir()
+    assert keepsake.read_text() == "not a movie"
+    assert not list(out_dir.glob("*.part"))
+    assert read_manifest(tmp_path) is None
+
+
+def test_a_dry_run_over_a_folder_still_plans(runtime, make_clip, tmp_path) -> None:
+    clip_a = make_clip("a.mp4", width=320, height=240)
+    facts = {"a.mp4": probe_media(clip_a, runtime=runtime)}
+    out_dir, folder, keepsake = _folder_at_the_output_path(tmp_path)
+    options = RenderOptions(
+        event_dir=tmp_path, output_dir=out_dir, clip_facts=facts, runtime=runtime, dry_run=True
+    )
+    result = render_movie(_simple_plan(Metadata(title="Movie")), CPUProfile(), options)
+    assert result.output_path == folder
+    assert keepsake.read_text() == "not a movie"
+    assert sorted(p.name for p in out_dir.iterdir()) == ["Movie.mp4"]
+
+
+def test_batch_isolates_an_event_whose_output_path_is_a_folder(
+    runtime, make_clip, tmp_path
+) -> None:
+    clip_a = make_clip("a.mp4", width=320, height=240)
+    facts = {"a.mp4": probe_media(clip_a, runtime=runtime)}
+    out_dir, folder, _ = _folder_at_the_output_path(tmp_path)
+    base = dict(
+        event_dir=tmp_path, output_dir=out_dir, clip_facts=facts, runtime=runtime, overwrite=True
+    )
+    jobs = [
+        RenderJob(_simple_plan(Metadata(title="Movie")), CPUProfile(), RenderOptions(**base)),
+        RenderJob(_simple_plan(Metadata(title="Fine")), CPUProfile(), RenderOptions(**base)),
+    ]
+    bad, good = render_batch(jobs)
+    assert bad.result is None and bad.error is not None and str(folder) in bad.error
+    assert good.error is None and good.result is not None
+    assert good.result.output_path.is_file()
+    assert folder.is_dir()
 
 
 # --------------------------------------------------------------------------- #
