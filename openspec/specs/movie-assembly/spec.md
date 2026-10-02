@@ -76,6 +76,14 @@ clips, or the clock. The engine SHALL create the year folder when it does not ex
 needs an event's output path (rendering, the staleness gate's call sites, adoption, job enqueue, the
 worker, and the API) SHALL derive it by this one rule, so the rule cannot drift between call sites.
 
+The output file name SHALL always be exactly one path component. Within the title and the location, every
+path separator (`/` and `\`) and every control character (including NUL) SHALL be replaced by `-` in the
+file name only; the title and location as authored in `reel.yaml`, the API and on the title card are never
+altered. A name built from a title or location containing separators therefore never creates a folder and
+can never form a `..` component. Before rendering or planning a dry run, the engine SHALL verify that the
+output path lies inside the output directory (a lexical check, so a symlinked year folder remains valid) and
+SHALL fail the event with a typed render error, creating no directory or file, when it does not.
+
 Output finalization SHALL be atomic: the assembled movie is written to a temporary name in the **same
 directory as the final output path** (same filesystem) and moved into the final path with an atomic rename
 only after post-render verification passes — so a file existing at the final output path guarantees a
@@ -88,6 +96,34 @@ output, and SHALL NOT create the year folder.
 #### Scenario: Output filename includes location when present
 - **WHEN** an event dated `2024-06-21` has title `Midsummer` and location `Dalarna`
 - **THEN** the output file is `<output>/2024/2024-06-21 - Midsummer - Dalarna.mp4`
+
+#### Scenario: A slash in the title does not create a folder
+- **WHEN** an event dated `2025-01-16` has title `Mid/sommar`
+- **THEN** the output file is `<output>/2025/2025-01-16 - Mid-sommar.mp4`, no `2025-01-16 - Mid` folder is
+  created, and the title in `reel.yaml` still reads `Mid/sommar`
+
+#### Scenario: A slash in the location does not create a folder
+- **WHEN** an event dated `2025-01-16` has title `T` and location `Gamla/stan`
+- **THEN** the output file is `<output>/2025/2025-01-16 - T - Gamla-stan.mp4`
+
+#### Scenario: A traversal title cannot escape the output directory
+- **WHEN** an event dated `2025-01-16` has title `a/../../../escaped`
+- **THEN** the output file is `<output>/2025/2025-01-16 - a-..-..-..-escaped.mp4`, and nothing is written
+  outside the output directory
+
+#### Scenario: Backslash and control characters are replaced
+- **WHEN** an event has a title containing a backslash, a NUL or a newline
+- **THEN** each of those characters appears as `-` in the file name, which remains one path component
+
+#### Scenario: An output path outside the output directory is refused
+- **WHEN** the output path computed for an event would resolve outside the output directory, including in
+  dry-run mode
+- **THEN** the engine fails that event with a typed render error and creates no directory, `.part` file or
+  output
+
+#### Scenario: A symlinked year folder is still valid
+- **WHEN** `<output>/2024` is a symlink to another directory on the archive
+- **THEN** a 2024 event renders into the link target and the containment check does not refuse it
 
 #### Scenario: Output filename omits absent location
 - **WHEN** an event dated `2023-12-24` has title `Julafton` and no location
