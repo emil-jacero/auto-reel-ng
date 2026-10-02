@@ -1,15 +1,23 @@
 import type { Clip } from '../api/event'
+import { casefold } from './casefold.ts'
 import type { ChapterKey, DraftChapter } from './draft'
 
 /*
  * Chapter names: which ones Edit mode accepts, and what a name means for clips
- * added later. Pure, with type-only imports, like `draft.ts`.
+ * added later. Pure, with only a sibling pure import (the case fold), like `draft.ts`.
+ *
+ * The page follows the engine's chapter-name rules (D-12, D-13), so that a name
+ * it accepts is a name `reel.yaml` loads: a name is stripped as Python's
+ * `str.strip()` strips it and is not empty, and two names equal under
+ * `str.casefold()` are one name (`stripLikePython`, `casefold`). `Main` is the
+ * page's own reservation; the engine has none.
  *
  * A clip that appears in an event's folder after its `reel.yaml` exists joins,
- * at the next read or render, the chapter named exactly after its folder, else
- * the event's own chapter (D-12); an ignored clip is listed the same way. So a
- * chapter's name decides where its folder's later clips go, and the notes below
- * say so wherever an edit changes that.
+ * at the next read or render, the chapter whose name equals its folder's under
+ * that fold (the engine tries the exact name first; names are unique under the
+ * fold, so it is the same chapter), else the event's own chapter (D-12); an
+ * ignored clip is listed the same way. So a chapter's name decides where its
+ * folder's later clips go, and the notes below say so wherever an edit changes that.
  */
 
 /** How the page names the event's own chapter (`''`) while another chapter is listed. */
@@ -21,7 +29,9 @@ export type NameRefusal = 'empty' | 'taken' | 'taken-deleted' | 'reserved'
 /** The refusal at the name field, by cause; `clash` is the name it clashes with. */
 export const NAME_REFUSAL: Record<NameRefusal, (clash: string) => string> = {
   empty: () => "Enter a name. A chapter's name is the heading of its title card.",
-  taken: (clash) => `A chapter called “${clash}” already exists. Names are compared ignoring case.`,
+  taken: (clash) =>
+    `A chapter called “${clash}” already exists. Names that differ only in letter case, ` +
+    'such as ß and ss, count as the same.',
   'taken-deleted': (clash) =>
     `“${clash}” is deleted when you save. Undo that, or pick another name.`,
   reserved: () =>
@@ -66,24 +76,56 @@ function folderOf(identity: string): string {
   return slash === -1 ? '' : identity.slice(0, slash)
 }
 
-function folded(name: string): string {
-  return name.toLocaleLowerCase()
+// What Python's `str.strip()` removes (`chr(c).isspace()`): U+0009..U+000D, U+001C..U+001F,
+// U+0020, U+0085, U+00A0, U+1680, U+2000..U+200A, U+2028, U+2029, U+202F, U+205F, U+3000.
+// Not `trim()`: that removes U+FEFF and keeps U+001C..U+001F and U+0085.
+const PYTHON_SPACE =
+  '[\\t-\\r\\u001c-\\u001f \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029' +
+  '\\u202f\\u205f\\u3000]'
+const PADDING = new RegExp(`^${PYTHON_SPACE}+|${PYTHON_SPACE}+$`, 'g')
+
+/** `s` without the characters around it that Python's `s.strip()` removes. */
+export function stripLikePython(s: string): string {
+  return s.replace(PADDING, '')
+}
+
+/** The listed chapter whose name equals `folder` under the case fold (the engine's placement). */
+export function chapterForFolder<T extends { name: string }>(
+  listed: readonly T[],
+  folder: string,
+): T | null {
+  const key = casefold(folder)
+  return listed.find((chapter) => casefold(chapter.name) === key) ?? null
+}
+
+/**
+ * The spelling of the disk folder `name` matches under the case fold, or null
+ * when none does. With several (`a/` and `A/` on a case-sensitive file system)
+ * the exact one if it is among them, else the first in code-unit order.
+ */
+export function folderSpelling(folders: ReadonlySet<string>, name: string): string | null {
+  const key = casefold(name)
+  const found = [...folders].filter((folder) => casefold(folder) === key)
+  if (found.length === 0) {
+    return null
+  }
+  return found.includes(name) ? name : found.sort()[0]
 }
 
 /**
  * Whether `typed` is an acceptable name for chapter `self` (null: a chapter
- * being added). The name is trimmed and must not be empty. Ignoring case, it
- * must differ from `Main` and from every other chapter's name, a deleted one's
- * included (its Undo would bring the clash back). The engine checks exact
- * duplicates only; this is stricter, never looser. Its own name back (spaces
- * around it aside) is accepted: the dialog then changes nothing.
+ * being added). The name is stripped as Python strips it and must not be empty.
+ * Under the case fold, it must differ from every other chapter's name, a deleted
+ * one's included (its Undo would bring the clash back): the engine's rule. It
+ * must also differ from `Main`, which is the page's alone. Its own name back
+ * (spaces around it aside) is accepted: the dialog then changes nothing.
  */
 export function checkName(
   chapters: readonly DraftChapter[],
   typed: string,
   self: ChapterKey | null,
 ): { ok: true; name: string } | { ok: false; refusal: NameRefusal; clash: string | null } {
-  const name = typed.trim()
+  const name = stripLikePython(typed)
   if (name === '') {
     return { ok: false, refusal: 'empty', clash: null }
   }
@@ -91,12 +133,12 @@ export function checkName(
   if (current !== undefined && current.name === name) {
     return { ok: true, name }
   }
-  if (folded(name) === folded(OWN_CHAPTER_HEADING)) {
+  if (casefold(name) === casefold(OWN_CHAPTER_HEADING)) {
     return { ok: false, refusal: 'reserved', clash: OWN_CHAPTER_HEADING }
   }
+  const key = casefold(name)
   const clashes = chapters.filter(
-    (chapter) =>
-      chapter.key !== self && chapter.name !== '' && folded(chapter.name) === folded(name),
+    (chapter) => chapter.key !== self && chapter.name !== '' && casefold(chapter.name) === key,
   )
   const listed = clashes.find((chapter) => !chapter.deleted)
   if (listed !== undefined) {
@@ -135,19 +177,18 @@ export function ownChapterHeading(chapters: readonly DraftChapter[]): string {
 /**
  * How many of `identities` (ignored clips the event's own chapter lists) the page
  * would list under that chapter again after the save: those of the event folder,
- * and those of a folder no chapter a save keeps is named after (exactly). The
- * others move to the chapter named after their folder.
+ * and those of a folder no chapter a save keeps is named after (under the case
+ * fold, as the engine matches). The others move to the chapter named after their
+ * folder.
  */
 export function ignoredStaying(
   chapters: readonly DraftChapter[],
   identities: readonly string[],
 ): number {
-  const names = new Set(
-    chapters.filter((chapter) => !chapter.deleted).map((chapter) => chapter.name),
-  )
+  const listed = chapters.filter((chapter) => !chapter.deleted)
   return identities.filter((identity) => {
     const folder = folderOf(identity)
-    return folder === '' || !names.has(folder)
+    return folder === '' || chapterForFolder(listed, folder) === null
   }).length
 }
 
@@ -161,7 +202,7 @@ export type NoteInput = {
 
 /**
  * The later-clips notes of every chapter, deleted ones included, each in this
- * order (names compared exactly, as the engine does; "Main" below is the event's
+ * order (names compared under the case fold, as the engine does; "Main" below is the event's
  * own chapter, named by its heading now, `Main` or `Clips`, or a new `Main` chapter
  * at the end when it is deleted or not listed):
  *
@@ -182,7 +223,7 @@ export function laterClipNotes(input: NoteInput): ReadonlyMap<ChapterKey, readon
   const ownHeading = own === null ? null : ownChapterHeading(chapters)
   // Where an ignored clip of folder F is listed after the save: the chapter named F, else Main.
   const homeOf = (folder: string): ChapterKey | null =>
-    listed.find((chapter) => chapter.name === folder)?.key ?? own?.key ?? null
+    chapterForFolder(listed, folder)?.key ?? own?.key ?? null
   const arriving = new Map<ChapterKey, number>()
   const leaving = new Map<ChapterKey, number>()
   for (const chapter of chapters) {
@@ -202,22 +243,21 @@ export function laterClipNotes(input: NoteInput): ReadonlyMap<ChapterKey, readon
   for (const chapter of chapters) {
     const lines: string[] = []
     const { readName } = chapter
+    const readFolder =
+      readName === null || readName === '' ? null : folderSpelling(folders, readName)
+    // A rename between two spellings of the same fold changes nothing for later clips.
+    const sameFold = readName !== null && casefold(chapter.name) === casefold(readName)
     if (
-      readName !== null &&
-      readName !== '' &&
-      folders.has(readName) &&
-      (chapter.deleted || chapter.name !== readName) &&
-      !listed.some((other) => other.name === readName)
+      readFolder !== null &&
+      (chapter.deleted || !sameFold) &&
+      chapterForFolder(listed, readFolder) === null
     ) {
-      lines.push(LATER_CLIP_NOTE.folderUnnamed(readName, ownHeading))
+      lines.push(LATER_CLIP_NOTE.folderUnnamed(readFolder, ownHeading))
     }
-    if (
-      !chapter.deleted &&
-      chapter.name !== '' &&
-      folders.has(chapter.name) &&
-      chapter.name !== readName
-    ) {
-      lines.push(LATER_CLIP_NOTE.folderJoins(chapter.name))
+    const folder =
+      chapter.deleted || chapter.name === '' ? null : folderSpelling(folders, chapter.name)
+    if (folder !== null && !sameFold) {
+      lines.push(LATER_CLIP_NOTE.folderJoins(folder))
       const count = arriving.get(chapter.key) ?? 0
       if (count > 0) {
         lines.push(LATER_CLIP_NOTE.ignoredHere(count))
