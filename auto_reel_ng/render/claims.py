@@ -104,12 +104,15 @@ def claimed_movie(
 
     ``None`` unless ``output_path`` is an existing regular file: a render that creates a new file
     replaces nothing. ``event_dir`` itself is never a claimant (compared lexically with
-    ``os.path.abspath``, never resolving symlinks, as :func:`output_collision` does). The other
+    ``os.path.abspath``, never resolving symlinks, as :func:`output_collision` does), and ``None``
+    is returned when its own manifest records ``output_path``: the file is then the event's own
+    movie (for instance after a forced takeover of a kept movie another manifest still records),
+    so replacing it destroys nothing that is not already its own. The other
     event need not load or be processable: its manifest records a file on disk whatever state its
     ``reel.yaml`` is in. An unreadable manifest claims nothing (the manifest module's fail-open
     convention). Read-only.
     """
-    if not output_path.is_file():
+    if not output_path.is_file() or records_output(event_dir, output_path):
         return None
     named = os.path.abspath(event_dir)
     claimants = {

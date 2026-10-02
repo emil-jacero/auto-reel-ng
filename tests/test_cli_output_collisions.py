@@ -404,3 +404,32 @@ def test_a_claimant_in_another_year_folder_is_found(
     assert "recorded as the output of 2024-06-27 - Grillkvall" in capsys.readouterr().out
     assert taker not in [job.options.event_dir for job in rendered]
     assert movie.read_bytes() == b"the kept movie"
+
+
+def test_a_claimant_outside_the_years_filter_is_still_found(
+    root: Path, rendered: List[RenderJob], capsys: pytest.CaptureFixture[str]
+) -> None:
+    renamed = _add_event(root, "2023", "2024-06-27 - Grillkvall")  # filed under another year
+    _record(renamed, OLD_NAME)
+    taker = _add_event(root, "2024", "2024-06-27 - Grillning med Grannar")
+    movie = default_output_dir(root) / "2024" / OLD_NAME
+    _touch(movie, b"the kept movie")
+
+    assert main(["render", str(root), "--years", "2024"]) == 1
+
+    assert "recorded as the output of 2024-06-27 - Grillkvall" in capsys.readouterr().out
+    assert taker not in [job.options.event_dir for job in rendered]
+    assert movie.read_bytes() == b"the kept movie"
+
+
+def test_the_owner_of_a_movie_a_stale_manifest_also_records_is_not_refused(
+    root: Path, rendered: List[RenderJob]
+) -> None:
+    _renamed, taker, _movie = _claimed_project(root)
+    _record(
+        taker, OLD_NAME
+    )  # the taker owns it after a forced takeover; the other still records it
+
+    assert main(["render", str(root)]) == 0
+
+    assert taker in [job.options.event_dir for job in rendered]

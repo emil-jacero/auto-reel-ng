@@ -381,6 +381,21 @@ def test_the_event_itself_is_never_its_own_claimant(root: Path, tmp_path: Path) 
     assert claimed_movie(other_spelling, _movie(tmp_path), events=[own]) is None
 
 
+def test_the_owner_is_not_refused_while_another_manifest_also_records_the_file(
+    root: Path, tmp_path: Path
+) -> None:
+    # a forced takeover: `taker` owns the movie, `renamed` still records it too
+    renamed = _event(root, "2024/2024-06-27 - Grillkvall")
+    taker = _event(root, "2024/2024-06-27 - Grillning")
+    _record(renamed, OLD_NAME)
+    _record(taker, OLD_NAME)
+    movie = _movie(tmp_path)
+
+    assert _claim(taker, movie, root) is None
+    # each of them records the file, so neither is refused on the other's account
+    assert _claim(renamed, movie, root) is None
+
+
 def test_a_file_nobody_records_is_not_claimed(root: Path, tmp_path: Path) -> None:
     renamed = _event(root, "2024/2024-06-27 - Grillkvall")
     taker = _event(root, "2024/2024-06-27 - Grillning")
