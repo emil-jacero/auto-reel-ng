@@ -12,7 +12,7 @@
 
 ## 3. Docs
 
-- [x] 3.1 Amend `docs/high-level-design.md`: the "Amended 2026-10-02" paragraph on D-12 and the §4.1 `chapters` note, as in design "HLD", with the user's answer ("Enforce in engine") and the migration note. Verify: `grep -n "casefold" docs/high-level-design.md` finds both places.
+- [x] 3.1 Amend `docs/high-level-design.md`: the "Amended 2026-10-02" paragraph on D-12 and the §4.6 `chapters` note, as in design "HLD", with the user's answer ("Enforce in engine") and the migration note. Verify: `grep -n "casefold" docs/high-level-design.md` finds both places.
 
 ## 4. Gates
 

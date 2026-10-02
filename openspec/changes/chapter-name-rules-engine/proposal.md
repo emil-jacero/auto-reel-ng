@@ -1,7 +1,7 @@
 ## Why
 
 The engine accepts chapter names the GUI refuses, so a `reel.yaml` edited by hand or by the CLI can reach states
-the GUI cannot repair (HLD §4.1 reel schema, **D-2** disk is the source of truth; **D-12** adoption by folder;
+the GUI cannot repair (HLD §4.6 reel schema, **D-2** disk is the source of truth; **D-12** adoption by folder;
 **D-13** chapters edited in the GUI; Principle I, fail loud). Executed on `origin/main`: `loads_document` loads
 chapters named `"  "`, `"Party"`, `"party"` and `" Party"` without error, because `_parse_chapters`
 (`reel/schema.py`) requires only a string and rejects exact duplicates. The GUI's `checkName`
@@ -32,7 +32,7 @@ This belongs to the 2026-10-02 bug round after HLD §6 phase 8; it depends on no
   is listed under the chapter's own name. A padded folder name matches nothing and falls back to the default
   chapter, as any folder without a chapter does. `api/events_read.py` reads placement from the same function and
   needs no change.
-- **HLD**: amend **D-12** (adoption match) and the §4.1 `chapters` schema note with the date and the user's
+- **HLD**: amend **D-12** (adoption match) and the §4.6 `chapters` schema note with the date and the user's
   answer.
 - Specs: ADDED requirement to `reel-document`; MODIFIED "NEW-clip adoption policy" in `headless-cli`. (The
   triage named `event-reconcile`; the adoption policy lives in `headless-cli`, and seeding is covered by the
@@ -71,4 +71,4 @@ None.
 
 `auto_reel_ng/reel/schema.py`, `reel/writer.py`, `reel/document.py`, `cli/adoption.py`; tests in
 `tests/test_reel_parser.py`, `tests/test_reel_writer.py`, `tests/test_cli_adoption.py`;
-`docs/high-level-design.md` (D-12, §4.1). No new dependencies.
+`docs/high-level-design.md` (D-12, §4.6). No new dependencies.

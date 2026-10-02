@@ -359,7 +359,7 @@ def test_a_folder_matches_a_chapter_ignoring_case(tmp_path: Path) -> None:
     ]
 
 
-def test_an_exact_folder_match_wins_over_a_case_variant(tmp_path: Path) -> None:
+def test_a_folder_reaches_only_its_one_matching_chapter(tmp_path: Path) -> None:
     reel = "version: 0\nchapters:\n- name: Party\n  clips: []\n- name: PARTY2\n  clips: []\n"
     event = _event(tmp_path, reel, {"Party/a.mp4": 9, "PARTY2/b.mp4": 10})
 
