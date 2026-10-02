@@ -1,6 +1,6 @@
 """The ``auto-reel thumbs`` subcommand: fill the clip-thumbnail cache (D-11).
 
-Walks the project like ``scan`` (the same :func:`~.commands._project_context`) and
+Walks the project like ``scan`` (the same :func:`~.context.project_context`) and
 makes a thumbnail for every clip discovery lists on disk, IGNORED ones included,
 skipping cached ones. It never reads ``reel.yaml``, so a MISSING clip is never
 requested, and it writes only into the thumbnail cache, never under the project
@@ -35,7 +35,7 @@ from ..thumbs import (
     thumbnail_for,
     thumbnail_path,
 )
-from .commands import _project_context
+from .context import project_context
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def cmd_thumbs(args: argparse.Namespace) -> int:
     unreadable event is reported and the run continues; a cache error or an
     interrupt cancels every queued clip and propagates.
     """
-    ctx = _project_context(args)
+    ctx = project_context(args)
     settings = resolve_thumbnail_settings(ctx.config, ctx.project_root)
     if not ctx.events:
         _emit(f"No events found under {ctx.walk_root} (layout: {ctx.layout_name})")

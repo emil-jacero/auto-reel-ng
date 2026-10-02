@@ -56,13 +56,15 @@ keeps working for those.
 
 ```python
 # api/settings.py
-def require_output_outside_walk_root(output_dir: Path, walk_root: Path) -> None:
+def require_output_outside_walk_root(
+    output_dir: Path, walk_root: Path, project_root: Optional[Path] = None
+) -> None:
     """Raise ConfigError when output_dir is walk_root or inside it."""
     out, walk = output_dir.resolve(), walk_root.resolve()
     if out == walk or walk in out.parents:
         raise ConfigError(
             f"output directory {output_dir} is inside the walked root {walk_root}; "
-            f"choose a folder outside it, for example {default_output_dir(...)}"
+            f"choose a folder outside it, for example {default_output_dir(project_root or walk_root)}"
         )
 ```
 
@@ -70,7 +72,7 @@ Both paths are resolved (symlinks, `..`, relative `-o`) for the comparison only;
 `output_dir` and `walk_root` values are left as the caller built them, so every downstream path
 and test expectation is unchanged. `Path.resolve()` is non-strict, so a not-yet-created output
 directory is fine. The message names both paths as the user wrote them and suggests the sibling
-`default_output_dir(project_root)`. `walk_root` is the root the layout walks (`project_root /
+`default_output_dir(project_root)`; the optional `project_root` argument (defaulting to `walk_root`) keeps that suggestion right when `input` is set. `walk_root` is the root the layout walks (`project_root /
 input` when `config.yaml` sets `input`), not the project root: `input: media` with `output: out`
 keeps `out/` outside the walked tree and stays valid.
 

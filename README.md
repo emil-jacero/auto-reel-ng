@@ -111,8 +111,11 @@ write nothing) and `--device <amd|nvidia|intel|cpu|device-id>`. `thumbs` takes
   and the date prefix both come from the event's `metadata.date` (the layout and
   names legacy auto-reel used). With no `-o` and no `config.yaml` `output`, the
   output directory is the sibling folder `<parent>/<root-name>-output` (for
-  example, `videos/sorted` → `videos/sorted-output`). Do not point the output
-  inside the walked root: the layouts would scan its year folders back in as events.
+  example, `videos/sorted` → `videos/sorted-output`). An output equal to or inside
+  the walked root (`-o` or `config.yaml` `output`) is refused with an `error:` and
+  exit 1 before anything is walked or written, because the layouts would scan its
+  year folders back in as events; `serve` applies the same rule at startup. An
+  output beside a distinct `input` directory, or outside the root, is fine.
 - **Output collisions fail loud:** `render`, `enqueue` and `adopt-renders` refuse
   every event whose output path it shares with another selected event (compared
   case-insensitively). Each such event is reported as `ERROR`, nothing is rendered,
