@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -9,12 +12,14 @@ import pytest
 from ruamel.yaml import YAML
 
 from auto_reel_ng.cli.adoption import persist, prepare_event
-from auto_reel_ng.errors import EventMetadataError
+from auto_reel_ng.errors import EventMetadataError, ReelParseError
 from auto_reel_ng.event import DEFAULT_CLIP_ORDER
 from auto_reel_ng.event.discovery import parse_folder_name
 from auto_reel_ng.event.metadata import (
     REEL_FILENAME,
+    load_authored_document,
     load_event_document,
+    reel_exists,
     require_processable,
     resolve_metadata,
 )
@@ -159,3 +164,80 @@ def test_reel_yaml_date_fixes_a_year_only_folder(tmp_path: Path) -> None:
     )
     document, _ = load_event_document(event_dir, order=DEFAULT_CLIP_ORDER)
     require_processable(event_dir, document.metadata, today=TODAY)
+
+
+# --------------------------------------------------------------------------- #
+# reel_exists / load_authored_document: a refusal from the disk is not "absent"
+# --------------------------------------------------------------------------- #
+
+skip_as_root = pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+
+_REAL_REEL = "version: 0\nmetadata:\n  title: Real\nchapters: []\n"
+
+
+@contextmanager
+def _mode(path: Path, mode: int) -> Iterator[None]:
+    path.chmod(mode)
+    try:
+        yield
+    finally:
+        path.chmod(0o755 if path.is_dir() else 0o644)
+
+
+def test_reel_exists_is_true_for_a_present_file(tmp_path: Path) -> None:
+    event_dir = _event(tmp_path, "2024-06-21 - Fest", _REAL_REEL)
+    assert reel_exists(event_dir / REEL_FILENAME) is True
+
+
+def test_reel_exists_is_false_for_a_missing_file(tmp_path: Path) -> None:
+    event_dir = _event(tmp_path, "2024-06-21 - Fest")
+    assert reel_exists(event_dir / REEL_FILENAME) is False
+
+
+def test_reel_exists_is_false_when_the_parent_is_a_regular_file(tmp_path: Path) -> None:
+    not_a_dir = tmp_path / "plain"
+    not_a_dir.write_text("x", encoding="utf-8")
+    assert reel_exists(not_a_dir / REEL_FILENAME) is False
+
+
+def test_reel_exists_follows_symlinks(tmp_path: Path) -> None:
+    event_dir = _event(tmp_path, "2024-06-21 - Fest")
+    (event_dir / REEL_FILENAME).symlink_to(tmp_path / "nowhere.yaml")
+    assert reel_exists(event_dir / REEL_FILENAME) is False
+    (event_dir / REEL_FILENAME).unlink()
+    target = tmp_path / "real.yaml"
+    target.write_text(_REAL_REEL, encoding="utf-8")
+    (event_dir / REEL_FILENAME).symlink_to(target)
+    assert reel_exists(event_dir / REEL_FILENAME) is True
+
+
+@skip_as_root
+def test_reel_exists_raises_for_a_folder_that_cannot_be_searched(tmp_path: Path) -> None:
+    event_dir = _event(tmp_path, "2024-06-21 - Fest", _REAL_REEL)
+    with _mode(event_dir, 0o600), pytest.raises(PermissionError):
+        reel_exists(event_dir / REEL_FILENAME)
+
+
+@skip_as_root
+def test_an_unsearchable_folder_never_seeds_over_its_reel_yaml(tmp_path: Path) -> None:
+    event_dir = _event(tmp_path, "2024-06-21 - Fest", _REAL_REEL)
+    with _mode(event_dir, 0o600):
+        with pytest.raises(PermissionError):
+            load_authored_document(event_dir, order=DEFAULT_CLIP_ORDER)
+        with pytest.raises(PermissionError):
+            load_event_document(event_dir, order=DEFAULT_CLIP_ORDER)
+
+
+def test_a_searchable_folder_without_a_reel_yaml_still_seeds(tmp_path: Path) -> None:
+    event_dir = _event(tmp_path, "2024-06-21 - Fest")
+    document, seeded = load_authored_document(event_dir, order=DEFAULT_CLIP_ORDER)
+    assert seeded is True
+    assert [c.identity for ch in document.chapters for c in ch.clips] == ["00400.mp4"]
+
+
+@skip_as_root
+def test_an_unreadable_reel_yaml_in_a_searchable_folder_is_a_parse_error(tmp_path: Path) -> None:
+    event_dir = _event(tmp_path, "2024-06-21 - Fest", _REAL_REEL)
+    with _mode(event_dir / REEL_FILENAME, 0o000):
+        with pytest.raises(ReelParseError, match=REEL_FILENAME):
+            load_authored_document(event_dir, order=DEFAULT_CLIP_ORDER)

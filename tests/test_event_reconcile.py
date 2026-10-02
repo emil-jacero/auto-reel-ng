@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
@@ -14,6 +16,7 @@ from auto_reel_ng.event.discovery import (
     ClipOrder,
     FolderNameProblem,
     SortMethod,
+    is_reelignored,
     parse_folder_name,
     scan_event,
     seed_document,
@@ -133,6 +136,69 @@ def test_seeding_never_fabricates_a_title(tmp_path: Path, name: str, title: Opti
 def test_non_video_files_are_not_scanned(tmp_path: Path) -> None:
     listing = scan_event(_make_event(tmp_path))
     assert "notes.txt" not in listing.identities
+
+
+# --------------------------------------------------------------------------- #
+# A folder the disk will not let us search is not an empty event
+# --------------------------------------------------------------------------- #
+
+skip_as_root = pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+
+
+@contextmanager
+def _mode(path: Path, mode: int) -> Iterator[None]:
+    """``path`` at ``mode`` (``0600``: listable, not searchable), restored for cleanup."""
+    path.chmod(mode)
+    try:
+        yield
+    finally:
+        path.chmod(0o755)
+
+
+@skip_as_root
+def test_an_unsearchable_event_folder_fails_the_scan_and_the_seed(tmp_path: Path) -> None:
+    event = _make_event(tmp_path, "2024-06-21 - Fest")
+    with _mode(event, 0o600):
+        with pytest.raises(PermissionError):
+            scan_event(event)
+        with pytest.raises(PermissionError):
+            seed_document(event)
+
+
+@skip_as_root
+def test_an_unsearchable_chapter_subfolder_fails_the_scan_naming_it(tmp_path: Path) -> None:
+    event = _make_event(tmp_path, "2024-06-21 - Fest")
+    with _mode(event / "Reception", 0o600):
+        with pytest.raises(PermissionError, match="Reception"):
+            scan_event(event)
+
+
+@skip_as_root
+def test_a_symlinked_clip_into_an_unsearchable_folder_fails_the_scan(tmp_path: Path) -> None:
+    event = _make_event(tmp_path, "2024-06-21 - Fest")
+    vault = tmp_path / "vault"
+    _touch(vault / "target.mp4")
+    (event / "linked.mp4").symlink_to(vault / "target.mp4")
+    with _mode(vault, 0o600):
+        with pytest.raises(PermissionError, match="linked.mp4"):
+            scan_event(event)
+
+
+def test_entries_the_disk_says_are_absent_are_skipped(tmp_path: Path) -> None:
+    event = tmp_path / "2024-06-21 - Fest"
+    _touch(event / "real.mp4")
+    _touch(event / "notes.txt")
+    (event / "dangling.mp4").symlink_to(tmp_path / "gone.mp4")
+    assert scan_event(event).identities == ("real.mp4",)
+
+
+@skip_as_root
+def test_is_reelignored_stays_lenient_for_the_ingest_walk(tmp_path: Path) -> None:
+    event = _make_event(tmp_path, "2024-06-21 - Fest")
+    _touch(event / ".reelignore")
+    assert is_reelignored(event) is True
+    with _mode(event, 0o600):
+        assert is_reelignored(event) is False
 
 
 def test_empty_document_yields_all_new(tmp_path: Path) -> None:

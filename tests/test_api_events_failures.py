@@ -211,6 +211,23 @@ def test_an_unreadable_event_directory_is_an_unreadable_disk_row(client, project
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+@pytest.mark.requires_db
+def test_an_unsearchable_event_directory_is_an_error_row_not_an_empty_summary(
+    client, project: Path
+) -> None:
+    with _unsearchable_event_dir(project):
+        response = client.get("/api/v1/events")
+
+    summaries, errors = _rows_by_kind(response)
+    assert len(summaries) == 1
+    assert summaries[0]["event_id"] != EVENT_ID
+    (error,) = errors
+    assert error["event_id"] == EVENT_ID
+    assert error["failure"] == "unreadable_disk"
+    assert error["detail"]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
 def test_an_unreadable_walk_root_is_a_scan_problem(offline_client, project: Path) -> None:
     """The walk failing accounts for no event: a whole-list 502, never an unshaped 500.
 
@@ -342,6 +359,18 @@ def _unreadable_event_dir(project: Path) -> Iterator[str]:
         event_dir.chmod(0o755)
 
 
+@contextmanager
+def _unsearchable_event_dir(project: Path) -> Iterator[str]:
+    """Listable but not searchable (``0600``), holding a reel.yaml: once read as an empty event."""
+    event_dir = project / EVENT_ID
+    (event_dir / "reel.yaml").write_text("version: 0\nmetadata:\n  title: Real\n", encoding="utf-8")
+    event_dir.chmod(0o600)
+    try:
+        yield EVENT_ID
+    finally:
+        event_dir.chmod(0o755)
+
+
 BrokenEvent = Callable[[Path], ContextManager[str]]
 
 #: One broken event per failure kind, with the kind both reads must report for it.
@@ -352,6 +381,12 @@ BROKEN_EVENTS = [
         _unreadable_event_dir,
         "unreadable_disk",
         id="unreadable_disk",
+        marks=pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions"),
+    ),
+    pytest.param(
+        _unsearchable_event_dir,
+        "unreadable_disk",
+        id="unsearchable_dir",
         marks=pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions"),
     ),
 ]
