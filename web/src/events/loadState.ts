@@ -21,6 +21,12 @@ export type Failure = {
  */
 export type LoadOptions = { quiet?: boolean; keepMovie?: boolean }
 
+/** The two fields of an event read that the render region shows. */
+export type Verdict = Pick<EventDetailData, 'staleness' | 'latest_job'>
+
+/** Why a verdict read in Edit mode got no usable answer: the words the region shows. */
+export type VerdictUnread = { cause: string; detail: string | null }
+
 export type LoadState =
   // `editPlace`: the header keeps Edit's place, so Refresh stays where it was
   // pressed. Set when the page showed Edit before this read, or reads for the first
@@ -29,7 +35,18 @@ export type LoadState =
   // is the same element when the read answers.
   | { status: 'loading'; editPlace: boolean; movie?: EventDetailData }
   // `updating`: a quiet re-read runs, and the content shown is the last read's.
-  | { status: 'ready'; event: EventDetailData; fetchedAt: Date; updating?: boolean }
+  // `verdict`, `verdictUnread`: only while Edit mode is open, where `event` is the editor's
+  // baseline and a newer read must not replace it. `verdict` is the render region's newer
+  // verdict and latest job; `verdictUnread` says that a read of them got no answer. A read
+  // that answers builds a new state without either.
+  | {
+      status: 'ready'
+      event: EventDetailData
+      fetchedAt: Date
+      updating?: boolean
+      verdict?: Verdict
+      verdictUnread?: VerdictUnread
+    }
   | ({ status: 'failed' } & Failure)
 
 /** The event whose Movie section a page in this state shows, if any. */
@@ -55,4 +72,27 @@ export function readingState(shown: LoadState, options: LoadOptions): LoadState 
     editPlace: shown.status === 'loading' ? shown.editPlace : shown.status === 'ready',
     movie: options.keepMovie === true ? movieOf(shown) : undefined,
   }
+}
+
+/** What the render region shows: a newer verdict if Edit mode got one, else the last read's. */
+export function verdictOf(state: Extract<LoadState, { status: 'ready' }>): Verdict {
+  return state.verdict ?? state.event
+}
+
+/**
+ * The state after a verdict read in Edit mode answered: the event's verdict and latest job,
+ * and nothing else (`event`, `fetchedAt` and `updating` are the shown state's own), and no
+ * note that a read got no answer. A page that is not ready has no region to refresh.
+ */
+export function withVerdict(shown: LoadState, read: EventDetailData): LoadState {
+  if (shown.status !== 'ready') {
+    return shown
+  }
+  const { verdictUnread: _unread, ...kept } = shown
+  return { ...kept, verdict: { staleness: read.staleness, latest_job: read.latest_job } }
+}
+
+/** The state after a verdict read got no usable answer: the region keeps its words and says so. */
+export function withVerdictUnread(shown: LoadState, unread: VerdictUnread): LoadState {
+  return shown.status === 'ready' ? { ...shown, verdictUnread: unread } : shown
 }

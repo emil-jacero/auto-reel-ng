@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import type { EventDetail } from '../api/event'
-import { movieOf, readingState } from './loadState.ts'
+import { movieOf, readingState, verdictOf, withVerdict, withVerdictUnread } from './loadState.ts'
 import type { LoadState } from './loadState.ts'
 
 /*
@@ -53,5 +53,82 @@ describe('movieOf', () => {
     assert.equal(movieOf(READY), EVENT)
     assert.equal(movieOf({ status: 'loading', editPlace: false, movie: EVENT }), EVENT)
     assert.equal(movieOf({ status: 'failed', cause: 'x', detail: null }), undefined)
+  })
+})
+
+/*
+ * The render region's verdict while Edit mode is open: a newer read changes the verdict and
+ * latest job and nothing the editor's baseline or the page's header stands on.
+ */
+
+const STALE = { stale: true, reasons: [{ kind: 'x' }] }
+const FRESH = { stale: false, reasons: [] }
+const RUNNING = { id: 'j1', status: 'running' }
+const DONE = { id: 'j1', status: 'done' }
+const BEFORE = { ...EVENT, staleness: STALE, latest_job: RUNNING } as unknown as EventDetail
+// A newer read, which differs in everything the editor and the page's header show.
+const AFTER = {
+  id: '2024/Kalas',
+  title: 'Other title',
+  date: '2020-01-01',
+  chapters: [{ name: 'Elsewhere', clips: [] }],
+  missing: ['gone.mp4'],
+  staleness: FRESH,
+  latest_job: DONE,
+} as unknown as EventDetail
+const EDITED: LoadState = { status: 'ready', event: BEFORE, fetchedAt: new Date(5) }
+
+describe('verdictOf', () => {
+  it('is the last read’s verdict until a newer one is taken', () => {
+    assert.deepEqual(verdictOf(EDITED as never), BEFORE)
+    const newer = withVerdict(EDITED, AFTER)
+    assert.deepEqual(verdictOf(newer as never), { staleness: FRESH, latest_job: DONE })
+  })
+})
+
+describe('withVerdict', () => {
+  it('takes the verdict and the latest job and nothing else', () => {
+    const state = withVerdict(EDITED, AFTER)
+    assert.equal(state.status, 'ready')
+    if (state.status !== 'ready') {
+      return
+    }
+    assert.equal(state.event, BEFORE)
+    assert.equal(state.fetchedAt, EDITED.status === 'ready' ? EDITED.fetchedAt : undefined)
+    assert.equal(state.updating, undefined)
+    assert.equal(state.verdict?.staleness, FRESH)
+    assert.equal(state.verdict?.latest_job, DONE)
+  })
+
+  it('removes the note that an earlier read got no answer', () => {
+    const unread = withVerdictUnread(EDITED, { cause: 'The service is not reachable.', detail: null })
+    const state = withVerdict(unread, AFTER)
+    assert.equal(state.status === 'ready' && 'verdictUnread' in state, false)
+  })
+
+  it('leaves a page that is not ready as it is', () => {
+    const loading: LoadState = { status: 'loading', editPlace: true }
+    const failed: LoadState = { status: 'failed', cause: 'x', detail: null }
+    assert.equal(withVerdict(loading, AFTER), loading)
+    assert.equal(withVerdict(failed, AFTER), failed)
+  })
+})
+
+describe('withVerdictUnread', () => {
+  it('adds the note and keeps the verdict, the event and the time', () => {
+    const newer = withVerdict(EDITED, AFTER)
+    const state = withVerdictUnread(newer, { cause: 'c', detail: 'd' })
+    assert.deepEqual(state, { ...newer, verdictUnread: { cause: 'c', detail: 'd' } })
+    assert.equal(state.status === 'ready' ? state.event : null, BEFORE)
+  })
+
+  it('leaves a page that is not ready as it is', () => {
+    const failed: LoadState = { status: 'failed', cause: 'x', detail: null }
+    assert.equal(withVerdictUnread(failed, { cause: 'c', detail: null }), failed)
+  })
+
+  it('does not outlive the read that leaving Edit mode makes', () => {
+    const state = withVerdictUnread(withVerdict(EDITED, AFTER), { cause: 'c', detail: null })
+    assert.equal(readingState(state, {}).status, 'loading')
   })
 })
