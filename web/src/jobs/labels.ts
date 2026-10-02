@@ -58,18 +58,6 @@ export const COLLISION_FIX = 'Give one of them a distinct title or location in i
 /** The sentence after the clip names when a refused enqueue says what to do about them. */
 export const MISSING_CLIPS_FIX = 'Restore them, or remove them in Edit mode.'
 
-/**
- * The clips a refused enqueue names: every one, or with `limit` the first few and how many
- * more there are ("a.mp4, b.mp4, c.mp4 and 2 more"), for a toast that has little room.
- */
-export function missingClipNames(missing: readonly string[], limit = missing.length): string {
-  if (missing.length <= limit) {
-    return missing.join(', ')
-  }
-  const more = missing.length - limit
-  return `${missing.slice(0, limit).join(', ')} and ${more} more`
-}
-
 /** Why the page holds a render back while reel.yaml lists clips missing from disk, if it does. */
 export function missingClipsReason(missing: readonly string[]): string | undefined {
   if (missing.length === 0) {

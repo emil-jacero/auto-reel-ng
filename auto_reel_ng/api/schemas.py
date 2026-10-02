@@ -339,7 +339,8 @@ class EnqueueConflict(StrEnum):
     ACTIVE_JOB = "active_job"
     #: Another event of the project renders to the same output path: ``claimed_by``.
     OUTPUT_COLLISION = "output_collision"
-    #: The event plays a clip that is absent from disk, so its render would fail at probe: ``missing``.
+    #: The event plays a clip that is absent from disk, so its render would fail at probe:
+    #: ``missing``.
     MISSING_CLIPS = "missing_clips"
 
 

@@ -430,10 +430,18 @@ render, or job logic lives in the web tier.
   whose `conflict` is `output_collision`, whose `claimed_by` lists the other claimants' event ids, and
   whose detail names the shared path and the fix: a distinct title or location in
   `reel.yaml`. It is checked before anything else, so neither `force` nor a fresh
-  event's 200 overrides it, and nothing is written. Every 409 of
-  `POST /api/v1/jobs` carries `conflict` — `active_job` on the active duplicate —
-  so a client tells the two apart from the type alone. A project walk that fails
-  is the events list's scan-failure 502, and nothing is enqueued.
+  event's 200 overrides it, and nothing is written. **Missing clips:** an event
+  whose `reel.yaml` plays a clip that is not on disk is refused too — a 409 whose
+  `conflict` is `missing_clips` and whose `missing` lists the clips' identities,
+  sorted: the ones the event detail's `blocking_missing` names, since a render of
+  it could only fail at probe. A clip the document excludes does not refuse.
+  `force` does not override it, nor does a fresh event's 200, and nothing is
+  written. The checks run in this order: output collision, active job, missing
+  clips, then the staleness gate. Every 409 of `POST /api/v1/jobs` carries
+  `conflict` — `active_job` on the active duplicate — so a client tells the
+  kinds apart from the type alone. A project walk that fails, or an event folder
+  that cannot be listed, is the events list's scan-failure 502, and nothing is
+  enqueued.
   **One project:** the service serves its configured project root, and its jobs
   views follow it: `GET /api/v1/jobs`, `GET /api/v1/jobs/{id}`, cancel and
   `WS /api/v1/ws/jobs` cover only the jobs enqueued for that root. Another

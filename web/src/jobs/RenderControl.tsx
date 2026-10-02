@@ -19,6 +19,7 @@ import { Dialog } from '../ui/Dialog'
 import { Icon } from '../ui/Icon'
 import { toast } from '../ui/toast'
 import { JobMeter, JobState } from './JobProgress'
+import { missingClipNames } from './clipNames'
 import {
   CANCEL_OUTCOME_LABEL,
   COLLISION_FIX,
@@ -27,7 +28,6 @@ import {
   NOT_QUEUED,
   SCAN_FAILED,
   eventName,
-  missingClipNames,
 } from './labels'
 import { getState, isActive, load, markAnnounced, merge, subscribe, track } from './store'
 import { useEventJob } from './useJob'
