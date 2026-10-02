@@ -28,7 +28,7 @@
           "events"
         ],
         "summary": "Get Clip Media",
-        "description": "``GET /api/v1/events/{event_id}/media?clip=``: one clip's file, streamed unchanged.\n\nThe clip must be one discovery lists on disk for an event the events list shows,\nmatched exactly: the thumbnail's lookup. 404 for an unknown event, an unlisted\nidentity, or a file gone by the time it is opened; 502 with the list's ``failure``\nwhen the event cannot be listed, and with no kind for an unknown layout or a file\nthat cannot be read. Sync on purpose: the lookup is a listing, a stat and an open,\nrun in the threadpool; ``FileResponse`` then streams on the event loop.",
+        "description": "``GET`` and ``HEAD /api/v1/events/{event_id}/media?clip=``: one clip's file, streamed unchanged.\n\n``HEAD`` is the ``GET`` without its body: the same lookup, open and status, the same\nheaders (``FileResponse`` drops the body). ``If-None-Match`` and ``If-Modified-Since``\nanswer 304 for both.\n\nThe clip must be one discovery lists on disk for an event the events list shows,\nmatched exactly: the thumbnail's lookup. 404 for an unknown event, an unlisted\nidentity, or a file gone by the time it is opened; 502 with the list's ``failure``\nwhen the event cannot be listed, and with no kind for an unknown layout or a file\nthat cannot be read. Sync on purpose: the lookup is a listing, a stat and an open,\nrun in the threadpool; ``FileResponse`` then streams on the event loop.",
         "operationId": "get_clip_media_api_v1_events__event_id__media_get",
         "parameters": [
           {
@@ -83,6 +83,22 @@
                 }
               ],
               "title": "If-None-Match"
+            }
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Modified-Since"
             }
           },
           {
@@ -212,7 +228,274 @@
             }
           },
           "304": {
-            "description": "Not modified: `If-None-Match` names the current file",
+            "description": "Not modified: `If-None-Match` names the current file, or, without it, `If-Modified-Since` is not before its modification time",
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed `Range` header (plain text)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "416": {
+            "description": "The range starts at or past the end of the file (plain text)",
+            "headers": {
+              "Content-Range": {
+                "description": "`bytes */<size>`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "head": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Clip Media",
+        "description": "``GET`` and ``HEAD /api/v1/events/{event_id}/media?clip=``: one clip's file, streamed unchanged.\n\n``HEAD`` is the ``GET`` without its body: the same lookup, open and status, the same\nheaders (``FileResponse`` drops the body). ``If-None-Match`` and ``If-Modified-Since``\nanswer 304 for both.\n\nThe clip must be one discovery lists on disk for an event the events list shows,\nmatched exactly: the thumbnail's lookup. 404 for an unknown event, an unlisted\nidentity, or a file gone by the time it is opened; 502 with the list's ``failure``\nwhen the event cannot be listed, and with no kind for an unknown layout or a file\nthat cannot be read. Sync on purpose: the lookup is a listing, a stat and an open,\nrun in the threadpool; ``FileResponse`` then streams on the event loop.",
+        "operationId": "get_clip_media_api_v1_events__event_id__media_head",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "clip",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The clip's identity as the event detail lists it: its event-relative path",
+              "title": "Clip"
+            },
+            "description": "The clip's identity as the event detail lists it: its event-relative path"
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An opaque version a client may send to give a changed file a new URL; ignored",
+              "title": "V"
+            },
+            "description": "An opaque version a client may send to give a changed file a new URL; ignored"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Modified-Since"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "name": "If-Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Range"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The whole file",
+            "content": {
+              "video/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "The file's modification time",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Always `bytes`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "description": "`inline`, with the file's own name",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "One byte range of the file",
+            "content": {
+              "video/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "The file's modification time",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Always `bytes`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "description": "`inline`, with the file's own name",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Range": {
+                "description": "`bytes <first>-<last>/<size>`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: `If-None-Match` names the current file, or, without it, `If-Modified-Since` is not before its modification time",
             "headers": {
               "ETag": {
                 "description": "Strong entity-tag of the file: its size and mtime, in hex",
@@ -281,7 +564,7 @@
           "events"
         ],
         "summary": "Get Movie",
-        "description": "``GET /api/v1/events/{event_id}/movie``: the event's rendered movie, streamed unchanged.\n\nThe movie is the file the staleness gate counts (``staleness.rendered_output``):\nit exists exactly when the event's staleness cites neither ``no_manifest`` nor\n``output``. 404 for an unknown event, no render record, a recorded movie that is\ngone, a name outside the output directory, or something other than a file; 502\nwith the ``failure`` the event detail gives when the event cannot be read, and with\nno kind for an unknown layout or a movie that cannot be read.",
+        "description": "``GET`` and ``HEAD /api/v1/events/{event_id}/movie``: the event's rendered movie, streamed.\n\n``HEAD`` and the conditional headers behave as for the clip route.\n\nThe movie is the file the staleness gate counts (``staleness.rendered_output``):\nit exists exactly when the event's staleness cites neither ``no_manifest`` nor\n``output``. 404 for an unknown event, no render record, a recorded movie that is\ngone, a name outside the output directory, or something other than a file; 502\nwith the ``failure`` the event detail gives when the event cannot be read, and with\nno kind for an unknown layout or a movie that cannot be read.",
         "operationId": "get_movie_api_v1_events__event_id__movie_get",
         "parameters": [
           {
@@ -325,6 +608,22 @@
                 }
               ],
               "title": "If-None-Match"
+            }
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Modified-Since"
             }
           },
           {
@@ -454,7 +753,263 @@
             }
           },
           "304": {
-            "description": "Not modified: `If-None-Match` names the current file",
+            "description": "Not modified: `If-None-Match` names the current file, or, without it, `If-Modified-Since` is not before its modification time",
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed `Range` header (plain text)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "416": {
+            "description": "The range starts at or past the end of the file (plain text)",
+            "headers": {
+              "Content-Range": {
+                "description": "`bytes */<size>`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "head": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Movie",
+        "description": "``GET`` and ``HEAD /api/v1/events/{event_id}/movie``: the event's rendered movie, streamed.\n\n``HEAD`` and the conditional headers behave as for the clip route.\n\nThe movie is the file the staleness gate counts (``staleness.rendered_output``):\nit exists exactly when the event's staleness cites neither ``no_manifest`` nor\n``output``. 404 for an unknown event, no render record, a recorded movie that is\ngone, a name outside the output directory, or something other than a file; 502\nwith the ``failure`` the event detail gives when the event cannot be read, and with\nno kind for an unknown layout or a movie that cannot be read.",
+        "operationId": "get_movie_api_v1_events__event_id__movie_head",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An opaque version a client may send to give a changed file a new URL; ignored",
+              "title": "V"
+            },
+            "description": "An opaque version a client may send to give a changed file a new URL; ignored"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Modified-Since"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "name": "If-Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Range"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The whole file",
+            "content": {
+              "video/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "The file's modification time",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Always `bytes`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "description": "`inline`, with the file's own name",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "One byte range of the file",
+            "content": {
+              "video/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "The file's modification time",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Always `bytes`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "description": "`inline`, with the file's own name",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Range": {
+                "description": "`bytes <first>-<last>/<size>`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: `If-None-Match` names the current file, or, without it, `If-Modified-Since` is not before its modification time",
             "headers": {
               "ETag": {
                 "description": "Strong entity-tag of the file: its size and mtime, in hex",

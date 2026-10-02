@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import json
+import warnings
 from pathlib import Path
 
 import pytest
@@ -271,37 +272,53 @@ def test_the_thumbnail_route_publishes_its_parameters_and_responses() -> None:
 def test_the_media_routes_publish_their_parameters_and_responses(
     path: str, required_query: set[str]
 ) -> None:
-    """``v`` and the three request headers optional; video 200/206, 304, 400, 416; problems."""
-    operation = build_openapi_schema()["paths"][path]["get"]
-    query = {param["name"]: param for param in operation["parameters"] if param["in"] == "query"}
-    assert set(query) == required_query | {"v"}
-    assert {name for name, param in query.items() if param["required"]} == required_query
-    assert _non_null(query["v"]["schema"]) == {"type": "string"}
-    header = {param["name"]: param for param in operation["parameters"] if param["in"] == "header"}
-    assert set(header) == {"If-None-Match", "Range", "If-Range"}
-    assert not any(param["required"] for param in header.values())
+    """``get`` and ``head`` alike: ``v`` and the four request headers optional; video 200/206,
+    304, 400, 416; problems; a distinct ``operationId`` each."""
+    paths = build_openapi_schema()["paths"][path]
+    assert {"get", "head"} <= set(paths)
+    assert paths["get"]["operationId"] != paths["head"]["operationId"]
+    for method in ("get", "head"):
+        operation = paths[method]
+        query = {
+            param["name"]: param for param in operation["parameters"] if param["in"] == "query"
+        }
+        assert set(query) == required_query | {"v"}, method
+        assert {name for name, param in query.items() if param["required"]} == required_query
+        assert _non_null(query["v"]["schema"]) == {"type": "string"}
+        header = {
+            param["name"]: param for param in operation["parameters"] if param["in"] == "header"
+        }
+        assert set(header) == {"If-None-Match", "If-Modified-Since", "Range", "If-Range"}, method
+        assert not any(param["required"] for param in header.values())
 
-    responses = operation["responses"]
-    assert set(responses) == {"200", "206", "304", "400", "404", "416", "502", "422"}
-    for code in ("200", "206"):
-        assert responses[code]["content"] == {
-            "video/*": {"schema": {"type": "string", "format": "binary"}}
-        }, code
-    for code in ("206", "416"):
-        assert "Content-Range" in responses[code]["headers"], code
-    assert set(responses["200"]["headers"]) == {
-        "ETag",
-        "Last-Modified",
-        "Cache-Control",
-        "Accept-Ranges",
-        "Content-Disposition",
-    }
-    assert set(responses["304"]["headers"]) == {"ETag", "Cache-Control"}
-    for code in ("304", "400", "416"):
-        assert "content" not in responses[code], code
-    for code in ("404", "502"):
-        ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
-        assert ref.endswith("/ProblemOut"), code
+        responses = operation["responses"]
+        assert set(responses) == {"200", "206", "304", "400", "404", "416", "502", "422"}, method
+        for code in ("200", "206"):
+            assert responses[code]["content"] == {
+                "video/*": {"schema": {"type": "string", "format": "binary"}}
+            }, code
+        for code in ("206", "416"):
+            assert "Content-Range" in responses[code]["headers"], code
+        assert set(responses["200"]["headers"]) == {
+            "ETag",
+            "Last-Modified",
+            "Cache-Control",
+            "Accept-Ranges",
+            "Content-Disposition",
+        }
+        assert set(responses["304"]["headers"]) == {"ETag", "Cache-Control"}
+        for code in ("304", "400", "416"):
+            assert "content" not in responses[code], code
+        for code in ("404", "502"):
+            ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
+            assert ref.endswith("/ProblemOut"), code
+
+
+def test_building_the_schema_raises_no_duplicate_operation_id_warning() -> None:
+    """Two decorators, not one ``api_route`` with two methods (which repeats the id)."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        build_openapi_schema()
 
 
 #: The responses each jobs route declares besides its success and FastAPI's 422, by

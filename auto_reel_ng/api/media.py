@@ -23,7 +23,8 @@ from __future__ import annotations
 import os
 import stat
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Mapping, Optional
 
@@ -224,18 +225,46 @@ def _revalidates(header: str, etag: str) -> bool:
     return etag_matches(header, etag) or "*" in (c.strip() for c in header.split(","))
 
 
-def media_response(media: MediaFile, if_none_match: Optional[str]) -> Response:
-    """The 304 for a matching ``If-None-Match``, else the streamed file.
+def _not_modified_since(media: MediaFile, header: str) -> bool:
+    """``If-Modified-Since`` names a date at or after the file's mtime, to the second.
 
-    ``If-None-Match`` is evaluated first, before any ``Range``, as RFC 9110 orders the
-    preconditions; ``FileResponse`` does not evaluate it. The file response gets the
-    route's own stat (it never stats again), and the ``ETag`` in ``headers=`` wins over
-    Starlette's own (it is set with ``setdefault``), so the tag sent, the one ``If-Range``
-    is checked against and the one a 304 compares are the same string. ``FileResponse``
-    answers ``Range`` itself: 206 for one range, 416 past the end, 400 malformed.
+    ``Last-Modified`` carries the mtime truncated to whole seconds, so a client echoing
+    the date it was sent gets a 304 while the file is unchanged. A value that is not an
+    HTTP-date is ignored (RFC 9110 §13.1.3); a zone-less one (RFC 850 forms) reads as UTC.
+    A date in the future is valid.
+    """
+    try:
+        moment = parsedate_to_datetime(header)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return False
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    try:
+        return int(media.stat.st_mtime) <= int(moment.timestamp())
+    except (OverflowError, OSError, ValueError):
+        return False
+
+
+def media_response(
+    media: MediaFile, if_none_match: Optional[str], if_modified_since: Optional[str] = None
+) -> Response:
+    """The 304 for a matching ``If-None-Match`` or a current ``If-Modified-Since``, else the file.
+
+    The preconditions are evaluated first, before any ``Range``, as RFC 9110 orders them;
+    ``FileResponse`` evaluates neither. ``If-None-Match`` decides alone when it is sent at
+    all: a tag that does not match never lets ``If-Modified-Since`` act (RFC 9110 §13.1.3).
+    The caller passes ``If-Modified-Since`` only when the request carries it on one line.
+    The file response gets the route's own stat (it never stats again), and the ``ETag`` in
+    ``headers=`` wins over Starlette's own (it is set with ``setdefault``), so the tag sent,
+    the one ``If-Range`` is checked against and the one a 304 compares are the same string.
+    ``FileResponse`` answers ``Range`` itself: 206 for one range, 416 past the end, 400
+    malformed, and drops the body for a ``HEAD``.
     """
     headers = {"ETag": media.etag, "Cache-Control": MEDIA_CACHE_CONTROL}
-    if if_none_match is not None and _revalidates(if_none_match, media.etag):
+    if if_none_match is not None:
+        if _revalidates(if_none_match, media.etag):
+            return Response(status_code=304, headers=headers)
+    elif if_modified_since is not None and _not_modified_since(media, if_modified_since):
         return Response(status_code=304, headers=headers)
     return FileResponse(
         media.path,

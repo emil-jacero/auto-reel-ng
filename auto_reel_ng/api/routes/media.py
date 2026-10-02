@@ -72,7 +72,8 @@ MEDIA_RESPONSES: Dict[int | str, Dict[str, Any]] = {
         },
     },
     304: {
-        "description": "Not modified: `If-None-Match` names the current file",
+        "description": "Not modified: `If-None-Match` names the current file, or, without it, "
+        "`If-Modified-Since` is not before its modification time",
         "headers": {"ETag": _ETAG_HEADER, "Cache-Control": _CACHE_CONTROL_HEADER},
     },
     400: {"description": "A malformed `Range` header (plain text)"},
@@ -97,6 +98,12 @@ def _settings(request: Request) -> ApiSettings:
 def _if_none_match(request: Request) -> Optional[str]:
     """``If-None-Match`` from every header line: the declared parameter holds only the first."""
     return ", ".join(request.headers.getlist("if-none-match")) or None
+
+
+def _if_modified_since(request: Request) -> Optional[str]:
+    """``If-Modified-Since`` when sent on exactly one line: a repeated field is no HTTP-date."""
+    lines = request.headers.getlist("if-modified-since")
+    return lines[0] if len(lines) == 1 else None
 
 
 def _media_failed(
@@ -129,6 +136,7 @@ def _event_not_found(event_id: str) -> JSONResponse:
     return not_found(f"no event {event_id!r} under the configured project root", event_id=event_id)
 
 
+@router.head("/events/{event_id:path}/media", response_class=Response, responses=MEDIA_RESPONSES)
 @router.get("/events/{event_id:path}/media", response_class=Response, responses=MEDIA_RESPONSES)
 def get_clip_media(
     event_id: str,
@@ -138,10 +146,15 @@ def get_clip_media(
     ),
     _version: Optional[str] = Query(default=None, alias="v", description=_VERSION_DESCRIPTION),
     _if_none_match_header: Optional[str] = Header(default=None, alias="If-None-Match"),
+    _if_modified_since_header: Optional[str] = Header(default=None, alias="If-Modified-Since"),
     _range: Optional[str] = Header(default=None, alias="Range"),
     _if_range: Optional[str] = Header(default=None, alias="If-Range"),
 ) -> Response:
-    """``GET /api/v1/events/{event_id}/media?clip=``: one clip's file, streamed unchanged.
+    """``GET`` and ``HEAD /api/v1/events/{event_id}/media?clip=``: one clip's file, streamed unchanged.
+
+    ``HEAD`` is the ``GET`` without its body: the same lookup, open and status, the same
+    headers (``FileResponse`` drops the body). ``If-None-Match`` and ``If-Modified-Since``
+    answer 304 for both.
 
     The clip must be one discovery lists on disk for an event the events list shows,
     matched exactly: the thumbnail's lookup. 404 for an unknown event, an unlisted
@@ -165,19 +178,23 @@ def get_clip_media(
         return _media_failed(event_id, clip, str(exc))
     except MediaReadError as exc:
         return _unreadable(event_id, exc)
-    return media_response(media, _if_none_match(request))
+    return media_response(media, _if_none_match(request), _if_modified_since(request))
 
 
+@router.head("/events/{event_id:path}/movie", response_class=Response, responses=MEDIA_RESPONSES)
 @router.get("/events/{event_id:path}/movie", response_class=Response, responses=MEDIA_RESPONSES)
 def get_movie(
     event_id: str,
     request: Request,
     _version: Optional[str] = Query(default=None, alias="v", description=_VERSION_DESCRIPTION),
     _if_none_match_header: Optional[str] = Header(default=None, alias="If-None-Match"),
+    _if_modified_since_header: Optional[str] = Header(default=None, alias="If-Modified-Since"),
     _range: Optional[str] = Header(default=None, alias="Range"),
     _if_range: Optional[str] = Header(default=None, alias="If-Range"),
 ) -> Response:
-    """``GET /api/v1/events/{event_id}/movie``: the event's rendered movie, streamed unchanged.
+    """``GET`` and ``HEAD /api/v1/events/{event_id}/movie``: the event's rendered movie, streamed.
+
+    ``HEAD`` and the conditional headers behave as for the clip route.
 
     The movie is the file the staleness gate counts (``staleness.rendered_output``):
     it exists exactly when the event's staleness cites neither ``no_manifest`` nor
@@ -199,4 +216,4 @@ def get_movie(
         return _media_failed(event_id, "movie", str(exc))
     except MediaReadError as exc:
         return _unreadable(event_id, exc)
-    return media_response(media, _if_none_match(request))
+    return media_response(media, _if_none_match(request), _if_modified_since(request))

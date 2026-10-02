@@ -297,7 +297,8 @@ per-clip media read on request, not a field of the events read model, so the lis
 and gain no field: the client builds each thumbnail's URL from the event id and clip identity it already has.
 The media routes (`GET /api/v1/events/{event_id}/media?clip=` and `/movie`, change `media-endpoints`) are,
 like the thumbnail, per-request media reads, not fields of the events read model. They stream the file on disk
-unchanged with byte ranges: no transcode, no probe. The movie is the file the staleness gate counts as the
+unchanged with byte ranges: no transcode, no probe. They answer `GET` and `HEAD` with `If-None-Match` and
+`If-Modified-Since` validators (change `api-media-head-conditional`). The movie is the file the staleness gate counts as the
 event's movie (`staleness.rendered_output`), so a legacy movie with no render record is not served until
 `auto-reel adopt-renders` records it. `<img>` and `<video>` send no `Authorization` header, so a future token
 is a cookie or a query parameter (D-A8).
