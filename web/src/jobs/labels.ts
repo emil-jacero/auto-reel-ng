@@ -11,7 +11,7 @@ import type { ConnectionStatus } from './store'
 // A cancel's answer, told by a toast that ends with the event's name (`eventName`):
 // '<label>: “Grillkväll med grannarna” · 2024-06-27'.
 export const CANCEL_OUTCOME_LABEL: Record<CancelOutcome, string> = {
-  'flagged-running': 'Render stopping at the next segment',
+  'flagged-running': 'Render stopping',
   'canceled-queued': 'Render canceled before it started',
   'no-op-terminal': 'Render had already finished',
 }

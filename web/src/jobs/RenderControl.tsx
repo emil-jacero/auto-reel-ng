@@ -94,7 +94,7 @@ function focusIsLost(): boolean {
 }
 
 // Whether a cancel's answer also tells how the job ended (so the ending raises
-// no second toast): a flagged running job is still to end, at the next segment.
+// no second toast): a flagged running job is still to end.
 const CANCEL_ENDS_JOB: Record<CancelOutcome, boolean> = {
   'flagged-running': false,
   'canceled-queued': true,

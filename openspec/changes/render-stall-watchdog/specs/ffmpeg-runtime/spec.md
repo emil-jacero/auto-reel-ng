@@ -3,7 +3,9 @@
 ### Requirement: A progress run is stopped when it stalls or is canceled
 
 When the engine runs an ffmpeg command with `-progress` parsing, the caller MAY supply a stall limit and a
-cancel check. Both are opt-in: a run given neither SHALL behave exactly as before, with no deadline.
+cancel check. Both are opt-in: a run given neither SHALL have no deadline on its encode and SHALL otherwise behave as
+before. The bound on a process's exit after its progress output has closed (below) is not opt-in: it applies
+to every progress run.
 
 With a stall limit, the engine SHALL track ffmpeg's reported output time and SHALL treat the run as stalled
 when that time has not advanced for the limit, measured from the moment the process was launched. Only a
@@ -20,7 +22,8 @@ After killing ffmpeg for any of these reasons (including a failing progress call
 at most five seconds for the process to exit. A process that has not exited by then SHALL be logged as
 unkillable, with its pid and command, and abandoned, and the original error SHALL still be raised: the
 engine MUST NOT wait indefinitely for a process it has killed. A process that has closed its progress output
-but has not exited five seconds later SHALL be killed and treated as stalled.
+but has not exited five seconds later SHALL be killed and treated as stalled, whether or not a stall limit
+was given.
 
 #### Scenario: A hung ffmpeg is killed and reported
 - **WHEN** ffmpeg reports `out_time_us=100000` once and then writes nothing, and the stall limit is 600 s
@@ -50,8 +53,8 @@ but has not exited five seconds later SHALL be killed and treated as stalled.
 
 #### Scenario: No limit and no check changes nothing
 - **WHEN** a progress run is made with no stall limit and no cancel check
-- **THEN** it behaves exactly as before: the callback receives a non-decreasing fraction and a non-zero exit
-  raises the command-failure error carrying the exit code and stderr
+- **THEN** it has no deadline on its encode: the callback receives a non-decreasing fraction and a non-zero
+  exit raises the command-failure error carrying the exit code and stderr
 
 #### Scenario: An unkillable process does not hang the failure
 - **WHEN** a stalled ffmpeg is killed but is still not reaped five seconds later
@@ -59,7 +62,7 @@ but has not exited five seconds later SHALL be killed and treated as stalled.
 
 #### Scenario: A process that closes its output but never exits
 - **WHEN** ffmpeg closes its progress output, as it does at the end of a run, and is still running five seconds
-  later
+  later, with or without a stall limit
 - **THEN** it is killed and the run raises the stall error rather than waiting for it indefinitely
 
 #### Scenario: A failing cancel check is not swallowed

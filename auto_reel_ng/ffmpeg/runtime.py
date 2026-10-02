@@ -431,7 +431,8 @@ class FfmpegRuntime:
         ``stall_timeout`` (seconds) kills ffmpeg when its reported output time has not
         advanced for that long, counted from launch; ``should_cancel`` is polled about
         once a second (:data:`CANCEL_POLL_INTERVAL_S`) and kills ffmpeg when it returns
-        true. Both are opt-in. A killed process is waited for at most
+        true. Both are opt-in; the bound below on a process that closed its output but has not
+        exited is not. A killed process is waited for at most
         :data:`KILL_GRACE_SECONDS`, then abandoned (logged), so the error still surfaces.
 
         Raises:

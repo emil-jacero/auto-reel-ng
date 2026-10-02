@@ -267,6 +267,56 @@ def test_worker_marks_job_failed_when_render_fails(job_store: JobStore, tmp_path
     assert job.error is not None and "concat failed" in job.error
 
 
+def test_a_stalled_render_fails_its_job_frees_the_device_and_can_be_enqueued_again(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    stalled_id = job_store.enqueue(PROJECT_ROOT, "stalled")
+    next_id = job_store.enqueue(PROJECT_ROOT, "next")
+    render_node = "/dev/dri/renderD128"
+    pools = _solo_pools(gpu_caps={render_node: 1}, cpu_cap=1)
+    semaphore = pools.token_for(video_encoder="h264_vaapi", render_node=render_node)
+    stall = (
+        "normalize failed for segment 2 (Intro): ffmpeg stalled: no progress for 600s "
+        "(limit 600s): ffmpeg -i a.mp4"
+    )
+    rendered: List[str] = []
+
+    def stub_render(rj: RenderJob) -> RenderResult:
+        rendered.append(rj.plan.metadata.title or "")
+        if rj.plan.metadata.title == "Stalled":
+            raise RenderError(stall)
+        return RenderResult(output_path=tmp_path / "out.mp4")
+
+    jobs_by_event = {
+        "stalled": _gpu_render_job(tmp_path, title="Stalled"),
+        "next": _gpu_render_job(tmp_path, title="Next"),
+    }
+    worker = Worker(
+        job_store,
+        worker_id="w1",
+        pools=pools,
+        poll_interval=0.01,
+        build_job=lambda job: jobs_by_event[job.event_dir],
+        render=stub_render,
+    )
+
+    assert worker.process_next() is True
+    failed = job_store.get(stalled_id)
+    assert failed is not None and failed.status == JobStatus.FAILED
+    assert failed.error is not None and "segment 2" in failed.error and "stalled" in failed.error
+    # The cap-1 GPU token was given back: it can be taken without waiting.
+    assert semaphore.acquire(blocking=False)
+    semaphore.release()
+
+    assert worker.process_next() is True  # the next job on the same device starts and finishes
+    assert rendered == ["Stalled", "Next"]
+    done = job_store.get(next_id)
+    assert done is not None and done.status == JobStatus.DONE
+
+    submission = job_store.submit(PROJECT_ROOT, "stalled")
+    assert submission.created is True and submission.job_id != stalled_id
+
+
 def test_worker_claims_and_processes_jobs_in_fifo_order(
     job_store: JobStore, tmp_path: Path
 ) -> None:
