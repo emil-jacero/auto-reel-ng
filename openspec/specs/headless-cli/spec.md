@@ -569,14 +569,18 @@ It SHALL NOT require an event to have a real date or title.
 It SHALL run at most `--jobs N` extractions at once. `N` is a positive integer with a default of `2`; any
 other value SHALL be a usage error. It SHALL print, in walk order:
 
-- one line per event, with its generated, cached and failed counts
+- one line per event, with its generated, cached and failed counts. Those counts add up to the event's
+  clips, and a thumbnail file counts as generated at most once per event. Clips whose thumbnail is one file,
+  such as several symlinks to one clip in an event, SHALL cause one extraction. The first of them in the
+  event's listing order SHALL count as generated, and the others as cached.
 - exactly one `ERROR  <event>/<clip>: <cause>` line per clip that failed, naming the clip once: the cause
   does not repeat its path or quote the failing command, and a file name that is not valid UTF-8 is
   printed with its raw bytes escaped; the failing command and its stderr are logged at debug level
 - a final summary with the totals and the cache directory
 
 A clip that fails SHALL NOT stop the run. Nor SHALL an event whose folder cannot be listed; that event is
-reported as `ERROR  <event>: <reason>`.
+reported as `ERROR  <event>: <reason>`. When clips that share one thumbnail file fail, each of them SHALL get
+its own `ERROR` line and count as failed, and the extraction SHALL still have been attempted only once.
 
 The command SHALL exit `0` when nothing failed, and non-zero when any clip or event failed. A cache
 directory that cannot be created or written, and an invalid `thumbnails` setting, SHALL each stop the run.
@@ -588,11 +592,23 @@ no further extraction and SHALL leave no partial thumbnail behind.
 
 #### Scenario: Filling the cache for the dev library
 - **WHEN** `auto-reel thumbs` runs for the first time over the dev library
-- **THEN** every other clip on disk has a thumbnail afterwards. A clip symlinked into an earlier event may
-  be counted as cached.
+- **THEN** every other clip on disk has a thumbnail afterwards. A clip symlinked into an earlier event, or
+  twice into one event, is counted as cached.
 - **AND** exactly one `ERROR` line is printed, for `2024-10-05 - Trasig/trasig.mp4`, whose file is zero
   bytes
 - **AND** the summary counts that clip as failed, and the command exits non-zero
+
+#### Scenario: Two links to one clip in one event are extracted once
+- **WHEN** `thumbs` reaches `2024-09-14 - Kräftskiva`, which holds only the root `s1710004.mp4` and
+  `Kvällen/s1710004.mp4`, both symlinks to one clip, and neither has a cached thumbnail
+- **THEN** ffmpeg runs once for that clip
+- **AND** the event's line reads `2024-09-14 - Kräftskiva: 2 clips, 1 generated, 1 cached`
+- **AND** exactly one thumbnail file for it exists in the cache directory
+
+#### Scenario: Two links to a broken clip fail as two clips from one attempt
+- **WHEN** `thumbs` reaches an event holding `a.mp4` and a symlink `b.mp4` to the same zero-byte file
+- **THEN** one `ERROR` line is printed for `a.mp4` and one for `b.mp4`, the event's line reads
+  `2 clips, 2 failed`, and ffprobe ran once for that file
 
 #### Scenario: A MISSING clip is never requested
 - **WHEN** `thumbs` reaches `2024-09-01 - Sommarlov`, whose `reel.yaml` lists `s1710002.mp4`, `s1710004.mp4`
