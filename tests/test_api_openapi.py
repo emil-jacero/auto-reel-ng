@@ -421,7 +421,7 @@ def test_the_websocket_frame_is_published_without_a_path() -> None:
     published = models["WsMessageType"]
     assert published["type"] == "string"
     assert published["enum"] == [message_type.value for message_type in WsMessageType]
-    assert published["enum"] == ["snapshot", "delta"]
+    assert published["enum"] == ["snapshot", "delta", "heartbeat"]
     assert "/api/v1/ws/jobs" not in schema["paths"]
     assert not [path for path in schema["paths"] if "/ws/" in path]
 

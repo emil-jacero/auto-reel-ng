@@ -5,7 +5,9 @@ jobs at ``poll_interval``, diffs against its last snapshot, and fans out JSON
 deltas to every subscriber. The poller starts with the first subscriber and stops
 with the last, so an idle service issues no store queries. A subscriber that
 cannot keep up (a full outbound queue) is disconnected rather than back-pressuring
-the hub; its recovery path is reconnect, which gets a fresh snapshot.
+the hub; its recovery path is reconnect, which gets a fresh snapshot. A connection
+that has been sent nothing for 15 s is sent a heartbeat frame by its own push task,
+not through the hub (see ``_push_frames``).
 
 Each poll also reads the jobs that finished since the previous one, so a job whose
 whole active life fell between two polls — enqueued, claimed and failed at probe
@@ -57,6 +59,14 @@ _QUEUE_MAXSIZE = 64
 #: so 30 s is orders of magnitude of slack, at the cost of re-reading 30 s of
 #: finished rows per poll.
 _FINISHED_OVERLAP = timedelta(seconds=30)
+
+#: Silence after which a connection is sent a heartbeat frame (seconds). A module
+#: constant (VII). The web client treats 40 s without any frame as a lost connection
+#: (``web/src/jobs/store.ts``, ``SILENCE_MS``): keep this well under it.
+_HEARTBEAT_INTERVAL_S = 15.0
+
+#: The heartbeat frame, encoded once: it carries no content, its arrival is the signal.
+_HEARTBEAT = WsMessage(type=WsMessageType.HEARTBEAT, jobs=[]).model_dump_json()
 
 
 class JobsHub:  # pylint: disable=too-many-instance-attributes
@@ -391,8 +401,25 @@ def publish_ws_schema(schema: dict[str, Any]) -> None:
 router = APIRouter()
 
 
+async def _next_message(queue: asyncio.Queue) -> Any:
+    """The next queued frame, or a heartbeat when none came within the heartbeat interval.
+
+    Per connection and idle-based: the wait restarts after every frame. A wait that times
+    out is cancelled, which leaves an item that races it in the queue (a getter dequeues
+    only once it runs), so the next call delivers it once, in order. ``_CLOSE`` wakes the
+    wait at once. The interval is read at each wait.
+    """
+    try:
+        return await asyncio.wait_for(queue.get(), _HEARTBEAT_INTERVAL_S)
+    except TimeoutError:
+        return _HEARTBEAT
+
+
 async def _push_frames(websocket: WebSocket, hub: JobsHub, queue: asyncio.Queue) -> None:
     """Send the hub's frames until it lets this subscriber go (close 1013) or a send fails.
+
+    A connection that has been sent nothing for the heartbeat interval is sent a heartbeat
+    (:func:`_next_message`); it never goes through the hub or its queue.
 
     However the push side ends (the hub let go, a send failed, or the handler cancelled
     it), it releases the subscription itself. One ending reaches it long before the
@@ -401,7 +428,7 @@ async def _push_frames(websocket: WebSocket, hub: JobsHub, queue: asyncio.Queue)
     is refused, and the disconnect waits until the write buffer drains.
     """
     try:
-        while (message := await queue.get()) is not _CLOSE:
+        while (message := await _next_message(queue)) is not _CLOSE:
             await websocket.send_text(message)
         await _close(websocket, WS_1013_TRY_AGAIN_LATER)  # dropped (slow consumer) or hub stopped
     except WebSocketDisconnect:
@@ -424,8 +451,10 @@ async def _close(websocket: WebSocket, code: int) -> None:
 async def ws_jobs(websocket: WebSocket) -> None:
     """``WS /api/v1/ws/jobs`` (task 4.2-4.3): snapshot on connect, then deltas.
 
-    The channel is push-only, yet the handler reads the connection until it ends and
-    drops whatever a client sends. The receive loop is where the server reports every
+    The channel is push-only, and an idle connection is sent a heartbeat frame after 15 s
+    of silence (a per-connection timer in the push task; the hub and its poller are not
+    involved), so a client can tell it from a lost one. The handler reads the connection until
+    it ends and drops whatever a client sends. The receive loop is where the server reports every
     end of a connection: a client close, a peer lost to uvicorn's keepalive (a ping every
     20 s, answered within 20 s) and the server's own shutdown, which closes every
     connection with 1012 (service restart). Each releases the subscription at once, so

@@ -73,7 +73,8 @@ stops a queued job at once and asks first for a running one, and for any job whi
 connection is down. Each list row shows its
 event's job live and offers a compact Render; a finished render re-reads the list and
 the page in place, keeping what is shown until the new read answers. One WebSocket
-per tab (`src/jobs/store.ts`) carries every job, reconnects by itself, and reads once any
+per tab (`src/jobs/store.ts`) carries every job, reconnects by itself (also when it has seen no
+frame for 40 s: the service sends a heartbeat after 15 s of silence), and reads once any
 job that ended while it was down. A row's Render is confirmed to assistive technology
 only, since the row shows its job and a toast would cover the rows below; toasts, naming
 each event by its title and date, tell how renders started in the tab ended.
@@ -278,7 +279,7 @@ src/
 │   ├── ClipPreview.tsx   a clip's preview in its Cuts panel: the video, controls, cut bar, notes
 │   └── preview.css       the preview, the cut bar, and the thumbnail as a Watch button
 ├── jobs/
-│   ├── store.ts          the one jobs WebSocket: live jobs, reconnect, endings (toasts, re-reads)
+│   ├── store.ts          the one jobs WebSocket: live jobs, reconnect + silence watchdog, endings (toasts, re-reads)
 │   ├── useJob.ts         which job an event shows (live or last read); the connection's counts
 │   ├── eta.ts            the time-left estimate (pure)
 │   ├── labels.ts         words for cancel outcomes, the connection and a held-back render

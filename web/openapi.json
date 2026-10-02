@@ -2956,7 +2956,7 @@
         "title": "ValidationError"
       },
       "WsMessage": {
-        "description": "One frame on ``WS /api/v1/ws/jobs`` (D-A4): a snapshot or a delta batch.\n\nA WebSocket route is not an HTTP operation, so no path in the schema references\nthis model: the application publishes it into the schema's components itself,\nso a client generated from the schema gets the frame's type without declaring it\nby hand (D-8, §4.10).",
+        "description": "One frame on ``WS /api/v1/ws/jobs`` (D-A4): a snapshot, a delta batch or a heartbeat.\n\nA WebSocket route is not an HTTP operation, so no path in the schema references\nthis model: the application publishes it into the schema's components itself,\nso a client generated from the schema gets the frame's type without declaring it\nby hand (D-8, §4.10).",
         "properties": {
           "type": {
             "$ref": "#/components/schemas/WsMessageType"
@@ -2980,7 +2980,8 @@
         "description": "The closed set of frame types on ``WS /api/v1/ws/jobs`` (D-A4).",
         "enum": [
           "snapshot",
-          "delta"
+          "delta",
+          "heartbeat"
         ],
         "title": "WsMessageType",
         "type": "string"

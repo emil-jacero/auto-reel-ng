@@ -397,7 +397,9 @@ dependency budget.** Rationale and rules:
   backoff. The service closes the socket with 1012 when it stops and 1013 when it drops a subscriber, and
   the client reconnects after any close. A snapshot carries only active jobs, so a job the client knew as
   active that a reconnect snapshot lacks is read once with `GET /jobs/{id}`: it ended while the socket was
-  down.
+  down. A browser cannot see transport pings, so an idle connection is sent a `heartbeat` frame (empty job
+  list) after 15 s of silence, and a client that has seen no frame for 40 s drops the socket itself and takes
+  the same reconnect path: a half-open connection reads "reconnecting", not "live".
 - **The Node toolchain runs in podman** (`node:22`), mirroring the containerized-Postgres test fixture —
   nothing is layered onto the immutable host.
 - **`web/dist` in the image.** The local image (`Containerfile`, **D-17**) builds `web/dist` in a `node:22`

@@ -10,6 +10,7 @@ from typing import Callable
 import pytest
 from fastapi.testclient import TestClient
 
+from auto_reel_ng.api import ws as ws_module
 from auto_reel_ng.api.app import create_app
 from auto_reel_ng.api.settings import resolve_api_settings
 from auto_reel_ng.persistence.job_store import CancelOutcome, JobStore
@@ -157,3 +158,13 @@ def test_a_cancel_request_is_pushed(client: TestClient, store: JobStore, project
         assert [(job["status"], job["progress"], job["cancel_requested"]) for job in rows] == [
             ("running", 0.4, True)
         ]
+
+
+def test_an_idle_connection_is_sent_a_heartbeat_after_its_snapshot(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Through ``create_app`` and a real store: snapshot first, then the empty-jobs heartbeat."""
+    monkeypatch.setattr(ws_module, "_HEARTBEAT_INTERVAL_S", 0.2)
+    with client.websocket_connect("/api/v1/ws/jobs") as websocket:
+        assert json.loads(websocket.receive_text())["type"] == "snapshot"
+        assert json.loads(websocket.receive_text()) == {"type": "heartbeat", "jobs": []}
