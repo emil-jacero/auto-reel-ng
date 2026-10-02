@@ -63,6 +63,6 @@ None.
 - **Packages**: `auto_reel_ng/api` (`ws.py`, `schemas.py`) and `web/` (`src/jobs/store.ts`, generated
   files). API only; the CLI is not touched.
 - **Compatibility**: a client bundle that predates this change treats an unknown frame type as malformed and
-  reconnects. The service serves its own bundle, so a cached old tab sees a reconnect loop with growing
-  backoff until it is reloaded (design, Risks).
+  reconnects. The service serves its own bundle, so a cached old tab reconnects about every 15 s (each
+  snapshot resets its backoff) until it is reloaded (design, Risks).
 - **Ordering**: `ws.py` was also edited by `jobshub-stop-and-db-timeouts`, now on `main` (design, "Context").

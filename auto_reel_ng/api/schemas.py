@@ -387,8 +387,9 @@ class WsMessage(BaseModel):
     """
 
     type: WsMessageType
-    #: Always sent (a snapshot of no active jobs, and every heartbeat, is an empty list), so declared without
-    #: a default: the schema marks it required and generated clients need no fallback.
+    #: Always sent (a snapshot of no active jobs, and every heartbeat, is an empty list), so
+    #: declared without a default: the schema marks it required and generated clients need no
+    #: fallback.
     jobs: List[JobOut]
 
 
