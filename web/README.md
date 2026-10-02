@@ -136,11 +136,15 @@ that shows a panel under the row (**D-14**): the clip's cuts (start → end, len
 reason in words; `manual` reads "Cut by hand") and two typed times, as seconds (`75.5`),
 `m:ss` (`1:15.5`) or `h:mm:ss` (`1:01:15.5`), with up to three decimals after `.` or `,`.
 **Add cut** refuses, at the field and in words, a time it cannot read, an end that is not
-after the start, and an overlap with another cut. No read gives a clip's length, so until the
-clip's preview has read it (below) the panel says the render stops a cut past the clip's end
-there and that a cut over the whole clip leaves the clip out; once it has, the panel says
-where the clip ends, refuses a cut that ends after that, and marks a listed one that does
-("Past the clip’s end"). A cut made here is saved with the reason
+after the start, and an overlap with another cut. The panel knows a clip's length from its
+preview (below) once Watch has read it, else from the `duration` the event detail carries
+(the length measured when the clip's thumbnail was made; `null` until one was, and only the
+detail read after that carries it, so on a first visit to an event the thumbnails Edit mode
+asks for show up in the detail only on the next read, for example a reload). With a length
+the panel says where the clip ends, refuses a cut that ends after that, and marks a listed
+one that does ("Past the clip’s end"); without one it says the render stops a cut past the
+clip's end there and that a cut over the whole clip leaves the clip out, and accepts the cut.
+A cut made here is saved with the reason
 `manual`. **Remove** keeps a cut read from `reel.yaml` listed, struck through, with
 **Undo** (refused, in words, when another cut now overlaps it); a cut added in this Edit
 mode just goes. A time typed but not added counts as unsaved, is named in the save bar
@@ -169,9 +173,10 @@ typed, so the typed mark and the save bar's hold apply. Skip cuts plays the clip
 movie will: two frame intervals ahead of each presented frame
 (`requestVideoFrameCallback`), so a dropped frame never lets a cut frame show (the one
 kept frame just before a cut may go unshown), cuts joined as the render joins them, and a
-cut that ends within 0.1 s of the clip's end stops playback at its start. The length is
-the browser's own read of the file (`loadedmetadata`, `durationchange`), kept per media
-address for the Edit session, never sent or saved. What the browser cannot do is a note,
+cut that ends within 0.1 s of the clip's end stops playback at its start. The preview's
+length is the browser's own read of the file (`loadedmetadata`, `durationchange`), kept per
+media address for the Edit session, never sent or saved; once read it wins over the detail's
+`duration`, since Set From and Set To write times in it. What the browser cannot do is a note,
 announced once: no sound (Firefox and the Sony cameras' PCM audio), no picture (HEVC,
 MPEG-4 Part 2, with a Download), and, after one `Range: bytes=0-0` read of the media route
 (`api/probe.ts`, the movie probe's own table), why a clip cannot play: gone from disk or

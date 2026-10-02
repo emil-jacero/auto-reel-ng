@@ -82,7 +82,7 @@ precedence would refuse a cut set at the end of the clip. Everything downstream 
 undefined`: `checkCut`'s `past-end` refusal, the "This clip ends at" hint (`lengthHint`), and the `pastEnd`
 badge on listed cuts. `CUT_HINT` (the "page does not know" text) therefore appears only when both sources are
 unknown. `ClipPreview`, `CutBar` and `previews.ts` are unchanged: they need the video's own length, and
-`previews.setLength` stays the fallback and the priority source. The hint says whose length it states: "as this browser reads it" once the preview read it (today's words), "as measured for its thumbnail" when it is the detail's duration; both keep "This clip ends at <time>". The duration is not copied into the
+`previews.setLength` stays the fallback and the priority source. The hint says whose length it states: "as this browser reads it" once the preview read it (today's words), "as recorded for this clip" when it is the detail's duration; both keep "This clip ends at <time>". The duration is not copied into the
 previews store, so there is no lifetime to manage: it arrives with each detail response and belongs to the
 mtime that response reported.
 

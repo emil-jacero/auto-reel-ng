@@ -322,12 +322,12 @@ export function clipLength(
 
 /**
  * The hint once the page knows the clip's length: where the clip ends, and whose length it is
- * (the browser's, once the preview read it, else the one measured when its thumbnail was made).
+ * (the browser's, once the preview read it, else the one recorded for the clip, measured when its thumbnail was made).
  */
 export function lengthHint(length: number, previewed = true): string {
   return (
     `Seconds (75.5), m:ss (1:15.5) or h:mm:ss (1:01:15.5). This clip ends at ` +
-    `${formatTime(length)}, ${previewed ? 'as this browser reads it' : 'as measured for its thumbnail'}: ` +
+    `${formatTime(length)}, ${previewed ? 'as this browser reads it' : 'as recorded for this clip'}: ` +
     'a cut must end by then, and a cut over the whole clip leaves the clip out of the movie.'
   )
 }
