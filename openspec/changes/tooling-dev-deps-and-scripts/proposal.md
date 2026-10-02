@@ -34,7 +34,7 @@ HLD §6 phase 8 (v1 polish round); depends on no open §8 research item and on n
   Checked, not assumed: all 13 `TestClient` files pass (DB-backed cases included) on Starlette 1.7.0 with
   `httpx2` 2.13.1 as well as with `httpx` (design, "Research & Decisions").
 - **A test pins the absence of the warning** (importing `starlette.testclient` in a fresh interpreter with
-  `-W error::DeprecationWarning` succeeds), so a dev environment that regresses to `httpx`-only fails loudly
+  `StarletteDeprecationWarning` turned into an error succeeds), so a dev environment that regresses to `httpx`-only fails loudly
   instead of printing a line that scrolls by.
 - **The engine's canonical round-trip YAML becomes a public helper.** `reel/writer.py`'s private `_yaml()` is
   renamed `round_trip_yaml()` (same body, same indent settings, same two internal call sites), so the script

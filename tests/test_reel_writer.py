@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 import stat
 from datetime import date
@@ -10,7 +11,7 @@ import pytest
 
 from auto_reel_ng.reel.legacy import import_legacy
 from auto_reel_ng.reel.parser import loads_document
-from auto_reel_ng.reel.writer import dumps_document, write_document
+from auto_reel_ng.reel.writer import dumps_document, round_trip_yaml, write_document
 
 HANDWRITTEN = """\
 # Midsummer 2024 — hand-authored reel
@@ -42,6 +43,20 @@ ignore:
 def test_unchanged_document_round_trips_byte_stable() -> None:
     doc = loads_document(HANDWRITTEN)
     assert dumps_document(doc) == HANDWRITTEN
+
+
+def test_round_trip_yaml_is_the_canonical_block_style() -> None:
+    yaml = round_trip_yaml()
+    stream = io.StringIO()
+    yaml.dump(yaml.load("chapters:\n- name: ''\n  clips:\n  - a.mp4\n"), stream)
+    assert stream.getvalue() == "chapters:\n  - name: ''\n    clips:\n      - a.mp4\n"
+
+
+def test_round_trip_yaml_agrees_with_the_document_writer() -> None:
+    yaml = round_trip_yaml()
+    stream = io.StringIO()
+    yaml.dump(yaml.load(HANDWRITTEN), stream)
+    assert stream.getvalue() == dumps_document(loads_document(HANDWRITTEN)) == HANDWRITTEN
 
 
 def test_writer_always_emits_version_zero(tmp_path) -> None:

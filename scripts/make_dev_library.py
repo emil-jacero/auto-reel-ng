@@ -30,9 +30,10 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
-from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap
 from sqlalchemy import delete, select
 
 from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
@@ -40,6 +41,7 @@ from auto_reel_ng.persistence.config import resolve_database_url
 from auto_reel_ng.persistence.engine import make_engine, make_session_factory, session_scope
 from auto_reel_ng.persistence.job_store import JobStore
 from auto_reel_ng.persistence.models import Job, JobStatus
+from auto_reel_ng.reel.writer import round_trip_yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SAMPLES = (
@@ -139,22 +141,23 @@ def _render_through_queue(library: Path, store: JobStore) -> None:
         worker.wait(timeout=60)
 
 
-def _edit_title(reel: Path, title: str) -> None:
-    """Round-trip ``reel.yaml`` (comments and key order kept) with a new title."""
-    yaml = YAML()
+def _roundtrip(reel: Path, mutate: Callable[[CommentedMap], None]) -> None:
+    """Round-trip ``reel.yaml`` (comments and key order kept) through the engine's writer style."""
+    yaml = round_trip_yaml()
     document = yaml.load(reel.read_text(encoding="utf-8"))
-    document["metadata"]["title"] = title
+    mutate(document)
     with reel.open("w", encoding="utf-8") as handle:
         yaml.dump(document, handle)
+
+
+def _edit_title(reel: Path, title: str) -> None:
+    """Retitle ``reel.yaml`` in place."""
+    _roundtrip(reel, lambda document: document["metadata"].update(title=title))
 
 
 def _ignore(reel: Path, identity: str) -> None:
-    """Round-trip ``reel.yaml`` (comments and key order kept), dismissing ``identity``."""
-    yaml = YAML()
-    document = yaml.load(reel.read_text(encoding="utf-8"))
-    document["ignore"] = [identity]
-    with reel.open("w", encoding="utf-8") as handle:
-        yaml.dump(document, handle)
+    """Dismiss ``identity`` in ``reel.yaml`` (the ignore list becomes just that clip)."""
+    _roundtrip(reel, lambda document: document.update(ignore=[identity]))
 
 
 def main() -> None:
