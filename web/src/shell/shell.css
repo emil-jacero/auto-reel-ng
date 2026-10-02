@@ -7,6 +7,7 @@
      * and of a sticky bottom bar and the toasts above it (both publish their heights).
      * The toasts above a registered bar rise with it as it leaves the bottom edge
      * (`--toast-rise-h`, ToastRegion), so a focus scroll reserves their height twice.
+     * A resting bar also keeps their height before itself (`--toast-room-h`, edit.css).
      */
     scroll-padding-bottom: calc(
       var(--toast-inset-bottom, 0px) + var(--toast-region-h, 0px) + var(--toast-rise-h, 0px) +

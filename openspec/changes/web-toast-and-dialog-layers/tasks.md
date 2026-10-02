@@ -1,6 +1,6 @@
 ## 1. web/ - a runner for the pure rules, and the store's eviction rule
 
-- [ ] 1.1 Add the runner. In `web/package.json` add `"test": "node --test --experimental-strip-types src/**/*.test.ts"`;
+- [x] 1.1 Add the runner. In `web/package.json` add `"test": "node --test --experimental-strip-types src/**/*.test.ts"`;
   in `web/tsconfig.json` add `"exclude": ["src/**/*.test.ts"]` (`node:test` has no types here; no `@types/node`).
   Create `web/src/ui/toast.test.ts` (imports `node:test` and `node:assert/strict`; sets
   `globalThis.window = globalThis`, then `await import('./toast.ts')`; each case starts from an empty store by
@@ -8,7 +8,7 @@
   eviction cases below, written red first against the unchanged `show()`.
   Verify: `podman run --rm -v $WT/web:/app:Z -w /app docker.io/library/node:22 sh -c "npm ci && npm test"` runs
   the file and, before 1.2, the "three errors then info" case fails with `error:e2, error:e3, info:i4`.
-- [ ] 1.2 Fix `show()` in `web/src/ui/toast.ts`: when `held.length >= MAX_HELD`, drop the oldest non-error
+- [x] 1.2 Fix `show()` in `web/src/ui/toast.ts`: when `held.length >= MAX_HELD`, drop the oldest non-error
   toast; if there is none, a new `error` drops `held[0]` and any other tone returns before consuming an id,
   creating a clock or emitting. Rewrite the header comment (and the matching sentence in the `ToastRegion`
   doc comment). Cases in `toast.test.ts`: e1 e2 e3 + info i4 leaves `e1 e2 e3` and an unchanged snapshot
@@ -17,7 +17,7 @@
 
 ## 2. web/ - clocks wait while a modal dialog is open
 
-- [ ] 2.1 In `toast.ts` add `enterModal(): () => void` (module counter `modalDepth`; the returned release is
+- [x] 2.1 In `toast.ts` add `enterModal(): () => void` (module counter `modalDepth`; the returned release is
   idempotent) and `onModalOpened(listener): () => void`, notified synchronously by `enterModal`. Make the
   effective pause `isPaused || modalDepth > 0` in `startClock` and in one `syncClocks()` that stops or starts
   every running clock when that value changes (`pauseToasts` only sets `isPaused`, then calls it). Cases in
@@ -29,11 +29,11 @@
 
 ## 3. web/ - a dialog gives focus back only when it still owns it
 
-- [ ] 3.1 Create `web/src/ui/returnFocus.ts` exporting `mayReturnFocus(active, dialog, body)` (true when `active` is
+- [x] 3.1 Create `web/src/ui/returnFocus.ts` exporting `mayReturnFocus(active, dialog, body)` (true when `active` is
   null, is `body`, or is inside `dialog`) and `returnFocus.test.ts` with structural stand-ins for the nodes:
   null, body, the dialog itself, a descendant, an outside button (false), the opener itself (false: it already
   has focus). Verify: `npm test` passes.
-- [ ] 3.2 In `web/src/ui/Dialog.tsx`: call `enterModal()` right after `showModal()` in the open effect and
+- [x] 3.2 In `web/src/ui/Dialog.tsx`: call `enterModal()` right after `showModal()` in the open effect and
   release it in the cleanup after `dialog.close()`; read `document.activeElement` at the top of the cleanup,
   before `dialog.close()`, and refocus `opener` only when it is connected and `mayReturnFocus(active, dialog,
   document.body)`. Update the component's doc comment ("closing returns focus there when ... focus is still the
@@ -42,7 +42,7 @@
 
 ## 4. web/ - the toast region sits in the top layer
 
-- [ ] 4.1 In `ToastRegion.tsx` render the region with `popover="manual"`, show it in a mount effect
+- [x] 4.1 In `ToastRegion.tsx` render the region with `popover="manual"`, show it in a mount effect
   (`typeof region.showPopover === 'function'` and not already `:popover-open`; `hidePopover()` in the cleanup,
   both in try/catch) and re-promote it (`hidePopover(); showPopover()`) from `onModalOpened`. In
   `styles/components.css` reset the user-agent popover box on `.toast-region[popover]` as the design lists
@@ -53,7 +53,7 @@
 
 ## 5. web/ - room above a resting save bar
 
-- [ ] 5.1 In `ToastRegion.tsx` `place()` also publish `--toast-room-h` on `<html>` (the value of
+- [x] 5.1 In `ToastRegion.tsx` `place()` also publish `--toast-room-h` on `<html>` (the value of
   `--toast-rise-h`, only while `offset > 0`; removed otherwise and in the cleanup), and observe
   `document.documentElement` and `bar.parentElement` with the existing `ResizeObserver` so `place()` reruns when the
   page above the bar moves it. In `edit/edit.css` give `.save-bar[data-rests]`
@@ -66,7 +66,7 @@
 
 ## 6. Verification
 
-- [ ] 6.1 Playwright from the session scratchpad (never committed; `localhost/playback-research:chrome` or
+- [x] 6.1 Playwright from the session scratchpad (never committed; `localhost/playback-research:chrome` or
   `mcr.microsoft.com/playwright/python:v1.49.0-noble`, `--network host`) against the built client served by
   `auto-reel serve` on the change's own port, DB and a scratch copy of the dev library; locators scoped to
   `main:not([hidden])`; light and dark at 1280 and 390; look at every screenshot. Route only
@@ -81,7 +81,7 @@
   - Escape and Cancel return focus to the opener; a `close` listener that focuses Save leaves focus on Save
   - the resting-bar sweeps of 5.1, the room collapsing on dismiss and returning with a second toast, and a
     chapter added while a toast is above the resting bar (the toast stays directly above it)
-- [ ] 6.2 Gates: `npx tsc --noEmit`, `npm run build` and `npm test` in the `node:22` container (all clean); no
+- [x] 6.2 Gates: `npx tsc --noEmit`, `npm run build` and `npm test` in the `node:22` container (all clean); no
   Python file changed, so `git status` shows only `web/` and `openspec/` paths and `web/openapi.json` is
   untouched (`git diff --stat` shows it absent). Update `web/README.md`: the Toasts paragraph (drops the
   "known gap ... follow-up in `ui/`" sentence; adds the three-toast rule, the top-layer popover and the

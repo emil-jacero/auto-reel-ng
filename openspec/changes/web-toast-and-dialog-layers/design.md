@@ -82,7 +82,10 @@ the clocks paused until both are released.
 **Context**: with the bar resting (`data-rests`, in the page after the last chapter) and too little room
 below it, `place()` puts the region *above* the bar, over the last row.
 **Decision**: `place()` publishes, besides `--toast-rise-h`, `--toast-room-h` on `<html>`: the same value
-(`ceil(height + gap)`) **only while the region is placed above the bar** (`offset > 0`), removed otherwise.
+(`ceil(height + gap)`) **only while the region is placed above the bar** (the room below the bar does not fit
+the toasts), removed otherwise. The decision is the fit test itself, not `offset > 0`: the offset is 0 while
+the bar is still under the window's bottom edge, and keying the room on it would let the room's own shift
+toggle it (found while implementing).
 `edit.css` gives `.save-bar[data-rests]` `margin-block-start: var(--toast-room-h, 0px)`, so the room sits
 between the last chapter and the bar, exactly where the region lands. A *held* bar has no such margin
 (`position: sticky`, not `data-rests`), so the property is harmless there.
@@ -142,3 +145,14 @@ after `npm ci`.
   rather than weaken the requirement silently.
 - [The browser behaviour has no committed test] -> Same as every web change before it; the pure rules (toast
   eviction, clock pausing under a dialog, focus-return) do, and the task list names the Playwright checks.
+
+## Implementation findings
+
+- Chromium treats the popover region as inert while a modal dialog is open (`elementFromPoint` skips it) and
+  it is absent from the accessibility tree then: an error is seen above the backdrop, not announced or
+  operable until the dialog closes. As designed (Risks); it stays shown until dismissed.
+- At 320 x 256 the focus-stop sweep covers the save bar and the clip rows. The metadata form's description
+  textarea (88 px) cannot clear a 114 px toast plus the sticky header in a 256 px window; that is outside the
+  requirement (bar and clip rows) and is not changed here.
+- When the bar's top is above the window's top edge or the stack is taller than the room above a low bar, the
+  region extends past the window's top edge, as before this change; no placement fits there.
