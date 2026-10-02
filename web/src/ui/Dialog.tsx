@@ -94,7 +94,7 @@ export function Dialog({
       if (
         opener instanceof HTMLElement &&
         opener.isConnected &&
-        mayReturnFocus(active, dialog, document.body)
+        mayReturnFocus<Node>(active, dialog, document.body)
       ) {
         opener.focus()
       }

@@ -92,6 +92,13 @@ between the last chapter and the bar, exactly where the region lands. A *held* b
 Room is reserved only while toasts sit above the bar, so the choice above/below cannot flip-flop: adding the
 room moves the bar down the page (less room below it, so "above" stays true); removing it, because the region
 moved below, moves the bar up (more room below, so "below" stays true).
+The fit test is evaluated on the bar **as it would sit with no room before it**: the bar's bottom minus its
+computed `margin-block-start` (the room it carries while it rests; a held bar has none). Without this the
+switch had a band about a toast tall: the room already applied pushed the bar down, so scrolling up turned
+"below" off at 32 px from the end but scrolling back down turned it on only near the new, taller end (measured
+in Chromium at 320 x 568, one toast: the room stayed on all the way to the end). With it the choice depends
+on the scroll position alone, so the switch is at one position in both directions. The switch itself still
+moves the bar by the room (a toast tall) when it happens: the toast changes sides, and that is accepted.
 `place()` gains a second trigger: a `ResizeObserver` on `document.documentElement` and on `bar.parentElement`
 (the document grows or shrinks when content above the bar changes), next to the existing bar/region
 observers. The callback is idempotent (it writes only when a value changed), so the room it reserves does not
@@ -117,9 +124,10 @@ the opener is refocused as today. Operator already on Save: focus is outside and
 are structural); `Dialog.tsx` is TSX and cannot be loaded by Node's type stripping.
 
 ### How the tests run
-`web/package.json` gains `"test": "node --test --experimental-strip-types src/**/*.test.ts"` (a shell glob
-inside npm's `sh`); `tsconfig.json` excludes `src/**/*.test.ts` because `node:test` has no types in this
-project (adding `@types/node` for two files is not worth a dependency, Principle VII). `toast.test.ts` sets
+`web/package.json` gains `"test": "node --test --experimental-strip-types \"src/**/*.test.ts\""` (the glob
+quoted, so Node expands it recursively; unquoted, `sh` would expand it one level only); `tsconfig.json`
+excludes `src/**/*.test.ts` from the app program, and `tsconfig.test.json` type-checks them with `@types/node`
+(a dev dependency; `check` and `build` run both programs, so the tests meet the strict-typing convention). `toast.test.ts` sets
 `globalThis.window = globalThis` and imports `./toast.ts` dynamically afterwards; it drives time with
 `node:test`'s `mock.timers` (`setTimeout`, `Date`), which patches the `window.setTimeout` alias too because it
 is the same object. Run: `podman run --rm -v $WT/web:/app:Z -w /app docker.io/library/node:22 npm test`
@@ -128,7 +136,10 @@ after `npm ci`.
 ## Risks / Trade-offs
 
 - [A popover outside a modal dialog is inert, and inert content may be hidden from assistive technology] ->
-  The visible error is the goal; it stays until dismissed after the dialog closes. The Playwright pass records
+  The visible error is the goal; it stays until dismissed after the dialog closes. While a dialog is open the
+  region carries `data-under-modal` and its Dismiss buttons and links are drawn at half opacity, so they do
+  not offer a press that does nothing. An error raised under a dialog is not announced then, nor when the
+  dialog closes (its text does not change): a recorded limit, not handled here. The Playwright pass records
   what Chromium does (visible above the backdrop; whether `role=alert` is in the accessibility tree while
   inert). If it is hidden from AT, the design stays and the finding is noted in the final report as a known
   limit (the spec asks for visibility, not operability, under a dialog).

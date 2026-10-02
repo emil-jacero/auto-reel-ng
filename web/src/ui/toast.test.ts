@@ -125,6 +125,19 @@ describe('clocks under a modal dialog', () => {
     assert.deepEqual(shown(), [])
   })
 
+  it('reports an open dialog, and every change of it, to the region', () => {
+    const calls: boolean[] = []
+    const stop = store.subscribeModal(() => calls.push(store.isModalOpen()))
+    const first = store.enterModal()
+    const second = store.enterModal()
+    first()
+    first()
+    second()
+    stop()
+    assert.deepEqual(calls, [true, true, true, false])
+    assert.equal(store.isModalOpen(), false)
+  })
+
   it('resumes only when the hover pause and the dialog have both ended', () => {
     mock.timers.enable({ apis: ['setTimeout', 'Date'] })
     store.toast.success('s1')

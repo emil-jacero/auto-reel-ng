@@ -76,7 +76,8 @@ None.
 
 - Package: `web/` only (`src/ui/toast.ts`, `ui/ToastRegion.tsx`, `ui/Dialog.tsx`, a small new
   `ui/returnFocus.ts`, `styles/components.css`, `edit/edit.css`, `shell/shell.css` comment, `web/package.json`
-  `test` script, `web/tsconfig.json` excludes `*.test.ts`, `web/README.md`).
-- New dependencies: none (Node's built-in `node:test`; `--experimental-strip-types` on the `node:22` image).
+  `test` script, `web/tsconfig.json` excludes `*.test.ts` and `web/tsconfig.test.json` checks them, `web/README.md`).
+- New dependencies: `@types/node` (dev only, for type-checking the tests); the runner is Node's built-in
+  `node:test` with `--experimental-strip-types` on the `node:22` image.
 - Browser support: the manual popover API (`popover="manual"`, `showPopover()`) is in every current browser;
   where absent the region stays the plain fixed element it is today.
