@@ -522,13 +522,21 @@ def test_negative_infinity_is_still_a_negative_time() -> None:
         loads_document(_trim_doc("{in: -.inf, out: 5}"))
 
 
+@pytest.mark.parametrize("span", ["{in: &t true, out: 5}", "{in: 1, out: &t false}"])
+def test_an_anchored_boolean_is_not_a_trim_time(span: str) -> None:
+    with pytest.raises(ReelParseError, match="expected a number of seconds"):
+        loads_document(_trim_doc(span))
+
+
 def test_a_finite_trim_still_loads() -> None:
     doc = loads_document(_trim_doc("{in: 0, out: 3.2}"))
 
     assert (doc.clips["a.mp4"].trims[0].start, doc.clips["a.mp4"].trims[0].end) == (0.0, 3.2)
 
 
-@pytest.mark.parametrize("version", ["false", "0.0", "'0'", "", "null", "true", "99"])
+@pytest.mark.parametrize(
+    "version", ["false", "0.0", "'0'", "", "null", "true", "99", "&v false", "&v true"]
+)
 def test_a_version_that_is_not_the_integer_zero_is_rejected(version: str) -> None:
     with pytest.raises(ReelParseError, match="unsupported version"):
         loads_document(f"version: {version}\n")

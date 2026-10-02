@@ -92,3 +92,14 @@ def test_a_self_referencing_structure_terminates() -> None:
 
     assert find_lone_surrogate(loop) is None
     assert find_non_str_key(loop) is None
+
+
+def test_a_container_aliased_many_times_is_visited_once() -> None:
+    from auto_reel_ng.reel import values
+
+    shared = {"k": "v"}
+    tree = {"a": shared, "b": shared, "c": [shared, shared]}
+
+    visited = [node for node, _ in values._walk(tree, None) if node is shared]
+
+    assert len(visited) == 1

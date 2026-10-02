@@ -69,18 +69,18 @@ def _walk(tree: Any, link: _Link, *, keys: bool = True) -> Iterator[tuple[Any, _
     """Every node of ``tree`` in document order with its location; string keys when ``keys``.
 
     A mapping or list is yielded before its children and at most once, whatever the number
-    of aliases that point at it.
+    of aliases that point at it: a revisited container is neither yielded nor expanded.
     """
     seen: set[int] = set()
     stack: list[tuple[Any, _Link]] = [(tree, link)]
     while stack:
         node, here = stack.pop()
-        yield node, here
         children: list[tuple[Any, _Link]] = []
         if isinstance(node, Mapping):
             if id(node) in seen:
                 continue
             seen.add(id(node))
+            yield node, here
             for key, value in node.items():
                 if keys and isinstance(key, str):
                     children.append((key, (_segment(key), here)))
@@ -89,7 +89,10 @@ def _walk(tree: Any, link: _Link, *, keys: bool = True) -> Iterator[tuple[Any, _
             if id(node) in seen:
                 continue
             seen.add(id(node))
+            yield node, here
             children.extend((item, (f"[{i}]", here)) for i, item in enumerate(node))
+        else:
+            yield node, here
         stack.extend(reversed(children))
 
 

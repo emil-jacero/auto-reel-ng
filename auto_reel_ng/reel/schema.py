@@ -16,6 +16,8 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, Mapping, Optional
 
+from ruamel.yaml.scalarbool import ScalarBoolean
+
 from ..errors import ReelParseError
 from .document import (
     SCHEMA_VERSION,
@@ -75,7 +77,7 @@ def _validate_version(version: Any, *, source: str) -> None:
 
     ``False`` and ``0.0`` compare equal to ``0`` in Python but are not the version.
     """
-    if isinstance(version, bool) or not isinstance(version, int) or version != SCHEMA_VERSION:
+    if _is_boolish(version) or not isinstance(version, int) or version != SCHEMA_VERSION:
         raise ReelParseError(
             f"{source}: unsupported version {version!r}; this engine supports "
             f"version {SCHEMA_VERSION}"
@@ -256,7 +258,7 @@ def _parse_sort(raw: Any, *, source: str) -> Optional[ClipOrder]:
                 raise ReelParseError(
                     f"{loc}.custom_order: key must be a non-empty file name, got {name!r}"
                 )
-            if isinstance(position, bool) or not isinstance(position, int):
+            if _is_boolish(position) or not isinstance(position, int):
                 raise ReelParseError(
                     f"{loc}.custom_order[{name!r}]: expected an integer position, "
                     f"got {type(position).__name__}"
@@ -351,6 +353,15 @@ def _parse_date(value: Any, *, loc: str) -> Optional[date]:
     raise ReelParseError(f"{loc}: expected a YYYY-MM-DD date, got {type(value).__name__}")
 
 
+def _is_boolish(value: Any) -> bool:
+    """True for a YAML boolean, including an anchored one.
+
+    ruamel's round-trip loader returns ``ScalarBoolean`` (an ``int`` subclass that is not a
+    ``bool``) for a boolean carrying an anchor, which would otherwise pass an int check.
+    """
+    return isinstance(value, (bool, ScalarBoolean))
+
+
 def _opt_bool(value: Any, *, loc: str) -> Optional[bool]:
     """Coerce an optional three-state boolean (None/True/False)."""
     if value is None:
@@ -369,14 +380,14 @@ def _opt_int(value: Any, *, loc: str) -> Optional[int]:
     """Coerce an optional integer (used for ``rotate``); reject bools and floats."""
     if value is None:
         return None
-    if isinstance(value, bool) or not isinstance(value, int):
+    if _is_boolish(value) or not isinstance(value, int):
         raise ReelParseError(f"{loc}: expected an integer, got {type(value).__name__}")
     return value
 
 
 def _req_time(value: Any, *, loc: str) -> float:
     """Coerce a required, finite, non-negative time in seconds; reject bools and negatives."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if _is_boolish(value) or not isinstance(value, (int, float)):
         raise ReelParseError(f"{loc}: expected a number of seconds, got {type(value).__name__}")
     if value < 0:
         raise ReelParseError(f"{loc}: time must be non-negative, got {value}")
