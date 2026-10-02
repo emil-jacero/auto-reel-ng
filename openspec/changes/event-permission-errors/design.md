@@ -41,7 +41,8 @@ See proposal.md, "Why", for the finding. The code on `main` at `6a7fe16`:
 ## Decisions
 
 **1. `reel_exists(path: Path) -> bool` lives in `event/metadata.py`, next to `REEL_FILENAME`.** It calls
-`path.stat()` and returns `False` only for `FileNotFoundError` and `NotADirectoryError`; anything else, a
+`path.stat()` and returns `False` only for `FileNotFoundError`, `NotADirectoryError` and a symlink loop
+(`ELOOP`, which `exists()` and `is_file()` always read as absent); anything else, a
 `PermissionError` in particular, propagates unchanged. `stat()` follows symlinks, so a dangling symlink is
 `False` and a symlinked `reel.yaml` is `True`, as with `exists()`. It takes the file's path, not the event
 folder, because the call sites hold different things (`reel_path` in `editorial.py`,
@@ -59,8 +60,9 @@ in `ReelParseError` would label the same `0600` event `unparseable_reel_yaml` on
 do not contradict each other.
 
 **3. `scan_event` classifies entries with a private strict `stat`, not `is_dir()` / `is_file()`.** Two
-module-private helpers, `_is_dir(path)` and `_is_file(path)`, call `path.stat()` and return `False` for
-`FileNotFoundError` / `NotADirectoryError` only. They are used for the chapter-subfolder test, the video
+module-private helpers, `_is_dir(path)` and `_is_file(path)`, share one `stat_if_present(path)` with `reel_exists`,
+which treats `FileNotFoundError` / `NotADirectoryError` / `ELOOP` as absent and lets everything else
+propagate. They are used for the chapter-subfolder test, the video
 test and the `.reelignore` marker lookup inside `_is_chapter_dir`. A dangling symlink is still skipped
 (`FileNotFoundError`), and a symlinked clip whose target sits in a folder the process cannot search now
 raises instead of vanishing: the clip is there, the engine cannot say what it is, and an omitted clip is

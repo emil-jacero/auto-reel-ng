@@ -192,6 +192,15 @@ def test_entries_the_disk_says_are_absent_are_skipped(tmp_path: Path) -> None:
     assert scan_event(event).identities == ("real.mp4",)
 
 
+def test_a_symlink_loop_is_skipped_like_a_dangling_link(tmp_path: Path) -> None:
+    event = tmp_path / "2024-06-21 - Fest"
+    _touch(event / "real.mp4")
+    (event / "loop.mp4").symlink_to("loop.mp4")
+    (event / "a.mp4").symlink_to("b.mp4")
+    (event / "b.mp4").symlink_to("a.mp4")
+    assert scan_event(event).identities == ("real.mp4",)
+
+
 @skip_as_root
 def test_is_reelignored_stays_lenient_for_the_ingest_walk(tmp_path: Path) -> None:
     event = _make_event(tmp_path, "2024-06-21 - Fest")

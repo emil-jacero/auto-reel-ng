@@ -10,6 +10,7 @@ document — every disk clip is NEW and becomes part of the seeded structure.
 
 from __future__ import annotations
 
+import errno
 import logging
 import os
 import re
@@ -151,17 +152,32 @@ def is_reelignored(directory: Path) -> bool:
     return (directory / IGNORE_MARKER).is_file()
 
 
+def stat_if_present(path: Path) -> Optional[os.stat_result]:
+    """``path.stat()``, or ``None`` when the disk says there is nothing there to look at.
+
+    "Nothing there" is a missing entry, a parent that is not a directory, and a symlink loop
+    (``ELOOP``): a link that resolves to nothing is as absent as a dangling one, and
+    ``Path.is_file()`` has always read it that way. Every other failure, a
+    :class:`PermissionError` above all, propagates naming the path.
+    """
+    try:
+        return path.stat()
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            return None
+        raise
+
+
 def _stat_says_present(path: Path, kind: Callable[[int], bool]) -> bool:
     """Whether ``path`` exists and is of ``kind``; only "not there" is ``False``.
 
     ``Path.is_dir()`` / ``is_file()`` read an ``EACCES`` as "no", so a listable but unsearchable
     folder looked like one without clips. A permission error here propagates, naming the path.
     """
-    try:
-        mode = path.stat().st_mode
-    except (FileNotFoundError, NotADirectoryError):
-        return False
-    return kind(mode)
+    info = stat_if_present(path)
+    return info is not None and kind(info.st_mode)
 
 
 def _is_dir(path: Path) -> bool:
