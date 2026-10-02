@@ -1,8 +1,8 @@
 """The ``auto-reel`` argument parser and entry point (HLD §4.11).
 
-Exposes ten subcommands — ``render``, ``scan``/``list``, ``analyze``, ``import``,
+Exposes eleven subcommands — ``render``, ``scan``/``list``, ``analyze``, ``import``,
 ``enqueue``, ``worker``, ``jobs`` (``list``/``show``/``cancel``), ``serve``,
-``adopt-renders``, and ``thumbs``. The scan/render family shares the project options
+``adopt-renders``, ``thumbs``, and ``prune-renamed``. The scan/render family shares the project options
 (project root, ``--output``, ``--years``, ``--layout``, ``--verbose``; ``thumbs``
 takes no ``--output``); flags such as ``--dry-run``, ``--force``, ``--device`` and
 ``--jobs`` are added per subcommand. Unknown subcommands and bad arguments exit
@@ -38,6 +38,7 @@ from .commands import (
     cmd_serve,
     cmd_worker,
 )
+from .prune import cmd_prune_renamed
 from .thumbnails import cmd_thumbs
 
 
@@ -119,8 +120,23 @@ def _add_common_args(parser: argparse.ArgumentParser, *, output: bool = True) ->
     )
 
 
+def _add_prune_renamed(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register ``prune-renamed`` (project options plus ``--yes``)."""
+    prune = subparsers.add_parser(
+        "prune-renamed",
+        help="list (and with --yes delete) movies a rename left behind; dry run by default",
+    )
+    _add_common_args(prune)
+    prune.add_argument(
+        "--yes",
+        action="store_true",
+        help="delete the listed movies; without it the run only lists them",
+    )
+    prune.set_defaults(func=cmd_prune_renamed)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    """Build the ``auto-reel`` argument parser with its ten subcommands."""
+    """Build the ``auto-reel`` argument parser with its eleven subcommands."""
     parser = argparse.ArgumentParser(
         prog="auto-reel",
         description="Merge per-event clips into one movie per event, headless.",
@@ -284,6 +300,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="max concurrent extractions (default: 2; lower it for a slow drive)",
     )
     thumbs.set_defaults(output=None, func=cmd_thumbs)
+
+    _add_prune_renamed(subparsers)
 
     return parser
 

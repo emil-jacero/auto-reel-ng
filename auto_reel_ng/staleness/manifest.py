@@ -17,7 +17,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Mapping, Optional, Union
+from typing import List, Mapping, Optional, Tuple, Union
 
 from ..analysis.cache import cache_dir
 from .fingerprint import COMPONENTS, Fingerprint
@@ -45,6 +45,10 @@ class RenderManifest:
     output: str
     engine_identity: str
     written_at: str
+    #: Bare movie file names this event's earlier renders recorded as ``output`` and a rename since
+    #: superseded, oldest first. Not a fingerprint component and not a claim on any file; only
+    #: ``prune-renamed`` reads it.
+    superseded: Tuple[str, ...] = ()
 
 
 def manifest_path(event_dir: PathLike) -> Path:
@@ -63,9 +67,17 @@ def write_manifest(
 
     Creates the ``.auto-reel/cache/`` directory if absent. Callers are responsible
     for only calling this on an actual, verified render success (D-C5).
+
+    The previous manifest's ``output`` is carried into ``superseded`` when it differs from the new
+    ``output`` (the movie a rename left behind, which nothing else remembers), after the names it
+    already listed, without duplicates and without ``output`` itself. An unreadable previous
+    manifest contributes nothing. No movie is touched.
     """
     path = manifest_path(event_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
+    previous = read_manifest(event_dir)
+    carried = [*previous.superseded, previous.output] if previous is not None else []
+    superseded = [name for name in dict.fromkeys(carried) if name != output]
     payload = {
         "version": _MANIFEST_VERSION,
         "fingerprint": fingerprint.combined,
@@ -73,6 +85,7 @@ def write_manifest(
         "output": output,
         "engine_identity": engine_identity,
         "written_at": datetime.now(timezone.utc).isoformat(),
+        "superseded": superseded,
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
@@ -100,10 +113,35 @@ def read_manifest(event_dir: PathLike) -> Optional[RenderManifest]:
             output=str(payload["output"]),
             engine_identity=str(payload["engine_identity"]),
             written_at=str(payload["written_at"]),
+            superseded=_superseded_names(payload.get("superseded")),
         )
     except (KeyError, TypeError, ValueError) as exc:
         logger.debug("Render manifest %s unreadable: %s", path, exc)
         return None
+
+
+def _superseded_names(value: object) -> Tuple[str, ...]:
+    """The ``superseded`` field as names; empty for an absent or malformed field.
+
+    Tolerant on purpose: the field decides no verdict, so ignoring a malformed one cannot turn a
+    stale event fresh, and it must not make an otherwise valid manifest unreadable.
+    """
+    if not isinstance(value, list) or not all(isinstance(name, str) for name in value):
+        return ()
+    names: List[str] = list(value)
+    return tuple(names)
+
+
+def recorded_output_in(recorded: str, output_dir: PathLike) -> Path:
+    """Where the naming rule (D-9) put a movie named ``recorded`` under ``output_dir``.
+
+    A dated name lives in its own date's year folder, ``<output_dir>/<YYYY>/<name>``; an undated
+    one directly in ``output_dir``. ``recorded`` is a bare file name; callers check that
+    (:func:`recorded_movie_path`). Pure: no filesystem access, and no event document needed.
+    """
+    year = _year_folder(recorded)
+    base = Path(output_dir)
+    return base / recorded if year is None else base / year / recorded
 
 
 def recorded_output_path(recorded: str, expected_output: PathLike) -> Path:
@@ -122,10 +160,7 @@ def recorded_output_path(recorded: str, expected_output: PathLike) -> Path:
     expected_year = _year_folder(expected.name)
     in_year_folder = expected_year is not None and expected.parent.name == expected_year
     output_dir = expected.parent.parent if in_year_folder else expected.parent
-    recorded_year = _year_folder(recorded)
-    if recorded_year is None:
-        return output_dir / recorded
-    return output_dir / recorded_year / recorded
+    return recorded_output_in(recorded, output_dir)
 
 
 def recorded_movie_path(recorded: str, expected_output: PathLike) -> Optional[Path]:
@@ -174,6 +209,7 @@ __all__ = [
     "manifest_path",
     "write_manifest",
     "read_manifest",
+    "recorded_output_in",
     "recorded_output_path",
     "recorded_movie_path",
     "records_output",

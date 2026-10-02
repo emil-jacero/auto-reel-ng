@@ -55,6 +55,7 @@ auto-reel serve   <root>                  # run the API service (REST + WS) unti
 auto-reel adopt-renders <root>            # one-time: write manifests for an already-rendered archive
                                           #   (--dry-run previews without writing)
 auto-reel thumbs  <root> [--jobs N]       # generate missing clip thumbnails into the cache (not the library)
+auto-reel prune-renamed <root> [--yes]    # list (and with --yes delete) movies a rename left behind
 ```
 
 Shared options: `--years 2023,2024` (year-event layout), `--layout flat|year-event`,
@@ -152,10 +153,21 @@ enqueued, or completed without rendering).
   `output` means the movie is really gone, and names no files.
   The next render writes the movie under the new name and **keeps
   the old file** — the engine never deletes, moves or renames it. Delete the old
-  movie by hand if you do not want both, but first check that it is not another
-  event's current movie. An event that now has the renamed event's old name is
+  movie if you do not want both: `auto-reel prune-renamed <root>` (below) lists
+  the superseded ones and removes them on request. An event that now has the renamed event's old name is
   refused (`movie ... is recorded as the output of ...`) rather than replacing the
   kept movie; `render --force` (or a job's `force`) replaces it.
+- **Removing superseded movies:** `auto-reel prune-renamed <root> [-o <output>]
+  [--years …]` lists every movie a rename left behind, with its event and the movie
+  that replaced it. It is a **dry run**: nothing is deleted until you add `--yes`.
+  A movie is listed only after its event has rendered successfully under the new
+  name (the manifest's current movie exists), and never when another event
+  records it as its movie, has it as its expected output path, or when it is not a
+  regular file inside the output directory. A file that cannot be deleted is
+  reported, the rest are still deleted, and the exit code is 1. The manifest
+  remembers the names a rename superseded (`superseded`), so movies renamed before
+  this version are not known to it: remove those by hand, or they become known after
+  the event's next rename. No render, worker or API call ever deletes a movie.
 - **`--force`** bypasses the gate entirely: `render --force` re-renders and
   replaces output even if fresh; `enqueue --force` / `POST /api/v1/jobs {"force":
   true}` enqueues even a fresh event, carrying `force` on the job row so it

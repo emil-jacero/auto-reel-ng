@@ -638,9 +638,13 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   another event's render manifest records the very file a render would replace; if so the render
   (CLI `render` and the worker, so jobs from the API too) fails that event with a typed error naming
   the file and the claiming event, unless forced (`--force`, a job's `force`). The engine still never
-  deletes a movie; removing superseded old-named movies is the operator's call (a separate prune
-  command is planned). A forced render still replaces the file, and the renamed event's verdict then
-  cites `output_renamed` for a file that is now the other event's movie.
+  deletes a movie; removing superseded old-named movies is the operator's call (the command below). A forced render still replaces the file, and the
+  renamed event's verdict then cites `output_renamed` for a file that is now the other event's movie.
+  *Amended 2026-10-02 (change `prune-renamed-command`):* the engine still never deletes a movie on its
+  own. The operator command `auto-reel prune-renamed <root> [--yes]` removes superseded old-named
+  movies: dry run by default, and only after the event's new movie exists. The render manifest
+  records the names a rename superseded (`superseded`, optional, schema version 1), and the command
+  never deletes a file another event's manifest or expected path claims.
   *Amended 2026-10-02, change `engine-output-claims`:* which events claim an output path, and who else
   claims it, is decided by one engine rule (`event/claims.py` `checked_claim`, `render/claims.py`
   `output_collision`), not by caller-private copies. An event claims a path only when it loads and is
