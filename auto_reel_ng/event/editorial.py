@@ -24,6 +24,8 @@ component, and the caller's next read reports the event stale on its own.
 
 from __future__ import annotations
 
+import copy
+import io
 from dataclasses import dataclass
 from datetime import date as DateType
 from datetime import datetime as DateTimeType
@@ -31,13 +33,14 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Optional
 
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
-from ruamel.yaml.error import CommentMark
+from ruamel.yaml.error import CommentMark, YAMLError
 from ruamel.yaml.tokens import CommentToken
 
+from ..errors import ReelError
 from ..reel.document import ReelDocument
 from ..reel.parser import load_document
 from ..reel.schema import build_document
-from ..reel.writer import document_to_data, dumps_document, write_document
+from ..reel.writer import document_to_data, dumps_document, round_trip_yaml, write_document
 from .metadata import reel_exists, require_processable, with_resolved_metadata
 
 #: The editorial document file name within an event directory (mirrors cli/adoption.py;
@@ -83,19 +86,23 @@ def apply_editorial_write(
     existed = reel_exists(reel_path)
     current = load_document(reel_path) if existed else ReelDocument()
 
-    data = document_to_data(current)
-    _apply_metadata(data, desired_data.get("metadata"))
-    _apply_look(data, desired_data.get("look"))
-    _apply_chapters(data, desired_data.get("chapters"))
-    _apply_clips(data, desired_data.get("clips"))
-    _apply_ignore(data, desired_data.get("ignore"))
+    try:
+        data = document_to_data(current)
+        _apply_metadata(data, desired_data.get("metadata"))
+        _apply_look(data, desired_data.get("look"))
+        _apply_chapters(data, desired_data.get("chapters"))
+        _apply_clips(data, desired_data.get("clips"))
+        _apply_ignore(data, desired_data.get("ignore"))
 
-    document = build_document(data, source=f"<editorial write: {event_dir}>")
-    resolved = with_resolved_metadata(document, event_dir).metadata
-    require_processable(event_dir, resolved, today=today or DateType.today())
-    if existed and dumps_document(current) == dumps_document(document):
-        return document  # nothing changed: the file stays as authored, whatever its indentation
-    write_document(document, reel_path)
+        document = build_document(data, source=f"<editorial write: {event_dir}>")
+        resolved = with_resolved_metadata(document, event_dir).metadata
+        require_processable(event_dir, resolved, today=today or DateType.today())
+        if existed and dumps_document(current) == dumps_document(document):
+            return document  # nothing changed: the file stays as authored, whatever its indentation
+        write_document(document, reel_path)  # emits the whole text before touching the file
+    except YAMLError as exc:
+        # ruamel emitting text it cannot read back: a document shape it cannot round-trip
+        raise ReelError(f"{reel_path} cannot be re-written with its comments: {exc}") from exc
     return document
 
 
@@ -441,7 +448,29 @@ def _apply_trims(entry: CommentedMap, desired: Optional[Iterable[Mapping[str, An
         return  # every difference was an in-place edit: the list and its comments stay as they are
 
     by_node = {id(item.stored): item for item in comments}
+    first_flow = _flow_like(nodes[:1])
     _refill_list(entry, "trims", nodes, [by_node.get(id(n), _EntryComments()) for n in nodes], own)
+    if not _round_trips(entry):
+        # ruamel cannot emit some hand-authored mixes of flow and block spans around comments
+        # (a flow span with a comment first under a header, a block span later: it writes
+        # ``- in: 6 out: 8`` on one line). Give up the list's header first, then all of its
+        # comments, rather than write a document that cannot be read back.
+        _set_header(entry, "trims", entry["trims"], "")
+        if not _round_trips(entry):
+            entry["trims"] = CommentedSeq(_trim_entry(t, flow=first_flow) for t in desired_list)
+            entry.ca.items.pop("trims", None)
+
+
+def _round_trips(node: CommentedMap) -> bool:
+    """Whether ``node`` dumps to YAML that loads back (ruamel can emit text it cannot read)."""
+    yaml = round_trip_yaml()
+    buffer = io.StringIO()
+    try:
+        yaml.dump(copy.deepcopy(node), buffer)  # a copy: dumping resets comment tokens
+        yaml.load(buffer.getvalue())
+    except YAMLError:
+        return False
+    return True
 
 
 def _match_spans(have: list[tuple], want: list[tuple]) -> list[Optional[int]]:
@@ -580,6 +609,10 @@ def _list_comments(parent: CommentedMap, key: str) -> tuple[list[_EntryComments]
     An entry that is a block-style mapping (a cut span) keeps its end-of-line comment
     inside itself, with the node, so its ``eol`` is empty; only the lines after it are
     lifted (:func:`_node_tail`).
+
+    Where an entry (a flow-style mapping) has no end-of-line comment, ruamel files the lines
+    after it differently: as the *pre* comment of the entry below (slot 1 of its table
+    row), or, after the last entry, as the list's end comment. Both are read as well.
     """
     seq = parent.get(key)
     if not isinstance(seq, CommentedSeq):
@@ -589,22 +622,43 @@ def _list_comments(parent: CommentedMap, key: str) -> tuple[list[_EntryComments]
     above = "" if flow else header or _key_token_tail(parent, key)
     entries: list[_EntryComments] = []
     for index, item in enumerate(seq):
+        slot = seq.ca.items.get(index)
+        if index and slot and slot[1]:
+            above += _render_tokens(slot[1])  # lines ruamel filed above this entry (see below)
         if _is_block_map(item):
             eol, column, below = "", 0, _node_tail(item)
         else:
-            slot = seq.ca.items.get(index)
             value, column = (slot[0].value, slot[0].column) if slot and slot[0] else ("", 0)
             eol, _, below = value.partition("\n")
         entries.append(_EntryComments(above, eol, column if eol else 0, item))
         above = below
     if flow:
         return entries, _ListComments(header, _key_token_tail(parent, key))
-    return entries, _ListComments(trailing=above)
+    return entries, _ListComments(trailing=above + _render_tokens(seq.ca.end))
 
 
 def _is_block_map(node: Any) -> bool:
     """Whether ``node`` is a non-empty block-style mapping (comments on its last key)."""
     return isinstance(node, CommentedMap) and bool(node) and not node.fa.flow_style()
+
+
+def _is_flow_map(node: Any) -> bool:
+    """Whether ``node`` is a flow-style mapping, whose comments are on the list's table."""
+    return isinstance(node, CommentedMap) and bool(node.fa.flow_style())
+
+
+def _set_eol(seq: CommentedSeq, index: int, token: Optional[CommentToken]) -> None:
+    """Set the end-of-line token of entry ``index`` (``None``: none), leaving its pre lines."""
+    row = seq.ca.items.setdefault(index, [None, None, None, None])
+    row[0] = token
+    if not any(row):
+        del seq.ca.items[index]
+
+
+def _set_pre(seq: CommentedSeq, index: int, text: str) -> None:
+    """Make ``text`` (verbatim, indented) the lines above entry ``index`` of ``seq``."""
+    row = seq.ca.items.setdefault(index, [None, None, None, None])
+    row[1] = [CommentToken(text, CommentMark(0))]
 
 
 def _node_tail(node: CommentedMap) -> str:
@@ -629,6 +683,8 @@ def _set_node_tail(node: CommentedMap, text: str) -> None:
         )
     elif slot:
         slot[2] = None
+        if not any(slot):
+            del node.ca.items[last]  # an all-empty row makes ruamel emit the next entry inline
 
 
 def _header_text(parent: CommentedMap, key: str, seq: CommentedSeq) -> str:
@@ -707,6 +763,7 @@ def _refill_list(
     seq = parent[key]
     del seq[:]
     seq.ca.items.clear()
+    seq.ca.end = None  # the lines after the last entry are rewritten from ``own.trailing``
     seq.extend(values)
     carries = any(entry.above or entry.eol for entry in entries)
     if not carries and (not entries or seq.fa.flow_style()):
@@ -720,9 +777,18 @@ def _refill_list(
             below = entries[index + 1].above if index + 1 < len(entries) else ""
             if _is_block_map(values[index]):
                 _set_node_tail(values[index], below)
+            elif (
+                below
+                and not entry.eol
+                and _is_flow_map(values[index])
+                and _is_block_map(values[index + 1])
+            ):
+                # as ruamel files them; after a flow span, ahead of a block one, it emits a
+                # token on the flow span itself (below) as ``- in: 6 out: 8`` on one line
+                _set_pre(seq, index + 1, below)
             elif entry.eol or below:
                 token = CommentToken(f"{entry.eol}\n{below}", CommentMark(entry.column))
-                seq.ca.items[index] = [token, None, None, None]
+                _set_eol(seq, index, token)
     _set_trailing(parent, key, own.trailing)
 
 
@@ -746,10 +812,9 @@ def _set_trailing(parent: CommentedMap, key: str, text: str) -> None:
     eol, column = "", 0
     if slot and slot[0] is not None:
         eol, column = slot[0].value.partition("\n")[0], slot[0].column
-    if eol or text:
-        seq.ca.items[last] = [CommentToken(f"{eol}\n{text}", CommentMark(column)), None, None, None]
-    else:
-        seq.ca.items.pop(last, None)
+    _set_eol(
+        seq, last, CommentToken(f"{eol}\n{text}", CommentMark(column)) if eol or text else None
+    )
 
 
 def _set_header(parent: CommentedMap, key: str, seq: CommentedSeq, text: str) -> None:

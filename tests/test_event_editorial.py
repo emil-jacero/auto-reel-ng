@@ -9,7 +9,7 @@ from typing import Optional
 
 import pytest
 
-from auto_reel_ng.errors import EventMetadataError, ReelParseError
+from auto_reel_ng.errors import EventMetadataError, ReelError, ReelParseError
 from auto_reel_ng.event.discovery import ClipOrder
 from auto_reel_ng.event.editorial import REEL_FILENAME, apply_editorial_write
 from auto_reel_ng.event.metadata import load_event_document, require_processable
@@ -1626,3 +1626,206 @@ def test_a_reordered_span_takes_its_comments_with_it(tmp_path: Path) -> None:
         "      # after last\n"
         "    title: true\n"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Flow spans with no end-of-line comment: ruamel files the lines between them
+# differently, and a list-changing save must still carry those lines.
+# --------------------------------------------------------------------------- #
+
+TRIMS_FLOW_BARE = """\
+    trims:
+      - {in: 0, out: 3}
+      # shake
+      - {in: 10, out: 12}
+      # after last
+    title: true
+"""
+
+
+def test_an_own_line_comment_between_bare_flow_spans_survives_an_appended_span(
+    tmp_path: Path,
+) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW_BARE)
+    _spans(desired).append({"in": 20.0, "out": 22.0, "reason": None})
+
+    apply_editorial_write(event_dir, desired)
+
+    assert _trim_lines(event_dir) == (
+        "    trims:\n"
+        "      - {in: 0, out: 3}\n"
+        "      # shake\n"
+        "      - {in: 10, out: 12}\n"
+        "      - {in: 20.0, out: 22.0}\n"
+        "      # after last\n"
+        "    title: true\n"
+    )
+
+
+def test_an_own_line_comment_above_a_bare_flow_span_survives_removing_the_span_before(
+    tmp_path: Path,
+) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW_BARE)
+    del _spans(desired)[0]
+
+    apply_editorial_write(event_dir, desired)
+
+    assert _trim_lines(event_dir) == (
+        "    trims:\n"
+        "      # shake\n"
+        "      - {in: 10, out: 12}\n"
+        "      # after last\n"
+        "    title: true\n"
+    )
+
+
+def test_editing_a_bare_flow_span_and_appending_keeps_the_comment_between_them(
+    tmp_path: Path,
+) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW_BARE)
+    spans = _spans(desired)
+    spans[0]["out"] = 4
+    spans.append({"in": 20, "out": 22, "reason": None})
+
+    apply_editorial_write(event_dir, desired)
+
+    assert _trim_lines(event_dir) == (
+        "    trims:\n"
+        "      - {in: 0, out: 4}\n"
+        "      # shake\n"
+        "      - {in: 10, out: 12}\n"
+        "      - {in: 20, out: 22}\n"
+        "      # after last\n"
+        "    title: true\n"
+    )
+
+
+def test_a_reordered_bare_flow_span_takes_the_lines_above_it_with_it(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_FLOW_BARE)
+    spans = _spans(desired)
+    spans.reverse()
+
+    apply_editorial_write(event_dir, desired)
+
+    assert _trim_lines(event_dir) == (
+        "    trims:\n"
+        "      # shake\n"
+        "      - {in: 10, out: 12}\n"
+        "      - {in: 0, out: 3}\n"
+        "      # after last\n"
+        "    title: true\n"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Hand-authored lists that mix flow and block spans around comments.
+# --------------------------------------------------------------------------- #
+
+TRIMS_MIXED = """\
+    trims:
+      - in: 2
+        out: 4
+      # x
+      - in: 6
+        out: 8
+      # y
+      - {in: 8, out: 11}
+    title: true
+"""
+
+
+def test_reordering_a_mixed_flow_and_block_list_keeps_every_comment(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_MIXED)
+    _spans(desired).reverse()
+
+    apply_editorial_write(event_dir, desired)
+
+    assert _trim_lines(event_dir) == (
+        "    trims:\n"
+        "      # y\n"
+        "      - {in: 8, out: 11}\n"
+        "      # x\n"
+        "      - in: 6\n"
+        "        out: 8\n"
+        "      - in: 2\n"
+        "        out: 4\n"
+        "    title: true\n"
+    )
+    assert [t.start for t in load_document(event_dir / REEL_FILENAME).clips[_CLIP].trims] == [
+        8,
+        6,
+        2,
+    ]
+
+
+def test_removing_a_span_of_a_mixed_list_keeps_the_other_comments(tmp_path: Path) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_MIXED)
+    del _spans(desired)[0]
+
+    apply_editorial_write(event_dir, desired)
+
+    assert _trim_lines(event_dir) == (
+        "    trims:\n"
+        "      # x\n"
+        "      - in: 6\n"
+        "        out: 8\n"
+        "      # y\n"
+        "      - {in: 8, out: 11}\n"
+        "    title: true\n"
+    )
+
+
+TRIMS_MIXED_HEADER = """\
+    trims:
+      # header
+      - {in: 10, out: 13}   # eol
+      - in: 0
+        out: 3
+    title: true
+"""
+
+TRIMS_MIXED_UNDER_HEADER = """\
+    trims:
+      # header
+      - in: 0
+        out: 3
+      # x
+      - {in: 10, out: 13}   # eol
+    title: true
+"""
+
+
+def test_a_mixed_list_ruamel_cannot_emit_after_a_reorder_is_saved_without_its_header(
+    tmp_path: Path,
+) -> None:
+    # A flow span with a comment first under a header, and a block span later, is text ruamel
+    # writes as ``- in: 0 out: 3`` and then cannot read: the header is the lines given up.
+    event_dir, desired = _trims_event(tmp_path, TRIMS_MIXED_UNDER_HEADER)
+    _spans(desired).reverse()
+
+    apply_editorial_write(event_dir, desired)
+
+    saved = load_document(event_dir / REEL_FILENAME).clips[_CLIP].trims
+    assert [(t.start, t.end) for t in saved] == [(10, 13), (0, 3)]
+    assert _trim_lines(event_dir) == (
+        "    trims:\n"
+        "      - {in: 10, out: 13}   # eol\n"
+        "      # header\n"
+        "      - in: 0\n"
+        "        out: 3\n"
+        "    title: true\n"
+    )  # "# x", the lines above the span that became first, are the ones given up
+
+
+def test_a_document_ruamel_cannot_round_trip_is_refused_with_a_typed_error(
+    tmp_path: Path,
+) -> None:
+    event_dir, desired = _trims_event(tmp_path, TRIMS_MIXED_HEADER)
+    before = (event_dir / REEL_FILENAME).read_bytes()
+    desired["metadata"]["title"] = "Midsommar 2"
+
+    with pytest.raises(ReelError, match="cannot be re-written"):
+        apply_editorial_write(event_dir, desired)
+
+    assert (event_dir / REEL_FILENAME).read_bytes() == before
+    assert not _hidden_temporaries(event_dir)

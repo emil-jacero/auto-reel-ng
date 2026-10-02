@@ -574,3 +574,40 @@ def test_changing_one_cut_over_the_api_leaves_the_other_cuts_as_authored(
     assert any(
         line.startswith("      - {in: 10, out: 13") and line.endswith("# shake") for line in lines
     )
+
+
+UNEMITTABLE_REEL_YAML = """\
+version: 0
+metadata:
+  title: Midsommar
+chapters:
+  - name: ""
+    clips:
+      - 00400.mp4
+clips:
+  00400.mp4:
+    trims:
+      # header
+      - {in: 10, out: 13}   # eol
+      - in: 0
+        out: 3
+"""
+
+
+def test_a_file_ruamel_cannot_write_back_is_400_and_stays_as_authored(
+    client: TestClient, project: Path
+) -> None:
+    """A header, a flow span with a comment, a block span: ruamel writes that unreadably."""
+    reel_path = project / "2024" / "2024-06-21 - Midsommar i Dalarna Åäö" / "reel.yaml"
+    reel_path.write_text(UNEMITTABLE_REEL_YAML, encoding="utf-8")
+    event_id = quote("2024/2024-06-21 - Midsommar i Dalarna Åäö", safe="/")
+    read = client.get(f"/api/v1/events/{event_id}/reel")
+    assert read.status_code == 200
+    body = read.json()
+    body["metadata"]["title"] = "Midsommar 2"
+
+    response = client.put(f"/api/v1/events/{event_id}/reel", json=body)
+
+    assert response.status_code == 400
+    assert "cannot be re-written" in response.json()["detail"]
+    assert reel_path.read_text(encoding="utf-8") == UNEMITTABLE_REEL_YAML
