@@ -9,7 +9,10 @@ Validation itself lives in :mod:`schema`, which this module re-exports.
 Every way the text can fail to load is a :class:`ReelParseError`, never a builtin
 error: bytes that are not UTF-8, malformed YAML, and a well-formed value its tag
 cannot hold — an unquoted ``2024-02-30`` is a date that does not exist — which is
-reported with the value as written and its line.
+reported with the value as written and its line. Every message names the real source
+(not ruamel's ``<unicode string>``); a failure with no position of its own says how far
+the scanner got, and one after scanning (a document nested past the recursion limit)
+reports no line, which is a known limitation.
 """
 
 from __future__ import annotations
@@ -88,6 +91,35 @@ def _yaml() -> YAML:
     return yaml
 
 
+def _named(exc: YAMLError, source: str) -> str:
+    """ruamel's error text with ``source`` where it names the stream it was reading.
+
+    A loader handed a string calls it ``<unicode string>`` in every ``in "...", line N``
+    excerpt. The marks belong to the exception, so renaming them touches nothing else, and
+    the document's own text is never rewritten (a string replace would).
+    """
+    for mark in (getattr(exc, "context_mark", None), getattr(exc, "problem_mark", None)):
+        if mark is not None:
+            mark.name = source
+    return str(exc)
+
+
+def _reached_line(text: str) -> Optional[int]:
+    """The line the scanner got as far as before it failed, or ``None`` if it did not fail.
+
+    A lower bound, not the failing line: ruamel holds a simple-key token back until the next
+    token is fetched. Re-scanning is paid only by a document that is already failing; a scan
+    that completes (the failure came later) or breaks at once has nothing to report.
+    """
+    last = None
+    try:
+        for token in _yaml().scan(text):
+            last = token
+    except Exception:  # pylint: disable=broad-exception-caught
+        return None if last is None else int(last.end_mark.line) + 1
+    return None
+
+
 def load_document(path: Union[str, Path]) -> ReelDocument:
     """Load and validate a ``reel.yaml`` file into a typed :class:`ReelDocument`.
 
@@ -116,15 +148,20 @@ def loads_document(text: str, *, source: str = "<string>") -> ReelDocument:
     try:
         data = _yaml().load(text)
     except ConstructorError as exc:  # well-formed YAML, but a node its tag cannot build
-        raise ReelParseError(f"{source}: invalid value: {exc}") from exc
+        raise ReelParseError(f"{source}: invalid value: {_named(exc, source)}") from exc
     except YAMLError as exc:
-        raise ReelParseError(f"{source}: malformed YAML: {exc}") from exc
+        raise ReelParseError(f"{source}: malformed YAML: {_named(exc, source)}") from exc
+    except RecursionError as exc:
+        # Hit after the whole text scanned fine (composing or constructing), so no line exists.
+        raise ReelParseError(f"{source}: nested too deeply to load ({exc})") from exc
     except Exception as exc:  # pylint: disable=broad-exception-caught
-        # ruamel failing with no node to blame: a scanner chr() error, the recursion
-        # limit, the root collection's constructor after its first yield (a bare assert
-        # in the omap constructor has no text: its type is the reason left to name)
+        # ruamel failing with no node to blame: a scanner chr() error, the root collection's
+        # constructor after its first yield (a bare assert in the omap constructor has no
+        # text: its type is the reason left to name)
         reason = str(exc) or type(exc).__name__
-        raise ReelParseError(f"{source}: malformed YAML: {reason}") from exc
+        reached = _reached_line(text)
+        where = f" (reading got as far as line {reached})" if reached else ""
+        raise ReelParseError(f"{source}: malformed YAML: {reason}{where}") from exc
 
     if data is None:
         raise ReelParseError(f"{source}: empty document")
