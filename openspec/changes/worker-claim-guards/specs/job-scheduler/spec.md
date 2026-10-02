@@ -18,7 +18,7 @@ no path and SHALL NOT refuse the claimed job. When the claimed job's own output 
 check refuses nothing, and the plan rebuild fails the job with its own reason as before. The disk rule of the
 same-project collision is "Claim-time output-collision recheck"; this requirement adds the store-wide check
 the disk rule cannot make (another project with the same output directory, an event the layout walk does not
-reach). Two jobs claimed at the same moment MAY both be refused, and at most one of them renders.
+reach). When the claimed job's output is also claimed on disk by another event of its project, the refusal SHALL be the disk rule's (the shared sentence), not this requirement's, because that rival is itself refused and writes nothing. Two jobs claimed at the same moment MAY both be refused, and at most one of them renders.
 
 #### Scenario: A running job in another project holds the same output
 - **WHEN** a job of project P1 is `running` and renders `<shared output>/2024/2024-06-21 - Midsommar.mp4`,
