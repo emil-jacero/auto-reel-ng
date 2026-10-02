@@ -494,7 +494,9 @@ HLD §7).
   `btn-icon`, or `btn-compact` for a control inside a row); `pill`, `badge` and
   `alert` with `data-tone`; `panel` (with `panel-header` and `panel-meta`);
   `data-table`; `segmented`; `dialog-fields`, `dialog-actions`; `visually-hidden`. The header's
-  `<div className="shell-status">` is the slot for status indicators.
+  `<div className="shell-status">` is the slot for status indicators: it takes the room the
+  rest of the header leaves and is a size container (`shell-status`), so a status
+  collapses by that room (`@container shell-status`), not by the window's width.
 - **Busy controls.** A control the operator pressed that now waits for an answer
   gets `aria-disabled="true"` and `aria-busy="true"` and ignores clicks (a ref
   guard) until the answer. It never gets the `disabled` attribute, which drops
@@ -548,10 +550,11 @@ HLD §7).
   44 px tall, with the folder beside it padded down to keep its first line on the
   link's). The shared action rows (an alert's, a dialog's, `page-actions`,
   `toolbar`) keep 1rem between wrapped lines, so two stacked areas never meet; a
-  new row that can stack buttons does the same. The brand name waits for a 34rem
-  window, so the jobs status keeps its words beside the wider theme options. A fine
-  pointer sees none of it. A new control class that is smaller than 44 px joins
-  that rule.
+  new row that can stack buttons does the same. In a table row of the list, a Render's
+  area stops at the top of its cell (the line above the row is not its to take) and
+  reaches further below instead. The brand name waits for a 34rem window, for the
+  wider theme options. A fine pointer sees none of it. A new control class
+  that is smaller than 44 px joins that rule.
 - **Motion.** Every `transition` takes its duration from a `--dur-*` token; the
   tokens become `0ms` under `prefers-reduced-motion: reduce`. Every `animation` and
   its `@keyframes` sit inside `@media (prefers-reduced-motion: no-preference)`, with

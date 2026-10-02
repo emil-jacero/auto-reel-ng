@@ -37,7 +37,7 @@
   /* "1 rendering · 13 queued": each count a unit that never breaks. */
   .jobs-counts {
     display: inline-flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     justify-content: flex-end;
     gap: 0 var(--s-2);
@@ -68,11 +68,17 @@
   }
 
   /*
-   * A phone's header has little room: each count shrinks to its status icon and
-   * number (the words stay for assistive technology), so the indicator is at most
-   * two short lines, the pill and the counts, inside the header's height.
+   * When the words do not fit the room the header leaves the indicator (the
+   * status slot, `shell.css`), each count shrinks to its status icon and number
+   * (the words stay for assistive technology), so the indicator is at most two
+   * short lines, the pill and the counts, inside the header's height. The room
+   * is measured, not the window, so a wider font moves the step by itself.
+   * 22ch: "99 rendering · 99 queued" on one line, under the pill when the two do
+   * not fit side by side, needs 19.2ch of the slot's font in DejaVu Sans and
+   * 19.7ch in Liberation Sans, the widest of the fonts checked; the rest is a
+   * margin of about 10%.
    */
-  @media (width < 30rem) {
+  @container shell-status (inline-size < 22ch) {
     .jobs-counts {
       gap: 0 var(--s-1);
       font-size: var(--text-xs);
