@@ -4,15 +4,18 @@
     /* Keep a focused or scrolled-to element clear of the header and a sticky panel heading, */
     scroll-padding-top: calc(var(--header-h) + var(--panel-head-h) + var(--s-2));
     /*
-     * and of a sticky bottom bar and the toasts above it (both publish their heights).
-     * The toasts above a registered bar rise with it as it leaves the bottom edge
-     * (`--toast-rise-h`, ToastRegion), so a focus scroll reserves their height twice.
-     * A resting bar also keeps their height before itself (`--toast-room-h`, edit.css).
+     * and of the toasts (they publish their height) and of a sticky bottom bar. The toasts
+     * above a registered bar rise with it as it leaves the bottom edge (`--toast-rise-h`,
+     * ToastRegion), so a focus scroll reserves their height twice. A resting bar also keeps
+     * their height before itself (`--toast-room-h`, edit.css). A bar held at the window's
+     * bottom (Edit mode's, EventEditor.tsx `placeBar`) adds its own height in front of
+     * `--scroll-pad-bottom` as an inline `scroll-padding-bottom` on <html>: a custom property
+     * set from the page would restyle every descendant, ~100 ms on a page of 400 rows.
      */
-    scroll-padding-bottom: calc(
-      var(--toast-inset-bottom, 0px) + var(--toast-region-h, 0px) + var(--toast-rise-h, 0px) +
-        var(--s-4)
+    --scroll-pad-bottom: calc(
+      var(--toast-region-h, 0px) + var(--toast-rise-h, 0px) + var(--s-4)
     );
+    scroll-padding-bottom: var(--scroll-pad-bottom);
   }
 
   .skip-link {

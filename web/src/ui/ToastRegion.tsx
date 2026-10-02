@@ -96,11 +96,11 @@ function pageHeading(): HTMLElement | null {
  * Its bottom offset follows a custom property (see `.toast-region`). With a
  * bar registered (`keepToastsClearOf`), the region places itself: above the bar
  * while the bar is held at the window's bottom edge, and in the room below it
- * once the bar rests in the page with room to spare. Otherwise it reads
- * `--toast-inset-bottom`, 0 unless a page sets it. The region's own height is
+ * once the bar rests in the page with room to spare. With none it sits at the
+ * bottom edge. The region's own height is
  * published on <html> as `--toast-region-h` (removed when empty), and, while a
  * bar is registered, its height plus the gap as `--toast-rise-h`; the page's
- * bottom scroll padding adds both, so a control focused by keyboard never
+ * bottom scroll padding adds both (`--scroll-pad-bottom`), so a control focused by keyboard never
  * scrolls under a toast, including toasts that rise with a bar on its way up.
  * While the toasts sit above the bar, the same height is published as
  * `--toast-room-h`; a bar that rests in the page keeps that much room before

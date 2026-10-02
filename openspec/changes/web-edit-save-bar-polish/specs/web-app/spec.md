@@ -229,10 +229,10 @@ change nothing when pressed.
   unavailable, and pressing them changes nothing
 
 #### Scenario: A lone empty chapter does not point at Move clips
-- **WHEN** Edit mode opens on `2024-10-05 - Tom mapp`, an event that lists one chapter, the event's own, and
-  whose folder holds no clip
-- **THEN** the chapter's heading counts 0 clips, and it says "No clips. A chapter without clips is left out of
-  the movie." It does not mention dragging clips or Move clips, and it offers no Move clips
+- **WHEN** Edit mode opens on `2024-10-05 - Tom mapp`, an event whose folder holds no clip, and the operator
+  presses Add chapter, types `Kvällen vid grillen` and confirms
+- **THEN** the new chapter, the only one listed, counts 0 clips, and it says "No clips. A chapter without
+  clips is left out of the movie." It does not mention dragging clips or Move clips, and it offers no Move clips
 
 #### Scenario: A lone chapter whose only clip is ignored
 - **WHEN** Edit mode opens on `2024-10-06 - Bara ignorerad`, an event that lists one chapter, whose only clip
@@ -241,12 +241,12 @@ change nothing when pressed.
   clips is left out of the movie." It does not mention dragging clips or Move clips
 
 #### Scenario: A second chapter brings the hint back
-- **WHEN** on `2024-10-05 - Tom mapp`, the operator presses Add chapter, types `Kvällen vid grillen` and
-  confirms
+- **WHEN** on `2024-10-05 - Tom mapp`, with `Kvällen vid grillen` added, the operator presses Add chapter,
+  types `Morgonen` and confirms
 - **THEN** both chapters say that they have no clips and that clips can be dragged into them or moved into
   them with another chapter's Move clips
-- **WHEN** the operator then deletes `Kvällen vid grillen`
-- **THEN** the event's own chapter says again, as it did before the addition, that it has no clips and is left
+- **WHEN** the operator then deletes `Morgonen`
+- **THEN** `Kvällen vid grillen` says again, as it did before the addition, that it has no clips and is left
   out of the movie, without mentioning dragging or Move clips
 
 ### Requirement: Edit mode drags clips between chapters

@@ -519,11 +519,12 @@ HLD §7).
 - **Toasts** appear bottom right. A page with a bar held at the bottom of the window
   registers it with `keepToastsClearOf(bar)` (and releases it in the same effect's
   cleanup): the region then sits above the bar while it is stuck, and below it at the
-  page's end, so no toast covers it. The page also sets `--toast-inset-bottom` on
-  `:root` to the bar's height while the bar is held, and removes it while the bar
-  rests (in the page after the editor, it holds no room at the window's
-  bottom): `html`'s scroll padding uses it, and so does the region when no bar is
-  registered. The region publishes its own height as
+  page's end, so no toast covers it. The page also puts the bar's height in front of
+  `html`'s `scroll-padding-bottom` (an inline value on `:root`, `calc(<height> +
+  var(--scroll-pad-bottom))`) while the bar is held, and removes it while the bar
+  rests (in the page after the editor, it holds no room at the window's bottom). It
+  is not a custom property on purpose: a changed custom property on `:root` restyles
+  every descendant, about 100 ms on a page of 400 rows. The region publishes its own height as
   `--toast-region-h` on `:root` (absent when empty), and, while a bar is registered,
   its height plus the gap as `--toast-rise-h`, for the toasts that rise with the bar;
   `html`'s `scroll-padding-bottom` and the page's bottom padding add them, so a

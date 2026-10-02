@@ -31,12 +31,27 @@ that observes, listens and registers the toast clearance (`ToastRegion` subscrib
 `useToastClearance`, so registering renders it), and (d) forces a synchronous layout in `placeBar` right after
 the list changed. Every later commit repeats (d) but not (b) and (c).
 
-The triage's 110-200 ms was **not measured here**: the host has no browser. It is a hypothesis that the mount
-and the registration are the first-only part of that cost. This design does not assume it. Task 2.2 measures the
-first edit against the second on a 400-clip chapter before and after, and the spec bounds the difference at
-50 ms. If mounting early does not reach that bound, the remaining cost is in the list update or in (d), which
-every edit pays; the implementer then stops and reports, rather than weakening the bound or reaching into
-`ClipOrderList`.
+The triage's 110-200 ms was a hypothesis about (b) and (c). **It was measured at implementation** (400 symlinked
+clips in one chapter, Chromium 1280 x 900 in the Playwright image, five fresh Edit modes, a click then two
+animation frames; `measure-base.txt`, `measure-after-2.1.txt` in the scratch directory):
+
+| build                                   | first press | second press | difference |
+| --------------------------------------- | ----------- | ------------ | ---------- |
+| base                                    | 177 ms      | 48 ms        | 129 ms     |
+| bar mounted early, hidden (task 2.1 a)  | 185 ms      | 52 ms        | 133 ms     |
+| and no custom property write (2.1 b)    | 79 ms       | 47 ms        | 32 ms      |
+
+Mounting early changes nothing measurable. A CPU profile of the first press puts 105 ms of self time in
+`placeBar`, which the second press does not pay, and a direct test in the page shows why: on this page, one
+write of any custom property on `<html>` (or on `<main>`, or on the chapter's `<ol>`) followed by a style
+flush costs 90-100 ms, because custom properties inherit and Chrome restyles the whole subtree; setting the
+`scroll-padding-bottom` property inline on `<html>` costs 0.2 ms; the same value written again costs nothing.
+`placeBar` wrote `--toast-inset-bottom` on `<html>` on the first edit (and `removeProperty` on Reset), and
+that is the first-only cost. Registering the property with `@property { inherits: false }` was tried and was
+no better (a write still cost 145 ms), so it is not used.
+
+So the fix has two parts, both in task 2.1: the early mount (the requirement above) and no custom property
+written for the bar (see "The bar's height without a custom property").
 
 ### 2. Reset focuses a heading out of view
 
@@ -89,12 +104,36 @@ the first and second edit. (a) also keeps the `@starting-style` entrance: an ele
 to rendered is styled for the first time, so `.save-bar-card` still fades and rises in under
 `prefers-reduced-motion: no-preference` (checked in task 2).
 
+### The bar's height without a custom property
+
+**Context**: Finding 1's measured cost: a custom property written on `<html>` restyles every row.
+
+**Explored**: (a) keep `--toast-inset-bottom` and accept ~130 ms (the first edit then fails the spec's bound);
+(b) register it with `@property { inherits: false }` (measured, no better); (c) write the property on a
+smaller element (every ancestor of the rows costs the same, and `<html>`'s scroll padding needs it on
+`<html>`); (d) an inline `scroll-padding-bottom` on `<html>`, a real property, so only `<html>` is restyled.
+
+**Decision**: (d). `shell.css` defines `--scroll-pad-bottom` on `html` as the old formula without the bar
+(`var(--toast-region-h, 0px) + var(--toast-rise-h, 0px) + var(--s-4)`) and uses it as the default
+`scroll-padding-bottom`. While the bar is held, `placeBar` writes
+`scroll-padding-bottom: calc(<bar height>px + var(--scroll-pad-bottom))` inline on `<html>`; while it rests,
+and in the effect's cleanup, it removes that inline value. The resulting padding is the same as before in
+every state. The toast region's `inset-block-end` drops its `var(--toast-inset-bottom, 0px)` fallback: a bar
+that is held is always registered with `keepToastsClearOf`, so the region has `--toast-offset` from the bar and
+the fallback was never read with a bar present; with no bar nothing sets it, so it was `0px`.
+
+**Rationale**: the formula stays in the stylesheet that owned it; the page writes only the number it alone
+knows. `--toast-region-h`, `--toast-rise-h` and `--toast-room-h` stay custom properties, written by the toast
+region when toasts appear (a different cost, paid when a toast is shown, not at the first edit; the toast
+contract is otherwise untouched). Cost of the decision: the page's README and four comments say the property
+names, and are updated with it.
+
 ### What stays conditional on `shown`
 
 **Context**: The triage suggested keeping the toast registration stable too.
 
 **Decision**: Only the element and `barRef` are stable. The layout effect keeps its `[showBar]` key, so the
-placement, `ResizeObserver`, listeners, `--toast-inset-bottom` and `keepToastsClearOf(bar)` exist only while
+placement, `ResizeObserver`, listeners, the inline scroll padding and `keepToastsClearOf(bar)` exist only while
 the bar is shown, exactly as before.
 
 **Rationale**: A hidden bar has `offsetHeight` 0 and no box. Registering it would have `ToastRegion` place
@@ -177,8 +216,8 @@ still holds, because it takes `empty` as given.
 
 ## Risks / Trade-offs
 
-- [The mount is not the first-edit cost] → the 50 ms bound is measured, not assumed (task 2.2); the
-  implementation reports a miss instead of going further into the list.
+- [The mount is not the first-edit cost] → it was not (Finding 1); the bound is measured (task 2.2), and the
+  cause, a custom property write, is removed instead.
 - [A hidden-but-mounted bar changes the DOM for tests that look for `.save-bar`] → the browser checks use the
   region role and the `hidden` attribute; none of the repo's other code queries `.save-bar` (checked with
   `grep -rn "save-bar" web/src`, which finds only `edit.css` and `SaveBar.tsx`).
@@ -190,9 +229,9 @@ still holds, because it takes `empty` as given.
 - [`web-save-shortcut` and `web-edit-verdict-refresh` also edit `EventEditor.tsx`] → they do not touch the
   `showBar` render, the `onReset` handler or the area before the answers effect; whichever lands second
   rebases.
-- [Fixture: an event with no clip may not be listed] → the lone-empty scenarios run on an event whose folder
-  holds only a `reel.yaml`; if the library scan does not list such a folder, the "ignored only" event covers
-  the second form and the first is covered by the unit test. The implementer says which.
+- [Fixture: an event with no clip lists no chapter] → checked in the browser: such an event shows only the
+  page-wide "No clips." and no chapter, so the lone empty chapter is reached by Add chapter on it (which also
+  covers the multi-chapter return); the lone chapter that holds only an ignored clip is the other form.
 
 ## Open Questions
 
