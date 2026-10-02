@@ -11,8 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, TypeVar
 
 import pytest
-from sqlalchemy import func, select
-from sqlalchemy.dialects import postgresql
+from sqlalchemy import event, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
@@ -22,7 +21,6 @@ from auto_reel_ng.persistence.job_store import (
     CancelOutcome,
     JobStore,
     Submission,
-    _latest_by_project_stmt,
 )
 from auto_reel_ng.persistence.models import Job, JobStatus
 
@@ -856,7 +854,9 @@ def test_latest_by_project_resolves_a_created_at_tie_the_same_way_every_time(
 ) -> None:
     low = uuid.UUID(int=1)
     high = uuid.UUID(int=2)
-    # Inserted high-first so insertion order cannot be what decides it.
+    # Pins the tie contract (id DESC); the old DISTINCT ON happened to pick the same row, so
+    # this does not reproduce the original failure. Inserted high-first so insertion order
+    # cannot be what decides it.
     _insert_job(jobs_session_factory, BLANDAT, minutes=1, job_id=high)
     _insert_job(jobs_session_factory, BLANDAT, minutes=1, job_id=low)
 
@@ -866,10 +866,24 @@ def test_latest_by_project_resolves_a_created_at_tie_the_same_way_every_time(
     assert first == second == high  # id DESC breaks the tie
 
 
-def test_latest_by_project_statement_does_not_use_the_deprecated_distinct_on() -> None:
-    # SQLAlchemy 2.0.x still runs DISTINCT ON without a warning, so only the rendered SQL
-    # can catch a regression to the spelling 2.1 deprecates.
-    sql = str(_latest_by_project_stmt("/p").compile(dialect=postgresql.dialect()))
+def test_latest_by_project_executes_a_ranked_query_not_the_deprecated_distinct_on(
+    job_store: JobStore, jobs_session_factory: sessionmaker
+) -> None:
+    # SQLAlchemy 2.0.x still runs DISTINCT ON without a warning, so only the SQL the method
+    # really sends can catch a regression to the spelling 2.1 deprecates.
+    _insert_job(jobs_session_factory, BLANDAT, minutes=1)
+    statements: list[str] = []
 
+    def capture(_conn: object, _cursor: object, statement: str, *_rest: object) -> None:
+        statements.append(statement)
+
+    bind = jobs_session_factory.kw["bind"]
+    event.listen(bind, "before_cursor_execute", capture)
+    try:
+        job_store.latest_by_project(LIBRARY_A)
+    finally:
+        event.remove(bind, "before_cursor_execute", capture)
+
+    sql = "\n".join(statements)
     assert "row_number()" in sql.lower()
     assert "DISTINCT ON" not in sql.upper()
