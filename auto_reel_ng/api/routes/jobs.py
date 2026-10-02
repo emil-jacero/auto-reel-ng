@@ -134,15 +134,12 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
     settings = request.app.state.settings
     store: JobStore = request.app.state.job_store
 
-    # The id must be one the events list shows, spelled as it spells it (else the 404 of an
-    # unknown event), and the event must be processable (else the events reads' 502 with its
-    # failure kind): a job's ``event_dir`` is then the one id of its event, and no job is
-    # queued that the worker could only fail. Both come before the collision check.
+    # Both come before the collision check; a job's ``event_dir`` is then the one id of its
+    # event, and no job is queued that the worker could only fail.
     today = date.today()
     try:
-        # The event as the events list shows it, by exactly that id, loaded once and
-        # required processable: the one id a job's ``event_dir`` may carry, and the one
-        # document the collision check, the fingerprint and the gate are all judged on.
+        # The document loaded here feeds the fingerprint and the gate below; the collision
+        # check reads the event itself, through the engine's one claimant rule.
         event_dir, document = events_read.enqueue_target(settings, payload.event_id, today=today)
     except _TARGET_REFUSALS as exc:
         return _target_refused(exc, payload.event_id)

@@ -52,10 +52,12 @@ these becomes one click away. All four were found on `main` at `6a7fe16` and re-
   the event's document and requires it processable, once, and answers the scan-failure 502 with the
   `event_id` and the failure kind the events list gives that event: `unparseable_reel_yaml`,
   `unusable_metadata` (no real date or title, or a future date) or `unreadable_disk`. No job row, no
-  manifest. The loaded document is the one the fingerprint is computed from, so the event is read once.
+  manifest. The loaded document feeds the fingerprint and the gate; the collision check reads
+  the event itself, through the engine's one rule.
 - **One claimant rule.** `events_read._output_claim` and the walk in `output_collision` are replaced by the
   engine's `checked_claim` / `output_collision` from `engine-output-claims`. The service and the CLI
-  select claimants with one function. The `ValueError` guard goes with the duplicate.
+  select claimants with one function. The route's own load keeps a `ValueError` guard, as
+  `checked_claim` has.
 - **`GET /api/v1/events/{id}/reel` fails loud on an unsearchable folder.** The existence test uses
   `reel_exists` inside the read's error handling, so a `PermissionError` is the scan-failure 502 with
   `unreadable_disk`, never the empty document.
