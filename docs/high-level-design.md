@@ -681,7 +681,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   refuses an overlap with another cut. It cannot refuse a cut past
   the clip's end, because no probe-free read gives a duration, unless the clip was previewed in that Edit
   mode (D-16); otherwise it states the render's rule instead (cut short at the end; a whole-clip cut leaves the
-  clip out). A cut made in the GUI has the reason `manual`. The event page shows each clip's cuts. The refusal of a new overlapping cut is an editing aid, not an engine rule: `reel.yaml` and the engine accept overlap and join overlapping or touching cuts as one removal, and cuts already overlapping show as their union. (§4.10)
+  clip out). A cut made in the GUI has the reason `manual`. The event page shows each clip's cuts.
+  The refusal of a new overlapping cut is an editing aid, not an engine rule: `reel.yaml` and the engine accept
+  overlap and join overlapping or touching cuts as one removal, and cuts already overlapping show as their
+  union. (§4.10)
 
 - **D-15 — The event page plays its rendered movie in GUI v1** (2026-10-01, change `movie-player-screen`). The
   event page's read view shows the movie the staleness gate counts (`GET …/movie`, `media-endpoints`) in the
