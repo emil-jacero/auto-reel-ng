@@ -23,7 +23,6 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import SQLAlchemyError
 
-from ...cli.adoption import load_or_seed
 from ...config.project import load_project_config, resolve_look_defaults
 from ...errors import ReelError
 from ...ingest import LayoutError
@@ -75,6 +74,34 @@ def _job_store_unreachable(handler: Callable[_P, _R]) -> Callable[_P, Union[_R, 
     return wrapper
 
 
+#: What :func:`events_read.enqueue_target` raises for an event it will not hand an enqueue.
+_TARGET_REFUSALS = (
+    events_read.EventNotFoundError,
+    events_read.EventReadError,
+    ReelError,
+    LayoutError,
+    OSError,
+)
+
+
+def _target_refused(exc: Exception, event_id: str) -> Response:
+    """The problem body for an event the enqueue cannot start from.
+
+    An id the list does not show is the 404 of an unknown event. An event that cannot be
+    processed is the events reads' 502, with the ``event_id`` and the ``failure`` kind the
+    list's error row gives it. The lookup's own walk failing names no event: the list's
+    scan-failure 502.
+    """
+    if isinstance(exc, events_read.EventNotFoundError):
+        return not_found(
+            f"no event {event_id!r} under the configured project root", event_id=event_id
+        )
+    if isinstance(exc, events_read.EventReadError):
+        failure = exc.failure.value if exc.failure is not None else None
+        return bad_gateway(exc.detail, event_id=event_id, failure=failure)
+    return bad_gateway(f"event scan failed: {exc}")
+
+
 @router.post(
     "/jobs",
     response_model=JobOut,
@@ -96,8 +123,10 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
     status itself (D-A6) — the gate decision is made here, at enqueue, the same
     as the CLI's own ``enqueue``.
 
-    The output-collision check comes first, as the CLI decides it before anything
-    else: an event whose output path another event of the project claims is a 409
+    The id must be one the events list shows, spelled as it spells it (else the 404 of an
+    unknown event), and the event must be processable (else the events reads' 502 with its
+    failure kind). The output-collision check comes next, as the CLI decides it before
+    anything else: an event whose output path another event of the project claims is a 409
     ``output_collision``, fresh or stale, forced or not — never gated, never "already
     active". A walk that fails leaves the rule unchecked, so it is the events list's
     scan-failure 502 and nothing is enqueued (Principle I).
@@ -105,18 +134,21 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
     settings = request.app.state.settings
     store: JobStore = request.app.state.job_store
 
+    # The id must be one the events list shows, spelled as it spells it (else the 404 of an
+    # unknown event), and the event must be processable (else the events reads' 502 with its
+    # failure kind): a job's ``event_dir`` is then the one id of its event, and no job is
+    # queued that the worker could only fail. Both come before the collision check.
+    today = date.today()
     try:
-        # The event as the job names it and the worker renders it, not the folder a
-        # symlink resolves to: the collision check and the gate judge that path.
-        event_dir = events_read.named_event_dir(settings, payload.event_id)
-    except events_read.EventNotFoundError:
-        return not_found(
-            f"no event {payload.event_id!r} under the configured project root",
-            event_id=payload.event_id,
-        )
+        # The event as the events list shows it, by exactly that id, loaded once and
+        # required processable: the one id a job's ``event_dir`` may carry, and the one
+        # document the collision check, the fingerprint and the gate are all judged on.
+        event_dir, document = events_read.enqueue_target(settings, payload.event_id, today=today)
+    except _TARGET_REFUSALS as exc:
+        return _target_refused(exc, payload.event_id)
 
     try:
-        collision = events_read.output_collision(settings, event_dir, today=date.today())
+        collision = events_read.output_collision(settings, event_dir, today=today)
     except (ReelError, LayoutError, OSError) as exc:
         return bad_gateway(f"event scan failed: {exc}")
     if collision is not None:
@@ -141,7 +173,6 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
 
     runtime = request.app.state.runtime
     look_defaults = resolve_look_defaults(load_project_config(settings.project_root))
-    document = load_or_seed(event_dir, order=settings.clip_order)[0]
     fingerprint = compute_fingerprint(
         document, event_dir=event_dir, look_defaults=look_defaults, ffmpeg_version=runtime.version
     )

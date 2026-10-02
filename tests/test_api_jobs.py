@@ -130,6 +130,170 @@ def test_enqueue_unknown_event_is_404(client: TestClient) -> None:
     assert response.json()["event_id"] == "2024/2024-12-24 - Finns inte"
 
 
+# --------------------------------------------------------------------------- #
+# The id names a listed event; an event it cannot process is refused up front
+# (api-jobs-create-validation 2.2)
+# --------------------------------------------------------------------------- #
+
+A_ID = "2024/2024-06-21 - A"
+
+
+@pytest.mark.parametrize(
+    "event_id",
+    [
+        "2024/./2024-06-21 - A",
+        "2024/2024-06-21 - A/",
+        "2024/2024-06-21 - A/../2024-06-21 - A",
+        "2024/2024-06-21 - A/original",
+        "2024",
+        "",
+    ],
+    ids=["dot", "trailing-slash", "dotdot", "original", "year-folder", "root"],
+)
+def test_a_spelling_the_list_does_not_show_is_unknown(
+    client: TestClient, store: JobStore, project: Path, event_id: str
+) -> None:
+    (project / A_ID / "original").mkdir()
+
+    response = client.post("/api/v1/jobs", json={"event_id": event_id})
+
+    assert response.status_code == 404
+    assert response.json()["event_id"] == event_id
+    assert _all_jobs(store) == []
+    # while the listed id still enqueues, under that id
+    listed = client.post("/api/v1/jobs", json={"event_id": A_ID})
+    assert (listed.status_code, listed.json()["event_dir"]) == (201, A_ID)
+
+
+def test_a_second_spelling_of_an_active_event_is_unknown_not_a_second_job(
+    client: TestClient, store: JobStore
+) -> None:
+    assert client.post("/api/v1/jobs", json={"event_id": A_ID}).status_code == 201
+
+    again = client.post("/api/v1/jobs", json={"event_id": f"{A_ID}/"})
+
+    assert again.status_code == 404
+    assert len(_all_jobs(store)) == 1
+
+
+def test_a_folder_outside_the_input_and_a_reelignored_event_are_unknown(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    _touch(project / "input" / A_ID / "00400.mp4")
+    _touch(project / "input" / "2024" / "2024-06-22 - B" / "00400.mp4")
+    (project / "input" / "2024" / "2024-06-22 - B" / ".reelignore").write_bytes(b"")
+    (project / "config.yaml").write_text("input: input\n", encoding="utf-8")
+    settings = resolve_api_settings(
+        project, env={"DATABASE_URL": client.app.state.settings.database_url}
+    )
+    with TestClient(create_app(settings)) as inside_input:
+        for event_id in (A_ID, "input/2024/2024-06-22 - B"):  # outside input/; ignored
+            response = inside_input.post("/api/v1/jobs", json={"event_id": event_id})
+            assert response.status_code == 404, event_id
+        assert (
+            inside_input.post("/api/v1/jobs", json={"event_id": f"input/{A_ID}"}).status_code == 201
+        )
+    assert [job.event_dir for job in _all_jobs(store)] == [f"input/{A_ID}"]
+
+
+def test_an_unparseable_reel_yaml_is_a_502_not_a_500(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    (project / A_ID / "reel.yaml").write_text("metadata: [unclosed", encoding="utf-8")
+
+    response = client.post("/api/v1/jobs", json={"event_id": A_ID})
+
+    assert response.status_code == 502
+    problem = response.json()
+    assert (problem["event_id"], problem["failure"]) == (A_ID, "unparseable_reel_yaml")
+    assert problem["detail"] == client.get(f"/api/v1/events/{A_ID}").json()["detail"]
+    assert _all_jobs(store) == []
+    assert not manifest_path(project / A_ID).exists()
+
+
+@pytest.mark.parametrize(
+    "reel_yaml",
+    [None, "version: 0\nmetadata:\n  date: 2999-01-01\n"],
+    ids=["no-date", "future-date"],
+)
+def test_an_event_without_a_usable_date_is_refused_up_front(
+    client: TestClient, store: JobStore, project: Path, reel_yaml: Optional[str]
+) -> None:
+    event_id = "2024/NoDate" if reel_yaml is None else A_ID
+    _touch(project / "2024" / "NoDate" / "00400.mp4")
+    if reel_yaml is not None:
+        (project / A_ID / "reel.yaml").write_text(reel_yaml, encoding="utf-8")
+
+    response = client.post("/api/v1/jobs", json={"event_id": event_id})
+
+    assert response.status_code == 502
+    problem = response.json()
+    assert (problem["event_id"], problem["failure"]) == (event_id, "unusable_metadata")
+    assert _all_jobs(store) == []
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_an_event_folder_that_cannot_be_searched_is_refused_up_front(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    (project / A_ID).chmod(0o600)
+    try:
+        response = client.post("/api/v1/jobs", json={"event_id": A_ID})
+    finally:
+        (project / A_ID).chmod(0o755)
+
+    assert response.status_code == 502
+    assert response.json()["failure"] == "unreadable_disk"
+    assert _all_jobs(store) == []
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_a_sibling_that_cannot_be_listed_claims_no_path(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    _add_case_only_twins(project)
+    (project / KALAS_LOWER).chmod(0o000)  # would collide with Kalas, if it could be listed
+    try:
+        response = client.post("/api/v1/jobs", json={"event_id": KALAS})
+    finally:
+        (project / KALAS_LOWER).chmod(0o755)
+
+    assert response.status_code == 201
+    assert [job.event_dir for job in _all_jobs(store)] == [KALAS]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_a_year_folder_that_cannot_be_listed_is_the_scan_failure(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    (project / "2024").chmod(0o111)  # the id resolves; the lookup's listing is refused
+    try:
+        response = client.post("/api/v1/jobs", json={"event_id": A_ID})
+    finally:
+        (project / "2024").chmod(0o755)
+
+    assert response.status_code == 502
+    assert "event scan failed" in response.json()["detail"]
+    assert "failure" not in response.json() or response.json()["failure"] is None
+    assert _all_jobs(store) == []
+
+
+def test_a_failing_event_outranks_an_active_job(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    queued = client.post("/api/v1/jobs", json={"event_id": A_ID})
+    assert queued.status_code == 201
+    (project / A_ID / "reel.yaml").write_text("metadata: [unclosed", encoding="utf-8")
+
+    response = client.post("/api/v1/jobs", json={"event_id": A_ID})
+
+    assert response.status_code == 502
+    assert response.json()["failure"] == "unparseable_reel_yaml"
+    assert [(job.id, job.status) for job in _all_jobs(store)] == [
+        (uuid.UUID(queued.json()["id"]), JobStatus.QUEUED)
+    ]
+
+
 def test_enqueue_stamps_fingerprint_and_defaults_force_false(
     client: TestClient, store: JobStore
 ) -> None:

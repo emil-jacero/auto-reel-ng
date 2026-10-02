@@ -308,8 +308,10 @@ export interface paths {
          *     status itself (D-A6) — the gate decision is made here, at enqueue, the same
          *     as the CLI's own ``enqueue``.
          *
-         *     The output-collision check comes first, as the CLI decides it before anything
-         *     else: an event whose output path another event of the project claims is a 409
+         *     The id must be one the events list shows, spelled as it spells it (else the 404 of an
+         *     unknown event), and the event must be processable (else the events reads' 502 with its
+         *     failure kind). The output-collision check comes next, as the CLI decides it before
+         *     anything else: an event whose output path another event of the project claims is a 409
          *     ``output_collision``, fresh or stale, forced or not — never gated, never "already
          *     active". A walk that fails leaves the rule unchecked, so it is the events list's
          *     scan-failure 502 and nothing is enqueued (Principle I).

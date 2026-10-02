@@ -626,8 +626,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   `output_collision`), not by caller-private copies. An event claims a path only when it loads and is
   processable; one that fails to load (an unparseable `reel.yaml`, a folder or file the process cannot
   list or read) claims nothing and is reported on its own. The CLI, `POST /api/v1/jobs` and the worker
-  adopt it in the changes `cli-batch-isolation-and-claims`, `api-jobs-create-validation` and
-  `worker-claim-guards`; the worker's claim-time recheck fails a colliding job rather than requeueing
+  adopt it in the changes `cli-batch-isolation-and-claims`, `api-jobs-create-validation` (landed: the API's
+  copy is gone, and an enqueue names an event by exactly the id the list shows and answers the events
+  reads' 502 for one it cannot process) and `worker-claim-guards`; the worker's claim-time recheck fails a colliding job rather than requeueing
   it. (§4.3/§4.11)
 
 - **D-10 — GUI v1 visual system** (2026-09-30, change `web-design-system`). GUI v1 ships a modern visual

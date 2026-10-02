@@ -1,4 +1,7 @@
-"""Tests for the enqueue's output-collision read (jobs-project-guards 3.2).
+"""Tests for the enqueue's read model: the listed target and the output-collision read.
+
+``events_read.enqueue_target`` is the lookup an enqueue starts from (api-jobs-create-validation
+2.1): the id the events list shows, and that event's processable document.
 
 ``events_read.output_collision`` applies the batch commands' rule (D-9) over every
 event of the served project: the layout walk's events — the events list's rows —
@@ -19,6 +22,7 @@ from auto_reel_ng.api.settings import ApiSettings, resolve_api_settings
 from auto_reel_ng.cli import commands
 from auto_reel_ng.event import DEFAULT_CLIP_ORDER
 from auto_reel_ng.ingest import LayoutError, year_event_layout
+from auto_reel_ng.reel import ReelDocument
 
 #: Never connected to: the read under test runs no query.
 UNUSED_DATABASE_URL = "postgresql+psycopg://nobody:nobody@127.0.0.1:1/nothing"
@@ -215,18 +219,6 @@ def test_a_named_event_that_fails_on_its_own_claims_nothing(
     assert _collision(root, named) is None
 
 
-def test_a_named_event_the_walk_does_not_reach_still_collides(root: Path) -> None:
-    """``input`` narrows the walk; a folder outside it still claims its own path."""
-    _event(root, f"input/{KALAS}")
-    _event(root, KALAS_LOWER)  # outside input: the walk never lists it
-    (root / "config.yaml").write_text("input: input\n", encoding="utf-8")
-
-    collision = _collision(root, KALAS_LOWER)
-
-    assert collision is not None
-    assert collision.claimed_by == (f"input/{KALAS}",)
-
-
 def test_a_symlinked_twin_outside_the_root_is_named_by_its_in_root_id(
     root: Path, tmp_path: Path
 ) -> None:
@@ -277,20 +269,6 @@ def test_a_dropped_in_project_alias_is_a_claimant_of_nothing(
     assert _refusals(root) == refusals  # ... is the service's, claimants included
 
 
-def test_the_named_path_is_judged_as_the_id_spells_it(root: Path) -> None:
-    """``./`` normalizes away: the event is its own listed row, never its own twin."""
-    _event(root, KALAS)
-
-    assert _collision(root, "2024/./2024-07-14 - Kalas") is None
-    # A ``..`` spelling is a claimant of its own, so it collides with the row it spells.
-    dotdot = _collision(root, "2024/2024-07-14 - Kalas/../2024-07-14 - Kalas")
-    assert dotdot is not None
-    assert dotdot.claimed_by == (KALAS,)
-    # A ``..`` through a missing folder resolves lexically, but no worker could open it.
-    with pytest.raises(events_read.EventNotFoundError):
-        events_read.named_event_dir(_settings(root), "2024/missing/../2024-07-14 - Kalas")
-
-
 @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
 def test_a_walk_that_fails_raises(root: Path) -> None:
     """The check could not run: the caller must not enqueue, so the error propagates."""
@@ -311,3 +289,115 @@ def test_an_unknown_layout_raises(root: Path) -> None:
 
     with pytest.raises(LayoutError):
         _collision(root, KALAS)
+
+
+# --------------------------------------------------------------------------- #
+# The enqueue's target (api-jobs-create-validation 2.1)
+# --------------------------------------------------------------------------- #
+
+A_ID = "2024/2024-06-21 - A"
+NO_DATE = "2024/NoDate"
+
+
+def _target(root: Path, event_id: str) -> tuple[Path, ReelDocument]:
+    return events_read.enqueue_target(_settings(root), event_id, today=TODAY)
+
+
+def test_the_listed_id_gives_its_folder_and_a_document_with_resolved_metadata(root: Path) -> None:
+    _event(root, A_ID)
+
+    event_dir, document = _target(root, A_ID)
+
+    assert event_dir == root / A_ID
+    assert document.metadata.title == "A"
+    assert document.metadata.date == date(2024, 6, 21)
+
+
+@pytest.mark.parametrize(
+    "event_id",
+    [
+        "2024/./2024-06-21 - A",
+        "2024/2024-06-21 - A/",
+        "2024/2024-06-21 - A/../2024-06-21 - A",
+        "2024/2024-06-21 - A/original",
+        "2024",
+        "",
+        "2024/missing/../2024-06-21 - A",
+    ],
+    ids=["dot", "trailing-slash", "dotdot", "original", "year-folder", "root", "missing-folder"],
+)
+def test_a_spelling_the_list_does_not_show_is_not_found(root: Path, event_id: str) -> None:
+    _event(root, A_ID)
+    (root / A_ID / "original").mkdir()
+
+    with pytest.raises(events_read.EventNotFoundError):
+        _target(root, event_id)
+
+
+@pytest.mark.parametrize(
+    ("event_id", "reel_yaml", "failure"),
+    [
+        (NO_DATE, None, "unusable_metadata"),
+        (A_ID, "metadata: [unclosed", "unparseable_reel_yaml"),
+        (A_ID, "version: 0\nmetadata:\n  date: 2999-01-01\n", "unusable_metadata"),
+    ],
+    ids=["no-date", "unparseable", "future-date"],
+)
+def test_an_event_it_cannot_process_is_a_read_error_with_the_lists_kind(
+    root: Path, event_id: str, reel_yaml: str | None, failure: str
+) -> None:
+    _event(root, event_id, reel_yaml)
+
+    with pytest.raises(events_read.EventReadError) as caught:
+        _target(root, event_id)
+
+    assert caught.value.failure is not None and caught.value.failure.value == failure
+    assert caught.value.event_id == event_id
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_an_event_folder_that_cannot_be_searched_is_unreadable_disk(root: Path) -> None:
+    event_dir = _event(root, A_ID, _titled("Real"))
+    event_dir.chmod(0o600)
+    try:
+        with pytest.raises(events_read.EventReadError) as caught:
+            _target(root, A_ID)
+    finally:
+        event_dir.chmod(0o755)
+
+    assert caught.value.failure is not None
+    assert caught.value.failure.value == "unreadable_disk"
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_a_year_folder_that_cannot_be_listed_is_the_walks_own_error(root: Path) -> None:
+    _event(root, A_ID)
+    (root / "2024").chmod(0o111)  # searchable (the id resolves) but not listable
+    try:
+        with pytest.raises(OSError):
+            _target(root, A_ID)
+    finally:
+        (root / "2024").chmod(0o755)
+
+
+def test_a_reelignored_event_and_one_outside_input_are_not_found(root: Path) -> None:
+    _event(root, f"input/{A_ID}")
+    _event(root, "input/2024/2024-06-22 - B")
+    (root / "input/2024/2024-06-22 - B/.reelignore").write_bytes(b"")
+    _event(root, KALAS)  # beside input/, not in it
+    (root / "config.yaml").write_text("input: input\n", encoding="utf-8")
+
+    assert _target(root, f"input/{A_ID}")[0] == root / "input" / A_ID
+    for event_id in ("input/2024/2024-06-22 - B", KALAS):
+        with pytest.raises(events_read.EventNotFoundError):
+            _target(root, event_id)
+
+
+def test_a_symbolic_link_to_an_event_resolves_under_its_own_id(root: Path) -> None:
+    _event(root, KALAS)
+    (root / FEST).symlink_to(root / KALAS)
+
+    event_dir, document = _target(root, FEST)
+
+    assert event_dir == root / FEST
+    assert document.metadata.title == "Fest"  # its own folder name, not the target's
