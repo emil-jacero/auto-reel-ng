@@ -916,7 +916,8 @@ export interface components {
          *     - ``output_renamed``: the event's movie name (its title, date or location) changed
          *       since the last render, and a movie is still on disk under the old name. The next
          *       render writes the movie under the new name and leaves the old file where it is;
-         *       only a render of another event that now has the old name replaces that file.
+         *       only a render of another event that now has the old name replaces that file. The
+         *       verdict then also carries ``renamed_from`` and ``output_name``, the two file names.
          *     - ``editorial``, ``defaults``, ``clip_set``, ``engine``: that fingerprint component
          *       changed since the last render (the ``reel.yaml`` document, the project's look
          *       defaults, the clips on disk, the render engine).

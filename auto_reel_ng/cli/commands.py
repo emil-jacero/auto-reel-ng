@@ -395,7 +395,7 @@ def _format_reasons(verdict: Verdict) -> str:
     """The reasons of a stale verdict, ``output_renamed`` followed by the two movie files it names."""
     return ", ".join(
         (
-            f"{reason} (was {verdict.renamed_from!r}, now {verdict.output_name!r})"
+            f"{reason} (was '{verdict.renamed_from}', now '{verdict.output_name}')"
             if reason == StalenessReason.OUTPUT_RENAMED
             else str(reason)
         )

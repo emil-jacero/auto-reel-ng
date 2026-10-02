@@ -7,6 +7,7 @@ of ``output``, and never changes whether the event is stale.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import Callable, Optional
@@ -355,6 +356,10 @@ def test_the_names_are_the_bare_files_found_not_the_recorded_string(tmp_path: Pa
 
     assert verdict.renamed_from == old_movie.name
     assert verdict.output_name == (tmp_path / "out" / output_relpath(retitled)).name
+    # The names are extra detail: without them the verdict is the one the gate always gave.
+    assert replace(verdict, renamed_from=None, output_name=None) == Verdict(
+        stale=True, reasons=verdict.reasons
+    )
     assert verdict.renamed_from != verdict.output_name
     assert "/" not in verdict.renamed_from and "/" not in verdict.output_name
 
