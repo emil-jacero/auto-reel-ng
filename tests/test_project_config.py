@@ -142,3 +142,93 @@ def test_unknown_sort_method_fails_loud() -> None:
 def test_wrong_typed_sort_reverse_fails_loud() -> None:
     with pytest.raises(ConfigError, match="sort.reverse"):
         loads_project_config('sort:\n  reverse: "yes"\n')
+
+
+# --------------------------------------------------------------------------- #
+# loader: every failure is a ConfigError (config-yaml-hardening)
+# --------------------------------------------------------------------------- #
+
+_HEX_5000 = "0x" + "f" * 5000
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "look: {a: 2024-02-30}\n",  # ValueError from the date constructor
+        "a: !!bool maybe\n",  # KeyError from the bool constructor
+        "a: " + "[" * 100_000 + "\n",  # RecursionError (or a scanner error) when too deep
+    ],
+    ids=["impossible-date", "unknown-bool", "deeply-nested"],
+)
+def test_builtin_errors_from_the_yaml_load_are_config_errors(text: str) -> None:
+    with pytest.raises(ConfigError, match="malformed YAML") as caught:
+        loads_project_config(text, source="/lib/config.yaml")
+    assert "/lib/config.yaml" in str(caught.value)
+
+
+def test_an_impossible_date_through_the_file_form_names_the_file(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("look: {a: 2024-02-30}\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="malformed YAML") as caught:
+        load_project_config(tmp_path)
+    assert str(tmp_path / "config.yaml") in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    ("text", "path"),
+    [
+        ('layout: "x\\ud800"\n', "layout"),
+        ('look: {a: "x\\ud800"}\n', "look.a"),
+        ('look: {"k\\ud800": 1}\n', "look"),
+        ('database: {url: "postgres://\\udfff"}\n', "database.url"),
+        ('worker: {names: [ok, "bad\\ud800"]}\n', "worker.names[1]"),
+        ("look: {2024-01-01: x}\n", "look"),
+        ("look: {1: a, b: c}\n", "look"),
+        ("look: {title: {1: x}}\n", "look.title"),
+        (f"look: {{a: {_HEX_5000}}}\n", "look.a"),
+        ("look: &a {x: *a}\n", "look.x"),
+        ("worker: &w [*w]\n", "worker[0]"),
+    ],
+    ids=[
+        "layout-surrogate",
+        "look-value-surrogate",
+        "look-key-surrogate",
+        "database-url-surrogate",
+        "worker-list-surrogate",
+        "look-date-key",
+        "look-mixed-keys",
+        "look-nested-int-key",
+        "huge-hex-int",
+        "self-referencing-mapping",
+        "self-referencing-list",
+    ],
+)
+def test_content_that_breaks_later_is_refused_at_load_with_its_path(text: str, path: str) -> None:
+    with pytest.raises(ConfigError, match="/lib/config.yaml") as caught:
+        loads_project_config(text, source="/lib/config.yaml")
+    assert path in str(caught.value)
+    assert "\ud800" not in str(caught.value)  # the message never carries the bad text
+
+
+def test_the_refusal_messages_say_why() -> None:
+    with pytest.raises(ConfigError, match="lone surrogate"):
+        loads_project_config('layout: "x\\ud800"\n')
+    with pytest.raises(ConfigError, match="a date, not a string"):
+        loads_project_config("look: {2024-01-01: x}\n")
+    with pytest.raises(ConfigError, match="too large to print"):
+        loads_project_config(f"look: {{a: {_HEX_5000}}}\n")
+    with pytest.raises(ConfigError, match="refers to itself"):
+        loads_project_config("look: &a {x: *a}\n")
+
+
+def test_valid_text_and_non_look_int_keys_still_load() -> None:
+    config = loads_project_config(
+        "layout: flat\nlook: {title: Café, sub: 日本語, n: {k: 1}}\nworker: {1: one}\n"
+    )
+    assert config.layout == "flat"
+    assert config.look == {"title": "Café", "sub": "日本語", "n": {"k": 1}}
+    assert config.worker == {1: "one"}
+
+
+def test_a_shared_alias_that_is_not_a_cycle_is_accepted() -> None:
+    config = loads_project_config("look: {a: &s {k: v}, b: *s}\nworker: {x: *s}\n")
+    assert config.look["a"] == config.look["b"] == {"k": "v"}

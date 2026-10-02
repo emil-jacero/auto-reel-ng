@@ -119,9 +119,28 @@ def _hash_clip_set(event_dir: PathLike, *, use_hash: bool) -> str:
 
 
 def _hash_json(value: object) -> str:
-    """SHA-256 of ``value``'s canonical JSON form (stable key order, JSON-native types)."""
-    canonical = json.dumps(value, sort_keys=True, default=str)
+    """SHA-256 of ``value``'s canonical JSON form (stable key order, JSON-native types).
+
+    Content whose mapping keys JSON can order and write hashes exactly as it always has.
+    Where that raises ``TypeError`` (a ``date`` key, ``int`` and ``str`` keys together), the
+    value is hashed with every key tagged by its type instead, so a hash is always available
+    and ``{1: x}`` is never conflated with ``{"1": x}``. The fallback runs only where the
+    plain form could not, so no hash that could be computed before changes.
+    """
+    try:
+        canonical = json.dumps(value, sort_keys=True, default=str)
+    except TypeError:  # a key JSON cannot order or serialise
+        canonical = json.dumps(_tag_keys(value), sort_keys=True, default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _tag_keys(value: object) -> object:
+    """``value`` with every mapping key replaced by ``"<type>:<key>"``, at any depth."""
+    if isinstance(value, Mapping):
+        return {f"{type(key).__name__}:{key}": _tag_keys(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_tag_keys(item) for item in value]
+    return value
 
 
 __all__ = [

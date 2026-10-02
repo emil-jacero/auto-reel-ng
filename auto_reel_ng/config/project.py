@@ -8,7 +8,10 @@ consumed by :mod:`auto_reel_ng.scheduler.config`, an ``api`` map consumed by
 :mod:`auto_reel_ng.api.settings`, and a ``thumbnails`` map consumed by
 :mod:`auto_reel_ng.thumbs.settings`. Every field is optional: a
 missing file yields all-defaults (tolerated), while malformed YAML or a
-wrong-typed field fails loud (engine convention).
+wrong-typed field fails loud (engine convention). The loader raises only
+:class:`ConfigError` for file content: a failure of the YAML load itself, a string that cannot be
+encoded as UTF-8, an integer too large to print, a structure that refers to itself and, under
+``look``, a key that is not a string are all refused with the key path, before any field is read.
 
 Layered resolution (decision **D-2 / D-CLI2**): folder/layout seed ->
 ``config.yaml`` -> event ``reel.yaml`` -> CLI overrides, each later layer winning.
@@ -24,13 +27,14 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import Iterator, Mapping, Optional
 
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
 from ..errors import EngineError
 from ..event.discovery import DEFAULT_CLIP_ORDER, ClipOrder, SortMethod
+from ..reel.values import find_lone_surrogate, find_non_str_key
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +90,12 @@ def loads_project_config(text: str, *, source: str = "<string>") -> ProjectConfi
         data = yaml.load(text)
     except YAMLError as exc:
         raise ConfigError(f"{source}: malformed YAML: {exc}") from exc
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        # ruamel's safe constructors leak builtin errors for a well-formed node they cannot
+        # build (ValueError: 2024-02-30, KeyError: !!bool maybe), and RecursionError for a
+        # document nested too deeply; none is a YAMLError, all are the file's fault.
+        reason = str(exc) or type(exc).__name__
+        raise ConfigError(f"{source}: malformed YAML: {reason}") from exc
 
     if data is None:
         return ProjectConfig()
@@ -94,6 +104,7 @@ def loads_project_config(text: str, *, source: str = "<string>") -> ProjectConfi
             f"{source}: top-level config must be a mapping, got {type(data).__name__}"
         )
 
+    _validate_tree(data, source)
     database = _require_mapping(data.get("database"), "database", source)
     return ProjectConfig(
         look=dict(_require_mapping(data.get("look"), "look", source)),
@@ -106,6 +117,105 @@ def loads_project_config(text: str, *, source: str = "<string>") -> ProjectConfi
         thumbnails=dict(_require_mapping(data.get("thumbnails"), "thumbnails", source)),
         sort=_parse_sort(_require_mapping(data.get("sort"), "sort", source), source),
     )
+
+
+def _validate_tree(data: Mapping[str, object], source: str) -> None:
+    """Refuse content that loads but breaks later, naming the key path (nothing else is read).
+
+    A lone surrogate cannot be printed, logged or sent as JSON; a ``look`` key that is not a
+    string (an unquoted date is one) cannot be fingerprinted; an integer past Python's digit
+    limit cannot be printed; a structure that contains itself cannot be serialised. Values
+    stay uninterpreted otherwise (D-I/D-J).
+    """
+    surrogate = find_lone_surrogate(data)
+    if surrogate is not None:
+        raise ConfigError(
+            f"{source}: {surrogate or 'document'}: text contains a lone surrogate, which "
+            f"cannot be encoded as UTF-8"
+        )
+    bad_key = find_non_str_key(data.get("look"), root="look")
+    if bad_key is not None:
+        article = "an" if bad_key.kind[0] in "aeiou" else "a"
+        raise ConfigError(
+            f"{source}: {bad_key.path}: key {bad_key.key} is {article} {bad_key.kind}, not a "
+            f"string (quote it to keep it as text)"
+        )
+    problem = _find_unusable_structure(data)
+    if problem is not None:
+        what, path = problem
+        raise ConfigError(f"{source}: {path}: {what}")
+
+
+def _find_unusable_structure(tree: object) -> Optional[tuple[str, str]]:
+    """The first ``(problem, path)`` of an unprintable integer or a self-referencing container.
+
+    An iterative depth-first walk, so a deep file cannot exhaust the stack: ``on_path`` holds the
+    containers being walked (meeting one again is a cycle), ``done`` the finished ones (a shared
+    alias that is not a cycle is walked once).
+    """
+    on_path: set[int] = set()
+    done: set[int] = set()
+    path: list[str] = []
+    stack: list[tuple[object, Iterator[tuple[str, object]]]] = []
+
+    def enter(node: object) -> None:
+        on_path.add(id(node))
+        stack.append((node, _children(node)))
+
+    if not isinstance(tree, (Mapping, list)):
+        return _check_scalar(tree, "document")
+    enter(tree)
+    while stack:
+        node, children = stack[-1]
+        for segment, child in children:
+            if isinstance(child, (Mapping, list)):
+                if id(child) in on_path:
+                    return "the structure refers to itself", _join(path, segment)
+                if id(child) not in done:
+                    path.append(segment)
+                    enter(child)
+                    break
+            else:
+                found = _check_scalar(child, _join(path, segment))
+                if found is not None:
+                    return found
+        else:
+            stack.pop()
+            on_path.discard(id(node))
+            done.add(id(node))
+            if path:
+                path.pop()
+    return None
+
+
+def _children(node: object) -> Iterator[tuple[str, object]]:
+    if isinstance(node, Mapping):
+        for key, value in node.items():
+            yield _segment(key), value
+    elif isinstance(node, list):
+        for index, item in enumerate(node):
+            yield f"[{index}]", item
+
+
+def _segment(key: object) -> str:
+    """A path segment for a mapping key: ``.name``, or ``['odd key']`` (repr-escaped)."""
+    if isinstance(key, str):
+        return f".{key}" if key.isidentifier() else f"[{key!r}]"
+    return f"[<{type(key).__name__} key>]"  # never repr an int key: it may be the unprintable one
+
+
+def _join(path: list[str], segment: str) -> str:
+    text = "".join(path) + segment
+    return text[1:] if text.startswith(".") else text
+
+
+def _check_scalar(value: object, path: str) -> Optional[tuple[str, str]]:
+    if isinstance(value, int) and not isinstance(value, bool):
+        try:
+            str(value)
+        except ValueError:
+            return "integer is too large to print", path
+    return None
 
 
 def _parse_sort(sort: Mapping[str, object], source: str) -> ClipOrder:
