@@ -1,6 +1,6 @@
 ## 1. cli/ - make room, then force the stop
 
-- [ ] 1.1 Move `ServiceServer` and `_end_forced_stop` unchanged from `cli/commands.py` into a new
+- [x] 1.1 Move `ServiceServer` and `_end_forced_stop` unchanged from `cli/commands.py` into a new
   `cli/serving.py`, and import `ServiceServer` back into `commands.py` (so `commands.ServiceServer` stays the
   name tests patch and `cmd_serve` uses). Update the `os`/`signal`/`socket`/`threading` imports that
   `commands.py` no longer needs. Verify: `.venv/bin/python -m pytest tests/test_cli_serve_signals.py
