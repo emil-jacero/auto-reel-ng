@@ -3164,11 +3164,22 @@ drop it there before any clip that chapter plays, or after the last of them. Bot
 within its chapter SHALL do this:
 
 - **with a mouse, pen or touch**, from the clip's handle. While the dragged clip is held near the window's
-  top or bottom edge, the page SHALL scroll by itself, so that a chapter out of view can be reached.
+  top or bottom edge, the page SHALL scroll by itself, so that a chapter out of view can be reached. The
+    speed SHALL grow with how far into the edge the pointer is, from nothing at the inner edge of the
+    scrolling zone, and with the pointer at the window's very edge it SHALL be at least 600 and at most 2,000
+    CSS pixels per second, however many rows the page holds.
 - **from the keyboard**, on the clip's handle:
   - Down at a chapter's last position SHALL take the clip to the first position of the next listed chapter.
   - Up at a chapter's first position SHALL take it to after the last clip of the chapter before.
   - A deleted chapter's placeholder SHALL be passed over.
+  - Page Down SHALL take the clip to the first position of the next listed chapter, and Page Up to the first
+    position of the chapter before, wherever the clip is held. A chapter the clip does not play is entered at
+    its first gap, before its first clip, and an empty one at its area. At the last chapter (Page Down) or the
+    first (Page Up), and for a missing clip, which stays in its chapter, and while one chapter is listed, the
+    key SHALL move nothing. When it moves the clip, the place the clip is then over (the line, or the empty
+    chapter's area) and the dragged copy SHALL both be in the window, however far the page had to scroll to
+    get there. A Page Down or Page Up pressed while a clip is lifted SHALL NOT otherwise scroll the page, whether
+    or not it moved the clip.
   - Escape SHALL cancel and leave every chapter as it was, with the clip's handle in view again (its whole
     row, or its first line when the row is taller than the room left).
 
@@ -3209,7 +3220,8 @@ cancel. The announcement names the clip as its row named it when it was lifted. 
 chapter SHALL name that chapter, and SHALL give the position out of the number of clips that chapter would
 then play. Within the clip's own chapter the announcements SHALL stay as "The event page reorders clips
 within a chapter" states. While more than one chapter is listed, the instructions for a keyboard drag SHALL
-say that the arrows cross into the chapter before or after.
+say that the arrows cross into the chapter before or after, and that Page Down and Page Up jump to the next
+or the previous chapter.
 
 After a drop into another chapter, by pointer or keyboard, keyboard focus SHALL be on the moved clip's
 handle in its new chapter. The handle and the row's first line (its handle, name and Cuts control) SHALL be
@@ -3285,6 +3297,43 @@ reduced motion, no clip SHALL slide into place, and the dragged copy SHALL NOT s
 - **THEN** "s1710002.mp4 is over “Main”, position 2 of 2" was announced, and `Main` plays `s1710001.mp4` and
   then `Kvällen/s1710002.mp4`
 
+#### Scenario: Page Down jumps to the next chapter from the keyboard
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator lifts `s1710001.mp4` from the keyboard and presses
+  Page Down
+- **THEN** "s1710001.mp4 is over “Kvällen”, position 1 of 4" is announced, and a line shows above
+  `s1710002.mp4` in `Kvällen`
+- **WHEN** the operator presses Page Down again
+- **THEN** the line has not moved and nothing is announced
+- **WHEN** the operator presses Page Up
+- **THEN** "s1710001.mp4 is over position 1 of 1." is announced, and the line in `Kvällen` is gone
+- **WHEN** the operator drops the clip
+- **THEN** "s1710001.mp4 dropped at position 1 of 1, unchanged." is announced, and both chapters are as they were
+
+#### Scenario: Page Down and Page Up cross a long chapter in one press
+- **WHEN** an event holds 400 clips in its own chapter and 3 in a second chapter, `Kväll`, and the operator
+  lifts the 200th clip of the first chapter from the keyboard and presses Page Down
+- **THEN** "c0200.mp4 is over “Kväll”, position 1 of 4" is announced, and the line above `Kväll`'s first clip
+  and the dragged copy are both in the window
+- **WHEN** the operator presses Page Up
+- **THEN** "c0200.mp4 is over position 1 of 400." is announced, and the first clip's row and the dragged copy
+  are both in the window
+- **WHEN** the operator presses Escape
+- **THEN** the clip is back at position 200 of 400, with its handle in the window
+
+#### Scenario: Page Up jumps to the chapter before from the keyboard
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator lifts `Kvällen/s1710004.mp4` from the keyboard
+  (the third position of `Kvällen`), presses Page Up and drops it
+- **THEN** "s1710004.mp4 is over “Main”, position 1 of 2" was announced, and `Main` plays `Kvällen/s1710004.mp4`
+  and then `s1710001.mp4`
+
+#### Scenario: Page keys with one chapter or a missing clip move nothing
+- **WHEN** in a window 390 × 600 on `2024-06-27 - Grillning med grannar`, which has one chapter, the operator
+  lifts `s1710001.mp4` from the keyboard and presses Page Down with the page scrolled to its top
+- **THEN** the clip is still over its own place, nothing is announced, and the page has not scrolled
+- **WHEN** on `2024-09-01 - Sommarlov`, after adding a chapter `Morgon`, the operator lifts `borttagen.mp4` and
+  presses Page Down
+- **THEN** the clip is still over its place in `Main`, and `Morgon` plays no clip
+
 #### Scenario: Escape cancels a drag into another chapter
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator lifts `s1710001.mp4` from the keyboard, presses
   Down twice, and presses Escape
@@ -3344,6 +3393,18 @@ reduced motion, no clip SHALL slide into place, and the dragged copy SHALL NOT s
 - **THEN** `Main` plays `Kvällen/s1710002.mp4` first, and the page did not scroll horizontally
 - **WHEN** a touch starts on that clip's name and moves up
 - **THEN** the page scrolls, and no clip moves
+
+#### Scenario: The edge scrolls fast enough to cross a long chapter, and no faster
+- **WHEN** an event holds 400 clips in its own chapter and 3 in a second chapter, the operator lifts the second
+  chapter's first clip with the pointer, with the page scrolled to that chapter, and holds the pointer at the
+  window's very top edge (its first pixel row) for 2 seconds
+- **THEN** the page scrolled up between 1,200 and 4,000 CSS pixels over those 2 seconds (an average between 600
+  and 2,000 per second)
+- **WHEN** the operator moves the pointer out of the scrolling zone
+- **THEN** the page stops scrolling
+- **WHEN** the operator holds the pointer in the middle of the zone (a tenth of the window's height below its
+  top edge) for 2 seconds
+- **THEN** the page scrolls up by between a quarter and three quarters of what it scrolled at the very edge
 
 #### Scenario: Reaching a chapter out of view
 - **WHEN** an event holds 400 clips in its own chapter and 3 in a second chapter, and the operator drags the
