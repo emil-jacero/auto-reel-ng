@@ -407,9 +407,14 @@ def _normalize_segment(
     A source segment whose hardware decode fails to initialise is run once more with
     software decode (``_retry_in_software``); every other failure is raised as it is.
     """
-    command = _build_segment_command(
-        index, segment, target=target, profile=profile, options=options, scratch=scratch
-    )
+    try:
+        command = _build_segment_command(
+            index, segment, target=target, profile=profile, options=options, scratch=scratch
+        )
+    except RenderError as exc:
+        raise RenderError(
+            f"normalize failed for segment {index} ({_segment_label(segment)}): {exc}"
+        ) from exc
     for warning in command.warnings:
         logger.warning("segment %s: %s", _segment_label(segment), warning)
     try:
@@ -469,7 +474,10 @@ def _retry_in_software(
         )
     except RenderError as rebuild_error:
         # The profile cannot express the software path (e.g. no verified upload device).
-        raise rebuild_error from first
+        raise RenderError(
+            f"normalize failed for segment {index} ({label}): hardware decode failed "
+            f"({failure}) and the software retry cannot be built: {rebuild_error}"
+        ) from first
     try:
         options.runtime.run_with_progress(
             command.args, duration=command.duration, on_progress=progress.step(index)

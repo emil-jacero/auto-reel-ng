@@ -40,11 +40,16 @@ engine SHALL log the software decode of a clip the profile reported as not hardw
 - **WHEN** an `mpeg4` clip is normalized on the CPU profile
 - **THEN** the command is the CPU command it was before
 
-#### Scenario: A vendor with no verified upload device fails loud
-- **WHEN** a clip the NVIDIA or Intel profile cannot decode in hardware is normalized, and that profile has no
+#### Scenario: A vendor with no verified upload device keeps its hardware decode
+- **WHEN** a clip outside the NVIDIA or Intel `hw_decode` table is normalized, and that profile has no
   verified device recipe for uploading system frames
-- **THEN** the engine raises a typed error that names the profile and tells the user to render with
-  `--device cpu`, and does not emit a command ffmpeg would reject
+- **THEN** the command is the hardware-decode command it was before this change, because the engine does not
+  choose a software decode it cannot upload from
+
+#### Scenario: A software decode that cannot be built fails loud
+- **WHEN** a software decode is forced (the retry) for a profile with no verified upload device recipe
+- **THEN** the engine raises a typed error that names the segment, the first ffmpeg failure and tells the user
+  to render with `--device cpu`, and does not emit a command ffmpeg would reject
 
 ### Requirement: Hardware decode initialisation failure is retried once in software
 

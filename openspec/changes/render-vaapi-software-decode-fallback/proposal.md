@@ -58,9 +58,11 @@ research item is open for it.
 - No per-codec hardware decode self-test probes: the self-test keeps its single h264 decode probe. The
   reactive net covers a static-table entry that is wrong on some GPU generation.
 - No new CLI flag or config key. `--device cpu` stays the manual override.
-- NVIDIA and Intel gain table entries and golden tests only. Their software-decode-then-upload recipe has
-  no verified `upload_device_flags`, so a clip they cannot decode fails with a typed `RenderError` that
-  names `--device cpu` (see design); verifying that recipe needs their hardware.
+- NVIDIA and Intel are unchanged: their software-decode-then-upload recipe has no verified
+  `upload_device_flags`, so the per-clip software choice is not made for them and they keep attempting
+  hardware decode for every clip, as before. They gain `hw_decode` table entries and golden tests only; the
+  tables take effect once that recipe is verified on their hardware. A retry that cannot be built for them
+  fails with a typed `RenderError` that names the segment, the first ffmpeg failure and `--device cpu`.
 
 **Impact checklist (config.yaml rules)**
 

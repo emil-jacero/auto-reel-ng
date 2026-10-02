@@ -717,9 +717,10 @@ def test_hardware_decodable_and_cpu_clips_log_no_software_decode_line(
         (QsvProfile, Vendor.INTEL, "qsv", "h264_qsv"),
     ],
 )
-def test_vendor_without_a_verified_upload_device_fails_loud_for_undecodable_clip(
+def test_vendor_without_a_verified_upload_device_keeps_attempting_hardware_decode(
     profile_cls: type, vendor: Vendor, method: str, encoder: str
 ) -> None:
+    """No upload device means no software path: such a clip is built exactly as before."""
     caps = AcceleratorCapabilities(
         vendor=vendor,
         usable=True,
@@ -731,14 +732,23 @@ def test_vendor_without_a_verified_upload_device_fails_loud_for_undecodable_clip
         decode_method=method,
         hw_decode={"h264": 8},
     )
+    profile = profile_cls(caps)
+    assert not profile.can_hw_decode("mpeg1video", "yuv420p")
+    command = build_normalize_command(
+        _source_segment(), _mpeg4(), _target(), profile, Path("/t/seg.mp4")
+    )
+    assert command.hardware_decode
+    assert "-hwaccel" in command.args and method in command.args
+    # Only a forced retry asks it for software, and that fails loud naming the way out.
     with pytest.raises(RenderError, match="--device cpu"):
         build_normalize_command(
-            _source_segment(), _mpeg4(), _target(), profile_cls(caps), Path("/t/seg.mp4")
+            _source_segment(),
+            _mpeg4(),
+            _target(),
+            profile,
+            Path("/t/seg.mp4"),
+            force_software_decode=True,
         )
-    # A clip the vendor does decode in hardware still builds.
-    build_normalize_command(
-        _source_segment(), _clip(), _target(), profile_cls(caps), Path("/t/seg.mp4")
-    )
 
 
 def test_vaapi_upload_device_without_a_known_node_uses_the_default() -> None:
@@ -1780,7 +1790,31 @@ def test_retry_that_cannot_be_rebuilt_raises_chained_from_the_first_failure(
         render_movie(_two_chapter_plan(_RETRY_LOOK), NvencProfile(caps), options)
     assert isinstance(caught.value.__cause__, FfmpegError)
     assert "Failed setup for format" in str(caught.value.__cause__)
+    # What the job row shows is str(exc): the segment and the first failure must be in it.
+    text = str(caught.value)
+    assert "segment 0" in text and "a.mp4" in text
+    assert "Failed setup for format" in text
+    assert "--device cpu" in text
     assert len(fake.calls) == 1
+
+
+def test_unbuildable_segment_is_named_in_the_error(runtime, good_segment, tmp_path) -> None:
+    """A build failure before ffmpeg runs still says which clip it was, in the message."""
+    fake = _RecordingRuntime(runtime, good_segment, lambda args: None)
+    with pytest.raises(RenderError) as caught:
+        orch._normalize_segment(  # pylint: disable=protected-access
+            1,
+            _source_segment(identity="b.mp4"),
+            target=_target(),
+            profile=_amd_profile(),
+            options=_retry_options(fake, tmp_path, {}),  # no clip facts for b.mp4
+            scratch=tmp_path,
+            progress=orch._Progress(1, None),  # pylint: disable=protected-access
+        )
+    text = str(caught.value)
+    assert "normalize failed for segment 1" in text and "b.mp4" in text
+    assert "no clip facts" in text
+    assert not fake.calls
 
 
 def test_synthetic_segment_is_never_retried(runtime, good_segment, tmp_path, monkeypatch) -> None:

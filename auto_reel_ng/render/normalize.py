@@ -242,7 +242,9 @@ def build_normalize_command(
     The decode is chosen per clip: a clip the profile reports as not hardware-decodable
     (its codec or pixel format is outside the accelerator's decoder), or any clip when
     ``force_software_decode`` is set, is decoded in software and uploaded through the
-    ordinary frame-location transfers. A hardware-decodable clip is unchanged.
+    ordinary frame-location transfers. A hardware-decodable clip is unchanged, and so is
+    every clip on a profile that has no upload device to offer (it is never moved to a
+    software decode it cannot upload from, short of ``force_software_decode``).
     """
     if segment.is_synthetic:
         raise RenderError(
@@ -258,7 +260,11 @@ def build_normalize_command(
         fill_color=target.fill_color,
         needs_pad=_needs_pad(clip, segment.rotate, target),
     )
-    hw_decodable = profile.can_hw_decode(clip.video_codec, clip.pix_fmt)
+    # A software decode feeding a hardware encoder needs an upload device. A profile with
+    # no verified recipe for one (NVIDIA, Intel) keeps attempting its own hardware decode,
+    # exactly as before this choice existed; only a forced retry asks it for software.
+    can_upload = bool(profile.upload_device_flags(params))
+    hw_decodable = profile.can_hw_decode(clip.video_codec, clip.pix_fmt) or not can_upload
     if not hw_decodable and profile.fragment(OpClass.DECODE, params).frames_out is not (
         FrameLocation.SYSTEM
     ):

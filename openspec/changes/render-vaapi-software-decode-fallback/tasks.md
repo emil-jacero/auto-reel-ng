@@ -9,7 +9,7 @@
 
 ## 3. render/ proactive choice
 
-- [x] 3.1 In `build_normalize_command` add `force_software_decode: bool = False`, set `OpParams.software_decode = force or not profile.can_hw_decode(clip.video_codec, clip.pix_fmt)`, add `NormalizeCommand.hardware_decode` (true when the DECODE fragment's `frames_out` is not `SYSTEM`), and log an info line for a profile-reported software decode; verify with golden-string tests in `tests/test_render.py` for an `mpeg4` 16:9 clip on VAAPI (no `-hwaccel`, one `-init_hw_device`, `format=nv12,hwupload,scale_vaapi`), a rotated `mpeg4` clip, a 4:3 `mpeg4` clip with `pad_fill_ok` false, a 10-bit `h264` clip, an unchanged 8-bit `h264` clip, an `mpeg4` clip on the CPU profile, and an `mpeg4` clip on NVENC and QSV profiles raising the `RenderError` that names `--device cpu`
+- [x] 3.1 In `build_normalize_command` add `force_software_decode: bool = False`, set `OpParams.software_decode = force or not profile.can_hw_decode(clip.video_codec, clip.pix_fmt)`, add `NormalizeCommand.hardware_decode` (true when the DECODE fragment's `frames_out` is not `SYSTEM`), and log an info line for a profile-reported software decode; verify with golden-string tests in `tests/test_render.py` for an `mpeg4` 16:9 clip on VAAPI (no `-hwaccel`, one `-init_hw_device`, `format=nv12,hwupload,scale_vaapi`), a rotated `mpeg4` clip, a 4:3 `mpeg4` clip with `pad_fill_ok` false, a 10-bit `h264` clip, an unchanged 8-bit `h264` clip, an `mpeg4` clip on the CPU profile, and an `mpeg4` clip on NVENC and QSV profiles keeping its hardware decode (a forced software build raises the `RenderError` that names `--device cpu`)
 
 ## 4. render/ reactive retry
 
