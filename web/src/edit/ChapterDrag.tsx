@@ -40,6 +40,7 @@ import type { ChapterKey, Orders } from './draft'
 import {
   CHAPTER_DROP,
   DELETED_DROP,
+  clampScroll,
   dragModel,
   overIdOf,
   pointerTarget,
@@ -241,6 +242,8 @@ export function ChapterDrag({
   const slot = useRef<Slot | null>(null)
   // Set at the lift until the first target: the clip over itself, which says nothing new.
   const lifting = useRef(false)
+  // Where the last drop released the clip (the announcement reads it, once `slot` is reset).
+  const released = useRef<string | null>(null)
   // The clip whose drop the editor just refused: its drop is announced as unchanged.
   const refused = useRef<string | null>(null)
   // The drop to follow up, then its row, to scroll into view once the save bar is measured.
@@ -285,6 +288,19 @@ export function ChapterDrag({
     },
     [homeOf],
   )
+
+  /**
+   * Where releasing `identity` drops it. A keyboard drag has its own slot: dnd-kit's `over`
+   * follows it only after a render, which a quick Space (a key repeat, a script) can beat,
+   * dropping the clip where it was before the key.
+   */
+  const releasedOver = useCallback((identity: string, over: UniqueIdentifier | null) => {
+    return lift.current?.pointer === false && slot.current !== null
+      ? overIdOf(current.current.model, identity, slot.current)
+      : over === null
+        ? null
+        : String(over)
+  }, [])
 
   /** What releasing `identity` over `overId` does; a lock or a stay-home clip refuses it. */
   const dropOf = useCallback(
@@ -345,7 +361,8 @@ export function ChapterDrag({
    * where the drop will be: in the own chapter on the target row's top, or its bottom
    * when moving down past the clip (sortable's rule); elsewhere centred on the gap's
    * line, or on an empty chapter's area. The sensor scrolls from there for the arrows;
-   * it does not for the Page keys, so a target outside the window is scrolled to here.
+   * it does not for the Page keys, so a target outside the window is scrolled to here
+   * (a document-end clamp moves the copy instead of the page).
    */
   const coordinateGetter = useCallback<KeyboardCoordinateGetter>(
     (event, { active, context, currentCoordinates }) => {
@@ -399,13 +416,19 @@ export function ChapterDrag({
       }
       slot.current = next
       if (page !== 0 && (y < 0 || y + height > window.innerHeight)) {
-        // The sensor scrolls only for the arrows: bring the target to the copy instead.
+        // The sensor scrolls only for the arrows: bring the target to the copy instead. The
+        // browser clamps a scroll at either end of the document: the copy then moves the
+        // part that was not scrolled, so it still lands on the line. Returning the
+        // coordinates (the copy may not move) is what re-runs the collision detection, which
+        // reads `slot.current`; otherwise a drop right after the key sees the old target.
         const scroller = document.scrollingElement ?? document.documentElement
-        scroller.scrollBy({
-          top: y - currentCoordinates.y,
-          behavior: reducedMotion ? 'auto' : 'smooth',
-        })
-        return undefined
+        const { applied, left } = clampScroll(
+          y - currentCoordinates.y,
+          scroller.scrollTop,
+          scroller.scrollHeight - scroller.clientHeight,
+        )
+        scroller.scrollBy({ top: applied, behavior: reducedMotion ? 'auto' : 'smooth' })
+        return { x: currentCoordinates.x, y: currentCoordinates.y + left }
       }
       return { x: currentCoordinates.x, y }
     },
@@ -484,13 +507,15 @@ export function ChapterDrag({
         return place === null ? undefined : `${name(active.id)} is over ${place}.`
       },
       onDragEnd: ({ active, over }) => {
-        const drop = dropOf(String(active.id), over?.id ?? null)
+        const overId = released.current ?? (over === null ? null : String(over.id))
+        released.current = null
+        const drop = dropOf(String(active.id), overId)
         const wasRefused = refused.current === String(active.id)
         refused.current = null
-        if (drop.kind === 'none' || over === null || wasRefused) {
+        if (drop.kind === 'none' || overId === null || wasRefused) {
           return unchanged(active.id)
         }
-        return `${name(active.id)} moved to ${words(active.id, over.id)}.`
+        return `${name(active.id)} moved to ${words(active.id, overId)}.`
       },
       onDragCancel: ({ active }) => {
         const { order, position } = homeOf(String(active.id))
@@ -520,6 +545,7 @@ export function ChapterDrag({
     slot.current = null
     lifting.current = true
     refused.current = null
+    released.current = null
     dropped.current = null
     cancelled.current = null
     setLifted(next)
@@ -528,7 +554,9 @@ export function ChapterDrag({
   const onDragEnd = useCallback(
     ({ active, over }: DragEndEvent) => {
       const identity = String(active.id)
-      const drop = dropOf(identity, over?.id ?? null)
+      const overId = releasedOver(identity, over?.id ?? null)
+      released.current = overId
+      const drop = dropOf(identity, overId)
       slot.current = null
       setLifted(null)
       // Synchronous: the copy leaves in the commit that shows the clip in its place.
@@ -545,7 +573,7 @@ export function ChapterDrag({
         }
       }
     },
-    [dropOf, onDropInto, onReorder],
+    [dropOf, onDropInto, onReorder, releasedOver],
   )
 
   // A keyboard drag scrolls the page after the copy, a step into another chapter by a

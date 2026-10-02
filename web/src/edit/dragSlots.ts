@@ -129,6 +129,20 @@ export function stepChapter(
   return null
 }
 
+/**
+ * A page scroll of `want` px from `top`, in a document that scrolls at most `max`: the part
+ * the browser can apply (`applied`) and the part it clamps away (`left`, with the sign of
+ * `want`). The copy is moved by `left` so it still lands on the line the scroll was for.
+ */
+export function clampScroll(
+  want: number,
+  top: number,
+  max: number,
+): { applied: number; left: number } {
+  const applied = Math.min(Math.max(top + want, 0), Math.max(max, 0)) - top
+  return { applied, left: want - applied }
+}
+
 /** The droppable a slot stands for: a row's identity, or `/chapter/<key>` after the last clip. */
 export function overIdOf(model: DragModel, identity: string, slot: Slot): string {
   const order = orderOf(model, slot.chapter)

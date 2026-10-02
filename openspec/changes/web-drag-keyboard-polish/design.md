@@ -111,6 +111,11 @@ target arrives at the copy. That is why a one-slot step is visible.
 (`behavior` from the same `reducedMotion ? 'auto' : 'smooth'` the sensor options use) and returns
 `undefined`, which is the sensor's own scroll-only path. `slot.current` is set in both cases, so the
 collision detection (which reads the ref) follows the scroll.
+**As built** (review): the scroll is clamped to the document (`clampScroll`, pure and tested) and the getter
+returns the coordinates in both cases: the copy moves by the part the browser cannot scroll (a target near
+either end of the document), so it still lands on its line, and the returned coordinates make dnd-kit
+re-run the collision detection, which a bare `undefined` did not; a drop right after the key would
+otherwise see the old target.
 **Fallback if that is not exact** (the implementation must measure, task 2.1): `scrollBy` limited by
 `maxScroll` leaves the copy short of the target; then scroll the target's line into view after the commit
 (an effect keyed on `slot.current`, the way `firstLineIntoView` already does after a drop) and return the

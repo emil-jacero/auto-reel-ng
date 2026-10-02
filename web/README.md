@@ -98,8 +98,11 @@ the last, the clip lands exactly there, as one edit with Move clips' rules (the 
 badge, the counts, the save body). Over another chapter nothing moves: a line marks the
 gap, and a copy of the clip follows the pointer naming the chapter and the position;
 past a chapter's first or last clip the arrows cross into the chapter before or after,
-passing over a deleted one. A chapter that plays no clip shows an area to drop clips on.
-A missing clip stays in its chapter, a deleted chapter's placeholder takes nothing, and
+passing over a deleted one, and Page Down / Page Up jump to the first position of the
+next or the previous chapter. Held near the window's top or bottom edge, a pointer
+scrolls the page, at the window's edge at most about 2,000 px/s (faster if the pointer
+is held outside the window). A chapter that plays no clip shows an area to drop clips
+on. A missing clip stays in its chapter, a deleted chapter's placeholder takes nothing, and
 no drag starts while a save or a Move clips is pending. Move up / Move down never take a
 clip into another chapter; ignored clips are listed but never move. Each chapter's own
 tools row, under its heading, edits the chapters themselves

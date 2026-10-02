@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { dragModel, stepChapter } from './dragSlots.ts'
+import { clampScroll, dragModel, stepChapter } from './dragSlots.ts'
 
 // `2024-08-20 - Två kapitel - Tjörn`: Main plays one clip, Kvällen three.
 const R0 = 'r0'
@@ -82,4 +82,11 @@ test('the last chapter is the end even when the clip is held in the middle of it
     chapter: R0,
     index: 0,
   })
+})
+
+test('a page scroll is clamped to the document, and the clamped part is left over', () => {
+  assert.deepEqual(clampScroll(300, 100, 1000), { applied: 300, left: 0 })
+  assert.deepEqual(clampScroll(300, 800, 1000), { applied: 200, left: 100 })
+  assert.deepEqual(clampScroll(-300, 100, 1000), { applied: -100, left: -200 })
+  assert.deepEqual(clampScroll(300, 0, 0), { applied: 0, left: 300 })
 })
