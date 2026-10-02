@@ -41,7 +41,7 @@ merges first and also edits `shell.css`; see "Files and the gate"):
   area reaches 9 - 8 = 1 px above the cell, onto the previous row's `border-bottom`. In a card (`--s-3`
   padding, then a 4 px row gap) it stays inside the card's own padding. The row opens its event on click,
   so a tap on that pixel line starts a render instead.
-- **Header counts.** The mechanism is confirmed by reading; the measurement is part of task 3.2. At 480 px
+- **Header counts.** The mechanism is confirmed by reading; the measurement is part of task 3.3. At 480 px
   with the brand name still shown, the status slot has roughly (480 − 2 × gutter − mark − name − nav −
   theme − gaps) of room, and the words form needs the pill plus "99 rendering · 99 queued" beside it. A
   font wider than the design font moves that need past the room, `.jobs-counts` wraps between the two
@@ -107,16 +107,20 @@ control.
   @media (pointer: coarse) {
     .event-table .cell-job .btn-compact::after {
       /* 8px above the border box = the cell's padding; the divider is not ours */
-      inset-block-start: calc(1px - var(--s-2));
-      /* the rest of 44px below: padding box + 7 + 13 = 44 */
-      inset-block-end: min(-1px, calc(100% + var(--s-2) - 1px - 2.75rem));
+      inset-block-start: calc(-1px - var(--s-2));
+      /* the rest of 44px below: 8 above + the 26px border box + 10 below */
+      inset-block-end: min(-1px, calc(100% + var(--s-2) + 1px - 2.75rem));
     }
   }
 }
 ```
 
-(`100%` is the padding box height, 24 px; the top inset is `-7px`, the bottom `-13px`; the area is 44 px
-from 8 px above the border box to 10 px below it.) Inline insets are the existing ones.
+(`100%` is the padding box height, 24 px; an inset counts from the padding box, so the 1 px border is added
+to the reach: the top inset is `-9px` and the bottom `-11px`, and the area is 44 px, from 8 px above the
+border box to 10 px below it. A first draft of this rule, `calc(1px - var(--s-2))`, subtracted the border
+instead of adding it and gave `-7px`/`-13px`, an area from 6 px above to 12 px below; the browser check of
+task 3.2 caught it by measuring the reach, and the measured values are the ones written here.) Inline
+insets are the existing ones.
 
 **Rationale**: Keeps 44 px, moves no box, and is scoped to the one selector the finding measured. Under a
 fine pointer the rule does not apply.
@@ -129,6 +133,12 @@ the fallback is decided here and not left to the implementer: the bottom stops a
 (`inset-block-end: calc(1px - var(--s-2) - 1px)`), the area is 43 px in that minimum row, and the spec's
 "44 pixels tall" is read as "where the cell has the room". The spec states only the top rule, which is the
 reported defect.
+
+**Measured**: on every row the dev library has, the cell is 61 px or taller (the event cell's title and
+location set the height), so the area's bottom ends inside the cell and no next-row pixel answers. Only a
+synthetic row, stripped to the Render alone (43 px), reaches the next row's first pixel, by 1 px and only
+where layout rounds that way. A row that short does not exist, so the fallback is not applied: it would
+trade a pixel of the 44 px target in every real row for a case none has.
 
 **Alternatives**: Applying the cap to every `.btn-compact` in a `.data-table` was rejected: only the
 list's job cell was measured, and the attention table and other tables have no compact buttons.
@@ -161,13 +171,19 @@ flicker, a ResizeObserver for a CSS question; (d) make the slot itself the conta
 
 /* jobs.css */
 .jobs-counts { flex-wrap: nowrap; }       /* the two counts never stack */
-@container shell-status (inline-size < N ch) { /* the former @media (width < 30rem) body */ }
+@container shell-status (inline-size < 22ch) { /* the former @media (width < 30rem) body */ }
 ```
 
-`N` is measured, not guessed (task 2.2): the widest uncollapsed content (the pill "Live" plus the counts
-"99 rendering · 99 queued" in the status text size) over the widest sans-serif in the check set, plus a
-margin. It is written in `ch`, which a container query resolves against the container's font, so the
-threshold moves with the font along with the siblings that shrink the slot. With `container-type:
+`N` is measured, not guessed (task 3.3): the counts "99 rendering · 99 queued" on one line, in the status
+text size, over the widest sans-serif in the check set, plus a margin. The pill is left out on purpose: the
+indicator already wraps, so when the pill and the counts do not fit side by side the pill takes its own
+line above the counts, two short lines that fit the header (the shape the stylesheet gave at those widths
+before this change). Counting the pill too (26.7 ch) collapsed the words up to about 100 px of window
+earlier than needed. The measured need is 19.2 ch in DejaVu Sans and 19.7 ch in Liberation Sans, so `N` is
+22 ch. It is written in `ch`, which a container query resolves against the container's font, so the
+threshold moves with the font along with the siblings that shrink the slot. `N` does not know how many jobs
+there are: it is sized for the widest counts (99 and 99), so a short count such as "1 rendering" also
+becomes icons below it, and counts wider than that would need a larger `N`. With `container-type:
 inline-size` the slot's width no longer depends on its content, which is why `flex: 1 1 0` is needed: the
 brand, nav and theme control keep their content widths and the slot takes what is left. No size cycle
 exists, because none of the siblings depends on the slot.

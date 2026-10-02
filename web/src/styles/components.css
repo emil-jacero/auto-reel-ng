@@ -380,6 +380,18 @@
     }
   }
 
+  /*
+   * A busy button's loader is a masked `background`, which forced colors would
+   * replace with the canvas color, leaving a blank gap where the loader is.
+   * It keeps the label's own system color.
+   */
+  @media (forced-colors: active) {
+    .btn[aria-busy='true']::before {
+      forced-color-adjust: none;
+      background: ButtonText;
+    }
+  }
+
   /* Summary figures as compact chips; the words carry the meaning. */
   .stats {
     display: flex;

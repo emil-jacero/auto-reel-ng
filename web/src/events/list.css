@@ -167,6 +167,23 @@
     .event-table .live-job .job-when {
       flex-basis: 100%;
     }
+
+    /*
+     * A finger's 44px tap area (`components.css`) grows evenly around a compact
+     * button, 9px above it, but its cell has only 8px of padding above: the
+     * ninth would cover the line that separates the row from the one above, and
+     * a tap there would start a render instead of opening that row. The top
+     * stops at the cell's top, 8px above the button; the missing pixel is taken
+     * below, so the area is still 44px (8px above, the button, 10px below).
+     * Insets count from the padding box, whose size is 100%; the border is 1px
+     * of reach on each side that the inset has to take in.
+     */
+    @media (pointer: coarse) {
+      .event-table .cell-job .btn-compact::after {
+        inset-block-start: calc(-1px - var(--s-2));
+        inset-block-end: min(-1px, calc(100% + var(--s-2) + 1px - 2.75rem));
+      }
+    }
   }
 
   /*

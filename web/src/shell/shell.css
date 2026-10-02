@@ -110,12 +110,20 @@
     }
   }
 
+  /*
+   * The room brand, nav and theme control leave, whatever font they are set in.
+   * It is a size container so the jobs counts can collapse by this room and not
+   * by the window's width (`jobs.css`); its width then never depends on its
+   * content, which `flex: 1 1 0` needs to take what is left.
+   */
   .shell-status {
     display: flex;
+    flex: 1 1 0;
     align-items: center;
+    justify-content: flex-end;
     gap: var(--s-2);
     min-inline-size: 0;
-    margin-inline-start: auto;
+    container: shell-status / inline-size;
   }
 
   .theme-control label {
@@ -155,8 +163,8 @@
   /*
    * A phone keeps the mark and hides the name, which stays in the accessibility
    * tree. Under a coarse pointer the wide theme options take 48px more, so the
-   * name stays hidden up to 34rem: below about 33rem the jobs counts in words
-   * would need a third line beside them, and the last rem is for wider fonts.
+   * name stays hidden up to 34rem. The jobs counts do not depend on this step:
+   * they follow the room the status slot is left (`jobs.css`), in any font.
    */
   @media (width < 30rem), (pointer: coarse) and (width < 34rem) {
     .app-header-inner {
