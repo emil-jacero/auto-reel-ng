@@ -566,6 +566,19 @@ connection releases its subscription at once, whichever side ends it:
   host's TCP stack abandons the connection, which can take many minutes. A second SIGINT does not shorten
   that stall: the process still exits only once that connection has ended. Like any stop, it also waits for
   HTTP requests still being handled (headless-cli, "`serve` runs the API service").
+- The application shutdown (the event loop and the hub's stop) SHALL NOT wait for the database to answer,
+  and a database that has stopped answering SHALL NOT freeze the service while it stops; the process itself
+  exits only after an abandoned read ends (below). When a store read is stalled as the stop begins, whether the
+  read of a poll or the first subscriber's snapshot read, the hub's stop completes within about a second and
+  the event loop keeps serving meanwhile. The same read SHALL NOT hold a client that closes its connection
+  during it: the connection's end (a client close, a lost peer, the server's own shutdown close) is observed
+  while the snapshot is still being read, the read is abandoned, and the subscription is released at once.
+  A subscriber that was waiting for that snapshot when the hub stopped receives no snapshot and its
+  connection is closed with code 1013, and so is one that connects after the stop began. The abandoned read
+  itself is not interrupted: it runs on until the database or the operating system ends it, and the
+  process exits only after it has, which for a connection attempt is bounded by the connect timeout
+  (persistence, "Postgres connections fail fast"). The orderly shutdown (application shutdown complete,
+  database connections released) does not wait for it.
 
 #### Scenario: Snapshot on connect
 - **WHEN** a client connects while two jobs are active
@@ -630,6 +643,30 @@ connection releases its subscription at once, whichever side ends it:
 - **THEN** the client receives close code 1012
 - **AND** the service completes its application shutdown and the process exits within five seconds,
   without a second signal
+
+#### Scenario: A stalled poll does not freeze the stop
+- **WHEN** a client is connected and the poller's store read has been waiting on a database that dropped
+  off the network, and the service is stopped
+- **THEN** the hub's stop completes within one second, and the event loop answers a request made during
+  the stop without waiting for the read
+
+#### Scenario: A stalled first snapshot does not hold the shutdown
+- **WHEN** a client connects to an idle service and its first snapshot read blocks on the database, so the
+  client has received no frame, and the process then receives one SIGTERM
+- **THEN** the client's connection ends (close code 1012 from the server's shutdown) and the service completes
+  its application shutdown within five seconds, without waiting for the read
+- **AND** the read is abandoned: no snapshot is ever sent on that connection
+
+#### Scenario: Closing a tab during a stalled first snapshot releases it
+- **WHEN** the first client connects while the snapshot read blocks on the database, and closes its
+  connection before the read returns
+- **THEN** within one second the service holds no subscription and no connection handler for it, although the
+  database has not answered
+- **AND** a client that connects after the database answers receives a normal snapshot
+
+#### Scenario: A subscriber arriving after the stop began is refused
+- **WHEN** the hub's stop has begun and a client's WebSocket upgrade is then handled
+- **THEN** that client is closed with code 1013 and receives no snapshot
 
 #### Scenario: A dropped subscriber is told to reconnect
 - **WHEN** the hub disconnects a subscriber whose outbound queue is full
