@@ -3,7 +3,8 @@
 Importing this module registers two seams: the ``title`` **producer** (which
 renders the card image via :func:`render_title_card` and returns a
 :class:`ProducedSegment`) and the ``title`` **decorator** (an inserter that places
-one synthetic title segment immediately before each chapter's title clip). The
+one synthetic title segment immediately before each chapter's title clip, or
+before the chapter's first surviving segment when cuts remove that clip entirely). The
 card config is parsed from ``look.title_card`` at decorate time and carried on the
 synthetic segment as an opaque :class:`TitleCardRequest` the producer interprets.
 """
@@ -80,15 +81,40 @@ def _chapter_by_name(plan: RenderPlan, name: str) -> Optional[ResolvedChapter]:
     return None
 
 
+def _anchor_indexes(
+    title_identities: Mapping[str, str], segments: tuple[Segment, ...]
+) -> dict[str, int]:
+    """Map each chapter with a title clip to the index of the segment its card precedes.
+
+    The anchor is the title clip's first segment (for a partially cut clip, its first
+    kept span). When cuts leave the title clip with no segment, it is the chapter's
+    first surviving source segment instead. A chapter with no source segment has no
+    anchor, so it gets no card.
+    """
+    title_anchor: dict[str, int] = {}
+    first_source: dict[str, int] = {}
+    for index, segment in enumerate(segments):
+        if segment.is_synthetic or segment.chapter not in title_identities:
+            continue
+        first_source.setdefault(segment.chapter, index)
+        if segment.identity == title_identities[segment.chapter]:
+            title_anchor.setdefault(segment.chapter, index)
+    return {chapter: title_anchor.get(chapter, index) for chapter, index in first_source.items()}
+
+
 def title_decorator(
     plan: RenderPlan, target: "TargetSpec", segments: tuple[Segment, ...]
 ) -> tuple[Segment, ...]:
-    """Insert one synthetic title segment before each chapter's title clip (D-E).
+    """Insert one synthetic title segment at each titled chapter's anchor (D-E).
 
     For every chapter that resolved a title clip, a synthetic segment carrying the
     ``title`` producer, the resolved duration, and the look-derived
     :class:`TitleCardRequest` is placed immediately before that clip's first
     segment, recording the chapter it precedes so chapter durations stay correct.
+    When cuts remove the title clip entirely (it contributes no segment), the card
+    opens the chapter's first surviving source segment instead; a chapter with no
+    surviving segment gets no card and stays absent from the movie. The result is a
+    pure function of ``(plan, segments)``.
     """
     del target  # the card is authored against the target at materialize time
     config = parse_title_card_config(_look_title_card(plan.look))
@@ -99,13 +125,13 @@ def title_decorator(
         if clip is not None:
             title_identities[chapter.name] = clip.identity
 
+    anchors = _anchor_indexes(title_identities, segments)
     result: list[Segment] = []
     inserted: set[str] = set()
-    for segment in segments:
+    for index, segment in enumerate(segments):
         if (
             not segment.is_synthetic
-            and segment.chapter in title_identities
-            and segment.identity == title_identities[segment.chapter]
+            and anchors.get(segment.chapter) == index
             and segment.chapter not in inserted
         ):
             matched = _chapter_by_name(plan, segment.chapter)
