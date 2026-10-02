@@ -130,6 +130,15 @@ an unparseable `reel.yaml` for one event therefore reports these the same way:
 
 A value is never coerced, clamped or dropped to make a document load.
 
+Whether a document exists at all SHALL be answered by the disk, not guessed. A `reel.yaml` is absent only
+when the disk says there is no such file, including when the event path is not a directory. When the disk
+cannot say, because the event folder denies the search permission needed to look the file up, the document
+is neither absent nor present. That failure SHALL be raised as the operating-system error for the folder (a
+permission error). It SHALL NOT be read as "no document", so no caller seeds a document from the folder name
+or reports the event's clips as new over a `reel.yaml` it was not allowed to look for. It SHALL NOT be the
+single parse error either: that error is for a file that exists and cannot be loaded or read, and the events
+list reports the two differently (`unreadable_disk` for the folder, `unparseable_reel_yaml` for the file).
+
 #### Scenario: Invalid trim is rejected
 - **WHEN** a document contains a trim with `out` less than or equal to `in`
 - **THEN** loading fails with an error naming the clip and the invalid span
@@ -190,6 +199,21 @@ A value is never coerced, clamped or dropped to make a document load.
 - **THEN** `auto-reel scan` prints one `ERROR  2024-07-04 - Barbecue:` line naming `2024-02-30`, lists the
   other two events and exits non-zero. The events list answers 200 with two summaries and one error row for
   Barbecue, whose failure kind is `unparseable_reel_yaml`.
+
+#### Scenario: A reel.yaml in a folder that cannot be searched is not absent
+- **WHEN** event folder `2024-06-21 - Fest` has mode `0600` (listable, not searchable) and holds a `reel.yaml`
+  titled `Real` and a clip, and its document is loaded
+- **THEN** loading raises a permission error naming the path, and it neither returns a document seeded
+  with the title `Fest` nor ignores the `reel.yaml`
+
+#### Scenario: A reel.yaml that exists but cannot be read stays a parse error
+- **WHEN** event folder `2024-06-21 - Fest` is searchable and holds a `reel.yaml` with mode `0000`
+- **THEN** loading fails with the parse error naming that `reel.yaml` as unreadable, not with a permission
+  error for the folder
+
+#### Scenario: A missing reel.yaml is still absent
+- **WHEN** event folder `2024-06-21 - Fest` is searchable and holds clips but no `reel.yaml`
+- **THEN** loading seeds a document from the folder, and no error is raised
 
 ### Requirement: Round-trip preserving writer
 
