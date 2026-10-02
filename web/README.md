@@ -230,7 +230,8 @@ src/
 │   ├── Alert.tsx         an inline message: tone, title, detail, action
 │   ├── Skeleton.tsx      placeholder rows, and the announced read status
 │   ├── Dialog.tsx        a modal over the native <dialog>
-│   ├── toast.ts          the toast store: toast.success / info / error, keepToastsClearOf
+│   ├── returnFocus.ts    the rule for giving focus back to a dialog's opener (+ returnFocus.test.ts)
+│   ├── toast.ts          the toast store: toast.success / info / error, keepToastsClearOf (+ toast.test.ts)
 │   └── ToastRegion.tsx   where toasts appear (rendered once by the shell)
 ├── api/
 │   ├── schema.d.ts       generated (see below)
@@ -321,6 +322,9 @@ podman run --rm -v "$PWD/web:/app:Z" -w /app docker.io/library/node:22 npm run b
 
 # the frontend gate on its own
 podman run --rm -v "$PWD/web:/app:Z" -w /app docker.io/library/node:22 npx tsc --noEmit
+
+# the unit tests (Node's built-in runner, no DOM: the toast store, the dialog's focus rule)
+podman run --rm -v "$PWD/web:/app:Z" -w /app docker.io/library/node:22 npm test
 ```
 
 `npm run dev` expects a running `auto-reel serve` on `127.0.0.1:8080` (its default
@@ -512,10 +516,17 @@ HLD §7).
   `--toast-region-h` on `:root` (absent when empty), and, while a bar is registered,
   its height plus the gap as `--toast-rise-h`, for the toasts that rise with the bar;
   `html`'s `scroll-padding-bottom` and the page's bottom padding add them, so a
-  sticky error toast never covers keyboard focus or the end of the page — except,
-  while the bar rests, the controls just above it, which a toast may
-  cover until dismissed (a known gap; keeping room above a resting bar is a
-  follow-up in `ui/`). The stacks
+  sticky error toast never covers keyboard focus or the end of the page. While toasts
+  sit above a resting bar, the region also publishes that height as `--toast-room-h`
+  and the bar keeps that room before itself (`edit.css`), so they cover no control;
+  `place()` reruns when the page above the bar changes size. At most three toasts are
+  held: a fourth drops the oldest success or info toast, and when all three are errors
+  only a new error drops the oldest (a success or info toast is not shown then). The
+  region is a manual popover shown in the top layer, shown again each time a modal
+  dialog opens, so a toast is visible above the dialog and its backdrop (inert until
+  the dialog closes); `Dialog` also stops the success and info clocks while it is open
+  (`enterModal`) and gives focus back to its opener only while focus is still the
+  dialog's. The stacks
   announce each toast once (`aria-atomic="false"`), each Dismiss is described by its
   message, and dismissing the focused toast hands focus to the next toast, else the
   previous one, else the control it came from, else the page's `h1`, without

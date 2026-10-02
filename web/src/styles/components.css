@@ -727,16 +727,28 @@
    * bar registered (`keepToastsClearOf`) the region sets its own live
    * `--toast-offset`, above the bar or below it; otherwise it reads the page's
    * `--toast-inset-bottom`, 0 unless a page with a sticky bottom bar sets it.
-   * The region lets clicks through between toasts.
+   * The region lets clicks through between toasts. It is a manual popover
+   * (shown in the top layer, above a modal dialog); `display: flex` here beats
+   * the user agent's `display: none` for a popover that is not open, so a
+   * browser that cannot show it still shows the toasts.
    */
   .toast-region {
     position: fixed;
+    /* A manual popover (top layer): drop the user-agent popover box, which centers it. */
+    inset: auto;
     inset-block-end: calc(var(--toast-offset, var(--toast-inset-bottom, 0px)) + var(--s-4));
     inset-inline-end: var(--s-4);
     z-index: 30;
     display: flex;
     flex-direction: column;
     inline-size: min(24rem, calc(100vw - 2 * var(--s-4)));
+    block-size: auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: visible;
+    background: transparent;
+    color: inherit;
     pointer-events: none;
   }
 

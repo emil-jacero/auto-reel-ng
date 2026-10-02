@@ -6,9 +6,12 @@ import { useSyncExternalStore } from 'react'
  * `toast.error(message)`, optionally with a link: `{ action: { label, href } }`.
  *
  * Success and info toasts dismiss themselves after 5 s. While the region is
- * paused (pointer or focus inside it) their clocks stop, keeping the time left.
+ * paused (pointer or focus inside it) or a modal dialog is open (`Dialog` calls
+ * `enterModal`), their clocks stop, keeping the time left.
  * Errors stay until dismissed. At most three are held: a fourth drops the oldest
- * non-error toast, or the oldest toast when all three are errors.
+ * non-error toast. When all three are errors, only a new error drops the oldest;
+ * a success or info toast is not shown then (an unread error is never lost to a
+ * lesser one).
  *
  * A page with a bar held at the window's bottom (Edit mode's save bar) registers
  * it with `keepToastsClearOf(bar)`, so no toast ever covers it.
@@ -24,6 +27,8 @@ const MAX_HELD = 3
 let toasts: readonly Toast[] = []
 let nextId = 1
 let isPaused = false
+// Modal dialogs open now (`enterModal`): clocks wait while there is one.
+let modalDepth = 0
 const listeners = new Set<() => void>()
 
 /** An auto-dismiss clock: the time left, and its timer while it runs. */
@@ -37,9 +42,14 @@ function emit(next: readonly Toast[]): void {
   }
 }
 
+/** Whether the clocks stand still: the pointer or focus is in the region, or a modal dialog is open. */
+function isWaiting(): boolean {
+  return isPaused || modalDepth > 0
+}
+
 function startClock(id: number): void {
   const clock = clocks.get(id)
-  if (clock === undefined || clock.timer !== undefined || isPaused) {
+  if (clock === undefined || clock.timer !== undefined || isWaiting()) {
     return
   }
   clock.startedAt = Date.now()
@@ -57,15 +67,21 @@ function stopClock(id: number): void {
 }
 
 function show(tone: ToastTone, message: string, options: ToastOptions = {}): void {
-  const added: Toast = { id: nextId, tone, message, ...options }
-  nextId += 1
   let held = toasts
   if (held.length >= MAX_HELD) {
-    const dropped = held.find((shown) => shown.tone !== 'error') ?? held[0]
+    // An unread error is only ever displaced by a newer error; a lesser toast
+    // that cannot make room is not shown at all (no id, no clock, no emit).
+    const lesser = held.find((shown) => shown.tone !== 'error')
+    const dropped = lesser ?? (tone === 'error' ? held[0] : null)
+    if (dropped === null) {
+      return
+    }
     stopClock(dropped.id)
     clocks.delete(dropped.id)
     held = held.filter((shown) => shown.id !== dropped.id)
   }
+  const added: Toast = { id: nextId, tone, message, ...options }
+  nextId += 1
   if (tone !== 'error') {
     clocks.set(added.id, { remaining: AUTO_DISMISS_MS, startedAt: 0, timer: undefined })
     startClock(added.id)
@@ -87,18 +103,60 @@ export function dismissToast(id: number): void {
   }
 }
 
-/** Stop (true) or resume (false) every auto-dismiss clock. */
+/** Stop or start every clock to match `isWaiting()`. */
+function syncClocks(): void {
+  const waiting = isWaiting()
+  for (const id of clocks.keys()) {
+    if (waiting) {
+      stopClock(id)
+    } else {
+      startClock(id)
+    }
+  }
+}
+
+/**
+ * Stop (true) or resume (false) every auto-dismiss clock, for the pointer or
+ * focus in the region. The clocks run again only once no modal dialog is open.
+ */
 export function pauseToasts(paused: boolean): void {
   if (paused === isPaused) {
     return
   }
   isPaused = paused
-  for (const id of clocks.keys()) {
-    if (paused) {
-      stopClock(id)
-    } else {
-      startClock(id)
+  syncClocks()
+}
+
+const modalListeners = new Set<() => void>()
+
+/**
+ * A modal dialog opened: success and info clocks stop (an error has none) until
+ * the returned function is called, which is safe to call twice. Dialogs may
+ * overlap; the clocks continue, with the time they had left, when the last one
+ * is released. Listeners (`onModalOpened`) are told at once.
+ */
+export function enterModal(): () => void {
+  modalDepth += 1
+  syncClocks()
+  for (const listener of modalListeners) {
+    listener()
+  }
+  let released = false
+  return () => {
+    if (released) {
+      return
     }
+    released = true
+    modalDepth -= 1
+    syncClocks()
+  }
+}
+
+/** Call `listener` each time a modal dialog opens (the region lifts itself above it). */
+export function onModalOpened(listener: () => void): () => void {
+  modalListeners.add(listener)
+  return () => {
+    modalListeners.delete(listener)
   }
 }
 
@@ -109,13 +167,13 @@ function subscribe(listener: () => void): () => void {
   }
 }
 
-function getSnapshot(): readonly Toast[] {
+export function getToasts(): readonly Toast[] {
   return toasts
 }
 
 /** The toasts held now, oldest first. */
 export function useToasts(): readonly Toast[] {
-  return useSyncExternalStore(subscribe, getSnapshot)
+  return useSyncExternalStore(subscribe, getToasts)
 }
 
 /*

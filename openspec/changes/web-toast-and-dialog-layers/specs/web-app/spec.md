@@ -138,11 +138,13 @@ save bar. With no save bar shown, notifications keep their place at the bottom o
   notification, and at no step does the notification overlap the save bar
 
 #### Scenario: The room follows the notification
-- **WHEN** in the same state, with the page scrolled to its end, the operator dismisses the notification
+- **WHEN** in the same state, with the page scrolled a little short of its end so that the notification sits
+  above the bar, the operator dismisses it and scrolls to the end of the page
 - **THEN** the room between the last chapter and the save bar is gone, and Save is fully visible and can be
   clicked
 - **WHEN** a second error notification then arrives
-- **THEN** the room is back, and the last clip row's controls are not covered
+- **THEN** the last clip row's controls are not covered, and, scrolled a little short of the end again so that
+  the notification sits above the bar, the room is back
 
 #### Scenario: Content above the bar changes without a scroll or a resize
 - **WHEN** an error notification is shown above a resting save bar, and a change in the page above the bar

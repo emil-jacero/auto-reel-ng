@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef } from 'react'
 
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
-import { dismissToast, pauseToasts, useToastClearance, useToasts } from './toast'
+import { dismissToast, onModalOpened, pauseToasts, useToastClearance, useToasts } from './toast'
 import type { Toast, ToastTone } from './toast'
 
 const TONE_ICON: Record<ToastTone, IconName> = {
@@ -68,7 +68,13 @@ function pageHeading(): HTMLElement | null {
  * always present, so a toast added to one is announced: `role="status"`
  * (polite) for success and info, `role="alert"` for errors. Neither is atomic,
  * so a new toast is announced alone, not with the ones still shown. A pointer
- * or focus inside the region pauses the auto-dismiss clocks.
+ * or focus inside the region pauses the auto-dismiss clocks, and so does an
+ * open modal dialog.
+ *
+ * The region is a manual popover, shown in the top layer and shown again each
+ * time a modal dialog opens, so a toast is visible above the dialog and its
+ * backdrop (it takes no focus or clicks until the dialog closes: the platform
+ * makes everything outside a modal dialog inert).
  *
  * Focus never falls to <body> when a toast goes. Dismissing the toast that
  * holds focus hands it to the next toast's Dismiss, else the previous one's,
@@ -86,6 +92,10 @@ function pageHeading(): HTMLElement | null {
  * bar is registered, its height plus the gap as `--toast-rise-h`; the page's
  * bottom scroll padding adds both, so a control focused by keyboard never
  * scrolls under a toast, including toasts that rise with a bar on its way up.
+ * While the toasts sit above the bar, the same height is published as
+ * `--toast-room-h`; a bar that rests in the page keeps that much room before
+ * it (edit.css), so the toasts cover that room and no control. `place()` also
+ * runs when the page above the bar changes size, as that moves the bar.
  */
 export function ToastRegion() {
   const toasts = useToasts()
@@ -204,6 +214,40 @@ export function ToastRegion() {
     updatePause()
   }, [toasts, updatePause])
 
+  // In the top layer, as a manual popover: a modal dialog's backdrop and the
+  // page under it are inert, and nothing but the top layer rises above them.
+  // The top layer stacks by insertion time, so a dialog opening later covers the
+  // region; it is shown again each time one opens. A browser without the API
+  // keeps a plain fixed region, as does a call that throws: no toast is lost.
+  useEffect(() => {
+    const region = regionRef.current
+    if (region === null || typeof region.showPopover !== 'function') {
+      return
+    }
+    const lift = () => {
+      try {
+        if (region.matches(':popover-open')) {
+          region.hidePopover()
+        }
+        region.showPopover()
+      } catch {
+        // Leave the region where it is.
+      }
+    }
+    lift()
+    const stop = onModalOpened(lift)
+    return () => {
+      stop()
+      try {
+        if (region.matches(':popover-open')) {
+          region.hidePopover()
+        }
+      } catch {
+        // Already gone.
+      }
+    }
+  }, [])
+
   useEffect(() => {
     const region = regionRef.current
     if (region === null) {
@@ -237,14 +281,15 @@ export function ToastRegion() {
     const root = document.documentElement
     let offset = 0
     let rise: number | null = null
+    let room: number | null = null
     region.style.setProperty('--toast-offset', '0px')
     const place = () => {
       const viewport = root.clientHeight
       const box = bar.getBoundingClientRect()
       const height = region.offsetHeight
       const gap = viewport - region.getBoundingClientRect().bottom - offset
-      const next =
-        viewport - box.bottom >= height + gap ? 0 : Math.max(0, Math.ceil(viewport - box.top))
+      const below = viewport - box.bottom >= height + gap
+      const next = below ? 0 : Math.max(0, Math.ceil(viewport - box.top))
       if (next !== offset) {
         offset = next
         region.style.setProperty('--toast-offset', `${next}px`)
@@ -258,6 +303,19 @@ export function ToastRegion() {
           root.style.setProperty('--toast-rise-h', `${nextRise}px`)
         }
       }
+      // The room the toasts take above the bar, for a resting bar to keep between
+      // the last chapter and itself; none while they sit below it or are absent.
+      // Decided by `below` alone (not by the offset, which is 0 while the bar is
+      // still under the window's edge), so the room never flips its own decision.
+      const nextRoom = below ? null : nextRise
+      if (nextRoom !== room) {
+        room = nextRoom
+        if (nextRoom === null) {
+          root.style.removeProperty('--toast-room-h')
+        } else {
+          root.style.setProperty('--toast-room-h', `${nextRoom}px`)
+        }
+      }
     }
     place()
     window.addEventListener('scroll', place, { passive: true })
@@ -265,12 +323,19 @@ export function ToastRegion() {
     const observer = new ResizeObserver(place)
     observer.observe(bar)
     observer.observe(region)
+    // The page above the bar grows or shrinks (a chapter added, a row more) and
+    // moves the bar without a scroll, a resize, or any change of its own size.
+    observer.observe(root)
+    if (bar.parentElement !== null) {
+      observer.observe(bar.parentElement)
+    }
     return () => {
       window.removeEventListener('scroll', place)
       window.removeEventListener('resize', place)
       observer.disconnect()
       region.style.removeProperty('--toast-offset')
       root.style.removeProperty('--toast-rise-h')
+      root.style.removeProperty('--toast-room-h')
     }
   }, [bar])
 
@@ -278,6 +343,7 @@ export function ToastRegion() {
     <div
       ref={regionRef}
       className="toast-region"
+      popover="manual"
       onFocus={(event) => {
         const region = event.currentTarget
         const from = event.relatedTarget

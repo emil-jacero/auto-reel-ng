@@ -1,6 +1,9 @@
 import { Children, isValidElement, useEffect, useId, useRef } from 'react'
 import type { ReactNode, RefObject } from 'react'
 
+import { mayReturnFocus } from './returnFocus'
+import { enterModal } from './toast'
+
 /** Whether `child` is an element with the class `name`. */
 function hasClass(child: ReactNode, name: string): boolean {
   if (!isValidElement<{ className?: unknown }>(child)) {
@@ -20,7 +23,11 @@ function isOutsideDescription(child: ReactNode): boolean {
  * inside it, Escape cancels, and it sits in the top layer, all without script.
  *
  * - `open` drives it. Opening records the focused element, and closing returns
- *   focus there when it is still in the document.
+ *   focus there when it is still in the document and focus is still the dialog's
+ *   (inside it, or on no control): focus the operator has already moved to a
+ *   control outside it (Escape, then Save at once) is left where it is.
+ * - While it is open, the toasts' auto-dismiss clocks wait (`enterModal`), and
+ *   the toast region lifts itself above it, so a notification is seen.
  * - `initialFocus` is the control to focus first — the caller's safe action.
  *   Without it the first focusable child gets focus (native `showModal()`).
  *   React's autofocus prop cannot do this: it focuses at commit, while the
@@ -71,16 +78,24 @@ export function Dialog({
     if (!dialog.open) {
       dialog.showModal()
     }
+    const leaveModal = enterModal()
     const first = initialFocus?.current
     if (first != null && first.isConnected) {
       first.focus()
     }
     return () => {
+      // Read before `close()`, which may itself move focus.
+      const active = document.activeElement
       if (dialog.open) {
         closingItself.current = true
         dialog.close()
       }
-      if (opener instanceof HTMLElement && opener.isConnected) {
+      leaveModal()
+      if (
+        opener instanceof HTMLElement &&
+        opener.isConnected &&
+        mayReturnFocus(active, dialog, document.body)
+      ) {
         opener.focus()
       }
     }

@@ -572,7 +572,8 @@
    * toasts' height and a gap to it: a focused or dragged row never scrolls under
    * the bar. No rule here overrides that padding. The bar is registered with the
    * toasts (`keepToastsClearOf`), which place themselves above it while it is
-   * held and below it once it rests.
+   * held, and above or below it once it rests: above, they take the room that
+   * `--toast-room-h` keeps before the resting bar, so they cover no control.
    */
   .save-bar {
     position: sticky;
@@ -585,6 +586,8 @@
   /* Held, it would hide the editor (EventEditor.tsx `placeBar`): it rests in the page. */
   .save-bar[data-rests] {
     position: static;
+    /* The room the toasts take above it (`ToastRegion` place()), so they cover no control. */
+    margin-block-start: var(--toast-room-h, 0px);
   }
 
   /* One column no wider than the card: nothing the card holds widens the page. */
