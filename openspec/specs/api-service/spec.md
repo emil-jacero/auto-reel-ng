@@ -1441,6 +1441,13 @@ disk, with one shared HTTP behavior. The service SHALL NOT transcode, remux, pro
 it. A clip whose audio a browser cannot decode, such as the PCM audio of a Sony XAVC clip, SHALL be served
 unchanged.
 
+**Methods.** Both endpoints SHALL answer `GET` and `HEAD`, with and without the built web client mounted.
+A `HEAD` request SHALL be answered with the status and the headers that a `GET` of the same URL and request
+headers is answered with, `Content-Length`, `Content-Range`, `Content-Type`, `ETag`, `Last-Modified` and
+`Cache-Control` included, and with no body. That covers every status the endpoints give: 200, 206, 304, 400,
+404, 416 and 502. A `HEAD` SHALL run the same lookup and open the file once, as a `GET` does, so it never
+answers 200 or 206 for a file a `GET` would answer 404 or 502 for.
+
 **Whole file and ranges.**
 - A request without `Range` SHALL be answered 200 with the whole file, a `Content-Length` equal to its size
   and `Accept-Ranges: bytes`.
@@ -1477,8 +1484,15 @@ unchanged.
 - A request whose `If-None-Match` matches the current entity-tag SHALL be answered 304 with the `ETag` and
   `Cache-Control` and no body, whether or not it also carries `Range`. The match uses weak comparison, across
   every `If-None-Match` header line and comma-separated entry, and `*` matches any existing file.
-- A non-matching `If-None-Match` SHALL be answered as if it were absent.
-- `If-Modified-Since` SHALL NOT be evaluated.
+- A non-matching `If-None-Match` SHALL be answered as if the request carried no conditional header: 200 or
+  206 as the `Range` header decides, and `If-Modified-Since` SHALL NOT then be evaluated.
+- A request without `If-None-Match` whose `If-Modified-Since` is a valid HTTP-date at or after the file's
+  modification time, truncated to whole seconds as `Last-Modified` carries it, SHALL be answered 304 with the
+  `ETag` and `Cache-Control` and no body, whether or not it also carries `Range`. A date in the future is
+  valid. A date before the file's modification time SHALL be answered as if it were absent.
+- An `If-Modified-Since` that is not a valid HTTP-date, or that is sent on more than one header line, SHALL be
+  ignored. `If-Modified-Since` SHALL be evaluated for `GET` and `HEAD` alike.
+- `If-Range` SHALL still be checked only after these preconditions, on a request that was not answered 304.
 
 **Version parameter.** Both endpoints SHALL accept an OPTIONAL query parameter `v`, an opaque string a client MAY
 send to give a changed file a new URL. The service SHALL ignore its value: `v` SHALL NOT affect the lookup, the
@@ -1502,8 +1516,9 @@ headers or the status.
 - They SHALL NOT run ffmpeg or ffprobe, write any file, or enqueue a job.
 - Every request, each range request included, SHALL pass through the service's single authentication hook, as
   the thumbnail endpoint's requests do. A media element can then load these URLs with no custom header.
-- Both endpoints SHALL publish in the service's OpenAPI schema:
-  - the `v` query parameter, and `If-None-Match`, `Range` and `If-Range` as optional header parameters
+- Both endpoints SHALL publish in the service's OpenAPI schema, for `get` and for `head` alike:
+  - the `v` query parameter, and `If-None-Match`, `If-Modified-Since`, `Range` and `If-Range` as optional
+    header parameters
   - their 200 and 206 as `video/*` binary content, with the `ETag`, `Last-Modified`, `Cache-Control`,
     `Accept-Ranges` and `Content-Disposition` headers, and `Content-Range` on the 206
   - their 304 with `ETag` and `Cache-Control`
@@ -1554,6 +1569,45 @@ headers or the status.
   bytes=0-`
 - **THEN** each response is 304 with that `ETag`, `Cache-Control: private, no-cache` and no body
 
+#### Scenario: A HEAD is the GET without its body
+- **WHEN** the clip `s1710001.mp4` is requested with `HEAD`, and again with `HEAD` and `Range: bytes=0-99`
+- **THEN** the first response is 200 with a `Content-Length` equal to the file's size, `Content-Type: video/mp4`,
+  `Accept-Ranges: bytes`, the `ETag`, `Last-Modified` and `Cache-Control` a `GET` gives, and no body
+- **AND** the second is 206 with `Content-Range: bytes 0-99/<size>`, `Content-Length: 100` and no body
+
+#### Scenario: A HEAD is answered with and without the built web client
+- **WHEN** the movie of `2024/2024-07-14 - Kalas` is requested with `HEAD`, once by a service with no built
+  web client and once by a service that serves a built `web/dist`
+- **THEN** both responses are 200 with the movie's `Content-Length` and `ETag` and no body, never 405 or the
+  static mount's 404
+
+#### Scenario: A HEAD fails as a GET fails
+- **WHEN** `HEAD` is sent for `borttagen.mp4` (MISSING) of `2024/2024-09-01 - Sommarlov`, for the movie of the
+  never-rendered `2024/Blandat`, and for a listed clip whose permissions deny reading
+- **THEN** the responses are 404, 404 and 502, the statuses a `GET` gives, with no body and no `ETag` or
+  `Cache-Control`
+
+#### Scenario: Revalidation by date is a 304 without a body
+- **WHEN** the clip `s1710001.mp4` is requested with `If-Modified-Since` set to the `Last-Modified` of an earlier
+  response, again with `If-Modified-Since: Wed, 01 Jan 2099 00:00:00 GMT`, and again as `HEAD` with the first
+  date and `Range: bytes=0-`
+- **THEN** each response is 304 with the file's `ETag`, `Cache-Control: private, no-cache` and no body
+
+#### Scenario: A file modified since the stored date is sent again
+- **WHEN** a clip last modified on `Sat, 15 Jun 2024 10:00:00 GMT` is requested with `If-Modified-Since: Fri, 14
+  Jun 2024 10:00:00 GMT`
+- **THEN** the response is 200 with the whole file
+
+#### Scenario: If-None-Match decides alone when it is present
+- **WHEN** a clip is requested with `If-None-Match: "an-older-tag"` and `If-Modified-Since: Wed, 01 Jan 2099
+  00:00:00 GMT`, and again with its current `ETag` in `If-None-Match` and a date before its modification time
+- **THEN** the first response is 200 with the whole file, and the second is 304
+
+#### Scenario: A date that is not a date is ignored
+- **WHEN** a clip is requested with `If-Modified-Since: yesterday`, and again with two `If-Modified-Since` lines,
+  each a valid date after the file's modification time
+- **THEN** both responses are 200 with the whole file
+
 #### Scenario: A replaced file gets a new entity-tag
 - **WHEN** a clip's file is replaced by another recording, changing its size and modification time, and it is
   requested with the old `ETag` in `If-None-Match`
@@ -1593,8 +1647,8 @@ headers or the status.
 
 #### Scenario: The schema publishes the media responses
 - **WHEN** the service's OpenAPI schema is generated
-- **THEN** both media paths declare the optional `v` query parameter and the optional `If-None-Match`, `Range` and
-  `If-Range` header parameters, and publish:
+- **THEN** the `get` and the `head` operation of both media paths declare the optional `v` query parameter and the
+  optional `If-None-Match`, `If-Modified-Since`, `Range` and `If-Range` header parameters, and publish:
   - 200 and 206 as `video/*` binary content, with `Content-Range` on the 206
   - 304
   - 400 and 416
