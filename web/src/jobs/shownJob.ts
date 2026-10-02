@@ -47,11 +47,11 @@ function isFurther(a: JobSummary | JobOut, b: JobSummary | JobOut): boolean {
  * The newest job known for the event. For one and the same job an ended version
  * beats an active one, since ended states are final. Between two active
  * versions the store's copy wins while the connection is live: it carries every
- * change. While it is not, the store's copy is only last known, and a read that
- * is newer brings it forward (a lower `requeue_count` is an older read and never does): one that reports a higher `requeue_count` (the job
- * went back to the queue, which is the opposite of further along), a cancel
- * request the copy lacks, or the job further along. What a read lacks (the error,
- * the worker) stays from the held copy.
+ * change. While it is not, the store's copy is only last known. A newer read
+ * brings it forward: one with a higher `requeue_count` (the job went back to
+ * the queue, the opposite of further along), a cancel request the copy lacks,
+ * or the job further along. A read with a lower `requeue_count` is older and
+ * never does. What a read lacks (the error, the worker) stays from the held copy.
  */
 export function choose(
   live: JobOut | undefined,
