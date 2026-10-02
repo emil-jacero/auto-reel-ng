@@ -72,6 +72,7 @@ actually on disk.
 - [Lossy mapping: `A/B` and `A-B` produce the same name] -> `find_output_collisions` already refuses two
   events claiming one output path in a batch; no new mechanism (Principle VII).
 - [Existing nested outputs become orphaned and the event re-renders] -> Accepted; only events with a
-  separator in title/location are affected, and deleting superseded files is held for the user.
+  separator (including a backslash, a legal file-name character on POSIX) in
+  title/location are affected, and deleting superseded files is held for the user.
 - [Lexical guard does not stop a pre-existing symlink inside the output tree from redirecting writes] ->
   Out of scope: the operator controls the output tree; the threat model here is the free-text metadata.

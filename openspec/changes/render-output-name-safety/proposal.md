@@ -54,6 +54,8 @@ None.
 - Every consumer of `output_relpath` (CLI `scan`/`render`/`enqueue`/`adopt-renders`, the API job and
   media routes, the worker) picks up the sanitised name through the single shared rule; no call site
   changes. CLI and API are both covered with no API-side logic added (Principle V).
+- `tests/test_api_media.py`: the `utbrytning` guard test now forces the climbing path by patching
+  `output_relpath`, because no real title can produce one any more; it keeps exercising the media guard.
 - An event whose title or location contained `/` and was already rendered into a nested folder is looked up
   at the new single-component path; it reads as not rendered and renders again. No existing file is moved
   or deleted (pruning superseded outputs is held for the user).
