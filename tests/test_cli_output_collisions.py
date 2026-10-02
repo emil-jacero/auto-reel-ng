@@ -6,8 +6,10 @@ so the tests cover the CLI's collision handling, not ffmpeg.
 
 from __future__ import annotations
 
+import os
+import uuid
 from pathlib import Path
-from typing import List
+from typing import Any, Iterator, List
 from unittest.mock import Mock
 
 import pytest
@@ -17,6 +19,7 @@ from auto_reel_ng.cli import build as build_module
 from auto_reel_ng.cli import commands
 from auto_reel_ng.cli.main import main
 from auto_reel_ng.config import default_output_dir
+from auto_reel_ng.persistence.job_store import Submission
 from auto_reel_ng.render import BatchOutcome, RenderJob, RenderResult
 from auto_reel_ng.staleness.manifest import read_manifest
 
@@ -171,3 +174,118 @@ def test_adopt_renders_refuses_a_shared_output(
     assert read_manifest(first) is None
     assert read_manifest(second) is None
     assert capsys.readouterr().out.count("ERROR") == 2
+
+
+# --------------------------------------------------------------------------- #
+# an event the process cannot read is that event's error, in every batch command
+# --------------------------------------------------------------------------- #
+
+REEL = "version: 0\nmetadata:\n  title: Real\n  date: 2024-09-09\n"
+LOCKED = "2024-09-09 - Locked"
+
+
+class _Store:
+    """A job store that accepts every submission, for ``enqueue`` without Postgres."""
+
+    def __init__(self) -> None:
+        self.submitted: List[str] = []
+
+    def submit(self, project_root: str, event_dir: str, **kwargs: Any) -> Submission:
+        self.submitted.append(event_dir)
+        return Submission(job_id=uuid.uuid4(), created=True)
+
+
+@pytest.fixture
+def store(monkeypatch: pytest.MonkeyPatch, rendered: List[RenderJob]) -> _Store:
+    fake = _Store()
+    monkeypatch.setattr(commands, "_job_store", lambda project_root: fake)
+    return fake
+
+
+@pytest.fixture
+def locked(root: Path) -> Iterator[Path]:
+    """Hand back a factory-less event folder; every mode is restored afterwards."""
+    event_dir = _add_event(root, "2024", LOCKED)
+    yield event_dir
+    event_dir.chmod(0o755)
+
+
+def _lock(event_dir: Path, mode: str) -> None:
+    if mode == "000":  # cannot be listed, and holds no reel.yaml to say what it is
+        event_dir.chmod(0o000)
+    elif mode == "600":  # can be listed, nothing in it can be looked up
+        (event_dir / "reel.yaml").write_text(REEL, encoding="utf-8")
+        event_dir.chmod(0o600)
+    else:  # "300": can be searched, cannot be listed
+        (event_dir / "reel.yaml").write_text(REEL, encoding="utf-8")
+        event_dir.chmod(0o300)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+@pytest.mark.parametrize("mode", ["000", "600", "300"])
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["scan"],
+        ["render", "--dry-run"],
+        ["enqueue"],
+        ["adopt-renders", "--dry-run"],
+    ],
+    ids=lambda argv: argv[0],
+)
+def test_an_unreadable_sibling_is_its_own_error_and_the_rest_are_handled(
+    root: Path,
+    rendered: List[RenderJob],
+    store: _Store,
+    locked: Path,
+    capsys: pytest.CaptureFixture[str],
+    argv: List[str],
+    mode: str,
+) -> None:
+    _add_event(root, "2024", "2024-08-01 - Kalas")
+    _add_event(root, "2024", "2024-08-02 - Krabbor")
+    _lock(locked, mode)
+
+    code = main([argv[0], str(root), *argv[1:]])
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert out.count("ERROR") == 1
+    assert f"ERROR  {LOCKED}:" in out
+    assert "Kalas" in out and "Krabbor" in out
+    assert "Real" not in out  # a 0600 event is not listed under any title
+    if argv[0] == "enqueue":
+        assert sorted(store.submitted) == ["2024/2024-08-01 - Kalas", "2024/2024-08-02 - Krabbor"]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_an_unsearchable_event_is_not_listed_under_its_folder_name(
+    root: Path, rendered: List[RenderJob], locked: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _lock(locked, "600")
+
+    assert main(["scan", str(root)]) == 1
+
+    out = capsys.readouterr().out
+    assert "Locked  [" not in out  # the folder-name title it would be seeded with
+    assert "(no clips)" not in out
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_a_colliding_pair_is_still_refused_beside_an_unreadable_sibling(
+    root: Path,
+    rendered: List[RenderJob],
+    locked: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _add_event(root, "2024", "2024-06-21 - Midsommar")
+    _add_event(root, "2024", "2024-06-21 - midsommar")
+    _lock(locked, "000")
+
+    assert main(["render", str(root), "--dry-run"]) == 1
+
+    out = capsys.readouterr().out
+    assert "ERROR  2024-06-21 - Midsommar: output path" in out
+    assert "ERROR  2024-06-21 - midsommar: output path" in out
+    assert f"ERROR  {LOCKED}:" in out
+    assert out.count("ERROR") == 3

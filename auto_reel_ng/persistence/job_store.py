@@ -180,9 +180,9 @@ class JobStore:
         """Read-only lookup of the active (``queued``/``running``) job for this identity.
 
         Used by callers that look before doing further work: the API refuses a
-        duplicate before running the staleness gate, and the ``enqueue`` CLI command
-        classifies its report. Being a read, it can race a concurrent insert; whether
-        a call created a job is :meth:`submit`'s report, not this lookup's.
+        duplicate before running the staleness gate. Being a read, it can race a
+        concurrent insert; whether a call created a job is :meth:`submit`'s report,
+        not this lookup's.
         """
         with session_scope(self._session_factory) as session:
             return self._active_job(session, project_root, event_dir)
