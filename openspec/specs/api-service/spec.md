@@ -429,7 +429,8 @@ default `auto`; `force` optional, default false) after applying the staleness ga
 the job on creation, **409 with the existing job's id** when an active job already exists for the event,
 and a distinct **"fresh — not enqueued" outcome** (200 with the fresh verdict and its manifest reference)
 when the event is fresh and `force` is false; a forced request always enqueues unless the
-output-collision check refuses it. The enqueued job carries the event's fingerprint and the force flag.
+output-collision check or the missing-clip check refuses it. The enqueued job carries the event's
+fingerprint and the force flag.
 `GET /api/v1/jobs` lists jobs (filterable by status); `GET /api/v1/jobs/{id}` returns one job's detail
 (status, progress, device, worker, force, fingerprint, timestamps, error, requeue count);
 `POST /api/v1/jobs/{id}/cancel` invokes the store's cancel request (flag a running job, cancel a queued one
@@ -446,8 +447,9 @@ the active job's id on the enqueue 409, and the requested id on the 404 of the j
 
 Every 409 that `POST /api/v1/jobs` returns SHALL carry the conflict kind in a `conflict` field, drawn from
 the published enumeration of "Enqueue refuses an event whose output path another event claims":
-`active_job` on the active-job 409, whether the job was found beforehand or at insertion, and
-`output_collision` on that requirement's refusal, which is checked first.
+`active_job` on the active-job 409, whether the job was found beforehand or at insertion,
+`output_collision` on that requirement's refusal, which is checked first, and `missing_clips` on the
+refusal of "Enqueue refuses an event that plays a clip missing from disk".
 
 A cancellation's reported outcome SHALL be the one the store applied in the same transaction that applied
 it (see the job store's cancel request): `flagged-running`, `canceled-queued` or `no-op-terminal`, together
@@ -1061,12 +1063,14 @@ its value from a closed set that the service's OpenAPI schema publishes as an en
 - `active_job`: an active (`queued` or `running`) job already exists for the event. The body carries that
   job's id.
 - `output_collision`: as above.
+- `missing_clips`: the event plays a clip that is missing from disk (see "Enqueue refuses an event that
+  plays a clip missing from disk"). The body carries the clips' identities in `missing`.
 
 A client can therefore choose its reaction from the published type alone, never from the detail text.
 
 When the project walk itself fails, the collision cannot be checked. The endpoint SHALL then answer with the
 scan-failure 502 that the events list uses, and SHALL NOT enqueue. The schema SHALL publish that 502, and the
-`conflict` and `claimed_by` fields of the shared problem body.
+`conflict`, `claimed_by` and `missing` fields of the shared problem body.
 
 #### Scenario: A case-only twin is refused
 - **WHEN** `POST /api/v1/jobs` names `2024/2024-07-14 - kalas` in the dev library, whose folder name
@@ -1120,8 +1124,8 @@ scan-failure 502 that the events list uses, and SHALL NOT enqueue. The schema SH
 
 #### Scenario: The schema publishes the conflict vocabulary
 - **WHEN** the service's OpenAPI schema is generated
-- **THEN** the shared problem body's `conflict` field is the enumeration of exactly `active_job` and
-  `output_collision`, and `claimed_by` is a list of strings
+- **THEN** the shared problem body's `conflict` field is the enumeration of exactly `active_job`,
+  `output_collision` and `missing_clips`, and `claimed_by` and `missing` are lists of strings
 - **AND** `POST /api/v1/jobs` declares its 409 and 502 responses in that shape
 
 ### Requirement: The jobs surface is scoped to the served project
@@ -2159,3 +2163,83 @@ editorial hash, and a missing clip adds nothing to the clip-set component, which
 - **WHEN** an event with an excluded clip is read through the list and the detail, with `ffprobe` made to fail
 - **THEN** both answer, no file under the event changes, and the staleness verdict equals the one read before
   this change for the same files
+
+### Requirement: Enqueue refuses an event that plays a clip missing from disk
+`POST /api/v1/jobs` SHALL refuse an event that plays a clip which is absent from disk. A clip is played
+when `reel.yaml` references it in a chapter and does not exclude it. A referenced clip that `reel.yaml`
+excludes is not played: a render skips it and never probes it, so its absence SHALL NOT refuse the
+enqueue. A clip on disk that `reel.yaml` does not reference (NEW) or lists in `ignore` (IGNORED) is not
+missing, and SHALL NOT refuse it. The refusal SHALL name exactly the clips that the event's detail
+publishes as blocking a render (`blocking_missing`), so that a client's guard and the server's refusal
+cannot disagree about which clips matter.
+
+The check SHALL run after the output-collision check and the active-job check, and before the staleness
+gate. An event that has an active job SHALL therefore be answered as an active job (a client follows that
+job). `force` SHALL NOT override this check, because the render it would queue fails at probe, and the
+staleness verdict SHALL NOT matter to it. A refused event SHALL be answered with **409** and a
+problem body that:
+
+- names the event (`event_id`)
+- carries the conflict kind `missing_clips`
+- lists the played, missing clips' identities in `missing`, sorted
+- has a detail that names those clips and says to restore them, or remove them from `reel.yaml`
+
+For a refused event nothing SHALL be written: no job row, no render manifest, no change to `reel.yaml`,
+and no change to an output file that already exists. The service SHALL NOT remove the clips from
+`reel.yaml` itself, as removing a clip is an editorial write that the operator makes.
+
+The check reads the event's folder listing and its `reel.yaml`; it SHALL NOT probe any clip. A clip that is
+present when the request is checked and gone when the worker probes it still fails that job at probe, with
+the engine's own error, as before this change. When the event's folder cannot be listed, the clips cannot be
+checked, and the endpoint SHALL answer with the scan-failure 502 that the events list uses and SHALL NOT
+enqueue. The schema SHALL publish the 409 in the shared problem body shape, with `missing` a list of strings.
+
+#### Scenario: A stale event that plays a missing clip is refused
+- **WHEN** `POST /api/v1/jobs` names `2024/2024-09-01 - Sommarlov`, whose `reel.yaml` lists `s1710002.mp4`,
+  `s1710004.mp4` and the absent `borttagen.mp4` without excluding any of them
+- **THEN** the response is 409 with `conflict` `missing_clips`, `event_id` `2024/2024-09-01 - Sommarlov`
+  and `missing` `["borttagen.mp4"]`
+- **AND** its detail names `borttagen.mp4` and says to restore it or remove it from `reel.yaml`
+- **AND** no job row is inserted and no manifest is written
+
+#### Scenario: Force does not override the refusal
+- **WHEN** `POST /api/v1/jobs` names `2024/2024-09-01 - Sommarlov` with `"force": true`
+- **THEN** the response is the same 409 `missing_clips`, and no job row is inserted
+
+#### Scenario: Several missing clips are all named, sorted
+- **WHEN** `POST /api/v1/jobs` names an event whose `reel.yaml` plays two absent clips, `gone-b.mp4` in
+  its root chapter and `Kväll/gone-a.mp4` in its `Kväll` chapter
+- **THEN** the response is 409 `missing_clips` with `missing` `["Kväll/gone-a.mp4", "gone-b.mp4"]`
+
+#### Scenario: A missing clip that reel.yaml excludes does not refuse
+- **WHEN** `POST /api/v1/jobs` names an event whose `reel.yaml` lists the absent `borta.mp4` with
+  `exclude: true` and no other absent clip
+- **THEN** the response is 201 with the queued job, and the job carries the event's fingerprint
+
+#### Scenario: Excluded and played missing clips together name only the played one
+- **WHEN** `POST /api/v1/jobs` names an event whose `reel.yaml` lists the absent `borta.mp4` (excluded) and
+  the absent `saknas.mp4` (not excluded)
+- **THEN** the response is 409 `missing_clips` with `missing` `["saknas.mp4"]`
+
+#### Scenario: A NEW or IGNORED clip is not missing
+- **WHEN** `POST /api/v1/jobs` names `2024/2024-08-20 - Två kapitel - Tjörn`, which holds a NEW clip and an
+  IGNORED clip on disk and references no absent clip
+- **THEN** the response is 201, as before this change
+
+#### Scenario: An active job is followed, not refused
+- **WHEN** `2024/2024-09-01 - Sommarlov` already has a `queued` job and `POST /api/v1/jobs` names it
+- **THEN** the response is 409 with `conflict` `active_job` and that job's id, not `missing_clips`
+
+#### Scenario: A collision outranks the refusal
+- **WHEN** `POST /api/v1/jobs` names an event that plays a missing clip and also shares its output path
+  with another event
+- **THEN** the response is 409 `output_collision`
+
+#### Scenario: A folder that cannot be listed is a scan failure
+- **WHEN** the event's folder cannot be listed while `POST /api/v1/jobs` names it
+- **THEN** the response is the scan-failure 502 problem body, and no job row is inserted
+
+#### Scenario: The schema publishes the refusal
+- **WHEN** the service's OpenAPI schema is generated
+- **THEN** `POST /api/v1/jobs` declares its 409 and 502 responses in the shared problem body shape, and that
+  body's `conflict` enumeration includes `missing_clips` and its `missing` field is a list of strings
