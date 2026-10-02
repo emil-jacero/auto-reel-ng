@@ -175,7 +175,7 @@ def test_hw_decode_table_is_filled_when_the_decode_probe_works() -> None:
     """The per-vendor hardware-decodable codec set is recorded only on a passing decode."""
     amd = compute_accelerator(Vendor.AMD, None, {"amd.decode": OpStatus.WORKING})
     assert amd.hw_decode == {"h264": 8, "hevc": 10, "vp9": 10, "av1": 10}
-    assert "mpeg4" not in amd.hw_decode  # reproduced failing on the RX 9070 XT
+    assert "mpeg4" not in amd.hw_decode  # reproduced failing on the AMD Radeon 860M
     for vendor in (Vendor.NVIDIA, Vendor.INTEL):
         caps = compute_accelerator(vendor, None, {f"{vendor.value}.decode": OpStatus.WORKING})
         assert caps.hw_decode["h264"] == 8

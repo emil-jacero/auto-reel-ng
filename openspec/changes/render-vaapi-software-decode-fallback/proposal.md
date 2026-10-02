@@ -1,6 +1,6 @@
 ## Why
 
-On this host (AMD RX 9070 XT, VAAPI profile auto-selected) an event containing one MPEG-4 Part 2 clip
+On this host (AMD Radeon 860M, VAAPI profile auto-selected) an event containing one MPEG-4 Part 2 clip
 (`ffmpeg -c:v mpeg4`, `.avi`) cannot be rendered at all. `auto-reel render` ends `0/1 events succeeded` with
 
 ```
@@ -26,7 +26,7 @@ hardware otherwise, and the render pipeline (§4.3) already composes a system-me
 hardware encoder (`format=nv12,hwupload` plus `-init_hw_device`/`-filter_hw_device`, spec
 `acceleration-profile`, "A hardware decode shares its device with the filter graph"; golden test
 `test_software_decode_names_the_device_hwupload_needs`). That composition was proven for this failure on the
-RX 9070 XT: `ffmpeg -init_hw_device vaapi=va:/dev/dri/renderD128 -filter_hw_device va -i mpeg4.avi -vf
+AMD Radeon 860M: `ffmpeg -init_hw_device vaapi=va:/dev/dri/renderD128 -filter_hw_device va -i mpeg4.avi -vf
 'format=nv12,hwupload,scale_vaapi=…,pad_vaapi=…' -c:v h264_vaapi` exits 0.
 
 HLD §6 phase: 2 (capability detection and profiles) and 4 (render pipeline), a bug fix to both; no §8

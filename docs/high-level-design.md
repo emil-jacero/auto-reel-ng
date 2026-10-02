@@ -753,7 +753,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
 - **D-18 — Decode is chosen per clip, with one software retry** (2026-10-02, change
   `render-vaapi-software-decode-fallback`). The startup self-test proves hardware decode with one h264 clip, which
   says nothing about the other codecs the archive holds; an MPEG-4 Part 2 `.avi` failed the whole event on the
-  RX 9070 XT (`Failed setup for format vaapi`, -38) while `--device cpu` rendered it.
+  AMD Radeon 860M (`Failed setup for format vaapi`, -38) while `--device cpu` rendered it.
   - **A capability, not a render rule.** `AcceleratorCapabilities.hw_decode` maps a source codec to the highest
     bit depth the hardware decoder handles, from a static per-vendor table kept only when the decode probe
     passed. `AccelProfile.can_hw_decode(codec, pix_fmt)` answers per clip: the codec must be listed, the format

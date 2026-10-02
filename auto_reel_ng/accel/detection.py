@@ -42,7 +42,7 @@ _PAD_FILTER = {Vendor.AMD: "pad_vaapi", Vendor.NVIDIA: "pad", Vendor.INTEL: "pad
 #: table (the self-test keeps its single h264 decode probe), kept only when that probe
 #: passed. A missing entry costs speed (software decode); a wrong one costs one logged
 #: retry in the orchestrator. AMD lists only what the Mesa VAAPI stack is known to decode;
-#: ``mpeg4`` was reproduced failing on the RX 9070 XT. NVIDIA and Intel are unverified here.
+#: ``mpeg4`` was reproduced failing on the AMD Radeon 860M. NVIDIA and Intel are unverified here.
 _HW_DECODE: Mapping[Vendor, Mapping[str, int]] = {
     Vendor.AMD: {"h264": 8, "hevc": 10, "vp9": 10, "av1": 10},
     Vendor.NVIDIA: {
