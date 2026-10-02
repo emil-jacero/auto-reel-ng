@@ -161,6 +161,13 @@ file under `data/`):
 the image. Without this file, every `up` would send each rendered movie under `./data/library-output`
 (848 MB for grillning alone) to the build.
 
+**Added after the Phase 1 review (supervisor decision, 2026-10-02):** `README.md` (the dependency layer
+installs against a stub `README.md`, which pyproject's `readme` needs; nothing reads it afterwards, so a
+README edit no longer rebuilds the image and recreates `server`/`worker`; measured: `--help`, `pip show
+auto-reel-ng` and the `auto-reel` entry point unchanged) and the coverage artifacts `.coverage`,
+`.coverage.*`, `htmlcov/`, `coverage.xml` (a pytest run rewrote the 400 kB `.coverage` and so forced a
+rebuild on the next `up`).
+
 **Alternatives considered:**
 
 - **`FROM jellyfin/jellyfin`** (the server image that contains jellyfin-ffmpeg). It is a whole media server,
@@ -243,6 +250,13 @@ directory, the fallback is the spike's short syntax, `:ro` with no `z`. The seed
 `input/` then stops the stack, and the README states the side effect. Either way the mount is read-only
 and is never relabeled.
 
+**Measured in task 4.2 (2026-10-02): the fallback applies.** Under docker-compose v5.5.1 on the podman
+socket, `AR_MEDIA_DIR=<missing dir> podman compose run --rm seed` created `<missing dir>` empty although
+`podman compose config` rendered `create_host_path: false`; the podman API does not honour it. So
+`compose.yaml` uses the short syntax `${AR_MEDIA_DIR:-../auto-reel-media}:/media/auto-reel-media:ro`, with a
+comment saying so. The seed then exits 1 naming `/media/auto-reel-media/input`, `up` leaves `server` and
+`worker` in state Created (never started), and the README states the side effect.
+
 ### Compose services and start-up order
 
 The structure is the spike's `compose.yaml`, which was measured:
@@ -259,6 +273,7 @@ x-app: &app
   environment:
     DATABASE_URL: postgresql+psycopg://auto_reel_ng:${AR_DB_PASSWORD:-auto_reel_ng}@db:5432/auto_reel_ng
     XDG_CACHE_HOME: /data/cache          # thumbnails + Mesa shader cache out of the container layer
+    TMPDIR: /data/tmp                    # render scratch out of the container layer (see below)
   security_opt: [label=disable]
   volumes:
     - {type: bind, source: "${AR_MEDIA_DIR:-../auto-reel-media}", target: /media/auto-reel-media,
@@ -266,6 +281,7 @@ x-app: &app
     - ${AR_DATA_DIR:-./data}/library:/data/library
     - ${AR_DATA_DIR:-./data}/library-output:/data/library-output
     - ${AR_DATA_DIR:-./data}/cache:/data/cache
+    - ${AR_DATA_DIR:-./data}/tmp:/data/tmp
 
 services:
   db:        # postgres:16-alpine, pgdata volume, NOT published,
@@ -280,6 +296,15 @@ services:
               depends_on: {migrate: ok, seed: ok}, restart: unless-stopped}
 volumes: {pgdata: {}}
 ```
+
+**Render scratch: `TMPDIR=/data/tmp` (added after the Phase 1 review, supervisor decision).** The render
+writes its normalized segments into `tempfile.TemporaryDirectory(prefix="auto-reel-render-")`, which
+defaults to `/tmp`, the container's writable layer. The Phase 1 run saw `/tmp/auto-reel-render-*` in the
+Gammal error, against the Goal above. `TMPDIR=/data/tmp` plus a bind mount of `${AR_DATA_DIR}/tmp` puts it
+on the host. The mount is what guarantees the directory exists (the provider creates a missing bind
+source), which matters because Python's `tempfile` silently falls back to `/tmp` when `TMPDIR` is missing.
+Measured: a Provklipp VAAPI render peaked at 616 MB in `./data/tmp/auto-reel-render-*`, the directory was
+empty afterwards, and the worker's `/tmp` stayed empty (`podman diff` shows only mount points and `.pyc`).
 
 In this outline, `ok` stands for `{condition: service_completed_successfully}`. `x-app` also carries
 `pull_policy: never`, and `server` overrides it with `pull_policy: build`. `db` is the spike's service:
@@ -584,8 +609,9 @@ state lives and how the client is served.
   intended.
 - **[The editable install ties the image to `/app` as source.]** → It is fine for a locally built image, and
   the Containerfile comment says so. The publishing slice revisits it.
-- **[Long-syntax `create_host_path: false` may behave differently under the podman provider.]** → It is
-  verified in task 4.2, with the stated fallback. The build-once and pull behaviour was measured in review
+- **[Long-syntax `create_host_path: false` may behave differently under the podman provider.]** → It did:
+  task 4.2 measured the podman API creating the missing directory anyway, so the stated fallback (short
+  syntax) is in `compose.yaml`. The build-once and pull behaviour was measured in review
   (above).
 - **[Every `up` rebuilds the image.]** → It is a cached rebuild, under a second in the measurement. A
   source edit recreates `server` and `worker`, and an in-flight render is requeued. This is the price of

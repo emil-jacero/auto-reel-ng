@@ -10,7 +10,7 @@ Conventions for every task below:
 
 ## 1. Baseline
 
-- [ ] 1.1 Confirm the code this change was designed against, and take the fixture snapshot **before
+- [x] 1.1 Confirm the code this change was designed against, and take the fixture snapshot **before
   anything else runs**. Stop and report if a check fails in a way the design does not cover.
   - `git diff fed5065 -- Containerfile .gitignore README.md docs/high-level-design.md auto_reel_ng/api/app.py`
     prints nothing. `web_dist_dir()` still returns `…parent.parent.parent / "web" / "dist"`.
@@ -27,7 +27,7 @@ Conventions for every task below:
 
 ## 2. Image (`Containerfile`, `.dockerignore`, `.gitignore`)
 
-- [ ] 2.1 Rewrite `Containerfile` as in the design ("Image: Debian trixie + …"):
+- [x] 2.1 Rewrite `Containerfile` as in the design ("Image: Debian trixie + …"):
   - the `node:22` web stage;
   - `debian:trixie-slim` with the Jellyfin deb822 source, and `jellyfin-ffmpeg8=${JELLYFIN_FFMPEG_VERSION}`
     under `ARG JELLYFIN_FFMPEG_VERSION=8.1.3-1-trixie`;
@@ -41,7 +41,8 @@ Conventions for every task below:
   Add `.dockerignore` (**not** `.containerignore`; design, "Build context"), listing:
   - `data/`, `.env`, `.git/`, `.venv/`, `.claude/`, `.mypy_cache/`, `.pytest_cache/` and `**/__pycache__/`;
   - `web/node_modules/` and `web/dist/`;
-  - `experiments/`, `docs/`, `openspec/` and `tests/`.
+  - `experiments/`, `docs/`, `openspec/` and `tests/`;
+  - after the Phase 1 review: `README.md` and the coverage artifacts (design, "Build context").
 
   Add `/data/` and `/.env` to `.gitignore`.
 
@@ -66,7 +67,7 @@ Conventions for every task below:
 
 ## 3. Seed (`scripts/`, `tests/`)
 
-- [ ] 3.1 Add the seed and its test together, test first.
+- [x] 3.1 Add the seed and its test together, test first.
 
   **The test.** Add `tests/test_seed_compose_library.py`. It has no marker, loads
   `scripts/seed_compose_library.py` with `importlib.util.spec_from_file_location`, and builds a fake fixture
@@ -96,8 +97,10 @@ Conventions for every task below:
   **The script.** Add `scripts/seed_compose_library.py` as in the design ("The seed: …"):
   - it starts from the spike's `seed.py`;
   - it is typed and stdlib-only, with `seed(media, library, output, *, reset=False) -> SeedCounts`, a
-    dataclass whose fields are `reel_copied`, `reel_kept`, `link_new` and `link_kept`;
-  - `main(argv)` takes `--reset` and prints one line, `seed: N events under /data/library: …`;
+    dataclass whose fields are `reel_copied`, `reel_kept`, `link_new` and `link_kept` (plus `events`, the
+    count the printed line names);
+  - `main(argv)` takes `--reset` (and `--media`/`--library`/`--output`, defaulting to the container paths, so
+    the test can point it at `tmp_path`) and prints one line, `seed: N events under /data/library: …`;
   - subfolders are mirrored, and `.auto-reel` is skipped at any depth;
   - the module docstring holds the layout diagram.
 
@@ -110,10 +113,11 @@ Conventions for every task below:
 
 ## 4. Compose (`compose.yaml`, `compose.cpu.yaml`, `.env.example`)
 
-- [ ] 4.1 Write `compose.yaml` as in the design ("Compose services and start-up order", "Media mount"):
+- [x] 4.1 Write `compose.yaml` as in the design ("Compose services and start-up order", "Media mount"):
   - project `auto-reel-stack`;
   - the `x-app` anchor;
-  - the long-syntax read-only media mount with `create_host_path: false`;
+  - the long-syntax read-only media mount with `create_host_path: false` (replaced by the design's
+    short-syntax fallback after 4.2 measured the provider ignoring it);
   - `build:` on `server` only, with `pull_policy: build`, and `pull_policy: never` in `x-app`;
   - `db` with `POSTGRES_USER`/`POSTGRES_DB` set to `auto_reel_ng`, `POSTGRES_PASSWORD` set to
     `${AR_DB_PASSWORD:-auto_reel_ng}`, and the `pg_isready` healthcheck;
@@ -134,7 +138,7 @@ Conventions for every task below:
   - `podman compose config | grep -n 'published'` shows only `8132` on `127.0.0.1`.
   - `podman compose config | grep -n 'pull_policy'` shows `build` once (server) and `never` for `migrate`,
     `seed` and `worker`.
-- [ ] 4.2 Up from a clean state (spec: "First start from a clean state").
+- [x] 4.2 Up from a clean state (spec: "First start from a clean state").
   1. Make sure no project state exists: `podman compose down -v` (project-scoped),
      `podman rmi -f localhost/auto-reel-ng:compose`, and no `$REPO/data`.
   2. Run `time podman compose up -d 2>&1 | tee $SP/up1.log`.
@@ -171,7 +175,7 @@ Conventions for every task below:
 
 ## 5. End-to-end verification (scratch only, nothing committed)
 
-- [ ] 5.1 GPU render (spec: "An AMD render node gives a VAAPI render", "A codec without VAAPI decode fails
+- [x] 5.1 GPU render (spec: "An AMD render node gives a VAAPI render", "A codec without VAAPI decode fails
   its own event only"). `podman compose logs worker` shows
   `profile=amd render_node=/dev/dri/renderD128`, and the device named by the bundled `vainfo`
   ("AMD Radeon 860M Graphics" on this host, not "AMD GPU"). That confirms that `PATH` set in the image is
@@ -186,12 +190,12 @@ Conventions for every task below:
   - `2025-01-15 - Provklipp` ends `done` (spike: 47 s).
   - `2025-01-16 - Gammal rendering` ends `failed`, and `jobs show` names the normalize failure with
     `Function not implemented`.
-  - `podman compose exec server ffprobe -v error -show_entries format_tags=encoder -of default=nw=1 "/data/library-output/<Provklipp movie>"`
+  - `podman compose exec server ffprobe -v error -select_streams v:0 -show_entries stream_tags=encoder -of default=nw=1 "/data/library-output/<Provklipp movie>"`
     shows `h264_vaapi`.
   - Optionally, `cat /sys/class/drm/card*/device/gpu_busy_percent` is above idle during the Provklipp
     render.
   - `find $MEDIA -newer $SP/.media-marker` prints nothing.
-- [ ] 5.2 GUI on 8132 (spec: "The GUI loads on the stack's port", "A GUI save and a render leave the fixture
+- [x] 5.2 GUI on 8132 (spec: "The GUI loads on the stack's port", "A GUI save and a render leave the fixture
   untouched").
   - Copy the spike's `spike-compose/pw/check.py` to `$SP/pw/`. It routes **only**
     `**/api/v1/events/**/reel`, observing non-GET and continuing, with no catch-all route.
@@ -213,7 +217,7 @@ Conventions for every task below:
   - `find $MEDIA -newer $SP/.media-marker` prints nothing.
 
   Keep the screenshots in `$SP/shots/`.
-- [ ] 5.3 Lifecycle, CPU override, reset and the final fixture check (spec: "Stop exits zero", "Down and up
+- [x] 5.3 Lifecycle, CPU override, reset and the final fixture check (spec: "Stop exits zero", "Down and up
   keep edits and renders", "A worker that crashes comes back", "A host without a usable GPU renders on the
   CPU", "Reset restores the fixture's editorial state", "A write through the mount is refused").
   - **Write refused.** `podman compose exec worker touch /media/auto-reel-media/x` fails with "Read-only
@@ -265,7 +269,7 @@ Conventions for every task below:
 
 ## 6. Docs
 
-- [ ] 6.1 Write the README section "Run the stack with compose", after "API service (`serve`)" or under
+- [x] 6.1 Write the README section "Run the stack with compose", after "API service (`serve`)" or under
   "Development". It covers:
   - prerequisites: rootless podman with `podman compose`, and the sibling `auto-reel-media`;
   - `cp .env.example .env`, which is optional. `AR_PORT` changes the GUI port. `AR_DB_PASSWORD` applies
@@ -302,7 +306,7 @@ Conventions for every task below:
 
 ## 7. Validation
 
-- [ ] 7.1 Run the gates:
+- [x] 7.1 Run the gates:
   - `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`;
   - `.venv/bin/python -m mypy auto_reel_ng`;
   - `.venv/bin/python -m pylint auto_reel_ng`;
