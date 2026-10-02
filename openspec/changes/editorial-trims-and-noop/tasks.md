@@ -28,7 +28,9 @@
   files on its last key) to rebuild the list's comment tokens. Verify in `tests/test_event_editorial.py`:
   removing the middle of three commented spans keeps `# first` and `# third` on their own spans and drops
   `# second`; own-line comments travel with their span, also when it is moved; an appended span carries no
-  comment; lines after the last span stay at the end; block-style spans do the same; removing one span
+  comment; lines after the last span stay at the end (also with no end-of-line comment on the flow
+  spans); block-style spans do the same; a reordered or trimmed mixed flow/block list saves, a shape
+  ruamel cannot emit gives up the header only, and one it cannot re-write at all is a typed 400; removing one span
   while editing another edits the right one; the file reloads to the same trims. Add the
   overlapping-spans scenario (both spans persisted as given) as a test, and an API test in
   `tests/test_api_editorial_write.py` for the repro over JSON.

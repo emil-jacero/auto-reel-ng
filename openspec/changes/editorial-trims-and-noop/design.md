@@ -99,7 +99,14 @@ existing node by value, then by shared bound, then in order; keep, edit in place
    lists' helpers were generalised for this rather than copied: `_entry_comments` is now a keyed view of
    `_list_comments` (entries in order), and `_rewrite_identity_list` is `_refill_list` plus the identity
    bookkeeping. For a block-mapping entry the lines after it are lifted from, and written back to, its last
-   key (`_node_tail` / `_set_node_tail`); its own end-of-line comment never leaves the node.
+   key (`_node_tail` / `_set_node_tail`); its own end-of-line comment never leaves the node. A flow-style
+   span with no end-of-line comment has the lines after it filed differently: as the *pre* comment of the
+   entry below it (slot 1 of its row), or after the last entry as the list's end comment. `_list_comments`
+   reads both (the pre lines join the previous entry's trailing lines as the `above` of the entry below),
+   so an own-line comment between two bare flow spans survives an append, a removal or an edit. When
+   writing back, the lines after a bare flow span go in the next entry's pre slot if that entry is a block
+   mapping (a token on the flow span itself there makes ruamel emit the block span on one line), else on
+   the span's own token as before.
 4. A span mapping with no `reason` and a desired `reason: None` stays reason-less; a fresh mapping omits
    `reason` when `None` (as `_trim_entry` does).
 5. A fresh span is written in the style of the span before it (flow `{in: 30, out: 31}` after a flow span,
@@ -107,6 +114,18 @@ existing node by value, then by shared bound, then in order; keep, edit in place
    fault: a block mapping appended after flow-style spans under a header comment is emitted on one line
    (`- in: 30.0 out: 31.0`), which does not parse. A hand-authored list that mixes the two styles under a
    header comment already trips that fault in `document_to_data`, before this change.
+
+   The fault has more triggers than an appended span: a header comment, a flow span that carries a comment
+   first, and a block span later, whatever put them in that order. A reorder or removal can build that
+   shape from a list that did not have it (the new first span is the flow one). So after refilling a
+   cut list `_apply_trims` dumps a copy of the clip entry and loads it back; if ruamel cannot read what it
+   wrote, the list's header is given up (the lines above the new first span), and if that is not enough
+   the list is rebuilt plain, without comments (what main did for every list change). Both are last
+   resorts for a shape ruamel cannot emit; a list in one style never reaches them. A hand-authored file
+   already in that shape cannot be re-emitted at all: `apply_editorial_write` turns ruamel's `YAMLError`
+   into a `ReelError` (the PUT route answers 400, the file is untouched) rather than leaking a 500.
+   Separately, ruamel drops on load an own-line comment between a bare flow span and a flow span that has
+   an end-of-line comment; that comment is not in the loaded document, so no write can keep it.
 6. If every desired span took its own node, in order (only in-place edits), `entry["trims"]` is not
    refilled, so comments stay where they are; an unchanged list is not touched at all (today's behaviour,
    kept).
@@ -143,7 +162,8 @@ the atomic-write requirement because they belong to how the file is persisted.
 
 ## Failure behavior and idempotency
 
-- Nothing new raises. Validation, `require_processable` and the filesystem errors keep their types and
+- The one new failure is ruamel being unable to re-emit a document (Decision 2.5): `ReelError`, nothing
+  written. Validation, `require_processable` and the filesystem errors keep their types and
   order; the no-op return happens after validation and before any file operation.
 - Re-running a save: the first real change writes, every identical repeat is a no-op (no write, no sweep).
   `--force` has no meaning here. A worker restart is unaffected (the write never touches jobs).
