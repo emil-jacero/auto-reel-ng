@@ -51,6 +51,9 @@ from auto_reel_ng.thumbs import thumbnail_path
 UNREACHABLE_DATABASE_URL = "postgresql+psycopg://thumbs:thumbs@127.0.0.1:1/thumbs"
 
 GRILLNING = "2024/2024-06-27 - Grillning med grannar"
+# Constant bytes that are no media container: ffprobe exits non-zero on them every time, unlike
+# random bytes, about 1 in 300 of which some demuxer accepts.
+NOT_MEDIA = b"This is not a media file.\n" * 800
 KALAS = "2024/2024-07-14 - Kalas"
 TJORN = "2024/2024-08-20 - Två kapitel - Tjörn"
 SOMMARLOV = "2024/2024-09-01 - Sommarlov"
@@ -1108,12 +1111,12 @@ def test_an_undecodable_clip_gets_a_one_line_detail_without_server_paths(
     make_clip: Callable[..., Path],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Random bytes fail the probe and a truncated media box fails ffmpeg; neither detail
+    """Fixed non-media bytes fail the probe and a truncated media box fails ffmpeg; neither detail
     carries the command, a path or stderr, and the log keeps the full reason."""
     root = tmp_path / "proj"
     event_dir = root / GRILLNING
     event_dir.mkdir(parents=True)
-    _write(event_dir / "random.mp4", os.urandom(20_000))
+    _write(event_dir / "not-media.mp4", NOT_MEDIA)
     whole = make_clip("whole.mp4", duration=2.0)
     subprocess.run(
         [
@@ -1137,7 +1140,7 @@ def test_an_undecodable_clip_gets_a_one_line_detail_without_server_paths(
     app = create_app(resolve_api_settings(root, env={"DATABASE_URL": UNREACHABLE_DATABASE_URL}))
     with TestClient(app) as client:
         responses = {
-            clip: client.get(_url(GRILLNING, clip)) for clip in ("random.mp4", "truncated.mp4")
+            clip: client.get(_url(GRILLNING, clip)) for clip in ("not-media.mp4", "truncated.mp4")
         }
 
     for clip, response in responses.items():
@@ -1148,7 +1151,11 @@ def test_an_undecodable_clip_gets_a_one_line_detail_without_server_paths(
         assert detail.startswith(f"{clip}: "), detail
         cause = detail.removeprefix(f"{clip}: ")
         assert cause and "/" not in cause and "\n" not in detail, detail
-    assert responses["random.mp4"].json()["detail"].startswith("random.mp4: ffprobe could not read")
+    assert (
+        responses["not-media.mp4"]
+        .json()["detail"]
+        .startswith("not-media.mp4: ffprobe could not read")
+    )
     assert (
         responses["truncated.mp4"]
         .json()["detail"]
