@@ -145,8 +145,10 @@ def listed_event_dir(settings: ApiSettings, event_id: str) -> Path:
     folder and a ``.reelignore``d event are directories but not events, so each is
     :class:`EventNotFoundError`, as an unknown id is. The walk is narrowed to the id's
     first folder under the walk root (the year of ``year-event``; ``flat`` ignores the
-    hint), so a lookup lists one year, not the whole archive. A walk that fails raises
-    its ``OSError``, and an unknown layout its ``LayoutError``.
+    hint), so only that year's events are yielded; ``year-event`` still lists every year
+    folder to recognise aliases, but an unreadable other year is skipped, not fatal. A
+    walk that fails on the id's own folder raises its ``OSError``, and an unknown layout
+    its ``LayoutError``.
     """
     event_dir = named_event_dir(settings, event_id)
     try:

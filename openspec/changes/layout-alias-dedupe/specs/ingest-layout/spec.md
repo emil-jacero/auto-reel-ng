@@ -6,7 +6,8 @@ The built-in layouts SHALL yield each real event directory at most once. Event d
 resolve to the same real path (a symlinked event folder, or an event reached through a symlinked
 year folder) SHALL be collapsed to a single event. The kept path SHALL be the one reached without
 crossing a symlink; if none is, the first in walk order SHALL be kept. The comparison SHALL cover the
-whole walk, including years excluded by a year filter, and SHALL be applied after the `.reelignore`
+whole walk, including years excluded by a year filter (an excluded year that cannot be listed
+SHALL be logged at WARNING and skipped, not fail the walk), and SHALL be applied after the `.reelignore`
 skip. Every other path SHALL be dropped, and each dropped path SHALL be logged once per walk at
 WARNING level, naming the dropped path, the kept path and the real target.
 
@@ -33,6 +34,15 @@ Symlinks that point outside the project root and are not duplicated by another r
 - **WHEN** `2025/2024-07-20 - Kalas` is a symlink to `2024/2024-07-20 - Kalas` and the `year-event`
   layout runs with a year filter of `2025`
 - **THEN** no event is yielded and the WARNING names the alias and the kept `2024` path
+
+#### Scenario: Filtering by the name of a symlinked year
+- **WHEN** `2023` is a symlink to `2024` and the `year-event` layout runs with a year filter of `2023`
+- **THEN** no event is yielded and the WARNING names the dropped `2023/` path and the kept `2024/` path
+
+#### Scenario: An unreadable year outside the filter
+- **WHEN** a year directory outside the year filter cannot be listed
+- **THEN** it is logged at WARNING and skipped, and the selected years are yielded; a selected
+  year that cannot be listed still raises its `OSError`
 
 #### Scenario: Symlinked year directory
 - **WHEN** `2023` is a symlink to `2024` and the layout walks the root with no filter

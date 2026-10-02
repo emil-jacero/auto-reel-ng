@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 import pytest
@@ -179,6 +180,52 @@ def test_symlinked_year_directory_yields_each_event_once_under_the_real_year(
     b = _mkevent(tmp_path, "2024", "2024-07-04 - B")
     (tmp_path / "2023").symlink_to(tmp_path / "2024", target_is_directory=True)
     assert [r.event_dir for r in year_event_layout(tmp_path)] == [a, b]
+
+
+def test_filtering_on_a_symlinked_year_name_yields_nothing_and_warns(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    a = _mkevent(tmp_path, "2024", "2024-06-21 - A")
+    (tmp_path / "2023").symlink_to(tmp_path / "2024", target_is_directory=True)
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        refs = list(year_event_layout(tmp_path, years=["2023"]))
+
+    assert refs == []
+    assert _alias_warnings(caplog) == [
+        f"skipping {tmp_path / '2023' / a.name}: alias of {a} (-> {a})"
+    ]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_an_unreadable_year_outside_the_filter_is_skipped_not_fatal(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    kept = _mkevent(tmp_path, "2024", "2024-07-20 - Kalas")
+    locked = _mkevent(tmp_path, "2023")
+    locked.chmod(0o000)
+    try:
+        with caplog.at_level(logging.WARNING, logger=LOGGER):
+            refs = list(year_event_layout(tmp_path, years=["2024"]))
+    finally:
+        locked.chmod(0o755)
+
+    assert [r.event_dir for r in refs] == [kept]
+    assert any(str(locked) in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_an_unreadable_selected_year_still_fails_loud(tmp_path: Path) -> None:
+    _mkevent(tmp_path, "2024", "2024-07-20 - Kalas")
+    locked = _mkevent(tmp_path, "2023")
+    locked.chmod(0o000)
+    try:
+        with pytest.raises(PermissionError):
+            list(year_event_layout(tmp_path, years=["2023"]))
+        with pytest.raises(PermissionError):
+            list(year_event_layout(tmp_path))
+    finally:
+        locked.chmod(0o755)
 
 
 def test_root_behind_a_symlink_still_keeps_the_canonical_path(tmp_path: Path) -> None:
