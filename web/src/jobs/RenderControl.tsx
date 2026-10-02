@@ -397,7 +397,7 @@ export function RenderControl({
 
   const busy = (control: Pressed) => pressed === control || undefined
   // A cancel already requested leaves nothing to press; the job shows Cancelling….
-  const cancelRequested = shown !== null && shown.source !== 'read' && shown.job.cancel_requested
+  const cancelRequested = shown !== null && shown.job.cancel_requested
   const cancellable = active && !cancelRequested
   // An enqueue answer is newer than the page's read: after "fresh", force it is.
   const upToDate = !staleness.stale || notice?.kind === 'fresh'

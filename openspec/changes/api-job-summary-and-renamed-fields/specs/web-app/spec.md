@@ -75,7 +75,7 @@ A job that a screen knows from its events read (`latest_job`) carries the job's 
   SHALL then show the read's version of the job: its status, progress, start and finish times, `cancel_requested`
   and `requeue_count`. It SHALL keep what a read does not carry, such as the worker and the error, from the
   version it holds. It MUST NOT keep showing the last known running state, with its progress, as the job's
-  state. A read with the same or a lower `requeue_count` than the held version keeps the rules it follows today.
+  state. A read with the same `requeue_count` keeps the rules it follows today. A read with a lower `requeue_count` is older than the held version and SHALL NOT replace it, however far along it shows the job.
 - **While the connection is live**, the connection's version of the job SHALL stay the one shown, as today,
   because it carries every change.
 - **A cancel request in a read is shown.** A job that is queued or running, and that a read reports with
@@ -96,6 +96,11 @@ A job that a screen knows from its events read (`latest_job`) carries the job's 
 #### Scenario: A running job with the same requeue count keeps the held version
 - **WHEN** the connection is down, the held version of a job is running at 40%, and a read reports the same job
   running at 10% with the same `requeue_count`
+- **THEN** the page keeps showing the held version
+
+#### Scenario: An older read does not bring a job back
+- **WHEN** the connection is down, the held version of a job is queued with `requeue_count` 2, and a read reports the
+  same job running at 90% with `requeue_count` 1
 - **THEN** the page keeps showing the held version
 
 #### Scenario: A live connection is not overruled

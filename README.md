@@ -260,10 +260,12 @@ render, or job logic lives in the web tier.
   response keeps its clip counts and carries no per-clip facts. A detail clip's
   `status` is one of `new`, `active`, `missing` or `ignored`.
   Each event's `latest_job` (list and detail) carries `id`, `status`,
-  `progress`, `created_at`, `started_at` and `finished_at`, with the values
-  `GET /api/v1/jobs/{id}` returns for that job; a time not yet recorded (no
-  worker has claimed the job's current run, or it has not ended) is `null`,
-  never another time.
+  `progress`, `created_at`, `cancel_requested`, `requeue_count`, `started_at` and
+  `finished_at`, with the values `GET /api/v1/jobs/{id}` returns for that job; a
+  time not yet recorded (no worker has claimed the job's current run, or it has
+  not ended) is `null`, never another time. `requeue_count` and
+  `cancel_requested` are always present, so a job that went back to the queue
+  after a claim, or has a cancel pending, is told from a read alone.
   Every **list** row carries `kind`: `"event"` for a summary, `"error"` for an
   event that could not be read. An error row carries only `event_id`, a
   `failure` (`unparseable_reel_yaml`, `unusable_metadata` or `unreadable_disk`)
@@ -458,6 +460,9 @@ render, or job logic lives in the web tier.
   project's job.
   `GET /api/v1/events/{event_id}` includes the same staleness verdict (`stale` +
   `reasons`) `scan` prints, computed read-only — a GET never writes a manifest.
+  Every verdict also carries `renamed_from` and `output_name`, always present:
+  the two bare movie file names `scan` prints for `output_renamed`, and `null`
+  for both otherwise.
 - **`WS /api/v1/ws/jobs`** pushes live job progress. Every frame is
   `{"type": "snapshot" | "delta" | "heartbeat", "jobs": [...]}`, with jobs in the shape the jobs
   routes return; the schema publishes it as `WsMessage`, although no HTTP path

@@ -804,6 +804,10 @@ export interface components {
          *     meaning and schema definition there. ``started_at``/``finished_at`` are null until the
          *     store stamps them (a claim; a terminal transition), never substituted.
          *
+         *     ``cancel_requested`` and ``requeue_count`` are required (never null in the store) so a
+         *     reader can tell a cancel pending and a job that went back to the queue after a claim
+         *     from a read alone; a requeue leaves ``cancel_requested`` as it was.
+         *
          *     ``status`` is typed with the job store's own closed vocabulary, so the schema
          *     publishes the enumeration and generated clients get an exhaustive union
          *     (D-8, §4.10). ``JobStatus`` is a ``str`` enum: the wire values are unchanged.
@@ -822,6 +826,10 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Cancel Requested */
+            cancel_requested: boolean;
+            /** Requeue Count */
+            requeue_count: number;
             /** Started At */
             started_at?: string | null;
             /** Finished At */
@@ -896,6 +904,11 @@ export interface components {
          *     generated client types get an exhaustive union: renaming a reason in the
          *     engine becomes a client build error instead of a silent runtime change
          *     (D-8, §4.10). The wire values are the gate's strings, unchanged.
+         *
+         *     ``renamed_from`` and ``output_name`` are the gate's own: the bare names of the movie
+         *     the last render wrote (still on disk) and of the one the next render writes. Both are
+         *     set exactly when ``output_renamed`` is among ``reasons`` and null otherwise; they are
+         *     always present on the wire.
          */
         StalenessOut: {
             /** Stale */
@@ -905,6 +918,10 @@ export interface components {
              * @default []
              */
             reasons: components["schemas"]["StalenessReason"][];
+            /** Renamed From */
+            renamed_from?: string | null;
+            /** Output Name */
+            output_name?: string | null;
         };
         /**
          * StalenessReason

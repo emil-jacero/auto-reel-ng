@@ -70,6 +70,10 @@ class JobSummaryOut(BaseModel):
     meaning and schema definition there. ``started_at``/``finished_at`` are null until the
     store stamps them (a claim; a terminal transition), never substituted.
 
+    ``cancel_requested`` and ``requeue_count`` are required (never null in the store) so a
+    reader can tell a cancel pending and a job that went back to the queue after a claim
+    from a read alone; a requeue leaves ``cancel_requested`` as it was.
+
     ``status`` is typed with the job store's own closed vocabulary, so the schema
     publishes the enumeration and generated clients get an exhaustive union
     (D-8, §4.10). ``JobStatus`` is a ``str`` enum: the wire values are unchanged.
@@ -79,6 +83,8 @@ class JobSummaryOut(BaseModel):
     status: JobStatus
     progress: float
     created_at: datetime
+    cancel_requested: bool
+    requeue_count: int
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
 
@@ -91,10 +97,17 @@ class StalenessOut(BaseModel):
     generated client types get an exhaustive union: renaming a reason in the
     engine becomes a client build error instead of a silent runtime change
     (D-8, §4.10). The wire values are the gate's strings, unchanged.
+
+    ``renamed_from`` and ``output_name`` are the gate's own: the bare names of the movie
+    the last render wrote (still on disk) and of the one the next render writes. Both are
+    set exactly when ``output_renamed`` is among ``reasons`` and null otherwise; they are
+    always present on the wire.
     """
 
     stale: bool
     reasons: List[StalenessReason] = []
+    renamed_from: Optional[str] = None
+    output_name: Optional[str] = None
 
 
 class EventSummaryOut(BaseModel):

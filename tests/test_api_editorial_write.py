@@ -136,7 +136,12 @@ def test_save_makes_a_previously_fresh_event_stale(client: TestClient, project: 
     response = client.put(f"/api/v1/events/{_event_id()}/reel", json=body)
     assert response.status_code == 200
     # The title feeds the movie's name: the old movie is on disk under the old one.
-    renamed = {"stale": True, "reasons": ["editorial", "output_renamed"]}
+    renamed = {
+        "stale": True,
+        "reasons": ["editorial", "output_renamed"],
+        "renamed_from": "2024-07-04 - Original Title - Somewhere.mp4",
+        "output_name": "2024-07-04 - Changed - Somewhere.mp4",
+    }
     assert response.json()["staleness"] == renamed
 
     follow_up = client.get(f"/api/v1/events/{_event_id()}")

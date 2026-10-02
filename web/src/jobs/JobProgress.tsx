@@ -6,7 +6,7 @@ import { formatInstant } from '../format'
 import { Pill } from '../ui/Pill'
 import { formatEta } from './eta'
 import { getState, isActive, subscribe } from './store'
-import type { ShownJob } from './useJob'
+import type { ShownJob } from './shownJob'
 
 /*
  * One job, as a screen shows it:
@@ -33,7 +33,7 @@ import type { ShownJob } from './useJob'
  */
 
 function isCancelling(shown: ShownJob): boolean {
-  return shown.source !== 'read' && shown.job.cancel_requested && isActive(shown.job.status)
+  return shown.job.cancel_requested && isActive(shown.job.status)
 }
 
 const STARTING = 'Starting…'

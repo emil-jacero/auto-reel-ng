@@ -1,10 +1,11 @@
 import { fetchJob, jobsSocketUrl } from '../api/jobs'
-import type { JobOut, JobStatus, WsMessage, WsMessageType } from '../api/jobs'
+import type { JobOut, WsMessage, WsMessageType } from '../api/jobs'
 import { markEventsChanged } from '../events/changes'
 import { eventHref } from '../route'
 import { toast } from '../ui/toast'
 import { etaMs, nextSample } from './eta'
 import type { Sample } from './eta'
+import { ACTIVE, isActive } from './status'
 
 /*
  * This tab's live view of the render jobs: one WebSocket to `WS /api/v1/ws/jobs`,
@@ -52,16 +53,6 @@ export type LoadOptions = {
   knownActive?: boolean
 }
 
-// Whether a status is active (queued or running); the other statuses are final.
-// A `Record` over the generated union, so a new status fails `tsc --noEmit` here.
-const ACTIVE: Record<JobStatus, boolean> = {
-  queued: true,
-  running: true,
-  done: false,
-  failed: false,
-  canceled: false,
-}
-
 // The frame types this client applies; a `Record`, so a new type fails `tsc` here.
 const FRAME_TYPES: Record<WsMessageType, true> = { snapshot: true, delta: true, heartbeat: true }
 
@@ -71,10 +62,7 @@ const RETRY_CAP_MS = 30_000
 // least every 15 s (`_HEARTBEAT_INTERVAL_S` in `api/ws.py`).
 const SILENCE_MS = 40_000
 
-/** Queued or running: not yet ended. */
-export function isActive(status: JobStatus): boolean {
-  return ACTIVE[status]
-}
+export { isActive }
 
 let state: JobsState = { connection: 'connecting', jobs: new Map(), eta: new Map() }
 const listeners = new Set<() => void>()

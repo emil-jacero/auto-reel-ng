@@ -202,6 +202,8 @@ def _job_summary(job: Optional[Job]) -> Optional[JobSummaryOut]:
         status=job.status,
         progress=job.progress,
         created_at=job.created_at,
+        cancel_requested=job.cancel_requested,
+        requeue_count=job.requeue_count,
         started_at=job.started_at,
         finished_at=job.finished_at,
     )
@@ -467,7 +469,12 @@ def staleness_for(
     )
     output_path = settings.output_dir / output_relpath(fp_document.metadata)
     verdict = evaluate(event_dir, output_path, fingerprint)
-    return StalenessOut(stale=verdict.stale, reasons=list(verdict.reasons))
+    return StalenessOut(
+        stale=verdict.stale,
+        reasons=list(verdict.reasons),
+        renamed_from=verdict.renamed_from,
+        output_name=verdict.output_name,
+    )
 
 
 def get_event(
