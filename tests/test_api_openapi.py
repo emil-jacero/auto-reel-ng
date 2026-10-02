@@ -302,9 +302,11 @@ EXPECTED_JOBS_RESPONSES = {
         "404": "ProblemOut",
         "409": "ProblemOut",
         "502": "ProblemOut",
+        "503": "ProblemOut",
     },
-    ("get", "/api/v1/jobs/{job_id}"): {"404": "ProblemOut"},
-    ("post", "/api/v1/jobs/{job_id}/cancel"): {"404": "ProblemOut"},
+    ("get", "/api/v1/jobs"): {"503": "ProblemOut"},
+    ("get", "/api/v1/jobs/{job_id}"): {"404": "ProblemOut", "503": "ProblemOut"},
+    ("post", "/api/v1/jobs/{job_id}/cancel"): {"404": "ProblemOut", "503": "ProblemOut"},
 }
 
 
@@ -313,7 +315,7 @@ def test_jobs_routes_declare_their_responses() -> None:
     schema = build_openapi_schema()
     for (method, path), expected in EXPECTED_JOBS_RESPONSES.items():
         responses = schema["paths"][path][method]["responses"]
-        success = "201" if path == "/api/v1/jobs" else "200"
+        success = "201" if (method, path) == ("post", "/api/v1/jobs") else "200"
         declared = {code for code in responses if code not in {success, "422"}}
         assert declared == set(expected), f"{method} {path}: {sorted(declared)}"
         for code, model in expected.items():
