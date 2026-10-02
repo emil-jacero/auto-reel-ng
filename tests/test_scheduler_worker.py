@@ -16,7 +16,7 @@ from auto_reel_ng.accel.models import AcceleratorCapabilities, Device, Vendor
 from auto_reel_ng.accel.profiles import CPUProfile, VaapiProfile
 from auto_reel_ng.cli.adoption import persist, prepare_event
 from auto_reel_ng.config import default_output_dir
-from auto_reel_ng.errors import ProbeError, RenderError
+from auto_reel_ng.errors import ProbeError, RenderCancelledError, RenderError
 from auto_reel_ng.event import DEFAULT_CLIP_ORDER
 from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
 from auto_reel_ng.persistence.engine import session_scope
@@ -28,7 +28,7 @@ from auto_reel_ng.reel import load_document
 from auto_reel_ng.reel.document import Metadata
 from auto_reel_ng.render import RenderJob, RenderOptions, RenderResult
 from auto_reel_ng.scheduler.pools import CapacityPools
-from auto_reel_ng.scheduler.worker import Worker, _render_job, default_build_job
+from auto_reel_ng.scheduler.worker import RunRender, Worker, _render_job, default_build_job
 
 pytestmark = pytest.mark.requires_db
 
@@ -953,3 +953,254 @@ def test_requeued_finished_orphan_absorbed_by_manifest(
     assert job is not None
     assert job.status == JobStatus.DONE
     assert job.progress == 1.0
+
+
+# --------------------------------------------------------------------------- #
+# worker-exception-backstop: any unexpected exception fails only that job
+# --------------------------------------------------------------------------- #
+
+
+def _ok_render(tmp_path: Path) -> RunRender:
+    return lambda rj: RenderResult(output_path=tmp_path / "o.mp4")
+
+
+def _assert_failed_then_next_job_runs(
+    job_store: JobStore, worker: Worker, failed_id, next_id, error: str
+) -> None:
+    assert worker.process_next() is True  # must not raise
+    failed = job_store.get(failed_id)
+    assert failed is not None
+    assert failed.status == JobStatus.FAILED
+    assert failed.error == error
+    assert failed.finished_at is not None
+
+    assert worker.process_next() is True  # the worker keeps claiming
+    follower = job_store.get(next_id)
+    assert follower is not None
+    assert follower.status == JobStatus.DONE
+
+
+def test_unexpected_build_error_fails_the_job_and_the_worker_continues(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    bad_id = job_store.enqueue(PROJECT_ROOT, "bad")
+    good_id = job_store.enqueue(PROJECT_ROOT, "good")
+
+    def build(job: Job) -> RenderJob:
+        if job.event_dir == "bad":
+            raise OSError("disk gone")
+        return _cpu_render_job(tmp_path)
+
+    worker = Worker(
+        job_store,
+        worker_id="w1",
+        pools=_solo_pools(),
+        poll_interval=0.01,
+        build_job=build,
+        render=_ok_render(tmp_path),
+    )
+    _assert_failed_then_next_job_runs(job_store, worker, bad_id, good_id, "OSError: disk gone")
+
+
+def test_unexpected_render_error_fails_the_job_and_frees_its_token(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    bad_id = job_store.enqueue(PROJECT_ROOT, "bad")
+    good_id = job_store.enqueue(PROJECT_ROOT, "good")
+    pools = _solo_pools(cpu_cap=1)
+
+    def render(rj: RenderJob) -> RenderResult:
+        if rj.plan.metadata.title == "Bad":
+            raise TypeError("boom")
+        return RenderResult(output_path=tmp_path / "o.mp4")
+
+    worker = Worker(
+        job_store,
+        worker_id="w1",
+        pools=pools,
+        poll_interval=0.01,
+        build_job=lambda job: _cpu_render_job(
+            tmp_path, title="Bad" if job.event_dir == "bad" else "Good"
+        ),
+        render=render,
+    )
+    assert worker.process_next() is True
+    failed = job_store.get(bad_id)
+    assert failed is not None
+    assert failed.status == JobStatus.FAILED
+    assert failed.error == "TypeError: boom"
+
+    token = pools.token_for(video_encoder="libx264", render_node=None)
+    assert token.acquire(blocking=False), "the failed job's capacity token was not released"
+    token.release()
+
+    assert worker.process_next() is True
+    follower = job_store.get(good_id)
+    assert follower is not None and follower.status == JobStatus.DONE
+
+
+def test_failed_progress_write_fails_the_job(
+    job_store: JobStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bad_id = job_store.enqueue(PROJECT_ROOT, "bad")
+    good_id = job_store.enqueue(PROJECT_ROOT, "good")
+    reporting = {"on": True}
+
+    def broken_set_progress(job_id, fraction) -> None:
+        if reporting["on"]:
+            reporting["on"] = False
+            raise RuntimeError("db down")
+
+    monkeypatch.setattr(job_store, "set_progress", broken_set_progress)
+
+    def render(rj: RenderJob) -> RenderResult:
+        rj.options.on_progress(0.5)  # type: ignore[misc]
+        return RenderResult(output_path=tmp_path / "o.mp4")
+
+    worker = Worker(
+        job_store,
+        worker_id="w1",
+        pools=_solo_pools(),
+        poll_interval=0.01,
+        build_job=lambda job: _cpu_render_job(tmp_path),
+        render=render,
+    )
+    _assert_failed_then_next_job_runs(job_store, worker, bad_id, good_id, "RuntimeError: db down")
+
+
+def test_unexpected_error_with_an_empty_message_records_the_bare_type(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    job_id = job_store.enqueue(PROJECT_ROOT, "event")
+
+    def render(rj: RenderJob) -> RenderResult:
+        raise KeyError()
+
+    worker = Worker(
+        job_store,
+        worker_id="w1",
+        pools=_solo_pools(),
+        poll_interval=0.01,
+        build_job=lambda job: _cpu_render_job(tmp_path),
+        render=render,
+    )
+    assert worker.process_next() is True
+    job = job_store.get(job_id)
+    assert job is not None
+    assert job.status == JobStatus.FAILED
+    assert job.error == "KeyError"
+
+
+def test_threaded_unexpected_render_error_fails_the_job_and_the_worker_goes_on(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    bad_id = job_store.enqueue(PROJECT_ROOT, "bad")
+    good_id = job_store.enqueue(PROJECT_ROOT, "good")
+
+    def render(rj: RenderJob) -> RenderResult:
+        if rj.plan.metadata.title == "Bad":
+            raise TypeError("boom")
+        return RenderResult(output_path=tmp_path / "o.mp4")
+
+    worker = Worker(
+        job_store,
+        worker_id="w1",
+        pools=_solo_pools(cpu_cap=1),
+        poll_interval=0.01,
+        build_job=lambda job: _cpu_render_job(
+            tmp_path, title="Bad" if job.event_dir == "bad" else "Good"
+        ),
+        render=render,
+    )
+    run_thread = threading.Thread(target=worker.run, kwargs={"max_polls": 20}, daemon=True)
+    run_thread.start()
+    run_thread.join(timeout=10)
+    assert not run_thread.is_alive()
+
+    failed = job_store.get(bad_id)
+    follower = job_store.get(good_id)
+    assert failed is not None and follower is not None
+    assert failed.status == JobStatus.FAILED
+    assert failed.error == "TypeError: boom"
+    assert follower.status == JobStatus.DONE
+    assert not worker._inflight  # pylint: disable=protected-access
+    # The event is free to enqueue again: the failed row is terminal.
+    assert job_store.enqueue(PROJECT_ROOT, "bad") != bad_id
+
+
+def test_a_render_that_raises_cancellation_still_ends_canceled(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    job_id = job_store.enqueue(PROJECT_ROOT, "event")
+
+    def render(rj: RenderJob) -> RenderResult:
+        raise RenderCancelledError("stop")
+
+    worker = Worker(
+        job_store,
+        worker_id="w1",
+        pools=_solo_pools(),
+        poll_interval=0.01,
+        build_job=lambda job: _cpu_render_job(tmp_path),
+        render=render,
+    )
+    assert worker.process_next() is True
+    job = job_store.get(job_id)
+    assert job is not None
+    assert job.status == JobStatus.CANCELED
+    assert job.error is None
+
+
+def test_shutdown_requeue_followed_by_an_unexpected_error_stays_queued(
+    job_store: JobStore, tmp_path: Path
+) -> None:
+    job_id = job_store.enqueue(PROJECT_ROOT, "event")
+
+    def render(rj: RenderJob) -> RenderResult:
+        job_store.requeue(job_id)  # what a graceful shutdown does to an in-flight row
+        raise TypeError("late failure")
+
+    worker = Worker(
+        job_store,
+        worker_id="w1",
+        pools=_solo_pools(),
+        poll_interval=0.01,
+        build_job=lambda job: _cpu_render_job(tmp_path),
+        render=render,
+    )
+    assert worker.process_next() is True  # must not raise
+    job = job_store.get(job_id)
+    assert job is not None
+    assert job.status == JobStatus.QUEUED
+    assert job.error is None
+
+
+def test_a_failing_backstop_write_is_logged_and_does_not_stop_the_worker(
+    job_store: JobStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    job_id = job_store.enqueue(PROJECT_ROOT, "event")
+    pools = _solo_pools(cpu_cap=1)
+
+    def render(rj: RenderJob) -> RenderResult:
+        raise TypeError("boom")
+
+    def broken_transition(*args, **kwargs):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(job_store, "transition", broken_transition)
+    worker = Worker(
+        job_store,
+        worker_id="w1",
+        pools=pools,
+        poll_interval=0.01,
+        build_job=lambda job: _cpu_render_job(tmp_path),
+        render=render,
+    )
+    assert worker.process_next() is True  # the write failed; nothing escapes
+
+    job = job_store.get(job_id)
+    assert job is not None
+    assert job.status == JobStatus.RUNNING  # left for the next startup reconcile
+    token = pools.token_for(video_encoder="libx264", render_node=None)
+    assert token.acquire(blocking=False)
+    token.release()
