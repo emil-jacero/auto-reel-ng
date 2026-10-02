@@ -210,6 +210,13 @@ gate moved `.shell-status` or the brand-name step, the edits follow the rules, n
 - [The `ch` threshold fits two fonts but not a third] → The verification sweep covers Liberation Sans and
   DejaVu Sans (the widest common fallbacks) at 320-560 px in 10 px steps with the widest counts, and the
   margin on `N` is stated in the task; the comment above the rule says what `N` was measured from.
+- [Three-digit counts overflow the slot at 320-330 px] → Accepted, and not clipped. Measured on the build: with
+  150 rendering and 150 queued the icons form is wider than the slot (about 65 px at 320 px, 74 px at 330 px)
+  and spills over the navigation at 320 px (Liberation Sans fails there only, DejaVu Sans at both widths); every
+  other width and font passes. Letting the counts shrink with `overflow: hidden` would cut digits and show a
+  wrong number ("150" as "15"), which is worse than a visible overlap that needs a backlog of 100 or more
+  jobs on the narrowest phones. The spec sizes the counts for 99, as `N` is. The baseline fails at the same
+  widths, so this is not a regression.
 - [`flex: 1 1 0` on the slot changes where a long pill sits] → `justify-content: flex-end` keeps it against
   the theme control as `margin-inline-start: auto` did; the sweep compares the rect of the pill before and
   after at 1280, 768 and 390 px and finds no difference at widths where the words fit.
