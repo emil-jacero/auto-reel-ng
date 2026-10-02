@@ -219,6 +219,28 @@ class Worker:
                 pass  # it reached a terminal state between the snapshot and this call
 
     def _process(self, job: Job) -> None:
+        """Process one claimed job; no exception except ``BaseException`` leaves this method.
+
+        The typed handlers inside :meth:`_process_job` keep their own messages and the
+        cancel semantics; anything they let through fails the job here rather than
+        killing the thread and leaving the row ``running``.
+        """
+        try:
+            self._process_job(job)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self._fail_unexpected(job, exc)
+
+    def _fail_unexpected(self, job: Job, exc: Exception) -> None:
+        """Record an unexpected exception as the job's failure; never raise."""
+        logger.exception("job %s failed unexpectedly", job.id)
+        message = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+        try:
+            self._safe_transition(job.id, JobStatus.FAILED, error=message)
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Usually the database itself; the row is left for the next startup reconcile.
+            logger.exception("job %s: could not record failure", job.id)
+
+    def _process_job(self, job: Job) -> None:
         try:
             render_job = self._build_job(job)
         except EngineError as exc:
