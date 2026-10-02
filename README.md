@@ -542,25 +542,19 @@ them. Several clips that link to one file share its thumbnail and are extracted 
 Each thumbnail is ≈15 KB (≈100 MB for 6,500 clips) and nothing is evicted: delete the
 directory to reset it. When `serve` runs as another user or in a
 container, it has its own `XDG_CACHE_HOME` — set `thumbnails.cache_dir` in the
-project's `config.yaml` so both sides use one directory (they also need the same clip
-paths, below).
+project's `config.yaml` so both sides use one directory.
 
-One cache for the host CLI and a container service needs the same directory and the same
-clip paths on both sides, because the file name hashes the *resolved* clip path. The
-compose stack sets `XDG_CACHE_HOME: /data/cache` for `server` and `worker` and mounts
-`./data/cache` there, so its thumbnails land in `./data/cache/auto-reel/thumbnails/`.
-To share them, bind-mount the library (and that cache directory) into the container at
-the same absolute paths the host uses, and name the directory in the project's
-`config.yaml`:
+One cache for the host CLI and a container service needs only the same directory on both
+sides: the file name is a hash of the clip's file name, not its path, so the library may
+sit at different paths on each side. The compose stack sets `XDG_CACHE_HOME: /data/cache`
+for `server` and `worker` and mounts `./data/cache` there, so its thumbnails land in
+`./data/cache/auto-reel/thumbnails/`. To share them, name that directory in the project's
+`config.yaml` as the host sees it:
 
 ```yaml
 thumbnails:
   cache_dir: /home/me/auto-reel/data/cache/auto-reel/thumbnails   # absolute, outside the library
 ```
-
-A host that sees the library at `./data/library` and a container that sees it at
-`/data/library` do not share entries even from one directory: their resolved paths
-differ, so each side fills its own files.
 
 ### Project `config.yaml`
 
