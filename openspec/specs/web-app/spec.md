@@ -1219,12 +1219,15 @@ marked busy, and ignore further presses. The page SHALL handle every answer the 
 - **unknown event:** the page says the event no longer exists
 - **the project could not be scanned** (so the service could not check for another claimant): the page
   says so, with the service's detail, and that nothing was queued
+- **the service cannot reach its database** (a 503 whose problem body names the database as the failing
+  dependency): the page says the render was not queued because the service can't reach its database, with
+  the service's detail
 - **any other answer, or none:** the page says the render was not queued, with the status it received or
   that the service is not reachable. It MUST NOT name a cause the answer does not carry; a server error
   without a problem body is not reported as a database failure.
 
-The page MUST tell these outcomes apart by the published status and conflict kind, not by the problem's
-prose. Only an event page that shows the event's render state offers these controls; a page whose read
+The page MUST tell these outcomes apart by the published status, conflict kind and failing dependency, not by
+the problem's prose. Only an event page that shows the event's render state offers these controls; a page whose read
 failed offers none.
 
 Render anyway's confirmation asks about an event that is up to date and has no queued or running job. While
@@ -1318,6 +1321,18 @@ status, whose words say how the job stands. Focus SHALL NOT fall to the document
   queued by another client, reaches the page over the connection
 - **THEN** the dialog closes by itself, the page sends no enqueue request, and it shows that job queued, with
   keyboard focus on its job status
+
+#### Scenario: The database is down when Render is pressed
+- **WHEN** the operator presses Render on `2024-06-27 - Grillning med grannar` and the service answers 503
+  naming the database as the failing dependency
+- **THEN** no job is shown, and the page says the render was not queued because the service can't reach its
+  database, with the service's detail, and not that the project could not be scanned
+
+#### Scenario: A server error without a problem body is not a database failure
+- **WHEN** the operator presses Render on `2024-06-27 - Grillning med grannar` and the service answers 500
+  with no problem body, or answers 503 without naming the database
+- **THEN** the page says the render was not queued, with the status it received, and does not say that the
+  service can't reach its database
 
 ### Requirement: A render's progress is shown live
 
@@ -3905,3 +3920,47 @@ clip's file, and from nowhere else.
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens and closes the preview of `s1710001.mp4`,
   moves that clip to `Kvällen` with Move clips, and adds a cut from `5` to `7` on it there
 - **THEN** the cut is refused for ending after the clip's length
+
+### Requirement: A cancel or a job read that meets a database outage says so
+When the service answers a cancel request with a 503 whose problem body names the database as the failing
+dependency, the page SHALL say that the cancel was not confirmed because the service can't reach its
+database, with the service's detail. It SHALL NOT say that the job does not exist, that the cancel
+succeeded, or show an outcome, and the job SHALL keep the state the page showed. It SHALL use the same
+sentence for the database that the event list and the event page use for a failed read. A 503 that does not
+name the database stays an unexpected answer, worded with the status it received.
+
+The event list's row Render, whose answers are handled as the page's, SHALL tell a database outage in an
+error notification that names the pressed event, says the render was not queued because the service can't
+reach its database, and carries no link, since the failure is not about the event.
+
+A read of one job (the background read that keeps a followed job current) that meets the same 503 SHALL show
+nothing and SHALL keep the last job state the page knew: it MUST NOT drop the job as it does for a 404, and
+MUST NOT raise a notification for a read the operator did not ask for.
+
+The client SHALL tell these answers by the published status and the typed field naming the failing
+dependency, defined as a case of the jobs request results, so that the client's type-check fails when a
+caller does not handle it.
+
+#### Scenario: The cancel is not confirmed because the database is down
+- **WHEN** the operator presses Cancel on `2024/Blandat`'s queued job and the service answers 503 naming
+  the database
+- **THEN** the page says the cancel was not confirmed because the service can't reach its database, shows
+  the service's detail, still shows the job as queued, and does not say the job no longer exists
+
+#### Scenario: A row's Render meets the outage
+- **WHEN** the operator presses Render on the `2024-08-20 - Två kapitel - Tjörn` row and the service answers
+  503 naming the database
+- **THEN** one error notification names that event by its title and date, says the render was not queued
+  because the service can't reach its database, and has no link; the row offers Render again
+
+#### Scenario: A background job read meets the outage
+- **WHEN** the page follows the `running` job of `2024-06-27 - Grillning med grannar`, and a read of that
+  job is answered 503 naming the database
+- **THEN** the page keeps showing the job as it last knew it, shows no notification for that read, and does
+  not report the job as gone
+
+#### Scenario: A 503 that does not name the database is not worded as one
+- **WHEN** the operator presses Cancel on `2024/Blandat`'s queued job and the service answers 503 without
+  naming the database
+- **THEN** the page says the cancel was not confirmed, with the status it received, and does not say that the
+  service can't reach its database
