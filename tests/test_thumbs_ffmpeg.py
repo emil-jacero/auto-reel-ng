@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
+import time
 from pathlib import Path
 from typing import List, Optional, Sequence
 
@@ -16,6 +18,7 @@ import pytest
 from auto_reel_ng.errors import ThumbnailError
 from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
 from auto_reel_ng.probe import probe_media
+from auto_reel_ng.thumbs import thumbnail as thumbnail_module
 from auto_reel_ng.thumbs import thumbnail_for, thumbnail_path
 
 pytestmark = pytest.mark.has_ffmpeg
@@ -85,16 +88,94 @@ def test_a_zero_byte_clip_has_no_thumbnail(tmp_path: Path, runtime: FfmpegRuntim
     assert _cache_files(cache_dir, "*.jpg") == []
 
 
-def test_a_corrupt_clip_with_a_non_utf8_name_is_a_thumbnail_error(
+def test_a_corrupt_clip_with_a_non_utf8_name_reports_the_probes_failure(
     tmp_path: Path, runtime: FfmpegRuntime
 ) -> None:
-    # ffprobe's stderr echoes the name's raw bytes, which the runtime cannot decode.
+    # ffprobe's stderr echoes the name's raw bytes; the runtime shows them as escapes.
     clip = tmp_path / os.fsdecode(b"caf\xe9.mp4")
     clip.write_bytes(b"this is not a video " * 50)
     cache_dir = tmp_path / "cache"
     with pytest.raises(ThumbnailError) as exc:
         thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
-    assert exc.value.reason.startswith("ffprobe's output could not be decoded")
+    assert exc.value.reason.startswith("ffprobe could not read: Command exited 1: ")
+    assert "Invalid data found when processing input" in exc.value.reason
+    assert "could not be decoded" not in exc.value.reason
+    assert _cache_files(cache_dir, "*") == []
+
+
+#: A stand-in ffmpeg/ffprobe: answers ``-version``, records its pid, then hangs.
+_HANGING_BINARY = """#!{python}
+import os, sys, time
+if "-version" in sys.argv:
+    print("ffmpeg version 8.1 fake")
+    sys.exit(0)
+with open({pidfile!r}, "a") as handle:
+    handle.write(str(os.getpid()) + "\\n")
+time.sleep(60)
+"""
+
+
+def _hanging(tmp_path: Path) -> Path:
+    path = tmp_path / "hang"
+    path.write_text(
+        _HANGING_BINARY.format(python=sys.executable, pidfile=str(tmp_path / "pids")),
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+    return path
+
+
+def _pids(tmp_path: Path) -> List[int]:
+    pidfile = tmp_path / "pids"
+    return [int(line) for line in pidfile.read_text().split()] if pidfile.exists() else []
+
+
+def _assert_none_alive(pids: List[int]) -> None:
+    for pid in pids:
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+
+
+def test_a_probe_that_hangs_times_out_without_running_ffmpeg(
+    tmp_path: Path, make_clip, runtime: FfmpegRuntime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clip = make_clip("clip.mp4")
+    hang = _hanging(tmp_path)
+    hung = FfmpegRuntime(ffmpeg_path=str(hang), ffprobe_path=str(hang))  # one binary, one pid
+    monkeypatch.setattr(thumbnail_module, "THUMBNAIL_TIMEOUT", 0.5)
+    cache_dir = tmp_path / "cache"
+
+    started = time.monotonic()
+    with pytest.raises(ThumbnailError) as exc:
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=hung)
+
+    assert time.monotonic() - started < 15
+    assert exc.value.clip == str(clip)
+    assert "timed out after 0.5s" in exc.value.reason
+    assert len(_pids(tmp_path)) == 1  # only the probe ran: ffmpeg never did
+    _assert_none_alive(_pids(tmp_path))
+    assert _cache_files(cache_dir, "*.jpg") == []
+    assert _cache_files(cache_dir, ".*") == []
+
+
+def test_an_extraction_that_hangs_times_out_naming_the_time(
+    tmp_path: Path, make_clip, runtime: FfmpegRuntime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clip = make_clip("clip.mp4", duration=4)
+    hang = _hanging(tmp_path)
+    hung = FfmpegRuntime(ffmpeg_path=str(hang), ffprobe_path=runtime.ffprobe_path)
+    monkeypatch.setattr(thumbnail_module, "THUMBNAIL_TIMEOUT", 0.5)
+    cache_dir = tmp_path / "cache"
+
+    started = time.monotonic()
+    with pytest.raises(ThumbnailError) as exc:
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=hung)
+
+    assert time.monotonic() - started < 15
+    assert exc.value.reason.startswith("ffmpeg timed out extracting the frame at 1.000s: ")
+    assert "timed out after 0.5s" in exc.value.reason
+    assert len(_pids(tmp_path)) == 1  # one attempt, no other timestamp
+    _assert_none_alive(_pids(tmp_path))
     assert _cache_files(cache_dir, "*") == []
 
 

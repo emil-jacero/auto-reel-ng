@@ -28,11 +28,22 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
-from ..errors import FfmpegError, ProbeError, ThumbnailCacheError, ThumbnailError
+from ..errors import (
+    FfmpegError,
+    FfmpegTimeoutError,
+    ProbeError,
+    ThumbnailCacheError,
+    ThumbnailError,
+)
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..probe.media import get_default_runtime, probe_media
 
 logger = logging.getLogger(__name__)
+
+#: Seconds the probe, and then the extraction, of one clip are each given. A healthy
+#: thumbnail takes well under a second; the bound frees a service extraction slot when a
+#: read stalls (a removable drive that went away). Fixed: not a ``config.yaml`` setting.
+THUMBNAIL_TIMEOUT = 60.0
 
 #: Bump whenever :func:`thumbnail_args` changes the output bytes: it re-keys every file.
 THUMBNAIL_VERSION = 1
@@ -171,7 +182,7 @@ def thumbnail_for(
     if is_cached(target):
         return target
 
-    runtime = runtime or get_default_runtime()
+    runtime = (runtime or get_default_runtime()).with_timeout(THUMBNAIL_TIMEOUT)
     # The resolved, absolute path: a relative ``file:x.mp4`` would be read as a protocol.
     source = clip_path.resolve()
     duration = _probe_duration(clip_path, source, runtime)
@@ -196,11 +207,6 @@ def _probe_duration(clip_path: Path, source: Path, runtime: FfmpegRuntime) -> fl
         duration = probe_media(source, runtime=runtime).duration
     except ProbeError as exc:
         raise ThumbnailError(str(clip_path), _probe_reason(exc, source)) from exc
-    except UnicodeDecodeError as exc:
-        # The runtime decodes output strictly; ffprobe echoes a non-UTF-8 file name.
-        raise ThumbnailError(
-            str(clip_path), f"ffprobe's output could not be decoded: {exc}"
-        ) from exc
     # The probe reports 0.0 when neither the format nor the stream carries one.
     if not math.isfinite(duration) or duration <= 0:
         raise ThumbnailError(str(clip_path), f"ffprobe reported no usable duration ({duration})")
@@ -255,8 +261,19 @@ def _resolved(path: Path) -> Path:
 
 
 def _shorten(text: str, source: Path) -> str:
-    """``text`` with the clip's path, which ffmpeg repeats, shortened to its file name."""
-    return text.replace(f"{source}: ", "").replace(str(source), source.name)
+    """``text`` with the clip's path, which ffmpeg repeats, shortened to its file name.
+
+    A path that is not valid UTF-8 is spelled twice: with surrogate escapes in the engine's
+    ``source``, and with backslash escapes (``caf\\xe9.mp4``) in the stderr the runtime decoded.
+    """
+    for spelling, name in ((str(source), source.name), (_escaped(source), _escaped(source.name))):
+        text = text.replace(f"{spelling}: ", "").replace(spelling, name)
+    return text
+
+
+def _escaped(path: "Path | str") -> str:
+    """``path`` with the bytes that are not valid UTF-8 as backslash escapes, as stderr shows."""
+    return os.fsencode(path).decode("utf-8", "backslashreplace")
 
 
 def _before_any_path(text: str) -> str:
@@ -296,16 +313,15 @@ def _extract(
     no_frame = f"no frame extracted at {at:.3f}s of {duration:.3f}s"
     try:
         runtime.run(thumbnail_args(source, at=at, output=output))
+    except FfmpegTimeoutError as exc:
+        # Nothing is known about the frame: the read did not finish, so say that.
+        raise ThumbnailError(
+            str(clip_path), f"ffmpeg timed out extracting the frame at {at:.3f}s: {exc}"
+        ) from exc
     except FfmpegError as exc:
         # ffmpeg reports "nothing decoded at t" as an encoder-open error; lead with
         # the real cause and keep the command and stderr after it.
         raise ThumbnailError(str(clip_path), f"{no_frame}: {exc}") from exc
-    except UnicodeDecodeError as exc:
-        # As in the probe: stderr naming a non-UTF-8 file cannot be decoded, so the
-        # outcome cannot be verified and the clip fails rather than being guessed at.
-        raise ThumbnailError(
-            str(clip_path), f"{no_frame}: ffmpeg's output could not be decoded: {exc}"
-        ) from exc
     if not output.is_file() or output.stat().st_size == 0:
         raise ThumbnailError(str(clip_path), f"{no_frame}: ffmpeg exited 0 but wrote no image")
 
@@ -325,6 +341,7 @@ def _finalize(cache_dir: Path, tmp: Path, target: Path) -> None:
 
 __all__ = [
     "THUMBNAIL_BOX",
+    "THUMBNAIL_TIMEOUT",
     "THUMBNAIL_VERSION",
     "is_cached",
     "one_line_cause",

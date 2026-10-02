@@ -530,8 +530,9 @@ def test_non_utf8_names_fail_as_their_own_clips_with_the_real_runtime(
     out = capsys.readouterr().out
     errors = _error_lines(out)
     assert len(errors) == 2
-    assert errors[0].startswith(
-        "ERROR  2024-10-05 - Trasig/caf\\xe9.mp4: ffprobe's output could not be decoded: "
+    assert errors[0] == (
+        "ERROR  2024-10-05 - Trasig/caf\\xe9.mp4: ffprobe could not read: "
+        "Invalid data found when processing input"
     )
     assert errors[1] == "ERROR  2024-10-05 - Trasig/tom\\xe9.mp4: File is empty (zero bytes)"
     assert out.splitlines()[-1].startswith("thumbnails: 2 clips in 1 event: 0 generated")

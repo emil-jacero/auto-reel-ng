@@ -88,8 +88,9 @@ non-UTF-8 name takes the ordinary path: ffprobe exits non-zero, `ProbeError`, `T
 `one_line_cause` takes ffmpeg's last stderr line as the gist and shortens the clip's path in it to the file
 name. The stderr now spells the path with `\xe9`, while the engine's `source` string holds a surrogate
 escape (`\udce9`), so `_shorten` would not find it, `_before_any_path` would cut the line at its leading
-`/`, and the cause would be empty. `_shorten` (and `_probe_reason`) therefore also try the backslash-escaped
-spelling of the path (`os.fsencode(path).decode("utf-8", "backslashreplace")`). Alternative: keep catching
+`/`, and the cause would be empty. `_shorten` therefore also tries the backslash-escaped spelling of the path
+(`os.fsencode(path).decode("utf-8", "backslashreplace")`). `_probe_reason` needs no change: `ProbeError`
+names the path in the engine's own spelling. Alternative: keep catching
 `UnicodeDecodeError`: dead code and a worse message. The existing tests asserting `"could not be decoded"`
 are rewritten to assert the real cause.
 

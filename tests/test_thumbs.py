@@ -19,6 +19,7 @@ import pytest
 
 from auto_reel_ng.errors import (
     FfmpegError,
+    FfmpegTimeoutError,
     ProbeError,
     ThumbnailCacheError,
     ThumbnailError,
@@ -44,10 +45,15 @@ class FakeRuntime:
         barrier: Optional[threading.Barrier] = None,
     ) -> None:
         self.calls: List[List[str]] = []
+        self.timeouts: List[float] = []
         self._error = error
         self._payload = payload
         self._barrier = barrier
         self._lock = threading.Lock()
+
+    def with_timeout(self, seconds: float) -> "FakeRuntime":
+        self.timeouts.append(seconds)
+        return self
 
     def run(self, args: Sequence[str]) -> subprocess.CompletedProcess[str]:
         with self._lock:
@@ -333,29 +339,65 @@ def test_a_probe_reason_drops_the_first_mention_of_the_path(
     assert exc.value.reason == reason.format(p=source)
 
 
-def test_an_undecodable_probe_output_is_the_clips_failure(
+def test_the_probe_and_the_extraction_are_each_bounded_to_sixty_seconds(
     tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
 ) -> None:
     clip = _clip(tmp_path)
-    # The runtime decodes strictly, and ffprobe echoes a non-UTF-8 file name.
-    probe_calls(error=UnicodeDecodeError("utf-8", b"caf\xe9", 3, 4, "invalid continuation byte"))
-    with pytest.raises(ThumbnailError) as exc:
-        thumbnail_for(clip, position=0.25, cache_dir=tmp_path / "cache", runtime=FakeRuntime())
-    assert exc.value.reason.startswith("ffprobe's output could not be decoded: 'utf-8' codec")
+    probe_calls()
+    runtime = FakeRuntime()
+    thumbnail_for(clip, position=0.25, cache_dir=tmp_path / "cache", runtime=runtime)
+    assert thumbnail_module.THUMBNAIL_TIMEOUT == 60.0
+    assert runtime.timeouts == [60.0]
+    assert len(runtime.calls) == 1
 
 
-def test_an_undecodable_ffmpeg_output_is_no_frame_and_leaves_nothing(
+def test_a_cache_hit_derives_no_bounded_runtime(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    thumbnail_path(clip, position=0.25, cache_dir=cache_dir).write_bytes(FAKE_JPEG)
+    runtime = FakeRuntime()
+    thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
+    assert runtime.timeouts == []
+
+
+def test_an_extraction_that_times_out_is_the_clips_failure_and_leaves_nothing(
     tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
 ) -> None:
     clip = _clip(tmp_path)
     cache_dir = tmp_path / "cache"
     probe_calls(duration=27.84)
-    error = UnicodeDecodeError("utf-8", b"caf\xe9", 3, 4, "invalid continuation byte")
+    runtime = FakeRuntime(error=FfmpegTimeoutError("Command timed out after 60s: ffmpeg -i x"))
+
     with pytest.raises(ThumbnailError) as exc:
-        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=FakeRuntime(error=error))
-    assert exc.value.reason.startswith(
-        "no frame extracted at 6.960s of 27.840s: ffmpeg's output could not be decoded"
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
+
+    assert exc.value.clip == str(clip)
+    assert exc.value.reason.startswith("ffmpeg timed out extracting the frame at 6.960s: ")
+    assert "timed out after 60s" in exc.value.reason
+    assert "no frame" not in exc.value.reason
+    assert len(runtime.calls) == 1  # no other timestamp
+    assert _leftovers(cache_dir) == []
+
+
+def test_a_probe_that_times_out_is_the_clips_failure_and_runs_no_ffmpeg(
+    tmp_path: Path, probe_calls: Callable[..., ProbeCalls]
+) -> None:
+    clip = _clip(tmp_path)
+    cache_dir = tmp_path / "cache"
+    source = clip.resolve()
+    probe_calls(
+        error=ProbeError(f"ffprobe could not read {source}: Command timed out after 60s: ffprobe")
     )
+    runtime = FakeRuntime()
+
+    with pytest.raises(ThumbnailError) as exc:
+        thumbnail_for(clip, position=0.25, cache_dir=cache_dir, runtime=runtime)
+
+    assert exc.value.reason == "ffprobe could not read: Command timed out after 60s: ffprobe"
+    assert runtime.calls == []
     assert _leftovers(cache_dir) == []
 
 
@@ -583,3 +625,32 @@ def test_one_line_cause_keeps_a_plain_reason_and_rationals(tmp_path: Path) -> No
     assert one_line_cause(rate, clip) == rate
     assert one_line_cause("File is empty (zero bytes)", clip) == "File is empty (zero bytes)"
     assert one_line_cause("first line\nsecond line", clip) == "first line"
+
+
+def test_one_line_cause_shortens_the_backslash_escaped_spelling_of_a_non_utf8_name(
+    tmp_path: Path,
+) -> None:
+    """ffmpeg's stderr, decoded by the runtime, spells the name ``caf\\xe9.mp4``."""
+    clip = tmp_path / os.fsdecode(b"caf\xe9.mp4")
+    escaped = f"{tmp_path}/caf\\xe9.mp4"
+    reason = (
+        f"ffprobe could not read: Command exited 1: /usr/bin/ffprobe -v error {clip}\n"
+        f"stderr:\n[mov,mp4 @ 0x56] moov atom not found\n"
+        f"{escaped}: Invalid data found when processing input"
+    )
+    assert (
+        one_line_cause(reason, clip) == "ffprobe could not read: "
+        "Invalid data found when processing input"
+    )
+
+
+def test_one_line_cause_of_a_timeout_names_no_server_path(tmp_path: Path) -> None:
+    clip = tmp_path / "clip.mp4"
+    reason = (
+        f"ffmpeg timed out extracting the frame at 15.360s: Command timed out after 60s: "
+        f"/usr/bin/ffmpeg -ss 15.360 -i {clip}"
+    )
+    assert (
+        one_line_cause(reason, clip)
+        == "ffmpeg timed out extracting the frame at 15.360s: Command timed out after 60s"
+    )
