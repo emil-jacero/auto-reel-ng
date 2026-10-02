@@ -206,6 +206,7 @@ export function ChapterDrag({
   locked,
   onReorder,
   onDropInto,
+  onLift,
   rootRef,
   children,
 }: {
@@ -222,12 +223,21 @@ export function ChapterDrag({
   onReorder: MoveHandler
   /** A drop into another chapter: false when the editor refused it (save or Move clips pending). */
   onDropInto: (identity: string, from: ChapterKey, to: ChapterKey, at: number) => boolean
+  /** Whether a clip is lifted now (a keyboard or pointer drag not yet dropped or cancelled). */
+  onLift: (lifted: boolean) => void
   /** The editor's root, where the moved row is found after a drop. */
   rootRef: RefObject<HTMLElement | null>
   children: ReactNode
 }): ReactNode {
   // The only state: the lifted clip, for the copy.
   const [lifted, setLifted] = useState<Lift | null>(null)
+  // Tells the editor, which holds Save while a clip is lifted: the order shown is not yet the
+  // order that would be sent. Cleared when this unmounts.
+  const isLifted = lifted !== null
+  useLayoutEffect(() => {
+    onLift(isLifted)
+    return () => onLift(false)
+  }, [isLifted, onLift])
   const reducedMotion = useReducedMotion()
   const model = useMemo(() => dragModel(orders, listed), [orders, listed])
 

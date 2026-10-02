@@ -25,6 +25,9 @@ When Save is held back, the press SHALL send nothing and SHALL announce why:
 - with a date typed in part, or a cut typed and not added: "Not saved:" and what is unfinished
 - after a conflict: that Reload latest or Overwrite with mine comes first
 - after the event is found gone: that the event no longer exists
+- while a clip is lifted by the drag and not yet dropped or cancelled: that the lifted clip comes first
+  ("Not saved: drop or cancel the lifted clip first."), because the order shown is not yet the order that
+  a write would carry
 
 While a save is in flight, while a Move clips is still being applied, or while a dialog is open (including
 the question "Discard unsaved changes?" and the confirmation of Overwrite with mine), the press SHALL send
@@ -79,6 +82,12 @@ show more text for it.
   changes?" opens, and presses Ctrl+S
 - **THEN** no request is sent, nothing is announced, the dialog stays open with focus on Keep editing, and
   the edits are kept
+
+#### Scenario: A lifted clip is not saved at its old place
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, the operator changes the location, lifts
+  its first clip with Space, moves it down one place with ArrowDown and, before dropping it, presses Ctrl+S
+- **THEN** no request is sent, the live region says that the lifted clip must be dropped or cancelled first,
+  and the clip is still lifted; after the drop, Ctrl+S sends one write with the location and the new order
 
 #### Scenario: Other chords keep their meaning
 - **WHEN** in Edit mode with unsaved changes, the operator presses Ctrl+Shift+S

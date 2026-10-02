@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { holdWords, isSaveChord, saveHold } from './saveShortcut.ts'
+import { holdWords, isSaveChord, saveHold, saveKeyAction } from './saveShortcut.ts'
 
 const key = (over: Partial<Parameters<typeof isSaveChord>[0]> = {}) => ({
   ctrlKey: true,
@@ -55,4 +55,35 @@ test('each hold says why, naming what the bar names', () => {
   )
   assert.match(holdWords('conflict', false, false), /Reload latest or Overwrite with mine/)
   assert.match(holdWords('gone', false, false), /no longer exists/)
+})
+
+const quiet = {
+  repeat: false,
+  saving: false,
+  pressed: false,
+  moving: false,
+  lifted: false,
+  dialogOpen: false,
+  hold: null,
+}
+
+test('a press saves, or says why not, when nothing else is going on', () => {
+  assert.equal(saveKeyAction(quiet), 'save')
+  assert.equal(saveKeyAction({ ...quiet, hold: 'nothing' }), 'announce')
+  assert.equal(saveKeyAction({ ...quiet, hold: 'conflict' }), 'announce')
+})
+
+test('a repeat, a save in flight, a pending Move clips or an open dialog is silent', () => {
+  for (const over of [{ repeat: true }, { saving: true }, { pressed: true }, { moving: true }]) {
+    assert.equal(saveKeyAction({ ...quiet, ...over }), 'ignore', JSON.stringify(over))
+    assert.equal(saveKeyAction({ ...quiet, ...over, hold: 'nothing' }), 'ignore')
+  }
+  assert.equal(saveKeyAction({ ...quiet, dialogOpen: true }), 'ignore')
+  assert.equal(saveKeyAction({ ...quiet, dialogOpen: true, lifted: true }), 'ignore')
+})
+
+test('a lifted clip sends nothing and says so, before Save is judged', () => {
+  assert.equal(saveKeyAction({ ...quiet, lifted: true }), 'lifted')
+  assert.equal(saveKeyAction({ ...quiet, lifted: true, hold: 'nothing' }), 'lifted')
+  assert.equal(saveKeyAction({ ...quiet, lifted: true, saving: true }), 'ignore')
 })

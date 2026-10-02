@@ -89,7 +89,7 @@ import type {
 import { FIELD_LABEL, MetadataForm } from './MetadataForm'
 import { SaveBar } from './SaveBar'
 import type { Operation, Pressed, SaveProblem } from './SaveBar'
-import { holdWords, isSaveChord, saveHold } from './saveShortcut'
+import { holdWords, isSaveChord, LIFTED_WORDS, saveHold, saveKeyAction } from './saveShortcut'
 import type { Resolved } from './MetadataForm'
 import {
   discardAndLeave,
@@ -1242,6 +1242,11 @@ export function EventEditor({
   // The chapter a Move clips is leaving, set before the transition starts and cleared
   // when it lands: a press meanwhile would act on the order from before the move.
   const moving = useRef<ChapterKey | null>(null)
+  // A clip lifted by the drag and not yet dropped (`ChapterDrag`'s `onLift`).
+  const lifted = useRef(false)
+  const onLift = useCallback((is: boolean) => {
+    lifted.current = is
+  }, [])
   useLayoutEffect(() => {
     latest.current = ready
     moving.current = movingFrom
@@ -1642,18 +1647,25 @@ export function EventEditor({
       }
       // preventDefault always, so the browser's Save page never opens over the editor.
       event.preventDefault()
-      if (
-        event.repeat ||
-        saving.current ||
-        current.pressed !== null ||
-        moving.current !== null ||
-        document.querySelector('dialog[open]') !== null
-      ) {
+      const hold = saveHold(edited, unfinished(current), current.problem)
+      const action = saveKeyAction({
+        repeat: event.repeat,
+        saving: saving.current,
+        pressed: current.pressed !== null,
+        moving: moving.current !== null,
+        lifted: lifted.current,
+        dialogOpen: document.querySelector('dialog[open]') !== null,
+        hold,
+      })
+      if (action === 'lifted') {
+        announce(LIFTED_WORDS)
         return
       }
-      const hold = saveHold(edited, unfinished(current), current.problem)
-      if (hold !== null) {
+      if (action === 'announce' && hold !== null) {
         announce(holdWords(hold, current.dateIncomplete, current.typed.size > 0))
+        return
+      }
+      if (action !== 'save') {
         return
       }
       announce('Saving…')
@@ -1865,6 +1877,7 @@ export function EventEditor({
               locked={listsLocked}
               onReorder={onMove}
               onDropInto={onDropInto}
+              onLift={onLift}
               rootRef={editorRef}
             >
               {ready.draft.chapters.map((chapter) => {

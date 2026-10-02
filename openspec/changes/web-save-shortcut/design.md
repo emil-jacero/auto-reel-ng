@@ -91,6 +91,7 @@ for Ctrl+S in an editor must not open the browser's file dialog over a half-edit
 | a dialog is open (`document.querySelector('dialog[open]')`) | none | silent |
 | key repeat (`event.repeat`) | none | silent |
 | a save is in flight (`locked`), or a Move clips is pending (`movingFrom !== null`) | none | silent (the bar already says "Saving…") |
+| a clip is lifted by the drag and not yet dropped (`ChapterDrag`'s `onLift`) | none | "Not saved: drop or cancel the lifted clip first." (the order shown is not the order a write would carry; the Save button cannot be pressed mid-lift, so this state is new with the shortcut) |
 | `saveHold` = `nothing` | none | "Nothing to save." |
 | `saveHold` = `unfinished` | none | "Not saved: the date is incomplete." / "Not saved: a cut is typed and not added." / both joined with " and " |
 | `saveHold` = `conflict` | none | "Not saved: choose Reload latest or Overwrite with mine first." |
@@ -100,6 +101,7 @@ for Ctrl+S in an editor must not open the browser's file dialog over a half-edit
 The open-dialog row is checked first and generically (any native `<dialog>` that is open), because the render
 panel's dialog is not Edit mode's own state. The in-flight and Move-clips rows reuse the refs `submit`
 checks, so that a second press never announces "Saving…" twice.
+The order of these guards is `saveKeyAction` (`saveShortcut.ts`), pure and unit-tested.
 A failed save started by the shortcut is shown by the bar's alert as for the button, with `pressed: 'save'`
 (the Save button shows busy while the field keeps the caret). `Retry` is the failure's own button.
 
