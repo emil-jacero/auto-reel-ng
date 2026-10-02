@@ -10,6 +10,7 @@ editorial data. It deliberately imports nothing from :mod:`parser` or
 
 from __future__ import annotations
 
+import math
 from datetime import date, datetime
 from pathlib import PurePosixPath
 from types import MappingProxyType
@@ -27,6 +28,7 @@ from .document import (
     SortMethod,
     Trim,
 )
+from .values import find_lone_surrogate, find_non_str_key
 
 
 def build_document(data: Mapping[str, Any], *, source: str = "<document>") -> ReelDocument:
@@ -37,6 +39,10 @@ def build_document(data: Mapping[str, Any], *, source: str = "<document>") -> Re
     ``CommentedMap`` get comment/key-order preservation for free.
     """
     _validate_version(data.get("version"), source=source)
+    # Before any section parser, so no later message can embed a string that cannot be printed.
+    surrogate = find_lone_surrogate(data)
+    if surrogate is not None:
+        raise ReelParseError(lone_surrogate_message(source, surrogate))
 
     metadata = _parse_metadata(data.get("metadata"), source=source)
     look = _parse_look(data.get("look"), source=source)
@@ -65,8 +71,11 @@ def build_document(data: Mapping[str, Any], *, source: str = "<document>") -> Re
 
 
 def _validate_version(version: Any, *, source: str) -> None:
-    """Reject any version this engine does not define (only ``0``)."""
-    if version != SCHEMA_VERSION:
+    """Reject any version this engine does not define (only the integer ``0``).
+
+    ``False`` and ``0.0`` compare equal to ``0`` in Python but are not the version.
+    """
+    if isinstance(version, bool) or not isinstance(version, int) or version != SCHEMA_VERSION:
         raise ReelParseError(
             f"{source}: unsupported version {version!r}; this engine supports "
             f"version {SCHEMA_VERSION}"
@@ -88,11 +97,21 @@ def _parse_metadata(raw: Any, *, source: str) -> Metadata:
 
 
 def _parse_look(raw: Any, *, source: str) -> Mapping[str, Any]:
-    """Carry ``look`` opaquely (D-I): keep it as a map, never inspect inner keys."""
+    """Carry ``look`` opaquely (D-I): keep it as a map, never inspect inner names or values.
+
+    The one constraint is the type of its keys: a non-string key (an unquoted ``2024-01-01`` is
+    a date) can be neither sorted nor serialized, so the staleness hash and the API would fail.
+    """
     if raw is None:
         return {}
     if not isinstance(raw, Mapping):
         raise ReelParseError(f"{source}: 'look' must be a mapping, got {type(raw).__name__}")
+    bad = find_non_str_key(raw, root="look")
+    if bad is not None:
+        raise ReelParseError(
+            f"{source}: {bad.path}: key {bad.key} is {_article(bad.kind)}, not a string "
+            f"(quote it to keep it as text)"
+        )
     # Shallow copy to a plain dict for the typed view; the round-trip structure
     # lives on the document's _data. Inner values are kept as-is (opaque).
     return dict(raw)
@@ -186,9 +205,18 @@ def _parse_ignore(raw: Any, *, source: str) -> tuple[str, ...]:
         return ()
     if not isinstance(raw, (list, tuple)):
         raise ReelParseError(f"{source}: 'ignore' must be a list, got {type(raw).__name__}")
-    return tuple(
-        _parse_identity(entry, loc=f"{source}: ignore[{i}]") for i, entry in enumerate(raw)
-    )
+    ignore: list[str] = []
+    first_at: dict[str, int] = {}
+    for i, entry in enumerate(raw):
+        identity = _parse_identity(entry, loc=f"{source}: ignore[{i}]")
+        if identity in first_at:
+            raise ReelParseError(
+                f"{source}: ignore[{i}]: duplicate ignore entry {identity!r} "
+                f"(first at ignore[{first_at[identity]}])"
+            )
+        first_at[identity] = i
+        ignore.append(identity)
+    return tuple(ignore)
 
 
 def _parse_sort(raw: Any, *, source: str) -> Optional[ClipOrder]:
@@ -347,12 +375,28 @@ def _opt_int(value: Any, *, loc: str) -> Optional[int]:
 
 
 def _req_time(value: Any, *, loc: str) -> float:
-    """Coerce a required, non-negative time in seconds; reject bools and negatives."""
+    """Coerce a required, finite, non-negative time in seconds; reject bools and negatives."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ReelParseError(f"{loc}: expected a number of seconds, got {type(value).__name__}")
     if value < 0:
         raise ReelParseError(f"{loc}: time must be non-negative, got {value}")
     try:
-        return float(value)
+        seconds = float(value)
     except OverflowError as exc:  # an integer past the largest float, about 1.8e308 seconds
         raise ReelParseError(f"{loc}: time out of range, got {value}") from exc
+    if not math.isfinite(seconds):  # NaN passes every comparison above and below; +inf too
+        raise ReelParseError(f"{loc}: time must be finite, got {value}")
+    return seconds
+
+
+def lone_surrogate_message(source: str, path: str) -> str:
+    """The parse error for a string that cannot be encoded as UTF-8, shown without that string."""
+    return (
+        f"{source}: {path or 'document'}: text contains a lone surrogate, which cannot be "
+        f"encoded as UTF-8"
+    )
+
+
+def _article(kind: str) -> str:
+    """``a date`` / ``an integer`` for the key kinds :mod:`values` reports."""
+    return f"{'an' if kind[0] in 'aeiou' else 'a'} {kind}"

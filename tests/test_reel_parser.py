@@ -9,6 +9,8 @@ import pytest
 
 from auto_reel_ng.errors import ReelError, ReelParseError
 from auto_reel_ng.reel.parser import load_document, loads_document
+from auto_reel_ng.reel.writer import dumps_document
+from auto_reel_ng.staleness.fingerprint import editorial_hash
 
 VALID_DOC = """\
 version: 0
@@ -485,3 +487,132 @@ def test_an_invalid_cut_beside_an_overlap_still_names_its_index() -> None:
 
     with pytest.raises(ReelParseError, match=r"trims\[1\]"):
         loads_document(text)
+
+
+# --------------------------------------------------------------------------- #
+# Value validation: finite times, integer version, unique ignore, string look
+# keys, UTF-8 encodable text
+# --------------------------------------------------------------------------- #
+
+
+def _trim_doc(span: str) -> str:
+    return (
+        "version: 0\nchapters: [{name: '', clips: [a.mp4]}]\n"
+        f"clips: {{a.mp4: {{trims: [{span}]}}}}\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("span", "field"),
+    [
+        ("{in: .nan, out: 5}", "in"),
+        ("{in: 0, out: .nan}", "out"),
+        ("{in: .nan, out: .nan}", "in"),
+        ("{in: 1, out: .inf}", "out"),
+        ("{in: .inf, out: 5}", "in"),
+    ],
+)
+def test_a_non_finite_trim_time_is_a_parse_error(span: str, field: str) -> None:
+    with pytest.raises(ReelParseError, match=rf"a\.mp4.*trims\[0\]\.{field}: time must be finite"):
+        loads_document(_trim_doc(span))
+
+
+def test_negative_infinity_is_still_a_negative_time() -> None:
+    with pytest.raises(ReelParseError, match="non-negative"):
+        loads_document(_trim_doc("{in: -.inf, out: 5}"))
+
+
+def test_a_finite_trim_still_loads() -> None:
+    doc = loads_document(_trim_doc("{in: 0, out: 3.2}"))
+
+    assert (doc.clips["a.mp4"].trims[0].start, doc.clips["a.mp4"].trims[0].end) == (0.0, 3.2)
+
+
+@pytest.mark.parametrize("version", ["false", "0.0", "'0'", "", "null", "true", "99"])
+def test_a_version_that_is_not_the_integer_zero_is_rejected(version: str) -> None:
+    with pytest.raises(ReelParseError, match="unsupported version"):
+        loads_document(f"version: {version}\n")
+
+
+def test_version_zero_loads() -> None:
+    assert loads_document("version: 0\n").version == 0
+
+
+@pytest.mark.parametrize("ignore", ["[x.mp4, y.mp4, x.mp4]", "[x.mp4, ./x.mp4]"])
+def test_a_duplicate_ignore_entry_is_a_parse_error(ignore: str) -> None:
+    with pytest.raises(
+        ReelParseError,
+        match=r"ignore\[(2|1)\]: duplicate ignore entry 'x.mp4' \(first at ignore\[0\]\)",
+    ):
+        loads_document(f"version: 0\nignore: {ignore}\n")
+
+
+def test_distinct_ignore_entries_still_load() -> None:
+    assert loads_document("version: 0\nignore: [x.mp4, y.mp4, sub/x.mp4]\n").ignore == (
+        "x.mp4",
+        "y.mp4",
+        "sub/x.mp4",
+    )
+
+
+@pytest.mark.parametrize(
+    ("look", "where", "key", "kind"),
+    [
+        ("{2024-01-01: x}", "look", "2024-01-01", "a date"),
+        ("{1: a, b: c}", "look", "1", "an integer"),
+        ("{layers: [{1: x}]}", r"look\.layers\[0\]", "1", "an integer"),
+        ("{a: {b: {true: 1}}}", r"look\.a\.b", "True", "a boolean"),
+    ],
+)
+def test_a_non_string_look_key_is_a_parse_error(look: str, where: str, key: str, kind: str) -> None:
+    with pytest.raises(ReelParseError, match=rf"{where}: key {key} is {kind}, not a string"):
+        loads_document(f"version: 0\nlook: {look}\n")
+
+
+def test_a_non_string_key_in_a_legacy_title_card_is_a_parse_error() -> None:
+    with pytest.raises(ReelParseError, match=r"look: key 1 is an integer"):
+        loads_document("title_card: {1: a}\n")
+
+
+def test_quoted_and_unknown_look_keys_still_load_and_round_trip() -> None:
+    text = "version: 0\nlook:\n  '2024-01-01': x\n  unknown_future_key: 42\n"
+    doc = loads_document(text)
+
+    assert doc.look == {"2024-01-01": "x", "unknown_future_key": 42}
+    assert dumps_document(doc) == text
+
+
+def test_the_editorial_hash_of_a_valid_document_is_unchanged() -> None:
+    """Literal taken from main before the value checks existed: valid documents hash alike."""
+    assert (
+        editorial_hash(loads_document(VALID_DOC))
+        == "c700787458200777f425cc8e2a87656dc64835d5388f5dfc81f2ffaf1ae5163a"
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "where"),
+    [
+        ('version: 0\nmetadata: {title: "Fest \\ud800"}\n', "metadata.title"),
+        ('version: 0\nlook: {font: "x\\ud800"}\n', "look.font"),
+        ('version: 0\nlook: {"a\\ud800": 1}\n', "look"),
+        (
+            'version: 0\nchapters: [{name: "", clips: ["a\\ud800.mp4"]}]\n',
+            r"chapters\[0\]\.clips\[0\]",
+        ),
+        ('version: 0\nmetadata: {description: "x\\ud800y"}\n', "metadata.description"),
+        ('title: "x\\ud800"\n', "title"),
+        ('"k\\ud800": 1\n', r"\['k"),
+    ],
+)
+def test_a_lone_surrogate_is_a_parse_error_naming_its_path(text: str, where: str) -> None:
+    with pytest.raises(ReelParseError, match=rf"{where}.*lone surrogate") as exc:
+        loads_document(text)
+
+    str(exc.value).encode("utf-8")  # the message itself can be printed
+
+
+def test_a_character_beyond_the_bmp_loads() -> None:
+    doc = loads_document('version: 0\nmetadata: {title: "Fest \\U0001F386"}\n')
+
+    assert doc.metadata.title == "Fest \U0001f386"
