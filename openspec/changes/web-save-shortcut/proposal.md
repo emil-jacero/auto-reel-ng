@@ -43,9 +43,9 @@ additive and leaves each row's tab stops unchanged.
   nothing to save).
 - **No change to what Save writes**, to the write API, to `reel.yaml` or to any failure's wording or choices.
   Overwrite with mine keeps its confirmation dialog; the shortcut never reaches it.
-- **No new dependency, no web test framework.** `web/` has none (`package.json` has only `dev`, `build`,
-  `check`); verification is `tsc`, the production build and Playwright in a real browser, from the
-  scratchpad and never in the repo (the project's rule).
+- **No new dependency, no new test framework.** The rules are a pure module covered by a `node --test` file
+  (`npm test`, as the other pure modules are); the keyboard behaviour is verified with `tsc`, the production
+  build and Playwright in a real browser, from the scratchpad and never in the repo (the project's rule).
 - **Not re-ordering the save bar in the DOM** (it would move it before the clip lists; not what was decided).
 
 ## Capabilities
@@ -65,8 +65,9 @@ None.
 ## Impact
 
 - **Packages:** `web/` only, plus `web/README.md`.
-  - `src/edit/SaveBar.tsx`: an exported pure `saveHold(...)` (why Save cannot act now, or null); the button
-    uses it, and gets `aria-keyshortcuts` and a `title`.
+  - `src/edit/saveShortcut.ts` (new, pure) with `saveShortcut.test.ts`: `saveHold(...)` (why Save cannot act
+    now, or null), `isSaveChord(...)` and `holdWords(...)`.
+  - `src/edit/SaveBar.tsx`: the button uses `saveHold`, and gets `aria-keyshortcuts` and a `title`.
   - `src/edit/EventEditor.tsx`: the `keydown` effect, one announce per outcome. About 50 lines.
 - **CLI vs API (Principle V):** untouched. This is client input handling; nothing moves into `api/`.
 - **Rendered output:** unchanged. No `RENDER_GRAPH_VERSION` bump, and the staleness fingerprint inputs are

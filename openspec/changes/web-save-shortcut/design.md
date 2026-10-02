@@ -66,12 +66,13 @@ breaks if `web-edit-save-bar-polish` hides or unmounts the bar while clean, and 
 node is not a user press); (b) copy the conditions into the effect (drifts); (c) move the hold into `submit`
 (it also serves Retry and Overwrite, and Overwrite with mine is legitimately sent while a conflict holds
 Save back).
-**Decision**: export from `SaveBar.tsx`
+**Decision**: export from a new pure module `saveShortcut.ts` (imported by `SaveBar.tsx` and `EventEditor.tsx`;
+not from the `.tsx` so that `npm test` can load it)
 
 ```ts
 export type SaveHold = 'nothing' | 'unfinished' | 'conflict' | 'gone'
 /** Why Save cannot act now, or null. Pressed-state is a separate rule (`locked`). */
-export function saveHold(edited: boolean, unfinished: boolean, problem: SaveProblem | null): SaveHold | null
+export function saveHold(edited: boolean, unfinished: boolean, problem: { kind: string } | null): SaveHold | null
 ```
 
 Precedence: `gone`, then `conflict`, then `unfinished`, then `nothing`. A vanished event with no edits is
@@ -167,7 +168,8 @@ against their triage entries:
 
 ## Verification approach
 
-`web/` has no unit-test framework and Principle VII forbids adding one for a 50-line change. The tests are
+The pure rules (`saveHold`, `isSaveChord`, `holdWords`) are in `saveShortcut.ts` with a `node --test` file,
+like the other pure modules; no framework is added. The keyboard behaviour is tested with
 real-browser Playwright scripts run from the scratchpad (never committed), each asserting on the requests
 the page sends (a `**/reel` route that records and fulfils or aborts, never a catch-all), `defaultPrevented`
 on a `keydown` probe, the live region's text, and focus. They run in light and dark at 1280 and 390 wide,

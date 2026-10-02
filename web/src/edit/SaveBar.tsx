@@ -8,6 +8,7 @@ import { LIST_HREF } from '../route'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
+import { saveHold } from './saveShortcut'
 
 /*
  * The save bar, shown while Edit mode holds unsaved changes (or a vanished event's
@@ -17,6 +18,9 @@ import { Pill } from '../ui/Pill'
  * it rests after the editor (EventEditor.tsx `placeBar`). It says what changed,
  * offers Reset and Save, and shows the last save's failure above them with that
  * failure's own choices (Retry, Reload latest, Overwrite with mine).
+ *
+ * Ctrl+S (Cmd+S on a Mac) saves from anywhere in Edit mode (EventEditor.tsx); `saveHold`
+ * (saveShortcut.ts) is the one rule for when Save cannot act, for the button and that shortcut.
  *
  * Every control here follows the busy-control rule: one that cannot act now is
  * aria-disabled and ignores presses, never `disabled`, which would drop focus
@@ -88,7 +92,7 @@ export function SaveBar({
   // but not added (it would be lost).
   const unsendable = !edited || unfinished
   // Save also waits while the failure's own choices are the way on.
-  const saveBlocked = unsendable || problem?.kind === 'conflict' || problem?.kind === 'gone'
+  const saveBlocked = saveHold(edited, unfinished, problem) !== null
   // One primary action at a time: the failure's way on while it holds Save back, else Save.
   const savePrimary = problem?.kind !== 'conflict' && problem?.kind !== 'gone'
   const describedBy = unfinished ? summaryId : problem !== null ? alertId : undefined
@@ -155,6 +159,8 @@ export function SaveBar({
               className={savePrimary ? 'btn btn-primary' : 'btn btn-secondary'}
               {...controlState(pressed, 'save', saveBlocked)}
               aria-describedby={describedBy}
+              aria-keyshortcuts="Control+S Meta+S"
+              title="Save (Ctrl+S, or ⌘S on a Mac)"
               onClick={() => {
                 if (!locked && !saveBlocked) {
                   onSave()
