@@ -5,7 +5,7 @@ State of `origin/main` at `5bd92ad`, which already holds the merged gates `thumb
 
 - **`thumbs/thumbnail.py`.** `thumbnail_for(clip, *, position, cache_dir, runtime)` computes
   `key = thumbnail_key(...)`, `target = cache_dir / f"{key}.jpg"`, returns `target` on `is_cached`, otherwise
-  runs `_probe_duration` (one `probe_media`, which raises `ThumbnailError` on a probe failure or a duration
+  runs `_probe_clip` (one `probe_media`, which raises `ThumbnailError` on a probe failure or a duration
   that is not positive and finite), then `_create_temporary` (creates the cache dir and an empty
   `.<key>.<hex>.tmp`, raising `ThumbnailCacheError` on an `OSError`), `_extract` (ffmpeg once; any failure or
   an empty output is `ThumbnailError`), and `_finalize` (`fsync`, `os.replace`). Any `BaseException` removes
@@ -27,7 +27,7 @@ State of `origin/main` at `5bd92ad`, which already holds the merged gates `thumb
   (`test_real_thumbnails_from_a_read_only_library`) asserts a second request "tries again" and that the
   cache holds only the two JPEGs. These change by exactly the marker.
 - **Triage evidence for the duration, re-checked.** `ClipOut` (api/schemas.py) has no duration and the
-  event detail is probe-free; `probe_media(...).duration` inside `_probe_duration` is the only server-side
+  event detail is probe-free; `probe_media(...).duration` inside `_probe_clip` is the only server-side
   duration, and it is not persisted. `recorded_duration` is the missing read path; the `ClipOut` field that
   uses it is `api-clip-duration`.
 
@@ -65,7 +65,7 @@ treats `null` as unknown already (`api-clip-duration`).
 def recorded_duration(target: Path) -> Optional[float]: ...
 ```
 `thumbnail_for` writes `{"duration": <float>}` (JSON, `json.dumps` of the float the probe returned, which
-round-trips exactly) after `_probe_duration` returned and `_create_temporary` created the directory, and
+round-trips exactly) after `_probe_clip` returned and `_create_temporary` created the directory, and
 before `_extract`. It is written even if extraction then fails: the probe was real, and a clip that
 probed fine but has no frame at `position × duration` still has a known length. `recorded_duration`:
 - returns the float when the file holds a JSON object whose `duration` is a number (not a bool), finite and
@@ -74,8 +74,8 @@ probed fine but has no frame at `position × duration` still has a known length.
   logs at debug and never raises. A read that serves the probe-free events routes must not fail because a
   cache file is damaged, and it must not turn damage into a number.
 It never runs ffprobe and never writes. A cache hit in `thumbnail_for` stays "no ffprobe", so it does not
-backfill: a JPEG made before this change has no sidecar until its key changes. The `THUMBNAIL_VERSION` bump
-that the merged gates make re-keys everything once anyway.
+backfill: a JPEG made before this change has no sidecar until its key changes. The gate's `THUMBNAIL_VERSION` 3 already re-keyed the cache once before this change, so existing v3 JPEGs
+have no sidecar and keep none until their key changes (a clip edit, or a later version bump).
 A failure to write the sidecar (after the directory was created) is the cache's fault:
 `ThumbnailCacheError`, as `_finalize`'s. This composes with the gate's disk-full rule (a full disk is a
 cache fault, reported once).
@@ -135,7 +135,7 @@ trade-off, not a bug: after the operator fixes the binary, the previews recover 
 
 ### Interaction with the merged gate
 `thumbs-hdr-and-cache-hygiene` edits `thumbnail.py` too. Read before this change is implemented:
-- **HDR flag in the key / chain in `thumbnail_args`**: sidecars are named from `target`, so they follow any
+- **HDR tone-map chain in `thumbnail_args` (no key flag; `THUMBNAIL_VERSION` 3)**: sidecars are named from `target`, so they follow any
   key. The marker is written from the same `except ThumbnailError` path whatever the extraction args are.
 - **Disk full → `ThumbnailCacheError`**: neither sidecar write turns a `ThumbnailError` into a marker; a
   full disk raises the cache error from the duration write or the extraction and is never remembered.

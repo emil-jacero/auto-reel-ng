@@ -348,15 +348,16 @@ render, or job logic lives in the web tier.
   the clip's identity and the one-line cause `thumbs` prints, without server paths
   — the service log has the full ffmpeg output), with `failure: unreadable_disk` when the event
   folder cannot be listed, and with no kind when the cache cannot be read or
-  written or `config.yaml` is invalid. A failure is not remembered: the next
-  request tries again. At most **2** extractions run at once per `serve` process
+  written or `config.yaml` is invalid. A clip's failure (the 502 with
+  `thumbnail_failed`) is remembered for **60 s**: the requests in that window get the
+  same 502 with no new attempt, then the next one tries again. A cache or
+  `config.yaml` fault is never remembered. At most **2** extractions run at once per `serve` process
   and concurrent requests for one clip share one; a cached thumbnail never waits
   for them, and neither does any other route. The route needs **no database**
   (it answers while Postgres is down) and writes nothing into the library — only
-  the cache outside it, so a read-only archive still gets thumbnails. There is **no
-  timeout** on an extraction: one stuck on a stalled drive holds its slot, and two
-  stop every uncached thumbnail (cached ones and every other route keep answering)
-  until `serve` is restarted. The events list and detail gain no thumbnail field
+  the cache outside it, so a read-only archive still gets thumbnails. An extraction
+  is bounded to **60 s**: one stuck on a stalled drive is killed then and fails that
+  clip like any other thumbnail failure (remembered for 60 s), so it frees its slot. The events list and detail gain no thumbnail field
   and stay probe-free.
 - **`GET /api/v1/events/{event_id}/media?clip=<identity>`** streams one clip's
   file, and **`GET /api/v1/events/{event_id}/movie`** streams the event's rendered

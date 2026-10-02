@@ -40,7 +40,8 @@ class ThumbnailGate:
         """Run ``extract`` in the threadpool under a slot, or join the one running for ``key``.
 
         Every waiter gets the shared extraction's result or its exception. A failed
-        extraction leaves the map, so the next request for ``key`` tries again.
+        extraction leaves the map, so the next request for ``key`` tries again in the gate
+        (``thumbnail_for`` may still answer the clip's recorded failure marker, for 60 s).
         """
         task = self._in_flight.get(key)
         if task is None:
