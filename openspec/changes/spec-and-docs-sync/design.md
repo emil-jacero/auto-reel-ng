@@ -44,15 +44,14 @@ strictness, pruning superseded movies).
   `thumbnails.cache_dir` must be the host path of the bind mount (`./data/cache/auto-reel/thumbnails`,
   absolute) and the container path of the same directory when read inside the container; a single
   `config.yaml` can only hold one of them, so the example says the library is configured for the side that
-  reads it, and that the cache key hashes the resolved clip path, so a host and a container that see the
-  library at different paths do not share entries even from one directory. This caveat is stated in the
-  docs, not worked around.
+  reads it. Since `thumbs-cache-key-and-count` the key hashes the clip's file name, not its path, so the
+  library may sit at different paths on each side and only the directory must be shared.
 - **No test for prose in README/HLD.** Verification there is review plus a grep that the sentences exist;
   the repo has no doc-content tests and adding one would couple tests to wording.
 
 ## Risks / Trade-offs
 
-- [The sharing caveat (resolved clip path is in the cache key) could be wrong or stale] -> the task
+- [The sharing statement (the key hashes the file name, not the path) could go stale] -> the task
   re-reads `auto_reel_ng/thumbs/` for the key before writing the sentence, and the README states only what
   the key hashes.
 - [Reworded scenario drifts from the page again] -> unchanged THEN; the page's naming rule is `web/src/events/common.tsx`

@@ -16,7 +16,7 @@
   tests/test_api_ws_lifecycle.py` passes and `git diff` shows only the docstring changed.
 - [x] 2.2 Add to the README "Clip thumbnails" section a short example of one cache shared by the host CLI
   and a container service (compose's `XDG_CACHE_HOME=/data/cache`, or `thumbnails.cache_dir`), including
-  that the cache key hashes the resolved clip path; verify by grep that the example names
+  that sharing needs only the same directory because the cache key hashes the file name, not the path; verify by grep that the example names
   `thumbnails.cache_dir` and `XDG_CACHE_HOME`, and that `compose.yaml` still sets what the text says.
 - [x] 2.3 Add the same fact to HLD D-11 ("The cache" bullet) in one or two sentences; verify the README and
   HLD agree.
