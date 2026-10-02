@@ -9,7 +9,7 @@ project root: the ingest layouts walk the project root's subfolders, so rendered
 folders there would be scanned back in as events. `render`, `scan`, `enqueue`, `adopt-renders`, the worker
 and the API service SHALL all resolve the same default. An explicitly configured output directory (`-o/--output` or
 `config.yaml`'s `output`) is used as given, unless it equals or lies inside the directory the layout walks, which every
-command refuses (capability `project-config`, requirement "The output directory never lies inside the
+command that walks a project, and `serve`, refuses (capability `project-config`, requirement "The output directory never lies inside the
 walked root"): the command prints `error: output directory <output> is inside the walked root <root>;
 choose a folder outside it, for example <root>-output`, exits non-zero, and walks, renders and writes
 nothing. An output that lies inside the project root but outside a distinct `input` directory is
