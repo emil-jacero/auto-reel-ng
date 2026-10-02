@@ -18,7 +18,9 @@ worker queue stays shared by every project in the database.
 
 Store calls run on a dedicated single-thread executor (D-A5 risk mitigation), so
 concurrent REST scan requests (FastAPI's default threadpool) can never starve the
-poller.
+poller. Stopping the hub never waits on that executor: a store call stalled on an
+unresponsive database is abandoned (its result dropped, the thread left to finish
+alone), so neither the event loop nor the service's shutdown is held by the database.
 """
 
 from __future__ import annotations
@@ -57,7 +59,7 @@ _QUEUE_MAXSIZE = 64
 _FINISHED_OVERLAP = timedelta(seconds=30)
 
 
-class JobsHub:
+class JobsHub:  # pylint: disable=too-many-instance-attributes
     """Subscriber-gated central poller + fanout for live job updates."""
 
     def __init__(
@@ -82,6 +84,12 @@ class JobsHub:
         self._finished_as_of: Optional[datetime] = None
         self._terminal_sent: dict[uuid.UUID, datetime] = {}
         self._poller_task: Optional[asyncio.Task] = None
+        # Set by stop() before anything else: nothing new starts afterwards, and a
+        # subscribe is answered with a close-only queue. ``_start_task`` is the first
+        # subscriber's seed reads while they run, so stop() can cancel them without
+        # waiting for the lock their subscribe holds.
+        self._stopping = False
+        self._start_task: Optional[asyncio.Task[None]] = None
         self._lock = asyncio.Lock()
         # Single-thread executor (D-A5 risk mitigation): the poller's store calls
         # never compete with REST scan requests for FastAPI's default threadpool.
@@ -106,16 +114,39 @@ class JobsHub:
         subscriber's reads have succeeded: a start that fails (a database blip) or
         is cancelled leaves the hub as it was, so the next subscriber is the first
         one again and starts the poller, rather than joining one that never ran.
+
+        Once the hub is stopping, or stops while the first subscriber's reads are
+        pending, the queue holds only the close sentinel and is not registered: the
+        caller's send loop then closes the connection with 1013, like any subscriber
+        the hub lets go. No store call is made for it.
         """
         queue: asyncio.Queue = asyncio.Queue(maxsize=self._queue_maxsize)
+        if self._stop_begun():
+            return self._refused(queue)
         async with self._lock:
-            if not self._subscribers:
-                await self._start_polling()
+            if self._stop_begun():
+                return self._refused(queue)
+            if not self._subscribers and not await self._start_polling():
+                return self._refused(queue)
             self._subscribers.add(queue)
         queue.put_nowait(self._encode(WsMessageType.SNAPSHOT, self._snapshot.values()))
         return queue
 
-    async def _start_polling(self) -> None:
+    def _stop_begun(self) -> bool:
+        """Whether :meth:`stop` has begun: the hub starts nothing and refuses subscribers.
+
+        A call rather than the attribute, so a flag another task sets across an ``await``
+        is read afresh and not narrowed away by the type checker.
+        """
+        return self._stopping
+
+    @staticmethod
+    def _refused(queue: asyncio.Queue) -> asyncio.Queue:
+        """``queue`` holding only the close sentinel: the hub has stopped, or is stopping."""
+        queue.put_nowait(_CLOSE)
+        return queue
+
+    async def _start_polling(self) -> bool:
         """Seed the poller's state and start it: the first subscriber's work.
 
         The finished read comes before the active snapshot: a job finishing between
@@ -123,15 +154,39 @@ class JobsHub:
         it would be seeded as sent while no frame carried its terminal row. If either
         read raises, or the caller is cancelled, the finished-jobs state is reset
         and the error propagates with no poller started.
+
+        The reads run as a task (``_start_task``) so :meth:`stop` can cancel them while
+        this caller holds the lock. Returns ``False`` when the hub stopped meanwhile
+        (nothing was started, the state is reset); a cancel of the caller itself
+        still propagates.
         """
+        self._start_task = asyncio.create_task(self._seed())
         try:
-            await self._seed_finished()
-            self._snapshot = await self._fetch_active_snapshot()
-        except BaseException:
+            await self._start_task
+        except BaseException as error:
             self._finished_as_of = None
             self._terminal_sent = {}
+            task = asyncio.current_task()
+            stopped = (
+                isinstance(error, asyncio.CancelledError)
+                and self._stop_begun()
+                and (task is None or task.cancelling() == 0)
+            )
+            if stopped:
+                return False
             raise
+        finally:
+            self._start_task = None
+        if self._stop_begun():  # stopped as the reads returned: start no poller behind the stop
+            self._finished_as_of = None
+            self._terminal_sent = {}
+            return False
         self._poller_task = asyncio.create_task(self._poll_loop())
+        return True
+
+    async def _seed(self) -> None:
+        await self._seed_finished()
+        self._snapshot = await self._fetch_active_snapshot()
 
     async def unsubscribe(self, queue: asyncio.Queue, *, notify_close: bool = False) -> None:
         """Remove ``queue``; stops the poller if it was the last subscriber."""
@@ -151,22 +206,31 @@ class JobsHub:
     async def stop(self) -> None:
         """Shut the hub down (app shutdown, D-A7): close every subscriber, stop polling.
 
-        Awaits the cancelled poller task and shuts the executor down with
-        ``wait=True`` *before* returning: the app's lifespan disposes the engine
-        immediately after calling this, and a store call still in flight on the
-        executor thread when that happens would race a closing connection pool.
+        Signals before it takes the lock: the stopping flag, the first subscriber's
+        pending seed reads and the poller are cancelled first, so a subscribe parked
+        on a stalled database releases the lock and a stalled poll tick ends at once.
+        The executor is released with ``wait=False, cancel_futures=True``, never
+        joined: a store call still running on its thread is abandoned, not awaited, so
+        the event loop is not blocked and the shutdown does not wait for the database.
+        The app's lifespan disposes the engine right after this; that only detaches a
+        connection the abandoned call still holds, and the call returns it when it ends.
+        Idempotent.
         """
+        self._stopping = True
+        if self._start_task is not None:
+            self._start_task.cancel()
+        poller = self._poller_task
+        self._poller_task = None
+        if poller is not None:
+            poller.cancel()
         async with self._lock:
-            poller = self._poller_task
-            self._poller_task = None
             for queue in list(self._subscribers):
                 self._force_put(queue, _CLOSE)
             self._subscribers.clear()
         if poller is not None:
-            poller.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await poller
-        self._executor.shutdown(wait=True)
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
     @staticmethod
     def _force_put(queue: asyncio.Queue, item: object) -> None:
@@ -374,34 +438,59 @@ async def ws_jobs(websocket: WebSocket) -> None:
     (internal error) and is re-raised here once the connection has ended, so uvicorn
     logs it. The server reports either close back to the receive loop as a disconnect.
 
-    Only the push task is ever cancelled, never ``receive()``: it waits on the hub's
-    queue or on a send, and cancelling either is safe. It also releases the subscription
-    itself, for the one ending the receive loop learns of late (:func:`_push_frames`).
-    The handler's own release comes first in its cleanup, before anything can suspend:
-    a test harness (Starlette's ``TestClient``) cancels the handler right after it
-    delivers the disconnect, and a cancel landing on an earlier await would skip it.
+    The first subscriber's snapshot is read from the database, which may be stalled. The
+    handler therefore subscribes as a task and watches the connection while it waits: a
+    client close, a lost peer or the server's shutdown close during that read abandons the
+    subscribe at once (releasing the hub's lock and the read) and ends the handler, so
+    uvicorn reaches the lifespan's ``hub.stop()`` rather than waiting for the database.
+    Anything else the client sends meanwhile is dropped.
+
+    The push task is cancelled whenever the handler ends. ``receive()`` is awaited to the
+    connection's end and abandoned only when the handler itself is cancelled (the test
+    harness' session exit), never while the handler is running normally. The push task
+    also releases the subscription itself, for the one ending the receive loop learns of
+    late (:func:`_push_frames`). The handler's own release comes first in its cleanup,
+    before anything can suspend: a cancel landing on an earlier await would skip it.
     """
     hub: JobsHub = websocket.app.state.jobs_hub
     await websocket.accept()
     queue: Optional[asyncio.Queue] = None
     pusher: Optional[asyncio.Task[None]] = None
+    subscribing = asyncio.create_task(hub.subscribe())
+    incoming = asyncio.create_task(websocket.receive())
     try:
-        # Inside the try, so whatever ends this handler, a subscriber it
-        # registered is unsubscribed (a failed subscribe registers none).
-        queue = await hub.subscribe()
+        # The first read of the connection waits alongside the subscribe, which can stall
+        # on the database (a failed subscribe raises here and registers no subscriber).
+        while not subscribing.done():
+            await asyncio.wait({subscribing, incoming}, return_when=asyncio.FIRST_COMPLETED)
+            if subscribing.done():
+                break
+            if incoming.result()["type"] == "websocket.disconnect":
+                return  # the cleanup abandons the subscribe
+            incoming = asyncio.create_task(websocket.receive())  # a message: dropped
+        queue = subscribing.result()
         pusher = asyncio.create_task(_push_frames(websocket, hub, queue))
         # Push-only: what a client sends is read and dropped until the connection ends.
-        while (await websocket.receive())["type"] != "websocket.disconnect":
-            pass
+        while (await incoming)["type"] != "websocket.disconnect":
+            incoming = asyncio.create_task(websocket.receive())
     finally:
         # Release before anything here can suspend: a cancel landing on the wait below
         # must find the subscription already gone.
+        subscribing.cancel()
+        if not incoming.done():
+            incoming.cancel()
         if pusher is not None:
             pusher.cancel()
+        if (
+            queue is None
+            and subscribing.done()
+            and not subscribing.cancelled()
+            and subscribing.exception() is None
+        ):
+            queue = subscribing.result()  # it finished as the handler was ending
         if queue is not None:
             await hub.unsubscribe(queue)
-        if pusher is not None:
-            await asyncio.wait({pusher})  # never raises; the outcome is read below
+        await asyncio.wait({task for task in (subscribing, incoming, pusher) if task is not None})
     if pusher is not None and not pusher.cancelled():
         pusher.result()  # re-raise an unexpected push error for uvicorn to log
 

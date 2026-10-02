@@ -17,6 +17,8 @@ import contextlib
 import json
 import logging
 import os
+import threading
+import time
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -30,7 +32,7 @@ from test_api_ws_hub import BLANDAT, PROJ, FakeJob, FakeStore
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
 
-from auto_reel_ng.api.ws import JobsHub, router
+from auto_reel_ng.api.ws import _CLOSE, JobsHub, router
 from auto_reel_ng.persistence.models import JobStatus
 
 #: The hub's poll interval: five polls without a store query take a quarter second.
@@ -165,6 +167,68 @@ def _logged_asgi_error(caplog: pytest.LogCaptureFixture, error: type[BaseExcepti
         and isinstance(record.exc_info[1], error)
         for record in caplog.records
     )
+
+
+#: The longest a blocked store call waits for its release. A test releases it in a ``finally``;
+#: this bound only keeps a regression (a ``stop()`` that joins the stalled thread, so the
+#: loop cannot even time out) a failing test instead of a hung one.
+_MAX_BLOCK = 3.0
+
+
+class _BlockingStore(FakeStore):
+    """A ``FakeStore`` whose ``list_by_status`` can be made to block, like a stalled database.
+
+    ``entered`` is set when a call starts blocking. The block is a ``threading.Event`` wait
+    on the hub's executor thread, so releasing it ends the thread; no test leaves one behind.
+    """
+
+    def __init__(self, *, blocked: bool = False) -> None:
+        super().__init__()
+        self.entered = threading.Event()
+        self._open = threading.Event()
+        if not blocked:
+            self._open.set()
+
+    def block(self) -> None:
+        self._open.clear()
+
+    def release(self) -> None:
+        self._open.set()
+
+    def list_by_status(
+        self, status: JobStatus, *, project_root: Optional[str] = None
+    ) -> list[FakeJob]:
+        if not self._open.is_set():
+            self.entered.set()
+            self._open.wait(_MAX_BLOCK)
+        return super().list_by_status(status, project_root=project_root)
+
+
+class _LoopProbe:
+    """A task that sleeps 50 ms in a loop and records the largest gap between its wake-ups."""
+
+    def __init__(self) -> None:
+        self.max_gap = 0.0
+        self._task: Optional[asyncio.Task[None]] = None
+
+    async def _run(self) -> None:
+        last = time.monotonic()
+        while True:
+            await asyncio.sleep(0.05)
+            now = time.monotonic()
+            self.max_gap = max(self.max_gap, now - last)
+            last = now
+
+    async def __aenter__(self) -> "_LoopProbe":
+        self._task = asyncio.create_task(self._run())
+        await asyncio.sleep(0.12)  # let it tick a few times
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
+        assert self._task is not None
+        self._task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await self._task
 
 
 # --------------------------------------------------------------------------- #
@@ -420,3 +484,149 @@ async def test_a_server_shutdown_closes_every_client_with_1012_and_completes() -
         assert [await _close_code(client) for client in clients] == [1012, 1012, 1012]
         await asyncio.wait_for(asyncio.shield(served.task), 3.0)
         assert (served.hub.subscriber_count, served.hub.is_polling) == (0, False)
+
+
+# --------------------------------------------------------------------------- #
+# jobshub-stop-and-db-timeouts: stop() never waits on the database
+# --------------------------------------------------------------------------- #
+
+
+async def _wait_entered(store: _BlockingStore) -> None:
+    """Return once a store call is blocked in ``store`` (the call runs on another thread)."""
+    await _until(store.entered.is_set, timeout=2.0)
+
+
+def _blocking_hub(store: _BlockingStore) -> JobsHub:
+    return JobsHub(store, project_root=PROJ, poll_interval=POLL)
+
+
+async def test_a_stalled_poll_does_not_freeze_the_stop_or_the_loop() -> None:
+    store = _BlockingStore()
+    hub = _blocking_hub(store)
+    try:
+        await hub.subscribe()
+        store.block()
+        await _wait_entered(store)  # the poller's tick is now inside the stalled read
+
+        async with _LoopProbe() as probe:
+            started = time.monotonic()
+            await asyncio.wait_for(hub.stop(), 1.0)
+            elapsed = time.monotonic() - started
+            await asyncio.sleep(0.2)
+        assert elapsed < 1.0
+        assert probe.max_gap < 0.5  # a joined executor thread would freeze the loop for the block
+        assert (hub.subscriber_count, hub.is_polling) == (0, False)
+    finally:
+        store.release()
+
+
+async def test_a_stalled_first_subscribe_does_not_hold_the_stop() -> None:
+    store = _BlockingStore(blocked=True)
+    hub = _blocking_hub(store)
+    try:
+        subscribing = asyncio.create_task(hub.subscribe())
+        await _wait_entered(store)
+
+        async with _LoopProbe() as probe:
+            await asyncio.wait_for(hub.stop(), 1.0)
+            queue = await asyncio.wait_for(subscribing, 1.0)
+        assert probe.max_gap < 0.5
+        assert queue.get_nowait() is _CLOSE
+        assert queue.empty()
+        assert (hub.subscriber_count, hub.is_polling) == (0, False)
+    finally:
+        store.release()
+
+
+async def test_a_subscribe_after_the_stop_is_refused_without_a_store_call() -> None:
+    store = _BlockingStore()
+    hub = _blocking_hub(store)
+    await hub.stop()
+    await hub.stop()  # a second stop is harmless
+
+    queue = await asyncio.wait_for(hub.subscribe(), 1.0)
+
+    assert queue.get_nowait() is _CLOSE
+    assert queue.empty()
+    assert _store_reads(store) == (0, 0, 0)
+    assert (hub.subscriber_count, hub.is_polling) == (0, False)
+
+
+async def test_a_subscriber_cancelled_mid_seed_leaves_the_hub_as_it_was() -> None:
+    store = _BlockingStore(blocked=True)
+    hub = _blocking_hub(store)
+    try:
+        subscribing = asyncio.create_task(hub.subscribe())
+        await _wait_entered(store)
+        subscribing.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await subscribing
+        assert (hub.subscriber_count, hub.is_polling) == (0, False)
+
+        store.release()
+        queue = await asyncio.wait_for(hub.subscribe(), 1.0)
+        assert json.loads(queue.get_nowait())["type"] == "snapshot"
+        assert (hub.subscriber_count, hub.is_polling) == (1, True)
+    finally:
+        store.release()
+        await hub.stop()
+
+
+# --------------------------------------------------------------------------- #
+# jobshub-stop-and-db-timeouts: the handler watches the connection during the seed
+# --------------------------------------------------------------------------- #
+
+
+async def test_a_client_that_closes_during_a_stalled_first_snapshot_is_released_at_once() -> None:
+    store = _BlockingStore(blocked=True)
+    try:
+        async with _serving(store) as served:
+            client = await connect(served.url)
+            await _wait_entered(store)
+
+            await asyncio.wait_for(client.close(), 2.0)
+
+            # The database has not answered, yet the lock is free and nothing is registered.
+            await _until(lambda: not served.hub._lock.locked(), timeout=1.0)
+            assert (served.hub.subscriber_count, served.hub.is_polling) == (0, False)
+
+            store.release()
+            async with connect(served.url) as later:
+                assert (await _frame(later))["type"] == "snapshot"
+    finally:
+        store.release()
+
+
+async def test_a_server_shutdown_during_a_stalled_first_snapshot_completes_without_it() -> None:
+    store = _BlockingStore(blocked=True)
+    try:
+        async with _serving(store) as served:
+            client = await connect(served.url)
+            await _wait_entered(store)
+
+            served.server.should_exit = True
+
+            assert await _close_code(client) == 1012
+            await asyncio.wait_for(asyncio.shield(served.task), 2.0)  # the lifespan's stop() ran
+            refused = await served.hub.subscribe()
+            assert refused.get_nowait() is _CLOSE
+    finally:
+        store.release()
+
+
+async def test_a_message_sent_during_a_stalled_first_snapshot_is_dropped() -> None:
+    store = _BlockingStore(blocked=True)
+    try:
+        async with _serving(store) as served:
+            async with connect(served.url) as client:
+                await _wait_entered(store)
+                await client.send("anyone there?")
+                await asyncio.sleep(0.2)
+
+                store.release()
+
+                frame = await _frame(client)
+                assert frame["type"] == "snapshot"
+                assert served.hub.subscriber_count == 1
+    finally:
+        store.release()
