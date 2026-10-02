@@ -3,8 +3,8 @@
 Mirrors :func:`auto_reel_ng.scheduler.config.resolve_worker_config`: CLI-flag
 overrides layer over a project's ``config.yaml`` ``api.*`` map, which layers over
 built-in defaults. ``project_root``/``layout_name`` reuse the same resolution the
-CLI's :func:`~auto_reel_ng.cli.context.project_context` performs, so the API walks exactly the events ``scan``
-would report for the same root.
+CLI's :func:`~auto_reel_ng.cli.context.project_context` performs, so the API walks
+exactly the events ``scan`` would report for the same root.
 """
 
 from __future__ import annotations
@@ -100,14 +100,15 @@ def require_output_outside_walk_root(
     bogus events (``project-config``). Both paths are resolved for the comparison
     only (relative, ``..`` and symlinks), so a not-yet-created output is fine; an
     output that contains the walked root, or sits beside it, is allowed. The suggested
-    folder is the default sibling of ``project_root`` (``walk_root`` when not given). The CLI's
-    ``project_context`` and :func:`resolve_api_settings` share this one check.
+    folder is the default sibling of ``project_root`` (``walk_root`` when not given).
+    The CLI's ``project_context`` and :func:`resolve_api_settings` share this one check.
     """
     out, walk = output_dir.resolve(), walk_root.resolve()
     if out == walk or walk in out.parents:
+        suggested = default_output_dir(project_root or walk_root)
         raise ConfigError(
             f"output directory {output_dir} is inside the walked root {walk_root}; "
-            f"choose a folder outside it, for example {default_output_dir(project_root or walk_root)}"
+            f"choose a folder outside it, for example {suggested}"
         )
 
 

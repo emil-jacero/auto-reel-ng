@@ -15,9 +15,9 @@
 
 ## 2. api/: the shared check
 
-- [x] 2.1 Add `require_output_outside_walk_root(output_dir, walk_root)` to `api/settings.py`
-  (design D-2): resolve both, raise `ConfigError` naming both paths and suggesting
-  `default_output_dir` when the output equals the walk root or has it as a parent; export it in
+- [x] 2.1 Add `require_output_outside_walk_root(output_dir, walk_root, project_root=None)` to
+  `api/settings.py` (design D-2): resolve both, raise `ConfigError` naming both paths and suggesting
+  `default_output_dir` (the sibling of `project_root`, or of `walk_root` when not given) when the output equals the walk root or has it as a parent; export it in
   `__all__`. Call it in `resolve_api_settings` right after `output_dir` is built. Verify with new
   cases in `tests/test_api_settings.py`: `output: out` raises (message names both paths), `output:
   out/renders` raises, `output: .` with no `input` raises, a symlink to an inside folder raises,
