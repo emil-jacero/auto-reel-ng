@@ -7,11 +7,13 @@ import shutil
 import uuid
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
+from auto_reel_ng.api import events_read
 from auto_reel_ng.api.app import create_app
 from auto_reel_ng.api.settings import resolve_api_settings
 from auto_reel_ng.cli.main import main
@@ -589,6 +591,160 @@ def test_a_walk_that_fails_refuses_to_enqueue(
     assert problem["title"] == "Bad Gateway"
     assert "event scan failed" in problem["detail"]
     assert _all_jobs(store) == []
+
+
+# --------------------------------------------------------------------------- #
+# A played clip that is missing from disk refuses the enqueue
+# (api-jobs-missing-clips-refusal 2.3)
+# --------------------------------------------------------------------------- #
+
+SOMMARLOV = "2024/2024-09-01 - Sommarlov"
+
+
+def _reel(
+    project: Path,
+    event_id: str,
+    clips: list[str],
+    *,
+    exclude: tuple[str, ...] = (),
+    title: str = "Sommarlov",
+) -> Path:
+    """Give ``event_id`` a ``reel.yaml`` listing ``clips`` (``Chapter/name.mp4`` for a chapter)."""
+    by_chapter: dict[str, list[str]] = {}
+    for identity in clips:
+        by_chapter.setdefault(identity.rpartition("/")[0], []).append(identity)
+    chapters = "".join(
+        f"  - name: '{name}'\n    clips:\n" + "".join(f"      - {i}\n" for i in listed)
+        for name, listed in by_chapter.items()
+    )
+    props = "".join(f"  {identity}:\n    exclude: true\n" for identity in exclude)
+    text = f"version: 0\nmetadata:\n  title: {title}\nchapters:\n{chapters}"
+    if props:
+        text += f"clips:\n{props}"
+    path = project / event_id / "reel.yaml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _sommarlov(project: Path, clips: list[str], *, exclude: tuple[str, ...] = ()) -> Path:
+    _touch(project / SOMMARLOV / "00400.mp4")
+    return _reel(project, SOMMARLOV, ["00400.mp4", *clips], exclude=exclude)
+
+
+@pytest.mark.parametrize("force", [False, True], ids=["unforced", "forced"])
+def test_an_event_that_plays_a_missing_clip_is_refused(
+    client: TestClient, store: JobStore, project: Path, force: bool
+) -> None:
+    reel = _sommarlov(project, ["gone.mp4"])
+    before = reel.read_bytes()
+
+    response = client.post("/api/v1/jobs", json={"event_id": SOMMARLOV, "force": force})
+
+    assert response.status_code == 409
+    problem = response.json()
+    assert problem["conflict"] == "missing_clips"
+    assert problem["missing"] == ["gone.mp4"]
+    assert problem["event_id"] == SOMMARLOV
+    assert "job_id" not in problem
+    assert "gone.mp4" in problem["detail"]
+    assert "restore them, or remove them from reel.yaml" in problem["detail"]
+    assert _all_jobs(store) == []
+    assert not manifest_path(project / SOMMARLOV).exists()
+    assert reel.read_bytes() == before
+
+
+def test_every_missing_clip_is_named_sorted(client: TestClient, project: Path) -> None:
+    _sommarlov(project, ["gone-b.mp4", "Kväll/gone-a.mp4"])
+
+    response = client.post("/api/v1/jobs", json={"event_id": SOMMARLOV})
+
+    assert response.status_code == 409
+    assert response.json()["missing"] == ["Kväll/gone-a.mp4", "gone-b.mp4"]
+
+
+def test_a_missing_clip_that_reel_yaml_excludes_does_not_refuse(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    _sommarlov(project, ["borta.mp4"], exclude=("borta.mp4",))
+
+    response = client.post("/api/v1/jobs", json={"event_id": SOMMARLOV})
+
+    assert response.status_code == 201
+    assert [job.event_dir for job in store.list_by_status(JobStatus.QUEUED)] == [SOMMARLOV]
+
+
+def test_only_the_played_clip_is_named_beside_an_excluded_one(
+    client: TestClient, project: Path
+) -> None:
+    _sommarlov(project, ["borta.mp4", "saknas.mp4"], exclude=("borta.mp4",))
+
+    response = client.post("/api/v1/jobs", json={"event_id": SOMMARLOV})
+
+    assert response.status_code == 409
+    assert response.json()["missing"] == ["saknas.mp4"]
+
+
+def test_a_new_and_an_ignored_clip_are_not_missing(client: TestClient, project: Path) -> None:
+    reel = _sommarlov(project, [])
+    _touch(project / SOMMARLOV / "00500.mp4")  # NEW
+    _touch(project / SOMMARLOV / "00600.mp4")  # IGNORED
+    reel.write_text(reel.read_text(encoding="utf-8") + "ignore:\n- 00600.mp4\n", encoding="utf-8")
+
+    assert client.post("/api/v1/jobs", json={"event_id": SOMMARLOV}).status_code == 201
+
+
+def test_an_active_job_is_followed_before_the_missing_clip_refusal(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    _sommarlov(project, ["gone.mp4"])
+    active = store.enqueue(str(project), SOMMARLOV)
+
+    response = client.post("/api/v1/jobs", json={"event_id": SOMMARLOV})
+
+    assert response.status_code == 409
+    problem = response.json()
+    assert problem["conflict"] == "active_job"
+    assert problem["job_id"] == str(active)
+    assert "missing" not in problem
+
+
+def test_a_collision_outranks_the_missing_clip_refusal(client: TestClient, project: Path) -> None:
+    _add_case_only_twins(project)
+    _reel(project, KALAS_LOWER, ["00500.mp4", "gone.mp4"], title="kalas")
+
+    response = client.post("/api/v1/jobs", json={"event_id": KALAS_LOWER})
+
+    assert response.status_code == 409
+    assert response.json()["conflict"] == "output_collision"
+
+
+def test_an_unlistable_event_folder_is_the_scan_failure_not_a_pass(
+    client: TestClient, store: JobStore, project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _sommarlov(project, [])
+
+    def unlistable(*_args: object) -> list[str]:
+        raise PermissionError("Permission denied")
+
+    monkeypatch.setattr(events_read, "played_missing_clips", unlistable)
+
+    response = client.post("/api/v1/jobs", json={"event_id": SOMMARLOV})
+
+    assert response.status_code == 502
+    assert "event scan failed" in response.json()["detail"]
+    assert _all_jobs(store) == []
+
+
+def test_the_refusal_names_what_the_event_detail_blocks_on(
+    client: TestClient, project: Path
+) -> None:
+    _sommarlov(project, ["borta.mp4", "saknas.mp4"], exclude=("borta.mp4",))
+
+    refusal = client.post("/api/v1/jobs", json={"event_id": SOMMARLOV}).json()
+    detail = client.get(f"/api/v1/events/{quote(SOMMARLOV, safe='/')}").json()
+
+    assert detail["blocking_missing"] == refusal["missing"] == ["saknas.mp4"]
+    assert detail["missing"] == ["borta.mp4", "saknas.mp4"]
 
 
 def test_list_jobs_filters_by_status(client: TestClient, store: JobStore) -> None:

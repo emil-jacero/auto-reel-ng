@@ -303,7 +303,7 @@ export interface paths {
          * Create Job
          * @description ``POST /api/v1/jobs`` (task 3.1, gated per change-detection §8.14).
          *
-         *     Idempotent enqueue, 409 on active duplicate, 200 "fresh — not enqueued" when
+         *     Idempotent enqueue, 409 on active duplicate or a missing played clip, 200 "fresh — not enqueued" when
          *     the event is fresh and ``force`` is false. The API never transitions job
          *     status itself (D-A6) — the gate decision is made here, at enqueue, the same
          *     as the CLI's own ``enqueue``.
@@ -314,7 +314,9 @@ export interface paths {
          *     anything else: an event whose output path another event of the project claims is a 409
          *     ``output_collision``, fresh or stale, forced or not — never gated, never "already
          *     active". A walk that fails leaves the rule unchecked, so it is the events list's
-         *     scan-failure 502 and nothing is enqueued (Principle I).
+         *     scan-failure 502 and nothing is enqueued (Principle I). An active job is answered next, and
+         *     then an event that plays a clip missing from disk is a 409 ``missing_clips`` naming the
+         *     clips — fresh or stale, forced or not, since that render could only fail at probe.
          */
         post: operations["create_job_api_v1_jobs_post"];
         delete?: never;
@@ -600,7 +602,7 @@ export interface components {
          * @description Why ``POST /api/v1/jobs`` refused an event with a 409: the API's classification.
          * @enum {string}
          */
-        EnqueueConflict: "active_job" | "output_collision";
+        EnqueueConflict: "active_job" | "output_collision" | "missing_clips";
         /**
          * EnqueueRequest
          * @description The body of ``POST /api/v1/jobs``.
@@ -865,6 +867,8 @@ export interface components {
             conflict?: components["schemas"]["EnqueueConflict"] | null;
             /** Claimed By */
             claimed_by?: string[] | null;
+            /** Missing */
+            missing?: string[] | null;
             thumbnail_failure?: components["schemas"]["ThumbnailFailure"] | null;
         } & {
             [key: string]: unknown;

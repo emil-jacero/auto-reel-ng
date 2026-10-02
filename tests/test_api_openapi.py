@@ -403,8 +403,9 @@ def test_the_enqueue_conflict_is_published_as_a_closed_enumeration() -> None:
     published = models["EnqueueConflict"]
     assert published["type"] == "string"
     assert published["enum"] == [conflict.value for conflict in EnqueueConflict]
-    assert published["enum"] == ["active_job", "output_collision"]
+    assert published["enum"] == ["active_job", "output_collision", "missing_clips"]
     assert _non_null(problem["claimed_by"]) == {"type": "array", "items": {"type": "string"}}
+    assert _non_null(problem["missing"]) == {"type": "array", "items": {"type": "string"}}
 
 
 def test_the_thumbnail_failure_is_published_as_a_closed_enumeration() -> None:

@@ -339,6 +339,8 @@ class EnqueueConflict(StrEnum):
     ACTIVE_JOB = "active_job"
     #: Another event of the project renders to the same output path: ``claimed_by``.
     OUTPUT_COLLISION = "output_collision"
+    #: The event plays a clip that is absent from disk, so its render would fail at probe: ``missing``.
+    MISSING_CLIPS = "missing_clips"
 
 
 class ThumbnailFailure(StrEnum):
@@ -383,6 +385,9 @@ class ProblemOut(BaseModel):
     #: On an ``output_collision``: the other events claiming the same output path, as
     #: sorted event ids (a collision can be three-way).
     claimed_by: Optional[List[str]] = None
+    #: On a ``missing_clips`` 409: the played clips absent from disk (referenced, not
+    #: excluded), as sorted identities, the ones the event detail's ``blocking_missing`` lists.
+    missing: Optional[List[str]] = None
     #: Why a clip's thumbnail could not be produced, on the thumbnail route's 502. A
     #: field of its own, never ``failure``: that one describes an event, not a clip.
     thumbnail_failure: Optional[ThumbnailFailure] = None

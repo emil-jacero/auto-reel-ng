@@ -22,10 +22,12 @@ import { JobMeter, JobState } from './JobProgress'
 import {
   CANCEL_OUTCOME_LABEL,
   COLLISION_FIX,
+  MISSING_CLIPS_FIX,
   NOT_CONFIRMED,
   NOT_QUEUED,
   SCAN_FAILED,
   eventName,
+  missingClipNames,
 } from './labels'
 import { getState, isActive, load, markAnnounced, merge, subscribe, track } from './store'
 import { useEventJob } from './useJob'
@@ -42,6 +44,7 @@ import { useEventJob } from './useJob'
 type Notice =
   | { kind: 'fresh' }
   | { kind: 'collision'; claimedBy: string[]; detail: string }
+  | { kind: 'missingClips'; missing: string[] }
   | { kind: 'eventGone' }
   | { kind: 'scanFailed'; detail: string }
   // `cause`: the service named its database; answered in a way it does not publish; or no answer came
@@ -124,6 +127,14 @@ function NoticeAlert({ notice }: { notice: Notice }) {
               <p>{COLLISION_FIX}</p>
             </div>
           }
+        />
+      )
+    case 'missingClips':
+      return (
+        <Alert
+          tone="err"
+          title={`${NOT_QUEUED} Clips are missing from disk.`}
+          detail={`${missingClipNames(notice.missing)}. ${MISSING_CLIPS_FIX}`}
         />
       )
     case 'eventGone':
@@ -295,6 +306,13 @@ export function RenderControl({
       case 'collision':
         setNotice({ kind: 'collision', claimedBy: result.claimedBy, detail: result.problem.detail })
         break
+      case 'missingClips':
+        // The page's read is out of date: say why nothing was queued, then re-read so
+        // that its own guard (`blockedReason`) takes Render's place.
+        setNotice({ kind: 'missingClips', missing: result.missing })
+        markEventsChanged()
+        onFinishedRef.current()
+        break
       case 'problem':
         if (result.problem.status === 404) {
           setNotice({ kind: 'eventGone' })
@@ -311,6 +329,11 @@ export function RenderControl({
       case 'unpublished':
         setNotice({ kind: 'notQueued', cause: result.kind, message: result.message })
         break
+      default: {
+        // A new answer kind is a `tsc --noEmit` error here until it is handled.
+        const unhandled: never = result
+        throw new Error(`unhandled enqueue answer ${String(unhandled)}`)
+      }
     }
   }
 

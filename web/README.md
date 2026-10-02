@@ -78,6 +78,11 @@ frame for 40 s: the service sends a heartbeat after 15 s of silence), and reads 
 job that ended while it was down. A row's Render is confirmed to assistive technology
 only, since the row shows its job and a toast would cover the rows below; toasts, naming
 each event by its title and date, tell how renders started in the tab ended.
+Both screens already hold Render back for clips `reel.yaml` plays that are missing from disk, from their last
+read. When the service refuses an enqueue for such a clip anyway (a 409 `missing_clips`: the clip vanished
+after that read, and Render anyway cannot override it), the page says the render was not queued and names the
+clips, a row raises a toast that names them (three, and how many more), and both re-read so their own guard
+takes over.
 Jobs progress only while an `auto-reel worker` runs against the same database; with
 none, a job shows "Waiting for a worker". While an event's `reel.yaml` lists a clip
 missing from disk, its render would fail, so neither the page nor the row offers one:

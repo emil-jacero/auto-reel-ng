@@ -31,7 +31,7 @@ Conventions for every task below:
 
 ## 2. api/ — refuse a played, missing clip
 
-- [ ] 2.1 In `api/events_read.py`, add `played_missing_clips(event_dir, document)` beside the existing
+- [x] 2.1 In `api/events_read.py`, add `played_missing_clips(event_dir, document)` beside the existing
   `blocking_missing(document, result)` (design "One definition of 'played and missing'"): it is
   `blocking_missing` over `reconcile(scan_event(event_dir).identities, document)`, as a list, and nothing
   else (no second statement of the exclude rule). Export it. Verify with new cases in
@@ -46,7 +46,7 @@ Conventions for every task below:
   - a listing that raises `OSError` propagates (not `[]`)
   - the existing events tests pass unchanged
 
-- [ ] 2.2 Add `EnqueueConflict.MISSING_CLIPS = "missing_clips"` and `ProblemOut.missing:
+- [x] 2.2 Add `EnqueueConflict.MISSING_CLIPS = "missing_clips"` and `ProblemOut.missing:
   Optional[List[str]]` (with the field comment of design "The 409 body") to `api/schemas.py`. Regenerate
   with the two commands of `web/README.md`: `.venv/bin/python -m auto_reel_ng.api.openapi >
   web/openapi.json`, then `npm run generate:types` in the node:22 container. Verify in
@@ -57,7 +57,7 @@ Conventions for every task below:
   - `grep` finds `missing_clips` and `missing?:` in `web/src/api/schema.d.ts`
   - `tsc --noEmit` now fails in `web/src/api/jobs.ts` at the `never` default (the intended signal for 3.1)
 
-- [ ] 2.3 In `create_job`, after the active-job check and before the staleness gate, call
+- [x] 2.3 In `create_job`, after the active-job check and before the staleness gate, call
   `events_read.played_missing_clips(event_dir, document)` with the `document` the route holds, and answer a
   non-empty result with the 409 of design "The 409 body". An `OSError` answers
   `bad_gateway(f"event scan failed: {exc}")`. `force` is not read by this step. Verify in
@@ -81,7 +81,7 @@ Conventions for every task below:
 
 ## 3. web/ — tell the refusal
 
-- [ ] 3.1 In `web/src/api/jobs.ts`, add the result kind `{ kind: 'missingClips'; missing: string[];
+- [x] 3.1 In `web/src/api/jobs.ts`, add the result kind `{ kind: 'missingClips'; missing: string[];
   problem: Problem }` and the `case 'missing_clips':` of the `conflict` switch: returned only when
   `body.missing` is a non-empty array of strings, otherwise `break` to the unpublished fallthrough. In
   `web/src/jobs/labels.ts`, add the words both screens use (design "The client"): the page's full list and
@@ -89,7 +89,7 @@ Conventions for every task below:
   (the `never` default of the `conflict` switch is cleared by the new case), and by deleting the new `case`
   once to see the same `tsc` fail there, then restoring it.
 
-- [ ] 3.2 In `web/src/jobs/RenderControl.tsx`, add the `missingClips` notice and its `Alert` (error tone,
+- [x] 3.2 In `web/src/jobs/RenderControl.tsx`, add the `missingClips` notice and its `Alert` (error tone,
   icon, the clip names, restore-or-remove-in-Edit-mode words), set from `handleEnqueue`, which then calls
   `markEventsChanged()` and `onFinishedRef.current()` so the page re-reads. No new state beyond the notice.
   End the `switch` over `result.kind` with an exhaustiveness check on `result` (the `never` pattern
@@ -97,13 +97,13 @@ Conventions for every task below:
   dropped. Verify with `tsc --noEmit` (and that removing the new `case` makes it fail) and in the browser
   run of 3.4 (page scenarios).
 
-- [ ] 3.3 In `web/src/jobs/LiveJobCell.tsx` `tellRowAnswer`, handle `missingClips`: `toast.error(...)` naming
+- [x] 3.3 In `web/src/jobs/LiveJobCell.tsx` `tellRowAnswer`, handle `missingClips`: `toast.error(...)` naming
   the event as the row's other toasts do, with the three-names words and the `Open` link, and
   `markEventsChanged()` so the list re-reads. End its `switch` with the same exhaustiveness check.
   Verify with `tsc --noEmit` (and that removing the new `case` makes it fail) and `npm run build` passing
   in the node:22 container.
 
-- [ ] 3.4 Verify both screens in a real browser (Playwright, scripts and screenshots only under the scratch
+- [x] 3.4 Verify both screens in a real browser (Playwright, scripts and screenshots only under the scratch
   directory; locators scoped to `main:not([hidden])`; `page.wait_for_timeout`, never `time.sleep`). Build a
   dev library with `scripts/make_dev_library.py` on this change's directory, serve it on this change's port
   and database, route only `**/api/v1/jobs` in the browser, and delete or rename a symlinked clip of the dev
@@ -121,7 +121,7 @@ Conventions for every task below:
 
 ## 4. Validation
 
-- [ ] 4.1 Run the validation gates and the web build:
+- [x] 4.1 Run the validation gates and the web build:
   - `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`
   - `.venv/bin/python -m mypy auto_reel_ng`
   - `.venv/bin/python -m pylint auto_reel_ng` (only the known cairo `no-member` noise)

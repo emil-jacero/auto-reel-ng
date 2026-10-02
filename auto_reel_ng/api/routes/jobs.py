@@ -17,6 +17,7 @@ import functools
 import logging
 import uuid
 from datetime import date
+from pathlib import Path
 from typing import Callable, List, Optional, ParamSpec, TypeVar, Union
 
 from fastapi import APIRouter, Query, Request
@@ -28,6 +29,7 @@ from ...errors import ReelError
 from ...ingest import LayoutError
 from ...persistence.job_store import JobStore
 from ...persistence.models import Job, JobStatus
+from ...reel import ReelDocument
 from ...render import output_relpath
 from ...staleness.fingerprint import compute_fingerprint
 from ...staleness.gate import evaluate
@@ -102,6 +104,29 @@ def _target_refused(exc: Exception, event_id: str) -> Response:
     return bad_gateway(f"event scan failed: {exc}")
 
 
+def _missing_clips_refusal(
+    event_dir: Path, document: ReelDocument, event_id: str
+) -> Optional[Response]:
+    """The 409 ``missing_clips`` when the event plays a clip absent from disk, else ``None``.
+
+    An unlistable folder leaves the clips unchecked, so it is the scan-failure 502 and
+    nothing is enqueued, never "nothing missing" (Principle I).
+    """
+    try:
+        missing = events_read.played_missing_clips(event_dir, document)
+    except OSError as exc:
+        return bad_gateway(f"event scan failed: {exc}")
+    if not missing:
+        return None
+    return conflict(
+        f"{event_id} plays clips that are missing from disk: {', '.join(missing)}; "
+        "restore them, or remove them from reel.yaml",
+        event_id=event_id,
+        conflict=EnqueueConflict.MISSING_CLIPS.value,
+        missing=missing,
+    )
+
+
 @router.post(
     "/jobs",
     response_model=JobOut,
@@ -118,7 +143,7 @@ def _target_refused(exc: Exception, event_id: str) -> Response:
 def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, FreshResult, Response]:
     """``POST /api/v1/jobs`` (task 3.1, gated per change-detection §8.14).
 
-    Idempotent enqueue, 409 on active duplicate, 200 "fresh — not enqueued" when
+    Idempotent enqueue, 409 on active duplicate or a missing played clip, 200 "fresh — not enqueued" when
     the event is fresh and ``force`` is false. The API never transitions job
     status itself (D-A6) — the gate decision is made here, at enqueue, the same
     as the CLI's own ``enqueue``.
@@ -129,7 +154,9 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
     anything else: an event whose output path another event of the project claims is a 409
     ``output_collision``, fresh or stale, forced or not — never gated, never "already
     active". A walk that fails leaves the rule unchecked, so it is the events list's
-    scan-failure 502 and nothing is enqueued (Principle I).
+    scan-failure 502 and nothing is enqueued (Principle I). An active job is answered next, and
+    then an event that plays a clip missing from disk is a 409 ``missing_clips`` naming the
+    clips — fresh or stale, forced or not, since that render could only fail at probe.
     """
     settings = request.app.state.settings
     store: JobStore = request.app.state.job_store
@@ -167,6 +194,12 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
             job_id=str(existing.id),
             conflict=EnqueueConflict.ACTIVE_JOB.value,
         )
+
+    # A played clip that is gone fails the render at probe: refuse it here, before the gate,
+    # and whatever ``force`` says. Nothing is written (no job, no manifest).
+    refusal = _missing_clips_refusal(event_dir, document, payload.event_id)
+    if refusal is not None:
+        return refusal
 
     runtime = request.app.state.runtime
     look_defaults = resolve_look_defaults(load_project_config(settings.project_root))
