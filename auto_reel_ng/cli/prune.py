@@ -55,6 +55,14 @@ def _is_bare_file_name(name: str) -> bool:
     return name not in _NOT_A_FILE_NAME and Path(name).name == name and "\0" not in name
 
 
+def _is_regular_file(path: Path) -> bool:
+    """True when ``path`` itself (not what a link points at) is a regular file."""
+    try:
+        return stat.S_ISREG(path.lstat().st_mode)
+    except OSError:
+        return False
+
+
 def _is_plain_file_inside(path: Path, output_dir: Path) -> bool:
     """True when ``path`` is a regular file (not a link) whose folder lies inside ``output_dir``."""
     try:
@@ -92,7 +100,7 @@ def plan_prune(
         if manifest is None or not manifest.superseded or not _is_bare_file_name(manifest.output):
             continue
         current = recorded_output_in(manifest.output, output_dir)
-        if not current.is_file():
+        if not _is_regular_file(current):
             continue  # not rendered under its new name (here): the old movie is still its movie
         for name in manifest.superseded:
             if not _is_bare_file_name(name):
