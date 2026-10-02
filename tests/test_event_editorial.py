@@ -915,6 +915,19 @@ def test_chapters_renamed_together_pair_with_the_one_they_overlap_most(tmp_path:
     _assert_write(event_dir, desired, expected)
 
 
+def test_chapter_stored_with_dot_slash_clips_is_paired_on_rename(tmp_path: Path) -> None:
+    text = SOMMARLOV_METADATA + "chapters:\n  - name: A  # na\n    clips:\n      - ./a.mp4\n"
+    event_dir, desired = _annotated_event(tmp_path, text)
+    _rename(desired, "A", "Z")
+
+    # The clip is written in its canonical spelling; the name line's comment is kept.
+    _assert_write(
+        event_dir,
+        desired,
+        SOMMARLOV_METADATA + "chapters:\n  - name: Z  # na\n    clips:\n      - a.mp4\n",
+    )
+
+
 def test_a_chapter_with_no_clips_is_not_paired(tmp_path: Path) -> None:
     text = SOMMARLOV_METADATA + "chapters:\n  - name: A   # empty\n    clips: []\n"
     event_dir, desired = _annotated_event(tmp_path, text)

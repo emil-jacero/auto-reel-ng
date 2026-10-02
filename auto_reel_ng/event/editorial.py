@@ -25,7 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date as DateType
 from datetime import datetime as DateTimeType
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Optional
 
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
@@ -284,7 +284,12 @@ def _pair_by_clips(
     candidates = []
     for existing_index, node in enumerate(unclaimed):
         clips = node.get("clips")
-        held = [str(clip) for clip in clips] if isinstance(clips, CommentedSeq) else []
+        # Identities as the schema reads them (``./a.mp4`` is ``a.mp4``), like the desired clips.
+        held = (
+            [PurePosixPath(str(clip)).as_posix() for clip in clips]
+            if isinstance(clips, CommentedSeq)
+            else []
+        )
         for index, desired_clips in wanted:
             overlap = len(set(held) & set(desired_clips))
             if overlap:
