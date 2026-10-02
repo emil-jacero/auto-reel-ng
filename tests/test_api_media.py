@@ -18,7 +18,8 @@ import dataclasses
 import json
 import logging
 import os
-from email.utils import parsedate_to_datetime
+from datetime import datetime, timezone
+from email.utils import formatdate, parsedate_to_datetime
 from pathlib import Path, PurePosixPath
 from typing import Callable, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import quote
@@ -648,6 +649,59 @@ def test_a_non_matching_if_none_match_is_the_file(clip_file: MediaFile) -> None:
     assert isinstance(media_response(clip_file, '"other"'), FileResponse)
 
 
+def _http_date(timestamp: float) -> str:
+    return formatdate(timestamp, usegmt=True)
+
+
+def test_if_modified_since_at_or_after_the_mtime_is_a_304(clip_file: MediaFile) -> None:
+    """The file's own ``Last-Modified`` and a date in 2099 both revalidate."""
+    own = media_response(clip_file, None).headers["last-modified"]
+
+    for date_header in (own, "Wed, 01 Jan 2099 00:00:00 GMT"):
+        response = media_response(clip_file, None, date_header)
+
+        assert not isinstance(response, FileResponse), date_header
+        assert response.status_code == 304
+        assert response.body == b""
+        assert dict(response.headers) == {
+            "etag": clip_file.etag,
+            "cache-control": MEDIA_CACHE_CONTROL,
+        }
+
+
+def test_if_modified_since_compares_to_the_second(clip_file: MediaFile) -> None:
+    """Truncated mtime, as ``Last-Modified`` carries it: one second earlier is stale."""
+    mtime = int(clip_file.stat.st_mtime)
+
+    assert media_response(clip_file, None, _http_date(mtime)).status_code == 304
+    assert isinstance(media_response(clip_file, None, _http_date(mtime - 1)), FileResponse)
+
+
+@pytest.mark.parametrize("value", ["yesterday", "", "Wed, 99 Foo 2099 25:61:61 GMT", "0"])
+def test_an_if_modified_since_that_is_not_a_date_is_ignored(
+    clip_file: MediaFile, value: str
+) -> None:
+    assert isinstance(media_response(clip_file, None, value), FileResponse)
+
+
+def test_a_zone_less_if_modified_since_reads_as_utc(clip_file: MediaFile) -> None:
+    """The RFC 850 form carries no numeric zone: ``Sunday, 06-Nov-94 08:49:37 GMT`` has GMT."""
+    moment = datetime.fromtimestamp(int(clip_file.stat.st_mtime) + 5, tz=timezone.utc)
+    rfc850 = moment.strftime("%A, %d-%b-%y %H:%M:%S GMT")
+    asctime = moment.strftime("%a %b %e %H:%M:%S %Y")  # ANSI C asctime(): no zone at all
+
+    assert media_response(clip_file, None, rfc850).status_code == 304
+    assert media_response(clip_file, None, asctime).status_code == 304
+
+
+def test_if_none_match_decides_alone_when_it_is_present(clip_file: MediaFile) -> None:
+    future = "Wed, 01 Jan 2099 00:00:00 GMT"
+    past = _http_date(int(clip_file.stat.st_mtime) - 86400)
+
+    assert isinstance(media_response(clip_file, '"other"', future), FileResponse)
+    assert media_response(clip_file, clip_file.etag, past).status_code == 304
+
+
 def test_etag_matches_has_no_star_rule() -> None:
     assert etag_matches('"a", W/"b"', '"b"')
     assert not etag_matches("*", '"b"')
@@ -1093,6 +1147,220 @@ def test_a_movie_revalidates_with_a_304(client: TestClient, movies: Dict[str, Pa
         assert response.content == b""
         assert response.headers["etag"] == etag
         assert response.headers["cache-control"] == MEDIA_CACHE_CONTROL
+
+
+# --- If-Modified-Since over HTTP ----------------------------------------------------------
+
+FUTURE_DATE = "Wed, 01 Jan 2099 00:00:00 GMT"
+
+
+def _media_urls(movies: Dict[str, Path]) -> List[str]:
+    assert movies  # the movie needs its render record
+    return [_clip_url(GRILLNING, "s1710001.mp4"), _movie_url(KALAS)]
+
+
+def test_if_modified_since_revalidates_a_clip_and_a_movie(
+    client: TestClient, movies: Dict[str, Path]
+) -> None:
+    for url in _media_urls(movies):
+        first = client.get(url)
+        for date_header in (first.headers["last-modified"], FUTURE_DATE):
+            for extra in ({}, {"Range": "bytes=0-"}):
+                response = client.get(url, headers={"If-Modified-Since": date_header, **extra})
+
+                assert response.status_code == 304, (url, date_header, extra)
+                assert response.content == b""
+                assert response.headers["etag"] == first.headers["etag"]
+                assert response.headers["cache-control"] == MEDIA_CACHE_CONTROL
+
+
+def test_a_file_modified_since_the_stored_date_is_sent_again(
+    client: TestClient, movies: Dict[str, Path], project: Path
+) -> None:
+    clip = project / GRILLNING / "s1710001.mp4"
+    for path, url in zip((clip, movies[KALAS]), _media_urls(movies)):
+        mtime = int(path.stat().st_mtime)
+        day_before = _http_date(mtime - 86400)
+        os.utime(path, (mtime, mtime))
+
+        response = client.get(url, headers={"If-Modified-Since": day_before})
+
+        assert response.status_code == 200, url
+        assert len(response.content) == path.stat().st_size
+
+
+@pytest.mark.parametrize("value", ["yesterday", ""])
+def test_an_if_modified_since_that_is_not_a_date_is_a_200(
+    client: TestClient, movies: Dict[str, Path], value: str
+) -> None:
+    for url in _media_urls(movies):
+        assert client.get(url, headers={"If-Modified-Since": value}).status_code == 200, url
+
+
+def test_a_repeated_if_modified_since_is_ignored(
+    client: TestClient, movies: Dict[str, Path]
+) -> None:
+    for url in _media_urls(movies):
+        response = client.get(
+            url, headers=[("If-Modified-Since", FUTURE_DATE), ("If-Modified-Since", FUTURE_DATE)]
+        )
+        assert response.status_code == 200, url
+
+
+def test_if_none_match_ends_the_conditional_evaluation(client: TestClient) -> None:
+    url = _clip_url(GRILLNING, "s1710001.mp4")
+    first = client.get(url)
+    old = _http_date(0)
+
+    stale_tag = client.get(
+        url, headers={"If-None-Match": '"older"', "If-Modified-Since": FUTURE_DATE}
+    )
+    live_tag = client.get(
+        url, headers={"If-None-Match": first.headers["etag"], "If-Modified-Since": old}
+    )
+
+    assert stale_tag.status_code == 200
+    assert stale_tag.content == GRILL_1
+    assert live_tag.status_code == 304
+
+
+# --- HEAD ---------------------------------------------------------------------------------
+
+#: The headers a HEAD must repeat from the GET of the same request.
+HEAD_HEADERS = (
+    "content-length",
+    "content-type",
+    "etag",
+    "last-modified",
+    "cache-control",
+    "accept-ranges",
+    "content-disposition",
+)
+
+
+def _head_fails_as_get_fails(
+    client: TestClient, url: str, headers: Optional[Dict[str, str]] = None
+) -> int:
+    got = client.get(url, headers=headers)
+    head = client.head(url, headers=headers)
+
+    assert head.status_code == got.status_code, url
+    assert head.content == b""
+    assert "etag" not in head.headers and "cache-control" not in head.headers
+    return head.status_code
+
+
+def test_a_head_is_the_get_without_its_body(client: TestClient, movies: Dict[str, Path]) -> None:
+    for url in _media_urls(movies):
+        got = client.get(url)
+        head = client.head(url)
+
+        assert head.status_code == 200
+        assert head.content == b""
+        assert int(head.headers["content-length"]) == len(got.content)
+        for name in HEAD_HEADERS:
+            assert head.headers[name] == got.headers[name], (url, name)
+
+
+def test_a_head_with_a_range_is_a_206_without_a_body(
+    client: TestClient, movies: Dict[str, Path]
+) -> None:
+    for url in _media_urls(movies):
+        size = len(client.get(url).content)
+        head = client.head(url, headers={"Range": "bytes=0-99"})
+
+        assert head.status_code == 206
+        assert head.content == b""
+        assert head.headers["content-range"] == f"bytes 0-99/{size}"
+        assert head.headers["content-length"] == "100"
+
+
+def test_a_head_revalidates_with_a_304(client: TestClient, movies: Dict[str, Path]) -> None:
+    for url in _media_urls(movies):
+        first = client.get(url)
+        by_tag = client.head(url, headers={"If-None-Match": first.headers["etag"]})
+        by_date = client.head(
+            url, headers={"If-Modified-Since": first.headers["last-modified"], "Range": "bytes=0-"}
+        )
+
+        for response in (by_tag, by_date):
+            assert response.status_code == 304, url
+            assert response.content == b""
+            assert response.headers["etag"] == first.headers["etag"]
+            assert response.headers["cache-control"] == MEDIA_CACHE_CONTROL
+
+
+def test_a_head_fails_as_a_get_fails(
+    client: TestClient, movies: Dict[str, Path], tmp_path: Path
+) -> None:
+    unknown = _head_fails_as_get_fails(client, _clip_url("2099/Nej", "a.mp4"))
+    missing = _head_fails_as_get_fails(client, _clip_url(SOMMARLOV, "borttagen.mp4"))
+    unrendered = _head_fails_as_get_fails(client, _movie_url(SOMMARLOV))
+    unknown_movie = _head_fails_as_get_fails(client, _movie_url("2099/Nej"))
+    movies[KALAS].rename(tmp_path / "aside.mp4")
+    movies[KALAS].mkdir()
+    directory = _head_fails_as_get_fails(client, _movie_url(KALAS))
+    clip = _clip_url(GRILLNING, "s1710001.mp4")
+    malformed = _head_fails_as_get_fails(client, clip, {"Range": "bytes=abc"})
+    past_end = _head_fails_as_get_fails(client, clip, {"Range": f"bytes={CLIP_SIZE}-"})
+
+    assert [unknown, missing, unrendered, unknown_movie, directory] == [404] * 5
+    assert (malformed, past_end) == (400, 416)
+
+
+def test_a_head_of_an_unreadable_clip_is_a_502(client: TestClient, project: Path) -> None:
+    _skip_as_root()
+    clip = project / GRILLNING / "s1710002.mp4"
+    clip.chmod(0)
+    try:
+        status = _head_fails_as_get_fails(client, _clip_url(GRILLNING, "s1710002.mp4"))
+    finally:
+        clip.chmod(0o644)
+
+    assert status == 502
+
+
+def test_a_head_is_answered_with_and_without_the_built_client(
+    settings: ApiSettings, movies: Dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without a ``web/dist`` a HEAD was a 405; with one, the static mount's 404."""
+    dist = tmp_path / "dist"
+    _write(dist / "index.html", b"<!doctype html><title>web</title>")
+    size = movies[KALAS].stat().st_size
+
+    monkeypatch.setattr("auto_reel_ng.api.app.web_dist_dir", lambda: tmp_path / "no-dist")
+    with TestClient(create_app(settings)) as bare:
+        without = [bare.head(url) for url in _media_urls(movies)]
+    monkeypatch.setattr("auto_reel_ng.api.app.web_dist_dir", lambda: dist)
+    with TestClient(create_app(settings)) as built:
+        assert built.get("/").status_code == 200  # the client really is mounted
+        with_client = [built.head(url) for url in _media_urls(movies)]
+
+    for responses in (without, with_client):
+        assert [r.status_code for r in responses] == [200, 200]
+        assert responses[0].headers["content-length"] == str(CLIP_SIZE)
+        assert responses[1].headers["content-length"] == str(size)
+        assert all(r.content == b"" for r in responses)
+
+
+def test_a_head_passes_the_auth_hook(settings: ApiSettings) -> None:
+    methods: List[str] = []
+
+    def checker(request: Request) -> Optional[Response]:
+        methods.append(request.method)
+        return (
+            None
+            if request.headers.get("x-test") == "1"
+            else JSONResponse(status_code=401, content={"detail": "unauthorized"})
+        )
+
+    url = _clip_url(GRILLNING, "s1710001.mp4")
+    with TestClient(create_app(settings, auth_checker=checker)) as client:
+        allowed = client.head(url, headers={"X-Test": "1"})
+        rejected = client.head(url)
+
+    assert (allowed.status_code, rejected.status_code) == (200, 401)
+    assert methods == ["HEAD", "HEAD"]
 
 
 # --- routing and auth ---------------------------------------------------------------------

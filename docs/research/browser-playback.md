@@ -134,8 +134,9 @@ Starlette 1.3.1 (FastAPI 0.139.0, uvicorn 0.51.0, h11):
 | `lines=0-1`, `bytes=abc`, `bytes=5-3` | 400 `text/plain` ("Only support bytes range" for the unit) |
 | `bytes=5-4` | 206 with an empty body and `Content-Range: bytes 5-4/<size>` |
 | `If-Range` current / stale | 206 / 200 with the whole file |
-| `If-None-Match` current | **200 with the whole body**: `FileResponse` evaluates neither `If-None-Match` nor `If-Modified-Since` |
-| HEAD on a `@router.get` route | 405 (404 when the built client is mounted behind it) |
+| `If-None-Match` current | **200 with the whole body** from `FileResponse` itself, which evaluates neither `If-None-Match` nor `If-Modified-Since`; the media routes answer 304 first (`media_response`) |
+| `If-Modified-Since` at or after the mtime | the same: 200 from `FileResponse`; the media routes answer 304 when `If-None-Match` is absent (`api-media-head-conditional`) |
+| HEAD on a `@router.get` route | 405 (404 when the built client is mounted behind it); the media routes stack `@router.head` over `@router.get` and answer the `GET`'s status and headers with no body, built client or not |
 | `Cache-Control` | none unless the route sets it |
 
 `FileResponse` streams in 64 KiB chunks, sets `etag`, `last-modified` and `content-length` with
