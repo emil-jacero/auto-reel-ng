@@ -2,9 +2,9 @@
 
 Exposes eleven subcommands — ``render``, ``scan``/``list``, ``analyze``, ``import``,
 ``enqueue``, ``worker``, ``jobs`` (``list``/``show``/``cancel``), ``serve``,
-``adopt-renders``, ``thumbs``, and ``prune-renamed``. The scan/render family shares the project options
-(project root, ``--output``, ``--years``, ``--layout``, ``--verbose``; ``thumbs``
-takes no ``--output``); flags such as ``--dry-run``, ``--force``, ``--device`` and
+``adopt-renders``, ``thumbs``, and ``prune-renamed``. The scan/render family shares the
+project options (project root, ``--output``, ``--years``, ``--layout``, ``--verbose``;
+``thumbs`` takes no ``--output``); flags such as ``--dry-run``, ``--force``, ``--device`` and
 ``--jobs`` are added per subcommand. Unknown subcommands and bad arguments exit
 non-zero with usage (argparse); engine errors are caught at the top and reported on
 stderr with a non-zero exit.

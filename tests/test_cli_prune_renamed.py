@@ -9,6 +9,7 @@ from typing import Callable
 
 import pytest
 
+from auto_reel_ng.cli import prune as prune_module
 from auto_reel_ng.cli.main import main
 from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.reel.document import Metadata, ReelDocument
@@ -127,7 +128,7 @@ def test_an_event_retitled_but_not_rerendered_lists_nothing(tmp_path: Path) -> N
     assert old.exists()
 
 
-@pytest.mark.parametrize("replacement", ["missing", "folder"])
+@pytest.mark.parametrize("replacement", ["missing", "folder", "symlink"])
 def test_the_replacing_movie_must_be_a_regular_file(tmp_path: Path, replacement: str) -> None:
     root = _root(tmp_path)
     event_dir = _event(root, EVENT)
@@ -136,6 +137,8 @@ def test_the_replacing_movie_must_be_a_regular_file(tmp_path: Path, replacement:
     old = _movie(output_dir, OLD)
     if replacement == "folder":
         _touch(output_dir / "2024" / NEW / "inside.txt")
+    if replacement == "symlink":
+        (output_dir / "2024" / NEW).symlink_to(_touch(tmp_path / "elsewhere.mp4", b"other"))
 
     assert main(["prune-renamed", str(root), "--yes"]) == 0
 
@@ -341,6 +344,43 @@ def test_a_failed_delete_is_reported_and_the_run_continues(
     assert "1 deleted, 1 failed" in out
     assert (output_dir / "2024" / OLD).exists()
     assert not (output_dir / "2024" / second_old).exists()
+
+
+@pytest.mark.parametrize("change", ["vanished", "symlink", "folder"])
+def test_a_file_changed_between_the_plan_and_the_delete_is_left_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    root = _root(tmp_path)
+    _renamed(root)
+    old = default_output_dir(root) / "2024" / OLD
+    target = _touch(tmp_path / "target.mp4", b"target")
+    real_plan = prune_module.plan_prune
+
+    def plan_then_change(*args: object, **kwargs: object) -> object:
+        candidates = real_plan(*args, **kwargs)  # type: ignore[arg-type]
+        assert [candidate.path for candidate in candidates] == [old]
+        os.unlink(old)
+        if change == "symlink":
+            old.symlink_to(target)
+        elif change == "folder":
+            _touch(old / "inside.txt")
+        return candidates
+
+    monkeypatch.setattr(prune_module, "plan_prune", plan_then_change)
+    unlinked: list[Path] = []
+    real_unlink = Path.unlink
+
+    def recording_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        unlinked.append(self)
+        real_unlink(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "unlink", recording_unlink)
+
+    assert main(["prune-renamed", str(root), "--yes"]) == 0
+
+    assert unlinked == []
+    assert target.read_bytes() == b"target"
+    assert change == "vanished" or old.is_symlink() or (old / "inside.txt").exists()
 
 
 @pytest.mark.parametrize("patched", ["auto_reel_ng.cli.prune.get_layout", "context"])
