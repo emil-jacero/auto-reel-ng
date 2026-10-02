@@ -52,11 +52,38 @@ loud, naming the field.
 
 The v0 loader SHALL parse, preserve, and round-trip the `look` section as an opaque map without validating or
 interpreting its internal fields. The structured `look`/title-card schema is defined by a later change; v0
-SHALL NOT reject a `look` map on the basis of its inner keys.
+SHALL NOT reject a `look` map on the basis of the names or values of its inner keys.
+
+The one constraint on `look` is the type of its keys: every mapping key anywhere inside it, at any depth and
+including a mapping inside a list, SHALL be a string. A non-string key (an unquoted `2024-01-01`, which YAML
+reads as a date, or `1`) cannot be hashed or serialized, so such a `look` SHALL fail loud with the parse
+error, naming the location of the key (`look.<path>`) and its type. A `look` imported from a legacy
+`title_card` is held to the same rule.
 
 #### Scenario: Unknown look fields are preserved, not rejected
 - **WHEN** a document's `look` contains fields v0 does not model
 - **THEN** loading succeeds and the writer round-trips the `look` map unchanged
+
+#### Scenario: A date used as a look key is rejected
+- **WHEN** a v0 document sets `look:` with the unquoted key `2024-01-01: x`
+- **THEN** loading fails with the parse error naming `look` and the key `2024-01-01` as a date rather than
+  a string, and no other kind of error is raised
+
+#### Scenario: A mixed-type key set is rejected
+- **WHEN** a v0 document sets `look: {1: a, b: c}`
+- **THEN** loading fails with the parse error naming `look` and the key `1` as an integer
+
+#### Scenario: A non-string key nested in a list is rejected
+- **WHEN** a v0 document sets `look: {layers: [{1: x}]}`
+- **THEN** loading fails with the parse error naming `look.layers[0]` and the key `1`
+
+#### Scenario: A quoted key is a string
+- **WHEN** a v0 document sets `look: {'2024-01-01': x}` in quotes
+- **THEN** it loads and the writer round-trips the `look` map unchanged
+
+#### Scenario: A legacy title_card with a non-string key is rejected
+- **WHEN** a legacy document's `title_card` holds `{1: a}`
+- **THEN** import fails with the same parse error rather than producing a document that cannot be hashed
 
 ### Requirement: Structure and properties are normalized apart
 
@@ -114,14 +141,29 @@ add a new span that overlaps another, but that is an editing aid and not a rule 
 
 Parsing SHALL fail loudly with a clear error on malformed or invalid content and SHALL NOT fabricate or
 silently drop data. Validation SHALL reject (at least) an unknown `version`, a trim with `out <= in`, a
-negative time, and a `chapters` clip reference whose identity is absent from required structure. Errors SHALL
-identify the offending location.
+negative or non-finite time, and a `chapters` clip reference whose identity is absent from required
+structure. Errors SHALL identify the offending location.
+
+`version` SHALL be the integer `0`. A value that merely compares equal to it (the boolean `false`, the float
+`0.0`) is an unknown version, as are the string `'0'` and a missing value (`version:` with nothing after it),
+and each fails with the unsupported-version error. A trim time SHALL be a finite number: `.nan`, `.inf` and
+`-inf` are rejected, naming the span's `in` or `out`.
 
 The reference-integrity checks are **disk-independent** — a referenced clip merely absent from disk is a
 *reconcile* MISSING (see `event-reconcile`), not a parse error. Internally the validator SHALL reject: a clip
 identity referenced more than once across all chapters (a duplicate/ambiguous reference); a `clips` property
-entry keyed by an identity no chapter references (a dangling property record with nothing to attach to); and
-an `ignore` entry whose identity is also referenced in a chapter (a structure/ignore contradiction).
+entry keyed by an identity no chapter references (a dangling property record with nothing to attach to); an
+`ignore` entry whose identity is also referenced in a chapter (a structure/ignore contradiction); and an
+`ignore` list that names the same identity more than once (a duplicate, which has no meaning and is judged
+by the identity after normalization, so `./x.mp4` repeats `x.mp4`), by the same rule as a duplicate chapter
+reference.
+
+Every string in a document, a key or a value at any depth and in `look` as in the rest, SHALL be text that
+can be encoded as UTF-8. A string holding a lone surrogate (the double-quoted escape `"\ud800"` yields one)
+SHALL fail loud, in a v0 document and in a legacy one, with the parse error naming the location of the
+string (`metadata.title`, `look.font`, or the key's own path). The message SHALL show the string only
+escaped, so reporting it does not itself fail. A document that a writer builds is checked the same way
+before it is written, so no write produces a `reel.yaml` this requirement would refuse to load.
 
 Content that cannot be read as YAML text SHALL fail the same way. This covers:
 
@@ -216,6 +258,46 @@ list reports the two differently (`unreadable_disk` for the folder, `unparseable
 - **THEN** `auto-reel scan` prints one `ERROR  2024-07-04 - Barbecue:` line naming `2024-02-30`, lists the
   other two events and exits non-zero. The events list answers 200 with two summaries and one error row for
   Barbecue, whose failure kind is `unparseable_reel_yaml`.
+
+#### Scenario: A non-finite trim time is rejected
+- **WHEN** a clip's trims hold `{in: .nan, out: 5}`, `{in: 1, out: .inf}` or `{in: 0, out: .nan}`
+- **THEN** loading fails with the parse error naming the clip and the span's `in` or `out` as not finite,
+  rather than loading a span that no comparison can order
+
+#### Scenario: A version that only equals zero is rejected
+- **WHEN** a document sets `version: false`, `version: 0.0`, `version: '0'` or `version:` with no value
+- **THEN** loading fails with the unsupported-version error, and `version: 0` still loads
+
+#### Scenario: A duplicate ignore entry is rejected
+- **WHEN** a document sets `ignore: [x.mp4, y.mp4, x.mp4]`, or `ignore: [x.mp4, ./x.mp4]`
+- **THEN** loading fails with the parse error naming the duplicated identity `x.mp4` and the position of its
+  second appearance
+
+#### Scenario: An editorial write that duplicates an ignore entry writes nothing
+- **WHEN** an editorial write submits the `ignore` list `[x.mp4, x.mp4]` for an event whose `reel.yaml`
+  ignores `x.mp4` once
+- **THEN** the write fails with the parse error and the file on disk is unchanged
+
+#### Scenario: A lone surrogate in a value is rejected
+- **WHEN** a v0 document sets `title: "Fest \ud800"`
+- **THEN** loading fails with the parse error naming `metadata.title`, and the message can itself be printed
+  and encoded as UTF-8
+
+#### Scenario: A lone surrogate in look is rejected
+- **WHEN** a v0 document's `look` holds the value `"x\ud800"` under `font`, or a key `"a\ud800"`
+- **THEN** loading fails with the parse error naming `look.font`, or the location of that key
+
+#### Scenario: A lone surrogate in a legacy document is rejected
+- **WHEN** a legacy document with no `version` key sets `title: "x\ud800"`
+- **THEN** loading fails with the same parse error, before any import is attempted
+
+#### Scenario: An editorial write of a lone surrogate writes nothing
+- **WHEN** an editorial write submits the title `"Fest \ud800"`
+- **THEN** the write fails with the parse error and the file on disk is unchanged
+
+#### Scenario: A character beyond U+FFFF still loads
+- **WHEN** a v0 document sets `title: "Fest \U0001F386"`
+- **THEN** it loads, because a character beyond U+FFFF is a real character and not a lone surrogate
 
 #### Scenario: A reel.yaml in a folder that cannot be searched is not absent
 - **WHEN** event folder `2024-06-21 - Fest` has mode `0600` (listable, not searchable) and holds a `reel.yaml`
