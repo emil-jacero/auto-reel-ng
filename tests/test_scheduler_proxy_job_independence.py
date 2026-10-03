@@ -75,9 +75,12 @@ def fx(job_store: JobStore, tmp_path: Path) -> Fixture:
     return Fixture(job_store, tmp_path)
 
 
-def test_the_render_graph_version_is_the_one_before_this_change() -> None:
-    """Proxies are derived state no render reads: the version of the base commit still stands."""
-    assert RENDER_GRAPH_VERSION == 4
+def test_the_render_graph_version_is_the_one_the_last_render_change_set() -> None:
+    """Proxies are derived state no render reads: they add no bump of their own.
+
+    The version is the one the latest render change left (5: ``clip-rotate-engine``).
+    """
+    assert RENDER_GRAPH_VERSION == 5
 
 
 def test_a_proxy_job_changes_neither_the_verdict_nor_the_manifest_nor_the_event(
