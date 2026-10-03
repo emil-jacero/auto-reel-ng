@@ -113,7 +113,7 @@ export function ChapterList({
             <li key={chapter.start} data-current={marked || undefined}>
               <button
                 type="button"
-                aria-label={jumpLabel(index, title, chapter.start)}
+                aria-label={jumpLabel(index, title, chapter.start, marked ? CURRENT_CHAPTER : undefined)}
                 aria-current={marked ? 'true' : undefined}
                 onClick={() => jump(chapter.start)}
               >

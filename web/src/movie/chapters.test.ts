@@ -138,4 +138,10 @@ describe('jumpLabel', () => {
   it('keeps a fraction of a second and leaves a comma in a name as it is', () => {
     assert.equal(jumpLabel(1, 'Kvällen, sent', 6.02), 'Jump to chapter 2, Kvällen, sent, at 0:06.02')
   })
+
+  it('ends with the mark the row shows, in lower case, so the visible words are in the name', () => {
+    const name = jumpLabel(1, 'Majstången', 74, 'Current chapter')
+    assert.equal(name, 'Jump to chapter 2, Majstången, at 1:14, current chapter')
+    assert.ok(name.toLowerCase().includes('current chapter'))
+  })
 })
