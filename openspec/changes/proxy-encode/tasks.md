@@ -197,7 +197,7 @@
     path and, on a host with a usable accelerator, the hybrid path: an AAC stream with two channels is present
     (the two Sony PCM clips included), the dimensions are the table's (the 1080p, 4K, 720p25 and legacy clips 960x540;
     the portrait, the 720p rotated and the HEVC rotated clips 540x960), the video duration is within 50 ms of the
-    source's, the frame count equals the source's, and the video `start_time` equals the source's. The 12.6-minute
+    source's video stream's, the frame count equals the source's, and the video `start_time` equals the source's. The 12.6-minute
     legacy MPEG-4 clip is its own test.
 
   Verify:

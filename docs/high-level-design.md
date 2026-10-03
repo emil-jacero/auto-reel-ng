@@ -946,7 +946,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Never a wrong proxy, silently.** GPU rotation of an HEVC clip gave a picture with SSIM 0.47 and no error.
     The ladder keeps rotated and non-H.264/HEVC clips off the GPU, and every proxy is probed before it is
     published: one video stream (H.264, `yuv420p`, the planned size, square pixels), one stereo AAC stream exactly
-    when the source has audio, a video-stream duration within 50 ms of the source's probed duration, and the
+    when the source has audio, a video-stream duration within 50 ms of the source's video-stream duration (the container's is longer when audio outruns the video or the video starts late), and the
     source's declared frame count (skipped, and logged, only when the container declares none). A failed check
     names the check, the value found, the value expected and the path, and publishes nothing. A picture-similarity
     (SSIM) check is not made: the research's lowest CPU-path score (0.744, a rotated 720p phone clip) is

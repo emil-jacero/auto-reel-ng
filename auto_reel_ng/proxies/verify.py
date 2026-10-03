@@ -36,7 +36,9 @@ class ExpectedProxy:
     #: The planned display size.
     width: int
     height: int
-    #: The source's probed duration in seconds.
+    #: The source's VIDEO-stream duration in seconds (the proxy's video stream is compared with
+    #: it). The container's duration is wrong for this: it spans the longest stream from the
+    #: earliest start, so audio outrunning the video or a late video start inflates it.
     duration: float
     has_audio: bool
     #: The source container's declared video frame count, or ``None`` (check skipped).

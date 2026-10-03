@@ -135,22 +135,47 @@ def ensure_proxy(  # pylint: disable=too-many-arguments,too-many-locals
 
 
 class _MonotonicProgress:
-    """Forwards a progress fraction that never goes below the highest one reported."""
+    """Forwards a progress fraction that never goes below the highest one reported.
+
+    ffmpeg's own 1.0 means "the encode wrote its last frame", not "the proxy is published":
+    verification and the rename still follow, and a failed hybrid output is encoded again. So
+    the first attempt reports as ffmpeg does, capped at :data:`ATTEMPT_CEILING`; a retry (:meth:`begin_retry`)
+    maps its 0..1 into the range between the highest fraction so far and
+    :data:`RETRY_CEILING`, so it keeps moving; only :meth:`finish` reports 1.0.
+    """
+
+    #: The highest fraction an encode attempt reports before the proxy is published.
+    ATTEMPT_CEILING = 0.95
+    #: The highest fraction a CPU retry reports before the proxy is published.
+    RETRY_CEILING = 0.99
 
     def __init__(self, callback: Optional[Callable[[float], None]]) -> None:
         self._callback = callback
         self._highest = 0.0
+        self._floor = 0.0
+        self._ceiling = self.ATTEMPT_CEILING
+        self._retrying = False
 
     def __call__(self, fraction: float) -> None:
-        fraction = min(1.0, fraction)
+        fraction = max(0.0, min(1.0, fraction))
+        if self._retrying:
+            fraction = self._floor + fraction * (self._ceiling - self._floor)
+        fraction = min(fraction, self._ceiling)
         if self._callback is not None and fraction > self._highest:
             self._highest = fraction
             self._callback(fraction)
 
+    def begin_retry(self) -> None:
+        """The next attempt re-encodes the clip from the start: map it above what was shown."""
+        self._retrying = True
+        self._floor = self._highest
+        self._ceiling = max(self.RETRY_CEILING, self._floor)
+
     def finish(self) -> None:
-        """Report 1.0 if the encode did not already end on it."""
+        """Report 1.0: the proxy is verified and published."""
         if self._callback is not None and self._highest < 1.0:
-            self(1.0)
+            self._highest = 1.0
+            self._callback(1.0)
 
 
 def _probe_clip(clip: str, source: Path, runtime: FfmpegRuntime) -> ClipMetadata:
@@ -207,7 +232,7 @@ def _build(  # pylint: disable=too-many-arguments,too-many-locals
             clip=clip,
             width=size[0],
             height=size[1],
-            duration=meta.duration,
+            duration=_video_duration(meta, source_facts),
             has_audio=meta.has_audio,
             declared_frames=source_facts.declared_frames,
             path=path.value,
@@ -231,6 +256,7 @@ def _build(  # pylint: disable=too-many-arguments,too-many-locals
                 "Hybrid proxy of %s failed (%s); encoding on the CPU", clip, fallback_reason
             )
             _remove(output)
+            reporter.begin_retry()
             path = EncodePath.CPU
     facts = make_facts(
         clip=meta,
@@ -247,6 +273,17 @@ def _build(  # pylint: disable=too-many-arguments,too-many-locals
     published = cache.publish(part, entry_dir)
     logger.debug("Proxy of %s on the %s path: %s", clip, path.value, published.directory)
     return published
+
+
+def _video_duration(meta: ClipMetadata, source_facts: SourceFacts) -> float:
+    """The duration the proxy's video stream must have: the source's video stream's.
+
+    The container duration is the fallback only when the container gives no stream duration
+    (some Matroska files); it is then the only duration the probe has.
+    """
+    if source_facts.video_duration is not None:
+        return source_facts.video_duration
+    return meta.duration
 
 
 class _AttemptFailed(Exception):

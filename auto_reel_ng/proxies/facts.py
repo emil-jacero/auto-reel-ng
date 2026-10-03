@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 from dataclasses import dataclass
 from fractions import Fraction
@@ -41,6 +42,10 @@ class SourceFacts:
     vfr: Optional[bool]
     #: The frame count the container declares (``nb_frames``), or ``None``.
     declared_frames: Optional[int]
+    #: The video stream's own duration in seconds (``stream=duration``), or ``None`` when the
+    #: container gives none. Not the container's: that spans the longest stream from the
+    #: earliest start, so audio running past the video or a late video start inflates it.
+    video_duration: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -161,7 +166,7 @@ def read_source_facts(source: Path, runtime: FfmpegRuntime, *, clip: str) -> Sou
         "-select_streams",
         "v:0",
         "-show_entries",
-        "stream=r_frame_rate,avg_frame_rate,nb_frames",
+        "stream=r_frame_rate,avg_frame_rate,nb_frames,duration",
         "-of",
         "json",
         str(source),
@@ -191,6 +196,7 @@ def read_source_facts(source: Path, runtime: FfmpegRuntime, *, clip: str) -> Sou
         fps_den=rate.denominator,
         vfr=vfr,
         declared_frames=_declared_frames(stream.get("nb_frames")),
+        video_duration=_stream_duration(stream.get("duration")),
     )
 
 
@@ -206,6 +212,17 @@ def _rational(value: object) -> Optional[Fraction]:
     if num <= 0 or den <= 0:
         return None
     return Fraction(num, den)
+
+
+def _stream_duration(value: object) -> Optional[float]:
+    """The video stream's duration in seconds, or ``None`` for ``N/A``, garbage or non-positive."""
+    if not isinstance(value, str):
+        return None
+    try:
+        seconds = float(value)
+    except ValueError:  # "N/A"
+        return None
+    return seconds if math.isfinite(seconds) and seconds > 0 else None
 
 
 def _declared_frames(value: object) -> Optional[int]:
