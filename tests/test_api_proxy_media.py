@@ -873,12 +873,15 @@ def test_a_broken_config_is_a_502_without_a_kind_and_is_read_again(
 
     body = _assert_problem(client.get(_proxy_url(GRILLNING, "s1710001.mp4")), 502, GRILLNING)
     assert "failure" not in body
+    assert str(project) not in body["detail"]
 
     (project / "config.yaml").write_text(
         f'proxies:\n  cache_dir: "{project / "cache"}"\n', encoding="utf-8"
     )
     inside = _assert_problem(client.get(_strip_url(GRILLNING, "s1710001.mp4")), 502, GRILLNING)
     assert "proxies.cache_dir" in inside["detail"]
+    assert str(project) not in inside["detail"]
+    assert str(cache_dir) not in inside["detail"]
 
     (project / "config.yaml").write_text(good, encoding="utf-8")
     assert client.get(_proxy_url(GRILLNING, "s1710001.mp4")).status_code == 200

@@ -11,8 +11,9 @@ filmstrip routes read the cache only: a clip with no finished file is a 404 prob
 
 ``app.py`` includes this router **before** the events router: the event detail's
 ``{event_id:path}`` route is greedy over ``/`` and Starlette matches in registration
-order, so ``…/media``, ``…/movie``, ``…/proxy`` and ``…/filmstrip`` must be tried first or the detail would swallow
-them, as the ``/reel`` and ``/thumbnail`` suffixes are registered before it.
+order, so ``…/media``, ``…/movie``, ``…/proxy`` and ``…/filmstrip`` must be tried first
+or the detail would swallow them, as the ``/reel`` and ``/thumbnail`` suffixes are registered
+before it.
 """
 
 from __future__ import annotations
@@ -150,6 +151,12 @@ def _media_failed(
     return bad_gateway(detail, event_id=event_id, failure=failure)
 
 
+_CONFIG_DETAIL = (
+    "the server's configuration is not usable (config.yaml, proxies.cache_dir or the ingest "
+    "layout): see the server log"
+)
+
+
 def _unreadable(event_id: str, exc: MediaReadError) -> JSONResponse:
     """The 502 of a file that exists but cannot be read: no kind, a path-free detail."""
     return _media_failed(
@@ -269,7 +276,7 @@ def _serve_cache_file(
         failure = exc.failure.value if exc.failure is not None else None
         return _media_failed(event_id, clip, exc.detail, failure)
     except (ConfigError, LayoutError) as exc:
-        return _media_failed(event_id, clip, str(exc))
+        return _media_failed(event_id, clip, _CONFIG_DETAIL, log_reason=str(exc))
     except MediaReadError as exc:
         return _unreadable(event_id, exc)
     return media_response(media, _if_none_match(request), _if_modified_since(request))

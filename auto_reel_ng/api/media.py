@@ -142,7 +142,7 @@ class MediaFile:
 
     @property
     def media_type(self) -> str:
-        """The declared type, else the one by extension, case-insensitively (:data:`MEDIA_TYPES`)."""
+        """The declared type, else the one by extension, any case (:data:`MEDIA_TYPES`)."""
         if self.declared_type is not None:
             return self.declared_type
         return MEDIA_TYPES.get(self.path.suffix.lower(), _UNKNOWN_MEDIA_TYPE)

@@ -48,7 +48,8 @@ the original clip's bytes.
 - An event folder that cannot be listed SHALL be answered 502 with the unreadable-disk failure kind the events
   reads use.
 - An ingest layout that cannot be resolved, a `config.yaml` that cannot be read or a `proxies.cache_dir` it
-  names that is not usable SHALL be answered 502 with no failure kind.
+  names that is not usable SHALL be answered 502 with no failure kind and a path-free detail that points to the
+  server log, which carries the full reason.
 - A proxy file that exists but cannot be statted or opened, such as one the process lacks permission to read,
   SHALL be answered 502 with a problem body naming the event, the clip's identity and the operating system's
   reason, and no failure kind, before any byte of the file is sent. The detail SHALL NOT contain an absolute

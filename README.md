@@ -408,6 +408,19 @@ render, or job logic lives in the web tier.
   revalidates before it reuses stored bytes) and `Content-Disposition: inline`
   with the file's own name; an `If-None-Match` naming the current tag (weak
   comparison, or `*`) is a **304** with no body, even with a `Range`.
+  `Content-Type` comes from a fixed table by extension (`video/mp4`,
+  `video/quicktime`, …), never the host's MIME database. **Failures** answer by
+  cause and carry no caching headers: **404** for an id the events list does not
+  show as an event, a clip that is not on disk in it, an event with no rendered
+  movie, or a file that vanished before it was opened; **502** with the `failure`
+  the event detail reports when the event folder cannot be listed
+  (`unreadable_disk`) or, for the movie, its `reel.yaml` cannot be parsed or its
+  metadata is unusable; **502** with no kind when a file exists but cannot be
+  read (the detail names the clip's identity or the movie's file name, never a
+  server path). Both routes need **no database**, run no ffmpeg, write nothing,
+  and stream in bounded chunks, so a 449 MB clip never sits in memory. Files are
+  served **unchanged**: the PCM audio of Sony XAVC clips plays in Chrome but is
+  silent in Firefox (`docs/research/browser-playback.md`).
 - **`GET`/`HEAD /api/v1/events/{event_id}/proxy?clip=<identity>`** streams the clip's
   **proxy**, and **`…/filmstrip?clip=<identity>`** its filmstrip sprite: the
   `proxy.mp4` (`video/mp4`, 540p H.264 with AAC sound, so a PCM clip is audible in
@@ -425,20 +438,7 @@ render, or job logic lives in the web tier.
   down), no ffmpeg, nothing created, not even the cache directory. A 502 follows the
   clip route's causes, plus an unusable `config.yaml` or `proxies.cache_dir`, and a
   proxy file that exists but cannot be read (the detail names the clip and the reason,
-  never a server path).
-  `Content-Type` comes from a fixed table by extension (`video/mp4`,
-  `video/quicktime`, …), never the host's MIME database. **Failures** answer by
-  cause and carry no caching headers: **404** for an id the events list does not
-  show as an event, a clip that is not on disk in it, an event with no rendered
-  movie, or a file that vanished before it was opened; **502** with the `failure`
-  the event detail reports when the event folder cannot be listed
-  (`unreadable_disk`) or, for the movie, its `reel.yaml` cannot be parsed or its
-  metadata is unusable; **502** with no kind when a file exists but cannot be
-  read (the detail names the clip's identity or the movie's file name, never a
-  server path). Both routes need **no database**, run no ffmpeg, write nothing,
-  and stream in bounded chunks, so a 449 MB clip never sits in memory. Files are
-  served **unchanged**: the PCM audio of Sony XAVC clips plays in Chrome but is
-  silent in Firefox (`docs/research/browser-playback.md`).
+  never a server path; a configuration fault says only to see the server log).
 - **Jobs lifecycle over REST** is a thin wrapper over the job store:
   `POST /api/v1/jobs` (gated like `enqueue` — 201 on a stale event, 409 on an
   active duplicate carrying the active job's id in `job_id`, 200
