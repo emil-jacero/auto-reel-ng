@@ -10,7 +10,6 @@ import { thumbnailUrl } from '../api/thumbnail'
 import { formatBytes } from '../events/common'
 import { FAILURE_LABEL, failureDetail, unansweredFailure } from '../events/labels'
 import { FAILURE_LOOK } from '../events/tones'
-import { claimPlayback } from '../playback/exclusive'
 import { Alert } from '../ui/Alert'
 import { Pill } from '../ui/Pill'
 import { ChapterList } from './ChapterList'
@@ -385,7 +384,6 @@ function MoviePlayer({
           poster={poster}
           src={src}
           aria-labelledby={headingId}
-          onPlay={(e) => claimPlayback(e.currentTarget)}
           onLoadedMetadata={(e) => {
             // A picture this browser cannot decode (MPEG-4 Part 2, HEVC) raises no
             // error: it plays the sound and reports no picture size.

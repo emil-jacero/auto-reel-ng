@@ -239,23 +239,6 @@
   }
 
   /*
-   * Watch (`ClipWatch.tsx`) under the clip's name and above its cuts indicator: a line of
-   * its own, as wide as its words. A coarse pointer's 44px tap area (components.css)
-   * reaches 8px out, so the lines around it stay that far apart.
-   */
-  .cell-file > .watch-button {
-    display: flex;
-    margin-block-start: var(--s-1);
-    font-family: var(--font-sans);
-  }
-
-  @media (pointer: coarse) {
-    .cell-file > .watch-button {
-      margin-block: var(--s-3);
-    }
-  }
-
-  /*
    * The player's row, directly under its clip's row: the table's width, in every layout.
    * Wide, it is a table row whose one cell spans the columns; in the narrow grids (below)
    * it is a block, or its cell would fall into the first grid track.

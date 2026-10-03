@@ -407,6 +407,8 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   explicit Play original for the full file.
   **The clip's player works outside Edit mode** (`clip-play-read-view`, D-16): the event page's read view has a
   Watch control on every clip on disk that opens the same player, read-only.
+  **That control is the play button on the clip's thumbnail** (`clip-play-overlay-one-player`, D-16), and one coordinator
+  pauses every other playing video when one starts (D-15, D-16, D-20).
   **A clip can be turned** (**D-23**): `clips.<identity>.rotate` is an extra clockwise turn on top of how the clip
   plays, so the engine half (`clip-rotate-engine`) makes the render honour it on every profile; the proxies, thumbnails
   and filmstrips stay the file's (D-21) and are not rotated by the editorial value, so the GUI (`clip-rotate-gui`)
@@ -699,6 +701,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    stale once (reason `engine`).
    `chapter-inline-rename` (GUI v2) follows: a chapter is renamed by pressing its title, and the event's own
    chapter shows the main title card, whose title is the event's (D-13); web-only, same.
+   `clip-play-overlay-one-player` follows on user feedback: the read view's Play is a button on the clip's thumbnail, and
+   one page-wide coordinator pauses any other playing video when one starts (D-15, D-16, D-20), web-only, with no render,
+   fingerprint, schema or job change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -925,7 +930,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   change `web-playback-and-notices`); Edit mode shows no movie, and entering it ends
   playback. Amended 2026-10-03 (change `timeline-view`): the read view's Timeline section (D-20) holds a second
   `<video>` once opened, so the page may hold two; **one plays at a time** (`playback/exclusive.ts`: each
-  claims playback on `play` and the other is paused), and the movie still loads nothing before Play. (§4.10)
+  claims playback on `play` and the other is paused), and the movie still loads nothing before Play. Amended
+  2026-10-03 (change `clip-play-overlay-one-player`): the movie player is paused by any other video's start, through
+  the page's one coordinator (`playback/coordinator.ts`), which replaced `exclusive.ts`. (§4.10)
 
 - **D-16 — A clip is previewed in Edit mode in GUI v1** (2026-10-01, change `clip-preview-screen`).
   - **What.** A clip's Cuts panel plays the clip itself, its file streamed unchanged by the media route
@@ -972,6 +979,17 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     (`events/onePlayer.ts`; nothing is closed). A quiet re-read leaves an open player playing; a replaced clip
     continues paused at the same time; a copy built meanwhile is used by the next open, not by the open player.
     The thumbnail is not a Watch button here. The bare `<video>` is no longer a tab stop (Firefox made it one).
+  - **Amended 2026-10-03, change `clip-play-overlay-one-player`: the read view's Play is a control on the thumbnail.**
+    On the operator's request ("Watching a clip should be a play button on the clip"), the read view's Watch button
+    is gone from the file cell: the clip's thumbnail carries the control, a button over the whole frame with a play
+    glyph in a disc, named "Play <name>" and, while the player is open, "Hide player of <name>" (so it never shares a
+    name with the player's own "Play <name>" / "Pause <name>"). The glyph is seen on hover, focus, while open and
+    always without a fine hovering pointer; opening, one player at a time and focus on Close are as above. Edit
+    mode's thumbnail stays its "Watch <name>" button. One coordinator, `playback/coordinator.ts`, installed once in
+    `main.tsx`, replaces `exclusive.ts` and `events/onePlayer.ts`: it pauses every other playing `<video>` when one
+    starts, with no player named and no player closed or seeked, so a thumbnail's start, the Movie section, Edit mode's
+    preview and the Timeline are covered alike. A player does not play by itself when it opens; the coordinator sees
+    its Play.
   - **Amended 2026-10-03, change `time-readouts-legible`: the header says what its numbers are and holds still.** The
     player's time reads `Clip 0:20.48 of 0:20.64` (the clock of D-20: two decimals, written to the scale of the clip's
     length), where it read `0:20.476 / 0:20.64` in a `15ch` box that was shorter than its text; before the browser has
@@ -1246,6 +1264,11 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Bundle (`time-readouts-legible`).** `npm run build` on `origin/main` and on this change: JS 522,394 to 524,175 bytes
     (168,013 to 168,683 gzip -9, +0.7 KB), CSS 70,886 to 71,492 bytes (13,539 to 13,669 gzip -9, +0.1 KB); no package added.
     `npm test` runs 540 tests (516 before).
+  - **Amended 2026-10-03, change `clip-play-overlay-one-player`: the Timeline's video joins the page's coordinator.**
+    The Timeline no longer claims playback itself; the page's one coordinator (`playback/coordinator.ts`) pauses it
+    like any other video. It does not take playback back across a clip boundary: when another video starts while its
+    file is changing, its own resume yields and it stays paused (`resumeOrYield`, `timeline/follow.ts`). `npm run build` on `origin/main` and on this change: JS 533,160 to 533,333
+    bytes (171,764 to 171,882 gzip -9), CSS 73,517 to 74,242 bytes (13,938 to 14,092 gzip -9); no package added.
 
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to

@@ -1,4 +1,5 @@
 import type { Chapter, Clip } from '../api/event.ts'
+import { hideName } from '../preview/playback.ts'
 
 /*
  * Which clips the event page's read view offers Watch for, and what a re-read of the
@@ -34,4 +35,14 @@ export function watchedAfterRead(
     }
   }
   return null
+}
+
+/**
+ * The accessible name of the read view's play control over a clip's thumbnail: "Play
+ * <name>" while the player is closed, "Hide player of <name>" while it is open. Neither
+ * is the open player's own "Play <name>" / "Pause <name>", so no two controls of the page
+ * share a name while a player is open.
+ */
+export function thumbControlName(name: string, open: boolean): string {
+  return open ? hideName(name) : `Play ${name}`
 }

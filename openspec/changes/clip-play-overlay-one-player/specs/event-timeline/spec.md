@@ -20,7 +20,7 @@ the Timeline SHALL NOT take playback back, and SHALL stay paused at the boundary
 
 #### Scenario: A clip starts while the Timeline plays
 - **WHEN** the Timeline plays across `s1710001.mp4` and the operator presses "Play s1710002.mp4" on that clip's
-  thumbnail
+  thumbnail and then the player's Play
 - **THEN** the Timeline is paused with its playhead at the place it stopped, it is still open, no handle or mark
   has moved, nothing was announced, and the clip plays
 - **WHEN** the operator then presses the Timeline's Play

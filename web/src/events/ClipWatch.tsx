@@ -4,16 +4,16 @@ import { clipMediaUrl } from '../api/clipMedia'
 import type { Clip } from '../api/event'
 import type { Trim } from '../cuts/times'
 import { ClipPreview, usePreviewOpen } from '../preview/ClipPreview'
-import { HIDE_PLAYER, WATCH, hideName, watchName } from '../preview/playback'
 import type { ClipPreviews } from '../preview/previews'
 import { Icon } from '../ui/Icon'
-import { canWatch } from './watch'
+import { canWatch, thumbControlName } from './watch'
 
 /*
- * Watching a clip from the event page's read view (change `clip-play-read-view`): a Watch
- * control in the clip's row, and the preview component of Edit mode (`preview/`, D-16) in a
- * row of its own under it, read-only (it is given no `onSet`). Nothing here loads before a
- * press: a closed clip has a button and an empty subscription, no element and no request.
+ * Playing a clip from the event page's read view (changes `clip-play-read-view` and
+ * `clip-play-overlay-one-player`): a play control over the clip's thumbnail, and the preview
+ * component of Edit mode (`preview/`, D-16) in a row of its own under it, read-only (it is
+ * given no `onSet`). Nothing here loads before a press: a closed clip has a button and an
+ * empty subscription, no element and no request.
  *
  * Each control subscribes to its own clip (`usePreviewOpen`), so opening a player re-renders
  * these two components of one clip and nothing else of the list.
@@ -75,11 +75,13 @@ export function LiveRegion({ announcer }: { announcer: Announcer }) {
 }
 
 /**
- * The row's Watch control: the same words, names and icon as Edit mode's, "Watch" and
- * "Hide player". `watchId` and `playerId` are the row's ids, for `aria-controls` and for
- * the focus that Close and Escape give back.
+ * The read view's play control: a button laid over the clip's thumbnail, filling its box,
+ * with a play glyph in a disc at its centre. Named "Play <name>", and "Hide player of
+ * <name>" while the player is open (`thumbControlName`), which keeps it apart from the
+ * player's own "Play <name>" / "Pause <name>". `watchId` and `playerId` are the row's ids,
+ * for the focus that Close and Escape give back and for `aria-controls`.
  */
-export const WatchButton = memo(function WatchButton({
+export const PlayControl = memo(function PlayControl({
   previews,
   identity,
   name,
@@ -98,10 +100,10 @@ export const WatchButton = memo(function WatchButton({
     <button
       id={watchId}
       type="button"
-      className="btn btn-secondary btn-compact preview-toggle watch-button"
+      className="clip-play"
       aria-expanded={open}
       aria-controls={open ? playerId : undefined}
-      aria-label={open ? hideName(name) : watchName(name)}
+      aria-label={thumbControlName(name, open)}
       onClick={() => {
         if (open) {
           previews.hide(identity)
@@ -110,9 +112,10 @@ export const WatchButton = memo(function WatchButton({
         }
       }}
     >
-      {/* Open, it says what a press does: Hide player. */}
-      {open ? HIDE : PLAY}
-      {open ? HIDE_PLAYER : WATCH}
+      <span className="clip-play-disc" aria-hidden="true">
+        {/* Open, it says what a press does: hide the player. */}
+        {open ? HIDE : PLAY}
+      </span>
     </button>
   )
 })

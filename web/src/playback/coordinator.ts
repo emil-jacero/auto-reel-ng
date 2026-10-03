@@ -1,13 +1,15 @@
 /*
- * One video plays at a time on the event page (change `clip-play-read-view`): when a
- * video starts, every other one that plays is paused where it is. Nothing is closed,
- * replaced, restarted or seeked, and nothing is announced.
+ * One video plays at a time on the page (change `clip-play-overlay-one-player`, which
+ * replaced `playback/exclusive.ts` and `events/onePlayer.ts`): when a video starts, every
+ * other one that plays is paused where it is. The rule is held here and nowhere else: no
+ * player claims, releases or names another, so the movie player, a clip's player in the
+ * read view, a clip's preview in Edit mode, the Timeline and any player added later are
+ * covered. Nothing is closed, replaced, restarted or seeked, and nothing is announced.
  *
- * A `<video>`'s `play` event does not bubble, so one capturing listener on the root
- * hears them all, however many videos the page holds and whichever component owns
- * them. Seeks, `load()` and Skip cuts' jumps fire `seeking` and `seeked`, never
- * `play`, so none of them counts as a start. Structural types only: no DOM, so
- * `npm test` runs it with stand-ins.
+ * A `<video>`'s `play` event does not bubble, so one capturing listener on the document
+ * (`main.tsx`) hears them all, whichever component owns them. Seeks, `load()` and Skip
+ * cuts' jumps fire `seeking` and `seeked`, never `play`, so none of them counts as a
+ * start. Structural types only: no DOM, so `npm test` runs it with stand-ins.
  */
 
 /** What this module needs of a video. */
@@ -29,13 +31,15 @@ export type VideoRoot = {
   /** The page's videos; for a `document`, `querySelectorAll('video')`. */
   videos(): Iterable<PausableVideo>
   /** Whether the event's target is one of its videos. */
-  isVideo(target: EventTarget | null): boolean
+  isVideo(target: EventTarget | null): target is EventTarget & PausableVideo
 }
 
 /** Starts keeping one video playing under `root`; returns the remover. */
 export function keepOneVideoPlaying(root: VideoRoot): () => void {
   const onPlay = (event: Event) => {
-    if (root.isVideo(event.target)) {
+    // The event is queued: a video that has been paused since it was started (a start and a
+    // pause in one task) is not playing, and starts nothing.
+    if (root.isVideo(event.target) && !event.target.paused) {
       pauseOthers(event.target, root.videos())
     }
   }
@@ -51,6 +55,17 @@ export function documentRoot(document: Document): VideoRoot {
     removeEventListener: (type, listener, capture) =>
       document.removeEventListener(type, listener, capture),
     videos: () => document.querySelectorAll('video'),
-    isVideo: (target) => target instanceof HTMLVideoElement,
+    isVideo: (target): target is EventTarget & PausableVideo =>
+      target instanceof HTMLVideoElement,
   }
+}
+
+/** Whether a video other than `self` is playing (the Timeline asks before it resumes by itself). */
+export function anotherPlays(self: unknown, videos: Iterable<PausableVideo>): boolean {
+  for (const video of videos) {
+    if (video !== self && !video.paused) {
+      return true
+    }
+  }
+  return false
 }
