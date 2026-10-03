@@ -1,6 +1,6 @@
 import './detail.css'
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 
 import { fetchEvent } from '../api/event'
 import type { Chapter, Clip, EventDetail as EventDetailData } from '../api/event'
@@ -9,6 +9,8 @@ import { ReadCuts, ReadCutsNote, useReadCuts } from '../cuts/ReadCuts'
 import type { ClipCuts } from '../cuts/ReadCuts'
 import { EventEditor } from '../edit/EventEditor'
 import { requestLeave, useSaving } from '../edit/unsaved'
+import { createClipPreviews } from '../preview/previews'
+import type { ClipPreviews } from '../preview/previews'
 import { formatInstant } from '../format'
 import { missingClipsReason } from '../jobs/labels'
 import { RenderControl } from '../jobs/RenderControl'
@@ -19,6 +21,7 @@ import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
 import { LoadStatus } from '../ui/Skeleton'
 import { ClipThumb } from './ClipThumb'
+import { LiveRegion, NO_TRIMS, PlayerRow, WatchButton, createAnnouncer } from './ClipWatch'
 import {
   ClipName,
   ClipStatusPills,
@@ -44,9 +47,11 @@ import {
   withVerdictUnread,
 } from './loadState'
 import type { Failure, LoadOptions, LoadState, Verdict, VerdictUnread } from './loadState'
+import { documentRoot, keepOneVideoPlaying } from './onePlayer'
 import { ThumbHealthContext, useThumbHealth } from './thumbHealth'
 import { FAILURE_LOOK } from './tones'
 import { createVerdictFlight } from './verdictFlight'
+import { canWatch, watchedAfterRead } from './watch'
 
 /**
  * One event's page: its chapters and clips in play order, and whether it needs
@@ -240,6 +245,13 @@ function EventDetailBody({
   }, [load])
 
   useEffect(() => () => verdictFlight.abort(), [verdictFlight])
+
+  // One video plays at a time: the Movie section's and an open clip's player can both
+  // exist here, and a started one pauses the other (`onePlayer.ts`).
+  useEffect(() => keepOneVideoPlaying(documentRoot(document)), [])
+
+  // Where focus goes when a read removes the control that held it and no row is left.
+  const focusPage = useCallback(() => headingRef.current?.focus(), [])
 
   useEffect(() => {
     shown.current = true
@@ -476,7 +488,7 @@ function EventDetailBody({
           />
         ) : (
           <div className="page-content" aria-busy={updating || undefined}>
-            <ReadyView eventId={eventId} event={state.event} />
+            <ReadyView eventId={eventId} event={state.event} onLostFocus={focusPage} />
           </div>
         ))}
     </main>
@@ -547,12 +559,60 @@ function RenderPanel({
   )
 }
 
-function ReadyView({ eventId, event }: { eventId: string; event: EventDetailData }) {
+/** Whether keyboard focus is in an open clip player (the row that holds it). */
+function playerHoldsFocus(): boolean {
+  return document.activeElement?.closest('.clip-preview-row') != null
+}
+
+/** The row of the clip `identity`, if the page lists it. */
+function clipRow(identity: string): HTMLElement | undefined {
+  return Array.from(document.querySelectorAll<HTMLElement>('tr.clip-row')).find(
+    (row) => row.dataset.clip === identity,
+  )
+}
+
+function ReadyView({
+  eventId,
+  event,
+  onLostFocus,
+}: {
+  eventId: string
+  event: EventDetailData
+  /** Focus has nowhere in the rows to go: the page's heading takes it. */
+  onLostFocus: () => void
+}) {
   const clips = event.chapters.flatMap((chapter) => chapter.clips)
   const hasNamedChapter = event.chapters.some((chapter) => chapter.name !== '')
   const read = useReadCuts(eventId, event)
+  // The clip players of this view (`ClipWatch.tsx`): one open at a time. They live and
+  // die with the view, which a Refresh, the first load and Edit mode replace.
+  const previews = useState(createClipPreviews)[0]
+  const announcer = useState(createAnnouncer)[0]
+  useEffect(() => () => previews.hideAll(), [previews])
+  // Read while the DOM is still the last commit's: after a commit that removes the player,
+  // focus is already on <body>, and this is the only record of where it had been.
+  const focusWasInPlayer = useRef(false)
+  focusWasInPlayer.current = playerHoldsFocus()
+  // A re-read the page started itself keeps this view: a player whose clip is gone closes,
+  // and focus that was in it moves to the clip's row, else to the heading.
+  useLayoutEffect(() => {
+    const open = previews.open()
+    if (open === null || watchedAfterRead(open, event.chapters) !== null) {
+      return
+    }
+    previews.hide(open)
+    if (focusWasInPlayer.current) {
+      const row = clipRow(open)
+      if (row === undefined) {
+        onLostFocus()
+      } else {
+        row.focus()
+      }
+    }
+  }, [event, previews, onLostFocus])
   return (
     <>
+      <LiveRegion announcer={announcer} />
       {event.missing.length > 0 && (
         <Alert
           tone="warn"
@@ -585,6 +645,8 @@ function ReadyView({ eventId, event }: { eventId: string; event: EventDetailData
             chapter={chapter}
             heading={chapterHeading(chapter.name, hasNamedChapter)}
             cuts={read.cuts}
+            previews={previews}
+            onAnnounce={announcer.announce}
           />
         ))
       )}
@@ -664,11 +726,15 @@ function ChapterPanel({
   chapter,
   heading,
   cuts,
+  previews,
+  onAnnounce,
 }: {
   eventId: string
   chapter: Chapter
   heading: string
   cuts: ClipCuts | null
+  previews: ClipPreviews
+  onAnnounce: (message: string) => void
 }) {
   // Chapter names hold spaces and non-ASCII letters, so the id is generated.
   const headingId = useId()
@@ -701,43 +767,70 @@ function ChapterPanel({
       <table className="data-table clip-table" role="table" aria-labelledby={headingId}>
         <ClipTableHead />
         <tbody role="rowgroup">
-          {[...played, ...ignored].map((clip, index) => (
-            <tr
-              role="row"
-              key={clip.identity}
-              className="clip-row"
-              data-status={clip.status}
-              data-excluded={clip.excluded || undefined}
-            >
-              <td role="cell" className="cell-pos">
-                {index < played.length ? index + 1 : null}
-              </td>
-              <td role="cell" className="cell-thumb">
-                <ClipThumb eventId={eventId} clip={clip} name={nameOf(clip.identity)} />
-              </td>
-              <td role="cell" className="cell-file">
-                <ClipName name={nameOf(clip.identity)} />
-                {/* An excluded clip is not in the movie, so its cuts do not apply. */}
-                <ReadCuts
-                  cuts={clip.excluded ? undefined : cuts?.get(clip.identity)}
-                  name={nameOf(clip.identity)}
-                />
-              </td>
-              <td role="cell" className="cell-status">
-                <ClipStatusPills clip={clip} />
-              </td>
-              <td role="cell" className="cell-size">
-                {clip.size == null ? '—' : formatBytes(clip.size)}
-              </td>
-              <td role="cell" className="cell-mtime">
-                {clip.mtime == null ? (
-                  '—'
-                ) : (
-                  <time dateTime={clip.mtime}>{formatInstant(clip.mtime)}</time>
+          {[...played, ...ignored].map((clip, index) => {
+            const name = nameOf(clip.identity)
+            // An excluded clip is not in the movie, so its cuts do not apply.
+            const trims = clip.excluded ? undefined : cuts?.get(clip.identity)
+            const watchId = `${headingId}-w${index}`
+            const playerId = `${headingId}-p${index}`
+            return (
+              <Fragment key={clip.identity}>
+                <tr
+                  role="row"
+                  className="clip-row"
+                  data-status={clip.status}
+                  data-excluded={clip.excluded || undefined}
+                  data-clip={clip.identity}
+                  tabIndex={-1}
+                >
+                  <td role="cell" className="cell-pos">
+                    {index < played.length ? index + 1 : null}
+                  </td>
+                  <td role="cell" className="cell-thumb">
+                    <ClipThumb eventId={eventId} clip={clip} name={name} />
+                  </td>
+                  <td role="cell" className="cell-file">
+                    <ClipName name={name} />
+                    {canWatch(clip) && (
+                      <WatchButton
+                        previews={previews}
+                        identity={clip.identity}
+                        name={name}
+                        watchId={watchId}
+                        playerId={playerId}
+                      />
+                    )}
+                    <ReadCuts cuts={trims} name={name} />
+                  </td>
+                  <td role="cell" className="cell-status">
+                    <ClipStatusPills clip={clip} />
+                  </td>
+                  <td role="cell" className="cell-size">
+                    {clip.size == null ? '—' : formatBytes(clip.size)}
+                  </td>
+                  <td role="cell" className="cell-mtime">
+                    {clip.mtime == null ? (
+                      '—'
+                    ) : (
+                      <time dateTime={clip.mtime}>{formatInstant(clip.mtime)}</time>
+                    )}
+                  </td>
+                </tr>
+                {canWatch(clip) && (
+                  <PlayerRow
+                    previews={previews}
+                    eventId={eventId}
+                    clip={clip}
+                    name={name}
+                    cuts={trims ?? NO_TRIMS}
+                    watchId={watchId}
+                    playerId={playerId}
+                    onAnnounce={onAnnounce}
+                  />
                 )}
-              </td>
-            </tr>
-          ))}
+              </Fragment>
+            )
+          })}
         </tbody>
       </table>
     </section>
