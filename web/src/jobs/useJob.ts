@@ -2,7 +2,7 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react'
 
 import type { JobSummary } from '../api/events'
 import type { JobOut } from '../api/jobs'
-import { countRenders, newestRenderByEvent } from './kinds'
+import { countRenders, newestProxyByEvent, newestRenderByEvent } from './kinds'
 import { choose } from './shownJob'
 import type { ShownJob } from './shownJob'
 import { getState, isActive, load, subscribe } from './store'
@@ -29,6 +29,29 @@ function newestJobOf(eventId: string): JobOut | undefined {
     newestByEvent = newestRenderByEvent(jobs.values())
   }
   return newestByEvent.get(eventId)
+}
+
+// The same for proxy jobs, which only the Timeline's Prepare state shows.
+let indexedProxies: ReadonlyMap<string, JobOut> | null = null
+let newestProxyOf = new Map<string, JobOut>()
+
+function newestProxyJobOf(eventId: string): JobOut | undefined {
+  const { jobs } = getState()
+  if (jobs !== indexedProxies) {
+    indexedProxies = jobs
+    newestProxyOf = newestProxyByEvent(jobs.values())
+  }
+  return newestProxyOf.get(eventId)
+}
+
+/**
+ * The event's newest proxy job the connection knows, as a `ShownJob`, or null. There is
+ * no read to fall back on (`latest_job` is always a render), so a proxy job that ended
+ * before the page opened is not shown: the clips' proxy states say what is missing.
+ */
+export function useProxyJob(eventId: string): ShownJob | null {
+  const live = useSyncExternalStore(subscribe, () => newestProxyJobOf(eventId))
+  return useMemo(() => (live === undefined ? null : { source: 'live', job: live }), [live])
 }
 
 /**
