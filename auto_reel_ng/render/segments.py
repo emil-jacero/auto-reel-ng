@@ -73,6 +73,7 @@ class Segment:  # pylint: disable=too-many-instance-attributes
     source_path: Optional[Path] = None
     start: Optional[float] = None
     end: Optional[float] = None
+    #: An extra clockwise turn on top of the clip's display rotation (``reel-document``).
     rotate: Optional[int] = None
     is_full_clip: bool = False
     producer: Optional[str] = None

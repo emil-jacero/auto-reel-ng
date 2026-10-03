@@ -79,7 +79,12 @@ from auto_reel_ng.render import (
     resolve_target,
     verify_output,
 )
-from auto_reel_ng.render.normalize import NormalizeCommand, _needs_pad
+from auto_reel_ng.render.normalize import (
+    NormalizeCommand,
+    _needs_pad,
+    display_turn,
+    total_turn,
+)
 from auto_reel_ng.staleness.manifest import read_manifest
 
 # --------------------------------------------------------------------------- #
@@ -499,8 +504,14 @@ def test_portrait_clip_with_correct_fill_pads_on_gpu() -> None:
         (_clip(width=1280, height=720), None, False),
         (_clip(width=1440, height=1920), None, True),
         (_clip(width=1920, height=1080), 90, True),  # segment rotation -> portrait
-        (dataclasses.replace(_clip(), rotation=270), None, True),  # clip metadata rotation
-        (dataclasses.replace(_clip(), rotation=90), 180, False),  # segment rotate wins
+        (dataclasses.replace(_clip(), rotation=270), None, True),  # display turn 90
+        # The turn composes: probed 270 is a clockwise display turn of 90.
+        (dataclasses.replace(_clip(), rotation=270), 90, False),  # 90 + 90 = 180, no swap
+        (dataclasses.replace(_clip(), rotation=270), 270, False),  # 90 + 270 = 0, stored 16:9
+        (dataclasses.replace(_clip(), rotation=90), 180, True),  # 270 + 180 = 90, swapped
+        (dataclasses.replace(_clip(), rotation=90), 90, False),  # 270 + 90 = 0
+        (dataclasses.replace(_clip(width=1080, height=1920), rotation=270), None, False),
+        (dataclasses.replace(_clip(width=1080, height=1920), rotation=270), 90, True),
         (_clip(width=1920, height=1080, sar="N/A"), None, False),
         # Anamorphic 16:9 display: no scale honours SAR, so the pixels still need bars.
         (_clip(width=1440, height=1080, sar="4:3"), None, True),
@@ -508,7 +519,7 @@ def test_portrait_clip_with_correct_fill_pads_on_gpu() -> None:
     ],
 )
 def test_needs_pad(clip: ClipMetadata, rotate: Optional[int], expected: bool) -> None:
-    assert _needs_pad(clip, rotate, _target()) is expected
+    assert _needs_pad(clip, total_turn(clip, rotate), _target()) is expected
 
 
 def test_hardware_decode_shares_one_named_device_with_filters() -> None:
@@ -812,6 +823,176 @@ def test_rotation_falls_back_to_cpu_transpose() -> None:
     assert vf.startswith("hwdownload,format=nv12,transpose=1,format=nv12,hwupload,scale_vaapi")
 
 
+# --------------------------------------------------------------------------- #
+# clip-rotate-engine: rotate is an extra clockwise turn on top of the display rotation #
+# --------------------------------------------------------------------------- #
+
+_CANVAS = _target(width=640, height=360)
+_CPU_TAIL = (
+    "scale=w=640:h=360:force_original_aspect_ratio=decrease,"
+    "pad=640:360:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
+)
+_VAAPI_SCALE = "scale_vaapi=w=640:h=360:force_original_aspect_ratio=decrease"
+_VAAPI_PAD = ",pad_vaapi=w=640:h=360:x=(ow-iw)/2:y=(oh-ih)/2:color=black"
+
+
+def _phone_clip(rotation: Optional[int] = 270, **overrides: object) -> ClipMetadata:
+    """A 1280x720 clip whose probe reports ``rotation`` (270 is matrix -90, a phone upright)."""
+    return dataclasses.replace(_clip(width=1280, height=720, **overrides), rotation=rotation)
+
+
+def _normalize(rotate: Optional[int], clip: ClipMetadata, profile, **segment: object):
+    return build_normalize_command(
+        _source_segment(rotate=rotate, **segment), clip, _CANVAS, profile, Path("/t/seg.mp4")
+    )
+
+
+@pytest.mark.parametrize(
+    ("probed", "expected"), [(None, 0), (0, 0), (90, 270), (180, 180), (270, 90)]
+)
+def test_display_turn_is_the_clockwise_complement_of_the_probed_angle(
+    probed: Optional[int], expected: int
+) -> None:
+    assert display_turn(dataclasses.replace(_clip(), rotation=probed)) == expected
+
+
+@pytest.mark.parametrize(
+    ("probed", "rotate", "expected"),
+    [
+        (None, None, 0),
+        (None, 90, 90),
+        (270, None, 90),  # matrix -90: one clockwise quarter turn upright
+        (270, 90, 180),
+        (270, 270, 0),  # turned back to the stored orientation
+        (90, 90, 0),  # 270 + 90 wraps
+        (90, 180, 90),
+        (270, -90, 0),  # -90 is 270
+        (270, 360, 90),  # 360 is no extra turn
+        (180, 180, 0),
+    ],
+)
+def test_total_turn_adds_the_display_turn_and_rotate_modulo_360(
+    probed: Optional[int], rotate: Optional[int], expected: int
+) -> None:
+    clip = dataclasses.replace(_clip(), rotation=probed)
+    assert total_turn(clip, rotate) == expected
+
+
+def test_cpu_display_rotation_is_one_transpose_with_autorotate_off() -> None:
+    command = _normalize(None, _phone_clip(), CPUProfile())
+    assert _vf(command) == f"transpose=1,{_CPU_TAIL}"
+    assert _subseq(command.args, ["-noautorotate", "-i", "/ev/clip.mp4"])
+
+
+def test_cpu_rotate_adds_to_the_display_rotation() -> None:
+    command = _normalize(90, _phone_clip(), CPUProfile())
+    assert _vf(command) == f"transpose=1,transpose=1,{_CPU_TAIL}"
+    assert "-noautorotate" in command.args
+
+
+def test_cpu_rotate_that_cancels_the_display_rotation_adds_no_stage() -> None:
+    command = _normalize(270, _phone_clip(), CPUProfile())
+    assert _vf(command) == _CPU_TAIL
+    assert "transpose" not in " ".join(command.args)
+    assert "-noautorotate" in command.args  # there is still a matrix to ignore
+
+
+def test_vaapi_display_rotation_downloads_transposes_and_uploads() -> None:
+    # The reproduced defect: on VAAPI hardware decode ffmpeg does not autorotate, so a
+    # phone clip rendered sideways. The engine now applies the turn between the transfers.
+    command = _normalize(None, _phone_clip(), _amd_profile())
+    assert _vf(command) == (
+        f"hwdownload,format=nv12,transpose=1,format=nv12,hwupload,{_VAAPI_SCALE}{_VAAPI_PAD}"
+    )
+    assert _subseq(command.args, ["-hwaccel_output_format", "vaapi", "-noautorotate", "-i"])
+
+
+def test_vaapi_rotate_adds_to_the_display_rotation() -> None:
+    command = _normalize(90, _phone_clip(), _amd_profile())
+    assert _vf(command) == (
+        f"hwdownload,format=nv12,transpose=1,transpose=1,format=nv12,hwupload,{_VAAPI_SCALE}"
+    )
+
+
+def test_vaapi_rotate_that_cancels_the_display_rotation_stays_on_the_gpu() -> None:
+    command = _normalize(270, _phone_clip(), _amd_profile())
+    assert _vf(command) == _VAAPI_SCALE  # a stored 16:9 needs no bars, no download
+    assert "-noautorotate" in command.args
+
+
+def test_vaapi_software_decode_transposes_then_uploads() -> None:
+    clip = _phone_clip(codec="mpeg4")
+    command = _normalize(None, clip, _amd_profile())
+    assert command.hardware_decode is False
+    assert _vf(command).startswith("transpose=1,format=nv12,hwupload,scale_vaapi=")
+    assert "-noautorotate" in command.args
+    forced = build_normalize_command(
+        _source_segment(),
+        _phone_clip(),
+        _CANVAS,
+        _amd_profile(),
+        Path("/t/o.mp4"),
+        force_software_decode=True,
+    )
+    assert _vf(forced).startswith("transpose=1,format=nv12,hwupload,scale_vaapi=")
+
+
+@pytest.mark.parametrize("rotate", [90, 180, 270])
+@pytest.mark.parametrize("profile", [CPUProfile(), _amd_profile()], ids=["cpu", "vaapi"])
+def test_a_clip_without_a_display_rotation_keeps_its_arguments(rotate: int, profile) -> None:
+    # No matrix -> no -noautorotate, and the chain is the one rotate always produced.
+    command = _normalize(rotate, _phone_clip(rotation=None), profile)
+    assert "-noautorotate" not in command.args
+    transpose = {90: "transpose=1", 180: "transpose=1,transpose=1", 270: "transpose=2"}[rotate]
+    assert transpose in _vf(command)
+    assert _vf(_normalize(None, _phone_clip(rotation=None), profile)).count("transpose") == 0
+
+
+def test_the_flag_precedes_only_the_clips_own_input() -> None:
+    segment = _source_segment(
+        is_full_clip=False,
+        start=1.0,
+        end=3.0,
+        overlays=(OverlaySpec(source="title.png", x="10", y="20"),),
+    )
+    command = build_normalize_command(
+        segment, _phone_clip(), _CANVAS, _amd_profile(), Path("/t/seg.mp4")
+    )
+    args = command.args
+    assert args.count("-noautorotate") == 1
+    flag = args.index("-noautorotate")
+    assert args[flag : flag + 5] == ("-noautorotate", "-ss", "1", "-i", "/ev/clip.mp4")
+    assert args[args.index("title.png") - 1] == "-i"
+    assert args[args.index("title.png") - 2] != "-noautorotate"
+    assert "[0:v]hwdownload,format=nv12,transpose=1" in args[args.index("-filter_complex") + 1]
+
+
+def test_both_rotations_are_logged(render_logs: None, caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO, logger="auto_reel_ng.render.normalize"):
+        _normalize(90, _phone_clip(), CPUProfile())
+    lines = [r.getMessage() for r in caplog.records if "display rotation" in r.getMessage()]
+    assert lines == ["clip.mp4: display rotation 90 + rotate 90 = a 180 degree clockwise turn"]
+
+
+@pytest.mark.parametrize(
+    ("probed", "rotate"), [(None, 90), (270, None), (None, None)], ids=["rotate", "display", "none"]
+)
+def test_one_rotation_alone_is_not_logged(
+    render_logs: None,
+    caplog: pytest.LogCaptureFixture,
+    probed: Optional[int],
+    rotate: Optional[int],
+) -> None:
+    with caplog.at_level(logging.INFO, logger="auto_reel_ng.render.normalize"):
+        _normalize(rotate, _phone_clip(rotation=probed), CPUProfile())
+    assert not [r for r in caplog.records if "display rotation" in r.getMessage()]
+
+
+def test_an_unsupported_total_still_fails_loud() -> None:
+    with pytest.raises(RenderError, match="unsupported rotation"):
+        _normalize(45, _phone_clip(rotation=None), CPUProfile())
+
+
 def test_overlay_uses_cpu_bridge_filter_complex() -> None:
     segment = _source_segment(overlays=(OverlaySpec(source="title.png", x="10", y="20"),))
     command = build_normalize_command(
@@ -880,6 +1061,29 @@ def test_trimmed_overlaid_rotated_mismatched_are_ineligible() -> None:
     assert copy_eligible(_source_segment(), _clip(width=1280, height=720), target) is False
     assert copy_eligible(_source_segment(), _clip(is_hdr=True), target) is False
     assert copy_eligible(_source_segment(), _clip(audio=False), target) is False
+
+
+def test_display_rotated_clip_is_not_copy_eligible() -> None:
+    # Conforming in every stored parameter, but a stream copy would carry the matrix
+    # into the movie (measured: the finished one-clip movie reported rotation=90).
+    target = _target()
+    assert copy_eligible(_source_segment(), _clip(), target) is True
+    rotated = dataclasses.replace(_clip(), rotation=270)
+    assert copy_eligible(_source_segment(), rotated, target) is False
+    assert copy_eligible(_source_segment(), dataclasses.replace(_clip(), rotation=0), target)
+
+
+def test_display_rotation_that_rotate_cancels_is_still_not_copy_eligible() -> None:
+    rotated = dataclasses.replace(_clip(), rotation=270)
+    assert total_turn(rotated, 270) == 0
+    assert copy_eligible(_source_segment(rotate=270), rotated, _target()) is False
+
+
+@pytest.mark.parametrize(
+    ("rotate", "eligible"), [(180, False), (0, True), (360, True), (-90, False)]
+)
+def test_rotate_costs_the_fast_path_only_when_it_turns(rotate: int, eligible: bool) -> None:
+    assert copy_eligible(_source_segment(rotate=rotate), _clip(), _target()) is eligible
 
 
 def test_synthetic_segment_never_copy_eligible() -> None:
