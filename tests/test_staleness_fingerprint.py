@@ -33,8 +33,8 @@ FFMPEG_VERSION = (7, 1)
 PINNED_EDITORIAL = "cfb295abf2c9f44e4ec05e5634beaf1b9b21235c21d65d0109a944509d848de4"
 PINNED_DEFAULTS = "9d1a9bf4432fae2ec90ade0e7eb1552455abd6da0fac7974d78a16d63113f555"
 PINNED_CLIP_SET = "b1c642b3cd29b949070b357534bae6e2077121b032f93fa34c7aa0df957b6663"
-PINNED_ENGINE = "0ad5ecb8dec07fb391ef20b3a833151c57dfea62a8a0f8688012e53d59ae90cb"
-PINNED_COMBINED = "1ffdffd392b8befc0c3147ab2543ed05b20c77a62377b27c847c0ed0ed1d31ce"
+PINNED_ENGINE = "eff99b0f11f902eeae8a74752f74249d453490ff6a35761780a39b457f117de1"
+PINNED_COMBINED = "97dd20729ebb5d6b57c5ee87a5b645d09a2bce6f06044bc03d2ac7158203f230"
 #: ``_hash_json({1: "a", "b": "c"})``: the fallback path, which tags every key with its type.
 PINNED_FALLBACK = "43ef72b9709103ca8e6941bcc4ae7e089a867d856cf5f73300d83181f52e17e1"
 
@@ -172,7 +172,7 @@ def test_version_5_manifest_is_engine_stale(
         old = _fingerprint(event_dir)
         identity = fingerprint_module.engine_identity(FFMPEG_VERSION)
     assert identity.startswith("render_graph_version=5 ")
-    assert fingerprint_module.RENDER_GRAPH_VERSION == 6
+    assert fingerprint_module.RENDER_GRAPH_VERSION >= 6
     write_manifest(event_dir, old, output=output.name, engine_identity=identity)
 
     verdict = evaluate(event_dir, output, _fingerprint(event_dir))
@@ -204,21 +204,21 @@ def test_version_4_manifest_is_engine_stale(
     assert verdict.reasons == (StalenessReason.ENGINE,)
 
 
-def test_version_5_manifest_is_engine_stale_and_the_new_version_gates_fresh(
+def test_version_6_manifest_is_engine_stale_and_the_new_version_gates_fresh(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # title-card-model bumped RENDER_GRAPH_VERSION to 6 (the opening card's text and each card's
-    # length and style changed for identical inputs): an output rendered under version 5 must
-    # re-render, for the engine reason alone, while the same event under 6 is fresh.
+    # title-card-model bumped RENDER_GRAPH_VERSION to 7 (the opening card's text and each card's
+    # length and style changed for identical inputs): an output rendered under version 6 must
+    # re-render, for the engine reason alone, while the same event under 7 is fresh.
     event_dir = _event_dir(tmp_path)
     output = event_dir / "Party.mp4"
     output.write_bytes(b"rendered")
     with monkeypatch.context() as patch:
-        patch.setattr(fingerprint_module, "RENDER_GRAPH_VERSION", 5)
+        patch.setattr(fingerprint_module, "RENDER_GRAPH_VERSION", 6)
         old = _fingerprint(event_dir)
         old_identity = fingerprint_module.engine_identity(FFMPEG_VERSION)
-    assert old_identity.startswith("render_graph_version=5 ")
-    assert fingerprint_module.RENDER_GRAPH_VERSION == 6
+    assert old_identity.startswith("render_graph_version=6 ")
+    assert fingerprint_module.RENDER_GRAPH_VERSION == 7
     new = _fingerprint(event_dir)
     # Only the engine component moved: a card-less document hashes exactly as before.
     assert new.engine != old.engine
