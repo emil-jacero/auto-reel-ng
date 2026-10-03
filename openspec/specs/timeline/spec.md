@@ -1,7 +1,10 @@
 # timeline Specification
 
 ## Purpose
-TBD - created by archiving change timeline-model. Update Purpose after archive.
+Own the pure model behind the GUI timeline (`web/src/timeline/model.ts`, D-20): time and pixel conversion in
+whole milliseconds on a clip's own frame grid, clip layout and zoom, windowing, a clip's cut spans and
+rectangles, trim limits and snapping. The model takes a clip's duration and frame rate as arguments, never
+defaults them, and adds no dependency; the views that draw it are other capabilities.
 
 ## Requirements
 
