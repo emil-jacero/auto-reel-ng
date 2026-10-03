@@ -2,8 +2,9 @@
 
 - **Date:** 2026-10-03
 - **Author:** auto-reel-ng (`proxy-job` change)
-- **Time-box:** ≤ 2h   **Status:** **Refuted** (on this host, which was loaded by other work throughout)
-- **Unblocks:** `proxy-job` task 7.1 (design decision 9); HLD D-21 "proxy job" rules. Proposes a follow-up change.
+- **Time-box:** ≤ 2h   **Status:** **Refuted** as the change was first built (host loaded by other work throughout);
+  **re-run with the yield folded in (review round): bound met warm, not cold** — see "Re-run with `proxy-yield`" at the end
+- **Unblocks:** `proxy-job` task 7.1 (design decision 9); HLD D-21 "proxy job" rules.
 
 ## Hypothesis
 With a GPU-classified render of one event running, a proxy job on other events running throughout makes the
@@ -82,11 +83,11 @@ Not tested: a discrete GPU, Intel or NVIDIA, an idle host, and a library on its 
   order**. It does **not** claim that a render beside a proxy job is unaffected; the README and HLD say a
   render beside a running proxy job can take about 1.3 to 1.5 times as long on this host, and where the claim order and
   `proxy_slots` stop.
-- **Follow-up (not built here): `proxy-yield`.** A proxy job should not *start its next clip* while a render is
+- **Follow-up `proxy-yield` (first proposed here; folded into the change after review, see the re-run below).** A proxy job should not *start its next clip* while a render is
   running (the proxy handler checks `list_by_status(RUNNING, kind=render)` between clips, which costs nothing and
   needs no preemption); a clip already encoding finishes. This cuts the overlap from minutes to one clip's
-  encode (seconds). It is a small change in `scheduler/proxy_job.py`, deliberately left to its own change
-  because it changes when a proxy job finishes, which the timeline's Prepare state shows.
+  encode (seconds). It is a small change in `scheduler/proxy_job.py`. It was first left to its own change because it changes when a
+  proxy job finishes; the review refused to merge on a refuted bound, so it was built in this change.
 - A thread cap is not worth a setting: it did not help here.
 
 ## Open questions / follow-ups
@@ -94,3 +95,34 @@ Not tested: a discrete GPU, Intel or NVIDIA, an idle host, and a library on its 
   to 1.5 is I/O.
 - Is the APU's shared memory the cause? A discrete GPU would tell (the project's own host lists an RX 9070 XT
   on `renderD128` in `CLAUDE.md`; `vainfo` here reported the 860M, so the render node order may differ between boots).
+
+## Re-run with `proxy-yield` (review round, 2026-10-03)
+The review of the change said not to merge on the strength of a ticked task: the 1.15x bound was refuted and the
+cheap lever (a proxy job does not start its next clip while a render runs) was deferred. It was built: the handler
+asks the job store for running `render` jobs before every clip, gives its CPU token back while one runs (a render
+waiting for that token must not wait for the job that yields), and a clip already encoding finishes. The experiment
+was run again, unchanged (`run.sh`, same library, `REPS=3`), twice: with the yield (`artifacts-yield/`) and as a
+control with the yield switched off by `PROXY_NO_YIELD=1` (`capped_worker.py`; `artifacts-noyield/`).
+
+| Run | Alone (warm) | Beside a proxy job (warm) | Median ratio | Pairs | Cold pair (alone / beside) |
+|---|---|---|---|---|---|
+| with the yield | 42.7, 43.0, 43.1 (43.0) | 48.1, 48.6, 48.3 (48.3) | **1.12** | 1.13, 1.13, 1.12 | 43.5 / 56.3 (1.29) |
+| control, no yield | 54.2, 65.7, 73.1 (65.7) | 74.2, 77.0, 83.3 (77.0) | 1.17 | 1.37, 1.17, 1.14 | 75.6 / 89.8 (1.19) |
+
+What this does and does not show:
+- **The warm bound is met with the yield (1.12 against 1.15)**, with unusually tight pairs. The cold pair is not (1.29).
+- **The two runs are not a clean A/B.** The yield run began when the host load average was about 2 and ended near 8;
+  the control ran at 8 to 20 (other agents' builds and tests), which is why its solo times spread from 54 to 73 s
+  against 43 s. The control's own median ratio (1.17) is lower than experiment 007's first runs (1.52), so the
+  host's load, not only the proxy job, was in those numbers. Do not read 1.12 against 1.17 as the yield's effect.
+- **The yield bounds the overlap, it does not remove it.** In the yield run ProxyA stood at progress 0.71 when
+  the render ended (its large first clip done, its second clip held back) and the other two proxy jobs were still
+  `queued`, so the render shared the host with one clip's encode (`overlap_s` is the render's whole window) but not
+  with the following clips. Without the yield the three proxy jobs were done or nearly done by then. A clip longer
+  than the render is not helped at all, and the proxy job's total time is about the same (84 to 86 s with the yield, 77 to 90 s without; the
+  host load differed).
+- Still untested: `nice`/`ionice` on the proxy ffmpeg (would also slow the clip in flight), an idle host, a discrete
+  GPU, a separate disk.
+
+**Verdict of the re-run:** the lever the first report proposed is built and the warm median is inside the bound on a
+quieter host; the cold case (1.29) and the clip in flight remain, and are the documented limit.

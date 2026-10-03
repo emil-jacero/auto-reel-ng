@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -22,7 +23,7 @@ from auto_reel_ng.errors import (
     ProxyError,
     RenderCancelledError,
 )
-from auto_reel_ng.persistence.models import Job
+from auto_reel_ng.persistence.models import Job, JobKind, JobStatus
 from auto_reel_ng.proxies import ProxySettings
 from auto_reel_ng.scheduler import proxy_job as proxy_job_module
 from auto_reel_ng.scheduler.pools import CapacityPools
@@ -42,6 +43,12 @@ class MemoryStore:
     def __init__(self) -> None:
         self.progress: List[float] = []
         self.cancel_requested = False
+        self.running_renders = 0  # how many ``render`` jobs the store reports as running
+        self.listings: List[Any] = []
+
+    def list_by_status(self, status: Any, *, kind: Any = None) -> List[Any]:
+        self.listings.append((status, kind))
+        return [object()] * self.running_renders
 
     def set_progress(self, job_id: uuid.UUID, fraction: float) -> None:
         del job_id
@@ -599,3 +606,126 @@ def test_a_stop_while_waiting_for_the_token_interrupts_the_job(
         token.release()
 
     assert harness.prepared == []
+
+
+# --------------------------------------------------------------------------- #
+# yielding to renders
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def quick_yield(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(proxy_job_module, "YIELD_POLL_S", 0.01)
+    monkeypatch.setattr(proxy_job_module, "TOKEN_POLL_S", 0.01)
+
+
+def run_in_thread(harness: Harness) -> tuple[threading.Thread, List[BaseException]]:
+    errors: List[BaseException] = []
+
+    def target() -> None:
+        try:
+            harness.run()
+        except BaseException as exc:  # pylint: disable=broad-except
+            errors.append(exc)
+
+    thread = threading.Thread(target=target)
+    thread.start()
+    return thread, errors
+
+
+def wait_for(condition: Callable[[], bool], timeout: float = 5.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(0.01)
+    return False
+
+
+def test_no_clip_starts_while_a_render_runs_and_the_token_is_given_back(
+    harness: Harness, quick_yield: None
+) -> None:
+    del quick_yield
+    harness.clip("a.mp4")
+    harness.store.running_renders = 1
+
+    thread, errors = run_in_thread(harness)
+    assert wait_for(lambda: len(harness.store.listings) >= 3)  # it is looking, not working
+
+    assert harness.prepared == []
+    assert harness.cpu_token_is_free()  # a render waiting for the CPU token is not blocked by it
+    assert harness.store.listings[0] == (JobStatus.RUNNING, JobKind.RENDER)
+    harness.store.running_renders = 0
+    thread.join(timeout=5)
+
+    assert not thread.is_alive() and errors == []
+    assert harness.prepared == ["a.mp4"]
+    assert harness.cpu_token_is_free()
+
+
+def test_a_render_that_starts_between_clips_holds_back_the_next_clip_only(
+    harness: Harness, quick_yield: None
+) -> None:
+    del quick_yield
+    for name in ("a.mp4", "b.mp4"):
+        harness.clip(name)
+
+    def run(clip: Path, on_progress: Callable[[float], None]) -> None:
+        if clip.name == "a.mp4":
+            harness.store.running_renders = 1  # a render starts while clip a is encoding
+        on_progress(1.0)
+
+    harness.on_prepare = run
+    thread, errors = run_in_thread(harness)
+
+    assert wait_for(lambda: harness.prepared == ["a.mp4"] and harness.cpu_token_is_free())
+    time.sleep(0.1)
+    assert harness.prepared == ["a.mp4"]  # the clip in flight finished; the next one waits
+    harness.store.running_renders = 0
+    thread.join(timeout=5)
+
+    assert errors == []
+    assert harness.prepared == ["a.mp4", "b.mp4"]
+
+
+def test_a_cancel_while_yielding_to_a_render_ends_the_job(
+    harness: Harness, quick_yield: None
+) -> None:
+    del quick_yield
+    harness.clip("a.mp4")
+    harness.store.running_renders = 1
+    thread, errors = run_in_thread(harness)
+    assert wait_for(lambda: len(harness.store.listings) >= 2)
+
+    harness.store.cancel_requested = True
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert [type(e) for e in errors] == [RenderCancelledError]
+    assert harness.prepared == [] and harness.cpu_token_is_free()
+
+
+def test_a_stop_while_yielding_to_a_render_interrupts_the_job_at_once(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(proxy_job_module, "YIELD_POLL_S", 30.0)  # only the stop can wake it
+    harness.clip("a.mp4")
+    harness.store.running_renders = 1
+    thread, errors = run_in_thread(harness)
+    assert wait_for(lambda: len(harness.store.listings) >= 1)
+
+    harness.stop.set()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert [type(e) for e in errors] == [JobInterrupted]
+    assert harness.prepared == [] and harness.cpu_token_is_free()
+
+
+def test_with_no_render_running_the_job_never_waits(harness: Harness) -> None:
+    for name in ("a.mp4", "b.mp4"):
+        harness.clip(name)
+
+    harness.run()
+
+    assert harness.prepared == ["a.mp4", "b.mp4"]

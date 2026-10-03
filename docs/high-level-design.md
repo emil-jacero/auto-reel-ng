@@ -1106,21 +1106,25 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     (`prepare_clip`), skipping what the cache holds, in the proxy cache of the job's own project. No render-only
     claim check applies (it writes none of the paths they guard), no fingerprint is recorded, a finished job
     never changes a staleness verdict and **`RENDER_GRAPH_VERSION` is not bumped**. It holds **one CPU token** for
-    its whole run and no GPU token (its libx264 encode is CPU work even on the hybrid path), and at most
+    while it prepares clips and no GPU token (its libx264 encode is CPU work even on the hybrid path), and at most
     **`worker.proxy_slots` (default 1)** run at once: two workers gained only 20 to 35 % on one disk
     (research `proxies.md` §3.9). **A queued render is claimed before any proxy job** whatever its age or priority
-    (`claim_next` orders render first, and the worker excludes `proxy` while its slots are full, so a waiting
-    proxy job never uses up the capacity a render needs); a running proxy job is not preempted. Progress is
-    **weighted by source size** (a `stat`, not a probe; the clip in flight contributes its own fraction, the
-    sprite is the last 3 % of its clip), never decreases, and is `1.0` only at `done`. A clip that fails does not
-    stop the others and the job ends `failed` naming them ("1 of 3 clips failed: ..."); a cache fault (full or
-    unwritable directory) ends it at once. Cancel kills the encode within about two seconds and leaves no `.part`
-    directory; a worker stop does the same through a stop event the handler shares with the worker (`run` waits up
-    to 10 s for its cleanup after requeueing the row); a crash is recovered by startup reconciliation and the rerun
-    costs one `stat` per finished clip. **Measured (experiment 007, an AMD APU, shared host):** a GPU render beside
-    a running proxy job took **1.3 to 1.5 times** as long; limiting the proxy's x264 to 4 or 2 threads and taking the
-    proxies off the GPU did not remove it, so the change claims only the claim order, not an unaffected render, and
-    the follow-up `proxy-yield` (do not start the next clip while a render runs) is proposed, not built.
+    (`claim_next` orders render first, and the worker excludes `proxy` while its slots are full; the claim loop's
+    in-flight bound does not count `proxy` jobs, so neither a waiting nor a running one uses up the capacity a render
+    needs, and a CPU render waiting for the CPU token behind a proxy job does not keep a GPU render queued). A
+    running proxy job is not preempted, but it **yields**: it starts no clip while a `render` job is `running` and
+    gives its CPU token back while it waits (a render that waits for that token would otherwise wait for the job
+    that waits for it). Progress is **weighted by source size** (a `stat`, not a probe; the clip in flight
+    contributes its own fraction, the sprite is the last 3 % of its clip), never decreases, and is `1.0` only at
+    `done`. A clip that fails does not stop the others and the job ends `failed` naming them ("1 of 3 clips
+    failed: ..."); a cache fault (full or unwritable directory) ends it at once. Cancel kills the encode within about
+    two seconds and leaves no `.part` directory; a worker stop does the same through a stop event the handler
+    shares with the worker (`run` waits up to 10 s for its cleanup after requeueing the row); a crash is recovered
+    by startup reconciliation and the rerun costs one `stat` per finished clip. **Measured (experiment 007, an AMD
+    APU, shared host):** before the yield a GPU render beside a running proxy job took **about 1.3 to 1.6 times**
+    as long (median 1.52 as built, pairs 1.22 to 1.53; a thread cap and taking the proxies off the GPU did not
+    remove it); with the yield the warm median was **1.12** against the 1.15 bound and a cold pair 1.29, on a quieter
+    host than the control (1.17), so the runs are not a clean A/B. The clip in flight still overlaps the render.
   - **Deliberately not here:** progress over the WebSocket for the proxy kind and an enqueue endpoint
     (`proxy-enqueue-endpoint`); any web code; a prune of orphan entries (`proxy-prune`); a
     virtual remux to give the original sound in Firefox. The cache-location helpers are copies of `thumbs/`'s;

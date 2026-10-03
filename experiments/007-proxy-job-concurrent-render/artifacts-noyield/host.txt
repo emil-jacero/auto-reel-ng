@@ -1,0 +1,9 @@
+2026-10-03T09:20:37+00:00
+7.2.4-ogc3.1.fc44.x86_64
+ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers
+CPU(s):                                  16
+Model name:                              AMD Ryzen AI 7 350 w/ Radeon 860M
+CPU(s) scaling MHz:                      43%
+vainfo: Driver version: Mesa Gallium driver 26.2.2 for AMD Radeon 860M Graphics (radeonsi, krackan1, ACO, DRM 3.64, 7.2.4-ogc3.1.fc44.x86_64)
+ 11:20:38 up 4 days, 20:38,  1 user,  load average: 7,60, 5,68, 5,76
+ 11:31:41 up 4 days, 20:49,  1 user,  load average: 20,58, 17,57, 11,66

@@ -31,7 +31,8 @@ no `reel.yaml`, never MISSING"), `compose.yaml` (`XDG_CACHE_HOME: /data/cache` f
 - A running or queued proxy job never delays a render's start on the GPU path, and a queued render is always
   claimed first.
 - Cancel and kill leave the cache without `.part` files or torn entries.
-- Evidence that a concurrent render is not materially slower.
+- Evidence about how much slower a concurrent render is (decision 9), and a lever that brings it down: the yield
+  (decision 6).
 
 **Non-Goals**
 - The API (`kind` in `JobOut`/WS frames, the enqueue endpoint): `proxy-enqueue-endpoint`.
@@ -98,9 +99,10 @@ Per-clip isolation is the thumbnail model (`thumbs` reports each failed clip and
 Nothing is fabricated: a failed clip has no proxy and no facts, and the next read says `failed`/`absent`, never a
 guess (Principle I).
 
-### 5. Capacity: one CPU token for the whole job, at most `worker.proxy_slots` at once
+### 5. Capacity: one CPU token while it works, at most `worker.proxy_slots` at once
 
-A proxy job takes the **CPU** semaphore (`CapacityPools`) for its full run, never a GPU token: the hybrid path's
+A proxy job takes the **CPU** semaphore (`CapacityPools`) while it prepares clips, never a GPU token (it gives
+the token back only while it yields to a running render, decision 6): the hybrid path's
 VAAPI decode is ~0.03 core-s per footage second and not a scarce session (synthesis X8), while its libx264 encode
 is 0.18 to 0.47 core-s per footage second (`proxies.md`). The render worker's tokens are untouched; GPU renders
 therefore run concurrently with a proxy job. A job that falls back to CPU decode is the same class, so one token
@@ -112,16 +114,33 @@ proxy jobs and starve CPU renders; the brief asks for "concurrency 1". Two proxy
 and doubled the load on one USB disk.
 
 Known limit, stated not hidden: with the default single CPU slot, a CPU-encoded render claimed while a proxy
-job runs waits for the token until that job ends (a typical event ~1 min, a long one 3 to 6 min). On the VAAPI
-hosts this project targets, renders take the GPU token and do not wait. Raising `worker.cpu_slots` lifts it.
+job runs waits for the token until the clip being prepared ends (the proxy job yields it at the next clip
+boundary, decision 6; a clip takes seconds to a few minutes). On the VAAPI hosts this project targets, renders take
+the GPU token and do not wait. Raising `worker.cpu_slots` lifts it.
 
 ### 6. Priority: kind-aware claim, not a priority number, not preemption
 
-"Lower priority than renders" means two things the worker enforces on each poll:
+"Lower priority than renders" means four things the worker enforces:
 1. **Order**: a queued render is claimed before any queued proxy job, however old the proxy job is.
 2. **Admission**: a proxy job is claimable only while fewer than `proxy_slots` proxy jobs are in flight. Without
-   this, a second queued proxy job would be claimed (the claim is bounded by `total_capacity`, D-S3), sit
-   waiting for the CPU token and use up the in-flight slot a newly queued render needs.
+   this, a second queued proxy job would be claimed, sit waiting for the CPU token and hold an in-flight slot.
+3. **The in-flight bound does not count proxy jobs.** The claim loop stops at `total_capacity` in-flight jobs
+   (D-S3), counting jobs that wait for a token. Review found that a claimed proxy job could take one of those
+   slots: with a CPU-classified render queued first and a GPU render second, the CPU render is claimed, waits for
+   the proxy job's CPU token, and the bound is full, so the GPU render stays queued with the GPU idle. `proxy`
+   jobs are therefore left out of the count (they have `proxy_slots` as their own bound); every other kind counts
+   as before. The cost: up to `proxy_slots` threads beyond `total_capacity`, one of them working.
+4. **Yield**: a proxy job starts no clip while a `render` job is `running` (`list_by_status(RUNNING,
+   kind=render)`, one cheap query, between clips, polled once a second while it waits). A clip already encoding
+   finishes: no preemption, so no half-done state to resume. While it waits it **releases its CPU token**,
+   otherwise a CPU render that is claimed (so `running`) and waiting for that token would wait for a proxy job that
+   waits for it. The job takes the token back when no render runs. Why it is in this change and not a follow-up
+   (this design first deferred it as `proxy-yield`): experiment 007 refuted the bound the change was to meet, and a
+   claim order that leaves every concurrent render 1.5 times slower for minutes does not make a proxy job
+   "lower priority". Cost: with renders running back to back, a proxy job waits; that is the meaning of lower
+   priority, and the job can be cancelled. A render that is `running` on another worker counts too. A fully
+   cached event also waits for a running render before it reports `done` (the check is per clip, not per
+   encode); that is accepted rather than adding a cache look-up to the handler.
 
 So `claim_next` takes the kinds the worker will accept now and orders `render` before `proxy` ahead of
 `priority`/`created_at`. Alternatives rejected:
@@ -133,11 +152,13 @@ So `claim_next` takes the kinds the worker will accept now and orders `render` b
 - *Preempt a running proxy job when a render arrives*: needs cancel-and-resume semantics for little gain, since
   the proxy job takes no GPU token and a finished clip is never redone.
 
-`job-kind`'s `claim_next` has no kind support, so task 4 adds an `exclude_kinds` argument and an order term
+`job-kind`'s `claim_next` has no kind support, so task 4.1 adds an `exclude_kinds` argument and an order term
 (`render` first, then `priority`, then `created_at`) to `claim_next` (a few lines in
 `persistence/job_store.py`, no migration). `exclude_kinds` rather than an allow-list so that a kind this build
 has never heard of is still claimed and failed loud (job-kind), not left queued forever. That is the single
-file outside `scheduler`/`proxies` and is called out in the proposal and the PR.
+file outside `scheduler`/`proxies` and is called out in the proposal and the PR. The merged `job-store` spec
+orders by priority then age and says nothing of kinds, so this change carries a MODIFIED "Race-free claim-next"
+for it; the "dispatched by its kind" requirement of `job-scheduler` is MODIFIED for point 3.
 
 ### 7. Cancel, shutdown, requeue
 
@@ -145,8 +166,8 @@ file outside `scheduler`/`proxies` and is called out in the proposal and the PR.
   to `ensure_proxy` and `ensure_filmstrip`, which hand it to `run_with_progress` (polled about once a second,
   ffmpeg killed, `FfmpegCancelledError`; `ensure_proxy` removes its build directory on the way out, as the
   sprite step does). The runner maps `FfmpegCancelledError` to the scheduler's `RenderCancelledError`, which
-  the worker's handler path maps to `canceled`. The cancel is also checked between clips and while the job
-  waits for its CPU token. Clips already finished stay.
+  the worker's handler path maps to `canceled`. The cancel is also checked between clips, while the job
+  waits for its CPU token and while it yields to a render. Clips already finished stay.
 - **Graceful shutdown / restart**: the existing `_requeue_inflight` and `reconcile` already requeue any
   `running` row regardless of kind; the re-run finds finished clips in the cache. But requeueing a row does
   not stop the thread that works on it, and the process exits right after, which would leave ffmpeg running
@@ -178,9 +199,11 @@ decode + `scale_vaapi`; render: VAAPI normalize + encode), so contention would s
 is a thread cap on the proxy's x264 (a `proxies` setting from `proxy-encode`); anything beyond that (pausing
 proxy jobs while a render runs) is reported as a follow-up change, not built here.
 Run per the repo's
-`running-experiments` skill (report with host, commands, verdict). **Result (experiment 007, 2026-10-03): refuted.** On the development host (a Radeon 860M APU, shared and loaded by
+`running-experiments` skill (report with host, commands, verdict). **Result (experiment 007, 2026-10-03): refuted as first built.** On the development host (a Radeon 860M APU, shared and loaded by
 other work, VAAPI) the median render took 1.28 to 1.56 times its solo time beside a proxy job; a thread cap
 (4 and 2) and the CPU decode path did not bring it under 1.15, so the cost is not x264's threads and not the
-proxies' GPU decode. The change ships anyway (claim order and `proxy_slots` do what they promise) and says in
-the README and the HLD that a render beside a proxy job is slower; the follow-up `proxy-yield` (a proxy job does
-not start its next clip while a render runs) is proposed in the report and not built here.
+proxies' GPU decode. The change first shipped anyway and the review refused to accept a refuted bound on a ticked
+task, so the lever the report proposed, the yield (decision 6, point 4), was folded in and the experiment run again
+with a no-yield control: warm median **1.12** (pairs 1.12 to 1.13, bound 1.15), cold pair 1.29; the control on a busier
+host 1.17. The yield bounds the overlap to the clip in flight; it does not remove it, and the two runs are not a
+clean A/B (the host load differed). `nice`/`ionice` on the proxy ffmpeg was not tried.

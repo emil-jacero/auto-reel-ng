@@ -31,7 +31,8 @@ printf 'proxies:\n  cache_dir: %s\n' "$CACHE" > "$LIB/config.yaml"
 
 # PROXY_X264_THREADS=N runs the worker with the proxy encode capped to N threads (the lever);
 # PROXY_FORCE_CPU=1 makes every proxy use the CPU decode path (a diagnostic of where the contention is).
-if [ -n "${PROXY_X264_THREADS:-}${PROXY_FORCE_CPU:-}" ]; then WORKER_CMD=(.venv/bin/python "$(dirname "$0")/capped_worker.py")
+# PROXY_NO_YIELD=1 switches the proxy job's yield to running renders off (the control).
+if [ -n "${PROXY_X264_THREADS:-}${PROXY_FORCE_CPU:-}${PROXY_NO_YIELD:-}" ]; then WORKER_CMD=(.venv/bin/python "$(dirname "$0")/capped_worker.py")
 else WORKER_CMD=(.venv/bin/auto-reel); fi
 "${WORKER_CMD[@]}" worker -v --poll-interval 0.2 "$LIB" > "$OUT/worker.log" 2>&1 &
 WORKER=$!

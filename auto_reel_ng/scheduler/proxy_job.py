@@ -6,10 +6,15 @@ neither add work nor invalidate any) and, in listing order, makes each distinct 
 proxy and then its filmstrip (:func:`~auto_reel_ng.proxies.prepare_clip`). It writes only into
 the proxy cache of the job's own project: no render checks apply, no fingerprint is recorded.
 
-The job holds one CPU token for its whole run and no GPU token (its libx264 encode is CPU work
-even on the hybrid path), so a GPU render runs beside it. The handler owns the token (the
+The job holds one CPU token while it prepares clips and no GPU token (its libx264 encode is CPU
+work even on the hybrid path), so a GPU render runs beside it. The handler owns the token (the
 worker takes none for a non-render kind). Progress is weighted by source size, which is a
 ``stat`` rather than a probe, with the clip in flight contributing its own fraction.
+
+The job yields to renders: it does not start a clip while a ``render`` job is running (experiment
+007 measured a render beside a proxy job at 1.3 to 1.6 times its solo time). A clip already
+encoding finishes. While it waits it gives its CPU token back, because a running render may be
+waiting for that very token.
 
 Failures: a clip that cannot be prepared is recorded and the others still are; the job then
 fails naming every failed clip. A fault of the cache directory ends the job at once. A cancel,
@@ -36,7 +41,7 @@ from ..errors import (
 from ..event import scan_event
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..persistence.job_store import JobStore
-from ..persistence.models import Job
+from ..persistence.models import Job, JobKind, JobStatus
 from ..proxies import PreparedClip, ProxySettings, prepare_clip, proxy_key, resolve_proxy_settings
 from ..thumbs import one_line_cause
 from .pools import CapacityPools
@@ -47,6 +52,8 @@ logger = logging.getLogger(__name__)
 
 #: Seconds between looks at the cancel flag while the job waits for its CPU token.
 TOKEN_POLL_S = 0.5
+#: Seconds between looks at the running renders while the job yields to them.
+YIELD_POLL_S = 1.0
 #: How many failed clips an error message spells out before it says "and N more".
 MAX_NAMED_FAILURES = 3
 #: What the progress of a job with a failed clip is capped at: ``1.0`` means "done".
@@ -60,6 +67,20 @@ LoadSettings = Callable[[Path], ProxySettings]
 
 class ProxyJobError(EngineError):
     """A ``proxy`` job ended with failed clips; the message counts and names them."""
+
+
+class _Hold:
+    """The job's CPU token and whether this job holds it now."""
+
+    def __init__(self, token: threading.BoundedSemaphore) -> None:
+        self.token = token
+        self.held = False
+
+    def release(self) -> None:
+        """Give the token back if held; safe to call twice."""
+        if self.held:
+            self.held = False
+            self.token.release()
 
 
 @dataclass(frozen=True)
@@ -121,12 +142,11 @@ class ProxyJobHandler:  # pylint: disable=too-few-public-methods,too-many-instan
             project_root
         )  # before the token: a refusal waits for nothing
         work = self._plan(event_dir)
-        token = self._pools.cpu_token()
-        self._acquire(token, job)
+        hold = _Hold(self._pools.cpu_token())
         try:
-            self._run(job, settings, work)
+            self._run(job, settings, work, hold)
         finally:
-            token.release()
+            hold.release()
 
     def _cancel_check(self, job: Job) -> Callable[[], bool]:
         def should_cancel() -> bool:
@@ -145,15 +165,31 @@ class ProxyJobHandler:  # pylint: disable=too-few-public-methods,too-many-instan
         if current is not None and current.cancel_requested:
             raise RenderCancelledError(f"proxy job {job.id} was canceled")
 
-    def _acquire(self, token: threading.BoundedSemaphore, job: Job) -> None:
+    def _acquire(self, hold: _Hold, job: Job) -> None:
         """Wait for the CPU token, still answering a cancel or a stop while waiting."""
-        while not token.acquire(timeout=TOKEN_POLL_S):
+        while not hold.token.acquire(timeout=TOKEN_POLL_S):
             self._stop_or_cancel(job)
-        try:
-            self._stop_or_cancel(job)
-        except BaseException:
-            token.release()
-            raise
+        hold.held = True
+        self._stop_or_cancel(job)
+
+    def _render_running(self) -> bool:
+        return bool(self._store.list_by_status(JobStatus.RUNNING, kind=JobKind.RENDER))
+
+    def _take_turn(self, job: Job, hold: _Hold) -> None:
+        """Hold the CPU token at a moment when no render is running.
+
+        While a render runs the token is given back and the job waits, so a render that is
+        itself waiting for the CPU token is never blocked by the job that yields to it.
+        """
+        while True:
+            if not hold.held:
+                self._acquire(hold, job)
+            if not self._render_running():
+                return
+            hold.release()
+            while self._render_running():
+                self._stop_or_cancel(job)
+                self._stop.wait(YIELD_POLL_S)
 
     @staticmethod
     def _plan(event_dir: Path) -> List[_Work]:
@@ -178,7 +214,7 @@ class ProxyJobHandler:  # pylint: disable=too-few-public-methods,too-many-instan
             for members in groups.values()
         ]
 
-    def _run(self, job: Job, settings: ProxySettings, work: List[_Work]) -> None:
+    def _run(self, job: Job, settings: ProxySettings, work: List[_Work], hold: _Hold) -> None:
         progress = ThrottledProgress(self._store, job.id)
         should_cancel = self._cancel_check(job)
         total = sum(item.weight for item in work) or 1
@@ -186,6 +222,7 @@ class ProxyJobHandler:  # pylint: disable=too-few-public-methods,too-many-instan
         failures: List[str] = []
         for item in work:
             self._stop_or_cancel(job)
+            self._take_turn(job, hold)
             base = finished
 
             def on_clip(fraction: float, base: int = base, weight: int = item.weight) -> None:
@@ -239,6 +276,7 @@ def _failure_message(failures: List[str], clips: int) -> str:
 __all__ = [
     "FAILED_PROGRESS_CAP",
     "MAX_NAMED_FAILURES",
+    "YIELD_POLL_S",
     "ProxyJobError",
     "ProxyJobHandler",
     "load_project_proxy_settings",
