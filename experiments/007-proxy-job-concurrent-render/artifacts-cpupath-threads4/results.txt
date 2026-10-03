@@ -1,0 +1,108 @@
+[
+ {
+  "arm": "alone",
+  "cold": false,
+  "render_s": 48.082614
+ },
+ {
+  "arm": "beside_proxy",
+  "cold": false,
+  "render_s": 72.206745,
+  "overlap_s": 71.3,
+  "proxies_at_render_end": [
+   [
+    "done",
+    1.0
+   ],
+   [
+    "done",
+    1.0
+   ],
+   [
+    "done",
+    1.0
+   ]
+  ],
+  "proxy_total_s": 71.5
+ },
+ {
+  "arm": "alone",
+  "cold": false,
+  "render_s": 49.318109
+ },
+ {
+  "arm": "beside_proxy",
+  "cold": false,
+  "render_s": 71.747164,
+  "overlap_s": 71.7,
+  "proxies_at_render_end": [
+   [
+    "done",
+    1.0
+   ],
+   [
+    "done",
+    1.0
+   ],
+   [
+    "running",
+    0.13
+   ]
+  ],
+  "proxy_total_s": 76.4
+ },
+ {
+  "arm": "alone",
+  "cold": false,
+  "render_s": 64.699373
+ },
+ {
+  "arm": "beside_proxy",
+  "cold": false,
+  "render_s": 71.082572,
+  "overlap_s": 63.5,
+  "proxies_at_render_end": [
+   [
+    "done",
+    1.0
+   ],
+   [
+    "done",
+    1.0
+   ],
+   [
+    "done",
+    1.0
+   ]
+  ],
+  "proxy_total_s": 63.7
+ },
+ {
+  "arm": "alone",
+  "cold": true,
+  "render_s": 50.399264
+ },
+ {
+  "arm": "beside_proxy",
+  "cold": true,
+  "render_s": 65.805541,
+  "overlap_s": 59.9,
+  "proxies_at_render_end": [
+   [
+    "done",
+    1.0
+   ],
+   [
+    "done",
+    1.0
+   ],
+   [
+    "done",
+    1.0
+   ]
+  ],
+  "proxy_total_s": 60.1
+ }
+]
+alone warm runs [48.1, 49.3, 64.7] median 49.3
+beside_proxy warm runs [72.2, 71.7, 71.1] median 71.7

@@ -27,7 +27,8 @@ progress, cancel and restart behaviour that match a render's, and without ever d
   and one cancel check. `ensure_proxy` already takes both hooks, removes its build directory on every exit and
   publishes by atomic rename (proxy-encode), and the sprite already takes the cancel check
   (filmstrip-sprites); this change only joins them. Two writers of one entry were already safe.
-- A measurement, not a guess: a GPU render running beside a proxy job is not materially slower than alone.
+- A measurement, not a guess: does a GPU render running beside a proxy job slow down? (Experiment 007 found it does,
+  by 1.3 to 1.5 times on the development host; the change documents that and proposes a follow-up.)
 - HLD: D-21 gains the job rules, §4.10 and §6 note the proxy job. No `RENDER_GRAPH_VERSION` bump, no fingerprint
   input: proxies are derived state that no render reads.
 

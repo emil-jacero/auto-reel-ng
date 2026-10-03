@@ -255,6 +255,25 @@ Pool sizes and the poll interval come from `config.yaml`'s `worker` map (below),
 overridden by `worker`'s own `--gpu-sessions-per-device`, `--cpu-slots`, and
 `--poll-interval` flags (same CLI-over-config precedence as everything else).
 
+**Proxy jobs:** besides renders, the worker runs jobs of kind `proxy` (one event each): for every clip the
+event folder lists (the same clips `auto-reel proxies` covers; `reel.yaml` is never read or written) it makes
+the proxy and then the filmstrip into the proxy cache, skipping clips the cache already holds. A proxy job
+holds one **CPU token** for its whole run and no GPU token, so a GPU render runs beside it, and at most
+`worker.proxy_slots` (default **1**; two gained only 20 to 35 % and doubled the load on one disk) run at once.
+A queued **render is always claimed before a proxy job**, however old the proxy job is, and a waiting proxy
+job never uses up the capacity a render needs; a running proxy job is not interrupted for a render. Its
+progress is weighted by the clips' file sizes and never goes back. A clip that fails does not stop the others
+(the job ends `failed` naming each failed clip); a full or unwritable cache directory ends it at once. Cancel
+stops the encode within about two seconds and leaves no `.part` directory; a stop or a crash requeues the job,
+and the clips already prepared cost one `stat` each on the rerun. **Known limit:** with the default single CPU
+slot (`worker.cpu_slots: 1`) a render that has to use the CPU waits for the token while a proxy job runs (a
+typical event takes about a minute, a long one three to six); GPU renders do not wait, and raising
+`cpu_slots` lifts it. **A GPU render does not wait, but it is not unaffected:** on the development host (an APU, shared
+and loaded) a render beside a running proxy job took 1.3 to 1.5 times as long (experiment 007; limiting the
+proxy's x264 threads did not help), so prepare proxies when renders are not the priority. Proxies land in the proxy cache (`$XDG_CACHE_HOME/auto-reel/proxies/`, see below); in
+the compose stack the worker has `XDG_CACHE_HOME=/data/cache`, so they are in `./data/cache/auto-reel/proxies/`
+beside the thumbnails. Proxy jobs are not render inputs and never make an event stale.
+
 ### API service (`serve`)
 
 `auto-reel serve <root>` runs a FastAPI service (REST + a WebSocket) over the same
@@ -726,6 +745,7 @@ look:                     # opaque defaults passed to resolve() as look_defaults
 worker:                    # job-scheduler worker settings (all optional)
   gpu_sessions_per_device: 1   # concurrent GPU-encode sessions per render node
   cpu_slots: 1                 # concurrent CPU-encoded renders
+  proxy_slots: 1               # concurrent proxy jobs (each holds one CPU token)
   poll_interval: 2.0           # seconds between empty claim polls
 api:                       # API service ('serve') settings (all optional)
   host: 127.0.0.1              # bind host; widen only deliberately
