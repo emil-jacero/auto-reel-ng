@@ -948,3 +948,105 @@ export function movedSet(
   const kept = keptInPlace(next, position, lastMoved)
   return new Set(next.filter((identity) => !kept.has(identity)))
 }
+
+/**
+ * The marked clips in page order: the listed chapters as given, and in each its play order,
+ * restricted to the clips a listed chapter plays (a stale or unlisted identity is dropped, so a
+ * mark can never move a clip that is not there).
+ */
+export function groupOf(
+  orders: Orders,
+  listed: readonly ChapterKey[],
+  marked: ReadonlySet<string>,
+): string[] {
+  if (marked.size === 0) {
+    return []
+  }
+  return listed.flatMap((key) => (orders.get(key) ?? []).filter((identity) => marked.has(identity)))
+}
+
+/** The unmarked clips above gap `gap` of `order`, as it is now (the group included). */
+function clipsAbove(order: readonly string[], members: ReadonlySet<string>, gap: number): number {
+  const index = Math.min(Math.max(gap, 0), order.length)
+  let above = 0
+  for (let at = 0; at < index; at += 1) {
+    if (!members.has(order[at])) {
+      above += 1
+    }
+  }
+  return above
+}
+
+/**
+ * Where a group dropped at gap `gap` of chapter `to` starts, 1-based, and how many clips the
+ * chapter then plays: the non-members of `to` plus the group's own. The gap counts over the
+ * chapter's order as it is now, the group included. Null when `to` is not in `orders`.
+ */
+export function groupPlace(
+  orders: Orders,
+  group: readonly string[],
+  to: ChapterKey,
+  gap: number,
+): { position: number; total: number } | null {
+  const order = orders.get(to)
+  if (order === undefined) {
+    return null
+  }
+  const members = new Set(group)
+  const rest = order.reduce((sum, identity) => sum + (members.has(identity) ? 0 : 1), 0)
+  return { position: clipsAbove(order, members, gap) + 1, total: rest + members.size }
+}
+
+/**
+ * `draft` with every clip of `group` (in the order given: `groupOf`'s page order) taken out of
+ * the chapters it was in and put into chapter `to` as one run, before the first clip at or
+ * after gap `gap` of `to` that is not itself in the group, or at its end when there is none.
+ * The gap is an index into `to`'s order as it is now (0..length). Every other clip keeps its
+ * order and chapter. Only clips some chapter plays move, and a drop that changes no chapter's
+ * order (a gap beside the group, a repeated call) returns `draft` itself. Moved clips are not
+ * restored after their original predecessors (as `moveClipTo`, unlike `moveClips`): a group
+ * dragged back over its contiguous original place restores the original order.
+ */
+export function moveGroup(draft: Draft, group: readonly string[], to: ChapterKey, gap: number): Draft {
+  const target = draft.orders.get(to)
+  if (target === undefined) {
+    return draft
+  }
+  const held = new Set<string>()
+  for (const order of draft.orders.values()) {
+    for (const identity of order) {
+      held.add(identity)
+    }
+  }
+  // The group in the order given, each clip once, and only a clip some chapter plays.
+  const members = new Set<string>()
+  const run: string[] = []
+  for (const identity of group) {
+    if (held.has(identity) && !members.has(identity)) {
+      members.add(identity)
+      run.push(identity)
+    }
+  }
+  if (run.length === 0) {
+    return draft
+  }
+  const before = clipsAbove(target, members, gap)
+  const orders = new Map(draft.orders)
+  let changed = false
+  for (const [key, order] of draft.orders) {
+    if (key === to) {
+      continue
+    }
+    if (order.some((identity) => members.has(identity))) {
+      orders.set(key, order.filter((identity) => !members.has(identity)))
+      changed = true
+    }
+  }
+  const rest = target.filter((identity) => !members.has(identity))
+  const joined = [...rest.slice(0, before), ...run, ...rest.slice(before)]
+  if (!sameOrder(joined, target)) {
+    orders.set(to, joined)
+    changed = true
+  }
+  return changed ? { ...draft, orders } : draft
+}
