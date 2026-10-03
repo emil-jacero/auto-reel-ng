@@ -3640,7 +3640,7 @@ any byte of the movie while the read runs.
 
 **Nothing loads before Play.** Opening, refreshing or returning to the page SHALL NOT request any byte of the movie
 other than the one-byte answer above, and SHALL NOT start playback. Playback SHALL start only from the operator's
-action on the player. The player SHALL NOT loop and SHALL NOT be muted by the page. Its poster SHALL be the thumbnail
+action on the player, or on a chapter of the list under it. The player SHALL NOT loop and SHALL NOT be muted by the page. Its poster SHALL be the thumbnail
 of the event's first played clip that is on disk, in the order the event page lists them, at the same address its
 row uses. The page SHALL show no poster when there is no such clip, or when that thumbnail cannot be loaded.
 
@@ -3652,14 +3652,22 @@ row uses. The page SHALL show no poster when there is no such clip, or when that
 - The movie's file name, as the service names it, and its size in the units the event page uses for clips. In the
   `output_renamed` case this is the movie under its old name. A fact the answer did not carry SHALL be left out,
   never guessed.
+- When the event detail carries the movie's version (`movie.recorded_at`, when the render record was written, and
+  `movie.fingerprint`, the short identity of the inputs it was made from), written as "Recorded" with that time in
+  the one way the client writes times, then "version" and the fingerprint, in the same facts as the file's name
+  and size. The time SHALL be kept exact in `<time dateTime>`. It is when the render finished for a rendered
+  movie and when it was adopted for an adopted one, which the detail does not tell apart, so the page says
+  "Recorded", not "Rendered". A version the detail did not carry (`movie` null) SHALL be left out, never
+  guessed or replaced by the file's modification time.
 
 **The player.**
 - It SHALL be the browser's own media player with its native controls. It SHALL be named by the section's heading.
 - The page SHALL add no keyboard shortcut of its own. The player SHALL be reachable with Tab, and SHALL show a
   visible focus indicator in both color schemes that nothing clips, on the player itself and on every Tab stop of
   its native controls.
-- The page SHALL show no captions control and no chapter list. No chapter times reach the client: the service
-  gives none, and the browser exposes none of the movie's chapters.
+- The page SHALL show no captions control. The player's own controls show no chapters: the movie's chapters are
+  listed under the player when the event detail gives their times ("The movie player lists the rendered movie's
+  chapters").
 - It SHALL show the movie in a frame of 16:9 proportions that has its final size before any byte arrives. The
   frame SHALL be at most 768 CSS pixels wide, and no taller than the window leaves below the shared header, which
   stays in place while the page scrolls, and the section heading. A picture of other proportions SHALL be shown
@@ -3743,6 +3751,17 @@ row uses. The page SHALL show no poster when there is no such clip, or when that
 #### Scenario: Refresh that fails takes the movie with the rest
 - **WHEN** the movie of `2024-07-14 - Kalas` is playing and the service is stopped before the operator presses Refresh
 - **THEN** the page shows its failure as for any read, and no "Movie" section
+
+#### Scenario: The movie's version is shown
+- **WHEN** the operator opens `2024-07-14 - Kalas`, whose detail carries the version of its latest render
+  (`recorded_at` 2026-10-03 14:02, fingerprint `a1b2c3d4e5f6`)
+- **THEN** the "Movie" section's facts say `2024-07-14 - Kalas.mp4`, its size, and "Recorded Oct 3, 2:02 PM ·
+  version a1b2c3d4e5f6", with the exact instant in the `<time>` element's `dateTime`
+
+#### Scenario: A movie whose version is not recorded
+- **WHEN** the operator opens an event whose staleness shows a movie but whose detail's `movie` is `null` (the
+  service could not tell a version, for instance a record without a usable time)
+- **THEN** the facts name the file and its size and say nothing of a time or a version
 
 ### Requirement: The movie player says what it cannot play
 
@@ -4935,3 +4954,130 @@ keyboard focus on its Play.
 - **WHEN** using only the keyboard, the operator opens the preview of a clip with a ready copy and presses Tab
   from Close through Play, the playhead, Skip cuts, Set From and Set To
 - **THEN** the next stop is "Play original of <name>", and it is the last stop of the preview
+
+### Requirement: The movie player lists the rendered movie's chapters
+
+When the event page shows the "Movie" section's player and the event detail gives the movie's chapters, the section
+SHALL list them under the player, in a list headed "Chapters" (a level-three heading), in the order of their start
+times. The page SHALL take the chapters only from the event detail: each chapter's name and its start in the
+rendered movie, in seconds. It SHALL NOT compute, estimate or look up a start time anywhere else (not from the
+current chapters and clips of the event, not from clip durations, not from the player's metadata). When the detail
+gives no chapters, or gives them in a form the page cannot rely on, the section SHALL show no list, no heading and no
+placeholder for one, and SHALL say nothing about it. The chapters are relied on only when there is at least one,
+every start is a finite number of seconds of at least 0, the starts strictly increase, and every name is
+text that is either empty or not only spaces. The empty name is the event's default chapter as the render
+recorded it; the list writes it as the event page does ("Main" when another chapter is named, otherwise
+"Clips"), and never invents any other name. A movie of one chapter has nothing to jump between: the section SHALL show no
+list for it, as for no chapters (the usual event is one default chapter). The list is the movie's chapters as rendered: an outdated movie lists the chapters it has,
+and the section SHALL say so in words with the list ("As rendered"), not by color alone.
+
+**One row per chapter.** Each chapter SHALL be a row with a button as its only control. The row shows the chapter's
+number, its name, and its start written as the client writes a place in a clip (`m:ss`, `h:mm:ss` from an hour,
+with the fraction of a second only when there is one). The
+button's accessible name SHALL be "Jump to chapter N, name, at start", followed by ", current chapter" on the row that
+carries the mark, so that each word the button shows is in its name. A long name SHALL wrap inside the row.
+
+**Jumping.** Activating a chapter's button SHALL move the player to that chapter's start, to the millisecond, and
+start playback, whether or not the movie had been played before, and whether it was playing, paused or at its
+start. A jump before the first Play SHALL NOT need the operator to press Play first. Keyboard focus SHALL stay on
+the button. A movie that cannot play after a jump SHALL be said as for any playback failure ("The movie player says
+what it cannot play"). The page SHALL add no keyboard shortcut for the list: its buttons are reached with Tab and
+activated with Enter or Space, in the order of the chapters.
+
+**The current chapter.** The list SHALL mark the chapter the player's position is in: the last chapter whose start is
+at or before the position, where a position up to 60 milliseconds before a start counts as at it, because a
+browser's seek may land a frame short. A position before that, ahead of the first chapter, marks none. The mark SHALL be words with an
+icon ("Current chapter"), never color alone, and the row's button SHALL carry `aria-current="true"` while it is
+marked. The mark SHALL follow the position whether the movie is playing, paused or moved with the player's own
+controls, and SHALL stay on the right row within half a second of the position. Exactly one row, or none,
+SHALL carry it. The page SHALL NOT announce the mark's moves: they happen while the movie plays.
+
+**What the list stays with.** The list SHALL belong to the player it was shown under. When the movie's file is
+replaced and the page shows a new player, the list SHALL show the chapters of the detail that read found. While the
+page reads the event again the list SHALL stay as it is, with its buttons usable. When the operator loads the new
+movie after the page found the file changed under a playing player, no read describes that file yet, so the page
+SHALL show no list and no version line for it until a read of the event answers. When a re-read leaves the player
+without a list while keyboard focus is in the list, focus SHALL go to the player; when it removes the whole section,
+to the page's heading, as for the section. When the section shows a note in the player's place, it SHALL show no
+list.
+
+**Motion and size.** The list SHALL NOT animate: the mark moves without a transition, with or without a
+preference for reduced motion, and a jump does not scroll the page. In a window from 320 to 1280 CSS pixels wide the
+page SHALL NOT scroll horizontally. Under a coarse pointer each button SHALL take a tap anywhere in an area of at
+least 44 × 44 CSS pixels around it. Each button SHALL show a visible focus indicator in both color schemes that
+nothing clips.
+
+#### Scenario: A list from the detail's chapter times
+- **WHEN** the operator opens `2024-06-21 - Midsommar - Dalarna`, whose detail gives the chapters "Förberedelser"
+  at 0 s, "Majstången" at 74 s and "Dans" at 301 s
+- **THEN** under the player a "Chapters" list shows three rows, "1 Förberedelser 0:00", "2 Majstången 1:14" and
+  "3 Dans 5:01", and the first row is marked "Current chapter"
+- **AND** the buttons are named "Jump to chapter 2, Majstången, at 1:14" and so on
+
+#### Scenario: Jumping before the first Play
+- **WHEN** the operator opens that page and, without pressing Play, activates "Dans"
+- **THEN** the movie starts playing from 301 s (within one frame), the "Dans" row is marked "Current chapter" and no
+  other row is, and keyboard focus is still on the "Dans" button
+
+#### Scenario: Jumping from the keyboard
+- **WHEN** the operator tabs from the player to the list, tabs to the second button and presses Enter
+- **THEN** the movie plays from 74 s, and the second row is marked; pressing Tab moves focus to the third button
+
+#### Scenario: The mark follows the player's own controls
+- **WHEN** the movie is paused, and the operator drags the player's own timeline to 310 s
+- **THEN** within half a second "Dans" is the only marked row, and the page announced nothing
+
+#### Scenario: The mark is words, not colour
+- **WHEN** the operator views the list in both color schemes, and with forced colors
+- **THEN** the marked row says "Current chapter" with an icon, its button has `aria-current="true"`, and the other
+  rows have neither
+
+#### Scenario: The default chapter is written as the event page writes it
+- **WHEN** the operator opens an event whose detail gives the chapters "" at 0 s and "Dans" at 80 s
+- **THEN** the list shows "1 Main 0:00" and "2 Dans 1:20", and the first button is named "Jump to chapter 1, Main,
+  at 0:00"
+
+#### Scenario: One chapter, nothing to jump to
+- **WHEN** the operator opens an event whose detail gives the one chapter "" at 0 s
+- **THEN** the section shows its player and facts and no "Chapters" heading or list
+
+#### Scenario: No chapter data, no list
+- **WHEN** the operator opens `2024-07-14 - Kalas`, whose movie was rendered before chapter times were recorded, so
+  its detail gives no chapters
+- **THEN** the "Movie" section shows its player and facts and no "Chapters" heading or list, and no chapter start
+  is derived from the event's clips
+
+#### Scenario: Chapters that cannot be relied on
+- **WHEN** a detail gives chapters whose starts do not increase, or one whose name is only spaces, or a start that is not a
+  number
+- **THEN** the section shows no list at all, rather than the part that seems right
+
+#### Scenario: An outdated movie lists what it has
+- **WHEN** the operator opens `2024-06-27 - Grillning med grannar`, whose chapters changed after its render
+- **THEN** the "Chapters" list holds the chapters of the movie as rendered and says "As rendered"
+
+#### Scenario: A new render replaces the list with its player
+- **WHEN** a forced render of `2024-06-21 - Midsommar - Dalarna` finishes while its page is shown, and the read finds
+  a new entity-tag and a fourth chapter
+- **THEN** the page shows the new player and a list of four chapters, and the old player's position is not carried
+  over to the marks
+
+#### Scenario: Loading a changed movie shows no old chapters
+- **WHEN** the movie's file is replaced from the command line while its page is open with a chapter list, the operator
+  presses Play, the page says the file changed, and the operator presses "Load the new movie"
+- **THEN** the new file is in the player, and the page shows neither the old render's chapter list nor its
+  "Recorded … · version …" line
+
+#### Scenario: The list at phone width
+- **WHEN** the operator opens that page in windows 320 and 390 pixels wide, in both color schemes
+- **THEN** the page does not scroll horizontally, a long chapter name wraps inside its row, and under a coarse
+  pointer each button takes a tap anywhere in 44 × 44 pixels around it
+
+#### Scenario: Reduced motion
+- **WHEN** the operator has asked for reduced motion and activates "Dans"
+- **THEN** the mark moves to its row at once, no transition or animation runs, and the page does not scroll
+
+#### Scenario: A re-read removes the list while it has focus
+- **WHEN** keyboard focus is on a chapter button and a re-read the page started by itself finds a movie with no
+  chapters
+- **THEN** the list is gone and keyboard focus is on the player
