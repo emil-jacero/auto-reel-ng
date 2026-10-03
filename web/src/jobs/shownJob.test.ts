@@ -53,6 +53,7 @@ function held(patch: Partial<JobOut> = {}): JobOut {
 function read(patch: Partial<JobSummary> = {}): JobSummary {
   return {
     id: ID,
+    kind: 'render',
     status: 'running',
     progress: 0.4,
     created_at: '2026-10-02T10:00:00Z',

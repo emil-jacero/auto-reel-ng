@@ -47,7 +47,7 @@ from ..event.reconcile import ClipStatus, ReconcileResult, reconcile
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..ingest import EventRef, get_layout
 from ..persistence.job_store import JobStore
-from ..persistence.models import Job
+from ..persistence.models import Job, JobKind
 from ..proxies import (
     ProxyReading,
     ProxySettings,
@@ -222,6 +222,7 @@ def _job_summary(job: Optional[Job]) -> Optional[JobSummaryOut]:
         return None
     return JobSummaryOut(
         id=job.id,
+        kind=JobKind(job.kind),
         status=job.status,
         progress=job.progress,
         created_at=job.created_at,
@@ -258,7 +259,7 @@ def list_events(
     before the loop, so their failures still fail the whole list.
     """
     refs = _list_event_refs(settings)
-    latest_jobs = job_store.latest_by_project(str(settings.project_root))
+    latest_jobs = job_store.latest_by_project(str(settings.project_root), kind=JobKind.RENDER)
     look_defaults = project_look_defaults(settings)
 
     rows: List[EventRowOut] = []
@@ -693,7 +694,7 @@ def get_event(
         movie = movie_facts(settings, event_dir, resolved.metadata)
     except (ReelError, OSError) as exc:
         raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
-    latest_jobs = job_store.latest_by_project(str(settings.project_root))
+    latest_jobs = job_store.latest_by_project(str(settings.project_root), kind=JobKind.RENDER)
 
     return EventDetailOut(
         event_id=event_id,

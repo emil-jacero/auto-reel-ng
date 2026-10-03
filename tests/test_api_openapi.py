@@ -33,7 +33,7 @@ from auto_reel_ng.api.schemas import (
 )
 from auto_reel_ng.event.reconcile import ClipStatus
 from auto_reel_ng.persistence.job_store import CancelOutcome
-from auto_reel_ng.persistence.models import JobStatus
+from auto_reel_ng.persistence.models import JobKind, JobStatus
 from auto_reel_ng.staleness.gate import StalenessReason
 
 #: The committed artifact `openapi-typescript` reads (repo root / web/openapi.json).
@@ -302,12 +302,13 @@ def test_job_status_fields_are_published_as_the_job_status_enumeration() -> None
 def test_the_latest_job_publishes_its_fields_as_the_job_detail_does() -> None:
     """``JobSummaryOut`` is a projection of ``JobOut``: every field it has is defined there
     identically, so a generated client types each one the same in both places. The two times
-    stay optional; the id, status, progress, creation time, cancel flag and requeue count are
+    stay optional; the id, kind, status, progress, creation time, cancel flag and requeue count are
     required."""
     models = build_openapi_schema()["components"]["schemas"]
     summary, detail = models["JobSummaryOut"], models["JobOut"]
     assert list(summary["properties"]) == [
         "id",
+        "kind",
         "status",
         "progress",
         "created_at",
@@ -320,12 +321,55 @@ def test_the_latest_job_publishes_its_fields_as_the_job_detail_does() -> None:
         assert field == detail["properties"][name], name
     assert summary["required"] == [
         "id",
+        "kind",
         "status",
         "progress",
         "created_at",
         "cancel_requested",
         "requeue_count",
     ]
+
+
+def test_the_job_kind_is_the_closed_enumeration_in_both_job_models() -> None:
+    """``kind`` is ``render`` | ``proxy``, required, defined identically on the detail and the
+    latest-job summary, so a generated client's exhaustive ``switch`` breaks when a kind is added.
+    """
+    models = build_openapi_schema()["components"]["schemas"]
+    for model in ("JobOut", "JobSummaryOut"):
+        assert models[model]["properties"]["kind"] == {"$ref": "#/components/schemas/JobKind"}
+        assert "kind" in models[model]["required"], model
+    published = models["JobKind"]
+    assert published["type"] == "string"
+    assert published["enum"] == ["render", "proxy"] == [kind.value for kind in JobKind]
+    assert "free-form" not in published.get("description", "")
+
+
+def test_the_proxy_enqueue_publishes_its_responses_and_takes_no_body() -> None:
+    schema = build_openapi_schema()
+    operation = schema["paths"]["/api/v1/events/{event_id}/proxies"]["post"]
+    assert "requestBody" not in operation
+    responses = operation["responses"]
+    assert {code for code in responses if code != "422"} == {
+        "200",
+        "201",
+        "404",
+        "409",
+        "502",
+        "503",
+    }
+    assert responses["201"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/JobOut"
+    }
+    assert responses["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ProxiesFreshResult"
+    }
+    for code in ("404", "409", "502", "503"):
+        ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
+        assert ref.endswith("/ProblemOut"), code
+    fresh = schema["components"]["schemas"]["ProxiesFreshResult"]
+    assert sorted(fresh["required"]) == ["clip_count", "event_id", "status"]
+    assert fresh["properties"]["status"] == {"const": "fresh", "title": "Status", "type": "string"}
+    assert fresh["properties"]["clip_count"]["type"] == "integer"
 
 
 def test_the_verdict_publishes_the_two_movie_names_as_optional_nullable_strings() -> None:

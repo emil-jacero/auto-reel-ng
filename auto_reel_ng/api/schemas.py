@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..event.reconcile import ClipStatus
 from ..persistence.job_store import CancelOutcome
-from ..persistence.models import JobStatus
+from ..persistence.models import JobKind, JobStatus
 from ..staleness.gate import StalenessReason
 
 
@@ -162,9 +162,13 @@ class JobSummaryOut(BaseModel):
     ``status`` is typed with the job store's own closed vocabulary, so the schema
     publishes the enumeration and generated clients get an exhaustive union
     (D-8, §4.10). ``JobStatus`` is a ``str`` enum: the wire values are unchanged.
+
+    The summary is always of a ``render`` job: an event's latest job is its latest render, and a
+    proxy job never stands in it. ``kind`` is still on it, with the definition ``JobOut`` has.
     """
 
     id: uuid.UUID
+    kind: JobKind
     status: JobStatus
     progress: float
     created_at: datetime
@@ -415,9 +419,14 @@ class AnalysisOut(BaseModel):
 
 
 class JobOut(BaseModel):
-    """One job's full detail, mirroring ``jobs show`` (task 3.2)."""
+    """One job's full detail, mirroring ``jobs show`` (task 3.2).
+
+    ``kind`` says what sort of work the job is (``render`` or ``proxy``), typed with the job
+    store's closed vocabulary so generated clients get an exhaustive union (D-8, §4.10).
+    """
 
     id: uuid.UUID
+    kind: JobKind
     status: JobStatus
     #: The API enqueues an event under the id the events routes use, so a client
     #: matches a job to its event by equality; the description makes that contractual.
@@ -460,6 +469,20 @@ class FreshResult(BaseModel):
     manifest: str
 
 
+class ProxiesFreshResult(BaseModel):
+    """The body of ``POST /api/v1/events/{event_id}/proxies`` when nothing needs preparing.
+
+    Every clip of the event already has a ``ready`` proxy, so no job was enqueued. A proxy has
+    no fingerprint or manifest (it is not a staleness input), so this is not :class:`FreshResult`.
+    """
+
+    event_id: str
+    #: A constant, declared without a default so the schema marks it required.
+    status: Literal["fresh"]
+    #: How many clips of the event folder were checked; 0 for an event with none.
+    clip_count: int
+
+
 class CancelResult(BaseModel):
     """The body of ``POST /api/v1/jobs/{id}/cancel``: the outcome the store applied (D-S6).
 
@@ -475,7 +498,7 @@ class CancelResult(BaseModel):
 
 
 class EnqueueConflict(StrEnum):
-    """Why ``POST /api/v1/jobs`` refused an event with a 409: the API's classification."""
+    """Why an enqueue (``POST /api/v1/jobs``, or the proxy enqueue) refused with a 409."""
 
     #: An active (``queued`` or ``running``) job already exists for the event: ``job_id``.
     ACTIVE_JOB = "active_job"

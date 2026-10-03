@@ -933,7 +933,8 @@ def test_the_projects_own_jobs_are_served_beside_a_foreign_one(
 
 
 # --------------------------------------------------------------------------- #
-# A proxy job in the store changes no render-facing answer (job-kind 3.1)
+# A proxy job in the store: marked where it is listed, never a render's answer
+# (job-kind 3.1 pinned "changes nothing"; proxy-enqueue-endpoint publishes the kind)
 # --------------------------------------------------------------------------- #
 
 
@@ -946,27 +947,39 @@ def _render_facing_reads(client: TestClient) -> tuple[object, object, object]:
     return jobs, events, snapshot
 
 
-def test_a_proxy_job_changes_no_render_facing_answer(
+def test_a_proxy_job_is_listed_and_on_the_socket_marked_and_is_never_the_latest_job(
     client: TestClient, store: JobStore, project: Path
 ) -> None:
     event = "2024/2024-06-21 - A"
     render_id = store.enqueue(str(project), event)
     render_only = _render_facing_reads(client)
-    # The latest job per event is the newest, and the proxy job is newer than the render.
+    # The latest job per event is the newest of its kind, and the proxy job is newer than the render.
     proxy_id = store.enqueue(str(project), event, kind=JobKind.PROXY)
 
-    with_proxy = _render_facing_reads(client)
+    jobs, events, snapshot = _render_facing_reads(client)
 
-    assert with_proxy == render_only
-    jobs, events, snapshot = with_proxy
-    assert [job["id"] for job in jobs] == [str(render_id)]  # type: ignore[attr-defined]
+    # latest_job is what it was: the render, now marked.
+    assert events[event] == _render_facing_reads(client)[1][event]  # type: ignore[index]
     assert events[event]["id"] == str(render_id)  # type: ignore[index]
-    assert [job["id"] for job in snapshot["jobs"]] == [str(render_id)]  # type: ignore[index]
-    assert str(proxy_id) not in json.dumps(with_proxy)
-    assert all("kind" not in job for job in jobs + snapshot["jobs"])  # type: ignore[operator,index]
+    assert events[event]["kind"] == "render"  # type: ignore[index]
+    assert render_only[1][event]["id"] == str(render_id)  # type: ignore[index]
+    # The list and the socket carry both jobs, each with its kind.
+    assert {job["id"]: job["kind"] for job in jobs} == {  # type: ignore[attr-defined]
+        str(render_id): "render",
+        str(proxy_id): "proxy",
+    }
+    assert {job["id"]: job["kind"] for job in snapshot["jobs"]} == {  # type: ignore[index]
+        str(render_id): "render",
+        str(proxy_id): "proxy",
+    }
+    # The render's own row is exactly what it was before the proxy job existed.
+    before = {job["id"]: job for job in render_only[0]}  # type: ignore[attr-defined]
+    after = {job["id"]: job for job in jobs}  # type: ignore[attr-defined]
+    assert after[str(render_id)] == before[str(render_id)]
 
 
-def test_the_published_job_schema_has_no_kind(client: TestClient) -> None:
+def test_the_published_job_schema_has_kind(client: TestClient) -> None:
     schemas = client.get("/openapi.json").json()["components"]["schemas"]
 
-    assert "kind" not in schemas["JobOut"]["properties"]
+    assert schemas["JobOut"]["properties"]["kind"] == {"$ref": "#/components/schemas/JobKind"}
+    assert "kind" in schemas["JobOut"]["required"]

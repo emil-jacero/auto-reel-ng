@@ -34,16 +34,17 @@ class JobStatus(str, enum.Enum):
 
 
 class JobKind(enum.StrEnum):
-    """The kinds of work this build knows how to name (job-kind).
+    """What sort of work a job is: the closed set of kinds the service reports.
 
-    The ``jobs.kind`` column is free text on purpose: the database accepts any value,
-    so a row written by a newer build reaches a worker that fails it with a reason
-    instead of the database refusing it. This enum names what *this* build writes.
+    An event has at most one active job of each kind, and jobs of different kinds run
+    independently. The ``jobs.kind`` column is free text on purpose: the database accepts
+    any value, so a row written by a newer build reaches a worker that fails it with a
+    reason instead of the database refusing it. This enum names what *this* build writes.
     """
 
     #: Render an event into its movie (the only kind the worker handles itself).
     RENDER = "render"
-    #: Prepare an event's clip proxies (handled by a worker-registered handler).
+    #: Prepare the preview copies (proxies) of an event's clips for the timeline and players.
     PROXY = "proxy"
 
 

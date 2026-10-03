@@ -2593,6 +2593,99 @@
         }
       }
     },
+    "/api/v1/events/{event_id}/proxies": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Enqueue Proxies",
+        "description": "``POST /api/v1/events/{event_id}/proxies``: enqueue the event's proxy job.\n\nPrepares the 540p proxies (with sound) and filmstrips of every clip file the event folder\nholds, as a job of kind ``proxy`` the worker runs behind renders. No request body: a proxy is\na function of the clip file and the proxy settings. 201 with the queued job; 200 ``fresh``\nwhen every clip's proxy is already ``ready`` (no job); 409 ``active_job`` with the job's id\nwhile a proxy job is queued or running for the event, also when a concurrent request\ninserted first; 404 for an id the events list does not show; 502 for an event folder or a\nproxy cache that cannot be read (nothing is enqueued, and an unreadable state is never read\nas ``absent`` or ``ready``); 503 when the job store is unreachable. The event's render jobs\nare independent of it.",
+        "operationId": "enqueue_proxies_api_v1_events__event_id__proxies_post",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Every clip already has a ready proxy; nothing was enqueued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProxiesFreshResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/events/{event_id}": {
       "get": {
         "tags": [
@@ -2762,7 +2855,7 @@
           "jobs"
         ],
         "summary": "List Jobs",
-        "description": "``GET /api/v1/jobs`` (task 3.2): the served project's jobs, by status, oldest first.",
+        "description": "``GET /api/v1/jobs`` (task 3.2): the served project's jobs, by status, oldest first.\n\nJobs of every kind, each carrying its ``kind``: the store's reads default to renders\n(job-kind), so the list asks for all of them.",
         "operationId": "list_jobs_api_v1_jobs_get",
         "parameters": [
           {
@@ -3284,7 +3377,7 @@
           "missing_clips"
         ],
         "title": "EnqueueConflict",
-        "description": "Why ``POST /api/v1/jobs`` refused an event with a 409: the API's classification."
+        "description": "Why an enqueue (``POST /api/v1/jobs``, or the proxy enqueue) refused with a 409."
       },
       "EnqueueRequest": {
         "properties": {
@@ -3592,12 +3685,24 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "JobKind": {
+        "type": "string",
+        "enum": [
+          "render",
+          "proxy"
+        ],
+        "title": "JobKind",
+        "description": "What sort of work a job is: the closed set of kinds the service reports.\n\nAn event has at most one active job of each kind, and jobs of different kinds run\nindependently. The ``jobs.kind`` column is free text on purpose: the database accepts\nany value, so a row written by a newer build reaches a worker that fails it with a\nreason instead of the database refusing it. This enum names what *this* build writes."
+      },
       "JobOut": {
         "properties": {
           "id": {
             "type": "string",
             "format": "uuid",
             "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
           },
           "status": {
             "$ref": "#/components/schemas/JobStatus"
@@ -3705,6 +3810,7 @@
         "type": "object",
         "required": [
           "id",
+          "kind",
           "status",
           "event_dir",
           "device",
@@ -3714,7 +3820,7 @@
           "created_at"
         ],
         "title": "JobOut",
-        "description": "One job's full detail, mirroring ``jobs show`` (task 3.2)."
+        "description": "One job's full detail, mirroring ``jobs show`` (task 3.2).\n\n``kind`` says what sort of work the job is (``render`` or ``proxy``), typed with the job\nstore's closed vocabulary so generated clients get an exhaustive union (D-8, §4.10)."
       },
       "JobStatus": {
         "type": "string",
@@ -3734,6 +3840,9 @@
             "type": "string",
             "format": "uuid",
             "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
           },
           "status": {
             "$ref": "#/components/schemas/JobStatus"
@@ -3783,6 +3892,7 @@
         "type": "object",
         "required": [
           "id",
+          "kind",
           "status",
           "progress",
           "created_at",
@@ -3790,7 +3900,7 @@
           "requeue_count"
         ],
         "title": "JobSummaryOut",
-        "description": "The latest job for an event, as embedded in the events list and detail (D-A3).\n\nA projection of the job's detail (``JobOut``): every field here has the same value,\nmeaning and schema definition there. ``started_at``/``finished_at`` are null until the\nstore stamps them (a claim; a terminal transition), never substituted.\n\n``cancel_requested`` and ``requeue_count`` are required (never null in the store) so a\nreader can tell a cancel pending and a job that went back to the queue after a claim\nfrom a read alone; a requeue leaves ``cancel_requested`` as it was.\n\n``status`` is typed with the job store's own closed vocabulary, so the schema\npublishes the enumeration and generated clients get an exhaustive union\n(D-8, §4.10). ``JobStatus`` is a ``str`` enum: the wire values are unchanged."
+        "description": "The latest job for an event, as embedded in the events list and detail (D-A3).\n\nA projection of the job's detail (``JobOut``): every field here has the same value,\nmeaning and schema definition there. ``started_at``/``finished_at`` are null until the\nstore stamps them (a claim; a terminal transition), never substituted.\n\n``cancel_requested`` and ``requeue_count`` are required (never null in the store) so a\nreader can tell a cancel pending and a job that went back to the queue after a claim\nfrom a read alone; a requeue leaves ``cancel_requested`` as it was.\n\n``status`` is typed with the job store's own closed vocabulary, so the schema\npublishes the enumeration and generated clients get an exhaustive union\n(D-8, §4.10). ``JobStatus`` is a ``str`` enum: the wire values are unchanged.\n\nThe summary is always of a ``render`` job: an event's latest job is its latest render, and a\nproxy job never stands in it. ``kind`` is still on it, with the definition ``JobOut`` has."
       },
       "MetadataBody": {
         "properties": {
@@ -4014,6 +4124,31 @@
         ],
         "title": "ProblemOut",
         "description": "The shared problem body every deliberate error uses (D-A6), as published in the schema.\n\nSchema-only: routes still return ``problem.problem_response``'s ``JSONResponse``,\nwhich FastAPI does not validate against this model. ``extra=\"allow\"`` keeps an\nundeclared route-specific field legal; a field clients branch on is declared\nbelow as a named optional field, so the generated types carry it without a cast."
+      },
+      "ProxiesFreshResult": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "status": {
+            "type": "string",
+            "const": "fresh",
+            "title": "Status"
+          },
+          "clip_count": {
+            "type": "integer",
+            "title": "Clip Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "status",
+          "clip_count"
+        ],
+        "title": "ProxiesFreshResult",
+        "description": "The body of ``POST /api/v1/events/{event_id}/proxies`` when nothing needs preparing.\n\nEvery clip of the event already has a ``ready`` proxy, so no job was enqueued. A proxy has\nno fingerprint or manifest (it is not a staleness input), so this is not :class:`FreshResult`."
       },
       "ProxyFactsOut": {
         "properties": {

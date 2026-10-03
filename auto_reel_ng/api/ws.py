@@ -18,6 +18,10 @@ narrowed to its root, so no frame carries another project's job, and a change to
 one never causes a delta (jobs-project-guards). Only the report is scoped: the
 worker queue stays shared by every project in the database.
 
+Jobs of every kind are reported, each carrying its ``kind`` (the store's reads default to
+renders since job-kind, so both ask for all kinds): a proxy job's progress and end reach
+subscribers exactly as a render's do, and the client decides what to do with a kind.
+
 Store calls run on a dedicated single-thread executor (D-A5 risk mitigation), so
 concurrent REST scan requests (FastAPI's default threadpool) can never starve the
 poller. Stopping the hub never waits on that executor: a store call stalled on an
@@ -344,7 +348,10 @@ class JobsHub:  # pylint: disable=too-many-instance-attributes
         active: list[Job] = []
         for status in (JobStatus.QUEUED, JobStatus.RUNNING):
             read = functools.partial(
-                self._store.list_by_status, status, project_root=self._project_root
+                self._store.list_by_status,
+                status,
+                project_root=self._project_root,
+                kind=None,
             )
             active.extend(await loop.run_in_executor(self._executor, read))
         return {job.id: job_to_out(job) for job in active}
@@ -362,6 +369,7 @@ class JobsHub:  # pylint: disable=too-many-instance-attributes
             since,
             overlap=_FINISHED_OVERLAP,
             project_root=self._project_root,
+            kind=None,
         )
         return await loop.run_in_executor(self._executor, read)
 
