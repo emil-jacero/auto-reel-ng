@@ -36,4 +36,21 @@ describe('the drag store', () => {
     store.set(drag)
     assert.equal(calls, 0)
   })
+
+  it('has one owner: a second press is refused until the first lets go', () => {
+    const store = createDragStore()
+    const a = {}
+    const b = {}
+    assert.equal(store.claim(a), true)
+    assert.equal(store.claim(a), true)
+    assert.equal(store.claim(b), false)
+    assert.equal(store.owns(a), true)
+    assert.equal(store.owns(b), false)
+    store.unclaim(b)
+    assert.equal(store.owns(a), true)
+    assert.equal(store.claim(b), false)
+    store.unclaim(a)
+    assert.equal(store.owns(a), false)
+    assert.equal(store.claim(b), true)
+  })
 })
