@@ -17,7 +17,8 @@ The repository's `Containerfile` SHALL build with rootless podman from a clean c
 - the `auto-reel` command as its entrypoint
 - `jellyfin-ffmpeg8` at the version pinned by the `JELLYFIN_FFMPEG_VERSION` build argument, which the engine
   resolves as its default ffmpeg and ffprobe and accepts as ≥ 7.1 (D-1)
-- the Cairo/Pango runtime and the DejaVu Sans family, resolvable through fontconfig
+- the Cairo/Pango runtime and the bundled title-card font set from `fonts/` (DejaVu Sans and the registered
+  families), resolvable through the engine's fontconfig
 - the web client built from `web/`
 
 The image SHALL NOT need a host-installed VA driver or Mesa package. The build context SHALL exclude the
@@ -39,6 +40,14 @@ holds both for the context `podman build` reads and for the context `podman comp
 - **THEN**:
   - the reported `Sending build context` is a few MB, not hundreds
   - the image contains no `/app/data`
+
+#### Scenario: Every registered font resolves in the image
+- **WHEN** the image is built and its engine verifies the bundled fonts
+- **THEN** every registered family resolves at every weight it declares, and a build in which one does not resolve fails
+
+#### Scenario: A card renders in a bundled family in the image
+- **WHEN** a title card is rendered in the image with `font_family` set to a registered family other than DejaVu Sans
+- **THEN** the card is drawn in that family and no host or Debian font is involved
 
 ### Requirement: The service in the image serves the web client
 
