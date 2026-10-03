@@ -218,8 +218,9 @@ Close when the control that held it went:
   is PCM, which Firefox does not play and Chrome does, and the render keeps it. The note SHALL NOT state as
   fact a cause or a sound the page does not know of: the clip may have no audio track at all. Playback SHALL
   be otherwise unchanged, never muted. The note SHALL NOT be shown while the preview copy plays. When the clip
-  has a ready preview copy, the note SHALL add that the preview copy plays with sound and that Play preview copy
-  plays it.
+  has a ready preview copy whose facts name an audio codec, the note SHALL add that the preview copy plays with
+  sound and that Play preview copy plays it; when the facts name none (the clip has no audio), the note SHALL stay
+  as it is and SHALL NOT promise sound from the copy.
 - **No picture.** When the browser reads the clip but shows no picture of it, the preview SHALL say that this
   browser cannot show the clip's picture, and SHALL offer the clip's file as a download. Its controls SHALL
   stay.
@@ -319,6 +320,9 @@ Close when the control that held it went:
   and the clip plays its picture on request, not muted.
 - **WHEN** the same preview is opened in Chrome
 - **THEN** no such note is shown
+- **WHEN** in Firefox, the operator opens the preview of a clip with no audio track whose preview copy is ready
+  and whose facts name no audio codec
+- **THEN** the note is shown without the sentence that the preview copy plays with sound
 
 #### Scenario: A picture this browser cannot show
 - **WHEN** in Chrome, the operator opens the preview of the HEVC clip `hevc-mov-rotate90-aac.mov` of

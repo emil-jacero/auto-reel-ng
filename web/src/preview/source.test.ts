@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
+import { toMs } from './playback.ts'
 import type { ClipProxy } from './source.ts'
 import {
   COPY_HAS_SOUND,
+  copyHasSound,
   ORIGINAL_WHY,
   copyCannotPlayTitle,
   copyEmptyTitle,
@@ -43,11 +45,29 @@ function proxy(state: string, facts: unknown = null): ClipProxy {
 
 describe('previewSource', () => {
   it('plays the copy when it is ready with a usable duration, and says its length in ms', () => {
-    assert.deepEqual(previewSource(proxy('ready', FACTS)), { kind: 'copy', durationMs: 6020 })
+    assert.deepEqual(previewSource(proxy('ready', FACTS)), {
+      kind: 'copy',
+      durationMs: 6020,
+      hasSound: true,
+    })
     assert.deepEqual(previewSource(proxy('ready', { ...FACTS, duration: 25.003 })), {
       kind: 'copy',
       durationMs: 25003,
+      hasSound: true,
     })
+  })
+
+  it('says whether the copy carries sound from the facts audio codec, never guessing', () => {
+    const sound = (audio_codec: unknown) => {
+      const source = previewSource(proxy('ready', { ...FACTS, audio_codec }))
+      assert.equal(source.kind, 'copy')
+      return source.kind === 'copy' ? source.hasSound : null
+    }
+    assert.equal(sound('pcm_s16le'), true)
+    assert.equal(sound('aac'), true)
+    assert.equal(sound(null), false)
+    assert.equal(sound(undefined), false)
+    assert.equal(sound(''), false)
   })
 
   it('plays the original, unusable, for a ready state without a usable duration', () => {
@@ -85,6 +105,12 @@ describe('copyLengthMs', () => {
   it('rounds to whole milliseconds and refuses what is not a duration', () => {
     assert.equal(copyLengthMs({ duration: 25.003 }), 25003)
     assert.equal(copyLengthMs({ duration: 6.0204 }), 6020)
+    // The sub-millisecond part decides: half a millisecond or more rounds up, as toMs does.
+    assert.equal(copyLengthMs({ duration: 6.0206 }), 6021)
+    assert.equal(copyLengthMs({ duration: 25.0036 }), 25004)
+    for (const duration of [6.0204, 6.0206, 25.003, 25.0036]) {
+      assert.equal(copyLengthMs({ duration }), toMs(duration))
+    }
     assert.equal(copyLengthMs({ duration: 0 }), null)
     assert.equal(copyLengthMs({}), null)
     assert.equal(copyLengthMs(null), null)
@@ -143,5 +169,8 @@ describe('the words', () => {
     assert.match(COPY_HAS_SOUND, /Play preview copy/)
     assert.equal(withCopySentence('No sound.', true), `No sound. ${COPY_HAS_SOUND}`)
     assert.equal(withCopySentence('No sound.', false), 'No sound.')
+    assert.equal(copyHasSound({ audio_codec: 'pcm_s16le' }), true)
+    assert.equal(copyHasSound({ audio_codec: null }), false)
+    assert.equal(copyHasSound(null), false)
   })
 })
