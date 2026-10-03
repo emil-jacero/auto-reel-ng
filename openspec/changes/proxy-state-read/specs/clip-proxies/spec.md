@@ -17,8 +17,10 @@ file or listing the cache directory:
   recorded geometry for the current filmstrip format, whose image is there with the size recorded. A fact the
   proxy job could not learn and recorded as `null` (the frame-rate variability, the rotation, the audio codec)
   is present. The state carries those facts.
-- `failed`: the entry is not `ready` and a failure marker for the key records a cause. The state carries the
-  cause as one line with no server path.
+- `failed`: the entry is not `ready`, its proxy video and facts are not both usable, and a failure marker for
+  the key records a cause. The state carries the cause as one line with no server path. A marker is about
+  the proxy: once a usable proxy and facts are published for the key, an earlier failure no longer describes
+  the clip, and the state is decided by the filmstrip alone.
 - `stale`: the entry is not `ready`, no failure marker exists, and the entry's recorded-facts file exists but
   cannot be used: invalid JSON, not an object, a required fact missing, mistyped, not finite or out of range,
   or the proxy or filmstrip file empty, or a `filmstrip` record that is malformed, of another format version or
@@ -80,6 +82,10 @@ the staleness fingerprint and reading it SHALL NOT change any render verdict.
 #### Scenario: A later success outranks an earlier failure
 - **WHEN** a failure marker exists for the key and a complete entry exists too
 - **THEN** the state is `ready`
+
+#### Scenario: A published proxy supersedes an earlier failure while its filmstrip is pending
+- **WHEN** a failure marker exists for the key and the entry holds a usable proxy and facts but no filmstrip yet
+- **THEN** the state is `absent`, not `failed`
 
 #### Scenario: A failure outranks an unusable entry
 - **WHEN** a failure marker exists for the key and the entry's facts are damaged

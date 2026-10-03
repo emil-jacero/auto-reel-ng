@@ -70,7 +70,10 @@ entry written by an engine whose facts lack a field this reader requires); (c) d
 downstream changes name it.
 **Decision**: (b). `ready` needs the proxy, the filmstrip and fully valid facts; `failed` is a recorded cause
 and nothing usable; `stale` is an entry present at the current key that fails those checks; `absent` is the rest.
-Precedence `ready > failed > stale > absent`. A replaced file or a version bump reads `absent`.
+Precedence `ready > failed > stale > absent`, with one refinement found while testing the retry: the marker
+is about the proxy, so an entry whose proxy and facts are usable (only its sprite is pending or unusable)
+is decided by the sprite alone. Otherwise a successful retry would read `failed` with the old cause until
+its sprite was cut. A replaced file or a version bump reads `absent`.
 The filmstrip refines (b): the proxy is published before its sprite, so an entry whose `facts.json` has no
 `filmstrip` object, or whose record names an image that is not there, is incomplete, not damaged: `absent`.
 A `filmstrip` object that is malformed, of another `FILMSTRIP_VERSION`, or whose image is empty or not the
@@ -127,8 +130,11 @@ publishes integers so the generated client cannot receive 29.97. Strict on requi
 `filmstrip-sprites`-style additions to `facts.json` do not turn every entry `stale`.
 
 ### `version` is the proxy file's entity tag, computed with `MediaFile`
-**Decision**: for a `ready` entry the API stats `proxy.mp4` and builds the version from `MediaFile(path, stat).etag`
-with the quotes removed (the dataclass needs no open file). The same string serves as `v` for the filmstrip URL
+**Decision**: for a `ready` entry the API stats `proxy.mp4` and builds the version as `"{size:x}-{mtime_ns:x}"`
+(`MediaFile.etag` without its quotes). `api/media.py` imports `events_read`, so `events_read` cannot import
+`MediaFile`: the formula sits in a new two-line module `api/entity_tag.py`, and a test pins its output to
+`MediaFile(path, stat).etag` so the two cannot drift. (Making `MediaFile.etag` call it is a one-line follow-up
+left to `proxy-media-endpoints`, which is editing `media.py` now.) The same string serves as `v` for the filmstrip URL
 (the sprite is written once per key, so the proxy's tag is a valid cache-buster for it; the service ignores `v`).
 **Rationale**: one formula for the tag the media routes will send and the tag the detail reports (D-15,
 risk 14); a client can build `…/proxy?clip=…&v=…` from the detail alone. The stat is one more per ready clip,
