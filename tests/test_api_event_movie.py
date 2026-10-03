@@ -304,6 +304,35 @@ def test_a_record_without_a_usable_time_reports_no_movie(
     assert response.json()["movie"] is None
 
 
+def test_a_written_at_the_clock_cannot_hold_in_utc_reports_no_movie(
+    settings: ApiSettings, client: TestClient, movies: Dict[str, Path]
+) -> None:
+    record(settings, KALAS, ANKOMST_TARTAN)
+    edit_manifest(settings.project_root / KALAS, written_at="0001-01-01T00:00:00+05:00")
+
+    response = client.get(_url(KALAS))
+
+    assert response.status_code == 200
+    assert response.json()["movie"] is None
+
+
+def test_a_chapter_time_beyond_a_float_makes_the_chapters_unknown_not_the_detail_fail(
+    settings: ApiSettings, client: TestClient, movies: Dict[str, Path]
+) -> None:
+    record(settings, KALAS, ANKOMST_TARTAN)
+    edit_manifest(
+        settings.project_root / KALAS,
+        chapters=[{"name": "Ankomst", "start_ms": 10**400, "end_ms": 10**400 + 1}],
+    )
+
+    response = client.get(_url(KALAS))
+
+    assert response.status_code == 200
+    movie = response.json()["movie"]
+    assert movie is not None and movie["chapters"] is None
+    assert movie["fingerprint"] and movie["recorded_at"]
+
+
 def test_a_title_cannot_make_the_detail_report_a_file_outside_the_output_directory(
     settings: ApiSettings, client: TestClient, utbrytning: Path
 ) -> None:
