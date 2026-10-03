@@ -126,6 +126,8 @@ the clip's Watch control. No control of a closed player SHALL keep focus.
   time
 - **THEN** the player goes on with the new file, paused at `0:03.2`, and no request after the re-read is for the old
   address
+- **WHEN** keyboard focus was in that player (on its Play, say) before the re-read
+- **THEN** keyboard focus is on the new player's Play, as after any read that removes the control that held it
 
 #### Scenario: A clip that goes missing closes its player
 - **WHEN** the player of `s1710001.mp4` is open with keyboard focus in it and a re-read finds the clip missing

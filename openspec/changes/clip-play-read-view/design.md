@@ -183,6 +183,10 @@ Firefox >= 155 from the scratchpad (task 4), including decoded sound for the Son
   ends it as one (`goneWords(…, readOnly)`), Edit mode's string stays byte for byte as it was.
 - **The player row is empty-free.** A read-only player of a clip with no cuts and no ready copy has nothing in its
   actions row, so the row is not rendered (an empty grid row would still take a gap).
+- **Scrolling once the clip is read.** A read-only player that opens comes into view whole; reading the clip adds
+  the cuts' legend and grows the region, so it scrolls once more then. That second scroll happens only when the
+  first load succeeds and the page is still where the first scroll left it (an operator who has scrolled away is not
+  pulled back), and it is the read-only player's alone: Edit mode's preview is as it was.
 
 ## Risks / Trade-offs
 
