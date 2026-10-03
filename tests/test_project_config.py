@@ -116,6 +116,24 @@ def test_wrong_typed_thumbnails_fails_loud() -> None:
         loads_project_config("thumbnails: 3\n")
 
 
+def test_config_supplies_proxy_settings(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text(
+        "proxies:\n  cache_dir: /data/cache/auto-reel/proxies\n", encoding="utf-8"
+    )
+    config = load_project_config(tmp_path)
+    assert config.proxies == {"cache_dir": "/data/cache/auto-reel/proxies"}
+
+
+def test_config_without_proxies_carries_an_empty_map(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("layout: flat\n", encoding="utf-8")
+    assert load_project_config(tmp_path).proxies == {}
+
+
+def test_wrong_typed_proxies_fails_loud() -> None:
+    with pytest.raises(ConfigError, match="'proxies'"):
+        loads_project_config("proxies: 3\n")
+
+
 # --------------------------------------------------------------------------- #
 # D-2 layering through resolve()
 # --------------------------------------------------------------------------- #

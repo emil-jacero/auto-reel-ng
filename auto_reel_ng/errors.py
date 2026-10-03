@@ -180,6 +180,31 @@ class ThumbnailCacheError(EngineError):
     """
 
 
+class ProxyError(EngineError):
+    """A clip could not give a proxy (D-21).
+
+    Raised when the clip cannot be statted or probed, has no positive duration, its
+    encode fails on every path, or the encoded file fails verification. The engine
+    makes at most one attempt per encode path and never publishes an unchecked or an
+    assumed result. The message is ``<clip>: <reason>``; ``reason`` carries the cause
+    without the clip's path, for a caller that names the clip itself (the CLI).
+    """
+
+    def __init__(self, clip: str, reason: str) -> None:
+        super().__init__(f"{clip}: {reason}")
+        self.clip = clip
+        self.reason = reason
+
+
+class ProxyCacheError(EngineError):
+    """The proxy cache directory could not be created, read or written (D-21).
+
+    Deliberately a sibling of :class:`ProxyError`, not a subclass: it is not a property
+    of any one clip, so the CLI stops on it instead of reporting it against every clip.
+    The message names the directory.
+    """
+
+
 class ReelError(EngineError):
     """A ``reel.yaml`` editorial document could not be parsed, validated, or applied.
 
