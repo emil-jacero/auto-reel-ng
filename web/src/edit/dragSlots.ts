@@ -15,6 +15,9 @@ import type { ChapterKey, Orders } from './draft'
  * a chapter that plays none) and a deleted chapter's placeholder is `/deleted/<key>`.
  * An identity is a path relative to the event folder, never starting with `/`, so
  * neither prefix can name a clip.
+ *
+ * While a **group** of marked clips is held (`DragModel.gaps`), the clip's own chapter offers
+ * gaps too: no row makes room for a set, so every chapter shows a line, the own one as another.
  */
 
 export const CHAPTER_DROP = '/chapter/'
@@ -33,18 +36,24 @@ export type DragModel = {
   orders: Orders
   /** Each clip a listed chapter plays → that chapter. */
   chapterOf: ReadonlyMap<string, ChapterKey>
+  /** A group is held: every chapter, the own too, offers its m + 1 gaps (see above). */
+  gaps: boolean
 }
 
 const NONE: readonly string[] = []
 
-export function dragModel(orders: Orders, listed: readonly ChapterKey[]): DragModel {
+export function dragModel(
+  orders: Orders,
+  listed: readonly ChapterKey[],
+  gaps = false,
+): DragModel {
   const chapterOf = new Map<string, ChapterKey>()
   for (const key of listed) {
     for (const identity of orders.get(key) ?? NONE) {
       chapterOf.set(identity, key)
     }
   }
-  return { listed, orders, chapterOf }
+  return { listed, orders, chapterOf, gaps }
 }
 
 function orderOf(model: DragModel, key: ChapterKey): readonly string[] {
@@ -54,7 +63,7 @@ function orderOf(model: DragModel, key: ChapterKey): readonly string[] {
 /** How many slots chapter `key` offers `identity`: its positions at home, its gaps elsewhere. */
 function slotCount(model: DragModel, identity: string, key: ChapterKey): number {
   const length = orderOf(model, key).length
-  return model.chapterOf.get(identity) === key ? length : length + 1
+  return !model.gaps && model.chapterOf.get(identity) === key ? length : length + 1
 }
 
 /** The chapters `identity` may land in, in page order: its own alone when it stays home. */
@@ -149,8 +158,9 @@ export function overIdOf(model: DragModel, identity: string, slot: Slot): string
   if (slot.index < order.length) {
     return order[slot.index]
   }
-  // Its own chapter has no gap after its last clip: that position is the last row's.
-  return model.chapterOf.get(identity) === slot.chapter
+  // Its own chapter has no gap after its last clip (unless a group is held): that position
+  // is the last row's.
+  return !model.gaps && model.chapterOf.get(identity) === slot.chapter
     ? (order[order.length - 1] ?? identity)
     : `${CHAPTER_DROP}${slot.chapter}`
 }
@@ -165,7 +175,7 @@ export function slotOf(model: DragModel, identity: string, overId: string | null
     if (!model.listed.includes(chapter)) {
       return null
     }
-    // After its last clip; in the clip's own chapter that is its last position.
+    // After its last clip; in the clip's own chapter that is its last position (a gap, for a group).
     return { chapter, index: Math.max(slotCount(model, identity, chapter) - 1, 0) }
   }
   const chapter = model.chapterOf.get(overId)
@@ -187,7 +197,7 @@ function distance(span: Span, y: number): number {
  * centre at once); outside it, the row whose centre is nearest (sortable's index
  * semantics, as `closestCenter` gives). In another, the first row whose centre lies below
  * `y` ("before that row"), else the chapter itself ("after its last clip", or the area of
- * a chapter that plays none).
+ * a chapter that plays none); a held group takes this branch for its own chapter too.
  */
 export function pointerTarget(
   model: DragModel,
@@ -222,7 +232,7 @@ export function pointerTarget(
     return span === undefined ? undefined : (span.top + span.bottom) / 2
   }
   const order = orderOf(model, chapter)
-  if (chapter === own) {
+  if (chapter === own && !model.gaps) {
     const home = rowSpan(identity)
     if (home !== undefined && distance(home, y) === 0) {
       return identity
