@@ -195,8 +195,8 @@ Stage 2 (later): ML behind the same interface — PySceneDetect for scene cuts, 
 Detections are **suggestions**: they appear in the GUI as proposed trims; the operator approves/edits;
 approved trims are written to `reel.yaml` and applied at render time as in/out points. Raw detection
 output is cached in a sidecar (e.g. `.auto-reel/cache/`), **not** in `reel.yaml`. The GUI writes an approved
-suggestion as a trim whose `reason` is its kind (`black`, `white`, `freeze`; D-20, "Analysis overlays"), once the
-Timeline is mounted on Edit mode's draft (`timeline-trim`).
+suggestion as a trim whose `reason` is its kind (`black`, `white`, `freeze`; D-20, "Analysis overlays"), by the
+Timeline on Edit mode's draft (`timeline-overlay-decisions`).
 
 > ⚠️ **Research:** §8.6 white/freeze thresholds ✅ **RESOLVED** (exp 005); §8.7 ML model choices.
 
@@ -347,7 +347,7 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   **read-only**; editing it is v2. No timeline, no per-frame editing.
 - **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview); **the full
   timeline editor, moved from v3** — a per-clip track with proxies, filmstrip, drag-trim in/out and scrub
-  preview (built: scrub in `timeline-view`, trim handles in `timeline-trim`, D-20); **analysis review built as overlays on that timeline** (approve black/white/freeze trims in place,
+  preview (built: scrub in `timeline-view`, trim handles in `timeline-trim`, D-20); **analysis review built as overlays on that timeline** (built: approve black/white/freeze trims in place on Edit mode's draft, `timeline-overlay-decisions`;
   not a separate screen); event poster frames; and, beside the proxy work, chapter times in the render
   manifest (built, change `render-chapter-times`) and a movie version in the event detail (built: the detail's
   `movie` carries the version and the chapter list, change `movie-facts-read`); the chapter jump list of the
@@ -375,8 +375,9 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   landed** (`timeline-overlays`): an analysis lane of suggestion marks under the clips, their state derived from the
   cuts, shown in the read view (D-20, "Analysis overlays"). **Trim handles have landed in Edit mode** (`timeline-trim`,
   D-20): the same section on the editor's draft, a slider at each edge of a cut, saved by the existing Save; the lane
-  is mounted there too and shows state from the draft's cuts, but **approving and dismissing a suggestion are still to
-  mount** (`decide` is null in Edit mode as in the read view).
+  is mounted there too and shows state from the draft's cuts. **Approving, dismissing and restoring a suggestion have
+  landed in Edit mode** (`timeline-overlay-decisions`): Approve adds the suggestion to the draft as a cut with its kind
+  as the reason, Dismiss and Restore are the page's set; the read view offers no decision.
   `proxy-enqueue-endpoint` has landed (D-21 "Enqueue over REST"): `POST /api/v1/events/{event_id}/proxies` enqueues the
   event's proxy job (201 / 200 `fresh` / 409), and a job reports its `kind` while `latest_job` stays the latest render;
   the timeline's Prepare state is its first web caller.
@@ -1068,7 +1069,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     share more than an instant with it, `dismissed` when this page visit dismissed it and no cut touches it, else
     `pending`. The prototype stored the state and read "approved" for footage the movie still plays; here removing
     a cut (a handle, the Cuts panel, Undo) returns the mark to pending with no bookkeeping, and a cut saved
-    earlier shows its suggestion as cut on the first read. **Approval (designed here, mounted with `timeline-trim`) is `cut-add` with the suggestion's kind as
+    earlier shows its suggestion as cut on the first read. **Approval (designed here, mounted on Edit mode's draft by `timeline-overlay-decisions`) is `cut-add` with the suggestion's kind as
     the reason**, through the Cuts panel's `checkCut` (an overlap is refused naming the cut, a span past the
     clip's end is refused, nothing is silently merged), in Edit mode's draft: one Save, one `If-Match` write, one
     undo model. **Dismissal is for this page visit only:** `reel.yaml` has no field for a rejection and a
@@ -1082,9 +1083,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     for any event whose cache directory exists, and a render's manifest creates it): no clip has an entry (never analysed,
     with the command), entries and nothing found, and a clip with no entry among others that have. Analysis is never
     started from the page. A legend under the lane spells out the icons and glyphs. Deciding needs the Timeline on
-    Edit mode's draft, which is `timeline-trim`'s mount, so the lane takes an `analysis` value whose `decide` is null
-    in the read view, where it offers no decision and no note about one; the decision rules (`decideApprove`,
-    `decideDismiss`) are pure and tested, and the requirements for them belong to the change that mounts it.
+    Edit mode's draft, so the lane takes an `analysis` value whose `decide` is null in the read view, where it offers
+    no decision and no note about one; the decision rules (`decideApprove`, `decideDismiss`) are pure and tested.
+    The requirements for them are in `event-timeline`, written by `timeline-overlay-decisions` (below).
   - **Prepare enqueues the proxy job** (`proxy-job`): the timeline's Prepare state enqueues the D-21 `proxy` job for the event; a render does not wait for it. It calls `POST /api/v1/events/{event_id}/proxies` (`proxy-enqueue-endpoint`) and follows the job on the WebSocket, whose jobs carry `kind`.
   - **Trim handles (change `timeline-trim`, 2026-10-03): the same Timeline in Edit mode, on the draft.** Edit mode mounts
     the one `TimelineSection` after the metadata form, closed until opened, with `editing` set: its cuts are the draft's
@@ -1129,6 +1130,33 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Bundle (`timeline-trim`).** `npm run build` on `origin/main` (with `timeline-overlays`) and on this change: JS 502,976 to
     521,304 bytes (160,932 to 167,683 gzip -9, +6.6 KB) and CSS 67,163 to 70,886 bytes (12,883 to 13,539 gzip -9, +0.6 KB); no
     package added. The research prototype's whole interaction layer was +5.6 KB gz. `npm test` runs 495 tests (438 before).
+  - **Decisions on Edit mode's draft (change `timeline-overlay-decisions`, 2026-10-03).** The lane's `decide`, null in both
+    modes until now, is built in Edit mode from the editor's binding by the pure `decideControl` (`EditBinding.onAdd` is
+    `cutHandlers.onAdd`, the Cuts panel's own add); the read view's binding is null, so it still decides nothing. **Approve**
+    (button, or **A** on a focused mark) adds the suggestion to the draft as a cut with its kind as the reason, through
+    `checkCut`: the save bar counts one cut added, Save writes the trim `{in, out, reason}` by the existing `If-Match` write,
+    and removing the cut or Reset returns the suggestion to pending (state is derived, not stored). An overlap (a partly cut
+    suggestion included) or a span past the proxy's end is refused in the panel's words with nothing added. **Dismiss** and
+    **Restore** (**R** toggles) are the page's set, no edit, no Save, no unsaved-changes guard, and survive leaving Edit
+    mode, Refresh and Save, not a reload. While a save or a Move clips is pending the buttons are `aria-disabled` and the
+    detail says so in words, and the keys are left to the browser. Verified in Chrome 154.0.8037.92 and Firefox 155.0: 86
+    of 86 checks each, light and dark at 1280 and 390 (and 320), the detail buttons' tap area 44 px under a coarse pointer,
+    button text contrast at least 5.65:1 (light) and 7.03:1 (dark), no horizontal page scroll. **Measured with decisions
+    mounted** (Edit mode, four 6 s real clips, 8 marks, 3 approved cuts and 2 read ones, 10 handles; host load average 0.6 to
+    1.7): scrub median Chrome 55.2, Firefox 51.2 fps (gate 30); frame step p90 of 160 presses Chrome 20.7, Firefox 22.9 ms
+    (gate 60); first frame after a clip change median 31.0 and 33.4 ms.
+  - **A mouse press without pointer events is handed over too (fix, `timeline-overlay-decisions`).** The one failure of
+    `timeline-trim`'s browser run (Firefox, "a mouse press handed to the focused winner selects the winner", 39 of 40) was
+    reproduced by logging the event order: with a normal context Firefox 155 fires `pointerdown` and behaves like Chrome,
+    but under touch emulation (`has_touch`, `is_mobile`) it delivers a mouse press as `mousedown`, `mouseup` and `click`
+    only, so the press never reached the hand-over by position and the browser's own focus move selected the handle on top.
+    A `mousedown` that no pointer sequence accompanies (`bareMousePress`, pure) is now prevented and handed to the nearer
+    edge as a pointer press is, selecting and focusing the handle that took it; it starts no drag. The `two_neighbours`
+    case that failed (6 of 7 before) passes (7 of 7), and the rest of that file passes in both browsers (34 of 34 in Firefox,
+    38 of 38 in Chrome; its 400-clip windowing group was not re-run, the windowing being untouched).
+  - **Bundle (`timeline-overlay-decisions`).** `npm run build` on `origin/main` and on this change: JS 521,304 to 522,100
+    bytes (167,683 to 167,946 gzip -9, +0.3 KB), CSS unchanged (70,886; 13,539 gzip -9); no package added. `npm test` runs
+    507 tests (495 before).
 
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
