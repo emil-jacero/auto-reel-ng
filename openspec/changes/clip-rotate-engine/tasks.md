@@ -1,6 +1,6 @@
 ## 1. render/
 
-- [ ] 1.1 In `render/normalize.py` add the pure `display_turn(clip)` (`(360 - (clip.rotation or 0)) % 360`,
+- [x] 1.1 In `render/normalize.py` add the pure `display_turn(clip)` (`(360 - (clip.rotation or 0)) % 360`,
   clockwise) and `total_turn(clip, rotate)` (`(display_turn + (rotate or 0)) % 360`), make `_needs_pad` take
   the total turn instead of `rotate`, and update the module and `_needs_pad` docstrings and `Segment.rotate`'s
   ("an extra clockwise turn on top of the display rotation") in `render/segments.py`. Verify in
@@ -8,7 +8,7 @@
   (90+270 = 0, 270+180 = 90), and `test_needs_pad` is re-parametrized for the composed rule (the old "segment
   rotate wins" case becomes display 90 + `rotate: 90` = 180 = no swap; display 90 + `rotate: 270` = 0 = stored
   shape, no pad for a 16:9 clip).
-- [ ] 1.2 In `build_normalize_command` feed `_canvas_stages` the total turn (a total of 0 emits no stage), emit
+- [x] 1.2 In `build_normalize_command` feed `_canvas_stages` the total turn (a total of 0 emits no stage), emit
   `-noautorotate` as an input option before `-ss`/`-i` of the source only when `display_turn(clip) != 0`, and log
   the clip, both values and the total at info level when both are non-zero. Verify with golden-argument tests in
   `tests/test_render.py` for the CPU profile and the AMD VAAPI profile (hardware decode: `hwdownload,format=nv12,
@@ -17,11 +17,11 @@
   download), no display rotation with `rotate` 90/180/270 (arguments identical to today, no
   `-noautorotate`), an overlaid trimmed segment (the flag precedes only the clip's input, overlay inputs
   unchanged), and a `caplog` check of the info line. The existing rotation tests stay green.
-- [ ] 1.3 Make `copy_eligible` return `False` when `display_turn(clip) != 0` or `(segment.rotate or 0) % 360 != 0`.
+- [x] 1.3 Make `copy_eligible` return `False` when `display_turn(clip) != 0` or `(segment.rotate or 0) % 360 != 0`.
   Verify with unit tests: an otherwise conforming clip with probed rotation 270 is ineligible; the same with
   `rotate: 180` is ineligible; with `rotate: 0` or `360` and no display rotation it is eligible; display 90 with
   `rotate: 270` (total 0) is ineligible.
-- [ ] 1.4 Real-render orientation tests in a new `tests/test_render_rotate.py` (`has_ffmpeg`): a synthetic 1280x720
+- [x] 1.4 Real-render orientation tests in a new `tests/test_render_rotate.py` (`has_ffmpeg`): a synthetic 1280x720
   30 fps AAC 48 kHz stereo clip with a white left half and a black right half and a display rotation of 90 via
   `make_clip(rotate=...)`, rendered through `render_movie` as a one-clip event whose target is 1280x720 on the CPU
   profile, for `rotate` unset, 90, 180, 270: assert with `signalstats` crops that the half-turns land where the
@@ -34,7 +34,7 @@
 
 ## 2. reel/
 
-- [ ] 2.1 In `reel/schema.py` check `rotate` when a clip's properties are parsed: after `_opt_int`, an integer that
+- [x] 2.1 In `reel/schema.py` check `rotate` when a clip's properties are parsed: after `_opt_int`, an integer that
   is not a multiple of 90 raises `ReelParseError` naming the clip and `rotate` (`-90`, `0` and `360` still load,
   and the value is kept as written). Verify in `tests/test_reel_parser.py` (45 and 100 refused with the
   identity in the message; 0, 90, 180, 270, -90, 360 accepted; `90.0`, `"90"`, `true` refused as today),
@@ -44,7 +44,7 @@
 
 ## 3. staleness/
 
-- [ ] 3.1 Bump `RENDER_GRAPH_VERSION` from 4 to 5 in `staleness/fingerprint.py` with the history line
+- [x] 3.1 Bump `RENDER_GRAPH_VERSION` from 4 to 5 in `staleness/fingerprint.py` with the history line
   `5: clip-rotate-engine (a display rotation is applied by the engine on every profile and adds to rotate; a
   display-rotated clip is never stream-copied)`. In `tests/test_staleness_fingerprint.py` re-pin `PINNED_ENGINE`
   and `PINNED_COMBINED` (the editorial, defaults, clip-set and fallback hashes must not move) and add a
@@ -54,7 +54,7 @@
 
 ## 4. Docs
 
-- [ ] 4.1 Update `docs/high-level-design.md`: §4.3 step 2 (the display rotation and `rotate` compose, applied by
+- [x] 4.1 Update `docs/high-level-design.md`: §4.3 step 2 (the display rotation and `rotate` compose, applied by
   the engine on every profile, rotated clips never stream-copied); §4.6's example line `rotate: auto  # or
   0/90/180/270 override` becomes `rotate: 90  # an extra clockwise turn on top of the display rotation`; a new
   decision entry in §7 (the next free D number on `main` when this is applied, D-22 today; say that D-20 and D-21
@@ -67,8 +67,8 @@
 
 ## 5. Validation gates
 
-- [ ] 5.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`,
+- [x] 5.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`,
   then `.venv/bin/python -m mypy auto_reel_ng` and `.venv/bin/python -m pylint auto_reel_ng` (only the known
   cairo `no-member` noise remains), and verify all are clean.
-- [ ] 5.2 Run `.venv/bin/python -m pytest` (podman for the DB tests; the `gpu` tests run on this AMD host) and
+- [x] 5.2 Run `.venv/bin/python -m pytest` (podman for the DB tests; the `gpu` tests run on this AMD host) and
   verify it passes; `openspec validate clip-rotate-engine --strict` passes.
