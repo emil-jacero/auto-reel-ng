@@ -1,5 +1,6 @@
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import type { SortingStrategy } from '@dnd-kit/sortable'
 import { CSS as DndCss } from '@dnd-kit/utilities'
 import {
   memo,
@@ -22,13 +23,14 @@ import { ClipName, ClipStatusPills, clipNames, formatBytes, plural } from '../ev
 import { formatInstant } from '../format'
 import { watchName } from '../preview/playback'
 import { Icon } from '../ui/Icon'
-import { useReducedMotion } from './ChapterDrag'
+import { useGroupHeld, useReducedMotion } from './ChapterDrag'
 import { ChapterTools } from './ChapterTools'
 import type { ChapterToolsModel } from './ChapterTools'
 import { cutsOf, keptOriginal, movedSet } from './draft'
 import type { ChapterKey, Cuts, DraftCut } from './draft'
 import { CHAPTER_DROP } from './dragSlots'
 import { emptyChapterWords } from './emptyChapter'
+import { groupWords } from './marks'
 
 /*
  * One chapter's clips. Three ways to move a clip within the chapter: drag its
@@ -41,7 +43,10 @@ import { emptyChapterWords } from './emptyChapter'
  * and its column strip.
  *
  * A clip on disk that the chapter plays also has a Cuts control after its move
- * buttons, which shows its cuts panel under the row (`cuts/CutsPanel.tsx`).
+ * buttons, which shows its cuts panel under the row (`cuts/CutsPanel.tsx`), and a mark in
+ * the top-right corner of its thumbnail: dragging any marked clip's handle moves every
+ * marked clip together (`ChapterDrag.tsx`). While such a group is held no row makes room:
+ * every row draws the line of the gap before it, and the held rows are dimmed.
  *
  * The chapter is a drop target as a whole (`ChapterDrop`): after its last clip,
  * or anywhere in it while it plays none. Two lists follow the played clips,
@@ -74,6 +79,52 @@ function ClipFacts({ clip, action }: { clip: Clip; action?: ReactNode }) {
 }
 
 const FROM = <Icon name="arrow-right" />
+const CHECK = <Icon name="check" size={16} />
+
+export type MarkHandler = (identity: string, on: boolean) => void
+
+/**
+ * The mark: a checkbox in the top-right corner of the thumbnail, a sibling of the Watch button
+ * (a button cannot hold a control). The layer covers the thumbnail's box exactly, so the
+ * corner is the thumbnail's whatever the row's layout; only the box takes presses. The native
+ * input lies over the 24 px box, invisible: Space, `checked` and the focus ring are native, and
+ * the check icon, not the colour, tells the state. aria-disabled while locked, never disabled.
+ */
+const MarkBox = memo(function MarkBox({
+  identity,
+  name,
+  on,
+  locked,
+  onMark,
+}: {
+  identity: string
+  name: string
+  on: boolean
+  locked: boolean
+  onMark: MarkHandler
+}) {
+  return (
+    <span className="clip-mark">
+      <span className="clip-mark-ctl" data-on={on || undefined}>
+        <input
+          type="checkbox"
+          className="clip-mark-input"
+          aria-label={`Mark ${name}`}
+          aria-disabled={locked || undefined}
+          checked={on}
+          onChange={(event) => {
+            if (!locked) {
+              onMark(identity, event.currentTarget.checked)
+            }
+          }}
+        />
+        <span className="clip-mark-box" aria-hidden="true">
+          {on && CHECK}
+        </span>
+      </span>
+    </span>
+  )
+})
 
 /** A row's facts; memoised, so a move re-renders only the rows it renumbers. */
 const RowBody = memo(function RowBody({
@@ -86,6 +137,9 @@ const RowBody = memo(function RowBody({
   badge = null,
   action,
   onWatch,
+  marked = null,
+  locked = false,
+  onMark,
 }: {
   eventId: string
   clip: Clip
@@ -101,6 +155,11 @@ const RowBody = memo(function RowBody({
   action?: ReactNode
   /** A clip with a Cuts panel: its thumbnail is a Watch button that opens its preview. */
   onWatch?: () => void
+  /** Whether the clip is marked; null: it cannot be marked (no mark is shown). */
+  marked?: boolean | null
+  /** A save or a Move clips is pending: the mark ignores presses. */
+  locked?: boolean
+  onMark?: MarkHandler
 }) {
   const thumb = <ClipThumb eventId={eventId} clip={clip} name={name} />
   return (
@@ -118,6 +177,10 @@ const RowBody = memo(function RowBody({
         >
           {thumb}
         </button>
+      )}
+      {/* After the Watch button, so its corner paints over it. */}
+      {marked !== null && onMark !== undefined && (
+        <MarkBox identity={clip.identity} name={name} on={marked} locked={locked} onMark={onMark} />
       )}
       <span className="clip-file">
         <span className="clip-name">
@@ -151,6 +214,9 @@ const RowBody = memo(function RowBody({
 })
 
 type Step = (identity: string, from: number, to: number) => void
+
+/** Sortable's strategy while a group is held: no row shifts. */
+const NO_SHIFT: SortingStrategy = () => null
 
 // Constant elements: React skips them on the re-render every row gets per drag step.
 const GRIP = <Icon name="grip-vertical" />
@@ -223,6 +289,8 @@ const ClipRow = memo(function ClipRow({
   panels,
   resets,
   cutHandlers,
+  marked,
+  onMark,
   onStep,
   onRemove,
 }: {
@@ -244,9 +312,17 @@ const ClipRow = memo(function ClipRow({
   /** Bumped by Reset: the panel is hidden and its fields emptied. */
   resets: number
   cutHandlers: CutHandlers
+  /** The clip is marked (to move with the other marked clips). */
+  marked: boolean
+  onMark: MarkHandler
   onStep: Step
   onRemove: (identity: string) => void
 }) {
+  // The marked clips a held group stands for, or null: then no row makes room (a line shows
+  // at every gap) and the held rows are dimmed.
+  const group = useGroupHeld()
+  const grouped = group !== null
+  const held = group?.has(clip.identity) === true
   const {
     attributes,
     listeners,
@@ -329,12 +405,13 @@ const ClipRow = memo(function ClipRow({
   // Mounted on its first showing, and then only hidden: what was typed stays.
   const mounted = cuttable && (open || panels.get(identity) !== undefined)
   const panelId = `cuts-${useId()}`
-  // The target of a clip dragged in from another chapter: a line marks the gap above
-  // this row (drag.css). Within its own chapter the rows make room instead.
+  // The target of a clip dragged in from another chapter, or of a held group anywhere: a
+  // line marks the gap above this row (drag.css). A clip within its own chapter makes the
+  // rows make room instead.
   const dropBefore =
     isOver &&
     active !== null &&
-    active.data.current?.sortable?.containerId !== data.sortable.containerId
+    (grouped || active.data.current?.sortable?.containerId !== data.sortable.containerId)
   return (
     <li
       ref={setNodeRef}
@@ -344,6 +421,8 @@ const ClipRow = memo(function ClipRow({
       data-excluded={clip.excluded || undefined}
       data-moved={was !== null || from !== null || undefined}
       data-dragging={isDragging || undefined}
+      data-held={held || undefined}
+      aria-description={held ? groupWords.held : undefined}
       data-drop-before={dropBefore || undefined}
       style={{ transform: DndCss.Translate.toString(transform), transition }}
     >
@@ -362,12 +441,15 @@ const ClipRow = memo(function ClipRow({
         eventId={eventId}
         clip={clip}
         name={name}
-        position={isSorting ? newIndex + 1 : position}
+        position={isSorting && !grouped ? newIndex + 1 : position}
         was={was}
         from={from}
         badge={badge}
         action={remove}
         onWatch={cuttable ? onWatch : undefined}
+        marked={cuttable ? marked : null}
+        locked={locked}
+        onMark={onMark}
       />
       <MoveButtons
         identity={clip.identity}
@@ -557,6 +639,8 @@ export const ClipOrderList = memo(function ClipOrderList({
   panels,
   resets,
   cutHandlers,
+  marked,
+  onMark,
   onMove,
   onRemove,
   onRestore,
@@ -597,6 +681,12 @@ export const ClipOrderList = memo(function ClipOrderList({
   panels: CutPanels
   resets: number
   cutHandlers: CutHandlers
+  /**
+   * The marked clips this chapter plays: one set that keeps its identity while the chapter's
+   * own marks are unchanged, so marking elsewhere re-renders no other list.
+   */
+  marked: ReadonlySet<string>
+  onMark: MarkHandler
   onMove: MoveHandler
   onRemove: RemoveHandler
   onRestore: RestoreHandler
@@ -617,6 +707,8 @@ export const ClipOrderList = memo(function ClipOrderList({
   // That button's row, to scroll into view whole once every layout effect has run.
   const scrollAfter = useRef<HTMLElement | null>(null)
   const reducedMotion = useReducedMotion()
+  // A held group moves no row: the rows keep their places and only a line shows.
+  const strategy = useGroupHeld() === null ? verticalListSortingStrategy : NO_SHIFT
   const items = useMemo(() => [...order], [order])
   // Against the original order without the clips it no longer holds: a removal, or a
   // clip moved to another chapter, moves nothing by itself (draft.ts `keptOriginal`).
@@ -752,7 +844,7 @@ export const ClipOrderList = memo(function ClipOrderList({
         words={emptyChapterWords(tools.moveClips === null, empty)}
       />
       {plays && (
-        <SortableContext id={chapterKey} items={items} strategy={verticalListSortingStrategy}>
+        <SortableContext id={chapterKey} items={items} strategy={strategy}>
           <ol className="clip-order" aria-labelledby={headingId}>
             {order.map((identity, at) => {
               const clip = clips.get(identity)
@@ -776,6 +868,8 @@ export const ClipOrderList = memo(function ClipOrderList({
                   panels={panels}
                   resets={resets}
                   cutHandlers={cutHandlers}
+                  marked={marked.has(identity)}
+                  onMark={onMark}
                   onStep={onStep}
                   onRemove={onRemoveRow}
                 />

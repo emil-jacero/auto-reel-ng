@@ -61,9 +61,15 @@
     white-space: nowrap;
   }
 
+  /* Wraps inside the copy: a group's words ("3 clips to “Main”, starting at position 1 of 4") are long. */
   .clip-drag-target {
     min-inline-size: 0;
+    white-space: normal;
     overflow-wrap: anywhere;
+
+    & > span {
+      min-inline-size: 0;
+    }
   }
 
   /*
