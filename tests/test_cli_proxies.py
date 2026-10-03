@@ -108,6 +108,7 @@ class Recorder:
         self.clips: List[Path] = []
         self.films: List[Path] = []
         self.cancels: List[Callable[[], bool]] = []
+        self.film_cancels: List[Callable[[], bool]] = []
         self.profiles: List[object] = []
         self.overrides: List[Optional[str]] = []
         self.runtimes = 0
@@ -165,8 +166,16 @@ def fake(monkeypatch: pytest.MonkeyPatch) -> FakeInstall:
                 entry.key, entry.directory, entry.proxy_path, entry.facts_path, entry.facts, True
             )
 
-        def fake_film(clip: Path, entry: ProxyEntry, *, runtime: object) -> Filmstrip:
+        def fake_film(
+            clip: Path,
+            entry: ProxyEntry,
+            *,
+            runtime: object,
+            should_cancel: Optional[Callable[[], bool]] = None,
+        ) -> Filmstrip:
             seen.films.append(clip)
+            assert should_cancel is not None
+            seen.film_cancels.append(should_cancel)
             failure = film_fails(clip) if film_fails is not None else None
             if failure is not None:
                 raise failure
@@ -813,6 +822,35 @@ def test_an_interrupt_sets_the_shared_cancel_flag_and_cancels_the_queue(
     assert _RecordingExecutor.shutdowns[0]["cancel_futures"] is True
     assert seen.cancels and all(cancel() is True for cancel in seen.cancels)
     assert len({id(cancel.__self__) for cancel in seen.cancels}) == 1  # type: ignore[attr-defined]
+
+
+def test_an_interrupt_reaches_the_running_sprite_through_the_shared_cancel_flag(
+    library: Path, fake: FakeInstall, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = fake(film_fails=lambda clip: KeyboardInterrupt())
+    monkeypatch.setattr(_RecordingExecutor, "shutdowns", [])
+    monkeypatch.setattr(proxies_cli, "ThreadPoolExecutor", _RecordingExecutor)
+
+    with pytest.raises(KeyboardInterrupt):
+        main(["proxies", str(library)])
+
+    # the sprite polls the very flag the interrupt sets, the one the proxy encodes poll
+    assert seen.film_cancels and all(cancel() is True for cancel in seen.film_cancels)
+    assert {id(c.__self__) for c in seen.film_cancels} == {  # type: ignore[attr-defined]
+        id(c.__self__) for c in seen.cancels  # type: ignore[attr-defined]
+    }
+
+
+def test_a_canceled_sprite_is_an_interrupt_not_a_failed_clip(
+    library: Path, fake: FakeInstall, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake(film_fails=lambda clip: FfmpegCancelledError("canceled"))
+
+    assert main(["proxies", str(library)]) == 1  # stops the run, like a canceled proxy encode
+
+    captured = capsys.readouterr()
+    assert "error: canceled" in captured.err
+    assert _error_lines(captured.out) == []  # no per-clip ERROR line, no event line
 
 
 def test_the_cancel_flag_is_clear_during_a_normal_run(library: Path, fake: FakeInstall) -> None:

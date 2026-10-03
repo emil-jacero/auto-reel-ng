@@ -39,7 +39,7 @@ file inside the entry; `--prune` does not exist (the sweep is automatic).
 
 **Non-Goals:**
 - Serving the sprite over HTTP (`proxy-media-endpoints`), generating it as a job (`proxy-job`, which will also
-  want cancellation of this step), drawing it (`timeline-view`). No API, WebSocket, DB or web change.
+  want a cancelable step, which `ensure_filmstrip` now is), drawing it (`timeline-view`). No API, WebSocket, DB or web change.
 - A second image format (WebP saves 17 % at the same quality; not worth two formats, X7), a configurable tile
   size (a constant until a real need), a waveform lane (decided out of v2).
 - Negative caching of failed sprites (the retry costs about 0.2 s).
@@ -136,10 +136,24 @@ the step uses one probe, not two, and no probe of its result: the JPEG's size is
 header. Tile times are in proxy time, which is what the
 timeline plays. A probe that fails, a duration that is not positive and finite, a keyframe without a time, or no
 keyframe at all raises `FilmstripError` (never a default, Principle I).
-**Keyframes too far apart**: if two tiles would need the same keyframe (a proxy with a keyframe gap longer than
-`interval`, which the half-second GOP rules out except for a variable-frame-rate clip with a pause), `select`
-could not repeat a frame and `tile` would pad with black. That is refused with a `FilmstripError` that names the
-tile instead. The first thing to look at if a real clip meets it is whether to repeat the keyframe.
+**Keyframes too far apart** (review finding): the proxy's GOP is a frame count (`-fps_mode passthrough`), not
+a time, so a variable-frame-rate clip (a phone video of a static scene that drops to a few frames a second)
+can have keyframes more than one `interval` apart. The first version refused that with a `FilmstripError`; a
+real such clip got a proxy and then failed every `proxies` run, leaving a hole in the timeline. That was the
+wrong call: during the stretch the picture on screen really is the last keyframe, so repeating it is true, not
+a fake. `keyframe_ordinals` now returns one non-decreasing ordinal per tile, and a keyframe that serves `c`
+tiles is selected once and repeated `c` times before `tile`, never padded:
+```
+select=<unique keyframes>,scale=...,
+  settb=1,setpts=N+gte(N\,i)*(c-1)+...,fps=1,     only when a frame before the last repeats
+  tpad=stop_mode=clone:stop=c-1,                    only when the last frame repeats
+  tile=...
+```
+`setpts` stamps frame `N` of the selection with the number of its first tile (one tick per tile), `fps=1` fills
+each gap with a copy of the frame before it (the `fps` filter is exact here: the stamps are integers, and the
+research's problem with it was a frame sampled from a time, not copies), and `tpad` clones the last frame,
+which no later stamp bounds. A clip without a repeat has neither filter, so the common path is the one the
+tests already pinned. The two filters add a term per repeat to the expression, nested like the `select` sum.
 
 ### Where the record lives and how it is written
 **Decision**: `filmstrip.jpg` and a `filmstrip` object in the entry's `facts.json`:
@@ -173,7 +187,7 @@ lock of their own.
 
 ### Failure behaviour
 **Decision**: `FilmstripError(clip, reason)` (a sibling of `ThumbnailError`, in `errors.py`, subclass of
-`EngineError`) for a failed probe, a non-positive duration, keyframes that cannot give every tile, an ffmpeg
+`EngineError`) for a failed probe, a non-positive duration, no keyframe, an ffmpeg
 failure (the reason carries the command and stderr), a verify mismatch or an unreadable `facts.json`. A cache
 directory that cannot be written, or a full disk, is `ProxyCacheError` (the cache's fault, not the clip's), as
 in `ensure_proxy`. A sprite failure **never** deletes or invalidates the proxy: the entry is then "proxy ready,
@@ -193,13 +207,17 @@ holds: a failed sprite does not stop the run; a `ProxyCacheError` stops it as fo
 
 ## Risks / Trade-offs
 
-- [Keyframe gap longer than `interval`] -> refused loudly, see above; the half-second GOP makes it a
-  variable-frame-rate edge case, and a test pins the refusal.
+- [Keyframe gap longer than `interval`] -> the keyframe is repeated over the gap, see above; tests build
+  variable-frame-rate clips with a static stretch and read each tile back by its luma.
 - [The ordinal of the packet flagged `K` differs from the ordinal of the frame `-skip_frame nokey` yields] ->
   both come from the same proxy; a test reads each tile back by its luma and fails on any off-by-one, and the
   dogfood task checks the real proxies of the sample clips.
-- [A 62-minute proxy decodes about 7,200 keyframes] -> about 30 s; the step is bounded by a generous timeout
-  and is the job's work, not a request's.
+- [A 62-minute proxy decodes about 7,200 keyframes] -> about 30 s; the step is killed after 600 s without
+  progress and is the job's work, not a request's. It polls a cancel check (`should_cancel`, the one the proxy
+  encode takes) about once a second through `FfmpegRuntime.run_with_progress`, which kills ffmpeg and raises
+  `FfmpegCancelledError`; `ensure_filmstrip` removes its build directory and publishes nothing, and the
+  command passes the cancel flag its Ctrl-C sets, so an interrupt stops a running sprite as it stops a
+  running encode.
 - [A truncated JPEG with a correct header would pass the size check] -> ffmpeg exits non-zero on a failed
   write, so this needs a lying disk; decoding the sprite to compare would double the cost.
 - [HDR or wide-gamut sources] -> already SDR in the proxy (`proxy-encode` tone-maps on the CPU path); the

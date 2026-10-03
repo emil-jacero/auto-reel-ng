@@ -14,6 +14,7 @@ import math
 import os
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -22,7 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pytest
 
 from auto_reel_ng.accel.profiles import CPUProfile
-from auto_reel_ng.errors import FfmpegError, FilmstripError, ProxyCacheError
+from auto_reel_ng.errors import FfmpegCancelledError, FfmpegError, FilmstripError, ProxyCacheError
 from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
 from auto_reel_ng.proxies import (
     FILMSTRIP_VERSION,
@@ -130,16 +131,24 @@ class Spy:
     def __init__(self, inner: FfmpegRuntime, log: Optional[List[Tuple[str, List[str]]]] = None):
         self.inner = inner
         self.log: List[Tuple[str, List[str]]] = [] if log is None else log
+        #: The keyword arguments of the sprite's ``run_with_progress`` calls (shared by views).
+        self.progress: List[Dict[str, Any]] = []
+        self.kwargs: Dict[str, Any] = {}
 
     def with_timeout(self, seconds: float) -> "Spy":
-        return type(self)(self.inner.with_timeout(seconds), self.log)
+        view = type(self)(self.inner.with_timeout(seconds), self.log)
+        view.progress = self.progress
+        return view
 
-    def run(self, args: List[str]) -> "subprocess.CompletedProcess[str]":
+    def run_with_progress(self, args: List[str], **kwargs: Any) -> None:
         self.log.append(("ffmpeg", list(args)))
-        return self.cut(args)
+        self.progress.append(kwargs)
+        self.kwargs = kwargs
+        self.cut(args)
 
-    def cut(self, args: List[str]) -> "subprocess.CompletedProcess[str]":
-        return self.inner.run(args)
+    def cut(self, args: List[str]) -> Any:
+        """The sprite's command; subclasses replace it (the real run is the default)."""
+        return self.inner.run_with_progress(args, **self.kwargs)
 
     def run_ffprobe(self, args: List[str]) -> "subprocess.CompletedProcess[str]":
         self.log.append(("ffprobe", list(args)))
@@ -598,8 +607,8 @@ def test_a_corrupt_proxy_names_the_probe_failure(
     assert_untouched(entry, cache, facts, proxy)
 
 
-def test_keyframes_further_apart_than_the_interval_are_refused(
-    runtime: FfmpegRuntime, entry: ProxyEntry, cache: Path, tmp_path: Path
+def test_one_keyframe_for_the_whole_clip_serves_every_tile(
+    runtime: FfmpegRuntime, entry: ProxyEntry, tmp_path: Path
 ) -> None:
     longgop = tmp_path / "longgop.mp4"
     subprocess.run(
@@ -610,10 +619,138 @@ def test_keyframes_further_apart_than_the_interval_are_refused(
         capture_output=True,
     )
     entry.proxy_path.write_bytes(longgop.read_bytes())
+    assert len(_key_packets(runtime, entry)) == 1
+
+    film = ensure_filmstrip(tmp_path / "C0100.MP4", entry, runtime=runtime)
+
+    assert film.tiles == 3 and film.generated is True
+    # every tile is the one keyframe (time 0, gray 0), not the frame at its own second
+    assert [round(g) for g in tile_grays(runtime, film)] == pytest.approx([0, 0, 0], abs=TOLERANCE)
+
+
+def sparse_clip(runtime: FfmpegRuntime, out: Path, keep: str) -> Path:
+    """A 12 s, 15 fps clip, with only the frames ``keep`` (a ``select`` expression) left.
+
+    The kept frames keep their times (``-fps_mode passthrough``) and their luma, so the clip is
+    variable-frame-rate, as a phone video of a static scene is, and each frame still shows its
+    own time.
+    """
+    subprocess.run(
+        [runtime.ffmpeg_path, "-y", "-v", "error", "-f", "lavfi"]
+        + ["-i", "color=c=black:s=640x360:r=15:d=12,format=yuv420p,geq=lum='16+16*T':cb=128:cr=128"]
+        + ["-vf", f"select='{keep}'", "-fps_mode", "passthrough"]
+        + ["-c:v", "libx264", "-pix_fmt", "yuv420p", str(out)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return out
+
+
+def keyframe_times(runtime: FfmpegRuntime, entry: ProxyEntry) -> List[float]:
+    out = runtime.run_ffprobe(
+        ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time,flags"]
+        + ["-of", "compact=p=0", str(entry.proxy_path)]
+    ).stdout
+    times = []
+    for line in out.splitlines():
+        fields = dict(part.split("=", 1) for part in line.split("|") if "=" in part)
+        if "K" in fields.get("flags", ""):
+            times.append(float(fields["pts_time"]))
+    return times
+
+
+#: (name, frames kept): a static stretch of 6 s, and one of 9 s that leaves the clip's end alone.
+SPARSE_CASES = [
+    ("gap-in-the-middle", "lt(t,3)+gt(t,9)"),
+    ("long-gap", "lt(t,2)+gt(t,11)"),
+]
+
+
+@pytest.mark.parametrize("keep", [c[1] for c in SPARSE_CASES], ids=[c[0] for c in SPARSE_CASES])
+def test_a_sparse_stretch_repeats_the_keyframe_it_shows(
+    runtime: FfmpegRuntime, tmp_path: Path, cache: Path, keep: str
+) -> None:
+    """The persistent failure of the review: a phone clip whose picture stops changing for
+    seconds has keyframes further apart than one tile, and used to get a proxy but no sprite."""
+    clip = sparse_clip(runtime, tmp_path / "phone.mp4", keep)
+    entry = proxy_of(runtime, clip, cache)
+    keys = keyframe_times(runtime, entry)
+    assert max(b - a for a, b in zip(keys, keys[1:] + [12.0])) > 2.0  # the stretch is there
+
+    film = ensure_filmstrip(clip, entry, runtime=runtime)
+
+    assert film.generated is True and lookup_filmstrip(entry) is not None
+    assert film.tiles == math.ceil(entry.facts.duration) == 12
+    assert probe_image(runtime, film.path) == [("mjpeg", film.width, film.height)]
+    grays = tile_grays(runtime, film)
+    # tile k shows the latest keyframe at or before k seconds (the first one when none is)
+    wanted = [
+        max([t for t in keys if t <= k] or [keys[0]]) * GRAY_PER_SECOND for k in range(film.tiles)
+    ]
+    assert [round(g) for g in grays] == pytest.approx(wanted, abs=TOLERANCE)
+    assert len({round(g) for g in grays[3:8]}) == 1  # and the stretch is one picture repeated
+    assert leftovers(cache) == []
+
+
+def test_the_cancel_check_is_handed_to_the_sprites_ffmpeg(
+    runtime: FfmpegRuntime, entry: ProxyEntry, tmp_path: Path
+) -> None:
+    spy = Spy(runtime)
+
+    def check() -> bool:
+        return False
+
+    ensure_filmstrip(tmp_path / "C0100.MP4", entry, runtime=spy, should_cancel=check)  # type: ignore[arg-type]
+
+    assert len(spy.progress) == 1
+    assert spy.progress[0]["should_cancel"] is check
+    assert spy.progress[0]["stall_timeout"] == filmstrip_module.FILMSTRIP_TIMEOUT_S
+
+
+def test_a_cancel_before_the_work_starts_runs_no_process(
+    runtime: FfmpegRuntime, entry: ProxyEntry, cache: Path, tmp_path: Path
+) -> None:
     facts, proxy = snapshot(entry)
-    with pytest.raises(FilmstripError, match="tile 1 would show the same keyframe as tile 0"):
-        ensure_filmstrip(tmp_path / "C0100.MP4", entry, runtime=runtime)
+    spy = Spy(runtime)
+    with pytest.raises(FfmpegCancelledError):
+        ensure_filmstrip(tmp_path / "C0100.MP4", entry, runtime=spy, should_cancel=lambda: True)  # type: ignore[arg-type]
+    assert spy.log == []
     assert_untouched(entry, cache, facts, proxy)
+
+
+class Endless(Spy):
+    """The sprite's ffmpeg half-writes the image, then runs on until the cancel check kills it."""
+
+    def cut(self, args: List[str]) -> Any:
+        Path(args[-1]).write_bytes(b"\xff\xd8 half a sprite")
+        return self.inner.run_with_progress(
+            ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=64x64:r=1000:d=100000"]
+            + ["-f", "null", "-"],
+            **self.kwargs,
+        )
+
+
+def test_a_cancel_during_the_sprite_kills_ffmpeg_and_publishes_nothing(
+    runtime: FfmpegRuntime, entry: ProxyEntry, cache: Path, tmp_path: Path
+) -> None:
+    facts, proxy = snapshot(entry)
+    started = time.monotonic()
+    polls: List[float] = []
+
+    def check() -> bool:
+        polls.append(time.monotonic())
+        return len(polls) > 1  # false on the pre-start test, then true on the first poll
+
+    with pytest.raises(FfmpegCancelledError):
+        ensure_filmstrip(
+            tmp_path / "C0100.MP4", entry, runtime=Endless(runtime), should_cancel=check  # type: ignore[arg-type]
+        )
+
+    assert len(polls) >= 2 and time.monotonic() - started < 30  # polled while ffmpeg ran
+    assert_untouched(entry, cache, facts, proxy)  # no sprite, no record, no .part directory
+    film = ensure_filmstrip(tmp_path / "C0100.MP4", entry, runtime=runtime)  # not remembered
+    assert film.generated is True
 
 
 class Crash(BaseException):

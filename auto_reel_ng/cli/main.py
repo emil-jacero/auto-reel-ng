@@ -156,7 +156,7 @@ def _add_proxies(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser
     """Register ``proxies`` (project options without ``--output``, plus ``--device``/``--jobs``)."""
     proxies = subparsers.add_parser(
         "proxies",
-        help="generate missing clip proxies and filmstrips into the cache; never writes the library",
+        help="make missing clip proxies and filmstrips in the cache; never writes the library",
     )
     _add_common_args(proxies, output=False)
     proxies.add_argument(

@@ -574,7 +574,8 @@ it on a slow or flaky USB drive.
 **Filmstrips.** Once a clip's proxy is ready (just made, or already cached) the same command makes its
 **filmstrip**: one JPEG sprite of 90 px-high tiles (160 x 90 for 16:9), 10 to a row, one per second of footage
 (a clip over 120 s gets a wider interval, so never more than 120 tiles), cut from the proxy's keyframes. A clip of
-one second or less is one tile showing its first frame. The sprite is about 2.7 kB per footage second (about
+one second or less is one tile showing its first frame, and a clip whose picture stops changing for seconds (a
+variable-frame-rate phone video of a static scene) shows its last keyframe in every tile of the stretch. The sprite is about 2.7 kB per footage second (about
 0.65 GB for the archive) and takes about 0.3 s for a 25 s clip. A failed filmstrip is reported on its own line and
 counted apart; the proxy stays valid, and the next run tries again. A clip whose proxy was made before filmstrips
 existed gets its filmstrip on the next run without being encoded again.

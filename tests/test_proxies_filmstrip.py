@@ -154,9 +154,17 @@ def test_the_last_tile_falls_in_the_tail_after_the_last_keyframe() -> None:
     assert layout.tiles == 26 and ordinals[-1] == len(times) - 1
 
 
-def test_keyframes_further_apart_than_the_interval_are_refused_naming_the_tile() -> None:
-    with pytest.raises(ValueError, match="tile 1 would show the same keyframe as tile 0"):
-        keyframe_ordinals([0.0, 1.9], plan(2.5, 960, 540))
+def test_keyframes_further_apart_than_the_interval_repeat_the_earlier_one() -> None:
+    # a variable-frame-rate clip with a static stretch: nothing new is on screen between
+    # 0.0 and 1.9, so tiles 0 and 1 (0 s, 1 s) both show the first keyframe, tile 2 the next
+    assert keyframe_ordinals([0.0, 1.9], plan(2.5, 960, 540)) == [0, 0, 1]
+
+
+def test_a_sparse_stretch_repeats_one_keyframe_over_every_tile_it_spans() -> None:
+    times = [0.0, 0.27, 0.53, 0.8, 9.2, 9.47]
+    ordinals = keyframe_ordinals(times, plan(12.0, 960, 540))
+    assert ordinals == [0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 5, 5]
+    assert ordinals == sorted(ordinals)  # never goes back
 
 
 def test_a_proxy_without_keyframes_is_refused() -> None:
@@ -216,6 +224,54 @@ def test_the_arguments_for_a_landscape_clip() -> None:
         "1",
         "/b/f.jpg",
     ]
+
+
+def filter_of(ordinals: List[int], duration: float = 12.0) -> str:
+    args = args_for(duration, 960, 540, ordinals)
+    return args[args.index("-vf") + 1]
+
+
+def test_a_keyframe_that_serves_a_middle_run_is_stamped_and_filled_by_fps() -> None:
+    # frames 0..5 of the selection; frame 3 serves 7 tiles (3..9), so frames 4 and 5 are
+    # pushed 6 ticks on: tile starts 0, 1, 2, 3, 10, 11
+    ordinals = [0, 1, 2, 3, 3, 3, 3, 3, 3, 3, 4, 5]
+    assert filter_of(ordinals) == (
+        "select=eq(n\\,0)+eq(n\\,1)+eq(n\\,2)+eq(n\\,3)+eq(n\\,4)+eq(n\\,5),"
+        "scale=160:90:flags=bicubic,"
+        "settb=1,setpts=N+gte(N\\,4)*6,fps=1,"
+        "tile=10x2:nb_frames=12"
+    )
+
+
+def test_a_keyframe_that_serves_the_last_tiles_is_cloned_by_tpad() -> None:
+    assert filter_of([0, 1, 1, 1], 4.0) == (
+        "select=eq(n\\,0)+eq(n\\,1),"
+        "scale=160:90:flags=bicubic,"
+        "tpad=stop_mode=clone:stop=2,"
+        "tile=4x1:nb_frames=4"
+    )
+
+
+def test_a_single_keyframe_for_every_tile_needs_only_the_clone() -> None:
+    assert filter_of([0, 0, 0], 3.0) == (
+        "select=eq(n\\,0),scale=160:90:flags=bicubic,"
+        "tpad=stop_mode=clone:stop=2,tile=3x1:nb_frames=3"
+    )
+
+
+def test_a_middle_and_a_last_repeat_use_both() -> None:
+    assert filter_of([0, 0, 1, 2, 2], 5.0) == (
+        "select=eq(n\\,0)+eq(n\\,1)+eq(n\\,2),"
+        "scale=160:90:flags=bicubic,"
+        "settb=1,setpts=N+gte(N\\,1)*1,fps=1,"
+        "tpad=stop_mode=clone:stop=1,"
+        "tile=5x1:nb_frames=5"
+    )
+
+
+def test_a_clip_without_repeats_has_no_rate_conversion() -> None:
+    assert "fps" not in filter_of(list(range(12)))
+    assert "tpad" not in filter_of(list(range(12)))
 
 
 def test_the_filter_of_a_portrait_clip_has_narrow_tiles() -> None:
@@ -444,7 +500,7 @@ class CannedProbe:
             raise self.error
         return subprocess.CompletedProcess(args, 0, self.stdout, "")
 
-    def run(self, args: List[str]) -> subprocess.CompletedProcess[str]:
+    def run_with_progress(self, args: List[str], **kwargs: object) -> None:
         raise AssertionError("ffmpeg must not start after a refused probe")
 
 

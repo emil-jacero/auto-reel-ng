@@ -10,7 +10,10 @@ That filter hands the encoder no frame at all for a clip with a single keyframe 
 research's lost sprite of a 0.48 s clip) and drops the last tile of clips whose tail is
 shorter than a keyframe gap, so the tile count could not be trusted. Here tile ``k`` is the
 latest keyframe at or before ``k x interval`` seconds and the count is
-``ceil(duration / interval)``, exact by construction.
+``ceil(duration / interval)``, exact by construction. Where the proxy has no newer keyframe
+(a variable-frame-rate clip whose picture is static for a stretch, so its keyframes are further
+apart than one tile), the same keyframe serves the consecutive tiles: the picture really is that
+frame, so repeating it is true, and no tile is padded.
 
 The sprite is built in the cache's hidden build directory (the kind its stale sweep already
 removes), verified, and renamed into the entry before the record that describes it, so a
@@ -27,9 +30,9 @@ import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional, Sequence
+from typing import Any, Callable, List, Optional, Sequence
 
-from ..errors import FfmpegError, FilmstripError, ProxyCacheError
+from ..errors import FfmpegCancelledError, FfmpegError, FilmstripError, ProxyCacheError
 from ..ffmpeg.runtime import FfmpegRuntime
 from . import cache, spec
 from .cache import ProxyEntry
@@ -51,8 +54,9 @@ MAX_TILES = 120
 JPEG_QSCALE = 5
 #: Most terms of one ``select`` sum (ffmpeg's expression parser nests a level per term).
 SUM_TERMS = 16
-#: Seconds the sprite's ffmpeg run is given (about 7,200 keyframes of a 62-minute proxy decode in
-#: well under a minute; a hung process is killed).
+#: Seconds the sprite's ffmpeg run may go without progress before it is killed (about 7,200
+#: keyframes of a 62-minute proxy decode in well under a minute; the sprite is one output frame,
+#: so ffmpeg reports no output time until it ends and this is in effect the run's time bound).
 FILMSTRIP_TIMEOUT_S = 600.0
 
 
@@ -181,28 +185,21 @@ def keyframe_ordinals(times: Sequence[float], layout: FilmstripPlan) -> List[int
 
     ``times`` are the keyframes' presentation times in order. Tile ``k`` is the latest
     keyframe at or before ``k x interval`` seconds, or the first keyframe when none is (which
-    only the first tile can meet, for a stream that starts late).
+    only the first tile can meet, for a stream that starts late). The result never decreases;
+    where keyframes are further apart than the interval (a variable-frame-rate clip with a
+    static stretch) consecutive tiles name the same keyframe, as the picture on screen is.
 
     Raises:
-        ValueError: there is no keyframe, the times do not increase, or two tiles would need
-            the same keyframe (the keyframes are further apart than the interval), so a tile
-            would have to be padded or repeated.
+        ValueError: there is no keyframe, or the times do not increase.
     """
     if not times:
         raise ValueError("the proxy has no keyframe")
     if any(later < earlier for earlier, later in zip(times, times[1:])):
         raise ValueError("the proxy's keyframes are not in time order")
-    ordinals: List[int] = []
-    for tile in range(layout.tiles):
-        at = tile * layout.interval
-        ordinal = max(0, bisect.bisect_right(times, at) - 1)
-        if ordinals and ordinal <= ordinals[-1]:
-            raise ValueError(
-                f"tile {tile} would show the same keyframe as tile {tile - 1}: the proxy's "
-                f"keyframes are further apart than the {layout.interval} s between tiles"
-            )
-        ordinals.append(ordinal)
-    return ordinals
+    return [
+        max(0, bisect.bisect_right(times, tile * layout.interval) - 1)
+        for tile in range(layout.tiles)
+    ]
 
 
 def filmstrip_args(
@@ -211,15 +208,18 @@ def filmstrip_args(
     """The ffmpeg arguments that write the sprite of ``proxy`` to ``output``.
 
     Only keyframes are decoded (``-skip_frame nokey``), so ``n`` in ``select`` counts the
-    proxy's keyframes in order, and ``ordinals`` (from :func:`keyframe_ordinals`) name the
-    ones that become tiles (see :func:`_any_of` for how they are written). ``tile`` closes the
-    grid at the planned count. ``-update 1`` makes ``image2`` write ``output`` literally, so a
-    ``%`` in the cache path is never a pattern.
+    proxy's keyframes in order, and ``ordinals`` (one per tile, from :func:`keyframe_ordinals`)
+    name the ones that become tiles (see :func:`_nested_sum` for how they are written). A
+    keyframe that serves several tiles is selected once and repeated (see :func:`_repeats`).
+    ``tile`` closes the grid at the planned count. ``-update 1`` makes ``image2`` write
+    ``output`` literally, so a ``%`` in the cache path is never a pattern.
     """
-    chosen = _any_of(ordinals)
+    chosen = list(dict.fromkeys(ordinals))  # each keyframe once, in order
+    terms = [f"eq(n\\,{ordinal})" for ordinal in chosen]
     filters = (
-        f"select={chosen},"
+        f"select={_nested_sum(terms)},"
         f"scale={layout.tile_width}:{layout.tile_height}:flags=bicubic,"
+        f"{_repeats(ordinals, chosen)}"
         f"tile={layout.columns}x{layout.rows}:nb_frames={layout.tiles}"
     )
     return [
@@ -253,20 +253,49 @@ def filmstrip_args(
     ]
 
 
-def _any_of(ordinals: Sequence[int]) -> str:
-    """The ``select`` expression that is true for the frames numbered ``ordinals``.
+def _repeats(ordinals: Sequence[int], chosen: Sequence[int]) -> str:
+    """The filters (with a trailing comma) that show a keyframe for every tile it serves, or "".
+
+    ``chosen`` are the selected keyframes, ``ordinals`` the keyframe of every tile. A frame
+    that serves ``c`` tiles must appear ``c`` times in a row before ``tile``. Frame ``i`` of
+    the selection (``N`` after ``select``) is stamped with the number of its first tile, in a
+    time base of one tile per tick, and ``fps=1`` fills every gap with a copy of the frame
+    before it; the last frame, which no later stamp bounds, is cloned by ``tpad``. ``fps`` is
+    used only here, where the stamps are exact integers; a clip with no repeat is cut by
+    ``select`` alone, so its pipeline is the one without a rate conversion.
+    """
+    counts = [ordinals.count(ordinal) for ordinal in chosen]
+    if all(count == 1 for count in counts):
+        return ""
+    # N + the number of extra copies of the frames before frame N (a step function of N)
+    steps = [
+        f"gte(N\\,{index})*{counts[index - 1] - 1}"
+        for index in range(1, len(chosen))
+        if counts[index - 1] > 1
+    ]
+    filters = ""
+    if steps:
+        filters += f"settb=1,setpts=N+{_nested_sum(steps)},fps=1,"
+    if counts[-1] > 1:
+        filters += f"tpad=stop_mode=clone:stop={counts[-1] - 1},"
+    return filters
+
+
+def _nested_sum(terms: Sequence[str]) -> str:
+    """``terms`` summed as one ffmpeg expression.
 
     ffmpeg's expression parser nests one level per term of a flat sum and gives up
     (``Cannot allocate memory``) after about a hundred, which a clip of 100 tiles or more
     would reach. So at most :data:`SUM_TERMS` terms are summed at one level, in parentheses
     when there are more groups than that: two levels cover 256 tiles, :data:`MAX_TILES` is 120.
     """
-    terms = [f"eq(n\\,{ordinal})" for ordinal in ordinals]
-    while len(terms) > SUM_TERMS:
-        terms = [
-            "(" + "+".join(terms[i : i + SUM_TERMS]) + ")" for i in range(0, len(terms), SUM_TERMS)
+    grouped = list(terms)
+    while len(grouped) > SUM_TERMS:
+        grouped = [
+            "(" + "+".join(grouped[i : i + SUM_TERMS]) + ")"
+            for i in range(0, len(grouped), SUM_TERMS)
         ]
-    return "+".join(terms)
+    return "+".join(grouped)
 
 
 def lookup_filmstrip(entry: ProxyEntry) -> Optional[Filmstrip]:
@@ -290,7 +319,11 @@ def lookup_filmstrip(entry: ProxyEntry) -> Optional[Filmstrip]:
 
 
 def ensure_filmstrip(  # pylint: disable=too-many-locals
-    clip_path: Path, entry: ProxyEntry, *, runtime: FfmpegRuntime
+    clip_path: Path,
+    entry: ProxyEntry,
+    *,
+    runtime: FfmpegRuntime,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> Filmstrip:
     """The clip's filmstrip, building and recording it first when it is not recorded.
 
@@ -310,6 +343,8 @@ def ensure_filmstrip(  # pylint: disable=too-many-locals
     if recorded is not None:
         return recorded
     clip = str(clip_path)
+    if should_cancel is not None and should_cancel():
+        raise FfmpegCancelledError("the filmstrip was canceled before it started")
     _facts_object(entry, clip)  # fail before the work when the record could not be written
     duration, width, height, keyframes = _probe_proxy(
         entry.proxy_path, runtime.with_timeout(spec.PROXY_PROBE_TIMEOUT_S), clip
@@ -326,9 +361,11 @@ def ensure_filmstrip(  # pylint: disable=too-many-locals
         sprite = part / spec.FILMSTRIP_FILENAME
         _cut(
             filmstrip_args(entry.proxy_path, layout, ordinals, sprite),
-            runtime.with_timeout(FILMSTRIP_TIMEOUT_S),
+            runtime,
             sprite,
             clip,
+            duration=duration,
+            should_cancel=should_cancel,
         )
         _verify(sprite, layout, clip)
         return _publish(entry, part, sprite, layout, clip)
@@ -458,10 +495,29 @@ def _probe_proxy(
     return duration, width, height, keyframes
 
 
-def _cut(args: Sequence[str], runtime: FfmpegRuntime, sprite: Path, clip: str) -> None:
-    """Run the sprite's ffmpeg command; it must leave a non-empty file."""
+def _cut(  # pylint: disable=too-many-arguments
+    args: Sequence[str],
+    runtime: FfmpegRuntime,
+    sprite: Path,
+    clip: str,
+    *,
+    duration: float,
+    should_cancel: Optional[Callable[[], bool]],
+) -> None:
+    """Run the sprite's ffmpeg command; it must leave a non-empty file.
+
+    Raises:
+        FfmpegCancelledError: ``should_cancel`` reported true; ffmpeg was killed.
+    """
     try:
-        runtime.run(args)
+        runtime.run_with_progress(
+            args,
+            duration=duration,
+            stall_timeout=FILMSTRIP_TIMEOUT_S,
+            should_cancel=should_cancel,
+        )
+    except FfmpegCancelledError:
+        raise
     except FfmpegError as exc:
         full = cache.is_full_disk(str(exc))
         if full is not None:
