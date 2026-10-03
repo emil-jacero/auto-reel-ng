@@ -17,7 +17,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Mapping, Optional, Tuple, Union
+from typing import List, Mapping, Optional, Sequence, Tuple, Union
 
 from ..analysis.cache import cache_dir
 from .fingerprint import COMPONENTS, Fingerprint
@@ -37,6 +37,28 @@ _NOT_A_FILE_NAME = ("", ".", "..")
 
 
 @dataclass(frozen=True)
+class TitleCardSpan:
+    """Where a chapter's title card sits in the rendered movie, in integer milliseconds."""
+
+    start_ms: int
+    end_ms: int
+
+
+@dataclass(frozen=True)
+class ChapterTime:
+    """One chapter's measured place in the rendered movie, in integer milliseconds.
+
+    ``start_ms``/``end_ms`` are the ``[CHAPTER]`` marker numbers the movie carries; ``title_card``
+    is the span of the chapter's title card, or ``None`` when the chapter has none.
+    """
+
+    name: str
+    start_ms: int
+    end_ms: int
+    title_card: Optional[TitleCardSpan] = None
+
+
+@dataclass(frozen=True)
 class RenderManifest:
     """The last successful render's recorded state."""
 
@@ -49,6 +71,10 @@ class RenderManifest:
     #: superseded, oldest first. Not a fingerprint component and not a claim on any file; only
     #: ``prune-renamed`` reads it.
     superseded: Tuple[str, ...] = ()
+    #: The chapter times of the movie that render wrote, in movie order; ``None`` when the manifest
+    #: has none (written before the field existed, adopted without a render, or malformed). Never a
+    #: fingerprint component and never a verdict input.
+    chapters: Optional[Tuple[ChapterTime, ...]] = None
 
 
 def manifest_path(event_dir: PathLike) -> Path:
@@ -62,6 +88,7 @@ def write_manifest(
     *,
     output: str,
     engine_identity: str,
+    chapters: Optional[Sequence[ChapterTime]] = None,
 ) -> Path:
     """Write the render manifest for ``event_dir`` and return its path.
 
@@ -72,6 +99,10 @@ def write_manifest(
     ``output`` (the movie a rename left behind, which nothing else remembers), after the names it
     already listed, without duplicates and without ``output`` itself. An unreadable previous
     manifest contributes nothing. No movie is touched.
+
+    ``chapters`` is the chapter times a render measured for this movie; ``None`` (the default, and
+    what adoption passes) records ``null``. The previous manifest's chapters are never carried over:
+    they describe a movie this write replaces, or one nobody measured.
     """
     path = manifest_path(event_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -86,6 +117,7 @@ def write_manifest(
         "engine_identity": engine_identity,
         "written_at": datetime.now(timezone.utc).isoformat(),
         "superseded": superseded,
+        "chapters": None if chapters is None else [_chapter_payload(c) for c in chapters],
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
@@ -114,6 +146,7 @@ def read_manifest(event_dir: PathLike) -> Optional[RenderManifest]:
             engine_identity=str(payload["engine_identity"]),
             written_at=str(payload["written_at"]),
             superseded=_superseded_names(payload.get("superseded")),
+            chapters=_chapter_times(payload.get("chapters")),
         )
     except (KeyError, TypeError, ValueError) as exc:
         logger.debug("Render manifest %s unreadable: %s", path, exc)
@@ -130,6 +163,58 @@ def _superseded_names(value: object) -> Tuple[str, ...]:
         return ()
     names: List[str] = list(value)
     return tuple(names)
+
+
+def _chapter_payload(chapter: ChapterTime) -> dict[str, object]:
+    card = chapter.title_card
+    return {
+        "name": chapter.name,
+        "start_ms": chapter.start_ms,
+        "end_ms": chapter.end_ms,
+        "title_card": None if card is None else {"start_ms": card.start_ms, "end_ms": card.end_ms},
+    }
+
+
+def _whole_ms(value: object) -> int:
+    """``value`` as a non-negative whole number of milliseconds (``bool`` is not one)."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"not a non-negative whole millisecond count: {value!r}")
+    return value
+
+
+def _chapter_times(value: object) -> Optional[Tuple[ChapterTime, ...]]:
+    """The ``chapters`` field as chapter times; ``None`` for an absent or malformed field.
+
+    All or nothing, and tolerant on purpose: the field decides no verdict, so ignoring a malformed
+    one cannot turn a stale event fresh, and a partly kept list would be one the engine never
+    wrote. Contiguity and order are properties of the writer, not conditions of a reader.
+    """
+    if value is None:
+        return None
+    try:
+        if not isinstance(value, list):
+            raise ValueError("chapters is not a list")
+        return tuple(_chapter_time(entry) for entry in value)
+    except ValueError as exc:
+        logger.debug("Render manifest chapters ignored: %s", exc)
+        return None
+
+
+def _chapter_time(entry: object) -> ChapterTime:
+    if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
+        raise ValueError(f"malformed chapter entry: {entry!r}")
+    start, end = _whole_ms(entry.get("start_ms")), _whole_ms(entry.get("end_ms"))
+    if start > end:
+        raise ValueError(f"chapter {entry['name']!r} starts after it ends")
+    raw_card = entry.get("title_card")
+    card: Optional[TitleCardSpan] = None
+    if raw_card is not None:
+        if not isinstance(raw_card, dict):
+            raise ValueError(f"malformed title card: {raw_card!r}")
+        card = TitleCardSpan(_whole_ms(raw_card.get("start_ms")), _whole_ms(raw_card.get("end_ms")))
+        if not start <= card.start_ms <= card.end_ms <= end:
+            raise ValueError(f"title card of {entry['name']!r} lies outside its chapter")
+    return ChapterTime(name=entry["name"], start_ms=start, end_ms=end, title_card=card)
 
 
 def recorded_output_in(recorded: str, output_dir: PathLike) -> Path:
@@ -205,7 +290,9 @@ def _year_folder(name: str) -> Optional[str]:
 
 __all__ = [
     "MANIFEST_FILENAME",
+    "ChapterTime",
     "RenderManifest",
+    "TitleCardSpan",
     "manifest_path",
     "write_manifest",
     "read_manifest",

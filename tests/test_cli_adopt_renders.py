@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from auto_reel_ng.cli.main import main
 from auto_reel_ng.config import default_output_dir
-from auto_reel_ng.staleness.manifest import read_manifest
+from auto_reel_ng.staleness.manifest import ChapterTime, read_manifest, write_manifest
 
 
 def _touch(path: Path) -> None:
@@ -182,3 +183,48 @@ def test_adopt_renders_dry_run_completes_on_a_read_only_tree(
             path.chmod(path.stat().st_mode | 0o200)
 
     assert "3 would adopt" in capsys.readouterr().out
+
+
+def test_adopt_renders_records_no_chapter_times_and_probes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from auto_reel_ng.staleness.fingerprint import engine_identity
+
+    root = _project(tmp_path, "2024-06-21 - Party")
+    event_dir = root / "2024" / "2024-06-21 - Party"
+    _touch(default_output_dir(root) / "2024" / "2024-06-21 - Party.mp4")
+    # An earlier real render's manifest, stale now: its chapters describe a movie that is gone.
+    from auto_reel_ng.reel.document import Metadata, ReelDocument
+    from auto_reel_ng.staleness.fingerprint import compute_fingerprint
+
+    old = compute_fingerprint(
+        ReelDocument(metadata=Metadata(title="Old")),
+        event_dir=event_dir,
+        look_defaults={},
+        ffmpeg_version=(7, 1),
+    )
+    write_manifest(
+        event_dir,
+        old,
+        output="2024-06-21 - Party.mp4",
+        engine_identity=engine_identity((7, 1)),
+        chapters=[ChapterTime(name="Old", start_ms=0, end_ms=1000)],
+    )
+    probes: list[object] = []
+
+    real_run = subprocess.run
+
+    def _no_ffprobe(command: list[str], *args: object, **kwargs: object) -> object:
+        if Path(command[0]).name.startswith("ffprobe"):
+            probes.append(command)
+            raise AssertionError("adoption must not probe the movie")
+        return real_run(command, *args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(subprocess, "run", _no_ffprobe)
+
+    assert main(["adopt-renders", str(root)]) == 0
+
+    manifest = read_manifest(event_dir)
+    assert manifest is not None
+    assert manifest.chapters is None
+    assert probes == []

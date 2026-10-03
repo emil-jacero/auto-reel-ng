@@ -331,7 +331,8 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   timeline editor, moved from v3** — a per-clip track with proxies, filmstrip, drag-trim in/out and scrub
   preview; **analysis review built as overlays on that timeline** (approve black/white/freeze trims in place,
   not a separate screen); event poster frames; and, beside the proxy work, chapter times in the render
-  manifest (a chapter list for the movie player) and a movie version in the event detail. v2 starts with a
+  manifest (built, change `render-chapter-times`; the chapter list for the movie player that will show
+  them is still open) and a movie version in the event detail. v2 starts with a
   research step: §8.11 (proxies, the PCM-audio path) and the timeline library against D-8's dependency budget.
 - **v3:** nothing is planned for the GUI: the timeline editor moved to v2 on 2026-10-01, and dragging
   across chapters landed in v1 (D-13, `cross-chapter-drag`).
@@ -645,6 +646,11 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   movies: dry run by default, and only after the event's new movie exists. The render manifest
   records the names a rename superseded (`superseded`, optional, schema version 1), and the command
   never deletes a file another event's manifest or expected path claims.
+  *Amended 2026-10-03 (change `render-chapter-times`):* the manifest also holds the last render's chapter
+  times (`chapters`: per chapter its name, start and end in milliseconds in the movie, and its title-card
+  span or `null`), computed from the measured segment durations by the rule that writes the `[CHAPTER]`
+  markers. It is additive at schema version 1, `null` for a movie rendered before the field or adopted
+  without a render, and never a fingerprint input.
   *Amended 2026-10-02, change `engine-output-claims`:* which events claim an output path, and who else
   claims it, is decided by one engine rule (`event/claims.py` `checked_claim`, `render/claims.py`
   `output_collision`), not by caller-private copies. An event claims a path only when it loads and is
@@ -782,9 +788,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   the file's entity-tag as `v`, read with a one-byte range request on each read of the event, because Chrome
   fails to play a replaced file at an address that served the old one. Failures are said by cause, including a
   picture the browser cannot show (a legacy MPEG-4 movie plays its sound only). There are no custom controls or
-  shortcuts, no captions and no chapter list: the manifest records no chapter times and browsers expose none.
-  Chapter times in the render manifest and a movie version in the event detail are v2 items beside the proxy
-  work. A Refresh keeps the player (the same element, playing or paused, while the rest of the page reads;
+  shortcuts, no captions and no chapter list: browsers expose no chapter times, and the player does not yet
+  show the ones the render manifest now records (`chapters`, change `render-chapter-times`). A chapter list
+  for the player and a movie version in the event detail are v2 items beside the proxy work. A Refresh keeps the player (the same element, playing or paused, while the rest of the page reads;
   2026-10-02, change `web-playback-and-notices`); Edit mode shows no movie, and entering it ends
   playback. (§4.10)
 

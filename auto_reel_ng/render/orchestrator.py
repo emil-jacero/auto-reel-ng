@@ -34,7 +34,7 @@ from ..probe.metadata import ClipMetadata
 from ..reel.document import Metadata
 from ..staleness.fingerprint import Fingerprint, engine_identity
 from ..staleness.manifest import write_manifest
-from .chapters import aggregate_chapter_durations, build_ffmetadata
+from .chapters import aggregate_chapter_durations, build_ffmetadata, chapter_times
 from .concat import build_concat_command, build_concat_list, is_copy_uniform
 from .decorators import apply_decorators, resolve_decorator_names
 from .normalize import (
@@ -702,6 +702,9 @@ def _execute(
         _check_cancelled(options, before="final assembly")
         measured = [probe_media(Path(p), runtime=runtime).duration for p in intermediates]
         chapter_pairs = aggregate_chapter_durations(segments, measured)
+        # The recorded chapter times come from the same measured durations and boundary rule as
+        # the muxed markers; computed before the concat so a malformed plan fails before any work.
+        chapters = chapter_times(segments, measured)
         metadata_file = scratch / "chapters.ffmeta"
         metadata_file.write_text(build_ffmetadata(chapter_pairs), encoding="utf-8")
 
@@ -728,6 +731,7 @@ def _execute(
                 options.fingerprint,
                 output=output_path.name,
                 engine_identity=engine_identity(runtime.version),
+                chapters=chapters,
             )
 
     return RenderResult(output_path=output_path, warnings=tuple(warnings))

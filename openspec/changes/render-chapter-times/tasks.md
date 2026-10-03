@@ -1,6 +1,6 @@
 ## 1. Baseline
 
-- [ ] 1.1 Confirm the code this change was designed against on the current `origin/main`:
+- [x] 1.1 Confirm the code this change was designed against on the current `origin/main`:
   `render/chapters.py` has `aggregate_chapter_durations` and `build_ffmetadata` and no chapter-times helper;
   `staleness/manifest.py` writes `version: 1`, has `superseded` and no `chapters`; the orchestrator calls
   `write_manifest` after `os.replace` with `measured` still in scope; `cli/commands.py` `adopt-renders` calls
@@ -9,7 +9,7 @@
 
 ## 2. staleness/ — the manifest record
 
-- [ ] 2.1 Red first, then green. Tests in `tests/test_staleness_manifest.py`: a manifest written with two
+- [x] 2.1 Red first, then green. Tests in `tests/test_staleness_manifest.py`: a manifest written with two
   chapters (one with a title-card span) reads back equal; one written without `chapters` has
   `chapters is None` and stores `null`; a hand-written version 1 manifest with no field reads as valid with
   `chapters is None`; each of `"x"`, a list with a bool start, a negative start, `start > end`, a missing
@@ -25,7 +25,7 @@
 
 ## 3. render/ — compute and record
 
-- [ ] 3.1 Red first, then green. Pure tests (no ffmpeg) in a new `tests/test_render_chapters.py`: the specs'
+- [x] 3.1 Red first, then green. Pure tests (no ffmpeg) in a new `tests/test_render_chapters.py`: the specs'
   arithmetic examples (a trimmed chapter of 1.0 s and 0.5 s then a 2.0 s chapter gives 0-1500 and 1500-3500;
   0.967 s measured gives an end of 967; a 3.0 s card then a 1.0 s clip as the second chapter gives 2000-6000
   with the card at 2000-5000; a card after a 1.0 s first clip starts 1000 ms into the chapter; no card gives
@@ -36,7 +36,7 @@
   in one chapter raise `RenderError`; mismatched segment/duration lengths raise. Verify they fail on the
   unchanged code, then add `chapter_times` and the shared boundary helper to `auto_reel_ng/render/chapters.py`
   and make `build_ffmetadata` use the helper without changing its output.
-- [ ] 3.2 Red first, then green. Real renders, `has_ffmpeg`, in `tests/test_render_manifest.py` (the existing
+- [x] 3.2 Red first, then green. Real renders, `has_ffmpeg`, in `tests/test_render_manifest.py` (the existing
   `runtime` and `make_clip` fixtures, 320x240 clips of 1 s to 2 s): a two-chapter plan whose first chapter has
   a trimmed clip is rendered and the manifest's chapters equal the `[CHAPTER]` START/END that
   `ffprobe -show_chapters` reads from the finished movie, converted from the 1/1000 timebase; the last end is
@@ -55,7 +55,7 @@
 
 ## 4. Docs
 
-- [ ] 4.1 Amend `docs/high-level-design.md` and verify with `grep -n "no chapter times"` that no sentence still
+- [x] 4.1 Amend `docs/high-level-design.md` and verify with `grep -n "no chapter times"` that no sentence still
   says the manifest records none: in D-15, replace "the manifest records no chapter times and browsers expose
   none" with the new fact (the render manifest records chapter times and title-card spans, `chapters`, and
   the player does not show them yet); in the §4.10 v2 bullet, mark "chapter times in the render manifest" as
@@ -66,7 +66,7 @@
 
 ## 5. Validation gates
 
-- [ ] 5.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`,
+- [x] 5.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`,
   `.venv/bin/python -m mypy auto_reel_ng` and `.venv/bin/python -m pylint auto_reel_ng` (clean, the known cairo
   `no-member` noise aside), then `.venv/bin/python -m pytest` green with podman available (or
   `-m "not requires_db"` with a stated reason); the title-card tests either run or skip only for the known

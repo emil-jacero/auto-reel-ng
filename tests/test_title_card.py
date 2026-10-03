@@ -714,3 +714,62 @@ def test_end_to_end_render_inserts_title_card_segment(
     out_facts = probe_media(result.output_path, runtime=runtime)
     assert out_facts.duration == pytest.approx(2.0, abs=0.4)
     assert (out_facts.width, out_facts.height) == (320, 240)
+
+
+@pytest.mark.has_fonts
+def test_end_to_end_render_records_the_title_card_span(
+    has_fonts: None, runtime, make_clip, tmp_path
+) -> None:
+    """Change render-chapter-times: the card's span is recorded inside its own chapter."""
+    from auto_reel_ng.reel.document import ReelDocument
+    from auto_reel_ng.staleness.fingerprint import compute_fingerprint
+    from auto_reel_ng.staleness.manifest import read_manifest
+
+    clip_a = make_clip("a.mp4", width=320, height=240, fps=30, duration=2.0)
+    clip_b = make_clip("b.mp4", width=320, height=240, fps=30, duration=1.0)
+    facts = {
+        "a.mp4": probe_media(clip_a, runtime=runtime),
+        "b.mp4": probe_media(clip_b, runtime=runtime),
+    }
+    metadata = Metadata(title="Movie", date=date(2024, 6, 21), location="Home")
+    plan = RenderPlan(
+        metadata=metadata,
+        look={
+            "decorators": ["title"],
+            "target_resolution": [320, 240],
+            "video_codec": "h264",
+            "title_card": {"duration": 1.0, "fade_in": 0.2, "fade_out": 0.2},
+        },
+        chapters=(
+            ResolvedChapter(name="First", clips=(ResolvedClip(identity="a.mp4"),)),
+            ResolvedChapter(name="Second", clips=(ResolvedClip(identity="b.mp4", is_title=True),)),
+        ),
+    )
+    fingerprint = compute_fingerprint(
+        ReelDocument(metadata=metadata),
+        event_dir=tmp_path,
+        look_defaults={},
+        ffmpeg_version=runtime.version,
+    )
+    options = RenderOptions(
+        event_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        clip_facts=facts,
+        runtime=runtime,
+        fingerprint=fingerprint,
+    )
+
+    render_movie(plan, CPUProfile(), options)
+
+    manifest = read_manifest(tmp_path)
+    assert manifest is not None and manifest.chapters is not None
+    first, second = manifest.chapters
+    assert (first.name, second.name) == ("First", "Second")
+    assert first.title_card is None
+    card = second.title_card
+    assert card is not None
+    # The card leads its chapter (the title clip is the chapter's first clip) and is ~1 s long.
+    assert card.start_ms == second.start_ms == first.end_ms
+    assert card.end_ms - card.start_ms == pytest.approx(1000, abs=40)
+    assert second.start_ms <= card.start_ms <= card.end_ms <= second.end_ms
+    assert second.end_ms - card.end_ms == pytest.approx(1000, abs=40)
