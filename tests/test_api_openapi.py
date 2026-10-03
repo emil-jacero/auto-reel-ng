@@ -49,6 +49,8 @@ EXPECTED_PATHS = {
     "/api/v1/events/{event_id}/thumbnail",
     "/api/v1/events/{event_id}/media",
     "/api/v1/events/{event_id}/movie",
+    "/api/v1/events/{event_id}/proxy",
+    "/api/v1/events/{event_id}/filmstrip",
     "/api/v1/jobs",
     "/api/v1/jobs/{job_id}",
     "/api/v1/jobs/{job_id}/cancel",
@@ -354,6 +356,61 @@ def test_the_media_routes_publish_their_parameters_and_responses(
         for code in ("404", "502"):
             ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
             assert ref.endswith("/ProblemOut"), code
+
+
+@pytest.mark.parametrize(
+    ("path", "media_type"),
+    [
+        ("/api/v1/events/{event_id}/proxy", "video/mp4"),
+        ("/api/v1/events/{event_id}/filmstrip", "image/jpeg"),
+    ],
+)
+def test_the_proxy_routes_publish_their_exact_types_and_the_media_behaviour(
+    path: str, media_type: str
+) -> None:
+    """Proxy and filmstrip: the media routes' codes and headers, one exact binary type."""
+    paths = build_openapi_schema()["paths"][path]
+    assert {"get", "head"} <= set(paths)
+    assert paths["get"]["operationId"] != paths["head"]["operationId"]
+    for method in ("get", "head"):
+        operation = paths[method]
+        query = {
+            param["name"]: param for param in operation["parameters"] if param["in"] == "query"
+        }
+        assert set(query) == {"clip", "v"}, method
+        assert {name for name, param in query.items() if param["required"]} == {"clip"}
+        header = {
+            param["name"]: param for param in operation["parameters"] if param["in"] == "header"
+        }
+        assert set(header) == {"If-None-Match", "If-Modified-Since", "Range", "If-Range"}, method
+        assert not any(param["required"] for param in header.values())
+
+        responses = operation["responses"]
+        assert set(responses) == {"200", "206", "304", "400", "404", "416", "502", "422"}, method
+        assert "503" not in responses
+        for code in ("200", "206"):
+            assert responses[code]["content"] == {
+                media_type: {"schema": {"type": "string", "format": "binary"}}
+            }, code
+        for code in ("206", "416"):
+            assert "Content-Range" in responses[code]["headers"], code
+        assert set(responses["200"]["headers"]) == {
+            "ETag",
+            "Last-Modified",
+            "Cache-Control",
+            "Accept-Ranges",
+            "Content-Disposition",
+        }
+        for code in ("404", "502"):
+            ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
+            assert ref.endswith("/ProblemOut"), code
+
+
+def test_the_clip_and_movie_responses_keep_their_video_wildcard() -> None:
+    """The proxy routes copy the shared responses; the originals stay untouched."""
+    paths = build_openapi_schema()["paths"]
+    for path in ("/api/v1/events/{event_id}/media", "/api/v1/events/{event_id}/movie"):
+        assert list(paths[path]["get"]["responses"]["200"]["content"]) == ["video/*"]
 
 
 def test_building_the_schema_raises_no_duplicate_operation_id_warning() -> None:
