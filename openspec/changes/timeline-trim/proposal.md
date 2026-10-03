@@ -90,10 +90,11 @@ None. `event-timeline` was added by `timeline-view` (merged); this change extend
 ## Impact
 
 - **Packages**: `web/` only, plus `docs/high-level-design.md`. New under `web/src/timeline/`: `handles.ts` (pure; `trim.ts`
-  would sit beside the model's `trim.test.ts`), `TrimHandle.tsx`, `CutFields.tsx`. Edited: `web/src/edit/draft.ts`, `web/src/edit/EventEditor.tsx`
+  would sit beside the model's `trim.test.ts`), `dragStore.ts` (the drag store), `editing.ts` (types), `TrimHandle.tsx`
+  (the handles and their per-clip layer), `CutFields.tsx`. Edited: `web/src/edit/draft.ts`, `web/src/edit/EventEditor.tsx`
   (a reducer action, one handler, the mount), `web/src/cuts/times.ts` (words, one check), `web/src/cuts/CutsPanel.tsx`
   (one `checkRestore` call site if its signature moves), and the merged Timeline files (`TimelineSection`, `Timeline`, `Track`, `useTimelineVideo`, `timeline.css`: the optional
-  `editing` binding), plus `web/src/events/EventDetail.tsx` (two props to the editor).
+  `editing` binding), plus `web/src/events/EventDetail.tsx` and `loadState.ts` (two props to the editor; the Edit-mode re-read keeps the event as read, for the Timeline).
 - **API / CLI**: untouched (Principle V). The write is the existing `PUT …/reel`; `openapi.json`/`schema.d.ts`
   unchanged.
 - **Rendered output**: unchanged by this change; `RENDER_GRAPH_VERSION` is not bumped; the staleness fingerprint's

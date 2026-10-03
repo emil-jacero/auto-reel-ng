@@ -347,7 +347,7 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   **read-only**; editing it is v2. No timeline, no per-frame editing.
 - **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview); **the full
   timeline editor, moved from v3** — a per-clip track with proxies, filmstrip, drag-trim in/out and scrub
-  preview; **analysis review built as overlays on that timeline** (approve black/white/freeze trims in place,
+  preview (built: scrub in `timeline-view`, trim handles in `timeline-trim`, D-20); **analysis review built as overlays on that timeline** (approve black/white/freeze trims in place,
   not a separate screen); event poster frames; and, beside the proxy work, chapter times in the render
   manifest (built, change `render-chapter-times`) and a movie version in the event detail (built: the detail's
   `movie` carries the version and the chapter list, change `movie-facts-read`); the chapter jump list of the
@@ -373,8 +373,10 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   when a clip has no ready proxy, then one track (ruler, chapter band, clips laid out from the proxy facts, cuts as
   hatched spans, filmstrip, zoom, a scrubbing playhead and Play on one `<video>`). **The analysis overlays have
   landed** (`timeline-overlays`): an analysis lane of suggestion marks under the clips, their state derived from the
-  cuts, shown in the read view (D-20, "Analysis overlays"); **approving and dismissing arrive with `timeline-trim`**,
-  which mounts the Timeline on Edit mode's draft; trim handles are what is left of the timeline, with the look editor.
+  cuts, shown in the read view (D-20, "Analysis overlays"). **Trim handles have landed in Edit mode** (`timeline-trim`,
+  D-20): the same section on the editor's draft, a slider at each edge of a cut, saved by the existing Save; the lane
+  is mounted there too and shows state from the draft's cuts, but **approving and dismissing a suggestion are still to
+  mount** (`decide` is null in Edit mode as in the read view).
   `proxy-enqueue-endpoint` has landed (D-21 "Enqueue over REST"): `POST /api/v1/events/{event_id}/proxies` enqueues the
   event's proxy job (201 / 200 `fresh` / 409), and a job reports its `kind` while `latest_job` stays the latest render;
   the timeline's Prepare state is its first web caller.
@@ -634,7 +636,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
 7. **Job scheduler + FastAPI service** (jobs, progress over WS, Postgres index).
 8. **GUI v1** (ingest + reorder + metadata + schedule + progress).
 9. **GUI v2** (look editor + the full timeline editor, with analysis review as timeline overlays; starts
-   with the §8.11 research).
+   with the §8.11 research). The trim half has landed: `timeline-trim` puts trim handles on the Timeline in Edit mode
+   (D-20).
    `job-kind` has landed as the first slice: a `kind` on jobs and a worker that dispatches by it, with no render,
    fingerprint, API or WebSocket change (so no `RENDER_GRAPH_VERSION` bump). Next slice: the timeline's pure model
    (`timeline-model`, D-20), then the read-only view (`timeline-view`, below): GUI v2's first user-visible timeline.
@@ -843,8 +846,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
 
 - **D-14 — Cuts are edited by typed times in GUI v1** (2026-10-01, change `clip-cuts-screen`). Edit mode
   lists, adds and removes a clip's cuts (D-D), with times typed as seconds, m:ss or h:mm:ss, pulled forward
-  from v3 at the operator's request. A clip's preview followed in GUI v1 (D-16). Scrubbing and drag-trim
-  are the v2 timeline editor's (§4.10, 2026-10-01). The page refuses what the engine refuses (`out <= in`, negative), and
+  from v3 at the operator's request. A clip's preview followed in GUI v1 (D-16). Scrubbing (`timeline-view`) and
+  drag-trim (`timeline-trim`) are the v2 Timeline's (§4.10, D-20, built 2026-10-03). The page refuses what the engine refuses (`out <= in`, negative), and
   refuses an overlap with another cut. It refuses a cut past the clip's end when it knows the length: from
   the clip's preview in that Edit mode (D-16), else from the duration the event detail gives the clip (§4.9,
   `api-clip-duration`); otherwise it states the render's rule instead (cut short at the end; a whole-clip cut
@@ -892,10 +895,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     the thumbnail sidecar) because Set From and Set To write times in it. A clip with neither (no preview,
     no thumbnail yet) keeps D-14's rule. Measured on five files: Chrome's length equals ffprobe's, and Firefox's runs up to 60 ms
     longer, never shorter, so the check never refused a cut the render keeps in full.
-  - **What stays v2.** Firefox plays PCM audio silently (52 % of the archive), and the preview says so. Proxies,
-    the PCM audio path and drag-trim stay the v2 timeline editor's (§4.10, §8.11); **scrubbing landed with the
-    Timeline** (`timeline-view`, D-20), which plays the proxy, so it has sound in Firefox, while the original in
-    this preview stays silent there with the note above.
+  - **What stays v2.** Firefox plays PCM audio silently (52 % of the archive), and the preview says so. Proxies
+    and the PCM audio path landed as D-21; **scrubbing landed with the Timeline** (`timeline-view`, D-20) and **drag-trim
+    with its trim handles** (`timeline-trim`, D-20), which play the proxy, so they have sound in Firefox, while the
+    original in this preview stays silent there with the note above.
   - **Amended 2026-10-03, change `clip-preview-proxy`: the preview plays the preview copy.** When the event
     detail gives a clip's proxy as `ready` with a duration above zero in its facts, the preview plays the copy
     (the proxy contract, D-21: 540p H.264 + AAC at the original's media time) from `…/proxy?clip=&v=<tag>`, the
@@ -1006,15 +1009,14 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Tests are the existing runner.** `npm test` (Node's `node:test`, type-checked by `tsconfig.test.json`),
     not vitest: no package is added. This is the proposal §4.10 asked for when it said a slice with logic worth
     unit-testing would propose a runner; the runner was already there.
-  - **First slice (planned).** Trim of existing cuts and the analysis overlays on one timeline; one `<video>` whose `src`
+  - **First slice (planned; the view in `timeline-view`, trim in `timeline-trim`, the overlays to come).** Trim of existing cuts and the analysis overlays on one timeline; one `<video>` whose `src`
     is swapped at clip boundaries (a short flash is accepted); reorder and cross-chapter moves stay list-based;
     no waveform lane.
   - **First slice, built (change `timeline-view`, 2026-10-03): the read-only Timeline.** Its own section of the
     event page's read view, between the Movie section and the chapters, with an Open / Close button; **not an entry
     to Edit mode**, which owns the draft, the Save bar and the unsaved-edits guard, while this slice writes nothing
-    (`timeline-trim` decides how the same component mounts there; it takes the cuts as a prop for that reason). It is
-    closed until opened (no `<video>`, no media request, whatever the clip count), absent in Edit mode, and closed
-    again after a Refresh. **The layout comes from the proxy facts** (`duration`, `fps_num / fps_den`), never from
+    (`timeline-trim` mounts the same component there, below; it takes the cuts as a prop for that reason). It is
+    closed until opened (no `<video>`, no media request, whatever the clip count), and closed again after a Refresh. **The layout comes from the proxy facts** (`duration`, `fps_num / fps_den`), never from
     the browser's length or a default rate; a clip is *ready* only with a `ready` state, usable facts and a tag
     (`version`) for its addresses. Until every shown clip is ready the section shows a **Prepare state** in the
     track's place: the counts by state, "Prepare proxies" (`POST …/proxies`, one request per press, the only way the
@@ -1032,8 +1034,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     sound in Firefox (a decoded peak above zero on the Sony PCM clip). **One video plays on the page**
     (`playback/exclusive.ts`). A `proxy` job is never shown as a render: `jobs/kinds.ts` (`job-kind`) keeps the
     render region, list rows and header count to renders, and the Prepare state shows the proxy job in its own words
-    ("Preparing proxies", "Proxy progress"). What stays: trim handles and the approval of suggestions on Edit mode's draft
-    (`timeline-trim`), a second preloaded `<video>` for seamless boundaries, undo.
+    ("Preparing proxies", "Proxy progress"). What stays: the approval and dismissal of suggestions on Edit mode's draft
+    (the lane's `decide`), a second preloaded `<video>` for seamless boundaries, undo.
   - **Measured on the shipped proxy** (Chrome 154.0.8037.92 and Firefox 155.0, ten real clips, one from each archive
     class, proxies made by the Prepare button and a real worker). **Quiet host** (the review's re-run, load average
     0.5 to 2.1 on 16 cores, two runs each): scrub, median frames per second over 50 sweeps of 2 s (gate: 30): Chrome
@@ -1084,6 +1086,50 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     in the read view, where it offers no decision and no note about one; the decision rules (`decideApprove`,
     `decideDismiss`) are pure and tested, and the requirements for them belong to the change that mounts it.
   - **Prepare enqueues the proxy job** (`proxy-job`): the timeline's Prepare state enqueues the D-21 `proxy` job for the event; a render does not wait for it. It calls `POST /api/v1/events/{event_id}/proxies` (`proxy-enqueue-endpoint`) and follows the job on the WebSocket, whose jobs carry `kind`.
+  - **Trim handles (change `timeline-trim`, 2026-10-03): the same Timeline in Edit mode, on the draft.** Edit mode mounts
+    the one `TimelineSection` after the metadata form, closed until opened, with `editing` set: its cuts are the draft's
+    (`liveTrims`), so a cut added, removed or restored in a Cuts panel is on the track at once and Play skips a trim before
+    it is saved; its clips, chapters and proxies are the page's last read (a Prepare job that ends in Edit mode reads the
+    event again, `withVerdict` keeps that read as `live`, and the draft is not touched) in the **saved order**, with a note
+    while the draft has moved or renamed anything (reorders stay list-based). Each cut of a clip drawn with its cuts gets
+    **two handles that are sliders, not draggables** (`role="slider"`, `aria-valuenow/min/max` from the model's limits, a
+    value text in the Cuts panel's time format; `@dnd-kit` stays for reordering only): drag by the distance moved, snapping
+    within 8 px to the clip's ends, the other cuts' edges and the playhead (a line and words, "Snapped to cut 2 start"),
+    Left/Right a frame, Shift a second, Page Up/Down five, Home/End to the limits, Enter at the playhead; 24 px areas, 44 px
+    under a coarse pointer, extending outward from the cut, and where two overlap the press goes to the nearer edge. While an
+    edge is in the air it lives in a small external store and only its handle, the live span and the selected cut's fields
+    read it; **the draft gets one edit on release** (`trimCut`), a key press is its own edit. The selected cut's Start and
+    End fields (typed, through the Cuts panel's own `checkCut` with the cut itself taken out) are the non-dragging
+    alternative and stay in step. **`draft.ts` had no operation that edits a cut**, and its "back to what was read" test
+    compared keys only, so a trim would have been dropped as unchanged: `trimCut` keeps the key, place and reason, marks a
+    read cut `edited` while its times differ (an Undo over it is refused as over an added cut), `settled` compares times,
+    and the save bar counts "1 cut trimmed". Save is the existing whole-document `PUT` under `If-Match`; the service edits
+    only the span that differs and keeps its comment. **One video in Edit mode**: a clip preview and the Timeline's video
+    release each other through the editor's preview store (a preview open: the Timeline renders no `<video>`, keeps its
+    playhead and handles; a scrub or Play closes the preview and creates the video at the playhead).
+  - **The frame grid decides the numbers.** The model's limits are frame times, so on a 50 fps proxy (the dev library's
+    clips) three frames are 60 ms and the cut 1.0 to 2.5 s has a start range of 0 to 2.44; on a 25 fps proxy it is 2.36,
+    and "+1 s" from 2.5 s lands on 3.52. A typed time is not rounded.
+  - **Measured with handles on the track** (Chrome 154.0.8037.92 and Firefox 155.0, the four-sample event of the timeline
+    gates, 16 handles, in Edit mode; the host was busy, load average 2.5 to 15). Scrub median: Chrome 43.5, Firefox 35.7 fps
+    (gate 30; the 4K50 sample alone 42.4 and 26.0). Frame step p90 of 160 presses: Chrome 37.8, Firefox 34.1 ms (gate 60).
+    First frame after a clip change: median 40.5 and 33.7 ms. **Drag** (the research's measure: 180 moves, a handle at 40 px
+    per second, frames longer than 25 ms; the page settled, since the editor's thumbnails shimmer for about ten seconds
+    after a load and cost every frame meanwhile): 80 clips, 4x CPU throttle, Chrome, five runs: 0.37, 0.56, 0.75, 1.12 and
+    1.12 % of frames (gate 2 %); no throttle: 0 of 360 frames in three Chrome runs and three Firefox runs. **400 clips at
+    4x is outside the gate here: 6 to 25 % (median 16 %)**, and the playhead's existing scrub on the same page shows 14 to 16 %.
+    The cost is the page, not the handle: the editor's 400 list rows (about 19,000 elements) are repainted per move; with
+    the lists hidden the drag is 0.3 %, with `content-visibility: auto` on `.clip-item` 0.4 and 0.9 %, and at no throttle it
+    is 0 % in both browsers. That rule is the lists' to adopt (their drag-and-drop measures rows), so it is a follow-up,
+    not part of this change. Windowing: at the lowest zoom of 400 clips the section holds 93 clip elements and 186 handles,
+    scrolled to the middle 140 and 280 (a view each side), 1,474 elements in all. **The clip's length at a cut's end** is the
+    proxy's `facts.duration`, which is the source's: the Sony, the rotated HEVC (14.633333 s; the proxy's container says
+    14.651995 because its audio runs 18 ms longer) and the legacy MPEG-4 (756.5 s) match ffprobe to the microsecond, so End
+    does not leave a sliver of footage.
+  - **Bundle (`timeline-trim`).** `npm run build` on `origin/main` and on this change: JS 489,098 to 507,071 bytes (156,952 to
+    163,207 gzip -9, +6.3 KB) and CSS 63,422 to 67,145 bytes (12,383 to 13,053 gzip -9, +0.7 KB); no package added. The
+    research prototype's whole interaction layer was +5.6 KB gz. `npm test` runs 421 tests (365 before).
+
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
   1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every

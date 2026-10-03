@@ -101,8 +101,8 @@ Cuts the render joins into one span SHALL still have a handle each at their own 
 Handles SHALL exist exactly where the track draws the clip's cut spans: a clip drawn too narrow to show its cuts (the track draws it as a block) has no handle until the operator zooms in, and a clip outside the window the track draws has none either ("The track zooms, and draws only what is in view"). Moving the playhead scrolls the view to it, which brings the clips around it, and so their handles, into the window; this is how keyboard focus reaches a cut that is far from the view.
 
 #### Scenario: Handles are named and carry their limits
-- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, whose `s1710001.mp4` (6.02 s, a 25 fps proxy) has a cut from 1.0 to 2.5 s and one from 4.0 to 5.0 s, the operator opens the Timeline and tabs to its first handle
-- **THEN** the handle is named "Cut 1 start of s1710001.mp4", has `aria-valuenow` 1, `aria-valuemin` 0 and `aria-valuemax` 2.38, and says "0:01, the cut runs 0:01 to 0:02.5"; the next Tab stops at "Cut 1 end of s1710001.mp4" with `aria-valuemin` 1.12 and `aria-valuemax` 4
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, whose `s1710001.mp4` (6.02 s, a 50 fps proxy, three frames are 60 ms) has a cut from 1.0 to 2.5 s and one from 4.0 to 5.0 s, the operator opens the Timeline and tabs to its first handle
+- **THEN** the handle is named "Cut 1 start of s1710001.mp4", has `aria-valuenow` 1, `aria-valuemin` 0 and `aria-valuemax` 2.44, and says "0:01, the cut runs 0:01 to 0:02.5"; the next Tab stops at "Cut 1 end of s1710001.mp4" with `aria-valuemin` 1.06 and `aria-valuemax` 4
 
 #### Scenario: A removed cut has no handle
 - **WHEN** the operator removes cut 1 of `s1710001.mp4` in its Cuts panel
@@ -116,7 +116,7 @@ Handles SHALL exist exactly where the track draws the clip's cut spans: a clip d
 - **WHEN** `s1710001.mp4` (6.02 s) lists a cut from 5.0 to 7.0 s
 - **THEN** the cut's end handle is drawn at the clip's end, reads 7 with a range that holds 7, and its value text says "0:07" and that the cut runs past the clip's end
 - **WHEN** the operator presses Left on it
-- **THEN** the end is one frame earlier, at 6.96 s
+- **THEN** the end is one frame earlier, at 6.98 s
 
 #### Scenario: A clip too narrow to show its cuts
 - **WHEN** at the lowest zoom of a 400-clip event a clip is drawn as a block with no cut spans
@@ -177,8 +177,8 @@ A trim handle that has keyboard focus SHALL answer these keys, each making one e
 A key that would pass a limit SHALL stop at the limit, and a key at the limit SHALL change nothing. A key SHALL be handled only when the handle has focus, so typing in a field is never intercepted. Keys SHALL NOT scroll the page. Each key's result SHALL be given by the handle's value (`aria-valuenow`, value text), and SHALL NOT also be announced through the live region, which would say it twice; an Enter refused or stopped by a limit SHALL be announced. While the handle has focus it SHALL be scrolled into view if its edge is outside the track's view.
 
 #### Scenario: Frame steps
-- **WHEN** focus is on "Cut 1 start of s1710001.mp4" (1.0 s, 25 fps) and the operator presses Right three times
-- **THEN** the start is at 1.12 s, the handle reads 1.12, and the Cuts panel lists 0:01.12 to 0:02.5
+- **WHEN** focus is on "Cut 1 start of s1710001.mp4" (1.0 s, 50 fps) and the operator presses Right three times
+- **THEN** the start is at 1.06 s, the handle reads 1.06, and the Cuts panel lists 0:01.06 to 0:02.5
 
 #### Scenario: One and five seconds
 - **WHEN** the operator presses Shift+Right on the end handle of cut 1 (2.5 s)
@@ -188,7 +188,7 @@ A key that would pass a limit SHALL stop at the limit, and a key at the limit SH
 
 #### Scenario: Home and End reach the limits
 - **WHEN** the operator presses Home on the start handle of cut 1, then End
-- **THEN** the start goes to 0, then to 2.38 s (three frames before the end), and the Cuts panel lists those times
+- **THEN** the start goes to 0, then to 2.44 s (three frames before the end), and the Cuts panel lists those times
 
 #### Scenario: Enter sets the edge at the playhead
 - **WHEN** the playhead is at 1.6 s of `s1710001.mp4` and the operator presses Enter on the end handle of cut 1
@@ -210,7 +210,7 @@ A key that would pass a limit SHALL stop at the limit, and a key at the limit SH
 
 Under the track the Timeline SHALL show the **selected cut** in a group named "Cut <n> of <name>" with two text fields, "Start of cut <n> of <name>" and "End of cut <n> of <name>", showing the cut's times in the Cuts panel's time format. A cut SHALL be selected when one of its handles gets keyboard focus or is pressed, or its span is pressed; the selection SHALL stay until another cut is selected or the cut is removed. With no selected cut the group SHALL say so and hold no field.
 
-A time typed in a field SHALL be taken on Enter or when the field loses focus, in the forms the Cuts panel accepts (seconds, `m:ss`, `h:mm:ss`, up to three decimals), and SHALL make one edit of the draft. It SHALL be refused, and nothing changed, for the reasons the Cuts panel refuses a typed cut and in its words: unreadable, too precise, an end not after the start, an overlap with another cut of the clip that is not removed (the cut itself excepted), an end after the clip's length (the proxy's duration). A refusal SHALL be shown at the field the Cuts panel's rule names for it, which receives keyboard focus, and announced. Escape in a field SHALL put the cut's current time back. A typed time need not be a frame time: it is taken to the millisecond, as a typed cut is.
+A time typed in a field SHALL be taken on Enter or when the field loses focus, in the forms the Cuts panel accepts (seconds, `m:ss`, `h:mm:ss`, up to three decimals), and SHALL make one edit of the draft. It SHALL be refused, and nothing changed, for the reasons the Cuts panel refuses a typed cut and in its words: unreadable, too precise, an end not after the start, an overlap with another cut of the clip that is not removed (the cut itself excepted), an end after the clip's length (the proxy's duration). A refusal SHALL be shown at the field the Cuts panel's rule names for it and announced; when the time was taken with Enter that field receives keyboard focus, and when it was taken because the field lost focus the refusal stands in the same words and focus stays where the operator put it. Escape in a field SHALL put the cut's current time back. A typed time need not be a frame time: it is taken to the millisecond, as a typed cut is.
 
 The fields, the handles, the span drawn and the Cuts panel's list SHALL show the same times at all times: a drag or a key updates the fields on every change, and a typed time moves the handle. A field being typed in (it has focus and its text differs from the cut's time) SHALL NOT be overwritten by a handle moving, but SHALL NOT be taken either until Enter or blur.
 
@@ -245,8 +245,10 @@ When the primary pointer is coarse, each trim handle SHALL take a press anywhere
 - **THEN** its start handle's area lies left of the cut's start and its end handle's right of the cut's end, each 44 px wide and tall, and neither covers the other
 
 #### Scenario: Two neighbours' edges
-- **WHEN** cut 1 ends at 2.5 s and cut 2 starts at 2.6 s at 40 px per second (4 px apart), and a finger presses 3 px right of cut 1's end
-- **THEN** cut 1's end handle takes the press
+- **WHEN** cut 1 ends at 2.5 s and cut 2 starts at 2.6 s at 40 px per second (4 px apart), and a finger presses 1 px right of cut 1's end
+- **THEN** cut 1's end handle takes the press, and cut 1 is the selected cut
+- **WHEN** a finger presses 3 px right of cut 1's end
+- **THEN** cut 2's start handle takes it, being the nearer edge
 
 #### Scenario: A swipe scrolls
 - **WHEN** a finger swipes sideways over a clip's filmstrip, away from any handle
