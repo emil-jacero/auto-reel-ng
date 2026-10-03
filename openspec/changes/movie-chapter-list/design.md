@@ -94,7 +94,11 @@ before the probe, and a list that took the new chapters then would pair them wit
 moment and unmount a focused row whose start the new list lacks (found in Chrome, a re-render that drops a
 chapter dropped focus to `<body>`). During `reading` the list is *not* hidden (unlike the facts): hiding would drop focus from a focused button, and
 a re-read that changes the chapters also changes the file, which replaces the player anyway (its list with it).
-A re-read that leaves a player without a list while focus is in the list: `ChapterList`'s layout-effect cleanup
+"Load the new movie" (the file changed under a playing player) sets the facts to none: the held facts belong to the
+older file, and the read that would describe the new one has not happened, so no list and no version line show until
+the next read of the event. A render landing between an event read and the probe can still pair that read's chapters
+with the newer file; the detail carries no tag of the movie file to compare, so this stays (the next read corrects
+it). A re-read that leaves a player without a list while focus is in the list: `ChapterList`'s layout-effect cleanup
 moves focus to `videoRef.current` when it holds focus. On removal of the whole section `MovieSection`'s existing
 cleanup (a parent, so React runs it before its children's) has already moved focus to the page heading, so the
 list's cleanup then finds focus outside it and does nothing. Pinned by a Playwright check (task 4.1).
@@ -105,8 +109,8 @@ The default chapter's name `""` is written by `chapterHeading(name, hasNamed)` i
 `EventDetail` also uses, so the two screens agree. A `<div className="movie-chapters">` with `<h3>Chapters</h3>`, an `<ol>`, and
 per row a `<li>` with one `<button type="button">` holding number, name, start (`<span>`s) and, when marked, the
 `Pill`-style "Current chapter" with the icon from `ui/Icon`. The accessible name is set by `aria-label`: "Jump to
-chapter 2, Majstången, at 1:14" (`jumpLabel()` in `chapters.ts`, tested), `aria-current="true"` only while
-marked. The start is `formatTime` from `cuts/times.ts` (reuse; it prints the fraction only when present). No
+chapter 2, Majstången, at 1:14" (`jumpLabel()` in `chapters.ts`, tested), with ", current chapter" appended on the
+marked row so the visible words are in the name (WCAG 2.5.3), `aria-current="true"` only while marked. The start is `formatTime` from `cuts/times.ts` (reuse; it prints the fraction only when present). No
 live region. The "As rendered" caption sits beside the heading only when `age === 'outdated'`; its words are
 `CHAPTERS_AS_RENDERED` in `labels.ts` (a plain string, as `OUTDATED_NOTE`).
 

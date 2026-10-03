@@ -84,7 +84,12 @@ export function currentChapterIndex(
   return found
 }
 
-/** A jump button's accessible name: `Jump to chapter 2, Majstången, at 1:14`. */
-export function jumpLabel(index: number, title: string, start: number): string {
-  return `Jump to chapter ${index + 1}, ${title}, at ${formatTime(start)}`
+/**
+ * A jump button's accessible name: `Jump to chapter 2, Majstången, at 1:14`. For the
+ * chapter the player is in, `mark` (the words the row shows) follows, so every visible
+ * word of the button is also in its name (WCAG 2.5.3, Label in Name).
+ */
+export function jumpLabel(index: number, title: string, start: number, mark?: string): string {
+  const label = `Jump to chapter ${index + 1}, ${title}, at ${formatTime(start)}`
+  return mark === undefined ? label : `${label}, ${mark.toLowerCase()}`
 }

@@ -77,7 +77,8 @@ type Shown =
   // the first probe of this mount is in flight: the player, with no address yet
   | { kind: 'probing' }
   // `facts`: the chapters and version of the event read the probe answered for, so the list
-  // never pairs a newer read's chapters with the player of the file that read replaces
+  // never pairs a newer read's chapters with the player of the file that read replaces; a file
+  // loaded after a change was found has none, since no read describes it yet
   | { kind: 'file'; file: MovieFile; facts: MovieFacts }
   // `announced`: found after Play (an alert), not by a read (a note)
   | { kind: 'gone'; gone: Gone; announced: boolean }
@@ -215,12 +216,11 @@ function MovieSection({
             }}
             onLoadNew={(file) => {
               focusNext.current = 'video'
-              // The chapters and version stay those of the read the player was shown for.
-              setShown({
-                kind: 'file',
-                file,
-                facts: shown.kind === 'file' ? shown.facts : movieFacts(event),
-              })
+              // The file replacing the one that started playing is newer than the read the
+              // facts came from (and than this event), so no chapters and no version show
+              // until a read of the event answers for it: a list with a wrong start is
+              // worse than none.
+              setShown({ kind: 'file', file, facts: { chapters: null, version: null } })
             }}
             onRetry={() => {
               focusNext.current = 'video'

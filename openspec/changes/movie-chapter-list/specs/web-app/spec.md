@@ -183,7 +183,8 @@ and the section SHALL say so in words with the list ("As rendered"), not by colo
 **One row per chapter.** Each chapter SHALL be a row with a button as its only control. The row shows the chapter's
 number, its name, and its start written as the client writes a place in a clip (`m:ss`, `h:mm:ss` from an hour,
 with the fraction of a second only when there is one). The
-button's accessible name SHALL be "Jump to chapter N, name, at start". A long name SHALL wrap inside the row.
+button's accessible name SHALL be "Jump to chapter N, name, at start", followed by ", current chapter" on the row that
+carries the mark, so that each word the button shows is in its name. A long name SHALL wrap inside the row.
 
 **Jumping.** Activating a chapter's button SHALL move the player to that chapter's start, to the millisecond, and
 start playback, whether or not the movie had been played before, and whether it was playing, paused or at its
@@ -202,7 +203,9 @@ SHALL carry it. The page SHALL NOT announce the mark's moves: they happen while 
 
 **What the list stays with.** The list SHALL belong to the player it was shown under. When the movie's file is
 replaced and the page shows a new player, the list SHALL show the chapters of the detail that read found. While the
-page reads the event again the list SHALL stay as it is, with its buttons usable. When a re-read leaves the player
+page reads the event again the list SHALL stay as it is, with its buttons usable. When the operator loads the new
+movie after the page found the file changed under a playing player, no read describes that file yet, so the page
+SHALL show no list and no version line for it until a read of the event answers. When a re-read leaves the player
 without a list while keyboard focus is in the list, focus SHALL go to the player; when it removes the whole section,
 to the page's heading, as for the section. When the section shows a note in the player's place, it SHALL show no
 list.
@@ -267,6 +270,12 @@ nothing clips.
   a new entity-tag and a fourth chapter
 - **THEN** the page shows the new player and a list of four chapters, and the old player's position is not carried
   over to the marks
+
+#### Scenario: Loading a changed movie shows no old chapters
+- **WHEN** the movie's file is replaced from the command line while its page is open with a chapter list, the operator
+  presses Play, the page says the file changed, and the operator presses "Load the new movie"
+- **THEN** the new file is in the player, and the page shows neither the old render's chapter list nor its
+  "Recorded … · version …" line
 
 #### Scenario: The list at phone width
 - **WHEN** the operator opens that page in windows 320 and 390 pixels wide, in both color schemes
