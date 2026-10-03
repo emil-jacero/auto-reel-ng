@@ -9,7 +9,7 @@ export type SaveHold = 'gone' | 'conflict' | 'unfinished' | 'nothing'
 
 /**
  * Why Save cannot act now, or null. A vanished event or a conflict hold Save back whatever
- * else is true; then something typed and not added (a date in part, a cut), then no edits.
+ * else is true; then something typed and not added (a date in part, a name, a cut), then no edits.
  * Whether a save is in flight is separate (the busy-control rule, `pressed`).
  */
 export function saveHold(
@@ -48,7 +48,12 @@ export function isSaveChord(event: {
 }
 
 /** What a held-back Ctrl+S says in the live region. */
-export function holdWords(hold: SaveHold, dateIncomplete: boolean, cutsTyped: boolean): string {
+export function holdWords(
+  hold: SaveHold,
+  dateIncomplete: boolean,
+  cutsTyped: boolean,
+  nameTyped = false,
+): string {
   switch (hold) {
     case 'nothing':
       return 'Nothing to save.'
@@ -56,6 +61,9 @@ export function holdWords(hold: SaveHold, dateIncomplete: boolean, cutsTyped: bo
       const parts = []
       if (dateIncomplete) {
         parts.push('the date is incomplete')
+      }
+      if (nameTyped) {
+        parts.push('a name is typed and not kept')
       }
       if (cutsTyped) {
         parts.push('a cut is typed and not added')

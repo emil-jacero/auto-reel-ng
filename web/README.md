@@ -128,8 +128,10 @@ on. A missing clip stays in its chapter, a deleted chapter's placeholder takes n
 no drag starts while a save or a Move clips is pending. Move up / Move down never take a
 clip into another chapter; ignored clips are listed but never move. Each chapter's own
 tools row, under its heading, edits the chapters themselves
-(**D-13**): **Rename…** (every chapter but the event's own, which keeps no name: its
-title card is the event's), **Move up** / **Move down**, **Delete** (only once the
+(**D-13**): a chapter is renamed at its **title**, a button with a pencil that becomes a
+text field (Enter or leaving it keeps the name, Escape drops it; the event's own chapter
+keeps its name, and shows a **Main title card** line whose title is the event's, edited in
+the same draft as the Title field), **Move up** / **Move down**, **Delete** (only once the
 chapter plays no clip, and for the event's own chapter only once it lists no ignored
 clip; until Save it stays in its place with **Undo**), and **Move clips…**, a dialog
 that moves the picked clips (on disk only, checkboxes, Enter moves) to the end of
@@ -137,7 +139,8 @@ another chapter, a clip moved back returning to its place. **Add chapter** follo
 last chapter. A name is trimmed, must not be empty, and must differ, ignoring case,
 from every other chapter's name and from `Main`. Wherever an edit changes what a name
 means for clips added to a folder later (D-12: they join the chapter named exactly
-after their folder, else the event's own), the name dialog and the chapter say so. A
+after their folder, else the event's own), the name field (or the Add chapter dialog) and the chapter say so. A name typed and not kept
+holds Save back, as a cut typed and not added does. A
 save that changes the chapter list writes every chapter as shown, so every NEW clip
 joins `reel.yaml` where the page shows it. A clip moved in shows where it came from;
 a chapter saved without clips reads "No clips" on the event page. A chapter's heading counts the clips
@@ -330,7 +333,10 @@ src/
 │   ├── marks.ts          Edit mode's marks: toggling, pruning, Pick marked, the words spoken (pure; marks.test.ts, groupMove.test.ts)
 │   ├── ClipOrderList.tsx one chapter's clips: its sortable list, a drop target, buttons; Remove / Undo
 │   ├── ChapterTools.tsx  a chapter's tools row, a deleted chapter's placeholder, Add chapter
-│   ├── ChapterDialogs.tsx the name dialog (Add chapter, Rename…) and Move clips
+│   ├── ChapterDialogs.tsx the name dialog (Add chapter) and Move clips
+│   ├── InlineName.tsx    a title that is its own rename control: button, field, keep / drop / refuse
+│   ├── inlineName.ts     the keep / unchanged / refused rule, the title line, the unkept-name test (pure, + inlineName.test.ts)
+│   ├── TitleCard.tsx     the event's own chapter's Main title card line, over the draft's title
 │   ├── chapterNames.ts   chapter name rules and what a name means for later clips (pure)
 │   ├── MetadataForm.tsx  title, date, location, description, and inherited values
 │   ├── SaveBar.tsx       the save bar and a failed save's alert
