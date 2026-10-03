@@ -103,9 +103,18 @@ class Worker:
   -> `failed` with `str(exc)`; any other exception falls through to the existing `_process` catch-all
   (`_fail_unexpected`, so per-job failure isolation holds for every kind). A handler owns its capacity token:
   it receives no pool from the worker here, because the proxy change decides how it acquires the CPU token.
-- Graceful shutdown, startup reconciliation and the claim-capacity bound are kind-agnostic already
-  (`_inflight`, `find_orphaned_running`); the capacity bound counts a proxy job against `total_capacity`,
-  which is acceptable at proxy concurrency 1 and revisited by the proxy change if it matters.
+- Graceful shutdown and startup reconciliation are kind-agnostic already (`find_orphaned_running`). The
+  claim-capacity bound is too (`_inflight` against `total_capacity`), and that has a known cost that this
+  change deliberately leaves to `proxy-job`: a handler owns its own CPU token, so a claimed `proxy` job holds an
+  `_inflight` slot while it waits for that token, and with proxy concurrency 1 the blocked ones can fill the
+  claim headroom. Example: `total_capacity` 2, several proxy jobs queued and no render; two are claimed, one runs,
+  the other waits on the proxy token with a slot held, and a render enqueued now is not claimed until a proxy job
+  finishes, though the GPU is idle. Claim order (priority) only helps among rows already queued. This is NOT
+  acceptable for the goals of `proxy-job` (lower priority, does not slow renders), so it is a hard requirement
+  on that change: either the handler's token is acquired before the claim, or the worker counts handler-kind jobs
+  against a separate in-flight bound that does not reduce the render claim headroom, proven by a test in which
+  the proxy concurrency limit is full and a later render is still claimed. `job-kind` itself is unaffected
+  (no handler ships here).
 - **Mixed fleet**: an older worker that claims a `proxy` job fails it loud. The documented operating rule is to
   upgrade workers with the API; the alternative (a per-worker kind filter in `claim_next`) is more machinery than a
   version-skew window earns (Principle VII).
