@@ -487,12 +487,12 @@ def test_a_chapters_card_overrides_apply_to_that_chapter_only() -> None:
         ResolvedChapter(
             name="One",
             clips=(ResolvedClip(identity="a.mp4", is_title=True),),
-            card=ChapterCard(font_family="DejaVu Serif", text_color="#FFD700"),
+            card=ChapterCard(font_family="Source Serif 4", text_color="#FFD700"),
         ),
         ResolvedChapter(name="Two", clips=(ResolvedClip(identity="b.mp4", is_title=True),)),
     )
     one, two = (c.producer_config.config for c in _cards(plan))  # type: ignore[union-attr]
-    assert (one.font_family, one.text_color) == ("DejaVu Serif", "#FFD700")
+    assert (one.font_family, one.text_color) == ("Source Serif 4", "#FFD700")
     assert (two.font_family, two.text_color) == (None, "#FFFFFF")
 
 
@@ -1058,19 +1058,11 @@ def test_end_to_end_render_records_the_title_card_span(
     assert card_ms == pytest.approx(1000, abs=40)
 
 
-@pytest.mark.has_fonts
-def test_an_unresolvable_card_font_fails_the_render_with_the_font_error(
-    has_fonts: None, tmp_path: Path
-) -> None:
-    config = resolve_card_config(None, ChapterCard(font_family="No Such Family ZZZ"))
-    assert config.font_family == "No Such Family ZZZ"  # resolution is the renderer's job
-    with pytest.raises(FontResolutionError, match="No Such Family ZZZ"):
-        _render(
-            config,
-            TitleCardContent(heading="Hej"),
-            _target(width=320, height=240),
-            tmp_path / "card.png",
-        )
+def test_an_unregistered_card_font_fails_loud_when_the_card_is_resolved() -> None:
+    # The card's font is checked against the bundled registry when its style is parsed
+    # (title-card-fonts), so a typo never reaches the renderer.
+    with pytest.raises(TitleCardError, match="No Such Family ZZZ"):
+        resolve_card_config(None, ChapterCard(font_family="No Such Family ZZZ"))
 
 
 # --------------------------------------------------------------------------- #
