@@ -1,35 +1,43 @@
-"""Media routes (change ``media-endpoints``): an event's clip and its rendered movie, streamed.
+"""Media routes: an event's clip and rendered movie (change ``media-endpoints``), and a clip's
+proxy and filmstrip from the proxy cache (change ``proxy-media-endpoints``, D-21), streamed.
 
 Thin wiring over :mod:`auto_reel_ng.api.media`: the lookup decides which file, the
 response helper streams it with byte ranges and validators, and this module maps
 each outcome to one status by cause. Both routes are per-request reads of a file,
 like the thumbnail (D-11), never fields of the events read model (HLD §4.9). They
-never touch the database, never run ffmpeg or ffprobe, and never write.
+never touch the database, never run ffmpeg or ffprobe, and never write. The proxy and
+filmstrip routes read the cache only: a clip with no finished file is a 404 problem, never a
+200, a 202 or the original.
 
 ``app.py`` includes this router **before** the events router: the event detail's
 ``{event_id:path}`` route is greedy over ``/`` and Starlette matches in registration
-order, so ``…/media`` and ``…/movie`` must be tried first or the detail would swallow
+order, so ``…/media``, ``…/movie``, ``…/proxy`` and ``…/filmstrip`` must be tried first or the detail would swallow
 them, as the ``/reel`` and ``/thumbnail`` suffixes are registered before it.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import JSONResponse, Response
 
+from ...config.project import ConfigError
 from ...ingest import LayoutError
 from .. import events_read
 from ..media import (
     MEDIA_CACHE_CONTROL,
+    MediaFile,
     MediaGoneError,
     MediaReadError,
     MovieNotFoundError,
+    ProxyAbsentError,
     clip_media,
+    filmstrip_media,
     media_response,
     movie_media,
+    proxy_media,
 )
 from ..problem import bad_gateway, not_found
 from ..schemas import ProblemOut
@@ -84,6 +92,23 @@ MEDIA_RESPONSES: Dict[int | str, Dict[str, Any]] = {
     },
     502: {"model": ProblemOut},
 }
+
+
+def _binary(media_type: str) -> Dict[str, Any]:
+    return {media_type: {"schema": {"type": "string", "format": "binary"}}}
+
+
+def _cache_responses(media_type: str) -> Dict[int | str, Dict[str, Any]]:
+    """:data:`MEDIA_RESPONSES` with the 200 and 206 content set to one exact type."""
+    responses = {code: dict(value) for code, value in MEDIA_RESPONSES.items()}
+    for code in (200, 206):
+        responses[code]["content"] = _binary(media_type)
+    return responses
+
+
+#: The proxy routes' responses: the same codes, with the exact types of the cache's files.
+PROXY_RESPONSES = _cache_responses("video/mp4")
+FILMSTRIP_RESPONSES = _cache_responses("image/jpeg")
 
 _VERSION_DESCRIPTION = (
     "An opaque version a client may send to give a changed file a new URL; ignored"
@@ -217,3 +242,88 @@ def get_movie(
     except MediaReadError as exc:
         return _unreadable(event_id, exc)
     return media_response(media, _if_none_match(request), _if_modified_since(request))
+
+
+def _serve_cache_file(
+    request: Request,
+    event_id: str,
+    clip: str,
+    lookup: Callable[[ApiSettings, str, str], MediaFile],
+) -> Response:
+    """One cache file of a clip (``lookup`` is :func:`proxy_media` or :func:`filmstrip_media`).
+
+    The causes map as the clip route maps them, plus ``ProxyAbsentError`` (404, and never a
+    200 or 202) and ``ConfigError`` (502, no kind: ``config.yaml`` or ``proxies.cache_dir``).
+    """
+    try:
+        media = lookup(_settings(request), event_id, clip)
+    except events_read.EventNotFoundError:
+        return _event_not_found(event_id)
+    except events_read.ClipNotFoundError as exc:
+        return not_found(str(exc), event_id=event_id)
+    except ProxyAbsentError as exc:
+        return not_found(f"event {event_id!r}: {exc}", event_id=event_id)
+    except MediaGoneError as exc:
+        return not_found(str(exc), event_id=event_id)
+    except events_read.EventReadError as exc:
+        failure = exc.failure.value if exc.failure is not None else None
+        return _media_failed(event_id, clip, exc.detail, failure)
+    except (ConfigError, LayoutError) as exc:
+        return _media_failed(event_id, clip, str(exc))
+    except MediaReadError as exc:
+        return _unreadable(event_id, exc)
+    return media_response(media, _if_none_match(request), _if_modified_since(request))
+
+
+@router.head("/events/{event_id:path}/proxy", response_class=Response, responses=PROXY_RESPONSES)
+@router.get("/events/{event_id:path}/proxy", response_class=Response, responses=PROXY_RESPONSES)
+def get_clip_proxy(
+    event_id: str,
+    request: Request,
+    clip: str = Query(
+        description="The clip's identity as the event detail lists it: its event-relative path",
+    ),
+    _version: Optional[str] = Query(default=None, alias="v", description=_VERSION_DESCRIPTION),
+    _if_none_match_header: Optional[str] = Header(default=None, alias="If-None-Match"),
+    _if_modified_since_header: Optional[str] = Header(default=None, alias="If-Modified-Since"),
+    _range: Optional[str] = Header(default=None, alias="Range"),
+    _if_range: Optional[str] = Header(default=None, alias="If-Range"),
+) -> Response:
+    """``GET`` and ``HEAD /api/v1/events/{event_id}/proxy?clip=``: the clip's proxy, unchanged.
+
+    The 540p H.264 + AAC ``proxy.mp4`` the proxy cache holds for the clip as it is on disk now
+    (D-21), streamed as the clip route streams a clip: ranges, ``If-Range``, a strong ``ETag``
+    (of the proxy file, so a client reads it with ``HEAD`` and sends it as ``v``),
+    ``If-None-Match``, ``If-Modified-Since`` and ``HEAD``. A clip with no finished proxy is
+    **404**, never a 200 or a 202 (the event detail says what state it is in). The lookup,
+    its other 404s and its 502s are the clip route's, plus a 502 for an unusable
+    ``config.yaml``. Read-only: no database, no ffmpeg, nothing created.
+    """
+    return _serve_cache_file(request, event_id, clip, proxy_media)
+
+
+@router.head(
+    "/events/{event_id:path}/filmstrip", response_class=Response, responses=FILMSTRIP_RESPONSES
+)
+@router.get(
+    "/events/{event_id:path}/filmstrip", response_class=Response, responses=FILMSTRIP_RESPONSES
+)
+def get_clip_filmstrip(
+    event_id: str,
+    request: Request,
+    clip: str = Query(
+        description="The clip's identity as the event detail lists it: its event-relative path",
+    ),
+    _version: Optional[str] = Query(default=None, alias="v", description=_VERSION_DESCRIPTION),
+    _if_none_match_header: Optional[str] = Header(default=None, alias="If-None-Match"),
+    _if_modified_since_header: Optional[str] = Header(default=None, alias="If-Modified-Since"),
+    _range: Optional[str] = Header(default=None, alias="Range"),
+    _if_range: Optional[str] = Header(default=None, alias="If-Range"),
+) -> Response:
+    """``GET`` and ``HEAD /api/v1/events/{event_id}/filmstrip?clip=``: the clip's sprite.
+
+    The ``filmstrip.jpg`` in the clip's proxy cache entry, behaving as :func:`get_clip_proxy`;
+    served whenever the file is there, whether or not the entry's proxy is read, and 404 for an
+    entry whose sprite step has not run.
+    """
+    return _serve_cache_file(request, event_id, clip, filmstrip_media)

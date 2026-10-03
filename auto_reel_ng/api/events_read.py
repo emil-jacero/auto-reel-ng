@@ -48,6 +48,8 @@ from ..ffmpeg.runtime import FfmpegRuntime
 from ..ingest import EventRef, get_layout
 from ..persistence.job_store import JobStore
 from ..persistence.models import Job
+from ..proxies.settings import resolve_proxy_settings
+from ..proxies.spec import FILMSTRIP_FILENAME, PROXY_FILENAME, entry_dir
 from ..reel import ReelDocument, is_excluded, load_document
 from ..render import output_relpath
 from ..render.claims import output_collision as engine_output_collision
@@ -722,6 +724,48 @@ def thumbnail_source(settings: ApiSettings, event_id: str, clip: str) -> Thumbna
         position=thumbnails.position,
         cache_dir=thumbnails.cache_dir,
         cache_path=cache_path,
+    )
+
+
+@dataclass(frozen=True)
+class ProxySource:
+    """A listed clip and where its proxy cache entry would be, as the proxy routes serve it."""
+
+    #: ``event_dir / clip``, for a clip the event's disk listing holds.
+    clip_path: Path
+    #: ``<cache_dir>/<key>`` as ``proxies.entry_dir`` computes it: nothing created.
+    entry_dir: Path
+    #: ``<entry_dir>/proxy.mp4``; it exists only in a published entry.
+    proxy_path: Path
+    #: ``<entry_dir>/filmstrip.jpg``; it exists once the entry's sprite step has run.
+    filmstrip_path: Path
+
+
+def proxy_source(settings: ApiSettings, event_id: str, clip: str) -> ProxySource:
+    """``GET /api/v1/events/{event_id}/proxy`` and ``…/filmstrip``: the clip and its cache entry.
+
+    The proxy sibling of :func:`thumbnail_source` (D-21 shaped like D-11). Read-only: nothing is
+    opened, created, generated or probed. In this order, so each outcome has one answer: the
+    clip must be one :func:`listed_clip` finds (:class:`EventNotFoundError`,
+    :class:`EventReadError` with the list's ``unreadable_disk`` kind, :class:`ClipNotFoundError`);
+    only then is ``config.yaml`` read (``ConfigError``, which also covers a
+    ``proxies.cache_dir`` inside the library) and the entry directory computed from the key of
+    the clip **as it is now**. ``reel.yaml`` is never read.
+
+    Raises:
+        OSError: the listed clip can no longer be statted (``FileNotFoundError`` when it is
+            gone); the caller decides what that means.
+    """
+    clip_path = listed_clip(settings, event_id, clip)
+    proxies = resolve_proxy_settings(
+        load_project_config(settings.project_root), settings.project_root
+    )
+    entry = entry_dir(clip_path, proxies.cache_dir)
+    return ProxySource(
+        clip_path=clip_path,
+        entry_dir=entry,
+        proxy_path=entry / PROXY_FILENAME,
+        filmstrip_path=entry / FILMSTRIP_FILENAME,
     )
 
 

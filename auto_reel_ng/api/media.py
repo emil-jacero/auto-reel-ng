@@ -9,6 +9,11 @@ Two per-request reads stream a file exactly as it is on disk, like the thumbnail
   counts as the event's movie (:func:`~auto_reel_ng.staleness.rendered_output`), so
   the route and a verdict can never disagree.
 
+Two more reads serve a clip's **proxy** and **filmstrip** from the proxy cache (change
+``proxy-media-endpoints``, D-21): :func:`proxy_media` and :func:`filmstrip_media` find the cache
+entry of a listed clip (:func:`~.events_read.proxy_source`) and open the file in it. A clip with
+no finished file is :class:`ProxyAbsentError`, never bytes.
+
 Nothing here writes, probes or decodes, and nothing touches the database. A file is
 statted and opened once before the route answers (:func:`open_media`), so a file that
 cannot be read is a problem body, never a 200 that breaks off; Starlette's
@@ -34,7 +39,13 @@ from ..errors import ReelError
 from ..event.metadata import load_event_document, require_processable
 from ..render import output_relpath
 from ..staleness import rendered_output
-from .events_read import EventReadError, classify_event_failure, listed_clip, listed_event_dir
+from .events_read import (
+    EventReadError,
+    classify_event_failure,
+    listed_clip,
+    listed_event_dir,
+    proxy_source,
+)
 from .schemas import EventFailure
 from .settings import ApiSettings
 
@@ -92,6 +103,19 @@ class MediaReadError(Exception):
         self.reason = reason
 
 
+class ProxyAbsentError(Exception):
+    """A listed clip has no finished proxy or filmstrip in the proxy cache: answered 404.
+
+    ``str()`` is ``<label>: no <what>`` (``what`` is ``proxy`` or ``filmstrip``), free of
+    server paths. Absent is never bytes: no placeholder, and not the original (D-21).
+    """
+
+    def __init__(self, label: str, what: str) -> None:
+        super().__init__(f"{label}: no {what}")
+        self.label = label
+        self.what = what
+
+
 class MovieNotFoundError(Exception):
     """The event has no rendered movie the gate counts, inside the output directory: 404."""
 
@@ -108,6 +132,8 @@ class MediaFile:
     path: Path
     #: ``os.stat`` following symlinks: a linked clip's size and mtime are its target's.
     stat: os.stat_result
+    #: The ``Content-Type`` when the file's kind is not told by its extension (a cache file).
+    declared_type: Optional[str] = None
 
     @property
     def name(self) -> str:
@@ -116,7 +142,9 @@ class MediaFile:
 
     @property
     def media_type(self) -> str:
-        """The ``Content-Type`` by extension, case-insensitively (:data:`MEDIA_TYPES`)."""
+        """The declared type, else the one by extension, case-insensitively (:data:`MEDIA_TYPES`)."""
+        if self.declared_type is not None:
+            return self.declared_type
         return MEDIA_TYPES.get(self.path.suffix.lower(), _UNKNOWN_MEDIA_TYPE)
 
     @property
@@ -129,12 +157,13 @@ class MediaFile:
         return f'"{self.stat.st_size:x}-{self.stat.st_mtime_ns:x}"'
 
 
-def open_media(path: Path, *, label: str) -> MediaFile:
+def open_media(path: Path, *, label: str, media_type: Optional[str] = None) -> MediaFile:
     """Stat ``path`` (following links), require a regular file, then open and close it.
 
     The open happens here, before any status line is sent: ``FileResponse`` opens the
     file only after it has started a 200 or 206, so an unreadable file would otherwise
-    break off a response that already claimed success. Nothing is read.
+    break off a response that already claimed success. Nothing is read. ``media_type``
+    declares the ``Content-Type`` of a file whose extension does not say it.
 
     Raises:
         MediaGoneError: nothing at ``path`` (a deleted file, a dangling link), or
@@ -156,7 +185,7 @@ def open_media(path: Path, *, label: str) -> MediaFile:
         raise MediaGoneError(label, "no such file") from None
     except OSError as exc:
         raise MediaReadError(label, exc.strerror or type(exc).__name__) from exc
-    return MediaFile(path=path, stat=file_stat)
+    return MediaFile(path=path, stat=file_stat, declared_type=media_type)
 
 
 def clip_media(settings: ApiSettings, event_id: str, clip: str) -> MediaFile:
@@ -167,6 +196,48 @@ def clip_media(settings: ApiSettings, event_id: str, clip: str) -> MediaFile:
     :func:`~.events_read.listed_clip`'s and :func:`open_media`'s.
     """
     return open_media(listed_clip(settings, event_id, clip), label=clip)
+
+
+def proxy_media(settings: ApiSettings, event_id: str, clip: str) -> MediaFile:
+    """The clip's finished ``proxy.mp4`` in the proxy cache, as ``video/mp4``.
+
+    The errors are :func:`~.events_read.proxy_source`'s and :func:`open_media`'s, with these
+    translations: a clip that can no longer be statted is :class:`MediaGoneError` (gone) or
+    :class:`MediaReadError`; no file at the proxy's place (a clip never prepared, a missing
+    cache directory, a clip changed since, a directory at the name) is
+    :class:`ProxyAbsentError`.
+    """
+    return _cache_media(settings, event_id, clip, "proxy", "video/mp4")
+
+
+def filmstrip_media(settings: ApiSettings, event_id: str, clip: str) -> MediaFile:
+    """The clip's finished ``filmstrip.jpg`` in its proxy cache entry, as ``image/jpeg``.
+
+    As :func:`proxy_media`; independent of the entry's ``proxy.mp4``, so an entry whose sprite
+    step has not run is :class:`ProxyAbsentError` while its proxy is served.
+    """
+    return _cache_media(settings, event_id, clip, "filmstrip", "image/jpeg")
+
+
+def _cache_media(
+    settings: ApiSettings, event_id: str, clip: str, what: str, media_type: str
+) -> MediaFile:
+    """Look the clip's cache entry up (no I/O on the cache) and open its ``what`` file."""
+    try:
+        source = proxy_source(settings, event_id, clip)
+    except FileNotFoundError:
+        raise MediaGoneError(clip, "no such file") from None
+    except OSError as exc:  # the clip's stat is refused after the listing
+        raise MediaReadError(clip, exc.strerror or type(exc).__name__) from exc
+    path = source.proxy_path if what == "proxy" else source.filmstrip_path
+    try:
+        return open_media(path, label=clip, media_type=media_type)
+    except MediaGoneError:
+        raise ProxyAbsentError(clip, what) from None
+    except MediaReadError as exc:
+        if isinstance(exc.__cause__, NotADirectoryError):  # a file where the cache directory is
+            raise ProxyAbsentError(clip, what) from None
+        raise
 
 
 def movie_media(settings: ApiSettings, event_id: str) -> MediaFile:
@@ -283,9 +354,12 @@ __all__ = [
     "MediaGoneError",
     "MediaReadError",
     "MovieNotFoundError",
+    "ProxyAbsentError",
     "clip_media",
     "etag_matches",
+    "filmstrip_media",
     "media_response",
     "movie_media",
     "open_media",
+    "proxy_media",
 ]

@@ -1072,6 +1072,1078 @@
         }
       }
     },
+    "/api/v1/events/{event_id}/proxy": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Clip Proxy",
+        "description": "``GET`` and ``HEAD /api/v1/events/{event_id}/proxy?clip=``: the clip's proxy, unchanged.\n\nThe 540p H.264 + AAC ``proxy.mp4`` the proxy cache holds for the clip as it is on disk now\n(D-21), streamed as the clip route streams a clip: ranges, ``If-Range``, a strong ``ETag``\n(of the proxy file, so a client reads it with ``HEAD`` and sends it as ``v``),\n``If-None-Match``, ``If-Modified-Since`` and ``HEAD``. A clip with no finished proxy is\n**404**, never a 200 or a 202 (the event detail says what state it is in). The lookup,\nits other 404s and its 502s are the clip route's, plus a 502 for an unusable\n``config.yaml``. Read-only: no database, no ffmpeg, nothing created.",
+        "operationId": "get_clip_proxy_api_v1_events__event_id__proxy_get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "clip",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The clip's identity as the event detail lists it: its event-relative path",
+              "title": "Clip"
+            },
+            "description": "The clip's identity as the event detail lists it: its event-relative path"
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An opaque version a client may send to give a changed file a new URL; ignored",
+              "title": "V"
+            },
+            "description": "An opaque version a client may send to give a changed file a new URL; ignored"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Modified-Since"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "name": "If-Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Range"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The whole file",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "The file's modification time",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Always `bytes`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "description": "`inline`, with the file's own name",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "One byte range of the file",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "The file's modification time",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Always `bytes`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "description": "`inline`, with the file's own name",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Range": {
+                "description": "`bytes <first>-<last>/<size>`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: `If-None-Match` names the current file, or, without it, `If-Modified-Since` is not before its modification time",
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed `Range` header (plain text)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "416": {
+            "description": "The range starts at or past the end of the file (plain text)",
+            "headers": {
+              "Content-Range": {
+                "description": "`bytes */<size>`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "head": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Clip Proxy",
+        "description": "``GET`` and ``HEAD /api/v1/events/{event_id}/proxy?clip=``: the clip's proxy, unchanged.\n\nThe 540p H.264 + AAC ``proxy.mp4`` the proxy cache holds for the clip as it is on disk now\n(D-21), streamed as the clip route streams a clip: ranges, ``If-Range``, a strong ``ETag``\n(of the proxy file, so a client reads it with ``HEAD`` and sends it as ``v``),\n``If-None-Match``, ``If-Modified-Since`` and ``HEAD``. A clip with no finished proxy is\n**404**, never a 200 or a 202 (the event detail says what state it is in). The lookup,\nits other 404s and its 502s are the clip route's, plus a 502 for an unusable\n``config.yaml``. Read-only: no database, no ffmpeg, nothing created.",
+        "operationId": "get_clip_proxy_api_v1_events__event_id__proxy_head",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "clip",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The clip's identity as the event detail lists it: its event-relative path",
+              "title": "Clip"
+            },
+            "description": "The clip's identity as the event detail lists it: its event-relative path"
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An opaque version a client may send to give a changed file a new URL; ignored",
+              "title": "V"
+            },
+            "description": "An opaque version a client may send to give a changed file a new URL; ignored"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Modified-Since"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "name": "If-Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Range"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The whole file",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "The file's modification time",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Always `bytes`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "description": "`inline`, with the file's own name",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "One byte range of the file",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "The file's modification time",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Always `bytes`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "description": "`inline`, with the file's own name",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Range": {
+                "description": "`bytes <first>-<last>/<size>`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: `If-None-Match` names the current file, or, without it, `If-Modified-Since` is not before its modification time",
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed `Range` header (plain text)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "416": {
+            "description": "The range starts at or past the end of the file (plain text)",
+            "headers": {
+              "Content-Range": {
+                "description": "`bytes */<size>`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events/{event_id}/filmstrip": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Clip Filmstrip",
+        "description": "``GET`` and ``HEAD /api/v1/events/{event_id}/filmstrip?clip=``: the clip's sprite.\n\nThe ``filmstrip.jpg`` in the clip's proxy cache entry, behaving as :func:`get_clip_proxy`;\nserved whenever the file is there, whether or not the entry's proxy is read, and 404 for an\nentry whose sprite step has not run.",
+        "operationId": "get_clip_filmstrip_api_v1_events__event_id__filmstrip_get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "clip",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The clip's identity as the event detail lists it: its event-relative path",
+              "title": "Clip"
+            },
+            "description": "The clip's identity as the event detail lists it: its event-relative path"
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An opaque version a client may send to give a changed file a new URL; ignored",
+              "title": "V"
+            },
+            "description": "An opaque version a client may send to give a changed file a new URL; ignored"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Modified-Since"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "name": "If-Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Range"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The whole file",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "The file's modification time",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Always `bytes`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "description": "`inline`, with the file's own name",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "One byte range of the file",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "The file's modification time",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Always `bytes`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "description": "`inline`, with the file's own name",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Range": {
+                "description": "`bytes <first>-<last>/<size>`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: `If-None-Match` names the current file, or, without it, `If-Modified-Since` is not before its modification time",
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed `Range` header (plain text)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "416": {
+            "description": "The range starts at or past the end of the file (plain text)",
+            "headers": {
+              "Content-Range": {
+                "description": "`bytes */<size>`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "head": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Clip Filmstrip",
+        "description": "``GET`` and ``HEAD /api/v1/events/{event_id}/filmstrip?clip=``: the clip's sprite.\n\nThe ``filmstrip.jpg`` in the clip's proxy cache entry, behaving as :func:`get_clip_proxy`;\nserved whenever the file is there, whether or not the entry's proxy is read, and 404 for an\nentry whose sprite step has not run.",
+        "operationId": "get_clip_filmstrip_api_v1_events__event_id__filmstrip_head",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "clip",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The clip's identity as the event detail lists it: its event-relative path",
+              "title": "Clip"
+            },
+            "description": "The clip's identity as the event detail lists it: its event-relative path"
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An opaque version a client may send to give a changed file a new URL; ignored",
+              "title": "V"
+            },
+            "description": "An opaque version a client may send to give a changed file a new URL; ignored"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Modified-Since"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "name": "If-Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Range"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The whole file",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "The file's modification time",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Always `bytes`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "description": "`inline`, with the file's own name",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "One byte range of the file",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "The file's modification time",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Always `bytes`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "description": "`inline`, with the file's own name",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Range": {
+                "description": "`bytes <first>-<last>/<size>`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: `If-None-Match` names the current file, or, without it, `If-Modified-Since` is not before its modification time",
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the file: its size and mtime, in hex",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed `Range` header (plain text)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "416": {
+            "description": "The range starts at or past the end of the file (plain text)",
+            "headers": {
+              "Content-Range": {
+                "description": "`bytes */<size>`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/events": {
       "get": {
         "tags": [
