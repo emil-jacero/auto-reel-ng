@@ -92,6 +92,10 @@ export const STATE_GLYPH: Record<SuggestionState, string> = {
   dismissed: '×',
 }
 
+/** The kinds and states the legend under the lane spells out, in the order it reads them. */
+export const LEGEND_KINDS = ['black', 'white', 'freeze'] as const
+export const LEGEND_STATES: readonly SuggestionState[] = ['pending', 'cut', 'partly-cut', 'dismissed']
+
 // --- approval ---------------------------------------------------------------------------
 
 /**
@@ -106,6 +110,81 @@ export function approval(
   length?: number,
 ): ReturnType<typeof checkCut> {
   return checkCut(listed, formatTime(segment.start), formatTime(segment.end), length)
+}
+
+/** What pressing Approve or Dismiss on a mark comes to: the page applies it, this decides it. */
+export type Decision =
+  /** Nothing happens (locked): a key is left to the browser. */
+  | { kind: 'ignored' }
+  /** Nothing changes; the words are announced (already cut, restore it first). */
+  | { kind: 'said'; words: string }
+  /** The approval was refused; the words are shown and announced, no cut is added. */
+  | { kind: 'refused'; words: string }
+  /** Add this cut, with the suggestion's kind as its reason, and announce the words. */
+  | { kind: 'approve'; span: { in: number; out: number }; reason: string; words: string }
+  | { kind: 'dismiss'; words: string }
+  | { kind: 'restore'; words: string }
+
+type Pressed = {
+  state: SuggestionState
+  segment: Suggestion
+  clipName: string
+  /** A save or a Move clips is pending: nothing is decided meanwhile. */
+  locked: boolean
+}
+
+/**
+ * Approve on a mark in `state`. A cut one is already done, a dismissed one is restored
+ * first, a locked page ignores the press; otherwise the Cuts panel's own check
+ * (`approval`) decides: the cut to add, with the kind as its reason, or the refusal.
+ */
+export function decideApprove({
+  state,
+  segment,
+  clipName,
+  locked,
+  listed,
+  length,
+}: Pressed & { listed: readonly Cut[]; length?: number }): Decision {
+  if (state === 'cut') {
+    return { kind: 'said', words: alreadyCutWords(segment, clipName) }
+  }
+  if (state === 'dismissed') {
+    return { kind: 'said', words: restoreFirstWords(segment, clipName) }
+  }
+  if (locked) {
+    return { kind: 'ignored' }
+  }
+  const checked = approval(listed, segment, length)
+  if (!checked.ok) {
+    return { kind: 'refused', words: notApprovedWords(checked.refusal) }
+  }
+  return {
+    kind: 'approve',
+    span: { in: checked.in, out: checked.out },
+    reason: segment.kind,
+    words: approvedWords(segment, clipName),
+  }
+}
+
+/**
+ * Dismiss (R) on a mark in `state`: a dismissed one is restored, a pending one is
+ * dismissed; a cut or partly cut one is decided by its cuts and says so; a locked page
+ * ignores the press.
+ */
+export function decideDismiss({ state, segment, clipName, locked }: Pressed): Decision {
+  if (state === 'dismissed') {
+    return locked
+      ? { kind: 'ignored' }
+      : { kind: 'restore', words: restoredWords(segment, clipName) }
+  }
+  if (state === 'cut') {
+    return { kind: 'said', words: alreadyCutWords(segment, clipName) }
+  }
+  if (state === 'partly-cut') {
+    return { kind: 'said', words: partlyCutWords(segment, clipName) }
+  }
+  return locked ? { kind: 'ignored' } : { kind: 'dismiss', words: dismissedWords(segment, clipName) }
 }
 
 // --- keys -------------------------------------------------------------------------------
@@ -150,7 +229,7 @@ export type MarkSpan = { startMs: number; endMs: number }
 export type Placed = { left: number; width: number; row: number }
 
 /**
- * Rows for one clip's marks so that no two overlap. Each mark is at least `minPx` wide,
+ * Rows for marks so that no two overlap. Each mark is at least `minPx` wide,
  * centred on its span and held inside `[0, limitPx]` (the track), and takes the first row
  * whose last mark ends before it starts. `placed[i]` is mark i, in the order given;
  * `count` is the rows used (0 for no marks). `minPx` is what a pointer or a finger has to
@@ -184,17 +263,24 @@ export function stackMarks(
   return { placed: boxes, count: ends.length }
 }
 
-/** The rows the lane needs: the most any clip needs, so the height holds as the track scrolls. */
-export function laneRows(
+/**
+ * Rows for the marks of the whole track: `groups[c][i]` is mark i of clip c, spans in ms
+ * from the track's start. Stacking runs once over every mark, not clip by clip, because a
+ * mark is widened to `minPx` and centred on its span, so the end of one clip and the start
+ * of the next (a fade out then a fade in) reach into each other. A mark's row then does
+ * not depend on which clips are drawn. `placed[c][i]` is mark i of clip c; `count` is the
+ * rows the lane needs, so its height holds as the track scrolls.
+ */
+export function placeMarks(
   groups: readonly (readonly MarkSpan[])[],
   pps: number,
   minPx: number,
   limitPx = Infinity,
-): number {
-  return groups.reduce(
-    (most, group) => Math.max(most, stackMarks(group, pps, minPx, limitPx).count),
-    0,
-  )
+): { placed: Placed[][]; count: number } {
+  const all = stackMarks(groups.flat(), pps, minPx, limitPx)
+  let next = 0
+  const placed = groups.map((group) => group.map(() => all.placed[next++]))
+  return { placed, count: all.count }
 }
 
 export type Step = 'previous' | 'next' | 'first' | 'last'
@@ -299,15 +385,23 @@ export const ANALYZED_CLEAN = 'Analyzed: nothing to suggest.'
 export const CLIP_NOT_ANALYZED = 'Not analyzed'
 export const CUTS_WAIT_UNREADABLE =
   'Suggestions are not shown because the cuts they are compared with could not be read.'
-export const READ_ONLY_NOTE = 'Open Edit mode to approve suggestions.'
 export const DISMISSAL_NOTE = 'Dismissed suggestions come back when the page is reloaded.'
 
 /**
+ * Whether any clip has a cache entry. The flag `analyzed` is not trusted for this: the
+ * service sets it when the event's cache directory exists, and a render writes its manifest
+ * there, so a rendered but never analysed event reads `analyzed: true` with no entries.
+ */
+function hasEntries(analysis: Analysis): boolean {
+  return analysis.analyzed && Object.keys(analysis.segments).length > 0
+}
+
+/**
  * The event's note when the lane has nothing to draw for the whole event, else null:
- * never analysed (no clip has a cache entry), or analysed with nothing found anywhere.
+ * never analysed (no clip has a cache entry, whatever the flag says), or analysed with nothing found anywhere.
  */
 export function eventNote(analysis: Analysis): string | null {
-  if (!analysis.analyzed) {
+  if (!hasEntries(analysis)) {
     return NEVER_ANALYZED
   }
   const found = Object.values(analysis.segments).some((segments) => segments.length > 0)
@@ -319,7 +413,7 @@ export function eventNote(analysis: Analysis): string | null {
  * (its file changed since). A clip analysed with nothing found has an empty list, no note.
  */
 export function clipNotAnalyzed(analysis: Analysis, identity: string): boolean {
-  return analysis.analyzed && !Object.hasOwn(analysis.segments, identity)
+  return hasEntries(analysis) && !Object.hasOwn(analysis.segments, identity)
 }
 
 /** `Approved black frames, 0:00 to 0:03.2, of C0012.MP4 as a cut; 1 cut added`. */

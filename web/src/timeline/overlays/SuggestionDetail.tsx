@@ -1,7 +1,15 @@
 import { Icon } from '../../ui/Icon'
 import type { MarkModel } from './control'
 import { kindIcon } from './SuggestionLane'
-import { STATE_GLYPH, STATE_WORD, kindWords, segmentLength, segmentSpan } from './suggestions'
+import {
+  LEGEND_KINDS,
+  LEGEND_STATES,
+  STATE_GLYPH,
+  STATE_WORD,
+  kindWords,
+  segmentLength,
+  segmentSpan,
+} from './suggestions'
 
 /*
  * The selected mark's detail: the clip, the kind in words, the span and length, the
@@ -85,5 +93,31 @@ export function SuggestionDetail({
       )}
       {refusal !== null && <p className="sg-refusal">{refusal}</p>}
     </section>
+  )
+}
+
+/**
+ * What the marks' icons and glyphs mean, in words, under the lane: a mark too narrow for
+ * words shows only an icon and a glyph, and a title does not exist on touch.
+ */
+export function Legend() {
+  return (
+    <p className="sg-legend sg-note">
+      <span className="sg-legend-group">
+        {LEGEND_KINDS.map((kind) => (
+          <span key={kind} className="sg-legend-item">
+            <Icon name={kindIcon(kind)} size={16} />
+            {kindWords(kind)}
+          </span>
+        ))}
+      </span>
+      <span className="sg-legend-group">
+        {LEGEND_STATES.map((state) => (
+          <span key={state} className="sg-legend-item">
+            <span aria-hidden="true">{STATE_GLYPH[state]}</span> {STATE_WORD[state]}
+          </span>
+        ))}
+      </span>
+    </p>
   )
 }

@@ -369,8 +369,8 @@ src/
 │   ├── Timeline.tsx      the open Timeline: the picture, transport, zoom and the track; Track.tsx, Filmstrip.tsx, Playhead.tsx
 │   ├── useTimelineVideo.ts  the one <video>: src swaps, coalesced seeks, Play through cuts and clips
 │   ├── useVisibleRange.ts   the track scroller's range, once per frame
-│   ├── overlays/         the analysis lane (`timeline-overlays`): suggestions under their clips; approve and dismiss
-│   │   ├── suggestions.ts       a suggestion's state from the cuts, the approval check, the A / R keys, stacking, roving order, words (pure, + suggestions.test.ts)
+│   ├── overlays/         the analysis lane (`timeline-overlays`): suggestions under their clips; approval and dismissal (inert until Edit mode mounts the Timeline)
+│   │   ├── suggestions.ts       a suggestion's state from the cuts, the approval check, the decisions, the A / R keys, stacking over the track, roving order, words (pure, + suggestions.test.ts)
 │   │   ├── control.ts           what the Timeline is given (`analysis`): the cuts as they are, the dismissals, how to decide (types)
 │   │   ├── useAnalysis.ts       the one read of the analysis, when the track mounts
 │   │   ├── useSuggestions.tsx   the hook `Timeline` calls: marks, lane, notes and the selected detail
@@ -711,9 +711,12 @@ under `npm test`.
 
 **The analysis lane** (`timeline-overlays`, `src/timeline/overlays/`) draws the event's cached suggestions
 (`GET …/analysis`, read once when the track is shown) as buttons under their clips. A suggestion's state
-(pending, cut, partly cut, dismissed) is derived from the clip's cuts, never stored; **A** approves and **R**
-dismisses a focused mark (never from a text field), and the detail under the track has the same two as buttons.
-Approval is Edit mode's `cut-add` with the suggestion's kind as the reason; dismissal lasts the page visit.
+(pending, cut, partly cut, dismissed) is derived from the clip's cuts, never stored, and a legend under the lane
+spells out its icons and glyphs. The event page shows the lane in the read view, where it decides nothing. Approving
+(Edit mode's `cut-add` with the suggestion's kind as the reason, **A** on a focused mark, never from a text field) and
+dismissing (**R**, for the page visit only) are written against `AnalysisControl.decide` (`decideApprove` and
+`decideDismiss` in `suggestions.ts`, tested under `npm test`) but inert until a Timeline is mounted on Edit mode's
+draft, which arrives with `timeline-trim`.
 
 Movie playback is checked ad hoc in Chrome (Playwright's channel `chrome`) or Firefox,
 never in Playwright's bundled Chromium, which cannot decode H.264 and would make a

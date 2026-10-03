@@ -10,8 +10,6 @@ import { Timeline } from './Timeline'
 import { NO_CLIPS } from './labels'
 import { omittedWords, readiness, sectionState, shownClips, trackClips } from './layout'
 
-const NO_CUTS: readonly never[] = []
-
 /*
  * The event page's Timeline section (read view only): a heading and one button. Closed,
  * it holds nothing: no video, no request. Open, it shows what the clips' proxies allow:
@@ -20,6 +18,9 @@ const NO_CUTS: readonly never[] = []
  * start is the proxy job, by the Prepare button. A Refresh or Edit mode replaces the
  * page's content, so the section is closed again afterwards.
  */
+
+const NO_CUTS: readonly never[] = []
+
 export function TimelineSection({
   eventId,
   event,

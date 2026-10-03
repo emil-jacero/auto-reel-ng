@@ -52,8 +52,8 @@ carry over:
   touch and the one for assistive technology).
 - **Honest empty states.** "Not analyzed" (no cache entry for the event or clip, with the `auto-reel analyze`
   command), "Analyzed, nothing found", and "Suggestions could not be read" (a note, the timeline stays usable).
-- **Spec and docs**: ADDED requirements in `event-timeline` (the lane, keyboard and accessibility) and
-  `web-app` (approval, dismissal); D-20 gains the analysis-overlay decisions; HLD §4.5
+- **Spec and docs**: ADDED requirements in `event-timeline` (the lane, keyboard and accessibility);
+  the `web-app` requirements for approval and dismissal wait for the Edit-mode mount; D-20 gains the analysis-overlay decisions; HLD §4.5
   and §4.10 notes; `web/README.md` file tree.
 
 ## Non-goals
@@ -79,11 +79,12 @@ None.
 - `event-timeline` (added by `timeline-view`):
   - ADDED `Requirement: The Timeline shows the event's analysis suggestions beside its clips`
   - ADDED `Requirement: Suggestions are operable by keyboard and never shown by colour alone`
-- `web-app`:
-  - ADDED `Requirement: A suggestion is approved as a cut through Edit mode's draft`
-  - ADDED `Requirement: A suggestion is dismissed for the page visit, never saved`
 
-  All are additions (no existing requirement's text changes), so they cannot collide with `timeline-trim`'s
+  The approval and dismissal requirements (`web-app`) are **not** part of this change: no Timeline is mounted on
+  Edit mode's draft until `timeline-trim`, so they are kept in `design.md` ("Deferred to the change that mounts the
+  Timeline on Edit mode's draft") for the change that mounts it.
+
+  Both are additions (no existing requirement's text changes), so they cannot collide with `timeline-trim`'s
   MODIFIED blocks of "The event page offers a Timeline that loads nothing until it is opened" and "The track lays
   the clips out by their proxies' lengths, with the chapters and the cuts", nor with `clip-preview-proxy`'s
   edits of the preview requirements. "Edit mode lists, adds and removes a clip's cuts", "Saving an edit writes
@@ -96,7 +97,7 @@ None.
   - `src/api/analysis.ts` (new) and `analysis.test.ts`: the read, as `api/event.ts` does it.
   - `src/timeline/overlays/` (new, own files so `timeline-trim` can run in parallel): `suggestions.ts` and
     `suggestions.test.ts` (pure: state, stacking, approval check, keys, roving order, words), `useAnalysis.ts`,
-    `useSuggestions.ts` (the hook the Timeline calls: the lane, its height, the detail strip), `Dismissals.ts`
+    `useSuggestions.tsx` (the hook the Timeline calls: the lane, its height, the detail strip), `Dismissals.ts`
     (the page-level set), `SuggestionLane.tsx`, `SuggestionDetail.tsx`, `overlays.css`.
   - Small seams in files shared with `timeline-trim` and `clip-preview-proxy`, each additive and optional:
     `timeline/Timeline.tsx` (one optional `analysis` prop, the hook call, the strip under the track),
@@ -123,4 +124,4 @@ None.
   `timeline-view` alone, and so that the decisions are the last tasks; merging `timeline-trim` first lets the
   whole change be verified. Task 1.1 reads `main` and stops if the Edit-mode mount is missing when the
   decision tasks are reached, rather than adding a second mount.
-- **Size:** two capability deltas (two ADDED requirements each), one package, 10 tasks.
+- **Size:** one capability delta (two ADDED requirements), one package, 10 tasks.

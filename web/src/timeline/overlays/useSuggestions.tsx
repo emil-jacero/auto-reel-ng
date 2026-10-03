@@ -9,33 +9,26 @@ import { onGrid } from '../position'
 import type { Position } from '../position'
 import { useAnalysis } from './useAnalysis'
 import type { AnalysisControl, LaneSlot, LaneView, MarkModel } from './control'
-import { SuggestionDetail } from './SuggestionDetail'
+import { Legend, SuggestionDetail } from './SuggestionDetail'
 import { SuggestionLane } from './SuggestionLane'
 import type { ClipMarks } from './SuggestionLane'
 import {
   CUTS_WAIT_UNREADABLE,
   DISMISSAL_NOTE,
   READING_WORDS,
-  READ_ONLY_NOTE,
   UNREADABLE_TITLE,
-  alreadyCutWords,
-  approval,
-  approvedWords,
   clipNotAnalyzed,
+  decideApprove,
+  decideDismiss,
   dismissalKey,
-  dismissedWords,
   eventNote,
   neighbour,
-  notApprovedWords,
-  partlyCutWords,
-  restoreFirstWords,
-  restoredWords,
-  stackMarks,
+  placeMarks,
   stepOfKey,
   suggestionKey,
   suggestionState,
 } from './suggestions'
-import type { Suggestion } from './suggestions'
+import type { Decision, Suggestion } from './suggestions'
 
 /*
  * What the Timeline calls to carry the analysis lane (D-20, "Analysis overlays"): it reads
@@ -122,25 +115,24 @@ export function useSuggestions(
     })
   }, [read, cutsKnown, cutsOf, held, clips])
 
-  // Where each mark sits at this scale, and how many rows the lane needs for the busiest clip.
+  // Where each mark sits at this scale: stacked over the whole track (a mark's row never
+  // depends on which clips are drawn), and the rows the lane needs.
   const { groups, rows } = useMemo(() => {
     const limit = timeToPx(lay.totalMs, pps)
-    let most = 0
-    let anyNote = false
-    const placed = base.map((group): ClipMarks => {
-      anyNote ||= group.notAnalyzed
-      const spans = group.marks.map((mark) => ({
+    const spans = base.map((group) =>
+      group.marks.map((mark) => ({
         startMs: lay.startsMs[group.clipIndex] + Math.round(mark.segment.start * 1000),
         endMs: lay.startsMs[group.clipIndex] + Math.round(mark.segment.end * 1000),
-      }))
-      const stacked = stackMarks(spans, pps, MIN_MARK_PX, limit)
-      most = Math.max(most, stacked.count)
-      return {
+      })),
+    )
+    const stacked = placeMarks(spans, pps, MIN_MARK_PX, limit)
+    const placed = base.map(
+      (group, g): ClipMarks => ({
         ...group,
         marks: group.marks.map((mark, i): MarkModel => {
-          const box = stacked.placed[i]
-          const from = timeToPx(spans[i].startMs, pps)
-          const to = timeToPx(spans[i].endMs, pps)
+          const box = stacked.placed[g][i]
+          const from = timeToPx(spans[g][i].startMs, pps)
+          const to = timeToPx(spans[g][i].endMs, pps)
           return {
             ...mark,
             ...box,
@@ -148,9 +140,10 @@ export function useSuggestions(
             barWidth: Math.max(2, to - from),
           }
         }),
-      }
-    })
-    return { groups: placed, rows: Math.max(most, anyNote ? 1 : 0) }
+      }),
+    )
+    const anyNote = base.some((group) => group.notAnalyzed)
+    return { groups: placed, rows: Math.max(stacked.count, anyNote ? 1 : 0) }
   }, [base, lay, pps])
 
   const byId = useMemo(() => {
@@ -213,64 +206,59 @@ export function useSuggestions(
   const decide = control?.decide ?? null
   const nameOf = (mark: MarkModel) => clips[mark.clipIndex].name
 
-  const approve = (mark: MarkModel): boolean => {
-    if (decide === null) {
+  // The press a decision comes to is `decideApprove` / `decideDismiss` (pure, tested); this
+  // applies it. True when the press was acted on, so the key's default is prevented.
+  const apply = (mark: MarkModel, decision: Decision): boolean => {
+    if (decide === null || decision.kind === 'ignored') {
       return false
     }
-    const name = nameOf(mark)
-    if (mark.state === 'cut') {
-      decide.announce(alreadyCutWords(mark.segment, name))
-      return true
+    switch (decision.kind) {
+      case 'refused':
+        setRefusal({ id: mark.id, words: decision.words })
+        break
+      case 'approve':
+        setRefusal(null)
+        decide.onApprove(mark.identity, decision.span, decision.reason)
+        break
+      case 'dismiss':
+        dismissals?.dismiss(mark.id)
+        break
+      case 'restore':
+        dismissals?.restore(mark.id)
+        break
+      default:
+        break
     }
-    if (mark.state === 'dismissed') {
-      decide.announce(restoreFirstWords(mark.segment, name))
-      return true
-    }
-    if (decide.locked) {
-      return false
-    }
-    const listed = control?.cutsOf(mark.identity) ?? []
-    const checked = approval(listed, mark.segment, clips[mark.clipIndex].facts.durationMs / 1000)
-    if (!checked.ok) {
-      const words = notApprovedWords(checked.refusal)
-      setRefusal({ id: mark.id, words })
-      decide.announce(words)
-      return true
-    }
-    setRefusal(null)
-    decide.onApprove(mark.identity, { in: checked.in, out: checked.out }, mark.segment.kind)
-    decide.announce(approvedWords(mark.segment, name))
+    decide.announce(decision.words)
     return true
   }
 
-  const dismiss = (mark: MarkModel): boolean => {
-    if (decide === null || dismissals === undefined) {
-      return false
-    }
-    const name = nameOf(mark)
-    if (mark.state === 'dismissed') {
-      if (decide.locked) {
-        return false
-      }
-      dismissals.restore(mark.id)
-      decide.announce(restoredWords(mark.segment, name))
-      return true
-    }
-    if (mark.state === 'cut') {
-      decide.announce(alreadyCutWords(mark.segment, name))
-      return true
-    }
-    if (mark.state === 'partly-cut') {
-      decide.announce(partlyCutWords(mark.segment, name))
-      return true
-    }
-    if (decide.locked) {
-      return false
-    }
-    dismissals.dismiss(mark.id)
-    decide.announce(dismissedWords(mark.segment, name))
-    return true
-  }
+  const approve = (mark: MarkModel): boolean =>
+    decide !== null &&
+    apply(
+      mark,
+      decideApprove({
+        state: mark.state,
+        segment: mark.segment,
+        clipName: nameOf(mark),
+        locked: decide.locked,
+        listed: control?.cutsOf(mark.identity) ?? [],
+        length: clips[mark.clipIndex].facts.durationMs / 1000,
+      }),
+    )
+
+  const dismiss = (mark: MarkModel): boolean =>
+    decide !== null &&
+    dismissals !== undefined &&
+    apply(
+      mark,
+      decideDismiss({
+        state: mark.state,
+        segment: mark.segment,
+        clipName: nameOf(mark),
+        locked: decide.locked,
+      }),
+    )
 
   const onMarkKey = (mark: MarkModel, event: KeyboardEvent<HTMLButtonElement>) => {
     const plain = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
@@ -307,37 +295,39 @@ export function useSuggestions(
     rows === 0
       ? undefined
       : {
-      rows,
-      render: (view: LaneView) => (
-        <SuggestionLane
-          view={view}
-          groups={groups}
-          selectedId={selectedId}
-          keepId={keepId.current}
-          tabStop={tabStop}
-          decidable={(mark) =>
-            decide !== null &&
-            !decide.locked &&
-            (mark.state === 'pending' || mark.state === 'partly-cut' || mark.state === 'dismissed')
-          }
-          detailId={detailId}
-          register={register}
-          onSelect={(mark) => {
-            select(mark)
-            focusMark(mark)
-          }}
-          onKeyDown={onMarkKey}
-          onFocus={(id) => {
-            keepId.current = id
-          }}
-          onBlur={(id) => {
-            if (keepId.current === id) {
-              keepId.current = null
-            }
-          }}
-        />
-      ),
-    }
+          rows,
+          render: (view: LaneView) => (
+            <SuggestionLane
+              view={view}
+              groups={groups}
+              selectedId={selectedId}
+              keepId={keepId.current}
+              tabStop={tabStop}
+              decidable={(mark) =>
+                decide !== null &&
+                !decide.locked &&
+                (mark.state === 'pending' ||
+                  mark.state === 'partly-cut' ||
+                  mark.state === 'dismissed')
+              }
+              detailId={detailId}
+              register={register}
+              onSelect={(mark) => {
+                select(mark)
+                focusMark(mark)
+              }}
+              onKeyDown={onMarkKey}
+              onFocus={(id) => {
+                keepId.current = id
+              }}
+              onBlur={(id) => {
+                if (keepId.current === id) {
+                  keepId.current = null
+                }
+              }}
+            />
+          ),
+        }
 
   if (control === undefined) {
     return { lane: undefined, strip: null }
@@ -402,11 +392,8 @@ function Notes({
   return (
     <div className="sg-strip">
       {note !== null && <p className="sg-note">{note}</p>}
-      {any && (
-        <p className="sg-note">
-          {decide === null ? READ_ONLY_NOTE : DISMISSAL_NOTE}
-        </p>
-      )}
+      {any && <Legend />}
+      {any && decide !== null && <p className="sg-note">{DISMISSAL_NOTE}</p>}
       {detail}
     </div>
   )

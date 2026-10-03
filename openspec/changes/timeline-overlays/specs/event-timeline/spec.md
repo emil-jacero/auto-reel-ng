@@ -15,7 +15,7 @@ A mark SHALL have, as text, its kind in words (Black frames, White frames, Froze
 kind as written), its start, its end and its length, written as times in a clip are everywhere ("Times are
 written one way on every screen"), and, as a glyph and a word, its state. A mark SHALL be at least 44 CSS
 pixels wide to press, whatever width its span has at the current zoom, and marks that would overlap SHALL stack
-and never hide each other; the lane's height SHALL NOT change as the track scrolls. Only the marks of the clips in view SHALL be drawn, plus the one that has keyboard
+and never hide each other, including the last mark of one clip and the first of the next; the lane's height SHALL NOT change as the track scrolls. Only the marks of the clips in view SHALL be drawn, plus the one that has keyboard
 focus.
 
 A suggestion's state SHALL be derived from the clip's cuts, never remembered: **cut** when the cuts the clip
@@ -25,8 +25,8 @@ dismissed it during this page visit and no cut covers any of it; otherwise **pen
 cut that covered a suggestion SHALL return it to pending with no other action, and a cut saved in an earlier
 session SHALL show its suggestion as cut on the first read.
 
-The lane SHALL tell the three kinds of "no suggestions" apart: an event whose analysis was never run SHALL say
-"Not analyzed" and name the command that runs it; an analysed event with nothing found SHALL say nothing was
+The lane SHALL tell the three kinds of "no suggestions" apart: an event whose analysis was never run (no clip has a cached entry, whatever the service's `analyzed` flag says: a
+rendered event has a cache directory) SHALL say "Not analyzed" and name the command that runs it; an analysed event with nothing found SHALL say nothing was
 found; and in an analysed event a clip with no cached analysis (its file changed since) SHALL be marked "Not
 analyzed" in its own row, while a clip analysed with nothing found SHALL show no marks. A read that fails SHALL
 leave the timeline usable and show a note, not an alert, that says the suggestions could not be read and why,
@@ -74,6 +74,18 @@ in the words the page uses for its other reads.
 - **WHEN** a clip lists a cut from 0 to 1 s and a black suggestion spans 0 to 3.2 s
 - **THEN** the suggestion reads partly cut
 
+#### Scenario: Marks of adjacent clips never hide each other
+
+- **WHEN** a clip ends with a black span and the next clip starts with one, so that their 44 px marks reach into
+  each other at the current zoom
+- **THEN** the two marks sit on two rows and each is fully visible and pressable
+
+#### Scenario: A rendered but never analysed event
+
+- **WHEN** an event has been rendered (its cache directory holds only the render manifest) and was never analysed
+- **THEN** the lane says "Not analyzed" and names `auto-reel analyze`, and no clip row says "Not analyzed" or that
+  nothing was found
+
 #### Scenario: Never analysed, analysed clean, and a stale clip
 
 - **WHEN** one event has no analysis cache, a second was analysed and nothing was found, and in a third the
@@ -104,16 +116,12 @@ The analysis lane of each visible clip SHALL be one group, named "Analysis sugge
 as the clip's row names it, and SHALL be one stop in the keyboard order: ArrowLeft and ArrowRight SHALL move
 focus to the previous and next suggestion of the clip, and Home and End to its first and last. Moving to a
 suggestion outside the part of the timeline in view SHALL bring it into view and focus it. Selecting a
-mark (press, Enter, Space or arriving by arrow) SHALL show its detail with Approve, Dismiss or Restore as
-buttons that are large enough to touch ("Every control is large enough to touch") and SHALL move the timeline's
-playhead to the suggestion's start without starting playback.
+mark (press, Enter, Space or arriving by arrow) SHALL show its detail (the clip, the kind in words, the span, the
+length and the state in words) and SHALL move the timeline's playhead to the suggestion's start without starting
+playback. The lane SHALL offer no decision outside a Timeline that is given one.
 
-The keys **A** and **R** SHALL act only on a focused mark: never from a text field, never as page-wide
-shortcuts. They SHALL be ignored when Ctrl, Meta or Alt is held, on a key repeat and during an IME composition,
-and SHALL prevent the browser's default only when they act. A mark SHALL declare its keys to assistive
-technology while a decision is available. Focus SHALL stay on the mark after a decision.
-
-A suggestion's kind and state SHALL each be shown as words and as an icon or glyph, never by colour alone
+A suggestion's kind and state SHALL each be shown as words and as an icon or glyph, and a legend under the lane
+SHALL spell the icons and glyphs out in words, never by colour alone
 ("State is never shown by color alone"), with text contrast of at least 4.5:1 and a visible focus indicator in
 both colour schemes. When the system asks for reduced motion, the lane SHALL NOT animate. In a window 390 CSS
 pixels wide, and down to 320, the lane and its detail SHALL NOT make the page scroll horizontally.
@@ -127,17 +135,6 @@ pixels wide, and down to 320, the lane and its detail SHALL NOT make the page sc
 
 - **WHEN** the timeline is zoomed in and the next suggestion lies beyond the right edge
 - **THEN** ArrowRight scrolls it into view and focuses it
-
-#### Scenario: A and R work on a focused mark only
-
-- **WHEN** the operator types "a" and "r" into the title field of Edit mode, then focuses a pending mark and
-  presses A
-- **THEN** typing in the field decides nothing, and A on the mark approves the suggestion
-
-#### Scenario: Modified keys are left alone
-
-- **WHEN** a mark is focused and the operator presses Ctrl+A, Alt+R or holds A so that it repeats
-- **THEN** nothing is approved or dismissed more than the first plain press, and Ctrl+A keeps its browser meaning
 
 #### Scenario: The lane reads in grayscale
 
@@ -153,5 +150,5 @@ pixels wide, and down to 320, the lane and its detail SHALL NOT make the page sc
 
 #### Scenario: Reduced motion
 
-- **WHEN** the system asks for reduced motion and a suggestion is approved
+- **WHEN** the system asks for reduced motion and a mark is selected
 - **THEN** nothing in the lane or its detail animates
