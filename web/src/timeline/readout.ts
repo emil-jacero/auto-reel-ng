@@ -1,5 +1,5 @@
 import { clockCell, clockScale } from '../clock.ts'
-import type { ClockCell } from '../clock.ts'
+import type { ClockCell, ClockScale } from '../clock.ts'
 import type { Layout } from './model.ts'
 import { clampPosition, globalMs } from './position.ts'
 import type { Position } from './position.ts'
@@ -21,15 +21,26 @@ export type Readout = {
   event: ReadoutPair
 }
 
+type Clips = readonly { name: string; facts: { durationMs: number } }[]
+export type ReadoutScales = { clip: ClockScale; event: ClockScale }
+
+/** The two scales depend only on the clips and layout, so a caller can hold them across ticks. */
+export function readoutScales(clips: Clips, lay: Layout): ReadoutScales {
+  let longest = 0
+  for (const c of clips) longest = Math.max(longest, c.facts.durationMs)
+  return { clip: clockScale(longest), event: clockScale(lay.totalMs) }
+}
+
 export function readoutOf(
   at: Position,
-  clips: readonly { name: string; facts: { durationMs: number } }[],
+  clips: Clips,
   lay: Layout,
+  scales: ReadoutScales = readoutScales(clips, lay),
 ): Readout {
   const here = clampPosition(clips, at)
   const clip = clips[here.clip]
-  const clipScale = clockScale(Math.max(...clips.map((c) => c.facts.durationMs)))
-  const eventScale = clockScale(lay.totalMs)
+  const clipScale = scales.clip
+  const eventScale = scales.event
   return {
     name: clip.name,
     clip: {

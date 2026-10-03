@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 
 import { handleName, handleValueText, NOT_IN_CLIP, stoppedWords } from '../cuts/times'
@@ -293,6 +293,7 @@ const TrimHandle = memo(function TrimHandle({
   const id = handleId(cut.key, edge)
   const number = at + 1
   const el = useRef<HTMLDivElement>(null)
+  const tip = useRef<HTMLSpanElement>(null)
   const active = useRef<{
     pointerId: number
     startX: number
@@ -349,6 +350,24 @@ const TrimHandle = memo(function TrimHandle({
       el.current.releasePointerCapture(a.pointerId)
     }
   }
+
+  // The tip and its snap words hang centred on the edge; near an end of the track they would
+  // be cut by the track's own edge, so slide them (together) back inside it.
+  useLayoutEffect(() => {
+    const box = tip.current
+    const view = box?.closest('.tl-viewport')
+    if (!box || !view) return
+    box.style.setProperty('--tip-shift', '0px')
+    const room = view.getBoundingClientRect()
+    const left = room.left + view.clientLeft
+    const right = left + view.clientWidth
+    const own = box.getBoundingClientRect()
+    const words = box.querySelector('.tl-trim-snap')?.getBoundingClientRect()
+    const lo = Math.min(own.left, words?.left ?? own.left)
+    const hi = Math.max(own.right, words?.right ?? own.right)
+    const shift = lo < left ? left - lo : hi > right ? right - hi : 0
+    box.style.setProperty('--tip-shift', `${Math.round(shift)}px`)
+  })
 
   // A save that starts ends a drag in progress, as if Escape were pressed.
   useEffect(() => {
@@ -548,7 +567,7 @@ const TrimHandle = memo(function TrimHandle({
     >
       <span className="tl-trim-bar" aria-hidden="true" />
       {(dragging !== null || focused) && (
-        <span className="tl-trim-tip" aria-hidden="true">
+        <span className="tl-trim-tip" aria-hidden="true" ref={tip}>
           <ClockTime cell={tipOf(shownMs, facts.durationMs)} />
           {dragging !== null && dragging.words !== '' && (
             <span className="tl-trim-snap">{dragging.words}</span>

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { layout } from './model.ts'
-import { readoutOf, readoutWords, tipOf } from './readout.ts'
+import { readoutOf, readoutScales, readoutWords, tipOf } from './readout.ts'
 
 const clips = (...seconds: number[]) =>
   seconds.map((s, i) => ({
@@ -82,5 +82,14 @@ describe('the trim tip', () => {
 
   it('holds an edge past the clip to the clip\'s end', () => {
     assert.equal(tipOf(7000, 6020).text, '0:06.020')
+  })
+})
+
+describe('held readout scales', () => {
+  it('give the same readout as scales worked out each time', () => {
+    const c = clips(8, 12)
+    const lay = layout(c.map((x) => x.facts))
+    const at = { clip: 1, ms: 4321 }
+    assert.deepEqual(readoutOf(at, c, lay, readoutScales(c, lay)), readoutOf(at, c, lay))
   })
 })
