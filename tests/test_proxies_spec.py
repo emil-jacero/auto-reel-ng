@@ -77,9 +77,9 @@ def test_a_non_positive_coded_size_is_refused() -> None:
 
 @pytest.mark.parametrize(
     ("fps", "frames"),
-    [(25.0, 25), (50.0, 50), (30000 / 1001, 30), (24000 / 1001, 24), (0.2, 1), (29.97, 30)],
+    [(25.0, 12), (50.0, 25), (30000 / 1001, 15), (24000 / 1001, 12), (0.2, 1), (29.97, 15)],
 )
-def test_one_keyframe_interval_is_a_second_of_frames(fps: float, frames: int) -> None:
+def test_one_keyframe_interval_is_half_a_second_of_frames(fps: float, frames: int) -> None:
     assert gop_frames(fps) == frames
 
 
@@ -87,9 +87,9 @@ def test_the_audio_encoder_is_the_native_one() -> None:
     assert spec.PROXY_AUDIO_ENCODER == "aac"
 
 
-def test_the_contract_carries_the_values_e1_locked() -> None:
-    assert spec.PROXY_BFRAMES == 2
-    assert spec.PROXY_GOP_SECONDS == 1
+def test_the_contract_carries_the_shape_e1_measured_and_the_supervisor_locked() -> None:
+    assert spec.PROXY_BFRAMES == 0
+    assert spec.PROXY_GOP_SECONDS == 0.5
 
 
 # --------------------------------------------------------------------------- #
@@ -148,8 +148,8 @@ def test_the_key_changes_with_the_proxy_version(
 @pytest.mark.parametrize(
     ("constant", "value"),
     [
-        ("PROXY_BFRAMES", 0),
-        ("PROXY_GOP_SECONDS", 2),
+        ("PROXY_BFRAMES", 2),
+        ("PROXY_GOP_SECONDS", 1),
         ("PROXY_CRF", 28),
         ("PROXY_SHORT_SIDE", 720),
         ("PROXY_PRESET", "medium"),

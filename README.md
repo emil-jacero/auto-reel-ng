@@ -605,7 +605,7 @@ Every clip on disk can get one small **proxy** (decision D-21): a 540p H.264 + A
 in about a frame and plays with sound in Chrome and Firefox, where the original cannot (a random seek in a
 camera original takes a median 78 to 1457 ms, and Firefox plays none of the Sony PCM audio). The proxy is the
 clip as a player shows it: square pixels, the container's display rotation applied (a phone clip held upright
-stays portrait), short side 540 and never upscaled, two B-frames and a keyframe every second, the original's
+stays portrait), short side 540 and never upscaled, no B-frames and a keyframe every half second, the original's
 timestamps (a variable-frame-rate clip stays variable), and stereo AAC at 128 kb/s from ffmpeg's native encoder
 (a clip with no audio gets none). The editorial `rotate` is not baked in, and the source clip is only read.
 
@@ -632,8 +632,7 @@ start. An entry is a directory named by a hash of the clip's file name (not its 
 proxy version, holding `proxy.mp4` and `facts.json` (the clip's duration, frame rate, size and rotation, so a
 reader needs no probe); a changed clip gets a new entry by itself, while moving, copying or remounting the library
 keeps them. Entries are built in a hidden `.<key>.<id>.part` directory and renamed whole, so an interrupted run
-never leaves a half proxy. Plan **about 0.6 to 0.75 GB per footage hour (the research estimated 32 to 40 GB for a
-52-hour archive; plan for 50 GB) on a local disk, not the USB library drive**; nothing is evicted, and deleting the directory resets it.
+never leaves a half proxy. Plan **about 0.9 GB per footage hour (about 46 GB for the 52-hour archive; plan for 50 GB) on a local disk, not the USB library drive**; nothing is evicted, and deleting the directory resets it.
 When `serve` runs as another user or in a container it has its own `XDG_CACHE_HOME`: set `proxies.cache_dir` in
 the project's `config.yaml` so both sides use one directory (the compose stack mounts `./data/cache`, so its
 proxies land in `./data/cache/auto-reel/proxies/`).

@@ -168,38 +168,37 @@ def test_a_1080p25_clip_gets_the_contract(
     assert (video["codec_name"], video["profile"], video["pix_fmt"]) == ("h264", "High", "yuv420p")
     assert (video["width"], video["height"]) == (960, 540)
     assert video.get("sample_aspect_ratio", "1:1") in ("1:1", "N/A")
-    assert 0 <= video["has_b_frames"] <= 2
+    assert video["has_b_frames"] == 0
     assert (audio["codec_name"], audio["channels"]) == ("aac", 2)
     assert audio["profile"] == "LC"
     flags = [p["flags"] for p in packets(runtime, entry.proxy_path)]
     assert len(flags) == 50
-    assert [i for i, f in enumerate(flags) if f.startswith("K")] == [0, 25]
+    assert [i for i, f in enumerate(flags) if f.startswith("K")] == [0, 12, 24, 36, 48]
     boxes = top_level_boxes(entry.proxy_path)
     assert boxes.index("moov") < boxes.index("mdat")
     assert entry.facts.frames == 50 and entry.facts.audio_codec == "aac"
 
 
-def test_a_50fps_clip_gets_a_keyframe_every_50_frames(
+def test_a_50fps_clip_gets_a_keyframe_every_25_frames(
     runtime: FfmpegRuntime, make_clip: MakeClip, cache: Path
 ) -> None:
     clip = make_clip("fifty.mp4", width=1280, height=720, fps=50, duration=3.0)
     entry = proxy_of(runtime, clip, cache)
     flags = [p["flags"] for p in packets(runtime, entry.proxy_path)]
     assert len(flags) == 150
-    assert [i for i, f in enumerate(flags) if f.startswith("K")] == [0, 50, 100]
+    assert [i for i, f in enumerate(flags) if f.startswith("K")] == list(range(0, 150, 25))
 
 
-def test_the_encode_really_uses_b_frames_within_the_limit(
+def test_the_encode_uses_no_b_frames(
     runtime: FfmpegRuntime, make_clip: MakeClip, cache: Path
 ) -> None:
     clip = make_clip("c.mp4", width=640, height=360, fps=25, duration=2.0)
     entry = proxy_of(runtime, clip, cache)
-    pts = [p for p in packets(runtime, entry.proxy_path)]
-    # B-frames reorder frames: some packet's presentation time is earlier than its predecessor's.
-    reordered = any(float(b["pts_time"]) < float(a["pts_time"]) for a, b in zip(pts, pts[1:]))
-    assert reordered
+    pts = [float(p["pts_time"]) for p in packets(runtime, entry.proxy_path)]
+    # No B-frames: decode order is presentation order, so the timestamps only ever increase.
+    assert pts == sorted(pts)
     (video,) = stream_of(probe_json(runtime, entry.proxy_path), "video")
-    assert video["has_b_frames"] == 2
+    assert video["has_b_frames"] == 0
 
 
 def test_portrait_and_small_clips(runtime: FfmpegRuntime, make_clip: MakeClip, cache: Path) -> None:

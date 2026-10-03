@@ -4,8 +4,8 @@ GUI v2's timeline editor (HLD §4.10) must scrub, step and trim inside a clip. T
 (`research/v2` proxies, PCM-audio and timeline reports, 2026-10-02) measured that the **originals cannot
 do that**: a random seek in the archive's own files takes a median 78 to 1457 ms, a held scrub shows 1 to 12
 frames per second, and Firefox plays none of the Sony PCM audio that makes up 47 % of the archive's hours
-(HLD D-16). A small derived **proxy** fixes all three. At 540p, H.264, a one-second GOP and AAC audio, a
-seek is 17 to 30 ms, a scrub runs at a median 35 to 39 frames per second, and every one of 22 sample
+(HLD D-16). A small derived **proxy** fixes all three. At 540p, H.264, a half-second GOP and AAC audio, a
+seek is 17 to 30 ms, a scrub runs at a median 41 to 44 frames per second (E1), and every one of 22 sample
 originals plays with picture and sound in Chrome, Firefox and WebKit.
 
 This change is the **engine half** of the proxy work (Principle V): produce one proxy per clip into a
@@ -25,9 +25,10 @@ reads probe-free). The proxy run already probes each clip, so it writes them to 
 proxy, and later changes read that file with a `stat` and a JSON read.
 
 Gate: **E1** (`proxy-shape-recheck`, the experiment that fixes the GOP length and the B-frame count on the
-final browsers). E1 has run: it locked **`-bf 2` and a one-second GOP** (G1 passes for all three shapes it measured; `-bf 2` is the
-cheapest, about 0.83 of the `-bf 0` file size). This change was written on the research defaults (`-bf 0`) and its
-first task records the switch to E1's values before any code is written.
+final browsers). E1 has run. G1 passes for all three shapes it measured, but `-bf 2` with a one-second GOP clears the scrub gate by
+only about 1 fps and Panasonic 1080p50 (about 24 % of the archive) stays below 30 fps on both one-second shapes. The
+supervisor therefore locked the one measured shape that clears every source in both browsers: **`-bf 0` and a
+half-second GOP** (scrub 40.8 / 44.1 fps, step p90 about 30 ms, A/V 0 ms, about 46 GB for the archive).
 
 ## What Changes
 
@@ -42,8 +43,8 @@ first task records the switch to E1's values before any code is written.
     **CPU** (software decode, libx264) for everything else. A hybrid failure, or a hybrid output that fails
     verification, is redone once on the CPU.
   - The proxy contract (D-21): MP4 `+faststart`, H.264 High yuv420p, square pixels with the display
-    rotation applied, short side 540 and never upscaled, x264 `veryfast` CRF 26, two B-frames (`-bf 2`), a keyframe
-    every `round(fps)` frames with no scene-cut keyframes, timestamps passed through, and AAC-LC 128 kb/s
+    rotation applied, short side 540 and never upscaled, x264 `veryfast` CRF 26, no B-frames (`-bf 0`), a keyframe
+    every `round(fps / 2)` frames with no scene-cut keyframes, timestamps passed through, and AAC-LC 128 kb/s
     stereo from ffmpeg's **native** `aac` encoder (never `libfdk_aac`, the D-1 blocker).
   - Post-encode verification, `facts.json`, `PROXY_VERSION`, and the cache entry
     `<cache_dir>/<key>/{proxy.mp4,facts.json}`, built in a hidden `.part` directory and renamed whole.
@@ -73,7 +74,7 @@ a proxy.
 - **Any API route or state field** (`proxy-state-read`, `proxy-media-endpoints`) and any `web/` code.
 - **Playing the original with sound in Firefox** (the virtual remux). The original stays silent there, with
   the existing D-16 note. No live transcode, no `<audio>` sidecar, no HLS.
-- **A size cap, eviction, `--prune` of orphan entries.** The whole archive costs about 40 GB at this
+- **A size cap, eviction, `--prune` of orphan entries.** The whole archive costs about 46 GB at this
   setting, planned at 50 GB; entries are immutable. A prune is the parked `proxy-prune`.
 - **Hardware encoders for the proxy.** Pure VAAPI encode was 1.9 times bigger on 1080p50 and fails on legacy
   MPEG-4; the encode is always libx264.
@@ -134,8 +135,8 @@ a proxy.
   - **no Alembic migration**, no rescan, nothing in Postgres
 - **New third-party dependencies:** none. ffmpeg, `hashlib`, `json`, `os`, `shutil` and
   `concurrent.futures` are all already in use.
-- **Disk (measured, `research/v2`):** about 0.75 GB per footage hour; the whole archive (5,574 clips,
-  52.1 h) about 40 GB, plan for 50 GB. Cache on the local disk, not on the USB library drive.
+- **Disk (measured, `research/v2`):** about 0.9 GB per footage hour; the whole archive (5,574 clips,
+  52.1 h) about 46 GB, plan for 50 GB. Cache on the local disk, not on the USB library drive.
 - **Size (Principle VIII):** one small engine package, one subcommand, two capability deltas, 10 tasks.
   The sprite, the job, the read model, the routes and every screen are separate changes.
 - **Dependencies (gate):** E1 fixes the GOP length and B-frame count (constants only). `filmstrip-sprites`,

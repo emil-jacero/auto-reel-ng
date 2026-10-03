@@ -13,9 +13,9 @@ For a clip, the system SHALL produce one file, `proxy.mp4`, with these propertie
 - **Container:** MP4 with the index at the front (`+faststart`), so a browser can start playing and seeking
   after the first request.
 - **Video:** one stream, H.264 High profile, `yuv420p`, encoded by libx264 at preset `veryfast` and CRF 26. The
-  proxy SHALL use **at most two consecutive B-frames** (`-bf 2`, the shape experiment E1 locked) and SHALL place
-  a keyframe every `round(fps)` frames, where `fps` is the clip's probed frame rate, with no extra keyframes at
-  scene cuts. The proxy SHALL NOT be tuned for decode speed.
+  proxy SHALL use **no B-frames** (`-bf 0`) and SHALL place a keyframe every `round(fps / 2)` frames (half a
+  second), where `fps` is the clip's probed frame rate, with no extra keyframes at scene cuts. This is the one shape
+  experiment E1 measured that clears the scrub gate on every source in both browsers. The proxy SHALL NOT be tuned for decode speed.
 - **Timestamps:** the frames keep the source's timestamps (no frame is dropped, duplicated or retimed), so a
   variable-frame-rate clip stays variable and a time in the proxy is the same time in the source.
 - **Audio:** when the clip has an audio stream, exactly one stream, AAC-LC at 128 kb/s, stereo, at the source's
@@ -34,7 +34,7 @@ read as current.
 #### Scenario: A Sony clip with PCM audio gets AAC
 - **WHEN** the proxy of `sony-xavc-1080p25-pcm.mp4` (H.264 1920x1080, 25 fps, `pcm_s16be` stereo) is made
 - **THEN** `proxy.mp4` has one H.264 High `yuv420p` stream of 960x540 and one AAC-LC stream with two channels at
-  48000 Hz, its index precedes its media data, and its video uses at most two consecutive B-frames and has a keyframe every 25 frames
+  48000 Hz, its index precedes its media data, and its video uses no B-frames and has a keyframe every 12 frames
 
 #### Scenario: A clip without audio gets none
 - **WHEN** the proxy of a clip that has only a video stream is made
@@ -54,9 +54,9 @@ read as current.
 - **THEN** the proxy has as many video frames as the source, and its video starts and ends at the source's times
   within one frame
 
-#### Scenario: A one-second keyframe interval follows the frame rate
+#### Scenario: A half-second keyframe interval follows the frame rate
 - **WHEN** the proxies of a 25 fps clip and of a 50 fps clip are made
-- **THEN** their keyframes lie every 25 and every 50 frames, which is one second each
+- **THEN** their keyframes lie every 12 and every 25 frames, which is half a second each
 
 #### Scenario: Editorial rotation is not baked in
 - **WHEN** a clip whose `reel.yaml` entry sets `rotate: 90` has its proxy made
@@ -202,7 +202,7 @@ container that declares no frame count) is not made, and that is the only case i
 ### Requirement: A proxy of a clip shorter than a second is made like any other
 
 A clip whose probed duration is positive SHALL get a proxy, however short, including a clip of one frame. The
-keyframe interval SHALL stay `round(fps)` frames, so such a proxy has one keyframe, at its start. The verification
+keyframe interval SHALL stay `round(fps / 2)` frames, so a proxy of fewer frames than that has one keyframe, at its start. The verification
 SHALL apply unchanged. A clip with no positive probed duration SHALL fail with a typed proxy error, as a probe
 failure does; the system SHALL NOT make a proxy of an assumed length.
 
