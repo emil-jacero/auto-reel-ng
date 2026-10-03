@@ -27,6 +27,75 @@ from ..persistence.models import JobStatus
 from ..staleness.gate import StalenessReason
 
 
+class ProxyState(StrEnum):
+    """A clip's proxy state: a closed vocabulary the schema publishes (D-8, §4.10, D-21).
+
+    ``absent``: no usable entry and nothing recorded (never prepared, or the file or the
+    proxy version changed, which moves the cache key). ``ready``: a usable proxy, filmstrip
+    and facts. ``stale``: an entry exists for the clip as it is now but cannot be used
+    (damaged facts, an empty file). ``failed``: the last attempt failed and nothing usable
+    exists. The wire values are the engine's :class:`~auto_reel_ng.proxies.ProxyStatus`.
+    """
+
+    ABSENT = "absent"
+    READY = "ready"
+    STALE = "stale"
+    FAILED = "failed"
+
+
+class ProxyFilmstripOut(BaseModel):
+    """The filmstrip sprite's geometry, as the proxy job recorded it.
+
+    Tile ``k`` is at column ``k % columns`` and row ``k // columns`` of the sprite, each
+    ``tile_width`` by ``tile_height`` pixels; ``interval`` is the whole seconds of footage per
+    tile and ``tiles`` the count.
+    """
+
+    tile_width: int
+    tile_height: int
+    columns: int
+    tiles: int
+    interval: int
+
+
+class ProxyFactsOut(BaseModel):
+    """The media facts the proxy job recorded for a clip, copied, never computed or defaulted.
+
+    ``duration`` is the **source's** probed duration (seconds), not the proxy's, which can be
+    a few tens of milliseconds longer. ``fps_num``/``fps_den`` are the frame rate as the exact
+    fraction (30000/1001, not 29.97). ``vfr`` is ``None`` when the container gave no average
+    rate to compare. ``width``/``height`` are the proxy's displayed size (sample aspect ratio
+    and display rotation applied). ``rotation`` is the source's display rotation as the probe
+    reported it (0 to 359), ``None`` when the source declares none; ``audio_codec`` is the
+    source's, ``None`` when it has no audio.
+    """
+
+    duration: float
+    fps_num: int
+    fps_den: int
+    vfr: Optional[bool]
+    width: int
+    height: int
+    rotation: Optional[int]
+    audio_codec: Optional[str]
+    filmstrip: ProxyFilmstripOut
+
+
+class ProxyOut(BaseModel):
+    """A clip's proxy state, read from the proxy cache with ``stat`` and one JSON read.
+
+    ``facts`` and ``version`` are set only when ``state`` is ``ready``: ``version`` is the
+    proxy file's entity tag without quotes (``"{size:x}-{mtime_ns:x}"``), the tag the media
+    routes send, so a client can put it in the media URL as ``v`` (D-15). ``reason`` is set
+    only when ``failed``: one line, no server path. All three are nullable and optional.
+    """
+
+    state: ProxyState
+    facts: Optional[ProxyFactsOut] = None
+    version: Optional[str] = None
+    reason: Optional[str] = None
+
+
 class ClipOut(BaseModel):
     """One clip: identity, reconcile status, and the file facts a reorder view needs.
 
@@ -37,12 +106,19 @@ class ClipOut(BaseModel):
     document references but disk does not have: absence is reported, never fabricated as
     a zero or an epoch (Principle I).
 
-    ``duration`` (seconds) is the one media fact, and it is **not probed here**: it is the
+    ``duration`` (seconds) is the first media fact, and it is **not probed here**: it is the
     number the thumbnail operation measured for this exact file (name, size, mtime), read
     from the thumbnail cache's sidecar. ``None`` means unknown — a missing clip, a
     thumbnail not yet made for the file as it is now, an unusable sidecar or
     ``thumbnails`` configuration — never zero or a guess. It is the probe's number, so a
     browser may read a few tens of milliseconds more from the same file.
+
+    ``proxy`` is the second media-fact exception, again **not probed here**: it is the state
+    of the clip's proxy in the proxy cache (D-21) and, when ``ready``, the facts the proxy job
+    recorded (see :class:`ProxyOut`). ``None`` means unknown — never ``absent`` — for a
+    missing clip and for every clip when the ``proxies`` configuration or the cache cannot be
+    read. ``proxy.facts.duration`` is the proxy job's number and is independent of
+    ``duration`` above (the thumbnail sidecar's), which is unchanged.
 
     ``status`` is typed with reconcile's own closed vocabulary, so the schema
     publishes the enumeration and generated clients get an exhaustive union
@@ -61,6 +137,7 @@ class ClipOut(BaseModel):
     size: Optional[int] = None
     mtime: Optional[datetime] = None
     duration: Optional[float] = None
+    proxy: Optional[ProxyOut] = None
     excluded: bool = False
 
 
@@ -445,6 +522,10 @@ class WsMessage(BaseModel):
 
 __all__ = [
     "ClipOut",
+    "ProxyState",
+    "ProxyFilmstripOut",
+    "ProxyFactsOut",
+    "ProxyOut",
     "ChapterOut",
     "JobSummaryOut",
     "EventSummaryOut",
