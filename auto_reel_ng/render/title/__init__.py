@@ -8,11 +8,12 @@ and the future GUI preview; every ``gi``/Cairo call lives behind it.
 
 from __future__ import annotations
 
-from .config import TitleCardConfig, parse_title_card_config
+from .config import TitleCardConfig, parse_title_card_config, resolve_card_config
 from .content import TitleCardContent, compose_content, title_card_lines
 from .decorator import (
     TITLE_PRODUCER,
     TitleCardRequest,
+    resolve_card,
     title_decorator,
     title_producer,
 )
@@ -28,6 +29,8 @@ from .render import render_title_card, verify_bundled_fonts
 __all__ = [
     "TitleCardConfig",
     "parse_title_card_config",
+    "resolve_card_config",
+    "resolve_card",
     "DEFAULT_FONT_FAMILY",
     "BUNDLED_FONTS",
     "FontFamily",

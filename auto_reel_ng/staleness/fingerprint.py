@@ -35,7 +35,9 @@ PathLike = Union[str, Path]
 #: 4: title-card-whole-clip-cut (a chapter whose title clip is wholly cut keeps its title card).
 #: 5: title-card-fonts (the title card is drawn from bundled fonts under the engine's
 #:    fontconfig, not the host's).
-RENDER_GRAPH_VERSION = 5
+#: 6: title-card-model (the opening card shows the event title and a free-text subtitle only;
+#:    each card takes its own length and style).
+RENDER_GRAPH_VERSION = 6
 
 #: The four fingerprint components, in the fixed order the combined hash uses.
 COMPONENTS = ("editorial", "defaults", "clip_set", "engine")

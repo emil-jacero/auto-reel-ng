@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Optional
 
 from ...errors import TitleCardError
+from ...reel.card import CARD_BACKGROUNDS, CARD_POSITIONS, ChapterCard
 from .fonts import DEFAULT_FONT_FAMILY, font_for, registered_families
 
 #: Documented defaults carried over from auto-reel when ``look.title_card`` is silent.
@@ -31,9 +32,21 @@ DEFAULT_SHADOW_OPACITY = 0.5
 DEFAULT_BACKGROUND_COLOR = "#000000"
 DEFAULT_BACKGROUND_OPACITY = 1.0
 DEFAULT_POSITION = "center"
+DEFAULT_BACKGROUND = "black"
 
-#: Text positions the renderer understands.
-_POSITIONS = frozenset({"center", "top", "bottom"})
+#: Text positions the renderer understands (the set the document's ``card.position`` takes).
+_POSITIONS = frozenset(CARD_POSITIONS)
+
+#: The card style keys a chapter's ``card`` overrides; the rest of the card is text.
+_CARD_STYLE_KEYS = (
+    "duration",
+    "background",
+    "font_family",
+    "title_font_size",
+    "subtitle_font_size",
+    "text_color",
+    "position",
+)
 
 
 @dataclass(frozen=True)
@@ -60,6 +73,8 @@ class TitleCardConfig:  # pylint: disable=too-many-instance-attributes
     fade_out: float = DEFAULT_FADE_OUT
     duration: float = DEFAULT_DURATION
     position: str = DEFAULT_POSITION
+    #: ``black`` (text on a colour fill) or ``video`` (text over the chapter's first clip).
+    background: str = DEFAULT_BACKGROUND
 
     @property
     def resolved_family(self) -> str:
@@ -94,6 +109,7 @@ class TitleCardConfig:  # pylint: disable=too-many-instance-attributes
             "fade_out": self.fade_out,
             "duration": self.duration,
             "position": self.position,
+            "background": self.background,
         }
 
 
@@ -158,6 +174,13 @@ def parse_title_card_config(raw: Optional[Mapping[str, Any]]) -> TitleCardConfig
             f"look.title_card.position must be one of {sorted(_POSITIONS)}, got {position!r}"
         )
 
+    background = _require(raw, "background", str, default=DEFAULT_BACKGROUND)
+    if background not in CARD_BACKGROUNDS:
+        raise TitleCardError(
+            f"look.title_card.background must be one of {list(CARD_BACKGROUNDS)}, "
+            f"got {background!r}"
+        )
+
     duration = _require(raw, "duration", float, default=DEFAULT_DURATION)
     fade_in = _require(raw, "fade_in", float, default=DEFAULT_FADE_IN)
     fade_out = _require(raw, "fade_out", float, default=DEFAULT_FADE_OUT)
@@ -183,7 +206,28 @@ def parse_title_card_config(raw: Optional[Mapping[str, Any]]) -> TitleCardConfig
         fade_out=fade_out,
         duration=duration,
         position=position,
+        background=background,
     )
+
+
+def resolve_card_config(
+    look_title_card: Optional[Mapping[str, Any]], card: Optional[ChapterCard]
+) -> TitleCardConfig:
+    """A card's effective config: defaults, then ``look.title_card``, then the card's overrides.
+
+    The layers are overlaid as raw mappings and parsed once, so every rule of
+    :func:`parse_title_card_config` applies to the result and the fades are clamped against
+    the final duration (not against an earlier layer's).
+    """
+    if look_title_card is not None and not isinstance(look_title_card, Mapping):
+        raise TitleCardError(f"look.title_card must be a mapping, got {look_title_card!r}")
+    layered: dict[str, Any] = dict(look_title_card) if look_title_card is not None else {}
+    if card is not None:
+        for key in _CARD_STYLE_KEYS:
+            value = getattr(card, key)
+            if value is not None:
+                layered[key] = value
+    return parse_title_card_config(layered)
 
 
 def _clamp_fades(fade_in: float, fade_out: float, duration: float) -> tuple[float, float]:
@@ -200,6 +244,8 @@ __all__ = [
     "DEFAULT_DURATION",
     "DEFAULT_FADE_IN",
     "DEFAULT_FADE_OUT",
+    "DEFAULT_BACKGROUND",
     "TitleCardConfig",
     "parse_title_card_config",
+    "resolve_card_config",
 ]

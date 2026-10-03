@@ -186,6 +186,10 @@ def _chapters_seq(doc: ReelDocument) -> CommentedSeq:
     for chapter in doc.chapters:
         entry = CommentedMap()
         entry["name"] = chapter.name
+        if chapter.card is not None:
+            card = CommentedMap(chapter.card.to_dict())
+            if card:
+                entry["card"] = card
         entry["clips"] = CommentedSeq(ref.identity for ref in chapter.clips)
         seq.append(entry)
     return seq

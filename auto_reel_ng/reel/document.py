@@ -27,6 +27,8 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, Mapping, Optional
 
+from .card import ChapterCard
+
 # The only document version this engine defines.
 SCHEMA_VERSION = 0
 
@@ -108,10 +110,19 @@ class Chapter:
 
     name: str
     clips: tuple[ClipRef, ...] = ()
+    #: The chapter's title card overrides; ``None`` when the chapter sets no ``card``.
+    card: Optional[ChapterCard] = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to a plain dict for debug logging."""
-        return {"name": self.name, "clips": [c.identity for c in self.clips]}
+        """Convert to a plain dict for debug logging.
+
+        ``card`` is present only when the chapter has one, so the editorial hash of a
+        document without cards is the one it had before cards existed.
+        """
+        data: dict[str, Any] = {"name": self.name, "clips": [c.identity for c in self.clips]}
+        if self.card is not None:
+            data["card"] = self.card.to_dict()
+        return data
 
 
 @dataclass(frozen=True)

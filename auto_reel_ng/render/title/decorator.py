@@ -21,7 +21,7 @@ from ...event.plan import RenderPlan, ResolvedChapter
 from ..decorators import register_decorator
 from ..producers import ProducedSegment, register_producer
 from ..segments import Segment
-from .config import TitleCardConfig, parse_title_card_config
+from .config import TitleCardConfig, resolve_card_config
 from .content import TitleCardContent, compose_content
 from .render import render_title_card
 
@@ -52,6 +52,22 @@ def _look_title_card(look: Mapping[str, Any]) -> Optional[Mapping[str, Any]]:
     if not isinstance(raw, Mapping):
         raise TitleCardError(f"look.title_card must be a mapping, got {raw!r}")
     return raw
+
+
+def resolve_card(plan: RenderPlan, chapter: ResolvedChapter) -> TitleCardRequest:
+    """The effective config and text of ``chapter``'s card: what a render draws.
+
+    The config layers the engine defaults, ``plan.look["title_card"]`` (the event-wide style)
+    and the chapter's ``card`` overrides, parsed once; the content is the card's heading and
+    subtitle. The one place that decides what a card looks like, shared by the decorator and
+    any later read of "what will this card show". It probes no media, renders no image and
+    touches no database.
+
+    Raises:
+        TitleCardError: a malformed ``look.title_card`` value, or a card with no heading.
+    """
+    config = resolve_card_config(_look_title_card(plan.look), chapter.card)
+    return TitleCardRequest(config=config, content=compose_content(plan, chapter))
 
 
 def title_producer(segment: Segment, target: "TargetSpec", dest: Path) -> ProducedSegment:
@@ -103,23 +119,43 @@ def _anchor_indexes(
     return {chapter: title_anchor.get(chapter, index) for chapter, index in first_source.items()}
 
 
+def _card_requests(plan: RenderPlan, anchors: Mapping[str, int]) -> dict[str, TitleCardRequest]:
+    """Each anchored chapter's card, resolved before any segment is built or encoded.
+
+    Raises:
+        TitleCardError: a card whose effective ``background`` is ``video`` (not rendered by
+            this engine; it is never drawn as black), naming the chapter.
+    """
+    requests: dict[str, TitleCardRequest] = {}
+    for name in anchors:
+        chapter = _chapter_by_name(plan, name)
+        if chapter is None:
+            continue
+        request = resolve_card(plan, chapter)
+        if request.config.background == "video":
+            raise TitleCardError(
+                f"chapter {chapter.name!r}: card background 'video' is not rendered by this engine"
+            )
+        requests[name] = request
+    return requests
+
+
 def title_decorator(
     plan: RenderPlan, target: "TargetSpec", segments: tuple[Segment, ...]
 ) -> tuple[Segment, ...]:
     """Insert one synthetic title segment at each titled chapter's anchor (D-E).
 
     For every chapter that resolved a title clip, a synthetic segment carrying the
-    ``title`` producer, the resolved duration, and the look-derived
-    :class:`TitleCardRequest` is placed immediately before that clip's first
-    segment, recording the chapter it precedes so chapter durations stay correct.
+    ``title`` producer, the chapter's own card duration, and its :class:`TitleCardRequest`
+    (:func:`resolve_card`: the event-wide style with the chapter's ``card`` overrides) is
+    placed immediately before that clip's first segment, recording the chapter it precedes so chapter durations stay correct.
     When cuts remove the title clip entirely (it contributes no segment), the card
     opens the chapter's first surviving source segment instead; a chapter with no
     surviving segment gets no card and stays absent from the movie. The result is a
     pure function of ``(plan, segments)``.
     """
     del target  # the card is authored against the target at materialize time
-    config = parse_title_card_config(_look_title_card(plan.look))
-
+    resolve_card_config(_look_title_card(plan.look), None)  # a bad event-wide style fails loud
     title_identities: dict[str, str] = {}
     for chapter in plan.chapters:
         clip = chapter.title_clip
@@ -127,6 +163,7 @@ def title_decorator(
             title_identities[chapter.name] = clip.identity
 
     anchors = _anchor_indexes(title_identities, segments)
+    requests = _card_requests(plan, anchors)
     result: list[Segment] = []
     inserted: set[str] = set()
     for index, segment in enumerate(segments):
@@ -135,15 +172,14 @@ def title_decorator(
             and anchors.get(segment.chapter) == index
             and segment.chapter not in inserted
         ):
-            matched = _chapter_by_name(plan, segment.chapter)
-            if matched is not None:
-                content = compose_content(plan, matched)
+            request = requests.get(segment.chapter)
+            if request is not None:
                 result.append(
                     Segment(
                         chapter=segment.chapter,
                         producer=TITLE_PRODUCER,
-                        duration=config.duration,
-                        producer_config=TitleCardRequest(config=config, content=content),
+                        duration=request.config.duration,
+                        producer_config=request,
                     )
                 )
                 inserted.add(segment.chapter)
@@ -158,6 +194,7 @@ register_decorator("title", title_decorator)
 __all__ = [
     "TITLE_PRODUCER",
     "TitleCardRequest",
+    "resolve_card",
     "title_producer",
     "title_decorator",
 ]

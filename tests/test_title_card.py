@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import subprocess
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -24,6 +25,7 @@ from auto_reel_ng.errors import FontResolutionError, RenderError, TitleCardError
 from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
 from auto_reel_ng.probe import probe_media
 from auto_reel_ng.probe.metadata import AudioStream, ClipMetadata
+from auto_reel_ng.reel.card import ChapterCard
 from auto_reel_ng.reel.document import Metadata, Trim
 from auto_reel_ng.render import (
     ProducedSegment,
@@ -44,8 +46,9 @@ from auto_reel_ng.render.title import (
     compose_content,
     parse_title_card_config,
     registered_families,
-    title_card_lines,
 )
+from auto_reel_ng.render.title import render as card_render
+from auto_reel_ng.render.title import resolve_card, resolve_card_config, title_card_lines
 from auto_reel_ng.render.title.decorator import TITLE_PRODUCER
 
 # --------------------------------------------------------------------------- #
@@ -175,35 +178,149 @@ def test_config_to_dict_round_trips_fields() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_default_card_lines_include_title_and_formatted_date_location() -> None:
-    content = TitleCardContent(
-        heading="Midsommar", date=date(2024, 6, 21), location="Dalarna", description="Familjen"
+def _opening_plan(**card: object) -> RenderPlan:
+    """A plan whose default chapter has the given ``card`` overrides and full event metadata."""
+    return RenderPlan(
+        metadata=Metadata(
+            title="Midsommar",
+            date=date(2024, 6, 21),
+            location="Dalarna",
+            description="Familjen",
+        ),
+        chapters=(ResolvedChapter(name="", clips=(), card=ChapterCard(**card) if card else None),),
     )
-    lines = title_card_lines(content)
-    assert lines[0] == "Midsommar"
-    assert "2024-06-21" in lines
-    assert "Plats: Dalarna" in lines  # Swedish location formatting carried over
-    assert "Familjen" in lines
 
 
-def test_compose_content_default_chapter_uses_event_metadata() -> None:
-    plan = RenderPlan(
-        metadata=Metadata(title="Midsommar", date=date(2024, 6, 21), location="Dalarna"),
-        chapters=(ResolvedChapter(name="", clips=()),),
-    )
+def test_card_lines_are_the_heading_then_the_subtitle() -> None:
+    lines = title_card_lines(TitleCardContent(heading="Midsommar", subtitle="Hos mormor"))
+    assert lines == ["Midsommar", "Hos mormor"]
+
+
+def test_an_empty_subtitle_gives_one_line() -> None:
+    assert title_card_lines(TitleCardContent(heading="Midsommar")) == ["Midsommar"]
+    assert title_card_lines(TitleCardContent(heading="Midsommar", subtitle="")) == ["Midsommar"]
+
+
+def test_opening_card_shows_the_title_only_not_date_place_or_description() -> None:
+    plan = _opening_plan()
     content = compose_content(plan, plan.chapters[0])
-    assert content.heading == "Midsommar"
-    assert content.location == "Dalarna"
+    assert content == TitleCardContent(heading="Midsommar", subtitle="")
+    lines = title_card_lines(content)
+    assert lines == ["Midsommar"]
+    assert not any("2024" in line or "Plats" in line or "Familjen" in line for line in lines)
 
 
-def test_compose_content_named_chapter_uses_chapter_name_as_heading() -> None:
+def test_opening_card_carries_a_free_text_subtitle() -> None:
+    plan = _opening_plan(subtitle="Hos mormor")
+    content = compose_content(plan, plan.chapters[0])
+    assert (content.heading, content.subtitle) == ("Midsommar", "Hos mormor")
+    assert title_card_lines(content) == ["Midsommar", "Hos mormor"]
+
+
+def test_named_chapter_card_uses_the_chapter_name_and_no_subtitle() -> None:
     plan = RenderPlan(
         metadata=Metadata(title="Midsommar", location="Dalarna"),
         chapters=(ResolvedChapter(name="Reception", clips=()),),
     )
     content = compose_content(plan, plan.chapters[0])
-    assert content.heading == "Reception"
-    assert content.location is None  # the opening card already showed the event sub-text
+    assert content == TitleCardContent(heading="Reception", subtitle="")
+
+
+def test_a_card_title_overrides_the_heading_without_renaming_the_chapter() -> None:
+    plan = RenderPlan(
+        metadata=Metadata(title="Midsommar"),
+        chapters=(
+            ResolvedChapter(name="Reception", clips=(), card=ChapterCard(title="Mottagningen")),
+        ),
+    )
+    chapter = plan.chapters[0]
+    assert compose_content(plan, chapter).heading == "Mottagningen"
+    assert chapter.name == "Reception"
+
+
+def test_a_card_with_no_heading_fails_loud_naming_the_chapter() -> None:
+    plan = RenderPlan(chapters=(ResolvedChapter(name="", clips=()),))
+    with pytest.raises(TitleCardError, match="default chapter"):
+        compose_content(plan, plan.chapters[0])
+    blank = RenderPlan(
+        metadata=Metadata(title="  "), chapters=(ResolvedChapter(name="", clips=()),)
+    )
+    with pytest.raises(TitleCardError, match="no heading"):
+        compose_content(blank, blank.chapters[0])
+
+
+# --------------------------------------------------------------------------- #
+# 3b. A card's effective style (defaults < look.title_card < card)            #
+# --------------------------------------------------------------------------- #
+
+
+def test_defaults_event_style_and_card_compose_in_order() -> None:
+    look = {"title_font_size": 80, "text_color": "#CCCCCC", "position": "top"}
+    card = ChapterCard(text_color="#FFD700", duration=3.0)
+    config = resolve_card_config(look, card)
+    assert config.title_font_size == 80  # the event-wide layer over the default 96
+    assert config.text_color == "#FFD700"  # the card over the event-wide layer
+    assert config.position == "top"
+    assert config.subtitle_font_size == 48  # untouched default
+    assert config.duration == 3.0
+    plain = resolve_card_config(look, None)
+    assert (plain.title_font_size, plain.text_color, plain.duration) == (80, "#CCCCCC", 7.0)
+
+
+def test_a_short_card_clamps_the_default_fades_once() -> None:
+    config = resolve_card_config(None, ChapterCard(duration=1.0))
+    assert (config.fade_in, config.fade_out) == (pytest.approx(0.5), pytest.approx(0.5))
+    assert config.fade_in + config.fade_out <= 1.0 + 1e-9
+
+
+def test_a_longer_card_is_not_left_with_fades_shrunk_for_the_event_wide_duration() -> None:
+    look = {"duration": 3.0}  # the default 2 s fades would clamp to 1.5 s each at 3 s
+    assert resolve_card_config(look, None).fade_in == pytest.approx(1.5)
+    config = resolve_card_config(look, ChapterCard(duration=10.0))
+    assert (config.fade_in, config.fade_out) == (2.0, 2.0)
+
+
+def test_the_event_wide_style_is_not_mutated_by_a_card() -> None:
+    look = {"duration": 3.0}
+    resolve_card_config(look, ChapterCard(duration=10.0, text_color="#FFD700"))
+    assert look == {"duration": 3.0}
+
+
+def test_background_defaults_to_black_and_video_parses() -> None:
+    assert parse_title_card_config(None).background == "black"
+    assert parse_title_card_config({"background": "video"}).background == "video"
+    assert resolve_card_config(None, ChapterCard(background="video")).background == "video"
+    assert (
+        resolve_card_config({"background": "video"}, ChapterCard(background="black")).background
+        == "black"
+    )
+
+
+def test_an_unknown_background_fails_loud_naming_the_field_and_the_allowed_values() -> None:
+    with pytest.raises(TitleCardError) as caught:
+        parse_title_card_config({"background": "transparent"})
+    message = str(caught.value)
+    assert "look.title_card.background" in message and "black" in message and "video" in message
+    with pytest.raises(TitleCardError, match=r"look\.title_card\.background"):
+        resolve_card_config({"background": "transparent"}, None)
+
+
+def test_resolve_card_config_refuses_a_non_mapping_event_style() -> None:
+    with pytest.raises(TitleCardError, match="must be a mapping"):
+        resolve_card_config(["duration", 3], None)  # type: ignore[arg-type]
+
+
+def test_resolution_reads_no_media(monkeypatch: pytest.MonkeyPatch) -> None:
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("resolve_card must not start a process or write an image")
+
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    monkeypatch.setattr(card_render, "render_title_card", forbidden)
+    plan = _opening_plan(subtitle="Hos mormor", duration=4.0)
+    request = resolve_card(plan, plan.chapters[0])
+    assert request.config.duration == 4.0
+    assert request.content == TitleCardContent(heading="Midsommar", subtitle="Hos mormor")
 
 
 # --------------------------------------------------------------------------- #
@@ -254,7 +371,7 @@ def test_title_producer_requires_request_payload() -> None:
 @pytest.mark.has_fonts
 def test_title_producer_yields_image_duration_and_fades(has_fonts: None, tmp_path: Path) -> None:
     config = parse_title_card_config({"duration": 3.0, "fade_in": 0.5, "fade_out": 0.5})
-    content = TitleCardContent(heading="Midsommar", date=date(2024, 6, 21))
+    content = TitleCardContent(heading="Midsommar", subtitle="Hos mormor")
     segment = _title_segment(
         duration=3.0, producer_config=TitleCardRequest(config=config, content=content)
     )
@@ -329,6 +446,123 @@ def test_chapter_without_title_clip_gets_no_card() -> None:
     segments = build_segments(plan, Path("/ev"))
     out = apply_decorators(("title",), plan, _target(), segments)
     assert not any(s.is_synthetic for s in out)
+
+
+def _three_chapters(**looks: object) -> RenderPlan:
+    """Three titled chapters: the default one with a 3 s card, one with 10 s, one with none."""
+    return _plan(
+        {"decorators": ["title"], **looks},
+        ResolvedChapter(
+            name="",
+            clips=(ResolvedClip(identity="a.mp4", is_title=True),),
+            card=ChapterCard(duration=3.0),
+        ),
+        ResolvedChapter(
+            name="Intro",
+            clips=(ResolvedClip(identity="b.mp4", is_title=True),),
+            card=ChapterCard(duration=10.0),
+        ),
+        ResolvedChapter(name="Main", clips=(ResolvedClip(identity="c.mp4", is_title=True),)),
+    )
+
+
+def _cards(plan: RenderPlan) -> list[Segment]:
+    out = apply_decorators(("title",), plan, _target(), build_segments(plan, Path("/ev")))
+    return [s for s in out if s.is_synthetic]
+
+
+def test_each_chapters_card_has_its_own_length() -> None:
+    cards = _cards(_three_chapters(title_card={"duration": 6.0}))
+    assert [c.duration for c in cards] == [3.0, 10.0, 6.0]
+    assert [c.producer_config.config.duration for c in cards] == [3.0, 10.0, 6.0]  # type: ignore[union-attr]
+
+
+def test_the_event_wide_default_length_is_seven_seconds() -> None:
+    assert [c.duration for c in _cards(_three_chapters())] == [3.0, 10.0, 7.0]
+
+
+def test_a_chapters_card_overrides_apply_to_that_chapter_only() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(
+            name="One",
+            clips=(ResolvedClip(identity="a.mp4", is_title=True),),
+            card=ChapterCard(font_family="DejaVu Serif", text_color="#FFD700"),
+        ),
+        ResolvedChapter(name="Two", clips=(ResolvedClip(identity="b.mp4", is_title=True),)),
+    )
+    one, two = (c.producer_config.config for c in _cards(plan))  # type: ignore[union-attr]
+    assert (one.font_family, one.text_color) == ("DejaVu Serif", "#FFD700")
+    assert (two.font_family, two.text_color) == (None, "#FFFFFF")
+
+
+def test_a_cards_text_travels_on_its_segment() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(
+            name="Reception",
+            clips=(ResolvedClip(identity="a.mp4", is_title=True),),
+            card=ChapterCard(title="Mottagningen", subtitle="Efteråt"),
+        ),
+    )
+    (card,) = _cards(plan)
+    assert card.chapter == "Reception"  # the chapter keeps its name; only the heading changes
+    assert card.producer_config.content == TitleCardContent("Mottagningen", "Efteråt")  # type: ignore[union-attr]
+
+
+def test_a_video_background_on_a_card_fails_the_decorator_naming_the_chapter() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4", is_title=True),)),
+        ResolvedChapter(
+            name="Reception",
+            clips=(ResolvedClip(identity="b.mp4", is_title=True),),
+            card=ChapterCard(background="video"),
+        ),
+    )
+    with pytest.raises(TitleCardError, match="'Reception'.*'video'.*not rendered"):
+        apply_decorators(("title",), plan, _target(), build_segments(plan, Path("/ev")))
+
+
+def test_a_video_background_in_the_event_wide_style_fails_the_decorator() -> None:
+    plan = _plan(
+        {"decorators": ["title"], "title_card": {"background": "video"}},
+        ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4", is_title=True),)),
+    )
+    with pytest.raises(TitleCardError, match="default chapter|''"):
+        apply_decorators(("title",), plan, _target(), build_segments(plan, Path("/ev")))
+
+
+def test_a_black_card_over_an_event_wide_video_background_is_allowed() -> None:
+    plan = _plan(
+        {"decorators": ["title"], "title_card": {"background": "video"}},
+        ResolvedChapter(
+            name="",
+            clips=(ResolvedClip(identity="a.mp4", is_title=True),),
+            card=ChapterCard(background="black"),
+        ),
+    )
+    assert len(_cards(plan)) == 1
+
+
+def test_a_card_with_no_heading_fails_the_decorator() -> None:
+    plan = RenderPlan(
+        look={"decorators": ["title"]},
+        chapters=(
+            ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4", is_title=True),)),
+        ),
+    )
+    with pytest.raises(TitleCardError, match="no heading"):
+        apply_decorators(("title",), plan, _target(), build_segments(plan, Path("/ev")))
+
+
+def test_a_bad_event_wide_style_still_fails_the_decorator() -> None:
+    plan = _plan(
+        {"decorators": ["title"], "title_card": {"background": "transparent"}},
+        ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4", is_title=False),)),
+    )
+    with pytest.raises(TitleCardError, match=r"look\.title_card\.background"):
+        apply_decorators(("title",), plan, _target(), build_segments(plan, Path("/ev")))
 
 
 def _facts(*identities: str, duration: float = 10.0) -> dict[str, ClipMetadata]:
@@ -684,7 +918,7 @@ def test_bundled_default_renders_without_config(has_fonts: None, tmp_path: Path)
     dest = tmp_path / "card.png"
     out = _render(
         parse_title_card_config(None),
-        TitleCardContent(heading="Midsommar", date=date(2024, 6, 21), location="Dalarna"),
+        TitleCardContent(heading="Midsommar", subtitle="Dalarna"),
         _target(width=320, height=240),
         dest,
     )
@@ -822,3 +1056,112 @@ def test_end_to_end_render_records_the_title_card_span(
     assert card.start_ms == pytest.approx(measured[0] * 1000, abs=1)
     assert second.end_ms - card.end_ms == pytest.approx(measured[2] * 1000, abs=1)
     assert card_ms == pytest.approx(1000, abs=40)
+
+
+@pytest.mark.has_fonts
+def test_an_unresolvable_card_font_fails_the_render_with_the_font_error(
+    has_fonts: None, tmp_path: Path
+) -> None:
+    config = resolve_card_config(None, ChapterCard(font_family="No Such Family ZZZ"))
+    assert config.font_family == "No Such Family ZZZ"  # resolution is the renderer's job
+    with pytest.raises(FontResolutionError, match="No Such Family ZZZ"):
+        _render(
+            config,
+            TitleCardContent(heading="Hej"),
+            _target(width=320, height=240),
+            tmp_path / "card.png",
+        )
+
+
+# --------------------------------------------------------------------------- #
+# 8. A real render of per-card length, text and style from a reel.yaml          #
+# --------------------------------------------------------------------------- #
+
+CARD_REEL = """\
+version: 0
+metadata:
+  title: Movie
+  date: 2024-06-21
+  location: Home
+look:
+  decorators: [title]
+  target_resolution: [320, 240]
+  video_codec: h264
+  title_card: {fade_in: 0.2, fade_out: 0.2}
+chapters:
+  - name: ""
+    card: {subtitle: Hos mormor, duration: 3}
+    clips: [a.mp4]
+  - name: Reception
+    card: {title: Mottagningen, duration: 5, position: bottom}
+    clips: [b.mp4]
+"""
+
+
+def _card_event(runtime, make_clip, tmp_path: Path, reel_text: str):  # type: ignore[no-untyped-def]
+    """Resolve ``reel_text`` against two synthetic clips; return the plan and render options."""
+    from auto_reel_ng.event.resolution import resolve
+    from auto_reel_ng.reel.parser import loads_document
+    from auto_reel_ng.staleness.fingerprint import compute_fingerprint
+
+    clips = {"a.mp4": make_clip("a.mp4", fps=30, duration=1.0), "b.mp4": make_clip("b.mp4", fps=30)}
+    facts = {name: probe_media(path, runtime=runtime) for name, path in clips.items()}
+    document = loads_document(reel_text)
+    plan = resolve(document)
+    fingerprint = compute_fingerprint(
+        document, event_dir=tmp_path, look_defaults={}, ffmpeg_version=runtime.version
+    )
+    options = RenderOptions(
+        event_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        clip_facts=facts,
+        runtime=runtime,
+        fingerprint=fingerprint,
+    )
+    return plan, options
+
+
+@pytest.mark.has_fonts
+@pytest.mark.has_ffmpeg
+def test_a_render_draws_each_card_at_its_own_length_and_keeps_the_chapter_names(
+    has_fonts: None, runtime, make_clip, tmp_path: Path
+) -> None:
+    from auto_reel_ng.staleness.manifest import read_manifest
+
+    plan, options = _card_event(runtime, make_clip, tmp_path, CARD_REEL)
+    result = render_movie(plan, CPUProfile(), options)
+    assert result.output_path.exists()
+
+    manifest = read_manifest(tmp_path)
+    assert manifest is not None and manifest.chapters is not None
+    spans = {c.name: c.title_card for c in manifest.chapters}
+    assert spans[""] is not None and spans["Reception"] is not None
+    frame = 1000 / 30
+    assert spans[""].end_ms - spans[""].start_ms == pytest.approx(3000, abs=frame)  # type: ignore[union-attr]
+    assert spans["Reception"].end_ms - spans["Reception"].start_ms == pytest.approx(  # type: ignore[union-attr]
+        5000, abs=frame
+    )
+
+    probe = runtime.run_ffprobe(
+        ["-v", "error", "-show_chapters", "-print_format", "json", str(result.output_path)]
+    )
+    titles = [c.get("tags", {}).get("title", "") for c in json.loads(probe.stdout)["chapters"]]
+    assert titles[1] == "Reception"  # the card says "Mottagningen"; the chapter keeps its name
+    assert "Mottagningen" not in titles
+
+
+@pytest.mark.has_fonts
+@pytest.mark.has_ffmpeg
+def test_a_video_background_fails_the_render_loud_and_leaves_no_output(
+    has_fonts: None, runtime, make_clip, tmp_path: Path
+) -> None:
+    plan, options = _card_event(
+        runtime,
+        make_clip,
+        tmp_path,
+        CARD_REEL.replace("duration: 5, position: bottom", "duration: 5, background: video"),
+    )
+    with pytest.raises(TitleCardError, match="'Reception'.*'video'"):
+        render_movie(plan, CPUProfile(), options)
+    out = tmp_path / "out"
+    assert not out.exists() or not [p for p in out.rglob("*") if p.is_file()]

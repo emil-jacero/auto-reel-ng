@@ -61,6 +61,8 @@ from .title import (  # noqa: E402
     TitleCardRequest,
     parse_title_card_config,
     render_title_card,
+    resolve_card,
+    resolve_card_config,
 )
 from .verify import verify_output
 
@@ -110,6 +112,8 @@ __all__ = [
     "TitleCardContent",
     "TitleCardRequest",
     "parse_title_card_config",
+    "resolve_card_config",
+    "resolve_card",
     "render_title_card",
     # assembly
     "is_copy_uniform",

@@ -1829,3 +1829,206 @@ def test_a_document_ruamel_cannot_round_trip_is_refused_with_a_typed_error(
 
     assert (event_dir / REEL_FILENAME).read_bytes() == before
     assert not _hidden_temporaries(event_dir)
+
+
+# --------------------------------------------------------------------------- #
+# A chapter's title card (title-card-model)
+# --------------------------------------------------------------------------- #
+
+CARDED = """\
+version: 0
+metadata:
+  title: Midsummer
+  date: 2024-06-21
+chapters:
+  - name: ""
+    card:
+      title: Midsommar   # the heading
+      # five seconds is plenty
+      duration: 5
+      subtitle: Hos mormor
+    clips:
+      - a.mp4
+  - name: Reception
+    clips:
+      - Reception/c.mp4
+"""
+
+
+def _chapters(*pairs: tuple) -> list:
+    """Desired chapters from ``(name, clips)`` or ``(name, clips, card)`` tuples."""
+    out = []
+    for pair in pairs:
+        chapter = {"name": pair[0], "clips": list(pair[1])}
+        if len(pair) > 2:
+            chapter["card"] = pair[2]
+        out.append(chapter)
+    return out
+
+
+def _carded_event(tmp_path: Path) -> Path:
+    return _write_event(tmp_path, CARDED)
+
+
+def _desired_chapters(card_one: object = "absent", card_two: object = "absent") -> dict:
+    specs = [("", ["a.mp4"], card_one), ("Reception", ["Reception/c.mp4"], card_two)]
+    chapters = [
+        {"name": n, "clips": c, **({} if card == "absent" else {"card": card})}
+        for n, c, card in specs
+    ]
+    return {"chapters": chapters}
+
+
+def _desired_for_card_tests(document: ReelDocument, chapters: list) -> dict:
+    desired = _desired_from(document)
+    desired["chapters"] = chapters
+    return desired
+
+
+def _save(event: Path, chapters: list) -> ReelDocument:
+    desired = _desired_for_card_tests(load_document(event / REEL_FILENAME), chapters)
+    return apply_editorial_write(event, desired, today=date(2030, 1, 1))
+
+
+def test_a_write_that_omits_the_card_keeps_it_and_its_comments(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    mtime = (event / REEL_FILENAME).stat().st_mtime_ns
+    _save(event, _desired_chapters()["chapters"])
+    assert (event / REEL_FILENAME).read_text() == CARDED
+    assert (event / REEL_FILENAME).stat().st_mtime_ns == mtime
+
+
+def test_a_write_that_omits_the_card_but_changes_something_else_keeps_it(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    desired = _desired_for_card_tests(
+        load_document(event / REEL_FILENAME), _desired_chapters()["chapters"]
+    )
+    desired["metadata"] = {**desired["metadata"], "location": "Dalarna"}
+    apply_editorial_write(event, desired, today=date(2030, 1, 1))
+    text = (event / REEL_FILENAME).read_text()
+    assert "      title: Midsommar   # the heading\n      # five seconds is plenty\n" in text
+    assert "location: Dalarna" in text
+
+
+def test_a_null_card_keeps_it(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    _save(event, _desired_chapters(card_one=None)["chapters"])
+    assert (event / REEL_FILENAME).read_text() == CARDED
+
+
+def test_an_empty_card_removes_it(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    doc = _save(event, _desired_chapters(card_one={})["chapters"])
+    assert doc.chapters[0].card is None
+    text = (event / REEL_FILENAME).read_text()
+    assert "card" not in text
+    assert load_document(event / REEL_FILENAME).chapters[0].card is None
+
+
+def test_a_card_of_only_none_values_removes_it(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    _save(event, _desired_chapters(card_one={"title": None, "duration": None})["chapters"])
+    assert "card" not in (event / REEL_FILENAME).read_text()
+
+
+def test_a_changed_card_is_merged_key_by_key(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    desired = {"title": "Midsommar", "duration": 5.0, "subtitle": "Hos mormor", "position": "top"}
+    desired["title"] = "Midsommarfirande"
+    _save(event, _desired_chapters(card_one=desired)["chapters"])
+    text = (event / REEL_FILENAME).read_text()
+    assert "      title: Midsommarfirande" in text and "# the heading" in text
+    assert "      # five seconds is plenty\n      duration: 5\n" in text  # 5 stays 5, not 5.0
+    assert "      subtitle: Hos mormor\n" in text
+    assert "      position: top\n" in text
+    assert text.count("card:") == 1
+
+
+def test_a_key_left_out_of_the_desired_card_is_removed(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    _save(event, _desired_chapters(card_one={"title": "Midsommar"})["chapters"])
+    assert load_document(event / REEL_FILENAME).chapters[0].card.to_dict() == {  # type: ignore
+        "title": "Midsommar"
+    }
+    assert "duration" not in (event / REEL_FILENAME).read_text()
+
+
+def test_a_new_card_goes_after_the_name(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    _save(
+        event,
+        _desired_chapters(card_one=None, card_two={"position": "bottom", "title": "Mottagningen"})[
+            "chapters"
+        ],
+    )
+    text = (event / REEL_FILENAME).read_text()
+    assert text.endswith(
+        "  - name: Reception\n"
+        "    card:\n"
+        "      title: Mottagningen\n"
+        "      position: bottom\n"
+        "    clips:\n"
+        "      - Reception/c.mp4\n"
+    )
+
+
+def test_a_renamed_chapter_keeps_its_card(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    chapters = [
+        {"name": "", "clips": ["a.mp4"]},
+        {"name": "Mottagning", "clips": ["Reception/c.mp4"]},
+    ]
+    chapters[0]["name"] = "Opening"  # the card travels with the chapter paired by its clips
+    _save(event, chapters)
+    doc = load_document(event / REEL_FILENAME)
+    assert [c.name for c in doc.chapters] == ["Opening", "Mottagning"]
+    assert doc.chapters[0].card is not None and doc.chapters[0].card.title == "Midsommar"
+    assert "# the heading" in (event / REEL_FILENAME).read_text()
+
+
+def test_a_deleted_chapter_drops_its_card(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    _save(event, [{"name": "Reception", "clips": ["Reception/c.mp4"]}])
+    text = (event / REEL_FILENAME).read_text()
+    assert "card" not in text and "Midsommar" not in text and "plenty" not in text
+
+
+def test_an_invalid_card_is_refused_and_the_file_is_untouched(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    before = (event / REEL_FILENAME).read_bytes()
+    mtime = (event / REEL_FILENAME).stat().st_mtime_ns
+    with pytest.raises(ReelParseError, match=r"chapters\[0\]\.card\.duration"):
+        _save(event, _desired_chapters(card_one={"duration": 0})["chapters"])
+    assert (event / REEL_FILENAME).read_bytes() == before
+    assert (event / REEL_FILENAME).stat().st_mtime_ns == mtime
+
+
+def test_a_card_that_is_not_a_mapping_is_refused(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    with pytest.raises(ReelParseError, match=r"chapters\[1\]\.card"):
+        _save(event, _desired_chapters(card_two=["title", "Hej"])["chapters"])
+
+
+def test_a_round_trip_of_the_documents_own_state_writes_nothing(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    mtime = (event / REEL_FILENAME).stat().st_mtime_ns
+    document = load_document(event / REEL_FILENAME)
+    apply_editorial_write(event, _desired_from(document), today=date(2030, 1, 1))
+    assert (event / REEL_FILENAME).read_text() == CARDED
+    assert (event / REEL_FILENAME).stat().st_mtime_ns == mtime
+
+
+def test_moving_a_clip_between_chapters_leaves_both_cards(tmp_path: Path) -> None:
+    event = _write_event(
+        tmp_path,
+        CARDED.replace(
+            "      - Reception/c.mp4", "      - Reception/c.mp4\n      - Reception/d.mp4"
+        ).replace("  - name: Reception\n", "  - name: Reception\n    card: {title: Mottagning}\n"),
+    )
+    _save(
+        event,
+        _chapters(("", ["a.mp4", "Reception/d.mp4"]), ("Reception", ["Reception/c.mp4"])),
+    )
+    doc = load_document(event / REEL_FILENAME)
+    assert doc.chapters[0].card is not None and doc.chapters[0].card.title == "Midsommar"
+    assert doc.chapters[1].card is not None and doc.chapters[1].card.title == "Mottagning"
