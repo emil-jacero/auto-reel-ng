@@ -199,7 +199,7 @@ def _parse_clips(raw: Any, *, source: str) -> dict[str, ClipProperties]:
         clips[identity] = ClipProperties(
             trims=_parse_trims(props_raw.get("trims"), loc=loc),
             title=_opt_bool(props_raw.get("title"), loc=f"{loc}.title"),
-            rotate=_opt_int(props_raw.get("rotate"), loc=f"{loc}.rotate"),
+            rotate=_rotate(props_raw.get("rotate"), loc=f"{loc}.rotate"),
             exclude=_req_bool(props_raw.get("exclude", False), loc=f"{loc}.exclude"),
         )
     return clips
@@ -410,6 +410,18 @@ def _opt_int(value: Any, *, loc: str) -> Optional[int]:
     if _is_boolish(value) or not isinstance(value, int):
         raise ReelParseError(f"{loc}: expected an integer, got {type(value).__name__}")
     return value
+
+
+def _rotate(value: Any, *, loc: str) -> Optional[int]:
+    """Coerce an optional ``rotate``: an integer that is a multiple of 90 (an extra clockwise turn).
+
+    -90 and 360 are kept as written (the render reduces them modulo 360), but any other
+    integer fails here, naming the clip, instead of failing a render queued later.
+    """
+    turn = _opt_int(value, loc=loc)
+    if turn is not None and turn % 90 != 0:
+        raise ReelParseError(f"{loc}: rotate must be a multiple of 90, got {turn}")
+    return turn
 
 
 def _req_time(value: Any, *, loc: str) -> float:

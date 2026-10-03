@@ -49,6 +49,16 @@ def test_unchanged_document_round_trips_byte_stable() -> None:
     assert dumps_document(doc) == HANDWRITTEN
 
 
+def test_a_rotate_with_a_trailing_comment_round_trips_byte_stable() -> None:
+    text = HANDWRITTEN.replace(
+        "    title: true\n", "    title: true\n    rotate: 270   # phone held sideways\n"
+    )
+    assert "rotate: 270   # phone held sideways" in text
+    doc = loads_document(text)
+    assert doc.clips["00400.mp4"].rotate == 270
+    assert dumps_document(doc) == text
+
+
 def test_round_trip_yaml_is_the_canonical_block_style() -> None:
     yaml = round_trip_yaml()
     stream = io.StringIO()

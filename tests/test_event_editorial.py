@@ -275,6 +275,31 @@ def test_invalid_cross_reference_is_rejected_without_writing(tmp_path: Path) -> 
     assert (event_dir / REEL_FILENAME).read_text(encoding="utf-8") == original_text
 
 
+def test_a_rotate_that_is_not_a_quarter_turn_is_rejected_without_writing(tmp_path: Path) -> None:
+    event_dir = _write_event(tmp_path, HANDWRITTEN)
+    before = (event_dir / REEL_FILENAME).read_bytes()
+    desired = _desired_from(load_document(event_dir / REEL_FILENAME))
+    desired["clips"]["00400.mp4"]["rotate"] = 100
+
+    with pytest.raises(ReelParseError, match=r"00400\.mp4.*rotate must be a multiple of 90"):
+        apply_editorial_write(event_dir, desired)
+
+    assert (event_dir / REEL_FILENAME).read_bytes() == before
+
+
+def test_a_quarter_turn_lands_in_the_clips_rotate_key(tmp_path: Path) -> None:
+    event_dir = _write_event(tmp_path, HANDWRITTEN)
+    desired = _desired_from(load_document(event_dir / REEL_FILENAME))
+    desired["clips"]["00400.mp4"]["rotate"] = 90
+
+    apply_editorial_write(event_dir, desired)
+
+    text = (event_dir / REEL_FILENAME).read_text(encoding="utf-8")
+    assert "    rotate: 90\n" in text
+    assert "# default chapter (root clips)" in text  # the hand-written comments survive
+    assert load_document(event_dir / REEL_FILENAME).clips["00400.mp4"].rotate == 90
+
+
 # --------------------------------------------------------------------------- #
 # 1.7 MISSING clip is preserved, never rejected or dropped; no probe/filesystem check
 # --------------------------------------------------------------------------- #
