@@ -122,12 +122,18 @@ ffmpeg -hide_banner -nostdin -v error -y
 ```
 `n` counts the frames that survive `-skip_frame nokey`, that is the proxy's keyframes in order, so the
 ordinals come straight from the keyframe list. `tile=...:nb_frames=<tiles>` closes the grid at the planned
-count. `-update 1` writes the output path literally, as `thumbnail_args` does. The golden-argument unit test
+count. The ordinals are written as sums of `eq(n\,k)` terms, at most 16 to a sum and nested in parentheses
+beyond that: ffmpeg's expression parser nests one level per term of a flat sum and fails with `Cannot allocate
+memory` near a hundred terms, which the dogfood run met on a 109-tile clip (the 756 s legacy sample) after the
+unit tests, at 25 tiles, had passed. `-update 1` writes the output path literally, as `thumbnail_args` does. The golden-argument unit test
 asserts the list for 16:9, portrait (`scale=50:90`) and a 3-tile clip.
-**Source of keyframes, duration and shape**: the step runs two `ffprobe` calls on the finished `proxy.mp4`
-through `FfmpegRuntime.with_timeout(PROXY_PROBE_TIMEOUT_S)`: the first for the first video stream's width,
-height and duration; the second for `packet=pts_time,flags` of that stream (an index read, no decode: 0.17 s
-for 900 s of 540p; the keyframes are the packets flagged `K`). Tile times are in proxy time, which is what the
+**Source of keyframes, duration and shape**: the step runs one `ffprobe` call on the finished `proxy.mp4`
+through `FfmpegRuntime.with_timeout(PROXY_PROBE_TIMEOUT_S)` (`-show_entries
+stream=width,height,duration:packet=pts_time,flags -of compact=p=0`): the first video stream's width, height
+and duration, and the packets of that stream (an index read, no decode: 0.17 s for 900 s of 540p; the keyframes
+are the packets flagged `K`). Process start dominates a 25 s clip (about 70 ms per ffprobe on the dev host), so
+the step uses one probe, not two, and no probe of its result: the JPEG's size is read from its own frame
+header. Tile times are in proxy time, which is what the
 timeline plays. A probe that fails, a duration that is not positive and finite, a keyframe without a time, or no
 keyframe at all raises `FilmstripError` (never a default, Principle I).
 **Keyframes too far apart**: if two tiles would need the same keyframe (a proxy with a keyframe gap longer than
@@ -142,8 +148,8 @@ tile instead. The first thing to look at if a real clip meets it is whether to r
               "tile_width": 160, "tile_height": 90, "width": 1600, "height": 270, "bytes": 96412}
 ```
 Write order: (1) `cache.new_part_dir(cache_dir, entry.key)` makes the cache's own hidden build directory
-`.<key>.<uuid>.part`, and ffmpeg writes `filmstrip.jpg` there; (2) verify: `ffprobe` finds one `mjpeg` stream
-whose size is `columns * tile_width` x `rows * tile_height`, and the file is non-empty; (3) `fsync`, `os.replace`
+`.<key>.<uuid>.part`, and ffmpeg writes `filmstrip.jpg` there; (2) verify: the file is non-empty and its
+JPEG frame header (read in Python) gives exactly `columns * tile_width` x `rows * tile_height`; (3) `fsync`, `os.replace`
 into the entry as `filmstrip.jpg`; (4) read `facts.json`, set `filmstrip`, write a copy in the build directory,
 `fsync`, `os.replace` over the entry's `facts.json`; (5) the build directory is removed. The build directory
 and the entry share the cache directory, so both renames are on one filesystem. `facts.json` is read-modify-
@@ -194,6 +200,8 @@ holds: a failed sprite does not stop the run; a `ProxyCacheError` stops it as fo
   dogfood task checks the real proxies of the sample clips.
 - [A 62-minute proxy decodes about 7,200 keyframes] -> about 30 s; the step is bounded by a generous timeout
   and is the job's work, not a request's.
+- [A truncated JPEG with a correct header would pass the size check] -> ffmpeg exits non-zero on a failed
+  write, so this needs a lying disk; decoding the sprite to compare would double the cost.
 - [HDR or wide-gamut sources] -> already SDR in the proxy (`proxy-encode` tone-maps on the CPU path); the
   sprite never sees the source.
 - [`facts.json` read-modify-write races with a proxy rewrite] -> the sprite only runs on a finished entry; a

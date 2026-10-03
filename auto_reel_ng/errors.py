@@ -205,6 +205,24 @@ class ProxyCacheError(EngineError):
     """
 
 
+class FilmstripError(EngineError):
+    """A proxied clip could not give a filmstrip (D-21, ``clip-filmstrips``).
+
+    Raised when the finished proxy cannot be probed, reports no positive finite duration,
+    has keyframes that cannot give every tile a frame of its own, when the sprite's ffmpeg
+    run fails or its output has the wrong size, or when the entry's ``facts.json`` cannot be
+    read as an object. The proxy is never touched by a failure and a failure is not
+    remembered. Kept apart from :class:`ProxyCacheError` (the cache directory's fault, not
+    one clip's). The message is ``<clip>: <reason>``; ``reason`` carries the cause without
+    the clip's path, for a caller that names the clip itself (the CLI).
+    """
+
+    def __init__(self, clip: str, reason: str) -> None:
+        super().__init__(f"{clip}: {reason}")
+        self.clip = clip
+        self.reason = reason
+
+
 class ReelError(EngineError):
     """A ``reel.yaml`` editorial document could not be parsed, validated, or applied.
 

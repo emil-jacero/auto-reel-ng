@@ -56,7 +56,7 @@ auto-reel adopt-renders <root>            # one-time: write manifests for an alr
                                           #   (--dry-run previews without writing)
 auto-reel thumbs  <root> [--jobs N]       # generate missing clip thumbnails into the cache (not the library)
 auto-reel proxies <root> [--device D] [--jobs N]
-                                          # generate missing 540p clip proxies into the cache (not the library)
+                                          # generate missing 540p clip proxies and their filmstrips into the cache (not the library)
 auto-reel prune-renamed <root> [--yes]    # list (and with --yes delete) movies a rename left behind
 ```
 
@@ -571,6 +571,14 @@ generated. `--jobs N` (default 2) bounds concurrent extractions: about 0.5 s per
 clip serially on local disk, ≈30 min for a 6,500-clip archive at the default; lower
 it on a slow or flaky USB drive.
 
+**Filmstrips.** Once a clip's proxy is ready (just made, or already cached) the same command makes its
+**filmstrip**: one JPEG sprite of 90 px-high tiles (160 x 90 for 16:9), 10 to a row, one per second of footage
+(a clip over 120 s gets a wider interval, so never more than 120 tiles), cut from the proxy's keyframes. A clip of
+one second or less is one tile showing its first frame. The sprite is about 2.7 kB per footage second (about
+0.65 GB for the archive) and takes about 0.3 s for a 25 s clip. A failed filmstrip is reported on its own line and
+counted apart; the proxy stays valid, and the next run tries again. A clip whose proxy was made before filmstrips
+existed gets its filmstrip on the next run without being encoded again.
+
 **The cache** lives outside the library: `$XDG_CACHE_HOME/auto-reel/thumbnails/`
 (else `~/.cache/auto-reel/thumbnails/`), or `thumbnails.cache_dir`. `thumbs` reads
 `thumbnails.position` and `thumbnails.cache_dir` from `config.yaml` (the service's
@@ -612,8 +620,9 @@ timestamps (a variable-frame-rate clip stays variable), and stereo AAC at 128 kb
 `auto-reel proxies <root>` fills the cache for every clip the layout walk finds (the same clips `thumbs` covers,
 IGNORED ones included; `original/` and `.reelignore`d folders skipped). It never reads or writes `reel.yaml`
 and writes nothing under the project root, so it works on a library mounted read-only. It prints one line per
-event, one `ERROR  <event>/<clip>: <cause>` line per failed clip (`-v` also logs the failing command and its
-stderr), and a summary that includes the bytes written; it exits non-zero when any clip failed. A re-run only
+event (`... 4 clips, 4 generated; filmstrips: 4 generated`), one `ERROR  <event>/<clip>: <cause>` line per failed
+clip or failed filmstrip (`-v` also logs the failing command and its stderr), and a summary that includes the
+bytes written; it exits non-zero when any proxy or filmstrip failed. A re-run only
 makes new, changed or previously failed clips, and clips that are other names of one file are encoded once.
 `--device` selects the acceleration profile once, as `render` does (default: the best usable accelerator):
 a clip that is unrotated, SDR, 8-bit H.264 or HEVC and that the profile decodes in hardware is decoded and
@@ -629,8 +638,8 @@ running encodes and removes their half-written files.
 or `proxies.cache_dir` in `config.yaml`. `cache_dir` must be absolute (`~` is expanded), and the directory,
 configured or default, must lie outside the project root and the `input` directory, or the command refuses to
 start. An entry is a directory named by a hash of the clip's file name (not its directory), size, mtime and the
-proxy version, holding `proxy.mp4` and `facts.json` (the clip's duration, frame rate, size and rotation, so a
-reader needs no probe); a changed clip gets a new entry by itself, while moving, copying or remounting the library
+proxy version, holding `proxy.mp4`, `facts.json` (the clip's duration, frame rate, size and rotation, so a
+reader needs no probe, and the filmstrip's tile geometry) and `filmstrip.jpg`; a changed clip gets a new entry by itself, while moving, copying or remounting the library
 keeps them. Entries are built in a hidden `.<key>.<id>.part` directory and renamed whole, so an interrupted run
 never leaves a half proxy. Plan **about 0.9 GB per footage hour (about 46 GB for the 52-hour archive; plan for 50 GB) on a local disk, not the USB library drive**; nothing is evicted, and deleting the directory resets it.
 When `serve` runs as another user or in a container it has its own `XDG_CACHE_HOME`: set `proxies.cache_dir` in

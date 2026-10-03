@@ -123,8 +123,8 @@ does not describe is an unfinished one.
 
 The system SHALL write the sprite to a file in a hidden build directory of the proxy cache (the kind of
 directory the cache already sweeps when a build is abandoned), verify it, flush it to disk, and only then
-rename it into the cache entry as `filmstrip.jpg`. The verification SHALL find exactly one `mjpeg` video
-stream whose size is `columns × tile_width` by `rows × tile_height` and a file that is not empty. The updated
+rename it into the cache entry as `filmstrip.jpg`. The verification SHALL find a file that is not empty
+and is a JPEG image whose size is `columns × tile_width` by `rows × tile_height`. The updated
 `facts.json` SHALL be written in the build directory and renamed over the old one the same way. A killed or
 failed run SHALL NOT leave a `filmstrip.jpg` that is partial or does not match its plan; it MAY leave a hidden
 build directory, which the proxy cache's stale-build sweep removes.

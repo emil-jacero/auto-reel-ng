@@ -8,7 +8,11 @@ one entry (symlinks to one clip) are encoded once per event: the first in listin
 as generated, the others as cached. The acceleration profile is selected once, as ``render``
 does. Kept apart from :mod:`.commands`, which holds the render/scan/job family.
 
-Each failed clip gets exactly one ``ERROR  <event>/<clip>: <cause>`` line, the cause cut to one
+After a clip's proxy is ready (made now or already cached) the same pool slot makes its filmstrip
+sprite (``clip-filmstrips``) unless one is recorded; a clip whose proxy failed gets no sprite
+attempt. A failed sprite is reported and counted apart from the proxy, which stays valid.
+
+Each failed clip (proxy or sprite) gets exactly one ``ERROR  <event>/<clip>: <cause>`` line, the cause cut to one
 line by :func:`~auto_reel_ng.thumbs.one_line_cause` (the failing command and its stderr are
 logged at debug level, ``-v``). An interrupt sets one shared cancel flag every encode polls, so
 running ffmpeg processes are killed and their build directories removed before the process
@@ -21,20 +25,23 @@ import argparse
 import logging
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from ..accel import AccelProfile, detect_capabilities, select_profile
 from ..accel.profiles.hardware import HardwareProfile
-from ..errors import ProxyError
+from ..errors import FfmpegCancelledError, FilmstripError, ProxyError
 from ..event import scan_event
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..ingest import EventRef
 from ..proxies import (
+    Filmstrip,
     ProxyEntry,
     ProxySettings,
+    ensure_filmstrip,
     ensure_proxy,
+    lookup_filmstrip,
     lookup_proxy,
     proxy_key,
     resolve_proxy_settings,
@@ -59,6 +66,26 @@ class _EventProxies:
     failed: int = 0
     written: int = 0
     listed: bool = True
+    #: The filmstrip counts: of the clips whose proxy is ready, how many sprites were made now,
+    #: were already recorded, or failed (the proxy stays valid), and the bytes of those made.
+    film_generated: int = 0
+    film_cached: int = 0
+    film_failed: int = 0
+    film_written: int = 0
+
+
+@dataclass(frozen=True)
+class _Made:
+    """What one pool slot made for one entry: its proxy and, unless that failed, its sprite."""
+
+    entry: ProxyEntry
+    #: The recorded or built filmstrip, or ``None`` when its attempt failed (``film_error``).
+    film: Optional[Filmstrip]
+    #: The failed sprite's reason, or ``None``.
+    film_error: Optional[str] = None
+    #: The size on disk of the proxy this slot made, taken before the sprite is recorded in the
+    #: facts (0 for a proxy that was already cached).
+    proxy_bytes: int = 0
 
 
 @dataclass(frozen=True)
@@ -113,14 +140,20 @@ def cmd_proxies(args: argparse.Namespace) -> int:
     cached = sum(r.cached for r in results)
     failed = sum(r.failed for r in results)
     written = sum(r.written for r in results)
+    film_generated = sum(r.film_generated for r in results)
+    film_cached = sum(r.film_cached for r in results)
+    film_failed = sum(r.film_failed for r in results)
+    film_written = sum(r.film_written for r in results)
     unlisted = sum(1 for r in results if not r.listed)
     events_note = f", {_plural(unlisted, 'event')} unreadable" if unlisted else ""
     _emit(
         f"proxies: {_plural(clips, 'clip')} in {_plural(len(results), 'event')}: "
-        f"{generated} generated ({_size(written)}), {cached} cached, {failed} failed"
+        f"{generated} generated ({_size(written)}), {cached} cached, {failed} failed; "
+        f"filmstrips: {film_generated} generated ({_size(film_written)}), "
+        f"{film_cached} cached, {film_failed} failed"
         f"{events_note} (cache: {settings.cache_dir})"
     )
-    return 1 if failed or unlisted else 0
+    return 1 if failed or film_failed or unlisted else 0
 
 
 def _selected_render_node(profile: AccelProfile) -> Optional[str]:
@@ -130,8 +163,81 @@ def _selected_render_node(profile: AccelProfile) -> Optional[str]:
     return None
 
 
+def _make_entry(clip: Path, known: Optional[ProxyEntry], run: _Run) -> _Made:
+    """One pool slot: the clip's proxy (unless ``known``), then its filmstrip.
+
+    A :class:`ProxyError` propagates (no sprite is attempted for a failed proxy); a failed
+    sprite is returned, because the proxy it leaves is valid and counted.
+
+    Raises:
+        FfmpegCancelledError: the run was interrupted before the sprite started.
+    """
+    entry = known
+    proxy_bytes = 0
+    if entry is None:
+        entry = ensure_proxy(
+            clip,
+            settings=run.settings,
+            runtime=run.runtime,
+            profile=run.profile,
+            render_node=run.render_node,
+            should_cancel=run.cancel.is_set,
+        )
+        proxy_bytes = _entry_bytes(entry)
+    if run.cancel.is_set():
+        raise FfmpegCancelledError("proxies: interrupted before the filmstrip was made")
+    try:
+        film = ensure_filmstrip(clip, entry, runtime=run.runtime)
+    except FilmstripError as exc:
+        return _Made(entry, None, exc.reason, proxy_bytes)
+    return _Made(entry, film, None, proxy_bytes)
+
+
+def _counts(generated: int, cached: int, failed: int) -> List[str]:
+    """``"3 generated"``-style parts for the non-zero counts."""
+    return [
+        f"{count} {label}"
+        for label, count in (("generated", generated), ("cached", cached), ("failed", failed))
+        if count
+    ]
+
+
+@dataclass
+class _Tally:
+    """One event's counts and failures while its slots finish."""
+
+    generated: int = 0
+    cached: int = 0
+    written: int = 0
+    film_generated: int = 0
+    film_cached: int = 0
+    film_written: int = 0
+    #: identity -> reason, for the clips whose proxy failed and those whose sprite failed.
+    errors: Dict[str, str] = field(default_factory=dict)
+    film_errors: Dict[str, str] = field(default_factory=dict)
+
+    def add(self, made: _Made, members: List[str], *, known: bool) -> None:
+        """Count one finished slot, whose entry is shared by ``members`` (the first made it)."""
+        if not known:
+            if made.entry.generated:
+                self.generated += 1  # the first member made the entry; the rest share it
+                self.written += made.proxy_bytes
+                self.cached += len(members) - 1
+            else:
+                self.cached += len(members)  # another process finished first
+        if made.film is None:
+            for member in members:
+                self.film_errors[member] = made.film_error or "the filmstrip could not be made"
+        elif made.film.generated:
+            self.film_generated += 1
+            self.film_written += made.film.bytes
+            self.film_cached += len(members) - 1
+        else:
+            self.film_cached += len(members)  # recorded by another process meanwhile
+
+
 def _proxies_event(ref: EventRef, run: _Run) -> _EventProxies:
-    """Fill one event's proxies through the pool; print its ERROR lines, then its line."""
+    """Fill one event's proxies and filmstrips through the pool; print its ERROR lines, then its line."""
     name = ref.event_dir.name
     try:
         listing = scan_event(ref.event_dir)
@@ -140,70 +246,61 @@ def _proxies_event(ref: EventRef, run: _Run) -> _EventProxies:
         return _EventProxies(listed=False)
 
     identities = listing.identities
-    errors: Dict[str, str] = {}
+    tally = _Tally()
     groups: Dict[str, List[str]] = {}  # entry key -> the identities that share it
     for identity in identities:
         try:
             key = proxy_key(ref.event_dir / identity)
         except OSError as exc:  # the clip vanished between the listing and the stat
-            errors[identity] = f"cannot stat the clip: {_os_reason(exc)}"
+            tally.errors[identity] = f"cannot stat the clip: {_os_reason(exc)}"
             continue
         groups.setdefault(key, []).append(identity)
 
-    # One encode per distinct entry, for its first identity: the others resolve to the same
-    # entry, so the one attempt serves them all.
-    cached = 0
-    futures: Dict[str, Future[ProxyEntry]] = {}
+    # One slot per distinct entry, for its first identity: the others resolve to the same
+    # entry, so the one attempt serves them all. A cached proxy with a recorded sprite needs
+    # no slot at all; a cached proxy without one needs only the sprite.
+    known_keys: set[str] = set()  # entries that were complete before this run touched them
+    futures: Dict[str, Future[_Made]] = {}
     for key, members in groups.items():
         clip = ref.event_dir / members[0]
-        if lookup_proxy(clip, settings=run.settings) is not None:
-            cached += len(members)
-            continue
-        futures[key] = run.pool.submit(
-            ensure_proxy,
-            clip,
-            settings=run.settings,
-            runtime=run.runtime,
-            profile=run.profile,
-            render_node=run.render_node,
-            should_cancel=run.cancel.is_set,
-        )
+        known = lookup_proxy(clip, settings=run.settings)
+        if known is not None:
+            known_keys.add(key)
+            tally.cached += len(members)
+            if lookup_filmstrip(known) is not None:
+                tally.film_cached += len(members)
+                continue
+        futures[key] = run.pool.submit(_make_entry, clip, known, run)
 
-    generated = 0
-    written = 0
     for key, future in futures.items():
-        members = groups[key]
         try:
-            entry = future.result()
+            made = future.result()
         except ProxyError as exc:
-            for member in members:  # each ERROR line names the clip itself
-                errors[member] = exc.reason
-        else:
-            if entry.generated:
-                generated += 1  # the first member made the entry; the rest share it
-                written += _entry_bytes(entry)
-            else:
-                cached += 1  # another process finished first
-            cached += len(members) - 1
+            for member in groups[key]:  # each ERROR line names the clip itself
+                tally.errors[member] = exc.reason
+            continue  # a failed proxy gets no sprite attempt and no sprite count
+        tally.add(made, groups[key], known=key in known_keys)
 
     # Collected per event and printed in identity order, so the output is deterministic.
-    for identity in sorted(errors):
-        reason = errors[identity]
+    for identity in sorted({**tally.errors, **tally.film_errors}):
+        reason = tally.errors.get(identity) or tally.film_errors[identity]
         logger.debug("%s", _printable(f"{name}/{identity}: {reason}"))
         source = (ref.event_dir / identity).resolve()
         _emit(f"ERROR  {name}/{identity}: {one_line_cause(reason, source)}")
-    counts = [
-        f"{count} {label}"
-        for label, count in (("generated", generated), ("cached", cached), ("failed", len(errors)))
-        if count
-    ]
-    _emit(", ".join([f"{name}: {_plural(len(identities), 'clip')}", *counts]))
+    counts = _counts(tally.generated, tally.cached, len(tally.errors))
+    film_counts = _counts(tally.film_generated, tally.film_cached, len(tally.film_errors))
+    line = ", ".join([f"{name}: {_plural(len(identities), 'clip')}", *counts])
+    _emit(f"{line}; filmstrips: {', '.join(film_counts)}" if film_counts else line)
     return _EventProxies(
         clips=len(identities),
-        generated=generated,
-        cached=cached,
-        failed=len(errors),
-        written=written,
+        generated=tally.generated,
+        cached=tally.cached,
+        failed=len(tally.errors),
+        written=tally.written,
+        film_generated=tally.film_generated,
+        film_cached=tally.film_cached,
+        film_failed=len(tally.film_errors),
+        film_written=tally.film_written,
     )
 
 

@@ -341,6 +341,8 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   The proxy engine has landed as `proxy-encode` (**D-21**): `auto-reel proxies <root>` fills a rebuildable cache of one
   verified 540p H.264 + AAC proxy per clip (plus its `facts.json`) outside the library; the job, the read model, the
   media routes and the timeline screens that use it follow as their own changes (D-18 and D-19 are taken).
+  The filmstrip sprites have landed (`filmstrip-sprites`): `auto-reel proxies` also cuts one JPEG sprite per proxied
+  clip from the finished proxy's keyframes (`filmstrip.jpg` in the cache entry, its tile geometry in `facts.json`).
   The timeline is built in the repo (**D-20**); its pure model has landed (`timeline-model`, no UI yet).
 - **v3:** nothing is planned for the GUI: the timeline editor moved to v2 on 2026-10-01, and dragging
   across chapters landed in v1 (D-13, `cross-chapter-drag`).
@@ -598,7 +600,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    fingerprint, API or WebSocket change (so no `RENDER_GRAPH_VERSION` bump). Next slice: the timeline's pure model
    (`timeline-model`, D-20), UI pending.
    Then the proxy cache: `proxy-encode` builds it with `auto-reel proxies` (D-21), again with no render,
-   fingerprint, API or WebSocket change.
+   fingerprint, API or WebSocket change. `filmstrip-sprites` has landed next: the same command also cuts each
+   proxy's filmstrip sprite (D-21), on the same terms.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -904,6 +907,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     cut's number is its place in the list plus one, the Cuts panel's and `playheadWords`' number (the model has
     no second numbering by start; the prototype named two handles "cut 1 start"). Variable frame rate is not
     modelled.
+  - **The filmstrip's geometry is read, never recomputed** (`filmstrip-sprites`, 2026-10-03). A clip's tiles come
+    from the proxy entry's `facts.json` `filmstrip` object (D-21): tile size, columns, rows, tile count, interval
+    and the sprite's size; tile `k` sits at column `k % columns`, row `k // columns`.
   - **Tests are the existing runner.** `npm test` (Node's `node:test`, type-checked by `tsconfig.test.json`),
     not vitest: no package is added. This is the proposal §4.10 asked for when it said a slice with logic worth
     unit-testing would propose a runner; the runner was already there.
@@ -955,8 +961,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     unexplained, so no threshold could be set honestly.
   - **The cache** is `$XDG_CACHE_HOME/auto-reel/proxies/` (else `~/.cache/auto-reel/proxies/`), or
     `proxies.cache_dir`; absolute, and refused inside the project root or the `input` directory. An entry is a
-    directory `<key>/` holding `proxy.mp4` and `facts.json` (`filmstrip.jpg` is reserved for
-    `filmstrip-sprites`). `<key>` is the SHA-256 of the clip's file name (symlinks followed, directory left out),
+    directory `<key>/` holding `proxy.mp4`, `facts.json` and, once `filmstrip-sprites` has made it,
+    `filmstrip.jpg`. `<key>` is the SHA-256 of the clip's file name (symlinks followed, directory left out),
     size, `mtime_ns`, `PROXY_VERSION` and a digest of the contract's values, so a changed clip or contract gets a
     new entry by itself while a moved or remounted library keeps its proxies; the encode path is not in the key.
     An entry is built in a hidden `.<key>.<unique>.part` directory, verified, flushed and renamed whole, so a
@@ -981,7 +987,35 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     ones). The archive at the locked shape is about 0.9 GB per footage hour, about 46 GB (the research measured 0.75 GB per hour, about 40 GB, at `-bf 0` with a one-second GOP), planned at 50 GB;
     **no cap and no eviction in v2**. The hybrid path is not always smaller: the 4K50 clip's hybrid proxy is 11.8 MB
     against 7.2 MB on the CPU path (the GPU scaler keeps more noise), the other samples are within 12 % of each other.
-  - **Deliberately not here:** the filmstrip sprite and its sub-second rule (`filmstrip-sprites`); a job, progress
+  - **The filmstrip sprite** (2026-10-03, change `filmstrip-sprites`). Each proxied clip gets one JPEG sprite,
+    `filmstrip.jpg` in its entry, cut from the finished proxy and from nothing else, so the timeline draws a clip's
+    picture without decoding video: tiles 90 px high (160 x 90 for 16:9, 50 x 90 for 540 x 960), at most 10
+    columns, one tile per `interval = max(1, ceil(duration / 120))` seconds, so at most 120 tiles, JPEG `-q:v 5`;
+    about 2.7 kB per footage second on the nine camera samples (0.85 kB on all ten), about 0.65 GB for the
+    archive. Tile `k` is the latest keyframe at or before `k x interval` seconds and there are
+    `ceil(duration / interval)` tiles, never fewer than 1, where `duration` is the proxy's **video-stream**
+    duration (the container's is up to 21 ms longer and would add a tile). The tile geometry is recorded in
+    `facts.json` under a `filmstrip` object (`version`, `tiles`, `interval`, `columns`, `rows`, `tile_width`,
+    `tile_height`, `width`, `height`, `bytes`), written after the JPEG and renamed over the old file, so a record
+    never lacks its image; **D-20's timeline reads that geometry and never recomputes it**.
+    `FILMSTRIP_VERSION` is outside the proxy key: a bump rebuilds sprites (about 0.3 s each) and re-encodes no
+    proxy. A sprite is built in the cache's hidden `.part` directory (swept like a killed encode's), checked
+    (JPEG frame header of the planned size) and renamed in; a failure leaves the proxy valid, is not remembered,
+    and is a `FilmstripError` of the clip (a cache or disk fault is a `ProxyCacheError`).
+  - **The sub-second rule** (the research lost clip C0047, 0.48 s, 12 frames, one keyframe: 24 of 25 clips
+    passed). A clip of one second or less gets a **one-tile sprite of its first frame**; it is not skipped (that
+    would add a "no filmstrip" state to every consumer for 35 clips of about 3,000). Reproduced against the locked
+    shape (`-bf 0`, half-second GOP) on ffmpeg 8.1.2: the research's `fps=1` filter hands mjpeg **no frame** for a
+    single-keyframe clip (ffmpeg exits 234, "Nothing was written into output file"), and its `eof_action=pass`
+    variant fixes that but still loses the **last tile** of clips whose tail after the last keyframe is short
+    (1.04 s gave 1 tile, 25.025 s at 29.97 fps 25 instead of 26) without a word. So the `fps` filter is not used:
+    the proxy's keyframe times come from one `ffprobe` of its packets, and `select` takes exactly the chosen
+    keyframes (`-skip_frame nokey`), which makes the tile count exact and testable (the tests' clips carry their
+    own time in their luma). Two keyframes further apart than the interval would need one frame twice, which
+    `select` cannot do: that fails loudly instead of padding a tile with black. ffmpeg's expression parser fails
+    ("Cannot allocate memory") past about a hundred nested terms, so the `select` sums at most 16 terms a level;
+    a 109-tile sample clip found it after 25-tile tests had passed.
+  - **Deliberately not here:** serving the sprite (`proxy-media-endpoints`); a job, progress
     over the WebSocket and an enqueue endpoint (`proxy-job`, `proxy-enqueue-endpoint`); the API read model and
     media routes with the entity tag as `v` (D-15); any web code; a prune of orphan entries (`proxy-prune`); a
     virtual remux to give the original sound in Firefox. The cache-location helpers are copies of `thumbs/`'s;
@@ -1076,8 +1110,8 @@ turned into confident OpenSpec changes. Numbered to match the ⚠️ markers abo
     proxies`). The PCM audio path is answered the same way: 52 % of the archive's clips (every Sony XAVC clip)
     carry PCM audio that Firefox does not play, a proxy carries AAC made from it, so the proxy plays with sound
     in Firefox while the original stays silent there (the v1 media routes still serve files unchanged). Still
-    open: the job, the read model and the media routes that use the proxies, the filmstrip sprite
-    (`filmstrip-sprites`), a prune of orphan entries (`proxy-prune`), and the virtual remux that would give the
+    open: the job, the read model and the media routes that use the proxies and their filmstrip sprites
+    (the sprites are built: `filmstrip-sprites`), a prune of orphan entries (`proxy-prune`), and the virtual remux that would give the
     original sound in Firefox. Facts that sized the work: about 76 % of the archive's files keep `moov` at the
     end (every seek is a range, the first open a tail fetch), and HEVC exists only under `original/`. See
     `docs/research/browser-playback.md`.

@@ -133,8 +133,8 @@ def publish(part: Path, entry: Path) -> ProxyEntry:
     cache_dir = entry.parent
     try:
         for name in (spec.PROXY_FILENAME, spec.FACTS_FILENAME):
-            _fsync(part / name)
-        _fsync(part)
+            fsync(part / name)
+        fsync(part)
         for _ in range(_PUBLISH_ATTEMPTS):
             winner = read_entry(entry)
             if winner is not None:
@@ -156,7 +156,7 @@ def publish(part: Path, entry: Path) -> ProxyEntry:
                 if exc.errno in (errno.ENOTEMPTY, errno.EEXIST):
                     continue  # lost the race: look at the winner on the next pass
                 raise
-            _fsync(cache_dir)
+            fsync(cache_dir)
             published = read_entry(entry)
             if published is None:
                 raise ProxyCacheError(f"{entry}: the published proxy entry is incomplete")
@@ -175,7 +175,7 @@ def publish(part: Path, entry: Path) -> ProxyEntry:
     )
 
 
-def _fsync(path: Path) -> None:
+def fsync(path: Path) -> None:
     """``fsync`` a file or a directory."""
     fd = os.open(path, os.O_RDONLY)
     try:
@@ -250,6 +250,7 @@ __all__ = [
     "STALE_PART_AGE",
     "ProxyEntry",
     "discard",
+    "fsync",
     "is_full_disk",
     "new_part_dir",
     "publish",
