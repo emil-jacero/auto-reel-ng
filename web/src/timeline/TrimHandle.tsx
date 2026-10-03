@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { KeyboardEvent, PointerEvent } from 'react'
+import type { KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 
 import { formatTime, handleName, handleValueText, NOT_IN_CLIP, stoppedWords } from '../cuts/times'
 import type { TrimEdge } from '../cuts/times'
@@ -7,7 +7,7 @@ import type { DraftCut } from '../edit/draft'
 import { toMs } from '../preview/playback'
 import type { DragStore } from './dragStore'
 import type { TrimNote } from './editing'
-import { keyOutcome, nearestHandle, snapWords } from './handles'
+import { bareMousePress, keyOutcome, nearestHandle, snapWords } from './handles'
 import type { SnapContext } from './handles'
 import type { ClipFacts, Ms } from './model'
 import { snapCandidates, timeToPx, trimEdge, trimLimits } from './model'
@@ -51,7 +51,8 @@ function rowsOf(listed: readonly DraftCut[]): Row[] {
 }
 
 type Begin = (event: PointerEvent<HTMLElement>) => void
-type Registered = { el: HTMLElement; begin: Begin }
+/** What a handle offers its clip's layer: its element, a drag to begin, and to be chosen. */
+type Registered = { el: HTMLElement; begin: Begin; choose: () => void }
 
 export function ClipHandles({
   identity,
@@ -108,8 +109,11 @@ export function ClipHandles({
     return d !== null && d.identity === identity ? d : null
   })
 
-  /** A press on a handle goes to the nearer edge where the areas of two overlap. */
-  const press = (event: PointerEvent<HTMLElement>, id: string) => {
+  /** Whether a pointer sequence is in progress: its compat `mousedown` is not a bare one. */
+  const pointerSeen = useRef(false)
+
+  /** Which handle a press at `clientX` on handle `id` belongs to: the nearer edge where two areas overlap. */
+  const winnerAt = (clientX: number, id: string): string => {
     const box = layer.current?.getBoundingClientRect()
     const reach = coarse() ? COARSE_PX : FINE_PX
     const contenders = rows.flatMap(({ cut }) =>
@@ -119,16 +123,36 @@ export function ClipHandles({
           return []
         }
         const area = entry.el.getBoundingClientRect()
-        if (event.clientX < area.left || event.clientX > area.right) {
+        if (clientX < area.left || clientX > area.right) {
           return []
         }
         const ms = Math.min(facts.durationMs, toMs(edge === 'in' ? cut.in : cut.out))
         return [{ id: handleId(cut.key, edge), px: timeToPx(ms, pps) }]
       }),
     )
-    const pressPx = event.clientX - (box?.left ?? 0)
-    const winner = nearestHandle(pressPx, contenders, reach) ?? id
-    registry.current.get(winner)?.begin(event)
+    return nearestHandle(clientX - (box?.left ?? 0), contenders, reach) ?? id
+  }
+
+  /** A press on a handle goes to the nearer edge where the areas of two overlap. */
+  const press = (event: PointerEvent<HTMLElement>, id: string) => {
+    registry.current.get(winnerAt(event.clientX, id))?.begin(event)
+  }
+
+  /**
+   * A mouse press that came without pointer events (Firefox under touch emulation): no drag
+   * can follow, but the handle that takes it is the one selected and focused, as for a pointer
+   * press, and not the one the browser would focus under the pointer.
+   */
+  const bareMouseDown = (event: MouseEvent<HTMLElement>) => {
+    const target = event.target as Element
+    const hit = [...registry.current].find(([, entry]) => entry.el.contains(target))
+    if (hit === undefined || !bareMousePress(pointerSeen.current, event.button)) {
+      return
+    }
+    event.preventDefault()
+    if (!locked) {
+      registry.current.get(winnerAt(event.clientX, hit[0]))?.choose()
+    }
   }
 
   const dragged = live === null ? undefined : rows.find((row) => row.cut.key === live.key)
@@ -148,6 +172,16 @@ export function ClipHandles({
       ref={layer}
       className="tl-trims"
       data-index={index}
+      onPointerDownCapture={() => {
+        pointerSeen.current = true
+      }}
+      onPointerUpCapture={() => {
+        pointerSeen.current = false
+      }}
+      onPointerCancelCapture={() => {
+        pointerSeen.current = false
+      }}
+      onMouseDown={bareMouseDown}
       style={
         {
           insetInlineStart: left,
@@ -365,8 +399,13 @@ const TrimHandle = memo(function TrimHandle({
     onSelect(identity, cut.key)
     active.current = next
   }
+  /** Chosen without a drag: the handle holds focus and its cut is the selected one. */
+  const choose = () => {
+    el.current?.focus({ preventScroll: true })
+    onSelect(identity, cut.key)
+  }
   useEffect(() => {
-    registry.set(id, { el: el.current as HTMLElement, begin })
+    registry.set(id, { el: el.current as HTMLElement, begin, choose })
     return () => {
       registry.delete(id)
     }

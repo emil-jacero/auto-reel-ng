@@ -96,33 +96,32 @@ the handles; this is a choice for consistency, and costs nothing as both pend fo
 
 **Decision**: `A`/`R` on a focused mark (Shift ignored; none with Ctrl, Meta or Alt, on a repeat or in an IME
 composition) and the detail strip's buttons call the same `approve`/`dismiss`; focus stays on the mark; a key the
-page does not act on (locked, read view, a cut mark) is left to the browser (`preventDefault` only when acted on).
+page does not act on (locked, read view) is left to the browser; one that says why nothing was done ("Already cut") has acted (`preventDefault` only when acted on).
 Never a document listener. This is `timeline-overlays`' design, now a requirement.
 
-### The press rule: the winner's selection is final for the press
+### A mouse press without pointer events is handed over by position too
 
-**Context**: two focus-related effects of one mouse press can disagree: the press handler selects the winner, and
-the browser's own focus handling after a press may focus the element the pointer landed on (cut 2's start), whose
-`onFocus` selects *its* cut. Chrome and a touch tap do not do the second thing here; Firefox's mouse press does,
-after the pointer handlers have run.
-**Explored**: (a) `preventDefault` on `mousedown` as well as `pointerdown` (a mouse-only guess that leaves other
-paths open and cannot be tested without a browser); (b) re-select the winner on `pointerup` (a flicker: the wrong cut
-is selected for the length of the press, and the Cuts fields are rebuilt twice); (c) one rule: a press that is handed
-to a handle records the winner for the clip's layer; a `focus` event on **another** handle of that layer, arriving
-while that press is still the latest (until the winner's pointer is released or cancelled, and one task after it),
-does not select, and returns focus to the winner. Everything else is as before: Tab, a key and a programmatic focus
-select the focused handle.
-**Decision**: (c), after reproducing. The first task of the component work captures the order of `pointerdown`,
-`mousedown`, `focusin`, `pointerup` and `click` with their targets in Firefox 155 and Chrome 154 on the `ft3.py` case
-and writes it in the task result; the rule below is the one that is true whatever that order, and if the capture
-shows a different cause (for example the capture target changing the compat events' target) the fix is made at that
-cause, the requirement and the scenarios stand, and the rule is rewritten to match. The rule is pure:
-`pressFocus(taken: string | null, focused: string): 'select' | 'winner'` in `timeline/handles.ts` (`taken` = the id of
-the handle that took a press that is still in force, `null` otherwise; `'winner'` means the focus is not the press's
-and goes back to the winner without selecting). `ClipHandles` holds `taken` in a ref set in `press` and cleared by the
-winner's release, cancel or lost capture; `TrimHandle.onFocus` asks `pressFocus` before `onSelect`.
-**Rationale**: the invariant is about the operator's intent (the handle that took the press is the one they hold) and
-it is testable as a function of two ids; the browser order is not, and is checked by the Playwright case that failed.
+**Context**: the reproduction (task 2.2, Firefox 155.0 and Chrome 154.0.8037.92, the `ft3.py` `two_neighbours` case) showed
+the original hypothesis, a browser focus *after* the pointer handlers, was not the cause. With a normal context Firefox
+fires `pointerdown` (on cut 2's start, which lies on top), the press is handed to cut 1's end, `gotpointercapture` lands
+on it, and cut 1 is selected: the same as Chrome. The failing case is the one `ft3.py` runs in a context with touch
+emulation on (`has_touch`, `is_mobile`): there Firefox delivers a mouse press as `mousedown`, `mouseup` and `click` only
+(no `pointerdown`, no `pointerup`, no capture), so `ClipHandles.press` never runs; the browser's own `mousedown` default
+focuses the handle under the pointer (cut 2's start), and its `onFocus` selects its cut. Touch taps in the same context
+do fire pointer events, which is why only the mouse step failed.
+**Explored**: (a) guard `onFocus` against a focus the press did not take (the earlier design: a `taken` ref and a pure
+`pressFocus`): useless here, as no press is ever taken; (b) fix the test harness only (use a non-touch context for the
+mouse case): leaves a pointer-less mouse press, which a browser or an automation can deliver, handled differently from
+every other; (c) hand a bare `mousedown` over by position as a pointer press is.
+**Decision**: (c). `ClipHandles` records whether a pointer sequence is in progress (`pointerdown` captured on the layer
+sets it, `pointerup` and `pointercancel` clear it). A `mousedown` on a handle when none is in progress and the button is
+the main one (pure `bareMousePress(pointerSeen, button)` in `timeline/handles.ts`) is prevented (so the browser moves no
+focus), and the handle that `nearestHandle` picks, the same way as for a pointer press, is focused and selected
+(`Registered.choose`). No drag starts: nothing would move it. Locked, it is prevented and does nothing, as a pointer
+press is. A secondary button, and a `mousedown` that follows a `pointerdown`, are the browser's.
+**Rationale**: the invariant is the operator's intent (the handle that took the press is the one they hold), and the
+fix follows the cause the log shows; the position rule (`nearestHandle`) is reused, not copied. The pure part is what
+can be tested under `node:test`; the browser order is checked by the Playwright case that failed.
 
 ## Failure behaviour, idempotency
 
@@ -143,9 +142,10 @@ it is testable as a function of two ids; the browser order is not, and is checke
   and a Playwright check pin it.
 - **Dismissal is forgotten on reload.** Accepted (stated in the lane, said once in the requirement); a persistent
   dismissal is a later change.
-- **The Firefox cause is inferred.** The mouse-only failure with a pointer-capture hand-over points at the browser's
-  post-press focus; the first task proves it before the rule is written. The rule is cheap and safe if the cause
-  turns out different, because it only suppresses selection by a focus event the press itself did not take.
+- **The Firefox cause is a pointer-less mouse press, found by reproducing.** The earlier guess (focus after the pointer
+  handlers) was wrong and was dropped before any code was written. The fallback acts only on a `mousedown` that no
+  pointer sequence accompanies, so in every browser that sends pointer events (the real mouse in Chrome and Firefox) it
+  never runs; it is a small defence against a delivery path, with a flag that is cleared by `pointerup`/`pointercancel`.
 - **Two controls decide the same thing** (button and key). Both go through `approve`/`dismiss`; there is no second
   implementation to drift.
 - **Screen readers and colour contrast of the lane** were not measured by `timeline-overlays` for the *decision*

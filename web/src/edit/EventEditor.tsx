@@ -1364,13 +1364,25 @@ export function EventEditor({
       cuts: liveTrims(baseCuts, draftCuts),
       listed: (identity) => cutsOf(baseCuts, draftCuts, identity),
       onTrim,
+      onAdd: cutHandlers.onAdd,
       locked: listsLocked,
       announce,
       orderChanged,
       previews: cutPanels.panels.previews,
       epoch: resetCount,
     }
-  }, [baseCuts, draftCuts, detail, listsLocked, onTrim, announce, orderChanged, cutPanels, resetCount])
+  }, [
+    baseCuts,
+    draftCuts,
+    detail,
+    listsLocked,
+    onTrim,
+    cutHandlers,
+    announce,
+    orderChanged,
+    cutPanels,
+    resetCount,
+  ])
 
   const onAddChapter = useCallback(() => {
     if (idle(latest.current)) {

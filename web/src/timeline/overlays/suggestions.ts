@@ -112,6 +112,9 @@ export function approval(
   return checkCut(listed, formatTime(segment.start), formatTime(segment.end), length)
 }
 
+/** Said in the detail while a save or a Move clips is pending, as the trim fields say theirs. */
+export const DECISIONS_UNAVAILABLE = 'Deciding is unavailable while a save or a move is pending.'
+
 /** What pressing Approve or Dismiss on a mark comes to: the page applies it, this decides it. */
 export type Decision =
   /** Nothing happens (locked): a key is left to the browser. */

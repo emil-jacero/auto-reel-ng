@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { atPlayhead, keyOutcome, nearestHandle, snapWords, stepEdge } from './handles.ts'
+import { atPlayhead, bareMousePress, keyOutcome, nearestHandle, snapWords, stepEdge } from './handles.ts'
 import { frameMs, nearestFrame, trimLimits, clipFacts } from './model.ts'
 
 const clip = clipFacts(6.02, 25)
@@ -202,5 +202,31 @@ describe('keyOutcome', () => {
   it('Enter stopped by a limit says so', () => {
     assert.deepEqual(at('Enter', 2000, 4000), { kind: 'set', ms: 2360, stopped: true })
     assert.deepEqual(at('Enter', 2360, 4000), { kind: 'set', ms: 2360, stopped: true })
+  })
+})
+
+describe('bareMousePress', () => {
+  it('is a main-button mousedown that no pointerdown came before', () => {
+    assert.equal(bareMousePress(false, 0), true)
+  })
+
+  it('is not one that follows a pointer press, which the handle’s own press handled', () => {
+    assert.equal(bareMousePress(true, 0), false)
+  })
+
+  it('is not a secondary or middle button, which the browser keeps', () => {
+    assert.equal(bareMousePress(false, 1), false)
+    assert.equal(bareMousePress(false, 2), false)
+  })
+
+  it('hands the Firefox press to the nearer edge: the order that failed, two edges 4 px apart', () => {
+    // Cut 1's end at 120.6 px and cut 2's start at 124.6 px; a press at 121.6 lands on cut 2's
+    // start (on top) and belongs to cut 1's end. A bare mousedown asks for that hand-over.
+    const edges = [
+      { id: 'a1:out', px: 120.6 },
+      { id: 'a2:in', px: 124.6 },
+    ]
+    assert.equal(bareMousePress(false, 0), true)
+    assert.equal(nearestHandle(121.6, edges, 24), 'a1:out')
   })
 })

@@ -4,6 +4,7 @@ import type { EventDetail } from '../api/event'
 import type { ReadCutsState } from '../cuts/ReadCuts'
 import { Alert } from '../ui/Alert'
 import { Prepare, usePrepare } from './Prepare'
+import { decideControl } from './overlays/control'
 import type { AnalysisControl } from './overlays/control'
 import type { Dismissals } from './overlays/Dismissals'
 import { Timeline } from './Timeline'
@@ -58,8 +59,9 @@ export function TimelineSection({
     [editing, read],
   )
   const prepare = usePrepare(eventId, onFinished)
-  // The analysis lane shows state and takes no decision here: in the read view the cuts as
-  // read, in Edit mode the draft's, as the Cuts panel lists them (a later change decides).
+  // The analysis lane: in the read view the cuts as read and no decision (reading a screen
+  // never changes state), in Edit mode the draft's, as the Cuts panel lists them, and the
+  // editor's own add, lock and live region to decide with.
   const analysis = useMemo<AnalysisControl>(
     () => ({
       eventId,
@@ -74,7 +76,7 @@ export function TimelineSection({
       cutsOf: (identity) =>
         editing !== null ? editing.listed(identity) : (read.cuts?.get(identity) ?? NO_CUTS),
       dismissals,
-      decide: null,
+      decide: decideControl(editing),
     }),
     [eventId, read, editing, dismissals],
   )

@@ -2,8 +2,13 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import type { Analysis } from '../../api/analysis.ts'
+import type { ReelDocument } from '../../api/reel.ts'
+import { keptCuts } from '../../cuts/times.ts'
+import { addCut, buildWriteBody, cutChanges, cutsOf, isDirty, readCuts, removeCut } from '../../edit/draft.ts'
+import type { Baseline, Draft } from '../../edit/draft.ts'
 import {
   ANALYZED_CLEAN,
+  DECISIONS_UNAVAILABLE,
   NEVER_ANALYZED,
   alreadyCutWords,
   approvedWords,
@@ -474,6 +479,12 @@ describe('decideApprove', () => {
   })
 })
 
+describe('DECISIONS_UNAVAILABLE', () => {
+  it('says in words that deciding waits for the save or the move', () => {
+    assert.match(DECISIONS_UNAVAILABLE, /unavailable while a save or a move is pending/)
+  })
+})
+
 describe('decideDismiss', () => {
   const base = { segment: black, clipName: 'C0012.MP4', locked: false }
 
@@ -490,5 +501,89 @@ describe('decideDismiss', () => {
   it('ignores a press while locked', () => {
     assert.deepEqual(decideDismiss({ ...base, state: 'pending', locked: true }), { kind: 'ignored' })
     assert.deepEqual(decideDismiss({ ...base, state: 'dismissed', locked: true }), { kind: 'ignored' })
+  })
+})
+
+// The chain an approval is, over the real pure functions of the draft and of the decision: the
+// whole path from a pending suggestion to the line `reel.yaml` gets, and back.
+describe('an approval, from the suggestion to reel.yaml and back', () => {
+  const read: ReelDocument = {
+    metadata: { title: 'T', date: '2024-05-01' },
+    look: {},
+    chapters: [{ name: '', clips: ['C0012.MP4'] }],
+    clips: {},
+    ignore: [],
+  }
+  const baseline: Baseline = {
+    read,
+    chapters: [{ key: 'r0', readName: '', name: '', deleted: false }],
+    original: new Map([['r0', ['C0012.MP4']]]),
+    cuts: readCuts(read),
+  }
+  const empty: Draft = {
+    chapters: baseline.chapters,
+    orders: baseline.original,
+    removed: new Map(),
+    metadata: { title: 'T', date: '2024-05-01', location: '', description: '' },
+    cuts: new Map(),
+  }
+  const clip = 'C0012.MP4'
+  const suggestion = { start: 0, end: 3.2033333, kind: 'black' }
+  const listedOf = (draft: Draft) => cutsOf(baseline.cuts, draft.cuts, clip)
+  const stateOf = (draft: Draft) => suggestionState(keptCuts(listedOf(draft)), suggestion, false)
+  const press = (draft: Draft, state = stateOf(draft)) =>
+    decideApprove({ state, segment: suggestion, clipName: clip, locked: false, listed: listedOf(draft), length: 25 })
+
+  it('adds a cut with the span and the kind, which the clip then reads as cut', () => {
+    const decision = press(empty)
+    assert.equal(decision.kind, 'approve')
+    if (decision.kind !== 'approve') {
+      return
+    }
+    assert.deepEqual(decision.span, { in: 0, out: 3.203 })
+    assert.equal(decision.reason, 'black')
+    const approved = addCut(baseline, empty, clip, decision.span, 'a1', decision.reason)
+    assert.deepEqual(listedOf(approved).map((c) => [c.in, c.out, c.reason]), [[0, 3.203, 'black']])
+    assert.equal(stateOf(empty), 'pending')
+    assert.equal(stateOf(approved), 'cut')
+    assert.deepEqual(cutChanges(baseline, approved), { added: 1, removed: 0, trimmed: 0 })
+    assert.equal(isDirty(baseline, approved), true)
+    // Save writes the trim with the kind as its reason.
+    assert.deepEqual(buildWriteBody(baseline, approved).clips[clip].trims, [
+      { in: 0, out: 3.203, reason: 'black' },
+    ])
+    // A second approval over the new list adds nothing: it says it is cut.
+    const again = press(approved)
+    assert.equal(again.kind, 'said')
+    assert.match(again.kind === 'said' ? again.words : '', /^Already cut: /)
+    // Removing the cut, as the Cuts panel does, returns the mark to pending with nothing to save.
+    const removed = removeCut(baseline, approved, clip, 'a1')
+    assert.equal(stateOf(removed), 'pending')
+    assert.equal(isDirty(baseline, removed), false)
+    assert.equal(cutChanges(baseline, removed).added, 0)
+  })
+
+  it('leaves the draft alone when dismissed: nothing to save, no cut added', () => {
+    const decision = decideDismiss({ state: 'pending', segment: suggestion, clipName: clip, locked: false })
+    assert.equal(decision.kind, 'dismiss')
+    assert.equal(isDirty(baseline, empty), false)
+    assert.deepEqual(cutChanges(baseline, empty), { added: 0, removed: 0, trimmed: 0 })
+  })
+
+  it('adds nothing for an overlap or a span past the end, and names the panel’s cut number', () => {
+    const withCut = addCut(baseline, empty, clip, { in: 1, out: 2 }, 'a1')
+    const partly = press(withCut)
+    assert.equal(partly.kind, 'refused')
+    assert.match(partly.kind === 'refused' ? partly.words : '', /overlaps cut 1 \(0:01 to 0:02\)\. Remove that cut first\./)
+    const past = decideApprove({
+      state: 'pending',
+      segment: { start: 24, end: 26, kind: 'freeze' },
+      clipName: clip,
+      locked: false,
+      listed: listedOf(empty),
+      length: 25,
+    })
+    assert.equal(past.kind, 'refused')
+    assert.equal(listedOf(withCut).length, 1)
   })
 })
