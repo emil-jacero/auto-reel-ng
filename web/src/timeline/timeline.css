@@ -376,6 +376,242 @@
     }
   }
 
+  /* --- the picture, while a clip preview of Edit mode holds the page's one video --- */
+  .tl-stage-held {
+    display: grid;
+    place-items: center;
+    block-size: 100%;
+    padding: var(--s-3);
+    color: var(--media-fg, #ddd);
+    font-size: var(--text-sm);
+    text-align: center;
+  }
+
+  /* --- trim handles, Edit mode (`TrimHandle.tsx`) ---
+   * A layer after the playhead, over the lane. A handle's area extends outward from its cut
+   * (a start's to the left of its edge, an end's to the right) so that the two of a short
+   * cut do not overlap; --x is its edge in the clip, --clip-left and --canvas-w keep the
+   * area inside the canvas where the edge is at its start or its end. The bar is the edge.
+   */
+  .tl-trims-host {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-start: calc(var(--tl-ruler-h) + var(--tl-band-h) + var(--s-2));
+    block-size: var(--tl-clip-h);
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .tl-trims {
+    position: absolute;
+    inset-block: 0;
+    pointer-events: none;
+  }
+
+  .tl-trim {
+    --trim-w: 1.5rem;
+
+    position: absolute;
+    inset-block: 0;
+    inline-size: var(--trim-w);
+    pointer-events: auto;
+    touch-action: none;
+    cursor: ew-resize;
+    user-select: none;
+    outline: none;
+
+    &[data-edge='in'] {
+      --bar: min(var(--trim-w), calc(var(--x) + var(--clip-left)));
+
+      inset-inline-start: max(calc(var(--x) - var(--trim-w)), calc(-1 * var(--clip-left)));
+    }
+
+    &[data-edge='out'] {
+      --bar: max(0px, calc(var(--x) - (var(--canvas-w) - var(--clip-left) - var(--trim-w))));
+
+      inset-inline-start: min(var(--x), calc(var(--canvas-w) - var(--clip-left) - var(--trim-w)));
+    }
+
+    &[aria-disabled='true'] {
+      cursor: not-allowed;
+    }
+  }
+
+  /* The edge: a bar with a flag pointing into the cut, so a start and an end differ by shape. */
+  .tl-trim-bar {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: calc(var(--bar) - 3px);
+    inline-size: 6px;
+    border-radius: var(--r-sm);
+    background: var(--accent);
+    box-shadow: 0 0 0 1.5px var(--surface);
+    transition: inline-size var(--dur-fast) var(--ease-out);
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset-block-start: calc(50% - 11px);
+      block-size: 22px;
+      inline-size: 9px;
+      background: var(--accent);
+      box-shadow: 0 0 0 1.5px var(--surface);
+    }
+  }
+
+  .tl-trim[data-edge='in'] .tl-trim-bar::after {
+    inset-inline-start: 6px;
+    border-start-end-radius: var(--r-md);
+    border-end-end-radius: var(--r-md);
+  }
+
+  .tl-trim[data-edge='out'] .tl-trim-bar::after {
+    inset-inline-end: 6px;
+    border-start-start-radius: var(--r-md);
+    border-end-start-radius: var(--r-md);
+  }
+
+  .tl-trim:hover .tl-trim-bar,
+  .tl-trim[data-dragging] .tl-trim-bar {
+    inline-size: 8px;
+    inset-inline-start: calc(var(--bar) - 4px);
+  }
+
+  /* The selected cut's edges wear a ring, so which cut the fields below belong to shows in shape. */
+  .tl-trim[data-selected] .tl-trim-bar,
+  .tl-trim[data-selected] .tl-trim-bar::after {
+    box-shadow:
+      0 0 0 1.5px var(--surface),
+      0 0 0 3.5px var(--accent);
+  }
+
+  .tl-trim:focus-visible .tl-trim-bar {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 3px;
+  }
+
+  .tl-trim[aria-disabled='true'] .tl-trim-bar {
+    background: var(--idle);
+    opacity: 0.6;
+  }
+
+  .tl-trim[aria-disabled='true'] .tl-trim-bar::after {
+    background: var(--idle);
+  }
+
+  /* The time beside the edge, and what it snapped to, in words. */
+  .tl-trim-tip {
+    position: absolute;
+    inset-block-end: calc(100% + 2px);
+    inset-inline-start: var(--bar);
+    translate: -50% 0;
+    z-index: 4;
+    padding: 1px var(--s-2);
+    border-radius: var(--r-sm);
+    background: var(--fg);
+    color: var(--bg);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .tl-trim-snap {
+    font-family: var(--font-sans);
+    font-weight: 600;
+  }
+
+  /* The cut as it stands in the air; the saved spans step back meanwhile. */
+  .tl-trim-ghost {
+    position: absolute;
+    inset-block: 0;
+    border-block: 3px solid var(--accent);
+    background: color-mix(in oklab, var(--accent) 22%, transparent);
+    pointer-events: none;
+  }
+
+  .timeline[data-trimming] .tl-cut {
+    opacity: 0.3;
+  }
+
+  /* A line at the place the edge snapped to; the words are in the tip. */
+  .tl-snap-line {
+    position: absolute;
+    inset-block: -0.25rem;
+    inline-size: 0;
+    border-inline-start: 2px dashed var(--fg);
+    box-shadow: 0 0 0 1px var(--surface);
+    pointer-events: none;
+  }
+
+  /* --- the selected cut's fields --- */
+  .tl-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--s-2) var(--s-3);
+    min-inline-size: 0;
+  }
+
+  .tl-fields-none,
+  .tl-fields-locked {
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
+  .tl-fields-name {
+    align-self: center;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .tl-field {
+    flex: 0 1 8rem;
+    min-inline-size: 6rem;
+  }
+
+  .tl-fields > :is(.field-error, .field-hint, .tl-fields-locked) {
+    flex-basis: 100%;
+  }
+
+  .tl-fields[data-unavailable] .tl-field {
+    opacity: 0.7;
+  }
+
+  @media (pointer: coarse) {
+    .tl-trim {
+      --trim-w: 2.75rem;
+    }
+
+    .tl-fields .field-input {
+      min-block-size: 2.75rem;
+    }
+
+    .tl-fields {
+      row-gap: var(--s-4);
+    }
+  }
+
+  @media (forced-colors: active) {
+    .tl-trim-bar,
+    .tl-trim-bar::after,
+    .tl-trim-ghost {
+      forced-color-adjust: none;
+      background: Highlight;
+    }
+
+    .tl-trim-ghost {
+      background: transparent;
+      border-color: Highlight;
+    }
+
+    .tl-snap-line {
+      border-color: CanvasText;
+    }
+  }
+
   @media (forced-colors: active) {
     .tl-playhead::before,
     .tl-grip {

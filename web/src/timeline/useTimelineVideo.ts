@@ -59,16 +59,25 @@ export function useTimelineVideo({
   eventId,
   clips,
   playhead,
+  held = false,
 }: {
   eventId: string
   clips: readonly TrackClip[]
   playhead: Playhead
+  /**
+   * Another video holds the page (Edit mode's open clip preview): the Timeline renders no
+   * `<video>`, so this lets go of it, keeps the playhead and plays nothing. When it is
+   * false again the video is created and loads at the playhead.
+   */
+  held?: boolean
 }): TimelineVideo {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [playing, setPlaying] = useState(false)
   const [note, setNote] = useState<(PlaybackNote | Notice) | null>(null)
 
   const clipsRef = useRef(clips)
+  const heldRef = useRef(held)
+  heldRef.current = held
   const wantPlay = useRef(false) // the operator asked for Play and has not paused
   const afterSettle = useRef(false) // start the video once it has arrived at its target
   const suspended = useRef(false) // paused by a scrub
@@ -172,6 +181,9 @@ export function useTimelineVideo({
   /** Ask the video for `pos`, going on to play there when it should. */
   const moveVideo = useCallback(
     (pos: Position) => {
+      if (heldRef.current) {
+        return // no video to move: the playhead has the place, and the video loads there when it is back
+      }
       coalescer.request({ clip: pos.clip, ms: pos.ms })
       if (!coalescer.busy() && afterSettle.current) {
         afterSettle.current = false
@@ -394,8 +406,19 @@ export function useTimelineVideo({
     }
   }, [clips, addressOf, coalescer])
 
-  // Open on the playhead's clip, and let go of the video and its decoder on close.
+  // Another video took the page: nothing plays here until the Timeline has its video again.
   useEffect(() => {
+    if (held) {
+      stopPlaying()
+    }
+  }, [held, stopPlaying])
+
+  // Open on the playhead's clip, and let go of the video and its decoder on close (or when
+  // another video holds the page: then there is no element, and nothing to load).
+  useEffect(() => {
+    if (held) {
+      return undefined
+    }
     const video = videoRef.current as FrameVideo | null
     moveVideo(playhead.get())
     return () => {
@@ -414,7 +437,7 @@ export function useTimelineVideo({
       loadedAddress.current = null
       coalescer.failed()
     }
-  }, [coalescer, disarm, moveVideo, playhead])
+  }, [coalescer, disarm, held, moveVideo, playhead])
 
   return { videoRef, playing, note, seekTo, scrubStart, scrubEnd, toggle, handlers }
 }

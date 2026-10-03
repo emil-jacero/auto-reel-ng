@@ -17,6 +17,7 @@ import type { EventFailure, Problem } from '../api/events'
 import { fetchReel, saveReel } from '../api/reel'
 import type { ReelDocument, ReelReadResult, ReelSaveResult, ReelWriteBody } from '../api/reel'
 import type { CutHandlers, CutPanels, PanelState } from '../cuts/CutsPanel'
+import { keptCuts, trimmedWords } from '../cuts/times'
 import { markEventsChanged } from '../events/changes'
 import { clipNames, folderName, plural } from '../events/common'
 import { FAILURE_LABEL, UNANSWERED_CAUSE, notReachableHint } from '../events/labels'
@@ -25,6 +26,9 @@ import { eventName } from '../jobs/labels'
 import { createClipPreviews } from '../preview/previews'
 import { LIST_HREF } from '../route'
 import { focusPageHeading } from '../shell/AppShell'
+import { TimelineSection } from '../timeline/TimelineSection'
+import type { EditBinding } from '../timeline/editing'
+import type { Dismissals } from '../timeline/overlays/Dismissals'
 import { Alert } from '../ui/Alert'
 import { Dialog } from '../ui/Dialog'
 import { Icon } from '../ui/Icon'
@@ -53,13 +57,16 @@ import {
   chapterChanges,
   changedFields,
   cutChanges,
+  cutsOf,
   deleteChapter,
   detailMatchesDocument,
   draftChapters,
   editableChapters,
   isDirty,
   keptOriginal,
+  layoutChanged,
   listedChapters,
+  liveTrims,
   metadataDraftOf,
   moveChapter,
   moveClip,
@@ -75,6 +82,7 @@ import {
   restoreChapter,
   restoreClip,
   restoreCut,
+  trimCut,
 } from './draft'
 import type {
   Baseline,
@@ -197,6 +205,7 @@ type Action =
     }
   | { type: 'cut-remove'; identity: string; key: CutKey }
   | { type: 'cut-restore'; identity: string; key: CutKey }
+  | { type: 'cut-trim'; identity: string; key: CutKey; span: { in: number; out: number } }
   | { type: 'cut-typed'; identity: string; typed: boolean }
   | { type: 'reset' }
   | { type: 'save-start'; pressed: Pressed }
@@ -390,6 +399,11 @@ function reduce(state: State, action: Action): State {
       return withDraft(state, removeCut(state.baseline, state.draft, action.identity, action.key))
     case 'cut-restore':
       return withDraft(state, restoreCut(state.baseline, state.draft, action.identity, action.key))
+    case 'cut-trim':
+      return withDraft(
+        state,
+        trimCut(state.baseline, state.draft, action.identity, action.key, action.span),
+      )
     case 'cut-typed': {
       if (state.typed.has(action.identity) === action.typed) {
         return state
@@ -597,7 +611,7 @@ function summarize(
   chapters: ChapterChanges,
   moved: number,
   removed: number,
-  cuts: { added: number; removed: number },
+  cuts: { added: number; removed: number; trimmed: number },
   adopted: number,
 ): string {
   // An incomplete date reads as '' but is not a date left empty: it is named as such.
@@ -616,11 +630,16 @@ function summarize(
     removed > 0 && `${plural(removed, 'missing clip', 'missing clips')} removed`,
     cuts.added > 0 && `${plural(cuts.added, 'cut', 'cuts')} added`,
     cuts.removed > 0 && `${plural(cuts.removed, 'cut', 'cuts')} removed`,
+    cuts.trimmed > 0 && `${plural(cuts.trimmed, 'cut', 'cuts')} trimmed`,
     adopted > 0 && `adds ${plural(adopted, 'new clip', 'new clips')} to reel.yaml`,
   ].filter((part): part is string => part !== false)
   const text = parts.join(' · ')
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
+
+// The read view's cuts, which Edit mode's Timeline does not use: its cuts are the draft's.
+const NOT_READ = { cuts: null, failure: null } as const
+const NOTHING = () => undefined
 
 // A chapter with no removed clip: one constant, so its list keeps its memoised props.
 const NONE_REMOVED: readonly string[] = []
@@ -857,6 +876,9 @@ export function EventEditor({
   eventId,
   event,
   heading = 'Details',
+  liveEvent = null,
+  dismissals,
+  onProxiesFinished,
   onSaved,
   onReload,
 }: {
@@ -864,6 +886,15 @@ export function EventEditor({
   event: EventDetail | null
   /** The metadata section's heading. */
   heading?: string
+  /**
+   * The event as the page last read it, a proxy job's end included: the Timeline lays out
+   * its clips and proxies from it. `event` stays the snapshot the draft is built from.
+   */
+  liveEvent?: EventDetail | null
+  /** The suggestions dismissed on this page visit (`useDismissals`, kept by the page). */
+  dismissals: Dismissals
+  /** A proxy job the Timeline followed has ended: the page reads the event again. */
+  onProxiesFinished?: () => void
   onSaved: () => void
   onReload: () => void
 }) {
@@ -1296,6 +1327,50 @@ export function EventEditor({
     }),
     [announce],
   )
+
+  // A cut trimmed on the Timeline: the same draft edit as a cut made in the Cuts panel, with
+  // the same guard. A key's result is the handle's value; a drag's release and a typed time
+  // are said once.
+  const onTrim = useCallback<EditBinding['onTrim']>(
+    (identity, key, span, note) => {
+      const current = latest.current
+      if (current === null || current.pressed !== null || moving.current !== null) {
+        return
+      }
+      const next = trimCut(current.baseline, current.draft, identity, key, span)
+      if (next === current.draft) {
+        return
+      }
+      dispatch({ type: 'cut-trim', identity, key, span })
+      if (note.spoken) {
+        const after = cutsOf(current.baseline.cuts, next.cuts, identity)
+        const number = after.findIndex((cut) => cut.key === key) + 1
+        announce(trimmedWords(number, note.name, span, keptCuts(after), note.snap))
+      }
+    },
+    [announce],
+  )
+
+  // What the Timeline gets of the draft (`timeline/editing.ts`); null for the needs-attention form.
+  const baseCuts = ready?.baseline.cuts
+  const draftCuts = ready?.draft.cuts
+  const orderChanged = ready !== null && layoutChanged(ready.baseline, ready.draft)
+  const resetCount = ready?.resets ?? 0
+  const editing = useMemo<EditBinding | null>(() => {
+    if (baseCuts === undefined || draftCuts === undefined || detail === null) {
+      return null
+    }
+    return {
+      cuts: liveTrims(baseCuts, draftCuts),
+      listed: (identity) => cutsOf(baseCuts, draftCuts, identity),
+      onTrim,
+      locked: listsLocked,
+      announce,
+      orderChanged,
+      previews: cutPanels.panels.previews,
+      epoch: resetCount,
+    }
+  }, [baseCuts, draftCuts, detail, listsLocked, onTrim, announce, orderChanged, cutPanels, resetCount])
 
   const onAddChapter = useCallback(() => {
     if (idle(latest.current)) {
@@ -1843,6 +1918,18 @@ export function EventEditor({
               />
             </div>
           </section>
+
+          {editing !== null && detail !== null && (
+            // Closed until opened; its cuts are the draft's, its clips and proxies the page's.
+            <TimelineSection
+              eventId={eventId}
+              event={liveEvent ?? detail}
+              read={NOT_READ}
+              dismissals={dismissals}
+              onFinished={onProxiesFinished ?? NOTHING}
+              editing={editing}
+            />
+          )}
 
           {detail !== null && (
             <div className="edit-hint">

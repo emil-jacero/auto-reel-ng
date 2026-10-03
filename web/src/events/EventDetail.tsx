@@ -43,6 +43,7 @@ import {
   unansweredFailure,
 } from './labels'
 import {
+  liveOf,
   movieOf,
   readingState,
   verdictOf,
@@ -479,6 +480,7 @@ function EventDetailBody({
           eventId={eventId}
           event={null}
           heading="Fix the date or title"
+          dismissals={dismissals}
           onSaved={leaveEditMode}
           onReload={leaveEditMode}
         />
@@ -489,6 +491,9 @@ function EventDetailBody({
           <EventEditor
             eventId={eventId}
             event={state.event}
+            liveEvent={liveOf(state)}
+            dismissals={dismissals}
+            onProxiesFinished={reread}
             onSaved={leaveEditMode}
             onReload={leaveEditMode}
           />

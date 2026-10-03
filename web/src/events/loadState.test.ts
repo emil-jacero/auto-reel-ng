@@ -2,7 +2,14 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import type { EventDetail } from '../api/event'
-import { movieOf, readingState, verdictOf, withVerdict, withVerdictUnread } from './loadState.ts'
+import {
+  liveOf,
+  movieOf,
+  readingState,
+  verdictOf,
+  withVerdict,
+  withVerdictUnread,
+} from './loadState.ts'
 import type { LoadState } from './loadState.ts'
 
 /*
@@ -98,6 +105,14 @@ describe('withVerdict', () => {
     assert.equal(state.updating, undefined)
     assert.equal(state.verdict?.staleness, FRESH)
     assert.equal(state.verdict?.latest_job, DONE)
+  })
+
+  it('keeps the event as read for the Edit-mode Timeline, apart from the baseline', () => {
+    const state = withVerdict(EDITED, AFTER)
+    assert.equal(state.status === 'ready' ? liveOf(state) : null, AFTER)
+    assert.equal(state.status === 'ready' ? state.event : null, BEFORE)
+    // before any newer read the live event is the one the page shows
+    assert.equal(liveOf(EDITED as never), BEFORE)
   })
 
   it('removes the note that an earlier read got no answer', () => {

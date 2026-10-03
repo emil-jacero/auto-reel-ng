@@ -35,16 +35,18 @@ export type LoadState =
   // is the same element when the read answers.
   | { status: 'loading'; editPlace: boolean; movie?: EventDetailData }
   // `updating`: a quiet re-read runs, and the content shown is the last read's.
-  // `verdict`, `verdictUnread`: only while Edit mode is open, where `event` is the editor's
-  // baseline and a newer read must not replace it. `verdict` is the render region's newer
-  // verdict and latest job; `verdictUnread` says that a read of them got no answer. A read
-  // that answers builds a new state without either.
+  // `verdict`, `live`, `verdictUnread`: only while Edit mode is open, where `event` is the
+  // editor's baseline and a newer read must not replace it. `verdict` is the render region's
+  // newer verdict and latest job; `live` is the whole event as that read answered, which the
+  // Edit-mode Timeline lays out its clips and proxies from; `verdictUnread` says that a read
+  // of them got no answer. A read that answers builds a new state without any of them.
   | {
       status: 'ready'
       event: EventDetailData
       fetchedAt: Date
       updating?: boolean
       verdict?: Verdict
+      live?: EventDetailData
       verdictUnread?: VerdictUnread
     }
   | ({ status: 'failed' } & Failure)
@@ -79,17 +81,27 @@ export function verdictOf(state: Extract<LoadState, { status: 'ready' }>): Verdi
   return state.verdict ?? state.event
 }
 
+/** The event as the page last read it: Edit mode's newer read if there is one, else `event`. */
+export function liveOf(state: Extract<LoadState, { status: 'ready' }>): EventDetailData {
+  return state.live ?? state.event
+}
+
 /**
- * The state after a verdict read in Edit mode answered: the event's verdict and latest job,
- * and nothing else (`event`, `fetchedAt` and `updating` are the shown state's own), and no
- * note that a read got no answer. A page that is not ready has no region to refresh.
+ * The state after a verdict read in Edit mode answered: the event's verdict and latest job
+ * for the render region, the event as read for the Timeline (`liveOf`), and nothing else
+ * (`event`, `fetchedAt` and `updating` are the shown state's own), and no note that a read
+ * got no answer. A page that is not ready has no region to refresh.
  */
 export function withVerdict(shown: LoadState, read: EventDetailData): LoadState {
   if (shown.status !== 'ready') {
     return shown
   }
   const { verdictUnread: _unread, ...kept } = shown
-  return { ...kept, verdict: { staleness: read.staleness, latest_job: read.latest_job } }
+  return {
+    ...kept,
+    verdict: { staleness: read.staleness, latest_job: read.latest_job },
+    live: read,
+  }
 }
 
 /** The state after a verdict read got no usable answer: the region keeps its words and says so. */
