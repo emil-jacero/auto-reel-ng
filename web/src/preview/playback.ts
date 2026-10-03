@@ -1,5 +1,5 @@
-import { formatTime } from '../cuts/times'
-import type { CutField, ListedCut } from '../cuts/times'
+import { formatTime } from '../cuts/times.ts'
+import type { CutField, ListedCut } from '../cuts/times.ts'
 
 /*
  * A clip's preview in numbers and words: the spans Skip cuts jumps over, where

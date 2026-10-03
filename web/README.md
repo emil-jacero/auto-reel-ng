@@ -607,10 +607,20 @@ of the slice that demonstrably needs it. The design system adds nothing to it.
 
 ## Checks
 
-`tsc --noEmit` is the whole frontend gate for GUI v1. There is deliberately **no
-test runner and no browser automation**: the types are generated from the schema,
-so drift is a compile error, and the API's behavior is covered by `pytest`. A later
-slice with logic worth unit-testing may propose a runner, with its justification.
+`tsc --noEmit` is the frontend gate: the types are generated from the schema, so
+drift is a compile error, and the API's behavior is covered by `pytest`. `npm test`
+runs Node's built-in runner (`node:test`, no DOM, no added package) over the pure
+modules that hold logic worth unit-testing. There is no browser automation in the
+repo.
+
+**The timeline's model** (GUI v2, D-20) is `src/timeline/model.ts`: pure functions
+for where a clip sits at a zoom, which clips and ticks are near the view, how a
+clip's cuts are drawn and numbered, how far a trim handle may go and what it snaps
+to. Every time it takes or returns is a whole number of **milliseconds** (`Ms`), so
+a value it returns is one the Cuts panel writes and reads back; a clip's duration
+and frame rate are arguments with no default, and a value that is not above zero
+throws a `ModelError`. Nothing imports it yet, so it is not in the bundle. Its tests
+(`model.test.ts`, `trim.test.ts`) run under `npm test`.
 
 Movie playback is checked ad hoc in Chrome (Playwright's channel `chrome`) or Firefox,
 never in Playwright's bundled Chromium, which cannot decode H.264 and would make a

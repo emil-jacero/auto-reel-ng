@@ -140,7 +140,10 @@ typed in v1 (shorter than three frames) is not pulled to 100 ms by looking at it
 cuts read from disk (the render joins them) never gives an inverted range. A clip shorter than three frames
 gives a collapsed range. Where the edge a minimum is measured from lies on a frame, the limit is itself a
 frame time (`frameMs(k - 3)`, not `edge - 100`), so Home and End reach a time the clip can show. That is the
-prototype's first bug.
+prototype's first bug. In general the limit is the largest (start) or smallest (end) frame time that keeps the
+cut at least `minCutMs` long, measured from the opposite edge (clamped to the clip): from an on-grid edge that
+is `frameMs(k - 3)`, from a typed off-grid edge the nearest frame time inside the minimum. A limit is therefore
+always a frame time, and a span never falls under `minCutMs` by a millisecond of rounding.
 
 ### Snapping and `trimEdge`
 `snapTo` takes the candidate nearest `ms` within `SNAP_PX / pps` seconds; two equally near candidates give
@@ -148,8 +151,10 @@ the earlier one (the result no longer depends on array order); none gives `targe
 returns the sorted, de-duplicated list of the clip's start and end, every other cut's edges, the playhead's
 time inside this clip when it is inside, and the caller's extra points (analysis suggestions, later). `trimEdge`
 runs: snap if a candidate is near, else `nearestFrame`; then clamp to `trimLimits`. `snappedTo` is set only
-when the clamped result equals the candidate, so a snap line is never drawn at a place the handle did not
-reach. A clamp returns the limit exactly (a neighbour's typed edge is a legal place to touch).
+when the result equals one of the candidates (a snap, or a limit that is itself a candidate), so a snap line
+is never drawn at a place the handle did not reach. A clamp returns the limit exactly (a neighbour's typed
+edge is a legal place to touch). An edge moved to the place it already holds stays there, whatever lies near:
+snapping runs on a drag, not on a no-op.
 
 ### Cut spans, rectangles, names
 `cutRects` returns one rectangle per listed cut that is not removed, with its index in the caller's list, for
@@ -168,7 +173,8 @@ reproduce and test in a browser; this change's second named case is the identica
 `ModelError` on a non-finite or non-positive value; there is no clamping to a default. `trimEdge` with an
 index outside the list throws. Nothing here retries, logs or touches the DOM, the network or a file. The
 model is a pure function of its arguments, so idempotency questions reduce to: the same arguments give the
-same result, and `trimEdge(.., trimEdge(..).ms ..)` is a fixed point.
+same result, and a drag's result, applied to the cut, is where the edge stays (`trimEdge` on the updated list with that
+result as the wanted time returns it).
 
 ### Bundle and dependencies
 No module imports the model, so `vite build` drops it: the production bundle delta is expected to be 0 bytes.
