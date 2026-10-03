@@ -364,9 +364,9 @@ src/
 │   ├── keys.ts           the playhead's keys (pure); follow.ts: playing through the cuts and into the next clip (pure)
 │   ├── scrub.ts          the seek coalescer: one load or seek in flight, always ending at the last target (pure)
 │   ├── playhead.ts       the playhead's external store; labels.ts: the Timeline's words, the Prepare answers (pure)
-│   ├── handles.ts        what a key does to a trim handle, Enter at the playhead, which overlapping handle a finger meant, what a snap says (pure, + handles.test.ts)
+│   ├── handles.ts        what a key does to a trim handle, Enter at the playhead, which overlapping handle a finger meant, when a mouse press came without pointer events, what a snap says (pure, + handles.test.ts)
 │   ├── dragStore.ts      the edge in the air while a handle is dragged: only the handle, its live span and the fields read it (pure)
-│   ├── editing.ts        what Edit mode gives the Timeline: the draft's cuts, onTrim, locked, the preview store (types)
+│   ├── editing.ts        what Edit mode gives the Timeline: the draft's cuts, onTrim, onAdd, locked, the preview store (types)
 │   ├── TrimHandle.tsx    a clip's trim handles: sliders with pointer capture, snapping and keys
 │   ├── CutFields.tsx     the selected cut's Start and End, typed, in step with the handles
 │   ├── TimelineSection.tsx  the section: Open / Close, then notes, Prepare or the track by what the proxies allow
@@ -374,9 +374,9 @@ src/
 │   ├── Timeline.tsx      the open Timeline: the picture, transport, zoom and the track; Track.tsx, Filmstrip.tsx, Playhead.tsx
 │   ├── useTimelineVideo.ts  the one <video>: src swaps, coalesced seeks, Play through cuts and clips
 │   ├── useVisibleRange.ts   the track scroller's range, once per frame
-│   ├── overlays/         the analysis lane (`timeline-overlays`): suggestions under their clips; approval and dismissal (inert: no Timeline passes `decide` yet)
+│   ├── overlays/         the analysis lane (`timeline-overlays`): suggestions under their clips; approval, dismissal and restore in Edit mode (`timeline-overlay-decisions`)
 │   │   ├── suggestions.ts       a suggestion's state from the cuts, the approval check, the decisions, the A / R keys, stacking over the track, roving order, words (pure, + suggestions.test.ts)
-│   │   ├── control.ts           what the Timeline is given (`analysis`): the cuts as they are, the dismissals, how to decide (types)
+│   │   ├── control.ts           what the Timeline is given (`analysis`): the cuts as they are, the dismissals, how to decide; `decideControl` builds the decision from Edit mode's binding (+ control.test.ts)
 │   │   ├── useAnalysis.ts       the one read of the analysis, when the track mounts
 │   │   ├── useSuggestions.tsx   the hook `Timeline` calls: marks, lane, notes and the selected detail
 │   │   ├── Dismissals.ts        the suggestions dismissed on this page visit (held by `EventDetail`)
@@ -717,11 +717,13 @@ under `npm test`.
 **The analysis lane** (`timeline-overlays`, `src/timeline/overlays/`) draws the event's cached suggestions
 (`GET …/analysis`, read once when the track is shown) as buttons under their clips. A suggestion's state
 (pending, cut, partly cut, dismissed) is derived from the clip's cuts, never stored, and a legend under the lane
-spells out its icons and glyphs. The event page shows the lane in the read view and, with the trim handles, in Edit mode from the draft's cuts; neither decides anything. Approving
-(Edit mode's `cut-add` with the suggestion's kind as the reason, **A** on a focused mark, never from a text field) and
-dismissing (**R**, for the page visit only) are written against `AnalysisControl.decide` (`decideApprove` and
-`decideDismiss` in `suggestions.ts`, tested under `npm test`) but inert: the Timeline `timeline-trim` mounts on Edit mode's
-draft passes `decide: null`, so a later change wires the decisions in.
+spells out its icons and glyphs. The event page shows the lane in the read view, which decides nothing, and, with the trim handles, in Edit mode from the draft's cuts, where it decides
+(`timeline-overlay-decisions`). **Approve as cut** (the detail's button, or **A** on a focused mark, never from a text field) adds the suggestion to the
+draft through the Cuts panel's own add, with the suggestion's kind as the cut's reason: the save bar counts one cut added, Save writes a trim
+`{in, out, reason: black|white|freeze}`, and removing the cut or Reset returns the mark to pending. **Dismiss** and **Restore** (**R** toggles) are for the page
+visit only, are no edit and need no Save. `decideControl` (`overlays/control.ts`) builds the lane's `decide` from Edit mode's binding (`EditBinding.onAdd`,
+`locked`, `announce`); the decision rules (`decideApprove`, `decideDismiss` in `suggestions.ts`) are pure and tested under `npm test`. While a save or a
+Move clips is pending the decisions are unavailable and the detail says so.
 
 Movie playback is checked ad hoc in Chrome (Playwright's channel `chrome`) or Firefox,
 never in Playwright's bundled Chromium, which cannot decode H.264 and would make a
