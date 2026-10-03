@@ -32,6 +32,7 @@ from starlette.responses import FileResponse
 
 from auto_reel_ng.api import events_read
 from auto_reel_ng.api import media as media_module
+from auto_reel_ng.api import movie_read
 from auto_reel_ng.api.app import create_app
 from auto_reel_ng.api.media import (
     MEDIA_CACHE_CONTROL,
@@ -504,7 +505,7 @@ def utbrytning(
             return PurePosixPath("2024/2024-07-15 - x/../../../outside.mp4")
         return real_relpath(metadata)
 
-    monkeypatch.setattr(media_module, "output_relpath", climbing)
+    monkeypatch.setattr(movie_read, "output_relpath", climbing)
     event_dir = project / UTBRYTNING
     _write(event_dir / "s1710001.mp4", _content("utbrytning"))
     (event_dir / "reel.yaml").write_text(UTBRYTNING_REEL, encoding="utf-8")
@@ -518,7 +519,7 @@ def test_a_title_cannot_climb_out_of_the_output_directory(
     settings: ApiSettings, project: Path, utbrytning: Path
 ) -> None:
     document, _seeded = load_event_document(project / UTBRYTNING, order=settings.clip_order)
-    expected = settings.output_dir / media_module.output_relpath(document.metadata)
+    expected = settings.output_dir / movie_read.output_relpath(document.metadata)
     found = rendered_output(project / UTBRYTNING, expected)
     assert found is not None  # the gate counts it: the guard, not the gate, refuses it
     assert os.path.samefile(found, utbrytning)
@@ -542,6 +543,38 @@ def test_a_symlinked_year_folder_in_the_output_directory_is_followed(
     assert media.path == tmp_path / "proj-output-2" / "2024" / KALAS_MOVIE
     assert media.stat.st_size == other.stat().st_size
     assert rendered_output(project / KALAS, _expected_movie(linked, KALAS)) == media.path
+
+
+def _rendered_movie_path(settings: ApiSettings, event: str) -> Optional[Path]:
+    document, _seeded = load_event_document(
+        settings.project_root / event, order=settings.clip_order
+    )
+    return movie_read.rendered_movie_path(
+        settings, settings.project_root / event, document.metadata
+    )
+
+
+def test_the_shared_movie_lookup_and_the_route_agree_in_four_cases(
+    settings: ApiSettings,
+    client: TestClient,
+    movies: Dict[str, Path],
+    utbrytning: Path,
+    tmp_path: Path,
+) -> None:
+    """``rendered_movie_path`` (the detail's rule) and ``GET …/movie`` never disagree."""
+    # 1. The expected file, 2. the file under the old name after a retitle.
+    assert _rendered_movie_path(settings, KALAS) == movies[KALAS]
+    assert client.get(_movie_url(KALAS)).status_code == 200
+    assert _rendered_movie_path(settings, GRILLNING) == movies[GRILLNING]
+    assert client.get(_movie_url(GRILLNING)).status_code == 200
+    # 3. A title climbing out of the output directory: the gate counts it, the lookup refuses.
+    assert _rendered_movie_path(settings, UTBRYTNING) is None
+    assert client.get(_movie_url(UTBRYTNING)).status_code == 404
+    # 4. A directory at the expected path is no movie.
+    movies[KALAS].rename(tmp_path / "aside.mp4")
+    movies[KALAS].mkdir()
+    assert _rendered_movie_path(settings, KALAS) is None
+    assert client.get(_movie_url(KALAS)).status_code == 404
 
 
 def test_an_unparseable_reel_yaml_is_an_event_read_error(settings: ApiSettings) -> None:

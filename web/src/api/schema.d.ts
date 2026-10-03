@@ -719,6 +719,10 @@ export interface components {
          *     not. ``blocking_missing`` is the subset a render needs: the missing clips the document
          *     does not exclude (an excluded clip is never probed, so its absence cannot fail a
          *     render).
+         *
+         *     ``movie`` is ``None`` when the event has no rendered movie, by the rule
+         *     ``GET …/movie`` uses (see :class:`MovieOut` for what it holds). It is always present on
+         *     the wire, and the events list does not carry it.
          */
         EventDetailOut: {
             /** Event Id */
@@ -748,6 +752,7 @@ export interface components {
             blocking_missing: string[];
             latest_job?: components["schemas"]["JobSummaryOut"] | null;
             staleness: components["schemas"]["StalenessOut"];
+            movie?: components["schemas"]["MovieOut"] | null;
         };
         /**
          * EventErrorOut
@@ -937,6 +942,53 @@ export interface components {
             location?: string | null;
             /** Description */
             description?: string | null;
+        };
+        /**
+         * MovieChapterOut
+         * @description One chapter of the rendered movie, as the render recorded it.
+         *
+         *     ``name`` is the chapter's name in the movie (``""`` for the default chapter when it was so
+         *     recorded); ``start`` is seconds from the beginning of the rendered movie: the recorded
+         *     millisecond count divided by 1000, finite and not negative. Copied, never computed from the
+         *     reel or the movie.
+         */
+        MovieChapterOut: {
+            /** Name */
+            name: string;
+            /** Start */
+            start: number;
+        };
+        /**
+         * MovieOut
+         * @description The rendered movie's version and chapter times, read from the render manifest.
+         *
+         *     Probe-free: the manifest and a ``stat`` are the only reads. The facts describe the movie
+         *     **on disk**, the last render's, not the current editorial state (the staleness verdict says
+         *     whether it is outdated).
+         *
+         *     ``recorded_at`` is when the render record was written (timezone-aware UTC): the engine writes
+         *     it only after the atomic finalize verified the movie, so for a render it is when the render
+         *     finished; for a movie ``adopt-renders`` recorded it is when it was adopted. It is not the
+         *     file's modification time. ``fingerprint`` is the first 12 hexadecimal characters of the
+         *     manifest's combined fingerprint: the identity of the **inputs** the render was made from, not
+         *     a hash of the movie's bytes (two renders of identical inputs share it). Together they are
+         *     the movie's version.
+         *
+         *     ``chapters`` is the recorded chapter list, in recorded order. ``None`` means unknown: the
+         *     manifest records no chapter times (written before they were recorded, or adopted rather than
+         *     rendered) or its list is unreadable. It is never ``[]`` for unknown; a recorded empty list is
+         *     reported as empty.
+         */
+        MovieOut: {
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Chapters */
+            chapters?: components["schemas"]["MovieChapterOut"][] | null;
         };
         /**
          * ProblemOut

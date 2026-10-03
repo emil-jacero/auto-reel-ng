@@ -57,7 +57,6 @@ from ..proxies import (
 )
 from ..proxies.spec import FILMSTRIP_FILENAME, PROXY_FILENAME, entry_dir
 from ..reel import ReelDocument, is_excluded, load_document
-from ..render import output_relpath
 from ..render.claims import output_collision as engine_output_collision
 from ..staleness.fingerprint import compute_fingerprint
 from ..staleness.gate import evaluate
@@ -68,6 +67,7 @@ from ..thumbs import (
     thumbnail_path,
 )
 from .entity_tag import entity_tag
+from .movie_read import expected_output, movie_facts
 from .schemas import (
     AnalysisOut,
     ChapterOut,
@@ -616,18 +616,39 @@ def staleness_for(
     The clip-set component stays on its default content-free path: the API never
     passes ``use_hash``, so no clip's bytes are read to answer a read request.
     """
-    fp_document = with_resolved_metadata(
+    return _verdict(
+        settings,
+        event_dir,
+        _resolved_document(settings, event_dir, document),
+        runtime,
+        look_defaults,
+    )
+
+
+def _resolved_document(
+    settings: ApiSettings, event_dir: Path, document: Optional[ReelDocument]
+) -> ReelDocument:
+    """``document`` (or the folder seed) with its metadata resolved as ``render`` resolves it."""
+    return with_resolved_metadata(
         document if document is not None else seed_document(event_dir, order=settings.clip_order),
         event_dir,
     )
+
+
+def _verdict(
+    settings: ApiSettings,
+    event_dir: Path,
+    resolved: ReelDocument,
+    runtime: FfmpegRuntime,
+    look_defaults: Mapping[str, object],
+) -> StalenessOut:
     fingerprint = compute_fingerprint(
-        fp_document,
+        resolved,
         event_dir=event_dir,
         look_defaults=look_defaults,
         ffmpeg_version=runtime.version,
     )
-    output_path = settings.output_dir / output_relpath(fp_document.metadata)
-    verdict = evaluate(event_dir, output_path, fingerprint)
+    verdict = evaluate(event_dir, expected_output(settings, resolved.metadata), fingerprint)
     return StalenessOut(
         stale=verdict.stale,
         reasons=list(verdict.reasons),
@@ -667,7 +688,9 @@ def get_event(
             _thumbnail_settings(settings, config),
             _proxy_settings(settings, config),
         )
-        staleness = staleness_for(settings, event_dir, document, runtime, look_defaults)
+        resolved = _resolved_document(settings, event_dir, document)
+        staleness = _verdict(settings, event_dir, resolved, runtime, look_defaults)
+        movie = movie_facts(settings, event_dir, resolved.metadata)
     except (ReelError, OSError) as exc:
         raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
     latest_jobs = job_store.latest_by_project(str(settings.project_root))
@@ -683,6 +706,7 @@ def get_event(
         blocking_missing=list(blocking_missing(document, result)),
         latest_job=_job_summary(latest_jobs.get(event_id)),
         staleness=staleness,
+        movie=movie,
     )
 
 

@@ -67,6 +67,8 @@ EXPECTED_MODELS = {
     "ProxyOut",
     "ProxyFactsOut",
     "ProxyFilmstripOut",
+    "MovieOut",
+    "MovieChapterOut",
     "AnalysisOut",
     "EditorialWriteResult",
     "JobOut",
@@ -246,6 +248,42 @@ def test_the_events_list_does_not_reference_the_proxy_models() -> None:
         "content"
     ]
     assert "Proxy" not in json.dumps(content)
+
+
+def test_the_detail_publishes_the_movie_object() -> None:
+    """``movie`` is optional and nullable; its chapters are nullable ("unknown"), never required."""
+    models = build_openapi_schema()["components"]["schemas"]
+    detail, movie, chapter = models["EventDetailOut"], models["MovieOut"], models["MovieChapterOut"]
+
+    assert detail["properties"]["movie"]["anyOf"] == [
+        {"$ref": "#/components/schemas/MovieOut"},
+        {"type": "null"},
+    ]
+    assert "movie" not in detail["required"]
+    assert set(movie["required"]) == {"recorded_at", "fingerprint"}
+    assert movie["properties"]["recorded_at"] == {
+        "type": "string",
+        "format": "date-time",
+        "title": "Recorded At",
+    }
+    assert movie["properties"]["fingerprint"]["type"] == "string"
+    assert movie["properties"]["chapters"]["anyOf"] == [
+        {"items": {"$ref": "#/components/schemas/MovieChapterOut"}, "type": "array"},
+        {"type": "null"},
+    ]
+    assert "chapters" not in movie["required"]
+    assert set(chapter["required"]) == {"name", "start"}
+    assert chapter["properties"]["name"]["type"] == "string"
+    assert chapter["properties"]["start"]["type"] == "number"
+
+
+def test_the_events_list_does_not_reference_the_movie_models() -> None:
+    schema = build_openapi_schema()
+    content = schema["paths"]["/api/v1/events"]["get"]["responses"]["200"]["content"]
+    assert "Movie" not in json.dumps(content)
+    rows = schema["components"]["schemas"]
+    assert "movie" not in rows["EventSummaryOut"]["properties"]
+    assert "movie" not in rows["EventErrorOut"]["properties"]
 
 
 def test_job_status_fields_are_published_as_the_job_status_enumeration() -> None:
