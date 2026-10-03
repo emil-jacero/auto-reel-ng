@@ -100,13 +100,28 @@ describe('the playhead\'s words', () => {
   it('builds the slider\'s value text with the clip and the time in it and in all', () => {
     assert.equal(
       playheadValueText('Harbour', 12400, 24960, 72000, 192000),
-      'Harbour, 0:12.4 of 0:24.96; 1:12 of 3:12 in all',
+      'Harbour, clip 0:12.4 of 0:24.96; event 1:12 of 3:12',
     )
     assert.equal(playheadAnnouncement('Harbour', 12400), 'Playhead at Harbour, 0:12.4')
   })
 
+  it('says the spoken slider text in the Cuts panel\'s form, not padded', () => {
+    assert.equal(
+      playheadValueText('s1710002.mp4', 100, 40000, 9100, 55020),
+      's1710002.mp4, clip 0:00.1 of 0:40; event 0:09.1 of 0:55.02',
+    )
+  })
+
+  it('writes the movie line to the footage\'s scale so it never changes width', () => {
+    assert.equal(movieWords(0, 225000), 'Movie 0:00.00 of 3:45.00 of footage')
+    assert.equal(movieWords(225000, 225000).length, movieWords(9990, 225000).length)
+    // a 70-minute footage has hours in both numbers
+    assert.equal(movieWords(3_600_000, 4_200_000), 'Movie 1:00:00.00 of 1:10:00.00 of footage')
+    assert.equal(movieWords(59_000, 4_200_000), 'Movie 0:00:59.00 of 1:10:00.00 of footage')
+  })
+
   it('says the movie, the clip and a clip without cuts', () => {
-    assert.equal(movieWords(192000, 225000), 'Movie 3:12 of 3:45 of footage')
+    assert.equal(movieWords(192000, 225000), 'Movie 3:12.00 of 3:45.00 of footage')
     assert.equal(clipDescription(24960, 2), '0:24.96 long, 2 cuts')
     assert.equal(clipDescription(3200, 0), '0:03.2 long, no cuts')
     assert.equal(clipDescription(3200, 1), '0:03.2 long, 1 cut')

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { HTMLAttributes, KeyboardEvent, Ref } from 'react'
 
-import { formatTime } from '../cuts/times'
+import { ClockGroup } from '../ui/Clock'
 import { playheadKey } from './keys'
 import type { KeyAction } from './keys'
 import { PLAYHEAD, TRACK_KEYS, playheadValueText } from './labels'
@@ -9,6 +9,7 @@ import type { TrackClip } from './layout'
 import type { Layout } from './model'
 import { timeToPx } from './model'
 import { clampPosition, globalMs } from './position'
+import { readoutOf } from './readout'
 import type { Playhead as PlayheadStore } from './playhead'
 
 /**
@@ -80,7 +81,11 @@ export function PlayheadKeys({ id }: { id: string }) {
   )
 }
 
-/** The visible time: the clip, the time in it, and the place in the whole timeline. */
+/**
+ * The visible time, in words: the clip's name (one line, cut with an ellipsis, the whole
+ * name as its tooltip), then `Clip` with the time in it and its length, then `Event` with
+ * the time in the whole timeline and its length. Each time is in a cell of fixed width.
+ */
 export function PlayheadReadout({
   playhead,
   clips,
@@ -90,16 +95,16 @@ export function PlayheadReadout({
   clips: readonly TrackClip[]
   lay: Layout
 }) {
-  const at = clampPosition(clips, useSyncExternalStore(playhead.subscribe, playhead.get))
-  const clip = clips[at.clip]
+  const at = useSyncExternalStore(playhead.subscribe, playhead.get)
+  const readout = readoutOf(at, clips, lay)
   return (
     <p className="tl-readout">
-      <span className="tl-readout-name">{clip.name}</span>
-      <span className="tl-readout-time">
-        {formatTime(at.ms / 1000)} / {formatTime(clip.facts.durationMs / 1000)}
-      </span>
-      <span className="tl-readout-time tl-readout-all">
-        {formatTime(globalMs(lay, at) / 1000)} / {formatTime(lay.totalMs / 1000)} in all
+      <span className="tl-readout-line">
+        <span className="tl-readout-name" title={readout.name}>
+          {readout.name}
+        </span>
+        <ClockGroup label="Clip" time={readout.clip.time} length={readout.clip.length} />
+        <ClockGroup label="Event" time={readout.event.time} length={readout.event.length} />
       </span>
     </p>
   )

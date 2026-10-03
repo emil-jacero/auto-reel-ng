@@ -1,3 +1,5 @@
+import { clockCell, clockScale } from '../clock.ts'
+import type { ClockCell } from '../clock.ts'
 import { formatTime } from '../cuts/times.ts'
 import type { CutField, ListedCut } from '../cuts/times.ts'
 
@@ -183,9 +185,25 @@ export function setWords(field: CutField, seconds: number): string {
   return `${field === 'start' ? 'From' : 'To'} set to ${formatTime(seconds)}.`
 }
 
-/** The visible time: `0:01.234 / 0:06.02`, or `0:00 / —` before the length is read. */
+/**
+ * The player's visible time as cells: the playhead's time and the clip's length, both to
+ * the scale of the clip's length, so neither changes width while the clip plays. A length
+ * the browser has not read (or one that is not a length: 0, not a number) is dashes in the
+ * same places, never `0:00`; the time is then at the scale of a clip under ten minutes.
+ */
+export function timeCells(
+  atMs: number,
+  lengthMs: number | null,
+): { time: ClockCell; length: ClockCell } {
+  const known = lengthMs !== null && Number.isFinite(lengthMs) && lengthMs > 0
+  const scale = clockScale(known ? lengthMs : 0)
+  return { time: clockCell(atMs, scale), length: clockCell(known ? lengthMs : null, scale) }
+}
+
+/** The visible time in words: `Clip 0:20.48 of 0:20.64`, or `Clip 0:00.00 of -:--.--` before the length is read. */
 export function timeWords(atMs: number, lengthMs: number | null): string {
-  return `${formatTime(atMs / 1000)} / ${lengthMs === null ? '—' : formatTime(lengthMs / 1000)}`
+  const { time, length } = timeCells(atMs, lengthMs)
+  return `Clip ${time.text} of ${length.text}`
 }
 
 /** What a note or a failure says: its title, then its detail. */
