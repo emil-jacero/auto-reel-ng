@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 
+import type { JobStatus } from '../api/jobs'
 import { JOB_STATUS_LABEL } from '../events/labels'
 import { JOB_STATUS_LOOK } from '../events/tones'
 import { formatInstant } from '../format'
@@ -82,11 +83,14 @@ export function JobState({
   shown,
   lastJobLabel = false,
   startingInMeter = false,
+  statusLabel = JOB_STATUS_LABEL,
 }: {
   shown: ShownJob
   lastJobLabel?: boolean
   /** The meter beside it says "Starting…" (a list row), so these words do not. */
   startingInMeter?: boolean
+  /** The pill's words per status: a render's by default, a proxy job's from `jobs/labels.ts`. */
+  statusLabel?: Record<JobStatus, string>
 }) {
   const { job } = shown
   const look = JOB_STATUS_LOOK[job.status]
@@ -97,7 +101,7 @@ export function JobState({
     <span className="job-state" data-status={job.status}>
       {lastJobLabel && !active && <span className="job-label">Last job</span>}
       <Pill tone={look.tone} icon={look.icon}>
-        {JOB_STATUS_LABEL[job.status]}
+        {statusLabel[job.status]}
       </Pill>
       {words !== null && <span className="job-words">{words}</span>}
       <span className="job-when">
@@ -124,10 +128,13 @@ export function JobMeter({
   shown,
   eta,
   startingInMeter = false,
+  label = 'Render progress',
 }: {
   shown: ShownJob
   eta?: number
   startingInMeter?: boolean
+  /** The bar's accessible name: a proxy job's is not a render's. */
+  label?: string
 }) {
   const live = useSyncExternalStore(subscribe, () => getState().connection === 'live')
   const { job } = shown
@@ -155,7 +162,7 @@ export function JobMeter({
         className="job-bar"
         max={1}
         value={determinate ? fraction : undefined}
-        aria-label="Render progress"
+        aria-label={label}
       />
       {startingInMeter ? (
         // The slot's width is reserved by its hidden `data-reserve` text (jobs.css).

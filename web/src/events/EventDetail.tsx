@@ -15,6 +15,7 @@ import { formatInstant } from '../format'
 import { missingClipsReason } from '../jobs/labels'
 import { RenderControl } from '../jobs/RenderControl'
 import { MoviePanel } from '../movie/MoviePanel'
+import { TimelineSection } from '../timeline/TimelineSection'
 import { LIST_HREF } from '../route'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
@@ -488,7 +489,12 @@ function EventDetailBody({
           />
         ) : (
           <div className="page-content" aria-busy={updating || undefined}>
-            <ReadyView eventId={eventId} event={state.event} onLostFocus={focusPage} />
+            <ReadyView
+              eventId={eventId}
+              event={state.event}
+              onLostFocus={focusPage}
+              onFinished={reread}
+            />
           </div>
         ))}
     </main>
@@ -575,11 +581,14 @@ function ReadyView({
   eventId,
   event,
   onLostFocus,
+  onFinished,
 }: {
   eventId: string
   event: EventDetailData
   /** Focus has nowhere in the rows to go: the page's heading takes it. */
   onLostFocus: () => void
+  /** A job the Timeline section followed has ended: the page re-reads quietly. */
+  onFinished: () => void
 }) {
   const clips = event.chapters.flatMap((chapter) => chapter.clips)
   const hasNamedChapter = event.chapters.some((chapter) => chapter.name !== '')
@@ -646,6 +655,9 @@ function ReadyView({
         />
       )}
       <ReadCutsNote failure={read.failure} />
+
+      {/* Closed until opened; absent in Edit mode, which replaces this view. */}
+      <TimelineSection eventId={eventId} event={event} read={read} onFinished={onFinished} />
 
       {clips.length === 0 ? (
         <p className="empty-state">
