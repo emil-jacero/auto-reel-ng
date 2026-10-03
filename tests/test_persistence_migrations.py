@@ -39,6 +39,7 @@ _EXPECTED_COLUMNS = {
     "force",
     "error",
     "fingerprint",
+    "kind",
     "worker_id",
     "created_at",
     "started_at",
@@ -107,5 +108,101 @@ def test_migrations_match_models(migrated_url: str) -> None:
             migration_context = MigrationContext.configure(conn)
             diff = compare_metadata(migration_context, Base.metadata)
         assert diff == []
+    finally:
+        engine.dispose()
+
+
+# --------------------------------------------------------------------------- #
+# job-kind: the kind column, the per-kind index, and the round trip
+# --------------------------------------------------------------------------- #
+
+_PREVIOUS_REVISION = "505f2d2c5ca1"
+_INSERT_PREVIOUS = (
+    "INSERT INTO jobs (id, project_root, event_dir, status, device, priority, progress) "
+    "VALUES (:id, '/p', :event, :status, 'auto', 0, 0.0)"
+)
+_INSERT_WITH_KIND = (
+    "INSERT INTO jobs (id, project_root, event_dir, kind, status, device, priority, progress) "
+    "VALUES (:id, '/p', :event, :kind, 'queued', 'auto', 0, 0.0)"
+)
+
+
+def _insert_previous(engine, event: str, status: str) -> uuid.UUID:
+    job_id = uuid.uuid4()
+    with engine.begin() as conn:
+        conn.execute(text(_INSERT_PREVIOUS), {"id": job_id, "event": event, "status": status})
+    return job_id
+
+
+def _insert_kind(engine, event: str, kind: str) -> None:
+    with engine.begin() as conn:
+        conn.execute(text(_INSERT_WITH_KIND), {"id": uuid.uuid4(), "event": event, "kind": kind})
+
+
+def test_upgrading_a_database_with_jobs_backfills_every_row_to_render(
+    fresh_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", fresh_database_url)
+    command.upgrade(_alembic_config(), _PREVIOUS_REVISION)
+    engine = make_engine(fresh_database_url)
+    try:
+        _insert_previous(engine, "2024/queued", "queued")
+        _insert_previous(engine, "2024/running", "running")
+        _insert_previous(engine, "2024/done", "done")
+
+        command.upgrade(_alembic_config(), "head")
+
+        with engine.connect() as conn:
+            kinds = conn.execute(text("SELECT kind FROM jobs")).scalars().all()
+        assert kinds == ["render"] * 3
+        # an upgraded active row still blocks a second active render of its event ...
+        with pytest.raises(DBAPIError):
+            _insert_kind(engine, "2024/running", "render")
+        # ... but no longer a proxy job for it
+        _insert_kind(engine, "2024/running", "proxy")
+    finally:
+        engine.dispose()
+
+
+def test_downgrade_with_a_render_and_a_proxy_job_active_keeps_only_the_render(
+    migrated_url: str,
+) -> None:
+    engine = make_engine(migrated_url)
+    try:
+        _insert_kind(engine, "2024/x", "render")
+        _insert_kind(engine, "2024/x", "proxy")
+
+        command.downgrade(_alembic_config(), "-1")
+
+        inspector = inspect(engine)
+        assert "kind" not in {c["name"] for c in inspector.get_columns("jobs")}
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT count(*) FROM jobs")).scalar_one() == 1
+        index = next(
+            i for i in inspector.get_indexes("jobs") if i["name"] == "ux_jobs_active_identity"
+        )
+        assert index["column_names"] == ["project_root", "event_dir"]
+
+        command.upgrade(_alembic_config(), "head")
+
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT kind FROM jobs")).scalars().all() == ["render"]
+        _insert_kind(engine, "2024/x", "proxy")  # the widened index is back
+    finally:
+        engine.dispose()
+
+
+def test_the_per_kind_index_is_unique_over_project_event_and_kind(migrated_url: str) -> None:
+    engine = make_engine(migrated_url)
+    try:
+        index = next(
+            i for i in inspect(engine).get_indexes("jobs") if i["name"] == "ux_jobs_active_identity"
+        )
+        assert index["unique"] is True
+        assert index["column_names"] == ["project_root", "event_dir", "kind"]
+        _insert_kind(engine, "2024/x", "proxy")
+        with pytest.raises(DBAPIError):
+            _insert_kind(engine, "2024/x", "proxy")
+        _insert_kind(engine, "2024/x", "thumbnails")  # no closed set of kinds
     finally:
         engine.dispose()

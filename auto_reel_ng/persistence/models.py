@@ -33,6 +33,20 @@ class JobStatus(str, enum.Enum):
     CANCELED = "canceled"
 
 
+class JobKind(enum.StrEnum):
+    """The kinds of work this build knows how to name (job-kind).
+
+    The ``jobs.kind`` column is free text on purpose: the database accepts any value,
+    so a row written by a newer build reaches a worker that fails it with a reason
+    instead of the database refusing it. This enum names what *this* build writes.
+    """
+
+    #: Render an event into its movie (the only kind the worker handles itself).
+    RENDER = "render"
+    #: Prepare an event's clip proxies (handled by a worker-registered handler).
+    PROXY = "proxy"
+
+
 #: The statuses a job never leaves. Only a transition into one of them stamps
 #: ``finished_at``; a job in one is final.
 TERMINAL_STATUSES: frozenset[JobStatus] = frozenset(
@@ -41,7 +55,7 @@ TERMINAL_STATUSES: frozenset[JobStatus] = frozenset(
 
 
 class Job(Base):
-    """A unit of render work tracked in the durable queue (the ``jobs`` table).
+    """A unit of work (a render, by default) tracked in the durable queue (the ``jobs`` table).
 
     The queue *is* this table (D-P2): there is no in-memory queue or external
     broker. A worker (7b) claims rows via ``claim_next`` (race-free, ``FOR UPDATE
@@ -53,13 +67,15 @@ class Job(Base):
     __table_args__ = (
         Index("ix_jobs_status", "status"),
         Index("ix_jobs_claim_next", "status", "priority", "created_at"),
-        # An event has at most one active (queued/running) job (job-scheduler): a
-        # DB-level guarantee, not an application-level check, against a duplicate
-        # concurrent render of the same event.
+        # An event has at most one active (queued/running) job *per kind*
+        # (job-scheduler): a DB-level guarantee, not an application-level check,
+        # against a duplicate concurrent job of one kind for the same event. A render
+        # and a proxy job for one event may be active together.
         Index(
             "ux_jobs_active_identity",
             "project_root",
             "event_dir",
+            "kind",
             unique=True,
             postgresql_where=text("status IN ('queued', 'running')"),
         ),
@@ -69,6 +85,9 @@ class Job(Base):
     event_dir: Mapped[str] = mapped_column(Text, nullable=False)
     project_root: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     output_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    kind: Mapped[str] = mapped_column(
+        Text, nullable=False, default=JobKind.RENDER.value, server_default=JobKind.RENDER.value
+    )
     status: Mapped[JobStatus] = mapped_column(
         Enum(
             JobStatus,

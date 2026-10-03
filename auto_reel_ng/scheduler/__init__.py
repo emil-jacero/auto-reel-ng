@@ -16,11 +16,12 @@ from .config import (
 )
 from .pools import CapacityPools, classify_encoder
 from .progress import ThrottledProgress
-from .worker import BuildJob, RunRender, Worker, default_build_job
+from .worker import BuildJob, KindHandler, RunRender, Worker, default_build_job
 
 __all__ = [
     "Worker",
     "BuildJob",
+    "KindHandler",
     "RunRender",
     "default_build_job",
     "CapacityPools",

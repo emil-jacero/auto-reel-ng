@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import uuid
@@ -21,7 +22,7 @@ from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.event import DEFAULT_CLIP_ORDER
 from auto_reel_ng.persistence.engine import session_scope
 from auto_reel_ng.persistence.job_store import JobStore
-from auto_reel_ng.persistence.models import Job, JobStatus
+from auto_reel_ng.persistence.models import Job, JobKind, JobStatus
 from auto_reel_ng.staleness.manifest import manifest_path
 
 pytestmark = pytest.mark.requires_db
@@ -929,3 +930,43 @@ def test_the_projects_own_jobs_are_served_beside_a_foreign_one(
     canceled = client.post(f"/api/v1/jobs/{job_id}/cancel").json()
     assert (canceled["outcome"], canceled["status"]) == ("canceled-queued", "canceled")
     assert [job["id"] for job in client.get("/api/v1/jobs").json()] == [job_id]
+
+
+# --------------------------------------------------------------------------- #
+# A proxy job in the store changes no render-facing answer (job-kind 3.1)
+# --------------------------------------------------------------------------- #
+
+
+def _render_facing_reads(client: TestClient) -> tuple[object, object, object]:
+    """What a client sees: ``GET /jobs``, the events' ``latest_job`` and the WebSocket snapshot."""
+    jobs = client.get("/api/v1/jobs", params={"status": "queued"}).json()
+    events = {row["event_id"]: row.get("latest_job") for row in client.get("/api/v1/events").json()}
+    with client.websocket_connect("/api/v1/ws/jobs") as websocket:
+        snapshot = json.loads(websocket.receive_text())
+    return jobs, events, snapshot
+
+
+def test_a_proxy_job_changes_no_render_facing_answer(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    event = "2024/2024-06-21 - A"
+    render_id = store.enqueue(str(project), event)
+    render_only = _render_facing_reads(client)
+    # The latest job per event is the newest, and the proxy job is newer than the render.
+    proxy_id = store.enqueue(str(project), event, kind=JobKind.PROXY)
+
+    with_proxy = _render_facing_reads(client)
+
+    assert with_proxy == render_only
+    jobs, events, snapshot = with_proxy
+    assert [job["id"] for job in jobs] == [str(render_id)]  # type: ignore[attr-defined]
+    assert events[event]["id"] == str(render_id)  # type: ignore[index]
+    assert [job["id"] for job in snapshot["jobs"]] == [str(render_id)]  # type: ignore[index]
+    assert str(proxy_id) not in json.dumps(with_proxy)
+    assert all("kind" not in job for job in jobs + snapshot["jobs"])  # type: ignore[operator,index]
+
+
+def test_the_published_job_schema_has_no_kind(client: TestClient) -> None:
+    schemas = client.get("/openapi.json").json()["components"]["schemas"]
+
+    assert "kind" not in schemas["JobOut"]["properties"]

@@ -17,7 +17,7 @@ import time
 import uuid
 from datetime import date
 from pathlib import Path, PurePosixPath
-from typing import Callable, NamedTuple, Optional
+from typing import Callable, Mapping, NamedTuple, Optional
 
 from ..accel.profiles.base import AccelProfile
 from ..cli.build import build_render_job_from_event, prepare_and_persist
@@ -39,7 +39,7 @@ from ..event.metadata import load_event_document, require_processable
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..ingest import DEFAULT_LAYOUT, get_layout
 from ..persistence.job_store import JobStore
-from ..persistence.models import Job, JobStatus
+from ..persistence.models import Job, JobKind, JobStatus
 from ..reel import Metadata
 from ..render import (
     RenderJob,
@@ -64,6 +64,11 @@ logger = logging.getLogger(__name__)
 
 BuildJob = Callable[[Job], RenderJob]
 RunRender = Callable[[RenderJob], RenderResult]
+#: Runs a claimed job of a non-render kind: returns normally for ``done``, raises
+#: :class:`~auto_reel_ng.errors.RenderCancelledError` for ``canceled`` or an
+#: :class:`~auto_reel_ng.errors.EngineError` for ``failed``. The handler owns its own
+#: capacity token (job-kind): the worker takes none for it.
+KindHandler = Callable[[Job], None]
 
 
 def _render_job(render_job: RenderJob) -> RenderResult:
@@ -221,6 +226,10 @@ class Worker:
     ``build_job``/``render`` are injectable seams (default: :func:`default_build_job`
     wired to a real engine, and :func:`~auto_reel_ng.render.render_movie`) so tests
     can stub the engine, mirroring the CLI's own patched-engine tests.
+
+    A claimed job is dispatched by its ``kind`` (job-kind): ``render`` is the worker's own
+    path and cannot be overridden; any other kind runs the handler registered for it in
+    ``kind_handlers``, and a kind with no handler fails the job loud.
     """
 
     def __init__(
@@ -233,7 +242,11 @@ class Worker:
         build_job: BuildJob,
         render: RunRender = _render_job,
         device_filter: Optional[str] = None,
+        kind_handlers: Optional[Mapping[str, KindHandler]] = None,
     ) -> None:
+        handlers = dict(kind_handlers or {})
+        if JobKind.RENDER in handlers:
+            raise ValueError("the render kind is the worker's own path and cannot have a handler")
         self._store = job_store
         self._worker_id = worker_id
         self._pools = pools
@@ -241,6 +254,7 @@ class Worker:
         self._build_job = build_job
         self._render = render
         self._device_filter = device_filter
+        self._kind_handlers = handlers
         self._stopping = threading.Event()
         self._lock = threading.Lock()
         self._inflight: dict[uuid.UUID, threading.Thread] = {}
@@ -365,6 +379,41 @@ class Worker:
             logger.exception("job %s: could not record failure", job.id)
 
     def _process_job(self, job: Job) -> None:
+        """Dispatch a claimed job by its kind (job-kind)."""
+        if job.kind == JobKind.RENDER:
+            self._process_render(job)
+            return
+        handler = self._kind_handlers.get(job.kind)
+        if handler is None:
+            # Before any token, build or probe: nothing about the event is touched, and the
+            # job is failed rather than requeued (a requeue would spin on the same claim).
+            known = job.kind in {kind.value for kind in JobKind}
+            reason = (
+                f"no handler for job kind {job.kind!r}"
+                if known
+                else f"unknown job kind {job.kind!r}"
+            )
+            logger.error("job %s failed: %s", job.id, reason)
+            self._safe_transition(job.id, JobStatus.FAILED, error=reason)
+            return
+        self._run_handler(job, handler)
+
+    def _run_handler(self, job: Job, handler: KindHandler) -> None:
+        """Run a non-render kind's handler and record its outcome."""
+        try:
+            handler(job)
+        except RenderCancelledError:
+            logger.info("job %s canceled", job.id)
+            self._safe_transition(job.id, JobStatus.CANCELED)
+            return
+        except EngineError as exc:
+            logger.error("job %s failed: %s", job.id, exc)
+            self._safe_transition(job.id, JobStatus.FAILED, error=str(exc))
+            return
+        self._store.set_progress(job.id, 1.0)
+        self._safe_transition(job.id, JobStatus.DONE)
+
+    def _process_render(self, job: Job) -> None:
         try:
             self._refuse_running_output(job)
             render_job = self._build_job(job)
@@ -415,7 +464,7 @@ class Worker:
             return
         running = {
             other.id: other
-            for other in self._store.list_by_status(JobStatus.RUNNING)
+            for other in self._store.list_by_status(JobStatus.RUNNING, kind=JobKind.RENDER)
             if other.id != job.id
         }
         claims = {job.id: own.path}
@@ -496,4 +545,4 @@ class Worker:
             )
 
 
-__all__ = ["Worker", "BuildJob", "RunRender", "default_build_job"]
+__all__ = ["Worker", "BuildJob", "KindHandler", "RunRender", "default_build_job"]

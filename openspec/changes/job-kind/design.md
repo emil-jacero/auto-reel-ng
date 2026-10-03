@@ -41,8 +41,9 @@ rendering it. The server default makes the migration a single additive statement
 
 ### The unique index gains `kind`
 **Decision**: drop `ux_jobs_active_identity` and create it over (`project_root`, `event_dir`, `kind`) with the
-same `WHERE status IN ('queued','running')`, same name. In the migration the new index is created before the old
-one is dropped, inside the revision's transaction, so there is no moment without protection.
+same `WHERE status IN ('queued','running')`, same name. Two indexes cannot share a name, so the migration drops
+the old one and creates the new one inside the revision's single transaction (PostgreSQL DDL is transactional and
+the drop holds its table lock until commit), so no other session ever sees a moment without protection.
 **Rationale**: this is what lets a render and a proxy job for one event coexist (X8) while keeping the
 database, not the application, as the arbiter. Because the old index is strictly narrower than the new one's
 key, every existing row satisfies the new index: the upgrade cannot fail on data.

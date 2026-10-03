@@ -30,7 +30,7 @@ from __future__ import annotations
 from .config import DEFAULT_DATABASE_URL, resolve_database_url
 from .engine import make_engine, make_session_factory, session_scope
 from .job_store import JobStore
-from .models import Base, Job, JobStatus
+from .models import Base, Job, JobKind, JobStatus
 
 __all__ = [
     "DEFAULT_DATABASE_URL",
@@ -40,6 +40,7 @@ __all__ = [
     "session_scope",
     "Base",
     "Job",
+    "JobKind",
     "JobStatus",
     "JobStore",
 ]

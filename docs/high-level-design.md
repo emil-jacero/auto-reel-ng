@@ -334,6 +334,11 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   manifest (built, change `render-chapter-times`; the chapter list for the movie player that will show
   them is still open) and a movie version in the event detail. v2 starts with a
   research step: §8.11 (proxies, the PCM-audio path) and the timeline library against D-8's dependency budget.
+  Proxy generation is a job of its own kind (`proxy`) in the durable queue: the `jobs` table carries a `kind`
+  (default `render`), the one-active-job guarantee is per (project, event, kind) so a render and a proxy job for
+  one event may be active together, the store's render-facing reads default to `render` (the API, the WebSocket and
+  the CLI answer exactly as before), and the worker dispatches by kind and fails a kind it has no handler for loud.
+  The proxy contract is recorded as D-21 and the timeline as D-20 by their own changes (D-18 and D-19 are taken).
 - **v3:** nothing is planned for the GUI: the timeline editor moved to v2 on 2026-10-01, and dragging
   across chapters landed in v1 (D-13, `cross-chapter-drag`).
 
@@ -584,6 +589,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
 8. **GUI v1** (ingest + reorder + metadata + schedule + progress).
 9. **GUI v2** (look editor + the full timeline editor, with analysis review as timeline overlays; starts
    with the §8.11 research).
+   `job-kind` has landed as the first slice: a `kind` on jobs and a worker that dispatches by it, with no render,
+   fingerprint, API or WebSocket change (so no `RENDER_GRAPH_VERSION` bump).
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
