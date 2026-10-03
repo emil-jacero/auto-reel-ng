@@ -302,7 +302,13 @@ const TrimHandle = memo(function TrimHandle({
   const cancel = () => {
     const a = active.current
     active.current = null
-    drag.set(null)
+    // Only this handle's own drag is ended: another finger's edge in the air stays.
+    if (a === null || drag.owns(a)) {
+      drag.set(null)
+    }
+    if (a !== null) {
+      drag.unclaim(a)
+    }
     if (a !== null && el.current?.hasPointerCapture(a.pointerId)) {
       el.current.releasePointerCapture(a.pointerId)
     }
@@ -322,6 +328,10 @@ const TrimHandle = memo(function TrimHandle({
       if (d !== null && d.identity === identity && d.key === cut.key && d.edge === edge) {
         drag.set(null)
       }
+      if (active.current !== null) {
+        drag.unclaim(active.current)
+        active.current = null
+      }
     },
     [drag, identity, cut.key, edge],
   )
@@ -337,11 +347,7 @@ const TrimHandle = memo(function TrimHandle({
         ? [{ n: i + 1, inMs: toMs(other.in), outMs: toMs(other.out) }]
         : [],
     )
-    target.setPointerCapture(event.pointerId)
-    target.focus({ preventScroll: true })
-    // The handle that takes the press is the one selected, whichever area it landed in.
-    onSelect(identity, cut.key)
-    active.current = {
+    const next = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startMs: ownMs,
@@ -349,6 +355,15 @@ const TrimHandle = memo(function TrimHandle({
       candidates: snapCandidates(listed, at, facts, p, []),
       ctx: { playheadMs: p, durationMs: facts.durationMs, others },
     }
+    // One drag at a time: a second finger on another handle is refused, not mixed in.
+    if (!drag.claim(next)) {
+      return
+    }
+    target.setPointerCapture(event.pointerId)
+    target.focus({ preventScroll: true })
+    // The handle that takes the press is the one selected, whichever area it landed in.
+    onSelect(identity, cut.key)
+    active.current = next
   }
   useEffect(() => {
     registry.set(id, { el: el.current as HTMLElement, begin })
@@ -384,7 +399,10 @@ const TrimHandle = memo(function TrimHandle({
     if (a === null || a.pointerId !== event.pointerId) {
       return
     }
-    const last = drag.get()
+    const d = drag.get()
+    // Only this handle's own edge in the air is a release's value.
+    const last =
+      d !== null && d.identity === identity && d.key === cut.key && d.edge === edge ? d : null
     cancel()
     if (a.moved && last !== null && last.ms !== a.startMs) {
       onTrim(identity, cut.key, span(last.ms), { name, spoken: true, snap: last.words || null })

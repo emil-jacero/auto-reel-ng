@@ -26,6 +26,16 @@ export type DragStore = {
   /** Move the edge, or end the drag with null; listeners run only when something changed. */
   set(next: Dragging | null): void
   subscribe(listener: () => void): () => void
+  /**
+   * One drag at a time: a press takes the store with its own token and is refused (false)
+   * while another holds it, so a second finger on another handle cannot write its value
+   * into the first one's edge. Claiming again with the same token is a yes.
+   */
+  claim(token: object): boolean
+  /** Give the store back; only the holder's token does anything. */
+  unclaim(token: object): void
+  /** Whether this token holds the store. */
+  owns(token: object): boolean
 }
 
 function same(a: Dragging | null, b: Dragging | null): boolean {
@@ -44,6 +54,7 @@ function same(a: Dragging | null, b: Dragging | null): boolean {
 
 export function createDragStore(): DragStore {
   let at: Dragging | null = null
+  let owner: object | null = null
   const listeners = new Set<() => void>()
   return {
     get: () => at,
@@ -56,6 +67,19 @@ export function createDragStore(): DragStore {
         listener()
       }
     },
+    claim(token) {
+      if (owner !== null && owner !== token) {
+        return false
+      }
+      owner = token
+      return true
+    },
+    unclaim(token) {
+      if (owner === token) {
+        owner = null
+      }
+    },
+    owns: (token) => owner === token,
     subscribe(listener) {
       listeners.add(listener)
       return () => {
