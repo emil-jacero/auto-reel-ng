@@ -14,6 +14,7 @@ import {
   approvedWords,
   approval,
   clipNotAnalyzed,
+  cutsKey,
   dismissalKey,
   dismissedWords,
   dropGone,
@@ -27,11 +28,12 @@ import {
   notApprovedWords,
   restoredWords,
   stackMarks,
+  standingRefusal,
   stepOfKey,
   suggestionKey,
   suggestionState,
 } from './suggestions.ts'
-import type { SuggestionKeyEvent } from './suggestions.ts'
+import type { Refusal, SuggestionKeyEvent } from './suggestions.ts'
 
 const black = { start: 0, end: 3.2, kind: 'black' }
 const cut = (from: number, to: number, removed = false) => ({ in: from, out: to, removed })
@@ -585,5 +587,52 @@ describe('an approval, from the suggestion to reel.yaml and back', () => {
     })
     assert.equal(past.kind, 'refused')
     assert.equal(listedOf(withCut).length, 1)
+  })
+})
+
+describe('standingRefusal', () => {
+  const listed = [{ in: 2, out: 4 }]
+  const refusal: Refusal = {
+    id: 'a',
+    words: 'Not approved: this overlaps cut 1.',
+    state: 'partly-cut',
+    cuts: cutsKey(listed),
+  }
+
+  it('stands while the mark, its state and the clip’s cuts are as they were', () => {
+    assert.equal(standingRefusal(refusal, 'a', 'partly-cut', [{ in: 2, out: 4 }]), refusal.words)
+  })
+
+  it('is dropped once the cut is removed or the list is back to none (a Reset)', () => {
+    assert.equal(standingRefusal(refusal, 'a', 'partly-cut', [{ in: 2, out: 4, removed: true }]), null)
+    assert.equal(standingRefusal(refusal, 'a', 'pending', []), null)
+  })
+
+  it('is dropped when the cut moves, or another is added, so its numbers cannot be stale', () => {
+    assert.equal(standingRefusal(refusal, 'a', 'partly-cut', [{ in: 2, out: 5 }]), null)
+    assert.equal(standingRefusal(refusal, 'a', 'partly-cut', [{ in: 0, out: 1 }, ...listed]), null)
+  })
+
+  it('is dropped when the state changes, and is never another mark’s', () => {
+    assert.equal(standingRefusal(refusal, 'a', 'pending', listed), null)
+    assert.equal(standingRefusal(refusal, 'b', 'partly-cut', listed), null)
+    assert.equal(standingRefusal(null, 'a', 'partly-cut', listed), null)
+  })
+
+  it('follows the refusal decideApprove gives, and the span becomes approvable once the cut goes', () => {
+    const segment = { start: 3, end: 5, kind: 'freeze' }
+    const base = { state: 'partly-cut' as const, segment, clipName: 'a.mp4', locked: false, length: 60 }
+    const refused = decideApprove({ ...base, listed })
+    assert.equal(refused.kind, 'refused')
+    const kept = {
+      id: 'a',
+      words: refused.kind === 'refused' ? refused.words : '',
+      state: base.state,
+      cuts: cutsKey(listed),
+    }
+    assert.notEqual(standingRefusal(kept, 'a', 'partly-cut', listed), null)
+    const gone = [{ in: 2, out: 4, removed: true }]
+    assert.equal(standingRefusal(kept, 'a', 'pending', gone), null)
+    assert.equal(decideApprove({ ...base, state: 'pending', listed: gone }).kind, 'approve')
   })
 })

@@ -1154,9 +1154,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     edge as a pointer press is, selecting and focusing the handle that took it; it starts no drag. The `two_neighbours`
     case that failed (6 of 7 before) passes (7 of 7), and the rest of that file passes in both browsers (34 of 34 in Firefox,
     38 of 38 in Chrome; its 400-clip windowing group was not re-run, the windowing being untouched).
-  - **Bundle (`timeline-overlay-decisions`).** `npm run build` on `origin/main` and on this change: JS 521,304 to 522,100
-    bytes (167,683 to 167,946 gzip -9, +0.3 KB), CSS unchanged (70,886; 13,539 gzip -9); no package added. `npm test` runs
-    507 tests (495 before).
+  - **Bundle (`timeline-overlay-decisions`).** `npm run build` on `origin/main` and on this change: JS 521,304 to 522,394
+    bytes (167,683 to 168,013 gzip -9, +0.3 KB), CSS unchanged (70,886; 13,539 gzip -9); no package added. `npm test` runs
+    516 tests (495 before).
 
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to

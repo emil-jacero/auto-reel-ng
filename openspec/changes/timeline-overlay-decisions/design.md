@@ -118,7 +118,10 @@ sets it, `pointerup` and `pointercancel` clear it). A `mousedown` on a handle wh
 the main one (pure `bareMousePress(pointerSeen, button)` in `timeline/handles.ts`) is prevented (so the browser moves no
 focus), and the handle that `nearestHandle` picks, the same way as for a pointer press, is focused and selected
 (`Registered.choose`). No drag starts: nothing would move it. Locked, it is prevented and does nothing, as a pointer
-press is. A secondary button, and a `mousedown` that follows a `pointerdown`, are the browser's.
+press is. A secondary button, and a `mousedown` that follows a `pointerdown` still in progress, are the browser's.
+Where pointer events exist the path is not strictly dead: a touch tap fires `pointerdown`, `pointerup` and only then the
+compatibility `mousedown`, by when the sequence is over, so the path also runs there. It hands over to the handle that
+the pointer press already took (`nearestHandle` gives the same winner), so it is idempotent; it is not relied on.
 **Rationale**: the invariant is the operator's intent (the handle that took the press is the one they hold), and the
 fix follows the cause the log shows; the position rule (`nearestHandle`) is reused, not copied. The pure part is what
 can be tested under `node:test`; the browser order is checked by the Playwright case that failed.
@@ -144,8 +147,13 @@ can be tested under `node:test`; the browser order is checked by the Playwright 
   dismissal is a later change.
 - **The Firefox cause is a pointer-less mouse press, found by reproducing.** The earlier guess (focus after the pointer
   handlers) was wrong and was dropped before any code was written. The fallback acts only on a `mousedown` that no
-  pointer sequence accompanies, so in every browser that sends pointer events (the real mouse in Chrome and Firefox) it
-  never runs; it is a small defence against a delivery path, with a flag that is cleared by `pointerup`/`pointercancel`.
+  pointer sequence is in progress, so for the real mouse in Chrome and Firefox it does not run. It does run, idempotently,
+  on the compatibility `mousedown` that follows a touch tap (after its `pointerup`); it is a small defence against a
+  delivery path, with a flag that is cleared by `pointerup`/`pointercancel`.
+- **Some wiring is covered only by the browser run.** The repo has no component test runner (`node:test` only; vitest is
+  out of scope). `analysisOf` (the binding to the lane's control) and `standingRefusal` are pure and tested;
+  `ClipHandles.bareMouseDown`, `EventEditor` filling `onAdd` from `cutHandlers.onAdd`, and the Timeline passing the
+  control on are checked only by the Playwright scripts, which live in `$SCRATCH`, not in the repo.
 - **Two controls decide the same thing** (button and key). Both go through `approve`/`dismiss`; there is no second
   implementation to drift.
 - **Screen readers and colour contrast of the lane** were not measured by `timeline-overlays` for the *decision*

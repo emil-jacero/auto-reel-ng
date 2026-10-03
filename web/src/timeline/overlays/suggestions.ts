@@ -171,6 +171,34 @@ export function decideApprove({
 }
 
 /**
+ * A refusal, kept with what produced it: the mark, its state and the clip's cuts as listed
+ * (`cutsKey`). It stands while all three are as they were.
+ */
+export type Refusal = { id: string; words: string; state: SuggestionState; cuts: string }
+
+/** The clip's cuts as listed, as one comparable string (removed ones and their numbers count). */
+export function cutsKey(listed: readonly Cut[]): string {
+  return listed.map((cut) => `${cut.in}-${cut.out}${cut.removed === true ? 'x' : ''}`).join(',')
+}
+
+/**
+ * The words of `refusal` to show on the mark `id` now, or null: another mark, or a mark
+ * whose state or whose clip's cuts changed since (a cut removed, edited or added, a Reset)
+ * no longer has the refusal's reason, and its numbers may no longer be right.
+ */
+export function standingRefusal(
+  refusal: Refusal | null,
+  id: string,
+  state: SuggestionState,
+  listed: readonly Cut[],
+): string | null {
+  if (refusal === null || refusal.id !== id || refusal.state !== state) {
+    return null
+  }
+  return refusal.cuts === cutsKey(listed) ? refusal.words : null
+}
+
+/**
  * Dismiss (R) on a mark in `state`: a dismissed one is restored, a pending one is
  * dismissed; a cut or partly cut one is decided by its cuts and says so; a locked page
  * ignores the press.
