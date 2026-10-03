@@ -1,6 +1,7 @@
 import type { EnqueueProxiesResult } from '../api/proxies.ts'
 import type { JobStatus } from '../api/jobs.ts'
 import type { ProxyProbe } from '../api/clipMedia.ts'
+import { clockScale, formatClock } from '../clock.ts'
 import { formatTime } from '../cuts/times.ts'
 import { plural } from '../events/names.ts'
 import type { Tone } from '../ui/Pill.tsx'
@@ -155,9 +156,10 @@ export const CUTS_UNREADABLE_DETAIL =
 /** Shown while the page's read of the cuts is still on its way: Play waits for it. */
 export const CUTS_READING = 'Reading the cuts…'
 
-/** `Movie 3:12 of 3:45 of footage`. */
+/** `Movie 3:12.00 of 3:45.00 of footage`, both to the footage's scale: it never changes width. */
 export function movieWords(movie: Ms, footage: Ms): string {
-  return `Movie ${formatTime(movie / 1000)} of ${formatTime(footage / 1000)} of footage`
+  const scale = clockScale(footage)
+  return `Movie ${formatClock(movie, scale)} of ${formatClock(footage, scale)} of footage`
 }
 
 /** A clip's length and cuts, for its description. */
@@ -166,7 +168,10 @@ export function clipDescription(durationMs: Ms, cutCount: number): string {
   return `${formatTime(durationMs / 1000)} long, ${cuts}`
 }
 
-/** The slider's value text: `Harbour, 0:12.4 of 0:24.96; 1:12 of 3:12 in all`. */
+/**
+ * The slider's value text: `Harbour, clip 0:12.4 of 0:24.96; event 1:12 of 3:12`. Said, not
+ * seen, so in the Cuts panel's form: padding is for eyes, and "00:09" is read badly.
+ */
 export function playheadValueText(
   name: string,
   localMs: Ms,
@@ -174,8 +179,8 @@ export function playheadValueText(
   atMs: Ms,
   totalMs: Ms,
 ): string {
-  const here = `${formatTime(localMs / 1000)} of ${formatTime(durationMs / 1000)}`
-  const all = `${formatTime(atMs / 1000)} of ${formatTime(totalMs / 1000)} in all`
+  const here = `clip ${formatTime(localMs / 1000)} of ${formatTime(durationMs / 1000)}`
+  const all = `event ${formatTime(atMs / 1000)} of ${formatTime(totalMs / 1000)}`
   return `${name}, ${here}; ${all}`
 }
 

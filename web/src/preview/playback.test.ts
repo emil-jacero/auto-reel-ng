@@ -6,7 +6,10 @@ import {
   changedWords,
   goneWords,
   offersSkip,
+  playheadWords,
   staleAdvice,
+  timeCells,
+  timeWords,
 } from './playback.ts'
 
 /*
@@ -77,5 +80,43 @@ describe('offersSkip', () => {
 
   it('is false read-only when every cut is removed', () => {
     assert.equal(offersSkip(true, [removed]), false)
+  })
+})
+
+describe('the player\'s visible time', () => {
+  it('says the clip, the time in it and its length, to centiseconds', () => {
+    assert.equal(timeWords(20476, 20640), 'Clip 0:20.47 of 0:20.64')
+    assert.equal(timeWords(20480, 20640), 'Clip 0:20.48 of 0:20.64')
+    assert.equal(timeWords(0, 6020), 'Clip 0:00.00 of 0:06.02')
+  })
+
+  it('shows dashes of the same width before the length is read, never 0:00', () => {
+    assert.equal(timeWords(0, null), 'Clip 0:00.00 of -:--.--')
+    for (const unreadable of [0, Number.NaN, -5, Number.POSITIVE_INFINITY]) {
+      assert.equal(timeWords(0, unreadable), 'Clip 0:00.00 of -:--.--')
+    }
+    const before = timeCells(0, null)
+    const after = timeCells(0, 6020)
+    assert.equal(before.time.ch, after.time.ch)
+    assert.equal(before.length.ch, after.length.ch)
+  })
+
+  it('has one length for every millisecond of a 20.64 s clip and of a 10-minute one', () => {
+    for (const length of [20_640, 600_000]) {
+      const lengths = new Set<number>()
+      for (let at = 0; at <= length; at += length > 100_000 ? 13 : 1) {
+        lengths.add(timeWords(at, length).length)
+      }
+      assert.equal(lengths.size, 1, `clip of ${length} ms`)
+    }
+    assert.equal(timeWords(0, 600_000), 'Clip 00:00.00 of 10:00.00')
+  })
+
+  it('shows a playhead a millisecond past the length as the length', () => {
+    assert.equal(timeWords(20641, 20640), 'Clip 0:20.64 of 0:20.64')
+  })
+
+  it('keeps the slider\'s words in the Cuts panel\'s form', () => {
+    assert.equal(playheadWords(1234, 6020, []), '0:01.234 of 0:06.02')
   })
 })

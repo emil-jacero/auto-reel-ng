@@ -89,26 +89,49 @@
     min-inline-size: 5.5rem;
   }
 
+  /*
+   * The readout: the clip's name, then the clip's pair and the event's pair of times
+   * (`ui/Clock.tsx`). The name is the only part that gives way, cut with an ellipsis; the
+   * pairs are fixed cells, so nothing after a number moves. The readout is its own
+   * container: on a narrow one the name takes a line to itself and the pairs the next.
+   */
   .tl-readout {
+    container-type: inline-size;
+    flex: 1 1 14rem;
+    min-inline-size: 0;
+    font-size: var(--text-sm);
+  }
+
+  .tl-readout-line {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
     gap: 0 var(--s-3);
-    min-inline-size: 0;
-    flex: 1 1 14rem;
-    font-size: var(--text-sm);
   }
 
   .tl-readout-name {
+    flex: 1 1 6rem;
+    min-inline-size: 0;
+    overflow: hidden;
     font-weight: 600;
-    overflow-wrap: anywhere;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .tl-readout-time {
-    color: var(--fg-muted);
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
+  /* The separator is drawn, so a wrap leaves no stray one at the start of a line. */
+  @container (min-width: 40rem) {
+    .tl-readout .clock-group + .clock-group::before {
+      content: '·';
+      margin-inline-end: var(--s-3);
+      color: var(--fg-muted);
+      font-weight: 400;
+    }
+  }
+
+  @container (max-width: 39.99rem) {
+    .tl-readout-name {
+      flex-basis: 100%;
+    }
   }
 
   .tl-zoom {
@@ -499,7 +522,10 @@
     background: var(--idle);
   }
 
-  /* The time beside the edge, and what it snapped to, in words. */
+  /*
+   * The time beside the edge, in a cell of fixed width (`ui/Clock.tsx`): the tip is only as
+   * wide as the time, so the snap words, which hang above it, never move it.
+   */
   .tl-trim-tip {
     position: absolute;
     inset-block-end: calc(100% + 2px);
@@ -510,14 +536,25 @@
     border-radius: var(--r-sm);
     background: var(--fg);
     color: var(--bg);
-    font-family: var(--font-mono);
     font-size: var(--text-xs);
     line-height: 1.4;
     white-space: nowrap;
     pointer-events: none;
+
+    .clock-cell {
+      color: inherit;
+    }
   }
 
   .tl-trim-snap {
+    position: absolute;
+    inset-block-end: calc(100% + 2px);
+    inset-inline-start: 50%;
+    translate: -50% 0;
+    padding: 1px var(--s-2);
+    border-radius: var(--r-sm);
+    background: var(--fg);
+    color: var(--bg);
     font-family: var(--font-sans);
     font-weight: 600;
   }

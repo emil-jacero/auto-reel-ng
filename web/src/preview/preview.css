@@ -38,12 +38,10 @@
     gap: var(--s-2);
   }
 
+  /* `Clip 0:20.48 of 0:20.64` in fixed cells (`ui/Clock.tsx`): its width is the clip's scale's. */
   .preview-time {
-    min-inline-size: 15ch;
-    color: var(--fg-muted);
-    font-family: var(--font-mono);
+    min-inline-size: 0;
     font-size: var(--text-sm);
-    font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
 
