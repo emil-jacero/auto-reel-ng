@@ -149,8 +149,10 @@ original", with the stated reason when the original plays by default (`stale`, `
 says nothing more, it is the common case). The control sits after Set To (position 7), so the v1 order and every
 v1 selector keep their place; it is a button, named "Play original of <name>" / "Play preview copy of <name>",
 visible text "Play original" / "Play preview copy", offered only when a copy is ready. A press announces "Playing
-the original of <name>." through the editor's live region. The line and the control add no height after open
-(the line is present from the first render); the stage keeps its fixed 16:9 box.
+the original of <name>." through the editor's live region, with the new file's notes once its metadata is read
+(one message: the region holds one). The line and the control add no height after open
+(the line is present from the first render); the stage keeps its fixed 16:9 box. With a coarse pointer the actions row's
+lines are 1.5rem apart (not 1rem): four 26px buttons wrap at phone width, and each tap area reaches 9px out.
 
 ### 8. Where each part is tested
 
