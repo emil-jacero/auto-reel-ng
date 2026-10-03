@@ -24,4 +24,4 @@
 
 ## 6. Validation gates
 
-- [ ] 6.1 `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`, then `.venv/bin/python -m mypy auto_reel_ng`, then `.venv/bin/python -m pylint auto_reel_ng` (only the known cairo `no-member` noise), then `.venv/bin/python -m pytest` (full suite, DB tests need podman; if it is unavailable, `-m "not requires_db"` and say so). The web needs nothing: the API schema is untouched, so `web/openapi.json` and `web/src/api/schema.d.ts` do not change.
+- [x] 6.1 `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`, then `.venv/bin/python -m mypy auto_reel_ng`, then `.venv/bin/python -m pylint auto_reel_ng` (only the known cairo `no-member` noise), then `.venv/bin/python -m pytest` (full suite, DB tests need podman; if it is unavailable, `-m "not requires_db"` and say so). The web needs nothing: the API schema is untouched, so `web/openapi.json` and `web/src/api/schema.d.ts` do not change.

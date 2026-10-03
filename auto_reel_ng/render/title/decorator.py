@@ -148,7 +148,8 @@ def title_decorator(
     For every chapter that resolved a title clip, a synthetic segment carrying the
     ``title`` producer, the chapter's own card duration, and its :class:`TitleCardRequest`
     (:func:`resolve_card`: the event-wide style with the chapter's ``card`` overrides) is
-    placed immediately before that clip's first segment, recording the chapter it precedes so chapter durations stay correct.
+    placed immediately before that clip's first segment, recording the chapter it precedes so
+    chapter durations stay correct.
     When cuts remove the title clip entirely (it contributes no segment), the card
     opens the chapter's first surviving source segment instead; a chapter with no
     surviving segment gets no card and stays absent from the movie. The result is a
