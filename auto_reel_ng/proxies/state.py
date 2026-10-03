@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import stat
 from dataclasses import dataclass
 from enum import StrEnum
@@ -122,7 +121,7 @@ def _classify_entry(entry: Path) -> _Classified:
         document = json.loads(text)
     except ValueError as exc:
         return _stale(entry, f"facts.json is not JSON: {exc}")
-    facts = _valid_facts(document)
+    facts = ProxyFacts.from_json(document)
     if facts is None:
         return _stale(entry, "facts.json is not a complete record")
     if proxy_size == 0:
@@ -171,23 +170,6 @@ def _size(path: Path) -> Optional[int]:
     except OSError as exc:
         raise ProxyCacheError(f"{path.parent.parent}: cannot read proxies: {exc}") from exc
     return info.st_size if stat.S_ISREG(info.st_mode) else 0
-
-
-def _valid_facts(document: object) -> Optional[ProxyFacts]:
-    """The facts when ``document`` is a complete record this reader can pass on, else ``None``.
-
-    :meth:`ProxyFacts.from_json` is strict about keys, types (a bool is not a number) and the
-    proxy version; this adds what the wire shape needs of the values: a finite duration, positive
-    sizes, and the probe's rotation range. Unknown extra members are ignored.
-    """
-    facts = ProxyFacts.from_json(document)
-    if facts is None:
-        return None
-    if not math.isfinite(facts.duration) or facts.width <= 0 or facts.height <= 0:
-        return None
-    if facts.rotation is not None and not 0 <= facts.rotation < 360:
-        return None
-    return facts
 
 
 __all__ = ["ProxyReading", "ProxyStatus", "read_proxy_state"]

@@ -74,6 +74,9 @@ Precedence `ready > failed > stale > absent`, with one refinement found while te
 is about the proxy, so an entry whose proxy and facts are usable (only its sprite is pending or unusable)
 is decided by the sprite alone. Otherwise a successful retry would read `failed` with the old cause until
 its sprite was cut. A replaced file or a version bump reads `absent`.
+`stale` is repairable by the writer: `ProxyFacts.from_json` (shared by the writer's `read_entry` and this reader)
+holds the finite/positive/range checks, and `read_entry` treats an empty `proxy.mp4` as absent, so `ensure_proxy`
+rebuilds such an entry and `publish` replaces the leftover. Reader and writer agree on "usable".
 The filmstrip refines (b): the proxy is published before its sprite, so an entry whose `facts.json` has no
 `filmstrip` object, or whose record names an image that is not there, is incomplete, not damaged: `absent`.
 A `filmstrip` object that is malformed, of another `FILMSTRIP_VERSION`, or whose image is empty or not the

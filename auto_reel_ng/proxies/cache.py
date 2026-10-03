@@ -66,7 +66,8 @@ def read_entry(directory: Path) -> Optional[ProxyEntry]:
     """The complete entry at ``directory``, or ``None`` when it is absent or incomplete.
 
     One ``stat`` of the proxy and one JSON read of the facts; no process. A directory that
-    lacks either file, or whose facts are damaged or from another version, is absent.
+    lacks either file, whose proxy is empty, or whose facts are damaged, invalid or from another
+    version, is absent.
 
     Raises:
         ProxyCacheError: the cache directory cannot be read (not merely absent).
@@ -74,7 +75,9 @@ def read_entry(directory: Path) -> Optional[ProxyEntry]:
     proxy_path = directory / spec.PROXY_FILENAME
     facts_path = directory / spec.FACTS_FILENAME
     try:
-        if not proxy_path.is_file():
+        # An empty proxy.mp4 (a disk-full write or a copy cut short) is not a usable entry: it
+        # reads as absent so ensure_proxy rebuilds it and publish() replaces the leftover.
+        if not proxy_path.is_file() or proxy_path.stat().st_size == 0:
             return None
     except OSError as exc:  # Python 3.13's is_file lets a PermissionError through
         raise ProxyCacheError(f"{directory.parent}: cannot read proxies: {exc}") from exc
