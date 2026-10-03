@@ -53,7 +53,8 @@ Three facts found by reading the code shaped this design, and the spec states ea
 measurement (`role=button`, no `aria-valuenow`, 283 dropped frames and 20 long tasks at 400 clips, 4x; keyboard =
 lift, nudge in pixels, drop), §2.3 (v1's `CutBar` is already a hand-built slider).
 **Decision**: a `TrimHandle` with `role="slider"`, pointer capture and its own key handler, driven by the model's
-`trimEdge`. No new dependency.
+`trimEdge`. No new dependency. (Measured, not assumed: a page of 80 clips has about 4,700 elements, because the
+editor's lists are in it; a drag there costs native style and layout, not script.)
 **Rationale**: the WAI-ARIA slider pattern is the right abstraction for a continuous value; the measured cost is lower
 and the semantics are the ones the brief asks for ("slider semantics").
 
@@ -70,19 +71,23 @@ no undo, no review; (c) the Timeline inside Edit mode on the editor's draft.
 type EditBinding = {
   cuts: ClipCuts                                  // the draft's cuts, removed ones left out (drives drawn/spans/play)
   listed(identity: string): readonly DraftCut[]   // cutsOf(baseline.cuts, draft.cuts, identity): keys, reasons, removed
-  onTrim(identity: string, key: CutKey, span: { in: number; out: number }): void
+  onTrim(identity, key, span, note: TrimNote): void   // note: the clip's name, whether to say it, what it snapped to
   locked: boolean                                 // a save in flight, or Move clips pending
   announce(words: string): void                   // Edit mode's one live region
   orderChanged: boolean                           // the draft's order or chapters differ from the saved ones
+  previews: ClipPreviews                          // the editor's preview store: the broker of "one video"
+  epoch: number                                   // Reset's count: a selection and a drag do not survive it
 }
 ```
 
 and takes `read = {cuts: editing.cuts, failure: null}` in its place, so `trackClips`, `movieMs`, Play's skip spans and
 the "cuts are being read" wait all work on the draft with no second code path. The **layout** (clips, chapters,
-facts, `version`) comes from the page's live event: `EventDetail` passes its `state.event` to `EventEditor` as a
-second prop, `liveEvent`, and `reread` as `onProxiesFinished` (the editor's own `event` prop stays the once-read
-snapshot the draft is built from). A quiet re-read therefore changes the Timeline's proxies and nothing in the
-draft. Reorders and cross-chapter moves stay list-based (locked): the Timeline shows the **saved order** and a note
+facts, `version`) comes from the page's live event: `EventDetail` passes `EventEditor` a second prop, `liveEvent`, and
+`reread` as `onProxiesFinished` (the editor's own `event` prop stays the once-read snapshot the draft is built from).
+**`liveEvent` is `liveOf(state)`, not `state.event`**: in Edit mode the page's re-read is the verdict read
+(`refreshVerdict`), which deliberately leaves `state.event` alone, so `withVerdict` now also keeps the event as that read
+answered (`live`), which only the Timeline reads. A Prepare job that ends in Edit mode therefore changes the Timeline's
+proxies and nothing in the draft. Reorders and cross-chapter moves stay list-based (locked): the Timeline shows the **saved order** and a note
 says so while `orderChanged` (task 1.1 adds `layoutChanged(baseline, draft)` to `draft.ts` from `chapterChanges`/
 `isStructural` and the existing `reordered`).
 **Rationale**: Edit mode already owns Save, `If-Match`, 412, Reset, the unsaved guard, Ctrl+S and the live region;
@@ -186,18 +191,28 @@ frame.
 screen"); no second validator to drift. A typed time is millisecond-precise, not frame-aligned, as in v1; the model's
 range still holds it.
 
+### What the frame grid makes of the proposal's round numbers
+**Context**: the proposal's numbers (a 25 fps proxy, a cut to 2.5 s, "2.38 s" three frames before it) were written
+before the fixture was looked at. The dev library's clips are 50 fps (20 ms frames), and 2.5 s is half a frame off a 25
+fps grid.
+**Decision**: the model is right and the numbers are adapted. At 50 fps three frames are 60 ms, so the start's highest
+time for the cut 1.0 to 2.5 s is 2.44, the end's lowest 1.06, three Rights from 1.0 s give 1.06, and a cut ending at 7.0
+s steps to 6.98. On a grid that 2.5 s is not on (25 fps) the same cut gives 2.36 and a frame-rounded 3.52 for "+1 s":
+unit-tested in `handles.test.ts` at 25 and 29.97 fps. A typed time is still not rounded.
+
 ### One video in Edit mode, without touching the clip-preview requirements
 **Context**: "Edit mode previews a clip on request" (`web-app`, as `clip-preview-proxy` left it) says Edit mode never
 holds more than one video element. The Timeline has its own, rendered by `Timeline` for as long as its track is open,
 and `playback/exclusive.ts` pauses one *playing* video when another starts, which only the movie and the Timeline use
 (the clip preview is not in it, and the movie is absent from Edit mode). A MODIFIED of the preview requirements
 would be a second edit of the same blocks for the sake of a cross-reference.
-**Decision**: keep the rule by construction, with the editor's preview store as the broker. `Timeline` gets
-`videoHeld: boolean` (from `useSyncExternalStore(previews.subscribe, () => previews.open() === null)`, passed down in
-`EditBinding`): when false it renders no `<video>` and `useTimelineVideo` pauses, drops `src`, calls
-`releasePlayback` and keeps the playhead's position in the store; the Timeline stays open and handles work (they need
-no video). A playhead move or Play while the video is not held calls `previews.hide(previews.open())` first, which
-re-renders `videoHeld`, then loads the proxy of the clip the playhead is in and seeks. No new state in `ClipPreviews`.
+**Decision**: keep the rule by construction, with the editor's preview store as the broker. `Timeline` derives `held`
+(from `useSyncExternalStore(previews.subscribe, () => previews.open() !== null)`, `previews` being in `EditBinding`): while
+it is true `Timeline` renders no `<video>` (a note says the picture is paused), and `useTimelineVideo({ held })` pauses,
+drops `src`, calls `releasePlayback` and keeps the playhead's position in the store; moves it is asked for while held only
+set the playhead (a coalescer request with no element would stay "in flight" for good). The Timeline stays open and handles
+work (they need no video). A playhead move or Play calls `previews.hide(previews.open())` first, which re-renders `held` as
+false; the video is then created, loads the proxy of the clip the playhead is in and seeks. No new state in `ClipPreviews`.
 **Alternatives**: allow two videos and pause one (changes the preview requirement's "one at a time"); close the
 Timeline when a preview opens (loses zoom and scroll for a Watch).
 
@@ -213,15 +228,20 @@ and shape: focus ring, the snap line plus "Snapped to …", a "unavailable" word
 ## Decisions
 
 ### Components and files (`web/src/timeline/`)
-- `handles.ts`: the pure functions above (the name `trim.ts` would sit beside the model's `trim.test.ts`). No imports beyond `model.ts` and `../cuts/times.ts`; node-tested in `handles.test.ts`.
+- `handles.ts`: the pure functions above, and `keyOutcome` (a key on a focused handle whole: ignore, stay, set, refused;
+  so "a key at a limit changes nothing" and "Enter elsewhere" are node-tested) (the name `trim.ts` would sit beside the
+  model's `trim.test.ts`). No imports beyond `model.ts`; node-tested in `handles.test.ts`. `dragStore.ts` is the drag
+  store. The value text (`handleValueText`) and the other words are in `cuts/times.ts`, where the Cuts panel's are.
 - `TrimHandle.tsx`: one handle: slider ARIA, key handler (`stepEdge`, `atPlayhead`), pointer capture, the drag store,
   the 44 px / 24 px areas by `(pointer: coarse)`, `touch-action: none` on the handle only.
 - `CutFields.tsx`: the selected cut's group and fields; selection is a `useState` in the Timeline keyed by
   `(identity, key)` and cleared when the cut is removed or the draft is reset.
 - `timeline.css` additions (the file `timeline-view` adds): handle, snap line, readout, fields group.
 - `Timeline` (timeline-view's component) gains the optional `editing: EditBinding | null` (above), passed down by
-  `TimelineSection`; `Track` draws a `TrimHandle` pair per listed cut inside the clip element wherever it draws the
-  cut spans (`detailed`), so handles are windowed with their clip. With `editing === null` nothing changes.
+  `TimelineSection`; `Track` draws one `ClipHandles` layer per clip that draws its cut spans (`detailed`) and has a cut
+  not removed, so handles are windowed with their clip; the layers sit in `.tl-trims-host` **after the playhead** in the
+  canvas, not inside the clip elements (a clip element clips its content, which would cut off a handle's area at the clip's
+  edges, and Tab must reach the handles after the playhead). With `editing === null` nothing changes.
 
 ### Editor wiring (`edit/EventEditor.tsx`, small)
 - Reducer action `{type: 'cut-trim', identity, key, span}` → `withDraft(state, trimCut(...))`.
@@ -230,12 +250,12 @@ and shape: focus ring, the snap line plus "Snapped to …", a "unavailable" word
 - `summarize` gains `trimmed`: `"1 cut trimmed"` after "added" and "removed".
 - The mount: `<TimelineSection editing={…}/>` after `MetadataForm`, before the chapters, with `liveEvent` and
   `onProxiesFinished` from `EventDetail`; Reset replaces `baseline`/`draft` in place (Reload latest leaves Edit mode, so the whole editor and its Timeline go), and the handles' layer is
-  keyed on the baseline so a selection and a drag do not survive them (the section stays open; zoom and scroll stay).
+  keyed on Reset's count (`epoch`) so a selection and a drag do not survive it (the section stays open; zoom and scroll stay).
 
 ### Words (`cuts/times.ts`, with tests in `times.test.ts`)
-`TRIM_KEYS` (description of the keys), `handleName(edge, n, name)`, `handleValueText(ms, cut)`,
+`TRIM_KEYS` (description of the keys), `handleName(edge, n, name)`, `handleValueText(seconds, cut, clipLength?)`,
 `selectedName(n, name)`, `fieldName(field, n, name)`, `trimmedWords(n, name, cut, after, snap?)`, `NOT_IN_CLIP(name)`,
-and `UNAVAILABLE` (the fields group while locked). Existing helpers are reused: `formatTime`, `spanWords`,
+`stoppedWords`, `NO_SELECTED_CUT` and `UNAVAILABLE` (the fields group while locked). Existing helpers are reused: `formatTime`, `spanWords`,
 `spokenSummary`, `refusalWords`.
 
 ### Failure behavior

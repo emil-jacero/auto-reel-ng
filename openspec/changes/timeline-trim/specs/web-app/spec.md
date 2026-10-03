@@ -17,7 +17,7 @@ A cut changed on the Edit-mode Timeline ("Edit mode's cuts are trim handles") SH
 - **THEN** the save bar before saving says "1 cut trimmed", the write is one `PUT` under `If-Match`, and `reel.yaml` afterwards holds the same span with `out: 3.5`, `reason: black` and the comment, and nothing else changed
 
 #### Scenario: A trim and its reverse leave nothing to save
-- **WHEN** the operator trims a read cut's start from 1.0 s to 1.04 s with Right on its handle and then presses Left once on the same handle
+- **WHEN** the operator trims a read cut's start from 1.0 s to 1.02 s with Right on its handle and then presses Left once on the same handle
 - **THEN** the cut is back at 1.0 s, the Cuts panel lists it as read, and no save bar is shown
 
 #### Scenario: A trimmed analysis cut keeps its reason
