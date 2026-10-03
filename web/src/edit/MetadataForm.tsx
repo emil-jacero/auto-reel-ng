@@ -36,7 +36,7 @@ function isSet(value: string | null | undefined): boolean {
  * named only then; a field the operator empties says it will inherit, but not
  * what, since the resolved value it shows is the authored one being removed.
  */
-function inheritHint(
+export function inheritHint(
   field: 'title' | 'date' | 'location',
   read: ReelDocument,
   draft: MetadataDraft,

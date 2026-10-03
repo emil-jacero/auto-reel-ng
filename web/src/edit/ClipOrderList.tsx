@@ -25,6 +25,8 @@ import { watchName } from '../preview/playback'
 import { Icon } from '../ui/Icon'
 import { useGroupHeld, useReducedMotion } from './ChapterDrag'
 import { ChapterTools } from './ChapterTools'
+import { InlineName } from './InlineName'
+import { TitleCard } from './TitleCard'
 import type { ChapterToolsModel } from './ChapterTools'
 import { cutsOf, keptOriginal, movedSet } from './draft'
 import type { ChapterKey, Cuts, DraftCut } from './draft'
@@ -697,6 +699,25 @@ export const ClipOrderList = memo(function ClipOrderList({
   onAnnounce: (message: string) => void
 }) {
   const headingId = useId()
+  const [nameHost, setNameHost] = useState<HTMLElement | null>(null)
+  const { nameField } = tools
+  const checkTyped = useCallback(
+    (typed: string) => nameField.check(chapterKey, typed),
+    [nameField, chapterKey],
+  )
+  const notesTyped = useCallback(
+    (typed: string) => {
+      const lines = nameField.notes(chapterKey, typed)
+      return lines.length === 0 ? null : lines.map((line) => <p key={line}>{line}</p>)
+    },
+    [nameField, chapterKey],
+  )
+  const openName = useCallback(() => nameField.open(chapterKey), [nameField, chapterKey])
+  const keepName = useCallback(
+    (name: string) => nameField.keep(chapterKey, name),
+    [nameField, chapterKey],
+  )
+  const dropName = useCallback(() => nameField.drop(chapterKey), [nameField, chapterKey])
   const removedId = useId()
   const ignoredId = useId()
   // The whole chapter: a row moves between the <ol> and the removed list, and
@@ -813,7 +834,25 @@ export const ClipOrderList = memo(function ClipOrderList({
       <header className="panel-header">
         {/* Focused by script after Add chapter. */}
         <h2 id={headingId} tabIndex={-1}>
-          {heading}
+          {chapterName === '' ? (
+            heading
+          ) : (
+            <InlineName
+              text={heading}
+              value={chapterName}
+              fieldLabel={`Name of chapter ${heading}`}
+              hint="Press to rename this chapter."
+              open={tools.naming}
+              locked={locked}
+              check={checkTyped}
+              notes={notesTyped}
+              host={nameHost}
+              onOpen={openName}
+              onKeep={keepName}
+              onDrop={dropName}
+              onUnsent={tools.nameField.unsent}
+            />
+          )}
         </h2>
         {moved.size > 0 && (
           <span className="badge" data-tone="info">
@@ -823,6 +862,9 @@ export const ClipOrderList = memo(function ClipOrderList({
         {/* The clips it plays; the removed and ignored lists count their own. One line. */}
         <span className="panel-meta">{plural(order.length, 'clip', 'clips')}</span>
       </header>
+      {/* A refused name and what a name would mean, under the field (InlineName). */}
+      <div ref={setNameHost} className="chapter-name-messages" />
+      {chapterName === '' && <TitleCard />}
       <ChapterTools chapterKey={chapterKey} heading={heading} headingId={headingId} {...tools} />
       {/* The column names, in the rows' own cells (edit.css places them by class). */}
       {!empty && (
