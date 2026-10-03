@@ -16,10 +16,13 @@ export type OriginalWhy = 'absent' | 'stale' | 'failed' | 'unusable'
 
 /**
  * The file the detail leads to: the copy, with the clip's length in whole milliseconds
- * (the facts' duration: the original's, as the engine probed it), or the original and why.
+ * (the facts' duration: the original's, as the engine probed it) and whether it carries sound
+ * (the facts name the source's audio codec, null when the source has none), or the original
+ * and why.
  */
 export type PreviewSource =
-  { kind: 'copy'; durationMs: number } | { kind: 'original'; why: OriginalWhy }
+  | { kind: 'copy'; durationMs: number; hasSound: boolean }
+  | { kind: 'original'; why: OriginalWhy }
 
 /**
  * Whole milliseconds of the facts' duration (seconds), or null when it is not a finite
@@ -34,6 +37,12 @@ export function copyLengthMs(facts: { duration?: unknown } | null | undefined): 
   return ms > 0 ? ms : null
 }
 
+/** True when the facts name the source's audio codec; a copy of a clip with no audio has none. */
+export function copyHasSound(facts: { audio_codec?: unknown } | null | undefined): boolean {
+  const codec = facts?.audio_codec
+  return typeof codec === 'string' && codec !== ''
+}
+
 /**
  * The copy when the state is `ready` and its facts give a usable duration; else the
  * original: `stale` and `failed` as such, a `ready` state without a usable duration as
@@ -46,7 +55,7 @@ export function previewSource(proxy: ClipProxy | null | undefined): PreviewSourc
       const durationMs = copyLengthMs(proxy.facts)
       return durationMs === null
         ? { kind: 'original', why: 'unusable' }
-        : { kind: 'copy', durationMs }
+        : { kind: 'copy', durationMs, hasSound: copyHasSound(proxy.facts) }
     }
     case 'stale':
       return { kind: 'original', why: 'stale' }
@@ -91,12 +100,15 @@ export const playCopyName = (name: string) => `${PLAY_COPY} of ${name}`
 export const playingOriginalWords = (name: string) => `${SOURCE_ORIGINAL} of ${name}.`
 export const playingCopyWords = (name: string) => `${SOURCE_COPY} of ${name}.`
 
-/** What the no-sound note adds while a ready copy exists: the way to the sound. */
+/** What the no-sound note adds while a ready copy that carries sound exists: the way to it. */
 export const COPY_HAS_SOUND = `The preview copy plays with sound. Press ${PLAY_COPY}.`
 
-/** The no-sound note's detail, with the way to the sound added when a copy is ready. */
-export const withCopySentence = (detail: string, copyReady: boolean) =>
-  copyReady ? `${detail} ${COPY_HAS_SOUND}` : detail
+/**
+ * The no-sound note's detail, with the way to the sound added only when a ready copy
+ * carries sound: a clip with no audio track has none in its copy either.
+ */
+export const withCopySentence = (detail: string, copyHasSound: boolean) =>
+  copyHasSound ? `${detail} ${COPY_HAS_SOUND}` : detail
 
 // A copy that cannot be played: titles name the preview copy, never "changed on disk".
 

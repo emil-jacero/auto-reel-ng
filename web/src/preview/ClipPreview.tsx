@@ -700,10 +700,10 @@ export const ClipPreview = memo(function ClipPreview({
   }, [seekTo])
   useEffect(() => () => cancelAnimationFrame(frame.current), [])
 
-  // The no-sound note is the original's; when a copy is ready it points the way to the sound.
+  // The no-sound note is the original's; when a ready copy carries sound it points the way to it.
   const soundNote: NoteWords = {
     title: noSoundWords(name).title,
-    detail: withCopySentence(noSoundWords(name).detail, source.kind === 'copy'),
+    detail: withCopySentence(noSoundWords(name).detail, source.kind === 'copy' && source.hasSound),
   }
 
   /**
@@ -1050,7 +1050,7 @@ export const ClipPreview = memo(function ClipPreview({
             {source.kind === 'copy' && (
               <button
                 type="button"
-                className="btn btn-ghost btn-compact preview-original"
+                className="btn btn-secondary btn-compact preview-original"
                 aria-label={playsCopy ? playOriginalName(name) : playCopyName(name)}
                 onClick={swapFile}
               >

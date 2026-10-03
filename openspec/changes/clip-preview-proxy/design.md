@@ -137,8 +137,9 @@ stays loud and one press away from the fallback. Try again re-runs the probe.
 ### 6. The no-sound note follows the file, and points at the copy
 
 **Decision**: the note is computed only when `choice === 'original'`. When the copy is ready (the operator chose
-the original, or `mozHasAudio` is false on a clip whose copy exists) its detail gains one sentence: the preview
-copy plays with sound; use Play preview copy. No note for the copy: it carries AAC by contract (D-21), so a
+the original, or `mozHasAudio` is false on a clip whose copy exists) and its facts name an audio codec, its detail
+gains one sentence: the preview copy plays with sound; use Play preview copy. A copy whose facts name none (the
+clip has no audio) gains nothing: the page does not promise a sound it knows is not there. No note for the copy: it carries AAC by contract (D-21), so a
 browser that finds no audio in it reports a broken copy, not a PCM clip, and the page does not invent a cause
 (Principle I).
 
