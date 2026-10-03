@@ -55,6 +55,8 @@ auto-reel serve   <root>                  # run the API service (REST + WS) unti
 auto-reel adopt-renders <root>            # one-time: write manifests for an already-rendered archive
                                           #   (--dry-run previews without writing)
 auto-reel thumbs  <root> [--jobs N]       # generate missing clip thumbnails into the cache (not the library)
+auto-reel proxies <root> [--device D] [--jobs N]
+                                          # generate missing 540p clip proxies into the cache (not the library)
 auto-reel prune-renamed <root> [--yes]    # list (and with --yes delete) movies a rename left behind
 ```
 
@@ -62,7 +64,8 @@ Shared options: `--years 2023,2024` (year-event layout), `--layout flat|year-eve
 and `-o/--output`. `render` and `enqueue` also take `--force` (bypass the staleness
 gate below); `render` additionally takes `--dry-run` (print the ffmpeg commands and
 write nothing) and `--device <amd|nvidia|intel|cpu|device-id>`. `thumbs` takes
-`--years` and `--layout` but no `-o`, plus `--jobs N` (below).
+`--years` and `--layout` but no `-o`, plus `--jobs N` (below); `proxies` takes the same, plus
+`--device`.
 
 - **Layouts** map the project root to event directories: `year-event`
   (`<root>/<year>/<event>/`, the default) and `flat` (events directly under the root).
@@ -596,6 +599,48 @@ thumbnails:
   cache_dir: /home/me/auto-reel/data/cache/auto-reel/thumbnails   # absolute, outside the library
 ```
 
+### Clip proxies (`proxies`)
+
+Every clip on disk can get one small **proxy** (decision D-21): a 540p H.264 + AAC MP4 that a browser seeks
+in about a frame and plays with sound in Chrome and Firefox, where the original cannot (a random seek in a
+camera original takes a median 78 to 1457 ms, and Firefox plays none of the Sony PCM audio). The proxy is the
+clip as a player shows it: square pixels, the container's display rotation applied (a phone clip held upright
+stays portrait), short side 540 and never upscaled, two B-frames and a keyframe every second, the original's
+timestamps (a variable-frame-rate clip stays variable), and stereo AAC at 128 kb/s from ffmpeg's native encoder
+(a clip with no audio gets none). The editorial `rotate` is not baked in, and the source clip is only read.
+
+`auto-reel proxies <root>` fills the cache for every clip the layout walk finds (the same clips `thumbs` covers,
+IGNORED ones included; `original/` and `.reelignore`d folders skipped). It never reads or writes `reel.yaml`
+and writes nothing under the project root, so it works on a library mounted read-only. It prints one line per
+event, one `ERROR  <event>/<clip>: <cause>` line per failed clip (`-v` also logs the failing command and its
+stderr), and a summary that includes the bytes written; it exits non-zero when any clip failed. A re-run only
+makes new, changed or previously failed clips, and clips that are other names of one file are encoded once.
+`--device` selects the acceleration profile once, as `render` does (default: the best usable accelerator):
+a clip that is unrotated, SDR, 8-bit H.264 or HEVC and that the profile decodes in hardware is decoded and
+scaled on the GPU and encoded by libx264 on the CPU (the *hybrid* path, about 20 times real time for camera
+footage on the development host); every other clip, and every clip with `--device cpu` or no usable accelerator,
+is decoded in software (about 17 times real time). A hybrid encode that fails, or whose output fails the check,
+is redone once on the CPU. Every proxy is probed before it is published (streams, size, duration within
+50 ms, frame count), and a failed check names itself and publishes nothing. `--jobs N` (default 1; each encode
+uses several cores, and the library is often on one USB disk) bounds concurrent encodes. Ctrl-C stops the
+running encodes and removes their half-written files.
+
+**The cache** lives outside the library: `$XDG_CACHE_HOME/auto-reel/proxies/` (else `~/.cache/auto-reel/proxies/`),
+or `proxies.cache_dir` in `config.yaml`. `cache_dir` must be absolute (`~` is expanded), and the directory,
+configured or default, must lie outside the project root and the `input` directory, or the command refuses to
+start. An entry is a directory named by a hash of the clip's file name (not its directory), size, mtime and the
+proxy version, holding `proxy.mp4` and `facts.json` (the clip's duration, frame rate, size and rotation, so a
+reader needs no probe); a changed clip gets a new entry by itself, while moving, copying or remounting the library
+keeps them. Entries are built in a hidden `.<key>.<id>.part` directory and renamed whole, so an interrupted run
+never leaves a half proxy. Plan **about 0.6 to 0.75 GB per footage hour (the research estimated 32 to 40 GB for a
+52-hour archive; plan for 50 GB) on a local disk, not the USB library drive**; nothing is evicted, and deleting the directory resets it.
+When `serve` runs as another user or in a container it has its own `XDG_CACHE_HOME`: set `proxies.cache_dir` in
+the project's `config.yaml` so both sides use one directory (the compose stack mounts `./data/cache`, so its
+proxies land in `./data/cache/auto-reel/proxies/`).
+
+Proxies are not render inputs: they do not change a movie, do not make an event stale, and are not part of the
+staleness fingerprint.
+
 ### Project `config.yaml`
 
 An optional `config.yaml` at the project root supplies shared defaults. Every field
@@ -654,6 +699,8 @@ api:                       # API service ('serve') settings (all optional)
 thumbnails:                # clip thumbnail settings (all optional)
   position: 0.25               # frame at this fraction of the clip's duration (0 < p < 1)
   cache_dir: ~/.cache/auto-reel/thumbnails   # absolute (~ expanded); outside root and input
+proxies:                   # clip proxy settings (all optional)
+  cache_dir: ~/.cache/auto-reel/proxies      # absolute (~ expanded); outside root and input
 ```
 
 ## Development

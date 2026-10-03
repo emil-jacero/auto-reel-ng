@@ -103,7 +103,7 @@ display long side scaled by the same factor.
 The system SHALL choose, per clip, one of two encode paths. Both SHALL encode the video with libx264.
 
 - The **hybrid path** SHALL be used only when all of these hold: the selected acceleration profile decodes the
-  clip's codec and pixel format on its hardware (the profile's own answer, HLD D-18), the clip is H.264 or HEVC,
+  clip's codec and pixel format on its hardware (the profile's own answer, HLD D-18), the clip is 8-bit H.264 or HEVC,
   the clip carries no display rotation, the clip is not HDR, and the profile's frames then live in a hardware
   frame context for which the engine knows a verified scale filter. It SHALL decode and scale on the accelerator,
   download the frames to system memory, and encode on the CPU. The proxy SHALL NOT be encoded by a hardware
@@ -226,10 +226,12 @@ source and about the proxy, so that a reader needs no probe. It SHALL hold at le
 - `proxy_version`, the proxy version the entry was made under
 - `duration`, the source's probed duration in seconds (never the proxy's)
 - `fps`, the source's frame rate as `{"num": …, "den": …}`, and `vfr`, true when the source's frame rate varies
-  (its average and container rates differ by more than one percent)
+  (its average and container rates differ by more than one percent), or `null` when the container gives no
+  average rate to compare
 - `frames`, the number of video frames in the proxy
 - `width` and `height` of the proxy, and `source_width` and `source_height`, the coded size of the source
-- `rotation`, the source's display rotation in degrees or `null` when it has none
+- `rotation`, the source's display rotation in degrees as the probe reports it (0 to 359, so a rotation of -90° is
+  270), or `null` when it has none
 - `audio_codec`, the source's audio codec name or `null` when it has no audio
 - `encode_path`, `hybrid` or `cpu`, the path that produced the published proxy, and `fallback_reason`, the
   one-line cause of a failed hybrid attempt or `null`
@@ -245,7 +247,8 @@ cache's recorded duration MAY be absent or from another version and SHALL NOT be
 
 #### Scenario: Facts for a rotated phone clip
 - **WHEN** the proxy of a 1280x720 clip with a display rotation of -90° is made
-- **THEN** `width` is 540, `height` is 960, `source_width` is 1280, `source_height` is 720 and `rotation` is -90
+- **THEN** `width` is 540, `height` is 960, `source_width` is 1280, `source_height` is 720 and `rotation` is 270
+  (the probe's spelling of -90°)
 
 #### Scenario: A variable-frame-rate clip is flagged
 - **WHEN** a clip's average frame rate is 30.0003 and its container rate is 30 (a difference of 0.001 %)

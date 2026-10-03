@@ -1,6 +1,6 @@
 ## 1. Gate
 
-- [ ] 1.1 Gate: E1 (`proxy-shape-recheck`) has run, and the starting point is clean. Check:
+- [x] 1.1 Gate: E1 (`proxy-shape-recheck`) has run, and the starting point is clean. Check:
   - E1 locked **`gop_seconds` 1 and `bframes` 2** (gate G1 passed; report in the session scratchpad, not in
     `experiments/`). The design's contract table, the spec's "at most two B-frames" sentence and scenario, the golden
     arguments (`-bf 2`) and tasks 3.1 and 7.1 (`PROXY_BFRAMES = 2`, `has_b_frames` at most 2) were changed **before any
@@ -15,9 +15,17 @@
 
   Verify: every check holds, or the re-base, the new E1 values or the stop is recorded in this task.
 
+  Recorded: E1's report is in the supervisor's session scratchpad, not in `experiments/` (no `experiments/*proxy-shape*`
+  exists); its outcome was given with the task: gate G1 passed for all three shapes and the cheapest passing one is
+  `-bf 2`, GOP one second. Applied before any code (design table, spec sentence and scenario, golden arguments,
+  tasks 3.1 and 7.1) and committed with the proposal. `test ! -e auto_reel_ng/proxies` held, `git diff 8fb4d16 --
+  openspec/specs/headless-cli/spec.md` printed nothing, this is the only open change under `openspec/changes/` with a
+  `headless-cli` delta, and the venv installs. The host `ffmpeg` is 8.1.2 and lists the native `aac` (and
+  `libfdk_aac`, which the code never selects).
+
 ## 2. config/ and proxies/ — errors, settings
 
-- [ ] 2.1 Add the errors and the settings (design "Settings"):
+- [x] 2.1 Add the errors and the settings (design "Settings"):
   - `errors.py`: `ProxyError(EngineError)` with `clip` and `reason` (message `<clip>: <reason>`) and
     `ProxyCacheError(EngineError)`, as siblings, each with a docstring
   - `config/project.py`: `ProjectConfig.proxies: Mapping[str, object]`, parsed with
@@ -44,10 +52,10 @@
 
 ## 3. proxies/ — contract, geometry, key
 
-- [ ] 3.1 Add `proxies/spec.py` (design "The contract", "Cache layout, key and publish"): `PROXY_VERSION = 1`, the
+- [x] 3.1 Add `proxies/spec.py` (design "The contract", "Cache layout, key and publish"): `PROXY_VERSION = 1`, the
   contract constants (`PROXY_SHORT_SIDE = 540`, `PROXY_CRF = 26`, `PROXY_PRESET = "veryfast"`, `PROXY_BFRAMES = 2`,
   `PROXY_GOP_SECONDS = 1`, `PROXY_AUDIO_ENCODER = "aac"`, `PROXY_AUDIO_BITRATE = "128k"`, `PROXY_AUDIO_CHANNELS = 2`,
-  the 50 ms `DURATION_TOLERANCE`), `SPEC_DIGEST`, `proxy_dimensions(width, height, sar,
+  the 50 ms `DURATION_TOLERANCE`), `spec_digest()` (a function, not a constant, so a patched constant changes it at once), `proxy_dimensions(width, height, sar,
   rotation) -> (w, h)` computed in exact fractions, `proxy_key(clip_path)` and `entry_dir(clip_path, cache_dir)`. Export
   them from `proxies/__init__.py`. Tests in a new `tests/test_proxies_spec.py`:
   - **dimensions** (the spec's scenarios): 1920x1080, 3840x2160 and 1280x720 give 960x540; 1080x1920 gives 540x960;
@@ -68,7 +76,7 @@
 
 ## 4. proxies/ — encode paths and golden arguments
 
-- [ ] 4.1 Add `proxies/command.py` (design "Encode paths"): `EncodePath`, `plan_encode`, `ProxyCommand` and
+- [x] 4.1 Add `proxies/command.py` (design "Encode paths"): `EncodePath`, `plan_encode`, `ProxyCommand` and
   `build_proxy_command`, with the one-row hardware scale table. Pure: no file system, no subprocess. Tests in a new
   `tests/test_proxies_command.py`, with a `ClipMetadata` factory and profiles built from `AcceleratorCapabilities`
   (a VAAPI profile with `hw_decode={"h264": 8, "hevc": 10}`, a CPU profile, a CUDA-shaped profile whose decode frames
@@ -83,9 +91,10 @@
     -90 is `CPU`; MPEG-4 Part 2 is `CPU`; HEVC 10-bit is `CPU`; HDR is `CPU`; the CPU profile is `CPU`; the CUDA-shaped
     profile is `CPU`; a hardware profile whose `can_hw_decode` is false is `CPU`; rotation `0` and `None` both allow
     hybrid
-  - **native AAC:** over every golden command, with a fake runtime whose encoder list includes `libfdk_aac`, exactly
-    one `-c:a` is present, its value is `aac`, and no argument contains `fdk`. This test fails if a code change
-    selects `libfdk_aac`.
+  - **native AAC:** over eight golden commands (both paths, rotated, HDR, MPEG-4 with MP3, AC-3 5.1), exactly one
+    `-c:a` is present, its value is `aac`, and no argument contains `fdk`. The builder takes no encoder list, so
+    there is no runtime to fake: the test fails when a code change names `libfdk_aac` (shown by patching
+    `PROXY_AUDIO_ENCODER`), and an `has_ffmpeg` check shows the host ffmpeg does offer the native encoder.
   - **no vendor name:** `grep -rniE "amd|nvidia|intel|nvenc|qsv" auto_reel_ng/proxies` prints nothing (the filter
     string `scale_vaapi` names an API, not a vendor)
 
@@ -96,13 +105,13 @@
 
 ## 5. proxies/ — facts and verification
 
-- [ ] 5.1 Add `proxies/facts.py` and `proxies/verify.py` (design "Verification", "`facts.json`"): `ProxyFacts`
+- [x] 5.1 Add `proxies/facts.py` and `proxies/verify.py` (design "Verification", "`facts.json`"): `ProxyFacts`
   (frozen dataclass, `to_json`/`from_json`), `read_source_facts(source, runtime)` (the one extra ffprobe call),
   `write_facts`, `read_facts`, and `verify_proxy(staged, *, expected, runtime)`. Tests in a new
   `tests/test_proxies_facts.py` with a fake runtime that returns canned ffprobe JSON:
   - **facts for the Sony clip** equal the spec's scenario values (`duration` 24.96, `fps` 25/1, `vfr` false, `frames`
     624, `rotation` null, `audio_codec` `pcm_s16be`); the rotated phone clip gives `width` 540, `height` 960,
-    `rotation` -90; a clip with no audio gives `audio_codec` null; `vfr` is false at average 30.0003 against rate 30
+    `rotation` 270 (the probe's spelling of -90°; the spec says so); a clip with no audio gives `audio_codec` null; `vfr` is false at average 30.0003 against rate 30
     and true at 24 against 30
   - **round trip:** `write_facts` then `read_facts` returns an equal object; a file with a missing key, invalid JSON
     or a different `proxy_version` reads as absent (`None`), never as defaults
@@ -119,7 +128,7 @@
 
 ## 6. proxies/ — `ensure_proxy`, cache entry and sweep
 
-- [ ] 6.1 Add `proxies/cache.py` (publish, lookup, sweep) and `proxies/ensure.py` (`ensure_proxy`, `lookup_proxy`,
+- [x] 6.1 Add `proxies/cache.py` (publish, lookup, sweep) and `proxies/ensure.py` (`ensure_proxy`, `lookup_proxy`,
   `ProxyEntry`), exported from `proxies/__init__.py` with `ProxySettings`, `resolve_proxy_settings`, `ProxyError` and
   `ProxyCacheError` (design "Cache layout, key and publish", "`ensure_proxy` and `lookup_proxy`", "The CPU retry").
   Tests go in a new `tests/test_proxies_ensure.py`, with a fake runtime whose `run_with_progress` records the argument
@@ -149,7 +158,10 @@
     `OSError` is logged and does not fail the request, and a second build in the same process does not sweep again
   - **the source clip's bytes and `st_mtime_ns` are unchanged**
   - **isolation** (`tests/test_proxies_isolation.py`): an AST walk finds no import of `auto_reel_ng.proxies` in
-    `staleness/`, `render/`, `scheduler/`, `api/` or `persistence/`
+    `staleness/`, `render/` or `persistence/`. `scheduler/` and `api/` are left out on purpose: `proxy-job`, the read
+    model and the media routes wrap `ensure_proxy` there by design and would otherwise have to edit this test.
+    `tests/test_proxies_staleness.py` shows a fresh event stays fresh across making and deleting proxies, and a cut
+    edit makes it stale while the proxy stays current.
 
   Verify:
   - `.venv/bin/python -m pytest tests/test_proxies_ensure.py tests/test_proxies_isolation.py` passes
@@ -158,7 +170,7 @@
 
 ## 7. proxies/ — real encodes
 
-- [ ] 7.1 Add `tests/test_proxies_ffmpeg.py`, every test marked `has_ffmpeg` and using the `runtime` fixture and the
+- [x] 7.1 Add `tests/test_proxies_ffmpeg.py`, every test marked `has_ffmpeg` and using the `runtime` fixture and the
   CPU profile, with the clips from `make_clip` (synthetic, 1 to 2 s) unless stated. Each proxy's streams are read with
   `run_ffprobe`; the cache is under `tmp_path`:
   - **the contract:** a 1920x1080 25 fps H.264 + AAC clip gives one H.264 `High` `yuv420p` stream of 960x540 with
@@ -193,9 +205,15 @@
     30 s; the samples in a few minutes, recorded in this task)
   - `find ../auto-reel-media -newer <marker>` prints nothing after the run
 
+  Recorded: the synthetic tests take 14 s, the ten samples (CPU path, and the hardware profile on this host) 81 s
+  together, of which the 12.6-minute legacy MPEG-4 clip is 24 s (about 31 times real time on 16 cores); nothing under
+  `auto-reel-media/` is newer than the marker. Every sample's video `start_time`, duration (within 50 ms) and frame
+  count equal the source's with `-bf 2`, so the E1 shape needed no special case. The rotated samples
+  (`h264-720p-rotate90`, `hevc-mov-rotate90`) take the CPU path on the AMD profile and come out 540x960.
+
 ## 8. cli/ — `auto-reel proxies`
 
-- [ ] 8.1 Move `_emit`, `_printable`, `_plural` and `_os_reason` unchanged from `cli/thumbnails.py` to a new
+- [x] 8.1 Move `_emit`, `_printable`, `_plural` and `_os_reason` unchanged from `cli/thumbnails.py` to a new
   `cli/printing.py`, imported by both. Add `cli/proxies.py` with `cmd_proxies` (design "The `proxies` subcommand"),
   register `proxies` in `cli/main.py` with `root`, `--years`, `--layout`, `--device`, `-v` and `--jobs`
   (`type=_positive_int`, default 1; reuse the helper `thumbs` uses), `set_defaults(output=None, func=cmd_proxies)`, and
@@ -229,7 +247,7 @@
 
 ## 9. docs — HLD and README
 
-- [ ] 9.1 Record the decision (design "Where D-21 is recorded"):
+- [x] 9.1 Record the decision (design "Where D-21 is recorded"):
   - `docs/high-level-design.md`:
     - add **D-21 — The proxy contract** to §7 after D-19 (after D-20 if `timeline-model` has merged): the contract
       table, the cache layout and key, the CPU retry, `facts.json`, native `aac` only, "not a staleness input, no
@@ -250,7 +268,7 @@
 
 ## 10. Validation and dogfood
 
-- [ ] 10.1 Run the validation gates and dogfood on a scratch library:
+- [x] 10.1 Run the validation gates and dogfood on a scratch library:
   - `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`
   - `.venv/bin/python -m mypy auto_reel_ng`
   - `.venv/bin/python -m pylint auto_reel_ng`
@@ -272,3 +290,39 @@
     research's (about 12 times real time for Sony 1080p25 on the hybrid path; about 0.75 GB per footage hour)
   - the Sony proxies show picture and sound in both browsers, and the screenshots or values are in the scratch directory
   - `openspec validate proxy-encode --strict` passes
+
+  Recorded (2026-10-03; 16 cores, AMD VAAPI on `renderD128`, ffmpeg 8.1.2, Chrome 154.0.8037.92, Firefox 155.0):
+  - Gates: `black --check` and `isort --check-only` clean; `mypy auto_reel_ng` clean (115 files); `pylint
+    auto_reel_ng` 9.98 with only noise that is not from this change (the cairo `no-member` set and one
+    `too-many-positional-arguments` in `api/events_read.py`); the full `pytest` (background, with `has_ffmpeg`, `gpu` and
+    `requires_db`): 2514 passed, 6 skipped (the title-card tests that need Cairo/Pango and DejaVu Sans), in 4 min 54 s.
+    A first full run failed three caplog tests because an earlier Alembic test had disabled the loggers; the proxy
+    tests now re-enable theirs (as `test_runtime.py` does).
+  - Nothing outside this change's packages: `git diff --stat -- auto_reel_ng/staleness auto_reel_ng/render
+    auto_reel_ng/scheduler auto_reel_ng/persistence auto_reel_ng/api alembic web` prints nothing.
+  - Dogfood on a scratch library of the ten samples in two events plus a zero-byte `tom.mp4` (959 s of footage):
+    the first run (hybrid where it applies) took 46.6 s, exit 1, one `ERROR  2024-07-02 - Telefon och gamla/tom.mp4:
+    File is empty (zero bytes)`, `10 generated (130.7 MB)`. The second run reported `0 generated`, `10 cached` in 2.1 s,
+    **not under 1 s as the task guessed**: `auto-reel --help` alone takes 0.9 s of imports, and the rest is the
+    version check and the capability self-test, which run before the first cache lookup. `--device cpu` into a
+    second cache took 54.3 s (`124.9 MB`). `find auto-reel-media -newer marker` printed nothing; the cache held ten
+    entries and no `.part`.
+  - Speed: 20.6 times real time over the set on the hybrid path, 17.7 on the CPU path; Sony 1080p25 alone 13.9 and 11.3
+    times (research: about 12 on the hybrid path). The three rotated or MPEG-4 clips took the CPU path on the AMD profile.
+  - Size: 0.47 to 0.49 GB per footage hour over this set, but 79 % of its seconds are the legacy MPEG-4 clip; the nine
+    camera clips alone are 1.05 GB per hour on the hybrid path (they are heavy clips). Research: 0.75 GB per hour at
+    `-bf 0`; E1: `-bf 2` is 0.83 of that, so about 0.62. The hybrid path is not always smaller: the 4K50 clip is
+    11.8 MB hybrid against 7.2 MB on the CPU path, the others within 12 %.
+  - Browsers (scratch Range server, Playwright from the scratch directory only): Chrome 154: `videoWidth` 960 for both
+    Sony proxies (PCM sources, 1080p and 4K), decoded audio peak 0.219 and 0.048, first frame 26 and 32 ms, the MP3
+    legacy clip 0.17, the rotated phone clip 540x960 with peak 0.76. Firefox 155.0: the same four files give
+    `videoWidth` 960 / 540, `mozHasAudio` true, playback advances 2.45 s, first frame 15 to 94 ms. A decoded peak could not
+    be read in Firefox: the headless AudioContext stays suspended (the research hit the same). Screenshots looked at:
+    picture correct in both; the rotated sample is upright as `ffmpeg`'s own autorotate shows it (the sample's content
+    is landscape and tagged -90°, so it is sideways when displayed, in the proxy and in the source alike).
+  - Mutations: 24 deliberate breaks of the behaviours above (the key's digest, `libfdk_aac`, scene-cut keyframes, GPU
+    rotation, 10-bit on the GPU, no CPU retry, retrying a stall, the 50 ms tolerance, the frame-count and audio checks,
+    replacing an incomplete entry, the sweep, the lost-rename branch, discarding the build directory, hand
+    rotation, `-noautorotate`, anamorphic scaling, HDR tone-mapping, the progress guard, a hit that rebuilds, the cancel
+    flag, link grouping, the ERROR line's cause, the facts' duration, the non-atomic publish) were each killed by a
+    test. One more (a clamp in the progress wrapper) turned out to be dead code behind its own guard and was removed.

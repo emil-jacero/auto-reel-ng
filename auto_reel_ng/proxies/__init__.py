@@ -1,0 +1,49 @@
+"""Clip proxies (D-21): one verified 540p H.264 + AAC MP4 per clip, outside the library.
+
+``ensure_proxy`` turns a clip into a complete cache entry (``proxy.mp4`` and ``facts.json``),
+``lookup_proxy`` answers from the cache with a ``stat`` and a JSON read only. Proxies are a
+second artifact made beside the render: they are not a render input and not a staleness input.
+"""
+
+from __future__ import annotations
+
+from ..errors import ProxyCacheError, ProxyError
+from .cache import STALE_PART_AGE, ProxyEntry, sweep_stale_parts
+from .command import EncodePath, ProxyCommand, build_proxy_command, plan_encode
+from .ensure import ensure_proxy, lookup_proxy
+from .facts import ProxyFacts, SourceFacts, read_facts
+from .settings import ProxySettings, default_cache_dir, resolve_proxy_settings
+from .spec import (
+    PROXY_AUDIO_ENCODER,
+    PROXY_VERSION,
+    entry_dir,
+    proxy_dimensions,
+    proxy_key,
+    spec_digest,
+)
+
+__all__ = [
+    "PROXY_AUDIO_ENCODER",
+    "PROXY_VERSION",
+    "STALE_PART_AGE",
+    "EncodePath",
+    "ProxyCacheError",
+    "ProxyCommand",
+    "ProxyEntry",
+    "ProxyError",
+    "ProxyFacts",
+    "ProxySettings",
+    "SourceFacts",
+    "build_proxy_command",
+    "default_cache_dir",
+    "ensure_proxy",
+    "entry_dir",
+    "lookup_proxy",
+    "plan_encode",
+    "proxy_dimensions",
+    "proxy_key",
+    "read_facts",
+    "resolve_proxy_settings",
+    "spec_digest",
+    "sweep_stale_parts",
+]
