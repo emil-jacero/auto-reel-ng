@@ -150,6 +150,9 @@ Per movie:
    **fast path: concat demuxer with stream copy, zero re-encode**.
 2. **Normalize (only the clips that need it).** One GPU-resident pass per nonconforming clip:
    decode → fix rotation/SAR → scale+pad to target → tonemap if HDR → encode to the common intermediate.
+   The rotation is the clip's **display rotation plus the editorial `rotate`** (an extra clockwise turn,
+   **D-22**), applied by the engine as one CPU transpose chain on every profile with ffmpeg's own autorotate off;
+   a clip with a display rotation or a `rotate` is never stream-copied.
    Title clips get the card **overlaid in this same pass** (no separate moviepy encode).
 3. **Concat.** Stream-copy concat of the (now uniform) set.
 4. **Chapters.** Generate an `ffmetadata` file with `[CHAPTER]` entries from chapter boundaries and mux it in.
@@ -231,7 +234,7 @@ chapters:
         title: true        # gets the title card
         trims:             # approved cut ranges (from analysis or manual)
           - { in: 0.0, out: 3.2, reason: black }
-        rotate: auto       # or 0/90/180/270 override
+        rotate: 90         # an extra clockwise turn on top of the display rotation (0/90/180/270; D-22)
         include: true
       - { file: 00401.mp4, order: 1 }
   - name: Reception
@@ -386,6 +389,10 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   explicit Play original for the full file.
   **The clip's player works outside Edit mode** (`clip-play-read-view`, D-16): the event page's read view has a
   Watch control on every clip on disk that opens the same player, read-only.
+  **A clip can be turned** (**D-22**): `clips.<identity>.rotate` is an extra clockwise turn on top of how the clip
+  plays, so the engine half (`clip-rotate-engine`) makes the render honour it on every profile; the proxies, thumbnails
+  and filmstrips stay the file's (D-21) and are not rotated by the editorial value, so the GUI (`clip-rotate-gui`)
+  turns the picture it shows.
 - **v3:** nothing is planned for the GUI: the timeline editor moved to v2 on 2026-10-01, and dragging
   across chapters landed in v1 (D-13, `cross-chapter-drag`; marked groups in v2, `clip-group-select-drag`).
 
@@ -662,6 +669,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    Watch on each clip (D-16), also web-only and with no render, fingerprint, schema or job change.
    `clip-group-select-drag` (GUI v2) follows: Edit mode marks clips and a drag of a marked clip moves the whole
    marked group (D-13); web-only, no render, fingerprint, schema or job change.
+   `clip-rotate-engine` has landed: `rotate` is an extra clockwise turn on top of the display rotation, applied by the
+   engine on every profile (D-22; `RENDER_GRAPH_VERSION` 5); `clip-rotate-gui`, the control and the turned previews, follows.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1343,6 +1352,37 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Deliberately not here:** a prune of
     orphan entries (`proxy-prune`); a virtual remux to give the original sound in Firefox. The cache-location
     helpers are copies of `thumbs/`'s; unifying them is a follow-up.
+
+- **D-22 — A clip's `rotate` is an extra clockwise turn on top of its display rotation** (2026-10-03, change
+  `clip-rotate-engine`; D-20 keeps the timeline and D-21 the proxy contract). User request: "Some videos are rotated 90
+  degrees. I want a feature to rotate them so they are correct. We need to remember this in the config as well."
+  (§4.3, §4.6)
+  - **The meaning.** `clips.<identity>.rotate` (0, 90, 180, 270, also -90 and 360; any other integer fails the load
+    naming the clip and the key) is "turn this clip this many degrees **clockwise** from how it plays now", where "how
+    it plays now" is the picture a player shows after the container's display rotation. It is remembered in the
+    event's `reel.yaml`, the only home of the value (Principle II). What you see is what you fix.
+  - **The compose.** The engine applies `(display rotation + rotate) mod 360` clockwise as one CPU `transpose` chain
+    (between `hwdownload` and `hwupload` on a hardware path; no hardware rotation filter, D-21 "Never a wrong proxy,
+    silently"). The probe's `rotation` is the display matrix's angle, **counter-clockwise** (matrix -90 probes as 270),
+    so the clockwise display turn is `(360 - rotation) mod 360`; `display_turn` and `total_turn` in
+    `render/normalize.py` are the only readers of it. A clip with a display rotation is opened with **`-noautorotate`**,
+    so the turn happens exactly once and the output carries no display matrix. Padding is decided from the total turn;
+    a clip with a display rotation, or a `rotate` that is not a multiple of 360, is never stream-copied.
+  - **Why the engine had to change.** Measured on `main` 143f0fc with the rotated samples (SSIM, 24 renders): on the
+    CPU profile ffmpeg's autorotate ran first and `rotate` already added; on the AMD VAAPI profile the hardware decode
+    delivered frames ffmpeg does not autorotate, so a phone clip with `rotate` unset rendered sideways and `rotate: 90`
+    "fixed" it. A display-rotated clip that matched the target was stream-copied with its matrix, and the movie reported
+    `rotation=90`. Both profiles now agree.
+  - **Fingerprint and migration.** Output changes for identical inputs (a display-rotated clip on a hardware profile;
+    a display-rotated clip with `rotate` on a hardware profile; a display-rotated clip of the target's stored size), so
+    **`RENDER_GRAPH_VERSION` goes 4 to 5** and every manifest is stale once (D-C8). No fingerprint input is added: the
+    editorial `rotate` was one and the display rotation belongs to the file. A `reel.yaml` that already set `rotate`
+    on a display-rotated clip renders as before on the CPU profile; on a hardware profile it now adds (a file that set
+    `rotate: 90` to fix a phone clip that rendered sideways there now renders upside down: delete the key). The GUI
+    never wrote `rotate` and the legacy import does not produce it, so such a file is expected to be rare; the first
+    render logs the clip, both values and the total.
+  - **Not here.** No GUI, no new key, no API or schema change. Proxies, thumbnails and filmstrips stay keyed by the
+    file and are not rotated by the editorial value (D-20, D-21).
 
 ---
 
