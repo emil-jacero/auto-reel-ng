@@ -43,6 +43,7 @@ from auto_reel_ng.render.title import (
     TitleCardRequest,
     compose_content,
     parse_title_card_config,
+    registered_families,
     title_card_lines,
 )
 from auto_reel_ng.render.title.decorator import TITLE_PRODUCER
@@ -119,6 +120,34 @@ def test_partial_config_keeps_defaults_for_absent_fields() -> None:
     assert config.duration == 5.0
     assert config.font_family == "Inter"
     assert config.fade_in == 2.0  # untouched default
+
+
+def test_registered_family_is_canonicalised_ignoring_case() -> None:
+    config = parse_title_card_config({"font_family": "barlow condensed"})
+    assert config.font_family == "Barlow Condensed"
+    assert config.resolved_family == "Barlow Condensed"
+
+
+def test_unregistered_family_is_refused_naming_field_value_and_choices() -> None:
+    with pytest.raises(TitleCardError) as excinfo:
+        parse_title_card_config({"font_family": "Papyrus"})
+    message = str(excinfo.value)
+    assert "look.title_card.font_family" in message
+    assert "'Papyrus'" in message
+    for family in registered_families():
+        assert family in message
+    assert len(registered_families()) == 9
+
+
+def test_null_family_means_the_default() -> None:
+    config = parse_title_card_config({"font_family": None})
+    assert config.font_family is None
+    assert config.resolved_family == "DejaVu Sans"
+
+
+def test_non_string_family_is_still_a_type_error() -> None:
+    with pytest.raises(TitleCardError, match="must be a str"):
+        parse_title_card_config({"font_family": 12})
 
 
 def test_fades_clamped_to_duration() -> None:
@@ -664,7 +693,9 @@ def test_bundled_default_renders_without_config(has_fonts: None, tmp_path: Path)
 
 @pytest.mark.has_fonts
 def test_unresolved_font_family_fails_loud(has_fonts: None, tmp_path: Path) -> None:
-    config = parse_title_card_config({"font_family": "No Such Family ZZZ"})
+    # The parser now refuses an unregistered family, so build the config directly: the
+    # renderer's own fail-loud check must still stop a substituted font.
+    config = TitleCardConfig(font_family="No Such Family ZZZ")
     with pytest.raises(FontResolutionError, match="No Such Family ZZZ"):
         _render(
             config,

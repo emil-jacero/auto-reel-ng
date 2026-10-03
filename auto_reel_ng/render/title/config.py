@@ -14,10 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Optional
 
 from ...errors import TitleCardError
-
-#: The bundled default font family, resolved by fontconfig name (installed via
-#: ``fonts-dejavu`` in the D-1 image), never a hardcoded path.
-DEFAULT_FONT_FAMILY = "DejaVu Sans"
+from .fonts import DEFAULT_FONT_FAMILY, font_for, registered_families
 
 #: Documented defaults carried over from auto-reel when ``look.title_card`` is silent.
 DEFAULT_DURATION = 7.0
@@ -129,6 +126,20 @@ def _require(mapping: Mapping[str, Any], key: str, kind: type, *, default: Any) 
     return raw  # pragma: no cover - kind is always one of the three above
 
 
+def _parse_font_family(raw: Mapping[str, Any]) -> Optional[str]:
+    """The configured family in the registry's spelling, or ``None`` (the default)."""
+    value = _require(raw, "font_family", str, default=None)
+    if value is None:
+        return None
+    try:
+        return font_for(value).family
+    except TitleCardError as exc:
+        raise TitleCardError(
+            f"look.title_card.font_family {value!r} is not a bundled font family; "
+            f"use one of: {', '.join(registered_families())}"
+        ) from exc
+
+
 def parse_title_card_config(raw: Optional[Mapping[str, Any]]) -> TitleCardConfig:
     """Parse a :class:`TitleCardConfig` from the opaque ``look.title_card`` sub-map.
 
@@ -153,7 +164,7 @@ def parse_title_card_config(raw: Optional[Mapping[str, Any]]) -> TitleCardConfig
     fade_in, fade_out = _clamp_fades(fade_in, fade_out, duration)
 
     return TitleCardConfig(
-        font_family=_require(raw, "font_family", str, default=None),
+        font_family=_parse_font_family(raw),
         title_font_size=_require(raw, "title_font_size", int, default=DEFAULT_TITLE_FONT_SIZE),
         subtitle_font_size=_require(
             raw, "subtitle_font_size", int, default=DEFAULT_SUBTITLE_FONT_SIZE

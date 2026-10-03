@@ -7,25 +7,32 @@ auto-reel's relative-offset hand-positioning. Every ``gi``/Cairo call is confine
 to this module so the backend never leaks into the pipeline or the GUI, and so the
 engine imports light unless a title decorator actually runs.
 
-Font resolution is fail-loud (decision **D-F**): the configured family is resolved
-through fontconfig and a mismatch raises rather than letting Pango silently
-substitute a different typeface.
+Fonts come from the bundled set under ``fonts/`` (decision **D-22**): before the first
+Pango font map exists the renderer points fontconfig at ``fonts/fonts.conf``, so a host
+needs no system font. Font resolution is fail-loud (decision **D-F**): the configured
+family is resolved through that fontconfig and a mismatch of family or weight raises
+rather than letting Pango silently substitute a different typeface.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ...errors import FontResolutionError, TitleCardError
-from .config import DEFAULT_FONT_FAMILY, TitleCardConfig
+from .config import TitleCardConfig
 from .content import TitleCardContent, title_card_lines
+from .fonts import BUNDLED_FONTS, DEFAULT_FONT_FAMILY, configure_fontconfig, fonts_dir
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, avoids importing TargetSpec at runtime
     from ..target import TargetSpec
 
 #: Horizontal margin (px) reserved on each side; the text column wraps within the rest.
 _MARGIN = 96
+
+#: The weight a card is drawn at (a weight is not yet selectable in ``look.title_card``).
+_CARD_WEIGHT = 400
 
 
 def _load_backend() -> tuple[Any, Any, Any]:
@@ -38,6 +45,9 @@ def _load_backend() -> tuple[Any, Any, Any]:
     # Intentional lazy imports (decision **D-B**): the heavy gi/Cairo surface only
     # loads when a card actually renders, never at engine import.
     # pylint: disable=import-outside-toplevel
+    # The font map is cached by the first call below and fontconfig reads its configuration
+    # once, so the bundled fonts.conf has to be in the environment before Pango is used.
+    configure_fontconfig()
     try:
         import gi
 
@@ -76,33 +86,63 @@ def _parse_color(value: str) -> tuple[float, float, float]:
     raise TitleCardError(f"unrecognized color {value!r}; use #RRGGBB or a named color")
 
 
-def _resolve_font_or_raise(family: str, pango: Any, pangocairo: Any) -> None:
-    """Resolve ``family`` through fontconfig; raise if Pango would substitute it.
+def _resolve_font_or_raise(family: str, weight: int, pango: Any, pangocairo: Any) -> None:
+    """Resolve ``family`` at ``weight`` through fontconfig; raise if Pango would substitute it.
 
-    Pango silently substitutes a missing family. We load the font and compare the
-    resolved family name to the requested one (case-insensitively); a mismatch
-    fails loud, naming the family and the bundled default (decision **D-F**).
+    Pango silently substitutes a missing family, and synthesizes a bold when a family has no
+    bold file. We load the font and compare the resolved family name (case-insensitively) and
+    the weight of the face that loaded with the request; a mismatch fails loud, naming the
+    family, the weight and the bundled default (decision **D-F**).
     """
     fontmap = pangocairo.FontMap.get_default()
     context = fontmap.create_context()
     desc = pango.FontDescription()
     desc.set_family(family)
+    desc.set_weight(pango.Weight(weight))
     font = context.load_font(desc)
-    resolved = font.describe().get_family() if font is not None else None
+    described = font.describe() if font is not None else None
+    resolved = described.get_family() if described is not None else None
     if not resolved or resolved.strip().lower() != family.strip().lower():
         raise FontResolutionError(
             f"font family {family!r} did not resolve through fontconfig "
-            f"(got {resolved!r}); the bundled default is {DEFAULT_FONT_FAMILY!r}"
+            f"(got {resolved!r}); the bundled default is {DEFAULT_FONT_FAMILY!r}; "
+            f"fonts directory {str(fonts_dir())!r}, FONTCONFIG_FILE={_fontconfig_file()!r} "
+            "(it must be set before the process makes its first Pango font map)"
+        )
+    resolved_weight = int(described.get_weight()) if described is not None else None
+    if resolved_weight != weight:
+        raise FontResolutionError(
+            f"font family {family!r} did not resolve at weight {weight} through fontconfig "
+            f"(got weight {resolved_weight}); the font file for that weight is missing from "
+            f"{str(fonts_dir())!r}; the bundled default is {DEFAULT_FONT_FAMILY!r}"
         )
 
 
-def _make_layout(
-    ctx: Any, pango: Any, pangocairo: Any, *, family: str, size: int, width: int
+def _fontconfig_file() -> str:
+    """The ``FONTCONFIG_FILE`` in effect, for an error message."""
+    return os.environ.get("FONTCONFIG_FILE", "")
+
+
+def verify_bundled_fonts() -> None:
+    """Check every registered family at every declared weight resolves; raise for the first not.
+
+    Raises :class:`FontResolutionError` naming the family and the weight. The image build and
+    the per-font test call it, so a font file that went missing never reaches a render.
+    """
+    _, pango, pangocairo = _load_backend()
+    for font in BUNDLED_FONTS:
+        for weight in font.weights:
+            _resolve_font_or_raise(font.family, weight, pango, pangocairo)
+
+
+def _make_layout(  # pylint: disable=too-many-arguments
+    ctx: Any, pango: Any, pangocairo: Any, *, family: str, weight: int, size: int, width: int
 ) -> Any:
     """Build a centered, word-wrapping Pango layout for one text block."""
     layout = pangocairo.create_layout(ctx)
     desc = pango.FontDescription()
     desc.set_family(family)
+    desc.set_weight(pango.Weight(weight))
     desc.set_absolute_size(size * pango.SCALE)
     layout.set_font_description(desc)
     layout.set_alignment(pango.Alignment.CENTER)
@@ -126,7 +166,7 @@ def render_title_card(
     """
     cairo, pango, pangocairo = _load_backend()
     family = config.resolved_family
-    _resolve_font_or_raise(family, pango, pangocairo)
+    _resolve_font_or_raise(family, _CARD_WEIGHT, pango, pangocairo)
 
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, target.width, target.height)
     ctx = cairo.Context(surface)
@@ -141,7 +181,9 @@ def render_title_card(
     total_height = 0
     for index, text in enumerate(lines):
         size = config.title_font_size if index == 0 else config.subtitle_font_size
-        layout = _make_layout(ctx, pango, pangocairo, family=family, size=size, width=column)
+        layout = _make_layout(
+            ctx, pango, pangocairo, family=family, weight=_CARD_WEIGHT, size=size, width=column
+        )
         layout.set_text(text, -1)
         _, logical = layout.get_pixel_extents()
         layouts.append((layout, logical.height))
@@ -200,4 +242,4 @@ def _draw_layout(  # pylint: disable=too-many-arguments,too-many-positional-argu
     pangocairo.show_layout(ctx, layout)
 
 
-__all__ = ["render_title_card"]
+__all__ = ["render_title_card", "verify_bundled_fonts"]

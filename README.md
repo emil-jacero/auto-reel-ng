@@ -10,6 +10,11 @@ pipeline, analysis, service/GUI) builds on this package.
   7.1-only filters, so `FfmpegRuntime` asserts the version at construction and fails
   loud with a clear message rather than producing a cryptic error mid-render.
 - Python ≥ 3.13.
+- **Title cards** (`auto_reel_ng.render.title`) are drawn with Cairo and Pango: the host needs the
+  libraries and the Pango GObject-introspection typelib (PyGObject, pycairo), but **no font**. The
+  fonts are the bundled set under `fonts/` (DejaVu Sans plus eight OFL families, each with its
+  license text), which the engine finds itself through `fonts/fonts.conf`; `AUTO_REEL_FONTS_DIR`
+  moves the directory. `look.title_card.font_family` must be one of the bundled families.
 
 The runtime resolves the binaries in a fixed precedence order:
 
