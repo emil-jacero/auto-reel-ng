@@ -275,6 +275,14 @@ render, or job logic lives in the web tier.
   facts (duration, dimensions, codec) are deliberately not here. The **list**
   response keeps its clip counts and carries no per-clip facts. A detail clip's
   `status` is one of `new`, `active`, `missing` or `ignored`.
+  The **detail** also carries `movie` (change `movie-facts-read`): `null` when the
+  event has no rendered movie, by the rule `GET …/movie` uses, otherwise
+  `recorded_at` (when the render record was written; for an adopted movie, when it
+  was adopted), a 12-character `fingerprint` of the inputs that render was made
+  from, and `chapters` (`name` and `start` in seconds, as the render recorded
+  them; `null` when the render recorded none). It describes the movie on disk, not
+  the current edits, and is read from the render manifest by reading only; the
+  list carries no `movie`.
   Each event's `latest_job` (list and detail) carries `id`, `status`,
   `progress`, `created_at`, `cancel_requested`, `requeue_count`, `started_at` and
   `finished_at`, with the values `GET /api/v1/jobs/{id}` returns for that job; a

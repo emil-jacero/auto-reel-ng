@@ -80,8 +80,9 @@ None.
 ## Impact
 
 - **Packages (two, Principle VIII):**
-  - `api/`: `schemas.py` (`MovieOut`, `MovieChapterOut`, `EventDetailOut.movie`), `events_read.py` (the one
-    movie lookup shared with `media.py`, and `get_event`), `media.py` (calls the shared lookup);
+  - `api/`: `schemas.py` (`MovieOut`, `MovieChapterOut`, `EventDetailOut.movie`), `movie_read.py` (new: the one
+    movie lookup shared with `media.py`, and the facts), `events_read.py` (`get_event`), `media.py` (calls the shared
+    lookup);
     regenerated `web/openapi.json`
   - `web/`: regenerated `src/api/schema.d.ts` only (plus any fixture the generated type forces)
 - **Reads:** `staleness.read_manifest` and the existing `rendered_output`. `staleness/` and `render/` are
