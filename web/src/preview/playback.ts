@@ -192,12 +192,32 @@ export function timeWords(atMs: number, lengthMs: number | null): string {
 export type NoteWords = { title: string; detail: string }
 
 /**
- * After a clip that is gone or changed on disk: never "Refresh", which in Edit mode
- * asks about unsaved changes and then leaves Edit mode. The edits stay until then.
+ * After a clip that is gone or changed on disk, in Edit mode: never "Refresh", which
+ * there asks about unsaved changes and then leaves Edit mode. The edits stay until then.
  */
 export const STOP_EDITING =
   'Stop editing (save first if you want to keep your edits) to read the event again, then open ' +
   'the player anew.'
+
+/**
+ * The same advice in the event page's read view, which has no edits and no Edit mode:
+ * Refresh reads the event again (the player never refreshes the page itself).
+ */
+export const REFRESH_TO_WATCH_ANEW =
+  'Press Refresh to read the event again, then watch the clip anew.'
+
+/** The advice for a clip that is gone or changed on disk: `readOnly` is the read view's player. */
+export const staleAdvice = (readOnly: boolean) =>
+  readOnly ? REFRESH_TO_WATCH_ANEW : STOP_EDITING
+
+/**
+ * Whether the player offers Skip cuts. Edit mode: always, as it was. Read-only: only for a
+ * clip with at least one cut that is not removed, since there is nothing to skip otherwise
+ * and no control to add one.
+ */
+export function offersSkip(readOnly: boolean, cuts: readonly ListedCut[]): boolean {
+  return !readOnly || cuts.some((cut) => cut.removed !== true)
+}
 
 export function noSoundWords(name: string): NoteWords {
   return {
@@ -215,12 +235,17 @@ export function noPictureWords(name: string): NoteWords {
   }
 }
 
-export function goneWords(name: string, detail: string): NoteWords {
-  return { title: `${name} is no longer on disk.`, detail: `${detail} ${STOP_EDITING}` }
+export function goneWords(name: string, detail: string, readOnly = false): NoteWords {
+  // The service's detail has no full stop; the read view's advice follows it as a new sentence.
+  const said = readOnly && !/[.!?]$/.test(detail.trim()) ? `${detail.trim()}.` : detail
+  return { title: `${name} is no longer on disk.`, detail: `${said} ${staleAdvice(readOnly)}` }
 }
 
-export function changedWords(name: string): NoteWords {
-  return { title: `${name} changed on disk since the page was read.`, detail: STOP_EDITING }
+export function changedWords(name: string, readOnly = false): NoteWords {
+  return {
+    title: `${name} changed on disk since the page was read.`,
+    detail: staleAdvice(readOnly),
+  }
 }
 
 export function emptyWords(name: string): NoteWords {

@@ -39,6 +39,7 @@ import {
   goneWords,
   noPictureWords,
   noSoundWords,
+  offersSkip,
   playFrom,
   playName,
   playheadName,
@@ -77,9 +78,11 @@ import {
 import type { ClipProxy } from './source'
 
 /*
- * A clip's preview in its Cuts panel (D-16): a native <video> with the house's own
- * controls, a cut bar, Set From / Set To at the playhead, and Skip cuts, which plays
- * the clip as the movie will. It exists only while open (`previews.ts`: one on the
+ * A clip's preview (D-16): a native <video> with the house's own controls, a cut bar,
+ * Set From / Set To at the playhead, and Skip cuts, which plays the clip as the movie
+ * will. In Edit mode it sits in the clip's Cuts panel; the event page's read view opens
+ * the same component with no `onSet`, and it is then read-only: no Set buttons, the clip's
+ * cuts drawn on the bar, Skip cuts as a view option. It exists only while open (`previews.ts`: one on the
  * page), and its file is fetched only from then on.
  *
  * It plays the clip's preview copy (D-21) when the event detail says one is ready, and
@@ -190,18 +193,23 @@ type Failure = {
 }
 
 /** The one-byte check's answer, in words (design, "Copy"). */
-function failureOf(check: MediaCheck, name: string, mtime: string | null): Failure {
+function failureOf(
+  check: MediaCheck,
+  name: string,
+  mtime: string | null,
+  readOnly: boolean,
+): Failure {
   switch (check.kind) {
     case 'served':
       return changedSince(mtime, check.lastModified)
-        ? { words: changedWords(name) }
+        ? { words: changedWords(name, readOnly) }
         : { words: formatWords(name), download: true }
     case 'empty':
       return { words: emptyWords(name) }
     case 'problem': {
       const { problem } = check
       if (problem.status === 404) {
-        return { words: goneWords(name, problem.detail) }
+        return { words: goneWords(name, problem.detail, readOnly) }
       }
       return {
         words: { title: unreadableTitle(name), detail: problem.detail },
@@ -297,8 +305,8 @@ export const ClipPreview = memo(function ClipPreview({
   proxy,
   name,
   cuts,
-  typed,
-  locked,
+  typed = null,
+  locked = false,
   previews,
   onSet,
   onClose,
@@ -313,15 +321,21 @@ export const ClipPreview = memo(function ClipPreview({
   /** The panel's cuts as listed: removed ones too, marked. */
   cuts: readonly ListedCut[]
   /** The span the panel's fields hold, when they would make a cut; a hint for the bar. */
-  typed: { in: number; out: number } | null
+  typed?: { in: number; out: number } | null
   /** A save or a Move clips is pending: Set From and Set To change nothing. */
-  locked: boolean
+  locked?: boolean
   previews: ClipPreviews
-  onSet: (field: CutField, seconds: number) => void
+  /**
+   * Set From / Set To at the playhead. Given none, the player is read-only (the event page's
+   * read view): it has no Set buttons, offers Skip cuts only for a clip with cuts, and its
+   * advice after a clip that is gone or changed is to press Refresh, not to stop editing.
+   */
+  onSet?: (field: CutField, seconds: number) => void
   onClose: () => void
   onAnnounce: (message: string) => void
 }) {
   const { identity, mtime } = clip
+  const readOnly = onSet === undefined
   // The original's address: also the key of the clip's length, whichever file plays.
   const originalSrc = clipMediaUrl(eventId, clip)
   const source = useMemo(() => previewSource(proxy), [proxy])
@@ -490,7 +504,7 @@ export const ClipPreview = memo(function ClipPreview({
     const controller = new AbortController()
     checkClipMedia(src, controller.signal).then(
       (check) => {
-        const next = playsCopy ? copyFailureOf(check, name) : failureOf(check, name, mtime ?? null)
+        const next = playsCopy ? copyFailureOf(check, name) : failureOf(check, name, mtime ?? null, readOnly)
         setFailure(next)
         setPhase('failed')
         announce(next.words)
@@ -498,7 +512,7 @@ export const ClipPreview = memo(function ClipPreview({
       () => undefined,
     )
     return () => controller.abort()
-  }, [phase, src, playsCopy, name, mtime, announce])
+  }, [phase, src, playsCopy, name, mtime, readOnly, announce])
 
   // While playing: the head follows each presented frame, and with Skip cuts on, the
   // frame loop jumps over a cut two frame intervals ahead (design, "Skip cuts").
@@ -848,6 +862,7 @@ export const ClipPreview = memo(function ClipPreview({
   )
 
   const ready = phase === 'ready'
+  const skipOffered = offersSkip(readOnly, cuts)
   const setUnavailable = locked || lengthMs === null || undefined
   const fileHref = (
     <a className="btn btn-secondary btn-compact" href={originalSrc} download={fileName(identity)}>
@@ -956,6 +971,8 @@ export const ClipPreview = memo(function ClipPreview({
               className="preview-video"
               preload="metadata"
               playsInline
+              // Its controls are the house's own; Firefox would make the bare element a stop.
+              tabIndex={-1}
               poster={thumbnailUrl(eventId, clip)}
               onClick={togglePlay}
               onLoadedMetadata={onLoadedMetadata}
@@ -1015,49 +1032,55 @@ export const ClipPreview = memo(function ClipPreview({
               ))}
             </ul>
           )}
-          <div className="preview-actions">
-            <button
-              type="button"
-              className="btn btn-ghost btn-compact preview-skip"
-              aria-pressed={skip}
-              aria-label={skipName(name)}
-              onClick={() => {
-                setSkip(!skip)
-                setAllCut(false)
-              }}
-            >
-              {SKIP}
-              {SKIP_CUTS}
-            </button>
-            {(['start', 'end'] as const).map((field) => (
-              <button
-                key={field}
-                type="button"
-                className="btn btn-secondary btn-compact preview-set"
-                data-field={field}
-                aria-label={setName(field, name)}
-                aria-disabled={setUnavailable}
-                onClick={() => {
-                  const video = videoRef.current
-                  if (!setUnavailable && video !== null) {
-                    onSet(field, video.currentTime)
-                  }
-                }}
-              >
-                {SET_WORDS[field]}
-              </button>
-            ))}
-            {source.kind === 'copy' && (
-              <button
-                type="button"
-                className="btn btn-secondary btn-compact preview-original"
-                aria-label={playsCopy ? playOriginalName(name) : playCopyName(name)}
-                onClick={swapFile}
-              >
-                {playsCopy ? PLAY_ORIGINAL : PLAY_COPY}
-              </button>
-            )}
-          </div>
+          {/* A read-only player of a clip with nothing to skip or swap has no row of actions. */}
+          {(skipOffered || !readOnly || source.kind === 'copy') && (
+            <div className="preview-actions">
+              {skipOffered && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-compact preview-skip"
+                  aria-pressed={skip}
+                  aria-label={skipName(name)}
+                  onClick={() => {
+                    setSkip(!skip)
+                    setAllCut(false)
+                  }}
+                >
+                  {SKIP}
+                  {SKIP_CUTS}
+                </button>
+              )}
+              {onSet !== undefined &&
+                (['start', 'end'] as const).map((field) => (
+                  <button
+                    key={field}
+                    type="button"
+                    className="btn btn-secondary btn-compact preview-set"
+                    data-field={field}
+                    aria-label={setName(field, name)}
+                    aria-disabled={setUnavailable}
+                    onClick={() => {
+                      const video = videoRef.current
+                      if (!setUnavailable && video !== null) {
+                        onSet(field, video.currentTime)
+                      }
+                    }}
+                  >
+                    {SET_WORDS[field]}
+                  </button>
+                ))}
+              {source.kind === 'copy' && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-compact preview-original"
+                  aria-label={playsCopy ? playOriginalName(name) : playCopyName(name)}
+                  onClick={swapFile}
+                >
+                  {playsCopy ? PLAY_ORIGINAL : PLAY_COPY}
+                </button>
+              )}
+            </div>
+          )}
           {allCut && <p className="preview-said">{ALL_CUT}</p>}
           {notes.sound && (
             <Alert tone="info" role="note" title={soundNote.title} detail={soundNote.detail} />
