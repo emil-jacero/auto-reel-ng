@@ -37,7 +37,9 @@ PathLike = Union[str, Path]
 #:    fontconfig, not the host's).
 #: 6: clip-rotate-engine (a display rotation is applied by the engine on every profile and adds to
 #:    rotate; a display-rotated clip is never stream-copied).
-RENDER_GRAPH_VERSION = 6
+#: 7: title-card-model (the opening card shows the event title and a free-text subtitle only;
+#:    each card takes its own length and style).
+RENDER_GRAPH_VERSION = 7
 
 #: The four fingerprint components, in the fixed order the combined hash uses.
 COMPONENTS = ("editorial", "defaults", "clip_set", "engine")

@@ -15,6 +15,7 @@ from typing import Iterable, Mapping, Optional
 
 from ..errors import ReelError
 from ..probe.metadata import ClipMetadata
+from ..reel.card import ChapterCard
 from ..reel.document import ClipProperties, ReelDocument, is_excluded
 from .plan import RenderPlan, ResolvedChapter, ResolvedClip
 
@@ -34,7 +35,7 @@ def resolve(
     clip). Both ``look`` maps are treated opaquely (D-I).
     """
     chapters = tuple(
-        _resolve_chapter(chapter.name, chapter.clips, document.clips, clip_facts)
+        _resolve_chapter(chapter.name, chapter.clips, document.clips, clip_facts, chapter.card)
         for chapter in document.chapters
     )
     look = _merge_look(look_defaults, document.look)
@@ -46,6 +47,7 @@ def _resolve_chapter(
     refs: Iterable,
     clip_props: Mapping[str, ClipProperties],
     clip_facts: Optional[Mapping[str, ClipMetadata]],
+    card: Optional[ChapterCard] = None,
 ) -> ResolvedChapter:
     """Materialize one chapter: drop excluded clips, then mark the title clip."""
     included: list[tuple[str, ClipProperties]] = []
@@ -70,7 +72,7 @@ def _resolve_chapter(
         )
         for identity, props in included
     )
-    return ResolvedChapter(name=name, clips=clips)
+    return ResolvedChapter(name=name, clips=clips, card=card)
 
 
 def _resolve_title(included: list[tuple[str, ClipProperties]]) -> Optional[str]:

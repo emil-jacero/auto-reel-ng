@@ -37,6 +37,7 @@ from ruamel.yaml.error import CommentMark, YAMLError
 from ruamel.yaml.tokens import CommentToken
 
 from ..errors import ReelError
+from ..reel.card import CARD_KEYS
 from ..reel.document import ReelDocument
 from ..reel.parser import load_document
 from ..reel.schema import build_document
@@ -232,10 +233,12 @@ def _apply_chapters(data: CommentedMap, desired: Optional[Iterable[Mapping[str, 
         if node is None:
             node = CommentedMap()
             node["name"] = name
+            _apply_card(node, desired_chapter)
             node["clips"] = CommentedSeq(clips)
         else:
             if node.get("name") != name:  # a renamed chapter keeps its name line's comment
                 node["name"] = name
+            _apply_card(node, desired_chapter)
             if isinstance(node.get("clips"), CommentedSeq):
                 _rewrite_identity_list(node, "clips", clips, comments, ends[id(node)])
             elif clips:  # a missing or bare ``clips`` stays as written while it lists nothing
@@ -265,6 +268,50 @@ def _apply_chapters(data: CommentedMap, desired: Optional[Iterable[Mapping[str, 
             _set_trailing(current[-1], "clips", "")
             _set_trailing(appended[-1], "clips", moved)
     current.extend(appended)
+
+
+def _apply_card(node: CommentedMap, desired_chapter: Mapping[str, Any]) -> None:
+    """Merge a chapter's ``card`` into its node (the card semantics of the write).
+
+    No ``card`` key, or ``None``: the existing card stays exactly as written, so a client
+    that does not know cards cannot erase one by omission. A mapping with no value in it
+    (``{}``, or only ``None`` values, which stand for absent keys): the card is removed.
+    A mapping with values: merged into the existing ``card`` node key by key (a key the
+    desired card lacks is removed, an equal value is left as written, a different one is
+    replaced); a chapter without a card gets a fresh one directly after ``name``. Anything
+    that is not a mapping is put in as given, for :func:`build_document` to refuse.
+    """
+    desired = desired_chapter.get("card")
+    if desired is None:
+        return
+    if not isinstance(desired, Mapping):
+        node["card"] = desired
+        return
+    wanted = {key: value for key, value in desired.items() if value is not None}
+    if not wanted:
+        node.pop("card", None)
+        return
+    card = node.get("card")
+    if not isinstance(card, CommentedMap):
+        card = CommentedMap()
+        for key in CARD_KEYS:
+            if key in wanted:
+                card[key] = wanted.pop(key)
+        card.update(wanted)  # keys outside the table: put in as given for the validator to refuse
+        node.pop("card", None)
+        node.insert(list(node).index("name") + 1 if "name" in node else 0, "card", card)
+        return
+    for key in list(card):
+        if key not in wanted:
+            del card[key]
+    for key, value in wanted.items():
+        if key not in card or not _same_card_value(card[key], value):
+            card[key] = value
+
+
+def _same_card_value(old: Any, new: Any) -> bool:
+    """Whether a card value on disk equals the desired one (``5`` equals ``5.0``; ``True`` is no number)."""
+    return bool(old == new) and isinstance(old, bool) == isinstance(new, bool)
 
 
 def _match_chapters(

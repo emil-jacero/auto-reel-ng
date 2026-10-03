@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from auto_reel_ng.reel.card import ChapterCard
 from auto_reel_ng.reel.document import (
     Chapter,
     ClipProperties,
@@ -28,7 +29,7 @@ from auto_reel_ng.staleness.manifest import write_manifest
 FFMPEG_VERSION = (7, 1)
 
 #: Golden hashes for ``_pinned_document()`` + ``_pinned_event_dir()`` (task 1.1).
-#: ENGINE/COMBINED re-pinned for RENDER_GRAPH_VERSION 6 (clip-rotate-engine).
+#: ENGINE/COMBINED re-pinned for RENDER_GRAPH_VERSION 7 (title-card-model; 6 was clip-rotate-engine, 5 title-card-fonts); EDITORIAL, DEFAULTS and CLIP_SET are as before.
 PINNED_EDITORIAL = "cfb295abf2c9f44e4ec05e5634beaf1b9b21235c21d65d0109a944509d848de4"
 PINNED_DEFAULTS = "9d1a9bf4432fae2ec90ade0e7eb1552455abd6da0fac7974d78a16d63113f555"
 PINNED_CLIP_SET = "b1c642b3cd29b949070b357534bae6e2077121b032f93fa34c7aa0df957b6663"
@@ -139,8 +140,7 @@ def test_version_2_manifest_is_engine_stale(
 def test_version_3_manifest_is_engine_stale(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # title-card-whole-clip-cut bumped RENDER_GRAPH_VERSION to 4: an output rendered
-    # under version 3 must re-render, for the engine reason alone.
+    # An output rendered under version 3 must re-render, for the engine reason alone.
     event_dir = _event_dir(tmp_path)
     output = event_dir / "Party.mp4"
     output.write_bytes(b"rendered")
@@ -202,6 +202,63 @@ def test_version_4_manifest_is_engine_stale(
 
     assert verdict.stale is True
     assert verdict.reasons == (StalenessReason.ENGINE,)
+
+
+def test_version_5_manifest_is_engine_stale_and_the_new_version_gates_fresh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # title-card-model bumped RENDER_GRAPH_VERSION to 6 (the opening card's text and each card's
+    # length and style changed for identical inputs): an output rendered under version 5 must
+    # re-render, for the engine reason alone, while the same event under 6 is fresh.
+    event_dir = _event_dir(tmp_path)
+    output = event_dir / "Party.mp4"
+    output.write_bytes(b"rendered")
+    with monkeypatch.context() as patch:
+        patch.setattr(fingerprint_module, "RENDER_GRAPH_VERSION", 5)
+        old = _fingerprint(event_dir)
+        old_identity = fingerprint_module.engine_identity(FFMPEG_VERSION)
+    assert old_identity.startswith("render_graph_version=5 ")
+    assert fingerprint_module.RENDER_GRAPH_VERSION == 6
+    new = _fingerprint(event_dir)
+    # Only the engine component moved: a card-less document hashes exactly as before.
+    assert new.engine != old.engine
+    for name in ("editorial", "defaults", "clip_set"):
+        assert new.component(name) == old.component(name)
+
+    write_manifest(event_dir, old, output=output.name, engine_identity=old_identity)
+    verdict = evaluate(event_dir, output, new)
+    assert verdict.stale is True
+    assert verdict.reasons == (StalenessReason.ENGINE,)
+
+    write_manifest(
+        event_dir,
+        new,
+        output=output.name,
+        engine_identity=fingerprint_module.engine_identity(FFMPEG_VERSION),
+    )
+    assert evaluate(event_dir, output, new).stale is False
+
+
+def test_adding_a_card_moves_only_the_editorial_component(tmp_path: Path) -> None:
+    event_dir = _event_dir(tmp_path)
+    plain = _document()
+    carded = ReelDocument(
+        metadata=plain.metadata,
+        chapters=(
+            Chapter(
+                name=plain.chapters[0].name,
+                clips=plain.chapters[0].clips,
+                card=ChapterCard(subtitle="Hos mormor"),
+            ),
+        ),
+    )
+    baseline = _fingerprint(event_dir)
+    changed = compute_fingerprint(
+        carded, event_dir=event_dir, look_defaults={}, ffmpeg_version=FFMPEG_VERSION
+    )
+    assert changed.editorial != baseline.editorial
+    for name in ("defaults", "clip_set", "engine"):
+        assert changed.component(name) == baseline.component(name)
 
 
 def test_device_selection_does_not_move_the_fingerprint(tmp_path: Path) -> None:

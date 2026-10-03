@@ -6,6 +6,7 @@ round-trip-preserving writer, and an auto-reel legacy importer.
 
 from __future__ import annotations
 
+from .card import ChapterCard
 from .document import (
     DEFAULT_CHAPTER_NAME,
     SCHEMA_VERSION,
@@ -29,6 +30,7 @@ __all__ = [
     "ReelDocument",
     "Metadata",
     "Chapter",
+    "ChapterCard",
     "ClipRef",
     "ClipProperties",
     "Trim",
