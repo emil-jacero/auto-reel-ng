@@ -408,6 +408,24 @@ render, or job logic lives in the web tier.
   revalidates before it reuses stored bytes) and `Content-Disposition: inline`
   with the file's own name; an `If-None-Match` naming the current tag (weak
   comparison, or `*`) is a **304** with no body, even with a `Range`.
+- **`GET`/`HEAD /api/v1/events/{event_id}/proxy?clip=<identity>`** streams the clip's
+  **proxy**, and **`…/filmstrip?clip=<identity>`** its filmstrip sprite: the
+  `proxy.mp4` (`video/mp4`, 540p H.264 with AAC sound, so a PCM clip is audible in
+  Firefox) and the `filmstrip.jpg` (`image/jpeg`) that `auto-reel proxies` writes into
+  the proxy cache, unchanged. `clip` is the identity of the `media` route, encoded the
+  same way. An optional `v` is ignored; it is meant to carry the route's `ETag` (read
+  it with `HEAD`) so a proxy that is made again gets a new URL. **Absent is a 404
+  problem body, never a 200 or a 202:** a clip never prepared, a cache entry made for
+  an earlier version of the file (a replaced clip stays absent until `auto-reel
+  proxies` runs again) or another proxy version, a proxy that is still being written,
+  and, for the filmstrip alone, an entry whose sprite is not made. Ranges, `If-Range`,
+  the `ETag` (of the cache file, so it differs from the clip's), `Last-Modified`,
+  `Cache-Control: private, no-cache`, the conditional requests and `HEAD` behave as for
+  `media`. The routes only read the cache: no database (they answer while Postgres is
+  down), no ffmpeg, nothing created, not even the cache directory. A 502 follows the
+  clip route's causes, plus an unusable `config.yaml` or `proxies.cache_dir`, and a
+  proxy file that exists but cannot be read (the detail names the clip and the reason,
+  never a server path).
   `Content-Type` comes from a fixed table by extension (`video/mp4`,
   `video/quicktime`, …), never the host's MIME database. **Failures** answer by
   cause and carry no caching headers: **404** for an id the events list does not

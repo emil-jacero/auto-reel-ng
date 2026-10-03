@@ -173,8 +173,9 @@ PCM research closed it on 155; this repeats the PCM measurement against the rout
   Task 1.1 pins them and stops the change if the entry layout or the finalize order differs from decision 5.
 - **[One lookup per range request]** Each seek repeats `listed_event_dir`, `scan_event`, the config read and two
   `stat`s. The clip route measured p50 8.1 ms / p95 14.5 ms on a 400-clip event and 1.7 / 2.4 ms on an 11-clip
-  event; the proxy adds a YAML read and a stat. A timeline scrub asks for many small ranges. → Task 5.1 measures
-  the same 50 sequential `Range: bytes=0-0` requests; the budget is the 100 ms first-frame bar (X2 in the
+  event; the proxy adds a YAML read and a stat. A timeline scrub asks for many small ranges. → Task 5.1 measured
+  the same 50 sequential `Range: bytes=0-0` requests: **p50 2.3 ms / p95 2.8 ms** on an 11-clip event and **p50 7.7 ms /
+  p95 9.2 ms** on a 400-clip event (shared, busy host); the bar is below; the budget is the 100 ms first-frame bar (X2 in the
   synthesis: seek p90 <= 100 ms). A slow result is a follow-up for a lookup shared with `proxy-state-read`,
   not a change here.
 - **[Two parallel changes may each add an entry lookup]** `proxy-state-read` reads the same cache. → Decision 3:

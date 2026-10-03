@@ -241,6 +241,66 @@ RUN pip install -q playwright==1.49.0 && python -m playwright install chrome
 Built as `podman build -t localhost/playback-research:chrome .` (about 4.9 GB) and run with
 `--network host`; the script launches `chromium.launch(channel="chrome")`.
 
+## 11. Proxy playback through the routes
+
+`proxy-media-endpoints` serves a clip's cache proxy (`GET …/proxy?clip=&v=`) and filmstrip (`…/filmstrip?clip=`).
+It was run for real: a dev library of the ten sample clips (symlinks, plus a regular-file copy that was
+touched), a proxy cache made by `auto-reel proxies`, `auto-reel serve` on loopback, and Playwright pages on the
+service's own origin, in **Chrome 154.0.8037.92** (the image of §10) and **Firefox 155.0** (the PCM research's
+image, with a null-sink audio device). The machine was shared and busy (load average 6 to 21); the numbers below
+are from the quieter runs.
+
+**Sound.** The audio of the element is tapped with an `AnalyserNode` for 3 s of `play()` (`AudioContext`
+resumed, autoplay allowed); the peak is the largest sample seen.
+
+| Clip (Sony XAVC, PCM) | Chrome 154 proxy | Firefox 155 proxy | Firefox 155 **original** |
+|---|---|---|---|
+| 1080p25: picture / peak | 960x540 / 0.264 | 960x540 / 0.264 | 1920x1080 / **0** |
+| 4K25: picture / peak | 960x540 / 0.085 | 960x540 / 0.085 | not played |
+| `mozHasAudio` | (not exposed) | true | **false** |
+
+The proxies carry AAC and play with sound in both browsers; the peaks equal the PCM research's (0.264 and 0.085).
+The control is unchanged: the original of the 1080p25 clip is silent in Firefox (`mozHasAudio` false, peak 0) and
+audible in Chrome (peak 0.268). Playback advanced about 3 s in 3 s in both browsers (2.7 to 3.0).
+
+**First frame** (a fresh `<video preload="auto" muted>`, `src` assigned, `play()`, time to the first
+`requestVideoFrameCallback`, loopback, warm file cache, 10 elements per case):
+
+| Proxy | Chrome median (min-max) | Firefox median (min-max) | Original, median (Chrome / Firefox) |
+|---|---|---|---|
+| Sony 1080p25 | 32 ms (29-32) | 33 ms (29-115) | 261 / 187 ms |
+| Sony 4K25 | 60 ms (48-80) | 97 ms (64-115) | 376 / 322 ms |
+
+The bar is a median of at most 100 ms: it holds in both browsers, but Firefox's 4K25 proxy is at 97 ms (one sample
+of ten above 100, at 115 ms), so it has little margin. A run made under a load average of 21 gave Chrome 116 ms for the
+same proxy: the first frame is a decode and a render, not the route (the route's own lookup is a few milliseconds,
+below).
+
+**Seeking.** Ten random seeks in each proxy, time from `currentTime =` to the next presented frame: Chrome p50
+17-30 ms, p90 17-41 ms; Firefox p50 16-17 ms, p90 17-22 ms. A seek to 50 % fires `seeked` in every case.
+
+**Clips the originals cannot show.** The 90-degree HEVC `.mov`: Chrome shows no picture from the original
+(`videoWidth` 0) and plays its sound; its proxy plays with a picture (540x960, mean luma 111) in both browsers.
+Firefox 155 happens to decode that HEVC original. The legacy MPEG-4 render (756 s): both browsers report
+`videoWidth` 0 for the original; its proxy plays in both (960x540), its first 2 s are black as the clip itself is
+(a frame read at 30 % is mean luma 96 to 97).
+
+**Absent and replaced.** The proxy of a clip that was never prepared ends in `MediaError` 4 in both browsers
+(Firefox logs "HTTP load failed with status 404"), the page can say so, and nothing but the intended 404 is in the
+console or the failed requests. A proxy file overwritten in the cache by another proxy (a different duration)
+and loaded at `v=<new ETag>` plays and reports the new duration (24.96 s to 14.65 s) in both browsers; Chrome's
+failure at the *old* address is D-15's and was not asserted. The filmstrip `<img>` of the Sony clips loads
+(1600x270); in a screenshot (light and dark, 1280 and 390 px wide) the tiles run in order along the clip and the unused
+cells of the 10x3 grid are green (YUV zero), which a consumer must not draw: the tile count is in `facts.json`.
+
+**Cost of a request.** One lookup per request (listing, config read, two `stat`s): 50 sequential
+`Range: bytes=0-0` requests took **p50 2.3 ms / p95 2.8 ms** for a proxy of an 11-clip event and **p50 7.7 ms / p95
+9.2 ms** for a clip of a 400-clip event (hard links of one file). Downloading the largest proxy (92 MB) whole raised the
+service's resident memory by 0 MiB over 56 samples taken 50 ms apart (a 64 KiB chunk at a time); a client that
+hung up after 0.2 s left no traceback in the log. The proxy and filmstrip routes answered 200 and 404 with the
+database unreachable, and serving created nothing: the cache tree (106 paths, sizes, mtimes) was identical
+before and after every request, and nothing in the library or the sample media changed.
+
 ## Recommendations (adopted)
 
 1. **PCM audio: nothing server-side in v1.** Serve clips unchanged as `video/mp4`; the clip preview says when
