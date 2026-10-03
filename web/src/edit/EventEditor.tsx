@@ -120,14 +120,13 @@ import {
   pruneMarks,
   toggleMark,
 } from './marks'
-import { FIELD_LABEL, MetadataForm } from './MetadataForm'
+import { FIELD_LABEL, inheritHint, MetadataForm } from './MetadataForm'
+import type { Resolved } from './MetadataForm'
 import { SaveBar } from './SaveBar'
 import type { Operation, Pressed, SaveProblem } from './SaveBar'
 import { TitleCardContext } from './TitleCard'
 import type { TitleCardModel } from './TitleCard'
 import { holdWords, isSaveChord, LIFTED_WORDS, saveHold, saveKeyAction } from './saveShortcut'
-import { inheritHint } from './MetadataForm'
-import type { Resolved } from './MetadataForm'
 import {
   discardAndLeave,
   keepEditing,
@@ -720,10 +719,10 @@ function summarize(
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
-// The read view's cuts, which Edit mode's Timeline does not use: its cuts are the draft's.
 /** What `naming` holds while the main title card's field is open (a chapter key never is). */
 const TITLE = 'title' as const
 
+// The read view's cuts, which Edit mode's Timeline does not use: its cuts are the draft's.
 const NOT_READ = { cuts: null, failure: null } as const
 const NOTHING = () => undefined
 
@@ -1744,9 +1743,6 @@ export function EventEditor({
     [listedKeys],
   )
 
-  // Each listed chapter's tools: what it offers, its notes and why it cannot go. A
-  // chapter's object is kept while what it shows is unchanged, so its list re-renders
-  // only when its own tools change.
   // The main title card's line (TitleCard.tsx): the draft's title, edited in place of the form's.
   const draftTitle = ready?.draft.metadata.title ?? ''
   const draftMetadata = ready?.draft.metadata
@@ -1803,6 +1799,9 @@ export function EventEditor({
     naming === TITLE || (naming !== null && listed.some((chapter) => chapter.key === naming))
       ? naming
       : null
+  // Each listed chapter's tools: what it offers, its notes and why it cannot go. A
+  // chapter's object is kept while what it shows is unchanged, so its list re-renders
+  // only when its own tools change.
   const toolsCache = useRef(new Map<ChapterKey, ChapterToolsModel>())
   const tools = useMemo(() => {
     const result = new Map<ChapterKey, ChapterToolsModel>()
@@ -1939,7 +1938,9 @@ export function EventEditor({
     const next = addChapter(current.draft, key, name)
     focusAfter.current = { key, target: 'heading' }
     dispatch({ type: 'chapter-add', key, name })
-    announce(`Chapter “${name}” added, ${placeIn(next, key)}. It has no clips.${notesIn(next, key)}`)
+    announce(
+      `Chapter “${name}” added, ${placeIn(next, key)}. It has no clips.${notesIn(next, key)}`,
+    )
   }
 
   function confirmMove(identities: string[], to: ChapterKey): void {
@@ -2286,64 +2287,64 @@ export function EventEditor({
 
           {detail !== null && (
             <TitleCardContext.Provider value={titleCard}>
-            <ChapterDrag
-              orders={ready.draft.orders}
-              listed={listedKeys}
-              staysHome={staysHome}
-              nameOf={nameOfClip}
-              headingOf={headingOfChapter}
-              locked={listsLocked}
-              onReorder={onMove}
-              onDropInto={onDropInto}
-              marked={marks}
-              onDropGroup={onDropGroup}
-              onLift={onLift}
-              rootRef={editorRef}
-            >
-              {ready.draft.chapters.map((chapter) => {
-                const heading = chapterHeading(chapter.name, hasNamedChapter)
-                const model = tools.get(chapter.key)
-                return chapter.deleted || model === undefined ? (
-                  <DeletedChapter
-                    key={chapter.key}
-                    chapterKey={chapter.key}
-                    heading={heading}
-                    notes={notes.get(chapter.key) ?? NONE_REMOVED}
-                    locked={listsLocked}
-                    onUndo={onUndoDelete}
-                  />
-                ) : (
-                  <ClipOrderList
-                    key={chapter.key}
-                    eventId={eventId}
-                    chapterKey={chapter.key}
-                    name={chapter.name}
-                    heading={heading}
-                    order={ready.draft.orders.get(chapter.key) ?? NONE_REMOVED}
-                    original={ready.baseline.original.get(chapter.key) ?? NONE_REMOVED}
-                    ignored={ignoredOf.get(chapter.key) ?? NONE_REMOVED}
-                    removed={removedByChapter.get(chapter.key) ?? NONE_REMOVED}
-                    clips={clips}
-                    origins={origins}
-                    lastMoved={ready.lastMoved}
-                    locked={listsLocked}
-                    tools={model}
-                    cuts={ready.draft.cuts}
-                    baseCuts={ready.baseline.cuts}
-                    typed={ready.typed}
-                    panels={cutPanels.panels}
-                    resets={ready.resets}
-                    cutHandlers={cutHandlers}
-                    marked={marksIn.get(chapter.key) ?? NO_MARKS}
-                    onMark={onMark}
-                    onMove={onMove}
-                    onRemove={onRemove}
-                    onRestore={onRestore}
-                    onAnnounce={announce}
-                  />
-                )
-              })}
-            </ChapterDrag>
+              <ChapterDrag
+                orders={ready.draft.orders}
+                listed={listedKeys}
+                staysHome={staysHome}
+                nameOf={nameOfClip}
+                headingOf={headingOfChapter}
+                locked={listsLocked}
+                onReorder={onMove}
+                onDropInto={onDropInto}
+                marked={marks}
+                onDropGroup={onDropGroup}
+                onLift={onLift}
+                rootRef={editorRef}
+              >
+                {ready.draft.chapters.map((chapter) => {
+                  const heading = chapterHeading(chapter.name, hasNamedChapter)
+                  const model = tools.get(chapter.key)
+                  return chapter.deleted || model === undefined ? (
+                    <DeletedChapter
+                      key={chapter.key}
+                      chapterKey={chapter.key}
+                      heading={heading}
+                      notes={notes.get(chapter.key) ?? NONE_REMOVED}
+                      locked={listsLocked}
+                      onUndo={onUndoDelete}
+                    />
+                  ) : (
+                    <ClipOrderList
+                      key={chapter.key}
+                      eventId={eventId}
+                      chapterKey={chapter.key}
+                      name={chapter.name}
+                      heading={heading}
+                      order={ready.draft.orders.get(chapter.key) ?? NONE_REMOVED}
+                      original={ready.baseline.original.get(chapter.key) ?? NONE_REMOVED}
+                      ignored={ignoredOf.get(chapter.key) ?? NONE_REMOVED}
+                      removed={removedByChapter.get(chapter.key) ?? NONE_REMOVED}
+                      clips={clips}
+                      origins={origins}
+                      lastMoved={ready.lastMoved}
+                      locked={listsLocked}
+                      tools={model}
+                      cuts={ready.draft.cuts}
+                      baseCuts={ready.baseline.cuts}
+                      typed={ready.typed}
+                      panels={cutPanels.panels}
+                      resets={ready.resets}
+                      cutHandlers={cutHandlers}
+                      marked={marksIn.get(chapter.key) ?? NO_MARKS}
+                      onMark={onMark}
+                      onMove={onMove}
+                      onRemove={onRemove}
+                      onRestore={onRestore}
+                      onAnnounce={announce}
+                    />
+                  )
+                })}
+              </ChapterDrag>
             </TitleCardContext.Provider>
           )}
 
