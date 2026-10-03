@@ -11,6 +11,7 @@ editorial data. It deliberately imports nothing from :mod:`parser` or
 from __future__ import annotations
 
 import math
+import re
 from datetime import date, datetime
 from pathlib import PurePosixPath
 from types import MappingProxyType
@@ -19,6 +20,16 @@ from typing import Any, Mapping, Optional, Sequence
 from ruamel.yaml.scalarbool import ScalarBoolean
 
 from ..errors import ReelParseError
+from .card import (
+    CARD_BACKGROUNDS,
+    CARD_KEYS,
+    CARD_MAX_DURATION,
+    CARD_MAX_FONT_SIZE,
+    CARD_MIN_DURATION,
+    CARD_MIN_FONT_SIZE,
+    CARD_POSITIONS,
+    ChapterCard,
+)
 from .document import (
     SCHEMA_VERSION,
     Chapter,
@@ -145,9 +156,109 @@ def _parse_chapters(raw: Any, *, source: str) -> tuple[Chapter, ...]:
         refs = tuple(
             ClipRef(_parse_identity(ref, loc=f"{loc}.clips[{i}]")) for i, ref in enumerate(refs_raw)
         )
-        chapters.append(Chapter(name=name, clips=refs))
+        card = _parse_card(entry.get("card"), loc=f"{loc}.card")
+        chapters.append(Chapter(name=name, clips=refs, card=card))
     check_chapter_names([chapter.name for chapter in chapters], source=source)
     return tuple(chapters)
+
+
+_HEX_COLOR = re.compile(r"#[0-9A-Fa-f]{6}")
+
+
+def _parse_card(raw: Any, *, loc: str) -> Optional[ChapterCard]:
+    """Parse a chapter's optional ``card`` mapping; ``None`` when it sets nothing.
+
+    An absent, ``null`` or empty ``card`` means no overrides and yields ``None`` (so the
+    chapter, and the editorial hash, are the same as for a chapter that never had one).
+    Within a card a key that is present must have a value: ``null`` fails loud, because an
+    unquoted ``text_color: #FFD700`` is a YAML comment and would otherwise be ignored.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise ReelParseError(f"{loc} must be a mapping, got {type(raw).__name__}")
+    for key in raw:
+        if key not in CARD_KEYS:
+            raise ReelParseError(
+                f"{loc}.{key}: unknown card key; the allowed keys are {', '.join(CARD_KEYS)}"
+            )
+    values: dict[str, Any] = {}
+    for key in CARD_KEYS:
+        if key not in raw:
+            continue
+        values[key] = _parse_card_value(key, raw[key], loc=f"{loc}.{key}")
+    return ChapterCard(**values) if values else None
+
+
+def _parse_card_value(key: str, value: Any, *, loc: str) -> Any:
+    """Validate one card value by key (type, range, set); ``null`` is never "unset"."""
+    if value is None:
+        hint = (
+            "; a #RRGGBB colour must be quoted, as '#FFD700', or YAML reads it as a comment"
+            if key == "text_color"
+            else ""
+        )
+        raise ReelParseError(f"{loc}: value is null; remove the key to leave it unset{hint}")
+    if key in ("title", "font_family"):
+        return _card_text(value, loc=loc, blank_ok=False)
+    if key == "subtitle":
+        return _card_text(value, loc=loc, blank_ok=True)
+    if key == "duration":
+        return _card_duration(value, loc=loc)
+    if key in ("title_font_size", "subtitle_font_size"):
+        return _card_font_size(value, loc=loc)
+    if key == "text_color":
+        return _card_color(value, loc=loc)
+    allowed = CARD_BACKGROUNDS if key == "background" else CARD_POSITIONS
+    if not isinstance(value, str) or value not in allowed:
+        raise ReelParseError(f"{loc}: must be one of {', '.join(allowed)}, got {value!r}")
+    return str(value)
+
+
+def _card_text(value: Any, *, loc: str, blank_ok: bool) -> str:
+    """A card string; blank is refused unless ``blank_ok`` (the subtitle may be empty)."""
+    if not isinstance(value, str):
+        raise ReelParseError(f"{loc}: expected a string, got {type(value).__name__}")
+    if not blank_ok and not value.strip():
+        raise ReelParseError(f"{loc}: must not be blank")
+    return str(value)
+
+
+def _card_duration(value: Any, *, loc: str) -> float:
+    """A finite number of seconds within the card bounds; a boolean is not a number."""
+    if _is_boolish(value) or not isinstance(value, (int, float)):
+        raise ReelParseError(f"{loc}: expected a number of seconds, got {type(value).__name__}")
+    try:
+        seconds = float(value)
+    except OverflowError as exc:
+        raise ReelParseError(f"{loc}: duration out of range, got {value}") from exc
+    if not math.isfinite(seconds) or not CARD_MIN_DURATION <= seconds <= CARD_MAX_DURATION:
+        raise ReelParseError(
+            f"{loc}: duration must be a finite number from {CARD_MIN_DURATION:g} to "
+            f"{CARD_MAX_DURATION:g} seconds, got {value}"
+        )
+    return seconds
+
+
+def _card_font_size(value: Any, *, loc: str) -> int:
+    """An integer font size within the card bounds; a boolean or a float is refused."""
+    if _is_boolish(value) or not isinstance(value, int):
+        raise ReelParseError(f"{loc}: expected an integer, got {type(value).__name__}")
+    if not CARD_MIN_FONT_SIZE <= value <= CARD_MAX_FONT_SIZE:
+        raise ReelParseError(
+            f"{loc}: font size must be from {CARD_MIN_FONT_SIZE} to {CARD_MAX_FONT_SIZE}, "
+            f"got {value}"
+        )
+    return int(value)
+
+
+def _card_color(value: Any, *, loc: str) -> str:
+    """A ``#RRGGBB`` colour in either case."""
+    if not isinstance(value, str):
+        raise ReelParseError(f"{loc}: expected a #RRGGBB colour string, got {type(value).__name__}")
+    if not _HEX_COLOR.fullmatch(value):
+        raise ReelParseError(f"{loc}: must be a #RRGGBB colour (quoted), got {value!r}")
+    return str(value)
 
 
 def check_chapter_names(names: Sequence[str], *, source: str) -> None:

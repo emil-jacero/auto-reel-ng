@@ -706,6 +706,52 @@ proxies land in `./data/cache/auto-reel/proxies/`).
 Proxies are not render inputs: they do not change a movie, do not make an event stale, and are not part of the
 staleness fingerprint.
 
+### Title cards (`card`)
+
+With `look.decorators: [title]` every chapter opens with a title card, and the default chapter
+(`name: ""`, the clips at the event root) opens the movie with the opening card. A card needs no
+configuration: its heading is the chapter's name (the event title for the opening card), it has
+no subtitle, and its look comes from `look.title_card`. The opening card no longer shows the
+date, the place or the description; write them as the subtitle if you want them.
+
+A chapter may carry an optional `card` mapping that gives that one card its own text, length
+and look. Every key is optional; a key that is present must have a value, and the file fails
+loud (naming `chapters[i].card.<key>`) on an unknown key, a wrong type or a value out of range.
+
+```yaml
+# <event>/reel.yaml
+version: 0
+chapters:
+  - name: ""                  # the default chapter holds the opening card
+    card:
+      title: Midsommar 2024
+      subtitle: Hos mormor
+      duration: 5
+      background: black
+      font_family: DejaVu Serif
+      title_font_size: 110
+      subtitle_font_size: 50
+      text_color: "#FFD700"
+      position: bottom
+    clips:
+      - 00400.mp4
+```
+
+| key | value |
+|---|---|
+| `title` | text, not blank; overrides the heading without renaming the chapter |
+| `subtitle` | free text; absent or empty means no subtitle line |
+| `duration` | seconds, 0.5 to 60 |
+| `background` | `black` or `video` (`video`, the text over the start of the chapter's first clip, is stored but not rendered yet: an event that reaches it fails loud) |
+| `font_family` | a font family name (checked when the card is rendered) |
+| `title_font_size`, `subtitle_font_size` | integers, 8 to 400 (pixels at 1080p) |
+| `text_color` | `"#RRGGBB"`; quote it, or YAML reads it as a comment and the file fails loud |
+| `position` | `center`, `top` or `bottom` |
+
+A card's style is the engine defaults, then `look.title_card` (the whole event), then the
+chapter's `card`; the fades are clamped to the card's own length. `look.title_card` also takes
+`background: black | video`.
+
 ### Project `config.yaml`
 
 An optional `config.yaml` at the project root supplies shared defaults. Every field

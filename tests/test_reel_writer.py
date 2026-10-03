@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 
 from auto_reel_ng.errors import ReelParseError
-from auto_reel_ng.reel.document import Chapter, ReelDocument
+from auto_reel_ng.reel.card import ChapterCard
+from auto_reel_ng.reel.document import Chapter, ClipRef, ReelDocument
 from auto_reel_ng.reel.legacy import import_legacy
 from auto_reel_ng.reel.parser import loads_document
 from auto_reel_ng.reel.writer import dumps_document, round_trip_yaml, write_document
@@ -467,3 +468,62 @@ def test_a_valid_document_still_writes_and_round_trips(tmp_path: Path) -> None:
         "Reception",
         "Dag 2",
     ]
+
+
+CARD_REEL = """\
+version: 0
+chapters:
+  - name: ""
+    card:
+      title: Midsommar 2024
+      subtitle: Hos mormor  # who it was with
+      # five seconds is enough
+      duration: 5
+      text_color: "#FFD700"
+    clips:
+      - 00400.mp4
+  - name: Reception
+    card: {title: Mottagningen, position: bottom}
+    clips:
+      - Reception/00400.mp4
+"""
+
+
+def test_a_commented_card_round_trips_byte_stable() -> None:
+    doc = loads_document(CARD_REEL)
+    assert doc.chapters[0].card is not None
+    assert dumps_document(doc) == CARD_REEL
+
+
+def test_a_typed_field_document_writes_its_card_between_name_and_clips() -> None:
+    doc = ReelDocument(
+        chapters=(
+            Chapter(
+                name="",
+                clips=(ClipRef("a.mp4"),),
+                card=ChapterCard(position="top", title="Hej", duration=3.0),
+            ),
+            Chapter(name="B", clips=(ClipRef("B/b.mp4"),)),
+        )
+    )
+    text = dumps_document(doc)
+    assert text == (
+        "version: 0\n"
+        "chapters:\n"
+        "  - name: ''\n"
+        "    card:\n"
+        "      title: Hej\n"
+        "      duration: 3.0\n"
+        "      position: top\n"
+        "    clips:\n"
+        "      - a.mp4\n"
+        "  - name: B\n"
+        "    clips:\n"
+        "      - B/b.mp4\n"
+    )
+    assert loads_document(text).chapters == doc.chapters
+
+
+def test_a_document_with_no_card_dumps_exactly_as_before() -> None:
+    doc = ReelDocument(chapters=(Chapter(name="", clips=(ClipRef("a.mp4"),)),))
+    assert dumps_document(doc) == "version: 0\nchapters:\n  - name: ''\n    clips:\n      - a.mp4\n"

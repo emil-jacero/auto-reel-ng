@@ -185,6 +185,12 @@ glyphs (**D-22**); an unresolved family or weight **fails loud** rather than sil
 render. The title-over-footage *overlay* look stays a future addition via the decorator seam's `attacher`
 (non-goal here).
 
+A card has its own text, length and style (**D-24**, `title-card-model`). Its heading is the card's `title`, else
+the chapter's name, else (the opening card of the default chapter) the event title; its subtitle is free text,
+empty by default on every card, so **the opening card no longer shows the date, the location or the
+description**. Each card's length and style are the engine defaults, then the event-wide `look.title_card`, then
+the chapter's own `card:` in `reel.yaml`, parsed once so the fades clamp to the card's own length.
+
 > ✅ **Resolved (§8.5):** Cairo + Pango, fail-loud font resolution, structural + tolerance-gated tests. The
 > title-over-footage overlay variant remains future work.
 
@@ -230,6 +236,10 @@ look:                      # was title_card; extended with render/look settings
 chapters:
   - name: default
     is_default: true
+    card:                  # optional: this chapter's title card (the default chapter's is the opening card; D-24)
+      title: Midsummer 2024
+      subtitle: At grandma's
+      duration: 5
     clips:                 # explicit, reorderable order — overrides sort
       - file: 00400.mp4
         order: 0
@@ -351,7 +361,9 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   page** (**D-15**). The resolved `look` is shown
   **read-only**; editing it is v2. No timeline, no per-frame editing.
 - **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview; `title-card-fonts`
-  is the foundation of the card editor: the bundled font set and its registry, **D-22**); **the full
+  is the foundation of the card editor: the bundled font set and its registry, **D-22**; **the title card model
+  has landed** as `title-card-model`, **D-24**: the per-chapter `card:` in `reel.yaml`, with the write API, the
+  card over the clip's start and the editor to follow); **the full
   timeline editor, moved from v3** — a per-clip track with proxies, filmstrip, drag-trim in/out and scrub
   preview (built: scrub in `timeline-view`, trim handles in `timeline-trim`, D-20); **analysis review built as overlays on that timeline** (built: approve black/white/freeze trims in place on Edit mode's draft, `timeline-overlay-decisions`;
   not a separate screen); event poster frames; and, beside the proxy work, chapter times in the render
@@ -682,6 +694,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    engine on every profile (D-23; `RENDER_GRAPH_VERSION` 6); `clip-rotate-gui`, the control and the turned previews, follows.
    `time-readouts-legible` follows on user feedback: every running time on the Timeline and in the clip player is written to a
    fixed width by one clock and labelled in words (D-20, D-16), web-only, with no render, fingerprint, schema or job change.
+   `title-card-model` has landed (D-24): the optional per-chapter `card:` and the engine that draws it; the write API,
+   the card over video and the editor follow. It raised `RENDER_GRAPH_VERSION` to 7, so every rendered event reports
+   stale once (reason `engine`).
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1012,7 +1027,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     route); reconcile still assumes one worker. No `RENDER_GRAPH_VERSION` bump: nothing that finished changes.
 - **D-20 — The timeline is built in the repo, on a pure model in whole milliseconds** (2026-10-03, change
   `timeline-model`, the first slice of GUI v2; the research calls this decision D-18, a number the bug round
-  took, and the proxy contract it calls D-19 is **D-21**, recorded by the proxy changes). (§4.10)
+  took, and the proxy contract it calls D-19 is **D-21**, recorded by the proxy changes). (§4.10) A chapter's title
+  card (**D-24**) is the timeline's later block: the card model is in `reel.yaml` before the timeline shows it.
   - **The chapter band reuses the chapter list's rule.** `usableChapters` (`web/src/movie/chapters.ts`,
     `movie-chapter-list`) decides whether the detail's chapter times may be relied on; the timeline's chapter
     band calls it rather than a second check.
@@ -1441,6 +1457,44 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Deliberately not here:** the card style, per-card fields, background-on-video, durations, the preview
     endpoint, the GUI, a weight setting, italics, user-supplied fonts, web fonts in the browser (D-10; the GUI previews
     with the engine's PNG).
+- **D-24 — A title card belongs to its chapter** (2026-10-03, change `title-card-model`, the engine half of the
+  title-card work of GUI v2). The user asked for cards that are configured and edited, not only rendered: "text on
+  black or text on a piece of video", the title and a subtitle editable again, the font and the length too.
+  - **Where it lives.** An optional `card:` mapping on a chapter of `reel.yaml` (schema stays `version: 0`,
+    additive). The default chapter `""` holds the opening card. A chapter is renamed, reordered and deleted with its
+    card by the machinery that already pairs chapters; a card is not a clip property and not a map keyed by a name
+    the editor changes.
+  - **The keys and their bounds** (named constants in `reel/card.py`, pinned by tests): `title` (not blank),
+    `subtitle` (any text, empty allowed), `duration` (finite, 0.5 to 60 s), `background` (`black` | `video`),
+    `font_family` (not blank; the registry check is the renderer's, because `reel/` cannot see fonts),
+    `title_font_size` and `subtitle_font_size` (integers 8 to 400), `text_color` (`#RRGGBB`), `position` (`center` |
+    `top` | `bottom`). The loader fails loud naming `chapters[i].card.<key>` on an unknown key (listing the allowed
+    ones), a wrong type (a boolean is never a number), a value out of range, and a `null` value: an unquoted
+    `text_color: #FFD700` is a YAML comment, so `null` is refused rather than read as unset.
+  - **Text.** The heading is `card.title`, else the chapter name, else the event title; the subtitle is `card.subtitle`
+    and empty by default. The date, location and description are no longer drawn by the engine (user decision); an
+    author who wants them writes them as the subtitle. A card with no heading fails loud.
+  - **Style.** Defaults, then the event-wide `look.title_card` (which gains `background: black | video`), then the
+    chapter's `card`, overlaid as raw mappings and parsed **once**, so the fades clamp to the final duration.
+    `resolve_card(plan, chapter)` is the one function that returns a card's effective config and text; the decorator
+    uses it now and the API's resolved-card read will use it later (Principle V).
+  - **`background: video` is stored but not rendered here.** An event that reaches it fails loud with a typed error
+    naming the chapter; it is never drawn as black. `title-card-over-video` replaces the error, and the editor must
+    not offer `video` before then.
+  - **Writers keep the card.** The round-trip writer keeps a card's comments and key order. The editorial write
+    treats a chapter's `card` as: **no key or `null` leaves the card as written**, `{}` removes it, and a mapping is
+    merged key by key (a key left out is removed, an equal value stays as written, a fresh card goes after `name`).
+    Absent must not mean "remove": a client that predates cards, or an API model whose omitted fields dump as `None`,
+    would otherwise erase every card on every save.
+  - **Staleness.** `RENDER_GRAPH_VERSION` is raised from 6 to 7: the opening card's text and every card's length and
+    style are output changes for identical inputs, and nothing in an unchanged `reel.yaml` would otherwise notice.
+    Exactly: **every event with a render manifest from the previous engine reports stale once, reason `engine`**
+    (the fingerprint cannot tell which looks use the `title` decorator without a second path; D-C8 accepts the cost
+    of one re-render). A `reel.yaml` with no `card` hashes exactly as before, so the editorial ETag a client holds
+    stays valid; adding a card moves the editorial component like any edit; an unrendered event is unaffected.
+  - **Deliberately not here:** the cards are still opt-in per project (`look.decorators: [title]`; making them the
+    default changes every render of every project); an event with no default chapter has no opening card; no API,
+    editor, preview or card over video (the font registry is D-22).
 
 - **D-23 — A clip's `rotate` is an extra clockwise turn on top of its display rotation** (2026-10-03, change
   `clip-rotate-engine`; D-20 keeps the timeline and D-21 the proxy contract). User request: "Some videos are rotated 90

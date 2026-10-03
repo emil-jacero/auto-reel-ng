@@ -144,3 +144,46 @@ def test_clip_facts_missing_for_included_clip_fails_loud() -> None:
     doc = loads_document(TWO_CHAPTERS)
     with pytest.raises(ReelError, match="no probed metadata"):
         resolve(doc, clip_facts={})  # empty facts => every included clip is unknown
+
+
+CARDS = """\
+version: 0
+chapters:
+  - name: ""
+    card: {title: Hej, duration: 3}
+    clips: [a.mp4]
+  - name: Reception
+    card: {subtitle: Mottagning, position: top}
+    clips: [Reception/b.mp4]
+  - name: Plain
+    clips: [Plain/c.mp4]
+  - name: Hidden
+    card: {title: Dold}
+    clips: [Hidden/d.mp4]
+clips:
+  Hidden/d.mp4:
+    exclude: true
+"""
+
+
+def test_each_chapters_card_is_carried_onto_the_plan() -> None:
+    from auto_reel_ng.reel.card import ChapterCard
+
+    plan = resolve(loads_document(CARDS))
+    assert plan.chapters[0].card == ChapterCard(title="Hej", duration=3.0)
+    assert plan.chapters[1].card == ChapterCard(subtitle="Mottagning", position="top")
+
+
+def test_a_chapter_without_a_card_has_none_on_the_plan() -> None:
+    plan = resolve(loads_document(CARDS))
+    assert plan.chapters[2].card is None
+    assert "card" not in plan.chapters[2].to_dict()
+    assert plan.chapters[0].to_dict()["card"] == {"title": "Hej", "duration": 3.0}
+
+
+def test_a_chapter_whose_clips_are_all_excluded_keeps_its_card() -> None:
+    from auto_reel_ng.reel.card import ChapterCard
+
+    plan = resolve(loads_document(CARDS))
+    assert plan.chapters[3].clips == ()
+    assert plan.chapters[3].card == ChapterCard(title="Dold")

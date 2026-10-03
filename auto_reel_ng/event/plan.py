@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any, Mapping, Optional
 
+from ..reel.card import ChapterCard
 from ..reel.document import Metadata, Trim
 
 
@@ -47,6 +48,9 @@ class ResolvedChapter:
 
     name: str
     clips: tuple[ResolvedClip, ...] = ()
+    #: The chapter's title-card overrides from the document; kept even when every clip of the
+    #: chapter is excluded (the card then draws nothing).
+    card: Optional[ChapterCard] = None
 
     @property
     def title_clip(self) -> Optional[ResolvedClip]:
@@ -58,7 +62,10 @@ class ResolvedChapter:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a plain dict for debug logging."""
-        return {"name": self.name, "clips": [c.to_dict() for c in self.clips]}
+        data: dict[str, Any] = {"name": self.name, "clips": [c.to_dict() for c in self.clips]}
+        if self.card is not None:
+            data["card"] = self.card.to_dict()
+        return data
 
 
 @dataclass(frozen=True)
