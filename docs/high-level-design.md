@@ -339,6 +339,7 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   one event may be active together, the store's render-facing reads default to `render` (the API, the WebSocket and
   the CLI answer exactly as before), and the worker dispatches by kind and fails a kind it has no handler for loud.
   The proxy contract is recorded as D-21 and the timeline as D-20 by their own changes (D-18 and D-19 are taken).
+  The timeline is built in the repo (**D-20**); its pure model has landed (`timeline-model`, no UI yet).
 - **v3:** nothing is planned for the GUI: the timeline editor moved to v2 on 2026-10-01, and dragging
   across chapters landed in v1 (D-13, `cross-chapter-drag`).
 
@@ -461,10 +462,12 @@ model sent only over the WebSocket has no HTTP route to carry it into the schema
 schema hook publishes it into the schema's components (`WsMessage` and its `WsMessageType`,
 `jobs-client-contract`), never through a fake HTTP route.
 
-**`tsc --noEmit` is the frontend gate for GUI v1** — the whole frontend check. There is deliberately
-**no test runner and no browser automation**: types are generated from the schema, so drift is a compile
-error, and endpoint behavior is already covered by `pytest`. A later slice with logic worth unit-testing
-proposes a runner then, with its justification.
+**`tsc --noEmit` is the frontend gate for GUI v1** — the whole frontend check; GUI v2 adds `npm test`.
+Types are generated from the schema, so drift is a compile error, and endpoint behavior is already covered
+by `pytest`. There is deliberately **no browser automation in the repo**. `npm test` runs Node's built-in
+runner (`node:test`, no added package; `tsconfig.test.json` type-checks the tests) over the pure modules that
+hold logic worth unit-testing (for example the jobs store, the dialog's focus rule and the cut times) and the timeline's
+model (D-20).
 
 > ⚠️ **Research:** §8.11 proxies and scrubbing for the timeline (v2, the research that opens GUI v2);
 > browser playback of the archive is measured in `docs/research/browser-playback.md`; single-frame clip thumbnails are
@@ -590,7 +593,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
 9. **GUI v2** (look editor + the full timeline editor, with analysis review as timeline overlays; starts
    with the §8.11 research).
    `job-kind` has landed as the first slice: a `kind` on jobs and a worker that dispatches by it, with no render,
-   fingerprint, API or WebSocket change (so no `RENDER_GRAPH_VERSION` bump).
+   fingerprint, API or WebSocket change (so no `RENDER_GRAPH_VERSION` bump). Next slice: the timeline's pure model
+   (`timeline-model`, D-20), UI pending.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -874,6 +878,36 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Deferred.** A `jobs.heartbeat_at` column, a reaper and a worker registry wait for multi-worker support;
     the final concat and the ffprobe calls are not watched (the opt-in `timeout` of `run`/`run_ffprobe` is the
     route); reconcile still assumes one worker. No `RENDER_GRAPH_VERSION` bump: nothing that finished changes.
+- **D-20 — The timeline is built in the repo, on a pure model in whole milliseconds** (2026-10-03, change
+  `timeline-model`, the first slice of GUI v2; the research calls this decision D-18, a number the bug round
+  took, and the proxy contract it calls D-19 is **D-21**, recorded by the proxy changes). (§4.10)
+  - **No timeline library.** The timeline lives in `web/src/timeline/`, on React and plain CSS, generalising
+    D-16's cut bar. `@dnd-kit` stays for reordering only (it has no value semantics and re-renders every
+    consumer per move). D-8's dependency list is unchanged. Evidence (`research/v2/timeline-library.md`): none
+    of nine libraries models source-clip cuts, the three run in a browser exposed no keyboard path, and the
+    nearest, `@xzdarcy/react-timeline-editor`, costs +68.5 KB gz; the in-repo prototype is +5.6 KB gz JS and held
+    60 fps drag and scrub up to 400 clips at 4x CPU throttle, with 22 of 22 functional checks in Chrome 154,
+    Firefox and WebKit. The pointer maths a library saves is about 110 lines; the keyboard and touch layer is
+    the costly half and no library has it.
+  - **The model is pure, in whole milliseconds, and takes its facts as arguments.** `model.ts` has time and
+    pixel conversion, frame rounding at a clip's own rate (the time of frame *n* is `round(n * 1000 / fps)`),
+    layout, zoom (4 to 240 px/s), windowing by binary search (the cost does not grow with the clip count), a
+    clip's cut spans (reusing `skipSpans`, the client twin of the render's `kept_spans`), trim limits and
+    snapping (8 px). A clip's duration and frame rate have no default and throw `ModelError` when missing: the
+    events read is probe-free (§4.9), so they come from a proxy's `facts.json` (D-21), which is why the timeline
+    opens only for an event whose proxies are prepared. A cut stays three frames long, measured so that its
+    limits are frame times (the prototype's `MIN_CUT = 0.1` was not, and Home on a handle returned 0.12 s); two
+    cuts of a clip never share a number (the prototype named both "cut 1 start"). Variable frame rate is not
+    modelled.
+  - **Tests are the existing runner.** `npm test` (Node's `node:test`, type-checked by `tsconfig.test.json`),
+    not vitest: no package is added. This is the proposal §4.10 asked for when it said a slice with logic worth
+    unit-testing would propose a runner; the runner was already there.
+  - **First slice.** Trim of existing cuts and the analysis overlays on one timeline; one `<video>` whose `src`
+    is swapped at clip boundaries (a short flash is accepted); reorder and cross-chapter moves stay list-based;
+    no waveform lane.
+  - **Bundle.** The model is not imported yet, so it is not built: `npm run build` on `origin/main` and on this
+    change gives the same two files (same hashes), JS 444,745 bytes (142,313 gzip -9) and CSS 55,606 bytes
+    (11,051 gzip -9) in both, a delta of 0 bytes.
 
 ---
 
