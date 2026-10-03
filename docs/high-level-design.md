@@ -1466,7 +1466,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     the editor changes.
   - **The keys and their bounds** (named constants in `reel/card.py`, pinned by tests): `title` (not blank),
     `subtitle` (any text, empty allowed), `duration` (finite, 0.5 to 60 s), `background` (`black` | `video`),
-    `font_family` (not blank; the registry check is the renderer's, because `reel/` cannot see fonts),
+    `font_family` (not blank in `reel/`, which cannot see fonts; the render layer checks it against the bundled registry (D-22) when the card's style is parsed),
     `title_font_size` and `subtitle_font_size` (integers 8 to 400), `text_color` (`#RRGGBB`), `position` (`center` |
     `top` | `bottom`). The loader fails loud naming `chapters[i].card.<key>` on an unknown key (listing the allowed
     ones), a wrong type (a boolean is never a number), a value out of range, and a `null` value: an unquoted
