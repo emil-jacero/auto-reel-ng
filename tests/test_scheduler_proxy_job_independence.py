@@ -6,6 +6,7 @@ version is untouched, and a failed proxy job does not disturb a running render (
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
@@ -148,7 +149,9 @@ def test_a_render_and_a_proxy_job_of_one_event_are_both_accepted_and_both_end_do
     assert fx.renders == [rel] and fx.prepared == ["both/a.mp4"]
 
 
-def test_a_failed_proxy_job_leaves_a_running_render_untouched(fx: Fixture) -> None:
+def test_a_proxy_job_waits_for_a_running_render_and_its_failure_leaves_the_render_untouched(
+    fx: Fixture,
+) -> None:
     rel = fx.event("busy")
     render_release = threading.Event()
     render_started = threading.Event()
@@ -169,11 +172,14 @@ def test_a_failed_proxy_job_leaves_a_running_render_untouched(fx: Fixture) -> No
     assert render_started.wait(timeout=10)
     proxy_id = fx.proxy(rel)
 
-    wait_until(lambda: fx.status(proxy_id) == JobStatus.FAILED)
+    wait_until(lambda: fx.status(proxy_id) == JobStatus.RUNNING)  # claimed, and yielding
+    time.sleep(1.5)  # longer than the yield's poll
 
-    assert fx.status(render_id) == JobStatus.RUNNING  # untouched by the failure
+    assert fx.status(proxy_id) == JobStatus.RUNNING  # no clip was started while the render runs
+    assert fx.status(render_id) == JobStatus.RUNNING
     render_release.set()
     wait_until(lambda: fx.status(render_id) == JobStatus.DONE)
+    wait_until(lambda: fx.status(proxy_id) == JobStatus.FAILED, timeout=15)  # then it fails alone
     fx.stop.set()
     thread.join(timeout=5)
     assert rendered == [rel]

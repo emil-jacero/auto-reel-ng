@@ -1,0 +1,137 @@
+DEBUG auto_reel_ng.ffmpeg.runtime: Resolved ffmpeg=/usr/bin/ffmpeg ffprobe=/usr/bin/ffprobe
+DEBUG auto_reel_ng.accel.selftest: self-test amd.decode -> working
+DEBUG auto_reel_ng.accel.selftest: self-test amd.normalize -> working
+INFO auto_reel_ng.accel.selftest: self-test amd.pad_fill ran but its output check failed: frame:0    pts:0       pts_time:0
+lavfi.signalstats.YMIN=0
+lavfi.signalstats.YLOW=0
+lavfi.signalstats.YAVG=0
+lavfi.signalstats.YHIGH=0
+lavfi.signalstats.YMAX=0
+lavfi.signalstats.UMIN=0
+lavfi.signalstats.ULOW=0
+lavfi.signalstats.UAVG=0
+lavfi.signalstats.UHIGH=0
+lavfi.signalstats.UMAX=0
+lavfi.signalstats.VMIN=0
+lavfi.signalstats.VLOW=0
+lavfi.signalstats.VAVG=0
+lavfi.signalstats.VHIGH=0
+lavfi.signalstats.VMAX=0
+lavfi.signalstats.SATMIN=181
+lavfi.signalstats.SATLOW=181
+lavfi.signalstats.SATAVG=181
+lavfi.signalstats.SATHIGH=181
+lavfi.signalstats.SATMAX=181
+lavfi.signalstats.HUEMED=45
+lavfi.signalstats.HUEAVG=45
+lavfi.signalstats.YDIF=0
+lavfi.signalstats.UDIF=0
+lavfi.signalstats.VDIF=0
+lavfi.signalstats.YBITDEPTH=0
+lavfi.signalstats.UBITDEPTH=0
+lavfi.signalstats.VBITDEPTH=0
+frame:1    pts:1       pts_time:0.04
+lavfi.signalstats.YMIN=0
+lavfi.signalstats.YLOW=0
+lavfi.signalstats.YAVG=0
+lavfi.signalstats.YHIGH=0
+lavfi.signalstats.YMAX=0
+lavfi.signalstats.UMIN=0
+lavfi.signalstats.ULOW=0
+lavfi.signalstats.UAVG=0
+lavfi.signalstats.UHIGH=0
+lavfi.signalstats.UMAX=0
+lavfi.signalstats.VMIN=0
+lavfi.signalstats.VLOW=0
+lavfi.signalstats.VAVG=0
+lavfi.signalstats.VHIGH=0
+lavfi.signalstats.VMAX=0
+lavfi.signalstats.SATMIN=181
+lavfi.signalstats.SATLOW=181
+lavfi.signalstats.SATAVG=181
+lavfi.signalstats.SATHIGH=181
+lavfi.signalstats.SATMAX=181
+lavfi.signalstats.HUEMED=45
+lavfi.signalstats.HUEAVG=45
+lavfi.signalstats.YDIF=0
+lavfi.signalstats.UDIF=0
+lavfi.signalstats.VDIF=0
+lavfi.signalstats.YBITDEPTH=0
+lavfi.signalstats.UBITDEPTH=0
+lavfi.signalstats.VBITDEPTH=0
+DEBUG auto_reel_ng.accel.selftest: self-test amd.pad_fill -> unsupported
+DEBUG auto_reel_ng.accel.selftest: self-test amd.overlay -> unsupported
+DEBUG auto_reel_ng.accel.selftest: self-test amd.tonemap -> unsupported
+DEBUG auto_reel_ng.accel.selftest: self-test amd.encode.h264 -> working
+DEBUG auto_reel_ng.accel.selftest: self-test amd.encode.hevc -> working
+DEBUG auto_reel_ng.accel.selftest: self-test amd.encode.av1 -> working
+DEBUG auto_reel_ng.accel.selection: Auto-selected amd accelerator
+INFO auto_reel_ng.cli.commands: Starting worker mrFrame:2331437:ab566af9 (profile=amd render_node=/dev/dri/renderD128 poll_interval=0.2s)
+INFO auto_reel_ng.cli.build: Wrote /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-06-27 - Render/reel.yaml
+INFO auto_reel_ng.render.orchestrator: Segment set not copy-uniform; re-encoding 5 copied segment(s)
+INFO auto_reel_ng.render.orchestrator: Segment set not copy-uniform; re-encoding 5 copied segment(s)
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/h264-4k50-aac-119mbps.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/ad5d4da2ed6d9e5cc8787173c6f69ad19f9fa363880af2b5d3c219858033c458
+INFO auto_reel_ng.render.orchestrator: Segment set not copy-uniform; re-encoding 5 copied segment(s)
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/h264-4k50-aac-119mbps.mp4: 31 tiles, 108972 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/sony-xavc-4k25-pcm.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/ce4a4813a0522c3100e8785e9963437c33b25f4a5a7955dded90346fb781f313
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/sony-xavc-4k25-pcm.mp4: 25 tiles, 42747 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/h264-1080p25-aac.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/e5ace6dcc574179a4e8177542a97921a92fca62ac2da4f7099d1730805b4d043
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/h264-1080p25-aac.mp4: 25 tiles, 31890 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/legacy-render-mpeg4-mp3.mp4 on the cpu path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/2cb22fe9ff132a49fdee8ed22fa32670e8fb04172b2ac611e05a23ee2d4a56cc
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/legacy-render-mpeg4-mp3.mp4: 109 tiles, 276629 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/h264-720p-rotate90-aac.mp4 on the cpu path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/61beed9922bbd09c56e58b2cd000240325b1a1f290fea5c129e717a4fbda5a97
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/h264-720p-rotate90-aac.mp4: 19 tiles, 26137 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/hevc-mov-rotate90-aac.mov on the cpu path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/81200a15589b022b90793345b39c80a23e25032749abe375a9d36b04f5a95481
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/hevc-mov-rotate90-aac.mov: 15 tiles, 24908 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/sony-xavc-1080p25-pcm.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/bee0ce836b4c4ffee8787cf08b7d524a63841256802167e56f7e8fc44bd285bb
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/sony-xavc-1080p25-pcm.mp4: 25 tiles, 99719 bytes
+INFO auto_reel_ng.render.orchestrator: Segment set not copy-uniform; re-encoding 5 copied segment(s)
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/h264-4k50-aac-119mbps.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/ad5d4da2ed6d9e5cc8787173c6f69ad19f9fa363880af2b5d3c219858033c458
+INFO auto_reel_ng.render.orchestrator: Segment set not copy-uniform; re-encoding 5 copied segment(s)
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/h264-4k50-aac-119mbps.mp4: 31 tiles, 108972 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/sony-xavc-4k25-pcm.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/ce4a4813a0522c3100e8785e9963437c33b25f4a5a7955dded90346fb781f313
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/sony-xavc-4k25-pcm.mp4: 25 tiles, 42747 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/h264-1080p25-aac.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/e5ace6dcc574179a4e8177542a97921a92fca62ac2da4f7099d1730805b4d043
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/h264-1080p25-aac.mp4: 25 tiles, 31890 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/legacy-render-mpeg4-mp3.mp4 on the cpu path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/2cb22fe9ff132a49fdee8ed22fa32670e8fb04172b2ac611e05a23ee2d4a56cc
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/legacy-render-mpeg4-mp3.mp4: 109 tiles, 276629 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/h264-720p-rotate90-aac.mp4 on the cpu path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/61beed9922bbd09c56e58b2cd000240325b1a1f290fea5c129e717a4fbda5a97
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/h264-720p-rotate90-aac.mp4: 19 tiles, 26137 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/hevc-mov-rotate90-aac.mov on the cpu path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/81200a15589b022b90793345b39c80a23e25032749abe375a9d36b04f5a95481
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/hevc-mov-rotate90-aac.mov: 15 tiles, 24908 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/sony-xavc-1080p25-pcm.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/bee0ce836b4c4ffee8787cf08b7d524a63841256802167e56f7e8fc44bd285bb
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/sony-xavc-1080p25-pcm.mp4: 25 tiles, 99719 bytes
+INFO auto_reel_ng.render.orchestrator: Segment set not copy-uniform; re-encoding 5 copied segment(s)
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/h264-4k50-aac-119mbps.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/ad5d4da2ed6d9e5cc8787173c6f69ad19f9fa363880af2b5d3c219858033c458
+INFO auto_reel_ng.render.orchestrator: Segment set not copy-uniform; re-encoding 5 copied segment(s)
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/h264-4k50-aac-119mbps.mp4: 31 tiles, 108972 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/sony-xavc-4k25-pcm.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/ce4a4813a0522c3100e8785e9963437c33b25f4a5a7955dded90346fb781f313
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/sony-xavc-4k25-pcm.mp4: 25 tiles, 42747 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/h264-1080p25-aac.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/e5ace6dcc574179a4e8177542a97921a92fca62ac2da4f7099d1730805b4d043
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/h264-1080p25-aac.mp4: 25 tiles, 31890 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/legacy-render-mpeg4-mp3.mp4 on the cpu path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/2cb22fe9ff132a49fdee8ed22fa32670e8fb04172b2ac611e05a23ee2d4a56cc
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/legacy-render-mpeg4-mp3.mp4: 109 tiles, 276629 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/h264-720p-rotate90-aac.mp4 on the cpu path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/61beed9922bbd09c56e58b2cd000240325b1a1f290fea5c129e717a4fbda5a97
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/h264-720p-rotate90-aac.mp4: 19 tiles, 26137 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/hevc-mov-rotate90-aac.mov on the cpu path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/81200a15589b022b90793345b39c80a23e25032749abe375a9d36b04f5a95481
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/hevc-mov-rotate90-aac.mov: 15 tiles, 24908 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/sony-xavc-1080p25-pcm.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/bee0ce836b4c4ffee8787cf08b7d524a63841256802167e56f7e8fc44bd285bb
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/sony-xavc-1080p25-pcm.mp4: 25 tiles, 99719 bytes
+INFO auto_reel_ng.render.orchestrator: Segment set not copy-uniform; re-encoding 5 copied segment(s)
+INFO auto_reel_ng.render.orchestrator: Segment set not copy-uniform; re-encoding 5 copied segment(s)
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/h264-4k50-aac-119mbps.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/ad5d4da2ed6d9e5cc8787173c6f69ad19f9fa363880af2b5d3c219858033c458
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/h264-4k50-aac-119mbps.mp4: 31 tiles, 108972 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/sony-xavc-4k25-pcm.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/ce4a4813a0522c3100e8785e9963437c33b25f4a5a7955dded90346fb781f313
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-01 - ProxyA/sony-xavc-4k25-pcm.mp4: 25 tiles, 42747 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/h264-1080p25-aac.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/e5ace6dcc574179a4e8177542a97921a92fca62ac2da4f7099d1730805b4d043
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/h264-1080p25-aac.mp4: 25 tiles, 31890 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/legacy-render-mpeg4-mp3.mp4 on the cpu path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/2cb22fe9ff132a49fdee8ed22fa32670e8fb04172b2ac611e05a23ee2d4a56cc
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-02 - ProxyB/legacy-render-mpeg4-mp3.mp4: 109 tiles, 276629 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/h264-720p-rotate90-aac.mp4 on the cpu path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/61beed9922bbd09c56e58b2cd000240325b1a1f290fea5c129e717a4fbda5a97
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/h264-720p-rotate90-aac.mp4: 19 tiles, 26137 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/hevc-mov-rotate90-aac.mov on the cpu path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/81200a15589b022b90793345b39c80a23e25032749abe375a9d36b04f5a95481
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/hevc-mov-rotate90-aac.mov: 15 tiles, 24908 bytes
+DEBUG auto_reel_ng.proxies.ensure: Proxy of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/sony-xavc-1080p25-pcm.mp4 on the hybrid path: /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/cache/proxies/bee0ce836b4c4ffee8787cf08b7d524a63841256802167e56f7e8fc44bd285bb
+DEBUG auto_reel_ng.proxies.filmstrip: Filmstrip of /var/home/emil/dev/larnet/auto-reel-project/wt-proxy-job/../dev-proxy-job/library/2024/2024-07-03 - ProxyC/sony-xavc-1080p25-pcm.mp4: 25 tiles, 99719 bytes
+INFO auto_reel_ng.cli.commands: Received signal 15; stopping worker
+INFO auto_reel_ng.cli.commands: Worker mrFrame:2331437:ab566af9 stopped cleanly

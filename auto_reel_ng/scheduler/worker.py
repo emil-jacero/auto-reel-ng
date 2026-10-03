@@ -319,7 +319,8 @@ class Worker:
         Each claimed job is dispatched to its own thread immediately, so a job
         blocked on a busy capacity token never stalls the claim loop for other
         eligible jobs. Claiming itself is bounded to ``pools.total_capacity``
-        concurrently in-flight jobs (D-S3): once that many are claimed-and-spawned,
+        concurrently in-flight jobs other than ``proxy`` jobs, which ``proxy_slots``
+        bounds (D-S3): once that many are claimed-and-spawned,
         the loop stops claiming further work until one finishes, so a burst of
         queued jobs never spawns more waiting threads than there is eventual token
         capacity to run them. ``max_polls`` only counts polls that are *both* empty
@@ -333,7 +334,12 @@ class Worker:
         total_capacity = self._pools.total_capacity
         while not self._stopping.is_set():
             with self._lock:
-                at_capacity = len(self._inflight) >= total_capacity
+                # A proxy job is bounded by proxy_slots alone: one waiting for the CPU token
+                # must not use up the slot a GPU render needs (proxy-job).
+                at_capacity = (
+                    sum(1 for r in self._inflight.values() if r.kind != JobKind.PROXY)
+                    >= total_capacity
+                )
             if not at_capacity:
                 job = self._claim()
                 if job is not None:

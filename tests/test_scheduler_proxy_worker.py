@@ -94,11 +94,12 @@ class Fixture:
         *,
         proxy_slots: int = 1,
         render: str = "gpu",
+        cpu_events: tuple[str, ...] = (),
         prepare: Optional[Callable[..., Any]] = None,
         render_fn: Optional[Callable[[RenderJob], RenderResult]] = None,
     ) -> Worker:
         def build(job: Job) -> RenderJob:
-            if render == "gpu":
+            if render == "gpu" and job.event_dir not in cpu_events:
                 return _gpu_render_job(self.tmp_path, title=job.event_dir)
             return _cpu_render_job(self.tmp_path, title=job.event_dir)
 
@@ -273,6 +274,58 @@ def test_a_waiting_proxy_job_is_not_claimed_and_does_not_block_a_render(fx: Fixt
     fx.gate.set()
     wait_until(lambda: fx.status(second) == JobStatus.DONE)
     assert fx.status(first) == JobStatus.DONE
+    fx.stop.set()
+    thread.join(timeout=5)
+
+
+def test_a_cpu_render_waiting_behind_a_proxy_job_does_not_hold_back_a_gpu_render(
+    fx: Fixture,
+) -> None:
+    """The proxy job's in-flight slot is not counted against the claim bound (review finding)."""
+    proxy_id = fx.proxy(fx.event("p", clips=("a.mp4", "b.mp4")))
+    fx.gate = threading.Event()
+    thread = fx.start(fx.worker(cpu_events=("2024/c",)))
+    assert fx.started.acquire(timeout=10)  # the proxy job holds the one CPU token, in clip a
+    cpu_id = fx.render(fx.event("c"))  # claimed, then waits for that token
+    wait_until(lambda: fx.status(cpu_id) == JobStatus.RUNNING)
+    gpu_id = fx.render(fx.event("g"))
+
+    wait_until(lambda: fx.status(gpu_id) == JobStatus.DONE)  # not stuck behind the CPU render
+
+    assert fx.renders == ["2024/g"]
+    assert fx.status(cpu_id) == JobStatus.RUNNING
+    fx.gate.set()  # clip a ends; the proxy job gives the token to the CPU render before clip b
+    wait_until(lambda: fx.status(cpu_id) == JobStatus.DONE)
+    wait_until(lambda: fx.status(proxy_id) == JobStatus.DONE)
+    assert fx.renders == ["2024/g", "2024/c"]
+    assert fx.prepared == ["p/a.mp4", "p/b.mp4"]
+    fx.stop.set()
+    thread.join(timeout=5)
+
+
+def test_a_proxy_job_does_not_start_its_next_clip_while_a_render_runs(fx: Fixture) -> None:
+    proxy_id = fx.proxy(fx.event("p", clips=("a.mp4", "b.mp4")))
+    fx.gate = threading.Event()
+    release_render = threading.Event()
+
+    def render(render_job: RenderJob) -> RenderResult:
+        fx.renders.append(render_job.plan.metadata.title or "")
+        assert release_render.wait(timeout=10)
+        return RenderResult(output_path=fx.tmp_path / "o.mp4")
+
+    thread = fx.start(fx.worker(render_fn=render))
+    assert fx.started.acquire(timeout=10)  # clip a is encoding
+    render_id = fx.render(fx.event("g"))
+    wait_until(lambda: fx.status(render_id) == JobStatus.RUNNING)
+
+    fx.gate.set()  # clip a finishes while the render runs
+    time.sleep(1.5)  # longer than the poll of the yield
+
+    assert fx.prepared == ["p/a.mp4"]  # clip b waits for the render
+    assert fx.status(proxy_id) == JobStatus.RUNNING
+    release_render.set()
+    wait_until(lambda: fx.status(proxy_id) == JobStatus.DONE, timeout=15)
+    assert fx.prepared == ["p/a.mp4", "p/b.mp4"]
     fx.stop.set()
     thread.join(timeout=5)
 

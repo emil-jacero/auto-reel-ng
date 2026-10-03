@@ -1,5 +1,44 @@
 ## ADDED Requirements
 
+### Requirement: A clip's proxy and filmstrip are prepared as one operation that reports progress and can be canceled
+Preparing a clip SHALL be one operation that makes the clip's proxy (when its entry is not complete) and then its
+filmstrip (when none is recorded), for a caller that wants both: the worker's proxy job. It SHALL accept an optional
+progress callback and an optional cancel check, and return the clip's entry and its filmstrip. The callback SHALL
+receive the fraction of that one clip done, non-decreasing, and SHALL receive `1.0` only when the proxy and the
+filmstrip are both complete; a clip whose proxy and filmstrip are already complete SHALL report `1.0` without
+starting a process. The cancel check SHALL be passed to every ffmpeg run of the operation and SHALL be checked
+between the proxy and the filmstrip; when it reports true the running process SHALL be terminated and the
+cancellation error of the engine, distinct from a failure of the clip, SHALL be raised, with no temporary file left
+in the cache. A failure of the proxy SHALL skip the filmstrip; a failure of the filmstrip SHALL leave the finished
+proxy in the cache and be raised as the filmstrip's own error. Without a callback or a check the behaviour is that
+of the two calls made one after the other.
+
+#### Scenario: Progress rises to one after the filmstrip
+- **WHEN** a clip with no entry is prepared with a progress callback
+- **THEN** the callback receives increasing fractions below `1.0` while the proxy is encoded and while the
+  filmstrip is cut, and `1.0` only after `filmstrip.jpg` is recorded
+
+#### Scenario: A complete entry reports one at once
+- **WHEN** a clip whose proxy and filmstrip are complete is prepared with a progress callback
+- **THEN** `1.0` is received, and no ffmpeg or ffprobe process starts
+
+#### Scenario: A proxy without a filmstrip only cuts the filmstrip
+- **WHEN** a clip has a complete proxy and no recorded filmstrip, and is prepared
+- **THEN** the proxy is not encoded again, the filmstrip is cut, and `1.0` is received after it
+
+#### Scenario: Cancel terminates the encode and leaves nothing
+- **WHEN** the cancel check turns true while a long clip is encoding
+- **THEN** the ffmpeg process ends within about two seconds, the cancellation error is raised rather than a
+  failure, and the cache directory holds exactly the files it held before
+
+#### Scenario: Cancel between the proxy and the filmstrip
+- **WHEN** the cancel check turns true after the proxy was published and before the filmstrip starts
+- **THEN** the cancellation error is raised, no filmstrip process starts, and the finished proxy stays
+
+#### Scenario: A failed proxy gets no filmstrip attempt
+- **WHEN** the proxy of a clip cannot be made
+- **THEN** the proxy's error is raised and no filmstrip process starts
+
 ### Requirement: A proxy job prepares every clip of its event
 A worker that claims a job of kind `proxy` SHALL prepare the proxy and then the filmstrip of every clip that
 discovery lists in the job's event folder, in listing order, using the proxy cache settings of the job's own
@@ -125,8 +164,9 @@ to `done`. Computing it SHALL NOT require a probe.
 - **THEN** its stored progress is `1.0`
 
 ### Requirement: A proxy job holds one CPU token and only `worker.proxy_slots` run at once
-A `proxy` job SHALL hold exactly one token of the CPU pool for its full duration and no GPU token, so a
-GPU-classified render runs beside it. At most `worker.proxy_slots` proxy jobs SHALL be in flight in one worker; the
+While a `proxy` job prepares clips it SHALL hold exactly one token of the CPU pool and no GPU token, so a
+GPU-classified render runs beside it. It gives that token back while it waits for a running render ("A proxy job
+yields to running renders"). At most `worker.proxy_slots` proxy jobs SHALL be in flight in one worker; the
 setting defaults to `1`, layers over the built-in default like the other `worker.*` keys, and a value that is not an
 integer of at least one fails loud naming `worker.proxy_slots`. The token is released on every outcome (`done`,
 `failed`, `canceled`, requeued).
@@ -150,9 +190,11 @@ integer of at least one fails loud naming `worker.proxy_slots`. The token is rel
 ### Requirement: A queued render is claimed before any proxy job
 A worker SHALL claim a queued `render` job before any queued `proxy` job, whichever is older and whatever their
 `priority`, and SHALL claim a `proxy` job only while fewer than `worker.proxy_slots` proxy jobs are in flight. A
-queued proxy job SHALL NOT use up the in-flight capacity that a queued render needs to be claimed. Among jobs of one
-kind the order is unchanged (`priority` descending, then oldest first). A running proxy job is never interrupted
-for a render.
+`proxy` job, claimed or waiting, SHALL NOT use up the in-flight capacity that a queued render needs to be claimed:
+the claim loop's bound on in-flight jobs counts every job except `proxy` jobs, so a render that waits for the CPU
+token behind a proxy job does not keep a GPU-classified render from being claimed. Among jobs of one kind the
+order is unchanged (`priority` descending, then oldest first). A running proxy job is never interrupted for a
+render, but it starts no further clip while one runs ("A proxy job yields to running renders").
 
 #### Scenario: A newer render is claimed first
 - **WHEN** a `proxy` job was queued an hour ago and a `render` job was queued a minute ago
@@ -162,13 +204,41 @@ for a render.
 - **WHEN** a `proxy` job is running, a second `proxy` job is queued, and a `render` job is then queued
 - **THEN** the second proxy job stays `queued` and the `render` job is claimed
 
+#### Scenario: A CPU render behind a proxy job does not hold back a GPU render
+- **WHEN** a `proxy` job holds the only CPU token, a CPU-classified `render` job is claimed and waits for that
+  token, and a GPU-classified `render` job is then queued
+- **THEN** the GPU render is claimed and runs while the CPU render still waits
+
 #### Scenario: Order within a kind is unchanged
 - **WHEN** three `proxy` jobs are queued at the same priority
 - **THEN** they are claimed oldest first, one at a time
 
 #### Scenario: A running proxy job is not preempted
 - **WHEN** a `render` job is queued while a `proxy` job is running
-- **THEN** the proxy job keeps running to its end
+- **THEN** the proxy job's clip in flight is not interrupted and finishes
+
+### Requirement: A proxy job yields to running renders
+A `proxy` job SHALL NOT start preparing a clip (including the first) while any `render` job is `running`. A clip
+that is already being prepared SHALL finish. While it waits the job SHALL NOT hold a CPU token, so a running render
+that waits for the CPU token is never blocked by the job that yields to it, and it SHALL keep answering a cancel
+and a worker stop. When no render is running it SHALL take the token again and continue with the next clip. A
+render that never ends keeps the job waiting; cancelling the job ends it. The job's progress does not change while
+it waits.
+
+#### Scenario: A render that starts between clips holds back the next clip
+- **WHEN** a `render` job starts running while a `proxy` job is encoding its first of two clips
+- **THEN** the first clip finishes, the second is not started while the render runs, and it starts after the
+  render ends
+
+#### Scenario: A render waiting for the CPU token gets it
+- **WHEN** a CPU-classified `render` job is running and waits for the CPU token held by a `proxy` job that is
+  between clips
+- **THEN** the proxy job gives the token back, the render takes it and renders, and the proxy job continues after
+  the render ends
+
+#### Scenario: A cancel or a stop ends the wait
+- **WHEN** a `proxy` job waits for a running render and its `cancel_requested` flag is set, or the worker stops
+- **THEN** the job ends `canceled`, or is requeued by the shutdown, without having started another clip
 
 ### Requirement: Cancelling a proxy job stops its encode and leaves the cache clean
 The worker SHALL check a `proxy` job's `cancel_requested` flag between clips and about once a second while a clip
@@ -209,3 +279,63 @@ incomplete entry.
 #### Scenario: A leftover temporary file is harmless
 - **WHEN** the cache holds a stale temporary file of a clip a killed process was writing
 - **THEN** a later `proxy` job for the event prepares that clip normally and ends `done`
+
+## MODIFIED Requirements
+
+### Requirement: A claimed job is dispatched by its kind
+After claiming a job, the worker SHALL process it according to its `kind`. A `render` job SHALL follow the
+render path unchanged: the claim-time recheck, collision checks, capacity tokens, progress, cancellation and
+output behaviour of the requirements above apply to it exactly as before, whatever other kinds exist. A job of
+any other kind SHALL be processed by the handler registered for that kind when the worker was constructed, and
+a handler cannot replace the `render` path.
+
+A job whose `kind` has no registered handler, whether a kind this system defines but the worker does not
+handle or a value it has never heard of, SHALL transition to `failed` with a reason that names the kind. It
+SHALL be failed before a capacity token is taken and before the event, its project configuration, ffprobe or
+ffmpeg is touched, SHALL NOT be requeued, and SHALL NOT stop the worker or delay other jobs.
+
+A handler that returns normally SHALL end its job `done` with progress `1.0`. A handler that raises the engine's
+cancellation SHALL end its job `canceled`; one that raises one of the engine's typed errors SHALL end it
+`failed` with that error's message; any other exception SHALL end it `failed` with the exception's type and
+message, as for a render ("Per-job failure isolation"). Graceful shutdown and startup reconciliation SHALL treat a job
+of any kind as they treat a render. The claim loop's in-flight bound SHALL count a job of any kind except
+`proxy` as it counts a render; `proxy` jobs are bounded by `worker.proxy_slots` alone ("A queued render is
+claimed before any proxy job").
+
+#### Scenario: A render job is processed as before
+- **WHEN** a worker with a `proxy` handler registered claims a `render` job for
+  `2024/2024-06-27 - Grillning med grannar`
+- **THEN** the job renders (or completes as fresh) through the render path, the `proxy` handler is not
+  called, and the outcome, progress and capacity token use are those of a worker with no handlers
+
+#### Scenario: A job of a handled kind runs its handler
+- **WHEN** a worker with a handler registered for `proxy` claims a `proxy` job and the handler returns
+- **THEN** the handler is called with that job, and the job ends `done` with progress `1.0`
+
+#### Scenario: A job of a known kind with no handler fails loud
+- **WHEN** a worker with no `proxy` handler claims a `proxy` job
+- **THEN** the job is `failed` with a reason naming `proxy`, no capacity token was taken, no ffprobe or ffmpeg
+  process ran and no file in the event folder was written, and the worker goes on to claim the next job
+
+#### Scenario: A job of an unknown kind fails loud
+- **WHEN** a worker claims a job whose `kind` is `thumbnails`, which no build of this system defines
+- **THEN** the job is `failed` with a reason naming `thumbnails`, it is not requeued, and a `render` job
+  queued behind it is claimed and rendered normally
+
+#### Scenario: A handler's failure is isolated and typed
+- **WHEN** a `proxy` handler raises an engine error with message `no audio stream` and a later `proxy`
+  handler call raises `TypeError: boom`
+- **THEN** the first job is `failed` with `no audio stream`, the second is `failed` with `TypeError: boom`,
+  and the worker keeps claiming
+
+#### Scenario: A handler's cancellation ends the job canceled
+- **WHEN** a `proxy` handler raises the engine's cancellation
+- **THEN** the job ends `canceled`
+
+#### Scenario: A handler cannot take over the render path
+- **WHEN** a worker is constructed with a handler registered under `render`
+- **THEN** construction is refused, and no worker with that mapping exists
+
+#### Scenario: A requeued proxy job is dispatched again
+- **WHEN** a worker restarts while a `proxy` job is `running`
+- **THEN** startup reconciliation requeues it, and the next claim dispatches it to the `proxy` handler again

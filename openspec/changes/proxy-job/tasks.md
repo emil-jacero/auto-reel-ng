@@ -47,6 +47,13 @@
   queued render is claimed, three proxy jobs claim oldest first one at a time, a running proxy job is not
   interrupted by a queued render, an unknown kind is still claimed, and render claim order is identical to
   before.
+- [x] 4.2 Answer the review: the claim loop's in-flight bound counts every job except `proxy` (`worker.py`), and
+  the handler yields (`proxy_job.py`): before each clip it takes the CPU token only when no `render` job is
+  `running`, giving the token back and waiting (cancel and stop still answered) while one is. Verify with
+  `tests/test_scheduler_proxy_job.py` (no render running never waits, no clip starts and the token is free while
+  a render runs, a render starting mid-clip holds back only the next clip, cancel and stop end the wait) and
+  `tests/test_scheduler_proxy_worker.py` (requires_db): a CPU render waiting behind a proxy job does not hold back
+  a GPU render and gets the token at the next clip boundary; a proxy job starts no second clip while a render runs.
 
 ## 5. Cancel, shutdown and restart
 
@@ -76,7 +83,9 @@
   proxy job on another event running throughout (3 runs), warm cache, plus one cold-cache pair; host, GPU,
   commands and verdict recorded. Verify by the report's table: the median render wall time with the proxy job
   is at most 1.15x the solo median, or the report says Refuted with the lever tried (x264 thread cap) and the
-  follow-up it proposes. (Done: Refuted, ratios 1.28 to 1.56; the cap did not help; follow-up `proxy-yield`.)
+  follow-up it proposes. (Done: Refuted as first built, ratios 1.28 to 1.56; the cap did not help. Review round: the yield of 4.2 was built and
+  the experiment re-run with a no-yield control: warm median 1.12 (pairs 1.12 to 1.13), cold pair 1.29; the control, on a
+  busier host, 1.17. The bound is met warm, not cold; the clip in flight still overlaps. See the report's last section.)
 
 ## 8. Compose stack and docs of the setting
 
