@@ -13,9 +13,9 @@
 
   Verify: `npm test` passes, `tsc` clean.
 
-## 3. web/ — cut spans, rectangles, ordinals
+## 3. web/ — cut spans and rectangles
 
-- [x] 3.1 In `web/src/preview/playback.ts`, give its two `../cuts/times` imports the `.ts` extension (no other edit), then add `cutSpans` (= `skipSpans`), `movieLengthMs`, `cutRects`, `cutOrdinals` to the model (design, "Reuse how the render joins cuts", "Cut spans, rectangles, names"). Tests: a smoke test that imports `../preview/playback.ts` under Node and calls `skipSpans` and `toMs` (it fails if the extension is lost); overlapping cuts 1 to 3 s and 2 to 4 s give one span, 7 s of a 10 s clip, two rectangles; a cut 5 to 7 s on a 6.08 s clip is drawn to 6,080 ms; a cut wholly past the end and an empty cut have no rectangle; removed cuts have no rectangle and no ordinal; `movieLengthMs` over three clips with cuts; **prototype defect 2**: cuts listed 14 to 17.2 s then 0 to 2.4 s get ordinals 2 and 1, and three cuts with equal starts get 1, 2, 3 by end then position (no two share an ordinal).
+- [x] 3.1 In `web/src/preview/playback.ts`, give its two `../cuts/times` imports the `.ts` extension (no other edit), then add `cutSpans` (= `skipSpans`), `movieLengthMs`, `cutRects` to the model (design, "Reuse how the render joins cuts", "Cut spans, rectangles, names"). Tests: a smoke test that imports `../preview/playback.ts` under Node and calls `skipSpans` and `toMs` (it fails if the extension is lost); overlapping cuts 1 to 3 s and 2 to 4 s give one span, 7 s of a 10 s clip, two rectangles; a cut 5 to 7 s on a 6.08 s clip is drawn to 6,080 ms; a cut wholly past the end and an empty cut have no rectangle; removed cuts have no rectangle; a bad duration (`NaN`, 0, negative) makes `cutSpans`, `cutRects` and `movieLengthMs` throw `ModelError`, and a non-finite time makes `clipAt` throw; `movieLengthMs` over three clips with cuts; **prototype defect 2**: cuts listed 14 to 17.2 s then 0 to 2.4 s are cut 1 and cut 2 by list place (`index + 1`, as the Cuts panel and `playheadWords` number them), and a removed cut leaves the others' numbers where they are.
 
   Verify: `npm test`, `tsc` and `npm run build` pass; `git diff web/src/preview/playback.ts` is two changed lines.
 

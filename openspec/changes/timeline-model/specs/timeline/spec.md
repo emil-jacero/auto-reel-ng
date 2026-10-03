@@ -98,9 +98,11 @@ The model SHALL derive a clip's cut spans as the render does: cuts that are not 
 empty ones dropped, sorted, and overlapping or touching ones merged. The movie length SHALL be the clips'
 durations less the time their spans cover, once. Each listed cut that is not removed SHALL have a rectangle,
 for its own span clamped to the clip, keyed by its position in the clip's list; a cut that runs past the end
-SHALL be drawn up to the end, and a cut wholly past the end or empty SHALL have none. Each listed cut that is
-not removed SHALL have an ordinal from 1, in order of start (a tie by end, then by position in the list), so
-that no two cuts of one clip share an ordinal; a removed cut SHALL have none.
+SHALL be drawn up to the end, and a cut wholly past the end or empty SHALL have none. A cut's number
+SHALL be its position in the clip's list plus one, as the Cuts panel and the spoken playhead ("in cut 2")
+number it, never a rank by start: the model SHALL give the timeline no second numbering, so a handle named
+"cut 3 start" is row 3 of the panel. The model SHALL refuse a clip duration that is not a finite number above
+zero in every function that takes one, and a time that is not finite in `clipAt`.
 
 #### Scenario: Overlapping cuts read from reel.yaml
 - **WHEN** a 10 s clip lists cuts 1 to 3 s and 2 to 4 s
@@ -112,7 +114,12 @@ that no two cuts of one clip share an ordinal; a removed cut SHALL have none.
 
 #### Scenario: Two cuts do not share a name
 - **WHEN** a clip lists cuts at 14 to 17.2 s and 0 to 2.4 s, in that order in the file
-- **THEN** the cut at 0 s has ordinal 1 and the one at 14 s has ordinal 2, and a removed cut among them has none
+- **THEN** their rectangles carry list places 0 and 1, so they are cut 1 and cut 2 as in the panel, and a removed
+  cut among them keeps its row's number
+
+#### Scenario: A bad duration is refused, not drawn as nothing
+- **WHEN** `cutRects`, `cutSpans` or `movieLengthMs` is given a duration that is `NaN`, zero, negative or not finite
+- **THEN** it throws a `ModelError` naming the duration
 
 ### Requirement: A trim handle moves within limits that always hold its current place
 

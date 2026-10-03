@@ -2,12 +2,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 
-import { skipSpans, toMs } from '../preview/playback.ts'
+import { playheadWords, skipSpans, toMs } from '../preview/playback.ts'
 import {
   clampPps,
   clipAt,
   clipFacts,
-  cutOrdinals,
   cutRects,
   cutSpans,
   DEFAULT_PPS,
@@ -334,7 +333,7 @@ describe('windowing', () => {
   })
 })
 
-describe('cut spans, rectangles and ordinals', () => {
+describe('cut spans and rectangles', () => {
   it('imports playback.ts under Node (the extensions on its imports)', () => {
     assert.deepEqual(skipSpans([{ in: 1, out: 2 }], 10000), [{ from: 1000, to: 2000 }])
     assert.equal(toMs(0.96), 960)
@@ -385,44 +384,57 @@ describe('cut spans, rectangles and ordinals', () => {
     assert.equal(movieLengthMs([{ durationMs: 6080, fps: 25, cuts: [{ in: 0, out: 9 }] }]), 0)
   })
 
-  it('prototype defect 2: cuts listed 14 to 17.2 s then 0 to 2.4 s are numbered 2 and 1', () => {
-    assert.deepEqual(cutOrdinals([{ in: 14, out: 17.2 }, { in: 0, out: 2.4 }]), [2, 1])
-  })
-
-  it('numbers three cuts of equal start by end, then by place in the list', () => {
+  it('a handle is named by the Cuts panel number: its place in the list, plus one', () => {
+    // Listed 14 to 17.2 s then 0 to 2.4 s: the rectangles carry the list place, so the
+    // two cuts are "cut 1" and "cut 2" as the panel and playheadWords call them, and
+    // no two share a name whatever the order in the file.
     const cuts = [
-      { in: 1, out: 3 },
-      { in: 1, out: 2 },
-      { in: 1, out: 3 },
+      { in: 14, out: 17.2 },
+      { in: 0, out: 2.4 },
     ]
-    assert.deepEqual(cutOrdinals(cuts), [2, 1, 3])
+    const rects = cutRects(cuts, 24960, 40)
+    assert.deepEqual(
+      rects.map((rect) => rect.index + 1),
+      [1, 2],
+    )
+    assert.match(playheadWords(1000, 24960, cuts), /in cut 2$/)
+    assert.match(playheadWords(15000, 24960, cuts), /in cut 1$/)
   })
 
-  it('a removed cut has no ordinal and takes no number', () => {
+  it('a removed cut has no rectangle and the others keep their list number', () => {
     const cuts = [
       { in: 0, out: 1, removed: true },
       { in: 5, out: 6 },
       { in: 2, out: 3 },
     ]
-    assert.deepEqual(cutOrdinals(cuts), [null, 2, 1])
-    assert.deepEqual(cutOrdinals([]), [])
-  })
-
-  it('no two cuts of a clip ever share an ordinal', () => {
-    const next = random(11)
-    for (let i = 0; i < 100; i += 1) {
-      const cuts = Array.from({ length: 1 + Math.floor(next() * 8) }, () => {
-        const from = Math.floor(next() * 5)
-        return { in: from, out: from + Math.floor(next() * 3), removed: next() < 0.2 }
-      })
-      const numbers = cutOrdinals(cuts).filter((n): n is number => n !== null)
-      assert.equal(new Set(numbers).size, numbers.length)
-      assert.deepEqual([...numbers].sort((a, b) => a - b), numbers.map((_, at) => at + 1))
-    }
+    assert.deepEqual(
+      cutRects(cuts, 24960, 40).map((rect) => rect.index + 1),
+      [2, 3],
+    )
   })
 
   it('refuses a scale that is not above zero', () => {
     assert.throws(() => cutRects([{ in: 0, out: 1 }], 1000, 0), /pps/)
+  })
+
+  it('refuses a duration that is not a finite number above zero, never replaces it', () => {
+    for (const bad of [Number.NaN, 0, -5, Infinity, undefined as unknown as number]) {
+      assert.throws(() => cutRects([{ in: 1, out: 2 }], bad, 40), ModelError)
+      assert.throws(() => cutSpans([{ in: 1, out: 2 }], bad), ModelError)
+      assert.throws(() => movieLengthMs([{ durationMs: bad, fps: 25, cuts: [] }]), /durationMs/)
+    }
+  })
+
+  it('movieLengthMs refuses a clip whose rate is not a finite number above zero', () => {
+    for (const bad of [Number.NaN, 0, -25, Infinity]) {
+      assert.throws(() => movieLengthMs([{ durationMs: 1000, fps: bad, cuts: [] }]), /fps/)
+    }
+  })
+
+  it('clipAt refuses a time that is not finite', () => {
+    const l = layout([{ durationMs: 1000, fps: 25 }])
+    assert.throws(() => clipAt(l, Number.NaN), ModelError)
+    assert.throws(() => clipAt(l, Infinity), ModelError)
   })
 })
 
