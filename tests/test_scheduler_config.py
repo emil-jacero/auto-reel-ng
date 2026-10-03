@@ -9,6 +9,7 @@ from auto_reel_ng.scheduler.config import (
     DEFAULT_CPU_SLOTS,
     DEFAULT_GPU_SESSIONS_PER_DEVICE,
     DEFAULT_POLL_INTERVAL_S,
+    DEFAULT_PROXY_SLOTS,
     resolve_worker_config,
     worker_identity,
 )
@@ -66,3 +67,24 @@ def test_wrong_typed_worker_setting_fails_loud() -> None:
     project_config = ProjectConfig(worker={"cpu_slots": "lots"})
     with pytest.raises(ConfigError):
         resolve_worker_config(project_config)
+
+
+# --------------------------------------------------------------------------- #
+# worker.proxy_slots (proxy-job)
+# --------------------------------------------------------------------------- #
+
+
+def test_proxy_slots_default_to_one() -> None:
+    assert DEFAULT_PROXY_SLOTS == 1
+    assert resolve_worker_config(ProjectConfig()).proxy_slots == 1
+
+
+def test_proxy_slots_come_from_config_yaml() -> None:
+    config = resolve_worker_config(ProjectConfig(worker={"proxy_slots": 2}))
+    assert config.proxy_slots == 2
+
+
+@pytest.mark.parametrize("value", [0, -1, "two", 1.5, True])
+def test_a_bad_proxy_slots_fails_loud_naming_the_key(value: object) -> None:
+    with pytest.raises(ConfigError, match=r"worker\.proxy_slots"):
+        resolve_worker_config(ProjectConfig(worker={"proxy_slots": value}))

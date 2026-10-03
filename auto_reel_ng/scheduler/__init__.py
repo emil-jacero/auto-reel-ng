@@ -10,18 +10,30 @@ from .config import (
     DEFAULT_CPU_SLOTS,
     DEFAULT_GPU_SESSIONS_PER_DEVICE,
     DEFAULT_POLL_INTERVAL_S,
+    DEFAULT_PROXY_SLOTS,
     WorkerConfig,
     resolve_worker_config,
     worker_identity,
 )
 from .pools import CapacityPools, classify_encoder
 from .progress import ThrottledProgress
-from .worker import BuildJob, KindHandler, RunRender, Worker, default_build_job
+from .proxy_job import ProxyJobError, ProxyJobHandler
+from .worker import (
+    BuildJob,
+    JobInterrupted,
+    KindHandler,
+    RunRender,
+    Worker,
+    default_build_job,
+)
 
 __all__ = [
     "Worker",
     "BuildJob",
+    "JobInterrupted",
     "KindHandler",
+    "ProxyJobError",
+    "ProxyJobHandler",
     "RunRender",
     "default_build_job",
     "CapacityPools",
@@ -33,4 +45,5 @@ __all__ = [
     "DEFAULT_POLL_INTERVAL_S",
     "DEFAULT_GPU_SESSIONS_PER_DEVICE",
     "DEFAULT_CPU_SLOTS",
+    "DEFAULT_PROXY_SLOTS",
 ]

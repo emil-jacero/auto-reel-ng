@@ -30,6 +30,11 @@ DEFAULT_GPU_SESSIONS_PER_DEVICE = 1
 DEFAULT_CPU_SLOTS = 1
 
 
+#: How many ``proxy`` jobs one worker runs at once (``proxy-job``): two gained only 20 to 35 %
+#: on the research host and doubled the load on one disk.
+DEFAULT_PROXY_SLOTS = 1
+
+
 def worker_identity() -> str:
     """A fresh, unique worker id: ``host:pid:nonce`` (D-S5).
 
@@ -47,6 +52,7 @@ class WorkerConfig:
     poll_interval: float
     gpu_sessions_per_device: int
     cpu_slots: int
+    proxy_slots: int = DEFAULT_PROXY_SLOTS
 
 
 def _resolve_float(
@@ -79,6 +85,7 @@ def resolve_worker_config(
     poll_interval: Optional[float] = None,
     gpu_sessions_per_device: Optional[int] = None,
     cpu_slots: Optional[int] = None,
+    proxy_slots: Optional[int] = None,
 ) -> WorkerConfig:
     """Layer CLI-flag overrides over ``config.yaml`` ``worker.*`` over defaults (D-2).
 
@@ -89,6 +96,11 @@ def resolve_worker_config(
     convention for a malformed ``config.yaml`` field.
     """
     worker_cfg = config.worker
+    resolved_proxy_slots = _resolve_int(
+        proxy_slots, worker_cfg.get("proxy_slots"), DEFAULT_PROXY_SLOTS, key="proxy_slots"
+    )
+    if resolved_proxy_slots < 1:
+        raise ConfigError(f"worker.proxy_slots must be at least 1, got {resolved_proxy_slots}")
     return WorkerConfig(
         poll_interval=_resolve_float(
             poll_interval,
@@ -105,6 +117,7 @@ def resolve_worker_config(
         cpu_slots=_resolve_int(
             cpu_slots, worker_cfg.get("cpu_slots"), DEFAULT_CPU_SLOTS, key="cpu_slots"
         ),
+        proxy_slots=resolved_proxy_slots,
     )
 
 
@@ -115,4 +128,5 @@ __all__ = [
     "DEFAULT_POLL_INTERVAL_S",
     "DEFAULT_GPU_SESSIONS_PER_DEVICE",
     "DEFAULT_CPU_SLOTS",
+    "DEFAULT_PROXY_SLOTS",
 ]

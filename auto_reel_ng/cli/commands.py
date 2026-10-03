@@ -19,6 +19,7 @@ import argparse
 import logging
 import signal
 import sys
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import date
@@ -43,13 +44,14 @@ from ..ingest import EventRef, get_layout
 from ..persistence.config import resolve_database_url
 from ..persistence.engine import make_engine, make_session_factory
 from ..persistence.job_store import JobStore
-from ..persistence.models import JobStatus
+from ..persistence.models import JobKind, JobStatus
 from ..reel import Metadata, ReelDocument, import_legacy, write_document
 from ..reel.legacy import ImportResult
 from ..render import RenderJob, find_output_collisions, output_relpath, render_batch
 from ..render.claims import claimed_movie, claimed_movie_message
 from ..scheduler import (
     CapacityPools,
+    ProxyJobHandler,
     Worker,
     default_build_job,
     resolve_worker_config,
@@ -740,6 +742,16 @@ def cmd_worker(args: argparse.Namespace) -> int:
         worker_config.poll_interval,
     )
 
+    # One event the worker's signal handler sets, so a running proxy job stops its ffmpeg too.
+    stop_event = threading.Event()
+    proxy_handler = ProxyJobHandler(
+        store=store,
+        pools=pools,
+        runtime=runtime,
+        profile=profile,
+        render_node=render_node,
+        stop_event=stop_event,
+    )
     worker = Worker(
         store,
         worker_id=identity,
@@ -749,6 +761,9 @@ def cmd_worker(args: argparse.Namespace) -> int:
             job, runtime=runtime, profile=profile, render_node=render_node
         ),
         device_filter=render_node,
+        kind_handlers={JobKind.PROXY.value: proxy_handler},
+        proxy_slots=worker_config.proxy_slots,
+        stop_event=stop_event,
     )
 
     def _handle_signal(signum: int, _frame: object) -> None:
