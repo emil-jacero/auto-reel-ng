@@ -34,9 +34,14 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..errors import IllegalJobTransitionError
 from .engine import session_scope
-from .models import TERMINAL_STATUSES, Job, JobStatus
+from .models import TERMINAL_STATUSES, Job, JobKind, JobStatus
 
 _ACTIVE_STATUSES = (JobStatus.QUEUED, JobStatus.RUNNING)
+
+#: The read scope of a ``kind`` filter: one kind, or ``None`` for every kind. The reads that
+#: feed render-facing answers default to ``render`` so a caller that predates job kinds
+#: sees exactly what it always saw (job-kind).
+KindScope = Optional[str]
 
 
 # Owned by the store, beside the transition that produces it (as ``JobStatus`` is), so
@@ -79,18 +84,21 @@ class FinishedJobs:
     jobs: list[Job]
 
 
-def _latest_by_project_stmt(project_root: str) -> Select[Any]:
-    """The newest job of each event under ``project_root`` (ranked, rank 1 kept)."""
-    ranked = (
-        select(
-            Job.id,
-            func.row_number()  # pylint: disable=not-callable
-            .over(partition_by=Job.event_dir, order_by=(Job.created_at.desc(), Job.id.desc()))
-            .label("rn"),
-        )
-        .where(Job.project_root == project_root)
-        .subquery()
-    )
+def _latest_by_project_stmt(project_root: str, kind: KindScope) -> Select[Any]:
+    """The newest job of each event under ``project_root`` (ranked, rank 1 kept).
+
+    ``kind`` filters before ranking, so a newer job of another kind never displaces the
+    newest job of the requested one; ``None`` ranks every kind together.
+    """
+    inner = select(
+        Job.id,
+        func.row_number()  # pylint: disable=not-callable
+        .over(partition_by=Job.event_dir, order_by=(Job.created_at.desc(), Job.id.desc()))
+        .label("rn"),
+    ).where(Job.project_root == project_root)
+    if kind is not None:
+        inner = inner.where(Job.kind == kind)
+    ranked = inner.subquery()
     return select(Job).join(ranked, Job.id == ranked.c.id).where(ranked.c.rn == 1)
 
 
@@ -105,6 +113,7 @@ class JobStore:
         project_root: str,
         event_dir: str,
         *,
+        kind: str = JobKind.RENDER,
         device: str = "auto",
         output_path: Optional[str] = None,
         force: bool = False,
@@ -117,18 +126,24 @@ class JobStore:
         observability (change-detection, §8.14) — the staleness decision itself
         belongs to the caller, not the store.
 
-        Idempotent (D-S7/D-S8): when an active (``queued``/``running``) job already
-        exists for the same ``(project_root, event_dir)``, no row is inserted and the
-        existing job's id is reported with ``created=False``. The database's partial
+        ``kind`` is what sort of work the job is (job-kind); it defaults to a render, so
+        every caller that predates kinds is unchanged. ``force`` is a render concept.
+
+        Idempotent (D-S7/D-S8): when an active (``queued``/``running``) job of the same
+        ``kind`` already exists for the same ``(project_root, event_dir)``, no row is
+        inserted and the existing job's id is reported with ``created=False``; an
+        active job of another kind does not count. The database's partial
         unique index is the source of truth for this — a concurrent submit for the
         same identity races safely against it — so the insert is attempted first and
         a unique violation falls back to looking the existing job up, rather than a
         check-then-insert with its own race window. The report is therefore the
         insertion's own verdict: of two concurrent calls, exactly one says created.
         """
+        kind = str(kind)
         job = Job(
             project_root=project_root,
             event_dir=event_dir,
+            kind=kind,
             device=device,
             output_path=output_path,
             force=force,
@@ -140,7 +155,7 @@ class JobStore:
                 session.flush()
             except IntegrityError:
                 session.rollback()
-                existing = self._active_job(session, project_root, event_dir)
+                existing = self._active_job(session, project_root, event_dir, kind)
                 if existing is None:
                     raise  # pragma: no cover - defensive, the index caused the conflict
                 return Submission(job_id=existing.id, created=False)
@@ -151,6 +166,7 @@ class JobStore:
         project_root: str,
         event_dir: str,
         *,
+        kind: str = JobKind.RENDER,
         device: str = "auto",
         output_path: Optional[str] = None,
         force: bool = False,
@@ -160,6 +176,7 @@ class JobStore:
         return self.submit(
             project_root,
             event_dir,
+            kind=kind,
             device=device,
             output_path=output_path,
             force=force,
@@ -167,17 +184,25 @@ class JobStore:
         ).job_id
 
     @staticmethod
-    def _active_job(session: Session, project_root: str, event_dir: str) -> Optional[Job]:
-        """The active (``queued``/``running``) job for this identity, if any."""
+    def _active_job(
+        session: Session, project_root: str, event_dir: str, kind: str = JobKind.RENDER
+    ) -> Optional[Job]:
+        """The active (``queued``/``running``) job of ``kind`` for this identity, if any."""
         stmt = select(Job).where(
             Job.project_root == project_root,
             Job.event_dir == event_dir,
+            Job.kind == str(kind),
             Job.status.in_(_ACTIVE_STATUSES),
         )
         return session.execute(stmt).scalar_one_or_none()
 
-    def active_job(self, project_root: str, event_dir: str) -> Optional[Job]:
-        """Read-only lookup of the active (``queued``/``running``) job for this identity.
+    def active_job(
+        self, project_root: str, event_dir: str, kind: str = JobKind.RENDER
+    ) -> Optional[Job]:
+        """Read-only lookup of the active (``queued``/``running``) job of ``kind`` for an event.
+
+        Per kind, defaulting to ``render``: an event's active proxy job is not its active
+        render (job-kind).
 
         Used by callers that look before doing further work: the API refuses a
         duplicate before running the staleness gate. Being a read, it can race a
@@ -185,7 +210,7 @@ class JobStore:
         not this lookup's.
         """
         with session_scope(self._session_factory) as session:
-            return self._active_job(session, project_root, event_dir)
+            return self._active_job(session, project_root, event_dir, kind)
 
     def claim_next(self, worker_id: str, device_filter: Optional[str] = None) -> Optional[Job]:
         """Atomically claim the oldest eligible ``queued`` job (D-P3).
@@ -261,8 +286,18 @@ class JobStore:
         with session_scope(self._session_factory) as session:
             return session.get(Job, job_id)
 
-    def list_by_status(self, status: JobStatus, *, project_root: Optional[str] = None) -> list[Job]:
+    def list_by_status(
+        self,
+        status: JobStatus,
+        *,
+        project_root: Optional[str] = None,
+        kind: KindScope = JobKind.RENDER,
+    ) -> list[Job]:
         """List jobs with the given ``status``, ordered by ``created_at`` ascending.
+
+        ``kind`` scopes the listing and defaults to ``render``, so a caller that predates
+        job kinds (the API, the CLI, the worker's collision check) sees only renders;
+        ``None`` lists every kind.
 
         ``project_root`` narrows the listing to that project's jobs — the API serves
         one project (jobs-project-guards); a row with no recorded root never matches.
@@ -270,6 +305,8 @@ class JobStore:
         """
         with session_scope(self._session_factory) as session:
             stmt = select(Job).where(Job.status == status)
+            if kind is not None:
+                stmt = stmt.where(Job.kind == str(kind))
             if project_root is not None:
                 stmt = stmt.where(Job.project_root == project_root)
             stmt = stmt.order_by(Job.created_at.asc())
@@ -281,6 +318,7 @@ class JobStore:
         *,
         overlap: timedelta,
         project_root: Optional[str] = None,
+        kind: KindScope = JobKind.RENDER,
     ) -> FinishedJobs:
         """The jobs whose terminal transition was stamped at or after ``since - overlap``.
 
@@ -292,19 +330,28 @@ class JobStore:
         ``now()`` is a transaction's *start*, so a terminal row can commit after a
         read whose ``as_of`` is already past its ``finished_at``: ``overlap`` re-reads
         that stretch, and the caller de-duplicates what it has seen. ``project_root``
-        narrows the jobs as it does for :meth:`list_by_status`; ``as_of`` is unaffected.
+        and ``kind`` narrow the jobs as they do for :meth:`list_by_status` (``kind`` defaults to
+        ``render``); ``as_of`` is unaffected.
         """
         with session_scope(self._session_factory) as session:
             as_of = session.execute(select(func.now())).scalar_one()  # pylint: disable=not-callable
             start = (since if since is not None else as_of) - overlap
             stmt = select(Job).where(Job.finished_at >= start)
+            if kind is not None:
+                stmt = stmt.where(Job.kind == str(kind))
             if project_root is not None:
                 stmt = stmt.where(Job.project_root == project_root)
             stmt = stmt.order_by(Job.finished_at.asc())
             return FinishedJobs(as_of=as_of, jobs=list(session.execute(stmt).scalars().all()))
 
-    def latest_by_project(self, project_root: str) -> dict[str, Job]:
+    def latest_by_project(
+        self, project_root: str, *, kind: KindScope = JobKind.RENDER
+    ) -> dict[str, Job]:
         """The most recent job (any status) per ``event_dir`` under ``project_root``.
+
+        Of ``kind`` (default ``render``): a newer job of another kind never displaces an
+        event's latest render, and an event with only such jobs has no entry. ``None``
+        ranks every kind together.
 
         One query rather than a per-event lookup or a full-table scan per status —
         the events-list read model (API, D-A3) needs "latest job per event" for a
@@ -316,7 +363,7 @@ class JobStore:
         the same.
         """
         with session_scope(self._session_factory) as session:
-            jobs = session.execute(_latest_by_project_stmt(project_root)).scalars().all()
+            jobs = session.execute(_latest_by_project_stmt(project_root, kind)).scalars().all()
             return {job.event_dir: job for job in jobs}
 
     def cancel_queued(self, job_id: uuid.UUID) -> Optional[Job]:
