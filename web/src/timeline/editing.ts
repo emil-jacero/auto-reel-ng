@@ -22,6 +22,12 @@ export type EditBinding = {
   listed(identity: string): readonly DraftCut[]
   /** One edit of the draft: the cut keeps its key, place and reason. */
   onTrim(identity: string, key: CutKey, span: { in: number; out: number }, note: TrimNote): void
+  /**
+   * Add a cut to a clip's draft, as the Cuts panel's Add does (`timeline-overlay-decisions`):
+   * the span in seconds, the reason `manual` unless one is given (an approved suggestion's
+   * kind). The editor ignores it while a save or a Move clips is pending.
+   */
+  onAdd(identity: string, span: { in: number; out: number }, reason?: string): void
   /** A save is in flight, or a Move clips is pending: the handles and fields change nothing. */
   locked: boolean
   /** Edit mode's one live region. */

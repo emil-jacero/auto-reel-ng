@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import type { TrackClip } from '../layout'
+import type { EditBinding } from '../editing'
 import type { Layout } from '../model'
 import type { Dismissals } from './Dismissals'
 import type { Cut, Suggestion, SuggestionState } from './suggestions'
@@ -19,6 +20,24 @@ export type DecideControl = {
   locked: boolean
   /** Say it through the page's one polite live region. */
   announce(message: string): void
+}
+
+/**
+ * The decisions Edit mode gives the lane: approving adds a cut to the editor's draft
+ * (`onAdd`, the Cuts panel's own add), and the lock and the live region are the editor's.
+ * Null for the read view, whose binding is null: reading a screen never changes state.
+ */
+export function decideControl(
+  editing: Pick<EditBinding, 'onAdd' | 'locked' | 'announce'> | null,
+): DecideControl | null {
+  if (editing === null) {
+    return null
+  }
+  return {
+    onApprove: (identity, span, kind) => editing.onAdd(identity, span, kind),
+    locked: editing.locked,
+    announce: (message) => editing.announce(message),
+  }
 }
 
 export type AnalysisControl = {

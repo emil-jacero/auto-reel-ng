@@ -3,8 +3,8 @@ import type { Ms } from './model.ts'
 
 /*
  * The pure parts of a trim handle that the model does not have (D-20): what a key does
- * to an edge, where Enter puts it, which handle a finger on two overlapping areas means,
- * and what a snap says. In whole milliseconds like `model.ts`, whose frame grid it uses;
+ * to an edge, where Enter puts it, which handle a finger on two overlapping areas means
+ * (and when a mouse press never reached the handle as a pointer press), and what a snap says. In whole milliseconds like `model.ts`, whose frame grid it uses;
  * no DOM and no React, so `npm test` runs it. (Not `trim.ts`: `trim.test.ts` is the
  * model's own trim functions.)
  */
@@ -131,6 +131,19 @@ export function nearestHandle(
     }
   }
   return best === null ? null : best.id
+}
+
+/**
+ * Whether a `mousedown` is a mouse press that arrived with no pointer events (Firefox
+ * under touch emulation delivers `mousedown`, `mouseup` and `click` alone): the main
+ * button, and no `pointerdown` since the last pointer sequence ended. Such a press never
+ * reaches the handle's press handling, so the browser focuses the handle under the
+ * pointer, and that handle's focus would select its cut; the caller hands it over by
+ * position, as a pointer press is. A `mousedown` that follows a `pointerdown` (an
+ * unprevented one: a secondary button) is the browser's own.
+ */
+export function bareMousePress(pointerSeen: boolean, button: number): boolean {
+  return !pointerSeen && button === 0
 }
 
 /** What a drag can snap to, for words: the playhead, the clip, and the clip's other cuts. */

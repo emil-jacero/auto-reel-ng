@@ -68,7 +68,7 @@ A dismissal SHALL last for the page visit: it SHALL survive opening and closing 
 
 ### Requirement: A and R decide only the focused mark, and the buttons decide the same
 
-The keys **A** (approve) and **R** (dismiss or restore) SHALL act only when the focused element is a suggestion's mark, never from the document: typing "a" or "r" in the title, the location or a typed cut time SHALL decide nothing. They SHALL ignore Ctrl, Meta and Alt chords, a key repeat and an input-method composition, SHALL ignore Shift (the key is a letter), and SHALL call `preventDefault` only when they acted; where they did not act (a Timeline without decisions, a pending save, a cut mark) the key SHALL be left to the browser. The detail's buttons SHALL make the same decisions in the same words, and are the route for touch and assistive technology; a mark SHALL advertise its keys (`aria-keyshortcuts="A R"`) only while it can be decided. After a decision keyboard focus SHALL stay on the same mark, and the detail SHALL stay on it, so that Restore is one press away.
+The keys **A** (approve) and **R** (dismiss or restore) SHALL act only when the focused element is a suggestion's mark, never from the document: typing "a" or "r" in the title, the location or a typed cut time SHALL decide nothing. They SHALL ignore Ctrl, Meta and Alt chords, a key repeat and an input-method composition, SHALL ignore Shift (the key is a letter), and SHALL call `preventDefault` only when they acted; where they did not act (a Timeline without decisions, a pending save) the key SHALL be left to the browser; a key that says why nothing was done ("Already cut") has acted. The detail's buttons SHALL make the same decisions in the same words, and are the route for touch and assistive technology; a mark SHALL advertise its keys (`aria-keyshortcuts="A R"`) only while it can be decided. After a decision keyboard focus SHALL stay on the same mark, and the detail SHALL stay on it, so that Restore is one press away.
 
 #### Scenario: Typing in a field decides nothing
 - **WHEN** the operator types "a" and "r" in the event's title field in Edit mode while the Timeline shows pending marks
@@ -96,15 +96,19 @@ While a save is in flight or a Move clips is pending, Approve, Dismiss and Resto
 
 ### Requirement: A press handed to a nearer handle selects and focuses the handle that took it
 
-Where the press areas of two trim handles overlap and a press is handed to the nearer one ("Trim handles are large enough for a finger, and a swipe still scrolls"), the cut of the handle that took the press SHALL be the selected cut, and that handle SHALL hold keyboard focus when the press ends, whatever had focus before, for a mouse, a pen and a finger, in Chrome and in Firefox 155 or newer. A focus event on another handle of the same clip while that press is in force SHALL NOT change the selection; Tab, a key and a programmatic focus on a handle SHALL select its cut as before.
+Where the press areas of two trim handles overlap and a press is handed to the nearer one ("Trim handles are large enough for a finger, and a swipe still scrolls"), the cut of the handle that took the press SHALL be the selected cut, and that handle SHALL hold keyboard focus when the press ends, whatever had focus before, for a mouse, a pen and a finger, in Chrome and in Firefox 155 or newer. This SHALL hold also for a mouse press that the browser delivers without pointer events (a bare `mousedown`, `mouseup` and `click`, as Firefox does under touch emulation): such a press SHALL be handed over by position as a pointer press is, and the browser SHALL NOT move focus to, or select the cut of, the handle under the pointer when another took the press. Such a press starts no drag. Tab, a key and a programmatic focus on a handle SHALL select its cut as before, and a secondary mouse button SHALL be left to the browser.
 
 #### Scenario: A mouse press handed to a handle that already has focus
 - **WHEN** the end of cut 1 and the start of cut 2 are 4 px apart, the end of cut 1 holds focus, and a mouse press lands 1 px right of cut 1's end, on cut 2's start, which lies on top
 - **THEN** cut 1 is selected (the fields read "Cut 1 of g1.mp4"), "Cut 1 end of g1.mp4" holds focus, and nothing is edited, in Chrome and in Firefox
 
 #### Scenario: A mouse press handed to a handle that does not have focus
-- **WHEN** the same press lands while cut 2's start holds focus
+- **WHEN** the same press lands while cut 2's start holds focus, or while nothing in the Timeline does
 - **THEN** the handle that took the press is selected and focused
+
+#### Scenario: A mouse press without pointer events is handed over too
+- **WHEN** the browser delivers that press as a `mousedown` with no `pointerdown` (Firefox with touch emulation on)
+- **THEN** cut 1 is selected and "Cut 1 end of g1.mp4" holds focus, as with pointer events, and no edit is made
 
 #### Scenario: Tab still selects
 - **WHEN** the operator tabs from cut 1's end to cut 2's start

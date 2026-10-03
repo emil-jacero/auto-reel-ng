@@ -34,8 +34,10 @@ own selection sound in the browser the research made a first-class target (D-21:
 - **The requirements** `timeline-overlays` deferred are written into `event-timeline` (ADDED: approval, dismissal,
   the keys and buttons, the pending-state lock). The archived `design.md` is history and stays as it is.
 - **The Firefox press-handover defect is fixed.** A press that a handle hands to a nearer handle selects, and leaves
-  keyboard focus on, the handle that took it, in Chrome and Firefox, whichever handle held focus before; the rule is a
-  small pure function with a test, and `ft3.py` goes to 40/40 in Firefox.
+  keyboard focus on, the handle that took it, in Chrome and Firefox, whichever handle held focus before. The cause,
+  found by reproducing it, is a mouse press that Firefox delivers without pointer events under touch emulation: the
+  press is now handed over by position as a pointer press is (a small pure rule with a test), and `ft3.py` goes to
+  40/40 in Firefox.
 - **HLD** (D-20 "Analysis overlays", §4.10, §6 phase 9) and `web/README.md` stop saying that deciding is "to
   mount"; no D-21 change.
 

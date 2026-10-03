@@ -2,6 +2,7 @@ import { Icon } from '../../ui/Icon'
 import type { MarkModel } from './control'
 import { kindIcon } from './SuggestionLane'
 import {
+  DECISIONS_UNAVAILABLE,
   LEGEND_KINDS,
   LEGEND_STATES,
   STATE_GLYPH,
@@ -91,6 +92,7 @@ export function SuggestionDetail({
           {state === 'cut' && <span className="sg-already">Already cut.</span>}
         </div>
       )}
+      {locked && state !== 'cut' && <p className="sg-already">{DECISIONS_UNAVAILABLE}</p>}
       {refusal !== null && <p className="sg-refusal">{refusal}</p>}
     </section>
   )
