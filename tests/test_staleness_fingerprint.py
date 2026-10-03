@@ -28,12 +28,12 @@ from auto_reel_ng.staleness.manifest import write_manifest
 FFMPEG_VERSION = (7, 1)
 
 #: Golden hashes for ``_pinned_document()`` + ``_pinned_event_dir()`` (task 1.1).
-#: ENGINE/COMBINED re-pinned for RENDER_GRAPH_VERSION 5 (title-card-fonts).
+#: ENGINE/COMBINED re-pinned for RENDER_GRAPH_VERSION 6 (clip-rotate-engine).
 PINNED_EDITORIAL = "cfb295abf2c9f44e4ec05e5634beaf1b9b21235c21d65d0109a944509d848de4"
 PINNED_DEFAULTS = "9d1a9bf4432fae2ec90ade0e7eb1552455abd6da0fac7974d78a16d63113f555"
 PINNED_CLIP_SET = "b1c642b3cd29b949070b357534bae6e2077121b032f93fa34c7aa0df957b6663"
-PINNED_ENGINE = "4a4f0ad21cb5d690d548d20332fb1aa0886b0195381d2c9fbfc5ea7463d80431"
-PINNED_COMBINED = "edbd0f08e3b3c6d25305f91de9b966e872d1bd78f37a8b2cae07d3e57c423bdd"
+PINNED_ENGINE = "0ad5ecb8dec07fb391ef20b3a833151c57dfea62a8a0f8688012e53d59ae90cb"
+PINNED_COMBINED = "1ffdffd392b8befc0c3147ab2543ed05b20c77a62377b27c847c0ed0ed1d31ce"
 #: ``_hash_json({1: "a", "b": "c"})``: the fallback path, which tags every key with its type.
 PINNED_FALLBACK = "43ef72b9709103ca8e6941bcc4ae7e089a867d856cf5f73300d83181f52e17e1"
 
@@ -150,6 +150,29 @@ def test_version_3_manifest_is_engine_stale(
         identity = fingerprint_module.engine_identity(FFMPEG_VERSION)
     assert identity.startswith("render_graph_version=3 ")
     assert fingerprint_module.RENDER_GRAPH_VERSION > 3
+    write_manifest(event_dir, old, output=output.name, engine_identity=identity)
+
+    verdict = evaluate(event_dir, output, _fingerprint(event_dir))
+
+    assert verdict.stale is True
+    assert verdict.reasons == (StalenessReason.ENGINE,)
+
+
+def test_version_5_manifest_is_engine_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # clip-rotate-engine bumped RENDER_GRAPH_VERSION to 6 (a display rotation is applied by the
+    # engine on every profile): an output rendered under version 5 must re-render, for the
+    # engine reason alone.
+    event_dir = _event_dir(tmp_path)
+    output = event_dir / "Party.mp4"
+    output.write_bytes(b"rendered")
+    with monkeypatch.context() as patch:
+        patch.setattr(fingerprint_module, "RENDER_GRAPH_VERSION", 5)
+        old = _fingerprint(event_dir)
+        identity = fingerprint_module.engine_identity(FFMPEG_VERSION)
+    assert identity.startswith("render_graph_version=5 ")
+    assert fingerprint_module.RENDER_GRAPH_VERSION == 6
     write_manifest(event_dir, old, output=output.name, engine_identity=identity)
 
     verdict = evaluate(event_dir, output, _fingerprint(event_dir))

@@ -138,8 +138,8 @@ parsed document and stays as the fail-loud guard for a hand-built `Segment`.
 **Rendered output changes for identical inputs**, in three cases: a display-rotated clip on a hardware profile
 (sideways before, upright now); a display-rotated clip with an explicit `rotate` on a hardware profile (replace
 before, add now); a display-rotated clip whose stored shape equals the target (stream-copied with a matrix
-before, normalized upright now). `RENDER_GRAPH_VERSION` therefore goes 4 to 5 (history line
-`5: clip-rotate-engine (...)`). The fingerprint is probe-free (Principle IV), so it cannot tell which events hold
+before, normalized upright now). `RENDER_GRAPH_VERSION` therefore goes 5 to 6 (history line
+`6: clip-rotate-engine (...)`). The fingerprint is probe-free (Principle IV), so it cannot tell which events hold
 a rotated clip; every manifest turns stale once and unchanged events re-render to the same bytes (D-C8, the
 accepted trade-off the earlier bumps took). No fingerprint input is added: the editorial `rotate` was already one
 (`PINNED_EDITORIAL` does not move) and the display rotation belongs to the file (size and mtime).
@@ -177,5 +177,5 @@ There is no data migration and no rescan: the key and the file are unchanged.
 
 ## Open Questions
 
-- None that change the specs or the tasks. (Which D number the HLD entry takes is decided at apply time: D-22 is
+- None that change the specs or the tasks. (Which D number the HLD entry takes is decided at apply time: D-23 is
   the next free number on `main` today and parallel v2 changes may take it first.)
