@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import type { Staleness } from '../api/events'
-import { REASON_NOTE } from './labels.ts'
+import { REASON_NOTE, chapterHeading } from './labels.ts'
 
 /*
  * The event page's note for a reason (`REASON_NOTE`), run by `npm test`: the words stay
@@ -51,5 +51,17 @@ describe('the output_renamed note', () => {
       withNote.map(([reason]) => reason),
       ['output_renamed'],
     )
+  })
+})
+
+describe('chapterHeading', () => {
+  it('writes the default chapter as Main beside a named one and as Clips alone', () => {
+    assert.equal(chapterHeading('', true), 'Main')
+    assert.equal(chapterHeading('', false), 'Clips')
+  })
+
+  it('returns a name as it is', () => {
+    assert.equal(chapterHeading('Majstången', true), 'Majstången')
+    assert.equal(chapterHeading('Main', false), 'Main')
   })
 })

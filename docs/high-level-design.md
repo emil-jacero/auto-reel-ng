@@ -341,9 +341,9 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   timeline editor, moved from v3** — a per-clip track with proxies, filmstrip, drag-trim in/out and scrub
   preview; **analysis review built as overlays on that timeline** (approve black/white/freeze trims in place,
   not a separate screen); event poster frames; and, beside the proxy work, chapter times in the render
-  manifest (built, change `render-chapter-times`; the chapter list for the movie player that will show
-  them is still open) and a movie version in the event detail (the read half is built: the detail's `movie`
-  carries the version and the chapter list, change `movie-facts-read`). v2 starts with a
+  manifest (built, change `render-chapter-times`) and a movie version in the event detail (built: the detail's
+  `movie` carries the version and the chapter list, change `movie-facts-read`); the chapter jump list of the
+  movie player that shows them is built too (change `movie-chapter-list`, D-15). v2 starts with a
   research step: §8.11 (proxies, the PCM-audio path) and the timeline library against D-8's dependency budget.
   Proxy generation is a job of its own kind (`proxy`) in the durable queue: the `jobs` table carries a `kind`
   (default `render`), the one-active-job guarantee is per (project, event, kind) so a render and a proxy job for
@@ -630,6 +630,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `clip-preview-proxy` is the first change that plays a copy: the clip preview
    (D-16) plays the proxy when it is ready, a web-only change with no render, fingerprint, schema or job change.
    `proxy-job` has landed after them: the worker runs the `proxy` kind (D-21), render-first, with `worker.proxy_slots`.
+   `movie-chapter-list` is the first user of `movie-facts-read`: the movie player's chapter jump list and the
+   movie's version in the facts, a `web/` change only (D-15).
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -835,10 +837,15 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   fails to play a replaced file at an address that served the old one (the proxy routes of D-21 follow the same
   rule: their `ETag`, read with a `HEAD`, is the `v`). Failures are said by cause, including a
   picture the browser cannot show (a legacy MPEG-4 movie plays its sound only). There are no custom controls or
-  shortcuts, no captions and no chapter list: browsers expose no chapter times, and the player does not yet
-  show the ones the render manifest now records (`chapters`, change `render-chapter-times`). A chapter list
-  for the player is a v2 item beside the proxy work; the chapter times and a movie version are now readable
-  from the event detail's `movie` (change `movie-facts-read`). A Refresh
+  shortcuts and no captions: browsers expose no chapter times. Amended 2026-10-03 (change
+  `movie-chapter-list`): the section lists the movie's chapters under the player as a jump list when the event
+  detail's `movie.chapters` gives two or more it can rely on (the times `render-chapter-times` records, read by
+  `movie-facts-read`; none computed on the client, and none for a movie whose manifest predates them). A button
+  seeks to the chapter's start and plays, also before the first Play (the seek waits for `loadedmetadata`
+  under `preload="none"`); the current chapter is marked in words and an icon, following `timeupdate` and
+  `seeked`, never announced; an outdated movie's list says "As rendered". The facts also say "Recorded {time}
+  · version {fingerprint}" from `movie` (the record's time, not the render's finish: an adopted movie's is its
+  adoption). A Refresh
   keeps the player (the same element, playing or paused, while the rest of the page reads; 2026-10-02,
   change `web-playback-and-notices`); Edit mode shows no movie, and entering it ends
   playback. (§4.10)
@@ -934,6 +941,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
 - **D-20 — The timeline is built in the repo, on a pure model in whole milliseconds** (2026-10-03, change
   `timeline-model`, the first slice of GUI v2; the research calls this decision D-18, a number the bug round
   took, and the proxy contract it calls D-19 is **D-21**, recorded by the proxy changes). (§4.10)
+  - **The chapter band reuses the chapter list's rule.** `usableChapters` (`web/src/movie/chapters.ts`,
+    `movie-chapter-list`) decides whether the detail's chapter times may be relied on; the timeline's chapter
+    band calls it rather than a second check.
   - **No timeline library.** The timeline lives in `web/src/timeline/`, on React and plain CSS, generalising
     D-16's cut bar. `@dnd-kit` stays for reordering only (it has no value semantics and re-renders every
     consumer per move). D-8's dependency list is unchanged. Evidence (`research/v2/timeline-library.md`): none

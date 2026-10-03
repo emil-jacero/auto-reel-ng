@@ -53,7 +53,9 @@ over three files and the validity rule below would have no home.
 ### D2. Reliability is decided once, in a pure function
 
 `chapters.ts: usableChapters(raw): ChapterMark[] | null` returns the list only if it is non-empty, every start
-is a finite number >= 0, starts strictly increase, and every name is a string that is empty (the default chapter) or not only whitespace; otherwise `null`. The
+is a finite number >= 0, starts strictly increase, and every name is a string that is empty (the default chapter) or not only whitespace; otherwise `null`. `listedChapters(raw)` is the list's own rule on top: the usable chapters when there are two or
+more, otherwise `null` (one chapter has nothing to jump between; the archive's usual event is one default
+chapter, so a one-row list would sit under nearly every movie). `movieFacts` returns `listedChapters`. The
 section shows nothing for `null`, and does not partly show a list (a list with one wrong start is worse than
 none; Constitution I). *Alternative:* sort or drop the bad rows. Rejected: that is repair, i.e. guessing.
 It does not require the first start to be 0 (a movie without a title card could start later) and does not check
@@ -86,7 +88,11 @@ paused seek on a `preload="none"` player shows only the poster.
 `ChapterList` is rendered by `MoviePlayer` (so it dies and is born with the `key` = file version/attempt; its
 mark state resets with a new player), after the facts and before the trouble notes, only when `file !== null`
 (a jump needs an address) and `usableChapters(...)` is non-null. It takes `chapters`, `videoRef`, `outdated`.
-During `reading` the list is *not* hidden (unlike the facts): hiding would drop focus from a focused button, and
+The list's chapters (and the version in the facts) are those of the event read **the probe last answered
+for**, kept with the shown file in `MovieSection`'s state, not the latest `event` prop: the detail arrives a moment
+before the probe, and a list that took the new chapters then would pair them with the old file's player for that
+moment and unmount a focused row whose start the new list lacks (found in Chrome, a re-render that drops a
+chapter dropped focus to `<body>`). During `reading` the list is *not* hidden (unlike the facts): hiding would drop focus from a focused button, and
 a re-read that changes the chapters also changes the file, which replaces the player anyway (its list with it).
 A re-read that leaves a player without a list while focus is in the list: `ChapterList`'s layout-effect cleanup
 moves focus to `videoRef.current` when it holds focus. On removal of the whole section `MovieSection`'s existing
