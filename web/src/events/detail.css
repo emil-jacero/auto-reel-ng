@@ -229,6 +229,46 @@
     color: var(--fg-muted);
   }
 
+  /*
+   * A clip's row takes focus from script only (tabindex -1): when a read removes the
+   * player that held it. A pointer click on the row shows no ring.
+   */
+  .clip-row:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+
+  /*
+   * Watch (`ClipWatch.tsx`) under the clip's name and above its cuts indicator: a line of
+   * its own, as wide as its words. A coarse pointer's 44px tap area (components.css)
+   * reaches 8px out, so the lines around it stay that far apart.
+   */
+  .cell-file > .watch-button {
+    display: flex;
+    margin-block-start: var(--s-1);
+    font-family: var(--font-sans);
+  }
+
+  @media (pointer: coarse) {
+    .cell-file > .watch-button {
+      margin-block: var(--s-3);
+    }
+  }
+
+  /*
+   * The player's row, directly under its clip's row: the table's width, in every layout.
+   * Wide, it is a table row whose one cell spans the columns; in the narrow grids (below)
+   * it is a block, or its cell would fall into the first grid track.
+   */
+  .clip-preview-row {
+    background: var(--surface-2);
+  }
+
+  .clip-preview-row > td {
+    padding-block: var(--s-3);
+    font-family: var(--font-sans);
+  }
+
   /* An ignored clip stays listed, dimmed. */
   .clip-row[data-status='ignored'] > td {
     color: var(--fg-muted);
@@ -294,6 +334,11 @@
       text-align: end;
       /* Where a time must wrap (the narrowest phones), date and clock time each keep a line. */
       text-wrap: balance;
+    }
+
+    /* The player's row is no clip row: one block, as wide as the table (`.clip-preview-row`). */
+    .clip-table tbody tr.clip-preview-row {
+      display: block;
     }
   }
 
@@ -372,6 +417,13 @@
    * the heading shows nothing and the rows read as an empty event. The bars and
    * the loading boxes take the system's gray text color instead.
    */
+  /* Forced colors drop the player row's fill: it keeps an edge, so its extent shows. */
+  @media (forced-colors: active) {
+    .clip-preview-row {
+      border-block: 1px solid CanvasText;
+    }
+  }
+
   @media (forced-colors: active) {
     .event-detail :is(.skeleton, .clip-thumb[data-state='loading']) {
       forced-color-adjust: none;
