@@ -266,6 +266,9 @@
   - `grep -n "proxies" README.md` shows the CLI line and the config key
   - `grep -n "RENDER_GRAPH_VERSION" docs/high-level-design.md` still matches the D-21 sentence that none was bumped
 
+  Recorded: `timeline-model` had merged by the time the docs were written, so D-21 follows D-20 and this branch carries a
+  merge of `origin/main` (the docs commit is the last one, on top of it, so it applies cleanly to `main`).
+
 ## 10. Validation and dogfood
 
 - [x] 10.1 Run the validation gates and dogfood on a scratch library:
