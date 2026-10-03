@@ -20,8 +20,11 @@ import type { VisibleRange } from './useVisibleRange'
  * only: the cuts are spans with a hatch and a text alternative, with no handle.
  */
 
-/** The phases of a scrub by pointer: where, in px from the track's start. */
-export type ScrubPhase = 'start' | 'move' | 'end'
+/**
+ * The phases of a scrub by pointer: where, in px from the track's start. A `tap` is a
+ * touch that only places the playhead: nothing is dragged, so the video is not paused.
+ */
+export type ScrubPhase = 'start' | 'move' | 'end' | 'tap'
 
 /** Clips narrower than this are drawn as a block only: no name, picture or cuts. */
 const MIN_DETAIL_PX = 6
@@ -87,9 +90,7 @@ function useScrub(
         event.timeStamp - tap.at < TAP_MS
       ) {
         focusGrip()
-        const x = place(event)
-        onScrub(x, 'start')
-        onScrub(x, 'end')
+        onScrub(place(event), 'tap')
       }
     },
     onPointerCancel(event: PointerEvent<HTMLElement>) {

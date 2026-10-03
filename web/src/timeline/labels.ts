@@ -151,7 +151,9 @@ export const FILM_FAILED_DETAIL =
   'The clips whose picture is missing keep their names, cuts and place on the track.'
 export const CUTS_UNREADABLE = 'The cuts could not be read.'
 export const CUTS_UNREADABLE_DETAIL =
-  'The track is shown without cuts, and without the movie’s length.'
+  'The track is shown without cuts, and without the movie’s length. Play does not skip cuts.'
+/** Shown while the page's read of the cuts is still on its way: Play waits for it. */
+export const CUTS_READING = 'Reading the cuts…'
 
 /** `Movie 3:12 of 3:45 of footage`. */
 export function movieWords(movie: Ms, footage: Ms): string {

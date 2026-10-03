@@ -12,6 +12,7 @@ import { Track } from './Track'
 import type { ScrubPhase } from './Track'
 import type { KeyAction } from './keys'
 import {
+  CUTS_READING,
   CUTS_UNREADABLE,
   CUTS_UNREADABLE_DETAIL,
   FILM_FAILED,
@@ -134,10 +135,25 @@ export function Timeline({
     [lay, playhead, syncRange],
   )
 
+  // Play shows no frame the movie omits: until the cuts are read (or known unreadable) it waits.
+  const cutsPending = cuts.cuts === null && cuts.failure === null
+  const toggle = () => {
+    if (!cutsPending || video.playing) {
+      video.toggle()
+    }
+  }
+
   const announce = (pos: Position) =>
     setAnnouncement(playheadAnnouncement(clips[pos.clip].name, pos.ms))
 
   const scrubAt = (x: number, phase: ScrubPhase) => {
+    if (phase === 'tap') {
+      // A tap drags nothing: place the playhead and let a playing video go on from there.
+      const pos = positionAt(lay, facts, pxToTime(x, ppsRef.current))
+      video.seekTo(pos)
+      announce(pos)
+      return
+    }
     if (phase === 'start') {
       dragging.current = true
       video.scrubStart()
@@ -165,7 +181,7 @@ export function Timeline({
         pos = action.where === 'start' ? startPosition() : endPosition(facts)
         break
       case 'toggle':
-        video.toggle()
+        toggle()
         return
     }
     video.seekTo(pos)
@@ -231,7 +247,12 @@ export function Timeline({
       </div>
 
       <div className="tl-controls">
-        <button type="button" className="btn btn-primary tl-play" onClick={video.toggle}>
+        <button
+          type="button"
+          className="btn btn-primary tl-play"
+          aria-disabled={(cutsPending && !video.playing) || undefined}
+          onClick={toggle}
+        >
           <Icon name={video.playing ? 'pause' : 'play'} />
           {video.playing ? PAUSE : PLAY}
         </button>
@@ -284,6 +305,7 @@ export function Timeline({
 
       <p className="tl-summary">
         {cuts.cuts !== null && movieWords(movieMs(clips, cuts.cuts), lay.totalMs)}
+        {cutsPending && CUTS_READING}
       </p>
 
       <p className="visually-hidden" role="status">

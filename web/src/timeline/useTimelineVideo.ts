@@ -72,6 +72,7 @@ export function useTimelineVideo({
   const wantPlay = useRef(false) // the operator asked for Play and has not paused
   const afterSettle = useRef(false) // start the video once it has arrived at its target
   const suspended = useRef(false) // paused by a scrub
+  const ownPause = useRef(false) // the hook paused a playing video itself: its `pause` event is not the operator's
   const swapping = useRef(false) // a new src is loading: events of the old one are ignored
   const loadedClip = useRef<number | null>(null)
   const loadedAddress = useRef<string | null>(null)
@@ -122,7 +123,11 @@ export function useTimelineVideo({
           if (video === null || clip === null) {
             return
           }
-          const target = seekSeconds(ms, clipsRef.current[clip].facts.fps)
+          const shownClip = clipsRef.current[clip]
+          if (shownClip === undefined) {
+            return // the page read fewer clips; the playhead is moved on its way
+          }
+          const target = seekSeconds(ms, shownClip.facts.fps)
           if (Math.abs(video.currentTime - target) < 0.0005) {
             // No seek happens, so no `seeked` follows.
             queueMicrotask(() => settleRef.current())
@@ -212,6 +217,10 @@ export function useTimelineVideo({
       const clip = loadedClip.current
       if (!swapping.current && clip !== null && !coalescer.busy()) {
         const c = clipsRef.current[clip]
+        if (c === undefined) {
+          arm()
+          return
+        }
         const ms = Math.round(meta.mediaTime * 1000)
         const stepMs = Math.round(1000 / c.facts.fps)
         const next = onFrame(c.spans, ms, stepMs, c.facts.durationMs)
@@ -241,6 +250,9 @@ export function useTimelineVideo({
       return
     }
     const c = clipsRef.current[clip]
+    if (c === undefined) {
+      return
+    }
     const error = video.error
     diagnosis.current?.abort()
     const controller = new AbortController()
@@ -280,6 +292,7 @@ export function useTimelineVideo({
         diagnose()
       },
       onPlay() {
+        ownPause.current = false // a pause that raised no event leaves nothing behind
         if (videoRef.current !== null) {
           claimPlayback(videoRef.current)
         }
@@ -289,7 +302,12 @@ export function useTimelineVideo({
       },
       onPause() {
         const video = videoRef.current
-        // The end of a clip and a swap pause it too; neither is the operator's pause.
+        // The hook's own pause (a scrub), the end of a clip and a swap pause it too; none is the
+        // operator's pause. The event is queued, so it can arrive after a quick scrub has ended.
+        if (ownPause.current) {
+          ownPause.current = false
+          return
+        }
         if (video === null || video.ended || swapping.current || suspended.current) {
           return
         }
@@ -323,7 +341,11 @@ export function useTimelineVideo({
     if (wantPlay.current && !suspended.current) {
       suspended.current = true
       afterSettle.current = false
-      videoRef.current?.pause()
+      const video = videoRef.current
+      if (video !== null && !video.paused) {
+        ownPause.current = true
+        video.pause()
+      }
     }
   }, [])
 
@@ -379,6 +401,7 @@ export function useTimelineVideo({
     return () => {
       diagnosis.current?.abort()
       disarm()
+      ownPause.current = false
       if (video !== null) {
         video.pause()
         releasePlayback(video)

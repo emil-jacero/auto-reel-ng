@@ -29,6 +29,23 @@ function frameIndex(clip: Timed, ms: Ms): number {
   return Math.min(lastFrame(clip), Math.max(0, Math.round((ms * clip.fps) / 1000)))
 }
 
+/**
+ * `p` as far as the clips allow: the page can read fewer or shorter clips than the
+ * playhead was made for, and what draws it must not trip on that before the playhead is
+ * moved. A clip that is no longer there means the start (where the playhead goes next);
+ * a time past the clip's end is held to the end.
+ */
+export function clampPosition(
+  clips: readonly { facts: { durationMs: Ms } }[],
+  p: Position,
+): Position {
+  if (p.clip < 0 || p.clip >= clips.length) {
+    return startPosition()
+  }
+  const end = clips[p.clip].facts.durationMs
+  return p.ms > end ? { clip: p.clip, ms: end } : p
+}
+
 /** The time of the last frame of a clip. */
 export function lastFrameMs(clip: Timed): Ms {
   return frameMs(lastFrame(clip), clip.fps)

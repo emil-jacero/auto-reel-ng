@@ -1031,20 +1031,22 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     ("Preparing proxies", "Proxy progress"). What stays: trim handles (`timeline-trim`), the analysis overlays
     (`timeline-overlays`), a second preloaded `<video>` for seamless boundaries, undo.
   - **Measured on the shipped proxy** (Chrome 154.0.8037.92 and Firefox 155.0, ten real clips, one from each archive
-    class, proxies made by the Prepare button and a real worker; three runs each). The shared host was never idle:
-    load average 2 to 13, and its swap full. Scrub, median frames per second over 50 sweeps of 2 s (gate: 30): Chrome
-    38.6, 42.4 and 54.7; Firefox 46.7, 36.5 and 46.7. Frame step, p90 of 160 key presses to the presented frame (gate:
-    60 ms): Chrome 46.2, 49.2 and 40.3 ms; Firefox 61.9, 40.0 and 34.1 ms. **One number misses its gate: Firefox's
-    first run, 1.9 ms over, at a load average of 4 to 13**; the next two runs, at lower load, are well inside it. The
-    hard sources are the expected ones: 4K50 and 1080p50 steps reach a single-run p90 of 81 ms (Chrome) and 93 ms
-    (Firefox) when the host is busy. The first frame after a clip change takes a median 40 to 44 ms (Chrome) and 34
-    ms (Firefox). A decoded audio stream in Firefox's test container needs about 1.9 s to start after Play or a
-    seek (a bare `<video>` with no page code does the same, and a muted one does not), so the timing checks of Play
-    ran muted and the sound check ran unmuted.
-  - **Bundle (`timeline-view`).** `npm run build` on `origin/main` and on this change: JS 452,810 to 484,721 bytes
-    (144,579 to 154,787 gzip -9, +10.2 KB) and CSS 56,929 to 62,914 bytes (11,221 to 12,205 gzip -9, +1.0 KB); no
+    class, proxies made by the Prepare button and a real worker). **Quiet host** (the review's re-run, load average
+    0.5 to 2.1 on 16 cores, two runs each): scrub, median frames per second over 50 sweeps of 2 s (gate: 30): Chrome
+    57.4 and 57.4; Firefox 49.5 and 50.0. Frame step, p90 of 160 key presses to the presented frame (gate: 60 ms):
+    Chrome 39.1 and 39.5 ms; Firefox 33.1 and 33.1 ms. Every number is inside its gate. The first frame after a clip
+    change takes a median 45 and 37 ms (Chrome) and 33 ms (Firefox). **Busy host** (the first runs, three each, the
+    shared host never idle: load average 2 to 13, swap full): scrub Chrome 38.6, 42.4 and 54.7, Firefox 46.7, 36.5
+    and 46.7; step Chrome 46.2, 49.2 and 40.3 ms, Firefox 61.9, 40.0 and 34.1 ms, so Firefox's first busy run missed
+    the step gate by 1.9 ms at a load average of 4 to 13. The hard sources are the expected ones: 4K50 and 1080p50
+    steps reach a single-run p90 of 81 ms (Chrome) and 93 ms (Firefox) when the host is busy. A decoded audio stream
+    in Firefox's test container needs about 1.9 s to start after Play or a seek (a bare `<video>` with no page code
+    does the same, and a muted one does not), so the timing checks of Play ran muted and the sound check ran
+    unmuted.
+  - **Bundle (`timeline-view`).** `npm run build` on `origin/main` and on this change: JS 452,810 to 485,274 bytes
+    (144,579 to 155,026 gzip -9, +10.4 KB) and CSS 56,929 to 62,914 bytes (11,221 to 12,205 gzip -9, +1.0 KB); no
     package added. The research prototype's whole interaction layer was +5.6 KB gz; this slice also holds the Prepare
-    state, the jobs-by-kind words and the video controller. `npm test` runs 340 tests (252 before).
+    state, the jobs-by-kind words and the video controller. `npm test` runs 343 tests (252 before).
   - **Bundle (`timeline-model`).** The model is not imported yet, so it is not built: `npm run build` on `origin/main` and on this
     change gives the same two files (same hashes), JS 444,745 bytes (142,313 gzip -9) and CSS 55,606 bytes
     (11,051 gzip -9) in both, a delta of 0 bytes.
