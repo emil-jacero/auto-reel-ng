@@ -142,6 +142,13 @@ def publish(part: Path, entry: Path) -> ProxyEntry:
                 discard(part)
                 return winner
             if entry.exists():
+                # Another process may have renamed its complete build in since the read above:
+                # look again, and remove only what is still incomplete.
+                winner = read_entry(entry)
+                if winner is not None:
+                    logger.debug("Another process published %s first; discarding", entry)
+                    discard(part)
+                    return winner
                 shutil.rmtree(entry, ignore_errors=True)  # an incomplete leftover
             try:
                 os.rename(part, entry)

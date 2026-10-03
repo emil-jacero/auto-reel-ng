@@ -165,7 +165,9 @@ publish the proxy only when all of these hold:
 - there is exactly one video stream, and it is H.264 `yuv420p` at the planned width and height with square pixels
 - when the source has audio there is exactly one audio stream, and it is AAC with two channels; when the source has
   none, there is none
-- the video stream's duration is within 50 ms of the source's probed duration
+- the video stream's duration is within 50 ms of the source's video stream's duration (not the source container's,
+  which spans the longest stream from the earliest start: audio that outruns the video, or a video that starts
+  late, makes it longer; the container's duration is used only when the source gives no video stream duration)
 - when the source container declares a video frame count, the proxy holds the same number of video frames
 
 A failed check SHALL fail the clip with a typed proxy error that names the check, the value found and the value
@@ -329,6 +331,11 @@ directory, distinct from a clip's proxy error.
 - **WHEN** `auto-reel proxies` and the service build the proxy of the same clip at the same time
 - **THEN** both return the same complete entry, one build is discarded, and no `.part` directory remains
 
+#### Scenario: A complete entry that appears during the publish is kept
+- **WHEN** another process renames its complete build into place after this build looked at the entry and before
+  it replaced an incomplete leftover
+- **THEN** the complete entry is kept, this build is discarded, and the complete entry is returned
+
 #### Scenario: An incomplete directory is replaced
 - **WHEN** `<key>/` exists but holds no `facts.json`
 - **THEN** a request treats the proxy as absent, builds it, and the result is a complete entry
@@ -364,6 +371,11 @@ bounded to 60 seconds. A slow encode that keeps advancing SHALL NOT be killed.
 #### Scenario: Progress after a retry never goes back
 - **WHEN** a hybrid encode reported 0.8 and failed, and the CPU retry then starts from 0
 - **THEN** no reported fraction is below 0.8, and the last one is 1.0
+
+#### Scenario: A finished encode is not a published proxy
+- **WHEN** a hybrid encode exits cleanly, its output fails verification, and the clip is encoded again on the CPU
+- **THEN** 1.0 is reported only after the proxy is published, and the retry reports rising fractions below 1.0
+  meanwhile
 
 #### Scenario: A hang is a failure
 - **WHEN** ffmpeg makes no progress for ten minutes
