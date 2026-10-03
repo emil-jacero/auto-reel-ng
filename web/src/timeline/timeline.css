@@ -235,20 +235,31 @@
     background-repeat: no-repeat;
   }
 
+  /* The name stays at the view's left edge while its clip is wider than the view, as the chapter names do. */
   .tl-clip-label {
     position: absolute;
     inset-block-end: 2px;
-    inset-inline: 2px;
+    inset-inline: 0;
+    display: flex;
+    pointer-events: none;
+  }
+
+  .tl-clip-tag {
+    position: sticky;
+    inset-inline-start: 2px;
+    box-sizing: border-box;
     display: flex;
     gap: var(--s-1);
     align-items: baseline;
+    inline-size: max-content;
+    max-inline-size: min(calc(100% - 4px), 22rem);
+    margin-inline-start: 2px;
     padding: 1px var(--s-1);
     border-radius: var(--r-sm);
     background: color-mix(in oklab, var(--surface) 88%, transparent);
     color: var(--fg);
     font-size: var(--text-xs);
     line-height: 1.3;
-    pointer-events: none;
   }
 
   .tl-clip-name {
@@ -296,10 +307,14 @@
     }
   }
 
+  /* Sticks to the view's left edge while its span is wider than the view. */
   .tl-cut-text {
-    position: absolute;
-    inset-block-start: 2px;
+    position: sticky;
     inset-inline-start: 4px;
+    display: inline-block;
+    box-sizing: border-box;
+    max-inline-size: calc(100% - 8px);
+    margin: 2px 0 0 4px;
     padding: 0 var(--s-1);
     border-radius: var(--r-sm);
     background: var(--surface);
@@ -307,6 +322,8 @@
     font-size: var(--text-xs);
     line-height: 1.3;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* --- the playhead --- */

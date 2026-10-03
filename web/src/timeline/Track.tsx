@@ -220,8 +220,10 @@ export function Track({
             })}
           {widthPx >= NAME_PX && (
             <span className="tl-clip-label" aria-hidden="true">
-              <span className="tl-clip-name">{clip.name}</span>
-              <span className="tl-clip-length">{formatTime(clip.facts.durationMs / 1000)}</span>
+              <span className="tl-clip-tag">
+                <span className="tl-clip-name">{clip.name}</span>
+                <span className="tl-clip-length">{formatTime(clip.facts.durationMs / 1000)}</span>
+              </span>
             </span>
           )}
         </div>,
