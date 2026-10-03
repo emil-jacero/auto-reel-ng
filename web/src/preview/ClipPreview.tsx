@@ -12,8 +12,8 @@ import {
 } from 'react'
 import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react'
 
-import { changedSince, checkClipMedia, clipMediaUrl } from '../api/clipMedia'
-import type { MediaCheck } from '../api/clipMedia'
+import { changedSince, checkClipMedia, clipMediaUrl, probeProxy, proxyUrl } from '../api/clipMedia'
+import type { MediaCheck, ProxyProbe } from '../api/clipMedia'
 import type { Clip } from '../api/event'
 import { thumbnailUrl } from '../api/thumbnail'
 import type { CutField, ListedCut } from '../cuts/times'
@@ -56,12 +56,35 @@ import {
 } from './playback'
 import type { NoteWords, SpanKind } from './playback'
 import type { ClipPreviews } from './previews'
+import {
+  PLAY_COPY,
+  PLAY_ORIGINAL,
+  copyCannotPlayDetail,
+  copyCannotPlayTitle,
+  copyEmptyDetail,
+  copyEmptyTitle,
+  copyGoneDetail,
+  copyGoneTitle,
+  copyUnreadableTitle,
+  playCopyName,
+  playOriginalName,
+  playingCopyWords,
+  playingOriginalWords,
+  previewSource,
+  sourceLine,
+  withCopySentence,
+} from './source'
+import type { ClipProxy } from './source'
 
 /*
  * A clip's preview in its Cuts panel (D-16): a native <video> with the house's own
  * controls, a cut bar, Set From / Set To at the playhead, and Skip cuts, which plays
  * the clip as the movie will. It exists only while open (`previews.ts`: one on the
  * page), and its file is fetched only from then on.
+ *
+ * It plays the clip's preview copy (D-21) when the event detail says one is ready, and
+ * the original otherwise or when the operator presses Play original (`source.ts`). The
+ * copy has the original's media time, so every time below means the same in both files.
  *
  * Every per-frame update is this component's own state: no panel, row, list or
  * editor re-renders while a clip plays. What the browser cannot do is said by cause
@@ -162,6 +185,8 @@ type Failure = {
   pill?: string
   download?: boolean
   retry?: boolean
+  /** A preview copy's failure: Play original is the way out, beside any other action. */
+  original?: boolean
 }
 
 /** The one-byte check's answer, in words (design, "Copy"). */
@@ -200,6 +225,57 @@ function failureOf(check: MediaCheck, name: string, mtime: string | null): Failu
   }
 }
 
+/**
+ * A preview copy's failure, in words (design, Decision 5): by cause, and never by the
+ * copy's `Last-Modified`, which is the copy's file and not the clip's.
+ */
+function copyFailureOf(
+  check: MediaCheck | Exclude<ProxyProbe, { kind: 'ok' }>,
+  name: string,
+): Failure {
+  switch (check.kind) {
+    case 'served':
+      return {
+        words: { title: copyCannotPlayTitle(name), detail: copyCannotPlayDetail },
+        original: true,
+      }
+    case 'empty':
+      return {
+        words: { title: copyEmptyTitle(name), detail: copyEmptyDetail },
+        original: true,
+      }
+    case 'problem': {
+      const { problem } = check
+      if (problem.status === 404) {
+        return {
+          words: { title: copyGoneTitle(name), detail: copyGoneDetail(problem.detail) },
+          original: true,
+        }
+      }
+      return {
+        words: { title: copyUnreadableTitle(name), detail: problem.detail },
+        pill: problem.failure == null ? undefined : FAILURE_LABEL[problem.failure],
+        original: true,
+      }
+    }
+    case 'unreachable':
+      return {
+        words: { title: UNANSWERED_CAUSE.unreachable, detail: notReachableHint(TRY_AGAIN) },
+        retry: true,
+        original: true,
+      }
+    case 'unpublished':
+      return {
+        words: {
+          title: UNANSWERED_CAUSE.unpublished,
+          detail: `${check.message}. The service's log may say why; press ${TRY_AGAIN}.`,
+        },
+        retry: true,
+        original: true,
+      }
+  }
+}
+
 const PLAY = <Icon name="play" />
 const PAUSE = <Icon name="pause" />
 const CLOSE = <Icon name="x" />
@@ -218,6 +294,7 @@ export const ClipPreview = memo(function ClipPreview({
   id,
   eventId,
   clip,
+  proxy,
   name,
   cuts,
   typed,
@@ -230,6 +307,8 @@ export const ClipPreview = memo(function ClipPreview({
   id: string
   eventId: string
   clip: Pick<Clip, 'identity' | 'mtime'>
+  /** The clip's proxy as the event detail gives it: it alone says which file plays. */
+  proxy: ClipProxy | null
   name: string
   /** The panel's cuts as listed: removed ones too, marked. */
   cuts: readonly ListedCut[]
@@ -243,13 +322,26 @@ export const ClipPreview = memo(function ClipPreview({
   onAnnounce: (message: string) => void
 }) {
   const { identity, mtime } = clip
-  const src = clipMediaUrl(eventId, clip)
+  // The original's address: also the key of the clip's length, whichever file plays.
+  const originalSrc = clipMediaUrl(eventId, clip)
+  const source = useMemo(() => previewSource(proxy), [proxy])
+  const chosenOriginal = useSyncExternalStore(previews.subscribe, () => previews.original(identity))
+  const playsCopy = source.kind === 'copy' && !chosenOriginal
   const videoRef = useRef<HTMLVideoElement>(null)
   const regionRef = useRef<HTMLElement>(null)
   const playRef = useRef<HTMLButtonElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
   // Try again mounts the element anew.
   const [attempt, setAttempt] = useState(0)
+  // The copy's entity tag, read by one byte for this attempt: no tag, no source (design, 2).
+  const [probed, setProbed] = useState<{ attempt: number; version: string } | null>(null)
+  // A file swap is under way: the clip's length and the time shown stay.
+  const [swapping, setSwapping] = useState(false)
+  const src = playsCopy
+    ? probed !== null && probed.attempt === attempt
+      ? proxyUrl(eventId, clip, probed.version)
+      : null
+    : originalSrc
   const [phase, setPhase] = useState<'loading' | 'ready' | 'checking' | 'failed'>('loading')
   const [failure, setFailure] = useState<Failure | null>(null)
   const [notes, setNotes] = useState<{ sound: boolean; picture: boolean }>({
@@ -263,8 +355,8 @@ export const ClipPreview = memo(function ClipPreview({
   const [atMs, setAtMs] = useState(0)
   const [valueMs, setValueMs] = useState(0)
   const [allCut, setAllCut] = useState(false)
-  const length = useSyncExternalStore(previews.subscribe, () => previews.length(src))
-  const lengthMs = phase === 'ready' && length !== undefined ? toMs(length) : null
+  const length = useSyncExternalStore(previews.subscribe, () => previews.length(originalSrc))
+  const lengthMs = (phase === 'ready' || swapping) && length !== undefined ? toMs(length) : null
   const shows = useSyncExternalStore(previews.subscribe, previews.showCount)
   // Each note or failure is announced once per element.
   const announced = useRef(new Set<string>())
@@ -277,6 +369,8 @@ export const ClipPreview = memo(function ClipPreview({
   const pendingPlay = useRef(false)
   // Opened by Watch, the thumbnail or Try again (not remounted by a move): say when it is ready.
   const sayReady = useRef(false)
+  // The announcement of a file swap, said with the notes the new file brings.
+  const swapWords = useRef<string | null>(null)
 
   const spans = useMemo(
     () => (lengthMs === null ? [] : skipSpans(cuts, lengthMs)),
@@ -298,13 +392,19 @@ export const ClipPreview = memo(function ClipPreview({
     },
     [onAnnounce],
   )
+  // The probe's effect reads the words through this, so a rename or a new announcer
+  // does not ask the service again.
+  const latest = useRef({ name, announce })
+  useEffect(() => {
+    latest.current = { name, announce }
+  }, [name, announce])
 
   // The source, set and dropped here (see above). The cleanup keeps the playhead while
   // the store still says this preview is open (the row is being mounted elsewhere),
   // then aborts every range request: no `src`, then `load()`.
   useLayoutEffect(() => {
     const video = videoRef.current
-    if (video === null) {
+    if (video === null || src === null) {
       return
     }
     video.src = src
@@ -358,15 +458,39 @@ export const ClipPreview = memo(function ClipPreview({
     }
   }, [phase])
 
+  // The copy's entity tag, before the element is asked for anything: one byte, once per
+  // attempt. It also names a copy that has gone, or is empty, without a `MediaError`.
+  useEffect(() => {
+    if (!playsCopy) {
+      setProbed(null)
+      return
+    }
+    const controller = new AbortController()
+    probeProxy(eventId, identity, controller.signal).then(
+      (answer) => {
+        if (answer.kind === 'ok') {
+          setProbed({ attempt, version: answer.version })
+          return
+        }
+        const next = copyFailureOf(answer, latest.current.name)
+        setFailure(next)
+        setPhase('failed')
+        latest.current.announce(next.words)
+      },
+      () => undefined,
+    )
+    return () => controller.abort()
+  }, [playsCopy, attempt, eventId, identity])
+
   // Why the browser refused the clip: one byte, once.
   useEffect(() => {
-    if (phase !== 'checking') {
+    if (phase !== 'checking' || src === null) {
       return
     }
     const controller = new AbortController()
     checkClipMedia(src, controller.signal).then(
       (check) => {
-        const next = failureOf(check, name, mtime ?? null)
+        const next = playsCopy ? copyFailureOf(check, name) : failureOf(check, name, mtime ?? null)
         setFailure(next)
         setPhase('failed')
         announce(next.words)
@@ -374,7 +498,7 @@ export const ClipPreview = memo(function ClipPreview({
       () => undefined,
     )
     return () => controller.abort()
-  }, [phase, src, name, mtime, announce])
+  }, [phase, src, playsCopy, name, mtime, announce])
 
   // While playing: the head follows each presented frame, and with Skip cuts on, the
   // frame loop jumps over a cut two frame intervals ahead (design, "Skip cuts").
@@ -576,14 +700,67 @@ export const ClipPreview = memo(function ClipPreview({
   }, [seekTo])
   useEffect(() => () => cancelAnimationFrame(frame.current), [])
 
+  // The no-sound note is the original's; when a copy is ready it points the way to the sound.
+  const soundNote: NoteWords = {
+    title: noSoundWords(name).title,
+    detail: withCopySentence(noSoundWords(name).detail, source.kind === 'copy'),
+  }
+
+  /**
+   * Swap the file under the playhead (design, Decision 3): the source effect's cleanup
+   * keeps the time, the new element's metadata restores it, and a clip that was playing
+   * plays on. The element is not remounted, so focus stays on the pressed control.
+   */
+  function swapFile(): void {
+    if (source.kind !== 'copy') {
+      return
+    }
+    const video = videoRef.current
+    if (video === null || phase === 'checking' || phase === 'failed') {
+      return
+    }
+    const toOriginal = playsCopy
+    if (phase === 'ready') {
+      pendingPlay.current = !video.paused
+    }
+    swapWords.current = toOriginal ? playingOriginalWords(name) : playingCopyWords(name)
+    setSwapping(true)
+    setNotes({ sound: false, picture: false })
+    setPlaying(false)
+    setPhase('loading')
+    previews.setOriginal(identity, toOriginal)
+  }
+
+  /** From a copy's failure: open the original anew, with focus on its Play (as Try again). */
+  function playOriginalAfterFailure(): void {
+    announced.current.clear()
+    focusPlay.current = true
+    sayReady.current = true
+    swapWords.current = null
+    previews.setOriginal(identity, true)
+    setSwapping(false)
+    setFailure(null)
+    setPhase('loading')
+    setAttempt((n) => n + 1)
+  }
+
   const onLoadedMetadata = () => {
     const video = videoRef.current as FirefoxVideo | null
     if (video === null) {
       return
     }
-    if (Number.isFinite(video.duration) && video.duration > 0) {
-      previews.setLength(src, video.duration)
+    // The copy's length is the facts' (the original's, as probed): the browser reads the
+    // copy about 20 ms off, and not always longer (design, Decision 4).
+    const lengthSeconds =
+      source.kind === 'copy' && playsCopy
+        ? source.durationMs / 1000
+        : Number.isFinite(video.duration) && video.duration > 0
+          ? video.duration
+          : null
+    if (lengthSeconds !== null) {
+      previews.setLength(originalSrc, lengthSeconds)
     }
+    setSwapping(false)
     // A move to another chapter reopens paused where the playhead stood.
     const kept = previews.playhead(identity)
     previews.keepPlayhead(identity, undefined)
@@ -595,14 +772,19 @@ export const ClipPreview = memo(function ClipPreview({
     setValueMs(at)
     const next = {
       picture: video.videoWidth === 0,
-      sound: 'mozHasAudio' in video && video.mozHasAudio === false,
+      // The note belongs to the original: the copy carries AAC by contract (D-21).
+      sound: !playsCopy && 'mozHasAudio' in video && video.mozHasAudio === false,
     }
     setNotes(next)
     setPhase('ready')
     // One announcement: the editor's live region holds one message, so the notes and the
     // readiness go together, the notes first.
     const words: string[] = []
-    for (const note of [next.sound && noSoundWords(name), next.picture && noPictureWords(name)]) {
+    if (swapWords.current !== null) {
+      words.push(swapWords.current)
+      swapWords.current = null
+    }
+    for (const note of [next.sound && soundNote, next.picture && noPictureWords(name)]) {
       const message = note === false ? null : `${note.title} ${note.detail}`
       if (message !== null && !announced.current.has(message)) {
         announced.current.add(message)
@@ -611,23 +793,22 @@ export const ClipPreview = memo(function ClipPreview({
     }
     if (sayReady.current) {
       sayReady.current = false
-      words.push(readyWords(name, video.duration))
+      words.push(readyWords(name, lengthSeconds ?? video.duration))
     }
     if (words.length > 0) {
       onAnnounce(words.join(' '))
     }
     if (pendingPlay.current) {
       pendingPlay.current = false
-      const total =
-        Number.isFinite(video.duration) && video.duration > 0 ? toMs(video.duration) : null
-      startPlay(video, total)
+      startPlay(video, lengthSeconds === null ? null : toMs(lengthSeconds))
     }
   }
 
+  // What the browser reads from a preview copy never changes the clip's length.
   const onDurationChange = () => {
     const video = videoRef.current
-    if (video !== null && Number.isFinite(video.duration) && video.duration > 0) {
-      previews.setLength(src, video.duration)
+    if (!playsCopy && video !== null && Number.isFinite(video.duration) && video.duration > 0) {
+      previews.setLength(originalSrc, video.duration)
     }
   }
 
@@ -643,7 +824,8 @@ export const ClipPreview = memo(function ClipPreview({
 
   const onSeeked = () => {
     const video = videoRef.current
-    if (video !== null && video.paused) {
+    // Not while a file swap is under way: the element is empty and reads 0.
+    if (video !== null && video.paused && !swapping) {
       const at = toMs(video.currentTime)
       setAtMs(at)
       setValueMs(at)
@@ -668,7 +850,7 @@ export const ClipPreview = memo(function ClipPreview({
   const ready = phase === 'ready'
   const setUnavailable = locked || lengthMs === null || undefined
   const fileHref = (
-    <a className="btn btn-secondary btn-compact" href={src} download={fileName(identity)}>
+    <a className="btn btn-secondary btn-compact" href={originalSrc} download={fileName(identity)}>
       {DOWNLOAD}
       {downloadWords(fileName(identity))}
     </a>
@@ -680,6 +862,7 @@ export const ClipPreview = memo(function ClipPreview({
       className="clip-preview"
       id={id}
       aria-label={regionName(name)}
+      data-source={playsCopy ? 'copy' : 'original'}
       data-state={phase === 'failed' ? 'failed' : phase === 'ready' ? 'ready' : 'loading'}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -730,21 +913,37 @@ export const ClipPreview = memo(function ClipPreview({
           action={
             failure.download === true ? (
               fileHref
-            ) : failure.retry === true ? (
-              <button
-                type="button"
-                className="btn btn-secondary btn-compact"
-                onClick={() => {
-                  announced.current.clear()
-                  focusPlay.current = true
-                  sayReady.current = true
-                  setFailure(null)
-                  setPhase('loading')
-                  setAttempt((n) => n + 1)
-                }}
-              >
-                {TRY_AGAIN}
-              </button>
+            ) : failure.retry === true || failure.original === true ? (
+              <>
+                {failure.retry === true && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-compact"
+                    onClick={() => {
+                      announced.current.clear()
+                      focusPlay.current = true
+                      sayReady.current = true
+                      swapWords.current = null
+                      setSwapping(false)
+                      setFailure(null)
+                      setPhase('loading')
+                      setAttempt((n) => n + 1)
+                    }}
+                  >
+                    {TRY_AGAIN}
+                  </button>
+                )}
+                {failure.original === true && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-compact preview-original"
+                    aria-label={playOriginalName(name)}
+                    onClick={playOriginalAfterFailure}
+                  >
+                    {PLAY_ORIGINAL}
+                  </button>
+                )}
+              </>
             ) : undefined
           }
         />
@@ -797,6 +996,12 @@ export const ClipPreview = memo(function ClipPreview({
               onPointer={pointer}
             />
           </div>
+          <p className="preview-source">
+            {sourceLine(
+              playsCopy ? 'copy' : 'original',
+              source.kind === 'original' ? source.why : null,
+            )}
+          </p>
           <p className="visually-hidden" id={`${id}-keys`}>
             {PLAYHEAD_KEYS}
           </p>
@@ -842,15 +1047,20 @@ export const ClipPreview = memo(function ClipPreview({
                 {SET_WORDS[field]}
               </button>
             ))}
+            {source.kind === 'copy' && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-compact preview-original"
+                aria-label={playsCopy ? playOriginalName(name) : playCopyName(name)}
+                onClick={swapFile}
+              >
+                {playsCopy ? PLAY_ORIGINAL : PLAY_COPY}
+              </button>
+            )}
           </div>
           {allCut && <p className="preview-said">{ALL_CUT}</p>}
           {notes.sound && (
-            <Alert
-              tone="info"
-              role="note"
-              title={noSoundWords(name).title}
-              detail={noSoundWords(name).detail}
-            />
+            <Alert tone="info" role="note" title={soundNote.title} detail={soundNote.detail} />
           )}
           {notes.picture && (
             <Alert

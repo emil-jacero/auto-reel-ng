@@ -1,5 +1,5 @@
 /*
- * Pure parsers for the two media headers the client reads. No imports, so an ad
+ * Pure parsers for the media headers the client reads. No imports, so an ad
  * hoc check runs them under `node --experimental-strip-types` as they are.
  *
  * They accept exactly the forms the service's media routes write (Starlette's
@@ -35,4 +35,13 @@ export function dispositionName(value: string | null): string | null {
     }
   }
   return DISPOSITION_PLAIN.exec(value)?.[1] ?? null
+}
+
+/** The entity-tag as an address carries it (`v`): no `W/`, no quotes; null when absent or empty. */
+export function entityVersion(etag: string | null): string | null {
+  if (etag === null) {
+    return null
+  }
+  const bare = etag.replace(/^W\//, '').replace(/^"(.*)"$/, '$1')
+  return bare === '' ? null : bare
 }

@@ -205,6 +205,12 @@
     text-align: start;
   }
 
+  /* Which file plays: always there from the first render, so nothing moves when it is read. */
+  .preview-source {
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
   .preview-said {
     color: var(--fg-muted);
     font-size: var(--text-sm);
@@ -220,8 +226,12 @@
       block-size: 2.75rem;
     }
 
+    /*
+     * Four compact (26px) buttons wrap to a second row at phone width: each tap area
+     * reaches 9px out, so those rows are 1.5rem apart, not the 1rem a 32px control needs.
+     */
     .preview-actions {
-      row-gap: var(--s-4);
+      row-gap: var(--s-5);
     }
   }
 

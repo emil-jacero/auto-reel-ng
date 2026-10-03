@@ -1,5 +1,5 @@
 import { encodeEventId } from '../route'
-import { contentRangeSize, dispositionName } from './headers'
+import { contentRangeSize, dispositionName, entityVersion } from './headers'
 import type { Problem, Unanswered } from './http'
 import { probeFirstByte } from './probe'
 import type { paths } from './schema'
@@ -41,15 +41,6 @@ export type MovieProbe =
   | { kind: 'problem'; problem: Problem }
   | Unanswered
 
-/** The entity-tag as the address carries it: no `W/`, no quotes; null when absent. */
-function versionOf(etag: string | null): string | null {
-  if (etag === null) {
-    return null
-  }
-  const bare = etag.replace(/^W\//, '').replace(/^"(.*)"$/, '$1')
-  return bare === '' ? null : bare
-}
-
 /**
  * Ask for the movie's first byte, never from or into the browser's cache. It
  * answers with the file's entity-tag, size and name, and proves the movie is
@@ -63,7 +54,7 @@ export async function probeMovie(eventId: string, signal: AbortSignal): Promise<
 
 /** The movie's facts from a 200 or 206; null without an entity-tag (not a usable answer). */
 function fileOf(response: Response): MovieFile | null {
-  const version = versionOf(response.headers.get('ETag'))
+  const version = entityVersion(response.headers.get('ETag'))
   if (version === null) {
     return null
   }
