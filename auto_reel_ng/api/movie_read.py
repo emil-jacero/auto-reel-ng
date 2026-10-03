@@ -12,11 +12,11 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Sequence
 
 from ..reel.document import Metadata
 from ..render import output_relpath
-from ..staleness import read_manifest, rendered_output
+from ..staleness import ChapterTime, read_manifest, rendered_output
 from .schemas import MovieChapterOut, MovieOut
 from .settings import ApiSettings
 
@@ -52,11 +52,15 @@ def rendered_movie_path(
 
 
 def movie_facts(settings: ApiSettings, event_dir: Path, metadata: Metadata) -> Optional[MovieOut]:
-    """The detail's ``movie``: the movie's version and chapters from **one** read of the manifest.
+    """The detail's ``movie``: the movie's version and chapters, the three from one manifest read.
 
     ``None`` without a movie (:func:`rendered_movie_path`), without a readable manifest at this
-    read, or when its ``written_at`` is not a timezone-aware date-time: no version can be told,
-    and none is invented from the file's mtime or the clock.
+    read, or when its ``written_at`` is not a timezone-aware date-time the clock can hold in UTC:
+    no version can be told, and none is invented from the file's mtime or the clock. The lookup
+    reads the manifest on its own, so a render that lands between the two reads can give the new
+    render's facts for the old render's file; the facts themselves always agree with each other.
+    A recorded chapter list whose times cannot be turned into seconds is unknown (``None``), as
+    any other unreadable list is.
     """
     if rendered_movie_path(settings, event_dir, metadata) is None:
         return None
@@ -65,25 +69,34 @@ def movie_facts(settings: ApiSettings, event_dir: Path, metadata: Metadata) -> O
         return None
     try:
         recorded_at = datetime.fromisoformat(manifest.written_at)
-    except ValueError:
+        if recorded_at.utcoffset() is None:
+            logger.debug("Render manifest of %s has a written_at without a UTC offset", event_dir)
+            return None
+        recorded_at = recorded_at.astimezone(timezone.utc)
+    except (ValueError, OverflowError):
         logger.debug("Render manifest of %s has no usable written_at", event_dir)
         return None
-    if recorded_at.utcoffset() is None:
-        logger.debug("Render manifest of %s has a written_at without a UTC offset", event_dir)
-        return None
-    chapters = (
-        None
-        if manifest.chapters is None
-        else [
-            MovieChapterOut(name=chapter.name, start=chapter.start_ms / 1000)
-            for chapter in manifest.chapters
-        ]
-    )
     return MovieOut(
-        recorded_at=recorded_at.astimezone(timezone.utc),
+        recorded_at=recorded_at,
         fingerprint=manifest.fingerprint[:12],
-        chapters=chapters,
+        chapters=_chapters(manifest.chapters, event_dir),
     )
+
+
+def _chapters(
+    recorded: Optional[Sequence[ChapterTime]], event_dir: Path
+) -> Optional[List[MovieChapterOut]]:
+    """The recorded chapters as seconds, in recorded order; ``None`` when unknown or unusable."""
+    if recorded is None:
+        return None
+    try:
+        return [
+            MovieChapterOut(name=chapter.name, start=chapter.start_ms / 1000)
+            for chapter in recorded
+        ]
+    except OverflowError:
+        logger.debug("Render manifest of %s has a chapter time beyond a float", event_dir)
+        return None
 
 
 __all__ = ["expected_output", "movie_facts", "rendered_movie_path"]
