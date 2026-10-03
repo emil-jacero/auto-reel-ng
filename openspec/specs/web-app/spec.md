@@ -1221,7 +1221,8 @@ channel, not polling.
   - the delay resets only once a frame has arrived on the new connection
   - it reconnects at once when the browser reports it is back online
 - The app header SHALL show the connection's state in words: live, connecting, or reconnecting. While live,
-  it SHALL show how many jobs are rendering and how many are queued, leaving out a count that is zero.
+  it SHALL show how many render jobs are rendering and how many are queued, leaving out a count that is zero. A
+  `proxy` job is counted in neither.
   While not live, it SHALL NOT show counts, because counts from a lost connection are not current.
 
 #### Scenario: One connection however many views follow jobs
@@ -1255,11 +1256,17 @@ channel, not polling.
 - **THEN** the header shows that the client is reconnecting, without job counts, and it becomes live again,
   with no reload, once the service is back
 
+#### Scenario: A proxy job is not counted as a render
+- **WHEN** the connection is live and the only active job is a `proxy` job that is running
+- **THEN** the header shows the connection as live and no rendering or queued count
+
 ### Requirement: A render's progress is shown live
 
-Wherever a job is shown for an event, the client SHALL show the newest job it knows for that event. That is
-the live state when the connection carries one, and otherwise the latest job the last read returned. For
-one and the same job:
+Wherever a render job is shown for an event, the client SHALL show the newest **render** job it knows for that
+event. That is the live state when the connection carries one, and otherwise the latest render job the last read
+returned. A job is a render or a proxy job (the service reports its kind on every job). A proxy job SHALL NOT be shown as a render: it SHALL NOT be the job a render region, a list row or a
+notification shows, SHALL NOT replace a render job as the newest, and SHALL NOT mark a shown render job as ended.
+Only the Timeline's Prepare state shows a proxy job (capability `event-timeline`). For one and the same job:
 
 - a finished state the client has learned SHALL never be replaced by an earlier queued or running state
 - between two queued or running states of the job, while the connection is live, the one it carries SHALL
@@ -1364,6 +1371,12 @@ an event with no title SHALL be named by its folder name.
 - **WHEN** the page of `2024-06-27 - Grillning med grannar` is shown 320 pixels wide while its job renders,
   and the time-left estimate appears beside the percentage
 - **THEN** the render region keeps its height
+
+#### Scenario: A proxy job does not take a render's place
+- **WHEN** the render of `2024-06-27 - Grillning med grannar` finished, the operator then pressed Prepare proxies
+  on its Timeline, and the `proxy` job is running
+- **THEN** the page's render region still shows the render as rendered, with its own time, and no queued or
+  running render; the list row of that event shows the same, not a running job
 
 ### Requirement: A queued or running render can be cancelled
 
