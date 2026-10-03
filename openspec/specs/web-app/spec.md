@@ -3951,7 +3951,9 @@ once, that the clip is ready to play, with its length.
 - Until the preview has read the clip's length, the playhead, Set From and Set To SHALL say that they are
   unavailable and change nothing.
 
-The preview SHALL show the time and the clip's length in that same format.
+The preview SHALL show the playhead's time and the clip's length as a readout that says what it is and keeps its
+width, as "Running times are written to a fixed width and say what they are" requires (`Clip 0:01.23 of 0:06.02`).
+The slider's value text stays in the Cuts panel's format, above.
 
 **Sizes and look.**
 - The picture SHALL be shown whole in a box of fixed 16:9 proportions, as wide as the panel allows up to 640
@@ -4146,6 +4148,13 @@ Close when the control that held it went:
 - **THEN** the page does not scroll horizontally, and the picture's box is 16:9 inside the panel. A tap anywhere
   in a 44 × 44 pixel area around Close, Play, Skip cuts, Set From and Set To reaches that control and no other.
   A tap anywhere along the playhead, up to 22 pixels above or below its centre line, moves it.
+
+#### Scenario: The player's time says what it is and does not move
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar` the operator opens the preview of `s1710001.mp4`
+  (6.02 s) and plays it to the end
+- **THEN** the header reads `Clip 0:00.00 of 0:06.02`, then `Clip 0:01.50 of 0:06.02`, and `Clip 0:06.02 of 0:06.02`
+  at the end; the readout's bounding box has the same width in every sample taken during the playthrough, and the
+  close button does not move
 
 ### Requirement: A clip's preview sets cut times at the playhead and plays the clip as the movie will
 
@@ -5688,3 +5697,78 @@ window 1280 × 900).
   operator marks 50 clips of the first chapter and drops them into the second, five times in a fresh Edit mode each
 - **THEN** the median time from the release to the next painted frame is at most 150 ms longer than that of dropping
   one unmarked clip from the first chapter into the second
+
+### Requirement: Running times are written to a fixed width and say what they are
+
+Every time the client shows while something moves (the Timeline's readout under its video, the clip player's header,
+the Timeline's trim tip and its "Movie … of footage" line) SHALL be written by one formatter, the **clock**, and
+SHALL NOT be written in the form that the Cuts panel writes cut times in (`0:01.5`, `0:02.607`), which keeps its own
+job: a cut's time, a typed field, a spoken word. The ruler's tick labels and the chapter list's start times do not
+move while something plays and keep that form.
+
+**One scale per readout.** A readout SHALL be written to a scale taken from the longest value it can show, not from
+the value it shows. Minutes SHALL be zero-padded to the digits of the longest value's minutes (`0:09.50 of 0:39.84`
+when the longest is under ten minutes, `09:59.99 of 12:30.00` when it is not), hours SHALL appear in every value of a
+readout or in none (none unless the longest is an hour or more), and seconds SHALL always have two digits. The
+fraction SHALL have the same number of digits in every value of every readout of that kind, trailing zeros kept:
+two (centiseconds) for the Timeline's and the player's readouts and the summary line, three (milliseconds) for the
+trim tip, which shows the time a cut will have. A value SHALL be cut down to those digits, never rounded up, so that
+a position never reads later than its total. A value above the longest SHALL be shown as the longest. A value that
+is not known (the player's length before the browser has read it) SHALL be shown as dashes in the same places
+(`-:--.--`), never as `0:00`. A value that is negative or not a number SHALL NOT be written: it is an error, never a
+made-up time.
+
+**Constant width.** A running time SHALL occupy a width that depends on its scale and on nothing else: it SHALL have
+a reserved width in the width of a digit of its monospace face, digits of equal width, and its text SHALL stay on
+one line. While a clip plays, while the playhead is scrubbed or stepped, and when the playhead passes from one clip
+into another, no readout's width and no readout's left edge SHALL change, and nothing after a readout on its line
+SHALL move. A readout's width MAY change when its scale does, which only the set of clips (a Prepare job that ends,
+a clip that goes) or the clip's length being read can cause, and SHALL NOT change at any other moment.
+
+**Words.** A readout SHALL say what each number is in words that stay on the screen: the Timeline's reads `Clip
+0:00.96 of 0:39.84 · Event 1:02.40 of 2:29.76`, the first pair being the time in the clip the playhead is in and that
+clip's length, the second the time in the whole timeline (the clips end to end, before cuts) and its length. The
+clip pair's scale SHALL be that of the event's longest clip and the event pair's that of the whole timeline's length,
+so that passing from a 9-second clip into a 40-second one changes no width. The clip player's header reads `Clip
+0:20.48 of 0:20.64`. The Timeline's summary line reads `Movie 3:12.00 of 3:45.00 of footage`, to the scale of the
+footage's length. The trim tip reads the time alone, to the scale of its clip's length, and the words it adds when
+the edge snaps SHALL NOT move that time.
+
+**The name.** The clip's name in the Timeline's readout SHALL be shown on one line and, when it does not fit, SHALL be
+cut with an ellipsis and keep its whole text as its tooltip; it SHALL NOT wrap and SHALL NOT move a number. On a
+window 390 CSS pixels wide the name MAY take its own line, and the numbers SHALL then keep their widths.
+
+**Both schemes, every width.** The readouts SHALL meet the page's contrast in the light and the dark scheme and SHALL
+NOT make the page scroll horizontally from 320 CSS pixels up.
+
+#### Scenario: Crossing a clip does not move the line
+- **WHEN** the Timeline of an event whose clips are 9.00 s, 40.00 s and 6.02 s (55.02 s in all) plays from 0:08 into
+  the second clip
+- **THEN** the readout reads `Clip 0:08.20 of 0:09.00 · Event 0:08.20 of 0:55.02`, then `Clip 0:00.10 of 0:40.00 ·
+  Event 0:09.10 of 0:55.02`, and the width of every time and the left edge of both pairs are the same in the two
+  samples
+
+#### Scenario: Nine seconds to ten
+- **WHEN** the playhead of a 12-second clip goes from `0:09.99` to `0:10.00`
+- **THEN** the readout's text is `0:09.99` and `0:10.00` in cells of one width, and nothing after it moves
+
+#### Scenario: A long name is cut, not pushed
+- **WHEN** the clip the playhead is in is named `IMG_20240627_201530_BURST042_final_v2.mp4` and the window is 390
+  pixels wide
+- **THEN** the name is on one line ending in an ellipsis, its tooltip is the whole name, the numbers have their usual
+  widths, and the page does not scroll horizontally
+
+#### Scenario: A cell in the trim tip
+- **WHEN** the operator drags a handle on a 6.02 s clip across `0:01.25` and `0:01.30`
+- **THEN** the tip reads `0:01.250` then `0:01.300`, the same width, and when the edge snaps the snap words appear
+  without moving the time
+
+#### Scenario: The length is not read yet
+- **WHEN** a clip player has just opened and the browser has not read the clip
+- **THEN** the header reads `Clip 0:00.00 of -:--.--`, with the time in cells as wide as they will be, and when the
+  length is read it reads `Clip 0:00.00 of 0:06.02` with no change in the first cell's width
+
+#### Scenario: A spoken form is not padded
+- **WHEN** a screen reader reads the Timeline's slider at the moment of the first scenario's second sample
+- **THEN** its value text reads `s1710002.mp4, clip 0:00.1 of 0:40; event 0:09.1 of 0:55.02`, in the Cuts panel's
+  form, and the visible readout is not the slider's value
