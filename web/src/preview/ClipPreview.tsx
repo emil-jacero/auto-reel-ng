@@ -20,6 +20,7 @@ import type { CutField, ListedCut } from '../cuts/times'
 import { fileName } from '../events/common'
 import { FAILURE_LABEL, UNANSWERED_CAUSE, notReachableHint } from '../events/labels'
 import { Alert } from '../ui/Alert'
+import { ClockGroup } from '../ui/Clock'
 import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
 import {
@@ -51,7 +52,7 @@ import {
   skipAt,
   skipName,
   skipSpans,
-  timeWords,
+  timeCells,
   toMs,
   unreadableTitle,
 } from './playback'
@@ -915,7 +916,7 @@ export const ClipPreview = memo(function ClipPreview({
     >
       <div className="preview-head">
         <span className="preview-time" aria-hidden="true">
-          {timeWords(atMs, lengthMs)}
+          <ClockGroup label="Clip" {...timeCells(atMs, lengthMs)} />
         </span>
         <button
           ref={closeRef}

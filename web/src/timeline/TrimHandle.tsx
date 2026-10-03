@@ -1,10 +1,11 @@
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 
-import { formatTime, handleName, handleValueText, NOT_IN_CLIP, stoppedWords } from '../cuts/times'
+import { handleName, handleValueText, NOT_IN_CLIP, stoppedWords } from '../cuts/times'
 import type { TrimEdge } from '../cuts/times'
 import type { DraftCut } from '../edit/draft'
 import { toMs } from '../preview/playback'
+import { ClockTime } from '../ui/Clock'
 import type { DragStore } from './dragStore'
 import type { TrimNote } from './editing'
 import { bareMousePress, keyOutcome, nearestHandle, snapWords } from './handles'
@@ -12,6 +13,7 @@ import type { SnapContext } from './handles'
 import type { ClipFacts, Ms } from './model'
 import { snapCandidates, timeToPx, trimEdge, trimLimits } from './model'
 import type { Playhead } from './playhead'
+import { tipOf } from './readout'
 
 /*
  * The trim handles (D-20, `timeline-trim`): two on each cut of a clip the Timeline draws
@@ -547,9 +549,9 @@ const TrimHandle = memo(function TrimHandle({
       <span className="tl-trim-bar" aria-hidden="true" />
       {(dragging !== null || focused) && (
         <span className="tl-trim-tip" aria-hidden="true">
-          {formatTime(seconds(shownMs))}
+          <ClockTime cell={tipOf(shownMs, facts.durationMs)} />
           {dragging !== null && dragging.words !== '' && (
-            <span className="tl-trim-snap"> · {dragging.words}</span>
+            <span className="tl-trim-snap">{dragging.words}</span>
           )}
         </span>
       )}

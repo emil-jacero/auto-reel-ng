@@ -303,6 +303,7 @@ src/
 │   ├── Pill.tsx          a status: icon + words on a tone
 │   ├── Alert.tsx         an inline message: tone, title, detail, action
 │   ├── Skeleton.tsx      placeholder rows, and the announced read status
+│   ├── Clock.tsx         a running time in a fixed-width cell, and `Clip 0:00.96 of 0:39.84` as a pair (clock.ts writes it)
 │   ├── Dialog.tsx        a modal over the native <dialog>
 │   ├── returnFocus.ts    the rule for giving focus back to a dialog's opener (+ returnFocus.test.ts)
 │   ├── toast.ts          the toast store: toast.success / info / error, keepToastsClearOf (+ toast.test.ts)

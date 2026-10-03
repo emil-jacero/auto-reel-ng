@@ -1,0 +1,31 @@
+/* A running time in a fixed cell (`Clock.tsx`, `clock.ts`). Tokens only. */
+@layer components {
+  /* The pair never wraps inside itself and never changes width. */
+  .clock-group {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .clock-key {
+    font-weight: 600;
+  }
+
+  .clock-of {
+    color: var(--fg-muted);
+  }
+
+  /*
+   * `ch` is the width of a "0" in this element's font: in the mono face with tabular
+   * figures every digit, colon and point takes one cell, so the cell is the text's width
+   * and the same for every value of the scale.
+   */
+  .clock-cell {
+    display: inline-block;
+    inline-size: calc(var(--ch) * 1ch);
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+    white-space: nowrap;
+  }
+}
