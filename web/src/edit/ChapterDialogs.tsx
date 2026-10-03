@@ -13,8 +13,9 @@ import type { ChapterKey } from './draft'
 import { markedAmong, pickMarked } from './marks'
 
 /*
- * The two chapter dialogs of Edit mode, over the shared `Dialog`: the name
- * dialog (Add chapter; a chapter is renamed at its title, `InlineName.tsx`) and Move clips. Each is plain native form
+ * The two chapter dialogs of Edit mode, over the shared `Dialog`: the name dialog
+ * (Add chapter; a chapter is renamed at its title, `InlineName.tsx`) and Move clips.
+ * Each is plain native form
  * controls in a `.dialog-fields` form, so its description is its one-sentence
  * explanation, never its fields (Dialog.tsx). Each is rendered only while open:
  * closing unmounts it, and `Dialog` returns focus to the control that opened it.

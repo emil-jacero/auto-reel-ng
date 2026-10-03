@@ -53,7 +53,10 @@ test('each hold says why, naming what the bar names', () => {
     holdWords('unfinished', true, true),
     'Not saved: the date is incomplete and a cut is typed and not added.',
   )
-  assert.equal(holdWords('unfinished', false, false, true), 'Not saved: a name is typed and not kept.')
+  assert.equal(
+    holdWords('unfinished', false, false, true),
+    'Not saved: a name is typed and not kept.',
+  )
   assert.equal(
     holdWords('unfinished', true, false, true),
     'Not saved: the date is incomplete and a name is typed and not kept.',
