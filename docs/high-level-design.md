@@ -358,6 +358,8 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   The event detail reports each clip's proxy (`proxy-state-read`, D-21): a `proxy` of state `absent | ready |
   stale | failed` and, when `ready`, its facts and `version`, from the cache entry, never a probe; the list stays
   without it. The timeline opens only for an event whose clips are all `ready`.
+  The proxy job has landed (`proxy-job`, D-21): the worker prepares one event's proxies and sprites as a `proxy` job,
+  behind renders, so **the timeline opens only for prepared events and preparation is a `proxy` job**.
   The timeline is built in the repo (**D-20**); its pure model has landed (`timeline-model`, no UI yet).
   **The clip preview plays the preview copy** when the detail says one is ready (`clip-preview-proxy`, D-16 and
   D-21): the first user-visible Firefox fix, since the copy's AAC gives the Sony PCM clips sound there, with an
@@ -627,6 +629,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    manifest read with no render, fingerprint or WebSocket change.
    `clip-preview-proxy` is the first change that plays a copy: the clip preview
    (D-16) plays the proxy when it is ready, a web-only change with no render, fingerprint, schema or job change.
+   `proxy-job` has landed after them: the worker runs the `proxy` kind (D-21), render-first, with `worker.proxy_slots`.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -962,6 +965,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Bundle.** The model is not imported yet, so it is not built: `npm run build` on `origin/main` and on this
     change gives the same two files (same hashes), JS 444,745 bytes (142,313 gzip -9) and CSS 55,606 bytes
     (11,051 gzip -9) in both, a delta of 0 bytes.
+  - **Prepare enqueues the proxy job** (`proxy-job`): the timeline's Prepare state enqueues the D-21 `proxy` job for the event; a render does not wait for it.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
   1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every
@@ -1096,9 +1100,29 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     proxy file's entity tag (D-15, `"{size:x}-{mtime_ns:x}"` without quotes), for the media URL's `v`. The state
     is not a staleness input. `null` means unknown, never `absent`: a missing clip, an unresolvable `proxies`
     configuration (one warning per request) or an unreadable cache (`ProxyCacheError`).
-  - **Deliberately not here:** a job, progress
-    over the WebSocket and an enqueue endpoint (`proxy-job`, `proxy-enqueue-endpoint`); any web code; a prune of
-    orphan entries (`proxy-prune`); a
+  - **The proxy job** (2026-10-03, change `proxy-job`). The worker runs jobs of kind `proxy`, one event each: for
+    every clip discovery lists (the clips on disk, IGNORED ones included; `reel.yaml` is never read or written, so
+    editorial state neither adds nor invalidates work) it makes the proxy and then the filmstrip
+    (`prepare_clip`), skipping what the cache holds, in the proxy cache of the job's own project. No render-only
+    claim check applies (it writes none of the paths they guard), no fingerprint is recorded, a finished job
+    never changes a staleness verdict and **`RENDER_GRAPH_VERSION` is not bumped**. It holds **one CPU token** for
+    its whole run and no GPU token (its libx264 encode is CPU work even on the hybrid path), and at most
+    **`worker.proxy_slots` (default 1)** run at once: two workers gained only 20 to 35 % on one disk
+    (research `proxies.md` §3.9). **A queued render is claimed before any proxy job** whatever its age or priority
+    (`claim_next` orders render first, and the worker excludes `proxy` while its slots are full, so a waiting
+    proxy job never uses up the capacity a render needs); a running proxy job is not preempted. Progress is
+    **weighted by source size** (a `stat`, not a probe; the clip in flight contributes its own fraction, the
+    sprite is the last 3 % of its clip), never decreases, and is `1.0` only at `done`. A clip that fails does not
+    stop the others and the job ends `failed` naming them ("1 of 3 clips failed: ..."); a cache fault (full or
+    unwritable directory) ends it at once. Cancel kills the encode within about two seconds and leaves no `.part`
+    directory; a worker stop does the same through a stop event the handler shares with the worker (`run` waits up
+    to 10 s for its cleanup after requeueing the row); a crash is recovered by startup reconciliation and the rerun
+    costs one `stat` per finished clip. **Measured (experiment 007, an AMD APU, shared host):** a GPU render beside
+    a running proxy job took **1.3 to 1.5 times** as long; limiting the proxy's x264 to 4 or 2 threads and taking the
+    proxies off the GPU did not remove it, so the change claims only the claim order, not an unaffected render, and
+    the follow-up `proxy-yield` (do not start the next clip while a render runs) is proposed, not built.
+  - **Deliberately not here:** progress over the WebSocket for the proxy kind and an enqueue endpoint
+    (`proxy-enqueue-endpoint`); any web code; a prune of orphan entries (`proxy-prune`); a
     virtual remux to give the original sound in Firefox. The cache-location helpers are copies of `thumbs/`'s;
     unifying them is a follow-up.
 

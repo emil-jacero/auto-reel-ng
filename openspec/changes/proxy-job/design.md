@@ -178,28 +178,9 @@ decode + `scale_vaapi`; render: VAAPI normalize + encode), so contention would s
 is a thread cap on the proxy's x264 (a `proxies` setting from `proxy-encode`); anything beyond that (pausing
 proxy jobs while a render runs) is reported as a follow-up change, not built here.
 Run per the repo's
-`running-experiments` skill (report with host, commands, verdict). The result decides nothing in code unless it fails.
-
-## Risks / Trade-offs
-
-- **[Gates not merged when written]** Names and signatures may differ. Mitigation: specs state behaviour, not
-  functions; tasks begin by reading the merged gate code; task 1 lists the assumptions it checks.
-- **[job-kind may leave render-only requirements unscoped]** (output collision, claimed-movie, staleness recheck
-  literally say "a claimed job"). Mitigation: the first runner test is an event that collides/is fresh/is stale
-  and still gets proxies; if it fails, the fix is scoping those checks to `render` in `worker.py` (in scope:
-  scheduler package).
-- **[CPU render waits behind a proxy job at `cpu_slots: 1`]** Documented in decision 5 and README.
-- **[Hybrid path validated on AMD only]** (synthesis §6 risk 4): on Intel/NVIDIA the proxy job is CPU-bound for
-  longer (1.06 to 3.24 core-s per footage second), so the CPU token is held longer. The cap of one slot is the
-  protection.
-- **[Silent wrong output]** is `proxy-encode`'s post-encode check; the job reports its failure as a clip failure.
-- **[Disk full during a long job]** is a cache fault: the job fails at once rather than failing every clip.
-- **[Progress weighting by size is approximate]** A heavily compressible clip (a still scene) may finish early:
-  the bar is monotonic and ends at 1.0, never wrong in kind.
-
-## Open Questions (settled by reading the merged gates)
-
-- Does `job-kind` already filter/order `claim_next` by kind? No: task 4 touches `persistence/job_store.py`.
-- Spelling of the gates' names: see the table in Context. The hooks `ensure_proxy` needs already exist, so the
-  proxies side shrinks to one operation (`prepare_clip`) that joins the proxy and the sprite under one progress
-  fraction (proxy 0..0.97 of the clip, the sprite the last 0.03, `1.0` after it).
+`running-experiments` skill (report with host, commands, verdict). **Result (experiment 007, 2026-10-03): refuted.** On the development host (a Radeon 860M APU, shared and loaded by
+other work, VAAPI) the median render took 1.28 to 1.56 times its solo time beside a proxy job; a thread cap
+(4 and 2) and the CPU decode path did not bring it under 1.15, so the cost is not x264's threads and not the
+proxies' GPU decode. The change ships anyway (claim order and `proxy_slots` do what they promise) and says in
+the README and the HLD that a render beside a proxy job is slower; the follow-up `proxy-yield` (a proxy job does
+not start its next clip while a render runs) is proposed in the report and not built here.
