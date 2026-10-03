@@ -14,7 +14,7 @@ from auto_reel_ng.api import ws as ws_module
 from auto_reel_ng.api.app import create_app
 from auto_reel_ng.api.settings import resolve_api_settings
 from auto_reel_ng.persistence.job_store import CancelOutcome, JobStore
-from auto_reel_ng.persistence.models import JobStatus
+from auto_reel_ng.persistence.models import JobKind, JobStatus
 
 pytestmark = pytest.mark.requires_db
 
@@ -134,6 +134,35 @@ def test_a_job_that_ends_between_polls_is_pushed_once(
         # no frame before it may carry the failed job again.
         time.sleep(_POLL_INTERVAL_S * 5)
         marker = store.enqueue(str(project), "2024/2024-06-21 - A")
+        assert _rows_before_marker(websocket, str(job_id), str(marker)) == []
+
+
+def test_a_proxy_job_is_followed_on_the_socket_with_its_kind(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    """A real store and poller: a client that connects while a proxy job runs gets it in the
+    snapshot, then its progress and end as deltas, each marked ``kind: proxy``."""
+    job_id = store.enqueue(str(project), "2024/2024-06-21 - A", kind=JobKind.PROXY)
+    store.claim_next("worker-1")
+    store.set_progress(job_id, 0.4)
+
+    with client.websocket_connect("/api/v1/ws/jobs") as websocket:
+        snapshot = json.loads(websocket.receive_text())
+        assert snapshot["type"] == "snapshot"
+        assert [(job["id"], job["kind"], job["progress"]) for job in snapshot["jobs"]] == [
+            (str(job_id), "proxy", 0.4)
+        ]
+
+        store.set_progress(job_id, 0.8)
+        progressed = _read_until(websocket, str(job_id), lambda job: job["progress"] == 0.8)
+        assert progressed["kind"] == "proxy"
+
+        store.transition(job_id, JobStatus.DONE)
+        done = _read_until_status(websocket, str(job_id), "done")
+        assert done["kind"] == "proxy"
+
+        time.sleep(_POLL_INTERVAL_S * 5)
+        marker = store.enqueue(str(project), "2024/2024-06-21 - A")  # a render, as the end mark
         assert _rows_before_marker(websocket, str(job_id), str(marker)) == []
 
 

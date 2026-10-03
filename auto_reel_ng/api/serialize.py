@@ -47,6 +47,7 @@ def job_to_out(job: object) -> JobOut:
     """Convert a store ``Job`` row (or a duck-typed stand-in, for hub tests) to :class:`JobOut`."""
     return JobOut(
         id=job.id,  # type: ignore[attr-defined]
+        kind=job.kind,  # type: ignore[attr-defined]
         status=job.status.value,  # type: ignore[attr-defined]
         event_dir=job.event_dir,  # type: ignore[attr-defined]
         project_root=job.project_root,  # type: ignore[attr-defined]

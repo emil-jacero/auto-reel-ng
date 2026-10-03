@@ -202,12 +202,16 @@ class _BlockingStore(FakeStore):
         self._open.set()
 
     def list_by_status(
-        self, status: JobStatus, *, project_root: Optional[str] = None
+        self,
+        status: JobStatus,
+        *,
+        project_root: Optional[str] = None,
+        kind: Optional[str] = "render",
     ) -> list[FakeJob]:
         if not self._open.is_set():
             self.entered.set()
             self._open.wait(_MAX_BLOCK)
-        return super().list_by_status(status, project_root=project_root)
+        return super().list_by_status(status, project_root=project_root, kind=kind)
 
 
 class _LoopProbe:
@@ -490,6 +494,107 @@ async def test_a_server_shutdown_closes_every_client_with_1012_and_completes() -
         assert [await _close_code(client) for client in clients] == [1012, 1012, 1012]
         await asyncio.wait_for(asyncio.shield(served.task), 3.0)
         assert (served.hub.subscriber_count, served.hub.is_polling) == (0, False)
+
+
+# --------------------------------------------------------------------------- #
+# proxy-enqueue-endpoint: the lifecycle holds with a proxy job active
+# --------------------------------------------------------------------------- #
+
+
+def _running_proxy_job(store: FakeStore) -> uuid.UUID:
+    return _running_job(store, kind="proxy", event_dir=BLANDAT, progress=0.4)
+
+
+async def test_a_client_connected_while_a_proxy_job_runs_gets_the_snapshot_first() -> None:
+    store = FakeStore()
+    job_id = _running_proxy_job(store)
+    async with _serving(store) as served:
+        async with connect(served.url) as client:
+            frame = await _frame(client)
+            assert frame["type"] == "snapshot"
+            assert [(job["id"], job["kind"], job["progress"]) for job in frame["jobs"]] == [
+                (str(job_id), "proxy", 0.4)
+            ]
+
+
+async def test_the_last_close_stops_the_poller_with_a_proxy_job_active() -> None:
+    store = FakeStore()
+    _running_proxy_job(store)
+    async with _serving(store) as served:
+        client = await connect(served.url)
+        assert (await _frame(client))["type"] == "snapshot"
+        await client.close()
+        await _until(lambda: (served.hub.subscriber_count, served.hub.is_polling) == (0, False))
+        reads = _store_reads(served.store)
+        await asyncio.sleep(POLL * 5)
+        assert _store_reads(served.store) == reads
+
+
+async def test_a_server_shutdown_closes_with_1012_with_a_proxy_job_active() -> None:
+    store = FakeStore()
+    _running_proxy_job(store)
+    async with _serving(store) as served:
+        client = await connect(served.url)
+        assert (await _frame(client))["type"] == "snapshot"
+        served.server.should_exit = True
+        assert await _close_code(client) == 1012
+        await asyncio.wait_for(asyncio.shield(served.task), 3.0)
+
+
+async def test_a_slow_consumer_is_closed_with_1013_with_a_proxy_job_active(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeStore()
+    job_id = _running_proxy_job(store)
+    release = asyncio.Event()
+    send_text = WebSocket.send_text
+    sends = 0
+
+    async def held_send_text(self: WebSocket, data: str) -> None:
+        nonlocal sends
+        sends += 1
+        if sends == 2:
+            await release.wait()
+        await send_text(self, data)
+
+    monkeypatch.setattr(WebSocket, "send_text", held_send_text)
+    async with _serving(store, queue_maxsize=1) as served:
+        client = await connect(served.url)
+        assert (await _frame(client))["type"] == "snapshot"
+        step = 0
+        async with asyncio.timeout(1.0):
+            while served.hub.subscriber_count:
+                step += 1
+                store.jobs[job_id].progress = 0.4 + step / 1000
+                await asyncio.sleep(POLL * 1.5)
+        release.set()
+        assert await _close_code(client) == 1013
+
+
+async def test_a_frame_of_render_jobs_differs_from_before_only_by_their_kind() -> None:
+    store = FakeStore()
+    job_id = _running_job(store, event_dir=GRILLNING, progress=0.25)
+    async with _serving(store) as served:
+        async with connect(served.url) as client:
+            (job,) = (await _frame(client))["jobs"]
+    assert job == {
+        "id": str(job_id),
+        "kind": "render",
+        "status": "running",
+        "event_dir": GRILLNING,
+        "project_root": PROJ,
+        "device": "auto",
+        "progress": 0.25,
+        "worker_id": None,
+        "cancel_requested": False,
+        "requeue_count": 0,
+        "force": False,
+        "fingerprint": None,
+        "error": None,
+        "created_at": job["created_at"],
+        "started_at": None,
+        "finished_at": None,
+    }
 
 
 # --------------------------------------------------------------------------- #

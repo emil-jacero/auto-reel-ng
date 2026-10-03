@@ -13,16 +13,14 @@ the batch commands' rule (D-9), run over the served project (jobs-project-guards
 
 from __future__ import annotations
 
-import functools
 import logging
 import uuid
 from datetime import date
 from pathlib import Path
-from typing import Callable, List, Optional, ParamSpec, TypeVar, Union
+from typing import List, Optional, Union
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy.exc import SQLAlchemyError
 
 from ...config.project import load_project_config, resolve_look_defaults
 from ...errors import ReelError
@@ -35,7 +33,7 @@ from ...staleness.fingerprint import compute_fingerprint
 from ...staleness.gate import evaluate
 from ...staleness.manifest import manifest_path
 from .. import events_read
-from ..problem import bad_gateway, conflict, not_found, service_unavailable
+from ..problem import bad_gateway, conflict, not_found
 from ..schemas import (
     CancelResult,
     EnqueueConflict,
@@ -46,35 +44,11 @@ from ..schemas import (
 )
 from ..serialize import job_to_out as _job_out
 from ..settings import ApiSettings
+from .guards import job_store_unreachable as _job_store_unreachable
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["jobs"])
-
-_P = ParamSpec("_P")
-_R = TypeVar("_R")
-
-
-def _job_store_unreachable(handler: Callable[_P, _R]) -> Callable[_P, Union[_R, JSONResponse]]:
-    """Answer a route's unreachable job store in the shared 503 problem shape (D-A6).
-
-    The events reads map the same failure to the same body (``check="database"``, the
-    predicate ``/healthz`` uses), so a client has one test for "the service cannot
-    reach its database". The request is never softened into a partial answer: a job
-    list without the unreadable jobs, a job reported absent, or a cancel outcome that
-    was not applied would each fabricate a fact out of "unknown" (Principle I).
-    """
-
-    @functools.wraps(handler)
-    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> Union[_R, JSONResponse]:
-        try:
-            return handler(*args, **kwargs)
-        except SQLAlchemyError as exc:
-            logger.warning("jobs: job store unreachable: %s", exc)
-            return service_unavailable(f"job store unreachable: {exc}", check="database")
-
-    return wrapper
-
 
 #: What :func:`events_read.enqueue_target` raises for an event it will not hand an enqueue.
 _TARGET_REFUSALS = (
@@ -246,17 +220,21 @@ def create_job(payload: EnqueueRequest, request: Request) -> Union[JobOut, Fresh
 @router.get("/jobs", response_model=List[JobOut], responses={503: {"model": ProblemOut}})
 @_job_store_unreachable
 def list_jobs(request: Request, status: Optional[JobStatus] = Query(None)) -> List[JobOut]:
-    """``GET /api/v1/jobs`` (task 3.2): the served project's jobs, by status, oldest first."""
+    """``GET /api/v1/jobs`` (task 3.2): the served project's jobs, by status, oldest first.
+
+    Jobs of every kind, each carrying its ``kind``: the store's reads default to renders
+    (job-kind), so the list asks for all of them.
+    """
     store: JobStore = request.app.state.job_store
     project_root = str(request.app.state.settings.project_root)
     if status is not None:
-        jobs = store.list_by_status(status, project_root=project_root)
+        jobs = store.list_by_status(status, project_root=project_root, kind=None)
     else:
         jobs = sorted(
             (
                 job
                 for one_status in JobStatus
-                for job in store.list_by_status(one_status, project_root=project_root)
+                for job in store.list_by_status(one_status, project_root=project_root, kind=None)
             ),
             key=lambda job: job.created_at,
         )

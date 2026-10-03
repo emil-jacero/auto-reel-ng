@@ -42,6 +42,7 @@ class FakeJob:
 
     id: uuid.UUID
     status: JobStatus
+    kind: str = "render"
     event_dir: str = "2024/event"
     project_root: Optional[str] = PROJ
     device: str = "auto"
@@ -60,6 +61,9 @@ class FakeJob:
 class FakeStore:
     """A minimal store stand-in exposing only the hub's surface.
 
+    Its reads scope by ``kind`` as the real store's do: ``render`` unless the caller passes
+    ``kind=None`` (job-kind), so a hub that forgets to ask for every kind misses proxy jobs here too.
+
     ``now`` is the fake database clock: the time ``list_finished_since`` reports, and
     the instant it reads from when given none. It stands still unless a test moves it.
     """
@@ -72,13 +76,19 @@ class FakeStore:
         self.list_finished_since_calls = 0
 
     def list_by_status(
-        self, status: JobStatus, *, project_root: Optional[str] = None
+        self,
+        status: JobStatus,
+        *,
+        project_root: Optional[str] = None,
+        kind: Optional[str] = "render",
     ) -> list[FakeJob]:
         self.list_by_status_calls += 1
         return [
             job
             for job in self.jobs.values()
-            if job.status == status and project_root in (None, job.project_root)
+            if job.status == status
+            and project_root in (None, job.project_root)
+            and kind in (None, job.kind)
         ]
 
     def get(self, job_id: uuid.UUID) -> Optional[FakeJob]:
@@ -91,6 +101,7 @@ class FakeStore:
         *,
         overlap: timedelta,
         project_root: Optional[str] = None,
+        kind: Optional[str] = "render",
     ) -> FinishedJobs:
         self.list_finished_since_calls += 1
         start = (since if since is not None else self.now) - overlap
@@ -100,6 +111,7 @@ class FakeStore:
             if job.finished_at is not None
             and job.finished_at >= start
             and project_root in (None, job.project_root)
+            and kind in (None, job.kind)
         ]
         return FinishedJobs(as_of=self.now, jobs=finished)
 
@@ -534,6 +546,121 @@ async def test_only_the_served_projects_short_lived_job_is_pushed() -> None:
         assert [(job["id"], job["status"]) for job in delta["jobs"]] == [(str(own_id), "failed")]
         await _await_ticks(store, 3)
         assert queue.empty()  # exactly one delta
+    finally:
+        await hub.unsubscribe(queue)
+
+
+# --------------------------------------------------------------------------- #
+# Proxy jobs on the socket (proxy-enqueue-endpoint)
+# --------------------------------------------------------------------------- #
+
+
+async def test_the_snapshot_holds_both_kinds_each_marked() -> None:
+    store = FakeStore()
+    proxy_id, render_id = uuid.uuid4(), uuid.uuid4()
+    store.jobs[proxy_id] = FakeJob(
+        id=proxy_id, status=JobStatus.RUNNING, kind="proxy", event_dir=BLANDAT, progress=0.3
+    )
+    store.jobs[render_id] = FakeJob(id=render_id, status=JobStatus.QUEUED, event_dir=BADUTFLYKT)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.05)
+
+    queue = await hub.subscribe()
+    try:
+        snapshot = await _drain(queue)
+        assert snapshot["type"] == "snapshot"
+        assert {job["id"]: job["kind"] for job in snapshot["jobs"]} == {
+            str(proxy_id): "proxy",
+            str(render_id): "render",
+        }
+    finally:
+        await hub.unsubscribe(queue)
+
+
+async def test_a_proxy_jobs_progress_and_end_arrive_as_deltas_in_order() -> None:
+    store = FakeStore()
+    job_id = uuid.uuid4()
+    store.jobs[job_id] = FakeJob(
+        id=job_id, status=JobStatus.QUEUED, kind="proxy", event_dir=BLANDAT
+    )
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
+
+    queue = await hub.subscribe()
+    try:
+        await _drain(queue)  # the snapshot, with the queued job
+        store.jobs[job_id].status = JobStatus.RUNNING
+        store.jobs[job_id].progress = 0.4
+        running = await _drain(queue)
+        store.jobs[job_id] = FakeJob(
+            id=job_id,
+            status=JobStatus.DONE,
+            kind="proxy",
+            event_dir=BLANDAT,
+            progress=1.0,
+            finished_at=store.now,
+        )
+        done = await _drain(queue)
+
+        assert [
+            (d["type"], j["kind"], j["status"], j["progress"])
+            for d in (running, done)
+            for j in d["jobs"]
+        ] == [
+            ("delta", "proxy", "running", 0.4),
+            ("delta", "proxy", "done", 1.0),
+        ]
+        await _await_ticks(store, 5)
+        assert queue.empty()  # the terminal row went out exactly once
+    finally:
+        await hub.unsubscribe(queue)
+
+
+async def test_a_proxy_job_that_lived_and_ended_between_two_polls_is_pushed_once() -> None:
+    store = FakeStore()
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
+
+    queue = await hub.subscribe()
+    try:
+        assert (await _drain(queue))["jobs"] == []
+        job_id = uuid.uuid4()
+        store.jobs[job_id] = FakeJob(
+            id=job_id,
+            status=JobStatus.DONE,
+            kind="proxy",
+            event_dir=BLANDAT,
+            progress=1.0,
+            finished_at=store.now,
+        )
+        delta = await _drain(queue)
+        assert [(job["id"], job["kind"], job["status"]) for job in delta["jobs"]] == [
+            (str(job_id), "proxy", "done")
+        ]
+        await _await_ticks(store, 5)
+        assert queue.empty()
+    finally:
+        await hub.unsubscribe(queue)
+
+
+async def test_another_projects_proxy_job_is_never_sent() -> None:
+    store = FakeStore()
+    other_id = uuid.uuid4()
+    store.jobs[other_id] = FakeJob(
+        id=other_id, status=JobStatus.RUNNING, kind="proxy", project_root=OTHER, progress=0.2
+    )
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
+
+    queue = await hub.subscribe()
+    try:
+        assert (await _drain(queue))["jobs"] == []
+        store.jobs[other_id] = FakeJob(
+            id=other_id,
+            status=JobStatus.DONE,
+            kind="proxy",
+            project_root=OTHER,
+            progress=1.0,
+            finished_at=store.now,
+        )
+        await _await_ticks(store, 3)
+        assert queue.empty()
     finally:
         await hub.unsubscribe(queue)
 

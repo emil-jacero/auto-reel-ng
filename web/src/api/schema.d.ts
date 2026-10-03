@@ -335,6 +335,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{event_id}/proxies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue Proxies
+         * @description ``POST /api/v1/events/{event_id}/proxies``: enqueue the event's proxy job.
+         *
+         *     Prepares the 540p proxies (with sound) and filmstrips of every clip file the event folder
+         *     holds, as a job of kind ``proxy`` the worker runs behind renders. No request body: a proxy is
+         *     a function of the clip file and the proxy settings. 201 with the queued job; 200 ``fresh``
+         *     when every clip's proxy is already ``ready`` (no job); 409 ``active_job`` with the job's id
+         *     while a proxy job is queued or running for the event, also when a concurrent request
+         *     inserted first; 404 for an id the events list does not show; 502 for an event folder or a
+         *     proxy cache that cannot be read (nothing is enqueued, and an unreadable state is never read
+         *     as ``absent`` or ``ready``); 503 when the job store is unreachable. The event's render jobs
+         *     are independent of it.
+         */
+        post: operations["enqueue_proxies_api_v1_events__event_id__proxies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/{event_id}": {
         parameters: {
             query?: never;
@@ -368,6 +398,9 @@ export interface paths {
         /**
          * List Jobs
          * @description ``GET /api/v1/jobs`` (task 3.2): the served project's jobs, by status, oldest first.
+         *
+         *     Jobs of every kind, each carrying its ``kind``: the store's reads default to renders
+         *     (job-kind), so the list asks for all of them.
          */
         get: operations["list_jobs_api_v1_jobs_get"];
         put?: never;
@@ -688,7 +721,7 @@ export interface components {
         };
         /**
          * EnqueueConflict
-         * @description Why ``POST /api/v1/jobs`` refused an event with a 409: the API's classification.
+         * @description Why an enqueue (``POST /api/v1/jobs``, or the proxy enqueue) refused with a 409.
          * @enum {string}
          */
         EnqueueConflict: "active_job" | "output_collision" | "missing_clips";
@@ -838,8 +871,22 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * JobKind
+         * @description What sort of work a job is: the closed set of kinds the service reports.
+         *
+         *     An event has at most one active job of each kind, and jobs of different kinds run
+         *     independently. The ``jobs.kind`` column is free text on purpose: the database accepts
+         *     any value, so a row written by a newer build reaches a worker that fails it with a
+         *     reason instead of the database refusing it. This enum names what *this* build writes.
+         * @enum {string}
+         */
+        JobKind: "render" | "proxy";
+        /**
          * JobOut
          * @description One job's full detail, mirroring ``jobs show`` (task 3.2).
+         *
+         *     ``kind`` says what sort of work the job is (``render`` or ``proxy``), typed with the job
+         *     store's closed vocabulary so generated clients get an exhaustive union (D-8, §4.10).
          */
         JobOut: {
             /**
@@ -847,6 +894,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            kind: components["schemas"]["JobKind"];
             status: components["schemas"]["JobStatus"];
             /**
              * Event Dir
@@ -905,6 +953,9 @@ export interface components {
          *     ``status`` is typed with the job store's own closed vocabulary, so the schema
          *     publishes the enumeration and generated clients get an exhaustive union
          *     (D-8, §4.10). ``JobStatus`` is a ``str`` enum: the wire values are unchanged.
+         *
+         *     The summary is always of a ``render`` job: an event's latest job is its latest render, and a
+         *     proxy job never stands in it. ``kind`` is still on it, with the definition ``JobOut`` has.
          */
         JobSummaryOut: {
             /**
@@ -912,6 +963,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            kind: components["schemas"]["JobKind"];
             status: components["schemas"]["JobStatus"];
             /** Progress */
             progress: number;
@@ -1021,6 +1073,24 @@ export interface components {
             thumbnail_failure?: components["schemas"]["ThumbnailFailure"] | null;
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * ProxiesFreshResult
+         * @description The body of ``POST /api/v1/events/{event_id}/proxies`` when nothing needs preparing.
+         *
+         *     Every clip of the event already has a ``ready`` proxy, so no job was enqueued. A proxy has
+         *     no fingerprint or manifest (it is not a staleness input), so this is not :class:`FreshResult`.
+         */
+        ProxiesFreshResult: {
+            /** Event Id */
+            event_id: string;
+            /**
+             * Status
+             * @constant
+             */
+            status: "fresh";
+            /** Clip Count */
+            clip_count: number;
         };
         /**
          * ProxyFactsOut
@@ -2461,6 +2531,82 @@ export interface operations {
             };
             /** @description Bad Gateway */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+        };
+    };
+    enqueue_proxies_api_v1_events__event_id__proxies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every clip already has a ready proxy; nothing was enqueued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProxiesFreshResult"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

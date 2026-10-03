@@ -88,6 +88,19 @@ def test_enqueue_reports_an_unreachable_job_store_as_a_database_problem(offline_
     _assert_database_problem(response)
 
 
+def test_the_proxy_enqueue_reports_an_unreachable_job_store_as_a_database_problem(
+    offline_client,
+) -> None:
+    """The proxy enqueue answers it as the render enqueue does; the disk checks still answer first."""
+    proxies = f"/api/v1/events/{quote(EVENT_ID, safe='/')}/proxies"
+    body = _assert_database_problem(offline_client.post(proxies))
+    assert "id" not in body and "job_id" not in body  # no job state is reported
+
+    missing = offline_client.post(f"/api/v1/events/{quote(UNKNOWN_EVENT_ID, safe='/')}/proxies")
+    assert missing.status_code == 404
+    assert missing.json()["event_id"] == UNKNOWN_EVENT_ID
+
+
 def test_enqueue_forced_reports_an_unreachable_job_store_too(offline_client) -> None:
     response = offline_client.post("/api/v1/jobs", json={"event_id": EVENT_ID, "force": True})
     _assert_database_problem(response)

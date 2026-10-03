@@ -20,17 +20,27 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.concurrency import run_in_threadpool
 
 from ...config.project import ConfigError
-from ...errors import EventMetadataError, ReelError, ThumbnailCacheError, ThumbnailError
+from ...errors import (
+    EventMetadataError,
+    ProxyCacheError,
+    ProxyError,
+    ReelError,
+    ThumbnailCacheError,
+    ThumbnailError,
+)
 from ...event.editorial import apply_editorial_write
 from ...ingest import LayoutError
+from ...persistence.job_store import JobStore
+from ...persistence.models import JobKind
 from ...reel.document import ReelDocument
 from ...staleness.fingerprint import editorial_hash
 from ...thumbs import is_cached, one_line_cause, recorded_failure, thumbnail_for
-from .. import events_read
+from .. import events_read, proxy_read
 from ..media import etag_matches
 from ..problem import (
     bad_gateway,
     bad_request,
+    conflict,
     not_found,
     precondition_failed,
     service_unavailable,
@@ -39,15 +49,19 @@ from ..schemas import (
     AnalysisOut,
     EditorialDocumentBody,
     EditorialWriteResult,
+    EnqueueConflict,
     EventDetailOut,
     EventFailure,
     EventRowOut,
+    JobOut,
     ProblemOut,
+    ProxiesFreshResult,
     ThumbnailFailure,
 )
-from ..serialize import document_to_body
+from ..serialize import document_to_body, job_to_out
 from ..settings import ApiSettings
 from ..thumbnails import ThumbnailGate
+from .guards import job_store_unreachable
 
 logger = logging.getLogger(__name__)
 
@@ -398,6 +412,88 @@ async def get_thumbnail(
         return _clip_failed(event_id, clip, exc)
     except ThumbnailCacheError as exc:
         return _thumbnail_failed(event_id, clip, str(exc))
+
+
+def _proxy_job_active(job_id: object, event_id: str) -> JSONResponse:
+    """The 409 for an event that already has a queued or running proxy job."""
+    return conflict(
+        f"a proxy job is already active for event {event_id!r}",
+        job_id=str(job_id),
+        conflict=EnqueueConflict.ACTIVE_JOB.value,
+    )
+
+
+# Registered before the greedy detail route, like ``/thumbnail``, so an id with ``/`` reaches it.
+@router.post(
+    "/events/{event_id:path}/proxies",
+    response_model=JobOut,
+    status_code=201,
+    responses={
+        200: {
+            "model": ProxiesFreshResult,
+            "description": "Every clip already has a ready proxy; nothing was enqueued",
+        },
+        404: {"model": ProblemOut},
+        409: {"model": ProblemOut},
+        502: {"model": ProblemOut},
+        503: {"model": ProblemOut},
+    },
+)
+@job_store_unreachable
+def enqueue_proxies(event_id: str, request: Request) -> Union[JobOut, ProxiesFreshResult, Response]:
+    """``POST /api/v1/events/{event_id}/proxies``: enqueue the event's proxy job.
+
+    Prepares the 540p proxies (with sound) and filmstrips of every clip file the event folder
+    holds, as a job of kind ``proxy`` the worker runs behind renders. No request body: a proxy is
+    a function of the clip file and the proxy settings. 201 with the queued job; 200 ``fresh``
+    when every clip's proxy is already ``ready`` (no job); 409 ``active_job`` with the job's id
+    while a proxy job is queued or running for the event, also when a concurrent request
+    inserted first; 404 for an id the events list does not show; 502 for an event folder or a
+    proxy cache that cannot be read (nothing is enqueued, and an unreadable state is never read
+    as ``absent`` or ``ready``); 503 when the job store is unreachable. The event's render jobs
+    are independent of it.
+    """
+    settings = _settings(request)
+    store: JobStore = request.app.state.job_store
+    try:
+        event_dir = events_read.listed_event_dir(settings, event_id)
+        clips = proxy_read.proxy_clips(event_dir)
+    except events_read.EventNotFoundError:
+        return not_found(
+            f"no event {event_id!r} under the configured project root", event_id=event_id
+        )
+    except LayoutError as exc:
+        return bad_gateway(f"event scan failed: {exc}")
+    except OSError as exc:
+        # The walk or the event folder: the kind the events list gives an unreadable folder.
+        failure = events_read.classify_event_failure(exc)
+        return bad_gateway(
+            f"event scan failed: {exc}",
+            event_id=event_id,
+            failure=failure.value if failure is not None else None,
+        )
+
+    project_root = str(settings.project_root)
+    active = store.active_job(project_root, event_id, kind=JobKind.PROXY)
+    if active is not None:
+        return _proxy_job_active(active.id, event_id)
+
+    try:
+        fresh = proxy_read.proxies_fresh(settings, event_dir, clips)
+    except (ConfigError, ProxyCacheError, ProxyError) as exc:
+        return bad_gateway(f"proxy state unreadable: {exc}")
+    if fresh:
+        # A raw response: the declared response_model is JobOut (see ``create_job``).
+        result = ProxiesFreshResult(event_id=event_id, status="fresh", clip_count=len(clips))
+        return JSONResponse(status_code=200, content=result.model_dump(mode="json"))
+
+    submission = store.submit(project_root, event_id, kind=JobKind.PROXY)
+    if not submission.created:
+        # A concurrent request inserted after the pre-check: the insertion decides.
+        return _proxy_job_active(submission.job_id, event_id)
+    job = store.get(submission.job_id)
+    assert job is not None  # nosec B101 - just inserted, must be readable
+    return job_to_out(job)
 
 
 @router.get(
