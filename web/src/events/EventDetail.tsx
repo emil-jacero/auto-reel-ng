@@ -594,10 +594,26 @@ function ReadyView({
   const focusWasInPlayer = useRef(false)
   focusWasInPlayer.current = playerHoldsFocus()
   // A re-read the page started itself keeps this view: a player whose clip is gone closes,
-  // and focus that was in it moves to the clip's row, else to the heading.
+  // and focus that was in it moves to the clip's row, else to the heading; a player whose
+  // clip was replaced is mounted anew and focus returns to it.
   useLayoutEffect(() => {
     const open = previews.open()
-    if (open === null || watchedAfterRead(open, event.chapters) !== null) {
+    if (open === null) {
+      return
+    }
+    if (watchedAfterRead(open, event.chapters) !== null) {
+      // A replaced file remounts the player (its key is the file's URL): the control that
+      // held focus is gone with the old element, so the new player's Play takes it, else
+      // its Close (a clip that failed has no Play).
+      if (focusWasInPlayer.current && !playerHoldsFocus()) {
+        const row = document.querySelector('.clip-preview-row')
+        row
+          ?.querySelector<HTMLElement>('.preview-play')
+          ?.focus({ preventScroll: true })
+        if (!playerHoldsFocus()) {
+          row?.querySelector<HTMLElement>('.preview-close')?.focus({ preventScroll: true })
+        }
+      }
       return
     }
     previews.hide(open)
