@@ -145,9 +145,13 @@ function overlaps(a: { in: number; out: number }, b: { in: number; out: number }
   return ms(a.in) < ms(b.out) && ms(b.in) < ms(a.out)
 }
 
-/** Whether a cut key names a cut read from `reel.yaml` (`r0`, `r1`…; `edit/draft.ts`). */
-function isRead(key: string): boolean {
-  return key.startsWith('r')
+/**
+ * Whether a cut is one read from `reel.yaml` (key `r0`, `r1`…; `edit/draft.ts`) and still
+ * has the times it was read with. A trimmed one (`edited`) no longer does: an overlap with
+ * it was not already in the file.
+ */
+function isAsRead(cut: { key: string; edited?: true }): boolean {
+  return cut.key.startsWith('r') && cut.edited !== true
 }
 
 /**
@@ -204,12 +208,13 @@ export type RestoreRefusal = {
 /**
  * An Undo checked as adding its cut would be: null when the removed cut `key`
  * shares no more than an instant with every other listed cut that is not removed.
- * Two cuts read from `reel.yaml` keep the spans they were read with, so an overlap
- * between them was already in the file: it never refuses an Undo, which only goes
- * back to what was read. Only a cut added since can.
+ * Two cuts read from `reel.yaml` that still have the spans they were read with: an overlap
+ * between them was already in the file, so it never refuses an Undo, which only goes
+ * back to what was read. A cut added since can refuse it, and so can a read cut that was
+ * trimmed (`edited`), whose new span may lie over the removed one.
  */
 export function checkRestore(
-  listed: readonly (ListedCut & { key: string })[],
+  listed: readonly (ListedCut & { key: string; edited?: true })[],
   key: string,
 ): RestoreRefusal | null {
   const at = listed.findIndex((cut) => cut.key === key)
@@ -221,7 +226,7 @@ export function checkRestore(
     (other, index) =>
       index !== at &&
       other.removed !== true &&
-      !(isRead(other.key) && isRead(cut.key)) &&
+      !(isAsRead(other) && isAsRead(cut)) &&
       overlaps(other, cut),
   )
   return clash === -1 ? null : { number: at + 1, clashNumber: clash + 1, clash: listed[clash] }
@@ -418,4 +423,123 @@ export function removedAddedWords(
 /** `Cut 1 of s1710003.mp4 is back.` */
 export function restoredWords(number: number, name: string): string {
   return `Cut ${number} of ${name} is back.`
+}
+
+// --- trimming a cut on the timeline ------------------------------------------------------
+
+/**
+ * A typed start or end of a cut that is already listed (the timeline's fields), checked as
+ * `checkCut` checks a new cut: the cut itself is marked removed in a copy of the list, so
+ * its own old span is never its own clash and the other cuts keep the panel's numbers.
+ * `field` is the one typed; `otherText` is the other field as shown. An edge the operator
+ * did not change keeps the cut's exact value (a time read as 3.2033333 is shown as
+ * 0:03.203, and typing in the other field must not move it).
+ */
+export function checkTrim(
+  listed: readonly ListedCut[],
+  index: number,
+  field: CutField,
+  typed: string,
+  otherText: string,
+  length?: number,
+): { ok: true; in: number; out: number } | { ok: false; refusal: CutRefusal } {
+  const own = listed[index]
+  const copy = listed.map((cut, at) => (at === index ? { ...cut, removed: true } : cut))
+  // A cut read past the clip's end is saved as read until its end is moved: typing a start
+  // beside that end is not a reason to refuse it, but the start still has to be in the clip.
+  const keepsPastEnd =
+    field === 'start' &&
+    length !== undefined &&
+    otherText.trim() === formatTime(own.out) &&
+    pastEnd(own, length)
+  const checked =
+    field === 'start'
+      ? checkCut(copy, typed, otherText, keepsPastEnd ? undefined : length)
+      : checkCut(copy, otherText, typed, length)
+  if (!checked.ok) {
+    return checked
+  }
+  if (keepsPastEnd && length !== undefined && ms(checked.in) >= ms(length)) {
+    return {
+      ok: false,
+      refusal: { kind: 'past-end', field: 'start', at: checked.in, length },
+    }
+  }
+  return {
+    ok: true,
+    in: field === 'end' && otherText.trim() === formatTime(own.in) ? own.in : checked.in,
+    out: field === 'start' && otherText.trim() === formatTime(own.out) ? own.out : checked.out,
+  }
+}
+
+/** Which edge a handle moves. */
+export type TrimEdge = 'in' | 'out'
+
+/** The keys of a trim handle, said once beside the track (`aria-describedby`). */
+export const TRIM_KEYS =
+  'Trim handle keys: Left and Right move one frame, Shift with Left or Right one second, ' +
+  'Page Up and Page Down five seconds, Home and End go to the lowest and highest time the ' +
+  'handle can take, Enter sets the edge at the playhead.'
+
+/** `Cut 1 start of s1710001.mp4`: the handle's name; `n` is the cut's number in its Cuts panel. */
+export function handleName(edge: TrimEdge, n: number, name: string): string {
+  return `Cut ${n} ${edge === 'in' ? 'start' : 'end'} of ${name}`
+}
+
+/**
+ * What a handle's value says: its time, then the cut's span, and when the cut runs past
+ * the clip's end, that: `0:01.5, the cut runs 0:01.5 to 0:03` (times in seconds).
+ */
+export function handleValueText(
+  seconds: number,
+  cut: { in: number; out: number },
+  clipLength?: number,
+): string {
+  const past = clipLength !== undefined && pastEnd(cut, clipLength)
+  return (
+    `${formatTime(seconds)}, the cut runs ${spanWords(cut)}` +
+    (past ? ', past the clip’s end' : '')
+  )
+}
+
+/** The selected cut's group: `Cut 1 of s1710001.mp4`. */
+export function selectedName(n: number, name: string): string {
+  return `Cut ${n} of ${name}`
+}
+
+/** A selected cut's field: `Start of cut 1 of s1710001.mp4`. */
+export function fieldName(field: CutField, n: number, name: string): string {
+  return `${field === 'start' ? 'Start' : 'End'} of cut ${n} of ${name}`
+}
+
+/** The group with no selected cut. */
+export const NO_SELECTED_CUT =
+  'No cut selected. Select a cut by its handle or its span to type its times.'
+
+/** The group while a save or a Move clips is pending. */
+export const UNAVAILABLE = 'Trimming is unavailable while a save or a move is pending.'
+
+/** Said when Enter is pressed on a handle and the playhead is in another clip. */
+export function NOT_IN_CLIP(name: string): string {
+  return `The playhead is not in ${name}.`
+}
+
+/**
+ * `Cut 1 of s1710001.mp4 now 0:01 to 0:03.5, snapped to the playhead. 2 cuts, 2.5 seconds
+ * cut out.` `snap` is what the edge snapped to, already in words (`Snapped to …`), if it did.
+ */
+export function trimmedWords(
+  n: number,
+  name: string,
+  cut: { in: number; out: number },
+  after: readonly ListedCut[],
+  snap?: string | null,
+): string {
+  const snapped = snap == null ? '' : `, ${snap.charAt(0).toLowerCase()}${snap.slice(1)}`
+  return `Cut ${n} of ${name} now ${spanWords(cut)}${snapped}. ${spokenSummary(after)}.`
+}
+
+/** Said when Enter could not put an edge at the playhead: `Cut 1 end of a.mp4 stopped at 0:04, the nearest it can go.` */
+export function stoppedWords(handle: string, seconds: number): string {
+  return `${handle} stopped at ${formatTime(seconds)}, the nearest it can go.`
 }
