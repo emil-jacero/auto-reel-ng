@@ -342,7 +342,8 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   preview; **analysis review built as overlays on that timeline** (approve black/white/freeze trims in place,
   not a separate screen); event poster frames; and, beside the proxy work, chapter times in the render
   manifest (built, change `render-chapter-times`; the chapter list for the movie player that will show
-  them is still open) and a movie version in the event detail. v2 starts with a
+  them is still open) and a movie version in the event detail (the read half is built: the detail's `movie`
+  carries the version and the chapter list, change `movie-facts-read`). v2 starts with a
   research step: §8.11 (proxies, the PCM-audio path) and the timeline library against D-8's dependency budget.
   Proxy generation is a job of its own kind (`proxy`) in the durable queue: the `jobs` table carries a `kind`
   (default `render`), the one-active-job guarantee is per (project, event, kind) so a render and a proxy job for
@@ -619,6 +620,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    routes stream a clip's proxy and filmstrip from the cache (an `api/` change; no render, fingerprint, schema or job change).
    `proxy-state-read` follows: the detail's per-clip `proxy` state and facts (D-21), a cache read with no render,
    fingerprint or WebSocket change.
+   `movie-facts-read` follows: the detail's `movie` (version and chapter times from the render manifest), a
+   manifest read with no render, fingerprint or WebSocket change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -826,7 +829,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   picture the browser cannot show (a legacy MPEG-4 movie plays its sound only). There are no custom controls or
   shortcuts, no captions and no chapter list: browsers expose no chapter times, and the player does not yet
   show the ones the render manifest now records (`chapters`, change `render-chapter-times`). A chapter list
-  for the player and a movie version in the event detail are v2 items beside the proxy work. A Refresh
+  for the player is a v2 item beside the proxy work; the chapter times and a movie version are now readable
+  from the event detail's `movie` (change `movie-facts-read`). A Refresh
   keeps the player (the same element, playing or paused, while the rest of the page reads; 2026-10-02,
   change `web-playback-and-notices`); Edit mode shows no movie, and entering it ends
   playback. (§4.10)

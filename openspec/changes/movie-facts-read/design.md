@@ -76,7 +76,7 @@ generated client types it `chapters?: … | null` and treats absent and null ali
 **Context**: `Rendered movie endpoint` already says a client SHALL be able to decide from the detail alone
 whether to offer a player; today it does that through the verdict. Two implementations of the same rule drift
 (this is why `movie_media` calls `rendered_output` rather than copying the gate).
-**Decision**: Extract the lookup's tail from `movie_media` into one function in `events_read.py`:
+**Decision**: Extract the lookup's tail from `movie_media` into one function in a new `api/movie_read.py` (`events_read.py` is at pylint's 1000-line limit; it imports from the new module):
 
 ```python
 def rendered_movie_path(settings: ApiSettings, event_dir: Path, metadata: EventMetadata) -> Optional[Path]:
@@ -85,8 +85,8 @@ def rendered_movie_path(settings: ApiSettings, event_dir: Path, metadata: EventM
     return movie if movie is not None and _inside(movie, settings.output_dir) else None
 ```
 
-`_inside` moves with it. `movie_media` calls it (and raises `MovieNotFoundError` on `None`, then `open_media`);
-`get_event` calls it with the resolved metadata `staleness_for` already derives. `staleness_for` is split so the
+`_inside` moves with it, and so does the one `expected_output(settings, metadata)` the verdict also calls. `movie_media` calls it (and raises `MovieNotFoundError` on `None`, then `open_media`);
+`get_event` calls `movie_facts` (same module), which calls it with the resolved metadata `staleness_for` already derives. `staleness_for` is split so the
 resolved document is built once (`_resolved_document(settings, event_dir, document)`), not twice, and the
 verdict, the lookup and the route use one `expected`. Existing movie-route tests pass unchanged; a new test
 asserts agreement for every event of the dev library (movie non-null iff `GET …/movie` answers 200).
