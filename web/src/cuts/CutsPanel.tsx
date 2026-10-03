@@ -9,6 +9,7 @@ import { ids } from '../edit/MetadataForm'
 import { ClipPreview, useClipLength, usePreviewOpen } from '../preview/ClipPreview'
 import { HIDE_PLAYER, WATCH, hideName, setWords, watchName } from '../preview/playback'
 import type { ClipPreviews } from '../preview/previews'
+import type { ClipProxy } from '../preview/source'
 import { Icon } from '../ui/Icon'
 import {
   CUT_HINT,
@@ -202,6 +203,7 @@ export const CutsPanel = memo(function CutsPanel({
   eventId,
   identity,
   mtime,
+  proxy,
   duration,
   name,
   cuts,
@@ -216,6 +218,8 @@ export const CutsPanel = memo(function CutsPanel({
   identity: string
   /** The clip's modification time as the detail gives it: its media address's `v`. */
   mtime: string | null
+  /** The clip's proxy as the detail gives it: which file the preview plays. */
+  proxy: ClipProxy | null
   /**
    * The clip's duration in seconds as the detail gives it (the thumbnail operation's number,
    * never probed by the service), or `null` when unknown: never zero.
@@ -444,6 +448,7 @@ export const CutsPanel = memo(function CutsPanel({
           id={previewId}
           eventId={eventId}
           clip={clip}
+          proxy={proxy}
           name={name}
           cuts={cuts}
           typed={typed}

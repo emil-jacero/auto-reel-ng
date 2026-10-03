@@ -22,14 +22,22 @@ export type ClipPreviews = {
   takeFocus(identity: string): boolean
   /** Changes on every `show`, so a mounted `ClipPreview` re-runs its focus effect. */
   showCount(): number
-  /** Closes `identity`'s preview if it is the open one, and forgets its kept playhead. */
+  /** Closes `identity`'s preview if it is the open one, and forgets its kept playhead and file choice. */
   hide(identity: string): void
-  /** Reset: no preview open, no playhead kept. Lengths stay: they are facts of files, not edits. */
+  /** Reset: no preview open, no playhead or file choice kept. Lengths stay: they are facts of files, not edits. */
   hideAll(): void
   subscribe(listener: () => void): () => void
   /** Where an open preview's playhead stood when its element unmounted (a move to another chapter). */
   playhead(identity: string): number | undefined
   keepPlayhead(identity: string, seconds: number | undefined): void
+  /**
+   * Whether the operator chose the original over the clip's preview copy (Play original),
+   * for `identity`'s open preview: kept across a remount as the playhead is, and forgotten
+   * with it by `hide`, `hideAll` and the `show` of another clip. Default false.
+   */
+  original(identity: string): boolean
+  /** Notifies subscribers only when the choice changes. */
+  setOriginal(identity: string, on: boolean): void
   /** A clip's length as this browser read it, by its media address (`v` = mtime: a new file, a new key). */
   length(src: string): number | undefined
   setLength(src: string, seconds: number): void
@@ -42,6 +50,8 @@ export function createClipPreviews(): ClipPreviews {
   let focusAsked = false
   let shows = 0
   const playheads = new Map<string, number>()
+  // The clips whose operator chose the original over a ready preview copy.
+  const originals = new Set<string>()
   const lengths = new Map<string, number>()
   const listeners = new Set<() => void>()
   const notify = () => {
@@ -54,6 +64,7 @@ export function createClipPreviews(): ClipPreviews {
     show(identity, opener) {
       if (current !== null && current !== identity) {
         playheads.delete(current)
+        originals.delete(current)
       }
       current = identity
       from = opener
@@ -72,6 +83,7 @@ export function createClipPreviews(): ClipPreviews {
     showCount: () => shows,
     hide(identity) {
       playheads.delete(identity)
+      originals.delete(identity)
       if (current !== identity) {
         return
       }
@@ -82,6 +94,7 @@ export function createClipPreviews(): ClipPreviews {
     },
     hideAll() {
       playheads.clear()
+      originals.clear()
       if (current === null) {
         return
       }
@@ -103,6 +116,18 @@ export function createClipPreviews(): ClipPreviews {
       } else {
         playheads.set(identity, seconds)
       }
+    },
+    original: (identity) => originals.has(identity),
+    setOriginal(identity, on) {
+      if (originals.has(identity) === on) {
+        return
+      }
+      if (on) {
+        originals.add(identity)
+      } else {
+        originals.delete(identity)
+      }
+      notify()
     },
     length: (src) => lengths.get(src),
     setLength(src, seconds) {
