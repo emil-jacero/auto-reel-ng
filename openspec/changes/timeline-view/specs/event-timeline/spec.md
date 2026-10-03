@@ -197,6 +197,10 @@ A proxy whose playing fails SHALL be said by cause, as the clip preview says it:
 - **WHEN** a scripted drag sweeps the playhead across one clip of each of the event's proxies in Chrome 154 and in Firefox 155 or newer
 - **THEN** the median number of distinct frames presented per second is at least 30 in each
 
+#### Scenario: The clips shrink under the playhead
+- **WHEN** the page reads the event again, quietly, and the clip the playhead is on is no longer shown (it is missing, excluded or ignored now)
+- **THEN** the Timeline stays on the page with the clips that remain, the playhead goes to the start, and nothing is blank or thrown
+
 #### Scenario: The proxy is gone
 - **WHEN** a proxy file is removed from the cache after the page read the event, and the playhead moves into that clip
 - **THEN** the Timeline says that this clip's proxy is no longer there and offers "Prepare proxies", while the track and the other clips keep working
@@ -225,7 +229,7 @@ From a key press to the new frame being presented, the 90th percentile over a ru
 
 ### Requirement: Play follows the playhead through the clips, skipping cuts
 
-A **Play** button (**Pause** while playing) SHALL play from the playhead. It SHALL play as the movie will: no frame that lies wholly inside a cut is shown, cuts are joined as the render joins them, and a cut that runs to the end of a clip, or ends within 0.1 s of the clip's length, ends playing of that clip at that cut's start (the rules of the clip preview, D-16). At the end of a clip it SHALL go on into the next clip's proxy; at the end of the timeline it SHALL stop with the playhead at the end. The proxy's sound (AAC) SHALL play, in Firefox as in Chrome, including for a clip whose source has PCM audio. The playhead SHALL follow the video while it plays, and the button's state SHALL be in its words ("Play", "Pause"), not in its icon alone. Moving the playhead while playing SHALL continue playing from the new place.
+A **Play** button (**Pause** while playing) SHALL play from the playhead. It SHALL play as the movie will: no frame that lies wholly inside a cut is shown, cuts are joined as the render joins them, and a cut that runs to the end of a clip, or ends within 0.1 s of the clip's length, ends playing of that clip at that cut's start (the rules of the clip preview, D-16). At the end of a clip it SHALL go on into the next clip's proxy; at the end of the timeline it SHALL stop with the playhead at the end. The proxy's sound (AAC) SHALL play, in Firefox as in Chrome, including for a clip whose source has PCM audio. The playhead SHALL follow the video while it plays, and the button's state SHALL be in its words ("Play", "Pause"), not in its icon alone. Moving the playhead while playing SHALL continue playing from the new place: a touch tap, a click and a drag on the track or the ruler are such moves, and none of them SHALL leave the Timeline paused. Play SHALL wait until the page's read of the cuts has answered, so that no frame inside a cut is shown for want of them (the button SHALL say, in words, that the cuts are being read); where the cuts could not be read, Play SHALL be available and the note that the cuts could not be read SHALL say that Play does not skip cuts.
 
 If the browser refuses to start playing without a gesture, or the proxy fails to play, the Timeline SHALL say so by cause in a note, as the clip preview does, and stay paused.
 
@@ -236,6 +240,18 @@ If the browser refuses to start playing without a gesture, or the proxy fails to
 #### Scenario: Play goes on into the next clip
 - **WHEN** the playhead plays to the end of the first of three clips
 - **THEN** the video loads the second clip's proxy and plays on from its first frame, and the playhead keeps moving through the whole timeline
+
+#### Scenario: A tap while playing goes on playing
+- **WHEN** the Timeline is playing and the operator taps (touch) or clicks (mouse, with no delay between press and release) the track at another place
+- **THEN** the playhead moves there, the button still says "Pause", and the video's time keeps advancing
+
+#### Scenario: Play waits for the cuts
+- **WHEN** the Timeline is open while the page's read of the cuts is still on its way and the operator presses Play or Space on the playhead
+- **THEN** nothing plays, the Timeline says that the cuts are being read, and Play works as soon as they have been read
+
+#### Scenario: The cuts could not be read
+- **WHEN** the read of the cuts failed and the operator presses Play
+- **THEN** it plays, and the note says that Play does not skip cuts
 
 #### Scenario: A Sony PCM clip has sound in Firefox
 - **WHEN** the Timeline plays a clip whose source is a Sony XAVC clip with PCM audio in Firefox 155 or newer

@@ -8,7 +8,7 @@ import { PLAYHEAD, TRACK_KEYS, playheadValueText } from './labels'
 import type { TrackClip } from './layout'
 import type { Layout } from './model'
 import { timeToPx } from './model'
-import { globalMs } from './position'
+import { clampPosition, globalMs } from './position'
 import type { Playhead as PlayheadStore } from './playhead'
 
 /**
@@ -38,7 +38,7 @@ export function PlayheadSlider({
   /** The pointer handlers of a scrub: the grip is dragged like the ruler. */
   grab: HTMLAttributes<HTMLDivElement>
 }) {
-  const at = useSyncExternalStore(playhead.subscribe, playhead.get)
+  const at = clampPosition(clips, useSyncExternalStore(playhead.subscribe, playhead.get))
   const clip = clips[at.clip]
   const now = globalMs(lay, at)
   return (
@@ -90,7 +90,7 @@ export function PlayheadReadout({
   clips: readonly TrackClip[]
   lay: Layout
 }) {
-  const at = useSyncExternalStore(playhead.subscribe, playhead.get)
+  const at = clampPosition(clips, useSyncExternalStore(playhead.subscribe, playhead.get))
   const clip = clips[at.clip]
   return (
     <p className="tl-readout">

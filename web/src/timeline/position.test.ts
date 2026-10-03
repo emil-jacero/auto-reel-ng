@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 
 import { layout } from './model.ts'
 import {
+  clampPosition,
   endPosition,
   globalMs,
   lastFrame,
@@ -125,6 +126,30 @@ describe('seekSeconds', () => {
         assert.ok(t >= n && t < n + 1, `fps ${fps} frame ${n}: ${t}`)
       }
     }
+  })
+})
+
+describe('clampPosition', () => {
+  const clips = [{ facts: A }, { facts: B }, { facts: C }]
+
+  it('leaves a position the clips still hold as it is', () => {
+    const p = { clip: 2, ms: 440 }
+    assert.equal(clampPosition(clips, p), p)
+    assert.deepEqual(clampPosition(clips, { clip: 1, ms: B.durationMs }), { clip: 1, ms: B.durationMs })
+  })
+
+  it('moves a position past the last clip to the start, where the playhead goes next', () => {
+    assert.deepEqual(clampPosition(clips.slice(0, 2), { clip: 2, ms: 300 }), startPosition())
+    assert.deepEqual(clampPosition(clips, { clip: 9, ms: 0 }), startPosition())
+    assert.deepEqual(clampPosition(clips, { clip: -1, ms: 0 }), startPosition())
+    assert.deepEqual(clampPosition([], { clip: 0, ms: 0 }), startPosition())
+  })
+
+  it('holds a time past a shortened clip to its end', () => {
+    assert.deepEqual(clampPosition([{ facts: { ...A, durationMs: 800 } }], { clip: 0, ms: 1960 }), {
+      clip: 0,
+      ms: 800,
+    })
   })
 })
 
