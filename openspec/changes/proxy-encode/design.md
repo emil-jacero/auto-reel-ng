@@ -213,6 +213,12 @@ no duration. The brief allows the reuse and forbids depending on it; this change
 **Why not the proxy's duration**: the research measured 21 ms gaps (Firefox 24.981 s against 24.960 s, 1080p50
 24.981 against 25.003 s); `duration` is the source's probed duration, which is also what cuts (D-14) refer to.
 
+**Which duration the verification compares**: the proxy's video stream against the source's *video stream* duration
+(`stream=duration` from the one extra ffprobe), not the container's. The container duration spans the longest stream
+from the earliest start, so a clip whose audio outruns its video by more than 50 ms, or whose video starts late
+(phone audio tracks, MPEG-TS/AVCHD), would fail a correct proxy. The container's duration is the fallback only when
+the source gives no stream duration. A late start is still not normalised.
+
 ### Cache layout, key and publish
 
 **Decision**:

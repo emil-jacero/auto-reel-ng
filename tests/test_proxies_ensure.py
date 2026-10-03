@@ -317,6 +317,26 @@ def test_a_hybrid_failure_is_redone_on_the_cpu_and_the_facts_say_so(
     assert env.builds() == []
 
 
+def test_the_proxy_video_is_checked_against_the_source_video_not_the_container(env: Env) -> None:
+    # audio outruns the video: the container (the probe's duration) is 25.2 s, the video 24.96 s
+    env.meta = make_meta(path=env.clip, duration=25.2)
+    env.runtime.source_probe["streams"][0]["duration"] = "24.960000"
+
+    entry = env.ensure()
+
+    assert entry.facts.encode_path == "cpu" and len(env.runtime.runs) == 1
+    assert entry.facts.duration == 25.2  # the facts keep the probed container duration
+
+
+def test_without_a_video_stream_duration_the_container_duration_is_the_expectation(
+    env: Env,
+) -> None:
+    env.meta = make_meta(path=env.clip, duration=25.2)  # no stream duration in the source probe
+
+    with pytest.raises(ProxyError, match=r"video duration check: found 24.960s, expected 25.200s"):
+        env.ensure()
+
+
 def test_a_hybrid_output_of_the_wrong_size_is_discarded_and_redone_on_the_cpu(env: Env) -> None:
     env.runtime.proxy_probes = [good_probe(width=540, height=960), good_probe()]
 
@@ -411,6 +431,28 @@ def test_progress_never_goes_back_after_a_retry_and_ends_at_one(env: Env) -> Non
     assert reported[-1] == 1.0
 
 
+def test_a_hybrid_exit_zero_that_fails_verification_does_not_pin_progress_at_one(env: Env) -> None:
+    reported: List[float] = []
+    env.runtime.proxy_probes = [good_probe(width=540, height=960), good_probe()]
+
+    def cpu_retry(runtime: FakeRuntime, args: List[str], progress: Any, cancel: Any) -> None:
+        for fraction in (0.25, 0.5, 0.75, 1.0):
+            progress(fraction)
+        write_output(runtime, args, None, cancel)
+
+    env.runtime.behaviours = [write_output, cpu_retry]  # the hybrid ends on 1.0, then fails
+
+    entry = env.ensure(profile=vaapi_profile(), on_progress=reported.append)
+
+    assert entry.facts.encode_path == "cpu"
+    assert all(b > a for a, b in zip(reported, reported[1:]))
+    assert reported[-1] == 1.0
+    hybrid_end = max(f for f in reported if f <= ensure_module._MonotonicProgress.ATTEMPT_CEILING)
+    assert hybrid_end < 1.0  # ffmpeg's 1.0 is not "published"
+    # the retry kept moving, in steps, before the proxy was published
+    assert len([f for f in reported if hybrid_end < f < 1.0]) >= 3
+
+
 def test_progress_ends_at_one_even_when_the_encode_reported_less(env: Env) -> None:
     reported: List[float] = []
     env.runtime.behaviours = [
@@ -476,6 +518,33 @@ def test_losing_the_rename_to_another_process_returns_the_winner(
     assert entry.proxy_path.read_bytes() == b"proxy bytes"
     assert env.builds() == []
     assert len(env.entries()) == 1
+
+
+def test_a_complete_entry_that_appears_after_the_first_look_is_not_removed(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    winner = env.ensure()
+    original = winner.proxy_path.read_bytes()
+    part = cache_module.new_part_dir(env.cache, winner.key)
+    shutil.copy(winner.proxy_path, part / "proxy.mp4")
+    shutil.copy(winner.facts_path, part / "facts.json")
+    (part / "proxy.mp4").write_bytes(b"the slower build")
+    real_read = cache_module.read_entry
+    looks: List[int] = []
+
+    def late(directory: Path) -> Any:
+        looks.append(1)
+        # the first look happens before the other process's rename: it sees nothing
+        return None if len(looks) == 1 else real_read(directory)
+
+    monkeypatch.setattr(cache_module, "read_entry", late)
+
+    entry = cache_module.publish(part, winner.directory)
+
+    assert entry.generated is False
+    assert entry.proxy_path.read_bytes() == original
+    assert not part.exists()
+    assert len(looks) >= 2
 
 
 def test_a_rename_error_that_is_not_a_lost_race_is_a_cache_error(

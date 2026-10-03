@@ -370,6 +370,64 @@ def test_a_12_frame_clip_publishes_with_one_keyframe(
     assert entry.facts.duration == pytest.approx(0.48, abs=0.01)
 
 
+def test_audio_that_outruns_the_video_still_gets_a_proxy(
+    runtime: FfmpegRuntime, tmp_path: Path, cache: Path
+) -> None:
+    clip = make(
+        runtime,
+        tmp_path / "long-audio.mp4",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=size=320x240:rate=25:duration=3",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:duration=3.2",
+        output_args=["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac"],
+    )
+    source = probe_json(runtime, clip)
+    (source_video,) = stream_of(source, "video")
+    assert float(source["format"]["duration"]) - float(source_video["duration"]) > 0.1  # the trap
+
+    entry = proxy_of(runtime, clip, cache)
+
+    (video,) = stream_of(probe_json(runtime, entry.proxy_path), "video")
+    assert float(video["duration"]) == pytest.approx(3.0, abs=0.05)
+    assert entry.facts.frames == 75
+    assert entry.facts.duration == pytest.approx(3.2, abs=0.05)  # the probed container duration
+
+
+def test_a_video_that_starts_late_still_gets_a_proxy(
+    runtime: FfmpegRuntime, tmp_path: Path, cache: Path
+) -> None:
+    clip = make(
+        runtime,
+        tmp_path / "late-video.mp4",
+        "-itsoffset",
+        "0.5",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=size=320x240:rate=25:duration=3",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:duration=3.5",
+        output_args=["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac"],
+    )
+    source = probe_json(runtime, clip)
+    (source_video,) = stream_of(source, "video")
+    assert float(source_video["start_time"]) == pytest.approx(0.5, abs=0.05)  # the trap
+    assert float(source["format"]["duration"]) - float(source_video["duration"]) > 0.1
+
+    entry = proxy_of(runtime, clip, cache)
+
+    (video,) = stream_of(probe_json(runtime, entry.proxy_path), "video")
+    assert float(video["duration"]) == pytest.approx(3.0, abs=0.05)
+    assert entry.facts.frames == 75
+
+
 def test_a_one_frame_clip_publishes(runtime: FfmpegRuntime, tmp_path: Path, cache: Path) -> None:
     clip = make(
         runtime,

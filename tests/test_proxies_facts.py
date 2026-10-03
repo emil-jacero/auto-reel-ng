@@ -212,6 +212,24 @@ def test_an_unknown_average_rate_leaves_vfr_null_not_false() -> None:
     assert facts.vfr is None
 
 
+def test_the_video_streams_own_duration_is_read() -> None:
+    document = _source_probe("25/1", "25/1")
+    document["streams"][0]["duration"] = "3.000000"
+    runtime = FakeRuntime(document)
+    facts = read_source_facts(Path("/x.mp4"), runtime, clip="x")  # type: ignore[arg-type]
+    assert facts.video_duration == 3.0
+    assert "stream=r_frame_rate,avg_frame_rate,nb_frames,duration" in runtime.calls[0]
+
+
+@pytest.mark.parametrize("duration", [None, "N/A", "garbage", "0.000000", "-1", "nan", "inf"])
+def test_a_video_duration_the_container_does_not_give_is_none(duration: Optional[str]) -> None:
+    document = _source_probe("25/1", "25/1")
+    if duration is not None:
+        document["streams"][0]["duration"] = duration
+    facts = read_source_facts(Path("/x.mp4"), FakeRuntime(document), clip="x")  # type: ignore[arg-type]
+    assert facts.video_duration is None
+
+
 def test_no_declared_frame_count_is_none() -> None:
     facts = read_source_facts(Path("/x.mp4"), FakeRuntime(_source_probe("25/1", "25/1", None)), clip="x")  # type: ignore[arg-type]
     assert facts.declared_frames is None
