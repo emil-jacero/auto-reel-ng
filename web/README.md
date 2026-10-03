@@ -190,7 +190,26 @@ which leaves Edit mode), an empty file, an unreadable one, a format this browser
 play (Download), or no answer (Try again). A preview writes nothing; a pending save or
 Move clips makes Set From / Set To unavailable but leaves playback alone; a clip moved
 within its chapter keeps playing, and one moved to another chapter reopens paused where it
-stood; Reset closes every preview. Verified in Chrome (channel `chrome`, the image
+stood; Reset closes every preview.
+
+**Which file plays** (GUI v2, **D-16**/**D-21**, `preview/source.ts`): the clip's **preview
+copy** when the event detail's `proxy` says `ready` with a usable `facts.duration`, else the
+original, with a line under the picture that says which plays and why when it is the
+detail's doing (out of date, could not be built, no usable length). The choice is made from
+the detail alone: a clip with no ready copy costs no request. The copy's address carries its
+entity tag as `v`, read with one `Range: bytes=0-0` request when the preview opens
+(`probeProxy`, D-15), because Chrome fails a replaced file at an address that served the old
+one. A ready copy adds the last control, **Play original** / **Play preview copy**: it
+swaps the file under the playhead (same media time, playing stays playing, focus stays on
+it, announced), the choice follows the clip to another chapter and is forgotten when the
+preview closes. The copy has AAC, so the Sony PCM clips have sound in Firefox: the no-sound
+note belongs to the original and, with a ready copy, points at Play preview copy. While the
+copy plays the clip's length is `facts.duration` (the original's, as probed), not the
+browser's reading of the copy, which is about 20 ms off and can be shorter. A copy that
+cannot play is told by cause (gone, unreadable, empty, refused, no answer), never as "changed
+on disk", with Play original beside Try again. Sound from a Sony PCM clip: the copy plays it
+in every browser; the original in Chrome and WebKit, not in Firefox. Verified in Chrome
+(channel `chrome`, the image
 `localhost/playback-research:chrome`) and Firefox; Playwright's own Chromium cannot decode
 H.264. A
 save bar says what changed, with one primary action: **Save**, or a failure's way
@@ -263,10 +282,11 @@ src/
 │   ├── jobs.ts           enqueue, one job, cancel: URLs, status codes; the jobs WebSocket URL
 │   ├── reel.ts           the editorial read and write: ETag in, If-Match out
 │   ├── movie.ts          the event's movie URL (typed from the schema) and its one-byte probe
-│   ├── headers.ts        Content-Range and Content-Disposition parsers (pure, no imports)
+│   ├── headers.ts        Content-Range, Content-Disposition and entity-tag parsers (pure, no imports)
 │   ├── probe.ts          one byte of a media route: the response-to-kind table the movie and a clip share
 │   ├── thumbnail.ts      a clip's thumbnail URL, typed from the schema; readFailedThumbnail reads why a failed one failed
-│   └── clipMedia.ts      a clip's media URL, and the one-byte read that says why it cannot play
+│   ├── clipMedia.ts      a clip's media and preview-copy URLs, the copy's one-byte probe, and the read that says why a clip cannot play
+│   └── clipMedia.test.ts the copy's address and probe (npm test)
 ├── edit/
 │   ├── EventEditor.tsx   Edit mode: the reel read, chapter edits, the save bar, saves and failures
 │   ├── ChapterDrag.tsx   the one drag context around every chapter: sensors, targets, the copy, words, focus
@@ -293,7 +313,10 @@ src/
 │   ├── labels.ts         words and looks for the movie's age and troubles, MediaError words
 │   └── movie.css         the section and its 16:9 frame
 ├── preview/
-│   ├── previews.ts       the editor's previews: one open, its opener, kept playheads, lengths (pure)
+│   ├── previews.ts       the editor's previews: one open, its opener, kept playheads, lengths, the original chosen over a copy (pure)
+│   ├── previews.test.ts  the override's life (npm test)
+│   ├── source.ts         which file plays (copy or original) and the words that say so (pure)
+│   ├── source.test.ts    the table and the words (npm test)
 │   ├── playback.ts       skip spans, where playback goes per frame, slider keys, the preview's words (pure)
 │   ├── ClipPreview.tsx   a clip's preview in its Cuts panel: the video, controls, cut bar, notes
 │   └── preview.css       the preview, the cut bar, and the thumbnail as a Watch button

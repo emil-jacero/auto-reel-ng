@@ -359,6 +359,9 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   stale | failed` and, when `ready`, its facts and `version`, from the cache entry, never a probe; the list stays
   without it. The timeline opens only for an event whose clips are all `ready`.
   The timeline is built in the repo (**D-20**); its pure model has landed (`timeline-model`, no UI yet).
+  **The clip preview plays the preview copy** when the detail says one is ready (`clip-preview-proxy`, D-16 and
+  D-21): the first user-visible Firefox fix, since the copy's AAC gives the Sony PCM clips sound there, with an
+  explicit Play original for the full file.
 - **v3:** nothing is planned for the GUI: the timeline editor moved to v2 on 2026-10-01, and dragging
   across chapters landed in v1 (D-13, `cross-chapter-drag`).
 
@@ -622,6 +625,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    fingerprint or WebSocket change.
    `movie-facts-read` follows: the detail's `movie` (version and chapter times from the render manifest), a
    manifest read with no render, fingerprint or WebSocket change.
+   `clip-preview-proxy` is the first change that plays a copy: the clip preview
+   (D-16) plays the proxy when it is ready, a web-only change with no render, fingerprint, schema or job change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -853,6 +858,22 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     longer, never shorter, so the check never refused a cut the render keeps in full.
   - **What stays v2.** Firefox plays PCM audio silently (52 % of the archive), and the preview says so. Proxies,
     the PCM audio path, scrubbing and drag-trim stay the v2 timeline editor's (§4.10, §8.11).
+  - **Amended 2026-10-03, change `clip-preview-proxy`: the preview plays the preview copy.** When the event
+    detail gives a clip's proxy as `ready` with a duration above zero in its facts, the preview plays the copy
+    (the proxy contract, D-21: 540p H.264 + AAC at the original's media time) from `…/proxy?clip=&v=<tag>`, the
+    tag read by one `Range: bytes=0-0` request when the preview opens (D-15); otherwise it plays the original
+    exactly as above, with a line under the picture saying which plays and why. **Play original** / **Play preview
+    copy**, a last control after Set To, swaps the file under the playhead (time kept, playing or paused kept,
+    announced); the choice follows the clip to another chapter and is forgotten when the preview closes.
+    Set From, Set To and Skip cuts act on the playhead of whichever file plays, since proxy time is source time.
+    **The length** while the copy plays is `facts.duration` (the original's, as the engine probed it), not the
+    browser's reading of the copy, which differs by about 20 ms and can be shorter (a 1080p50 copy read 24.981 s
+    for a 25.003 s source): the "never shorter" guarantee above holds for the copy too. The no-sound note belongs
+    to the original and, with a ready copy, points at Play preview copy. A copy that cannot play is told by cause
+    (gone, unreadable, empty, refused, no answer) and never as "changed on disk" (the copy's `Last-Modified` is the
+    copy's file), with Play original beside Try again; the page never switches by itself. **So "What stays v2"
+    no longer lists Firefox's silent preview for a clip with a ready copy:** the original still plays silently in
+    Firefox, which is why the copy is offered first. No request builds a copy (`proxy-enqueue-endpoint` is later).
 - **D-17 — A local compose stack for testing** (2026-10-02, change `compose-stack`; the first, local-only
   slice of §6 phase 11). `podman compose up -d` at the repo root brings up Postgres, the migration, a seed,
   `serve` and one `worker`.
