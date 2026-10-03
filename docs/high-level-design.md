@@ -373,6 +373,8 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   **The clip preview plays the preview copy** when the detail says one is ready (`clip-preview-proxy`, D-16 and
   D-21): the first user-visible Firefox fix, since the copy's AAC gives the Sony PCM clips sound there, with an
   explicit Play original for the full file.
+  **The clip's player works outside Edit mode** (`clip-play-read-view`, D-16): the event page's read view has a
+  Watch control on every clip on disk that opens the same player, read-only.
 - **v3:** nothing is planned for the GUI: the timeline editor moved to v2 on 2026-10-01, and dragging
   across chapters landed in v1 (D-13, `cross-chapter-drag`).
 
@@ -644,6 +646,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `proxy-enqueue-endpoint` has landed next: `POST /api/v1/events/{event_id}/proxies`, `kind` on the jobs shapes and the
    WebSocket frames, and per-kind independence over REST (an `api/` change; no render, fingerprint or schema change,
    and no `RENDER_GRAPH_VERSION` bump).
+   `clip-play-read-view` follows: the same player opens from the event page's read view, read-only, with
+   Watch on each clip (D-16), also web-only and with no render, fingerprint, schema or job change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -896,6 +900,15 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     copy's file), with Play original beside Try again; the page never switches by itself. **So "What stays v2"
     no longer lists Firefox's silent preview for a clip with a ready copy:** the original still plays silently in
     Firefox, which is why the copy is offered first. No request from the page builds a copy yet (`proxy-enqueue-endpoint` is the REST half; its first web caller is the timeline's Prepare state).
+  - **Amended 2026-10-03, change `clip-play-read-view`: the read view plays a clip too.** On the event page
+    outside Edit mode, every clip on disk has Watch / Hide player, which opens the same component in a row under
+    the clip's row, read-only: no Set From / Set To, the clip's cuts drawn on the bar as the page reads them,
+    Skip cuts as a view option, and "Press Refresh" in place of "stop editing" after a clip that is gone or
+    changed. One player is open at a time, and nothing is loaded before a press, on a 400-clip event too. Unlike
+    Edit mode, the read view also shows the Movie player (D-15), so a video that starts pauses another that plays
+    (`events/onePlayer.ts`; nothing is closed). A quiet re-read leaves an open player playing; a replaced clip
+    continues paused at the same time; a copy built meanwhile is used by the next open, not by the open player.
+    The thumbnail is not a Watch button here. The bare `<video>` is no longer a tab stop (Firefox made it one).
 - **D-17 — A local compose stack for testing** (2026-10-02, change `compose-stack`; the first, local-only
   slice of §6 phase 11). `podman compose up -d` at the repo root brings up Postgres, the migration, a seed,
   `serve` and one `worker`.

@@ -200,6 +200,27 @@ Move clips makes Set From / Set To unavailable but leaves playback alone; a clip
 within its chapter keeps playing, and one moved to another chapter reopens paused where it
 stood; Reset closes every preview.
 
+**Watch on the event page** (GUI v2, **D-16**, `events/ClipWatch.tsx`): outside Edit mode, every
+clip row whose file is on disk (any status but missing; an ignored or an excluded clip too)
+has the same **Watch** / **Hide player** control as the Cuts panel, under the clip's name and
+above its cuts indicator, named "Watch <name>". It opens the same preview component (not a
+fork) in a row of its own under the clip's row, as wide as the table and named "Player for
+<name>": the preview copy when one is ready, else the original, with Play original and the
+Firefox no-sound note exactly as above. One player is open at a time; Close and Escape return
+focus to the row's Watch; nothing loads (no `<video>`, no media, proxy or filmstrip request)
+until a Watch is pressed, on any number of clips. The player is **read-only**: it is given no
+`onSet`, so it has no Set From / Set To; the clip's cuts (the ones the page's cuts indicator
+already reads from `reel.yaml`; none for an excluded clip) are drawn on the bar, and **Skip
+cuts** stays as a view option for a clip that has one. A clip that is gone or changed on disk
+says "Press Refresh to read the event again, then watch the clip anew" (never "stop
+editing"). Its words are announced through the read view's own live region. A quiet re-read
+(a job ended) leaves an open player playing; a clip replaced on disk continues paused at the
+same time on its new file; a copy built meanwhile does not change the file under the
+operator; a clip that went missing closes its player and moves focus to its row (to the
+heading when no row is left). Refresh and Edit mode close it. The page also keeps **one video
+playing at a time** (`events/onePlayer.ts`): the Movie section's player and a clip's player
+can both exist here, and a video that starts pauses the one that plays (nothing is closed).
+
 **Which file plays** (GUI v2, **D-16**/**D-21**, `preview/source.ts`): the clip's **preview
 copy** when the event detail's `proxy` says `ready` with a usable `facts.duration`, else the
 original, with a line under the picture that says which plays and why when it is the
@@ -329,7 +350,8 @@ src/
 │   ├── source.ts         which file plays (copy or original) and the words that say so (pure)
 │   ├── source.test.ts    the table and the words (npm test)
 │   ├── playback.ts       skip spans, where playback goes per frame, slider keys, the preview's words (pure)
-│   ├── ClipPreview.tsx   a clip's preview in its Cuts panel: the video, controls, cut bar, notes
+│   ├── playback.test.ts  Edit mode's words byte for byte, the read-only advice, when Skip cuts is offered (npm test)
+│   ├── ClipPreview.tsx   a clip's preview, in the Cuts panel or (read-only) on the event page: the video, controls, cut bar, notes
 │   └── preview.css       the preview, the cut bar, and the thumbnail as a Watch button
 ├── jobs/
 │   ├── store.ts          the one jobs WebSocket: live jobs, reconnect + silence watchdog, endings (toasts, re-reads)
@@ -348,6 +370,9 @@ src/
     ├── EventList.tsx     the list: load/refresh, summary, filter, year panels
     ├── EventDetail.tsx   the event page: status, counts, clip panels, the Edit toggle and the needs-attention form
     ├── ClipThumb.tsx     a clip row's thumbnail: lazy, loading, "No preview", missing
+    ├── ClipWatch.tsx     the read view's Watch control, the player's row, and its live region
+    ├── watch.ts          which clips can be watched; what a re-read does to an open player (pure, + watch.test.ts)
+    ├── onePlayer.ts      one video plays at a time on the page: a started video pauses the others (+ onePlayer.test.ts)
     ├── list.css          the list's layout and column widths
     ├── detail.css        the event page's layout, render region and clip column properties
     ├── thumbs.css        the thumbnail's 16:9 box and its states
