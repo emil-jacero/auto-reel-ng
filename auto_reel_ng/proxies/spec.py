@@ -4,7 +4,7 @@ Every value here is a constant of the contract, not a setting (Principle VII): c
 one is a code change plus a bump of :data:`PROXY_VERSION`, and :func:`spec_digest` is a
 second guard, so a constant edited without a bump still re-keys every entry. The values
 are the ones the v2 proxy research measured; the B-frame count and the keyframe interval
-are the two that experiment E1 locked (``-bf 2``, one second).
+are the two that experiment E1 measured and the supervisor locked (``-bf 0``, half a second).
 
 Everything is pure except :func:`proxy_key`, which reads one ``stat``.
 """
@@ -20,7 +20,7 @@ from typing import Optional
 
 #: Bump whenever the encode arguments, the contract or the facts change their output for any
 #: input class: it re-keys every entry, and a proxy made under an older version is never
-#: read as current. 1: the first contract (``-bf 2``, one-second GOP, native AAC).
+#: read as current. 1: the first contract (no B-frames, half-second GOP, native AAC).
 PROXY_VERSION = 1
 
 #: The proxy's short side in pixels; a clip already at or below it keeps its display size.
@@ -29,11 +29,13 @@ PROXY_SHORT_SIDE = 540
 #: quarter of the CPU, measured).
 PROXY_CRF = 26
 PROXY_PRESET = "veryfast"
-#: Consecutive B-frames (E1: ``-bf 2`` is 0.83 of the ``-bf 0`` size and passes the seek,
-#: step, accuracy and sync gate in Chrome 154 and Firefox 155).
-PROXY_BFRAMES = 2
-#: Seconds between keyframes: ``round(seconds * fps)`` frames (E1: one second passes G1).
-PROXY_GOP_SECONDS = 1
+#: Consecutive B-frames. E1's only measured shape that clears the 30 fps scrub gate on every
+#: source in Chrome 154 and Firefox 155 is ``-bf 0`` with a half-second GOP (scrub 40.8 and
+#: 44.1 fps, step p90 about 30 ms, A/V 0 ms, about 46 GB for the archive); ``-bf 2`` with one
+#: second passes by about 1 fps and Panasonic 1080p50 stays below 30 on it (26.1 and 27.0).
+PROXY_BFRAMES = 0
+#: Seconds between keyframes: ``round(seconds * fps)`` frames (E1: half a second).
+PROXY_GOP_SECONDS = 0.5
 #: ffmpeg's native AAC encoder; never ``libfdk_aac`` (HLD D-1: a non-free encoder).
 PROXY_AUDIO_ENCODER = "aac"
 PROXY_AUDIO_BITRATE = "128k"
@@ -72,7 +74,10 @@ def spec_digest() -> str:
 
 
 def gop_frames(fps: float) -> int:
-    """The keyframe interval in frames for a clip of ``fps``: one second's worth, at least 1."""
+    """The keyframe interval in frames for a clip of ``fps``: half a second's worth, at least 1.
+
+    Python's ``round`` is used, as in the E1 harness, so 25 fps gives 12 (round half to even).
+    """
     return max(1, round(PROXY_GOP_SECONDS * fps))
 
 

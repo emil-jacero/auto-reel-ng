@@ -125,7 +125,7 @@ def encode_options(gop: int) -> list[str]:
         "-pix_fmt",
         "yuv420p",
         "-bf",
-        "2",
+        "0",
         "-g",
         str(gop),
         "-sc_threshold",
@@ -170,7 +170,7 @@ def test_golden_hybrid_arguments_for_the_sony_clip() -> None:
         HYBRID_FILTER,
         "-fps_mode",
         "passthrough",
-        *encode_options(25),
+        *encode_options(12),
         *AUDIO,
         *TAIL,
     ]
@@ -194,7 +194,7 @@ def test_golden_cpu_arguments_for_a_rotated_phone_clip() -> None:
         "scale=540:960:flags=bicubic,setsar=1",
         "-fps_mode",
         "passthrough",
-        *encode_options(30),
+        *encode_options(15),
         *AUDIO,
         *TAIL,
     ]
@@ -207,19 +207,19 @@ def test_the_cpu_arguments_never_rotate_by_hand() -> None:
 
 
 @pytest.mark.parametrize(
-    ("fps", "gop"), [(50.0, 50), (30000 / 1001, 30), (25.0, 25), (24000 / 1001, 24)]
+    ("fps", "gop"), [(50.0, 25), (30000 / 1001, 15), (25.0, 12), (24000 / 1001, 12)]
 )
-def test_the_keyframe_interval_is_a_second_of_frames(fps: float, gop: int) -> None:
+def test_the_keyframe_interval_is_half_a_second_of_frames(fps: float, gop: int) -> None:
     args = list(command(make_meta(fps=fps), CPUProfile()).args)
     assert args[args.index("-g") + 1] == str(gop)
     assert args[args.index("-sc_threshold") + 1] == "0"
-    assert args[args.index("-bf") + 1] == "2"
+    assert args[args.index("-bf") + 1] == "0"
 
 
-def test_a_sub_second_clip_keeps_a_whole_second_interval() -> None:
+def test_a_sub_second_clip_keeps_the_half_second_interval() -> None:
     meta = make_meta(duration=0.48, fps=25.0)  # 12 frames: one keyframe, at the start
     args = list(command(meta, CPUProfile()).args)
-    assert args[args.index("-g") + 1] == "25"
+    assert args[args.index("-g") + 1] == "12"
 
 
 def test_a_clip_without_audio_gets_no_audio_options() -> None:

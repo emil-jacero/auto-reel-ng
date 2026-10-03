@@ -2,8 +2,8 @@
 
 - [x] 1.1 Gate: E1 (`proxy-shape-recheck`) has run, and the starting point is clean. Check:
   - E1 locked **`gop_seconds` 1 and `bframes` 2** (gate G1 passed; report in the session scratchpad, not in
-    `experiments/`). The design's contract table, the spec's "at most two B-frames" sentence and scenario, the golden
-    arguments (`-bf 2`) and tasks 3.1 and 7.1 (`PROXY_BFRAMES = 2`, `has_b_frames` at most 2) were changed **before any
+    `experiments/`). The design's contract table, the spec's "no B-frames" sentence and scenario, the golden
+    arguments (`-bf 0`, `-g round(fps / 2)`) and tasks 3.1 and 7.1 (`PROXY_BFRAMES = 0`, `has_b_frames` 0) were changed **before any
     code**; record in this task that they were.
   - `test ! -e auto_reel_ng/proxies`
   - `git diff 8fb4d16 -- openspec/specs/headless-cli/spec.md` prints nothing. If the `auto-reel entry point with
@@ -18,7 +18,11 @@
   Recorded: E1's report is in the supervisor's session scratchpad, not in `experiments/` (no `experiments/*proxy-shape*`
   exists); its outcome was given with the task: gate G1 passed for all three shapes and the cheapest passing one is
   `-bf 2`, GOP one second. Applied before any code (design table, spec sentence and scenario, golden arguments,
-  tasks 3.1 and 7.1) and committed with the proposal. `test ! -e auto_reel_ng/proxies` held, `git diff 8fb4d16 --
+  tasks 3.1 and 7.1) and committed with the proposal. **Superseded after review:** the supervisor rejected that shape
+  (a margin of about 1 fps, and Panasonic 1080p50 below 30) and locked `-bf 0` with a half-second GOP, the one measured
+  shape that clears every source in both browsers; the values above, the spec, the design, the golden arguments, the
+  HLD D-21 and the README were changed to it in one extra commit, and `PROXY_VERSION` stays 1 (no proxy exists outside
+  test scratch). `test ! -e auto_reel_ng/proxies` held, `git diff 8fb4d16 --
   openspec/specs/headless-cli/spec.md` printed nothing, this is the only open change under `openspec/changes/` with a
   `headless-cli` delta, and the venv installs. The host `ffmpeg` is 8.1.2 and lists the native `aac` (and
   `libfdk_aac`, which the code never selects).
@@ -53,8 +57,8 @@
 ## 3. proxies/ — contract, geometry, key
 
 - [x] 3.1 Add `proxies/spec.py` (design "The contract", "Cache layout, key and publish"): `PROXY_VERSION = 1`, the
-  contract constants (`PROXY_SHORT_SIDE = 540`, `PROXY_CRF = 26`, `PROXY_PRESET = "veryfast"`, `PROXY_BFRAMES = 2`,
-  `PROXY_GOP_SECONDS = 1`, `PROXY_AUDIO_ENCODER = "aac"`, `PROXY_AUDIO_BITRATE = "128k"`, `PROXY_AUDIO_CHANNELS = 2`,
+  contract constants (`PROXY_SHORT_SIDE = 540`, `PROXY_CRF = 26`, `PROXY_PRESET = "veryfast"`, `PROXY_BFRAMES = 0`,
+  `PROXY_GOP_SECONDS = 0.5`, `PROXY_AUDIO_ENCODER = "aac"`, `PROXY_AUDIO_BITRATE = "128k"`, `PROXY_AUDIO_CHANNELS = 2`,
   the 50 ms `DURATION_TOLERANCE`), `spec_digest()` (a function, not a constant, so a patched constant changes it at once), `proxy_dimensions(width, height, sar,
   rotation) -> (w, h)` computed in exact fractions, `proxy_key(clip_path)` and `entry_dir(clip_path, cache_dir)`. Export
   them from `proxies/__init__.py`. Tests in a new `tests/test_proxies_spec.py`:
@@ -174,7 +178,7 @@
   CPU profile, with the clips from `make_clip` (synthetic, 1 to 2 s) unless stated. Each proxy's streams are read with
   `run_ffprobe`; the cache is under `tmp_path`:
   - **the contract:** a 1920x1080 25 fps H.264 + AAC clip gives one H.264 `High` `yuv420p` stream of 960x540 with
-    `has_b_frames` at most 2, a keyframe at every 25th packet (packet flags), `moov` before `mdat` (the first top-level boxes
+    `has_b_frames` 0, a keyframe at every 12th packet (packet flags), `moov` before `mdat` (the first top-level boxes
     read from the file), and one AAC stream with two channels; 1080x1920 gives 540x960; 640x360 stays 640x360
   - **rotation is upright:** a 1280x720 clip built from `color=red` and `color=green` halves side by side, given a
     display rotation of -90° the way `make_clip` does, gives a 540x960 proxy whose frame, read back with `-frames:v 1
@@ -208,7 +212,7 @@
   Recorded: the synthetic tests take 14 s, the ten samples (CPU path, and the hardware profile on this host) 81 s
   together, of which the 12.6-minute legacy MPEG-4 clip is 24 s (about 31 times real time on 16 cores); nothing under
   `auto-reel-media/` is newer than the marker. Every sample's video `start_time`, duration (within 50 ms) and frame
-  count equal the source's with `-bf 2`, so the E1 shape needed no special case. The rotated samples
+  count equal the source's with the first shape (`-bf 2`), so the E1 shape needed no special case. The rotated samples
   (`h264-720p-rotate90`, `hevc-mov-rotate90`) take the CPU path on the AMD profile and come out 540x960.
 
 ## 8. cli/ — `auto-reel proxies`
@@ -257,8 +261,8 @@
     - §6 phase 9: a proxy cache is built by `proxy-encode`
     - §8.11: the proxy research is resolved by D-21; the PCM remux, the prune and the sprite remain
   - `README.md`: add `auto-reel proxies <root> [--device D] [--jobs N]` to the CLI list; document `proxies.cache_dir`,
-    the default path, that it must lie outside the project root and the `input` directory, about 0.75 GB per footage
-    hour (about 40 GB for the whole archive) with no eviction, and the advice to set `cache_dir` when `serve` runs as
+    the default path, that it must lie outside the project root and the `input` directory, about 0.9 GB per footage
+    hour (about 46 GB for the whole archive) with no eviction, and the advice to set `cache_dir` when `serve` runs as
     another user or in a container
 
   Verify:
@@ -316,6 +320,14 @@
     camera clips alone are 1.05 GB per hour on the hybrid path (they are heavy clips). Research: 0.75 GB per hour at
     `-bf 0`; E1: `-bf 2` is 0.83 of that, so about 0.62. The hybrid path is not always smaller: the 4K50 clip is
     11.8 MB hybrid against 7.2 MB on the CPU path, the others within 12 %.
+  - Re-run after the shape change to `-bf 0` and a half-second GOP (same scratch library, fresh caches): hybrid 54.1 s,
+    exit 1 with the one `ERROR`, `10 generated (171.3 MB)`; a second run `0 generated`, `10 cached` in 2.2 s; `--device
+    cpu` 56.5 s, 162.7 MB (1.31 times the files of the first shape on this set; 0.64 GB per footage hour over the set, with
+    the 12.6-minute legacy clip 54 % of the bytes; the archive estimate is E1's, about 46 GB). A Sony proxy now has
+    `has_b_frames` 0 and keyframes at 0, 12, 24 ... (25 fps; 15 at 30 fps). Chrome 154.0.8037.92: `videoWidth` 960 for the
+    two Sony proxies, decoded audio peaks 0.219 and 0.048, the rotated phone proxy 540x960 with peak 0.75, the legacy MP3
+    clip 0.17; Firefox 155.0: `videoWidth` 960 / 540, `mozHasAudio` true, playback advanced 2.45 s. `find
+    auto-reel-media -newer marker` printed nothing.
   - Browsers (scratch Range server, Playwright from the scratch directory only): Chrome 154: `videoWidth` 960 for both
     Sony proxies (PCM sources, 1080p and 4K), decoded audio peak 0.219 and 0.048, first frame 26 and 32 ms, the MP3
     legacy clip 0.17, the rotated phone clip 540x960 with peak 0.76. Firefox 155.0: the same four files give

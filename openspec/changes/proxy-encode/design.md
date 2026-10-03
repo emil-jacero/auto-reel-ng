@@ -70,18 +70,24 @@ presets; 540p, 720p, 360p), `pcm-audio` (AAC from PCM in Firefox 155 and 157), s
 | Container | MP4, `-movflags +faststart` | 76 % of originals keep the index at the end; first frame 15 to 23 ms for proxies, 97 to 191 ms for originals |
 | Video | libx264 `veryfast`, CRF 26, `-profile:v high`, `-pix_fmt yuv420p` | `preset_medium` is the same size at 4x the CPU; `tune fastdecode` is +10 to 18 % size with no speed gain; +2 CRF is -30 % size and -0.017 SSIM |
 | Size | short side 540, never upscaled, even dimensions | 720p is +52 % disk for SSIM +0.004; 360p saves 1 % on the Sony class |
-| Keyframes | `-g round(fps) -sc_threshold 0`, **B-frames `-bf 2`** (locked by E1) | x264's default GOP (10 s) gives 108 to 428 ms steps and 8 to 11 fps scrub; 1 s gives 17 to 53 ms and 35 to 39 fps; E1 re-measured seek, step, accuracy and A/V sync with `-bf 2` on Chrome 154 and Firefox 155 (gate G1 passed) |
+| Keyframes | `-g round(fps / 2) -sc_threshold 0`, **B-frames `-bf 0`** (E1, locked by the supervisor) | x264's default GOP (10 s) gives 108 to 428 ms steps and 8 to 11 fps scrub; 1 s gives 17 to 53 ms and 35 to 39 fps; E1 re-measured seek, step, accuracy and A/V sync on Chrome 154 and Firefox 155, and `-bf 0` with a 0.5 s GOP is the one measured shape that clears 30 fps scrub on every source in both browsers (40.8 / 44.1 fps, step p90 about 30 ms, A/V 0 ms) |
 | Timestamps | `-fps_mode passthrough` | keeps VFR and proxy time = source time (0 ms deviation on 20 of 22 files, 20 ms on one VFR phone clip) |
 | Audio | `-c:a aac -b:a 128k -ac 2`, native encoder | 16.4 KB/s = 3.0 GB for 52 h; fixes Firefox for PCM (52 % of the archive), AC-3 and MP3 sources |
 | Fixed values, not settings | all of the above | Principle VII; changing one is a code change plus `PROXY_VERSION` |
 
-**E1 result (locked).** `proxy-shape-recheck` re-measured {`-bf 0`, 1 s}, {`-bf 2`, 1 s} and {`-bf 0`, 0.5 s} on
-Chrome 154 and Firefox 155, four real sources at 540p plus synthetic accuracy and A/V clips. Gate G1 passed for all
-three; the cheapest passing shape is **`-bf 2`, GOP one second** (file size 0.826 of the `-bf 0` baseline over the four
-sources, so the archive estimate falls from about 39 GB to about 32 GB). The two values stay two constants,
-`PROXY_BFRAMES = 2` and `PROXY_GOP_SECONDS = 1`, in one module; a future change to either is a change to this table, the
-golden arguments and the spec sentence, plus a `PROXY_VERSION` bump. E1's own caveats are kept as risks below: the
-scrub margin is about 1 fps, and the Panasonic 1080p50 class is under 30 fps per source.
+**E1 result (locked by the supervisor).** `proxy-shape-recheck` re-measured {`-bf 0`, 1 s}, {`-bf 2`, 1 s} and
+{`-bf 0`, 0.5 s} on Chrome 154 and Firefox 155, four real sources at 540p plus synthetic accuracy and A/V clips. Gate
+G1 passed for all three, and the cheapest passing shape was `-bf 2` with a one-second GOP (0.826 of the baseline's file
+size, about 32 GB for the archive). That shape was first implemented, and the supervisor's review sent it back: it
+clears the 30 fps scrub gate by only about 1 fps (31.0 Chrome, 31.1 Firefox), and Panasonic 1080p50 (about 24 % of the
+archive's footage) stays below 30 on both one-second shapes (`-bf 0`: 28.2 / 28.9; `-bf 2`: 26.1 / 27.0). The only
+measured shape that clears every source in both browsers is **`-bf 0`, GOP half a second**: scrub 40.8 / 44.1 fps (Chrome
+min 37.0, Firefox min 39.4), step p90 about 30 ms, A/V offset 0 ms, about 46 GB for the archive (+19 % over `-bf 2`,
+1 s), inside the 40 to 50 GB budget. `-bf 2` with 0.5 s was never measured and is not used. The two values stay two
+constants, `PROXY_BFRAMES = 0` and `PROXY_GOP_SECONDS = 0.5`, in one module; the keyframe interval is Python's
+`round(0.5 * fps)` frames, the formula the E1 harness used (25 fps gives 12, 50 fps gives 25, 29.97 fps gives 15). A
+future change to either value is a change to this table, the golden arguments and the spec sentence, plus a
+`PROXY_VERSION` bump. `PROXY_VERSION` stays 1 for this switch because no proxy exists outside test scratch.
 
 **Rationale**: every row is a measured choice or a house rule; none is tunable at run time, so a proxy's key can
 hold a digest of the contract and a proxy made under another contract can never be read as current.
@@ -127,7 +133,7 @@ Hybrid, `sony-xavc-1080p25-pcm.mp4` (1920x1080, 25 fps, PCM) on the AMD profile,
 -map 0:v:0
 -vf scale_vaapi=w=960:h=540:format=nv12,hwdownload,format=nv12,setsar=1
 -fps_mode passthrough
--c:v libx264 -preset veryfast -crf 26 -profile:v high -pix_fmt yuv420p -bf 2 -g 25 -sc_threshold 0
+-c:v libx264 -preset veryfast -crf 26 -profile:v high -pix_fmt yuv420p -bf 0 -g 12 -sc_threshold 0
 -map 0:a:0 -c:a aac -b:a 128k -ac 2
 -movflags +faststart
 /cache/.<key>.<unique>.part/proxy.mp4
@@ -145,7 +151,7 @@ CPU, a phone clip, `h264-720p-rotate90-aac.mp4` (1280x720, display rotation -90�
 -map 0:v:0
 -vf scale=540:960:flags=bicubic,setsar=1
 -fps_mode passthrough
--c:v libx264 -preset veryfast -crf 26 -profile:v high -pix_fmt yuv420p -bf 2 -g 30 -sc_threshold 0
+-c:v libx264 -preset veryfast -crf 26 -profile:v high -pix_fmt yuv420p -bf 0 -g 15 -sc_threshold 0
 -map 0:a:0 -c:a aac -b:a 128k -ac 2
 -movflags +faststart
 /cache/.<key>.<unique>.part/proxy.mp4
@@ -349,14 +355,13 @@ inputs are unchanged. `PROXY_VERSION` (starts at 1) is the proxy's own version: 
 
 ## Risks / Trade-offs
 
-- **E1's scrub margin is thin.** `-bf 2`, 1 s passes the 30 fps median-scrub gate by about 1 fps (31.0 Chrome, 31.1
-  Firefox), as the `-bf 0` baseline does; Panasonic 1080p50 is under 30 per source (26.1 Chrome, 27.0 Firefox). A 0.5 s
-  GOP clears 30 on every source at +19 % disk (about +13.6 GB). → The GOP is locked at one second by the gate's own
-  metric; `timeline-view` re-measures on the real timeline, and moving to 0.5 s is one constant plus a
-  `PROXY_VERSION` bump plus a regeneration (about 4 to 6 hours for the whole archive), never a migration.
-- **Seek, step and accuracy were never measured on other B-frame shapes.** → E1 measured the shipped shape; the
-  verification and the real-encode tests assert the stream really carries at most two B-frames and the keyframe
-  interval. A change after this change is archived is a `PROXY_VERSION` bump plus a regeneration
+- **The scrub margin is still modest on the heaviest footage.** `-bf 0` with a 0.5 s GOP clears 30 fps on every source
+  (Chrome min 37.0, Firefox min 39.4) at about +19 % disk over the shape first implemented. → Locked by the gate's
+  own metric; `timeline-view` re-measures on the real timeline, and any later change of the shape is one constant plus
+  a `PROXY_VERSION` bump plus a regeneration (about 4 to 6 hours for the whole archive), never a migration.
+- **Seek, step and accuracy were measured on one shape only.** → E1 measured the shipped shape (`-bf 0`, 0.5 s); the
+  real-encode tests assert the stream carries no B-frames and the keyframe interval. `-bf 2` with 0.5 s was never
+  measured and is not used. A change after this change is archived is a `PROXY_VERSION` bump plus a regeneration
   (about 4 to 6 hours for the whole archive), never a migration.
 - **The hybrid path is validated on one AMD VAAPI stack (Mesa) only: the research host's Radeon 860M.** Intel and NVIDIA
   take the CPU path (4 to 9 times the CPU), and the CPU path is the tested default: every encode test runs on it, and
@@ -377,7 +382,7 @@ inputs are unchanged. `PROXY_VERSION` (starts at 1) is the proxy's own version: 
   requirement; `clip-proxies` states the key's behaviour. → Noted for the archive step.
 - **I/O contention.** Proxy generation reads the USB library at 47 to 88 MB/s, as a render does. → `--jobs`
   defaults to 1; `proxy-job` owns running below render priority.
-- **Disk.** About 40 GB (range 22 to 79 GB across settings, 90 % interval 34 to 45 GB), planned at 50 GB because
+- **Disk.** About 46 GB at the locked shape (the research's 40 GB was at `-bf 0` with a one-second GOP; range 22 to 79 GB across settings), planned at 50 GB because
   per-clip variance is large. → Reported in the CLI summary; the cache is on the local disk by default; no eviction
   (D-11 never evicts either). A hard cap would be `proxy-prune`.
 - **Sample-based tests are slow.** The legacy MPEG-4 sample is 12.6 minutes; a CPU encode at about 11 times real

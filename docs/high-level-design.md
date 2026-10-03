@@ -920,20 +920,22 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   rebuildable file cache. The engine half is `auto_reel_ng/proxies/` and `auto-reel proxies <root>`.
   - **The contract** (all constants of the code, none a setting; changing one is a code change plus a
     `PROXY_VERSION` bump): MP4 with `+faststart`; one H.264 High `yuv420p` stream by libx264 `veryfast`, CRF 26;
-    square pixels with the display rotation applied; short side 540, never upscaled, both sides even; **two
-    B-frames (`-bf 2`) and a keyframe every `round(fps)` frames (one second), `-sc_threshold 0`**; `-fps_mode
+    square pixels with the display rotation applied; short side 540, never upscaled, both sides even; **no
+    B-frames (`-bf 0`) and a keyframe every `round(fps / 2)` frames (half a second), `-sc_threshold 0`**; `-fps_mode
     passthrough`, so a variable-frame-rate clip keeps its timestamps; one audio stream, **AAC-LC 128 kb/s
     stereo from ffmpeg's native `aac` encoder** (never `libfdk_aac`, the D-1 blocker; a test fails if it is ever
     named), from PCM, MP3, AC-3 5.1 or mono; a clip with no audio gets none. The editorial `rotate` is not baked
     in.
-  - **E1 (experiment `proxy-shape-recheck`) locked the two values the research left open.** On Chrome 154 and
-    Firefox 155, `-bf 2` with a one-second GOP passes gate G1 (median scrub of 30 frames per second, frame step,
-    60/60 exact seeks, A/V offset) and is 0.826 of the `-bf 0` file size over four real sources, so the archive
-    estimate falls from about 39 GB to about 32 GB. Two caveats are kept: the scrub margin is thin (31.0 and 31.1
-    frames per second against the gate of 30, and the `-bf 0` baseline passes by about the same), and Panasonic
-    1080p50 is below 30 per source (26.1 Chrome, 27.0 Firefox). A 0.5 s GOP clears 30 on every source at +19 %
-    disk (about +13.6 GB); it is one constant and a regeneration away if `timeline-view` finds the margin too
-    thin.
+  - **E1 (experiment `proxy-shape-recheck`) measured the two values the research left open; the supervisor locked
+    the shape.** On Chrome 154 and Firefox 155, gate G1 (median scrub of 30 frames per second, frame step, 60/60 exact
+    seeks, A/V offset) passes for all three shapes E1 measured, and the cheapest, `-bf 2` with a one-second GOP
+    (0.826 of the `-bf 0` file size over four real sources), was first implemented. It was rejected in review: it clears
+    the scrub gate by about 1 fps (31.0 Chrome, 31.1 Firefox) and Panasonic 1080p50 (about 24 % of the archive's
+    footage) stays below 30 on both one-second shapes (`-bf 0`: 28.2 / 28.9; `-bf 2`: 26.1 / 27.0). The only measured
+    shape that clears every source in both browsers is **`-bf 0` with a half-second GOP**: scrub 40.8 Chrome and 44.1
+    Firefox (minimum per source 37.0 and 39.4), frame step p90 about 30 ms, A/V offset 0 ms, at about +19 % disk over
+    `-bf 2` and one second, so about 46 GB for the archive. `-bf 2` with a half-second GOP was never measured and is
+    not used. Moving to another shape is one constant, a `PROXY_VERSION` bump and a regeneration.
   - **The encode ladder.** *Hybrid*: hardware decode, a verified hardware scale to the exact display size,
     `hwdownload`, then libx264 on the CPU, only for an unrotated, SDR, 8-bit H.264 or HEVC clip the selected
     profile decodes in hardware, on a frame context that has a row in the module's scale-filter table (one row,
@@ -970,11 +972,13 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     `persistence/` do not import `proxies/` (a test fails if they do), no proxy file, key or fact enters the
     fingerprint, an editorial edit never invalidates a proxy, and **`RENDER_GRAPH_VERSION` is not bumped**
     (rendered output is unchanged).
-  - **Cost** (measured on the ten sample clips, 959 s of footage, 16 cores, AMD VAAPI): 20.6 times real time on the
+  - **Cost** (measured on the ten sample clips, 959 s of footage, 16 cores, AMD VAAPI, with the first shape, `-bf 2` and
+    a one-second GOP; the locked shape took 54 s on the hybrid path and 57 s on the CPU path for the set, and its files
+    are 1.31 times as large, 171.3 MB against 130.7 MB hybrid): 20.6 times real time on the
     hybrid path and 17.7 on the CPU path for the whole set, and about 11 to 14 times for a Sony 1080p25 clip; the
     cache grew 0.47 to 0.49 GB per footage hour on that set (the 12.6-minute legacy MPEG-4 clip is 79 % of its
     seconds and small per second; the nine camera clips alone are about 1 GB per hour, and they are the heavy
-    ones). The research's estimate for the archive is 0.75 GB per hour at `-bf 0`, about 40 GB, planned at 50 GB;
+    ones). The archive at the locked shape is about 0.9 GB per footage hour, about 46 GB (the research measured 0.75 GB per hour, about 40 GB, at `-bf 0` with a one-second GOP), planned at 50 GB;
     **no cap and no eviction in v2**. The hybrid path is not always smaller: the 4K50 clip's hybrid proxy is 11.8 MB
     against 7.2 MB on the CPU path (the GPU scaler keeps more noise), the other samples are within 12 % of each other.
   - **Deliberately not here:** the filmstrip sprite and its sub-second rule (`filmstrip-sprites`); a job, progress
