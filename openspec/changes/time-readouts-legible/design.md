@@ -137,3 +137,8 @@ reload, a Refresh and a worker restart change nothing here.
 - **One more formatter next to `formatTime`.** Justified (Principle VII): the two have different jobs (parsed vs read)
   and different invariants (trailing zeros dropped vs fixed width); merging them with a flag would put an option bag
   in the module the cuts depend on.
+- **The slider's spoken value may carry more precision than the screen.** `aria-valuetext` keeps `formatTime` (the raw
+  value, trailing zeros dropped) while the visible readout floors to centiseconds: at 12.396 s the eye reads `0:12.39`
+  and the ear `0:12.396`. Padding is for eyes; the spoken value stays the more exact of the two.
+- **The trim tip is kept inside the track.** Near either end of the track the tip and its snap words would be cut by
+  the track's own edge, so they slide back inside it (together, as one box) while the handle itself stays put.
