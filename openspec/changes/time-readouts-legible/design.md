@@ -47,7 +47,7 @@ plays and while the playhead crosses clips.
 **Decision**:
 ```ts
 // web/src/clock.ts: pure, no imports
-export type ClockScale = { hourDigits: number; minuteDigits: number; decimals: 2 | 3 }
+export type ClockScale = { hourDigits: number; minuteDigits: number; decimals: 2 | 3; longestMs: number }
 export function clockScale(longestMs: number, decimals?: 2 | 3): ClockScale   // default 2
 export function clockChars(scale: ClockScale): number                          // width in ch
 export function formatClock(ms: number | null, scale: ClockScale): string
@@ -59,6 +59,7 @@ total), clamps it to `[0, longest]`'s display range, zero-pads minutes to `minut
 writes `decimals` fraction digits. `null` is the unknown length: dashes in the same places (`-:--.--`). A value that is
 negative or not finite throws a `RangeError` (Principle I: no invented time); callers pass the playhead store's clamped
 value, and the player turns an unreadable `currentTime` into `null` itself.
+`longestMs` is the longest value cut to the fraction's unit: `formatClock` clamps to it, which is how "a value above the longest is shown as the longest" holds. `clockCell(ms, scale)` returns `{text, ch}` for the screens that reserve the cell (`ui/Clock.tsx`, shared by the Timeline, the player and the trim tip, classes `clock-group`, `clock-key`, `clock-cell`).
 The Timeline builds three scales: **clip** from the longest clip in the event, **event** from `lay.totalMs`, **tip**
 from the clip's own duration with 3 decimals.
 **Rationale**: the scale depends on the clip set, not on the position, so it cannot change during playback. It changes
