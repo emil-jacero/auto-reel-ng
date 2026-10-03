@@ -12,6 +12,10 @@ import { FAILURE_LABEL, failureDetail, unansweredFailure } from '../events/label
 import { FAILURE_LOOK } from '../events/tones'
 import { Alert } from '../ui/Alert'
 import { Pill } from '../ui/Pill'
+import { ChapterList } from './ChapterList'
+import type { ChapterMark } from './chapters'
+import { movieFacts, movieVersionWords } from './facts'
+import type { MovieFacts } from './facts'
 import {
   CHANGED_DETAIL,
   MOVIE_AGE_LABEL,
@@ -72,7 +76,9 @@ type Gone = Exclude<MovieProbe, { kind: 'ok' }>
 type Shown =
   // the first probe of this mount is in flight: the player, with no address yet
   | { kind: 'probing' }
-  | { kind: 'file'; file: MovieFile }
+  // `facts`: the chapters and version of the event read the probe answered for, so the list
+  // never pairs a newer read's chapters with the player of the file that read replaces
+  | { kind: 'file'; file: MovieFile; facts: MovieFacts }
   // `announced`: found after Play (an alert), not by a read (a note)
   | { kind: 'gone'; gone: Gone; announced: boolean }
 
@@ -133,7 +139,7 @@ function MovieSection({
           if (shownVersion.current !== result.file.version) {
             focusNext.current = sectionHasFocus() ? 'video' : null
           }
-          setShown({ kind: 'file', file: result.file })
+          setShown({ kind: 'file', file: result.file, facts: movieFacts(event) })
         } else {
           focusNext.current = sectionHasFocus() ? 'note' : null
           setShown({ kind: 'gone', gone: result, announced: false })
@@ -197,6 +203,8 @@ function MovieSection({
             eventId={eventId}
             file={shown.kind === 'file' ? shown.file : null}
             age={age}
+            chapters={shown.kind === 'file' ? shown.facts.chapters : null}
+            movieVersion={shown.kind === 'file' ? shown.facts.version : null}
             poster={poster}
             headingId={headingId}
             playerRef={playerRef}
@@ -207,7 +215,12 @@ function MovieSection({
             }}
             onLoadNew={(file) => {
               focusNext.current = 'video'
-              setShown({ kind: 'file', file })
+              // The chapters and version stay those of the read the player was shown for.
+              setShown({
+                kind: 'file',
+                file,
+                facts: shown.kind === 'file' ? shown.facts : movieFacts(event),
+              })
             }}
             onRetry={() => {
               focusNext.current = 'video'
@@ -284,6 +297,8 @@ function MoviePlayer({
   eventId,
   file,
   age,
+  chapters,
+  movieVersion,
   poster,
   headingId,
   playerRef,
@@ -295,6 +310,10 @@ function MoviePlayer({
   eventId: string
   file: MovieFile | null
   age: MovieAge
+  /** The chapters the detail gives and the list may show; `null` for no list. */
+  chapters: ChapterMark[] | null
+  /** The detail's record time and fingerprint of the movie, when it gives them. */
+  movieVersion: MovieFacts['version']
   poster: string | undefined
   headingId: string
   playerRef: RefObject<HTMLDivElement | null>
@@ -348,6 +367,7 @@ function MoviePlayer({
   // Only what the probe's headers carried; a part it did not get is left out.
   const name = file?.name ?? null
   const size = file?.size == null ? null : formatBytes(file.size)
+  const version = file === null ? null : movieVersionWords(movieVersion)
   const download = src === undefined ? null : (
     <a className="btn btn-secondary" href={src} download>
       Download the movie
@@ -381,7 +401,25 @@ function MoviePlayer({
           {size}
         </p>
       )}
+      {version !== null && (
+        <p className="movie-facts">
+          {version.time !== null && (
+            <>
+              Recorded <time dateTime={version.time.dateTime}>{version.time.text}</time>
+            </>
+          )}
+          {version.time !== null && version.fingerprint !== null && ' · '}
+          {version.fingerprint !== null && (
+            <>
+              version <span className="movie-file">{version.fingerprint}</span>
+            </>
+          )}
+        </p>
+      )}
       {age === 'outdated' && <p className="movie-facts">{OUTDATED_NOTE}</p>}
+      {file !== null && chapters !== null && (
+        <ChapterList chapters={chapters} videoRef={videoRef} asRendered={age === 'outdated'} />
+      )}
       {/*
         A polite region that exists before its words do, so the warning is
         announced when it appears (as `jobs/announce.ts`); the visible note is

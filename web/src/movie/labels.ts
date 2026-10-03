@@ -77,3 +77,10 @@ export function mediaErrorWords(code: number, message: string): string {
       : `MediaError ${code}`
   return message.trim() === '' ? words : `${words}: ${message.trim()}`
 }
+
+/** The chapter list under the player (`ChapterList.tsx`). */
+export const CHAPTERS_HEADING = 'Chapters'
+/** Beside the heading of an outdated movie's list: the chapters are those the render recorded. */
+export const CHAPTERS_AS_RENDERED = 'As rendered'
+/** The mark on the row the player is in; the words carry it, the icon and fill repeat it. */
+export const CURRENT_CHAPTER = 'Current chapter'

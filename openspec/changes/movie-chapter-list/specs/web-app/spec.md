@@ -176,7 +176,8 @@ placeholder for one, and SHALL say nothing about it. The chapters are relied on 
 every start is a finite number of seconds of at least 0, the starts strictly increase, and every name is
 text that is either empty or not only spaces. The empty name is the event's default chapter as the render
 recorded it; the list writes it as the event page does ("Main" when another chapter is named, otherwise
-"Clips"), and never invents any other name. The list is the movie's chapters as rendered: an outdated movie lists the chapters it has,
+"Clips"), and never invents any other name. A movie of one chapter has nothing to jump between: the section SHALL show no
+list for it, as for no chapters (the usual event is one default chapter). The list is the movie's chapters as rendered: an outdated movie lists the chapters it has,
 and the section SHALL say so in words with the list ("As rendered"), not by color alone.
 
 **One row per chapter.** Each chapter SHALL be a row with a button as its only control. The row shows the chapter's
@@ -240,7 +241,11 @@ nothing clips.
 #### Scenario: The default chapter is written as the event page writes it
 - **WHEN** the operator opens an event whose detail gives the chapters "" at 0 s and "Dans" at 80 s
 - **THEN** the list shows "1 Main 0:00" and "2 Dans 1:20", and the first button is named "Jump to chapter 1, Main,
-  at 0:00"; an event whose only chapter is "" shows "1 Clips 0:00"
+  at 0:00"
+
+#### Scenario: One chapter, nothing to jump to
+- **WHEN** the operator opens an event whose detail gives the one chapter "" at 0 s
+- **THEN** the section shows its player and facts and no "Chapters" heading or list
 
 #### Scenario: No chapter data, no list
 - **WHEN** the operator opens `2024-07-14 - Kalas`, whose movie was rendered before chapter times were recorded, so

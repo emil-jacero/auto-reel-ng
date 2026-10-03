@@ -29,7 +29,13 @@ import {
   formatBytes,
   plural,
 } from './common'
-import { FAILURE_LABEL, PREVIEWS_UNAVAILABLE, failureDetail, unansweredFailure } from './labels'
+import {
+  FAILURE_LABEL,
+  PREVIEWS_UNAVAILABLE,
+  chapterHeading,
+  failureDetail,
+  unansweredFailure,
+} from './labels'
 import {
   movieOf,
   readingState,
@@ -577,7 +583,7 @@ function ReadyView({ eventId, event }: { eventId: string; event: EventDetailData
             key={chapter.name}
             eventId={eventId}
             chapter={chapter}
-            heading={chapter.name !== '' ? chapter.name : hasNamedChapter ? 'Main' : 'Clips'}
+            heading={chapterHeading(chapter.name, hasNamedChapter)}
             cuts={read.cuts}
           />
         ))

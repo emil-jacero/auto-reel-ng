@@ -131,3 +131,12 @@ export const PREVIEWS_UNAVAILABLE: NotePart[] = [
   { code: 'auto-reel thumbs' },
   ' on the server to see why.',
 ]
+
+/**
+ * A chapter's name as the event page and the movie's chapter list write it. The
+ * event's default chapter has the empty name (`reel.yaml` has none for it): "Main"
+ * when another chapter is named, otherwise "Clips". Any other name is returned as it is.
+ */
+export function chapterHeading(name: string, hasNamedChapter: boolean): string {
+  return name !== '' ? name : hasNamedChapter ? 'Main' : 'Clips'
+}

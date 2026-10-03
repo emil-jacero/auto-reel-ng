@@ -42,7 +42,15 @@ Play (`preload="none"`; the poster is the first played clip's thumbnail). The pl
 address carries the file's entity-tag, so a new render gets a new player. What it
 cannot play is said by cause (no file, unreadable, empty, no answer, no picture, a
 failed load or a browser error, a file changed while it played), with Try again, a
-download or the new movie to load. A Refresh keeps the player (the same `<video>`,
+download or the new movie to load. Its facts also say "Recorded {time} · version
+{fingerprint}" from the event detail's `movie`, and under them a **Chapters** jump list
+(`movie/ChapterList.tsx`) when `movie.chapters` gives two or more it can rely on
+(`movie/chapters.ts`: starts that strictly increase, no blank name; none is computed on
+the client, and a movie rendered before chapter times were recorded gets no list). A
+row's button seeks to the chapter's start and plays, also before the first Play; the
+current chapter is marked "Current chapter" (words and an icon, `aria-current`), follows
+the player's position and is never announced; an outdated movie's list says "As
+rendered". A Refresh keeps the player (the same `<video>`,
 playing or paused, while the rest of the page reads; its verdict and facts are hidden
 until the read answers); Edit mode stops playback. The list
 and the page read on open and on Refresh — no timer polling (job state arrives
@@ -310,8 +318,11 @@ src/
 │   └── cuts.css          the control, the panel and the event page's indicator
 ├── movie/
 │   ├── MoviePanel.tsx    the event page's Movie section: probe, player, troubles by cause
+│   ├── ChapterList.tsx   the chapter jump list under the player: jump, current mark (+ chapters.test.ts)
+│   ├── chapters.ts       which chapter times may be relied on, the current chapter, jump words (pure)
+│   ├── facts.ts          the detail's `movie`: listed chapters and version words (pure, + facts.test.ts)
 │   ├── labels.ts         words and looks for the movie's age and troubles, MediaError words
-│   └── movie.css         the section and its 16:9 frame
+│   └── movie.css         the section, its 16:9 frame and the chapter list
 ├── preview/
 │   ├── previews.ts       the editor's previews: one open, its opener, kept playheads, lengths, the original chosen over a copy (pure)
 │   ├── previews.test.ts  the override's life (npm test)

@@ -59,6 +59,106 @@
   }
 
   /*
+   * The chapter jump list (`ChapterList.tsx`). No `overflow` on any ancestor of a
+   * button (it would clip the focus ring) and no `transition` or `animation`: the
+   * mark moves at once, with or without a preference for reduced motion.
+   */
+  .movie-chapters {
+    display: grid;
+    gap: var(--s-2);
+  }
+
+  .movie-chapters-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--s-1) var(--s-3);
+  }
+
+  .movie-chapters h3 {
+    color: var(--fg);
+    font-size: var(--text-base);
+    font-weight: 600;
+  }
+
+  .movie-chapters-note {
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
+  .movie-chapters ol {
+    display: grid;
+    gap: var(--s-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .movie-chapters button {
+    display: grid;
+    grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: var(--s-2);
+    inline-size: 100%;
+    padding: var(--s-2) var(--s-3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    color: var(--fg);
+    font: inherit;
+    font-size: var(--text-base);
+    text-align: start;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--surface-hover);
+    }
+
+    &[aria-current='true'] {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+  }
+
+  .chapter-number,
+  .chapter-start {
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .chapter-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-2);
+    min-inline-size: 0;
+  }
+
+  .chapter-name {
+    overflow-wrap: anywhere;
+  }
+
+  .chapter-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    color: var(--info-fg);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    /* The icon must not make the marked row taller than the others: the rows below stay put. */
+    line-height: 1;
+    margin-block: -0.125rem;
+  }
+
+  /* A coarse pointer: a row is a 44 px target, and its rows stay clear of each other. */
+  @media (pointer: coarse) {
+    .movie-chapters button {
+      min-block-size: 2.75rem;
+      align-items: center;
+    }
+  }
+
+  /*
    * While the page reads the event again, the verdict, the file's name and size and the
    * outdated sentence are the earlier read's: hidden (not removed, so nothing below moves,
    * and out of the accessibility tree) until the read answers. The heading and the player stay.
