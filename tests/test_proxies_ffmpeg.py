@@ -561,7 +561,7 @@ def test_verification_catches_a_proxy_that_lost_its_audio(
     with pytest.raises(ProxyError, match=r"audio streams check: found 0, expected 1 \(cpu path\)"):
         proxy_of(runtime, clip, cache)
 
-    assert list(cache.iterdir()) == []
+    assert [p for p in cache.iterdir() if p.is_dir()] == []  # a failure leaves only its marker
 
 
 def test_a_zero_byte_clip_fails_and_a_good_clip_is_served_from_the_cache_the_second_time(
@@ -602,7 +602,7 @@ def test_a_garbage_clip_is_a_proxy_error(
     junk.write_bytes(b"this is not a video " * 50)
     with pytest.raises(ProxyError):
         proxy_of(runtime, junk, cache)
-    assert not cache.exists() or list(cache.iterdir()) == []
+    assert not cache.exists() or [p for p in cache.iterdir() if p.is_dir()] == []
 
 
 # --------------------------------------------------------------------------- #

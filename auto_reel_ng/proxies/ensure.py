@@ -34,6 +34,7 @@ from . import cache, spec
 from .cache import ProxyEntry
 from .command import EncodePath, ProxyCommand, build_proxy_command, plan_encode
 from .facts import SourceFacts, make_facts, read_source_facts, write_facts
+from .failure import record_failure
 from .settings import ProxySettings
 from .verify import ExpectedProxy, verify_proxy
 
@@ -79,7 +80,9 @@ def ensure_proxy(  # pylint: disable=too-many-arguments,too-many-locals
     hidden build directory, verifies the result, writes ``facts.json`` and renames the
     directory to the entry. ``on_progress`` receives a fraction of the clip's duration that
     never decreases, also across a CPU retry, and ends at 1.0; ``should_cancel`` is polled
-    while ffmpeg runs.
+    while ffmpeg runs. A :class:`ProxyError` after the clip was statted is also recorded in the
+    clip's failure marker ``<key>.fail`` (best effort, see :mod:`.failure`), which is how
+    :func:`~.state.read_proxy_state` can say ``failed``; a hit or a success removes nothing.
 
     Raises:
         ProxyError: the clip cannot be statted or probed, has no positive duration, or its
@@ -97,7 +100,38 @@ def ensure_proxy(  # pylint: disable=too-many-arguments,too-many-locals
     existing = cache.read_entry(cache_dir / key)
     if existing is not None:
         return existing
+    try:
+        return _make_entry(
+            clip_path,
+            key=key,
+            settings=settings,
+            runtime=runtime,
+            profile=profile,
+            render_node=render_node,
+            on_progress=on_progress,
+            should_cancel=should_cancel,
+        )
+    except ProxyError as exc:
+        # The clip's own failure is remembered under its key (a cache fault, a cancel and a
+        # filmstrip failure are not: they say nothing about this clip's proxy).
+        record_failure(cache_dir, key, clip_path, exc.reason)
+        raise
 
+
+def _make_entry(  # pylint: disable=too-many-arguments,too-many-locals
+    clip_path: Path,
+    *,
+    key: str,
+    settings: ProxySettings,
+    runtime: FfmpegRuntime,
+    profile: AccelProfile,
+    render_node: Optional[str],
+    on_progress: Optional[Callable[[float], None]],
+    should_cancel: Optional[Callable[[], bool]],
+) -> ProxyEntry:
+    """Probe, encode, verify and publish the entry for ``key``: the miss path of ``ensure_proxy``."""
+    cache_dir = Path(settings.cache_dir)
+    clip = str(clip_path)
     # The resolved, absolute path: a relative ``file:x.mp4`` would be read as a protocol.
     source = clip_path.resolve()
     bounded = runtime.with_timeout(spec.PROXY_PROBE_TIMEOUT_S)

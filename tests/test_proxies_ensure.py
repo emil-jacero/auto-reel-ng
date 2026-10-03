@@ -159,11 +159,15 @@ class Env:
         return sorted(self.cache.glob(".*.part")) if self.cache.exists() else []
 
     def entries(self) -> List[Path]:
+        """The entry directories (a ``<key>.fail`` marker is a file, and hidden names are builds)."""
         return (
-            sorted(p for p in self.cache.iterdir() if not p.name.startswith("."))
+            sorted(p for p in self.cache.iterdir() if p.is_dir() and not p.name.startswith("."))
             if self.cache.exists()
             else []
         )
+
+    def markers(self) -> List[Path]:
+        return sorted(self.cache.glob("*.fail")) if self.cache.exists() else []
 
 
 @pytest.fixture

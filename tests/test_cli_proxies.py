@@ -913,8 +913,10 @@ def test_proxies_end_to_end_over_a_read_only_library(
         assert (
             "2024-08-20 - Två kapitel - Tjörn: 1 clip, 1 cached; filmstrips: 1 cached"
         ) in out.splitlines()
-        entries = sorted(p for p in cache_dir.iterdir() if not p.name.startswith("."))
+        entries = sorted(p for p in cache_dir.iterdir() if p.is_dir() and p.name[0] != ".")
         assert len(entries) == 2  # one per distinct clip
+        # The empty clip left its failure marker in the cache, and nothing under the library.
+        assert len(list(cache_dir.glob("*.fail"))) == 1
         for entry in entries:
             assert sorted(p.name for p in entry.iterdir()) == [
                 "facts.json",
