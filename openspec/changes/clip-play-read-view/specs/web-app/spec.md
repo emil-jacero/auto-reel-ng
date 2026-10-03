@@ -229,7 +229,8 @@ counts or its verdict ("Reading a screen never changes state").
 ### Requirement: The event page plays one video at a time
 
 On the event page, when a video starts to play while another video of the page is playing, the other SHALL be
-paused where it is. This SHALL hold between a clip's player and the Movie section's player in either order. Neither
+paused where it is. This SHALL hold between a clip's player and the Movie section's player in either order, however the video was started,
+a jump in the Movie section's chapter list included. Neither
 video SHALL be closed, replaced, restarted or seeked by it, no word SHALL be announced for it, and pausing SHALL be
 the only thing the page does: the video that was paused SHALL stay available and play on from its position when its
 own Play is pressed. A video that Skip cuts seeks, or that plays on after a seek, SHALL NOT count as starting.
@@ -244,6 +245,11 @@ own Play is pressed. A video that Skip cuts seeks, or that plays on after a seek
   player
 - **THEN** the clip's player is paused at `0:03.2`, stays open, and plays on from `0:03.2` when its Play is pressed,
   which pauses the movie
+
+#### Scenario: A chapter jump starts the movie while a clip plays
+- **WHEN** the player of `s1710001.mp4` plays at `0:03.2` and the operator presses the second chapter in the Movie
+  section's chapter list
+- **THEN** the movie plays from that chapter, the clip's player is paused at `0:03.2` and stays open
 
 #### Scenario: Two clips never play together
 - **WHEN** the player of `s1710001.mp4` plays and the operator presses Watch on `s1710002.mp4` and then Play
