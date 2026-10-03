@@ -38,6 +38,10 @@ from ..thumbs import (
     thumbnail_path,
 )
 from .context import project_context
+from .printing import emit as _emit
+from .printing import os_reason as _os_reason
+from .printing import plural as _plural
+from .printing import printable as _printable
 
 logger = logging.getLogger(__name__)
 
@@ -167,29 +171,3 @@ def _thumbs_event(
     return _EventThumbs(
         clips=len(identities), generated=generated, cached=cached, failed=len(errors)
     )
-
-
-def _emit(line: str) -> None:
-    """Print ``line`` made printable (see :func:`_printable`)."""
-    print(_printable(line))
-
-
-def _printable(text: str) -> str:
-    """``text`` with any byte of a non-UTF-8 file name shown as ``\\xNN``.
-
-    Such names reach Python as surrogate escapes, which a UTF-8 stdout refuses.
-    """
-    try:
-        return text.encode("utf-8", "surrogateescape").decode("utf-8", "backslashreplace")
-    except UnicodeEncodeError:  # a surrogate that no file name produced
-        return text.encode("utf-8", "backslashreplace").decode("utf-8")
-
-
-def _os_reason(exc: OSError) -> str:
-    """An ``OSError``'s cause without the path it repeats; the ERROR line names it."""
-    return exc.strerror or str(exc)
-
-
-def _plural(count: int, noun: str) -> str:
-    """``1 clip`` / ``2 clips``."""
-    return f"{count} {noun}{'' if count == 1 else 's'}"

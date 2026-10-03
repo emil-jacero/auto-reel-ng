@@ -5,8 +5,9 @@ ingest ``layout`` name, default ``input``/``output`` paths, the clip ``sort`` ru
 (:class:`~auto_reel_ng.reel.document.ClipOrder`), a ``database.url``
 override consumed by :mod:`auto_reel_ng.persistence.config`, a ``worker`` map
 consumed by :mod:`auto_reel_ng.scheduler.config`, an ``api`` map consumed by
-:mod:`auto_reel_ng.api.settings`, and a ``thumbnails`` map consumed by
-:mod:`auto_reel_ng.thumbs.settings`. Every field is optional: a
+:mod:`auto_reel_ng.api.settings`, a ``thumbnails`` map consumed by
+:mod:`auto_reel_ng.thumbs.settings`, and a ``proxies`` map consumed by
+:mod:`auto_reel_ng.proxies.settings`. Every field is optional: a
 missing file yields all-defaults (tolerated), while malformed YAML or a
 wrong-typed field fails loud (engine convention). The loader raises only
 :class:`ConfigError` for file content: a failure of the YAML load itself, a string that cannot be
@@ -64,6 +65,9 @@ class ProjectConfig:
     #: The clip thumbnails' ``thumbnails.*`` settings (opaque, like ``worker``); see
     #: :func:`auto_reel_ng.thumbs.settings.resolve_thumbnail_settings`.
     thumbnails: Mapping[str, object] = field(default_factory=dict)
+    #: The clip proxies' ``proxies.*`` settings (opaque, like ``thumbnails``); see
+    #: :func:`auto_reel_ng.proxies.settings.resolve_proxy_settings`.
+    proxies: Mapping[str, object] = field(default_factory=dict)
     #: The order clips enter a document in (seeding and NEW-clip adoption).
     sort: ClipOrder = DEFAULT_CLIP_ORDER
 
@@ -116,6 +120,7 @@ def loads_project_config(text: str, *, source: str = "<string>") -> ProjectConfi
         worker=dict(_require_mapping(data.get("worker"), "worker", source)),
         api=dict(_require_mapping(data.get("api"), "api", source)),
         thumbnails=dict(_require_mapping(data.get("thumbnails"), "thumbnails", source)),
+        proxies=dict(_require_mapping(data.get("proxies"), "proxies", source)),
         sort=_parse_sort(_require_mapping(data.get("sort"), "sort", source), source),
     )
 

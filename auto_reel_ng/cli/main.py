@@ -1,13 +1,13 @@
 """The ``auto-reel`` argument parser and entry point (HLD §4.11).
 
-Exposes eleven subcommands — ``render``, ``scan``/``list``, ``analyze``, ``import``,
+Exposes twelve subcommands — ``render``, ``scan``/``list``, ``analyze``, ``import``,
 ``enqueue``, ``worker``, ``jobs`` (``list``/``show``/``cancel``), ``serve``,
-``adopt-renders``, ``thumbs``, and ``prune-renamed``. The scan/render family shares the
-project options (project root, ``--output``, ``--years``, ``--layout``, ``--verbose``;
-``thumbs`` takes no ``--output``); flags such as ``--dry-run``, ``--force``, ``--device`` and
-``--jobs`` are added per subcommand. Unknown subcommands and bad arguments exit
-non-zero with usage (argparse); engine errors are caught at the top and reported on
-stderr with a non-zero exit.
+``adopt-renders``, ``thumbs``, ``proxies``, and ``prune-renamed``. The scan/render family
+shares the project options (project root, ``--output``, ``--years``, ``--layout``,
+``--verbose``; ``thumbs`` and ``proxies`` take no ``--output``); flags such as ``--dry-run``,
+``--force``, ``--device`` and ``--jobs`` are added per subcommand. Unknown subcommands and
+bad arguments exit non-zero with usage (argparse); engine errors are caught at the top and
+reported on stderr with a non-zero exit.
 
 ``render`` and ``enqueue`` gate every event through the staleness gate
 (change-detection, §8.14): only stale events render/enqueue unless ``--force``.
@@ -38,6 +38,7 @@ from .commands import (
     cmd_serve,
     cmd_worker,
 )
+from .proxies import cmd_proxies
 from .prune import cmd_prune_renamed
 from .thumbnails import cmd_thumbs
 
@@ -48,7 +49,7 @@ def _parse_years(value: str) -> Tuple[str, ...]:
 
 
 def _positive_int(value: str) -> int:
-    """Parse a positive integer argument (``thumbs --jobs``); argparse reports the rest."""
+    """Parse a positive integer argument (``--jobs``); argparse reports the rest."""
     try:
         number = int(value)
     except ValueError as exc:
@@ -83,7 +84,7 @@ def _add_common_args(parser: argparse.ArgumentParser, *, output: bool = True) ->
     """Add the shared project options every scan/render-family subcommand accepts (3.3).
 
     ``output=False`` leaves out ``-o``/``--output`` for a subcommand that writes no
-    movie (``thumbs``); it then sets ``output=None`` itself.
+    movie (``thumbs``, ``proxies``); it then sets ``output=None`` itself.
     """
     parser.add_argument(
         "root",
@@ -135,8 +136,45 @@ def _add_prune_renamed(subparsers: "argparse._SubParsersAction[argparse.Argument
     prune.set_defaults(func=cmd_prune_renamed)
 
 
+def _add_thumbs(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register ``thumbs`` (project options without ``--output``, plus ``--jobs``)."""
+    thumbs = subparsers.add_parser(
+        "thumbs",
+        help="generate missing clip thumbnails into the cache; never writes the library",
+    )
+    _add_common_args(thumbs, output=False)
+    thumbs.add_argument(
+        "--jobs",
+        type=_positive_int,
+        default=2,
+        help="max concurrent extractions (default: 2; lower it for a slow drive)",
+    )
+    thumbs.set_defaults(output=None, func=cmd_thumbs)
+
+
+def _add_proxies(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register ``proxies`` (project options without ``--output``, plus ``--device``/``--jobs``)."""
+    proxies = subparsers.add_parser(
+        "proxies",
+        help="generate missing clip proxies into the cache; never writes the library",
+    )
+    _add_common_args(proxies, output=False)
+    proxies.add_argument(
+        "--device",
+        default=None,
+        help="acceleration override: a vendor (amd/nvidia/intel/cpu) or a device id",
+    )
+    proxies.add_argument(
+        "--jobs",
+        type=_positive_int,
+        default=1,
+        help="max concurrent encodes (default: 1; each uses several cores)",
+    )
+    proxies.set_defaults(output=None, func=cmd_proxies)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    """Build the ``auto-reel`` argument parser with its eleven subcommands."""
+    """Build the ``auto-reel`` argument parser with its twelve subcommands."""
     parser = argparse.ArgumentParser(
         prog="auto-reel",
         description="Merge per-event clips into one movie per event, headless.",
@@ -288,18 +326,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     adopt_renders.set_defaults(func=cmd_adopt_renders)
 
-    thumbs = subparsers.add_parser(
-        "thumbs",
-        help="generate missing clip thumbnails into the cache; never writes the library",
-    )
-    _add_common_args(thumbs, output=False)
-    thumbs.add_argument(
-        "--jobs",
-        type=_positive_int,
-        default=2,
-        help="max concurrent extractions (default: 2; lower it for a slow drive)",
-    )
-    thumbs.set_defaults(output=None, func=cmd_thumbs)
+    _add_thumbs(subparsers)
+
+    _add_proxies(subparsers)
 
     _add_prune_renamed(subparsers)
 

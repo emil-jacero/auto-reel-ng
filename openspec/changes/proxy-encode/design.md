@@ -111,7 +111,7 @@ def build_proxy_command(
 ```
 
 `plan_encode` returns `HYBRID` only when **all** hold: `profile.can_hw_decode(clip.video_codec, clip.pix_fmt)`;
-`clip.video_codec in {"h264", "hevc"}`; `clip.rotation` is `None` or `0`; `not clip.is_hdr`; and the profile's DECODE
+`clip.video_codec in {"h264", "hevc"}` and the pixel format is a known 8-bit one (a 10-bit HEVC clip is not measured); `clip.rotation` is `None` or `0`; `not clip.is_hdr`; and the profile's DECODE
 fragment leaves frames in a location that has a verified scale filter in a table the module owns
 (`{FrameLocation.VAAPI: "scale_vaapi=w={w}:h={h}:format=nv12"}`). Everything else is `CPU`. No vendor name appears:
 the location of the decode fragment's frames is the capability. A new vendor's hybrid path is one table row, added
@@ -227,7 +227,7 @@ no duration. The brief allows the reuse and forbids depending on it; this change
 ```
 
 `proxy_key(clip_path) -> str` is the SHA-256 of `json.dumps([resolved.name, st_size, st_mtime_ns, PROXY_VERSION,
-SPEC_DIGEST])` (ASCII-safe, as D-11). `SPEC_DIGEST` is the SHA-256 of the canonical JSON of the contract's values
+spec_digest()])` (ASCII-safe, as D-11). `spec_digest()` is a function, not a constant, so a monkeypatched or edited constant changes it at once; it is the SHA-256 of the canonical JSON of the contract's values
 (short side, CRF, preset, GOP seconds, B-frames, audio bitrate, channels). It is a second guard: a contract constant
 edited without a version bump still re-keys. The encode path is **not** hashed, so a laptop reuses a workstation's
 proxy.
@@ -284,7 +284,7 @@ hit; (3) create the cache directory (`ProxyCacheError`) and sweep once; (4) `pro
 `build_proxy_command`, run with `stall_timeout=PROXY_STALL_TIMEOUT_S` (600) and the caller's `should_cancel`,
 progress through a wrapper that never reports a lower fraction than before; (7) on a hybrid failure, steps 6 again
 on `CPU`; (8) `verify_proxy`; (9) write facts, publish. The function takes the runtime and profile as arguments, and
-it neither prints nor imports `api/`, `persistence/` or `scheduler/`; `proxy-job` wraps it and maps
+it neither prints nor imports `api/`, `persistence/` or `scheduler/` (`ProxyEntry` and the cache helpers live in `proxies/cache.py`, `ensure_proxy` and `lookup_proxy` in `proxies/ensure.py`); `proxy-job` wraps it and maps
 `FfmpegCancelledError` to a canceled job.
 
 `lookup_proxy` reads and parses `facts.json` only; a missing or unparseable file is "absent", never a default.
@@ -320,7 +320,7 @@ does not write it.
 
 ### No fingerprint or render impact
 
-Proxies are written beside renders, never into one. `staleness/`, `render/` and `scheduler/` do not import
+Proxies are written beside renders, never into one. `staleness/`, `render/` and `persistence/` do not import
 `proxies/`, and a test fails if they ever do (task 6.1). `RENDER_GRAPH_VERSION` is unchanged and the fingerprint
 inputs are unchanged. `PROXY_VERSION` (starts at 1) is the proxy's own version: it changes the key, nothing else.
 
