@@ -321,6 +321,12 @@ is the cache entry's `proxy.mp4` or `filmstrip.jpg` computed from the clip's sta
 database), and a clip with no finished file is a 404 problem body. `<img>` and `<video>` send no `Authorization` header, so a future token
 is a cookie or a query parameter (D-A8).
 
+The jobs shapes carry a job's **`kind`** (`render | proxy`, change `proxy-enqueue-endpoint`): in `JobOut`, in the
+events reads' `latest_job` (which is always the latest *render* job) and in every WebSocket frame, and `GET
+/api/v1/jobs` lists every kind. `POST /api/v1/events/{event_id}/proxies` enqueues an event's proxy job with the render
+enqueue's 201 / 200 fresh / 409 semantics (D-21 "Enqueue over REST"); it is a job-lifecycle route, so Principle V holds:
+the work is `auto-reel proxies`'s, and the API only owns enqueue, follow and cancel. Proxy jobs share the one WebSocket.
+
 **The same rule bounds content hashing.** The staleness fingerprint's clip-set component has a content-hash
 opt-in (`compute_fingerprint(use_hash=True)`) that sha256s every clip's bytes; on a per-event read that is a
 deliberate, bounded cost, but a whole-library read must never take it — an events **list** would turn one
@@ -361,6 +367,9 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   The proxy job has landed (`proxy-job`, D-21): the worker prepares one event's proxies and sprites as a `proxy` job,
   behind renders, so **the timeline opens only for prepared events and preparation is a `proxy` job**.
   The timeline is built in the repo (**D-20**); its pure model has landed (`timeline-model`, no UI yet).
+  `proxy-enqueue-endpoint` has landed (D-21 "Enqueue over REST"): `POST /api/v1/events/{event_id}/proxies` enqueues the
+  event's proxy job (201 / 200 `fresh` / 409), and a job reports its `kind` while `latest_job` stays the latest render;
+  the timeline's Prepare state is its first web caller.
   **The clip preview plays the preview copy** when the detail says one is ready (`clip-preview-proxy`, D-16 and
   D-21): the first user-visible Firefox fix, since the copy's AAC gives the Sony PCM clips sound there, with an
   explicit Play original for the full file.
@@ -632,6 +641,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `proxy-job` has landed after them: the worker runs the `proxy` kind (D-21), render-first, with `worker.proxy_slots`.
    `movie-chapter-list` is the first user of `movie-facts-read`: the movie player's chapter jump list and the
    movie's version in the facts, a `web/` change only (D-15).
+   `proxy-enqueue-endpoint` has landed next: `POST /api/v1/events/{event_id}/proxies`, `kind` on the jobs shapes and the
+   WebSocket frames, and per-kind independence over REST (an `api/` change; no render, fingerprint or schema change,
+   and no `RENDER_GRAPH_VERSION` bump).
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -883,7 +895,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     (gone, unreadable, empty, refused, no answer) and never as "changed on disk" (the copy's `Last-Modified` is the
     copy's file), with Play original beside Try again; the page never switches by itself. **So "What stays v2"
     no longer lists Firefox's silent preview for a clip with a ready copy:** the original still plays silently in
-    Firefox, which is why the copy is offered first. No request builds a copy (`proxy-enqueue-endpoint` is later).
+    Firefox, which is why the copy is offered first. No request from the page builds a copy yet (`proxy-enqueue-endpoint` is the REST half; its first web caller is the timeline's Prepare state).
 - **D-17 — A local compose stack for testing** (2026-10-02, change `compose-stack`; the first, local-only
   slice of §6 phase 11). `podman compose up -d` at the repo root brings up Postgres, the migration, a seed,
   `serve` and one `worker`.
@@ -975,7 +987,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Bundle.** The model is not imported yet, so it is not built: `npm run build` on `origin/main` and on this
     change gives the same two files (same hashes), JS 444,745 bytes (142,313 gzip -9) and CSS 55,606 bytes
     (11,051 gzip -9) in both, a delta of 0 bytes.
-  - **Prepare enqueues the proxy job** (`proxy-job`): the timeline's Prepare state enqueues the D-21 `proxy` job for the event; a render does not wait for it.
+  - **Prepare enqueues the proxy job** (`proxy-job`): the timeline's Prepare state enqueues the D-21 `proxy` job for the event; a render does not wait for it. It calls `POST /api/v1/events/{event_id}/proxies` (`proxy-enqueue-endpoint`) and follows the job on the WebSocket, whose jobs carry `kind`.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
   1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every
@@ -1135,10 +1147,25 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     as long (median 1.52 as built, pairs 1.22 to 1.53; a thread cap and taking the proxies off the GPU did not
     remove it); with the yield the warm median was **1.12** against the 1.15 bound and a cold pair 1.29, on a quieter
     host than the control (1.17), so the runs are not a clean A/B. The clip in flight still overlaps the render.
-  - **Deliberately not here:** progress over the WebSocket for the proxy kind and an enqueue endpoint
-    (`proxy-enqueue-endpoint`); any web code; a prune of orphan entries (`proxy-prune`); a
-    virtual remux to give the original sound in Firefox. The cache-location helpers are copies of `thumbs/`'s;
-    unifying them is a follow-up.
+  - **Enqueue over REST** (2026-10-03, change `proxy-enqueue-endpoint`). Preparing an event's proxies is a job of kind
+    `proxy` enqueued by `POST /api/v1/events/{event_id}/proxies`: no body (a proxy is a function of the clip file and
+    the settings, so there is nothing to force), **201** with the queued job, **200 `fresh`** (`clip_count`, no job)
+    when every clip the event folder lists already has a `ready` proxy, **409 `active_job`** with the job's id while
+    one is queued or running (also when a concurrent request inserted first), 404 / 502 / 503 as the render enqueue.
+    Freshness is read from the clips' `proxy` state (`stat` and JSON, no process, no write), never from a staleness
+    verdict: the cache is not a staleness input. The 200 and the job count **the same clips**, the folder's listing
+    (`reel.yaml` is never read, so an unparseable one or a missing title does not refuse proxies); an unreadable
+    folder or cache is a 502, never read as `absent` or `ready`. A job reports its **`kind`** (`render | proxy`, a
+    closed published enumeration) in `JobOut`, the events reads' `latest_job` and every WebSocket frame, while
+    **`latest_job` stays the event's latest render job**: a proxy job never stands in it, and the proxy side of an
+    event is read from the clips' `proxy` state and the socket. The one-active-job rule holds per kind, so neither
+    a render nor a proxy job refuses the other; cancel works on both. The WebSocket and `GET /api/v1/jobs` carry
+    jobs of every kind (the store's reads default to `render`, so both ask for all). The web still treats every job
+    as a render: the first screen that enqueues a proxy job must make its job store, header count and render control
+    kind-aware.
+  - **Deliberately not here:** any web code that calls the endpoint (`timeline-view`'s Prepare state); a prune of
+    orphan entries (`proxy-prune`); a virtual remux to give the original sound in Firefox. The cache-location
+    helpers are copies of `thumbs/`'s; unifying them is a follow-up.
 
 ---
 

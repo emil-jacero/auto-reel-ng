@@ -10,7 +10,7 @@ Conventions for every task below:
 
 ## 1. Gate and persistence
 
-- [ ] 1.1 Confirm that the archived `proxy-job`, `proxy-state-read` and `proxy-media-endpoints` changes (and
+- [x] 1.1 Confirm that the archived `proxy-job`, `proxy-state-read` and `proxy-media-endpoints` changes (and
   `job-kind`, `proxy-encode`, `filmstrip-sprites` beneath them) exist on `main`. If one does not, stop and
   report. Then check each row of design "Gate" against the code they left and write the real names into the
   design: the job-kind enumeration and where it lives, `submit` / `active_job` and their kind arguments, the
@@ -21,7 +21,7 @@ Conventions for every task below:
   particular the clip-set row: the 200's set equals the job's set), and
   `openspec validate proxy-enqueue-endpoint --strict` passes.
 
-- [ ] 1.2 `job-kind` already scoped `JobStore.latest_by_project` to one kind (`kind=JobKind.RENDER` default, in the
+- [x] 1.2 `job-kind` already scoped `JobStore.latest_by_project` to one kind (`kind=JobKind.RENDER` default, in the
   ranking subquery's `where`), so make no persistence change and record that in the design (done in 1.1). Keep the
   checks as tests in `tests/test_job_store.py` only if `tests/test_job_store_kind.py` lacks them: a project with
   `2024/Blandat` whose render `done` at T and proxy job created at T+5 s returns the render; an event with only a
@@ -29,36 +29,37 @@ Conventions for every task below:
 
 ## 2. api/ - the job's kind, and the proxy clip set
 
-- [ ] 2.1 In `api/events_read.py`, add `proxy_clips(event_dir)` (the identities `scan_event` lists: what `proxy-job`
-  prepares; `reel.yaml` is not read) and `proxies_fresh(settings, event_dir)` returning the clip count and whether
-  every clip's state, from `proxies.read_proxy_state`, is `ready`. The detail's `_clip_proxy` keeps its "unknown"
-  fallback; this calls `read_proxy_state` directly so errors stay errors. No subprocess, no write. Verify in
-  `tests/test_api_events.py` (no database): a folder with clips at the root and in a chapter folder, one of which
+- [x] 2.1 In a new `api/proxy_read.py` (`events_read.py` is at pylint's module-size limit), add `proxy_clips(event_dir)`
+  (the identities `scan_event` lists: what `proxy-job` prepares; `reel.yaml` is not read) and
+  `proxies_fresh(settings, event_dir, clips)` returning whether every one of `clips` has a `ready` state, from
+  `proxies.read_proxy_state` (the route reports `len(clips)` as the count). The detail's `_clip_proxy` keeps its
+  "unknown" fallback; this calls `read_proxy_state` directly so errors stay errors. No subprocess, no write. Verify in
+  `tests/test_api_proxy_clips.py` (no database): a folder with clips at the root and in a chapter folder, one of which
   `reel.yaml` ignores and one excludes, yields every clip on disk and none that only `reel.yaml` lists; all
-  `ready` gives `(count, True)`; one each of `absent`, `stale`, `failed` gives False; no clips gives `(0, True)`;
+  `ready` gives True; one each of `absent`, `stale`, `failed` gives False; no clips gives True and the folder lists `[]`;
   an unreadable cache directory (permission denied) raises (never `absent`/`ready`), as does a clip that cannot be
   statted; the same call under a `subprocess.Popen` / `subprocess.run` monkeypatch that fails the test never
   reaches it; the detail's `proxy` field state equals this function's for the same event.
 
-- [ ] 2.2 In `api/schemas.py` and `api/serialize.py`, publish the job-kind enumeration (the persistence enum,
+- [x] 2.2 In `api/schemas.py` and `api/serialize.py`, publish the job-kind enumeration (the persistence enum,
   docstring written for a client) and add required `kind` to `JobOut` and `JobSummaryOut`; `job_to_out` and
   `events_read._job_summary` set it. Both `events_read` latest-job reads name `kind=JobKind.RENDER`. `GET
-  /api/v1/jobs` passes `kind=None` to the store's `list_by_status` (a proxy job is listed, marked). Verify: in `tests/test_api_jobs.py` (`requires_db`), a created render job's 201 body, detail, list item
+  /api/v1/jobs` passes `kind=None` to the store's `list_by_status` (a proxy job is listed, marked). Verify: in `tests/test_api_proxy_enqueue.py` (`requires_db`), a created render job's 201 body, detail, list item
   and the event row's `latest_job` all read `kind` `render`, every other field equal to what the same test
   asserted before (existing assertions unchanged); a proxy job inserted with `store.submit(kind=proxy)` reads
-  `kind` `proxy` on detail and list; in `tests/test_api_events.py` (`requires_db`) the three scenarios of "An
+  `kind` `proxy` on detail and list; in `tests/test_api_proxy_enqueue.py` the three scenarios of "An
   event's latest job is its latest render job" (newer running proxy; proxy-only event is `null`; failed render
   beside a done proxy) on both the list and the detail; the hub tests' stand-in jobs gain `kind` and pass.
 
 ## 3. api/ - the endpoint
 
-- [ ] 3.1 Add `POST /api/v1/events/{event_id:path}/proxies` in `routes/events.py`, registered before the greedy
+- [x] 3.1 Add `POST /api/v1/events/{event_id:path}/proxies` in `routes/events.py`, registered before the greedy
   detail route, and `ProxiesFreshResult` in `schemas.py` (design "Decisions"). Order: `listed_event_dir` (404),
   `scan_event` with `OSError` mapped to `EventReadError` (502 with `failure` `unreadable_disk`), the `proxies`
   settings and cache (502 without a kind), `active_job(kind=proxy)` (409 `active_job`), `proxies_fresh` (200), then
   `submit(kind=proxy)` (201, or the race's 409). Move `_job_store_unreachable` to a module both route files
   import and apply it here (503). The enumeration docstring of `EnqueueConflict` is generalised. Verify in
-  `tests/test_api_jobs.py` (`requires_db`; each test builds its own event): 201 with a `queued` proxy row,
+  `tests/test_api_proxy_enqueue.py` (`requires_db`; each test builds its own event): 201 with a `queued` proxy row,
   `event_dir` equal to the list's id for a nested id, `force` false, `fingerprint` null, no file in the proxy cache
   and no process (monkeypatched `subprocess`); a second request is 409 `active_job` with the first job's id and one
   row; two requests racing past the pre-check (patch `active_job` to return `None`) give one 201 and one 409 with
@@ -71,7 +72,7 @@ Conventions for every task below:
   `JobStore.submit` raising `OperationalError` is 503 with `check` `database`; a route-order test shows an event
   id containing `/` reaches the new route and `GET /events/{id}` still reaches the detail.
 
-- [ ] 3.2 Pin the per-kind rule from the render side, and the WebSocket. Verify in `tests/test_api_jobs.py` (`requires_db`): a
+- [x] 3.2 Pin the per-kind rule from the render side, and the WebSocket. Verify in `tests/test_api_proxy_enqueue.py` (`requires_db`): a
   `running` proxy job for `2024/2024-06-27 - Grillning med grannar` does not make `POST /api/v1/jobs` a 409 (201,
   a `queued` render, the proxy row unchanged); a `queued` render does not make the proxy enqueue a 409; with
   both queued, `POST /api/v1/jobs` is 409 `active_job` whose `job_id` is the render's; `POST /jobs/{id}/cancel`
@@ -91,7 +92,7 @@ Conventions for every task below:
 
 ## 4. Generated artifacts and the web
 
-- [ ] 4.1 Regenerate `web/openapi.json` (`.venv/bin/python -m auto_reel_ng.api.openapi > web/openapi.json`) and
+- [x] 4.1 Regenerate `web/openapi.json` (`.venv/bin/python -m auto_reel_ng.api.openapi > web/openapi.json`) and
   `web/src/api/schema.d.ts` (`npm run generate:types` in the node:22 container). Verify in
   `tests/test_api_openapi.py`: the job kind is the closed enumeration `render`, `proxy`, in `required` of both
   the job detail and the latest-job model with identical definitions; the proxy enqueue declares its 201 `JobOut`,
@@ -102,7 +103,7 @@ Conventions for every task below:
   read `kind` nowhere; if `tsc` fails in a closed `switch`, that is a finding to report, not a reason to widen
   scope).
 
-- [ ] 4.2 Verify in real browsers (Playwright from the scratch directory only; Chrome via
+- [x] 4.2 Verify in real browsers (Playwright from the scratch directory only; Chrome via
   `localhost/playback-research:chrome`, Firefox >= 155 via `localhost/pcm-audio-research:pw163` after
   `firefox --version` shows it; locators scoped to `main:not([hidden])`; `page.wait_for_timeout`, never
   `time.sleep`; route only `**/api/v1/jobs` and `**/api/v1/jobs/**`). Build a dev library with
@@ -121,7 +122,7 @@ Conventions for every task below:
 
 ## 5. Docs and validation
 
-- [ ] 5.1 In `docs/high-level-design.md`: add to **D-21** (proxy contract, written by `proxy-encode`) a
+- [x] 5.1 In `docs/high-level-design.md`: add to **D-21** (proxy contract, written by `proxy-encode`) a
   bullet that proxy preparation is a job of kind `proxy` enqueued by `POST /api/v1/events/{event_id}/proxies`
   (201 / 200 fresh / 409, no body, freshness from the clips' `proxy` state, not a staleness input), and that a
   job reports its `kind` while `latest_job` stays the latest render; to **D-20** (timeline), that the Prepare
@@ -132,7 +133,7 @@ Conventions for every task below:
   "proxy-enqueue-endpoint\|/proxies" docs/high-level-design.md` showing each place, and that no D-n number is
   reused or renumbered (D-18 and D-19 stay the bug round's).
 
-- [ ] 5.2 Run the validation gates:
+- [x] 5.2 Run the validation gates:
   - `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`
   - `.venv/bin/python -m mypy auto_reel_ng`
   - `.venv/bin/python -m pylint auto_reel_ng` (only the known cairo `no-member` noise)
