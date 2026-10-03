@@ -718,7 +718,7 @@ def test_end_to_end_render_inserts_title_card_segment(
 
 @pytest.mark.has_fonts
 def test_end_to_end_render_records_the_title_card_span(
-    has_fonts: None, runtime, make_clip, tmp_path
+    has_fonts: None, runtime, make_clip, tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Change render-chapter-times: the card's span is recorded inside its own chapter."""
     from auto_reel_ng.reel.document import ReelDocument
@@ -759,7 +759,20 @@ def test_end_to_end_render_records_the_title_card_span(
         fingerprint=fingerprint,
     )
 
+    # The orchestrator measures each joined segment once, in order: a.mp4, the card, b.mp4.
+    from auto_reel_ng.render import orchestrator as orch
+
+    measured: list[float] = []
+    real_probe = orch.probe_media
+
+    def _spy(path, *args, **kwargs):  # type: ignore[no-untyped-def]
+        facts_ = real_probe(path, *args, **kwargs)
+        measured.append(facts_.duration)
+        return facts_
+
+    monkeypatch.setattr(orch, "probe_media", _spy)
     render_movie(plan, CPUProfile(), options)
+    assert len(measured) == 3
 
     manifest = read_manifest(tmp_path)
     assert manifest is not None and manifest.chapters is not None
@@ -770,6 +783,11 @@ def test_end_to_end_render_records_the_title_card_span(
     assert card is not None
     # The card leads its chapter (the title clip is the chapter's first clip) and is ~1 s long.
     assert card.start_ms == second.start_ms == first.end_ms
-    assert card.end_ms - card.start_ms == pytest.approx(1000, abs=40)
     assert second.start_ms <= card.start_ms <= card.end_ms <= second.end_ms
-    assert second.end_ms - card.end_ms == pytest.approx(1000, abs=40)
+    # The span is the card segment's measured duration (within a millisecond), and the chapter's
+    # start is the measured duration of everything before it.
+    card_ms = measured[1] * 1000
+    assert card.end_ms - card.start_ms == pytest.approx(card_ms, abs=1)
+    assert card.start_ms == pytest.approx(measured[0] * 1000, abs=1)
+    assert second.end_ms - card.end_ms == pytest.approx(measured[2] * 1000, abs=1)
+    assert card_ms == pytest.approx(1000, abs=40)

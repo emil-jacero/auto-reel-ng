@@ -646,11 +646,6 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   movies: dry run by default, and only after the event's new movie exists. The render manifest
   records the names a rename superseded (`superseded`, optional, schema version 1), and the command
   never deletes a file another event's manifest or expected path claims.
-  *Amended 2026-10-03 (change `render-chapter-times`):* the manifest also holds the last render's chapter
-  times (`chapters`: per chapter its name, start and end in milliseconds in the movie, and its title-card
-  span or `null`), computed from the measured segment durations by the rule that writes the `[CHAPTER]`
-  markers. It is additive at schema version 1, `null` for a movie rendered before the field or adopted
-  without a render, and never a fingerprint input.
   *Amended 2026-10-02, change `engine-output-claims`:* which events claim an output path, and who else
   claims it, is decided by one engine rule (`event/claims.py` `checked_claim`, `render/claims.py`
   `output_collision`), not by caller-private copies. An event claims a path only when it loads and is
@@ -671,6 +666,11 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   in the output directory in use, so a render into another `-o` directory reads `output`. A case-only rename on
   a case-insensitive mount is unchanged and unverified here (no such mount on the dev host); an undated title
   that starts with a date prefix is unreachable, since every surface refuses an event without a real date.
+  *Amended 2026-10-03 (change `render-chapter-times`):* the manifest also holds the last render's chapter
+  times (`chapters`: per chapter its name, start and end in milliseconds in the movie, and its title-card
+  span or `null`), computed from the measured segment durations by the rule that writes the `[CHAPTER]`
+  markers. It is additive at schema version 1, `null` for a movie rendered before the field or adopted
+  without a render, and never a fingerprint input.
   (§4.3/§4.11)
 
 - **D-10 — GUI v1 visual system** (2026-09-30, change `web-design-system`). GUI v1 ships a modern visual
@@ -790,8 +790,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   picture the browser cannot show (a legacy MPEG-4 movie plays its sound only). There are no custom controls or
   shortcuts, no captions and no chapter list: browsers expose no chapter times, and the player does not yet
   show the ones the render manifest now records (`chapters`, change `render-chapter-times`). A chapter list
-  for the player and a movie version in the event detail are v2 items beside the proxy work. A Refresh keeps the player (the same element, playing or paused, while the rest of the page reads;
-  2026-10-02, change `web-playback-and-notices`); Edit mode shows no movie, and entering it ends
+  for the player and a movie version in the event detail are v2 items beside the proxy work. A Refresh
+  keeps the player (the same element, playing or paused, while the rest of the page reads; 2026-10-02,
+  change `web-playback-and-notices`); Edit mode shows no movie, and entering it ends
   playback. (§4.10)
 
 - **D-16 — A clip is previewed in Edit mode in GUI v1** (2026-10-01, change `clip-preview-screen`).

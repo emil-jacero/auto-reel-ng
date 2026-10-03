@@ -7,6 +7,7 @@ of ``output``, and never changes whether the event is stale.
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import date
 from pathlib import Path, PurePosixPath
@@ -18,7 +19,7 @@ from auto_reel_ng.reel.document import Chapter, ClipRef, Metadata, ReelDocument
 from auto_reel_ng.render import output_relpath
 from auto_reel_ng.staleness.fingerprint import COMPONENTS, compute_fingerprint, engine_identity
 from auto_reel_ng.staleness.gate import StalenessReason, Verdict, evaluate, rendered_output
-from auto_reel_ng.staleness.manifest import write_manifest
+from auto_reel_ng.staleness.manifest import manifest_path, write_manifest
 
 FFMPEG_VERSION = (7, 1)
 
@@ -113,6 +114,51 @@ def test_missing_referenced_clip_is_stale_via_clip_set(tmp_path: Path) -> None:
 
     assert verdict.stale is True
     assert "clip_set" in verdict.reasons
+
+
+_CHAPTER = {"name": "A", "start_ms": 0, "end_ms": 100, "title_card": None}
+_ABSENT = object()
+
+
+@pytest.mark.parametrize(
+    "chapters",
+    [
+        _ABSENT,
+        None,
+        "x",
+        7,
+        [_CHAPTER, "x"],
+        [{**_CHAPTER, "start_ms": -1}],
+        [{**_CHAPTER, "end_ms": 1.5}],
+        [{**_CHAPTER, "title_card": {"start_ms": 50, "end_ms": 150}}],
+    ],
+    ids=["absent", "null", "string", "number", "bad-item", "negative", "float", "card-outside"],
+)
+@pytest.mark.parametrize("clip_changed", [False, True], ids=["fresh", "stale"])
+def test_the_verdict_ignores_the_chapter_times_field(
+    tmp_path: Path, chapters: object, clip_changed: bool
+) -> None:
+    """Change render-chapter-times: an old or malformed ``chapters`` never changes the verdict."""
+    event_dir = _setup(tmp_path)
+    baseline = _fingerprint(event_dir)
+    output_path = _render(event_dir, baseline)
+    if clip_changed:
+        (event_dir / "clip.mp4").write_bytes(b"other-clip-bytes")
+    current = _fingerprint(event_dir) if clip_changed else baseline
+    reference = evaluate(event_dir, output_path, current)
+    assert reference.stale is clip_changed
+
+    path = manifest_path(event_dir)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if chapters is _ABSENT:
+        del payload["chapters"]
+    else:
+        payload["chapters"] = chapters
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    verdict = evaluate(event_dir, output_path, current)
+    assert verdict.reasons == reference.reasons
+    assert verdict.stale is reference.stale
 
 
 def test_component_members_are_exactly_the_fingerprint_components() -> None:

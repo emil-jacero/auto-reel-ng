@@ -703,7 +703,8 @@ def _execute(
         measured = [probe_media(Path(p), runtime=runtime).duration for p in intermediates]
         chapter_pairs = aggregate_chapter_durations(segments, measured)
         # The recorded chapter times come from the same measured durations and boundary rule as
-        # the muxed markers; computed before the concat so a malformed plan fails before any work.
+        # the muxed markers; computed before the concat (after the segments are normalized), so a
+        # malformed plan fails before the final assembly.
         chapters = chapter_times(segments, measured)
         metadata_file = scratch / "chapters.ffmeta"
         metadata_file.write_text(build_ffmetadata(chapter_pairs), encoding="utf-8")
