@@ -23,6 +23,7 @@ from .filmstrip import (
     ensure_filmstrip,
     lookup_filmstrip,
 )
+from .prepare import PROXY_SHARE, PreparedClip, prepare_clip
 from .settings import ProxySettings, default_cache_dir, resolve_proxy_settings
 from .spec import (
     PROXY_AUDIO_ENCODER,
@@ -38,12 +39,14 @@ __all__ = [
     "FILMSTRIP_VERSION",
     "MARKER_SUFFIX",
     "PROXY_AUDIO_ENCODER",
+    "PROXY_SHARE",
     "PROXY_VERSION",
     "STALE_PART_AGE",
     "EncodePath",
     "Filmstrip",
     "FilmstripError",
     "FilmstripPlan",
+    "PreparedClip",
     "ProxyCacheError",
     "ProxyCommand",
     "ProxyEntry",
@@ -62,6 +65,7 @@ __all__ = [
     "lookup_proxy",
     "marker_path",
     "plan_encode",
+    "prepare_clip",
     "proxy_dimensions",
     "proxy_key",
     "read_facts",

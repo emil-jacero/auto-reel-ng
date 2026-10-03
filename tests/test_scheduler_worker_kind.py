@@ -124,15 +124,15 @@ def test_a_known_kind_with_no_handler_fails_loud_and_the_worker_goes_on(
         job_store, build=build, render=lambda rj: RenderResult(output_path=tmp_path / "o.mp4")
     )
 
+    assert worker.process_next() is True  # the render goes first, whatever the older job's kind
+    render = job_store.get(render_id)
+    assert render is not None and render.status == JobStatus.DONE and builds == ["2024/y"]
     assert worker.process_next() is True
 
     failed = job_store.get(proxy_id)
     assert failed is not None and failed.status == JobStatus.FAILED
     assert failed.error is not None and "proxy" in failed.error
-    assert builds == [] and sorted(p.name for p in event.iterdir()) == before
-    assert worker.process_next() is True
-    render = job_store.get(render_id)
-    assert render is not None and render.status == JobStatus.DONE and builds == ["2024/y"]
+    assert builds == ["2024/y"] and sorted(p.name for p in event.iterdir()) == before
 
 
 def test_a_known_kind_with_no_handler_takes_no_capacity_token(job_store: JobStore) -> None:
@@ -156,16 +156,16 @@ def test_a_job_of_an_unknown_kind_fails_loud_without_blocking_a_render(
         render=lambda rj: RenderResult(output_path=tmp_path / "o.mp4"),
     )
 
+    assert worker.process_next() is True  # the render is claimed before a kind of any other name
+    render = job_store.get(render_id)
+    assert render is not None and render.status == JobStatus.DONE
     assert worker.process_next() is True
 
     failed = job_store.list_by_status(JobStatus.FAILED, kind="thumbnails")
     assert len(failed) == 1
     assert failed[0].error is not None and "thumbnails" in failed[0].error
     assert failed[0].requeue_count == 0
-    assert job_store.list_by_status(JobStatus.QUEUED, kind=None)[0].id == render_id
-    assert worker.process_next() is True
-    render = job_store.get(render_id)
-    assert render is not None and render.status == JobStatus.DONE
+    assert job_store.list_by_status(JobStatus.QUEUED, kind=None) == []
 
 
 def test_a_handlers_failure_is_isolated_and_typed(job_store: JobStore) -> None:

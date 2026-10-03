@@ -205,29 +205,77 @@ def test_an_event_with_only_proxy_jobs_has_no_latest_render(
 
 
 # --------------------------------------------------------------------------- #
-# claim_next stays kind-agnostic
+# claim_next: a render before any other kind (proxy-job)
 # --------------------------------------------------------------------------- #
 
 
-def test_claim_next_claims_a_higher_priority_proxy_before_an_older_render(
+def test_claim_next_claims_a_newer_render_before_an_older_proxy_job(
     job_store: JobStore, jobs_session_factory: sessionmaker
 ) -> None:
-    _insert(jobs_session_factory, BLANDAT, kind="render", minutes=0)
-    proxy = _insert(jobs_session_factory, GRILLNING, kind="proxy", minutes=1, priority=5)
-
-    claimed = job_store.claim_next("worker")
-
-    assert claimed is not None and claimed.id == proxy and claimed.kind == "proxy"
-
-
-def test_claim_next_is_fifo_across_kinds_at_equal_priority(
-    job_store: JobStore, jobs_session_factory: sessionmaker
-) -> None:
-    render = _insert(jobs_session_factory, BLANDAT, kind="render", minutes=0)
-    proxy = _insert(jobs_session_factory, GRILLNING, kind="proxy", minutes=1)
+    proxy = _insert(jobs_session_factory, GRILLNING, kind="proxy", minutes=0)
+    render = _insert(jobs_session_factory, BLANDAT, kind="render", minutes=60)
 
     first = job_store.claim_next("worker")
     second = job_store.claim_next("worker")
 
     assert first is not None and second is not None
     assert (first.id, second.id) == (render, proxy)
+
+
+def test_claim_next_claims_a_render_before_a_proxy_job_of_higher_priority(
+    job_store: JobStore, jobs_session_factory: sessionmaker
+) -> None:
+    _insert(jobs_session_factory, GRILLNING, kind="proxy", minutes=0, priority=9)
+    render = _insert(jobs_session_factory, BLANDAT, kind="render", minutes=1)
+
+    claimed = job_store.claim_next("worker")
+
+    assert claimed is not None and claimed.id == render
+
+
+def test_claim_next_keeps_priority_then_age_within_a_kind(
+    job_store: JobStore, jobs_session_factory: sessionmaker
+) -> None:
+    old = _insert(jobs_session_factory, "2024/a", kind="render", minutes=0)
+    urgent = _insert(jobs_session_factory, "2024/b", kind="render", minutes=5, priority=3)
+    new = _insert(jobs_session_factory, "2024/c", kind="render", minutes=9)
+
+    order = [job_store.claim_next("worker") for _ in range(3)]
+
+    assert [job.id for job in order if job is not None] == [urgent, old, new]
+
+
+def test_claim_next_takes_proxy_jobs_oldest_first(
+    job_store: JobStore, jobs_session_factory: sessionmaker
+) -> None:
+    first = _insert(jobs_session_factory, "2024/a", kind="proxy", minutes=0)
+    second = _insert(jobs_session_factory, "2024/b", kind="proxy", minutes=1)
+    third = _insert(jobs_session_factory, "2024/c", kind="proxy", minutes=2)
+
+    order = [job_store.claim_next("worker") for _ in range(3)]
+
+    assert [job.id for job in order if job is not None] == [first, second, third]
+
+
+def test_claim_next_leaves_an_excluded_kind_queued_and_takes_the_render(
+    job_store: JobStore, jobs_session_factory: sessionmaker
+) -> None:
+    proxy = _insert(jobs_session_factory, GRILLNING, kind="proxy", minutes=0)
+    render = _insert(jobs_session_factory, BLANDAT, kind="render", minutes=5)
+
+    claimed = job_store.claim_next("worker", exclude_kinds=["proxy"])
+
+    assert claimed is not None and claimed.id == render
+    assert job_store.claim_next("worker", exclude_kinds=["proxy"]) is None
+    queued = job_store.get(proxy)
+    assert queued is not None and queued.status == JobStatus.QUEUED
+
+
+def test_claim_next_without_exclusions_still_claims_a_kind_it_has_never_heard_of(
+    job_store: JobStore, jobs_session_factory: sessionmaker
+) -> None:
+    thumbnails = _insert(jobs_session_factory, GRILLNING, kind="thumbnails", minutes=0)
+
+    claimed = job_store.claim_next("worker", exclude_kinds=["proxy"])
+
+    assert claimed is not None and claimed.id == thumbnails

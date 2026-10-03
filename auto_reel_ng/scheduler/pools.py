@@ -58,6 +58,14 @@ class CapacityPools:
         }
         return cls(gpu_caps=gpu_caps, cpu_cap=cpu_cap)
 
+    def cpu_token(self) -> threading.BoundedSemaphore:
+        """The CPU pool's semaphore: what a job of CPU work that is not a render holds (D-S3).
+
+        A ``proxy`` job (its x264 encode is CPU work even on the hybrid path) holds this one
+        token for its whole run and never a GPU token.
+        """
+        return self._cpu
+
     def token_for(
         self, *, video_encoder: str, render_node: Optional[str]
     ) -> threading.BoundedSemaphore:

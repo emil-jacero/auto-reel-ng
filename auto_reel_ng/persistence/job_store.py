@@ -26,9 +26,9 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
-from typing import Any, Iterable, Optional
+from typing import Any, Collection, Iterable, Optional
 
-from sqlalchemy import ColumnElement, Select, func, or_, select
+from sqlalchemy import ColumnElement, Select, case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -212,21 +212,38 @@ class JobStore:
         with session_scope(self._session_factory) as session:
             return self._active_job(session, project_root, event_dir, kind)
 
-    def claim_next(self, worker_id: str, device_filter: Optional[str] = None) -> Optional[Job]:
-        """Atomically claim the oldest eligible ``queued`` job (D-P3).
+    def claim_next(
+        self,
+        worker_id: str,
+        device_filter: Optional[str] = None,
+        *,
+        exclude_kinds: Collection[str] = (),
+    ) -> Optional[Job]:
+        """Atomically claim the next eligible ``queued`` job (D-P3).
 
         Race-free via ``FOR UPDATE SKIP LOCKED``: two concurrent callers never
-        claim the same row. Ordered ``priority`` descending, ``created_at``
-        ascending (FIFO within a priority). A job is eligible for
-        ``device_filter`` when its ``device`` is ``"auto"`` or equals
-        ``device_filter``; passing ``None`` claims across every device.
+        claim the same row. A ``render`` job is claimed before a job of any other
+        kind, however old the other is and whatever its priority (``proxy-job``:
+        preparing proxies never delays a render); within a kind the order is
+        ``priority`` descending, ``created_at`` ascending (FIFO within a priority).
+        A job is eligible for ``device_filter`` when its ``device`` is ``"auto"``
+        or equals ``device_filter``; passing ``None`` claims across every device.
+        A job whose kind is in ``exclude_kinds`` is not eligible now (the worker
+        names ``proxy`` while its proxy slots are full); a kind this build has never
+        heard of is not excluded unless named, so the worker can still fail it loud.
         """
         with session_scope(self._session_factory) as session:
             stmt = select(Job).where(Job.status == JobStatus.QUEUED)
             if device_filter is not None:
                 stmt = stmt.where(or_(Job.device == "auto", Job.device == device_filter))
+            if exclude_kinds:
+                stmt = stmt.where(Job.kind.not_in(list(exclude_kinds)))
             stmt = (
-                stmt.order_by(Job.priority.desc(), Job.created_at.asc())
+                stmt.order_by(
+                    case((Job.kind == JobKind.RENDER.value, 0), else_=1),
+                    Job.priority.desc(),
+                    Job.created_at.asc(),
+                )
                 .limit(1)
                 .with_for_update(skip_locked=True)
             )

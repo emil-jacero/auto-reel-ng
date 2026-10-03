@@ -57,6 +57,7 @@ from ..render.claims import (
 )
 from ..staleness.fingerprint import compute_fingerprint
 from ..staleness.gate import evaluate
+from .config import DEFAULT_PROXY_SLOTS
 from .pools import CapacityPools
 from .progress import ThrottledProgress
 
@@ -69,6 +70,18 @@ RunRender = Callable[[RenderJob], RenderResult]
 #: :class:`~auto_reel_ng.errors.EngineError` for ``failed``. The handler owns its own
 #: capacity token (job-kind): the worker takes none for it.
 KindHandler = Callable[[Job], None]
+
+#: How many seconds a stopping worker waits for its handler threads to clean up (kill their
+#: ffmpeg, remove their build directories) before it returns and the process exits.
+HANDLER_STOP_GRACE_S = 10.0
+
+
+class JobInterrupted(Exception):
+    """A handler stopped its job because the worker is shutting down.
+
+    Not a failure and not a cancel: the job's row is requeued by the worker's graceful shutdown
+    (D-S8), so the handler's thread leaves it alone. Raised by a handler after it has cleaned up.
+    """
 
 
 def _render_job(render_job: RenderJob) -> RenderResult:
@@ -220,6 +233,13 @@ def _job_output(job: Job, *, today: date) -> Optional[_JobOutput]:
     return _JobOutput(output_dir, output_relpath(document.metadata))
 
 
+class _Running(NamedTuple):
+    """A claimed job's thread and kind, for the claim loop's admission and the shutdown wait."""
+
+    thread: threading.Thread
+    kind: str
+
+
 class Worker:
     """Polls the job store, rebuilds each claimed job's plan, and renders it.
 
@@ -230,9 +250,14 @@ class Worker:
     A claimed job is dispatched by its ``kind`` (job-kind): ``render`` is the worker's own
     path and cannot be overridden; any other kind runs the handler registered for it in
     ``kind_handlers``, and a kind with no handler fails the job loud.
+
+    A ``render`` job is claimed before a job of any other kind, and a ``proxy`` job only
+    while fewer than ``proxy_slots`` are in flight (``proxy-job``), so preparing proxies
+    never delays a render. ``stop_event`` is the event :meth:`stop` sets; a handler given the
+    same event can end its work promptly when the worker stops.
     """
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         job_store: JobStore,
         *,
@@ -243,6 +268,8 @@ class Worker:
         render: RunRender = _render_job,
         device_filter: Optional[str] = None,
         kind_handlers: Optional[Mapping[str, KindHandler]] = None,
+        proxy_slots: int = DEFAULT_PROXY_SLOTS,
+        stop_event: Optional[threading.Event] = None,
     ) -> None:
         handlers = dict(kind_handlers or {})
         if JobKind.RENDER in handlers:
@@ -255,9 +282,13 @@ class Worker:
         self._render = render
         self._device_filter = device_filter
         self._kind_handlers = handlers
-        self._stopping = threading.Event()
+        if proxy_slots < 1:
+            raise ValueError(f"proxy_slots must be at least 1, got {proxy_slots}")
+        self._proxy_slots = proxy_slots
+        # Shared with the handlers that must stop their work when the worker stops.
+        self._stopping = stop_event if stop_event is not None else threading.Event()
         self._lock = threading.Lock()
-        self._inflight: dict[uuid.UUID, threading.Thread] = {}
+        self._inflight: dict[uuid.UUID, _Running] = {}
 
     @property
     def worker_id(self) -> str:
@@ -304,7 +335,7 @@ class Worker:
             with self._lock:
                 at_capacity = len(self._inflight) >= total_capacity
             if not at_capacity:
-                job = self._store.claim_next(self._worker_id, device_filter=self._device_filter)
+                job = self._claim()
                 if job is not None:
                     idle_polls = 0
                     self._spawn(job)
@@ -319,6 +350,7 @@ class Worker:
                     break
             time.sleep(self._poll_interval)
         self._requeue_inflight()
+        self._await_handlers()
 
     def process_next(self) -> bool:
         """Claim and process one job synchronously in the calling thread; no spawn.
@@ -327,16 +359,25 @@ class Worker:
         Useful for tests and for single-threaded/deterministic operation; the
         concurrent, capacity-aware path is :meth:`run`.
         """
-        job = self._store.claim_next(self._worker_id, device_filter=self._device_filter)
+        job = self._claim()
         if job is None:
             return False
         self._process(job)
         return True
 
+    def _claim(self) -> Optional[Job]:
+        """Claim the next job: render first, and no ``proxy`` job while its slots are full."""
+        with self._lock:
+            proxies = sum(1 for running in self._inflight.values() if running.kind == JobKind.PROXY)
+        exclude = (JobKind.PROXY.value,) if proxies >= self._proxy_slots else ()
+        return self._store.claim_next(
+            self._worker_id, device_filter=self._device_filter, exclude_kinds=exclude
+        )
+
     def _spawn(self, job: Job) -> None:
         thread = threading.Thread(target=self._run_and_untrack, args=(job,), daemon=True)
         with self._lock:
-            self._inflight[job.id] = thread
+            self._inflight[job.id] = _Running(thread, job.kind)
         thread.start()
 
     def _run_and_untrack(self, job: Job) -> None:
@@ -355,6 +396,19 @@ class Worker:
                 self._store.requeue(job_id)
             except IllegalJobTransitionError:
                 pass  # it reached a terminal state between the snapshot and this call
+
+    def _await_handlers(self) -> None:
+        """Give the threads of non-render jobs a few seconds to clean up after a shutdown.
+
+        Their rows are requeued already; a handler told to stop kills its ffmpeg and removes its
+        build directory, and the process must not exit before that has happened. A render thread
+        does not watch the stop event, so it is not waited for.
+        """
+        with self._lock:
+            threads = [r.thread for r in self._inflight.values() if r.kind != JobKind.RENDER]
+        deadline = time.monotonic() + HANDLER_STOP_GRACE_S
+        for thread in threads:
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
 
     def _process(self, job: Job) -> None:
         """Process one claimed job; no exception except ``BaseException`` leaves this method.
@@ -402,6 +456,9 @@ class Worker:
         """Run a non-render kind's handler and record its outcome."""
         try:
             handler(job)
+        except JobInterrupted:
+            logger.info("job %s interrupted by shutdown; left for its requeue", job.id)
+            return
         except RenderCancelledError:
             logger.info("job %s canceled", job.id)
             self._safe_transition(job.id, JobStatus.CANCELED)
@@ -545,4 +602,12 @@ class Worker:
             )
 
 
-__all__ = ["Worker", "BuildJob", "KindHandler", "RunRender", "default_build_job"]
+__all__ = [
+    "HANDLER_STOP_GRACE_S",
+    "BuildJob",
+    "JobInterrupted",
+    "KindHandler",
+    "RunRender",
+    "Worker",
+    "default_build_job",
+]
