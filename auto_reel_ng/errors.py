@@ -209,7 +209,7 @@ class FilmstripError(EngineError):
     """A proxied clip could not give a filmstrip (D-21, ``clip-filmstrips``).
 
     Raised when the finished proxy cannot be probed, reports no positive finite duration,
-    has keyframes that cannot give every tile a frame of its own, when the sprite's ffmpeg
+    has no keyframe or keyframes out of time order, when the sprite's ffmpeg
     run fails or its output has the wrong size, or when the entry's ``facts.json`` cannot be
     read as an object. The proxy is never touched by a failure and a failure is not
     remembered. Kept apart from :class:`ProxyCacheError` (the cache directory's fault, not

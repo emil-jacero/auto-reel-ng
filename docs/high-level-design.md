@@ -1008,13 +1008,16 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     shape (`-bf 0`, half-second GOP) on ffmpeg 8.1.2: the research's `fps=1` filter hands mjpeg **no frame** for a
     single-keyframe clip (ffmpeg exits 234, "Nothing was written into output file"), and its `eof_action=pass`
     variant fixes that but still loses the **last tile** of clips whose tail after the last keyframe is short
-    (1.04 s gave 1 tile, 25.025 s at 29.97 fps 25 instead of 26) without a word. So the `fps` filter is not used:
+    (1.04 s gave 1 tile, 25.025 s at 29.97 fps 25 instead of 26) without a word. So the `fps` filter does not sample the tiles:
     the proxy's keyframe times come from one `ffprobe` of its packets, and `select` takes exactly the chosen
     keyframes (`-skip_frame nokey`), which makes the tile count exact and testable (the tests' clips carry their
-    own time in their luma). Two keyframes further apart than the interval would need one frame twice, which
-    `select` cannot do: that fails loudly instead of padding a tile with black. ffmpeg's expression parser fails
+    own time in their luma). Two keyframes further apart than the interval (a variable-frame-rate clip with a
+    static stretch: the proxy's GOP is a frame count) mean one frame is on screen for several tiles: it is selected
+    once and repeated (`setpts` stamps + `fps=1`, `tpad` for the last), never padded with black (stamps are integers, so `fps` only copies there). ffmpeg's expression parser fails
     ("Cannot allocate memory") past about a hundred nested terms, so the `select` sums at most 16 terms a level;
-    a 109-tile sample clip found it after 25-tile tests had passed.
+    a 109-tile sample clip found it after 25-tile tests had passed. The sprite step takes the same cancel check as
+    the proxy encode (`should_cancel`, polled about once a second): an interrupt kills the running sprite's ffmpeg,
+    raises `FfmpegCancelledError` and publishes nothing.
   - **Deliberately not here:** serving the sprite (`proxy-media-endpoints`); a job, progress
     over the WebSocket and an enqueue endpoint (`proxy-job`, `proxy-enqueue-endpoint`); the API read model and
     media routes with the entity tag as `v` (D-15); any web code; a prune of orphan entries (`proxy-prune`); a

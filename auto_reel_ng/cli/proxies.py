@@ -12,11 +12,11 @@ After a clip's proxy is ready (made now or already cached) the same pool slot ma
 sprite (``clip-filmstrips``) unless one is recorded; a clip whose proxy failed gets no sprite
 attempt. A failed sprite is reported and counted apart from the proxy, which stays valid.
 
-Each failed clip (proxy or sprite) gets exactly one ``ERROR  <event>/<clip>: <cause>`` line, the cause cut to one
-line by :func:`~auto_reel_ng.thumbs.one_line_cause` (the failing command and its stderr are
-logged at debug level, ``-v``). An interrupt sets one shared cancel flag every encode polls, so
-running ffmpeg processes are killed and their build directories removed before the process
-exits.
+Each failed clip (proxy or sprite) gets exactly one ``ERROR  <event>/<clip>: <cause>`` line,
+the cause cut to one line by :func:`~auto_reel_ng.thumbs.one_line_cause` (the failing command
+and its stderr are logged at debug level, ``-v``). An interrupt sets one shared cancel flag
+every encode and every sprite polls, so running ffmpeg processes are killed and their build
+directories removed before the process exits.
 """
 
 from __future__ import annotations
@@ -187,7 +187,7 @@ def _make_entry(clip: Path, known: Optional[ProxyEntry], run: _Run) -> _Made:
     if run.cancel.is_set():
         raise FfmpegCancelledError("proxies: interrupted before the filmstrip was made")
     try:
-        film = ensure_filmstrip(clip, entry, runtime=run.runtime)
+        film = ensure_filmstrip(clip, entry, runtime=run.runtime, should_cancel=run.cancel.is_set)
     except FilmstripError as exc:
         return _Made(entry, None, exc.reason, proxy_bytes)
     return _Made(entry, film, None, proxy_bytes)
@@ -237,7 +237,7 @@ class _Tally:
 
 
 def _proxies_event(ref: EventRef, run: _Run) -> _EventProxies:
-    """Fill one event's proxies and filmstrips through the pool; print its ERROR lines, then its line."""
+    """Fill one event's proxies and filmstrips through the pool; print its ERROR lines, its line."""
     name = ref.event_dir.name
     try:
         listing = scan_event(ref.event_dir)

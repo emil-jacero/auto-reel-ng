@@ -30,7 +30,9 @@ and verified, before the timeline (D-20, HLD section 6 item 9) and the proxy job
   `select` of those keyframes, not with the `fps` filter. The tile count is `ceil(duration / interval)`,
   never fewer than 1. A clip of 1.0 s or less therefore gets a **one-tile sprite showing its first frame**; no
   clip is skipped and no clip has a placeholder. The count is exact by construction, so there is no silent
-  black padding; a proxy whose keyframes are too far apart to give every tile its own fails loudly.
+  black padding. A keyframe that stays on screen for more than one interval (a variable-frame-rate clip with
+  a static stretch) serves each tile it spans, selected once and repeated, because the picture really is that
+  frame; such a clip gets its sprite, not a standing failure.
 - The tile geometry is recorded in the entry's `facts.json` under a `filmstrip` object (tile size, columns,
   rows, tiles, interval, sprite size, `FILMSTRIP_VERSION`), written after the JPEG, both atomically
   (built in the cache's hidden `.part` directory, verified, renamed into the entry). The timeline reads the geometry from there and never recomputes it.
@@ -56,9 +58,10 @@ type regeneration; serving the sprite is `proxy-media-endpoints`, scheduling it 
 
 ### Modified Capabilities
 
-- `headless-cli`: `proxies` (added by `proxy-encode`) also makes the sprites and reports their counts. The
-  delta is an ADDED requirement, because the `proxies` requirement is not in the main specs until the gate
-  merges.
+- `headless-cli`: the `proxies` requirement (added to the main spec by `proxy-encode`) is MODIFIED: the
+  command also makes the sprites, and its event line, `ERROR` lines, final summary, exit code and interrupt
+  handling cover them. The delta carries the whole requirement with its current text, so the main spec holds
+  one `proxies` requirement after archive and no older line format.
 
 ## Impact
 

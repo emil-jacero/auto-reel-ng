@@ -21,14 +21,16 @@ grid of tiles with these properties:
   120 tiles
 - the number of tiles is `ceil(duration / interval)`, and never fewer than 1
 - tile `k` is the latest keyframe of the proxy at or before `k × interval` seconds (the first keyframe for
-  `k = 0`), so every tile is a real frame of the clip and no two tiles are the same frame
+  `k = 0`), so every tile is a real frame of the clip; where the proxy has no newer keyframe, consecutive
+  tiles are the same frame
 - the JPEG is encoded at quality `-q:v 5`
 
 Frames SHALL be taken from keyframes only. A `duration` that the probe of the proxy fails to give, or that is
 not a positive finite number, SHALL fail the filmstrip; the system SHALL NOT use the source's duration or a
-default in its place. A proxy whose keyframes cannot give every tile a frame of its own (a gap between
-keyframes longer than the interval) SHALL fail the filmstrip with an error naming the tile; the system SHALL
-NOT pad a tile with black or repeat a frame silently.
+default in its place. A proxy whose keyframes are further apart than the interval (a variable-frame-rate clip
+whose picture stops changing, such as a phone video of a static scene) SHALL still get a filmstrip of the
+full tile count: the keyframe on screen SHALL be shown in every tile it spans. The system SHALL NOT pad a tile
+with black, and SHALL NOT show a frame that is not on screen at the tile's time.
 
 #### Scenario: A 25 s landscape clip
 - **WHEN** the proxy of a 25 s, 960x540 clip with a keyframe every half second has its filmstrip made
@@ -54,8 +56,11 @@ NOT pad a tile with black or repeat a frame silently.
   tile (time 0) and the last
 
 #### Scenario: Keyframes too far apart
-- **WHEN** the proxy's keyframes are further apart than the interval, so two tiles would need one keyframe
-- **THEN** the filmstrip fails with an error that names the tile, and no `filmstrip.jpg` is written
+- **WHEN** a 12 s variable-frame-rate proxy has frames for the first 3 s and the last 3 s only, so its
+  keyframes are 6 s apart in the middle
+- **THEN** the filmstrip is made with 12 tiles, no error is raised, and tiles 3 to 8 (seconds 3 to 8) each
+  show the last keyframe before the gap, the picture that stays on screen
+- **AND** a proxy with a single keyframe and a 3 s duration has 3 tiles that all show that keyframe
 
 #### Scenario: The source is not read
 - **WHEN** a filmstrip is made while the source clip's file is unreadable (the library is unmounted)
@@ -128,6 +133,16 @@ and is a JPEG image whose size is `columns × tile_width` by `rows × tile_heigh
 `facts.json` SHALL be written in the build directory and renamed over the old one the same way. A killed or
 failed run SHALL NOT leave a `filmstrip.jpg` that is partial or does not match its plan; it MAY leave a hidden
 build directory, which the proxy cache's stale-build sweep removes.
+
+A run whose cancel check reports true, before it starts or while ffmpeg cuts the sprite (the check is polled
+about once a second and ffmpeg is then killed), SHALL end as a cancellation, publish nothing and remove its
+build directory.
+
+#### Scenario: Canceled mid-extraction
+- **WHEN** the cancel check handed to the filmstrip step reports true while ffmpeg is cutting the sprite
+- **THEN** ffmpeg is killed, the step ends with a cancellation (not a filmstrip failure), no
+  `filmstrip.jpg` is published, `facts.json` is unchanged and no build directory remains
+- **AND** a cancel reported before the step starts runs no process at all
 
 #### Scenario: Killed mid-extraction
 - **WHEN** the ffmpeg process is killed while writing the sprite of a 3,720 s clip
