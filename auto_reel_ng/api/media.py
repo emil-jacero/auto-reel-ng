@@ -37,8 +37,6 @@ from fastapi.responses import FileResponse, Response
 
 from ..errors import ReelError
 from ..event.metadata import load_event_document, require_processable
-from ..render import output_relpath
-from ..staleness import rendered_output
 from .events_read import (
     EventReadError,
     classify_event_failure,
@@ -46,6 +44,7 @@ from .events_read import (
     listed_event_dir,
     proxy_source,
 )
+from .movie_read import rendered_movie_path
 from .schemas import EventFailure
 from .settings import ApiSettings
 
@@ -249,17 +248,14 @@ def movie_media(settings: ApiSettings, event_id: str) -> MediaFile:
        and the processable rule. A failure is an :class:`EventReadError` with the kind
        and detail the event detail gives (``unparseable_reel_yaml``,
        ``unusable_metadata``, ``unreadable_disk``).
-    3. The expected path is the one the event's staleness verdict is computed against.
-    4. :func:`~auto_reel_ng.staleness.rendered_output` decides the movie: none without a
-       render record (an un-adopted legacy movie included), the expected file, else the
-       movie under the event's old name. ``None`` is :class:`MovieNotFoundError`.
-    5. The movie's path, with ``.`` and ``..`` removed lexically, must lie inside the
-       output directory, else :class:`MovieNotFoundError`. A title is writable through
-       ``PUT …/reel`` and the naming rule does not refuse ``/`` in it, so a name could
-       climb out with ``..``. Lexical on purpose, never ``resolve()``: a symbolic link
-       inside the output directory (a year folder on another disk) is followed, as the
-       gate follows it.
-    6. :func:`open_media`, labelled with the movie's file name.
+    3. :func:`~.movie_read.rendered_movie_path` decides the movie, by the rule the event
+       detail's ``movie`` uses: the expected path is the one the event's staleness verdict is
+       computed against; :func:`~auto_reel_ng.staleness.rendered_output` finds none without
+       a render record (an un-adopted legacy movie included), the expected file, else the
+       movie under the event's old name; and the movie's path, with ``.`` and ``..`` removed
+       lexically, must lie inside the output directory. ``None`` is
+       :class:`MovieNotFoundError`.
+    4. :func:`open_media`, labelled with the movie's file name.
     """
     try:
         event_dir = listed_event_dir(settings, event_id)
@@ -270,16 +266,10 @@ def movie_media(settings: ApiSettings, event_id: str) -> MediaFile:
         require_processable(event_dir, document.metadata, today=date.today())
     except (ReelError, OSError) as exc:
         raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
-    expected = settings.output_dir / output_relpath(document.metadata)
-    movie = rendered_output(event_dir, expected)
-    if movie is None or not _inside(movie, settings.output_dir):
+    movie = rendered_movie_path(settings, event_dir, document.metadata)
+    if movie is None:
         raise MovieNotFoundError(event_id)
     return open_media(movie, label=movie.name)
-
-
-def _inside(path: Path, directory: Path) -> bool:
-    """Whether ``path`` lies under ``directory`` once ``.`` and ``..`` are removed lexically."""
-    return Path(os.path.abspath(path)).is_relative_to(os.path.abspath(directory))
 
 
 def etag_matches(header: str, etag: str) -> bool:
