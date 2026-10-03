@@ -308,7 +308,11 @@ like the thumbnail, per-request media reads, not fields of the events read model
 unchanged with byte ranges: no transcode, no probe. They answer `GET` and `HEAD` with `If-None-Match` and
 `If-Modified-Since` validators (change `api-media-head-conditional`). The movie is the file the staleness gate
 counts as the event's movie (`staleness.rendered_output`), so a legacy movie with no render record is not served until
-`auto-reel adopt-renders` records it. `<img>` and `<video>` send no `Authorization` header, so a future token
+`auto-reel adopt-renders` records it. The proxy routes (`GET`/`HEAD /api/v1/events/{event_id}/proxy?clip=` and `/filmstrip?clip=`, change
+`proxy-media-endpoints`, **D-21**) are the same kind of per-request read, of the proxy cache (per-request reads of the
+cache, not fields of the events read model): the clip is looked up as the thumbnail's and the clip route's is, the file
+is the cache entry's `proxy.mp4` or `filmstrip.jpg` computed from the clip's stat (nothing created, no ffmpeg, no
+database), and a clip with no finished file is a 404 problem body. `<img>` and `<video>` send no `Authorization` header, so a future token
 is a cookie or a query parameter (D-A8).
 
 **The same rule bounds content hashing.** The staleness fingerprint's clip-set component has a content-hash
@@ -341,6 +345,7 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   The proxy engine has landed as `proxy-encode` (**D-21**): `auto-reel proxies <root>` fills a rebuildable cache of one
   verified 540p H.264 + AAC proxy per clip (plus its `facts.json`) outside the library; the job, the read model, the
   media routes and the timeline screens that use it follow as their own changes (D-18 and D-19 are taken).
+  The proxy and filmstrip routes have landed (`proxy-media-endpoints`, §4.9, D-21 "Serving").
   The filmstrip sprites have landed (`filmstrip-sprites`): `auto-reel proxies` also cuts one JPEG sprite per proxied
   clip from the finished proxy's keyframes (`filmstrip.jpg` in the cache entry, its tile geometry in `facts.json`).
   The timeline is built in the repo (**D-20**); its pure model has landed (`timeline-model`, no UI yet).
@@ -601,7 +606,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    (`timeline-model`, D-20), UI pending.
    Then the proxy cache: `proxy-encode` builds it with `auto-reel proxies` (D-21), again with no render,
    fingerprint, API or WebSocket change. `filmstrip-sprites` has landed next: the same command also cuts each
-   proxy's filmstrip sprite (D-21), on the same terms.
+   proxy's filmstrip sprite (D-21), on the same terms. `proxy-media-endpoints` lands the serving half of D-21: two read-only
+   routes stream a clip's proxy and filmstrip from the cache (an `api/` change; no render, fingerprint, schema or job change).
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -804,7 +810,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   browser's native player, says whether it is current or outdated, and names its file and size. It loads none of
   the movie until Play (`preload="none"`; the poster is the first played clip's thumbnail). Its address carries
   the file's entity-tag as `v`, read with a one-byte range request on each read of the event, because Chrome
-  fails to play a replaced file at an address that served the old one. Failures are said by cause, including a
+  fails to play a replaced file at an address that served the old one (the proxy routes of D-21 follow the same
+  rule: their `ETag`, read with a `HEAD`, is the `v`). Failures are said by cause, including a
   picture the browser cannot show (a legacy MPEG-4 movie plays its sound only). There are no custom controls or
   shortcuts, no captions and no chapter list: browsers expose no chapter times, and the player does not yet
   show the ones the render manifest now records (`chapters`, change `render-chapter-times`). A chapter list
@@ -1018,9 +1025,23 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     a 109-tile sample clip found it after 25-tile tests had passed. The sprite step takes the same cancel check as
     the proxy encode (`should_cancel`, polled about once a second): an interrupt kills the running sprite's ffmpeg,
     raises `FfmpegCancelledError` and publishes nothing.
-  - **Deliberately not here:** serving the sprite (`proxy-media-endpoints`); a job, progress
-    over the WebSocket and an enqueue endpoint (`proxy-job`, `proxy-enqueue-endpoint`); the API read model and
-    media routes with the entity tag as `v` (D-15); any web code; a prune of orphan entries (`proxy-prune`); a
+  - **Serving** (2026-10-03, change `proxy-media-endpoints`). `GET` and `HEAD /api/v1/events/{event_id}/proxy?clip=`
+    stream the clip's `proxy.mp4` as `video/mp4`, and `…/filmstrip?clip=` its `filmstrip.jpg` as `image/jpeg`, through
+    the same `media_response` as the clip route: `Range`, `If-Range`, a strong `ETag` (the cache file's size and
+    mtime, so a re-encode changes it and a client sends it as `v`), `Last-Modified`, `Cache-Control: private,
+    no-cache` (never `immutable`), `If-None-Match`, `If-Modified-Since` and `HEAD`. The clip is the thumbnail route's
+    (`listed_clip`: a clip discovery lists in an event the list shows, IGNORED included, exact identity, `reel.yaml`
+    never read); the entry is the one `proxies.entry_dir` names for the clip **as it is now** (a symlink is
+    followed), so a replaced clip, another `PROXY_VERSION` or other contract values are simply absent until
+    `auto-reel proxies` runs again. **Absent is a 404 problem body, never a 200, a 202, a placeholder or the original:**
+    a media element cannot use a 202, and bytes of the original would be silently wrong in exactly the case the proxy
+    exists for; whether a clip is prepared is the event detail's business (`proxy-state-read`), and the filmstrip is
+    independent of the proxy file (an entry with a proxy and no sprite is 200 and 404). The routes only `stat` and
+    open: no database (they answer while Postgres is down), no ffmpeg, nothing created, not even the cache directory;
+    a cache file that exists but cannot be read is a 502 before a status line, path-free. Cost: one lookup
+    (listing, config read, two stats) per range request.
+  - **Deliberately not here:** a job, progress
+    over the WebSocket and an enqueue endpoint (`proxy-job`, `proxy-enqueue-endpoint`); the API read model (`proxy-state-read`); any web code; a prune of orphan entries (`proxy-prune`); a
     virtual remux to give the original sound in Firefox. The cache-location helpers are copies of `thumbs/`'s;
     unifying them is a follow-up.
 
@@ -1113,8 +1134,9 @@ turned into confident OpenSpec changes. Numbered to match the ⚠️ markers abo
     proxies`). The PCM audio path is answered the same way: 52 % of the archive's clips (every Sony XAVC clip)
     carry PCM audio that Firefox does not play, a proxy carries AAC made from it, so the proxy plays with sound
     in Firefox while the original stays silent there (the v1 media routes still serve files unchanged). Still
-    open: the job, the read model and the media routes that use the proxies and their filmstrip sprites
-    (the sprites are built: `filmstrip-sprites`), a prune of orphan entries (`proxy-prune`), and the virtual remux that would give the
+    open: the job and the read model that use the proxies (the sprites are built: `filmstrip-sprites`; the
+    routes that serve both are built: `proxy-media-endpoints`, the Sony PCM proxy plays with sound in Chrome and
+    Firefox), a prune of orphan entries (`proxy-prune`), and the virtual remux that would give the
     original sound in Firefox. Facts that sized the work: about 76 % of the archive's files keep `moov` at the
     end (every seek is a range, the first open a tail fetch), and HEVC exists only under `original/`. See
     `docs/research/browser-playback.md`.

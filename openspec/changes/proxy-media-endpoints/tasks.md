@@ -1,6 +1,6 @@
 ## 1. Baseline
 
-- [ ] 1.1 The gates `proxy-encode` and `filmstrip-sprites` are merged into `main`. Confirm the facts the design
+- [x] 1.1 The gates `proxy-encode` and `filmstrip-sprites` are merged into `main`. Confirm the facts the design
   builds on, and stop and report any that do not hold (a different entry layout or finalize order changes
   design decisions 3 and 5):
   - `ls auto_reel_ng/proxies/` exists, and `grep -rn "PROXY_VERSION\|def .*cache_dir\|def .*proxy_key\|def .*entry" auto_reel_ng/proxies/`
@@ -25,9 +25,20 @@
   - `podman images | grep -E "playback-research|pcm-audio-research"` lists `:chrome` and `:pw163`.
   - `openspec validate proxy-media-endpoints --strict` passes.
 
+  **Notes (checked against `main` b1b7829, 2026-10-03):** the settings resolver is
+  `proxies.resolve_proxy_settings(config, project_root)` (`ProxySettings.cache_dir`), the key is
+  `proxies.proxy_key(clip_path)` and the entry directory `proxies.entry_dir(clip_path, cache_dir)`; the file names are
+  `spec.PROXY_FILENAME` / `FACTS_FILENAME` / `FILMSTRIP_FILENAME`. **Two facts differ from the design as first
+  written, which was adapted before the proposal was committed:** (1) an entry is built as a hidden directory
+  `.<key>.<uuid>.part` and renamed *whole* to `<key>`, so `proxy.mp4` never appears alone under a key (`filmstrip.jpg`
+  is renamed into the finished entry later, by `os.replace`); (2) a clip of one second or less gets a **one-tile
+  sprite**, it is not skipped. `proxy-state-read` had not landed and `events_read` has no entry-directory function, so
+  `proxy_source` computes the entry with `entry_dir`. Gates are archived (`2026-10-03-proxy-encode`,
+  `2026-10-03-filmstrip-sprites`).
+
 ## 2. api/ — which file is served
 
-- [ ] 2.1 Add `ProxySource` (frozen: `clip_path`, `entry_dir`, `proxy_path`, `filmstrip_path`) and
+- [x] 2.1 Add `ProxySource` (frozen: `clip_path`, `entry_dir`, `proxy_path`, `filmstrip_path`) and
   `proxy_source(settings, event_id, clip)` to `api/events_read.py`, as design decision 3 orders them: `listed_clip`;
   `load_project_config` and the `proxies` settings resolver (`ConfigError`); `os.stat` of the clip following
   links, then the entry directory from the key. Nothing is opened, created or generated, and nothing probes. An
@@ -54,7 +65,7 @@
   - a snapshot of every path, size and `st_mtime_ns` under `tmp_path`, taken before and after all cases, is
     equal (the cache directory is never created), and `subprocess.Popen` is patched to raise for the module
 
-- [ ] 2.2 In `api/media.py` add the declared content type and the two lookups, which also translate
+- [x] 2.2 In `api/media.py` add the declared content type and the two lookups, which also translate
   `proxy_source`'s `OSError`: `FileNotFoundError` → `MediaGoneError`, any other → `MediaReadError`. `open_media(path, *, label,
   media_type=None)` and `MediaFile.declared_type` (`media_type` returns it when set; every existing caller is
   unchanged). Add `ProxyAbsentError(label, what)` (404; `str()` is `<label>: no <what>`, `what` in `proxy`,
@@ -79,7 +90,7 @@
 
 ## 3. api/ — routes
 
-- [ ] 3.1 In `api/routes/media.py` add `get_clip_proxy` and `get_clip_filmstrip`, each `@router.head` stacked
+- [x] 3.1 In `api/routes/media.py` add `get_clip_proxy` and `get_clip_filmstrip`, each `@router.head` stacked
   over `@router.get` with `response_class=Response` and `PROXY_RESPONSES` / `FILMSTRIP_RESPONSES` (design
   decision 8: `MEDIA_RESPONSES` with the 200 and 206 content swapped), sync `def`, the clip route's declared
   `clip`, `v`, `If-None-Match`, `If-Modified-Since`, `Range`, `If-Range` parameters, and the clip route's
@@ -119,7 +130,7 @@
     → 401 from the checker with none of the file's bytes
   - `tests/test_api_media.py`, `tests/test_api_thumbnails.py` and `tests/test_api_events.py` pass unchanged
 
-- [ ] 3.2 Serve a real proxy end to end (`has_ffmpeg`; no `gpu` marker: force the CPU path). Build a
+- [x] 3.2 Serve a real proxy end to end (`has_ffmpeg`; no `gpu` marker: force the CPU path). Build a
   2 s synthetic clip with audio (`lavfi` testsrc2 and sine) in a tmp event, make its entry with the `proxies`
   package's `ensure_proxy` (CPU path, the gates' own entry point) into a tmp cache, and request the proxy and
   the filmstrip over the app. Verify in `tests/test_api_proxy_media.py`:
@@ -132,7 +143,7 @@
 
 ## 4. OpenAPI and generated types
 
-- [ ] 4.1 Regenerate `web/openapi.json` (`.venv/bin/python -m auto_reel_ng.api.openapi > web/openapi.json`) and
+- [x] 4.1 Regenerate `web/openapi.json` (`.venv/bin/python -m auto_reel_ng.api.openapi > web/openapi.json`) and
   `web/src/api/schema.d.ts` (`npm run generate:types` in `docker.io/library/node:22`). Verify:
   - `tests/test_api_openapi.py` gains both paths in `EXPECTED_PATHS`; `EXPECTED_MODELS` is unchanged. A new case
     asserts, for `/api/v1/events/{event_id}/proxy` and `/filmstrip`, for `get` and for `head`:
@@ -152,7 +163,7 @@
 
 ## 5. Verification against the dev library, in real browsers
 
-- [ ] 5.1 Run the routes for real with slug `proxy-media-endpoints`, port **8307**, database
+- [x] 5.1 Run the routes for real with slug `proxy-media-endpoints`, port **8307**, database
   `arel_proxy_media_endpoints`, `DEV` and `ENVF` as the brief gives (never 8080, 5173, 8132, 8141–8143 or 5432
   except through the dev container exec; never the database `auto_reel_ng`, `../auto-reel-dev`, or any other
   agent's `wt-*` / `dev-*`). Playwright scripts, screenshots and logs stay in `SCRATCH`; export `TMPDIR`.
@@ -227,7 +238,7 @@
 
 ## 6. Docs
 
-- [ ] 6.1 Update the docs, re-reading each against the spec, and record the measured results from 5.1:
+- [x] 6.1 Update the docs, re-reading each against the spec, and record the measured results from 5.1:
   - `README.md`, API service section beside the clip media entry: `GET`/`HEAD …/proxy?clip=` and
     `…/filmstrip?clip=`: what each serves (the cache entry, unchanged, `video/mp4` with AAC / `image/jpeg`); the
     clip identity encoded as for `media`; `v` ignored and meant to carry the `ETag` (read with `HEAD`); absent is
@@ -250,7 +261,7 @@
 
 ## 7. Validation
 
-- [ ] 7.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`,
+- [x] 7.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`,
   then `.venv/bin/python -m mypy auto_reel_ng`, `.venv/bin/python -m pylint auto_reel_ng` and the full
   `.venv/bin/python -m pytest` (in the background with a generous timeout, `TMPDIR` exported), including
   `requires_db` and `has_ffmpeg`. Then, in the node:22 container, `npm test`, `npx tsc --noEmit` and
