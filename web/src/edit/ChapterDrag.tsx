@@ -22,7 +22,9 @@ import type {
   UniqueIdentifier,
 } from '@dnd-kit/core'
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -36,6 +38,7 @@ import { createPortal } from 'react-dom'
 import { ClipName } from '../events/common'
 import { Icon } from '../ui/Icon'
 import type { MoveHandler } from './ClipOrderList'
+import { groupOf, groupPlace } from './draft'
 import type { ChapterKey, Orders } from './draft'
 import {
   CHAPTER_DROP,
@@ -49,6 +52,7 @@ import {
   stepSlot,
 } from './dragSlots'
 import type { Slot, Span } from './dragSlots'
+import { GROUP_INSTRUCTIONS, groupWords } from './marks'
 
 /*
  * The one drag-and-drop context of Edit mode: every chapter's clips, so a clip
@@ -65,6 +69,13 @@ import type { Slot, Span } from './dragSlots'
  * the editor's `clip-drop`); a drop within the chapter is a reorder (`onReorder`).
  * A missing clip never leaves its chapter, and a deleted chapter's placeholder
  * takes nothing. Every drag is spoken through dnd-kit's live region.
+ *
+ * Lifting one of two or more marked clips lifts the whole marked group (draft.ts
+ * `groupOf`): dnd-kit has one active draggable, so the group is the lifted clip standing for
+ * a set, computed once at the lift. A group drag has gaps in every chapter, the own too
+ * (dragSlots.ts `gaps`): no row makes room, a line shows at the gap, and a drop is one edit
+ * (`onDropGroup`, the editor's `group-drop`). A single clip, marked or not, is dragged as
+ * before.
  */
 
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
@@ -105,20 +116,37 @@ const AUTO_SCROLL = { acceleration: 34, interval: 20, threshold: { x: 0.2, y: 0.
 /** The copy stays in its column at every width. */
 const vertical: Modifier = ({ transform }) => ({ ...transform, x: 0 })
 
-/** The lifted clip, as its row named it then, and whether a pointer (not the keyboard) holds it. */
-type Lift = { identity: string; name: string; pointer: boolean }
+/**
+ * The lifted clip, as its row named it then, and whether a pointer (not the keyboard) holds
+ * it. `group`: the marked clips it stands for, in page order, or null for a clip alone.
+ */
+type Lift = { identity: string; name: string; pointer: boolean; group: readonly string[] | null }
+
+/**
+ * The marked clips a held group stands for, or null when no group is held. Changes only at a
+ * lift and a drop: the rows read it to show a line at every gap and to dim the held rows.
+ */
+const GroupHeld = createContext<ReadonlySet<string> | null>(null)
+
+export function useGroupHeld(): ReadonlySet<string> | null {
+  return useContext(GroupHeld)
+}
 
 /** What a release does: nothing, a reorder within the chapter, or a drop into another. */
 type Drop =
   | { kind: 'none' }
   | { kind: 'reorder'; chapter: ChapterKey; from: number; to: number }
   | { kind: 'into'; from: ChapterKey; to: ChapterKey; at: number }
+  | { kind: 'group'; to: ChapterKey; gap: number }
 
 /** The drop the editor follows up once the orders show it: focus and scroll. */
 type Dropped = { identity: string; to: ChapterKey; across: boolean }
 
 /** A target in another chapter, as the copy's badge and the announcements say it. */
 type Target = { heading: string; position: number; total: number }
+
+/** Where a held group would start: `heading` null within the only chapter the group is in. */
+type GroupTarget = { heading: string | null; position: number; total: number }
 
 const GRIP = <Icon name="grip-vertical" />
 const INTO = <Icon name="arrow-right" />
@@ -171,13 +199,37 @@ function rowIntoView(row: HTMLElement): void {
 /** The copy that follows the pointer: the clip's name and, over another chapter, where it goes. */
 function DragPreview({
   name,
+  count,
   targetOf,
+  groupTargetOf,
 }: {
   name: string
+  /** How many clips are held: more than one for a group. */
+  count: number
   targetOf: (overId: UniqueIdentifier | null) => Target | null
+  groupTargetOf: (overId: UniqueIdentifier | null) => GroupTarget | null
 }) {
   // Re-renders on every drag update (it is small): it reads the current target.
   const { over } = useDndContext()
+  if (count > 1) {
+    const at = groupTargetOf(over?.id ?? null)
+    return (
+      <div className="clip-drag-preview" data-group aria-hidden="true">
+        <span className="clip-drag-grip">{GRIP}</span>
+        <span className="clip-drag-name">
+          <ClipName name={name} />
+        </span>
+        <span className="badge clip-drag-target" data-tone="info">
+          {INTO}
+          <span>
+            {at === null
+              ? `${count} marked clips`
+              : groupWords.badge(count, at.heading, at.position, at.total)}
+          </span>
+        </span>
+      </div>
+    )
+  }
   const target = targetOf(over?.id ?? null)
   return (
     <div className="clip-drag-preview" aria-hidden="true">
@@ -206,6 +258,8 @@ export function ChapterDrag({
   locked,
   onReorder,
   onDropInto,
+  marked,
+  onDropGroup,
   onLift,
   rootRef,
   children,
@@ -223,6 +277,13 @@ export function ChapterDrag({
   onReorder: MoveHandler
   /** A drop into another chapter: false when the editor refused it (save or Move clips pending). */
   onDropInto: (identity: string, from: ChapterKey, to: ChapterKey, at: number) => boolean
+  /** The marked clips: lifting one of two or more lifts them all. */
+  marked: ReadonlySet<string>
+  /**
+   * A group drop at gap `gap` of chapter `to`, lifted by `dragged`: false when it changed
+   * nothing or the editor refused it (save or Move clips pending).
+   */
+  onDropGroup: (dragged: string, to: ChapterKey, gap: number) => boolean
   /** Whether a clip is lifted now (a keyboard or pointer drag not yet dropped or cancelled). */
   onLift: (lifted: boolean) => void
   /** The editor's root, where the moved row is found after a drop. */
@@ -239,13 +300,19 @@ export function ChapterDrag({
     return () => onLift(false)
   }, [isLifted, onLift])
   const reducedMotion = useReducedMotion()
-  const model = useMemo(() => dragModel(orders, listed), [orders, listed])
+  // A held group has gaps in every chapter (dragSlots.ts); its members, for the rows.
+  const group = lifted?.group ?? null
+  const model = useMemo(
+    () => dragModel(orders, listed, group !== null),
+    [orders, listed, group],
+  )
+  const held = useMemo(() => (group === null ? null : new Set(group)), [group])
 
   // What the dnd-kit callbacks below read: they stay the same functions, so neither the
   // sensors nor the context's accessibility change while a clip is lifted.
-  const current = useRef({ model, staysHome, nameOf, headingOf, locked })
+  const current = useRef({ model, staysHome, nameOf, headingOf, locked, marked, listed })
   useLayoutEffect(() => {
-    current.current = { model, staysHome, nameOf, headingOf, locked }
+    current.current = { model, staysHome, nameOf, headingOf, locked, marked, listed }
   })
   // The lifted clip; the slot the keyboard last stepped to (null: none yet, at the lift).
   const lift = useRef<Lift | null>(null)
@@ -267,7 +334,7 @@ export function ChapterDrag({
     const identity = String(id)
     return lift.current?.identity === identity
       ? lift.current
-      : { identity, name: current.current.nameOf(identity), pointer: false }
+      : { identity, name: current.current.nameOf(identity), pointer: false, group: null }
   }, [])
 
   /** Its own chapter's order and its position there, 1-based. */
@@ -300,6 +367,29 @@ export function ChapterDrag({
   )
 
   /**
+   * Where the held group would start if released over `overId`, or null (none, a deleted
+   * placeholder). Its chapter's name is left out when the group sits in that chapter alone.
+   */
+  const groupTargetOf = useCallback(
+    (overId: UniqueIdentifier | null): GroupTarget | null => {
+      const mine = lift.current
+      if (mine === null || mine.group === null) {
+        return null
+      }
+      const { model: now, headingOf: heading } = current.current
+      const at = slotOf(now, mine.identity, overId === null ? null : String(overId))
+      const place = at === null ? null : groupPlace(now.orders, mine.group, at.chapter, at.index)
+      if (at === null || place === null) {
+        return null
+      }
+      const chapters = new Set(mine.group.map((identity) => now.chapterOf.get(identity)))
+      const alone = chapters.size === 1 && chapters.has(at.chapter)
+      return { heading: alone ? null : heading(at.chapter), ...place }
+    },
+    [],
+  )
+
+  /**
    * Where releasing `identity` drops it. A keyboard drag has its own slot: dnd-kit's `over`
    * follows it only after a render, which a quick Space (a key repeat, a script) can beat,
    * dropping the clip where it was before the key.
@@ -320,6 +410,10 @@ export function ChapterDrag({
       const at = slotOf(now, identity, overId === null ? null : String(overId))
       if (held || own === null || at === null) {
         return { kind: 'none' }
+      }
+      if (now.gaps) {
+        // A held group: every chapter, the own too, takes it at a gap.
+        return { kind: 'group', to: at.chapter, gap: at.index }
       }
       if (at.chapter === own) {
         const from = order.indexOf(identity)
@@ -369,8 +463,8 @@ export function ChapterDrag({
    * consumed, so the page does not scroll under the clip; every other key does nothing
    * here (Space, Enter and Tab drop, Escape cancels: the sensor's own). The copy goes
    * where the drop will be: in the own chapter on the target row's top, or its bottom
-   * when moving down past the clip (sortable's rule); elsewhere centred on the gap's
-   * line, or on an empty chapter's area. The sensor scrolls from there for the arrows;
+   * when moving down past the clip (sortable's rule); elsewhere (and everywhere for a held
+   * group) centred on the gap's line, or on an empty chapter's area. The sensor scrolls from there for the arrows;
    * it does not for the Page keys, so a target outside the window is scrolled to here
    * (a document-end clamp moves the copy instead of the page).
    */
@@ -404,7 +498,7 @@ export function ChapterDrag({
       const height = collisionRect?.height ?? 0
       const rows = now.orders.get(next.chapter) ?? []
       let y: number | undefined
-      if (next.chapter === own) {
+      if (next.chapter === own && !now.gaps) {
         const row = droppableRects.get(rows[next.index])
         if (row !== undefined) {
           y = next.index > order.indexOf(identity) ? row.bottom - height : row.top
@@ -494,8 +588,17 @@ export function ChapterDrag({
       const { order, position } = homeOf(String(id))
       return `${name(id)} dropped at position ${position} of ${order.length}, unchanged.`
     }
+    // The words of a held group, or null when a clip alone is held.
+    const group = () => {
+      const mine = lift.current
+      return mine === null || mine.group === null ? null : mine.group.length
+    }
     return {
       onDragStart: ({ active }) => {
+        const count = group()
+        if (count !== null) {
+          return groupWords.lift(count)
+        }
         const identity = String(active.id)
         const { own, order, position } = homeOf(identity)
         const { model: now, staysHome: home, headingOf: heading } = current.current
@@ -513,6 +616,13 @@ export function ChapterDrag({
         if (first && over?.id === active.id) {
           return undefined
         }
+        const count = group()
+        if (count !== null) {
+          const at = over === null ? null : groupTargetOf(over.id)
+          return at === null
+            ? undefined
+            : groupWords.over(count, at.heading, at.position, at.total)
+        }
         const place = over === null ? null : words(active.id, over.id)
         return place === null ? undefined : `${name(active.id)} is over ${place}.`
       },
@@ -522,34 +632,60 @@ export function ChapterDrag({
         const drop = dropOf(String(active.id), overId)
         const wasRefused = refused.current === String(active.id)
         refused.current = null
+        const count = group()
+        if (count !== null) {
+          const at = groupTargetOf(overId)
+          return drop.kind === 'none' || at === null || wasRefused
+            ? groupWords.unchanged(count)
+            : groupWords.drop(count, at.heading, at.position, at.total)
+        }
         if (drop.kind === 'none' || overId === null || wasRefused) {
           return unchanged(active.id)
         }
         return `${name(active.id)} moved to ${words(active.id, overId)}.`
       },
       onDragCancel: ({ active }) => {
+        const count = group()
+        if (count !== null) {
+          return groupWords.cancel(count)
+        }
         const { order, position } = homeOf(String(active.id))
         const back = `position ${position} of ${order.length}`
         return `Move cancelled. ${name(active.id)} is back at ${back}.`
       },
     }
-  }, [dropOf, homeOf, liftOf, targetOf])
+  }, [dropOf, groupTargetOf, homeOf, liftOf, targetOf])
 
   const several = listed.length > 1
+  // Marks cannot change while a clip is lifted (the editor refuses them), so these
+  // instructions do not change under a held clip either.
+  const grouped = marked.size >= 2
   const accessibility = useMemo(() => {
+    const base = several ? INSTRUCTIONS + ACROSS : INSTRUCTIONS
     const screenReaderInstructions: ScreenReaderInstructions = {
-      draggable: several ? INSTRUCTIONS + ACROSS : INSTRUCTIONS,
+      draggable: grouped ? base + GROUP_INSTRUCTIONS : base,
     }
     // Its instructions and live region go to <body>, outside the chapters' markup.
     return { announcements, screenReaderInstructions, container: document.body }
-  }, [announcements, several])
+  }, [announcements, several, grouped])
 
   const onDragStart = useCallback(({ active, activatorEvent }: DragStartEvent) => {
     const identity = String(active.id)
+    const { model: before, listed: shown, marked: picked } = current.current
+    // A marked clip stands for the whole marked group, when there are two or more. Taken
+    // once, now: marks cannot change while it is held.
+    const members = picked.has(identity) ? groupOf(before.orders, shown, picked) : []
+    const group = members.length >= 2 && members.includes(identity) ? members : null
+    if (group !== null) {
+      // The render that shows the lift runs its collision detection before the layout
+      // effect above: the gaps must already be in the model it reads.
+      current.current = { ...current.current, model: dragModel(before.orders, shown, true) }
+    }
     const next = {
       identity,
       name: current.current.nameOf(identity),
       pointer: !(activatorEvent instanceof KeyboardEvent),
+      group,
     }
     lift.current = next
     slot.current = null
@@ -581,9 +717,17 @@ export function ChapterDrag({
         } else {
           refused.current = identity
         }
+      } else if (drop.kind === 'group') {
+        // One edit for the whole group; false when it changed nothing: then it is spoken as
+        // unchanged and the marks stay.
+        if (onDropGroup(identity, drop.to, drop.gap)) {
+          dropped.current = { identity, to: drop.to, across: true }
+        } else {
+          refused.current = identity
+        }
       }
     },
-    [dropOf, onDropInto, onReorder, releasedOver],
+    [dropOf, onDropGroup, onDropInto, onReorder, releasedOver],
   )
 
   // A keyboard drag scrolls the page after the copy, a step into another chapter by a
@@ -666,7 +810,7 @@ export function ChapterDrag({
       onDragEnd={onDragEnd}
       onDragCancel={onDragCancel}
     >
-      {children}
+      <GroupHeld.Provider value={held}>{children}</GroupHeld.Provider>
       {/* Above every panel, the app header and the save bar; under the toasts. Compact:
           the row's width, its first line's height, never an open Cuts panel's. */}
       {createPortal(
@@ -678,7 +822,14 @@ export function ChapterDrag({
           // dnd-kit slides it 250 ms on each keyboard step by default.
           transition={reducedMotion ? 'none' : undefined}
         >
-          {lifted !== null && <DragPreview name={lifted.name} targetOf={targetOf} />}
+          {lifted !== null && (
+            <DragPreview
+              name={lifted.name}
+              count={lifted.group?.length ?? 1}
+              targetOf={targetOf}
+              groupTargetOf={groupTargetOf}
+            />
+          )}
         </DragOverlay>,
         document.body,
       )}

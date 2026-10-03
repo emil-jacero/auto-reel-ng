@@ -109,7 +109,11 @@ reorder — drag a clip's handle (mouse, pen or touch), lift it from the keyboar
 or Enter, the arrows, Space or Enter; Escape cancels), or press its Move up / Move down.
 The rows keep the table's columns (`--clip-*`), so entering Edit mode moves nothing but
 the position number, and they name each clip as the table does (`clipNames`), a folder
-part included where a chapter lists a clip from another folder. A drag can also take a
+part included where a chapter lists a clip from another folder. **Marks** (`clip-group-select-drag`): a
+box at each clip frame's top right marks it (not for missing or ignored clips); dragging
+a marked clip's handle, or lifting it from the keyboard, moves every marked clip, in page
+order, to the drop position as one edit, and Move clips' Pick marked picks them; marks
+are not a change to save and clear after a move or a Save. A drag can also take a
 clip into another chapter (`cross-chapter-drag`; one `DndContext` around every chapter,
 `edit/ChapterDrag.tsx`), by pointer or keyboard: dropped before any of its clips or after
 the last, the clip lands exactly there, as one edit with Move clips' rules (the "from"
@@ -321,7 +325,8 @@ src/
 ├── edit/
 │   ├── EventEditor.tsx   Edit mode: the reel read, chapter edits, the save bar, saves and failures
 │   ├── ChapterDrag.tsx   the one drag context around every chapter: sensors, targets, the copy, words, focus
-│   ├── dragSlots.ts      where a dragged clip can land: slots, keyboard steps, pointer targets (pure)
+│   ├── dragSlots.ts      where a dragged clip can land: slots, keyboard steps, pointer targets; a gap mode while a marked group is held (pure)
+│   ├── marks.ts          Edit mode's marks: toggling, pruning, Pick marked, the words spoken (pure; marks.test.ts, groupMove.test.ts)
 │   ├── ClipOrderList.tsx one chapter's clips: its sortable list, a drop target, buttons; Remove / Undo
 │   ├── ChapterTools.tsx  a chapter's tools row, a deleted chapter's placeholder, Add chapter
 │   ├── ChapterDialogs.tsx the name dialog (Add chapter, Rename…) and Move clips

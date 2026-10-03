@@ -188,6 +188,52 @@
     }
   }
 
+  /* ------------------------------------------------------------ the marks line */
+
+  /*
+   * How clips are marked, and, once any is, how many and Clear marks. The right slot always
+   * has the button's height and room, its children `hidden` rather than the slot, so the
+   * first mark and the last unmark move no row. Focused by script after Clear marks.
+   */
+  .mark-line {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--s-2) var(--s-4);
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+
+    &:focus {
+      outline: none;
+    }
+  }
+
+  .mark-line-slot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--s-3);
+    min-block-size: 1.625rem;
+    min-inline-size: 14rem;
+
+    & .mark-count {
+      color: var(--fg);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+  }
+
+  @media (width < 40rem) {
+    .mark-line {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .mark-line-slot {
+      justify-content: flex-start;
+      min-inline-size: 0;
+    }
+  }
+
   /* ------------------------------------------------------------ the clip lists */
 
   /*
@@ -281,6 +327,101 @@
   :is(.clip-order-head, .clip-item) > .clip-file {
     grid-area: file;
     padding-inline: var(--s-3);
+  }
+
+  /*
+   * The mark (`MarkBox`): a layer over the thumbnail's own box (16:9, as wide as its column,
+   * centred in the row as the thumbnail is), so the corner is the thumbnail's corner in every
+   * layout. It takes no press; its box does. Later in source order than the Watch button, so
+   * it paints over it.
+   */
+  .clip-item > .clip-mark {
+    grid-area: thumb;
+    position: relative;
+    align-self: center;
+    inline-size: 100%;
+    aspect-ratio: 16 / 9;
+    pointer-events: none;
+  }
+
+  /* The 24 px box, 2 px in from the thumbnail's top-right corner. */
+  .clip-mark-ctl {
+    position: absolute;
+    inset-block-start: 2px;
+    inset-inline-end: 2px;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    pointer-events: auto;
+  }
+
+  /* The native control over the box, unseen: Space, `checked` and the focus ring are its. */
+  .clip-mark-input {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+
+    &[aria-disabled='true'] {
+      cursor: not-allowed;
+    }
+  }
+
+  /*
+   * Opaque, with the foreground colour's border and a ring in the row's colour: 3:1 against
+   * the row and against any frame, in both schemes. The check, not the colour, tells the state.
+   */
+  .clip-mark-box {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    border: 2px solid var(--fg);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    box-shadow: 0 0 0 1px var(--surface);
+    color: var(--accent-fg);
+    pointer-events: none;
+  }
+
+  .clip-mark-ctl[data-on] .clip-mark-box {
+    background: var(--accent);
+  }
+
+  .clip-mark-ctl:has(> .clip-mark-input:focus-visible) .clip-mark-box {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 3px;
+  }
+
+  /*
+   * A coarse pointer: a tap anywhere in 44 × 44 around the box reaches the mark, over the
+   * Watch button under it. The box is 2 px in, so the area reaches 8 px above the thumbnail,
+   * inside the row's own 8 px padding. The rest of the thumbnail still opens the preview.
+   */
+  @media (pointer: coarse) {
+    .clip-mark-input {
+      inset: -0.625rem;
+      inline-size: 2.75rem;
+      block-size: 2.75rem;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .clip-mark-box {
+      forced-color-adjust: none;
+      border-color: CanvasText;
+      background: Canvas;
+      color: CanvasText;
+      box-shadow: none;
+    }
+
+    .clip-mark-ctl[data-on] .clip-mark-box {
+      background: Highlight;
+      color: HighlightText;
+    }
   }
 
   /*
@@ -422,6 +563,20 @@
       --_fg: var(--accent);
       cursor: grabbing;
     }
+  }
+
+  /*
+   * Held with a dragged group (the marked clips): dimmed and outlined, so the state is not
+   * told by the dimming alone, and in place. Its children dim, not the row, so the line a
+   * drop would draw on the row stays at full strength.
+   */
+  .clip-item[data-held]:not([data-dragging]) {
+    outline: 1px dashed var(--fg-subtle);
+    outline-offset: -1px;
+  }
+
+  .clip-item[data-held] > * {
+    opacity: 0.55;
   }
 
   /*

@@ -48,7 +48,13 @@ import { ChapterDrag } from './ChapterDrag'
 import { AddChapter, DeletedChapter, NO_CLIPS_TO_MOVE } from './ChapterTools'
 import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './ChapterTools'
 import { ClipOrderList } from './ClipOrderList'
-import type { MoveHandler, Origins, RemoveHandler, RestoreHandler } from './ClipOrderList'
+import type {
+  MarkHandler,
+  MoveHandler,
+  Origins,
+  RemoveHandler,
+  RestoreHandler,
+} from './ClipOrderList'
 import {
   addChapter,
   addCut,
@@ -62,6 +68,7 @@ import {
   detailMatchesDocument,
   draftChapters,
   editableChapters,
+  groupOf,
   isDirty,
   keptOriginal,
   layoutChanged,
@@ -72,6 +79,7 @@ import {
   moveClip,
   moveClipTo,
   moveClips,
+  moveGroup,
   movedSet,
   ordersOf,
   originOf,
@@ -94,6 +102,17 @@ import type {
   EditableChapter,
   MetadataField,
 } from './draft'
+import {
+  CLEARED_WORDS,
+  MARK_HINT,
+  NO_MARKS,
+  afterMove,
+  clearMarks,
+  countWords,
+  markWords,
+  pruneMarks,
+  toggleMark,
+} from './marks'
 import { FIELD_LABEL, MetadataForm } from './MetadataForm'
 import { SaveBar } from './SaveBar'
 import type { Operation, Pressed, SaveProblem } from './SaveBar'
@@ -157,6 +176,11 @@ type Ready = {
   dateIncomplete: boolean
   /** The clips whose cut fields hold typed text not added as a cut: never saved. */
   typed: ReadonlySet<string>
+  /**
+   * The clips marked to move together (edit/marks.ts). Beside the draft, not in it: marking
+   * is no edit, so it never makes the page dirty. Ended by Reset and by a re-read.
+   */
+  marked: ReadonlySet<string>
   /** Cuts added so far in this session: the next one's key is `a${nextCut + 1}`. */
   nextCut: number
   /** Bumped by Reset, which remounts the fields (a partial date has no value to reset). */
@@ -193,6 +217,9 @@ type Action =
   | { type: 'chapter-restore'; key: ChapterKey }
   | { type: 'clips-move'; from: ChapterKey; to: ChapterKey; identities: readonly string[] }
   | { type: 'clip-drop'; from: ChapterKey; to: ChapterKey; identity: string; at: number }
+  | { type: 'group-drop'; dragged: string; to: ChapterKey; gap: number }
+  | { type: 'mark'; identity: string; on: boolean }
+  | { type: 'marks-clear' }
   | { type: 'field'; field: MetadataField; value: string }
   | { type: 'date-validity'; incomplete: boolean }
   | {
@@ -246,6 +273,13 @@ function withDraft(state: Ready, draft: Draft): Ready {
   return draft === state.draft ? state : afterEdit({ ...state, draft })
 }
 
+/** `state` with `draft` and its marks less the clips just moved, unless nothing changed. */
+function withMoved(state: Ready, draft: Draft, moved: readonly string[]): Ready {
+  return draft === state.draft
+    ? state
+    : afterEdit({ ...state, draft, marked: afterMove(state.marked, moved) })
+}
+
 /** Whether `key` is a chapter of the draft that a save keeps (not deleted). */
 function isListed(draft: Draft, key: ChapterKey): boolean {
   return draft.chapters.some((chapter) => chapter.key === key && !chapter.deleted)
@@ -278,6 +312,7 @@ function reduce(state: State, action: Action): State {
         added: 0,
         dateIncomplete: false,
         typed: NONE_TYPED,
+        marked: NO_MARKS,
         nextCut: 0,
         resets: 0,
         pressed: null,
@@ -349,9 +384,10 @@ function reduce(state: State, action: Action): State {
       if (!isListed(state.draft, action.from) || !isListed(state.draft, action.to)) {
         return state
       }
-      return withDraft(
+      return withMoved(
         state,
         moveClips(state.draft, action.from, action.to, action.identities, state.baseline.original),
+        action.identities,
       )
     case 'clip-drop': {
       // A drag into another chapter, at the place it was dropped (`moveClipTo`).
@@ -360,8 +396,30 @@ function reduce(state: State, action: Action): State {
         return state
       }
       const draft = moveClipTo(state.draft, from, to, identity, at)
-      return draft === state.draft ? state : afterEdit({ ...state, draft, lastMoved: identity })
+      return draft === state.draft
+        ? state
+        : afterEdit({ ...state, draft, lastMoved: identity, marked: afterMove(state.marked, [identity]) })
     }
+    case 'group-drop': {
+      // The whole marked group, in page order, as one run at the gap (`moveGroup`). The group
+      // is taken from the state's marks, not shipped by the drag, so a drag can never move a
+      // clip the state does not hold marked. A no-op drop keeps the state, marks included.
+      const listed = listedChapters(state.draft.chapters).map((chapter) => chapter.key)
+      const group = groupOf(state.draft.orders, listed, state.marked)
+      if (group.length === 0 || !isListed(state.draft, action.to)) {
+        return state
+      }
+      const draft = moveGroup(state.draft, group, action.to, action.gap)
+      return draft === state.draft
+        ? state
+        : afterEdit({ ...state, draft, lastMoved: action.dragged, marked: afterMove(state.marked, group) })
+    }
+    case 'mark': {
+      const marked = toggleMark(state.marked, action.identity, action.on)
+      return marked === state.marked ? state : { ...state, marked }
+    }
+    case 'marks-clear':
+      return state.marked.size === 0 ? state : { ...state, marked: clearMarks(state.marked) }
     case 'field':
       return afterEdit({
         ...state,
@@ -423,6 +481,7 @@ function reduce(state: State, action: Action): State {
         lastMoved: null,
         dateIncomplete: false,
         typed: NONE_TYPED,
+        marked: NO_MARKS,
         nextCut: 0,
         resets: state.resets + 1,
         problem: null,
@@ -664,6 +723,11 @@ type ChapterFocus = {
 /** The statuses of a clip on disk that the chapter plays: the ones Move clips offers. */
 function onDisk(clip: Clip | undefined): boolean {
   return clip?.status === 'active' || clip?.status === 'new'
+}
+
+/** A clip that can carry a mark: on disk and not excluded (the rows with a Cuts control). */
+function canMark(clip: Clip | undefined): boolean {
+  return onDisk(clip) && clip?.excluded !== true
 }
 
 /**
@@ -1518,6 +1582,93 @@ export function EventEditor({
     [clips],
   )
 
+  // Marks (edit/marks.ts): the clips a chapter plays that are on disk can be marked. The marks
+  // in force are the state's, less any clip that cannot carry one (defensive: a mark is only
+  // ever made on such a clip).
+  const markable = useMemo(
+    () =>
+      new Set(
+        [...(orders?.values() ?? [])].flatMap((order) =>
+          order.filter((identity) => canMark(clips.get(identity))),
+        ),
+      ),
+    [orders, clips],
+  )
+  const readMarks = ready?.marked
+  const marks = useMemo(
+    () => (readMarks === undefined ? NO_MARKS : pruneMarks(readMarks, markable)),
+    [readMarks, markable],
+  )
+  // Each listed chapter's marked clips: one set per chapter that keeps its identity while the
+  // chapter's own marks are unchanged, so marking in one chapter re-renders no other list.
+  const marksCache = useRef(new Map<ChapterKey, ReadonlySet<string>>())
+  const marksIn = useMemo(() => {
+    const result = new Map<ChapterKey, ReadonlySet<string>>()
+    for (const key of listedKeys) {
+      const order = orders?.get(key) ?? NONE_REMOVED
+      const mine = marks.size === 0 ? [] : order.filter((identity) => marks.has(identity))
+      const previous = marksCache.current.get(key) ?? NO_MARKS
+      result.set(
+        key,
+        previous.size === mine.length && mine.every((identity) => previous.has(identity))
+          ? previous
+          : new Set(mine),
+      )
+    }
+    marksCache.current = result
+    return result
+  }, [listedKeys, orders, marks])
+  const markLineRef = useRef<HTMLDivElement>(null)
+
+  // A mark or Clear marks: not while a save or a Move clips is pending, nor while a clip is
+  // lifted (the group a drag lifted is the group it drops). Spoken once through the live region.
+  const onMark = useCallback<MarkHandler>(
+    (identity, on) => {
+      const current = latest.current
+      if (!idle(current) || lifted.current || (on && !canMark(clips.get(identity)))) {
+        return
+      }
+      const marked = toggleMark(current.marked, identity, on)
+      if (marked === current.marked) {
+        return
+      }
+      dispatch({ type: 'mark', identity, on })
+      announce(markWords(nameOfClip(identity), on, marked.size))
+    },
+    [clips, announce, nameOfClip],
+  )
+  const onClearMarks = useCallback(() => {
+    const current = latest.current
+    if (!idle(current) || lifted.current || current.marked.size === 0) {
+      return
+    }
+    dispatch({ type: 'marks-clear' })
+    announce(CLEARED_WORDS)
+    // The button leaves with the count: focus goes to the line, not to <body>.
+    markLineRef.current?.focus({ preventScroll: true })
+  }, [announce])
+
+  // A group drop (`ChapterDrag`): the marked clips as one run at a gap of `to`, one edit.
+  // False when it changes nothing or is refused (save or Move clips pending); the marks stay.
+  const onDropGroup = useCallback(
+    (dragged: string, to: ChapterKey, gap: number) => {
+      const current = latest.current
+      if (!idle(current) || !isListed(current.draft, to)) {
+        return false
+      }
+      const group = groupOf(current.draft.orders, listedKeys, current.marked)
+      if (group.length < 2 || !group.includes(dragged)) {
+        return false
+      }
+      if (moveGroup(current.draft, group, to, gap) === current.draft) {
+        return false
+      }
+      dispatch({ type: 'group-drop', dragged, to, gap })
+      return true
+    },
+    [listedKeys],
+  )
+
   // Each listed chapter's tools: what it offers, its notes and why it cannot go. A
   // chapter's object is kept while what it shows is unchanged, so its list re-renders
   // only when its own tools change.
@@ -1973,6 +2124,28 @@ export function EventEditor({
             </div>
           )}
 
+          {detail !== null && (
+            // How clips are marked, and, once any is, how many and Clear marks. Its slot keeps
+            // its height and room either way, so the first mark moves no row.
+            <div ref={markLineRef} className="mark-line" tabIndex={-1}>
+              <p>{MARK_HINT}</p>
+              <span className="mark-line-slot">
+                <span className="mark-count" hidden={marks.size === 0}>
+                  {countWords(marks.size)}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-compact"
+                  hidden={marks.size === 0}
+                  aria-disabled={listsLocked || undefined}
+                  onClick={onClearMarks}
+                >
+                  Clear marks
+                </button>
+              </span>
+            </div>
+          )}
+
           {detail !== null && clipCount === 0 && !hasIgnored && (
             <p className="empty-state">
               <Icon name="film" size={20} />
@@ -1990,6 +2163,8 @@ export function EventEditor({
               locked={listsLocked}
               onReorder={onMove}
               onDropInto={onDropInto}
+              marked={marks}
+              onDropGroup={onDropGroup}
               onLift={onLift}
               rootRef={editorRef}
             >
@@ -2027,6 +2202,8 @@ export function EventEditor({
                     panels={cutPanels.panels}
                     resets={ready.resets}
                     cutHandlers={cutHandlers}
+                    marked={marksIn.get(chapter.key) ?? NO_MARKS}
+                    onMark={onMark}
                     onMove={onMove}
                     onRemove={onRemove}
                     onRestore={onRestore}
@@ -2114,6 +2291,7 @@ export function EventEditor({
             removedByChapter.get(shownDialog.key) ?? NONE_REMOVED,
             clips,
           )}
+          marked={marks}
           onConfirm={confirmMove}
           onCancel={closeChapterDialog}
         />

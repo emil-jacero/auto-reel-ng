@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 
 import type { ClipStatus } from '../api/event'
@@ -10,6 +10,7 @@ import { Icon } from '../ui/Icon'
 import { NAME_REFUSAL, checkName, nameDialogNote } from './chapterNames'
 import type { NameRefusal, NoteInput } from './chapterNames'
 import type { ChapterKey } from './draft'
+import { markedAmong, pickMarked } from './marks'
 
 /*
  * The two chapter dialogs of Edit mode, over the shared `Dialog`: the name
@@ -189,6 +190,7 @@ export function MoveClipsDialog({
   missing,
   ignored,
   targets,
+  marked,
   onConfirm,
   onCancel,
 }: {
@@ -200,6 +202,8 @@ export function MoveClipsDialog({
   ignored: number
   /** The other listed chapters, by heading, in the order shown. */
   targets: readonly { key: ChapterKey; heading: string }[]
+  /** The marked clips (edit/marks.ts): Pick marked picks those of this chapter's offered. */
+  marked: ReadonlySet<string>
   onConfirm: (identities: string[], to: ChapterKey) => void
   onCancel: () => void
 }) {
@@ -217,8 +221,11 @@ export function MoveClipsDialog({
   // Counters: non-zero while the error shows; a repeated refusal remounts it.
   const [clipsError, setClipsError] = useState(0)
   const [targetError, setTargetError] = useState(0)
+  // Pick marked was pressed with no offered clip marked: said beside it, in words.
+  const [noneMarked, setNoneMarked] = useState(false)
   const hint = notOffered(missing, ignored)
   const all = clips.length > 0 && picked.size === clips.length
+  const offered = useMemo(() => clips.map((clip) => clip.identity), [clips])
 
   // Pick all is mixed (indeterminate) while some clips are picked: a DOM property only.
   useEffect(() => {
@@ -288,6 +295,33 @@ export function MoveClipsDialog({
               Pick at least one clip.
             </p>
           )}
+          {/* The marked clips of this chapter: aria-disabled, never disabled, when none is. */}
+          <div className="choice-picks">
+            <button
+              type="button"
+              className="btn btn-secondary btn-compact"
+              aria-disabled={markedAmong(offered, marked) === 0 || undefined}
+              onClick={() => {
+                if (markedAmong(offered, marked) === 0) {
+                  setNoneMarked(true)
+                  return
+                }
+                setNoneMarked(false)
+                const next = pickMarked(offered, marked, picked)
+                setPicked(next)
+                if (next.size > 0) {
+                  setClipsError(0)
+                }
+              }}
+            >
+              Pick marked
+            </button>
+            {noneMarked && (
+              <span className="field-hint" role="status">
+                No clip of “{heading}” is marked.
+              </span>
+            )}
+          </div>
           {/* Every clip at once: emptying or splitting a long chapter is one press. */}
           <label className="choice choice-all">
             <input

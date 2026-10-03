@@ -341,7 +341,7 @@ project MUST NOT read clip content to fill a response field, by hash any more th
 The north star is a **full timeline editor**, but we ship in thin slices:
 
 - **v1 (tiny, ship first):** scan/ingest view (events + clips), **drag-reorder clips** (persist to
-  `reel.yaml`), **chapter edits, Move clips and dragging clips between chapters** (**D-13**), **typed cuts** (**D-14**), **a clip's preview with Set From / Set To** (**D-16**), edit basic metadata (title/date/location/description), **schedule a render and watch
+  `reel.yaml`), **chapter edits, Move clips and dragging clips (singly or as a marked group) between chapters** (**D-13**), **typed cuts** (**D-14**), **a clip's preview with Set From / Set To** (**D-16**), edit basic metadata (title/date/location/description), **schedule a render and watch
   live progress**, **clip thumbnails** (one frame per clip, **D-11**), and **the rendered movie on the event
   page** (**D-15**). The resolved `look` is shown
   **read-only**; editing it is v2. No timeline, no per-frame editing.
@@ -387,7 +387,7 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   **The clip's player works outside Edit mode** (`clip-play-read-view`, D-16): the event page's read view has a
   Watch control on every clip on disk that opens the same player, read-only.
 - **v3:** nothing is planned for the GUI: the timeline editor moved to v2 on 2026-10-01, and dragging
-  across chapters landed in v1 (D-13, `cross-chapter-drag`).
+  across chapters landed in v1 (D-13, `cross-chapter-drag`; marked groups in v2, `clip-group-select-drag`).
 
 An event's `latest_job` carries the job's `cancel_requested` and `requeue_count`, and a staleness verdict names the
 two movie files behind `output_renamed` (`renamed_from`, `output_name`), so the GUI follows a requeue and a pending
@@ -660,6 +660,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    and no `RENDER_GRAPH_VERSION` bump).
    `clip-play-read-view` follows: the same player opens from the event page's read view, read-only, with
    Watch on each clip (D-16), also web-only and with no render, fingerprint, schema or job change.
+   `clip-group-select-drag` (GUI v2) follows: Edit mode marks clips and a drag of a marked clip moves the whole
+   marked group (D-13); web-only, no render, fingerprint, schema or job change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -836,7 +838,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   renames, reorders and deletes chapters, and moves clips between them with a per-chapter Move clips
   dialog, pulled forward from v3 at the operator's request. Dragging a clip into another chapter
   followed in `cross-chapter-drag` (2026-10-01), at the operator's request, beside Move clips: any position,
-  an empty chapter too, by pointer and keyboard. A missing clip stays in its chapter. A save that
+  an empty chapter too, by pointer and keyboard. In `clip-group-select-drag` (2026-10-03), at the operator's
+  request, a drag of a marked clip takes every marked clip, to the drop position, in one edit, and Move clips
+  has a Pick marked button. A missing clip stays in its chapter. A save that
   changes the chapter list writes every chapter as shown, so every NEW clip is adopted where the page shows
   it; a chapter's name then only decides where later clips go (D-12). The event's own chapter keeps no name,
   and a chapter is deleted only once empty. The page follows the engine's chapter-name rules
