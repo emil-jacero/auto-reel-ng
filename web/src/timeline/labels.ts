@@ -257,3 +257,13 @@ export function playbackNote(name: string, probe: ProxyProbe, mediaWords: string
     }
   }
 }
+
+// --- Edit mode (`timeline-trim`) -----------------------------------------------------------
+
+/** Said while the draft's order or chapters differ from the saved ones: the track draws the saved. */
+export const ORDER_SAVED =
+  'The Timeline shows the order last saved. Reordering and moving clips stay in the lists below; the track follows them once they are saved. Cuts can be trimmed here all the same.'
+
+/** In the Timeline's picture while a clip preview holds the page's one video. */
+export const PREVIEW_OPEN =
+  'A clip preview is open, so the Timeline’s picture is paused. Move the playhead or press Play to show it here.'

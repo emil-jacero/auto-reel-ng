@@ -1,9 +1,12 @@
 import { useId, useRef } from 'react'
 import type { CSSProperties, KeyboardEvent, PointerEvent, RefObject } from 'react'
 
-import { formatTime, reasonWords } from '../cuts/times'
+import { TRIM_KEYS, formatTime, reasonWords } from '../cuts/times'
 import { Filmstrip } from './Filmstrip'
 import { PlayheadKeys, PlayheadSlider } from './Playhead'
+import { ClipHandles } from './TrimHandle'
+import type { DragStore } from './dragStore'
+import type { EditBinding } from './editing'
 import type { KeyAction } from './keys'
 import { clipDescription } from './labels'
 import { cutLabel } from './layout'
@@ -17,8 +20,10 @@ import type { VisibleRange } from './useVisibleRange'
 /*
  * The track: a ruler, the chapter band and the clips end to end at `pps`, inside the
  * Timeline's own horizontal scroller. Only what meets the visible range and a margin of
- * one view on each side is drawn (a 400-clip event holds a few dozen elements). Read
- * only: the cuts are spans with a hatch and a text alternative, with no handle.
+ * one view on each side is drawn (a 400-clip event holds a few dozen elements). The cuts
+ * are spans with a hatch and a text alternative; in the read view that is all (no handle,
+ * no drag). In Edit mode (`editing`) each clip drawn with its cuts also gets its trim
+ * handles (`TrimHandle.tsx`), a layer after the playhead so that Tab reaches them after it.
  */
 
 /**
@@ -26,6 +31,9 @@ import type { VisibleRange } from './useVisibleRange'
  * touch that only places the playhead: nothing is dragged, so the video is not paused.
  */
 export type ScrubPhase = 'start' | 'move' | 'end' | 'tap'
+
+/** Where a scrub began: the ruler (and the grip), or the clips' lane. */
+export type ScrubSurface = 'ruler' | 'lane'
 
 /** Clips narrower than this are drawn as a block only: no name, picture or cuts. */
 const MIN_DETAIL_PX = 6
@@ -46,9 +54,9 @@ type Pointer = { id: number; x: number; y: number; at: number }
  */
 function useScrub(
   canvas: RefObject<HTMLDivElement | null>,
-  onScrub: (x: number, phase: ScrubPhase) => void,
+  onScrub: (x: number, phase: ScrubPhase, surface: ScrubSurface) => void,
   focusGrip: () => void,
-  surface: 'ruler' | 'lane',
+  surface: ScrubSurface,
 ) {
   const drag = useRef<number | null>(null)
   const touch = useRef<Pointer | null>(null)
@@ -69,17 +77,17 @@ function useScrub(
       event.currentTarget.setPointerCapture(event.pointerId)
       drag.current = event.pointerId
       focusGrip()
-      onScrub(place(event), 'start')
+      onScrub(place(event), 'start', surface)
     },
     onPointerMove(event: PointerEvent<HTMLElement>) {
       if (drag.current === event.pointerId) {
-        onScrub(place(event), 'move')
+        onScrub(place(event), 'move', surface)
       }
     },
     onPointerUp(event: PointerEvent<HTMLElement>) {
       if (drag.current === event.pointerId) {
         drag.current = null
-        onScrub(place(event), 'end')
+        onScrub(place(event), 'end', surface)
         return
       }
       const tap = touch.current
@@ -91,14 +99,14 @@ function useScrub(
         event.timeStamp - tap.at < TAP_MS
       ) {
         focusGrip()
-        onScrub(place(event), 'tap')
+        onScrub(place(event), 'tap', surface)
       }
     },
     onPointerCancel(event: PointerEvent<HTMLElement>) {
       touch.current = null
       if (drag.current === event.pointerId) {
         drag.current = null
-        onScrub(place(event), 'end')
+        onScrub(place(event), 'end', surface)
       }
     },
   }
@@ -121,6 +129,10 @@ export function Track({
   onTrackKey,
   onScrub,
   lane: analysisLane,
+  editing,
+  drag,
+  selected,
+  onSelect,
 }: {
   eventId: string
   clips: readonly TrackClip[]
@@ -139,9 +151,16 @@ export function Track({
   onKey: (action: KeyAction) => void
   /** `+`, `-` and `0` while the track has focus. */
   onTrackKey: (key: string) => void
-  onScrub: (x: number, phase: ScrubPhase) => void
   /** The analysis lane, a row of the canvas under the clips (`overlays/`). */
   lane?: LaneSlot
+  onScrub: (x: number, phase: ScrubPhase, surface: ScrubSurface) => void
+  /** Edit mode's binding: the trim handles; null in the read view. */
+  editing: EditBinding | null
+  drag: DragStore
+  /** The selected cut, if any. */
+  selected: { identity: string; key: string } | null
+  /** A cut is selected: by its handle's focus or press. */
+  onSelect: (identity: string, key: string) => void
 }) {
   const base = useId()
   const canvas = useRef<HTMLDivElement>(null)
@@ -171,6 +190,8 @@ export function Track({
   }
 
   const clipNodes = []
+  const handleNodes = []
+  const keysId = `${base}-trim-keys`
   if (shown !== null) {
     for (let index = shown[0]; index <= shown[1]; index += 1) {
       const clip = clips[index]
@@ -178,6 +199,33 @@ export function Track({
       const widthPx = timeToPx(clip.facts.durationMs, pps)
       const detailed = widthPx >= MIN_DETAIL_PX
       const descId = `${base}-c${index}`
+      if (editing !== null && detailed && showCuts) {
+        const listed = editing.listed(clip.identity)
+        if (listed.some((cut) => !cut.removed)) {
+          handleNodes.push(
+            <ClipHandles
+              key={clip.identity}
+              identity={clip.identity}
+              name={clip.name}
+              index={index}
+              facts={clip.facts}
+              left={left}
+              widthPx={widthPx}
+              totalPx={totalPx}
+              pps={pps}
+              listed={listed}
+              playhead={playhead}
+              drag={drag}
+              locked={editing.locked}
+              keysId={keysId}
+              selectedKey={selected?.identity === clip.identity ? selected.key : null}
+              onSelect={onSelect}
+              onTrim={editing.onTrim}
+              announce={editing.announce}
+            />,
+          )
+        }
+      }
       clipNodes.push(
         <div
           key={clip.identity}
@@ -297,6 +345,17 @@ export function Track({
           grab={grab}
         />
         <PlayheadKeys id={`${base}-keys`} />
+        {editing !== null && (
+          <>
+            <span id={keysId} className="visually-hidden">
+              {TRIM_KEYS}
+            </span>
+            {/* After the playhead: Tab reaches the handles after it, in time order. */}
+            <div className="tl-trims-host" data-locked={editing.locked || undefined} key={editing.epoch}>
+              {handleNodes}
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

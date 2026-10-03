@@ -1,17 +1,29 @@
 import './timeline.css'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 
 import type { ClipCuts } from '../cuts/ReadCuts'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
+import { CutFields } from './CutFields'
+import type { Selected } from './CutFields'
 import { PlayheadReadout } from './Playhead'
 import { PrepareButton, PrepareJob } from './Prepare'
 import type { PrepareControl } from './Prepare'
 import type { AnalysisControl } from './overlays/control'
 import { useSuggestions } from './overlays/useSuggestions'
 import { Track } from './Track'
-import type { ScrubPhase } from './Track'
+import type { ScrubPhase, ScrubSurface } from './Track'
+import { createDragStore } from './dragStore'
+import type { EditBinding } from './editing'
 import type { KeyAction } from './keys'
 import {
   CUTS_READING,
@@ -20,7 +32,9 @@ import {
   FILM_FAILED,
   FILM_FAILED_DETAIL,
   FIT,
+  ORDER_SAVED,
   PAUSE,
+  PREVIEW_OPEN,
   PLAY,
   ZOOM_IN,
   ZOOM_OUT,
@@ -67,6 +81,7 @@ export function Timeline({
   cuts,
   prepare,
   analysis,
+  editing = null,
 }: {
   eventId: string
   clips: readonly TrackClip[]
@@ -75,12 +90,38 @@ export function Timeline({
   prepare: PrepareControl
   /** The analysis lane (`overlays/`): absent, the Timeline has none and reads no analysis. */
   analysis?: AnalysisControl
+  /** Edit mode's binding (trim handles, the draft's cuts); null in the read view. */
+  editing?: EditBinding | null
 }) {
   const lay = useMemo(() => trackLayout(clips), [clips])
   const facts = useMemo(() => clips.map((clip) => clip.facts), [clips])
   const bands = useMemo(() => chapterBands(chapterNames, clips), [chapterNames, clips])
   const playhead = useMemo(() => createPlayhead(startPosition()), [])
-  const video = useTimelineVideo({ eventId, clips, playhead })
+  const drag = useMemo(() => createDragStore(), [])
+  const previews = editing?.previews ?? null
+  const held = usePreviewHeld(previews)
+  const video = useTimelineVideo({ eventId, clips, playhead, held })
+  // A trim in the air: the cuts' spans on the track step back while the live one is drawn.
+  const trimming = useSyncExternalStore(drag.subscribe, () => drag.get() !== null)
+  const [selected, setSelected] = useState<Selected | null>(null)
+  const select = useCallback(
+    (identity: string, key: string) =>
+      setSelected((was) => (was?.identity === identity && was.key === key ? was : { identity, key })),
+    [],
+  )
+  // Reset, and a cut removed, end a selection.
+  const epoch = editing?.epoch
+  useEffect(() => setSelected(null), [epoch])
+  useEffect(() => {
+    if (selected !== null && editing !== null) {
+      const there = editing
+        .listed(selected.identity)
+        .some((cut) => cut.key === selected.key && !cut.removed)
+      if (!there) {
+        setSelected(null)
+      }
+    }
+  }, [editing, selected])
 
   const scroller = useRef<HTMLDivElement>(null)
   const grip = useRef<HTMLDivElement>(null)
@@ -142,8 +183,19 @@ export function Timeline({
 
   // Play shows no frame the movie omits: until the cuts are read (or known unreadable) it waits.
   const cutsPending = cuts.cuts === null && cuts.failure === null
+  // Edit mode's open clip preview makes room for the Timeline's video when asked: closed,
+  // then the video is created at the playhead (`useTimelineVideo`, `held`).
+  const takePage = () => {
+    const open = previews?.open() ?? null
+    if (previews !== null && open !== null) {
+      previews.hide(open)
+    }
+  }
   const toggle = () => {
     if (!cutsPending || video.playing) {
+      if (!video.playing) {
+        takePage()
+      }
       video.toggle()
     }
   }
@@ -151,17 +203,39 @@ export function Timeline({
   const announce = (pos: Position) =>
     setAnnouncement(playheadAnnouncement(clips[pos.clip].name, pos.ms))
 
-  const scrubAt = (x: number, phase: ScrubPhase) => {
+  /** A press on a cut's span selects the cut. */
+  const selectUnder = (pos: Position) => {
+    if (editing === null) {
+      return
+    }
+    const at = clips[pos.clip]
+    const cut = editing
+      .listed(at.identity)
+      .find((c) => !c.removed && Math.round(c.in * 1000) <= pos.ms && pos.ms < Math.round(c.out * 1000))
+    if (cut !== undefined) {
+      select(at.identity, cut.key)
+    }
+  }
+
+  const scrubAt = (x: number, phase: ScrubPhase, surface: ScrubSurface) => {
     if (phase === 'tap') {
       // A tap drags nothing: place the playhead and let a playing video go on from there.
       const pos = positionAt(lay, facts, pxToTime(x, ppsRef.current))
+      takePage()
       video.seekTo(pos)
       announce(pos)
+      if (surface === 'lane') {
+        selectUnder(pos)
+      }
       return
     }
     if (phase === 'start') {
       dragging.current = true
+      takePage()
       video.scrubStart()
+      if (surface === 'lane') {
+        selectUnder(positionAt(lay, facts, pxToTime(x, ppsRef.current)))
+      }
     }
     const pos = positionAt(lay, facts, pxToTime(x, ppsRef.current))
     video.seekTo(pos)
@@ -173,6 +247,9 @@ export function Timeline({
   }
 
   const onKey = (action: KeyAction) => {
+    if (action.kind !== 'toggle') {
+      takePage()
+    }
     const at = playhead.get()
     let pos: Position
     switch (action.kind) {
@@ -240,17 +317,21 @@ export function Timeline({
   const atMax = pps >= MAX_PPS - 1e-9
   const note = video.note
   return (
-    <div className="timeline">
+    <div className="timeline" data-trimming={trimming || undefined}>
       <div className="tl-stage">
-        <video
-          ref={video.videoRef}
-          className="tl-video"
-          preload="auto"
-          playsInline
-          aria-hidden="true"
-          tabIndex={-1}
-          {...video.handlers}
-        />
+        {held ? (
+          <p className="tl-stage-held">{PREVIEW_OPEN}</p>
+        ) : (
+          <video
+            ref={video.videoRef}
+            className="tl-video"
+            preload="auto"
+            playsInline
+            aria-hidden="true"
+            tabIndex={-1}
+            {...video.handlers}
+          />
+        )}
       </div>
 
       <div className="tl-controls">
@@ -309,7 +390,17 @@ export function Timeline({
         onTrackKey={onTrackKey}
         onScrub={scrubAt}
         lane={suggestions.lane}
+        editing={editing}
+        drag={drag}
+        selected={selected}
+        onSelect={select}
       />
+
+      {editing !== null && (
+        <CutFields selected={selected} clips={clips} editing={editing} drag={drag} />
+      )}
+
+      {editing?.orderChanged === true && <Alert tone="info" role="note" title={ORDER_SAVED} />}
 
       <p className="tl-summary">
         {cuts.cuts !== null && movieWords(movieMs(clips, cuts.cuts), lay.totalMs)}
@@ -346,5 +437,15 @@ export function Timeline({
       )}
       {note !== null && 'gone' in note && note.gone && <PrepareJob control={prepare} />}
     </div>
+  )
+}
+
+const NEVER = () => () => undefined
+
+/** Whether a clip preview of Edit mode is open, and so holds the page's one video. */
+function usePreviewHeld(previews: EditBinding['previews'] | null): boolean {
+  return useSyncExternalStore(
+    previews === null ? NEVER : previews.subscribe,
+    () => previews !== null && previews.open() !== null,
   )
 }
