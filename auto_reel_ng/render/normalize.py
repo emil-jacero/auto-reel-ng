@@ -77,12 +77,31 @@ def _channel_layout(channels: int) -> str:
     return {1: "mono", 2: "stereo", 6: "5.1", 8: "7.1"}.get(channels, "stereo")
 
 
-def _transpose_filter(rotate: int) -> str:
-    """CPU transpose chain that uprights ``rotate`` degrees of display rotation."""
+def display_turn(clip: ClipMetadata) -> int:
+    """The clockwise turn (0/90/180/270) that applies the clip's own display rotation.
+
+    The probe reports the display matrix's angle, which is counter-clockwise (a phone
+    clip with matrix -90 probes as 270), so the turn that uprights it is the complement.
+    This and :func:`total_turn` are the only readers of ``clip.rotation`` for a render.
+    """
+    return (360 - (clip.rotation or 0)) % 360
+
+
+def total_turn(clip: ClipMetadata, rotate: Optional[int]) -> int:
+    """The clockwise turn the engine applies: display rotation plus the segment's ``rotate``.
+
+    ``rotate`` is an *extra* turn on top of how the clip plays (``reel-document``), so the
+    two add modulo 360 instead of one replacing the other.
+    """
+    return (display_turn(clip) + (rotate or 0)) % 360
+
+
+def _transpose_filter(turn: int) -> str:
+    """CPU transpose chain for a clockwise ``turn`` of 90, 180 or 270 degrees."""
     mapping = {90: "transpose=1", 180: "transpose=1,transpose=1", 270: "transpose=2"}
-    normalized = rotate % 360
+    normalized = turn % 360
     if normalized not in mapping:
-        raise RenderError(f"unsupported rotation {rotate!r}; expected 90, 180, or 270")
+        raise RenderError(f"unsupported rotation {turn!r}; expected 90, 180, or 270")
     return mapping[normalized]
 
 
@@ -120,15 +139,16 @@ def _overlay_enable(overlay: OverlaySpec) -> Optional[str]:
     return f"between(t,{_fmt(overlay.start)},{_fmt(overlay.end)})"
 
 
-def _needs_pad(clip: ClipMetadata, rotate: Optional[int], target: TargetSpec) -> bool:
+def _needs_pad(clip: ClipMetadata, turn: int, target: TargetSpec) -> bool:
     """Whether normalizing ``clip`` onto the canvas leaves a region to pad.
 
     Compared as exact ratios, so a 1920x1088 clip needs padding and every exact 16:9
     size does not. Both the pixel aspect (what the aspect-preserving scale sees; no
     scale honours SAR) and the display aspect (SAR applied) must match the canvas.
-    The segment's explicit ``rotate`` wins over the clip's own rotation metadata.
+    ``turn`` is the clockwise total (:func:`total_turn`): a quarter turn swaps width and
+    height, and a clip turned back to its stored orientation is judged by its stored shape.
     """
-    quarter_turn = (rotate or clip.rotation or 0) % 180 == 90
+    quarter_turn = turn % 180 == 90
     width, height = (clip.height, clip.width) if quarter_turn else (clip.width, clip.height)
     canvas = Fraction(target.width, target.height)
     sar = Fraction(_normalize_sar(clip.sample_aspect_ratio).replace(":", "/"))
@@ -141,10 +161,9 @@ def _canvas_stages(
 ) -> list[_Stage]:
     """Build the rotation -> normalize -> tonemap video stages (design order)."""
     stages: list[_Stage] = []
-    if segment.rotate:
-        stages.append(
-            _Stage(_transpose_filter(segment.rotate), FrameLocation.SYSTEM, FrameLocation.SYSTEM)
-        )
+    turn = total_turn(clip, segment.rotate)
+    if turn:
+        stages.append(_Stage(_transpose_filter(turn), FrameLocation.SYSTEM, FrameLocation.SYSTEM))
     normalize = profile.fragment(OpClass.NORMALIZE, params)
     stages.append(_Stage(normalize.filter, normalize.frames_in, normalize.frames_out))
     if clip.is_hdr:
@@ -258,8 +277,16 @@ def build_normalize_command(
         codec=target.video_codec,
         render_node=render_node,
         fill_color=target.fill_color,
-        needs_pad=_needs_pad(clip, segment.rotate, target),
+        needs_pad=_needs_pad(clip, total_turn(clip, segment.rotate), target),
     )
+    if display_turn(clip) and segment.rotate:
+        logger.info(
+            "%s: display rotation %d + rotate %d = a %d degree clockwise turn",
+            segment.identity,
+            display_turn(clip),
+            segment.rotate,
+            total_turn(clip, segment.rotate),
+        )
     # A software decode feeding a hardware encoder needs an upload device. A profile with
     # no verified recipe for one (NVIDIA, Intel) keeps attempting its own hardware decode,
     # exactly as before this choice existed; only a forced retry asks it for software.
@@ -300,6 +327,10 @@ def build_normalize_command(
         device_flags = _upload_device_flags(profile, params)
 
     args: list[str] = ["-y", *device_flags, *decode.input_flags]
+    if display_turn(clip):
+        # The engine applies the display rotation itself (in the filter chain, the same on
+        # every profile); ffmpeg's own would run twice on the CPU and not at all on VAAPI.
+        args.append("-noautorotate")
     if segment.start is not None:
         args += ["-ss", _fmt(segment.start)]
     args += ["-i", str(segment.source_path)]
@@ -472,13 +503,15 @@ def copy_eligible(segment: Segment, clip: Optional[ClipMetadata], target: Target
     Copy-eligible only when the segment is a **source** segment that is
     **untrimmed**, has **no overlays**, needs **no rotation or tonemap**, and
     whose probed video and audio parameters already equal the target spec.
-    Synthetic segments are never eligible.
+    A clip with a display rotation, or a segment with a ``rotate`` that is not a
+    multiple of 360, needs rotation even when the two cancel: a stream copy would
+    carry the display matrix into the movie. Synthetic segments are never eligible.
     """
     if segment.is_synthetic or not segment.is_full_clip:
         return False
-    if segment.overlays or segment.rotate:
+    if segment.overlays or (segment.rotate or 0) % 360:
         return False
-    if clip is None or clip.is_hdr or clip.audio is None:
+    if clip is None or clip.is_hdr or clip.audio is None or display_turn(clip):
         return False
     video_ok = (
         clip.width == target.width
@@ -516,4 +549,6 @@ __all__ = [
     "build_synthetic_normalize_command",
     "copy_eligible",
     "decide_copy_eligibility",
+    "display_turn",
+    "total_turn",
 ]
