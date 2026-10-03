@@ -1,6 +1,6 @@
 ## 1. proxies/
 
-- [ ] 1.1 Read the merged `proxy-encode` and `filmstrip-sprites` code first (key function, entry paths, `facts.json`
+- [x] 1.1 Read the merged `proxy-encode` and `filmstrip-sprites` code first (key function, entry paths, `facts.json`
   field names, `proxies` settings resolver, typed cache error) and reconcile the seams in design.md (done at
   proposal time; the names are final). Add `proxies.read_proxy_state(clip_path, settings) -> ProxyReading`
   (frozen dataclass: `status`, validated `facts`, `filmstrip`, `proxy_path`, `reason`; `ProxyEntry` is taken by
@@ -18,7 +18,7 @@
   tree's names, sizes and mtimes are identical before and after; `subprocess.Popen`, `asyncio.create_subprocess_exec`
   and `os.system` patched to raise are never called; a `has_ffmpeg` round trip makes a real entry from a
   synthesized clip with `ensure_proxy` and reads it `ready` with the facts it wrote.
-- [ ] 1.2 Record a failure: on `ensure_proxy`'s failure exits (a `ProxyError` from the probe, the encode or the
+- [x] 1.2 Record a failure: on `ensure_proxy`'s failure exits (a `ProxyError` from the probe, the encode or the
   post-encode verification; not a cache error, a cancel or `ensure_filmstrip`, whose failures `clip-filmstrips`
   says are not remembered) write `<cache_dir>/<key>.fail` as `{"reason": <one line>}` atomically (temporary file, `fsync`, rename), best
   effort with a warning when unwritable, the reason carrying the file name only and never an absolute path, no
@@ -30,7 +30,7 @@
 
 ## 2. api/
 
-- [ ] 2.1 Add to `api/schemas.py` `ProxyState` (a `StrEnum` of `absent`, `ready`, `stale`, `failed`, so the schema
+- [x] 2.1 Add to `api/schemas.py` `ProxyState` (a `StrEnum` of `absent`, `ready`, `stale`, `failed`, so the schema
   publishes the closed union), `ProxyFilmstripOut`, `ProxyFactsOut` and `ProxyOut` (`state`, and optional
   nullable `facts`, `version`, `reason`), and `ClipOut.proxy: Optional[ProxyOut] = None`, with the `ClipOut`
   docstring extended (the second media-fact exception, `null` means unknown, `facts.duration` is not
@@ -38,11 +38,12 @@
   `required`; the `ProxyState` enum is exactly the four values; `ProxyFactsOut` requires every fact and
   `fps_num`/`fps_den`/`width`/`height`/`rotation` are integers; `ProxyOut.facts`, `version` and `reason` are
   optional and nullable.
-- [ ] 2.2 Wire the read in `api/events_read.py`: `_proxy_settings` resolves the `proxies` settings once per detail
+- [x] 2.2 Wire the read in `api/events_read.py`: `_proxy_settings` resolves the `proxies` settings once per detail
   request (a `ConfigError` -> one warning -> `None`, as `_thumbnail_settings`), `_build_chapters` and `_clip_out`
-  carry it, and `_clip_proxy` maps `ProxyEntry` to `ProxyOut` after the MISSING short-circuit (`version` from
-  `MediaFile(path, stat).etag` without quotes; `reason` through `thumbs.one_line_cause`; the typed cache error
-  or a failed key `stat` -> `None` for that clip). The events list is untouched. Verify in
+  carry it, and `_clip_proxy` maps `ProxyReading` to `ProxyOut` after the MISSING short-circuit (`version` from the
+  proxy file's `stat` through `api/entity_tag.py`, which `media` cannot be imported for without a cycle, pinned to
+  `MediaFile.etag` by a test; `reason` is already path-free from the reader; the typed cache error or a failed
+  key `stat` -> `None` for that clip). The events list is untouched. Verify in
   `tests/test_api_proxy_state.py`: a prepared PCM Sony-like clip and a rotated portrait clip report the
   recorded facts exactly and a `version` equal to the proxy file's quoted-stripped `MediaFile.etag`; an
   unprepared clip is `{state: absent}` and the cache listing is identical before and after; a failed clip
@@ -52,22 +53,22 @@
   identical with and without proxies; the events list response has no `proxy`; a 25-clip event with
   `subprocess.Popen`, `asyncio.create_subprocess_exec` and `os.system` patched to raise returns 200 (the
   probe-free test) and `ClipOut.duration` is unchanged.
-- [ ] 2.3 Regenerate `web/openapi.json` with `.venv/bin/python -m auto_reel_ng.api.openapi > web/openapi.json` on
+- [x] 2.3 Regenerate `web/openapi.json` with `.venv/bin/python -m auto_reel_ng.api.openapi > web/openapi.json` on
   top of the merged gates. Verify `tests/test_api_openapi.py`: the drift test passes, `EXPECTED_MODELS` lists
   the four new models, and the committed file still equals what the application produces.
 
 ## 3. web/ (generated client and verification only)
 
-- [ ] 3.1 Regenerate `web/src/api/schema.d.ts` (`npm run generate:types` in the `node:22` container, `TMPDIR`
+- [x] 3.1 Regenerate `web/src/api/schema.d.ts` (`npm run generate:types` in the `node:22` container, `TMPDIR`
   exported) and verify `npm test`, `npx tsc --noEmit` and `npm run build` pass with `proxy?: ProxyOut | null`
   on the clip type and `ProxyState` a four-member union; the bundle size is unchanged (no runtime code was
   added), recorded from the build output.
-- [ ] 3.2 Verify in real browsers (Chrome 154 image `localhost/playback-research:chrome` and Firefox >= 155 from
+- [x] 3.2 Verify in real browsers (Chrome 154 image `localhost/playback-research:chrome` and Firefox >= 155 from
   `localhost/pcm-audio-research:pw163`, Playwright from the scratch directory only): on a dev library of
   symlinked sample clips, run `auto-reel proxies` for one event with `XDG_CACHE_HOME` pointing at a scratch
   directory, leave one clip unprepared, one with a damaged `facts.json` and one with a `.fail` marker, serve it
   on port 8306, then `fetch` the event detail from the page and assert the four states, the facts of the ready
-  clips (Sony PCM clip reports `audio_codec` `pcm_s16be`, the rotated clip `rotation` 90) and that `version`
+  clips (Sony PCM clip reports `audio_codec` `pcm_s16be`, the rotated sample `rotation` 270, the probe's spelling of -90, with 540x960 displayed) and that `version`
   equals `"{size:x}-{mtime_ns:x}"` computed in the scratch script from a `stat` of the proxy file (no
   repository route is added); open the event page in light and dark at 1280 and 390 px with writes routed away (only
   `**/api/v1/jobs`, `**/api/v1/jobs/**`, `**/reel`, `**/reel?*`), scope locators to `main:not([hidden])`, and
@@ -75,7 +76,7 @@
 
 ## 4. docs/
 
-- [ ] 4.1 Amend `docs/high-level-design.md` (the D-20 timeline entry is `timeline-model`'s and is not touched
+- [x] 4.1 Amend `docs/high-level-design.md` (the D-20 timeline entry is `timeline-model`'s and is not touched
   here): the §4.9 probe-free paragraph (a second sanctioned cache read: the detail's per-clip `proxy`, from
   `facts.json` by `stat` + JSON, `null` when unknown, never `absent` for an unreadable cache), the §4.10 v2
   bullet on proxies (state and facts in the detail; the list stays without them; the timeline opens on `ready`),
@@ -87,7 +88,7 @@
 
 ## 5. Validation gates
 
-- [ ] 5.1 Run `black`/`isort` (line length 100), `mypy auto_reel_ng`, `pylint auto_reel_ng` (only the known cairo
+- [x] 5.1 Run `black`/`isort` (line length 100), `mypy auto_reel_ng`, `pylint auto_reel_ng` (only the known cairo
   `no-member`) and the full `pytest` (`-m "not requires_db"` only when podman is unavailable, and say so);
   all pass. Confirm `RENDER_GRAPH_VERSION` is unchanged and no staleness fingerprint input was added, and run
   `openspec validate proxy-state-read --strict`.

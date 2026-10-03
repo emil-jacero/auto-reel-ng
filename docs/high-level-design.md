@@ -294,10 +294,16 @@ The service serves one project; its jobs views are scoped to it; the queue is sh
 
 **The events read model is probe-free.** File facts (byte size, mtime) come from the clip's own directory
 entry — a `stat` — and may be served per request. Media facts (duration, dimensions, codec) require decoding
-and therefore belong to the analysis cache; no events read may probe a clip to fill a response field. The one
+and therefore belong to the analysis cache; no events read may probe a clip to fill a response field. The first
 exception is the detail's per-clip `duration` (change `api-clip-duration`): not a probe but a read of the
 number the thumbnail operation already measured, kept in the sidecar beside the clip's cached thumbnail
-(D-11), `null` (unknown, never zero) until a thumbnail of the file as it is now has been made. This is
+(D-11), `null` (unknown, never zero) until a thumbnail of the file as it is now has been made. The second is the
+detail's per-clip `proxy` (change `proxy-state-read`, D-21): the state of the clip's proxy (`absent`, `ready`,
+`stale` or `failed`) and, when `ready`, the facts the proxy job recorded (duration, frame rate as a fraction,
+dimensions as displayed, rotation, audio codec, the filmstrip's tile geometry) with the proxy's entity tag as
+`version`, read from the cache entry by `stat` and one JSON read per clip, with no process, no write and no
+listing of the cache; `null` (unknown, never `absent`) for a missing clip, an unresolvable `proxies`
+configuration or a cache that cannot be read. The list keeps its clip counts and carries no `proxy`. This is
 D-A3 (scanned per request) plus Principle IV (the staleness path never decodes) applied to the read model,
 not a new decision, and it is the rule to quote when a response field would need an `ffprobe`. The thumbnail
 route (`GET /api/v1/events/{event_id}/thumbnail?clip=`, change `clip-thumbnail-endpoint`, **D-11**) is a
@@ -348,6 +354,9 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   The proxy and filmstrip routes have landed (`proxy-media-endpoints`, §4.9, D-21 "Serving").
   The filmstrip sprites have landed (`filmstrip-sprites`): `auto-reel proxies` also cuts one JPEG sprite per proxied
   clip from the finished proxy's keyframes (`filmstrip.jpg` in the cache entry, its tile geometry in `facts.json`).
+  The event detail reports each clip's proxy (`proxy-state-read`, D-21): a `proxy` of state `absent | ready |
+  stale | failed` and, when `ready`, its facts and `version`, from the cache entry, never a probe; the list stays
+  without it. The timeline opens only for an event whose clips are all `ready`.
   The timeline is built in the repo (**D-20**); its pure model has landed (`timeline-model`, no UI yet).
 - **v3:** nothing is planned for the GUI: the timeline editor moved to v2 on 2026-10-01, and dragging
   across chapters landed in v1 (D-13, `cross-chapter-drag`).
@@ -608,6 +617,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    fingerprint, API or WebSocket change. `filmstrip-sprites` has landed next: the same command also cuts each
    proxy's filmstrip sprite (D-21), on the same terms. `proxy-media-endpoints` lands the serving half of D-21: two read-only
    routes stream a clip's proxy and filmstrip from the cache (an `api/` change; no render, fingerprint, schema or job change).
+   `proxy-state-read` follows: the detail's per-clip `proxy` state and facts (D-21), a cache read with no render,
+   fingerprint or WebSocket change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1040,8 +1051,29 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     open: no database (they answer while Postgres is down), no ffmpeg, nothing created, not even the cache directory;
     a cache file that exists but cannot be read is a 502 before a status line, path-free. Cost: one lookup
     (listing, config read, two stats) per range request.
+  - **The state in the read model** (2026-10-03, change `proxy-state-read`). The event detail's clips carry
+    `proxy`, read with `read_proxy_state` (`stat` and one JSON read, no process, no write, no listing; it is not
+    `lookup_proxy`, which cannot tell never-made from damaged). Four states, precedence `ready > failed > stale >
+    absent`. **`ready`**: a non-empty `proxy.mp4` and `filmstrip.jpg` and a complete `facts.json` of the current
+    `PROXY_VERSION` with a `filmstrip` record of the current format whose `bytes` is the image's size. **`failed`**:
+    not ready, the proxy and its facts not both usable, and the clip's marker `<cache_dir>/<key>.fail`
+    (`{"reason": "<one line>"}`, written atomically by `ensure_proxy` for any `ProxyError` of the clip: probe,
+    encode, verification) records a cause. It has no TTL (D-11's expires after a minute because a thumbnail is
+    retried on every page view; a proxy is made only when asked), a ready entry outranks it so success needs no
+    cleanup, a published proxy supersedes it while the sprite is pending, and the key scopes it to the file and
+    the version. A failed sprite is not recorded (`clip-filmstrips`). **`stale`**: not ready, no marker, and an
+    entry at the current key that cannot be used (unusable `facts.json`, an empty file, a malformed or foreign
+    `filmstrip` record, an image of another size than recorded). **`absent`**: everything else, including an
+    incomplete entry (the proxy is published before its sprite). **A replaced file or a `PROXY_VERSION` bump moves
+    the key and reads `absent`**; an entry made for the previous key is never looked for (that would mean listing
+    the cache), and is an orphan for a later prune. `facts` are copied from `facts.json` as recorded: `fps` as
+    two integers, `vfr` and `rotation` `null` where the probe could not say, never defaulted. `version` is the
+    proxy file's entity tag (D-15, `"{size:x}-{mtime_ns:x}"` without quotes), for the media URL's `v`. The state
+    is not a staleness input. `null` means unknown, never `absent`: a missing clip, an unresolvable `proxies`
+    configuration (one warning per request) or an unreadable cache (`ProxyCacheError`).
   - **Deliberately not here:** a job, progress
-    over the WebSocket and an enqueue endpoint (`proxy-job`, `proxy-enqueue-endpoint`); the API read model (`proxy-state-read`); any web code; a prune of orphan entries (`proxy-prune`); a
+    over the WebSocket and an enqueue endpoint (`proxy-job`, `proxy-enqueue-endpoint`); any web code; a prune of
+    orphan entries (`proxy-prune`); a
     virtual remux to give the original sound in Firefox. The cache-location helpers are copies of `thumbs/`'s;
     unifying them is a follow-up.
 
