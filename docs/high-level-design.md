@@ -195,7 +195,8 @@ Stage 2 (later): ML behind the same interface — PySceneDetect for scene cuts, 
 Detections are **suggestions**: they appear in the GUI as proposed trims; the operator approves/edits;
 approved trims are written to `reel.yaml` and applied at render time as in/out points. Raw detection
 output is cached in a sidecar (e.g. `.auto-reel/cache/`), **not** in `reel.yaml`. The GUI writes an approved
-suggestion as a trim whose `reason` is its kind (`black`, `white`, `freeze`; D-20, "Analysis overlays").
+suggestion as a trim whose `reason` is its kind (`black`, `white`, `freeze`; D-20, "Analysis overlays"), once the
+Timeline is mounted on Edit mode's draft (`timeline-trim`).
 
 > ⚠️ **Research:** §8.6 white/freeze thresholds ✅ **RESOLVED** (exp 005); §8.7 ML model choices.
 
@@ -372,8 +373,8 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   when a clip has no ready proxy, then one track (ruler, chapter band, clips laid out from the proxy facts, cuts as
   hatched spans, filmstrip, zoom, a scrubbing playhead and Play on one `<video>`). **The analysis overlays have
   landed** (`timeline-overlays`): an analysis lane of suggestion marks under the clips, their state derived from the
-  cuts, approval as a cut and a page-visit dismissal wired for Edit mode's draft (D-20, "Analysis overlays"); trim
-  handles (`timeline-trim`) are what is left of the timeline, with the look editor.
+  cuts, shown in the read view (D-20, "Analysis overlays"); **approving and dismissing arrive with `timeline-trim`**,
+  which mounts the Timeline on Edit mode's draft; trim handles are what is left of the timeline, with the look editor.
   `proxy-enqueue-endpoint` has landed (D-21 "Enqueue over REST"): `POST /api/v1/events/{event_id}/proxies` enqueues the
   event's proxy job (201 / 200 `fresh` / 409), and a job reports its `kind` while `latest_job` stays the latest render;
   the timeline's Prepare state is its first web caller.
@@ -1031,8 +1032,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     sound in Firefox (a decoded peak above zero on the Sony PCM clip). **One video plays on the page**
     (`playback/exclusive.ts`). A `proxy` job is never shown as a render: `jobs/kinds.ts` (`job-kind`) keeps the
     render region, list rows and header count to renders, and the Prepare state shows the proxy job in its own words
-    ("Preparing proxies", "Proxy progress"). What stays: trim handles (`timeline-trim`), a second preloaded `<video>`
-    for seamless boundaries, undo (the analysis overlays: see below).
+    ("Preparing proxies", "Proxy progress"). What stays: trim handles and the approval of suggestions on Edit mode's draft
+    (`timeline-trim`), a second preloaded `<video>` for seamless boundaries, undo.
   - **Measured on the shipped proxy** (Chrome 154.0.8037.92 and Firefox 155.0, ten real clips, one from each archive
     class, proxies made by the Prepare button and a real worker). **Quiet host** (the review's re-run, load average
     0.5 to 2.1 on 16 cores, two runs each): scrub, median frames per second over 50 sweeps of 2 s (gate: 30): Chrome
@@ -1050,22 +1051,22 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     (144,579 to 155,026 gzip -9, +10.4 KB) and CSS 56,929 to 62,914 bytes (11,221 to 12,205 gzip -9, +1.0 KB); no
     package added. The research prototype's whole interaction layer was +5.6 KB gz; this slice also holds the Prepare
     state, the jobs-by-kind words and the video controller. `npm test` runs 343 tests (252 before).
-  - **Bundle (`timeline-overlays`).** `npm run build` before and after: JS 489.10 to 501.95 kB (157.64 to 162.12 kB gzip,
-    +4.5 KB) and CSS 63.42 to 66.96 kB (12.47 to 13.04 kB gzip, +0.6 KB); no package added. `npm test` runs 426 tests (365 before).
+  - **Bundle (`timeline-overlays`).** `npm run build` before and after: JS 489.10 to 502.98 kB (157.64 to 162.39 kB gzip,
+    +4.8 KB) and CSS 63.42 to 67.16 kB (12.47 to 13.06 kB gzip, +0.6 KB); no package added. `npm test` runs 438 tests (365 before).
   - **Bundle (`timeline-model`).** The model is not imported yet, so it is not built: `npm run build` on `origin/main` and on this
     change gives the same two files (same hashes), JS 444,745 bytes (142,313 gzip -9) and CSS 55,606 bytes
     (11,051 gzip -9) in both, a delta of 0 bytes.
-  - **Analysis overlays** (`timeline-overlays`, 2026-10-03). The Timeline shows the event's cached analysis
+  - **Analysis overlays** (`timeline-overlays`, 2026-10-03). The read view's Timeline shows the event's cached analysis
     (`GET …/analysis`, read once when the track is shown, never while the section is closed or preparing) as an
     **analysis lane**: a row of the canvas under the clips, a group per clip in the window holding one button
     per suggestion, placed by the model's time-to-pixel mapping, at least 44 px wide, close marks stacked on rows
-    (the lane's height is the busiest clip's, so it holds as the track scrolls), one tab stop per clip with the
+    (stacked over the whole track, so the end of one clip's mark and the start of the next never hide each other, and the lane's height holds as the track scrolls), one tab stop per clip with the
     arrows, Home and End. **A suggestion's state is derived from the clip's cuts, never stored:** `cut` when the
     cuts not removed, joined as the render joins them, cover its span to the millisecond, `partly-cut` when they
     share more than an instant with it, `dismissed` when this page visit dismissed it and no cut touches it, else
     `pending`. The prototype stored the state and read "approved" for footage the movie still plays; here removing
     a cut (a handle, the Cuts panel, Undo) returns the mark to pending with no bookkeeping, and a cut saved
-    earlier shows its suggestion as cut on the first read. **Approval is `cut-add` with the suggestion's kind as
+    earlier shows its suggestion as cut on the first read. **Approval (designed here, mounted with `timeline-trim`) is `cut-add` with the suggestion's kind as
     the reason**, through the Cuts panel's `checkCut` (an overlap is refused naming the cut, a span past the
     clip's end is refused, nothing is silently merged), in Edit mode's draft: one Save, one `If-Match` write, one
     undo model. **Dismissal is for this page visit only:** `reel.yaml` has no field for a rejection and a
@@ -1075,10 +1076,13 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     listener (so "a" in the title field decides nothing), and not with Ctrl, Meta or Alt, on a repeat or during
     an IME composition; every decision is also a labelled button in the detail under the track (the route on
     touch). Kind is an icon and a word, state a glyph (`?` `✓` `◐` `×`) and a word, never colour alone. The three
-    kinds of "no suggestions" are told apart: never analysed (with the command), analysed with nothing found, and
-    a clip with no cache entry in an analysed event. Analysis is never started from the page. The read view shows
-    state and one note ("Open Edit mode to approve suggestions"); deciding needs the Timeline in Edit mode, which
-    is `timeline-trim`'s mount, so the lane takes an `analysis` value whose `decide` is null in the read view.
+    kinds of "no suggestions" are told apart, from the entries and not the service's `analyzed` flag (which is true
+    for any event whose cache directory exists, and a render's manifest creates it): no clip has an entry (never analysed,
+    with the command), entries and nothing found, and a clip with no entry among others that have. Analysis is never
+    started from the page. A legend under the lane spells out the icons and glyphs. Deciding needs the Timeline on
+    Edit mode's draft, which is `timeline-trim`'s mount, so the lane takes an `analysis` value whose `decide` is null
+    in the read view, where it offers no decision and no note about one; the decision rules (`decideApprove`,
+    `decideDismiss`) are pure and tested, and the requirements for them belong to the change that mounts it.
   - **Prepare enqueues the proxy job** (`proxy-job`): the timeline's Prepare state enqueues the D-21 `proxy` job for the event; a render does not wait for it. It calls `POST /api/v1/events/{event_id}/proxies` (`proxy-enqueue-endpoint`) and follows the job on the WebSocket, whose jobs carry `kind`.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to

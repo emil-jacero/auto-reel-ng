@@ -7,7 +7,10 @@ See proposal.md, "Why". Facts on main d4e2a0b (`timeline-view` merged, `timeline
   `get_analysis`). It reads only the sidecar cache (`.auto-reel/cache/`), validated against each clip's size and
   mtime, never triggers analysis, never reads `reel.yaml`, answers 404 and 502 problem bodies and no 503. A clip
   with **no valid entry has no key** in `segments`; a clip analysed with nothing found has an **empty list**;
-  `analyzed` is true when at least one clip has an entry. `kind` is typed `string` in `schema.d.ts`
+  `analyzed` is documented as true when at least one clip has an entry, **but the code sets it when
+  `.auto-reel/cache/` exists**, and a render's manifest (`staleness/manifest.py`) creates that directory, so a rendered,
+  never-analysed event reads `analyzed: true, segments: {}`. The page therefore decides "never analysed" from the entries
+  (`segments` is empty), not from the flag. `kind` is typed `string` in `schema.d.ts`
   (`black`, `white`, `freeze` today; ML kinds later, HLD §4.5 stage 2). `confidence` is the same coarse constant
   on every v1 segment (D-AN5), so it carries no ranking.
 - **Times are source seconds.** A segment's `start`/`end` and a cut's `in`/`out` are seconds in the original
@@ -71,8 +74,8 @@ mounts**, that is when the Timeline is open and every proxy is ready (never whil
 preparing: `event-timeline` promises a closed Timeline makes no request). A Refresh or leaving Edit mode closes
 the section and unmounts the track, so the next opening reads again; the read in flight is aborted by leaving
 the page or closing the section. There is no "last answer kept while the new one arrives": a remount starts
-from "Reading the suggestions…". The lane's words: for the event, `analyzed === false` reads
-"Not analyzed. Run `auto-reel analyze <root>`, then Refresh" (the root is not known to the page, so the command
+from "Reading the suggestions…". The lane's words: for the event, `analyzed === false` or no entry at all reads
+"Not analyzed. Run `auto-reel analyze <root>`, then Refresh" (no clip has an entry: `analyzed === false` or an empty `segments`; the root is not known to the page, so the command
 is written with the placeholder, as the page writes other commands today); `analyzed === true` with no
 suggestions reads "Analyzed: nothing to suggest"; for one clip with no key in `segments` while the event is
 analysed, the clip's row reads "Not analyzed" (its cache entry is missing or stale because the file changed),
@@ -149,7 +152,9 @@ truncated label] with an icon"); the touch-size requirement ("Every control is l
   `overflow`-clipped and 54 px high). For each clip in the windowed range a `role="group"` named "Analysis
   suggestions of <clip name>" holds the marks, placed at `timeToPx(lay.startsMs[i] + ms, pps)` from the model's
   time-to-pixel mapping. A mark draws the span's width but has a hit area of at least 44 px
-  (centred on the span); close marks that would overlap stack into a second row rather than hide each other.
+  (centred on the span); marks that would overlap stack into further rows rather than hide each other, stacked once over
+  the marks of the whole track (the end of one clip and the start of the next reach into each other), so a mark's row
+  never depends on which clips are drawn.
   A mark shows an **icon for the kind** (one each for black, white, freeze, and a neutral icon for an unknown
   kind) and a **glyph for the state** (`?` pending, `✓` cut, `◐` partly cut, `×` dismissed). Neither relies on
   colour; the words are in the accessible name and in the strip.
@@ -166,8 +171,8 @@ truncated label] with an icon"); the touch-size requirement ("Every control is l
   start (the same `seekTo` the track's tap uses) so the operator sees the frame; the press does not start
   playback.
 - In the read view (where `timeline-view` shows the Timeline) the lane and strip show state but have no
-  Approve, Dismiss or Restore, and say "Open Edit mode to approve" once: reading a screen never changes state
-  (web-app).
+  Approve, Dismiss or Restore: reading a screen never changes state. A **legend** under the lane spells out the
+  icons and glyphs in words, because a mark too narrow for words shows only an icon and a glyph.
 **Rationale**: one tab stop per clip keeps a long event from adding hundreds of stops; the strip puts the
 decision on a real, labelled, touch-sized button, so the keys are an accelerator and not the only route.
 
@@ -203,8 +208,8 @@ Timeline. `timeline-trim` (parallel) adds `mode`, `cutsOf`, `onTrim`, `locked`, 
 `analysis?: AnalysisControl`, and calls `useSuggestions(analysis, {clips, lay, pps, seekTo, announce})` which
 returns `{rows, lane, strip}`. `Track` gains **one optional prop**, `lane?: {rows: number; render(view): ReactNode}`,
 drawn as a row after `.tl-lane` with the canvas `block-size` extended by `--tl-lane-h` (set from `rows`); the
-view it hands the lane is `{clips, lay, pps, shown, windowFrom, windowTo}`. `rows` is the most stacked rows any
-clip needs at this zoom (a pure `stackMarks`), so the canvas height does not change as the window scrolls.
+view it hands the lane is `{clips, lay, pps, shown, windowFrom, windowTo}`. `rows` is the rows the whole track's marks stack to at this zoom (a pure `placeMarks`), so the canvas height does not
+change as the window scrolls.
 `Timeline` renders `strip` after its summary line. `AnalysisControl` is
 `{eventId, cutsOf(identity) -> readonly {in, out}[], dismissals, decide: null | {onApprove(identity, span, kind),
 locked, announce}}`:
@@ -260,3 +265,116 @@ leaves every saved cut valid (the reasons are existing values).
 
 None blocking. Deferred, each a later change if a real library asks for it: persisted dismissal, bulk
 approve, launching an analysis from the page.
+
+## Deferred to the change that mounts the Timeline on Edit mode's draft
+
+`timeline-trim` has not merged, so no Timeline is mounted in Edit mode and this change delivers the **read half**: the
+lane, its states, the legend, the notes and the keyboard. The decision code is written (`decideApprove`,
+`decideDismiss`, the hook's `apply` and `AnalysisControl.decide`) and tested as pure functions, but it is inert while
+`decide` is null, and **the `web-app` requirements below are not part of this change**: syncing them to the specs
+before the product meets them would make the spec claim what the page does not do. They are kept here, as they were
+proposed, for the change that mounts the Edit-mode Timeline (it passes `analysis` with `decide` wired to
+`cutHandlers.onAdd`, the editor's `announce` and `locked`, and the `Dismissals` value from `EventDetail`, which
+`EventEditor` does not take yet). The same change owns the "A and R work on a focused mark only" and "Modified keys
+are left alone" scenarios and the A / R paragraph of "Suggestions are operable by keyboard…", which `event-timeline`
+here no longer states.
+
+### Requirement: A suggestion is approved as a cut through Edit mode's draft
+
+In Edit mode, a suggestion that is pending SHALL offer **Approve as cut** (a button in the detail of the
+selected mark, and the **A** key on a focused mark). Approving SHALL add a cut to the clip's draft cuts, the
+same way a typed cut is added ("Edit mode lists, adds and removes a clip's cuts"): the cut's start and end are
+the suggestion's, to the nearest millisecond, and **its reason is the suggestion's kind** (`black`, `white`,
+`freeze`, or the unrecognised kind as written). The cut SHALL take the key the next cut added in Edit mode takes
+and SHALL be listed, counted in the save bar ("added" cuts), covered by the unsaved-changes guard, and written
+by Save with the version check, like any cut; nothing SHALL be written before Save. The suggestion's state
+SHALL then read cut.
+
+Approving SHALL be checked as a typed cut is, and SHALL add nothing when the check refuses: a span that
+overlaps a cut the clip lists now (a partly cut suggestion) SHALL be refused, naming that cut; a span that ends
+after the clip's length, where the page knows it, SHALL be refused, and a span of under a millisecond SHALL be
+refused. A refusal SHALL be shown in the detail and said through Edit mode's live region ("Not approved: …"),
+and the suggestion SHALL keep its state. Approving a suggestion that is already cut SHALL change nothing and say
+so. An approval SHALL be ignored, as the Cuts panel's is, while a save or a Move clips is in progress.
+
+Outside Edit mode the page SHALL offer no way to approve and SHALL say, once, that Edit mode is where
+suggestions are approved. Approving is announced through the live region with the kind, the span, the clip's
+name and the number of cuts added.
+
+#### Scenario: Approving by button
+
+- **WHEN** in Edit mode the operator selects the "Black frames 0:00 to 0:03.2" mark on `C0012.MP4` and presses
+  Approve as cut
+- **THEN** the clip lists a new cut from 0:00 to 0:03.2 with the reason "Black frames", the mark reads cut, the
+  region says "Approved black frames, 0:00 to 0:03.2, of C0012.MP4 as a cut; 1 cut added", and the save bar
+  counts one added cut
+
+#### Scenario: Approving then saving writes the kind as the reason
+
+- **WHEN** the operator approves a freeze suggestion from 58.1 to 60 s and saves
+- **THEN** the write carries that clip's trims with `{in: 58.1, out: 60, reason: "freeze"}` and the existing
+  trims unchanged, with the version check, and no other part of the document
+
+#### Scenario: Approving what a cut overlaps is refused
+
+- **WHEN** a clip lists a cut from 0 to 1 s and the operator presses Approve as cut on a black suggestion from
+  0 to 3.2 s
+- **THEN** no cut is added, the detail and the region say "Not approved: this overlaps cut 1 (0:00 to 0:01)",
+  and the mark still reads partly cut
+
+#### Scenario: A span past the clip's end is refused
+
+- **WHEN** a freeze suggestion ends at 60.04 s and the clip's length is 60 s
+- **THEN** the approval is refused with the past-the-end wording the Cuts panel uses, and no cut is added
+
+#### Scenario: Pressing twice adds one cut
+
+- **WHEN** the operator presses Approve as cut twice in quick succession on one pending suggestion
+- **THEN** the clip gains one cut, and the second press says the suggestion is already cut
+
+#### Scenario: Reading does not approve
+
+- **WHEN** the event page shows the timeline outside Edit mode
+- **THEN** no mark offers Approve as cut, a single note says to open Edit mode, and pressing A on a focused mark
+  changes nothing
+
+#### Scenario: A conflict keeps the approvals
+
+- **WHEN** the operator approves two suggestions, then Save is refused because `reel.yaml` changed (412)
+- **THEN** both approved cuts stay in the draft and the save bar offers the choices it always does
+
+### Requirement: A suggestion is dismissed for the page visit, never saved
+
+In Edit mode, a pending suggestion SHALL offer **Dismiss** (a button in the detail, and the **R**
+key on a focused mark), and a dismissed one SHALL offer **Restore** (the button, and **R**). Dismissing SHALL
+mark the suggestion dismissed (its glyph, its word and its accessible name), SHALL be said through the live
+region, and SHALL write nothing: it is not an edit, so it SHALL NOT enable Save, count in the save bar, or raise
+the unsaved-changes guard. Dismissals SHALL persist while the page is open, across entering and leaving Edit
+mode, a Refresh, a Save and the Timeline being closed and opened, and SHALL be forgotten when the page is
+reloaded or left. The lane SHALL say so,
+once, in words. A dismissal of a suggestion that a later analysis read no longer lists SHALL be dropped; the
+others SHALL stay.
+
+#### Scenario: Dismissing is not an edit
+
+- **WHEN** the operator dismisses a pending suggestion and nothing else has changed
+- **THEN** the mark reads dismissed with a `×`, the region says it, Save stays unavailable ("Nothing to save"),
+  and leaving Edit mode raises no unsaved-changes question
+
+#### Scenario: Restoring
+
+- **WHEN** the operator presses R on a dismissed mark
+- **THEN** it reads pending again and the region says it was restored
+
+#### Scenario: Dismissals last the visit and no longer
+
+- **WHEN** the operator dismisses a suggestion, presses Refresh, leaves Edit mode, enters it again and opens
+  the Timeline
+- **THEN** the suggestion still reads dismissed
+- **WHEN** the page is then reloaded
+- **THEN** it reads pending, and the lane's note said that dismissed suggestions come back on reload
+
+#### Scenario: A cut outranks a dismissal
+
+- **WHEN** a dismissed suggestion's span is then cut by hand over the whole span
+- **THEN** its mark reads cut

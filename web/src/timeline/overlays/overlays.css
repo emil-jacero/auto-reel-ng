@@ -10,7 +10,7 @@
     --tl-lane-h: calc(var(--tl-lane-rows, 0) * var(--sg-row));
   }
 
-  /* A row of the canvas under the clips'; its height is the busiest clip's rows, so it holds as the track scrolls. */
+  /* A row of the canvas under the clips'; its height is the rows the whole track's marks stack to, so it holds as the track scrolls. */
   .tl-analysis {
     position: absolute;
     inset-inline: 0;
@@ -169,6 +169,24 @@
     color: var(--fg-muted);
     font-size: var(--text-sm);
     max-inline-size: 46rem;
+  }
+
+  .sg-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-1) var(--s-4);
+  }
+
+  .sg-legend-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-1) var(--s-3);
+  }
+
+  .sg-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-1);
   }
 
   .sg-detail {

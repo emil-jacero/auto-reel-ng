@@ -14,7 +14,9 @@ import {
   dropGone,
   eventNote,
   laneName,
-  laneRows,
+  decideApprove,
+  decideDismiss,
+  placeMarks,
   markName,
   neighbour,
   notApprovedWords,
@@ -223,14 +225,47 @@ describe('stackMarks', () => {
   it('needs no rows for no marks', () => {
     assert.deepEqual(stackMarks([], 10, 44), { placed: [], count: 0 })
   })
+})
 
-  it('makes the lane as high as the clip that needs the most rows', () => {
-    const crowded = [at(10), at(11), at(12)]
-    const sparse = [at(10), at(30)]
-    assert.equal(laneRows([sparse, crowded, []], 10, 44), 3)
-    assert.equal(laneRows([], 10, 44), 0)
+describe('placeMarks', () => {
+  const span = (startMs: number, endMs: number) => ({ startMs, endMs })
+
+  it('stacks the end of one clip and the start of the next across the boundary', () => {
+    // 40 s track at 4 px/s: clip A 0-20 s with black 18-20 s, clip B 20-40 s with black 20-22 s.
+    const a = [span(18_000, 20_000)]
+    const b = [span(20_000, 22_000)]
+    const { placed, count } = placeMarks([a, b], 4, 44, 160)
+    assert.equal(count, 2)
+    // Both are 44 px wide around their spans (54 and 62 px from the start): 36 px of overlap.
+    assert.deepEqual(placed[0][0], { left: 54, width: 44, row: 0 })
+    assert.deepEqual(placed[1][0], { left: 62, width: 44, row: 1 })
+  })
+
+  it('answers per clip in the order given', () => {
+    const { placed } = placeMarks([[span(10_000, 10_000), span(30_000, 30_000)], [], [span(60_000, 60_000)]], 10, 44)
+    assert.deepEqual(
+      placed.map((group) => group.length),
+      [2, 0, 1],
+    )
+    assert.deepEqual(
+      placed.flat().map((box) => box.row),
+      [0, 0, 0],
+    )
+  })
+
+  it('makes the lane as high as the whole track needs', () => {
+    const crowded = [span(10_000, 10_000), span(11_000, 11_000), span(12_000, 12_000)]
+    const sparse = [span(40_000, 40_000), span(60_000, 60_000)]
+    assert.equal(placeMarks([sparse, crowded, []], 10, 44).count, 3)
+    assert.equal(placeMarks([], 10, 44).count, 0)
     // Zoomed in the crowded clip needs one row.
-    assert.equal(laneRows([crowded], 100, 44), 1)
+    assert.equal(placeMarks([crowded], 100, 44).count, 1)
+  })
+
+  it('does not depend on the clips that are drawn', () => {
+    // The row of a mark is a property of the track: the same call gives the same answer.
+    const groups = [[span(18_000, 20_000)], [span(20_000, 22_000)]]
+    assert.deepEqual(placeMarks(groups, 4, 44, 160), placeMarks(groups, 4, 44, 160))
   })
 })
 
@@ -329,6 +364,9 @@ describe('the words', () => {
 
   it('tells the three kinds of "no suggestions" apart', () => {
     assert.equal(eventNote({ analyzed: false, segments: {} }), NEVER_ANALYZED)
+    // The service says `analyzed` once the cache directory exists, and a render writes
+    // its manifest there: no entries is never analysed, whatever the flag says.
+    assert.equal(eventNote({ analyzed: true, segments: {} }), NEVER_ANALYZED)
     assert.match(NEVER_ANALYZED, /auto-reel analyze/)
     assert.equal(eventNote({ analyzed: true, segments: { 'a.mp4': [] } }), ANALYZED_CLEAN)
     assert.equal(
@@ -345,6 +383,11 @@ describe('the words', () => {
     assert.equal(clipNotAnalyzed(analysed, 'c.mp4'), true)
     assert.equal(clipNotAnalyzed(analysed, 'a.mp4'), false) // analysed, nothing found
     assert.equal(clipNotAnalyzed({ analyzed: false, segments: {} }, 'c.mp4'), false)
+  })
+
+  it('does not mark a clip of a rendered but never analysed event', () => {
+    // analyzed: true with no entries (the cache holds only the render manifest).
+    assert.equal(clipNotAnalyzed({ analyzed: true, segments: {} }, 'a.mp4'), false)
   })
 
   it('does not take a clip named like an Object prototype member as analysed', () => {
@@ -378,5 +421,74 @@ describe('the words', () => {
     )
     const past = approval([], { start: 58.1, end: 60.04 }, 60)
     assert.match(!past.ok ? notApprovedWords(past.refusal) : '', /^Not approved: This cut ends at 1:00.04, after the clip’s end at 1:00\./)
+  })
+})
+
+describe('decideApprove', () => {
+  const base = { segment: black, clipName: 'C0012.MP4', locked: false, listed: [], length: 60 }
+
+  it('adds the suggestion as a cut with its kind as the reason', () => {
+    assert.deepEqual(decideApprove({ ...base, state: 'pending' }), {
+      kind: 'approve',
+      span: { in: 0, out: 3.2 },
+      reason: 'black',
+      words: 'Approved black frames, 0:00 to 0:03.2, of C0012.MP4 as a cut; 1 cut added.',
+    })
+  })
+
+  it('passes an unrecognised kind through as the reason', () => {
+    const decision = decideApprove({
+      ...base,
+      state: 'pending',
+      segment: { start: 1, end: 2, kind: 'speech' },
+    })
+    assert.equal(decision.kind === 'approve' && decision.reason, 'speech')
+  })
+
+  it('says what is already cut or dismissed and adds nothing', () => {
+    assert.equal(decideApprove({ ...base, state: 'cut' }).kind, 'said')
+    const dismissed = decideApprove({ ...base, state: 'dismissed' })
+    assert.equal(dismissed.kind, 'said')
+    assert.match(dismissed.kind === 'said' ? dismissed.words : '', /Restore it first/)
+  })
+
+  it('ignores a press while locked, but still says a state that needs no write', () => {
+    assert.deepEqual(decideApprove({ ...base, state: 'pending', locked: true }), { kind: 'ignored' })
+    assert.equal(decideApprove({ ...base, state: 'cut', locked: true }).kind, 'said')
+  })
+
+  it('refuses an overlap naming the cut, and a span past the end', () => {
+    const overlap = decideApprove({
+      ...base,
+      state: 'partly-cut',
+      listed: [{ in: 0, out: 1 }],
+    })
+    assert.equal(overlap.kind, 'refused')
+    assert.match(overlap.kind === 'refused' ? overlap.words : '', /^Not approved: this overlaps cut 1/)
+    const past = decideApprove({
+      ...base,
+      state: 'pending',
+      segment: { start: 58, end: 60.04, kind: 'freeze' },
+    })
+    assert.equal(past.kind, 'refused')
+  })
+})
+
+describe('decideDismiss', () => {
+  const base = { segment: black, clipName: 'C0012.MP4', locked: false }
+
+  it('dismisses a pending suggestion and restores a dismissed one', () => {
+    assert.equal(decideDismiss({ ...base, state: 'pending' }).kind, 'dismiss')
+    assert.equal(decideDismiss({ ...base, state: 'dismissed' }).kind, 'restore')
+  })
+
+  it('leaves a cut or partly cut suggestion to its cuts and says so', () => {
+    assert.equal(decideDismiss({ ...base, state: 'cut' }).kind, 'said')
+    assert.equal(decideDismiss({ ...base, state: 'partly-cut' }).kind, 'said')
+  })
+
+  it('ignores a press while locked', () => {
+    assert.deepEqual(decideDismiss({ ...base, state: 'pending', locked: true }), { kind: 'ignored' })
+    assert.deepEqual(decideDismiss({ ...base, state: 'dismissed', locked: true }), { kind: 'ignored' })
   })
 })
