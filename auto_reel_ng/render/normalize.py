@@ -161,6 +161,11 @@ def _canvas_stages(
 ) -> list[_Stage]:
     """Build the rotation -> normalize -> tonemap video stages (design order)."""
     stages: list[_Stage] = []
+    if (clip.rotation or 0) % 90:
+        raise RenderError(
+            f"{clip.path.name}: display rotation {clip.rotation} is not a multiple of 90; "
+            "only quarter turns can be normalized"
+        )
     turn = total_turn(clip, segment.rotate)
     if turn:
         stages.append(_Stage(_transpose_filter(turn), FrameLocation.SYSTEM, FrameLocation.SYSTEM))

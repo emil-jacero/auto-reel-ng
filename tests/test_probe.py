@@ -10,7 +10,7 @@ import pytest
 
 from auto_reel_ng.errors import ProbeError
 from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
-from auto_reel_ng.probe.media import probe_many, probe_media
+from auto_reel_ng.probe.media import _extract_rotation, probe_many, probe_media
 
 MakeClip = Callable[..., Path]
 
@@ -90,6 +90,11 @@ def test_rotated_clip_reports_90(make_clip: MakeClip, runtime: FfmpegRuntime) ->
     clip = make_clip(rotate=90)
     meta = probe_media(clip, runtime=runtime)
     assert meta.rotation == 90
+
+
+def test_legacy_rotate_tag_is_clockwise_so_reports_the_matrix_angle() -> None:
+    assert _extract_rotation({"tags": {"rotate": "90"}}) == 270
+    assert _extract_rotation({"tags": {"rotate": "0"}}) == 0
 
 
 def test_non_square_sar_reported(make_clip: MakeClip, runtime: FfmpegRuntime) -> None:
