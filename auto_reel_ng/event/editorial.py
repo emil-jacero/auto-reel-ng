@@ -310,7 +310,10 @@ def _apply_card(node: CommentedMap, desired_chapter: Mapping[str, Any]) -> None:
 
 
 def _same_card_value(old: Any, new: Any) -> bool:
-    """Whether a card value on disk equals the desired one (``5`` equals ``5.0``; ``True`` is no number)."""
+    """Whether a card value on disk equals the desired one.
+
+    ``5`` equals ``5.0``; ``True`` is no number.
+    """
     return bool(old == new) and isinstance(old, bool) == isinstance(new, bool)
 
 
