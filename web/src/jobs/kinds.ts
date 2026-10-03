@@ -13,11 +13,16 @@ export function isRender(job: Pick<JobOut, 'kind'>): boolean {
   return job.kind === 'render'
 }
 
-/** The newest render per event id (`event_dir`); jobs of other kinds are skipped. */
-export function newestRenderByEvent(jobs: Iterable<JobOut>): Map<string, JobOut> {
+/** Whether the job is a proxy job: the Timeline's Prepare state shows these and only these. */
+export function isProxy(job: Pick<JobOut, 'kind'>): boolean {
+  return job.kind === 'proxy'
+}
+
+/** The newest job per event id (`event_dir`) among those `keep` accepts. */
+function newestBy(jobs: Iterable<JobOut>, keep: (job: JobOut) => boolean): Map<string, JobOut> {
   const index = new Map<string, JobOut>()
   for (const job of jobs) {
-    if (!isRender(job)) {
+    if (!keep(job)) {
       continue
     }
     const held = index.get(job.event_dir)
@@ -26,6 +31,16 @@ export function newestRenderByEvent(jobs: Iterable<JobOut>): Map<string, JobOut>
     }
   }
   return index
+}
+
+/** The newest render per event id (`event_dir`); jobs of other kinds are skipped. */
+export function newestRenderByEvent(jobs: Iterable<JobOut>): Map<string, JobOut> {
+  return newestBy(jobs, isRender)
+}
+
+/** The newest proxy job per event id; renders and other kinds are skipped. */
+export function newestProxyByEvent(jobs: Iterable<JobOut>): Map<string, JobOut> {
+  return newestBy(jobs, isProxy)
 }
 
 /** How many renders run and how many wait; proxy jobs are counted in neither. */
