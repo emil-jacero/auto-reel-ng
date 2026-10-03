@@ -204,7 +204,8 @@ def _extract_rotation(video_stream: dict[str, Any]) -> Optional[int]:
     rotate_tag = tags.get("rotate")
     if rotate_tag is not None:
         try:
-            return int(round(float(rotate_tag))) % 360
+            # The legacy tag is clockwise; ``rotation`` is the (counter-clockwise) matrix angle.
+            return (-int(round(float(rotate_tag)))) % 360
         except (ValueError, TypeError):
             pass
     for side_data in video_stream.get("side_data_list", []):
