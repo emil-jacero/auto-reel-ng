@@ -12,6 +12,8 @@ from auto_reel_ng.reel.document import Metadata, ReelDocument
 from auto_reel_ng.render import output_relpath
 from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
 from auto_reel_ng.staleness.manifest import (
+    ChapterTime,
+    TitleCardSpan,
     manifest_path,
     read_manifest,
     recorded_movie_path,
@@ -323,3 +325,137 @@ def test_recorded_output_path_agrees_with_recorded_output_in(tmp_path: Path) -> 
     for expected in (out / "2023" / "2023-01-02 - Z.mp4", out / "Undated.mp4"):
         for recorded in ("2024-06-27 - X.mp4", "Party.mp4"):
             assert recorded_output_path(recorded, expected) == recorded_output_in(recorded, out)
+
+
+# --- chapter times (change render-chapter-times) -----------------------------------------------
+
+_TWO_CHAPTERS = (
+    ChapterTime(name="Intro", start_ms=0, end_ms=1500),
+    ChapterTime(
+        name="Beach",
+        start_ms=1500,
+        end_ms=6000,
+        title_card=TitleCardSpan(start_ms=2000, end_ms=5000),
+    ),
+)
+
+
+def _write_chapters(event: Path, chapters: object) -> None:
+    event.mkdir(exist_ok=True)
+    write_manifest(
+        event,
+        _fingerprint(event),
+        output="A.mp4",
+        engine_identity="x",
+        chapters=chapters,  # type: ignore[arg-type]
+    )
+
+
+def _stored_chapters(event: Path) -> object:
+    return json.loads(manifest_path(event).read_text(encoding="utf-8"))["chapters"]
+
+
+def _set_chapters_field(event: Path, value: object) -> None:
+    payload = json.loads(manifest_path(event).read_text(encoding="utf-8"))
+    payload["chapters"] = value
+    manifest_path(event).write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_chapter_times_round_trip(tmp_path: Path) -> None:
+    event = tmp_path / "e"
+    _write_chapters(event, _TWO_CHAPTERS)
+
+    manifest = read_manifest(event)
+    assert manifest is not None
+    assert manifest.chapters == _TWO_CHAPTERS
+    assert _stored_chapters(event) == [
+        {"name": "Intro", "start_ms": 0, "end_ms": 1500, "title_card": None},
+        {
+            "name": "Beach",
+            "start_ms": 1500,
+            "end_ms": 6000,
+            "title_card": {"start_ms": 2000, "end_ms": 5000},
+        },
+    ]
+
+
+def test_a_manifest_written_without_chapter_times_stores_null(tmp_path: Path) -> None:
+    event = tmp_path / "e"
+    _write(event, "A.mp4")
+
+    manifest = read_manifest(event)
+    assert manifest is not None and manifest.chapters is None
+    assert _stored_chapters(event) is None
+
+
+def test_a_version_1_manifest_without_the_field_reads_as_valid_with_none(tmp_path: Path) -> None:
+    event = tmp_path / "e"
+    _write_chapters(event, _TWO_CHAPTERS)
+    payload = json.loads(manifest_path(event).read_text(encoding="utf-8"))
+    del payload["chapters"]
+    manifest_path(event).write_text(json.dumps(payload), encoding="utf-8")
+
+    manifest = read_manifest(event)
+    assert manifest is not None
+    assert manifest.chapters is None
+    assert manifest.output == "A.mp4"
+
+
+_GOOD = {"name": "A", "start_ms": 0, "end_ms": 100, "title_card": None}
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "x",
+        7,
+        {"name": "A"},
+        [_GOOD, "x"],
+        [{**_GOOD, "start_ms": True}],
+        [{**_GOOD, "end_ms": 1.5}],
+        [{**_GOOD, "start_ms": "0"}],
+        [{**_GOOD, "start_ms": -1}],
+        [{**_GOOD, "start_ms": 200}],
+        [{k: v for k, v in _GOOD.items() if k != "name"}],
+        [{**_GOOD, "name": 3}],
+        [{k: v for k, v in _GOOD.items() if k != "end_ms"}],
+        [{**_GOOD, "title_card": {"start_ms": 50, "end_ms": 150}}],
+        [{**_GOOD, "title_card": {"start_ms": 60, "end_ms": 50}}],
+        [{**_GOOD, "title_card": "x"}],
+        [{**_GOOD, "title_card": {"start_ms": 0}}],
+        [_GOOD, {**_GOOD, "start_ms": 100, "end_ms": 50}],
+    ],
+)
+def test_a_malformed_chapter_list_reads_as_none_as_a_whole(tmp_path: Path, value: object) -> None:
+    event = tmp_path / "e"
+    _write(event, "A.mp4")
+    _set_chapters_field(event, value)
+
+    manifest = read_manifest(event)
+    assert manifest is not None
+    assert manifest.chapters is None
+    assert manifest.output == "A.mp4"
+
+
+def test_a_rewritten_manifest_does_not_carry_chapters_over(tmp_path: Path) -> None:
+    event = tmp_path / "e"
+    _write_chapters(event, _TWO_CHAPTERS)
+    _write(event, "A.mp4")
+
+    manifest = read_manifest(event)
+    assert manifest is not None and manifest.chapters is None
+
+
+def test_chapter_times_leave_the_other_fields_and_the_fingerprint_alone(tmp_path: Path) -> None:
+    plain, with_chapters = tmp_path / "p", tmp_path / "c"
+    _write(plain, "A.mp4")
+    _write_chapters(with_chapters, _TWO_CHAPTERS)
+    a, b = read_manifest(plain), read_manifest(with_chapters)
+
+    assert a is not None and b is not None
+    assert (a.fingerprint, dict(a.components), a.output, a.superseded) == (
+        b.fingerprint,
+        dict(b.components),
+        b.output,
+        b.superseded,
+    )

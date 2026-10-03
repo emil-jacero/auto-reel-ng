@@ -20,7 +20,9 @@ from .fingerprint import (
 from .gate import StalenessReason, Verdict, evaluate, rendered_output
 from .manifest import (
     MANIFEST_FILENAME,
+    ChapterTime,
     RenderManifest,
+    TitleCardSpan,
     manifest_path,
     read_manifest,
     recorded_movie_path,
@@ -40,7 +42,9 @@ __all__ = [
     "engine_identity",
     # manifest
     "MANIFEST_FILENAME",
+    "ChapterTime",
     "RenderManifest",
+    "TitleCardSpan",
     "manifest_path",
     "read_manifest",
     "recorded_movie_path",
