@@ -76,6 +76,10 @@ segment SHALL be normalized. Synthetic segments SHALL always be encoded to the t
   an event whose target is 1280x720
 - **THEN** it is marked ineligible, it is normalized upright, and the finished movie carries no display rotation
 
+#### Scenario: A display rotation cancelled by `rotate` is still not copy-eligible
+- **WHEN** a conforming clip has a 90-degree display rotation and its segment has `rotate: 90` (total turn 0)
+- **THEN** the engine marks it ineligible and normalizes it; a display-rotated clip is never stream-copied
+
 #### Scenario: A segment with `rotate` is not copy-eligible
 - **WHEN** an otherwise conforming segment has `rotate: 180`
 - **THEN** the engine marks it ineligible; with `rotate: 0` or no `rotate` it is eligible

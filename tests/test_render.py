@@ -2700,3 +2700,9 @@ def test_a_cancel_kills_a_hung_ffmpeg_mid_segment(
     assert not (out_dir / "Movie.mp4").exists()
     assert not (out_dir / "Movie.mp4.part").exists()
     assert list(scratch.iterdir()) == []
+
+
+def test_a_non_quarter_display_rotation_names_the_clip() -> None:
+    clip = _phone_clip(rotation=45)
+    with pytest.raises(RenderError, match=rf"{clip.path.name}: display rotation 45"):
+        _normalize(None, clip, CPUProfile())
