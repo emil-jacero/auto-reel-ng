@@ -92,8 +92,10 @@ class ProxyFacts:  # pylint: disable=too-many-instance-attributes
     def from_json(cls, document: object) -> Optional[ProxyFacts]:
         """The facts in ``document``, or ``None`` when it is not a complete, well-typed object.
 
-        Strict: a missing key, a wrong type (a bool is not a number) or another
-        ``proxy_version`` is absence, never a default.
+        Strict: a missing key, a wrong type (a bool is not a number), another
+        ``proxy_version``, a non-finite duration, a non-positive size or a rotation outside
+        ``[0, 360)`` (the probe's range) is absence, never a default. The cache writer and the
+        read model share this, so both call the same entries usable.
         """
         if not isinstance(document, Mapping):
             return None
@@ -118,6 +120,10 @@ class ProxyFacts:  # pylint: disable=too-many-instance-attributes
         except (KeyError, TypeError, ValueError):
             return None
         if facts.proxy_version != spec.PROXY_VERSION or facts.fps_den <= 0 or facts.fps_num <= 0:
+            return None
+        if not math.isfinite(facts.duration) or facts.width <= 0 or facts.height <= 0:
+            return None
+        if facts.rotation is not None and not 0 <= facts.rotation < 360:
             return None
         return facts
 

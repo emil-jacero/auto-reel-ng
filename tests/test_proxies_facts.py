@@ -276,6 +276,11 @@ def test_facts_round_trip(tmp_path: Path) -> None:
         "bool-frames",
         "zero-rate",
         "empty",
+        "zero-width",
+        "negative-height",
+        "rotation-360",
+        "rotation-negative",
+        "infinite-duration",
     ],
 )
 def test_damaged_facts_read_as_absent_never_as_defaults(tmp_path: Path, mutate: str) -> None:
@@ -303,6 +308,16 @@ def test_damaged_facts_read_as_absent_never_as_defaults(tmp_path: Path, mutate: 
         document["fps"] = {"num": 0, "den": 1}
     elif mutate == "empty":
         text = ""
+    elif mutate == "zero-width":
+        document["width"] = 0
+    elif mutate == "negative-height":
+        document["height"] = -540
+    elif mutate == "rotation-360":
+        document["rotation"] = 360
+    elif mutate == "rotation-negative":
+        document["rotation"] = -90
+    elif mutate == "infinite-duration":
+        text = json.dumps(document).replace(str(document["duration"]), "Infinity", 1)
     target = tmp_path / "facts.json"
     target.write_text(text if text is not None else json.dumps(document), encoding="utf-8")
     assert read_facts(target) is None

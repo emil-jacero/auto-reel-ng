@@ -35,10 +35,17 @@ from auto_reel_ng.probe.metadata import ClipMetadata
 from auto_reel_ng.proxies import (
     ProxyEntry,
     ProxySettings,
+    ProxyStatus,
 )
 from auto_reel_ng.proxies import cache as cache_module
 from auto_reel_ng.proxies import ensure as ensure_module
-from auto_reel_ng.proxies import ensure_proxy, lookup_proxy, proxy_key, sweep_stale_parts
+from auto_reel_ng.proxies import (
+    ensure_proxy,
+    lookup_proxy,
+    proxy_key,
+    read_proxy_state,
+    sweep_stale_parts,
+)
 
 Behaviour = Callable[["FakeRuntime", List[str], Optional[Callable[[float], None]], Any], None]
 
@@ -246,6 +253,30 @@ def test_an_incomplete_entry_directory_is_replaced_by_a_complete_one(env: Env) -
     assert entry.generated is True
     assert entry.proxy_path.read_bytes() == b"proxy bytes"
     assert entry.facts_path.is_file()
+
+
+def test_an_empty_proxy_is_not_a_hit_and_is_rebuilt(env: Env) -> None:
+    first = env.ensure()
+    first.proxy_path.write_bytes(b"")  # a disk-full write or a cut-short copy
+
+    assert lookup_proxy(env.clip, settings=env.settings) is None
+    entry = env.ensure()
+
+    assert entry.generated is True
+    assert entry.proxy_path.read_bytes() == b"proxy bytes"
+    assert read_proxy_state(env.clip, settings=env.settings).status is ProxyStatus.ABSENT
+    assert env.builds() == []
+
+
+def test_facts_the_read_model_refuses_are_not_a_hit_either(env: Env) -> None:
+    first = env.ensure()
+    document = json.loads(first.facts_path.read_text(encoding="utf-8"))
+    document["width"] = 0
+    first.facts_path.write_text(json.dumps(document), encoding="utf-8")
+
+    assert lookup_proxy(env.clip, settings=env.settings) is None
+    assert env.ensure().generated is True
+    assert lookup_proxy(env.clip, settings=env.settings) is not None
 
 
 def test_the_source_clip_is_only_read(env: Env) -> None:
