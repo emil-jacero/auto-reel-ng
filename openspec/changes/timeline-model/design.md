@@ -94,7 +94,6 @@ export function visibleTicks(l: Layout, v: View, overscanPx: number): { stepMs: 
 export function cutSpans(cuts: readonly ListedCut[], durationMs: Ms): Skip[]    // = skipSpans
 export function movieLengthMs(clips: readonly (ClipFacts & { cuts: readonly ListedCut[] })[]): Ms
 export function cutRects(cuts, durationMs, pps): { index: number; left: number; width: number }[]
-export function cutOrdinals(cuts: readonly ListedCut[]): (number | null)[]       // null = removed
 
 // trim and snap
 export function trimLimits(cuts, index, edge: 'in' | 'out', f: ClipFacts): [Ms, Ms]
@@ -159,9 +158,14 @@ snapping runs on a drag, not on a no-op.
 ### Cut spans, rectangles, names
 `cutRects` returns one rectangle per listed cut that is not removed, with its index in the caller's list, for
 the cut's pixels clamped to `[0, durationMs]`: a cut that runs past the end is drawn up to the end (D-16's
-bar); one wholly past it, or empty, has no rectangle. `cutOrdinals` numbers non-removed cuts 1..n by start
-(ties by end, then position) and returns `null` for removed ones, so two cuts of one clip never share a name
-"cut n start" (the prototype's second defect, found by `aria_snapshot`).
+bar); one wholly past it, or empty, has no rectangle.
+**Decision (review finding)**: a cut's number is its list position plus one, the number the Cuts panel
+(`CutList`) shows and `playheadWords` speaks ("in cut 2"); the timeline names a handle "cut N start" with that
+same N, from the rectangle's `index`. There is no `cutOrdinals`: ranking by start would put a second numbering
+beside the panel's, and a handle called "cut 1 start" could be row 3. The prototype's defect (two handles both
+called "cut 1") came from its own naming, not from the repo's list, where every cut already has a unique
+position. Should the panel ever sort by start, it and `playheadWords` change together and the model needs no
+change. `timeline-view` MUST take N from `index + 1`.
 
 ### What the prototype's third defect is not
 The research lists a touch-swipe moving the playhead (a gesture decision in `Timeline.tsx`) as a second
@@ -169,8 +173,9 @@ The research lists a touch-swipe moving the playhead (a gesture decision in `Tim
 reproduce and test in a browser; this change's second named case is the identical-names one.
 
 ### Failure behaviour
-`clipFacts`, `layout` (through its inputs), and every function taking `fps`, `pps` or a view width throws
-`ModelError` on a non-finite or non-positive value; there is no clamping to a default. `trimEdge` with an
+`clipFacts`, `layout` (through its inputs), `cutSpans`, `cutRects`, `movieLengthMs` (each clip's duration and
+rate) and every function taking `fps`, `pps`, a duration or a view width throws `ModelError` on a non-finite or
+non-positive value (`clipAt` on a non-finite time); there is no clamping to a default. `trimEdge` with an
 index outside the list throws. Nothing here retries, logs or touches the DOM, the network or a file. The
 model is a pure function of its arguments, so idempotency questions reduce to: the same arguments give the
 same result, and a drag's result, applied to the cut, is where the edge stays (`trimEdge` on the updated list with that

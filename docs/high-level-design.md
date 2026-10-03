@@ -896,8 +896,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     snapping (8 px). A clip's duration and frame rate have no default and throw `ModelError` when missing: the
     events read is probe-free (§4.9), so they come from a proxy's `facts.json` (D-21), which is why the timeline
     opens only for an event whose proxies are prepared. A cut stays three frames long, measured so that its
-    limits are frame times (the prototype's `MIN_CUT = 0.1` was not, and Home on a handle returned 0.12 s); two
-    cuts of a clip never share a number (the prototype named both "cut 1 start"). Variable frame rate is not
+    limits are frame times (the prototype's `MIN_CUT = 0.1` was not, and Home on a handle returned 0.12 s); a
+    cut's number is its place in the list plus one, the Cuts panel's and `playheadWords`' number (the model has
+    no second numbering by start; the prototype named two handles "cut 1 start"). Variable frame rate is not
     modelled.
   - **Tests are the existing runner.** `npm test` (Node's `node:test`, type-checked by `tsconfig.test.json`),
     not vitest: no package is added. This is the proposal §4.10 asked for when it said a slice with logic worth

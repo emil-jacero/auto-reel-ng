@@ -138,6 +138,7 @@ export function layout(clips: readonly ClipFacts[]): Layout {
  * a boundary the later clip; null for no clips.
  */
 export function clipAt(l: Layout, t: Ms): number | null {
+  finite('t', t)
   const n = l.startsMs.length
   if (n === 0) {
     return null
@@ -301,6 +302,7 @@ export function visibleTicks(
 
 /** The cuts as the render joins them: clamped to the clip, sorted, overlaps merged. */
 export function cutSpans(cuts: readonly ListedCut[], durationMs: Ms): Skip[] {
+  finitePositive('durationMs', durationMs)
   return skipSpans(cuts, durationMs)
 }
 
@@ -309,7 +311,9 @@ export function movieLengthMs(
   clips: readonly (ClipFacts & { cuts: readonly ListedCut[] })[],
 ): Ms {
   let total = 0
-  for (const clip of clips) {
+  for (const [index, clip] of clips.entries()) {
+    finitePositive(`clips[${index}].durationMs`, clip.durationMs)
+    finitePositive(`clips[${index}].fps`, clip.fps)
     const cut = cutSpans(clip.cuts, clip.durationMs).reduce(
       (sum, span) => sum + (span.to - span.from),
       0,
@@ -320,8 +324,9 @@ export function movieLengthMs(
 }
 
 /**
- * One rectangle per listed cut that is not removed, keyed by its place in the list,
- * for its own span clamped to the clip. A cut past the end is drawn up to it; one
+ * One rectangle per listed cut that is not removed, keyed by its place in the list
+ * (`index`, from 0; the Cuts panel and `playheadWords` call it `index + 1`, and a
+ * handle's name uses the same number), for its own span clamped to the clip. A cut past the end is drawn up to it; one
  * wholly past it, or empty, has none.
  */
 export function cutRects(
@@ -329,6 +334,7 @@ export function cutRects(
   durationMs: Ms,
   pps: number,
 ): { index: number; left: number; width: number }[] {
+  finitePositive('durationMs', durationMs)
   finitePositive('pps', pps)
   const rects: { index: number; left: number; width: number }[] = []
   cuts.forEach((cut, index) => {
@@ -342,22 +348,6 @@ export function cutRects(
     }
   })
   return rects
-}
-
-/**
- * Each cut's number from 1 in order of start (a tie by end, then by place in the
- * list), null for a removed one: no two cuts of a clip share a number.
- */
-export function cutOrdinals(cuts: readonly ListedCut[]): (number | null)[] {
-  const ordinals: (number | null)[] = cuts.map(() => null)
-  cuts
-    .map((cut, index) => ({ index, from: toMs(cut.in), to: toMs(cut.out), removed: cut.removed }))
-    .filter((cut) => cut.removed !== true)
-    .sort((a, b) => a.from - b.from || a.to - b.to || a.index - b.index)
-    .forEach((cut, rank) => {
-      ordinals[cut.index] = rank + 1
-    })
-  return ordinals
 }
 
 // --- trim and snap ------------------------------------------------------------------
