@@ -44,8 +44,8 @@ document references but which is absent from disk SHALL report both as null rath
 or epoch — absence is reported, never fabricated. The events **list** response SHALL NOT carry per-clip
 facts; it keeps its clip counts.
 
-Each clip in the detail response SHALL also carry a **duration** in seconds, which is a media fact and the one
-exception to "file facts only". It SHALL be the duration the engine's thumbnail operation already measured for
+Each clip in the detail response SHALL also carry a **duration** in seconds, which is a media fact and the first
+exception to "file facts only" (the second is each clip's proxy state, defined in its own requirement). It SHALL be the duration the engine's thumbnail operation already measured for
 that exact file, read from the sidecar the thumbnail cache keeps beside the clip's cached thumbnail (the
 clip-thumbnails capability), and SHALL never be obtained by decoding or probing a clip: reading the detail
 response MUST NOT run `ffprobe` or `ffmpeg`, and MUST NOT write, create or refresh any cache entry. It SHALL be
@@ -2612,3 +2612,97 @@ state in the event detail.
 - **THEN** the `get` and the `head` operation of `/api/v1/events/{event_id}/filmstrip` declare the same
   parameters as the proxy operations, and publish 200 and 206 as `image/jpeg` binary content, 304, 400, 404,
   416, 422 and 502, and no 503
+
+### Requirement: The event detail reports each clip's proxy state
+Each clip in the detail response SHALL carry a `proxy` object that reports whether the clip has a prepared
+proxy (the clip-proxies capability) and, when it has, the media facts the proxy job recorded for it. The object
+SHALL have `state`, a closed and published vocabulary of exactly `absent`, `ready`, `stale` and `failed`, and
+these other members, each nullable and optional in the schema and present only for the state named:
+
+- `facts`, for `ready` only: `duration` (seconds, the probe's number, finite and above zero), `fps_num` and
+  `fps_den` (the frame rate as a fraction of positive integers), `vfr` (true when the source's frame times are
+  variable, `null` when the container gave no average rate to compare), `width` and `height` (positive integers,
+  the picture as displayed: sample aspect ratio and display rotation applied), `rotation` (the source's display
+  rotation in degrees as the probe reported it, 0 to 359, or `null` when the source declares none),
+  `audio_codec` (the source's audio codec name, or `null` when the source has no audio) and `filmstrip` (the
+  sprite's `tile_width`, `tile_height`, `columns`, `tiles` and `interval`, the whole seconds of footage per tile).
+  Each value SHALL be copied from the cache entry's recorded facts; none SHALL be computed, defaulted or
+  derived from another field.
+- `version`, for `ready` only: the proxy file's entity tag without its quotes, byte for byte the tag the
+  media routes send for that file (the same size-and-nanosecond-mtime formula), so a client can put it in the
+  proxy URL as `v`.
+- `reason`, for `failed` only: a single line that states the cause and contains no server file path.
+
+The `proxy` object SHALL be `null`, meaning unknown, never `absent`, for a clip the document references but disk
+does not have, and for every clip when the project's `proxies` configuration cannot be resolved; the latter
+SHALL NOT fail the response and SHALL log one warning per request. A clip's other fields are unaffected in
+every case. The events **list** response SHALL NOT carry `proxy` or any per-clip proxy fact.
+
+Reading the detail SHALL NOT run `ffprobe`, `ffmpeg` or any other process for a proxy, SHALL NOT write,
+create, rename or touch any file in the proxy cache, and SHALL NOT list the cache directory: each clip costs
+a bounded number of `stat` calls and one read of one small JSON file. A cache directory or entry that cannot be
+read SHALL read as unknown (`proxy` is `null`) for that clip, not as a failed response and not as `absent`.
+The proxy state SHALL NOT be an input of the staleness verdict: a clip's proxy becoming ready, stale or failed
+SHALL NOT change an event's `staleness`. `ClipOut.duration` SHALL be unchanged and independent of the proxy.
+
+#### Scenario: A clip with a prepared proxy reports its facts
+- **WHEN** `C0047.MP4` (a 1080p25 Sony clip with PCM audio) has a complete proxy entry for the file as it is
+  now and the detail is read
+- **THEN** that clip's `proxy` has `state` `ready`, `facts.duration` as recorded, `fps_num` 25, `fps_den` 1,
+  `width` 960, `height` 540, `rotation` `null` (the source declares none), `audio_codec` `pcm_s16be`, a `filmstrip` with `tile_width` 160 and
+  `tile_height` 90, and a `version` equal to the proxy file's entity tag without quotes; neither `ffprobe`
+  nor `ffmpeg` ran
+
+#### Scenario: A rotated phone clip reports its rotation and displayed size
+- **WHEN** a portrait HEVC clip recorded with a 90 degree display rotation has a ready proxy of 540 by 960
+- **THEN** its `facts` carry `rotation` 90 with `width` 540 and `height` 960, as recorded
+
+#### Scenario: A clip with no proxy is absent
+- **WHEN** the detail is read for a clip that has never been prepared
+- **THEN** its `proxy` is `{state: "absent"}` with no `facts`, `version` or `reason`, and the proxy cache
+  directory's listing is identical before and after the request
+
+#### Scenario: A clip without audio reports a null audio codec
+- **WHEN** a ready proxy's recorded facts say the source has no audio track
+- **THEN** `facts.audio_codec` is `null` and the state is still `ready`
+
+#### Scenario: A variable frame rate clip is flagged, not rounded
+- **WHEN** a ready proxy's recorded facts say the source is variable frame rate with an average of 30000/1001
+- **THEN** `facts.vfr` is true and `fps_num` 30000 with `fps_den` 1001, not a rounded float
+
+#### Scenario: A failed attempt is reported with its cause
+- **WHEN** the last attempt to prepare a clip failed, recording the cause `moov atom not found`, and no usable
+  entry exists
+- **THEN** its `proxy` is `{state: "failed", reason: "moov atom not found"}` and the reason names no path
+
+#### Scenario: A replaced file reads as absent
+- **WHEN** a clip had a ready proxy and the file is then replaced by another of the same name with a different
+  size or modification time
+- **THEN** the detail reports `state` `absent` for it, because the cache key moved with the file, and does not
+  serve the old facts
+
+#### Scenario: The proxy state is not part of the staleness verdict
+- **WHEN** every clip of a freshly rendered event gains a ready proxy
+- **THEN** the event's `staleness` is unchanged and still reports fresh
+
+#### Scenario: An unusable proxies configuration leaves the state unknown
+- **WHEN** the project's `config.yaml` sets `proxies.cache_dir` to a relative path, which the proxy commands
+  refuse, and the event detail is read
+- **THEN** the detail is a success, every clip's `proxy` is `null`, one warning is logged, and the other
+  fields and the rest of the response are unchanged
+
+#### Scenario: A missing clip has no proxy state
+- **WHEN** the document references a clip whose file has been deleted or renamed
+- **THEN** it is reported MISSING with a `proxy` of `null`, alongside its null size and modification time
+
+#### Scenario: An unreadable cache is unknown, not an error
+- **WHEN** the proxy cache directory cannot be read (permission denied)
+- **THEN** the detail is a success and each affected clip's `proxy` is `null`
+
+#### Scenario: Reading starts no process
+- **WHEN** the detail is read for an event of 25 clips with every process-starting facility made to raise
+- **THEN** the response is a 200 and no process was started
+
+#### Scenario: The list carries no proxy facts
+- **WHEN** `GET /api/v1/events` is read for a project whose clips have ready proxies
+- **THEN** the response has no per-clip fields, as before
