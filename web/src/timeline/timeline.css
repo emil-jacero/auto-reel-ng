@@ -140,7 +140,9 @@
 
   .tl-canvas {
     position: relative;
-    block-size: calc(var(--tl-ruler-h) + var(--tl-band-h) + var(--tl-clip-h) + var(--s-3));
+    block-size: calc(
+      var(--tl-ruler-h) + var(--tl-band-h) + var(--tl-clip-h) + var(--s-3) + var(--tl-lane-h, 0px)
+    );
     min-inline-size: 100%;
   }
 

@@ -1,0 +1,242 @@
+/* The analysis lane and its detail (`SuggestionLane.tsx`, `SuggestionDetail.tsx`). Tokens only. */
+@layer screens {
+  .timeline {
+    /* A mark is 44px high (a finger); a row is the mark and a 4px gap. */
+    --sg-mark-h: 44px;
+    --sg-row: 48px;
+  }
+
+  .tl-canvas {
+    --tl-lane-h: calc(var(--tl-lane-rows, 0) * var(--sg-row));
+  }
+
+  /* A row of the canvas under the clips'; its height is the busiest clip's rows, so it holds as the track scrolls. */
+  .tl-analysis {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-start: calc(var(--tl-ruler-h) + var(--tl-band-h) + var(--s-2) + var(--tl-clip-h) + var(--s-1));
+    block-size: var(--tl-lane-h);
+    border-block-start: 1px solid var(--border);
+    pointer-events: none;
+    touch-action: pan-x pan-y;
+  }
+
+  .sg-group {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  /* --- a mark --- */
+  .sg-mark {
+    --_edge: var(--border-strong);
+
+    position: absolute;
+    box-sizing: border-box;
+    min-inline-size: 44px;
+    block-size: var(--sg-mark-h);
+    margin: 2px 0 0;
+    padding: 0;
+    border: 2px dashed var(--_edge);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    color: var(--fg);
+    font: inherit;
+    font-size: var(--text-xs);
+    cursor: pointer;
+    overflow: hidden;
+    pointer-events: auto;
+    touch-action: pan-x pan-y;
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      box-shadow var(--dur-fast) var(--ease-out);
+
+    &:hover {
+      background: var(--surface-hover);
+    }
+
+    &:focus-visible {
+      z-index: 2;
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+
+    &[data-selected] {
+      box-shadow: 0 0 0 2px var(--accent);
+    }
+
+    /* Pending: a dashed edge, still to decide. */
+    &[data-state='cut'] {
+      --_edge: var(--err);
+
+      border-style: solid;
+      background: var(--err-bg);
+      color: var(--err-fg);
+    }
+
+    /* Partly cut: a solid edge and half the tint. */
+    &[data-state='partly-cut'] {
+      --_edge: var(--err);
+
+      border-style: solid;
+      background: linear-gradient(90deg, var(--err-bg) 50%, var(--surface) 50%);
+    }
+
+    &[data-state='dismissed'] {
+      border-style: dotted;
+      background: var(--idle-bg);
+      color: var(--idle-fg);
+
+      & .sg-label {
+        text-decoration: line-through;
+      }
+    }
+  }
+
+  /* The span itself at the track's scale, along the mark's foot; its pattern follows the kind as a cut's does. */
+  .sg-bar {
+    position: absolute;
+    inset-block-end: 0;
+    block-size: 5px;
+    background: currentColor;
+
+    .sg-mark[data-kind='white'] & {
+      background: radial-gradient(currentColor 1.1px, transparent 1.5px) 0 0 / 4px 5px;
+    }
+
+    .sg-mark[data-kind='freeze'] & {
+      background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 4px);
+    }
+  }
+
+  .sg-face {
+    position: absolute;
+    inset: 0 0 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s-1);
+    padding-inline: var(--s-1);
+    min-inline-size: 0;
+  }
+
+  .sg-glyph {
+    flex: none;
+    font-size: var(--text-md);
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .sg-label {
+    min-inline-size: 0;
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* A clip with no cached analysis in an analysed event. */
+  .sg-clip-note {
+    position: absolute;
+    inset-block-start: 2px;
+    block-size: var(--sg-mark-h);
+    display: flex;
+    align-items: center;
+    overflow: clip;
+    border: 2px dotted var(--border-strong);
+    border-radius: var(--r-md);
+    box-sizing: border-box;
+    color: var(--fg-muted);
+    font-size: var(--text-xs);
+    pointer-events: none;
+  }
+
+  .sg-clip-note-text {
+    position: sticky;
+    inset-inline-start: var(--s-2);
+    padding-inline: var(--s-2);
+    white-space: nowrap;
+  }
+
+  /* --- the notes and the detail under the track --- */
+  .sg-strip {
+    display: grid;
+    gap: var(--s-2);
+    min-inline-size: 0;
+  }
+
+  .sg-note {
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+    max-inline-size: 46rem;
+  }
+
+  .sg-detail {
+    display: grid;
+    gap: var(--s-2);
+    min-inline-size: 0;
+    padding: var(--s-3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--surface);
+  }
+
+  .sg-detail-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-3);
+    min-inline-size: 0;
+    font-size: var(--text-sm);
+  }
+
+  .sg-detail-where {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sg-detail-state {
+    font-weight: 600;
+  }
+
+  .sg-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+  }
+
+  .sg-already {
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
+  .sg-refusal {
+    color: var(--err-fg);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  @media (forced-colors: active) {
+    .sg-mark {
+      forced-color-adjust: none;
+      border-color: CanvasText;
+      background: Canvas;
+      color: CanvasText;
+
+      &[data-selected] {
+        outline: 3px solid Highlight;
+      }
+
+      &:focus-visible {
+        outline: 3px solid Highlight;
+      }
+    }
+
+    .sg-bar {
+      background: CanvasText;
+    }
+  }
+}

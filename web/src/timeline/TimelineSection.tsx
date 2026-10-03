@@ -4,9 +4,13 @@ import type { EventDetail } from '../api/event'
 import type { ReadCutsState } from '../cuts/ReadCuts'
 import { Alert } from '../ui/Alert'
 import { Prepare, usePrepare } from './Prepare'
+import type { AnalysisControl } from './overlays/control'
+import type { Dismissals } from './overlays/Dismissals'
 import { Timeline } from './Timeline'
 import { NO_CLIPS } from './labels'
 import { omittedWords, readiness, sectionState, shownClips, trackClips } from './layout'
+
+const NO_CUTS: readonly never[] = []
 
 /*
  * The event page's Timeline section (read view only): a heading and one button. Closed,
@@ -20,12 +24,15 @@ export function TimelineSection({
   eventId,
   event,
   read,
+  dismissals,
   onFinished,
 }: {
   eventId: string
   event: EventDetail
   /** The page's one read of `reel.yaml`'s cuts. */
   read: ReadCutsState
+  /** The suggestions dismissed during this page visit (kept above the section). */
+  dismissals: Dismissals
   /** Read the event again, quietly (a proxy job ended, or every proxy was already ready). */
   onFinished: () => void
 }) {
@@ -36,6 +43,17 @@ export function TimelineSection({
   const chapterNames = useMemo(() => event.chapters.map((chapter) => chapter.name), [event])
   const clips = useMemo(() => trackClips(shown.clips, read.cuts), [shown, read.cuts])
   const prepare = usePrepare(eventId, onFinished)
+  // The analysis lane in the read view: the cuts as read, and no decision (Edit mode decides).
+  const analysis = useMemo<AnalysisControl>(
+    () => ({
+      eventId,
+      cutsState: read.cuts !== null ? 'ok' : read.failure !== null ? 'unreadable' : 'reading',
+      cutsOf: (identity) => read.cuts?.get(identity) ?? NO_CUTS,
+      dismissals,
+      decide: null,
+    }),
+    [eventId, read, dismissals],
+  )
   const state = sectionState(open, shown.clips)
   const omitted = omittedWords(shown.omitted)
   return (
@@ -69,6 +87,7 @@ export function TimelineSection({
                 chapterNames={chapterNames}
                 cuts={read}
                 prepare={prepare}
+                analysis={analysis}
               />
             )}
             {/* Always there while open, so the words put into it are announced. */}

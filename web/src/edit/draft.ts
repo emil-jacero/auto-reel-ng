@@ -458,10 +458,15 @@ function settled(baseline: Baseline, draft: Draft, identity: string, cuts: Draft
   return { ...draft, cuts: next }
 }
 
+// D-K's value for a cut made by hand (`cuts/times.ts` names it "Cut by hand").
+const BY_HAND = 'manual' satisfies KnownReason
+
 /**
  * `draft` with a cut added to `identity` under the new key `key`, after every
  * listed cut (removed ones included) that starts at the same time or earlier.
- * The caller checked it (`checkCut`, `cuts/times.ts`) against the same list.
+ * The caller checked it (`checkCut`, `cuts/times.ts`) against the same list. The
+ * cut's `reason` is `manual` unless the caller says why: an approved analysis
+ * suggestion gives its kind (`black`, `white`, `freeze`).
  */
 export function addCut(
   baseline: Baseline,
@@ -469,6 +474,7 @@ export function addCut(
   identity: string,
   span: { in: number; out: number },
   key: CutKey,
+  reason: string = BY_HAND,
 ): Draft {
   const cuts = cutsOf(baseline.cuts, draft.cuts, identity)
   if (cuts.some((cut) => cut.key === key)) {
@@ -478,8 +484,6 @@ export function addCut(
   while (at > 0 && cuts[at - 1].in > span.in) {
     at -= 1
   }
-  // D-K's value for a cut made by hand (`cuts/times.ts` names it "Cut by hand").
-  const reason = 'manual' satisfies KnownReason
   const added: DraftCut = { key, in: span.in, out: span.out, reason, removed: false }
   return settled(baseline, draft, identity, [...cuts.slice(0, at), added, ...cuts.slice(at)])
 }

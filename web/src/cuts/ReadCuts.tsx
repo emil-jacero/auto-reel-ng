@@ -22,7 +22,7 @@ import type { Trim } from './times'
 /** Identity → its cuts as `reel.yaml` lists them; only clips with cuts. */
 export type ClipCuts = ReadonlyMap<string, readonly Trim[]>
 
-type ReadFailure = { cause: string; detail: string | null }
+export type ReadFailure = { cause: string; detail: string | null }
 
 export type ReadCutsState = { cuts: ClipCuts | null; failure: ReadFailure | null }
 
@@ -34,8 +34,11 @@ function cutsOf(document: ReelDocument): ClipCuts {
   )
 }
 
-/** Why the cuts could not be read, in the words the page uses for its own reads. */
-function failureOf(result: Exclude<ReelReadResult, { kind: 'ok' }>): ReadFailure {
+/**
+ * Why a read of the event's `reel.yaml` or its analysis could not be had, in the words
+ * the page uses for its own reads.
+ */
+export function failureOf(result: Exclude<ReelReadResult, { kind: 'ok' }>): ReadFailure {
   if (result.kind !== 'problem') {
     const { cause, detail } = unansweredFailure(result)
     return { cause, detail }

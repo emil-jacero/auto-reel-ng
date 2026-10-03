@@ -64,7 +64,7 @@ export type CutPanels = {
 
 /** The editor's cut operations; one stable object, so rows keep their memoised props. */
 export type CutHandlers = {
-  onAdd(identity: string, span: { in: number; out: number }): void
+  onAdd(identity: string, span: { in: number; out: number }, reason?: string): void
   onRemove(identity: string, key: CutKey): void
   onRestore(identity: string, key: CutKey): void
   /** The panel's fields went from empty to holding text, or back. */

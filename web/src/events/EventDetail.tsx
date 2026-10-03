@@ -15,6 +15,8 @@ import { formatInstant } from '../format'
 import { missingClipsReason } from '../jobs/labels'
 import { RenderControl } from '../jobs/RenderControl'
 import { MoviePanel } from '../movie/MoviePanel'
+import { useDismissals } from '../timeline/overlays/Dismissals'
+import type { Dismissals } from '../timeline/overlays/Dismissals'
 import { TimelineSection } from '../timeline/TimelineSection'
 import { LIST_HREF } from '../route'
 import { Alert } from '../ui/Alert'
@@ -112,6 +114,9 @@ function EventDetailBody({
 }) {
   const [state, setState] = useState<LoadState>({ status: 'loading', editPlace: true })
   const [editing, setEditing] = useState(false)
+  // The suggestions dismissed on this page visit: above the read view and Edit mode, which
+  // the Timeline section is closed by every switch between (`timeline/overlays`).
+  const dismissals = useDismissals()
   // While a save is in flight, Refresh and Stop editing wait for its answer.
   const saving = useSaving()
   const shown = useRef(false)
@@ -492,6 +497,7 @@ function EventDetailBody({
             <ReadyView
               eventId={eventId}
               event={state.event}
+              dismissals={dismissals}
               onLostFocus={focusPage}
               onFinished={reread}
             />
@@ -580,11 +586,14 @@ function clipRow(identity: string): HTMLElement | undefined {
 function ReadyView({
   eventId,
   event,
+  dismissals,
   onLostFocus,
   onFinished,
 }: {
   eventId: string
   event: EventDetailData
+  /** The suggestions dismissed on this page visit (`useDismissals`, kept by the page). */
+  dismissals: Dismissals
   /** Focus has nowhere in the rows to go: the page's heading takes it. */
   onLostFocus: () => void
   /** A job the Timeline section followed has ended: the page re-reads quietly. */
@@ -657,7 +666,13 @@ function ReadyView({
       <ReadCutsNote failure={read.failure} />
 
       {/* Closed until opened; absent in Edit mode, which replaces this view. */}
-      <TimelineSection eventId={eventId} event={event} read={read} onFinished={onFinished} />
+      <TimelineSection
+        eventId={eventId}
+        event={event}
+        read={read}
+        dismissals={dismissals}
+        onFinished={onFinished}
+      />
 
       {clips.length === 0 ? (
         <p className="empty-state">
