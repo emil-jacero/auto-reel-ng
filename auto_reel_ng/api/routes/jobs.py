@@ -43,6 +43,7 @@ from ..schemas import (
     ProblemOut,
 )
 from ..serialize import job_to_out as _job_out
+from ..serialize import jobs_to_out as _jobs_out
 from ..settings import ApiSettings
 from .guards import job_store_unreachable as _job_store_unreachable
 
@@ -223,7 +224,8 @@ def list_jobs(request: Request, status: Optional[JobStatus] = Query(None)) -> Li
     """``GET /api/v1/jobs`` (task 3.2): the served project's jobs, by status, oldest first.
 
     Jobs of every kind, each carrying its ``kind``: the store's reads default to renders
-    (job-kind), so the list asks for all of them.
+    (job-kind), so the list asks for all of them. A row of a kind this build does not name
+    is left out (and logged), never a failure of the whole list.
     """
     store: JobStore = request.app.state.job_store
     project_root = str(request.app.state.settings.project_root)
@@ -238,7 +240,7 @@ def list_jobs(request: Request, status: Optional[JobStatus] = Query(None)) -> Li
             ),
             key=lambda job: job.created_at,
         )
-    return [_job_out(job) for job in jobs]
+    return _jobs_out(jobs)
 
 
 def _served_job(store: JobStore, settings: ApiSettings, job_id: uuid.UUID) -> Optional[Job]:

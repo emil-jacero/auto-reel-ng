@@ -34,6 +34,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
@@ -47,7 +48,9 @@ from starlette.websockets import WebSocketState
 from ..persistence.job_store import FinishedJobs, JobStore
 from ..persistence.models import TERMINAL_STATUSES, Job, JobStatus
 from .schemas import JobOut, WsMessage, WsMessageType
-from .serialize import job_to_out
+from .serialize import jobs_to_out
+
+logger = logging.getLogger(__name__)
 
 #: Sentinel placed on a subscriber's queue to signal "your connection is being
 #: closed" (either a slow-consumer drop, or hub shutdown).
@@ -266,7 +269,13 @@ class JobsHub:  # pylint: disable=too-many-instance-attributes
         try:
             while True:
                 await asyncio.sleep(self._poll_interval)
-                await self._tick()
+                try:
+                    await self._tick()
+                except Exception:  # pylint: disable=broad-exception-caught
+                    # A failed tick (a database blip, a row that cannot be described) changes
+                    # nothing the next tick does not redo: the poller must outlive it, or the
+                    # subscribers would get heartbeats and no job again.
+                    logger.warning("jobs feed: a poll failed; retrying", exc_info=True)
         except asyncio.CancelledError:
             pass
 
@@ -297,7 +306,7 @@ class JobsHub:  # pylint: disable=too-many-instance-attributes
         # tick but absent now (D-A4 risk: "poller misses short-lived states"), merged
         # by id with every job finished since the last read — which also holds a job
         # whose whole active life fell between two polls, so no snapshot ever had it.
-        left = {job.id: job_to_out(job) for job in finished.jobs}
+        left = {job.id: job for job in jobs_to_out(finished.jobs)}
         vanished = set(self._snapshot) - set(new_snapshot)
         for job_id in vanished:
             final = await self._fetch_one(job_id)
@@ -354,13 +363,14 @@ class JobsHub:  # pylint: disable=too-many-instance-attributes
                 kind=None,
             )
             active.extend(await loop.run_in_executor(self._executor, read))
-        return {job.id: job_to_out(job) for job in active}
+        return {job.id: job for job in jobs_to_out(active)}
 
     async def _fetch_one(self, job_id: uuid.UUID) -> Optional[JobOut]:
         # Only ever asked for a job the scoped snapshot held: it needs no scope check.
         loop = asyncio.get_running_loop()
         job = await loop.run_in_executor(self._executor, self._store.get, job_id)
-        return job_to_out(job) if job is not None else None
+        described = jobs_to_out([job]) if job is not None else []
+        return described[0] if described else None
 
     async def _fetch_finished(self, since: Optional[datetime]) -> FinishedJobs:
         loop = asyncio.get_running_loop()

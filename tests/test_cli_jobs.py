@@ -17,7 +17,7 @@ from auto_reel_ng.config import default_output_dir
 from auto_reel_ng.event import DEFAULT_CLIP_ORDER
 from auto_reel_ng.persistence.engine import make_engine, make_session_factory
 from auto_reel_ng.persistence.job_store import JobStore
-from auto_reel_ng.persistence.models import JobStatus
+from auto_reel_ng.persistence.models import JobKind, JobStatus
 
 pytestmark = pytest.mark.requires_db
 
@@ -333,3 +333,25 @@ def test_jobs_cancel_a_queued_job_cancels_immediately(tmp_path: Path, store: Job
     job = store.get(job_id)
     assert job is not None
     assert job.status == JobStatus.CANCELED
+
+
+def test_jobs_list_and_show_name_a_proxy_job_and_its_kind(
+    tmp_path: Path, store: JobStore, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A proxy job the API enqueued is not invisible to the CLI (the API stays thin)."""
+    root = _project(tmp_path, "2024-06-21 - A")
+    assert main(["enqueue", str(root)]) == 0
+    render_id = store.list_by_status(JobStatus.QUEUED)[0].id
+    proxy_id = store.enqueue(str(root), "2024/2024-06-21 - A", kind=JobKind.PROXY)
+    capsys.readouterr()
+
+    assert main(["jobs", "list", str(root)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert any(str(render_id) in line and "render" in line for line in lines)
+    assert any(str(proxy_id) in line and "proxy" in line for line in lines)
+
+    assert main(["jobs", "list", str(root), "--status", "queued"]) == 0
+    assert str(proxy_id) in capsys.readouterr().out
+
+    assert main(["jobs", "show", str(root), str(proxy_id)]) == 0
+    assert "kind:             proxy" in capsys.readouterr().out

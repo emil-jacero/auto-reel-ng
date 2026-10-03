@@ -2,7 +2,8 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react'
 
 import type { JobSummary } from '../api/events'
 import type { JobOut } from '../api/jobs'
-import { choose, createdAt } from './shownJob'
+import { countRenders, newestRenderByEvent } from './kinds'
+import { choose } from './shownJob'
 import type { ShownJob } from './shownJob'
 import { getState, isActive, load, subscribe } from './store'
 import type { ConnectionStatus } from './store'
@@ -15,29 +16,23 @@ export type { ShownJob }
  * single-job reads; they disagree for a while after every transition.
  */
 
-// The newest store job per event id, rebuilt once per `jobs` map: every row's
-// selector then returns the same object until its own job changes.
+// The newest store render per event id (a proxy job of the event is not its render),
+// rebuilt once per `jobs` map: every row's selector then returns the same object
+// until its own job changes.
 let indexed: ReadonlyMap<string, JobOut> | null = null
 let newestByEvent = new Map<string, JobOut>()
 
 function newestJobOf(eventId: string): JobOut | undefined {
   const { jobs } = getState()
   if (jobs !== indexed) {
-    const index = new Map<string, JobOut>()
-    for (const job of jobs.values()) {
-      const held = index.get(job.event_dir)
-      if (held === undefined || createdAt(job) > createdAt(held)) {
-        index.set(job.event_dir, job)
-      }
-    }
     indexed = jobs
-    newestByEvent = index
+    newestByEvent = newestRenderByEvent(jobs.values())
   }
   return newestByEvent.get(eventId)
 }
 
 /**
- * The job to show for `eventId`: the store's newest (`event_dir` is the event
+ * The job to show for `eventId`: the store's newest render (`event_dir` is the event
  * id), or the read's `latest`. A screen never keeps showing the read's active job
  * as current after it ended: when the read's job wins while active and the live
  * connection lacks it, or the store holds as active what the read shows ended,
@@ -75,19 +70,10 @@ export function useEventJob(
   return shown
 }
 
-/** The connection's state, and how many of the served project's jobs render and wait. */
+/** The connection's state, and how many of the served project's renders run and wait. */
 export function useConnection(): { status: ConnectionStatus; rendering: number; queued: number } {
   const state = useSyncExternalStore(subscribe, getState)
   return useMemo(() => {
-    let rendering = 0
-    let queued = 0
-    for (const job of state.jobs.values()) {
-      if (job.status === 'running') {
-        rendering += 1
-      } else if (job.status === 'queued') {
-        queued += 1
-      }
-    }
-    return { status: state.connection, rendering, queued }
+    return { status: state.connection, ...countRenders(state.jobs.values()) }
   }, [state])
 }

@@ -164,14 +164,13 @@ and deltas fails without the argument. `GET /api/v1/jobs` passes `kind=None` for
 reason the field is on the frame. The client decides what to do with a kind it does not handle.
 
 ### Spec deltas and the three gates
-Every requirement in the `api-service` delta is ADDED. The existing "Jobs lifecycle over REST", "WebSocket live job
-updates" and the two latest-job requirements stay true as written: `GET /api/v1/jobs` lists jobs (now of every
-kind, each marked); the frame's jobs are "in the same job shape the jobs routes return"; and their phrase "an
-event's latest job" is narrowed to the render by "An event's latest job is its latest render job". The three
-gates also edit `api-service` (the `proxy` field of the clip, the media routes), and `job-kind` may edit the
-jobs requirements for its per-kind index. Using ADDED blocks only keeps this change from copying and overwriting
-text the gates changed. Task 1.1 re-reads the archived text of every requirement this delta refers to and
-corrects the cross-references (names, not behaviour).
+The new requirements are ADDED. Two existing ones are MODIFIED, because their meaning narrows or widens: "Jobs
+lifecycle over REST" (the enqueue's 409 is for an active *render*; the list and detail are of every kind; cancel acts
+on either) and "WebSocket live job updates" (the snapshot holds active jobs of every kind). Each MODIFIED block holds
+the requirement's full text as archived on `main` at `74ecef5`, with only those words changed. The two latest-job
+requirements stay true as written (their phrase "an event's latest job" is narrowed to the render by "An event's
+latest job is its latest render job"). The gates also edit `api-service` (the `proxy` field of the clip, the media
+routes); a gate that lands later and edits the same two requirements is a merge to redo by hand at archive.
 
 ## Decisions
 
@@ -212,20 +211,19 @@ both route files import (one definition of the 503, not two). The clip set and f
 
 ## Risks / Trade-offs
 
-- **[The web's job store treats every job as a render]** `web/src/jobs/store.ts` keeps the newest job per
-  `event_dir`, `useConnection` counts every running job as "rendering", and the render control shows that job's
-  progress. A proxy job that reaches the socket (started with curl, since no screen enqueues one yet) would be
-  counted and shown as a render. → Out of scope here (a third package, and the first web consumer of this
-  endpoint is `timeline-view`'s Prepare state). The first web change that enqueues a proxy job MUST filter by
-  `kind` in the store, the header count and the render control, and carry the tests for it. Called out to the
-  supervisor; if an earlier guard is wanted it is a one-task web change (store filter plus `store.test.ts`).
+- **[The web's job store treats every job as a render]** answered in this change (review): `web/src/jobs/kinds.ts`
+  keeps renders only for an event's newest job and for the header's count, so the event row, the event page, the
+  render control and the count never show a proxy job. The store still holds every kind (the socket carries all);
+  a screen about proxy preparation (`timeline-view`'s Prepare state) reads proxy jobs from the store itself. A
+  separate proxy count in the header is not shown.
 - **[`latest_job` semantic change for an event with proxy jobs]** only observable after this change, because
   before it no proxy job can be enqueued through the API. → The scenarios of "An event's latest job is its latest
   render job" pin it, including the all-proxy event (`null`).
 - **[A job row of a kind this build does not name]** `jobs.kind` is free text on purpose (`job-kind`), but `JobOut.kind`
-  is the closed enumeration, so serializing a row written by a newer build raises instead of inventing a value
-  (Principle I). It surfaces in the jobs list and the socket as a failure, not a wrong kind. Only a mixed-version
-  deployment can produce such a row; widening the enumeration is the fix when a third kind is added.
+  is the closed enumeration, so such a row (written by another build) cannot be described. It is left out of the
+  jobs list and the socket's frames and logged (`serialize.jobs_to_out`), so one stray row costs only itself;
+  the hub's poller logs a failed poll and goes on. `GET /api/v1/jobs/{id}` for that row still fails (a 500): an
+  id read of a row this build cannot describe is not a case worth a body of its own.
 - **[Disagreement between the 200 and the job on the clip set]** → one shared definition (task 1.1 gate row,
   task 2.1 test of the set on a mixed event).
 - **[A 200 hides a proxy that became stale since the page read]** the read is made on the request, from disk, so

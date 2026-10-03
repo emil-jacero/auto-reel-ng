@@ -694,3 +694,56 @@ async def test_slow_consumer_is_dropped_and_can_reconnect() -> None:
         assert snapshot["jobs"][0]["id"] == str(job_id)
     finally:
         await hub.unsubscribe(new_queue)
+
+
+# --------------------------------------------------------------------------- #
+# A row the wire cannot describe, and a poll that fails, never end the feed
+# --------------------------------------------------------------------------- #
+
+
+async def test_a_job_of_an_unknown_kind_is_not_sent_and_the_feed_goes_on() -> None:
+    store = FakeStore()
+    strange = uuid.uuid4()
+    store.jobs[strange] = FakeJob(id=strange, status=JobStatus.RUNNING, kind="future")
+    known = uuid.uuid4()
+    store.jobs[known] = FakeJob(id=known, status=JobStatus.RUNNING, event_dir=BLANDAT)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
+
+    queue = await hub.subscribe()
+    try:
+        snapshot = await _drain(queue)
+        assert [job["id"] for job in snapshot["jobs"]] == [str(known)]
+        # It ends while a known job moves: only the known job's change arrives, and the poller lives.
+        store.jobs[strange].status = JobStatus.FAILED
+        store.jobs[strange].finished_at = _NOW
+        store.jobs[known].progress = 0.5
+        delta = await _drain(queue)
+        assert [(job["id"], job["progress"]) for job in delta["jobs"]] == [(str(known), 0.5)]
+        assert hub.is_polling is True
+    finally:
+        await hub.unsubscribe(queue)
+
+
+async def test_a_failed_poll_does_not_end_the_poller() -> None:
+    store = FakeStore()
+    job_id = uuid.uuid4()
+    store.jobs[job_id] = FakeJob(id=job_id, status=JobStatus.RUNNING, event_dir=BLANDAT)
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
+    queue = await hub.subscribe()
+    try:
+        await _drain(queue)
+        read = store.list_by_status
+        failures = [_Unreachable("database unreachable")]
+
+        def flaky_read(*args, **kwargs):  # type: ignore[no-untyped-def]
+            if failures:
+                raise failures.pop()
+            return read(*args, **kwargs)
+
+        store.list_by_status = flaky_read  # type: ignore[method-assign]
+        store.jobs[job_id].progress = 0.5
+        delta = await _drain(queue)  # the poll after the failed one still delivers the change
+        assert (delta["type"], delta["jobs"][0]["progress"]) == ("delta", 0.5)
+        assert hub.is_polling is True
+    finally:
+        await hub.unsubscribe(queue)

@@ -1160,9 +1160,12 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     **`latest_job` stays the event's latest render job**: a proxy job never stands in it, and the proxy side of an
     event is read from the clips' `proxy` state and the socket. The one-active-job rule holds per kind, so neither
     a render nor a proxy job refuses the other; cancel works on both. The WebSocket and `GET /api/v1/jobs` carry
-    jobs of every kind (the store's reads default to `render`, so both ask for all). The web still treats every job
-    as a render: the first screen that enqueues a proxy job must make its job store, header count and render control
-    kind-aware.
+    jobs of every kind (the store's reads default to `render`, so both ask for all), and a stored row of a kind this
+    build does not name is left out and logged, never a 500 of the list or a silent end of the feed; the poller logs
+    and survives a failed poll. The web's job store keeps every kind but its event rows, event page, render control
+    and header count read renders only. `auto-reel jobs list` shows every kind, with its `kind`. **The proxy enqueue
+    is deliberately API-only** (Principle V): `auto-reel proxies <root>` is the CLI's way to prepare proxies, inline;
+    a CLI `enqueue --proxies` is not needed until something wants a queued proxy job without the service.
   - **Deliberately not here:** any web code that calls the endpoint (`timeline-view`'s Prepare state); a prune of
     orphan entries (`proxy-prune`); a virtual remux to give the original sound in Firefox. The cache-location
     helpers are copies of `thumbs/`'s; unifying them is a follow-up.

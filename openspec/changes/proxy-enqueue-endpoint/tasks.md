@@ -120,6 +120,18 @@ Conventions for every task below:
   the repo, that the header's "rendering" count includes the proxy job (design "Risks"); that is the known
   interim limitation, not a failure of this task.
 
+- [x] 4.3 Review answer, web guard: `web/src/jobs/kinds.ts` (pure: `isRender`, `newestRenderByEvent`, `countRenders`)
+  and `useJob.ts` use it, so an event's shown job, the render control and the header count are renders only.
+  Verify in `web/src/jobs/kinds.test.ts` (`npm test`): a newer proxy job does not replace a failed render, an
+  event whose only job is a proxy job has none, the newer of two renders wins in either order, an unknown kind is
+  skipped, and the count excludes proxy jobs; and in a browser a proxy job running or finished on an event leaves
+  its row, page and the header count as the render left them.
+
+- [x] 4.4 Review answer, API: `serialize.jobs_to_out` leaves out and logs a job of a kind the enumeration lacks (used
+  by `GET /api/v1/jobs` and the hub), and the hub's `_poll_loop` logs a failed tick and goes on. `auto-reel jobs
+  list` asks for every kind and prints it; `jobs show` prints `kind`. Verify in `tests/test_api_jobs.py`,
+  `tests/test_api_ws_hub.py` and `tests/test_cli_jobs.py` (a `kind='future'` row; a failing read).
+
 ## 5. Docs and validation
 
 - [x] 5.1 In `docs/high-level-design.md`: add to **D-21** (proxy contract, written by `proxy-encode`) a

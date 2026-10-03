@@ -983,3 +983,19 @@ def test_the_published_job_schema_has_kind(client: TestClient) -> None:
 
     assert schemas["JobOut"]["properties"]["kind"] == {"$ref": "#/components/schemas/JobKind"}
     assert "kind" in schemas["JobOut"]["required"]
+
+
+def test_a_row_of_an_unknown_kind_is_left_out_not_a_failure_of_the_list_or_the_feed(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    """``jobs.kind`` is free text (a newer build may write another): one such row costs only itself."""
+    render_id = store.enqueue(str(project), "2024/2024-06-21 - A")
+    store.enqueue(str(project), "2024/2024-06-22 - B", kind="future")
+
+    listed = client.get("/api/v1/jobs")
+    with client.websocket_connect("/api/v1/ws/jobs") as websocket:
+        snapshot = json.loads(websocket.receive_text())
+
+    assert listed.status_code == 200
+    assert [job["id"] for job in listed.json()] == [str(render_id)]
+    assert [job["id"] for job in snapshot["jobs"]] == [str(render_id)]

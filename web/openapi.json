@@ -2855,7 +2855,7 @@
           "jobs"
         ],
         "summary": "List Jobs",
-        "description": "``GET /api/v1/jobs`` (task 3.2): the served project's jobs, by status, oldest first.\n\nJobs of every kind, each carrying its ``kind``: the store's reads default to renders\n(job-kind), so the list asks for all of them.",
+        "description": "``GET /api/v1/jobs`` (task 3.2): the served project's jobs, by status, oldest first.\n\nJobs of every kind, each carrying its ``kind``: the store's reads default to renders\n(job-kind), so the list asks for all of them. A row of a kind this build does not name\nis left out (and logged), never a failure of the whole list.",
         "operationId": "list_jobs_api_v1_jobs_get",
         "parameters": [
           {

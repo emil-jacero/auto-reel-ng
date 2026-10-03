@@ -50,15 +50,16 @@ None.
 
 ### Modified Capabilities
 
-- `api-service`: five ADDED requirements - "Job kind is a closed, published vocabulary", "An event's latest job
+- `api-service`: two MODIFIED requirements ("Jobs lifecycle over REST": the 409 is for an active render, list,
+  detail and cancel cover every kind; "WebSocket live job updates": the snapshot holds every kind) and five ADDED requirements - "Job kind is a closed, published vocabulary", "An event's latest job
   is its latest render job", "An event's proxies are prepared by a job the service enqueues", "A proxy job and a
-  render job of one event do not block each other", "The jobs WebSocket follows proxy jobs". Nothing existing is
-  rewritten (see design "Spec deltas and the three gates"): the existing jobs and latest-job requirements stay
-  true as written, with "an event's latest job" read as these requirements narrow it.
+  render job of one event do not block each other", "The jobs WebSocket follows proxy jobs". The two latest-job
+  requirements stay true as written, with "an event's latest job" read as these requirements narrow it (design
+  "Spec deltas and the three gates").
 
 ## Impact
 
-- **Packages (two):** `auto_reel_ng/api` (`routes/events.py`, `events_read.py`, `schemas.py`, `serialize.py`,
+- **Packages (two, plus a review-driven guard in the web's `src/jobs/`):** `auto_reel_ng/api` (`routes/events.py`, `events_read.py`, `schemas.py`, `serialize.py`,
   the generated `web/openapi.json` and `web/src/api/schema.d.ts`, which count with the api change) and
   `auto_reel_ng/persistence` (no code change: `job-kind` already scoped the latest-per-event read; task 1.2 records
   it and keeps the tests).
@@ -80,14 +81,16 @@ None.
 
 - **No Prepare control in the web.** The screens that call this endpoint (`timeline-view`'s Prepare state) come
   later. This change only makes the types compile and the existing screens unchanged.
-- **No web job-store change.** The web's job store, header count and render control still treat every job they
-  receive as a render. Nothing in the web enqueues a proxy job yet, so none reaches them; the first web change
-  that does MUST make them kind-aware (design "Risks").
+- **No proxy screen, and no proxy count.** The web's job store, event rows, event page, render control and
+  header count read *renders only* (`web/src/jobs/kinds.ts`, added in answer to review, because the endpoint is
+  reachable with curl and a proxy job would otherwise show as the event's render). Showing proxy jobs is
+  `timeline-view`'s.
 - **No `force`, `device` or other body.** A proxy that is `stale` (settings or file changed) or `failed` is
   re-attempted by the plain request; a `ready` one is never re-encoded here (`--prune` and re-encode belong to
   the CLI, `proxy-encode`).
 - **No `kind` filter on `GET /api/v1/jobs`.** It lists every kind, each marked.
-- **No CLI `enqueue` for proxies**, and no change to `auto-reel jobs` beyond what `job-kind` did.
+- **No CLI `enqueue` for proxies**: the proxy enqueue is deliberately API-only (`auto-reel proxies <root>` prepares
+  inline). `auto-reel jobs list` / `show` do report every kind, with its `kind`, so a proxy job is not invisible there.
 - **No refusal for a missing clip, and no `reel.yaml` read.** A proxy job prepares the clips that are on disk
   (ignored and excluded ones too, as `proxy-job` does); a missing one has nothing to prepare and does not hold the
   others back (unlike a render, which would fail at probe), and an unparseable `reel.yaml` does not matter.
