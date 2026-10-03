@@ -338,7 +338,9 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   (default `render`), the one-active-job guarantee is per (project, event, kind) so a render and a proxy job for
   one event may be active together, the store's render-facing reads default to `render` (the API, the WebSocket and
   the CLI answer exactly as before), and the worker dispatches by kind and fails a kind it has no handler for loud.
-  The proxy contract is recorded as D-21 and the timeline as D-20 by their own changes (D-18 and D-19 are taken).
+  The proxy engine has landed as `proxy-encode` (**D-21**): `auto-reel proxies <root>` fills a rebuildable cache of one
+  verified 540p H.264 + AAC proxy per clip (plus its `facts.json`) outside the library; the job, the read model, the
+  media routes and the timeline screens that use it follow as their own changes (D-18 and D-19 are taken).
   The timeline is built in the repo (**D-20**); its pure model has landed (`timeline-model`, no UI yet).
 - **v3:** nothing is planned for the GUI: the timeline editor moved to v2 on 2026-10-01, and dragging
   across chapters landed in v1 (D-13, `cross-chapter-drag`).
@@ -595,6 +597,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `job-kind` has landed as the first slice: a `kind` on jobs and a worker that dispatches by it, with no render,
    fingerprint, API or WebSocket change (so no `RENDER_GRAPH_VERSION` bump). Next slice: the timeline's pure model
    (`timeline-model`, D-20), UI pending.
+   Then the proxy cache: `proxy-encode` builds it with `auto-reel proxies` (D-21), again with no render,
+   fingerprint, API or WebSocket change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -909,6 +913,75 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Bundle.** The model is not imported yet, so it is not built: `npm run build` on `origin/main` and on this
     change gives the same two files (same hashes), JS 444,745 bytes (142,313 gzip -9) and CSS 55,606 bytes
     (11,051 gzip -9) in both, a delta of 0 bytes.
+- **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
+  must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
+  1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every
+  clip on disk can therefore have a **proxy**: a small derived MP4, made by the engine, checked, and kept in a
+  rebuildable file cache. The engine half is `auto_reel_ng/proxies/` and `auto-reel proxies <root>`.
+  - **The contract** (all constants of the code, none a setting; changing one is a code change plus a
+    `PROXY_VERSION` bump): MP4 with `+faststart`; one H.264 High `yuv420p` stream by libx264 `veryfast`, CRF 26;
+    square pixels with the display rotation applied; short side 540, never upscaled, both sides even; **two
+    B-frames (`-bf 2`) and a keyframe every `round(fps)` frames (one second), `-sc_threshold 0`**; `-fps_mode
+    passthrough`, so a variable-frame-rate clip keeps its timestamps; one audio stream, **AAC-LC 128 kb/s
+    stereo from ffmpeg's native `aac` encoder** (never `libfdk_aac`, the D-1 blocker; a test fails if it is ever
+    named), from PCM, MP3, AC-3 5.1 or mono; a clip with no audio gets none. The editorial `rotate` is not baked
+    in.
+  - **E1 (experiment `proxy-shape-recheck`) locked the two values the research left open.** On Chrome 154 and
+    Firefox 155, `-bf 2` with a one-second GOP passes gate G1 (median scrub of 30 frames per second, frame step,
+    60/60 exact seeks, A/V offset) and is 0.826 of the `-bf 0` file size over four real sources, so the archive
+    estimate falls from about 39 GB to about 32 GB. Two caveats are kept: the scrub margin is thin (31.0 and 31.1
+    frames per second against the gate of 30, and the `-bf 0` baseline passes by about the same), and Panasonic
+    1080p50 is below 30 per source (26.1 Chrome, 27.0 Firefox). A 0.5 s GOP clears 30 on every source at +19 %
+    disk (about +13.6 GB); it is one constant and a regeneration away if `timeline-view` finds the margin too
+    thin.
+  - **The encode ladder.** *Hybrid*: hardware decode, a verified hardware scale to the exact display size,
+    `hwdownload`, then libx264 on the CPU, only for an unrotated, SDR, 8-bit H.264 or HEVC clip the selected
+    profile decodes in hardware, on a frame context that has a row in the module's scale-filter table (one row,
+    VAAPI; a vendor is added only after it is measured on that hardware). *CPU*: everything else, and every clip
+    on a host with no usable accelerator; software decode applies the display rotation, an HDR clip is tone-mapped
+    first. **Any hybrid failure, or a hybrid output that fails the check below, is redone once on the CPU**; a
+    stall and a cancel are never retried. The proxy is never encoded by a hardware encoder (1.9 times bigger, and it
+    fails on legacy MPEG-4). The profile's decode flags are used as they are, so the VAAPI device recipe stays in
+    one place.
+  - **Never a wrong proxy, silently.** GPU rotation of an HEVC clip gave a picture with SSIM 0.47 and no error.
+    The ladder keeps rotated and non-H.264/HEVC clips off the GPU, and every proxy is probed before it is
+    published: one video stream (H.264, `yuv420p`, the planned size, square pixels), one stereo AAC stream exactly
+    when the source has audio, a video-stream duration within 50 ms of the source's probed duration, and the
+    source's declared frame count (skipped, and logged, only when the container declares none). A failed check
+    names the check, the value found, the value expected and the path, and publishes nothing. A picture-similarity
+    (SSIM) check is not made: the research's lowest CPU-path score (0.744, a rotated 720p phone clip) is
+    unexplained, so no threshold could be set honestly.
+  - **The cache** is `$XDG_CACHE_HOME/auto-reel/proxies/` (else `~/.cache/auto-reel/proxies/`), or
+    `proxies.cache_dir`; absolute, and refused inside the project root or the `input` directory. An entry is a
+    directory `<key>/` holding `proxy.mp4` and `facts.json` (`filmstrip.jpg` is reserved for
+    `filmstrip-sprites`). `<key>` is the SHA-256 of the clip's file name (symlinks followed, directory left out),
+    size, `mtime_ns`, `PROXY_VERSION` and a digest of the contract's values, so a changed clip or contract gets a
+    new entry by itself while a moved or remounted library keeps its proxies; the encode path is not in the key.
+    An entry is built in a hidden `.<key>.<unique>.part` directory, verified, flushed and renamed whole, so a
+    killed or cancelled encode never leaves anything that looks complete; a build that loses the rename to
+    another process is discarded; `.part` directories older than 24 hours are swept once per process. Never
+    Postgres (D-7), nothing evicted, an unwritable or full cache is a `ProxyCacheError` apart from a clip's
+    `ProxyError`.
+  - **`facts.json`** holds what the run learned, so a reader needs no probe: the source's probed duration (never
+    the proxy's: a proxy container is up to 21 ms longer), its frame rate as `num`/`den`, `vfr`, the proxy's frame
+    count and size, the source's coded size, its rotation (as the probe reports it, 0 to 359), its audio codec,
+    and the encode path with the one-line cause of a fallback. A value the probe cannot give is `null`.
+  - **Not a render input.** The proxy is a second artifact made beside the render: `staleness/`, `render/` and
+    `persistence/` do not import `proxies/` (a test fails if they do), no proxy file, key or fact enters the
+    fingerprint, an editorial edit never invalidates a proxy, and **`RENDER_GRAPH_VERSION` is not bumped**
+    (rendered output is unchanged).
+  - **Cost** (measured on the ten sample clips, 959 s of footage, 16 cores, AMD VAAPI): 20.6 times real time on the
+    hybrid path and 17.7 on the CPU path for the whole set, and about 11 to 14 times for a Sony 1080p25 clip; the
+    cache grew 0.47 to 0.49 GB per footage hour on that set (the 12.6-minute legacy MPEG-4 clip is 79 % of its
+    seconds and small per second; the nine camera clips alone are about 1 GB per hour, and they are the heavy
+    ones). The research's estimate for the archive is 0.75 GB per hour at `-bf 0`, about 40 GB, planned at 50 GB;
+    **no cap and no eviction in v2**. The hybrid path is not always smaller: the 4K50 clip's hybrid proxy is 11.8 MB
+    against 7.2 MB on the CPU path (the GPU scaler keeps more noise), the other samples are within 12 % of each other.
+  - **Deliberately not here:** the filmstrip sprite and its sub-second rule (`filmstrip-sprites`); a job, progress
+    over the WebSocket and an enqueue endpoint (`proxy-job`, `proxy-enqueue-endpoint`); the API read model and
+    media routes with the entity tag as `v` (D-15); any web code; a prune of orphan entries (`proxy-prune`); a
+    virtual remux to give the original sound in Firefox. The cache-location helpers are copies of `thumbs/`'s;
+    unifying them is a follow-up.
 
 ---
 
@@ -994,11 +1067,15 @@ turned into confident OpenSpec changes. Numbered to match the ⚠️ markers abo
     a hand-written hook over the existing D-A4 progress hub.
 11. **Proxy & thumbnail generation** for the timeline editor. Clip thumbnails ✅ **RESOLVED → Decision
     D-11** (§4.10): one JPEG per clip at a fraction of its duration, in a file cache outside the library.
-    Still open (v2, the research that opens GUI v2): low-res proxies (and/or HLS) for scrubbing without
-    touching originals; where to cache them. The PCM audio path: 52 % of the archive's clips (every Sony
-    XAVC clip) carry PCM audio that Firefox does not play; the v1 media routes serve files unchanged. Facts
-    that size the proxy work: about 76 % of the archive's files keep `moov` at the end (every seek is a
-    range, the first open a tail fetch), and HEVC exists only under `original/`. See
+    Low-res proxies ✅ **RESOLVED → Decision D-21** (§7): progressive 540p H.264 + AAC MP4s in a file cache
+    outside the library, no HLS and no live transcode; the engine half is built (`proxy-encode`, `auto-reel
+    proxies`). The PCM audio path is answered the same way: 52 % of the archive's clips (every Sony XAVC clip)
+    carry PCM audio that Firefox does not play, a proxy carries AAC made from it, so the proxy plays with sound
+    in Firefox while the original stays silent there (the v1 media routes still serve files unchanged). Still
+    open: the job, the read model and the media routes that use the proxies, the filmstrip sprite
+    (`filmstrip-sprites`), a prune of orphan entries (`proxy-prune`), and the virtual remux that would give the
+    original sound in Firefox. Facts that sized the work: about 76 % of the archive's files keep `moov` at the
+    end (every seek is a range, the first open a tail fetch), and HEVC exists only under `original/`. See
     `docs/research/browser-playback.md`.
 12. **Single image, all vendors** — can one container ship CUDA + intel-media-driver + Mesa/VAAPI
     userspace and select at runtime from host-passed devices; document the `--gpus` vs `/dev/dri` matrix.
