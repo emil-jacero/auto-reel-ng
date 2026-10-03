@@ -775,3 +775,42 @@ def test_the_default_chapter_and_ordinary_names_load_unchanged() -> None:
         "Dag 2",
         "Party night",
     ]
+
+
+# --------------------------------------------------------------------------- #
+# clip-rotate-engine: rotate is an integer multiple of 90                       #
+# --------------------------------------------------------------------------- #
+
+ROTATE_DOC = (
+    "version: 0\nchapters:\n  - name: Reception\n    clips:\n      - Reception/00400.mp4\n"
+    "clips:\n  Reception/00400.mp4:\n    rotate: {value}\n"
+)
+
+
+@pytest.mark.parametrize("value", [0, 90, 180, 270, -90, 360, 450])
+def test_rotate_accepts_a_multiple_of_90_and_keeps_it_as_written(value: int) -> None:
+    doc = loads_document(ROTATE_DOC.format(value=value))
+    assert doc.clips["Reception/00400.mp4"].rotate == value
+
+
+@pytest.mark.parametrize("value", [45, 100, 1, -45, 91])
+def test_rotate_that_is_not_a_quarter_turn_names_the_clip_and_the_key(value: int) -> None:
+    with pytest.raises(ReelParseError) as exc:
+        loads_document(ROTATE_DOC.format(value=value))
+    message = str(exc.value)
+    assert "Reception/00400.mp4" in message
+    assert ".rotate: rotate must be a multiple of 90" in message
+    assert f"got {value}" in message
+
+
+@pytest.mark.parametrize("value", ["90.0", '"90"', "true", "[90]"])
+def test_rotate_that_is_not_an_integer_is_refused_naming_the_key(value: str) -> None:
+    with pytest.raises(
+        ReelParseError, match=r"Reception/00400\.mp4.*\.rotate: expected an integer"
+    ):
+        loads_document(ROTATE_DOC.format(value=value))
+
+
+def test_an_absent_or_null_rotate_means_no_extra_turn() -> None:
+    absent = loads_document(ROTATE_DOC.format(value="null"))
+    assert absent.clips["Reception/00400.mp4"].rotate is None
