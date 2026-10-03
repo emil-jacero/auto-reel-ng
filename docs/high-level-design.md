@@ -441,7 +441,7 @@ change directories:
 | A | `web-app-scaffold` | `web/` + the static mount + schema→types pipeline; no screen |
 | B | event list screen | the scan/ingest view, over slice 0's verdicts |
 | C | event detail screen | chapters/clips read-only, using the per-clip `size`/`mtime` file facts. `movie-player-screen` plays the event's rendered movie (D-15) |
-| D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency — landed in `event-edit-screen` (the event page's Edit mode). `missing-clips-screen` adds the explicit removal of a MISSING clip's entry (never automatic) and holds Render back while an event lists one. `chapter-management-screen` adds the chapter edits (add, rename, move, delete when empty) and Move clips between chapters (D-13). `clip-cuts-screen` adds a clip's cuts, listed, added from typed times and removed in Edit mode, and shown on the event page (D-14). `cross-chapter-drag` lets a clip be dragged into another chapter (D-13). `clip-preview-screen` plays a clip in its Cuts panel, sets a cut at the playhead, skips cuts as the movie will, and refuses a cut past the length the browser reads (D-16) |
+| D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency — landed in `event-edit-screen` (the event page's Edit mode). `missing-clips-screen` adds the explicit removal of a MISSING clip's entry (never automatic) and holds Render back while an event lists one. `chapter-management-screen` adds the chapter edits (add, rename, move, delete when empty; `chapter-inline-rename` makes a chapter's title the rename control and the event's own chapter's main title card the event title's) and Move clips between chapters (D-13). `clip-cuts-screen` adds a clip's cuts, listed, added from typed times and removed in Edit mode, and shown on the event page (D-14). `cross-chapter-drag` lets a clip be dragged into another chapter (D-13). `clip-preview-screen` plays a clip in its Cuts panel, sets a cut at the playhead, skips cuts as the movie will, and refuses a cut past the length the browser reads (D-16) |
 | E | render + live progress | `POST /jobs` (201 / 200-fresh / 409), the WS hook, cancel — landed in `render-progress-screen` |
 
 C, D and E were designed only after A and B had been used against a real library; all three have
@@ -697,6 +697,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `title-card-model` has landed (D-24): the optional per-chapter `card:` and the engine that draws it; the write API,
    the card over video and the editor follow. It raised `RENDER_GRAPH_VERSION` to 7, so every rendered event reports
    stale once (reason `engine`).
+   `chapter-inline-rename` (GUI v2) follows: a chapter is renamed by pressing its title, and the event's own
+   chapter shows the main title card, whose title is the event's (D-13); web-only, same.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -882,7 +884,13 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   (2026-10-02, change `chapter-name-rules-web`, after the user's answer "Enforce in engine" and
   `chapter-name-rules-engine`): it strips a typed name as Python's `str.strip()` does, refuses an empty one,
   compares names and folders under `str.casefold()` (a generated full-case-folding table, no dependency), and
-  keeps only `Main` as its own reservation. (§4.10)
+  keeps only `Main` as its own reservation. Amended 2026-10-03 (change `chapter-inline-rename`, at the
+  operator's request): a chapter is renamed at its title, a button with a pencil that turns into a text field
+  (Enter or leaving it keeps the name, Escape drops it); there is no Rename button or dialog. The event's own
+  chapter keeps its name `Main` (or `Clips`) and shows the main title card under its heading: renaming it
+  edits `metadata.title` in the same draft as the metadata form's Title field, so the two stay in step, and a
+  changed title says that saving changes the movie's file name (D-9). Add chapter keeps its dialog.
+  (§4.10)
 
 - **D-14 — Cuts are edited by typed times in GUI v1** (2026-10-01, change `clip-cuts-screen`). Edit mode
   lists, adds and removes a clip's cuts (D-D), with times typed as seconds, m:ss or h:mm:ss, pulled forward

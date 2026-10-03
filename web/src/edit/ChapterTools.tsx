@@ -6,10 +6,11 @@ import { memo, useId } from 'react'
 import type { ChapterKey } from './draft'
 import { DELETED_DROP } from './dragSlots'
 import { Icon } from '../ui/Icon'
+import type { NameCheck } from './inlineName'
 
 /*
  * The chapter controls of Edit mode: a tools row under each chapter's heading
- * (its notes and its Rename…, Move clips…, Move up / Move down and Delete), the
+ * (its notes and its Move clips…, Move up / Move down and Delete), the
  * placeholder a deleted chapter leaves until the save, and Add chapter after
  * the last chapter.
  *
@@ -24,14 +25,27 @@ import { Icon } from '../ui/Icon'
 export type ChapterHandler = (key: ChapterKey) => void
 export type ChapterMoveHandler = (key: ChapterKey, delta: -1 | 1) => void
 
+/**
+ * What a chapter's name field does, one stable object for all chapters (so a keystroke or a
+ * metadata edit re-renders no list): the editor's, called with the chapter's key.
+ */
+export type NameFieldHandlers = {
+  open: ChapterHandler
+  check: (key: ChapterKey, typed: string) => NameCheck
+  notes: (key: ChapterKey, typed: string) => readonly string[]
+  keep: (key: ChapterKey, name: string) => void
+  drop: ChapterHandler
+  unsent: (unsent: boolean) => void
+}
+
 /** A chapter's place among the listed chapters, for Move up / Move down; absent when alone. */
 export type ChapterPlace = { first: boolean; last: boolean }
 
 /** What a chapter's tools row shows and does: decided by the editor, one object per chapter. */
 export type ChapterToolsModel = {
   notes: readonly string[]
-  /** Whether it offers Rename (every chapter but the event's own). */
-  rename: boolean
+  /** Its name field is open (`InlineName`, in the heading): one chapter at a time. */
+  naming: boolean
   /** Move clips: absent when the chapter is the only one; 'empty' when it plays no clip on disk. */
   moveClips: 'offered' | 'empty' | null
   /** Move up / Move down: absent when the chapter is the only one. */
@@ -44,14 +58,14 @@ export type ChapterToolsModel = {
   locked: boolean
   /** Its Move clips was pressed and the move has not landed yet: that control is busy. */
   moveClipsBusy: boolean
-  onRename: ChapterHandler
+  /** The name field in the heading (`ClipOrderList`), by the chapter's key. */
+  nameField: NameFieldHandlers
   onMoveClips: ChapterHandler
   onMoveChapter: ChapterMoveHandler
   onDelete: ChapterHandler
 }
 
 // Constant elements, as the clip rows' (ClipOrderList).
-const RENAME = <Icon name="pencil" />
 const MOVE_CLIPS = <Icon name="arrow-right" />
 const UP = <Icon name="arrow-up" />
 const DOWN = <Icon name="arrow-down" />
@@ -81,14 +95,12 @@ export const ChapterTools = memo(function ChapterTools({
   heading,
   headingId,
   notes,
-  rename,
   moveClips,
   place,
   deleteRefusal,
   refusalShown,
   locked,
   moveClipsBusy,
-  onRename,
   onMoveClips,
   onMoveChapter,
   onDelete,
@@ -102,30 +114,14 @@ export const ChapterTools = memo(function ChapterTools({
   const refusalId = useId()
   const emptyId = useId()
   const offersDelete = deleteRefusal !== undefined
-  if (notes.length === 0 && !rename && moveClips === null && place === null && !offersDelete) {
+  if (notes.length === 0 && moveClips === null && place === null && !offersDelete) {
     return null
   }
   return (
     <div className="chapter-tools" role="group" aria-labelledby={headingId}>
       <Notes notes={notes} />
-      {(rename || moveClips !== null || place !== null || offersDelete) && (
+      {(moveClips !== null || place !== null || offersDelete) && (
         <div className="chapter-actions">
-          {rename && (
-            <button
-              type="button"
-              className="btn btn-ghost chapter-rename"
-              aria-label={`Rename chapter ${heading}`}
-              aria-disabled={locked || undefined}
-              onClick={() => {
-                if (!locked) {
-                  onRename(chapterKey)
-                }
-              }}
-            >
-              {RENAME}
-              Rename…
-            </button>
-          )}
           {moveClips !== null && (
             <button
               type="button"

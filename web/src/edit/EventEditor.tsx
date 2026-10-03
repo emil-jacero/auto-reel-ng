@@ -40,13 +40,20 @@ import type { MovableClip } from './ChapterDialogs'
 import {
   OWN_CHAPTER_HEADING,
   OWN_CHAPTER_NOTE,
+  checkName,
   diskFolders,
   ignoredStaying,
   laterClipNotes,
+  nameDialogNote,
 } from './chapterNames'
 import { ChapterDrag } from './ChapterDrag'
 import { AddChapter, DeletedChapter, NO_CLIPS_TO_MOVE } from './ChapterTools'
-import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './ChapterTools'
+import type {
+  ChapterHandler,
+  ChapterMoveHandler,
+  ChapterToolsModel,
+  NameFieldHandlers,
+} from './ChapterTools'
 import { ClipOrderList } from './ClipOrderList'
 import type {
   MarkHandler,
@@ -116,7 +123,10 @@ import {
 import { FIELD_LABEL, MetadataForm } from './MetadataForm'
 import { SaveBar } from './SaveBar'
 import type { Operation, Pressed, SaveProblem } from './SaveBar'
+import { TitleCardContext } from './TitleCard'
+import type { TitleCardModel } from './TitleCard'
 import { holdWords, isSaveChord, LIFTED_WORDS, saveHold, saveKeyAction } from './saveShortcut'
+import { inheritHint } from './MetadataForm'
 import type { Resolved } from './MetadataForm'
 import {
   discardAndLeave,
@@ -142,7 +152,10 @@ import {
  * means for clips added later (D-12) is said beside the chapter
  * (`chapterNames.ts`). So are each clip's cuts, in a panel under its row
  * (`cuts/CutsPanel.tsx`): a cut typed but not added holds Save back, as a date
- * typed in part does.
+ * typed in part does, and so does a name typed in a chapter's title and not kept.
+ * A chapter is renamed at its title (`InlineName.tsx`, one field open at a time:
+ * `naming`); the event's own chapter shows the main title card, which edits the
+ * draft's title as the metadata form's Title field does (`TitleCard.tsx`).
  *
  * `event` is the page's detail, read once at mount: a later re-read of the page
  * never changes the order shown or the draft. It is null for the needs-attention
@@ -176,6 +189,8 @@ type Ready = {
   dateIncomplete: boolean
   /** The clips whose cut fields hold typed text not added as a cut: never saved. */
   typed: ReadonlySet<string>
+  /** An open name field (`InlineName`) holds text not yet kept: unfinished, like a typed cut. */
+  nameUnsent: boolean
   /**
    * The clips marked to move together (edit/marks.ts). Beside the draft, not in it: marking
    * is no edit, so it never makes the page dirty. Ended by Reset and by a re-read.
@@ -234,6 +249,7 @@ type Action =
   | { type: 'cut-restore'; identity: string; key: CutKey }
   | { type: 'cut-trim'; identity: string; key: CutKey; span: { in: number; out: number } }
   | { type: 'cut-typed'; identity: string; typed: boolean }
+  | { type: 'name-unsent'; unsent: boolean }
   | { type: 'reset' }
   | { type: 'save-start'; pressed: Pressed }
   | { type: 'save-failed'; problem: SaveProblem | null; refusal: string | null }
@@ -250,9 +266,9 @@ function afterEdit(next: Ready): Ready {
   return { ...next, problem: next.problem?.kind === 'gone' ? next.problem : null, refusal: null }
 }
 
-/** Typed but not sendable: a date typed in part, or a cut typed and not added. */
+/** Typed but not sendable: a date typed in part, a name not kept, or a cut typed and not added. */
 function unfinished(ready: Ready): boolean {
-  return ready.dateIncomplete || ready.typed.size > 0
+  return ready.dateIncomplete || ready.nameUnsent || ready.typed.size > 0
 }
 
 const NONE_TYPED: ReadonlySet<string> = new Set()
@@ -312,6 +328,7 @@ function reduce(state: State, action: Action): State {
         added: 0,
         dateIncomplete: false,
         typed: NONE_TYPED,
+        nameUnsent: false,
         marked: NO_MARKS,
         nextCut: 0,
         resets: 0,
@@ -474,6 +491,10 @@ function reduce(state: State, action: Action): State {
       }
       return afterEdit({ ...state, typed })
     }
+    case 'name-unsent':
+      return action.unsent === state.nameUnsent
+        ? state
+        : afterEdit({ ...state, nameUnsent: action.unsent })
     case 'reset':
       return {
         ...state,
@@ -481,6 +502,7 @@ function reduce(state: State, action: Action): State {
         lastMoved: null,
         dateIncomplete: false,
         typed: NONE_TYPED,
+        nameUnsent: false,
         marked: NO_MARKS,
         nextCut: 0,
         resets: state.resets + 1,
@@ -667,6 +689,7 @@ function summarize(
   changed: readonly MetadataField[],
   dateIncomplete: boolean,
   typed: string | number,
+  nameUnsent: boolean,
   chapters: ChapterChanges,
   moved: number,
   removed: number,
@@ -681,6 +704,7 @@ function summarize(
     typeof typed === 'string'
       ? `cut typed on ${typed}, not added`
       : typed > 0 && `cuts typed on ${typed} clips, not added`,
+    nameUnsent && 'name typed, not kept',
     chapters.added > 0 && `${plural(chapters.added, 'chapter', 'chapters')} added`,
     chapters.renamed > 0 && `${plural(chapters.renamed, 'chapter', 'chapters')} renamed`,
     chapters.deleted > 0 && `${plural(chapters.deleted, 'chapter', 'chapters')} deleted`,
@@ -697,6 +721,9 @@ function summarize(
 }
 
 // The read view's cuts, which Edit mode's Timeline does not use: its cuts are the draft's.
+/** What `naming` holds while the main title card's field is open (a chapter key never is). */
+const TITLE = 'title' as const
+
 const NOT_READ = { cuts: null, failure: null } as const
 const NOTHING = () => undefined
 
@@ -708,10 +735,9 @@ function chapterHeading(name: string, hasNamedChapter: boolean): string {
   return name !== '' ? name : hasNamedChapter ? OWN_CHAPTER_HEADING : 'Clips'
 }
 
-/** The chapter dialog open, if any: Add chapter, a chapter's Rename… or its Move clips. */
+/** The chapter dialog open, if any: Add chapter or a chapter's Move clips. */
 type ChapterDialog =
   | { kind: 'add' }
-  | { kind: 'rename'; key: ChapterKey }
   | { kind: 'move'; key: ChapterKey }
 
 /** Where focus goes once a chapter edit is on screen: a control of a chapter, by class. */
@@ -1455,12 +1481,59 @@ export function EventEditor({
     }
   }, [])
 
-  const onRenameChapter = useCallback<ChapterHandler>((key) => {
-    if (idle(latest.current)) {
-      setRefusedDelete(null)
-      setChapterDialog({ kind: 'rename', key })
-    }
+  // The one open name field (`InlineName`): a chapter's title, or the main title card's 'title'.
+  // Opening another replaces it; Reset, a save, Delete or Move chapter of its chapter, the leave
+  // question and a re-read close it, keeping nothing.
+  const [naming, setNaming] = useState<ChapterKey | typeof TITLE | null>(null)
+  const closeNaming = useCallback((key: ChapterKey | typeof TITLE) => {
+    setNaming((open) => (open === key ? null : open))
   }, [])
+  const onNameUnsent = useCallback((unsent: boolean) => {
+    dispatch({ type: 'name-unsent', unsent })
+  }, [])
+
+  // A name is kept as the existing edit (D5): a chapter's by `chapter-rename`, the title by the
+  // metadata form's own `field` action, so the form's Title shows it and Reset undoes it.
+  const keepChapterName = useCallback(
+    (key: ChapterKey, name: string) => {
+      const current = latest.current
+      closeNaming(key)
+      if (!idle(current)) {
+        return
+      }
+      const before = headingIn(current.draft, key)
+      const next = renameChapter(current.draft, key, name)
+      if (next === current.draft) {
+        return
+      }
+      dispatch({ type: 'chapter-rename', key, name })
+      announce(`“${before}” renamed to “${name}”.${notesIn(next, key)}`)
+    },
+    [announce, notesIn, closeNaming],
+  )
+  const nameField = useMemo<NameFieldHandlers>(
+    () => ({
+      open: (key) => {
+        if (idle(latest.current)) {
+          setRefusedDelete(null)
+          setNaming(key)
+        }
+      },
+      check: (key, typed) => checkName(latest.current?.draft.chapters ?? [], typed, key),
+      notes: (key, typed) =>
+        latest.current === null
+          ? []
+          : nameDialogNote(
+              { chapters: latest.current.draft.chapters, folders, ignored: ignoredOf },
+              key,
+              typed,
+            ),
+      keep: keepChapterName,
+      drop: closeNaming,
+      unsent: onNameUnsent,
+    }),
+    [folders, ignoredOf, keepChapterName, closeNaming, onNameUnsent],
+  )
 
   const onMoveClipsFrom = useCallback<ChapterHandler>(
     (key) => {
@@ -1490,12 +1563,13 @@ export function EventEditor({
         return
       }
       setRefusedDelete(null)
+      closeNaming(key)
       // The section moves in the DOM, which drops its focus: put it back (effects below).
       focusAfter.current = { key, target: delta < 0 ? 'chapter-up' : 'chapter-down' }
       dispatch({ type: 'chapter-move', key, delta })
       announce(`“${headingIn(next, key)}” moved to ${placeIn(next, key)}.`)
     },
-    [announce],
+    [announce, closeNaming],
   )
 
   const onDeleteChapter = useCallback<ChapterHandler>(
@@ -1521,6 +1595,7 @@ export function EventEditor({
         return
       }
       setRefusedDelete(null)
+      closeNaming(key)
       const next = deleteChapter(current.draft, key)
       dispatch({ type: 'chapter-delete', key })
       if (chapter.readName === null) {
@@ -1531,7 +1606,7 @@ export function EventEditor({
         announce(`“${heading}” will be deleted when you save.${notesIn(next, key)}`)
       }
     },
-    [announce, clips, ignoredOf, notesIn],
+    [announce, clips, ignoredOf, notesIn, closeNaming],
   )
 
   const onUndoDelete = useCallback<ChapterHandler>(
@@ -1672,6 +1747,62 @@ export function EventEditor({
   // Each listed chapter's tools: what it offers, its notes and why it cannot go. A
   // chapter's object is kept while what it shows is unchanged, so its list re-renders
   // only when its own tools change.
+  // The main title card's line (TitleCard.tsx): the draft's title, edited in place of the form's.
+  const draftTitle = ready?.draft.metadata.title ?? ''
+  const draftMetadata = ready?.draft.metadata
+  const readDocument = ready?.baseline.read
+  const titleChanged = changed.includes('title')
+  const titleCard = useMemo<TitleCardModel>(
+    () => ({
+      draftTitle,
+      resolvedTitle: resolved?.title ?? null,
+      changed: titleChanged,
+      open: naming === TITLE,
+      locked: listsLocked,
+      inheritHint: (typed) =>
+        readDocument === undefined || draftMetadata === undefined
+          ? null
+          : inheritHint('title', readDocument, { ...draftMetadata, title: typed }, resolved),
+      onOpen: () => {
+        if (idle(latest.current)) {
+          setNaming(TITLE)
+        }
+      },
+      onKeep: (title) => {
+        const current = latest.current
+        closeNaming(TITLE)
+        if (!idle(current) || current.draft.metadata.title === title) {
+          return
+        }
+        dispatch({ type: 'field', field: 'title', value: title })
+        announce(
+          title.trim() === ''
+            ? 'Title cleared. It inherits from the folder name.'
+            : `Title set to “${title.trim()}”.`,
+        )
+      },
+      onDrop: () => closeNaming(TITLE),
+      onUnsent: onNameUnsent,
+    }),
+    [
+      draftTitle,
+      draftMetadata,
+      readDocument,
+      resolved,
+      titleChanged,
+      naming,
+      listsLocked,
+      announce,
+      closeNaming,
+      onNameUnsent,
+    ],
+  )
+
+  // The open name field, if its chapter is still listed (an undone deletion brings it back closed).
+  const openName =
+    naming === TITLE || (naming !== null && listed.some((chapter) => chapter.key === naming))
+      ? naming
+      : null
   const toolsCache = useRef(new Map<ChapterKey, ChapterToolsModel>())
   const tools = useMemo(() => {
     const result = new Map<ChapterKey, ChapterToolsModel>()
@@ -1699,7 +1830,7 @@ export function EventEditor({
         : undefined
       const model: ChapterToolsModel = {
         notes: lines,
-        rename: chapter.name !== '',
+        naming: openName === chapter.key,
         moveClips: !several
           ? null
           : order.some((identity) => onDisk(clips.get(identity)))
@@ -1710,7 +1841,7 @@ export function EventEditor({
         refusalShown: refusedDelete === chapter.key && refusal != null,
         locked: listsLocked,
         moveClipsBusy: movingFrom === chapter.key,
-        onRename: onRenameChapter,
+        nameField,
         onMoveClips: onMoveClipsFrom,
         onMoveChapter,
         onDelete: onDeleteChapter,
@@ -1733,7 +1864,8 @@ export function EventEditor({
     refusedDelete,
     listsLocked,
     movingFrom,
-    onRenameChapter,
+    openName,
+    nameField,
     onMoveClipsFrom,
     onMoveChapter,
     onDeleteChapter,
@@ -1745,8 +1877,15 @@ export function EventEditor({
   useEffect(() => {
     if (leaveQuestion !== 0) {
       setChapterDialog(null)
+      setNaming(null)
     }
   }, [leaveQuestion])
+  // A save starting and a re-read close the open name field too, keeping nothing.
+  const savePending = ready?.pressed != null
+  const readBaseline = ready?.baseline
+  useEffect(() => {
+    setNaming(null)
+  }, [savePending, readBaseline])
 
   // Focus after a chapter edit, once its result is on screen (`focusAfter`): a layout
   // effect, so no frame paints with focus on <body> after a section moved. The new
@@ -1792,25 +1931,15 @@ export function EventEditor({
 
   function confirmName(name: string): void {
     const current = latest.current
-    if (current === null || shownDialog === null || shownDialog.kind === 'move') {
+    if (current === null || shownDialog === null || shownDialog.kind !== 'add') {
       return
     }
     setChapterDialog(null)
-    if (shownDialog.kind === 'add') {
-      const key = `a${current.added + 1}`
-      const next = addChapter(current.draft, key, name)
-      focusAfter.current = { key, target: 'heading' }
-      dispatch({ type: 'chapter-add', key, name })
-      announce(
-        `Chapter “${name}” added, ${placeIn(next, key)}. It has no clips.${notesIn(next, key)}`,
-      )
-    } else {
-      const { key } = shownDialog
-      const before = headingIn(current.draft, key)
-      const next = renameChapter(current.draft, key, name)
-      dispatch({ type: 'chapter-rename', key, name })
-      announce(`“${before}” renamed to “${name}”.${notesIn(next, key)}`)
-    }
+    const key = `a${current.added + 1}`
+    const next = addChapter(current.draft, key, name)
+    focusAfter.current = { key, target: 'heading' }
+    dispatch({ type: 'chapter-add', key, name })
+    announce(`Chapter “${name}” added, ${placeIn(next, key)}. It has no clips.${notesIn(next, key)}`)
   }
 
   function confirmMove(identities: string[], to: ChapterKey): void {
@@ -1914,7 +2043,9 @@ export function EventEditor({
         return
       }
       if (action === 'announce' && hold !== null) {
-        announce(holdWords(hold, current.dateIncomplete, current.typed.size > 0))
+        announce(
+          holdWords(hold, current.dateIncomplete, current.typed.size > 0, current.nameUnsent),
+        )
         return
       }
       if (action !== 'save') {
@@ -2154,6 +2285,7 @@ export function EventEditor({
           )}
 
           {detail !== null && (
+            <TitleCardContext.Provider value={titleCard}>
             <ChapterDrag
               orders={ready.draft.orders}
               listed={listedKeys}
@@ -2212,6 +2344,7 @@ export function EventEditor({
                 )
               })}
             </ChapterDrag>
+            </TitleCardContext.Provider>
           )}
 
           {detail !== null && <AddChapter locked={listsLocked} onAdd={onAddChapter} />}
@@ -2241,6 +2374,7 @@ export function EventEditor({
                           removedByChapter,
                         )
                       : ready.typed.size,
+                    ready.nameUnsent,
                     chapterEdits,
                     movedCount,
                     ready.draft.removed.size,
@@ -2253,6 +2387,7 @@ export function EventEditor({
             onReset={() => {
               // The panels' fields go first, so the remounted panels start empty.
               cutPanels.clear()
+              setNaming(null)
               dispatch({ type: 'reset' })
               // The bar leaves with its buttons: focus goes to the page's heading now; the
               // effect on `resets` scrolls it into view once the page has settled.
@@ -2266,15 +2401,8 @@ export function EventEditor({
         </>
       )}
 
-      {ready !== null && shownDialog !== null && shownDialog.kind !== 'move' && (
+      {ready !== null && shownDialog !== null && shownDialog.kind === 'add' && (
         <NameDialog
-          self={shownDialog.kind === 'rename' ? shownDialog.key : null}
-          current={
-            shownDialog.kind === 'rename'
-              ? (ready.draft.chapters.find((chapter) => chapter.key === shownDialog.key)?.name ??
-                null)
-              : null
-          }
           notes={{ chapters: ready.draft.chapters, folders, ignored: ignoredOf }}
           onConfirm={confirmName}
           onCancel={closeChapterDialog}

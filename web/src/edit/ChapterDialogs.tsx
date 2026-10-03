@@ -14,7 +14,7 @@ import { markedAmong, pickMarked } from './marks'
 
 /*
  * The two chapter dialogs of Edit mode, over the shared `Dialog`: the name
- * dialog (Add chapter, Rename…) and Move clips. Each is plain native form
+ * dialog (Add chapter; a chapter is renamed at its title, `InlineName.tsx`) and Move clips. Each is plain native form
  * controls in a `.dialog-fields` form, so its description is its one-sentence
  * explanation, never its fields (Dialog.tsx). Each is rendered only while open:
  * closing unmounts it, and `Dialog` returns focus to the control that opened it.
@@ -27,24 +27,18 @@ import { markedAmong, pickMarked } from './marks'
 const NAME_DESCRIPTION = "The name is the heading of the chapter's title card in the movie."
 
 /**
- * Add chapter (`self` null) or Rename… (`self` the chapter). Checked on submit
- * (`checkName`); once refused, again as the name is typed, so the refusal leaves
- * once the name is good. The notes say, as typed, what the name will mean for
- * clips added later. A rename to the same name closes and changes nothing.
+ * Add chapter. Checked on submit (`checkName`); once refused, again as the name is
+ * typed, so the refusal leaves once the name is good. The notes say, as typed, what
+ * the name will mean for clips added later.
  */
 export function NameDialog({
-  self,
-  current,
   notes,
   onConfirm,
   onCancel,
 }: {
-  self: ChapterKey | null
-  /** The chapter's name now, for Rename; null for Add chapter. */
-  current: string | null
   /** The chapter list and what the notes need (`nameDialogNote`). */
   notes: NoteInput
-  /** An accepted name that differs from the chapter's: trimmed. */
+  /** An accepted name: trimmed. */
   onConfirm: (name: string) => void
   onCancel: () => void
 }) {
@@ -53,28 +47,20 @@ export function NameDialog({
   const errorId = useId()
   const notesId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [value, setValue] = useState(current ?? '')
+  const [value, setValue] = useState('')
   const [refused, setRefused] = useState<{ refusal: NameRefusal; clash: string | null } | null>(
     null,
   )
   const [refusals, setRefusals] = useState(0)
 
-  // Rename starts with the name selected, so typing replaces it. After `Dialog`'s
-  // own effect (a child's runs first), which has focused the field.
-  useEffect(() => {
-    if (current !== null) {
-      inputRef.current?.select()
-    }
-  }, [current])
-
-  const lines = nameDialogNote(notes, self, value)
+  const lines = nameDialogNote(notes, null, value)
   const describedBy = [refused !== null && errorId, lines.length > 0 && notesId]
     .filter((id): id is string => id !== false)
     .join(' ')
 
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    const result = checkName(notes.chapters, value, self)
+    const result = checkName(notes.chapters, value, null)
     if (!result.ok) {
       setRefused({ refusal: result.refusal, clash: result.clash })
       setRefusals((count) => count + 1)
@@ -82,20 +68,11 @@ export function NameDialog({
       inputRef.current?.focus()
       return
     }
-    if (result.name === current) {
-      onCancel()
-      return
-    }
     onConfirm(result.name)
   }
 
   return (
-    <Dialog
-      open
-      title={current === null ? 'Add a chapter' : `Rename “${current}”`}
-      onClose={onCancel}
-      initialFocus={inputRef}
-    >
+    <Dialog open title="Add a chapter" onClose={onCancel} initialFocus={inputRef}>
       <p>{NAME_DESCRIPTION}</p>
       <form className="dialog-fields" id={formId} noValidate onSubmit={onSubmit}>
         <div className="field">
@@ -116,7 +93,7 @@ export function NameDialog({
               const typed = event.currentTarget.value
               setValue(typed)
               if (refused !== null) {
-                const result = checkName(notes.chapters, typed, self)
+                const result = checkName(notes.chapters, typed, null)
                 setRefused(result.ok ? null : { refusal: result.refusal, clash: result.clash })
               }
             }}
@@ -141,17 +118,8 @@ export function NameDialog({
           Cancel
         </button>
         <button type="submit" form={formId} className="btn btn-primary">
-          {current === null ? (
-            <>
-              <Icon name="plus" />
-              Add chapter
-            </>
-          ) : (
-            <>
-              <Icon name="pencil" />
-              Rename
-            </>
-          )}
+          <Icon name="plus" />
+          Add chapter
         </button>
       </div>
     </Dialog>
