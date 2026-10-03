@@ -74,6 +74,8 @@ export type DraftCut = {
   reason: string | null
   /** A read cut the save leaves out; still listed, in place, with Undo. An added one is dropped. */
   removed: boolean
+  /** True while a cut read from `reel.yaml` has other times than it was read with (`trimCut`). */
+  edited?: true
 }
 
 /** Identity → its cuts as listed, in order. */
@@ -234,6 +236,27 @@ export function chapterChanges(
 /** Whether the chapter list itself changed: a save then writes every chapter from the view. */
 export function isStructural(changes: ChapterChanges): boolean {
   return changes.added > 0 || changes.renamed > 0 || changes.deleted > 0 || changes.reordered
+}
+
+/**
+ * Whether the draft's order or chapters differ from the saved ones: a clip moved or
+ * reordered, a chapter added, renamed, deleted or moved. A missing clip taken out of its
+ * chapter is not (it is not drawn anywhere). The Timeline draws the saved order, so this
+ * is when it says so.
+ */
+export function layoutChanged(baseline: Baseline, draft: Draft): boolean {
+  if (isStructural(chapterChanges(baseline, draft.chapters))) {
+    return true
+  }
+  const gone = new Set(draft.removed.keys())
+  const keys = new Set([...baseline.original.keys(), ...draft.orders.keys()])
+  return [...keys].some(
+    (key) =>
+      !sameOrder(
+        (baseline.original.get(key) ?? []).filter((identity) => !gone.has(identity)),
+        draft.orders.get(key) ?? [],
+      ),
+  )
 }
 
 /**
@@ -418,7 +441,7 @@ export function cutsOf(base: Cuts, changed: Cuts, identity: string): readonly Dr
   return changed.get(identity) ?? base.get(identity) ?? NO_CUTS
 }
 
-type SavedTrim = { in: number; out: number; reason: string | null }
+export type SavedTrim = { in: number; out: number; reason: string | null }
 
 /** The `trims` a list saves: its cuts that are not removed, as read or typed. */
 function savedTrims(cuts: readonly DraftCut[]): SavedTrim[] {
@@ -439,7 +462,7 @@ function sameTrims(a: readonly SavedTrim[], b: readonly SavedTrim[]): boolean {
 
 /**
  * `draft` with `identity`'s cuts set to `cuts`: a list back to the one read (the
- * same keys, none removed), or one that would save the read trims (a read cut
+ * same keys and times, none removed), or one that would save the read trims (a read cut
  * removed and the same span typed again), leaves `draft.cuts`, so an edit and its
  * reverse leave nothing to save, and nothing marked, without a special case.
  */
@@ -447,7 +470,13 @@ function settled(baseline: Baseline, draft: Draft, identity: string, cuts: Draft
   const read = baseline.cuts.get(identity) ?? NO_CUTS
   const asRead =
     (cuts.length === read.length &&
-      cuts.every((cut, at) => !cut.removed && cut.key === read[at].key)) ||
+      cuts.every(
+        (cut, at) =>
+          !cut.removed &&
+          cut.key === read[at].key &&
+          cut.in === read[at].in &&
+          cut.out === read[at].out,
+      )) ||
     sameTrims(savedTrims(cuts), savedTrims(read))
   const next = new Map(draft.cuts)
   if (asRead) {
@@ -460,6 +489,30 @@ function settled(baseline: Baseline, draft: Draft, identity: string, cuts: Draft
 
 // D-K's value for a cut made by hand (`cuts/times.ts` names it "Cut by hand").
 const BY_HAND = 'manual' satisfies KnownReason
+
+const TRIMS_OF = new WeakMap<readonly DraftCut[], SavedTrim[]>()
+
+/**
+ * Every clip's cuts as the draft lists them now, the removed ones left out: what the
+ * Timeline draws and plays in Edit mode, before any save. A clip without cuts has no entry.
+ * A clip whose list did not change keeps the very same array, so what is built from it can
+ * be reused.
+ */
+export function liveTrims(base: Cuts, changed: Cuts): ReadonlyMap<string, readonly SavedTrim[]> {
+  const live = new Map<string, readonly SavedTrim[]>()
+  for (const identity of new Set([...base.keys(), ...changed.keys()])) {
+    const cuts = cutsOf(base, changed, identity)
+    let trims = TRIMS_OF.get(cuts)
+    if (trims === undefined) {
+      trims = savedTrims(cuts)
+      TRIMS_OF.set(cuts, trims)
+    }
+    if (trims.length > 0) {
+      live.set(identity, trims)
+    }
+  }
+  return live
+}
 
 /**
  * `draft` with a cut added to `identity` under the new key `key`, after every
@@ -521,6 +574,48 @@ export function restoreCut(baseline: Baseline, draft: Draft, identity: string, k
 }
 
 /**
+ * `draft` with cut `key` of `identity` given new times, in place: the same key,
+ * position and reason, so the cut keeps its number and what made it (a trim does not
+ * make a cut `manual`). An unknown or removed key, and times the cut already has,
+ * return `draft` itself. A cut read from `reel.yaml` is marked `edited` while its
+ * times differ from the ones it was read with, and unmarked when they match again;
+ * a list that is then the one read leaves `draft.cuts` (`settled`). The caller took
+ * the times from a place the cut can legally take (the handles' limits, or
+ * `checkTrim`), so a time that is not a number, or an end not after the start, is a
+ * bug and throws.
+ */
+export function trimCut(
+  baseline: Baseline,
+  draft: Draft,
+  identity: string,
+  key: CutKey,
+  span: { in: number; out: number },
+): Draft {
+  if (!Number.isFinite(span.in) || !Number.isFinite(span.out) || span.out <= span.in) {
+    throw new RangeError(
+      `a cut must end after it starts and have finite times, got ${String(span.in)} to ${String(span.out)}`,
+    )
+  }
+  const cuts = cutsOf(baseline.cuts, draft.cuts, identity)
+  const cut = cuts.find((listed) => listed.key === key)
+  if (cut === undefined || cut.removed || (cut.in === span.in && cut.out === span.out)) {
+    return draft
+  }
+  const twin = (baseline.cuts.get(identity) ?? NO_CUTS).find((listed) => listed.key === key)
+  const differs = twin !== undefined && (twin.in !== span.in || twin.out !== span.out)
+  const trimmed: DraftCut = { key, in: span.in, out: span.out, reason: cut.reason, removed: false }
+  if (differs) {
+    trimmed.edited = true
+  }
+  return settled(
+    baseline,
+    draft,
+    identity,
+    cuts.map((listed) => (listed.key === key ? trimmed : listed)),
+  )
+}
+
+/**
  * The clips whose saved cuts would differ from the read ones (start, end and
  * reason of the cuts not removed, in order); a removed clip's are left out with it.
  */
@@ -538,25 +633,34 @@ export function changedCuts(baseline: Baseline, draft: Draft): ReadonlySet<strin
 }
 
 /**
- * The cuts added and the read cuts removed, as the save bar counts them: only on the
- * clips whose saved cuts would differ (`changedCuts`), so the counts never name a
- * change the save would not make.
+ * The cuts added, the read cuts removed and the read cuts trimmed, as the save bar
+ * counts them: only on the clips whose saved cuts would differ (`changedCuts`), so the
+ * counts never name a change the save would not make. A trimmed cut is one not removed
+ * whose key is a read key and whose start or end differs from the cut read under that
+ * key; a read cut trimmed and then removed counts as removed.
  */
-export function cutChanges(baseline: Baseline, draft: Draft): { added: number; removed: number } {
+export function cutChanges(
+  baseline: Baseline,
+  draft: Draft,
+): { added: number; removed: number; trimmed: number } {
   let added = 0
   let removed = 0
+  let trimmed = 0
   for (const identity of changedCuts(baseline, draft)) {
     const cuts = draft.cuts.get(identity) ?? NO_CUTS
-    const read = new Set((baseline.cuts.get(identity) ?? NO_CUTS).map((cut) => cut.key))
+    const read = new Map((baseline.cuts.get(identity) ?? NO_CUTS).map((cut) => [cut.key, cut]))
     for (const cut of cuts) {
+      const was = read.get(cut.key)
       if (cut.removed) {
         removed += 1
-      } else if (!read.has(cut.key)) {
+      } else if (was === undefined) {
         added += 1
+      } else if (was.in !== cut.in || was.out !== cut.out) {
+        trimmed += 1
       }
     }
   }
-  return { added, removed }
+  return { added, removed, trimmed }
 }
 
 /** `order` with the clip at `from` moved to `to`. */
