@@ -1126,9 +1126,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     proxy's `facts.duration`, which is the source's: the Sony, the rotated HEVC (14.633333 s; the proxy's container says
     14.651995 because its audio runs 18 ms longer) and the legacy MPEG-4 (756.5 s) match ffprobe to the microsecond, so End
     does not leave a sliver of footage.
-  - **Bundle (`timeline-trim`).** `npm run build` on `origin/main` and on this change: JS 489,098 to 507,071 bytes (156,952 to
-    163,207 gzip -9, +6.3 KB) and CSS 63,422 to 67,145 bytes (12,383 to 13,053 gzip -9, +0.7 KB); no package added. The
-    research prototype's whole interaction layer was +5.6 KB gz. `npm test` runs 421 tests (365 before).
+  - **Bundle (`timeline-trim`).** `npm run build` on `origin/main` (with `timeline-overlays`) and on this change: JS 502,976 to
+    521,304 bytes (160,932 to 167,683 gzip -9, +6.6 KB) and CSS 67,163 to 70,886 bytes (12,883 to 13,539 gzip -9, +0.6 KB); no
+    package added. The research prototype's whole interaction layer was +5.6 KB gz. `npm test` runs 495 tests (438 before).
 
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
