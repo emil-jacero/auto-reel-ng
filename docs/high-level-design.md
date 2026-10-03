@@ -174,8 +174,10 @@ audio track, and encoded to the **target spec with the chosen codec** like any o
 so it is fully on-GPU on every vendor — sidestepping the AMD `overlay_vaapi` gap (exp 003) the original
 "overlay in the main graph" wording would have hit. A generic, name-keyed **producer registry** materializes a
 synthetic segment's content by its `producer` key (the title card is the first registration; intro/outro/
-transition bumpers reuse the seam). Fonts are resolved **by family name through fontconfig** with a bundled
-default (DejaVu Sans), and an unresolved family **fails loud** rather than silently substituting. The same
+transition bumpers reuse the seam). Fonts are resolved **by family name through fontconfig**, from a **bundled set of nine
+families** (DejaVu Sans, the default, plus eight OFL families, `fonts/`, one registry `render/title/fonts.py`) under a
+fontconfig the engine points at itself, so no system font is involved and the image and a dev host draw the same
+glyphs (**D-22**); an unresolved family or weight **fails loud** rather than silently substituting. The same
 `render_title_card` seam produces the future GUI look-editor preview, so preview is byte-identical to the
 render. The title-over-footage *overlay* look stays a future addition via the decorator seam's `attacher`
 (non-goal here).
@@ -345,7 +347,8 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   live progress**, **clip thumbnails** (one frame per clip, **D-11**), and **the rendered movie on the event
   page** (**D-15**). The resolved `look` is shown
   **read-only**; editing it is v2. No timeline, no per-frame editing.
-- **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview); **the full
+- **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview; `title-card-fonts`
+  is the foundation of the card editor: the bundled font set and its registry, **D-22**); **the full
   timeline editor, moved from v3** — a per-clip track with proxies, filmstrip, drag-trim in/out and scrub
   preview (built: scrub in `timeline-view`, trim handles in `timeline-trim`, D-20); **analysis review built as overlays on that timeline** (built: approve black/white/freeze trims in place on Edit mode's draft, `timeline-overlay-decisions`;
   not a separate screen); event poster frames; and, beside the proxy work, chapter times in the render
@@ -662,6 +665,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    Watch on each clip (D-16), also web-only and with no render, fingerprint, schema or job change.
    `clip-group-select-drag` (GUI v2) follows: Edit mode marks clips and a drag of a marked clip moves the whole
    marked group (D-13); web-only, no render, fingerprint, schema or job change.
+   `title-card-fonts` is the foundation of the card editor (the look editor's title-card half): a bundled set of nine
+   title fonts, one registry and an engine-owned fontconfig (**D-22**), with `RENDER_GRAPH_VERSION` 5 and no schema,
+   API or web change; the card style, per-card fields, preview endpoint and editor read it.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1343,6 +1349,43 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Deliberately not here:** a prune of
     orphan entries (`proxy-prune`); a virtual remux to give the original sound in Firefox. The cache-location
     helpers are copies of `thumbs/`'s; unifying them is a follow-up.
+- **D-22 — The title-card fonts are bundled and the renderer owns fontconfig** (2026-10-03, change
+  `title-card-fonts`). A card is drawn from a curated set of fonts that lives in the repository, so the GUI's font
+  picker, the preview and the render agree on every host and in the image.
+  - **The set** (`fonts/`, registry `auto_reel_ng/render/title/fonts.py`, which imports neither `gi` nor `cairo`):
+    nine families, one per role, static files (no variable font is re-instanced, because that would ship a modified
+    font), each with its license text beside the files. DejaVu Sans (default; Bitstream Vera / DejaVu license), Inter
+    (clean sans), Poppins (geometric sans), Source Sans 3 (humanist sans), Source Serif 4 (serif), DM Serif Display
+    (display serif), Barlow Condensed (condensed), Pacifico (handwritten script), IBM Plex Mono (monospace); the
+    others are SIL OFL 1.1. Playfair Display, the first pick for the display serif, ships only as a variable font
+    upstream, so the role went to DM Serif Display. The registry records per family the name fontconfig knows, a
+    display name, the role, the **weights** (Pacifico and DM Serif Display have one: a later weight control must not
+    offer a bold that Pango would synthesize), and per file a SHA-256. About 4.8 MB; a test caps `fonts/` at 8 MB.
+  - **A standalone fontconfig.** `fonts/fonts.conf` lists only its own directory and includes no system
+    configuration, so no host font can be a fallback or shadow a bundled name and no host rule changes the glyphs. The
+    cost is that a character outside the bundled coverage draws a missing-glyph box rather than a host fallback:
+    visible, never a silent other face. The engine sets `FONTCONFIG_FILE` itself (`configure_fontconfig`, idempotent,
+    overriding an inherited value) in `render._load_backend`, before Pango makes its first font map, because the map
+    is cached for the process and fontconfig reads the variable once. `AUTO_REEL_FONTS_DIR` moves the directory; a
+    directory or `fonts.conf` that is not there is a typed error naming the path.
+  - **The fail-loud check stays, and checks the weight.** The probe made for this change (fontconfig 2.17, PyGObject
+    3.56) showed Pango **silently substituting a family a one-font fontconfig did not hold** (asked for DejaVu Sans,
+    got Liberation Sans), and loading the Regular face when a Bold file is missing. `_resolve_font_or_raise` therefore
+    compares the family and the weight of the face that loaded; `verify_bundled_fonts()` loads every family at every
+    declared weight, and the image build runs it, so a build with a missing or unresolvable font fails.
+  - **`look.title_card.font_family` must be registered**, checked (ignoring case, stored in the registry's spelling)
+    when the config is parsed, with the field, the value and the list in the error. No migration: only DejaVu Sans
+    was ever installed in the image.
+  - **The image installs `fonts/`** (copied to `/app/fonts`, read in place, no second copy under `/usr/share/fonts`)
+    and drops `fonts-dejavu`; `fontconfig` stays for `fc-list` and the cache tooling. License texts are `.txt`
+    because `.dockerignore` drops `**/*.md`.
+  - **`RENDER_GRAPH_VERSION` 5.** A font file is a render input the fingerprint cannot see, and this change swaps the
+    file DejaVu Sans is drawn from and drops the host's rules; every rendered event is stale once. A test fails with a
+    message saying so when a bundled file's hash no longer matches the registry: changing a font is deliberately an
+    edit of three things (file, hash, version).
+  - **Deliberately not here:** the card style, per-card fields, background-on-video, durations, the preview
+    endpoint, the GUI, a weight setting, italics, user-supplied fonts, web fonts in the browser (D-10; the GUI previews
+    with the engine's PNG).
 
 ---
 
@@ -1401,7 +1444,8 @@ turned into confident OpenSpec changes. Numbered to match the ⚠️ markers abo
 5. **Title text rendering replacement** for moviepy. ✅ **RESOLVED** (title-card change) — **Cairo + Pango**
    (real shaping/wrapping/kerning, fontconfig name-based fonts, headroom for non-Latin/RTL), behind a single
    swappable `render_title_card` seam. **Fail-loud font resolution** (an unresolved family raises, naming the
-   bundled DejaVu Sans default; Pango's silent substitution is refused). Outline + crisp offset drop-shadow in
+   bundled DejaVu Sans default; Pango's silent substitution is refused; the fonts are the bundled set of D-22, not
+   the host's). Outline + crisp offset drop-shadow in
    v1 (blurred shadow is a follow-up). The card ships **as its own overlay-free segment**, not an in-graph
    overlay (decision **D-A**), so the AMD `overlay_vaapi` gap never applies. Tests are **structural** (computed
    text boxes / wrap points / resolved family + golden ffmpeg-arg strings) with a single tolerance-based pixel

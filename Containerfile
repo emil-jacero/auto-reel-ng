@@ -12,13 +12,15 @@
 # under /usr/lib/jellyfin-ffmpeg, so no host VA driver or Mesa package is installed.
 #
 # The title-card renderer (auto_reel_ng/render/title) draws with Cairo + Pango via
-# PyGObject, resolving fonts by family name through fontconfig (never a hardcoded
-# path). That needs the Cairo/Pango runtime libraries, the Pango GObject-introspection
-# typelib, a bundled default font family (DejaVu Sans), and a populated fontconfig
-# cache so the family resolves at render time.
+# PyGObject, resolving fonts by family name through fontconfig. That needs the Cairo/Pango
+# runtime libraries and the Pango GObject-introspection typelib. The fonts are NOT a system
+# package: the bundled set under fonts/ (DejaVu Sans, the default, plus eight OFL families,
+# each with its license text beside the files) is copied to /app/fonts and the engine points
+# fontconfig at /app/fonts/fonts.conf itself (D-22), so the image and a dev host render the
+# same glyphs. The build fails if a registered family does not resolve (verify_bundled_fonts).
 #
 # A dev host that runs the renderer or its has-fonts-marked tests needs the same
-# system libraries installed (the tests skip cleanly when they are absent).
+# system libraries installed, but no font (the tests skip cleanly when they are absent).
 ARG JELLYFIN_FFMPEG_VERSION=8.1.3-1-trixie
 
 # Stage 1: the web client (web/README.md's build, in the same node:22 image the dev loop uses).
@@ -49,8 +51,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
         libcairo2 \
         libpango-1.0-0 \
         libpangocairo-1.0-0 \
-        fonts-dejavu \
-    && fc-cache -f \
+        fontconfig \
     && apt-get purge -y curl && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
@@ -65,11 +66,21 @@ COPY pyproject.toml /app/
 RUN touch README.md && mkdir auto_reel_ng && touch auto_reel_ng/__init__.py \
     && python3 -m pip install --no-cache-dir --break-system-packages -e .
 
+# The bundled title-card fonts, named on their own (the `COPY . /app` below carries them too) so
+# the dependency on fonts/ is visible here. After the dependency layer: a font edit does not
+# re-download every wheel.
+COPY fonts/ /app/fonts/
+
 # Editable install: the .pth points at /app, so the sources copied here are what gets imported,
 # and api/app.py web_dist_dir() (<package>/../../web/dist) resolves to /app/web/dist with no code
 # change. /app must therefore stay the source tree of this checkout.
 COPY . /app
 COPY --from=web /web/dist /app/web/dist
+
+# A build whose bundled fonts do not resolve (a missing file, a family fontconfig cannot see,
+# a face of another weight) fails here, not at the first render. The engine configures its own
+# fontconfig from /app/fonts before Pango is used.
+RUN python3 -c "from auto_reel_ng.render.title import verify_bundled_fonts; verify_bundled_fonts()"
 
 # The console script; `python3 -m auto_reel_ng` fails (the package has no __main__.py).
 ENTRYPOINT ["auto-reel"]

@@ -21,11 +21,12 @@ import psycopg
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from auto_reel_ng.errors import FfmpegError
+from auto_reel_ng.errors import FfmpegError, TitleCardError
 from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
 from auto_reel_ng.persistence.engine import make_engine, make_session_factory
 from auto_reel_ng.persistence.job_store import JobStore
 from auto_reel_ng.persistence.models import Base, Job
+from auto_reel_ng.render.title.fonts import configure_fontconfig
 
 MakeClip = Callable[..., Path]
 
@@ -39,16 +40,20 @@ def fonts_available() -> bool:
 
     Mirrors the "has GPU" gate: the renderer's image/render tests are skipped when
     the Cairo/Pango backend or the bundled DejaVu Sans family is unavailable, so the
-    suite passes on a host (or venv) without the system libraries installed.
+    suite passes on a host (or venv) without the system libraries installed. The fonts
+    come from the repository's ``fonts/`` (the engine's own fontconfig), not the host, so
+    a host with no system font still runs the title-card tests.
     """
     try:
+        # Before the first font map exists, as the renderer does it.
+        configure_fontconfig()
         import gi  # noqa: PLC0415
 
         gi.require_version("Pango", "1.0")
         gi.require_version("PangoCairo", "1.0")
         import cairo  # noqa: F401,PLC0415
         from gi.repository import Pango, PangoCairo  # noqa: PLC0415
-    except (ImportError, ValueError):
+    except (ImportError, ValueError, TitleCardError):
         return False
     context = PangoCairo.FontMap.get_default().create_context()
     desc = Pango.FontDescription()

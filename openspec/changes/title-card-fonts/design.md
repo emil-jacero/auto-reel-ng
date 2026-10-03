@@ -45,16 +45,22 @@ no static files or the license text cannot be shipped; the tests, not this list,
 | geometric sans | Poppins | 400, 700 |
 | humanist sans | Source Sans 3 | 400, 700 |
 | serif | Source Serif 4 | 400, 700 |
-| display serif | Playfair Display | 400, 700 |
+| display serif | DM Serif Display (Playfair Display ships only as a variable font) | 400 only |
 | condensed | Barlow Condensed | 400, 700 |
 | handwritten script | Pacifico | 400 only |
 | monospace | IBM Plex Mono | 400, 700 |
 
 Static files, not variable fonts, one file per declared weight. Where upstream ships only a variable font, take another
 family for that role: re-instancing a font ships a modified font, and several of these have a Reserved Font Name.
-Pacifico has one weight, which is why the registry records weights per family: a later weight control must not offer
-a bold that Pango would synthesize. Every family must cover Latin plus Latin-1 and Latin Extended-A (the archive is
-Swedish: å ä ö, plus names with é ü ñ); the render test checks that. Alternatives: Noto/Liberation (broader coverage but
+Playfair Display, the first pick for the display serif, ships only as a variable font upstream, so the role is
+DM Serif Display. Pacifico and DM Serif Display have one weight, which is why the registry records weights per family: a later weight control must not offer
+a bold that Pango would synthesize. Every family must cover Basic Latin, Latin-1 and the Latin Extended-A letters of the Nordic, Western and Central
+European alphabets and Turkish (the archive is Swedish: å ä ö, plus names with é ü ñ ł č ő); the render test checks
+that set. It is not all of Latin Extended-A: measured on the files, no family but DejaVu Sans, Source Sans 3 and
+IBM Plex Mono has every precomposed character of the block (Esperanto circumflexes, Maltese dots and the ligature Ĳ are the
+usual gaps; a family with a combining mark still draws a base letter plus the mark), and those letters are in no
+name of the archive. The test checks the requested face's own coverage as well as Pango's unknown-glyph count,
+because Pango fills a gap from another bundled family without counting it. Alternatives: Noto/Liberation (broader coverage but
 visually plain), a larger set (a picker of 30 is a worse picker, and 40 MB of image).
 
 **2. The registry is Python in `render/title/fonts.py`, with no `gi` import.** A frozen dataclass `FontFamily` (family
@@ -82,8 +88,8 @@ wheel does not ship `fonts/`, as it does not ship `web/dist`). It overrides a `F
 environment, because the renderer's contract is the bundled set; a missing directory or `fonts.conf` raises
 `TitleCardError` naming the path. `_load_backend` calls it before importing `PangoCairo`. The default font map is
 created and cached by the first call, after which fontconfig ignores the variable, so the order matters: the
-fail-loud check stays, and when the first family it loads does not resolve, the error says whether `FONTCONFIG_FILE`
-was already in effect when the font map was made. The variable also reaches ffmpeg children; they do not use
+fail-loud check stays, and when a family does not resolve the error names the fonts directory and the
+`FONTCONFIG_FILE` in effect, and says the variable must be set before the process makes its first font map. The variable also reaches ffmpeg children; they do not use
 fontconfig for this pipeline. Alternatives: calling `FcConfigAppFontAddDir` through ctypes (the font map may already
 hold its own config; no better ordering story, and a native-library dependency in Python), or a generated conf file
 under the cache (needs a writable directory and invalidation; a static file does not).
@@ -105,8 +111,8 @@ fonts installed and used them via `look.title_card.font_family` now gets the par
 
 **7. The image installs `fonts/`; it drops `fonts-dejavu`.** The Containerfile adds `fontconfig` (for `fc-cache`,
 which `fonts-dejavu` brought in; Debian's `fontconfig-config` may still pull `fonts-dejavu-core`, which the standalone
-`fonts.conf` of decision 3 never reads), copies `fonts/` to `/app/fonts` in a layer before `COPY . /app` so a source edit
-does not redo it, and after `COPY . /app` runs `verify_bundled_fonts()` with the engine's configuration, so a build
+`fonts.conf` of decision 3 never reads), copies `fonts/` to `/app/fonts` in a layer after the dependency layer and before `COPY . /app` (a font edit
+does not re-download the wheels; `COPY . /app` carries the directory too, so the named copy is for the reader), and after `COPY . /app` runs `verify_bundled_fonts()` with the engine's configuration, so a build
 whose fonts do not resolve fails. The engine reads `/app/fonts`, the same path logic as the host (`/app` is the
 checkout in the image). No second copy under `/usr/share/fonts`: one source, so the image and the host cannot
 diverge. License texts are `.txt` because `.dockerignore` drops `**/*.md`.

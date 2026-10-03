@@ -27,6 +27,9 @@ vgcore.*
 web/node_modules/
 web/dist/
 
+# fonts/ is NOT ignored: the image installs it (title-card-fonts, D-22). Its license texts are .txt
+# (OFL.txt, LICENSE.txt) so that **/*.md below does not drop them.
+
 # Trees and files the image never runs (a docs or spec edit does not rebuild the image). Markdown
 # too: the dependency layer installs against a stub README.md (pyproject's `readme`), and nothing
 # reads README.md or web/README.md later.

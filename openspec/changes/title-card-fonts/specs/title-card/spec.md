@@ -6,7 +6,7 @@ The repository SHALL bundle, under a top-level `fonts/` directory, the fonts a t
 Sans (the default) and eight further families, one for each of these roles: a clean sans, a geometric sans, a
 humanist sans, a serif, a display serif, a condensed, a handwritten script and a monospace. Every further family
 SHALL be licensed under the SIL Open Font License. Every family SHALL ship its license text in `fonts/` as a `.txt`
-file, as static font files with one file per weight it declares, and SHALL cover Latin, Latin-1 and Latin Extended-A.
+file, as static font files with one file per weight it declares, and SHALL cover Basic Latin, Latin-1 and the Latin Extended-A letters of the Nordic, Western and Central European alphabets and Turkish (the set of the scenario below; Esperanto and Maltese letters and ligatures such as Ĳ are outside it, because most families omit them).
 The directory SHALL hold a `fonts.conf` that lists only that directory, and SHALL NOT exceed 8 MB in total.
 
 #### Scenario: The set is complete and licensed
@@ -14,8 +14,8 @@ The directory SHALL hold a `fonts.conf` that lists only that directory, and SHAL
 - **THEN** every registered family has its font files and a license text there, DejaVu Sans plus eight others are
   registered, and no font file in the directory is unregistered
 
-#### Scenario: Swedish text has every glyph
-- **WHEN** "Åsa, Örjan och Märta åt smörgås på café" is laid out in each registered family at each declared weight
+#### Scenario: Swedish and Central European text has every glyph
+- **WHEN** "Åsa, Örjan och Märta åt smörgås på café" and the Latin Extended-A letters of the Polish, Czech, Slovak, Hungarian, Croatian, Slovenian, Romanian, Turkish, Latvian, Lithuanian and Estonian alphabets and French Œ and Ÿ are laid out in each registered family at each declared weight
 - **THEN** Pango reports no unknown glyph
 
 #### Scenario: Every registered family renders a card
@@ -57,8 +57,8 @@ directory or its `fonts.conf` does not exist, the renderer SHALL raise a typed e
 at. A host with no system font installed SHALL render every registered family.
 
 #### Scenario: A host run needs no system install
-- **WHEN** a card is rendered in a fresh process with `FONTCONFIG_FILE` unset and `font_family` "Playfair Display"
-- **THEN** the card renders in Playfair Display, and `fc-list` under the engine's `fonts.conf` lists only the bundled families
+- **WHEN** a card is rendered in a fresh process with `FONTCONFIG_FILE` unset and `font_family` "DM Serif Display"
+- **THEN** the card renders in DM Serif Display, and `fc-list` under the engine's `fonts.conf` lists only the bundled families
 
 #### Scenario: A host font cannot shadow or fill in
 - **WHEN** a host has a family installed that the registry does not hold and the config asks for it
@@ -76,8 +76,8 @@ the field `look.title_card.font_family`, the value and the registered families. 
 SHALL mean the default family.
 
 #### Scenario: A registered family is accepted and canonicalised
-- **WHEN** `look.title_card.font_family` is "playfair display"
-- **THEN** the parsed config's family is "Playfair Display"
+- **WHEN** `look.title_card.font_family` is "dm serif display"
+- **THEN** the parsed config's family is "DM Serif Display"
 
 #### Scenario: An unregistered family is refused at parse time
 - **WHEN** `look.title_card.font_family` is "Papyrus"
