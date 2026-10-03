@@ -309,37 +309,11 @@ def test_chapter_times_are_not_a_fingerprint_input(
     assert evaluate(tmp_path, result.output_path, recomputed).reasons == ()
 
 
-def test_recording_chapter_times_does_not_change_the_movie(
-    runtime, make_clip, tmp_path: Path
-) -> None:
-    """Same inputs with and without a fingerprint (so without and with a manifest write)."""
-    _result, _fp, options, plan = _render_two_chapters(
-        runtime, make_clip, tmp_path, trim_first=True, mixed=False
-    )
-    bare = RenderOptions(
-        event_dir=tmp_path,
-        output_dir=tmp_path / "bare",
-        clip_facts=options.clip_facts,
-        runtime=runtime,
-    )
-    bare_result = render_movie(plan, CPUProfile(), bare)
-
-    recorded = render_movie(
-        plan, CPUProfile(), RenderOptions(**{**vars(options), "overwrite": True})
-    )
-
-    def shape(movie: Path) -> tuple:
-        streams = _ffprobe_json(runtime, movie, "-show_streams")["streams"]
-        return (
-            _movie_chapters(runtime, movie),
-            [(s["codec_name"], s["duration"], s.get("nb_frames")) for s in streams],
-        )
-
-    assert shape(recorded.output_path) == shape(bare_result.output_path)
-
-
+@pytest.mark.parametrize(
+    "failing_step", ["is_copy_uniform", "verify_output"], ids=["before-concat", "after-concat"]
+)
 def test_a_skipped_dry_run_and_failed_render_keep_the_previous_chapter_times(
-    runtime, make_clip, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runtime, make_clip, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failing_step: str
 ) -> None:
     result, fingerprint, options, plan = _render_two_chapters(
         runtime, make_clip, tmp_path, trim_first=True, mixed=False
@@ -347,6 +321,7 @@ def test_a_skipped_dry_run_and_failed_render_keep_the_previous_chapter_times(
     before = read_manifest(tmp_path)
     assert before is not None and before.chapters is not None
     raw = (tmp_path / ".auto-reel" / "cache" / "render-manifest.json").read_bytes()
+    movie_bytes = result.output_path.read_bytes()
 
     assert render_movie(plan, CPUProfile(), options).skipped is True
     dry = RenderOptions(**{**vars(options), "overwrite": True, "dry_run": True})
@@ -355,13 +330,15 @@ def test_a_skipped_dry_run_and_failed_render_keep_the_previous_chapter_times(
     def _boom(*_a: object, **_k: object) -> bool:
         raise RenderError("forced failure")
 
-    monkeypatch.setattr(orch, "is_copy_uniform", _boom)
+    # verify_output runs on the .part after the concat, just before the movie is finalized.
+    monkeypatch.setattr(orch, failing_step, _boom)
     failing = RenderOptions(**{**vars(options), "overwrite": True})
     with pytest.raises(RenderError):
         render_movie(plan, CPUProfile(), failing)
 
     assert (tmp_path / ".auto-reel" / "cache" / "render-manifest.json").read_bytes() == raw
     assert read_manifest(tmp_path) == before
+    assert result.output_path.read_bytes() == movie_bytes
     assert evaluate(tmp_path, result.output_path, fingerprint).reasons == ()
 
 
