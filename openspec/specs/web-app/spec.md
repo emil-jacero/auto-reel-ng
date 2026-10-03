@@ -3850,16 +3850,18 @@ position. It SHALL NOT start a drag: the drag handle stays a control of its own,
 its move buttons. A thumbnail that could not be shown (its "No preview" box) SHALL open the preview all the
 same.
 
-**What it plays.** The preview SHALL play the clip's own file as the service serves it from
-`GET /api/v1/events/{event_id}/media?clip=<identity>`. The event id and the clip's full identity SHALL be
-sent exactly as the event detail gives them, and the clip's modification time, exactly as the event detail
-gives it, as `v`. Until it plays, the preview SHALL show the clip's thumbnail. It SHALL NOT start playing by
+**What it plays.** The preview SHALL play the clip's preview copy when the clip has a ready one, and the clip's
+own file, the original, otherwise, as "A clip's preview plays its preview copy when one is ready" requires. The
+original is the file the service serves from `GET /api/v1/events/{event_id}/media?clip=<identity>`. The event id
+and the clip's full identity SHALL be sent exactly as the event detail gives them, and the clip's modification
+time, exactly as the event detail gives it, as `v`. Until it plays, the preview SHALL show the clip's thumbnail. It SHALL NOT start playing by
 itself. A preview opened with Watch, from the panel or the thumbnail, SHALL stand at the clip's start, also
 after an earlier preview of the clip was closed elsewhere in it. A clip displayed in portrait, such as a phone
-clip whose container rotates it, SHALL be shown whole, turned as a player shows it.
+clip whose container rotates it, SHALL be shown whole, turned as a player shows it. Unless a scenario of this
+requirement says that its clip has a ready preview copy, it SHALL be read for a clip that has none.
 
-**Nothing loads before it is asked for.** The page SHALL NOT request a clip's media, and SHALL NOT create a
-video element for it, before the operator opens that clip's preview. This SHALL hold for any number of clips,
+**Nothing loads before it is asked for.** The page SHALL NOT request a clip's media or its preview copy, and
+SHALL NOT create a video element for either, before the operator opens that clip's preview. This SHALL hold for any number of clips,
 for Cuts panels that are shown, and on entering, scrolling and leaving Edit mode. Closing a preview SHALL
 stop its playback and any loading of its file.
 
@@ -3875,6 +3877,7 @@ controls SHALL come in this keyboard order, each reachable and usable by keyboar
 4. **Skip cuts**
 5. **Set From**
 6. **Set To**
+7. **Play original** or **Play preview copy**, present only while the clip has a ready preview copy
 
 Each control SHALL name the clip as its row names it. Close, and Escape pressed while keyboard focus is in the
 preview, SHALL close the preview and move keyboard focus to the control that opened it: the Watch control, or
@@ -3913,15 +3916,19 @@ The preview SHALL show the time and the clip's length in that same format.
 **What the browser cannot do, by cause.** Each of these SHALL be shown in the preview as a note, never as an
 alert, and announced once through Edit mode's live region. Keyboard focus SHALL stay in the preview, on
 Close when the control that held it went:
-- **No sound.** When the browser reports that it finds no audio it can play in the clip, the preview SHALL say
+- **No sound.** When the original plays and the browser reports that it finds no audio it can play in the clip, the preview SHALL say
   that this browser finds no sound it can play in the clip, and that if a Sony camera recorded it, its sound
   is PCM, which Firefox does not play and Chrome does, and the render keeps it. The note SHALL NOT state as
   fact a cause or a sound the page does not know of: the clip may have no audio track at all. Playback SHALL
-  be otherwise unchanged, never muted.
+  be otherwise unchanged, never muted. The note SHALL NOT be shown while the preview copy plays. When the clip
+  has a ready preview copy whose facts name an audio codec, the note SHALL add that the preview copy plays with
+  sound and that Play preview copy plays it; when the facts name none (the clip has no audio), the note SHALL stay
+  as it is and SHALL NOT promise sound from the copy.
 - **No picture.** When the browser reads the clip but shows no picture of it, the preview SHALL say that this
   browser cannot show the clip's picture, and SHALL offer the clip's file as a download. Its controls SHALL
   stay.
-- **It cannot play the clip.** When the browser refuses the clip, the page SHALL ask the service for the
+- **It cannot play the clip.** (This is the original's. The preview copy's failures are the ones "A clip's
+  preview plays its preview copy when one is ready" lists.) When the browser refuses the original, the page SHALL ask the service for the
   clip's first byte, once, to tell why. It SHALL then say:
   - that the clip is no longer on disk, with the service's detail, when the service answers that it is not a
     clip of the event
@@ -4010,12 +4017,15 @@ Close when the control that held it went:
 
 #### Scenario: No sound for a Sony clip in Firefox
 - **WHEN** in Firefox, which plays no PCM audio, the operator opens the preview of `sony-xavc-1080p25-pcm.mp4`
-  of `2024-05-19 - Provklipp`
+  of `2024-05-19 - Provklipp`, whose preview copy is not ready
 - **THEN** the preview says that this browser finds no sound it can play in the clip, and that if a Sony
   camera recorded it, its sound is PCM, which Chrome plays and the render keeps. The note is announced once,
   and the clip plays its picture on request, not muted.
 - **WHEN** the same preview is opened in Chrome
 - **THEN** no such note is shown
+- **WHEN** in Firefox, the operator opens the preview of a clip with no audio track whose preview copy is ready
+  and whose facts name no audio codec
+- **THEN** the note is shown without the sentence that the preview copy plays with sound
 
 #### Scenario: A picture this browser cannot show
 - **WHEN** in Chrome, the operator opens the preview of the HEVC clip `hevc-mov-rotate90-aac.mov` of
@@ -4101,6 +4111,7 @@ panel's cuts and fields at once.
 
 **Set From and Set To.**
 - **Set From** SHALL write the playhead's time into the panel's start field, and **Set To** into its end field.
+  The playhead's time is the time of the file that plays, the original or its preview copy, which are the same.
 - The time SHALL be written to the millisecond, in the format the panel writes times (`0:01.234`, `0:02.5`).
   The panel SHALL read it back as that same time.
 - Keyboard focus SHALL stay on the pressed control, and the new value SHALL be announced.
@@ -4124,10 +4135,12 @@ panel's cuts and fields at once.
 - In either state, moving the playhead into a cut while the clip is paused SHALL show that moment, so that a
   time can be set from inside a cut.
 
-**The clip's length.** The page SHALL take a clip's length from its preview, as the browser reads it from the
-clip's file, when the preview has read it, else from the duration the event detail gives the clip when that is
-not null, and from nowhere else. The preview's length SHALL win over the detail's whenever both exist, because
-Set From and Set To write times in the preview's length, and a browser can read up to 60 ms more than the
+**The clip's length.** The page SHALL take a clip's length from its preview when the preview has read it, else
+from the duration the event detail gives the clip when that is not null, and from nowhere else. The preview reads
+it from the file that plays: as the browser reads it from the original's file, or, while the clip's preview copy
+plays, as the duration in the copy's facts, which is the original's duration as the engine probed it ("A clip's
+preview plays its preview copy when one is ready"). The preview's length SHALL win over the detail's whenever
+both exist, because Set From and Set To write times in it, and a browser can read up to 60 ms more than the
 probe's duration. A detail duration of `null` SHALL be treated as unknown, never as zero.
 - Once it has the length, the clip's panel SHALL say where the clip ends beside its fields (`This clip ends at
   0:06.02`).
@@ -4142,7 +4155,8 @@ probe's duration. A detail duration of `null` SHALL be treated as unknown, never
   clip's modification time changes, and when Edit mode closes. The detail's duration belongs to the clip's
   current file, so a replaced file's old duration SHALL NOT be used: the next detail gives the new one, or
   `null`.
-- When the browser reads a different length for the clip while it plays, the panel SHALL use the latest.
+- When the browser reads a different length for the original while it plays, the panel SHALL use the latest.
+  What the browser reads from a preview copy SHALL NOT change the length.
 - Neither length SHALL be saved, sent to the service or shown anywhere outside Edit mode.
 
 #### Scenario: The bar shows the clip's cuts
@@ -4227,6 +4241,12 @@ probe's duration. A detail duration of `null` SHALL be treated as unknown, never
   3725.5 seconds, the detail gives that clip a duration of `6.02`, and no preview was opened
 - **THEN** the cut is listed as running past the clip's end, and removing it and pressing its Undo is not
   refused
+
+#### Scenario: Cutting to the original's end while its preview copy plays
+- **WHEN** the detail gives `s1710001.mp4` of `2024-06-27 - Grillning med grannar` a ready preview copy whose
+  facts say `6.02` seconds, the browser reads the copy as 6.0 seconds, and the operator opens the preview, plays
+  the copy, and adds a cut from `5` to `0:06.02`
+- **THEN** the panel says that the clip ends at `0:06.02` and lists the cut, not refused
 
 ### Requirement: A cancel or a job read that meets a database outage says so
 When the service answers a cancel request with a 503 whose problem body names the database as the failing
@@ -4789,3 +4809,129 @@ show more text for it.
 - **THEN** its Save control has the keyboard shortcut Control+S (Meta+S) declared to assistive technology,
   its tooltip reads "Save (Ctrl+S, or ⌘S on a Mac)", and the bar is not taller or wider than before at
   390 × 844
+
+### Requirement: A clip's preview plays its preview copy when one is ready
+
+**Which file plays.** The preview of a clip SHALL play the clip's **preview copy** when the event detail gives
+the clip's proxy state as ready and gives the copy's facts a duration above zero, and SHALL play the clip's own
+file, the **original**, in every other case: the state absent, stale or failed, a ready state without a usable
+duration, or a detail that says nothing of a copy. The choice SHALL be made when the preview opens, from the
+detail alone. For a clip whose state is not ready the page SHALL NOT request a preview copy, and SHALL NOT ask for
+one to be built. The preview SHALL NOT change file by itself, also not after a failure.
+
+**What it shows of that.** The preview SHALL say in words, under the picture, which file plays: "Playing the
+preview copy" or "Playing the original". When the original plays because the state is stale, because it failed,
+or because a ready state had no usable duration, the words SHALL give that reason ("its preview copy is out of
+date", "its preview copy could not be built", "its preview copy has no usable length"). The words SHALL be
+present from the moment the preview opens and SHALL NOT move the picture or the controls.
+
+**The address.** The preview copy SHALL be played from
+`GET /api/v1/events/{event_id}/proxy?clip=<identity>&v=<tag>`, the event id and the clip's full identity sent
+exactly as the event detail gives them. `v` SHALL be the entity tag the service gives the copy's file, read by a
+request for the copy's first byte made when the preview opens and before the picture is asked for, so that a
+copy that was replaced is played from a new address. Nothing of the copy's file other than that one byte SHALL be
+requested before the operator opens the preview. A copy's answer without an entity tag SHALL be treated as the
+service giving no usable answer. The preview SHALL NOT request the copy's filmstrip.
+
+**Play original and Play preview copy.** While the clip has a ready preview copy, the preview SHALL offer one
+control that changes the file that plays, as the last of its controls in keyboard order. While the copy plays it
+SHALL read "Play original" and be named "Play original of <name>"; while the original plays it SHALL read "Play
+preview copy" and be named "Play preview copy of <name>". Pressing it SHALL:
+- keep the playhead's time, to the millisecond, and the time shown, the cut bar and the playhead slider with it
+- keep playing when the clip was playing, and stay paused when it was paused
+- keep keyboard focus on the control, and announce "Playing the original of <name>." or "Playing the preview copy
+  of <name>." through Edit mode's live region
+- change nothing in the clip's cuts or fields, and count as no edit
+
+The file chosen SHALL stay with the clip while its preview is open, also when the clip moves to another chapter,
+and SHALL be forgotten when the preview closes: the next preview of the clip opens on the file the rule above
+gives. The control SHALL be absent while the clip has no ready copy.
+
+**Times mean the same in both files.** Time in the preview copy SHALL be time in the original: the preview copy
+has the original's timing, so the playhead, the cut bar, Set From, Set To and Skip cuts SHALL act on the playhead
+of whichever file plays, to the millisecond and in the same format, and no time SHALL be offset, scaled or
+rounded differently for the copy.
+
+**The clip's length** while the preview copy plays SHALL be the duration in the copy's facts, which is the
+original's duration as the engine probed it, and SHALL NOT be the length the browser reads from the copy, which
+differs from the original's by about 20 ms and can be the shorter. The playhead's end, the panel's "This clip ends
+at" and the check on a cut's end SHALL use it. A browser's reading of the copy's length SHALL NOT change it.
+
+**Sound.** The preview copy carries the clip's sound in a form every supported browser plays. While it plays, the
+preview SHALL NOT show the note that the browser finds no sound; it SHALL NOT make up a cause for a silent copy.
+The note belongs to the original, as "Edit mode previews a clip on request" says.
+
+**When the preview copy cannot be played.** Each of these SHALL be shown in the preview as a note, never as an
+alert, announced once through Edit mode's live region, with keyboard focus kept in the preview, and each SHALL
+offer **Play original** beside any other action it offers:
+- that the preview copy is no longer there, with the service's detail, when the service answers that it has no
+  copy of the clip (the detail was read before the copy was removed)
+- that the preview copy could not be read, with the failure kind's words and the service's detail
+- that the preview copy is empty
+- that this browser cannot play the preview copy, when the service serves it and the browser refuses it
+- that the service gave no usable answer, saying which, with Try again, which asks for the copy anew and moves
+  keyboard focus to the reopened preview's Play
+
+The page SHALL NOT call a copy "changed on disk", and SHALL NOT compare the copy's modification time with the
+clip's. Any Download offered in the preview SHALL be the original file. A failure SHALL NOT be retried by itself.
+Pressing Play original SHALL open the original as the preview would have opened it without a copy, with
+keyboard focus on its Play.
+
+#### Scenario: A Sony clip has sound in Firefox
+- **WHEN** in Firefox 155 or later, the event detail of `2024-05-19 - Provklipp` gives
+  `sony-xavc-1080p25-pcm.mp4` a ready preview copy, and the operator opens its preview and presses Play
+- **THEN** the preview says "Playing the preview copy", the sound it decodes is not silent, and it shows no note
+  that the browser finds no sound
+- **AND** the page has requested `…/proxy?clip=sony-xavc-1080p25-pcm.mp4&v=<tag>` and has made no request to
+  `…/media` for that clip
+
+#### Scenario: Play original keeps the time and the state
+- **WHEN** the preview copy of `sony-xavc-1080p25-pcm.mp4` plays and the operator presses "Play original of
+  sony-xavc-1080p25-pcm.mp4" while the playhead says `0:02.5`
+- **THEN** the original plays on from `0:02.5`, the control now reads "Play preview copy", the preview says
+  "Playing the original", "Playing the original of sony-xavc-1080p25-pcm.mp4." is announced, and keyboard focus
+  is on the control
+- **WHEN** this is Firefox, which finds no sound in the original
+- **THEN** the preview shows the note that this browser finds no sound it can play, and the note says that the
+  preview copy plays with sound
+- **WHEN** the operator pauses and presses "Play preview copy" at `0:04.2`
+- **THEN** the preview copy is shown paused at `0:04.2` and the note is gone
+
+#### Scenario: Set From writes the same time from either file
+- **WHEN** the operator seeks the preview copy of `s1710001.mp4` of `2024-06-27 - Grillning med grannar` to
+  `0:02.5` and presses Set From, then presses Play original, seeks to `0:02.5` and presses Set From again
+- **THEN** both presses write `0:02.5` into the start field and the panel accepts it
+
+#### Scenario: A clip with no ready copy plays its original
+- **WHEN** the detail gives `s1710002.mp4` the proxy state absent, and the operator opens its preview
+- **THEN** the preview says "Playing the original", offers no Play original control, and the page has made no
+  request to `…/proxy`
+- **WHEN** the detail gives it the state stale
+- **THEN** the preview says "Playing the original" and that its preview copy is out of date, and the page has
+  made no request to `…/proxy`
+
+#### Scenario: A copy that has gone since the page was read
+- **WHEN** the detail gives `s1710001.mp4` a ready copy that the service no longer has, and the operator opens
+  its preview
+- **THEN** the preview says that the preview copy is no longer there, with the service's detail, as a note and
+  not an alert, and offers Play original
+- **WHEN** the operator presses Play original
+- **THEN** the original is ready to play with keyboard focus on "Play s1710001.mp4"
+
+#### Scenario: A cut to the original's end is accepted while the copy plays
+- **WHEN** the detail gives a 50 fps clip of `2024-05-19 - Provklipp` the duration `25.003` in its facts, the
+  preview copy reads 24.981 seconds in the browser, and the operator adds a cut from `20` to `0:25.003`
+- **THEN** the panel says that the clip ends at `0:25.003` and lists the cut, not refused
+
+#### Scenario: The choice follows the clip
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator has pressed Play original on `s1710001.mp4`, and
+  drags that clip into `Kvällen`
+- **THEN** its preview reopens in `Kvällen` paused at the same time, playing the original, and its control reads
+  "Play preview copy"
+- **WHEN** the operator closes the preview and opens it again
+- **THEN** it plays the preview copy
+
+#### Scenario: Play original is the last control
+- **WHEN** using only the keyboard, the operator opens the preview of a clip with a ready copy and presses Tab
+  from Close through Play, the playhead, Skip cuts, Set From and Set To
+- **THEN** the next stop is "Play original of <name>", and it is the last stop of the preview
