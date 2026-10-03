@@ -168,6 +168,22 @@ Pure logic in modules `npm test` runs: `events/watch.ts` (`canWatch`, `watchedAf
 two stale-words functions). The wiring is verified by `tsc`, the production build and Playwright in Chrome 154 and
 Firefox >= 155 from the scratchpad (task 4), including decoded sound for the Sony clips.
 
+### Found on main (task 1.1) and while implementing
+
+- **Names.** The gate gave `ClipPreview` a separate `proxy` prop (`ClipProxy | null`) beside `clip: Pick<Clip,
+  'identity' | 'mtime'>`; `source.ts`, `probeProxy`, `previews.original / setOriginal` and Play original are as
+  designed, and Play original is the last control. `grep` finds the "stop editing" advice only in `playback.ts`
+  (`STOP_EDITING`, through `goneWords` and `changedWords`): the gate's copy-failure titles carry none, so
+  `staleAdvice` is routed there alone. Nothing but the `onAnnounce` prop assumes the editor's live region.
+- **The bare `<video>` is not a tab stop.** Firefox (unlike Chrome) makes a `<video>` without `controls` a tab stop,
+  so the keyboard order the Edit-mode requirement fixes (Close, Play, playhead, ...) had a stray first stop there,
+  found by the Firefox run. `ClipPreview` gives the element `tabIndex={-1}`; its controls are the house's own and a
+  press on the picture still plays or pauses. This changes Edit mode only by removing that stop.
+- **A sentence of its own.** The service's "no longer on disk" detail has no full stop; the read view's advice
+  ends it as one (`goneWords(…, readOnly)`), Edit mode's string stays byte for byte as it was.
+- **The player row is empty-free.** A read-only player of a clip with no cuts and no ready copy has nothing in its
+  actions row, so the row is not rendered (an empty grid row would still take a gap).
+
 ## Risks / Trade-offs
 
 - **A gate's names differ from the plan** → task 1.1 reads main first and stops and reports on a mismatch that changes
