@@ -315,7 +315,9 @@ src/
 │   ├── probe.ts          one byte of a media route: the response-to-kind table the movie and a clip share
 │   ├── thumbnail.ts      a clip's thumbnail URL, typed from the schema; readFailedThumbnail reads why a failed one failed
 │   ├── clipMedia.ts      a clip's media and preview-copy URLs, the copy's one-byte probe, and the read that says why a clip cannot play
-│   └── clipMedia.test.ts the copy's address and probe (npm test)
+│   ├── clipMedia.test.ts the copy's address and probe (npm test)
+│   ├── proxies.ts        a clip's filmstrip URL and the proxy job's enqueue, with its answers as values (+ proxies.test.ts)
+│   └── proxies.test.ts   the filmstrip address and every answer of POST …/proxies (npm test)
 ├── edit/
 │   ├── EventEditor.tsx   Edit mode: the reel read, chapter edits, the save bar, saves and failures
 │   ├── ChapterDrag.tsx   the one drag context around every chapter: sensors, targets, the copy, words, focus
@@ -353,9 +355,25 @@ src/
 │   ├── playback.test.ts  Edit mode's words byte for byte, the read-only advice, when Skip cuts is offered (npm test)
 │   ├── ClipPreview.tsx   a clip's preview, in the Cuts panel or (read-only) on the event page: the video, controls, cut bar, notes
 │   └── preview.css       the preview, the cut bar, and the thumbnail as a Watch button
+├── playback/
+│   ├── exclusive.ts      one playing video per page: the movie and the Timeline claim playback (pure, + exclusive.test.ts)
+├── timeline/             the event page's Timeline (GUI v2, D-20), read only; the pure modules have tests under npm test
+│   ├── model.ts          time and pixels, zoom, windowing, cut spans, trim limits, snapping (whole ms; + model.test.ts, trim.test.ts)
+│   ├── layout.ts         which clips, when a proxy is ready, chapter bands, drawn cuts, movie length, filmstrip tiles (pure)
+│   ├── position.ts       the playhead as a clip and a time on its frame grid; steps across clip boundaries (pure)
+│   ├── keys.ts           the playhead's keys (pure); follow.ts: playing through the cuts and into the next clip (pure)
+│   ├── scrub.ts          the seek coalescer: one load or seek in flight, always ending at the last target (pure)
+│   ├── playhead.ts       the playhead's external store; labels.ts: the Timeline's words, the Prepare answers (pure)
+│   ├── TimelineSection.tsx  the section: Open / Close, then notes, Prepare or the track by what the proxies allow
+│   ├── Prepare.tsx       the Prepare state and the proxy job's behaviour (usePrepare)
+│   ├── Timeline.tsx      the open Timeline: the picture, transport, zoom and the track; Track.tsx, Filmstrip.tsx, Playhead.tsx
+│   ├── useTimelineVideo.ts  the one <video>: src swaps, coalesced seeks, Play through cuts and clips
+│   ├── useVisibleRange.ts   the track scroller's range, once per frame
+│   └── timeline.css      the section, the track, the cuts' hatch and the playhead
 ├── jobs/
 │   ├── store.ts          the one jobs WebSocket: live jobs, reconnect + silence watchdog, endings (toasts, re-reads)
-│   ├── useJob.ts         which job an event shows (live or last read); the connection's counts
+│   ├── useJob.ts         which job an event shows (live or last read); the event's proxy job; the connection's counts
+│   ├── kinds.ts          renders vs proxy jobs: the newest of each per event, the header's render counts (pure, + kinds.test.ts)
 │   ├── shownJob.ts       the rule that picks the job version to show: a read's requeue and cancel request are followed while the connection is down (pure, + shownJob.test.ts)
 │   ├── status.ts         which job statuses are active (pure)
 │   ├── eta.ts            the time-left estimate (pure)
@@ -678,8 +696,10 @@ clip's cuts are drawn and numbered, how far a trim handle may go and what it sna
 to. Every time it takes or returns is a whole number of **milliseconds** (`Ms`), so
 a value it returns is one the Cuts panel writes and reads back; a clip's duration
 and frame rate are arguments with no default, and a value that is not above zero
-throws a `ModelError`. Nothing imports it yet, so it is not in the bundle. Its tests
-(`model.test.ts`, `trim.test.ts`) run under `npm test`.
+throws a `ModelError`. The Timeline section (`timeline-view`) imports its layout, zoom,
+windowing and cut-span functions; trim limits and snapping wait for `timeline-trim`. Its
+tests (`model.test.ts`, `trim.test.ts`) and those of the timeline's other pure modules run
+under `npm test`.
 
 Movie playback is checked ad hoc in Chrome (Playwright's channel `chrome`) or Firefox,
 never in Playwright's bundled Chromium, which cannot decode H.264 and would make a

@@ -366,7 +366,11 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   without it. The timeline opens only for an event whose clips are all `ready`.
   The proxy job has landed (`proxy-job`, D-21): the worker prepares one event's proxies and sprites as a `proxy` job,
   behind renders, so **the timeline opens only for prepared events and preparation is a `proxy` job**.
-  The timeline is built in the repo (**D-20**); its pure model has landed (`timeline-model`, no UI yet).
+  The timeline is built in the repo (**D-20**); its pure model has landed (`timeline-model`) and **the read-only
+  Timeline has landed on the event page** (`timeline-view`): its own section, closed until opened, a Prepare state
+  when a clip has no ready proxy, then one track (ruler, chapter band, clips laid out from the proxy facts, cuts as
+  hatched spans, filmstrip, zoom, a scrubbing playhead and Play on one `<video>`). Trim handles (`timeline-trim`)
+  and the analysis overlays (`timeline-overlays`) build on it.
   `proxy-enqueue-endpoint` has landed (D-21 "Enqueue over REST"): `POST /api/v1/events/{event_id}/proxies` enqueues the
   event's proxy job (201 / 200 `fresh` / 409), and a job reports its `kind` while `latest_job` stays the latest render;
   the timeline's Prepare state is its first web caller.
@@ -629,7 +633,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    with the §8.11 research).
    `job-kind` has landed as the first slice: a `kind` on jobs and a worker that dispatches by it, with no render,
    fingerprint, API or WebSocket change (so no `RENDER_GRAPH_VERSION` bump). Next slice: the timeline's pure model
-   (`timeline-model`, D-20), UI pending.
+   (`timeline-model`, D-20), then the read-only view (`timeline-view`, below): GUI v2's first user-visible timeline.
    Then the proxy cache: `proxy-encode` builds it with `auto-reel proxies` (D-21), again with no render,
    fingerprint, API or WebSocket change. `filmstrip-sprites` has landed next: the same command also cuts each
    proxy's filmstrip sprite (D-21), on the same terms. `proxy-media-endpoints` lands the serving half of D-21: two read-only
@@ -864,7 +868,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   adoption). A Refresh
   keeps the player (the same element, playing or paused, while the rest of the page reads; 2026-10-02,
   change `web-playback-and-notices`); Edit mode shows no movie, and entering it ends
-  playback. (§4.10)
+  playback. Amended 2026-10-03 (change `timeline-view`): the read view's Timeline section (D-20) holds a second
+  `<video>` once opened, so the page may hold two; **one plays at a time** (`playback/exclusive.ts`: each
+  claims playback on `play` and the other is paused), and the movie still loads nothing before Play. (§4.10)
 
 - **D-16 — A clip is previewed in Edit mode in GUI v1** (2026-10-01, change `clip-preview-screen`).
   - **What.** A clip's Cuts panel plays the clip itself, its file streamed unchanged by the media route
@@ -883,7 +889,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     no thumbnail yet) keeps D-14's rule. Measured on five files: Chrome's length equals ffprobe's, and Firefox's runs up to 60 ms
     longer, never shorter, so the check never refused a cut the render keeps in full.
   - **What stays v2.** Firefox plays PCM audio silently (52 % of the archive), and the preview says so. Proxies,
-    the PCM audio path, scrubbing and drag-trim stay the v2 timeline editor's (§4.10, §8.11).
+    the PCM audio path and drag-trim stay the v2 timeline editor's (§4.10, §8.11); **scrubbing landed with the
+    Timeline** (`timeline-view`, D-20), which plays the proxy, so it has sound in Firefox, while the original in
+    this preview stays silent there with the note above.
   - **Amended 2026-10-03, change `clip-preview-proxy`: the preview plays the preview copy.** When the event
     detail gives a clip's proxy as `ready` with a duration above zero in its facts, the preview plays the copy
     (the proxy contract, D-21: 540p H.264 + AAC at the original's media time) from `…/proxy?clip=&v=<tag>`, the
@@ -899,7 +907,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     (gone, unreadable, empty, refused, no answer) and never as "changed on disk" (the copy's `Last-Modified` is the
     copy's file), with Play original beside Try again; the page never switches by itself. **So "What stays v2"
     no longer lists Firefox's silent preview for a clip with a ready copy:** the original still plays silently in
-    Firefox, which is why the copy is offered first. No request from the page builds a copy yet (`proxy-enqueue-endpoint` is the REST half; its first web caller is the timeline's Prepare state).
+    Firefox, which is why the copy is offered first. The preview itself builds no copy: the Timeline's Prepare state (`timeline-view`, D-20) is the page's one caller of `proxy-enqueue-endpoint`.
   - **Amended 2026-10-03, change `clip-play-read-view`: the read view plays a clip too.** On the event page
     outside Edit mode, every clip on disk has Watch / Hide player, which opens the same component in a row under
     the clip's row, read-only: no Set From / Set To, the clip's cuts drawn on the bar as the page reads them,
@@ -994,10 +1002,50 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Tests are the existing runner.** `npm test` (Node's `node:test`, type-checked by `tsconfig.test.json`),
     not vitest: no package is added. This is the proposal §4.10 asked for when it said a slice with logic worth
     unit-testing would propose a runner; the runner was already there.
-  - **First slice.** Trim of existing cuts and the analysis overlays on one timeline; one `<video>` whose `src`
+  - **First slice (planned).** Trim of existing cuts and the analysis overlays on one timeline; one `<video>` whose `src`
     is swapped at clip boundaries (a short flash is accepted); reorder and cross-chapter moves stay list-based;
     no waveform lane.
-  - **Bundle.** The model is not imported yet, so it is not built: `npm run build` on `origin/main` and on this
+  - **First slice, built (change `timeline-view`, 2026-10-03): the read-only Timeline.** Its own section of the
+    event page's read view, between the Movie section and the chapters, with an Open / Close button; **not an entry
+    to Edit mode**, which owns the draft, the Save bar and the unsaved-edits guard, while this slice writes nothing
+    (`timeline-trim` decides how the same component mounts there; it takes the cuts as a prop for that reason). It is
+    closed until opened (no `<video>`, no media request, whatever the clip count), absent in Edit mode, and closed
+    again after a Refresh. **The layout comes from the proxy facts** (`duration`, `fps_num / fps_den`), never from
+    the browser's length or a default rate; a clip is *ready* only with a `ready` state, usable facts and a tag
+    (`version`) for its addresses. Until every shown clip is ready the section shows a **Prepare state** in the
+    track's place: the counts by state, "Prepare proxies" (`POST …/proxies`, one request per press, the only way the
+    page starts the job) and the `proxy` job's progress from the jobs socket the page already holds. Opening never
+    starts it. A `stale` proxy is a damaged cache entry; **a source that changed on disk moves the cache key and
+    reads as `absent`**. The track has a ruler, a chapter band drawn from the event's chapters (the movie's recorded
+    chapter times, `usableChapters`, are a different list and are not used), the clips end to end with their
+    filmstrips, `reel.yaml`'s cuts as read-only hatched spans (a pattern per reason, so no state is by color alone),
+    zoom (4 to 240 px/s, Fit, keys), and windowing by the model's binary search: 400 clips of 25 s hold 23 clip
+    elements at the lowest zoom. **One `<video>`** swaps `src` at clip boundaries; a **seek coalescer** keeps one
+    load or seek in flight and always ends at the last target; a seek goes a quarter frame into the wanted frame.
+    The playhead is a slider (a frame, a second, five seconds, Home, End, Space) and its grip is dragged like the
+    ruler. Play follows the presented frames (`requestVideoFrameCallback`) and reuses D-16's cut rules, then goes on
+    into the next clip; a clip all cut is skipped and a leading cut is passed. The Timeline plays the proxy, so it has
+    sound in Firefox (a decoded peak above zero on the Sony PCM clip). **One video plays on the page**
+    (`playback/exclusive.ts`). A `proxy` job is never shown as a render: `jobs/kinds.ts` (`job-kind`) keeps the
+    render region, list rows and header count to renders, and the Prepare state shows the proxy job in its own words
+    ("Preparing proxies", "Proxy progress"). What stays: trim handles (`timeline-trim`), the analysis overlays
+    (`timeline-overlays`), a second preloaded `<video>` for seamless boundaries, undo.
+  - **Measured on the shipped proxy** (Chrome 154.0.8037.92 and Firefox 155.0, ten real clips, one from each archive
+    class, proxies made by the Prepare button and a real worker; three runs each). The shared host was never idle:
+    load average 2 to 13, and its swap full. Scrub, median frames per second over 50 sweeps of 2 s (gate: 30): Chrome
+    38.6, 42.4 and 54.7; Firefox 46.7, 36.5 and 46.7. Frame step, p90 of 160 key presses to the presented frame (gate:
+    60 ms): Chrome 46.2, 49.2 and 40.3 ms; Firefox 61.9, 40.0 and 34.1 ms. **One number misses its gate: Firefox's
+    first run, 1.9 ms over, at a load average of 4 to 13**; the next two runs, at lower load, are well inside it. The
+    hard sources are the expected ones: 4K50 and 1080p50 steps reach a single-run p90 of 81 ms (Chrome) and 93 ms
+    (Firefox) when the host is busy. The first frame after a clip change takes a median 40 to 44 ms (Chrome) and 34
+    ms (Firefox). A decoded audio stream in Firefox's test container needs about 1.9 s to start after Play or a
+    seek (a bare `<video>` with no page code does the same, and a muted one does not), so the timing checks of Play
+    ran muted and the sound check ran unmuted.
+  - **Bundle (`timeline-view`).** `npm run build` on `origin/main` and on this change: JS 452,810 to 484,721 bytes
+    (144,579 to 154,787 gzip -9, +10.2 KB) and CSS 56,929 to 62,914 bytes (11,221 to 12,205 gzip -9, +1.0 KB); no
+    package added. The research prototype's whole interaction layer was +5.6 KB gz; this slice also holds the Prepare
+    state, the jobs-by-kind words and the video controller. `npm test` runs 340 tests (252 before).
+  - **Bundle (`timeline-model`).** The model is not imported yet, so it is not built: `npm run build` on `origin/main` and on this
     change gives the same two files (same hashes), JS 444,745 bytes (142,313 gzip -9) and CSS 55,606 bytes
     (11,051 gzip -9) in both, a delta of 0 bytes.
   - **Prepare enqueues the proxy job** (`proxy-job`): the timeline's Prepare state enqueues the D-21 `proxy` job for the event; a render does not wait for it. It calls `POST /api/v1/events/{event_id}/proxies` (`proxy-enqueue-endpoint`) and follows the job on the WebSocket, whose jobs carry `kind`.
@@ -1179,7 +1227,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     and header count read renders only. `auto-reel jobs list` shows every kind, with its `kind`. **The proxy enqueue
     is deliberately API-only** (Principle V): `auto-reel proxies <root>` is the CLI's way to prepare proxies, inline;
     a CLI `enqueue --proxies` is not needed until something wants a queued proxy job without the service.
-  - **Deliberately not here:** any web code that calls the endpoint (`timeline-view`'s Prepare state); a prune of
+  - **Deliberately not here:** a prune of
     orphan entries (`proxy-prune`); a virtual remux to give the original sound in Firefox. The cache-location
     helpers are copies of `thumbs/`'s; unifying them is a follow-up.
 

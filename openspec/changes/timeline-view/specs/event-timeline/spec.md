@@ -46,8 +46,8 @@ The Timeline SHALL lay out the clips the event page lists in its chapters, in th
 
 The track SHALL open only when every clip it shows has a ready proxy, because the clips' lengths, frame rates and filmstrips come from the proxies' facts (the event read carries no duration or frame rate of its own). Otherwise the section SHALL show a Prepare state instead of the track, in place of it:
 
-- the number of clips that are ready, out of the number the Timeline shows, and the clips that are not, counted by state in words: not prepared, out of date (the source changed since its proxy was made), or failed
-- a button, "Prepare proxies", that asks the service to prepare the event's proxies (`POST /api/v1/events/{event_id}/proxies`). It SHALL be the only way the page starts that job. A clip whose proxy is out of date or failed SHALL be prepared again by the same button.
+- the number of clips that are ready, out of the number the Timeline shows, and the clips that are not, counted by state in words: not prepared (never prepared, or the clip changed on disk since: a proxy belongs to one version of the file), damaged (its proxy entry exists but cannot be used), or failed
+- a button, "Prepare proxies", that asks the service to prepare the event's proxies (`POST /api/v1/events/{event_id}/proxies`). It SHALL be the only way the page starts that job. A clip whose proxy is damaged or failed SHALL be prepared again by the same button.
 
 The button SHALL behave as the page's Render button does: one request per press, keyboard focus kept, marked busy until the answer arrives. The answers SHALL be handled as follows:
 
@@ -87,7 +87,11 @@ If a clip's state is `ready` but the service reports no facts for it, the Timeli
 
 #### Scenario: A source that changed after its proxy
 - **WHEN** a clip's file was replaced after its proxy was made and the page is read
-- **THEN** that clip is counted as out of date, the track does not open, and "Prepare proxies" prepares it again
+- **THEN** that clip is counted as not prepared (the service keys a proxy to one version of the file), the track does not open, and "Prepare proxies" prepares it
+
+#### Scenario: A damaged proxy
+- **WHEN** the service reports a clip's proxy as damaged (its entry exists but cannot be used)
+- **THEN** that clip is counted as damaged, the track does not open, and "Prepare proxies" prepares it again
 
 ### Requirement: The track lays the clips out by their proxies' lengths, with the chapters and the cuts
 
@@ -169,7 +173,7 @@ The track SHALL draw only the clips, filmstrip tiles and ruler labels that inter
 
 ### Requirement: The playhead scrubs one video
 
-The Timeline SHALL hold exactly one `<video>`, created when the track opens, showing the proxy of the clip the playhead is in, at the playhead's time in that clip. The playhead SHALL be a slider over the whole timeline: it SHALL have the role `slider`, a name ("Playhead"), `aria-valuemin`, `aria-valuemax` and `aria-valuenow` in the timeline's seconds, and a value text that names the clip and the time in it ("Harbour, 0:12.40 of 0:24.96; 1:12 of 3:12 in all"). Dragging on the ruler SHALL move the playhead; so SHALL dragging on the track body with a mouse or a pen. With touch, the ruler SHALL scrub and a swipe on the track body SHALL scroll it. A press on the ruler or the track SHALL move the playhead there.
+The Timeline SHALL hold exactly one `<video>`, created when the track opens, showing the proxy of the clip the playhead is in, at the playhead's time in that clip. The playhead SHALL be a slider over the whole timeline: it SHALL have the role `slider`, a name ("Playhead"), `aria-valuemin`, `aria-valuemax` and `aria-valuenow` in the timeline's seconds, and a value text that names the clip and the time in it ("Harbour, 0:12.4 of 0:24.96; 1:12 of 3:12 in all", the times in the page's time format). Dragging on the ruler SHALL move the playhead; so SHALL dragging on the track body with a mouse or a pen, and so SHALL dragging the playhead's own grip. With touch, the ruler SHALL scrub and a swipe on the track body SHALL scroll it. A press on the ruler or the track SHALL move the playhead there.
 
 Moving the playhead into another clip SHALL load that clip's proxy into the same `<video>` and seek it, so the picture is the clip's frame at that time; a short flash between two clips is accepted. While the pointer is moving, the Timeline SHALL keep at most one seek in flight and SHALL seek to the latest pointer position when it completes, so that a scrub across many clips never queues a seek per pointer move. The video SHALL be paused while scrubbing. The picture and the playhead SHALL end where the pointer ended.
 
@@ -180,6 +184,10 @@ A proxy whose playing fails SHALL be said by cause, as the clip preview says it:
 #### Scenario: A scrub shows the right frame
 - **WHEN** the operator drags the playhead on the ruler to 16.00 s of the second clip's span
 - **THEN** the single video shows that clip's proxy, `currentTime` is that time within the clip, and the slider's value text names the clip and the time
+
+#### Scenario: The grip is dragged
+- **WHEN** the operator presses on the playhead's grip and drags it along the ruler
+- **THEN** the playhead follows the pointer exactly as when the drag starts on the ruler
 
 #### Scenario: A scrub across a boundary
 - **WHEN** the operator drags the playhead from the first clip into the third clip within one second
