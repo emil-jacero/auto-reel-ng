@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+from typing import Iterable
+
+from ..persistence.models import JobKind
 from ..reel.document import ReelDocument
 from .schemas import (
     ChapterBody,
@@ -11,6 +15,10 @@ from .schemas import (
     MetadataBody,
     TrimBody,
 )
+
+logger = logging.getLogger(__name__)
+
+_KNOWN_KINDS = frozenset(kind.value for kind in JobKind)
 
 
 def document_to_body(document: ReelDocument) -> EditorialDocumentBody:
@@ -65,4 +73,27 @@ def job_to_out(job: object) -> JobOut:
     )
 
 
-__all__ = ["document_to_body", "job_to_out"]
+def jobs_to_out(jobs: Iterable[object]) -> list[JobOut]:
+    """Convert the rows a list or the live feed reports, leaving out any of an unknown kind.
+
+    ``jobs.kind`` is free text on purpose (``job-kind``): a row written by another build can
+    name a kind this one does not, and the worker fails such a row with a reason. The wire's
+    ``kind`` is the closed enumeration, so that row cannot be described. One such row, even
+    an old failed one, must not take the whole list or the live feed down: it is left out
+    and logged, and every other job is still reported.
+    """
+    described: list[JobOut] = []
+    for job in jobs:
+        kind = job.kind  # type: ignore[attr-defined]
+        if kind not in _KNOWN_KINDS:
+            logger.warning(
+                "job %s has the unknown kind %r and is not reported",
+                job.id,  # type: ignore[attr-defined]
+                kind,
+            )
+            continue
+        described.append(job_to_out(job))
+    return described
+
+
+__all__ = ["document_to_body", "job_to_out", "jobs_to_out"]

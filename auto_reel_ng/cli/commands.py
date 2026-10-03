@@ -784,21 +784,27 @@ def cmd_worker(args: argparse.Namespace) -> int:
 
 
 def cmd_jobs_list(args: argparse.Namespace) -> int:
-    """``jobs list``: print jobs (optionally filtered by ``--status``), oldest first."""
+    """``jobs list``: print jobs of every kind (optionally filtered by ``--status``), oldest first.
+
+    The store's reads default to renders (job-kind); asking for every kind keeps a proxy job
+    the API enqueued visible here, as it is in ``GET /api/v1/jobs``.
+    """
     project_root = resolve_project_root(args)
     store = _job_store(project_root)
     if args.status:
-        jobs = store.list_by_status(JobStatus(args.status))
+        jobs = store.list_by_status(JobStatus(args.status), kind=None)
     else:
         jobs = sorted(
-            (job for status in JobStatus for job in store.list_by_status(status)),
+            (job for status in JobStatus for job in store.list_by_status(status, kind=None)),
             key=lambda job: job.created_at,
         )
     if not jobs:
         print("No jobs found")
         return 0
     for job in jobs:
-        print(f"{job.id}  {job.status.value:9} {job.event_dir}  created={job.created_at}")
+        print(
+            f"{job.id}  {job.kind:7} {job.status.value:9} {job.event_dir}  created={job.created_at}"
+        )
     return 0
 
 
@@ -817,6 +823,7 @@ def cmd_jobs_show(args: argparse.Namespace) -> int:
         return 1
 
     print(f"id:               {job.id}")
+    print(f"kind:             {job.kind}")
     print(f"status:           {job.status.value}")
     print(f"event_dir:        {job.event_dir}")
     print(f"project_root:     {job.project_root}")

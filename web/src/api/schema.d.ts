@@ -400,7 +400,8 @@ export interface paths {
          * @description ``GET /api/v1/jobs`` (task 3.2): the served project's jobs, by status, oldest first.
          *
          *     Jobs of every kind, each carrying its ``kind``: the store's reads default to renders
-         *     (job-kind), so the list asks for all of them.
+         *     (job-kind), so the list asks for all of them. A row of a kind this build does not name
+         *     is left out (and logged), never a failure of the whole list.
          */
         get: operations["list_jobs_api_v1_jobs_get"];
         put?: never;
