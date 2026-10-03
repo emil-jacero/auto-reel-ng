@@ -90,3 +90,28 @@ describe('the header count', () => {
     assert.deepEqual(counted, { rendering: 1, queued: 1 })
   })
 })
+
+describe('the newest proxy job per event', () => {
+  it('is the proxy job, whichever of the event\'s jobs is newer', () => {
+    const render = job('render', { created_at: '2026-10-02T10:05:00Z' })
+    const proxy = job('proxy', { kind: 'proxy', created_at: '2026-10-02T10:00:00Z' })
+    assert.equal(kinds.newestProxyByEvent([render, proxy]).get(EVENT)?.id, 'proxy')
+    assert.equal(kinds.newestRenderByEvent([render, proxy]).get(EVENT)?.id, 'render')
+  })
+
+  it('picks the newer of two proxy jobs and holds nothing for an event with only renders', () => {
+    const older = job('older', { kind: 'proxy', status: 'failed', created_at: '2026-10-02T09:00:00Z' })
+    const newer = job('newer', { kind: 'proxy', created_at: '2026-10-02T10:00:00Z' })
+    assert.equal(kinds.newestProxyByEvent([newer, older]).get(EVENT)?.id, 'newer')
+    assert.equal(kinds.newestProxyByEvent([job('r')]).size, 0)
+    assert.equal(kinds.isProxy(job('future', { kind: 'future' as JobOut['kind'] })), false)
+  })
+})
+
+describe('a running proxy job and the render screens', () => {
+  it('gives the header counts of zero and the event no render', () => {
+    const jobs = [job('p', { kind: 'proxy' })]
+    assert.deepEqual(kinds.countRenders(jobs), { rendering: 0, queued: 0 })
+    assert.equal(kinds.newestRenderByEvent(jobs).has(EVENT), false)
+  })
+})
