@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 
+import type { ReadCutsState } from '../../cuts/ReadCuts'
 import type { TrackClip } from '../layout'
 import type { EditBinding } from '../editing'
 import type { Layout } from '../model'
@@ -52,6 +53,36 @@ export type AnalysisControl = {
   dismissals: Dismissals
   /** Null outside Edit mode: the lane shows state and offers no decision. */
   decide: DecideControl | null
+}
+
+const NO_CUTS: readonly never[] = []
+
+/**
+ * The analysis lane's control for one Timeline, from what `TimelineSection` has: in the
+ * read view the cuts as read and no decision (reading a screen never changes state), in
+ * Edit mode the draft's, as the Cuts panel lists them, and the editor's own add, lock and
+ * live region to decide with. Pure, so that `npm test` checks the wiring.
+ */
+export function analysisOf(
+  eventId: string,
+  read: ReadCutsState,
+  editing: Pick<EditBinding, 'onAdd' | 'locked' | 'announce' | 'listed'> | null,
+  dismissals: Dismissals,
+): AnalysisControl {
+  let cutsState: AnalysisControl['cutsState'] = 'reading'
+  if (editing !== null || read.cuts !== null) {
+    cutsState = 'ok'
+  } else if (read.failure !== null) {
+    cutsState = 'unreadable'
+  }
+  return {
+    eventId,
+    cutsState,
+    cutsOf: (identity) =>
+      editing !== null ? editing.listed(identity) : (read.cuts?.get(identity) ?? NO_CUTS),
+    dismissals,
+    decide: decideControl(editing),
+  }
 }
 
 /** One suggestion as the lane draws it: its state from the cuts, its box in px on the track. */

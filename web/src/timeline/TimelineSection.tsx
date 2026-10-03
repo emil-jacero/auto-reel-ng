@@ -4,8 +4,7 @@ import type { EventDetail } from '../api/event'
 import type { ReadCutsState } from '../cuts/ReadCuts'
 import { Alert } from '../ui/Alert'
 import { Prepare, usePrepare } from './Prepare'
-import { decideControl } from './overlays/control'
-import type { AnalysisControl } from './overlays/control'
+import { analysisOf } from './overlays/control'
 import type { Dismissals } from './overlays/Dismissals'
 import { Timeline } from './Timeline'
 import type { EditBinding } from './editing'
@@ -24,8 +23,6 @@ import { omittedWords, readiness, sectionState, shownClips, trackClips } from '.
  * it is the same section on the editor's draft: the draft's cuts, with a trim handle at
  * each edge of a cut (`timeline-trim`); the editor owns Save.
  */
-
-const NO_CUTS: readonly never[] = []
 
 export function TimelineSection({
   eventId,
@@ -62,22 +59,8 @@ export function TimelineSection({
   // The analysis lane: in the read view the cuts as read and no decision (reading a screen
   // never changes state), in Edit mode the draft's, as the Cuts panel lists them, and the
   // editor's own add, lock and live region to decide with.
-  const analysis = useMemo<AnalysisControl>(
-    () => ({
-      eventId,
-      cutsState:
-        editing !== null
-          ? 'ok'
-          : read.cuts !== null
-            ? 'ok'
-            : read.failure !== null
-              ? 'unreadable'
-              : 'reading',
-      cutsOf: (identity) =>
-        editing !== null ? editing.listed(identity) : (read.cuts?.get(identity) ?? NO_CUTS),
-      dismissals,
-      decide: decideControl(editing),
-    }),
+  const analysis = useMemo(
+    () => analysisOf(eventId, read, editing, dismissals),
     [eventId, read, editing, dismissals],
   )
   const state = sectionState(open, shown.clips)

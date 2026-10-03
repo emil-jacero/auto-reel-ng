@@ -18,17 +18,19 @@ import {
   READING_WORDS,
   UNREADABLE_TITLE,
   clipNotAnalyzed,
+  cutsKey,
   decideApprove,
   decideDismiss,
   dismissalKey,
   eventNote,
   neighbour,
   placeMarks,
+  standingRefusal,
   stepOfKey,
   suggestionKey,
   suggestionState,
 } from './suggestions'
-import type { Decision, Suggestion } from './suggestions'
+import type { Decision, Refusal, Suggestion } from './suggestions'
 
 /*
  * What the Timeline calls to carry the analysis lane (D-20, "Analysis overlays"): it reads
@@ -68,7 +70,7 @@ export function useSuggestions(
   const read = useAnalysis(control === undefined ? null : control.eventId)
   const detailId = useId()
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [refusal, setRefusal] = useState<{ id: string; words: string } | null>(null)
+  const [refusal, setRefusal] = useState<Refusal | null>(null)
   const [roving, setRoving] = useState<ReadonlyMap<string, string>>(new Map())
   // The mark that has focus, or is about to: it is drawn wherever its clip is.
   const keepId = useRef<string | null>(null)
@@ -214,7 +216,12 @@ export function useSuggestions(
     }
     switch (decision.kind) {
       case 'refused':
-        setRefusal({ id: mark.id, words: decision.words })
+        setRefusal({
+          id: mark.id,
+          words: decision.words,
+          state: mark.state,
+          cuts: cutsKey(control?.cutsOf(mark.identity) ?? []),
+        })
         break
       case 'approve':
         setRefusal(null)
@@ -346,7 +353,12 @@ export function useSuggestions(
               mark={selected}
               clipName={nameOf(selected)}
               decide={decide}
-              refusal={refusal?.id === selected.id ? refusal.words : null}
+              refusal={standingRefusal(
+                refusal,
+                selected.id,
+                selected.state,
+                control.cutsOf(selected.identity),
+              )}
               onApprove={() => decideFromButton(approve)}
               onDismiss={() => decideFromButton(dismiss)}
               onRestore={() => decideFromButton(dismiss)}
