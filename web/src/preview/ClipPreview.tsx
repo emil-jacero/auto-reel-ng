@@ -377,6 +377,9 @@ export const ClipPreview = memo(function ClipPreview({
   // Focus was in the region: a failure that removes its control moves it to Close.
   const focusInside = useRef(false)
   const scrollAfter = useRef(false)
+  // The region grows when the clip is read (the cuts' legend appears): once more, then, so
+  // that an opened preview that fits the window is in view whole.
+  const scrollOnReady = useRef(false)
   // Try again opens the preview anew: Play takes focus, as on Watch.
   const focusPlay = useRef(false)
   // Play pressed before the clip's metadata was read: it plays once it can.
@@ -442,6 +445,7 @@ export const ClipPreview = memo(function ClipPreview({
     if (previews.takeFocus(identity)) {
       playRef.current?.focus({ preventScroll: true })
       scrollAfter.current = true
+      scrollOnReady.current = true
       sayReady.current = true
     }
   }, [shows, previews, identity])
@@ -791,6 +795,10 @@ export const ClipPreview = memo(function ClipPreview({
     }
     setNotes(next)
     setPhase('ready')
+    if (scrollOnReady.current) {
+      scrollOnReady.current = false
+      scrollAfter.current = true
+    }
     // One announcement: the editor's live region holds one message, so the notes and the
     // readiness go together, the notes first.
     const words: string[] = []
