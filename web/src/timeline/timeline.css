@@ -530,7 +530,7 @@
     position: absolute;
     inset-block-end: calc(100% + 2px);
     inset-inline-start: var(--bar);
-    translate: -50% 0;
+    translate: calc(-50% + var(--tip-shift, 0px)) 0;
     z-index: 4;
     padding: 1px var(--s-2);
     border-radius: var(--r-sm);

@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import type { HTMLAttributes, KeyboardEvent, Ref } from 'react'
 
 import { ClockGroup } from '../ui/Clock'
@@ -9,7 +9,7 @@ import type { TrackClip } from './layout'
 import type { Layout } from './model'
 import { timeToPx } from './model'
 import { clampPosition, globalMs } from './position'
-import { readoutOf } from './readout'
+import { readoutOf, readoutScales } from './readout'
 import type { Playhead as PlayheadStore } from './playhead'
 
 /**
@@ -96,7 +96,8 @@ export function PlayheadReadout({
   lay: Layout
 }) {
   const at = useSyncExternalStore(playhead.subscribe, playhead.get)
-  const readout = readoutOf(at, clips, lay)
+  const scales = useMemo(() => readoutScales(clips, lay), [clips, lay])
+  const readout = readoutOf(at, clips, lay, scales)
   return (
     <p className="tl-readout">
       <span className="tl-readout-line">
