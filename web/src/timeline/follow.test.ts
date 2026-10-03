@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { nextClip, onFrame, startFrom } from './follow.ts'
+import { nextClip, onFrame, resumeOrYield, startFrom } from './follow.ts'
 
 /*
  * Playing through the timeline (`follow.ts`), run by `npm test`: the cut rules are the
@@ -67,5 +67,20 @@ describe('startFrom and nextClip', () => {
     ]
     assert.deepEqual(startFrom(tail, { clip: 0, ms: 7000 }), { clip: 1, ms: 0 })
     assert.equal(startFrom([tail[0]], { clip: 0, ms: 7000 }), null)
+  })
+})
+
+describe('resumeOrYield', () => {
+  it('resumes when nothing else plays', () => {
+    assert.equal(resumeOrYield(false, false), 'start')
+  })
+
+  it('yields when another video plays and the operator did not ask', () => {
+    assert.equal(resumeOrYield(false, true), 'yield')
+  })
+
+  it('never yields the start the operator asked for', () => {
+    assert.equal(resumeOrYield(true, true), 'start')
+    assert.equal(resumeOrYield(true, false), 'start')
   })
 })

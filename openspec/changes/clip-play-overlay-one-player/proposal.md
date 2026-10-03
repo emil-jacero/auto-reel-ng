@@ -42,7 +42,7 @@ Two things in the page today do not match that.
 
 - **Edit mode's thumbnail is unchanged.** It is already a "Watch <name>" button (a second way to the Cuts panel's
   Watch); its words, its box and its requirement stay. Only the read view's control moves to the thumbnail.
-- **No autoplay on open is added or removed.** A player plays when it opens as it did; the coordinator only sees it start.
+- **No autoplay on open is added or removed.** A player does not play by itself when it opens (as before); the operator presses its Play, which the coordinator sees.
 - **No closing, queueing or resuming.** The paused player stays where it is; nothing resumes it when the other stops.
 - **No new player, no new route, no server work, no new dependency** (Principle VII). `ClipPreview`, `previews.ts`
   and the player's keys, notes and failures are untouched. No `RENDER_GRAPH_VERSION` bump.

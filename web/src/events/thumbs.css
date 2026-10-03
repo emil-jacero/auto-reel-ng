@@ -33,6 +33,75 @@
     }
   }
 
+  /*
+   * The read view's play control (`ClipWatch.tsx`, `PlayControl`): a button over the whole
+   * box, so a press or tap anywhere on the frame reaches it (the box is at least 80 x 45).
+   * Its glyph sits in a dark disc, legible over a white frame and a black one. Idle with a
+   * mouse the disc is hidden by opacity (never display, visibility or inert: the control
+   * stays in the tab order); it is seen on hover, on keyboard focus, while the player is
+   * open, and always without a fine hovering pointer.
+   */
+  .clip-play {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: white;
+    cursor: pointer;
+    /* No flash of the browser's tap highlight over the frame when the player opens. */
+    -webkit-tap-highlight-color: transparent;
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: -3px;
+    }
+  }
+
+  .clip-play-disc {
+    display: grid;
+    place-items: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    border-radius: 50%;
+    background: color-mix(in oklab, black 62%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklab, white 55%, transparent);
+    opacity: 0;
+    pointer-events: none;
+
+    & > .icon {
+      inline-size: 1rem;
+      block-size: 1rem;
+    }
+  }
+
+  .clip-play:is(:hover, :focus-visible, [aria-expanded='true']) > .clip-play-disc {
+    opacity: 1;
+  }
+
+  @media not all and (hover: hover) and (pointer: fine) {
+    .clip-play-disc {
+      opacity: 1;
+    }
+  }
+
+  /* System colors: the disc and its glyph, and the focus ring, in the user's palette. */
+  @media (forced-colors: active) {
+    .clip-play-disc {
+      forced-color-adjust: none;
+      background: Canvas;
+      color: CanvasText;
+      box-shadow: 0 0 0 1px CanvasText;
+    }
+
+    .clip-play:focus-visible {
+      outline-color: Highlight;
+    }
+  }
+
   /* Loading: a still placeholder, which shimmers only when motion is welcome (below). */
   .clip-thumb[data-state='loading'] {
     background: var(--border);

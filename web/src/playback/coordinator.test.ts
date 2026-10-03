@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { keepOneVideoPlaying, pauseOthers } from './onePlayer.ts'
-import type { VideoRoot } from './onePlayer.ts'
+import { anotherPlays, keepOneVideoPlaying, pauseOthers } from './coordinator.ts'
+import type { VideoRoot } from './coordinator.ts'
 
 /*
- * One video plays at a time on the event page (`onePlayer.ts`), run by `npm test` with
+ * One video plays at a time on the event page (`coordinator.ts`), run by `npm test` with
  * stand-ins for the root and the videos: an EventTarget, no DOM.
  */
 
@@ -38,7 +38,7 @@ class FakeRoot implements VideoRoot {
   videos(): Iterable<FakeVideo> {
     return this.all
   }
-  isVideo(target: EventTarget | null): boolean {
+  isVideo(target: EventTarget | null): target is FakeVideo {
     return target instanceof FakeVideo
   }
   video(): FakeVideo {
@@ -113,6 +113,17 @@ describe('keepOneVideoPlaying', () => {
     assert.equal(playing.paused, false)
   })
 
+  it('pauses nothing for a start that was paused again before its event was heard', () => {
+    const root = rooted()
+    keepOneVideoPlaying(root)
+    const [playing, quick] = [root.video(), root.video()]
+    playing.paused = false
+    quick.paused = true // started and paused in one task: the queued play event arrives late
+    root.dispatch(quick)
+    assert.deepEqual(playing.calls, [])
+    assert.equal(playing.paused, false)
+  })
+
   it('stops listening once removed', () => {
     const root = rooted()
     const stop = keepOneVideoPlaying(root)
@@ -136,5 +147,70 @@ describe('keepOneVideoPlaying', () => {
       root.all.map((video) => video.paused),
       [true, true, false],
     )
+  })
+})
+
+describe('every pair of the page\'s players', () => {
+  const kinds = ['movie', 'read-view clip', 'edit-mode preview', 'timeline'] as const
+  for (const first of kinds) {
+    for (const second of kinds) {
+      if (first === second) {
+        continue
+      }
+      it(`${second} starting pauses ${first}, and only pauses it`, () => {
+        const root = rooted()
+        keepOneVideoPlaying(root)
+        const players = new Map(kinds.map((kind) => [kind, root.video()]))
+        const [a, b] = [players.get(first)!, players.get(second)!]
+        a.start(root)
+        b.start(root)
+        assert.deepEqual(a.calls, ['pause'])
+        assert.equal(a.paused, true)
+        assert.equal(b.paused, false)
+        assert.deepEqual(b.calls, [])
+        for (const kind of kinds) {
+          if (kind !== first && kind !== second) {
+            assert.deepEqual(players.get(kind)!.calls, [])
+          }
+        }
+      })
+    }
+  }
+
+  it('a player started while two others play pauses both, once each', () => {
+    const root = rooted()
+    keepOneVideoPlaying(root)
+    const [a, b, c] = [root.video(), root.video(), root.video()]
+    // Two playing at once (the page was open before the listener): both are paused.
+    a.paused = false
+    b.paused = false
+    c.start(root)
+    assert.deepEqual(a.calls, ['pause'])
+    assert.deepEqual(b.calls, ['pause'])
+    assert.deepEqual(c.calls, [])
+  })
+})
+
+describe('anotherPlays', () => {
+  it('is false for a lone playing self', () => {
+    const root = rooted()
+    const self = root.video()
+    self.paused = false
+    assert.equal(anotherPlays(self, root.all), false)
+  })
+
+  it('is true with one other playing', () => {
+    const root = rooted()
+    const [self, other] = [root.video(), root.video()]
+    other.paused = false
+    assert.equal(anotherPlays(self, root.all), true)
+  })
+
+  it('is false when the others are paused', () => {
+    const root = rooted()
+    const [self, other] = [root.video(), root.video()]
+    self.paused = false
+    assert.equal(other.paused, true)
+    assert.equal(anotherPlays(self, root.all), false)
   })
 })

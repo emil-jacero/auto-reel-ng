@@ -68,3 +68,13 @@ export function nextClip(clips: readonly Playable[], clip: number): Position | n
   }
   return null
 }
+
+/**
+ * Whether the Timeline's video may start now. The operator's own Play always starts. A
+ * start the Timeline makes by itself (after a clip swap or a settled seek, while the
+ * operator's Play still holds) yields when another video plays: the page's one video is
+ * that one, and the Timeline's resume would be the last start and pause it.
+ */
+export function resumeOrYield(operatorAsked: boolean, anotherPlays: boolean): 'start' | 'yield' {
+  return operatorAsked || !anotherPlays ? 'start' : 'yield'
+}

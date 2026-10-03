@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { probeProxy, proxyUrl } from '../api/clipMedia'
 import { mediaErrorWords } from '../movie/labels'
-import { claimPlayback, releasePlayback } from '../playback/exclusive'
-import { nextClip, onFrame, startFrom } from './follow'
+import { anotherPlays } from '../playback/coordinator'
+import { nextClip, onFrame, resumeOrYield, startFrom } from './follow'
 import { NOT_STARTED, playbackNote } from './labels'
 import type { Notice, PlaybackNote } from './labels'
 import type { TrackClip } from './layout'
@@ -18,8 +18,9 @@ import { createCoalescer } from './scrub'
  * flash is accepted) and seeks, through the coalescer, so a scrub keeps one load or seek
  * in flight and ends at the last target. While playing, each presented frame moves the
  * playhead and skips the cuts as the movie will (`follow.ts`). One video plays on the
- * page (`playback/exclusive.ts`). A proxy that fails to play is diagnosed by one request
- * for its first byte, as the clip preview does.
+ * page (`playback/coordinator.ts`, installed in `main.tsx`); this hook only yields its own
+ * resume at a swap when another video plays. A proxy that fails to play is diagnosed by
+ * one request for its first byte, as the clip preview does.
  */
 
 export type TimelineVideo = {
@@ -80,6 +81,7 @@ export function useTimelineVideo({
   heldRef.current = held
   const wantPlay = useRef(false) // the operator asked for Play and has not paused
   const afterSettle = useRef(false) // start the video once it has arrived at its target
+  const operatorStart = useRef(false) // the pending start is the operator's own Play
   const suspended = useRef(false) // paused by a scrub
   const ownPause = useRef(false) // the hook paused a playing video itself: its `pause` event is not the operator's
   const swapping = useRef(false) // a new src is loading: events of the old one are ignored
@@ -153,7 +155,14 @@ export function useTimelineVideo({
     if (video === null || !wantPlay.current) {
       return
     }
-    claimPlayback(video)
+    const own = operatorStart.current
+    operatorStart.current = false
+    if (resumeOrYield(own, anotherPlays(video, document.querySelectorAll('video'))) === 'yield') {
+      // Another video started while this one was changing file: it keeps the page.
+      wantPlay.current = false
+      setPlaying(false)
+      return
+    }
     video.play().catch((error: unknown) => {
       if (error instanceof DOMException && error.name === 'AbortError') {
         return // a seek or a swap interrupted it on purpose
@@ -196,6 +205,7 @@ export function useTimelineVideo({
   const stopPlaying = useCallback(() => {
     wantPlay.current = false
     afterSettle.current = false
+    operatorStart.current = false
     setPlaying(false)
     disarm()
     videoRef.current?.pause()
@@ -305,9 +315,6 @@ export function useTimelineVideo({
       },
       onPlay() {
         ownPause.current = false // a pause that raised no event leaves nothing behind
-        if (videoRef.current !== null) {
-          claimPlayback(videoRef.current)
-        }
       },
       onPlaying() {
         arm()
@@ -383,6 +390,7 @@ export function useTimelineVideo({
     }
     setNote(null)
     wantPlay.current = true
+    operatorStart.current = true
     setPlaying(true)
     afterSettle.current = true
     playhead.set(start)
@@ -427,7 +435,6 @@ export function useTimelineVideo({
       ownPause.current = false
       if (video !== null) {
         video.pause()
-        releasePlayback(video)
         video.removeAttribute('src')
         video.load()
       }

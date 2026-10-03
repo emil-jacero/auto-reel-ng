@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { canWatch, watchedAfterRead } from './watch.ts'
+import { playName } from '../preview/playback.ts'
+import { canWatch, thumbControlName, watchedAfterRead } from './watch.ts'
 
 /*
  * What the event page's read view offers Watch for, and what a re-read does to an open
@@ -59,5 +60,25 @@ describe('watchedAfterRead', () => {
 
   it('gives equal output for the same input twice', () => {
     assert.equal(watchedAfterRead('b.mp4', chapters), watchedAfterRead('b.mp4', chapters))
+  })
+})
+
+describe('thumbControlName', () => {
+  it('is Play <name> closed and Hide player of <name> open', () => {
+    assert.equal(thumbControlName('s1710001.mp4', false), 'Play s1710001.mp4')
+    assert.equal(thumbControlName('s1710001.mp4', true), 'Hide player of s1710001.mp4')
+  })
+
+  it('never equals the open player\'s own Play or Pause name', () => {
+    const names = [
+      's1710001.mp4',
+      'raw/s1710001.mp4',
+      'a-very-long-clip-name-of-forty-characters.mp4',
+    ]
+    for (const name of names) {
+      const own = [playName(name, false), playName(name, true)]
+      // Open, the player is on the page: the control must differ from both of its names.
+      assert.ok(!own.includes(thumbControlName(name, true)), name)
+    }
   })
 })

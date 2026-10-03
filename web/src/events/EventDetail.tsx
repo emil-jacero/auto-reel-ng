@@ -24,7 +24,7 @@ import { Icon } from '../ui/Icon'
 import { Pill } from '../ui/Pill'
 import { LoadStatus } from '../ui/Skeleton'
 import { ClipThumb } from './ClipThumb'
-import { LiveRegion, NO_TRIMS, PlayerRow, WatchButton, createAnnouncer } from './ClipWatch'
+import { LiveRegion, NO_TRIMS, PlayControl, PlayerRow, createAnnouncer } from './ClipWatch'
 import {
   ClipName,
   ClipStatusPills,
@@ -51,7 +51,6 @@ import {
   withVerdictUnread,
 } from './loadState'
 import type { Failure, LoadOptions, LoadState, Verdict, VerdictUnread } from './loadState'
-import { documentRoot, keepOneVideoPlaying } from './onePlayer'
 import { ThumbHealthContext, useThumbHealth } from './thumbHealth'
 import { FAILURE_LOOK } from './tones'
 import { createVerdictFlight } from './verdictFlight'
@@ -252,10 +251,6 @@ function EventDetailBody({
   }, [load])
 
   useEffect(() => () => verdictFlight.abort(), [verdictFlight])
-
-  // One video plays at a time: the Movie section's and an open clip's player can both
-  // exist here, and a started one pauses the other (`onePlayer.ts`).
-  useEffect(() => keepOneVideoPlaying(documentRoot(document)), [])
 
   // Where focus goes when a read removes the control that held it and no row is left.
   const focusPage = useCallback(() => headingRef.current?.focus(), [])
@@ -835,19 +830,25 @@ function ChapterPanel({
                     {index < played.length ? index + 1 : null}
                   </td>
                   <td role="cell" className="cell-thumb">
-                    <ClipThumb eventId={eventId} clip={clip} name={name} />
+                    <ClipThumb
+                      eventId={eventId}
+                      clip={clip}
+                      name={name}
+                      overlay={
+                        canWatch(clip) ? (
+                          <PlayControl
+                            previews={previews}
+                            identity={clip.identity}
+                            name={name}
+                            watchId={watchId}
+                            playerId={playerId}
+                          />
+                        ) : null
+                      }
+                    />
                   </td>
                   <td role="cell" className="cell-file">
                     <ClipName name={name} />
-                    {canWatch(clip) && (
-                      <WatchButton
-                        previews={previews}
-                        identity={clip.identity}
-                        name={name}
-                        watchId={watchId}
-                        playerId={playerId}
-                      />
-                    )}
                     <ReadCuts cuts={trims} name={name} />
                   </td>
                   <td role="cell" className="cell-status">

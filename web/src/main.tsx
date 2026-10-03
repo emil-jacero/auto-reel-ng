@@ -5,11 +5,15 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
+import { documentRoot, keepOneVideoPlaying } from './playback/coordinator'
 
 const container = document.getElementById('root')
 if (container === null) {
   throw new Error('index.html is missing #root')
 }
+
+// One video plays on the page, whichever players it holds (playback/coordinator.ts).
+keepOneVideoPlaying(documentRoot(document))
 
 createRoot(container).render(
   <StrictMode>
