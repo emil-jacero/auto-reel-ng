@@ -63,6 +63,10 @@ EXPECTED_MODELS = {
     "EventFailure",
     "EventDetailOut",
     "ClipStatus",
+    "ProxyState",
+    "ProxyOut",
+    "ProxyFactsOut",
+    "ProxyFilmstripOut",
     "AnalysisOut",
     "EditorialWriteResult",
     "JobOut",
@@ -184,6 +188,64 @@ def test_the_clip_duration_is_published_as_a_nullable_optional_number() -> None:
 
     assert clip["properties"]["duration"]["anyOf"] == [{"type": "number"}, {"type": "null"}]
     assert "duration" not in clip["required"]
+
+
+def test_the_clip_proxy_is_published_as_a_nullable_optional_object() -> None:
+    """A client treats a null and an absent ``proxy`` alike as "not known" (never ``absent``)."""
+    clip = build_openapi_schema()["components"]["schemas"]["ClipOut"]
+
+    assert clip["properties"]["proxy"]["anyOf"] == [
+        {"$ref": "#/components/schemas/ProxyOut"},
+        {"type": "null"},
+    ]
+    assert "proxy" not in clip["required"]
+
+
+def test_the_proxy_state_is_published_as_a_closed_enumeration() -> None:
+    """Four values, so the generated client's union is exhaustive (D-8, §4.10)."""
+    models = build_openapi_schema()["components"]["schemas"]
+
+    assert models["ProxyOut"]["properties"]["state"]["$ref"].endswith("/ProxyState")
+    assert "state" in models["ProxyOut"]["required"]
+    assert models["ProxyState"]["type"] == "string"
+    assert models["ProxyState"]["enum"] == ["absent", "ready", "stale", "failed"]
+
+
+def test_the_proxy_members_other_than_state_are_optional_and_nullable() -> None:
+    proxy = build_openapi_schema()["components"]["schemas"]["ProxyOut"]
+
+    assert set(proxy["required"]) == {"state"}
+    for name in ("facts", "version", "reason"):
+        assert {"type": "null"} in proxy["properties"][name]["anyOf"], name
+    assert proxy["properties"]["version"]["anyOf"][0] == {"type": "string"}
+    assert proxy["properties"]["reason"]["anyOf"][0] == {"type": "string"}
+    assert proxy["properties"]["facts"]["anyOf"][0] == {
+        "$ref": "#/components/schemas/ProxyFactsOut"
+    }
+
+
+def test_the_proxy_facts_require_every_fact_and_the_frame_rate_is_a_fraction_of_integers() -> None:
+    models = build_openapi_schema()["components"]["schemas"]
+    facts = models["ProxyFactsOut"]
+
+    assert set(facts["required"]) == set(facts["properties"])
+    assert facts["properties"]["duration"]["type"] == "number"
+    for name in ("fps_num", "fps_den", "width", "height"):
+        assert facts["properties"][name]["type"] == "integer", name
+    # Facts the probe could not give are null, never defaulted: required but nullable.
+    for name, kind in (("vfr", "boolean"), ("rotation", "integer"), ("audio_codec", "string")):
+        assert facts["properties"][name]["anyOf"] == [{"type": kind}, {"type": "null"}], name
+    film = models["ProxyFilmstripOut"]
+    assert set(film["required"]) == {"tile_width", "tile_height", "columns", "tiles", "interval"}
+    assert {film["properties"][name]["type"] for name in film["required"]} == {"integer"}
+
+
+def test_the_events_list_does_not_reference_the_proxy_models() -> None:
+    """The list keeps its clip counts: no per-clip proxy fact on it."""
+    content = build_openapi_schema()["paths"]["/api/v1/events"]["get"]["responses"]["200"][
+        "content"
+    ]
+    assert "Proxy" not in json.dumps(content)
 
 
 def test_job_status_fields_are_published_as_the_job_status_enumeration() -> None:

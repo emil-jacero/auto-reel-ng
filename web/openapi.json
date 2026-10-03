@@ -3097,6 +3097,16 @@
             ],
             "title": "Duration"
           },
+          "proxy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProxyOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "excluded": {
             "type": "boolean",
             "title": "Excluded",
@@ -3109,7 +3119,7 @@
           "status"
         ],
         "title": "ClipOut",
-        "description": "One clip: identity, reconcile status, and the file facts a reorder view needs.\n\n``size`` (bytes) and ``mtime`` (timezone-aware UTC) come from the clip's own\ndirectory entry — **file** facts, never media facts. Nothing here is decoded or\nprobed, so the detail response stays probe-free (Principle IV); dimensions and codec\nbelong to the analysis cache, not this shape. Both are ``None`` for a clip the\ndocument references but disk does not have: absence is reported, never fabricated as\na zero or an epoch (Principle I).\n\n``duration`` (seconds) is the one media fact, and it is **not probed here**: it is the\nnumber the thumbnail operation measured for this exact file (name, size, mtime), read\nfrom the thumbnail cache's sidecar. ``None`` means unknown — a missing clip, a\nthumbnail not yet made for the file as it is now, an unusable sidecar or\n``thumbnails`` configuration — never zero or a guess. It is the probe's number, so a\nbrowser may read a few tens of milliseconds more from the same file.\n\n``status`` is typed with reconcile's own closed vocabulary, so the schema\npublishes the enumeration and generated clients get an exhaustive union\n(D-8, §4.10). ``ClipStatus`` is a ``StrEnum``: the wire values are unchanged.\n\n``excluded`` is a flag **beside** ``status``, not a member of it: it is true when the\ndocument's ``clips`` map marks the identity ``exclude: true``, so a render drops the\nclip from the movie without probing it. An excluded clip reports its own status (an\nexcluded clip whose file is gone is ``missing`` and ``excluded``). It is false for a\nNEW or IGNORED clip (the document holds no properties for a clip no chapter lists)\nand for every clip of an event without a ``reel.yaml``."
+        "description": "One clip: identity, reconcile status, and the file facts a reorder view needs.\n\n``size`` (bytes) and ``mtime`` (timezone-aware UTC) come from the clip's own\ndirectory entry — **file** facts, never media facts. Nothing here is decoded or\nprobed, so the detail response stays probe-free (Principle IV); dimensions and codec\nbelong to the analysis cache, not this shape. Both are ``None`` for a clip the\ndocument references but disk does not have: absence is reported, never fabricated as\na zero or an epoch (Principle I).\n\n``duration`` (seconds) is the first media fact, and it is **not probed here**: it is the\nnumber the thumbnail operation measured for this exact file (name, size, mtime), read\nfrom the thumbnail cache's sidecar. ``None`` means unknown — a missing clip, a\nthumbnail not yet made for the file as it is now, an unusable sidecar or\n``thumbnails`` configuration — never zero or a guess. It is the probe's number, so a\nbrowser may read a few tens of milliseconds more from the same file.\n\n``proxy`` is the second media-fact exception, again **not probed here**: it is the state\nof the clip's proxy in the proxy cache (D-21) and, when ``ready``, the facts the proxy job\nrecorded (see :class:`ProxyOut`). ``None`` means unknown — never ``absent`` — for a\nmissing clip and for every clip when the ``proxies`` configuration or the cache cannot be\nread. ``proxy.facts.duration`` is the proxy job's number and is independent of\n``duration`` above (the thumbnail sidecar's), which is unchanged.\n\n``status`` is typed with reconcile's own closed vocabulary, so the schema\npublishes the enumeration and generated clients get an exhaustive union\n(D-8, §4.10). ``ClipStatus`` is a ``StrEnum``: the wire values are unchanged.\n\n``excluded`` is a flag **beside** ``status``, not a member of it: it is true when the\ndocument's ``clips`` map marks the identity ``exclude: true``, so a render drops the\nclip from the movie without probing it. An excluded clip reports its own status (an\nexcluded clip whose file is gone is ``missing`` and ``excluded``). It is false for a\nNEW or IGNORED clip (the document holds no properties for a clip no chapter lists)\nand for every clip of an event without a ``reel.yaml``."
       },
       "ClipPropertiesBody": {
         "properties": {
@@ -3941,6 +3951,170 @@
         ],
         "title": "ProblemOut",
         "description": "The shared problem body every deliberate error uses (D-A6), as published in the schema.\n\nSchema-only: routes still return ``problem.problem_response``'s ``JSONResponse``,\nwhich FastAPI does not validate against this model. ``extra=\"allow\"`` keeps an\nundeclared route-specific field legal; a field clients branch on is declared\nbelow as a named optional field, so the generated types carry it without a cast."
+      },
+      "ProxyFactsOut": {
+        "properties": {
+          "duration": {
+            "type": "number",
+            "title": "Duration"
+          },
+          "fps_num": {
+            "type": "integer",
+            "title": "Fps Num"
+          },
+          "fps_den": {
+            "type": "integer",
+            "title": "Fps Den"
+          },
+          "vfr": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vfr"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "rotation": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotation"
+          },
+          "audio_codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Codec"
+          },
+          "filmstrip": {
+            "$ref": "#/components/schemas/ProxyFilmstripOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "duration",
+          "fps_num",
+          "fps_den",
+          "vfr",
+          "width",
+          "height",
+          "rotation",
+          "audio_codec",
+          "filmstrip"
+        ],
+        "title": "ProxyFactsOut",
+        "description": "The media facts the proxy job recorded for a clip, copied, never computed or defaulted.\n\n``duration`` is the **source's** probed duration (seconds), not the proxy's, which can be\na few tens of milliseconds longer. ``fps_num``/``fps_den`` are the frame rate as the exact\nfraction (30000/1001, not 29.97). ``vfr`` is ``None`` when the container gave no average\nrate to compare. ``width``/``height`` are the proxy's displayed size (sample aspect ratio\nand display rotation applied). ``rotation`` is the source's display rotation as the probe\nreported it (0 to 359), ``None`` when the source declares none; ``audio_codec`` is the\nsource's, ``None`` when it has no audio."
+      },
+      "ProxyFilmstripOut": {
+        "properties": {
+          "tile_width": {
+            "type": "integer",
+            "title": "Tile Width"
+          },
+          "tile_height": {
+            "type": "integer",
+            "title": "Tile Height"
+          },
+          "columns": {
+            "type": "integer",
+            "title": "Columns"
+          },
+          "tiles": {
+            "type": "integer",
+            "title": "Tiles"
+          },
+          "interval": {
+            "type": "integer",
+            "title": "Interval"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tile_width",
+          "tile_height",
+          "columns",
+          "tiles",
+          "interval"
+        ],
+        "title": "ProxyFilmstripOut",
+        "description": "The filmstrip sprite's geometry, as the proxy job recorded it.\n\nTile ``k`` is at column ``k % columns`` and row ``k // columns`` of the sprite, each\n``tile_width`` by ``tile_height`` pixels; ``interval`` is the whole seconds of footage per\ntile and ``tiles`` the count."
+      },
+      "ProxyOut": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/ProxyState"
+          },
+          "facts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProxyFactsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "ProxyOut",
+        "description": "A clip's proxy state, read from the proxy cache with ``stat`` and one JSON read.\n\n``facts`` and ``version`` are set only when ``state`` is ``ready``: ``version`` is the\nproxy file's entity tag without quotes (``\"{size:x}-{mtime_ns:x}\"``), the tag the media\nroutes send, so a client can put it in the media URL as ``v`` (D-15). ``reason`` is set\nonly when ``failed``: one line, no server path. All three are nullable and optional."
+      },
+      "ProxyState": {
+        "type": "string",
+        "enum": [
+          "absent",
+          "ready",
+          "stale",
+          "failed"
+        ],
+        "title": "ProxyState",
+        "description": "A clip's proxy state: a closed vocabulary the schema publishes (D-8, §4.10, D-21).\n\n``absent``: no usable entry and nothing recorded (never prepared, or the file or the\nproxy version changed, which moves the cache key). ``ready``: a usable proxy, filmstrip\nand facts. ``stale``: an entry exists for the clip as it is now but cannot be used\n(damaged facts, an empty file). ``failed``: the last attempt failed and nothing usable\nexists. The wire values are the engine's :class:`~auto_reel_ng.proxies.ProxyStatus`."
       },
       "SegmentOut": {
         "properties": {

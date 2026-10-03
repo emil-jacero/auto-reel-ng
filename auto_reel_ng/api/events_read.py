@@ -28,7 +28,7 @@ from ..config.project import (
     load_project_config,
     resolve_look_defaults,
 )
-from ..errors import EventMetadataError, ReelError, ThumbnailError
+from ..errors import EventMetadataError, ProxyCacheError, ProxyError, ReelError, ThumbnailError
 from ..event.discovery import (
     ClipOrder,
     DiskListing,
@@ -48,7 +48,13 @@ from ..ffmpeg.runtime import FfmpegRuntime
 from ..ingest import EventRef, get_layout
 from ..persistence.job_store import JobStore
 from ..persistence.models import Job
-from ..proxies.settings import resolve_proxy_settings
+from ..proxies import (
+    ProxyReading,
+    ProxySettings,
+    ProxyStatus,
+    read_proxy_state,
+    resolve_proxy_settings,
+)
 from ..proxies.spec import FILMSTRIP_FILENAME, PROXY_FILENAME, entry_dir
 from ..reel import ReelDocument, is_excluded, load_document
 from ..render import output_relpath
@@ -61,6 +67,7 @@ from ..thumbs import (
     resolve_thumbnail_settings,
     thumbnail_path,
 )
+from .entity_tag import entity_tag
 from .schemas import (
     AnalysisOut,
     ChapterOut,
@@ -71,6 +78,10 @@ from .schemas import (
     EventRowOut,
     EventSummaryOut,
     JobSummaryOut,
+    ProxyFactsOut,
+    ProxyFilmstripOut,
+    ProxyOut,
+    ProxyState,
     SegmentOut,
     StalenessOut,
 )
@@ -381,6 +392,65 @@ def _recorded_duration(path: Path, thumbnails: Optional[ThumbnailSettings]) -> O
     return recorded_duration(target)
 
 
+def _proxy_out(reading: ProxyReading) -> Optional[ProxyOut]:
+    """The wire shape of a proxy reading; ``None`` when a ready proxy cannot be statted for its tag.
+
+    ``version`` is the proxy file's entity tag (the media routes' formula, unquoted), so the
+    client can put it in the media URL as ``v`` without a request per clip.
+    """
+    state = ProxyState(reading.status.value)
+    if reading.status is ProxyStatus.FAILED:
+        return ProxyOut(state=state, reason=reading.reason)
+    if reading.status is not ProxyStatus.READY:
+        return ProxyOut(state=state)
+    facts, film, proxy = reading.facts, reading.filmstrip, reading.proxy_path
+    assert (
+        facts is not None and film is not None and proxy is not None
+    )  # nosec B101 - ready has all
+    try:
+        version = entity_tag(proxy.stat())
+    except OSError:  # the proxy vanished between the read and this stat: unknown
+        return None
+    return ProxyOut(
+        state=state,
+        version=version,
+        facts=ProxyFactsOut(
+            duration=facts.duration,
+            fps_num=facts.fps_num,
+            fps_den=facts.fps_den,
+            vfr=facts.vfr,
+            width=facts.width,
+            height=facts.height,
+            rotation=facts.rotation,
+            audio_codec=facts.audio_codec,
+            filmstrip=ProxyFilmstripOut(
+                tile_width=film.tile_width,
+                tile_height=film.tile_height,
+                columns=film.columns,
+                tiles=film.tiles,
+                interval=film.interval,
+            ),
+        ),
+    )
+
+
+def _clip_proxy(path: Path, proxies: Optional[ProxySettings]) -> Optional[ProxyOut]:
+    """The proxy state of the clip at ``path`` from the proxy cache, else ``None`` (unknown).
+
+    ``stat`` and one small JSON read per clip (``proxies.read_proxy_state``): no ffprobe, no
+    ffmpeg, no cache write, no directory listing. ``None`` — unknown, never ``absent`` — also
+    covers the ``proxies`` settings being unresolved, a cache that cannot be read and a clip
+    that cannot be statted for its key.
+    """
+    if proxies is None:
+        return None
+    try:
+        return _proxy_out(read_proxy_state(path, settings=proxies))
+    except (ProxyCacheError, ProxyError) as exc:
+        logger.debug("proxy state of %s unknown: %s", path.name, exc)
+        return None
+
+
 def _clip_out(
     event_dir: Path,
     identity: str,
@@ -388,8 +458,9 @@ def _clip_out(
     *,
     excluded: bool = False,
     thumbnails: Optional[ThumbnailSettings] = None,
+    proxies: Optional[ProxySettings] = None,
 ) -> ClipOut:
-    """One clip with its file facts and recorded duration; a MISSING clip is not statted."""
+    """One clip with its file facts, recorded duration and proxy state; MISSING is not statted."""
     if status is ClipStatus.MISSING:
         return ClipOut(identity=identity, status=status, excluded=excluded)
     # The identity *is* the event-relative POSIX path (the mapping render/ uses),
@@ -402,6 +473,7 @@ def _clip_out(
         size=size,
         mtime=mtime,
         duration=_recorded_duration(path, thumbnails),
+        proxy=_clip_proxy(path, proxies),
         excluded=excluded,
     )
 
@@ -422,13 +494,27 @@ def _thumbnail_settings(
         return None
 
 
-def _build_chapters(
+def _proxy_settings(settings: ApiSettings, config: ProjectConfig) -> Optional[ProxySettings]:
+    """The resolved ``proxies`` settings, or ``None`` (one warning) when they are unusable.
+
+    The detail's proxy state is a hint, so a ``proxies`` section the proxy commands refuse
+    leaves every clip's state unknown instead of failing the response, as for the thumbnails.
+    """
+    try:
+        return resolve_proxy_settings(config, settings.project_root)
+    except ConfigError as exc:
+        logger.warning("clip proxy states unknown: %s", exc)
+        return None
+
+
+def _build_chapters(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     document: Optional[ReelDocument],
     listing: DiskListing,
     result: ReconcileResult,
     event_dir: Path,
     order: ClipOrder,
     thumbnails: Optional[ThumbnailSettings] = None,
+    proxies: Optional[ProxySettings] = None,
 ) -> List[ChapterOut]:
     """Ordered chapters/clips (D-A3): the document's structure when one exists,
 
@@ -439,15 +525,16 @@ def _build_chapters(
     clips, in the document's own ``sort`` when it sets one, else the project's sort
     rule ``order``. The disk listing's own grouping when there is no document yet
     (the seeding case). Nothing is adopted or written here.
-    Each clip carries the file facts ``_clip_out`` stats and the duration it reads from the
-    thumbnail cache's sidecar under ``thumbnails`` — never a probe.
+    Each clip carries the file facts ``_clip_out`` stats, the duration it reads from the
+    thumbnail cache's sidecar under ``thumbnails`` and the proxy state it reads from the proxy
+    cache under ``proxies`` — never a probe.
     """
     if document is None:
         return [
             ChapterOut(
                 name=name,
                 clips=[
-                    _clip_out(event_dir, i, ClipStatus.NEW, thumbnails=thumbnails)
+                    _clip_out(event_dir, i, ClipStatus.NEW, thumbnails=thumbnails, proxies=proxies)
                     for i in order_clips(identities, event_dir, order)
                 ],
             )
@@ -468,6 +555,7 @@ def _build_chapters(
                     status,
                     excluded=_is_excluded(document, ref.identity),
                     thumbnails=thumbnails,
+                    proxies=proxies,
                 )
             )
         chapters.append(ChapterOut(name=chapter.name, clips=clips))
@@ -479,7 +567,11 @@ def _build_chapters(
     ):
         clips = [
             _clip_out(
-                event_dir, i, result.classification.get(i, ClipStatus.NEW), thumbnails=thumbnails
+                event_dir,
+                i,
+                result.classification.get(i, ClipStatus.NEW),
+                thumbnails=thumbnails,
+                proxies=proxies,
             )
             for i in identities
         ]
@@ -567,7 +659,13 @@ def get_event(
         document, listing, result = _load_for_reconcile(event_dir, config.sort)
         title, event_date, location = _title_date_location(event_dir, document)
         chapters = _build_chapters(
-            document, listing, result, event_dir, config.sort, _thumbnail_settings(settings, config)
+            document,
+            listing,
+            result,
+            event_dir,
+            config.sort,
+            _thumbnail_settings(settings, config),
+            _proxy_settings(settings, config),
         )
         staleness = staleness_for(settings, event_dir, document, runtime, look_defaults)
     except (ReelError, OSError) as exc:
