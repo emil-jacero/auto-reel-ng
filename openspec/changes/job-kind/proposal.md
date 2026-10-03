@@ -69,3 +69,10 @@ None.
 - A `priority` argument on `submit` for "lower priority than renders": `priority` is already a column and
   `claim_next` already orders by it; the proxy enqueue path adds the argument where it first has a use.
 - Per-kind concurrency limits or pools; a database-level constraint on the set of kinds.
+
+## Hand-off to `proxy-job` (hard requirement)
+
+The claim loop bounds in-flight jobs of every kind by `total_capacity`, and a handler takes its own CPU token, so
+blocked proxy jobs can hold claim slots and delay a render (see design.md, "The worker dispatches by kind").
+`proxy-job` MUST fix this (token before claim, or a separate in-flight bound for handler kinds) and MUST test that
+a render is still claimed while the proxy concurrency limit is full.
