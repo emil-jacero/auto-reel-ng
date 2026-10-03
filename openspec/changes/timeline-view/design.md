@@ -134,6 +134,11 @@ address and, on `loadedmetadata`, `currentTime`; a target in the same clip sets 
 (Play has sound), `playsInline`, no native controls. While scrubbing the element is paused; the "presented frame"
 for the gate is read with `requestVideoFrameCallback` where available (both target browsers have it) and falls back
 to `seeked`.
+A seek goes a quarter frame into the wanted frame (`seekSeconds`): frame times are whole milliseconds, and at 29.97 fps
+frame 1 starts at 33.37 ms but is listed at 33 ms, so seeking to the listed time can show frame 0. The frame callbacks are
+cancelled whenever `src` changes or playing stops (`disarm`): Firefox never calls a callback of the old source, so a
+chain that kept its handle would never be re-armed. The pointer handlers that scrub from the ruler are also on the
+playhead's grip, which sits over the ruler: a drag that starts on it is the first thing a user tries.
 **Rationale**: smallest thing that can meet the gate; the boundary flash is an accepted decision (brief).
 **If the gate fails**: report the measured numbers and the shape variants tried in the verification notes; the remedy is
 `proxy-encode`'s (GOP 0.5 s = 46 fps for +16 % disk; E1 pins the shape), not a different timeline.
@@ -146,11 +151,14 @@ Firefox >= 155 (`localhost/pcm-audio-research:pw163` has 155 per the PCM report;
 `auto-reel-media` clips (real Sony 1080p25 PCM, a rotated phone clip, a legacy MPEG-4 one) whose proxies were made by
 the real Prepare button and a real worker.
 
-- **Scrub**: a mouse drag over one clip's span on the ruler, 2 s sweep, 60 `mousemove`s per sweep, one per
-  `requestAnimationFrame`; frames counted with `requestVideoFrameCallback` (distinct `mediaTime`s presented) divided
-  by the sweep's duration; 5 sweeps per clip, the median over all sweeps of all sampled clips.
+- **Scrub**: a mouse drag over one clip's span on the ruler, 2 s sweep; the clip is zoomed to fill the track, the pointer's x
+  follows the clock (not a fixed number of moves), so the page gets a move per frame and the browser coalesces the rest;
+  frames counted with `requestVideoFrameCallback` (distinct `mediaTime`s presented) divided by the sweep's duration;
+  5 sweeps per clip, the median over all sweeps of all ten sampled clips (one per archive class: Sony 1080p25 and 4K25 PCM,
+  1080p50, 4K50 at 119 Mb/s, portrait, two rotated, a 720p MSNV, 1080p25, MPEG-4).
 - **Step**: focus the playhead, press Right 40 times 1 s apart; time from `keydown` to the next
-  `requestVideoFrameCallback` presenting a new `mediaTime`; the 90th percentile.
+  `requestVideoFrameCallback` presenting a frame; the 90th percentile over four sources (Sony 1080p25, 1080p50, 4K50,
+  portrait: 160 steps).
 - Both are repeated once on an idle host. A host-load note goes with the numbers (the research saw 16 fps on a loaded host).
 - Also recorded: first frame after a swap; the DOM clip count at Fit for a generated 400-clip event; the bundle delta.
 
@@ -203,16 +211,19 @@ event can coexist, and the store/WS/reads carry both.
   the last render's outcome. A proxy job that ended before the page was opened is not shown (nothing reads it);
   the clips' states say what is missing.
 - Prepare's words: `JobMeter` gains an optional `label` (the `<progress>`'s accessible name, "Render progress" by
-  default, "Proxy progress" here) and the pill words come from a per-kind table (`JOB_STATUS_LABEL` is render-worded:
-  "Rendering"; proxies: "Preparing proxies", "Proxies ready", "Preparing failed", "Preparing canceled"), a
-  `Record` over `JobStatus` so a new status fails `tsc`.
-- Completion: when the shown proxy job reaches `done` (live or reconciled), Prepare calls the page's `onFinished`
-  (the same quiet `reread` the render region uses). A failed or canceled job leaves the counts as the next read gives
-  them; the button stays. No toast (nothing tracked); status changes go to a `role="status"` region inside the
+  default, "Proxy progress" here) and `JobState` gains a `statusLabel` table for the pill words (`JOB_STATUS_LABEL` is
+  render-worded: "Rendering"; `timeline/labels.ts` has `PROXY_STATUS_LABEL`: "Preparing proxies", "Proxies ready",
+  "Preparing failed", "Preparing canceled"), a `Record` over `JobStatus` so a new status fails `tsc`. The table sits in
+  `timeline/labels.ts`, not `jobs/labels.ts`, because that file imports a component module and `npm test` could not
+  load it.
+- Completion: when the shown proxy job ends while the page watches it (live or reconciled), Prepare calls the page's
+  `onFinished` (the same quiet `reread` the render region uses), whichever way it ended. A failed or canceled job
+  leaves the counts as the next read gives them; the button stays. A job that ended before the page opened is not shown. No toast (nothing tracked); status changes go to a `role="status"` region inside the
   section, as the render region does.
 - Idempotency: pressing twice sends one request (a ref set in the click handler, like `RenderControl`); a re-read never
   enqueues; a 409 shows the running job; a worker restart mid-job is the `proxy-job` change's requeue and shows as
   the job's `requeue_count`, which `choose` already handles.
+
 **Rationale**: the filter is the smallest change that keeps every existing screen true; touching `store.ts` would
 risk the WS lifecycle tests for no gain.
 
