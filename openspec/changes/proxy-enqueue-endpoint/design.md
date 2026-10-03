@@ -200,14 +200,15 @@ a `kind`. The latest-job model's field is the same type, so the "identical defin
         503: {"model": ProblemOut},
     },
 )
-@_job_store_unreachable
+@job_store_unreachable
 def enqueue_proxies(event_id: str, request: Request) -> Union[JobOut, ProxiesFreshResult, Response]:
-    # 404 listed_event_dir -> 502 reconcile/OSError (detail's mapping) -> active proxy job 409
-    # -> proxy_clips + proxy state (stat/JSON) -> all ready: 200 -> store.submit(kind=PROXY)
+    # 404 listed_event_dir -> 502 proxy_clips/OSError (unreadable_disk) -> active proxy job 409
+    # -> proxies_fresh (stat/JSON; 502 on a cache fault) -> all ready: 200 -> store.submit(kind=PROXY)
 ```
 
-`_job_store_unreachable` currently lives in `routes/jobs.py`; the route reuses it by moving it to a shared
-module the two route files import (one definition of the 503, not two).
+`_job_store_unreachable` lived in `routes/jobs.py`; it moved to `routes/guards.py` (`job_store_unreachable`), which
+both route files import (one definition of the 503, not two). The clip set and freshness read live in
+`api/proxy_read.py`, because `events_read.py` is at pylint's module-size limit.
 
 ## Risks / Trade-offs
 
@@ -221,6 +222,10 @@ module the two route files import (one definition of the 503, not two).
 - **[`latest_job` semantic change for an event with proxy jobs]** only observable after this change, because
   before it no proxy job can be enqueued through the API. → The scenarios of "An event's latest job is its latest
   render job" pin it, including the all-proxy event (`null`).
+- **[A job row of a kind this build does not name]** `jobs.kind` is free text on purpose (`job-kind`), but `JobOut.kind`
+  is the closed enumeration, so serializing a row written by a newer build raises instead of inventing a value
+  (Principle I). It surfaces in the jobs list and the socket as a failure, not a wrong kind. Only a mixed-version
+  deployment can produce such a row; widening the enumeration is the fix when a third kind is added.
 - **[Disagreement between the 200 and the job on the clip set]** → one shared definition (task 1.1 gate row,
   task 2.1 test of the set on a mixed event).
 - **[A 200 hides a proxy that became stale since the page read]** the read is made on the request, from disk, so
