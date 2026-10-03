@@ -8,6 +8,8 @@ import { Icon } from '../ui/Icon'
 import { PlayheadReadout } from './Playhead'
 import { PrepareButton, PrepareJob } from './Prepare'
 import type { PrepareControl } from './Prepare'
+import type { AnalysisControl } from './overlays/control'
+import { useSuggestions } from './overlays/useSuggestions'
 import { Track } from './Track'
 import type { ScrubPhase } from './Track'
 import type { KeyAction } from './keys'
@@ -64,12 +66,15 @@ export function Timeline({
   chapterNames,
   cuts,
   prepare,
+  analysis,
 }: {
   eventId: string
   clips: readonly TrackClip[]
   chapterNames: readonly string[]
   cuts: CutsRead
   prepare: PrepareControl
+  /** The analysis lane (`overlays/`): absent, the Timeline has none and reads no analysis. */
+  analysis?: AnalysisControl
 }) {
   const lay = useMemo(() => trackLayout(clips), [clips])
   const facts = useMemo(() => clips.map((clip) => clip.facts), [clips])
@@ -229,6 +234,8 @@ export function Timeline({
     [],
   )
 
+  const suggestions = useSuggestions(analysis, { clips, lay, pps, seekTo: video.seekTo })
+
   const atFit = pps <= fit + 1e-9
   const atMax = pps >= MAX_PPS - 1e-9
   const note = video.note
@@ -301,12 +308,15 @@ export function Timeline({
         onKey={onKey}
         onTrackKey={onTrackKey}
         onScrub={scrubAt}
+        lane={suggestions.lane}
       />
 
       <p className="tl-summary">
         {cuts.cuts !== null && movieWords(movieMs(clips, cuts.cuts), lay.totalMs)}
         {cutsPending && CUTS_READING}
       </p>
+
+      {suggestions.strip}
 
       <p className="visually-hidden" role="status">
         {announcement}

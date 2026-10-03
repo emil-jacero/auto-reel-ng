@@ -1,5 +1,5 @@
 import { useId, useRef } from 'react'
-import type { KeyboardEvent, PointerEvent, RefObject } from 'react'
+import type { CSSProperties, KeyboardEvent, PointerEvent, RefObject } from 'react'
 
 import { formatTime, reasonWords } from '../cuts/times'
 import { Filmstrip } from './Filmstrip'
@@ -10,6 +10,7 @@ import { cutLabel } from './layout'
 import type { ChapterBand, TrackClip } from './layout'
 import { timeToPx, visibleClips, visibleTicks } from './model'
 import type { Layout } from './model'
+import type { LaneSlot } from './overlays/control'
 import type { Playhead } from './playhead'
 import type { VisibleRange } from './useVisibleRange'
 
@@ -119,6 +120,7 @@ export function Track({
   onKey,
   onTrackKey,
   onScrub,
+  lane: analysisLane,
 }: {
   eventId: string
   clips: readonly TrackClip[]
@@ -138,6 +140,8 @@ export function Track({
   /** `+`, `-` and `0` while the track has focus. */
   onTrackKey: (key: string) => void
   onScrub: (x: number, phase: ScrubPhase) => void
+  /** The analysis lane, a row of the canvas under the clips (`overlays/`). */
+  lane?: LaneSlot
 }) {
   const base = useId()
   const canvas = useRef<HTMLDivElement>(null)
@@ -243,7 +247,16 @@ export function Track({
         }
       }}
     >
-      <div className="tl-canvas" ref={canvas} style={{ inlineSize: totalPx }}>
+      <div
+        className="tl-canvas"
+        ref={canvas}
+        style={
+          {
+            inlineSize: totalPx,
+            ...(analysisLane === undefined ? {} : { '--tl-lane-rows': analysisLane.rows }),
+          } as CSSProperties
+        }
+      >
         <div className="tl-ruler" aria-hidden="true" {...ruler}>
           {tickNodes}
         </div>
@@ -268,6 +281,11 @@ export function Track({
         <div className="tl-lane" {...lane}>
           {clipNodes}
         </div>
+        {analysisLane !== undefined && (
+          <div className="tl-analysis">
+            {analysisLane.render({ clips, lay, pps, shown })}
+          </div>
+        )}
         <PlayheadSlider
           playhead={playhead}
           clips={clips}

@@ -187,7 +187,14 @@ type Action =
   | { type: 'clip-drop'; from: ChapterKey; to: ChapterKey; identity: string; at: number }
   | { type: 'field'; field: MetadataField; value: string }
   | { type: 'date-validity'; incomplete: boolean }
-  | { type: 'cut-add'; identity: string; span: { in: number; out: number }; key: CutKey }
+  | {
+      type: 'cut-add'
+      identity: string
+      span: { in: number; out: number }
+      key: CutKey
+      /** Why: an approved suggestion's kind. Absent: a cut made by hand. */
+      reason?: string
+    }
   | { type: 'cut-remove'; identity: string; key: CutKey }
   | { type: 'cut-restore'; identity: string; key: CutKey }
   | { type: 'cut-typed'; identity: string; typed: boolean }
@@ -368,7 +375,14 @@ function reduce(state: State, action: Action): State {
       return {
         ...withDraft(
           state,
-          addCut(state.baseline, state.draft, action.identity, action.span, action.key),
+          addCut(
+            state.baseline,
+            state.draft,
+            action.identity,
+            action.span,
+            action.key,
+            action.reason,
+          ),
         ),
         nextCut: state.nextCut + 1,
       }
@@ -1269,10 +1283,10 @@ export function EventEditor({
   // changes nothing here either.
   const cutHandlers = useMemo<CutHandlers>(
     () => ({
-      onAdd: (identity, span) => {
+      onAdd: (identity, span, reason) => {
         const current = latest.current
         if (current !== null && current.pressed === null && moving.current === null) {
-          dispatch({ type: 'cut-add', identity, span, key: `a${current.nextCut + 1}` })
+          dispatch({ type: 'cut-add', identity, span, key: `a${current.nextCut + 1}`, reason })
         }
       },
       onRemove: (identity, key) => dispatch({ type: 'cut-remove', identity, key }),
