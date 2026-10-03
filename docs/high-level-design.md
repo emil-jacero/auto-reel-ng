@@ -384,6 +384,9 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   is mounted there too and shows state from the draft's cuts. **Approving, dismissing and restoring a suggestion have
   landed in Edit mode** (`timeline-overlay-decisions`): Approve adds the suggestion to the draft as a cut with its kind
   as the reason, Dismiss and Restore are the page's set; the read view offers no decision.
+  **Running times are legible and hold still** (`time-readouts-legible`, D-20 and D-16): the Timeline's readout, the clip player's
+  header, the trim tip and the movie line are written by one fixed-width clock and say what each number is (`Clip 0:00.96 of
+  0:39.84 · Event 1:02.40 of 2:29.76`); web-only.
   `proxy-enqueue-endpoint` has landed (D-21 "Enqueue over REST"): `POST /api/v1/events/{event_id}/proxies` enqueues the
   event's proxy job (201 / 200 `fresh` / 409), and a job reports its `kind` while `latest_job` stays the latest render;
   the timeline's Prepare state is its first web caller.
@@ -677,6 +680,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    API or web change; the card style, per-card fields, preview endpoint and editor read it.
    `clip-rotate-engine` has landed: `rotate` is an extra clockwise turn on top of the display rotation, applied by the
    engine on every profile (D-23; `RENDER_GRAPH_VERSION` 6); `clip-rotate-gui`, the control and the turned previews, follows.
+   `time-readouts-legible` follows on user feedback: every running time on the Timeline and in the clip player is written to a
+   fixed width by one clock and labelled in words (D-20, D-16), web-only, with no render, fingerprint, schema or job change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -944,6 +949,13 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     (`events/onePlayer.ts`; nothing is closed). A quiet re-read leaves an open player playing; a replaced clip
     continues paused at the same time; a copy built meanwhile is used by the next open, not by the open player.
     The thumbnail is not a Watch button here. The bare `<video>` is no longer a tab stop (Firefox made it one).
+  - **Amended 2026-10-03, change `time-readouts-legible`: the header says what its numbers are and holds still.** The
+    player's time reads `Clip 0:20.48 of 0:20.64` (the clock of D-20: two decimals, written to the scale of the clip's
+    length), where it read `0:20.476 / 0:20.64` in a `15ch` box that was shorter than its text; before the browser has
+    read the length it reads `Clip 0:00.00 of -:--.--`, and the first cell does not change width when the length
+    arrives. The slider's value text, "Set From" and every announcement keep the Cuts panel's form (`0:01.234`): a cut
+    is typed and spoken to the millisecond, and the header is a where-am-I, so the header shows `0:02.60` where Set From
+    writes `0:02.607`.
 - **D-17 — A local compose stack for testing** (2026-10-02, change `compose-stack`; the first, local-only
   slice of §6 phase 11). `podman compose up -d` at the repo root brings up Postgres, the migration, a seed,
   `serve` and one `worker`.
@@ -1176,6 +1188,40 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Bundle (`timeline-overlay-decisions`).** `npm run build` on `origin/main` and on this change: JS 521,304 to 522,394
     bytes (167,683 to 168,013 gzip -9, +0.3 KB), CSS unchanged (70,886; 13,539 gzip -9); no package added. `npm test` runs
     516 tests (495 before).
+
+  - **Running times are written by the clock, not by `formatTime`** (change `time-readouts-legible`, 2026-10-03). The user
+    watched the Timeline play and said the numbers "jump", "get shorter" at a single digit, and that they did not say what
+    they were. Cause: every readout was written by `formatTime`, the Cuts panel's form for a cut's time (typed back and
+    parsed, so it drops a trailing zero: `1:02.4`, `0:01`), which is right for a cut and wrong for a time that changes
+    several times a second. `web/src/clock.ts` (pure, no imports) is the second formatter, next to it and not a flag on it:
+    a **scale** from the longest value a readout can show (hours only if the longest has them, minutes padded to the
+    longest's digits, seconds two digits), then every value written to that scale with a fixed fraction, floored never
+    rounded (a position never reads past its total), a value above the longest shown as the longest, an unknown length as
+    dashes in the same places (`-:--.--`), and a negative or non-numeric time a `RangeError`, never a made-up number.
+    **Two decimals** for playback readouts (a frame at 25 or 30 fps is 40 or 33 ms; a third digit changes every frame), **three**
+    for the trim tip, which shows the time the edge will hold. The Timeline's readout reads `Clip 0:00.96 of 0:39.84 · Event
+    1:02.40 of 2:29.76`: the clip pair is at the scale of the event's longest clip and the event pair at the whole timeline's,
+    so crossing a clip changes no width; the summary line reads `Movie 3:12.00 of 3:45.00 of footage`; the slider's value
+    text stays in the Cuts panel's form but says "clip" and "event" (`Harbour, clip 0:12.4 of 0:24.96; event 1:12 of 3:12`;
+    padding is for eyes and "00:09" is read badly). **The layout is half of it**: each time is an inline cell of
+    `calc(var(--ch) * 1ch)` in the mono face with tabular figures (`ui/Clock.tsx`, the inline style only sets the property),
+    the clip's name is the one flexible part (one line, an ellipsis, the whole name as its tooltip), and the readout is a
+    container: below 40rem the name takes its own line and the `·` that separates the pairs is not drawn. The trim tip is only as wide as its
+    time; the snap words hang above it and cannot move it. `formatTime` still writes cut times, typed fields, ruler ticks,
+    chapter starts and every spoken string.
+  - **Measured** (Chrome 154.0.8037.92 and Firefox 155.0; the four-clip event of 149.76 s; the Timeline played across the first clip's end,
+    140 samples at 100 ms over 14 s, light and dark, at 1280 and 390 px). Every element of the readout (name, both pairs, all four
+    cells) kept its width and left edge to within 0.5 px in all eight runs; `origin/main` run through the same script moves the
+    numbers by up to 13 px at 1280 and 6.5 px at 390 (4 of 4 runs fail), so the script sees the jump. Widths at 13 px: a time cell
+    is 45.5 px (7 ch), a pair 134.9 px, the player's header the same; the trim tip's time is 48 px in a 64 px tip with and
+    without snap words. Also constant: the player's header over a read view and an Edit-mode playthrough (the first cell does
+    not move when the length is read), the numbers across a 41-character clip name turning into a short one at 390 and 320 px
+    (no horizontal page scroll, the name cut by an ellipsis), and a 10:05 clip played through `09:59.99` to `10:00.00`. Contrast
+    of the muted cell on its surface: 6.85 (light) and 7.38 (dark); the key and the name 17.65 and 15.86. The trim tip steps in frames
+    (`0:01.240`, `0:01.260`, `0:01.280`, `0:01.300`: the proxy is 50 fps), so a drag across 1.25 s reads those.
+  - **Bundle (`time-readouts-legible`).** `npm run build` on `origin/main` and on this change: JS 522,394 to 524,175 bytes
+    (168,013 to 168,683 gzip -9, +0.7 KB), CSS 70,886 to 71,492 bytes (13,539 to 13,669 gzip -9, +0.1 KB); no package added.
+    `npm test` runs 540 tests (516 before).
 
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
