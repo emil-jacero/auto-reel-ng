@@ -82,8 +82,8 @@ import type { ClipProxy } from './source'
  * Set From / Set To at the playhead, and Skip cuts, which plays the clip as the movie
  * will. In Edit mode it sits in the clip's Cuts panel; the event page's read view opens
  * the same component with no `onSet`, and it is then read-only: no Set buttons, the clip's
- * cuts drawn on the bar, Skip cuts as a view option. It exists only while open (`previews.ts`: one on the
- * page), and its file is fetched only from then on.
+ * cuts drawn on the bar, Skip cuts as a view option. It exists only while open
+ * (`previews.ts`: one on the page), and its file is fetched only from then on.
  *
  * It plays the clip's preview copy (D-21) when the event detail says one is ready, and
  * the original otherwise or when the operator presses Play original (`source.ts`). The
@@ -378,8 +378,11 @@ export const ClipPreview = memo(function ClipPreview({
   const focusInside = useRef(false)
   const scrollAfter = useRef(false)
   // The region grows when the clip is read (the cuts' legend appears): once more, then, so
-  // that an opened preview that fits the window is in view whole.
+  // that an opened preview that fits the window is in view whole. Read-only players only,
+  // and only while the page is where the open scroll left it: an operator who has scrolled
+  // away is not pulled back, and a failed first load drops it.
   const scrollOnReady = useRef(false)
+  const scrolledTo = useRef(0)
   // Try again opens the preview anew: Play takes focus, as on Watch.
   const focusPlay = useRef(false)
   // Play pressed before the clip's metadata was read: it plays once it can.
@@ -445,10 +448,10 @@ export const ClipPreview = memo(function ClipPreview({
     if (previews.takeFocus(identity)) {
       playRef.current?.focus({ preventScroll: true })
       scrollAfter.current = true
-      scrollOnReady.current = true
+      scrollOnReady.current = readOnly
       sayReady.current = true
     }
-  }, [shows, previews, identity])
+  }, [shows, previews, identity, readOnly])
 
   // After Try again the note, and its button, gave way to the transport: focus its Play.
   useLayoutEffect(() => {
@@ -462,12 +465,17 @@ export const ClipPreview = memo(function ClipPreview({
     if (scrollAfter.current) {
       scrollAfter.current = false
       regionRef.current?.scrollIntoView({ block: 'nearest' })
+      scrolledTo.current = window.scrollY
     }
   })
 
   // A failure replaced the control that held focus: Close takes it.
   useLayoutEffect(() => {
-    if (phase !== 'failed' || !focusInside.current) {
+    if (phase !== 'failed') {
+      return
+    }
+    scrollOnReady.current = false
+    if (!focusInside.current) {
       return
     }
     const region = regionRef.current
@@ -508,7 +516,9 @@ export const ClipPreview = memo(function ClipPreview({
     const controller = new AbortController()
     checkClipMedia(src, controller.signal).then(
       (check) => {
-        const next = playsCopy ? copyFailureOf(check, name) : failureOf(check, name, mtime ?? null, readOnly)
+        const next = playsCopy
+          ? copyFailureOf(check, name)
+          : failureOf(check, name, mtime ?? null, readOnly)
         setFailure(next)
         setPhase('failed')
         announce(next.words)
@@ -797,7 +807,8 @@ export const ClipPreview = memo(function ClipPreview({
     setPhase('ready')
     if (scrollOnReady.current) {
       scrollOnReady.current = false
-      scrollAfter.current = true
+      // One pixel of slack for sub-pixel scroll positions.
+      scrollAfter.current = Math.abs(window.scrollY - scrolledTo.current) <= 1
     }
     // One announcement: the editor's live region holds one message, so the notes and the
     // readiness go together, the notes first.

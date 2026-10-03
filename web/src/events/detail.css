@@ -413,17 +413,20 @@
   }
 
   /*
-   * Forced colors drop backgrounds, and every placeholder is one: without this
-   * the heading shows nothing and the rows read as an empty event. The bars and
-   * the loading boxes take the system's gray text color instead.
+   * Forced colors drop the player row's fill: its cell keeps an edge, so its extent shows
+   * (a border on the row itself does nothing in a collapsed-separate table).
    */
-  /* Forced colors drop the player row's fill: it keeps an edge, so its extent shows. */
   @media (forced-colors: active) {
-    .clip-preview-row {
+    .clip-preview-row > td {
       border-block: 1px solid CanvasText;
     }
   }
 
+  /*
+   * Forced colors drop backgrounds, and every placeholder is one: without this
+   * the heading shows nothing and the rows read as an empty event. The bars and
+   * the loading boxes take the system's gray text color instead.
+   */
   @media (forced-colors: active) {
     .event-detail :is(.skeleton, .clip-thumb[data-state='loading']) {
       forced-color-adjust: none;
