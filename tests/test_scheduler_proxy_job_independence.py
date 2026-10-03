@@ -76,8 +76,8 @@ def fx(job_store: JobStore, tmp_path: Path) -> Fixture:
 
 
 def test_the_render_graph_version_is_the_one_before_this_change() -> None:
-    """Proxies are derived state no render reads: they bumped nothing (4, then 5 for fonts)."""
-    assert RENDER_GRAPH_VERSION == 5
+    """Proxies are derived state no render reads: they bumped nothing (4, 5 for fonts, then 6 for clip-rotate-engine)."""
+    assert RENDER_GRAPH_VERSION == 6
 
 
 def test_a_proxy_job_changes_neither_the_verdict_nor_the_manifest_nor_the_event(

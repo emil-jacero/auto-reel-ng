@@ -44,8 +44,8 @@
 
 ## 3. staleness/
 
-- [x] 3.1 Bump `RENDER_GRAPH_VERSION` from 4 to 5 in `staleness/fingerprint.py` with the history line
-  `5: clip-rotate-engine (a display rotation is applied by the engine on every profile and adds to rotate; a
+- [x] 3.1 Bump `RENDER_GRAPH_VERSION` from 5 to 6 in `staleness/fingerprint.py` with the history line
+  `6: clip-rotate-engine (a display rotation is applied by the engine on every profile and adds to rotate; a
   display-rotated clip is never stream-copied)`. In `tests/test_staleness_fingerprint.py` re-pin `PINNED_ENGINE`
   and `PINNED_COMBINED` (the editorial, defaults, clip-set and fallback hashes must not move) and add a
   version-4 manifest test beside the existing older-version one asserting an output recorded under version 4 is
@@ -57,7 +57,7 @@
 - [x] 4.1 Update `docs/high-level-design.md`: §4.3 step 2 (the display rotation and `rotate` compose, applied by
   the engine on every profile, rotated clips never stream-copied); §4.6's example line `rotate: auto  # or
   0/90/180/270 override` becomes `rotate: 90  # an extra clockwise turn on top of the display rotation`; a new
-  decision entry in §7 (the next free D number on `main` when this is applied, D-22 today; say that D-20 and D-21
+  decision entry in §7 (the next free D number on `main` when this is applied, D-23 today; say that D-20 and D-21
   keep the timeline and the proxy contract) recording the meaning, the clockwise/counter-clockwise rule, the
   `-noautorotate` choice, the version bump and the migration statement from design.md "Fingerprint and
   migration"; a §4.10 note that the proxies and thumbnails stay the file's and the GUI turns what it shows

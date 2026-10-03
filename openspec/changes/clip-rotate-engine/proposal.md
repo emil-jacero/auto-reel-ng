@@ -46,7 +46,7 @@ engine this change sits in: HLD §6 phase 9 (GUI v2), after `timeline-view`. It 
 - **`rotate` is checked when `reel.yaml` is read**: an integer that is a multiple of 90 (0, 90, 180, 270, and
   also -90 or 360, which the engine already normalized) is accepted; any other integer fails the load naming the
   clip and the key, instead of failing the render later.
-- **Rendered output changes for identical inputs**, so `RENDER_GRAPH_VERSION` goes from 4 to 5 (Principle IV, see
+- **Rendered output changes for identical inputs**, so `RENDER_GRAPH_VERSION` goes from 5 to 6 (Principle IV, see
   design "Fingerprint and migration").
 - **Spec:** `reel-document` gains the meaning and the accepted values; `clip-normalize` restates "Rotation and
   aspect normalization" and "Per-segment copy eligibility".

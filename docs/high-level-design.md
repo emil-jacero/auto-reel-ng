@@ -1418,7 +1418,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     `rotation=90`. Both profiles now agree.
   - **Fingerprint and migration.** Output changes for identical inputs (a display-rotated clip on a hardware profile;
     a display-rotated clip with `rotate` on a hardware profile; a display-rotated clip of the target's stored size), so
-    **`RENDER_GRAPH_VERSION` goes 4 to 5** and every manifest is stale once (D-C8). No fingerprint input is added: the
+    **`RENDER_GRAPH_VERSION` goes 5 to 6** and every manifest is stale once (D-C8). No fingerprint input is added: the
     editorial `rotate` was one and the display rotation belongs to the file. A `reel.yaml` that already set `rotate`
     on a display-rotated clip renders as before on the CPU profile; on a hardware profile it now adds (a file that set
     `rotate: 90` to fix a phone clip that rendered sideways there now renders upside down: delete the key). The GUI
