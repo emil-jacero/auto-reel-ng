@@ -356,6 +356,18 @@ is the cache entry's `proxy.mp4` or `filmstrip.jpg` computed from the clip's sta
 database), and a clip with no finished file is a 404 problem body. `<img>` and `<video>` send no `Authorization` header, so a future token
 is a cookie or a query parameter (D-A8).
 
+The event poster (change `event-poster-gui`, **D-26**) is the same kind of per-request read. The detail reports `poster`
+(`{clip, at, source}`, `source` a closed `event | default`; `at` is `null` for the default, whose frame time depends on a
+duration this read does not probe) and `poster_note` (why a chosen clip is not used), both from the detail's own chapters
+and `reel.yaml` with no probe and no database read; a poster the loader refuses is the event's failure like any bad field.
+`GET /api/v1/events/{event_id}/poster.jpg` serves it: the rendered `<movie stem>-poster.jpg` while the event is not stale
+and the manifest claims it, else the chosen frame drawn from the ORIGINAL clip with the render's own extraction
+(`thumbs.poster`, 640x360, cached beside the thumbnails keyed like D-11 plus the frame time and turn) or, for the default,
+the first played clip's thumbnail. It shares the thumbnails' extraction cap and single-flight and 60-second failure
+memory, answers `ETag` with `Cache-Control: private, no-cache` (a saved poster shows at once; a revalidation is a 304
+with no extraction), 404 for an event that plays no clip and 502 with the thumbnail failure kind for a frame the engine
+cannot make. `PUT …/reel` carries `poster` (absent keeps, `null` removes, `{clip, at}` sets).
+
 The jobs shapes carry a job's **`kind`** (`render | proxy`, change `proxy-enqueue-endpoint`): in `JobOut`, in the
 events reads' `latest_job` (which is always the latest *render* job) and in every WebSocket frame, and `GET
 /api/v1/jobs` lists every kind. `POST /api/v1/events/{event_id}/proxies` enqueues an event's proxy job with the render
@@ -424,7 +436,7 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   follow); **the full
   timeline editor, moved from v3** — a per-clip track with proxies, filmstrip, drag-trim in/out and scrub
   preview (built: scrub in `timeline-view`, trim handles in `timeline-trim`, D-20); **analysis review built as overlays on that timeline** (built: approve black/white/freeze trims in place on Edit mode's draft, `timeline-overlay-decisions`;
-  not a separate screen); event poster frames (the engine half built, `event-poster-engine`, D-26: the optional `poster:` in `reel.yaml`, a `-poster.jpg` beside the movie and an embedded cover; the picker in the page follows); and, beside the proxy work, chapter times in the render
+  not a separate screen); event poster frames (built: `event-poster-engine`, D-26, the optional `poster:` in `reel.yaml`, a `-poster.jpg` beside the movie and an embedded cover; and `event-poster-gui`, D-26, D-20: the cover on the list and the page, Use as poster on the Edit-mode Timeline, the API's poster endpoint; the v2 list is closed); and, beside the proxy work, chapter times in the render
   manifest (built, change `render-chapter-times`) and a movie version in the event detail (built: the detail's
   `movie` carries the version and the chapter list, change `movie-facts-read`); the chapter jump list of the
   movie player that shows them is built too (change `movie-chapter-list`, D-15). v2 starts with a
@@ -795,7 +807,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    pressed in a muted style, and the card inspector opens below the track; no API, engine or `RENDER_GRAPH_VERSION` change.
    `event-poster-engine` has landed (the engine half of "event poster frames"; D-26): the optional `poster: {clip, at}` in
    `reel.yaml`, the poster written as `<movie stem>-poster.jpg` beside the movie and embedded as its cover, claimed in the
-   render manifest and pruned with its movie; `RENDER_GRAPH_VERSION` 11. No API or web change: the picker follows.
+   render manifest and pruned with its movie; `RENDER_GRAPH_VERSION` 11.
+   `event-poster-gui` has landed (the GUI half; D-26, D-20, D-15): the detail's `poster` and `poster_note`, `GET …/poster.jpg`, `poster` in
+   the editorial body, a cover on every list row and the event page, Use as poster on the Edit-mode Timeline and the poster area
+   with Use default; no engine, job, schema-version or `RENDER_GRAPH_VERSION` change. The v2 list is closed.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1024,7 +1039,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   `<video>` once opened, so the page may hold two; **one plays at a time** (`playback/exclusive.ts`: each
   claims playback on `play` and the other is paused), and the movie still loads nothing before Play. Amended
   2026-10-03 (change `clip-play-overlay-one-player`): the movie player is paused by any other video's start, through
-  the page's one coordinator (`playback/coordinator.ts`), which replaced `exclusive.ts`. (§4.10)
+  the page's one coordinator (`playback/coordinator.ts`), which replaced `exclusive.ts`. (§4.10) Amended 2026-10-04 (change `event-poster-gui`): the player's `poster` is the event's poster (`GET …/poster.jpg`, D-26), not the first clip's thumbnail. That address carries `v` (where the frame comes from) but is served `Cache-Control: private, no-cache` with a validator rather than the thumbnails' `max-age=86400`, so a saved poster shows at once and a revalidation costs a 304; no entity tag of the file is read for it.
 
 - **D-16 — A clip is previewed in Edit mode in GUI v1** (2026-10-01, change `clip-preview-screen`).
   - **What.** A clip's Cuts panel plays the clip itself, its file streamed unchanged by the media route
@@ -1403,6 +1418,15 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     of the clip it holds (set with its `src` at a swap, and again when the draft's turn changes, with no request), and
     each filmstrip tile of a turned clip shows its frame rotated inside the same tile box. The lane's geometry (widths
     by duration, tile height, trim handles, playhead, suggestions) does not depend on a turn.
+  - **Amended 2026-10-04, change `event-poster-gui`: Use as poster.** In Edit mode the Timeline's controls gain **Use as poster**:
+    the draft's `poster` becomes the clip under the playhead and the playhead's time in that clip, whole milliseconds, before
+    cuts (a time inside a cut is allowed). The frame the one `<video>` shows is copied into a canvas in the browser and kept as
+    an object URL for the poster area ("Chosen frame, not saved"): the service is never asked to draw an unsaved time, so
+    there is no endpoint and no cache growth from arbitrary times. It is a preview of the proxy's frame, turned by the clip's
+    editorial turn as every picture is; the saved poster is always the engine's frame from the original. The button is
+    unavailable, with the reason in words, while a save or Move clips is pending, an open clip preview holds the page's video,
+    or the video has no decoded frame. The playhead never rests on a title-card block (it stays on footage), so that case
+    cannot arise. No timeline library, no new runtime dependency.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
   1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every
@@ -1659,9 +1683,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     its ETag stays valid. The render now writes a second file and a cover for identical inputs, so
     `RENDER_GRAPH_VERSION` is raised from 10 to 11: **every rendered event reports stale once, reason `engine`**
     (D-C8). No Alembic migration, no new dependency.
-  - **Deliberately not here:** the picker and any API field (the page reads `poster` through a later change), chapter
-    posters, animated art, NFO files, writing the sidecar for a movie that is not re-rendered, and the web player's poster
-    (it keeps the first played clip's thumbnail until the picker lands). An event whose plan has no clip cannot be rendered
+  - **Deliberately not here:** chapter posters, animated art, NFO files, writing the sidecar for a movie that is not
+    re-rendered. (The picker, the API fields and the web player's poster landed in `event-poster-gui`.) An event whose plan has no clip cannot be rendered
     at all, so "no poster" is only the resolver's answer there.
 - **D-25 — Title cards are on unless `look.decorators` says otherwise** (2026-10-04, change
   `title-cards-default-on`). The user asked for "a title card in the beginning" and "each chapter should generate a title

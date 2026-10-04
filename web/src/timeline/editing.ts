@@ -1,6 +1,8 @@
 import type { ClipCuts, ClipTurns } from '../cuts/ReadCuts'
 import type { CutKey, DraftCut } from '../edit/draft'
 import type { ClipPreviews } from '../preview/previews'
+import type { PosterPick } from '../edit/poster.ts'
+import type { Turn } from '../rotate/turn.ts'
 
 /*
  * What Edit mode gives the Timeline (`timeline-trim`): the draft's cuts to draw and play,
@@ -14,6 +16,9 @@ import type { ClipPreviews } from '../preview/previews'
  * handle's value), and what it snapped to.
  */
 export type TrimNote = { name: string; spoken: boolean; snap?: string | null }
+
+/** The frame a chosen poster was taken from: an object URL and the clip's editorial turn. */
+export type PosterSnapshot = { url: string; turn: Turn }
 
 export type EditBinding = {
   /** The draft's cuts, the removed ones left out: what the track draws and Play skips. */
@@ -46,6 +51,13 @@ export type EditBinding = {
    * handle's value. Ignored while a save or a Move clips is pending.
    */
   onCardDuration(chapter: string, seconds: number, words: string | null): void
+  /**
+   * Use as poster (`event-poster-gui`): the draft's poster becomes `pick` and `snapshot` (the
+   * frame the video showed, an object URL the editor owns from now on) is the poster area's
+   * draft picture, `turn` being the clip's editorial turn. Ignored while a save or a Move
+   * clips is pending. The editor announces it.
+   */
+  onPoster(pick: PosterPick, snapshot: PosterSnapshot): void
   /** The document's `look` as read: the title decorator decides whether the render draws cards. */
   look: unknown
 }

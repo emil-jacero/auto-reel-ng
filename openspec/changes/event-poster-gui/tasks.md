@@ -10,15 +10,15 @@
 
 ## 3. Web: the model and the cover (web)
 
-- [ ] 3.1 Add the poster draft to the edit model (as read, removed, chosen; changed words; write body; Undo and Reset) and the pure mapping from the Timeline's playhead to a clip and `at` in milliseconds, with "disabled because" reasons; `npm test` unit tests including a time inside a cut, a card block, a rotated clip and an unchanged draft writing nothing
-- [ ] 3.2 Show the cover on the event list rows and the event page header (lazy, reserved 16:9 box, alt text, placeholder on 404 or error); a test for the URL, alt and placeholder words, then `tsc` and `npm run build`
+- [x] 3.1 Add the poster draft to the edit model (as read, removed, chosen; changed words; write body; Undo and Reset) and the pure mapping from the Timeline's playhead to a clip and `at` in milliseconds, with "disabled because" reasons; `npm test` unit tests including a time inside a cut, a card block, a rotated clip and an unchanged draft writing nothing
+- [x] 3.2 Show the cover on the event list rows and the event page header (lazy, reserved 16:9 box, alt text, placeholder on 404 or error); a test for the URL, alt and placeholder words, then `tsc` and `npm run build`
 
 ## 4. Web: Edit mode (web)
 
-- [ ] 4.1 Add Use as poster to the Timeline's Edit mode (frame snapshot from the one `<video>`, focus kept, one announcement, disabled states) and the poster area with Default / Chosen frame / not saved and Use default; `npm test` for the state words and the draft, `tsc` clean
-- [ ] 4.2 Wire Save, the save bar's "poster changed", the fallback note and `poster_note`, and the post-save swap from snapshot to the served image; tests for the write body and for no write when unchanged
+- [x] 4.1 Add Use as poster to the Timeline's Edit mode (frame snapshot from the one `<video>`, focus kept, one announcement, disabled states) and the poster area with Default / Chosen frame / not saved and Use default; `npm test` for the state words and the draft, `tsc` clean
+- [x] 4.2 Wire Save, the save bar's "poster changed", the fallback note and `poster_note`, and the post-save swap from snapshot to the served image; tests for the write body and for no write when unchanged
 
 ## 5. Verification and docs
 
-- [ ] 5.1 Run Playwright from the scratchpad in Chrome and Firefox against a dev library (writes routed to stubs): list cover and placeholder, page header, Use as poster, Save, Use default, Reset, light and dark at 1280 and 390, looking at the screenshots; fix what they show
-- [ ] 5.2 Update `docs/high-level-design.md`: §4.9 (the poster endpoint and the detail fields), §4.10 and §6 (event poster frames built, the v2 list closed), a D-20 note (Use as poster on the Timeline, snapshot in the browser) and a D-15 note (no `v`: `no-cache` with a validator); the docs tests find the sections by heading and pass
+- [x] 5.1 Run Playwright from the scratchpad in Chrome and Firefox against a dev library (writes routed to stubs): list cover and placeholder, page header, Use as poster, Save, Use default, Reset, light and dark at 1280 and 390, looking at the screenshots; fix what they show
+- [x] 5.2 Update `docs/high-level-design.md`: §4.9 (the poster endpoint and the detail fields), §4.10 and §6 (event poster frames built, the v2 list closed), a D-20 note (Use as poster on the Timeline, snapshot in the browser) and a D-15 note (no `v`: `no-cache` with a validator); the docs tests find the sections by heading and pass

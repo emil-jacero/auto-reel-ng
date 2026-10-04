@@ -6,7 +6,7 @@ import type { RefObject } from 'react'
 import type { EventDetail } from '../api/event'
 import { movieUrl, probeMovie } from '../api/movie'
 import type { MovieFile, MovieProbe } from '../api/movie'
-import { thumbnailUrl } from '../api/thumbnail'
+import { posterUrl, posterVersion } from '../api/poster'
 import { formatBytes } from '../events/common'
 import { FAILURE_LABEL, failureDetail, unansweredFailure } from '../events/labels'
 import { FAILURE_LOOK } from '../events/tones'
@@ -172,10 +172,9 @@ function MovieSection({
 
   const age: MovieAge = event.staleness.stale ? 'outdated' : 'current'
   const look = MOVIE_AGE_LOOK[age]
-  const posterClip = event.chapters
-    .flatMap((chapter) => chapter.clips)
-    .find((clip) => clip.status === 'active' || clip.status === 'new')
-  const poster = posterClip === undefined ? undefined : thumbnailUrl(eventId, posterClip)
+  // The event's poster (a chosen frame, else the first played clip's), as the cover shows it.
+  const poster =
+    event.poster == null ? undefined : posterUrl(eventId, posterVersion(event.poster))
 
   return (
     <section
