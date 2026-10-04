@@ -429,9 +429,9 @@ pixels wide, and down to 320, the lane and its detail SHALL NOT make the page sc
 
 ### Requirement: The read view and Edit mode each offer a Timeline that loads nothing until it is opened
 
-The event page SHALL show, in its read view and in Edit mode, a section headed "Timeline" (a level-two heading). In the read view it comes after the Movie section (when the page shows one) and before the event's chapters; in Edit mode it comes after the metadata form and before the chapters' lists, and it is the Timeline on which the operator trims cuts ("Edit mode's cuts are trim handles"). The section SHALL have a button, "Open timeline", that opens it; once open, the same button SHALL read "Close timeline". The button SHALL state whether the section is open (`aria-expanded`) and SHALL name the content it controls.
+The event page SHALL show, in its read view and in Edit mode, a section headed "Timeline" (a level-two heading). In the read view it comes after the Movie section (when the page shows one) and before the event's chapters; in Edit mode it comes after the metadata form and before the chapters' lists, and it is the Timeline on which the operator trims cuts ("Edit mode's cuts are trim handles"). In the read view the section SHALL have a button, "Open timeline", that opens it; once open, the same button SHALL read "Close timeline". The button SHALL state whether the section is open (`aria-expanded`) and SHALL name the content it controls. In Edit mode the section SHALL have no such button and no way to close it: Edit mode's Timeline is where the cuts are trimmed, and it is open whenever Edit mode shows.
 
-The section SHALL be closed when the page opens, after a Refresh, on entering Edit mode and after leaving it; a Timeline open in the read view is closed by pressing Edit, and Edit mode's starts closed. While it is closed the page SHALL create no `<video>` for it and SHALL make no request for a proxy, a filmstrip or a proxy job, whatever the number of clips. While the event page is loading, or shows a failure, it SHALL show no Timeline section.
+The read view's section SHALL be closed when the page opens, after a Refresh and after leaving Edit mode. Edit mode's section SHALL be open from the moment Edit mode shows: pressing Edit opens Edit mode with the Timeline open (a Timeline open in the read view is replaced by Edit mode's, open), and a Refresh or a save keeps it open. While the read view's section is closed the page SHALL create no `<video>` for it and SHALL make no request for a proxy, a filmstrip or a proxy job, whatever the number of clips. An open Edit-mode Timeline of an event whose proxies are not all ready shows its Prepare state and nothing else, as the open read view does. While the event page is loading, or shows a failure, it SHALL show no Timeline section.
 
 Opening the Timeline SHALL change no state the service holds: it only reads. Starting a proxy job is a separate, explicit control (see "The Timeline asks for the clips' proxies when they are missing").
 
@@ -443,7 +443,13 @@ In Edit mode the Timeline SHALL draw its clips, chapters and proxies as the even
 
 #### Scenario: Edit mode has its own, closed timeline
 - **WHEN** the operator opens the Timeline of `2024-06-27 - Grillning med grannar` and then presses Edit
-- **THEN** the page shows Edit mode with a Timeline section after the metadata form, closed, holding no `<video>` and having made no proxy or filmstrip request for it; and leaving Edit mode shows the read view's Timeline section closed
+- **THEN** the read view's closed Timeline is not carried over: the page shows Edit mode with a Timeline section after the metadata form, open and showing its track, with no "Open timeline"
+  or "Close timeline" button anywhere in Edit mode; and leaving Edit mode shows the read view's Timeline section closed
+
+#### Scenario: Edit mode without proxies shows Prepare
+- **WHEN** the operator presses Edit on an event none of whose proxies is prepared
+- **THEN** the open Timeline shows its Prepare state with "Prepare proxies", the chapters' Edit Titlecard buttons and the
+  Details form work, and the page holds no `<video>` for the Timeline
 
 #### Scenario: Opening is a read
 - **WHEN** the operator opens the Timeline of an event whose proxies are all ready
@@ -951,48 +957,19 @@ Edit mode and only selects in the read view) and SHALL also put the playhead the
 - **THEN** the block's background is that image, its title is written on a solid strip over it when it fits, its accessible name
   carries the title, and a light ring marks its edge
 
-### Requirement: Edit mode's chapter list shows each chapter's card as a row
-
-Edit mode's chapter list SHALL show, at the head of each chapter, a row for that chapter's card from the event
-detail's resolved card: its title, its subtitle ("No subtitle" when empty), its duration, "Black" or "Video" and
-its font name, in words. The default chapter's row SHALL be the opening card and SHALL be the only place the main title card is shown: its heading
-line SHALL be the "Main title card" press-to-edit event-title control, which edits the draft's title as before, and the
-page SHALL NOT show a second line for it beside the row. The row SHALL be matched to
-its chapter by the chapter's key. A chapter added in the draft has no saved card: its row SHALL say that its card
-is drawn after Save, and SHALL NOT be selectable. A chapter whose draft name differs from the saved name SHALL show
-the saved card and say the saved name. A card that could not be resolved SHALL say so in words in its row and
-SHALL NOT show values. A row drawn while title cards are not enabled SHALL say "Not enabled". The row SHALL write nothing and request nothing.
-
-#### Scenario: A row for each chapter
-- **WHEN** Edit mode opens on an event with the chapters "" and "Dag 2", the latter with a 4.0 s video card in
-  "Sofia Sans" titled "Dag två" with subtitle "Stranden"
-- **THEN** each chapter's header is followed by its card row, and "Dag 2"'s says "Dag två", "Stranden", "4.0 s",
-  "Video" and "Sofia Sans"
-
-#### Scenario: Main's row is the opening card
-- **WHEN** the operator opens the default chapter in Edit mode
-- **THEN** there is one opening-card row, named for the opening card, whose heading is the "Main title card" control showing the event title, and that control still edits
-  `metadata.title` in the draft and follows the metadata form; no second "Main title card" line exists
-
-#### Scenario: A chapter added in the draft
-- **WHEN** the operator adds a chapter "Dag 3" and has not saved
-- **THEN** its row says its card is drawn after Save and offers no selection
-
 ### Requirement: A card is selected from the Timeline or the list, as one selection
 
-The page SHALL hold one card selection, shared by the Timeline's blocks and Edit mode's rows, kept above both so
-that a Refresh or leaving Edit mode, which close the Timeline section, do not end it. Pressing a block or a row
-SHALL select that card, and the block and the row SHALL both show it selected, in more than colour. At most one
+The page SHALL hold one card selection, shared by the Timeline's blocks and Edit mode's chapter header bars, kept above both so
+that a Refresh or leaving Edit mode, which close the Timeline section, do not end it. Pressing a block, or a chapter's Edit Titlecard button, SHALL select that card, and the block and the button SHALL both show it selected, in more than colour (the button as pressed, with `aria-pressed`). At most one
 thing SHALL be selected on the Timeline: selecting a card SHALL end the selection of a cut, and selecting a cut
 SHALL end the selection of a card. Pressing the selected card again SHALL leave it selected; Escape SHALL clear
-it, unless the card's dialog is open, where Escape closes the dialog and the card stays selected. The selection SHALL end when its chapter is deleted or no longer in the event after a read. A block and a row
-SHALL be buttons reached by Tab in document order, pressed by Enter or Space, with `aria-pressed`, named in words
+it, unless the card's dialog is open, where Escape closes the dialog and the card stays selected. The selection SHALL end when its chapter is deleted or no longer in the event after a read. A block and the button SHALL be buttons reached by Tab in document order, pressed by Enter or Space, with `aria-pressed`, named in words
 as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default chapter: "Title card for the opening,
-…"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", not enabled"). In the read view a selection SHALL open nothing but an inspector slot, a labelled region with the selected card's words; it SHALL write nothing, request nothing and be announced once through the polite status region. In Edit mode, pressing a block or a row SHALL also open that card's dialog (`web-app`, "A selected title card opens its inspector in Edit mode"), and there is no inspector slot in the page.
+…"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", not enabled"). In the read view a selection SHALL open nothing but an inspector slot, a labelled region with the selected card's words; it SHALL write nothing, request nothing and be announced once through the polite status region. In Edit mode, pressing a block or the button SHALL also open that card's dialog (`web-app`, "A selected title card opens its inspector in Edit mode"), and there is no inspector slot in the page.
 
 #### Scenario: One selection from either place
 - **WHEN** the operator presses the block of "Dag 2" on the Timeline in Edit mode
-- **THEN** the block is pressed, "Dag 2"'s row is shown selected, and the card's dialog opens (Edit mode) or the inspector slot names the card (read view)
+- **THEN** the block is pressed, "Dag 2"'s Edit Titlecard button is shown pressed, and the card's dialog opens (Edit mode) or the inspector slot names the card (read view)
 
 #### Scenario: Selecting a cut ends a card selection
 - **WHEN** a card is selected and the operator presses a cut's span
@@ -1000,7 +977,7 @@ as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default cha
 
 #### Scenario: Refresh keeps the selection
 - **WHEN** a card is selected, the section is closed by a Refresh, and the read still lists the chapter
-- **THEN** its row (Edit mode) is shown selected, and the block is pressed when the Timeline is opened again
+- **THEN** its Edit Titlecard button (Edit mode) is shown pressed, and the block is pressed when the Timeline is opened again
 
 #### Scenario: A deleted chapter ends the selection
 - **WHEN** the selected card's chapter is deleted in the draft
@@ -1022,8 +999,7 @@ In Edit mode, the end edge of every title-card block on the Timeline SHALL be a 
 the pointer moves from where the edge was, in whole tenths of a second, snapping to a whole second within 8 screen
 pixels, and staying between the card's limits (0.5 s to 60 s, and for a card over video no more than the first span of the
 chapter's anchor clip that the draft's cuts keep). While dragging, the block, the handle and a readout in the Timeline's
-fixed-width clock style ("Card 4.0 s") SHALL follow the pointer, and the rest of the editor SHALL NOT change: the
-chapter list's card row, the save bar and the draft show nothing new until the pointer is released. The readout and
+fixed-width clock style ("Card 4.0 s") SHALL follow the pointer, and the rest of the editor SHALL NOT change: the save bar and the draft show nothing new until the pointer is released. The readout and
 the snap to a whole second SHALL be given in words and by a line, not by colour alone. Releasing SHALL make one edit
 of the draft, the card's duration, and announce the result once, politely, through Edit mode's one live region ("Title
 card for Reception now 6.0 s. The movie is 2.0 s longer."). Escape, or the browser cancelling the pointer, SHALL end the
@@ -1031,11 +1007,12 @@ drag with the card as it was and no edit. A drag that ends where it began SHALL 
 
 #### Scenario: A drag sets the length
 - **WHEN** at 40 px per second the operator presses the end edge of the opening card (4.0 s, black) and moves the pointer 80 px right
-- **THEN** the readout says "Card 6.0 s" while dragging, and the chapter list's card row still says 4.0 s until the pointer is released
+- **THEN** the readout says "Card 6.0 s" while dragging, and the save bar counts no changed card until the pointer is released
 
 #### Scenario: Releasing makes one edit
 - **WHEN** the operator releases the pointer there
-- **THEN** the card row says 6.0 s, the save bar counts one changed card, the live region says so once, and Save writes `card.duration: 6.0` for that chapter
+- **THEN** the save bar counts one changed card, the live region says so once, the card's dialog, opened afterwards, holds 6.0 s in its Length field,
+  and Save writes `card.duration: 6.0` for that chapter
 
 #### Scenario: Snapping to a whole second
 - **WHEN** the operator moves the edge to 4.96 s's worth of pixels at 40 px per second
@@ -1047,7 +1024,7 @@ drag with the card as it was and no edit. A drag that ends where it began SHALL 
 
 #### Scenario: Escape cancels
 - **WHEN** the operator presses Escape during a drag
-- **THEN** the card is as it was, the draft is unchanged, and the chapter list is unchanged
+- **THEN** the card is as it was and the draft is unchanged
 
 #### Scenario: A drag that ends where it began
 - **WHEN** the operator drags the edge away and back to 4.0 s and releases
