@@ -42,6 +42,9 @@ export type ScrubPhase = 'start' | 'move' | 'end' | 'tap'
 /** Where a scrub began: the ruler (and the grip), or the clips' lane. */
 export type ScrubSurface = 'ruler' | 'lane'
 
+/** The zoom keys of the track's box: zoom in, out, Fit, and Fit and back (`\\`). */
+const TRACK_ZOOM_KEYS = ['+', '=', '-', '_', '0', '\\']
+
 /** Clips narrower than this are drawn as a block only: no name, picture or cuts. */
 const MIN_DETAIL_PX = 6
 /** Clips at least this wide show their name; a cut at least this wide shows its reason. */
@@ -284,7 +287,7 @@ export function Track({
   noPicture: ReadonlySet<string>
   onFilmFailed: (identity: string) => void
   onKey: (action: KeyAction) => void
-  /** `+`, `-` and `0` while the track has focus. */
+  /** `+`, `=`, `-`, `0` and `\\` while the track has focus. */
   onTrackKey: (key: string) => void
   /** The analysis lane, a row of the canvas under the clips (`overlays/`). */
   lane?: LaneSlot
@@ -428,8 +431,12 @@ export function Track({
     <div
       className="tl-viewport"
       ref={scrollerRef}
+      // Focusable by script and by a press, not by Tab (the playhead is the track's tab stop): a
+      // browser that makes only scrolling boxes focusable would otherwise drop the focus when Fit
+      // leaves nothing to scroll, and the next zoom key would go nowhere.
+      tabIndex={-1}
       onKeyDown={(event: KeyboardEvent) => {
-        if (!event.ctrlKey && !event.altKey && !event.metaKey && ['+', '=', '-', '_', '0'].includes(event.key)) {
+        if (!event.ctrlKey && !event.altKey && !event.metaKey && TRACK_ZOOM_KEYS.includes(event.key)) {
           event.preventDefault()
           onTrackKey(event.key)
         }

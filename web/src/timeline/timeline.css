@@ -207,6 +207,11 @@
     overscroll-behavior-x: contain;
     scroll-behavior: auto;
     touch-action: pan-x pan-y;
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
   }
 
   .tl-canvas {
