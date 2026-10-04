@@ -14,7 +14,7 @@ from ..event.plan import ResolvedChapter
 from ..event.resolution import resolve
 from ..reel import ReelDocument
 from ..render import title_cards_state
-from ..render.title import TitleCardConfig, resolve_card, resolve_card_config
+from ..render.title import TitleCardConfig, default_subtitle, resolve_card, resolve_card_config
 from .schemas import ChapterOut, ResolvedCardOut, TitleCardsOut, TitleStyleOut
 
 
@@ -51,8 +51,9 @@ def with_cards(
     by_name = {chapter.name: chapter for chapter in plan.chapters}
     described: List[ChapterOut] = []
     for chapter in chapters:
+        resolved_chapter = by_name.get(chapter.name) or ResolvedChapter(chapter.name)
         try:
-            request = resolve_card(plan, by_name.get(chapter.name) or ResolvedChapter(chapter.name))
+            request = resolve_card(plan, resolved_chapter)
         except TitleCardError as exc:
             described.append(chapter.model_copy(update={"card_error": str(exc)}))
             continue
@@ -64,6 +65,7 @@ def with_cards(
                         **card,
                         title=request.content.heading,
                         subtitle=request.content.subtitle,
+                        default_subtitle=default_subtitle(plan, resolved_chapter),
                     )
                 }
             )

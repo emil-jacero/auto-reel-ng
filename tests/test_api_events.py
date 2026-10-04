@@ -1592,12 +1592,44 @@ def test_detail_with_no_card_configuration_reports_the_defaults(
     assert body["title_card_error"] is None
     assert body["title_card"] == CARD_DEFAULTS
     opening, day2 = body["chapters"]
+    default = "2024-07-04\nPlats: Gon"  # the opening card's date and place, never the description
     assert opening["card"] == {
         **CARD_DEFAULTS,
         "title": "Barbecue",
+        "subtitle": default,
+        "default_subtitle": default,
+    }
+    assert day2["card"] == {
+        **CARD_DEFAULTS,
+        "title": "Dag 2",
         "subtitle": "",
-    }  # no date/place
-    assert day2["card"] == {**CARD_DEFAULTS, "title": "Dag 2", "subtitle": ""}
+        "default_subtitle": "",
+    }
+
+
+def test_an_explicit_empty_subtitle_is_reported_empty_with_the_default_still_shown(
+    client: TestClient, project: Path
+) -> None:
+    _write_card_reel(
+        project,
+        "version: 0\nmetadata:\n  title: Barbecue\n  date: 2024-07-04\n  location: Gon\n"
+        "chapters:\n  - name: ''\n    card:\n      subtitle: ''\n    clips: [00500.mp4]\n",
+    )
+    card = _card_detail(client)["chapters"][0]["card"]
+    assert card["subtitle"] == ""
+    assert card["default_subtitle"] == "2024-07-04\nPlats: Gon"
+
+
+def test_a_typed_subtitle_replaces_the_default_which_is_still_reported(
+    client: TestClient, project: Path
+) -> None:
+    _write_card_reel(
+        project,
+        "version: 0\nmetadata:\n  title: Barbecue\n  date: 2024-07-04\n"
+        "chapters:\n  - name: ''\n    card:\n      subtitle: Hos mormor\n    clips: [00500.mp4]\n",
+    )
+    card = _card_detail(client)["chapters"][0]["card"]
+    assert (card["subtitle"], card["default_subtitle"]) == ("Hos mormor", "2024-07-04")
 
 
 def test_detail_layers_project_event_and_chapter_and_overrides_the_title(

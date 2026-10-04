@@ -2057,3 +2057,22 @@ def test_moving_a_clip_between_chapters_leaves_both_cards(tmp_path: Path) -> Non
     doc = load_document(event / REEL_FILENAME)
     assert doc.chapters[0].card is not None and doc.chapters[0].card.title == "Midsommar"
     assert doc.chapters[1].card is not None and doc.chapters[1].card.title == "Mottagning"
+
+
+def test_an_empty_subtitle_round_trips_as_empty_and_absent_stays_absent(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    _save(event, _desired_chapters(card_one={"subtitle": ""})["chapters"])
+    card = load_document(event / REEL_FILENAME).chapters[0].card
+    assert card is not None and card.subtitle == ""
+    _save(event, _desired_chapters(card_one={"title": "Midsommar"})["chapters"])
+    card = load_document(event / REEL_FILENAME).chapters[0].card
+    assert card is not None and card.subtitle is None  # a key left out is removed, not blanked
+
+
+def test_the_editorial_hash_tells_an_empty_subtitle_from_an_absent_one(tmp_path: Path) -> None:
+    event = _carded_event(tmp_path)
+    _save(event, _desired_chapters(card_one={"title": "Midsommar"})["chapters"])
+    absent = editorial_hash(load_document(event / REEL_FILENAME))
+    _save(event, _desired_chapters(card_one={"title": "Midsommar", "subtitle": ""})["chapters"])
+    empty = editorial_hash(load_document(event / REEL_FILENAME))
+    assert absent != empty

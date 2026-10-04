@@ -35,6 +35,9 @@ pytestmark = pytest.mark.has_fonts
 
 EVENT = "2024/2024-07-04 - Barbecue"
 
+#: The opening card's default subtitle for this event (a date, no location).
+OPENING = "2024-07-04"
+
 REEL = """\
 version: 0
 metadata:
@@ -120,7 +123,7 @@ def test_the_event_target_resolution_decides_the_size(client: TestClient, event_
     response = client.post(_url(), json={"card": {"title": "Hej"}})
     assert response.status_code == 200
     assert _decode(response.content)[:2] == (1280, 720)
-    assert response.content == _expected("Hej", size=(1280, 720))
+    assert response.content == _expected("Hej", OPENING, size=(1280, 720))
 
 
 def test_a_video_card_is_text_on_transparency(client: TestClient) -> None:
@@ -138,8 +141,8 @@ def test_a_draft_is_drawn_without_saving_it(client: TestClient, event_dir: Path)
     before = (event_dir / "reel.yaml").read_bytes()
     saved = client.post(_url(), json={}).content
     draft = client.post(_url(), json={"card": {"title": "Not saved"}})
-    assert draft.content == _expected("Not saved") != saved
-    assert saved == _expected("Barbecue")
+    assert draft.content == _expected("Not saved", OPENING) != saved
+    assert saved == _expected("Barbecue", OPENING)
     assert (event_dir / "reel.yaml").read_bytes() == before
 
 
@@ -147,16 +150,16 @@ def test_the_draft_style_wins_over_the_saved_one_and_is_absent_otherwise(
     client: TestClient,
 ) -> None:
     red = client.post(_url(), json={"card": {"title": "Hej"}, "style": {"text_color": "#FF0000"}})
-    assert red.content == _expected("Hej", text_color="#FF0000")
+    assert red.content == _expected("Hej", OPENING, text_color="#FF0000")
     saved = client.post(_url(), json={"card": {"title": "Hej"}})
-    assert saved.content == _expected("Hej")
+    assert saved.content == _expected("Hej", OPENING)
     assert saved.content != red.content
 
 
 def test_the_opening_card_defaults_to_the_draft_event_title(client: TestClient) -> None:
     drafted = client.post(_url(), json={"chapter": "", "event_title": "Nytt namn"})
-    assert drafted.content == _expected("Nytt namn")
-    assert client.post(_url(), json={"chapter": ""}).content == _expected("Barbecue")
+    assert drafted.content == _expected("Nytt namn", OPENING)
+    assert client.post(_url(), json={"chapter": ""}).content == _expected("Barbecue", OPENING)
     named = client.post(_url(), json={"chapter": "Dag 2", "event_title": "Nytt namn"})
     assert named.content == _expected("Dag 2")  # a named chapter does not use the event title
 
@@ -290,8 +293,8 @@ def test_two_different_drafts_share_no_state(client: TestClient) -> None:
         a = pool.submit(client.post, _url(), json={"card": {"title": "Alpha"}})
         b = pool.submit(client.post, _url(), json={"card": {"title": "Beta"}})
         ra, rb = a.result(timeout=20), b.result(timeout=20)
-    assert ra.content == _expected("Alpha")
-    assert rb.content == _expected("Beta")
+    assert ra.content == _expected("Alpha", OPENING)
+    assert rb.content == _expected("Beta", OPENING)
 
 
 def test_a_cancelled_waiter_keeps_the_draw_slot_until_the_draw_ends() -> None:
@@ -323,3 +326,28 @@ def test_a_cancelled_waiter_keeps_the_draw_slot_until_the_draw_ends() -> None:
     second_ran, after = asyncio.run(scenario())
     assert second_ran is False
     assert after is True
+
+
+def test_the_preview_follows_the_subtitle_rule_empty_is_none_absent_is_the_default(
+    client: TestClient,
+) -> None:
+    absent = client.post(_url(), json={"card": {"title": "Hej"}})
+    empty = client.post(_url(), json={"card": {"title": "Hej", "subtitle": ""}})
+    typed = client.post(_url(), json={"card": {"title": "Hej", "subtitle": "Hos mormor"}})
+    assert absent.content == _expected("Hej", OPENING)
+    assert empty.content == _expected("Hej", "")
+    assert typed.content == _expected("Hej", "Hos mormor")
+    assert len({absent.content, empty.content, typed.content}) == 3
+    # a named chapter has no default: absent and empty draw the same title-only image
+    named = client.post(_url(), json={"chapter": "Dag 2", "card": {}})
+    assert named.content == _expected("Dag 2", "")
+
+
+def test_a_video_preview_draws_the_soft_shadow_the_render_draws(client: TestClient) -> None:
+    response = client.post(
+        _url(), json={"card": {"title": "OVER VIDEO", "subtitle": "", "background": "video"}}
+    )
+    assert response.status_code == 200
+    assert response.content == _expected("OVER VIDEO", "", background="video")
+    hard = _expected("OVER VIDEO", "", background="video", shadow_offset=0)
+    assert response.content != hard  # the shadow is on

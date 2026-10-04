@@ -716,6 +716,26 @@ def test_the_opening_card_lives_on_the_default_chapter_only(
     assert "card" not in chapters[1]
 
 
+def test_an_empty_subtitle_is_kept_and_an_empty_card_removes_it(
+    client: TestClient, project: Path
+) -> None:
+    import yaml
+
+    kept = _put(client, _with_card({"subtitle": ""}, name=""))
+    assert kept.status_code == 200, kept.text
+    assert yaml.safe_load(_reel_text(project))["chapters"][0]["card"] == {"subtitle": ""}
+    assert kept.json()["document"]["chapters"][0]["card"]["subtitle"] == ""
+    read = client.get(f"/api/v1/events/{_event_id()}/reel").json()["chapters"][0]["card"]
+    assert read["subtitle"] == ""  # "" and absent (null) stay distinct on read
+    detail = client.get(f"/api/v1/events/{_event_id()}").json()["chapters"][0]["card"]
+    assert (detail["subtitle"], detail["default_subtitle"]) == ("", "2024-07-04\nPlats: Somewhere")
+    removed = _put(client, _with_card({}, name=""))
+    assert removed.status_code == 200
+    assert "card" not in yaml.safe_load(_reel_text(project))["chapters"][0]
+    detail = client.get(f"/api/v1/events/{_event_id()}").json()["chapters"][0]["card"]
+    assert detail["subtitle"] == detail["default_subtitle"] == "2024-07-04\nPlats: Somewhere"
+
+
 def test_an_unmodified_get_written_back_is_a_byte_for_byte_no_op(
     client: TestClient, project: Path
 ) -> None:
