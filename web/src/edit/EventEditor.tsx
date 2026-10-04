@@ -34,12 +34,16 @@ import { TimelineSection } from '../timeline/TimelineSection'
 import { cardSpecs } from '../timeline/cards'
 import type { CardsBinding } from '../timeline/useCardSelection'
 import { CardRowsContext } from './CardRow'
+import { CardStylePanel } from './CardStylePanel'
+import type { CardStyleModel } from './CardStylePanel'
 import type { CardRowsModel } from './CardRow'
 import { cardRowInfo } from './cardRows'
 import type { CardEditing } from './card/editing.ts'
 import { cardsChangedCount, cardsChangedWords } from './card/model.ts'
 import type { CardDraft, CardField } from './card/model.ts'
 import { draftSpec } from './card/specs.ts'
+import { draftEventStyle, overrideWords, previewStyle, readStyle, styleRefusalOf } from './cardStyle.ts'
+import type { StyleField, StyleRefusal, StyleValue } from './cardStyle.ts'
 import type { EventStyle } from './card/specs.ts'
 import type { EditBinding } from '../timeline/editing'
 import type { Dismissals } from '../timeline/overlays/Dismissals'
@@ -111,6 +115,10 @@ import {
   removeCut,
   renameChapter,
   resetCard,
+  resetStyle,
+  setStyleField,
+  styleIsChanged,
+  styleOf,
   restoreChapter,
   restoreClip,
   restoreCut,
@@ -229,6 +237,8 @@ type Ready = {
   refusal: string | null
   /** The last refused save's naming of a title card and its field, shown at that field. */
   cardRefusal: CardRefusal | null
+  /** The last refused save's naming of a card-style field (`look.title_card.<field>`), shown at that field. */
+  styleRefusal: StyleRefusal | null
   /** Bumped by every failed answer, so focus moves to what explains it. */
   answers: number
 }
@@ -280,6 +290,8 @@ type Action =
   | { type: 'card-length'; key: ChapterKey; seconds: number; resolved: number }
   | { type: 'card-field'; key: ChapterKey; field: CardField; value: CardDraft[CardField] }
   | { type: 'card-reset'; key: ChapterKey }
+  | { type: 'style-field'; field: StyleField; value: StyleValue | null }
+  | { type: 'style-reset' }
   | { type: 'reset' }
   | { type: 'save-start'; pressed: Pressed }
   | { type: 'save-failed'; problem: SaveProblem | null; refusal: string | null }
@@ -298,6 +310,7 @@ function afterEdit(next: Ready): Ready {
     problem: next.problem?.kind === 'gone' ? next.problem : null,
     refusal: null,
     cardRefusal: null,
+    styleRefusal: null,
   }
 }
 
@@ -382,6 +395,7 @@ function reduce(state: State, action: Action): State {
         problem: null,
         refusal: null,
         cardRefusal: null,
+        styleRefusal: null,
         answers: 0,
       }
     }
@@ -563,10 +577,19 @@ function reduce(state: State, action: Action): State {
       )
     case 'card-reset':
       return afterCardEdit(state, resetCard(state.draft, action.key), action.key, null)
+    case 'style-field': {
+      const next = withDraft(state, setStyleField(state.baseline, state.draft, action.field, action.value))
+      const refusal = state.styleRefusal
+      const retired = refusal !== null && (refusal.field === null || refusal.field === action.field)
+      return retired ? { ...next, styleRefusal: null } : next
+    }
+    case 'style-reset':
+      return { ...withDraft(state, resetStyle(state.draft)), styleRefusal: null }
     case 'reset':
       return {
         ...state,
         cardRefusal: null,
+        styleRefusal: null,
         draft: initialDraft(state.baseline),
         lastMoved: null,
         dateIncomplete: false,
@@ -589,6 +612,8 @@ function reduce(state: State, action: Action): State {
         refusal: action.refusal,
         cardRefusal:
           action.problem?.kind === 'refused' ? cardRefusalOf(state.draft, action.problem.detail) : null,
+        styleRefusal:
+          action.problem?.kind === 'refused' ? styleRefusalOf(action.problem.detail) : null,
         answers: state.answers + 1,
       }
   }
@@ -767,6 +792,7 @@ function summarize(
   cuts: { added: number; removed: number; trimmed: number },
   rotated: number,
   cardsChanged: number,
+  styleChanged: boolean,
   adopted: number,
 ): string {
   // An incomplete date reads as '' but is not a date left empty: it is named as such.
@@ -789,11 +815,14 @@ function summarize(
     cuts.trimmed > 0 && `${plural(cuts.trimmed, 'cut', 'cuts')} trimmed`,
     rotated > 0 && rotatedCount(rotated),
     cardsChangedWords(cardsChanged) ?? false,
+    styleChanged && CARD_STYLE_CHANGED,
     adopted > 0 && `adds ${plural(adopted, 'new clip', 'new clips')} to reel.yaml`,
   ].filter((part): part is string => part !== false)
   const text = parts.join(' · ')
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
+
+export const CARD_STYLE_CHANGED = 'card style changed'
 
 /** What `naming` holds while the main title card's field is open (a chapter key never is). */
 const TITLE = 'title' as const
@@ -1621,7 +1650,7 @@ export function EventEditor({
 
   // The card rows (`CardRow.tsx`) and the Timeline's blocks: each chapter's saved card, matched by
   // the name it was read with, as the draft would have it drawn (`card/specs.ts`).
-  const eventStyle = useMemo<EventStyle | null>(() => {
+  const savedStyle = useMemo<EventStyle | null>(() => {
     const style = liveDetail?.title_card
     return style == null
       ? null
@@ -1635,10 +1664,26 @@ export function EventEditor({
           position: style.position,
         }
   }, [liveDetail])
+  // The event style the cards inherit now: the saved resolved style under the draft's edits of
+  // `look.title_card` (`cardStyle.ts`), so a card, a row and a preview see it before a save.
+  const baselineNow = ready?.baseline
+  const draftStyleNow = ready?.draft.style
+  // The draft holds a style only while it differs from the one read.
+  const styleEdited = draftStyleNow !== undefined
+  const eventStyle = useMemo<EventStyle | null>(
+    () =>
+      baselineNow === undefined || draftStyleNow === undefined
+        ? savedStyle
+        : draftEventStyle(draftStyleNow, readStyle(baselineNow.read.look), savedStyle),
+    [baselineNow, draftStyleNow, savedStyle],
+  )
+  const styleForPreview = useMemo(
+    () => (baselineNow === undefined ? undefined : previewStyle(baselineNow.read.look, draftStyleNow)),
+    [baselineNow, draftStyleNow],
+  )
   const draftChapters = ready?.draft.chapters
   const draftCards = ready?.draft.cards
   const draftEventTitle = ready?.draft.metadata.title ?? ''
-  const baselineNow = ready?.baseline
   const specs = useMemo(() => {
     if (baselineNow === undefined || draftChapters === undefined || draftCards === undefined) {
       return savedSpecs
@@ -1646,7 +1691,7 @@ export function EventEditor({
     return savedSpecs.map((spec) => {
       const chapter = draftChapters.find((candidate) => candidate.readName === spec.chapter)
       const card = chapter === undefined ? undefined : draftCards.get(chapter.key)
-      if (chapter === undefined || card === undefined) {
+      if (chapter === undefined || (card === undefined && !styleEdited)) {
         return spec
       }
       const typed = draftEventTitle.trim() === '' ? (resolved?.title ?? '') : draftEventTitle
@@ -1656,9 +1701,19 @@ export function EventEditor({
         readCardOf(baselineNow, chapter.key),
         card,
         spec.chapter === '' ? typed : chapter.name,
+        styleEdited,
       )
     })
-  }, [savedSpecs, draftChapters, draftCards, baselineNow, eventStyle, draftEventTitle, resolved])
+  }, [
+    savedSpecs,
+    draftChapters,
+    draftCards,
+    baselineNow,
+    eventStyle,
+    styleEdited,
+    draftEventTitle,
+    resolved,
+  ])
   const { retain: retainCard, select: selectCard, clear: clearCard, selected: selectedCard } = cards
   // The selection ends with its chapter: deleted in the draft, it is gone from the list.
   useEffect(() => {
@@ -1694,6 +1749,7 @@ export function EventEditor({
       specs,
       style: eventStyle,
       styleError: liveDetail?.title_card_error ?? null,
+      previewStyle: styleForPreview,
       view: (saved) => {
         const chapter = keyOf(saved)
         if (chapter === undefined) {
@@ -1734,6 +1790,7 @@ export function EventEditor({
     draftCards,
     specs,
     eventStyle,
+    styleForPreview,
     liveDetail,
     draftEventTitle,
     resolved,
@@ -1745,14 +1802,50 @@ export function EventEditor({
     () => ({
       rowOf: (key) => {
         const chapter = draftChapters?.find((candidate) => candidate.key === key)
-        return chapter === undefined ? null : cardRowInfo(chapter, specs)
+        return chapter === undefined
+          ? null
+          : cardRowInfo(
+              chapter,
+              specs,
+              baselineNow === undefined || draftCards === undefined
+                ? undefined
+                : overrideWords(draftCards.get(chapter.key) ?? readCardOf(baselineNow, chapter.key)),
+            )
       },
       selected: selectedCard,
       select: selectCard,
       clear: clearCard,
     }),
-    [draftChapters, specs, selectedCard, selectCard, clearCard],
+    [draftChapters, draftCards, baselineNow, specs, selectedCard, selectCard, clearCard],
   )
+
+  // "Card style for this event": the draft's style against the one read, and what the cards inherit.
+  const styleModel: CardStyleModel | null =
+    ready === null || detail === null
+      ? null
+      : {
+          eventId,
+          read: readStyle(ready.baseline.read.look),
+          style: styleOf(ready.baseline, ready.draft),
+          resolved: savedStyle,
+          error: liveDetail?.title_card_error ?? null,
+          refusal: ready.styleRefusal,
+          previewStyle: styleForPreview,
+          eventTitle: draftEventTitle,
+          folderTitle: resolved?.title ?? null,
+          locked: listsLocked,
+          onSet: (field, value) => {
+            if (idle(latest.current)) {
+              dispatch({ type: 'style-field', field, value })
+            }
+          },
+          onReset: () => {
+            if (idle(latest.current)) {
+              dispatch({ type: 'style-reset' })
+              announce('Changes to the card style undone.')
+            }
+          },
+        }
 
   const onAddChapter = useCallback(() => {
     if (idle(latest.current)) {
@@ -2547,6 +2640,8 @@ export function EventEditor({
             />
           )}
 
+          {styleModel !== null && <CardStylePanel model={styleModel} />}
+
           {detail !== null && (
             <div className="edit-hint">
               <Icon name="info" />
@@ -2733,6 +2828,7 @@ export function EventEditor({
                     cutChanges(ready.baseline, ready.draft),
                     rotationChanges(ready.baseline, ready.draft),
                     cardsChanged,
+                    styleIsChanged(ready.baseline, ready.draft),
                     adopted,
                   )
                 : ''

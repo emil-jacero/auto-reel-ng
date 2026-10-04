@@ -90,6 +90,20 @@ describe('titlePlaceholder', () => {
   })
 })
 
+describe('previewRequest, the draft event style', () => {
+  const base = { opening: false, chapterName: 'A', eventTitle: '' }
+  it('carries the draft look.title_card as the body’s style, whole', () => {
+    const style = { text_color: '#00FF00', fade_in: 0.5 }
+    assert.deepEqual(previewRequest({ ...base, card: NO_CARD, style })?.style, style)
+  })
+  it('sends no style key while the style is as saved', () => {
+    assert.equal('style' in (previewRequest({ ...base, card: NO_CARD }) ?? {}), false)
+  })
+  it('keeps an empty style: a cleared one is not the saved one', () => {
+    assert.deepEqual(previewRequest({ ...base, card: NO_CARD, style: {} })?.style, {})
+  })
+})
+
 describe('previewRequest', () => {
   const base = { opening: false, chapterName: 'Dag 2', eventTitle: 'Ev' }
 

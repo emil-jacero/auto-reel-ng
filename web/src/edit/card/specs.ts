@@ -1,3 +1,4 @@
+import type { Font } from '../../api/fonts.ts'
 import type { CardSpec, Placement } from '../../timeline/cards.ts'
 import { cardChanged } from './model.ts'
 import type { CardDraft } from './model.ts'
@@ -8,22 +9,29 @@ import type { CardDraft } from './model.ts'
  * no event style and no saved card to start from, the saved spec stays as it is.
  */
 
-/** The event-wide resolved style (`title_card` of the detail): what an unset field inherits. */
+/**
+ * The event-wide style an unset card field inherits: the detail's resolved `title_card`, under the
+ * draft's edits of `look.title_card` (`cardStyle.ts`). A field the page does not know (the operator
+ * cleared a value the saved style set, so the lower layer is not known) is absent, never guessed.
+ */
 export type EventStyle = {
-  duration: number
-  background: string
-  font_family: string
-  title_font_size: number
-  subtitle_font_size: number
-  text_color: string
-  position: string
+  duration?: number
+  background?: string
+  font_family?: string
+  title_font_size?: number
+  subtitle_font_size?: number
+  text_color?: string
+  position?: string
 }
 
 /**
  * The card as the render would draw it with the draft's overrides: the event style under the
  * set overrides, the title as `titleNow` says while unset (the chapter's name now; the event's
- * title for the opening card), the subtitle empty while unset. An unchanged card is the saved
- * spec itself, so a block and a row keep their identity.
+ * title for the opening card), the subtitle empty while unset. A card the draft did not change,
+ * under an event style that is as saved, is the saved spec itself, so a block and a row keep
+ * their identity. `styleEdited`: the draft changed the event style, so every card is drawn
+ * from `read` (the card as read) and `style`. A field the page does not know (no style, no
+ * saved card) keeps the saved spec: nothing is guessed.
  */
 export function draftSpec(
   spec: CardSpec,
@@ -31,20 +39,25 @@ export function draftSpec(
   read: CardDraft,
   draft: CardDraft | undefined,
   titleNow: string,
+  styleEdited = false,
 ): CardSpec {
-  if (draft === undefined || !cardChanged(read, draft)) {
+  const own = draft ?? read
+  if (!styleEdited && (draft === undefined || !cardChanged(read, draft))) {
     return spec
   }
   const base = spec.card
-  if (style === null && base === null) {
+  const duration = own.duration ?? style?.duration ?? base?.duration
+  const background = own.background ?? style?.background ?? base?.background
+  const fontFamily = own.font_family ?? style?.font_family ?? base?.fontFamily
+  if (duration === undefined || background === undefined || fontFamily === undefined) {
     return spec
   }
   const card = {
-    duration: draft.duration ?? style?.duration ?? base?.duration ?? 0,
-    background: draft.background ?? style?.background ?? base?.background ?? '',
-    title: draft.title ?? titleNow,
-    subtitle: draft.subtitle ?? '',
-    fontFamily: draft.font_family ?? style?.font_family ?? base?.fontFamily ?? '',
+    duration,
+    background,
+    title: own.title ?? titleNow,
+    subtitle: own.subtitle ?? '',
+    fontFamily,
   }
   return { ...spec, card, error: null }
 }
@@ -84,3 +97,22 @@ export function backdropOf(
 
 export const BACKDROP_NOTE = (name: string) => `Backdrop: a frame from ${name}, not the exact start.`
 export const NO_BACKDROP = 'No clip frame to show it over.'
+
+/** A style value as words (`Black`, a font's display name, the number), or empty when the value is not known. */
+export function styleWords(
+  field: string,
+  value: string | number | undefined,
+  fonts: readonly Font[],
+): string {
+  if (value === undefined || value === '') {
+    return ''
+  }
+  if (field === 'font_family') {
+    return fonts.find((font) => font.family === value)?.display_name ?? String(value)
+  }
+  if (field === 'background' || field === 'position') {
+    const text = String(value)
+    return text.charAt(0).toUpperCase() + text.slice(1)
+  }
+  return String(value)
+}

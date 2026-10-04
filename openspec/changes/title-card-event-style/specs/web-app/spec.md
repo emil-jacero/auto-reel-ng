@@ -23,7 +23,7 @@ showing that error in words and the stored values as typed, so the operator can 
 
 #### Scenario: Setting a font and a colour for every card
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn` in Edit mode, the operator opens "Card style for this event",
-  picks the font `Playfair Display` and sets the text color `#FFD700`
+  picks the font `DM Serif Display` and sets the text color `#FFD700`
 - **THEN** the preview shows the opening card in that face and color before anything is saved, and the save
   bar says the card style changed
 

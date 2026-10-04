@@ -29,9 +29,11 @@ export type CardView = {
 export type CardEditing = {
   /** Each chapter's card as the draft would have it drawn: the Timeline's blocks and the rows use these. */
   specs: readonly CardSpec[]
-  /** The event-wide style an unset field inherits; null when the engine could not resolve it. */
+  /** The event-wide style an unset field inherits, the draft's edits laid over the saved; null when unknown. */
   style: EventStyle | null
   styleError: string | null
+  /** The draft event style as a save would write it (`look.title_card`) while it is not the saved one; else none. */
+  previewStyle: { [key: string]: unknown } | undefined
   /** The card of the chapter saved as `saved`; null when the draft has no such card to edit. */
   view(saved: string): CardView | null
   set<F extends CardField>(saved: string, field: F, value: CardDraft[F]): void

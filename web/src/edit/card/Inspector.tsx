@@ -8,7 +8,9 @@ import type { CardSpec } from '../../timeline/cards.ts'
 import { Alert } from '../../ui/Alert'
 import { Icon } from '../../ui/Icon'
 import type { CardEditing, CardView } from './editing.ts'
-import { Choice, FieldShell, NumberField, TextField } from './Fields'
+import { ColorField } from './ColorField'
+import { FontField } from './FontField'
+import { Choice, NumberField, TextField } from './Fields'
 import { CardPreview } from './Preview'
 import type { Backdrop } from './Preview'
 import { useFonts } from './useFonts.ts'
@@ -20,7 +22,8 @@ import {
   tooLongWords,
 } from './model.ts'
 import type { CardField } from './model.ts'
-import { effectiveBackground } from './specs.ts'
+import { effectiveBackground, styleWords } from './specs.ts'
+import { overrideWords } from '../cardStyle.ts'
 
 /*
  * The title-card inspector (`title-card-inspector`), Edit mode's one card editor. It renders in
@@ -37,25 +40,6 @@ export const FOLLOW_SUBTITLE = 'Event style: no subtitle'
 /** The inspector's name: the opening card is not a chapter's. */
 export function inspectorName(opening: boolean, name: string): string {
   return opening ? 'Opening title card' : `Title card for ${name}`
-}
-
-/** A style value as words (`Black`, a font's display name, the number), or `unknown`. */
-function styleWords(
-  field: CardField,
-  value: string | number | undefined,
-  fonts: readonly Font[],
-): string {
-  if (value === undefined || value === '') {
-    return 'unknown'
-  }
-  if (field === 'font_family') {
-    return fonts.find((font) => font.family === value)?.display_name ?? String(value)
-  }
-  if (field === 'background' || field === 'position') {
-    const text = String(value)
-    return text.charAt(0).toUpperCase() + text.slice(1)
-  }
-  return String(value)
 }
 
 export function CardInspectorPanel({
@@ -79,13 +63,13 @@ export function CardInspectorPanel({
   onClose: () => void
 }) {
   const headingId = useId()
-  const { state: fonts, retry } = useFonts()
+  const { state: fonts } = useFonts()
   const list: readonly Font[] = fonts.status === 'ok' ? fonts.fonts : []
   const { card, opening } = view
   const { style, locked } = editing
   const set = <F extends CardField>(field: F, value: Parameters<CardEditing['set']>[2]) =>
     editing.set(saved, field, value as never)
-  const clear = (field: CardField) => editing.set(saved, field, null as never)
+  const clear = (field: string) => editing.set(saved, field as CardField, null as never)
   const changed = changedFields(view.read, card)
   const name = inspectorName(opening, view.name)
   const follow = titlePlaceholder({
@@ -106,10 +90,13 @@ export function CardInspectorPanel({
     chapterName: opening ? '' : view.name,
     card,
     eventTitle: view.eventTitle,
+    style: editing.previewStyle,
   })
   const cardError = spec?.card == null && spec?.error != null ? spec.error : null
-  const inherited = (field: CardField, value: string | number | undefined) =>
-    style === null ? 'unknown' : styleWords(field, value, list)
+  const inherited = (field: CardField, value: string | number | undefined) => {
+    const words = style === null ? '' : styleWords(field, value, list)
+    return words === '' ? 'unknown' : words
+  }
   const shared = { locked, onClear: clear }
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -122,9 +109,12 @@ export function CardInspectorPanel({
   return (
     <section className="ci" aria-labelledby={headingId} onKeyDown={onKeyDown}>
       <header className="ci-head">
-        <h3 id={headingId} className="ci-title">
-          {name}
-        </h3>
+        <div className="ci-heading">
+          <h3 id={headingId} className="ci-title">
+            {name}
+          </h3>
+          <p className="ci-overrides">{overrideWords(card)}</p>
+        </div>
         <div className="ci-head-actions">
           <button
             type="button"
@@ -197,60 +187,19 @@ export function CardInspectorPanel({
             onChange={(value) => set('background', value)}
             {...shared}
           />
-          <FieldShell
-            label="Font"
-            field="font_family"
-            set={card.font_family !== null}
-            inherited={`Event style: ${inherited('font_family', style?.font_family)}`}
+          <FontField
+            value={card.font_family}
+            inherited={inherited('font_family', style?.font_family)}
             error={refused('font_family')}
+            onChange={(value) => set('font_family', value)}
             {...shared}
-          >
-            {(control) => (
-              <>
-                <select
-                  {...control}
-                  className="field-input ci-select"
-                  value={card.font_family ?? ''}
-                  aria-disabled={locked || fonts.status !== 'ok' || undefined}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value
-                    if (!locked && fonts.status === 'ok') {
-                      set('font_family', value === '' ? null : value)
-                    }
-                  }}
-                >
-                  <option value="">Event style: {inherited('font_family', style?.font_family)}</option>
-                  {list.map((font) => (
-                    <option key={font.family} value={font.family}>
-                      {font.display_name}
-                      {font.default ? ' (default)' : ''}
-                    </option>
-                  ))}
-                  {/* A family the list does not hold stays shown as it is, never silently dropped. */}
-                  {fonts.status === 'ok' &&
-                    card.font_family !== null &&
-                    !list.some((font) => font.family === card.font_family) && (
-                      <option value={card.font_family}>{card.font_family} (not in the list)</option>
-                    )}
-                </select>
-                {fonts.status === 'loading' && <p className="ci-note">Reading the font list…</p>}
-                {fonts.status === 'failed' && (
-                  <p className="ci-note" data-tone="err">
-                    The font list could not be read: {fonts.message}{' '}
-                    <button type="button" className="btn btn-ghost btn-compact" onClick={retry}>
-                      Try again
-                    </button>
-                  </p>
-                )}
-              </>
-            )}
-          </FieldShell>
+          />
           <div className="ci-pair">
             <NumberField
               label="Title size"
               field="title_font_size"
               value={card.title_font_size}
-              placeholder={style === null ? 'unknown' : String(style.title_font_size)}
+              placeholder={inherited('title_font_size', style?.title_font_size)}
               inherited={inherited('title_font_size', style?.title_font_size)}
               error={refused('title_font_size')}
               onChange={(value) => set('title_font_size', value)}
@@ -260,56 +209,21 @@ export function CardInspectorPanel({
               label="Subtitle size"
               field="subtitle_font_size"
               value={card.subtitle_font_size}
-              placeholder={style === null ? 'unknown' : String(style.subtitle_font_size)}
+              placeholder={inherited('subtitle_font_size', style?.subtitle_font_size)}
               inherited={inherited('subtitle_font_size', style?.subtitle_font_size)}
               error={refused('subtitle_font_size')}
               onChange={(value) => set('subtitle_font_size', value)}
               {...shared}
             />
           </div>
-          <FieldShell
-            label="Text colour"
-            field="text_color"
-            set={card.text_color !== null}
-            inherited={`Event style: ${inherited('text_color', style?.text_color)}`}
+          <ColorField
+            value={card.text_color}
+            inherited={inherited('text_color', style?.text_color)}
+            shown={card.text_color ?? style?.text_color ?? ''}
             error={refused('text_color')}
+            onChange={(value) => set('text_color', value)}
             {...shared}
-          >
-            {(control) => {
-              const shown = card.text_color ?? style?.text_color ?? ''
-              return (
-                <div className="ci-color">
-                  <input
-                    type="color"
-                    className="ci-swatch"
-                    aria-label="Text colour picker"
-                    value={/^#[0-9a-fA-F]{6}$/.test(shown) ? shown.toLowerCase() : '#000000'}
-                    data-unset={card.text_color === null || undefined}
-                    aria-disabled={locked || undefined}
-                    onChange={(event) => {
-                      if (!locked) {
-                        set('text_color', event.currentTarget.value)
-                      }
-                    }}
-                  />
-                  <input
-                    {...control}
-                    type="text"
-                    className="field-input ci-hex"
-                    autoComplete="off"
-                    spellCheck={false}
-                    value={card.text_color ?? ''}
-                    placeholder={style === null ? 'unknown' : style.text_color}
-                    readOnly={locked}
-                    aria-disabled={locked || undefined}
-                    onChange={(event) =>
-                      set('text_color', event.currentTarget.value === '' ? null : event.currentTarget.value)
-                    }
-                  />
-                </div>
-              )
-            }}
-          </FieldShell>
+          />
           <Choice
             label="Position"
             field="position"

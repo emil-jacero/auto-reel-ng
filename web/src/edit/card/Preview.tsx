@@ -26,6 +26,7 @@ export function CardPreview({
   subtitle,
   video,
   backdrop,
+  backdropNote,
   tooLong,
 }: {
   eventId: string
@@ -36,6 +37,8 @@ export function CardPreview({
   /** The card is drawn over video: its image is text on transparency. */
   video: boolean
   backdrop: Backdrop | null
+  /** Words in place of the backdrop note, for a card shown over no particular clip. */
+  backdropNote?: string
   tooLong: boolean
 }) {
   const view = useCardPreview(eventId, request)
@@ -118,7 +121,7 @@ export function CardPreview({
       <figcaption className="ci-caption">
         {video && (
           <span className="ci-backdrop-note">
-            {backdrop === null ? NO_BACKDROP : BACKDROP_NOTE(backdrop.name)}
+            {backdropNote ?? (backdrop === null ? NO_BACKDROP : BACKDROP_NOTE(backdrop.name))}
           </span>
         )}
         {skipped && (

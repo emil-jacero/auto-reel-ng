@@ -1,5 +1,6 @@
 import { cardDurationMs, cardWords } from '../timeline/cards.ts'
 import type { CardSpec } from '../timeline/cards.ts'
+import { USES_EVENT_STYLE } from './cardStyle.ts'
 
 /*
  * The card row at the head of each chapter in Edit mode (`title-card-blocks`), as data: what
@@ -21,6 +22,8 @@ export type CardRowInfo =
       length: string
       look: 'Black' | 'Video'
       font: string
+      /** Which style fields the draft card overrides, or that it uses the event style. */
+      overrides: string
       /** The row's accessible name. */
       words: string
       /** The draft's name when it differs from the saved one. */
@@ -32,11 +35,12 @@ export const ADDED_WORDS = 'Its title card is drawn after Save.'
 
 /**
  * The row for a draft chapter: `readName` is the name it was read with (null: added) and
- * `name` its name now. A renamed chapter shows its saved card and says the saved name.
+ * `name` its name now; `overrides` says which style fields its draft card overrides. A renamed chapter shows its saved card and says the saved name.
  */
 export function cardRowInfo(
   chapter: { readName: string | null; name: string },
   specs: readonly CardSpec[],
+  overrides: string = USES_EVENT_STYLE,
 ): CardRowInfo | null {
   if (chapter.readName === null) {
     return { kind: 'added' }
@@ -68,6 +72,7 @@ export function cardRowInfo(
       length: `${(durationMs / 1000).toFixed(1)} s`,
       look: background === 'video' ? 'Video' : 'Black',
       font: spec.card.fontFamily,
+      overrides,
       words: cardWords(spec.chapter, { durationMs, background }),
       savedName,
     }

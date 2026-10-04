@@ -755,6 +755,12 @@ retry state machine, with injected timers and client), `specs.ts` (the draft car
 show it; the clip a video card sits over), the hooks `useFonts` / `usePreview`, and the components. The
 draft slice and the write are in `edit/draft.ts`. Pure parts are tested by `npm test`.
 
+`src/edit/cardStyle.ts` and `CardStylePanel.tsx` are the event-wide card style (`title-card-event-style`):
+`cardStyle.ts` is the pure model (the seven `look.title_card` fields, `styleChanged`, `applyStyle` which gives the
+`look` a save writes, `overrides` / `overrideWords`, `effective`), `CardStylePanel.tsx` the "Card style for this
+event" disclosure in Edit mode. The style is `Draft.style` in `edit/draft.ts` beside the card drafts; the
+inspector's font and colour controls (`card/FontField.tsx`, `card/ColorField.tsx`) are shared with the panel.
+
 Movie playback is checked ad hoc in Chrome (Playwright's channel `chrome`) or Firefox,
 never in Playwright's bundled Chromium, which cannot decode H.264 and would make a
 working player look broken.

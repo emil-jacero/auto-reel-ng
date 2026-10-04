@@ -3,6 +3,7 @@ import type { KeyboardEvent, ReactNode } from 'react'
 
 import { Icon } from '../ui/Icon'
 import { ADDED_WORDS } from './cardRows'
+import { USES_EVENT_STYLE } from './cardStyle.ts'
 import type { CardRowInfo } from './cardRows'
 
 /*
@@ -83,6 +84,9 @@ export const CardRow = memo(function CardRow({
             <span className="card-row-length">{info.length}</span>
             <span className="card-row-look">{info.look}</span>
             <span className="card-row-font">{info.font}</span>
+            <span className="card-row-overrides" data-overrides={info.overrides !== USES_EVENT_STYLE || undefined}>
+              {info.overrides}
+            </span>
             {info.savedName !== null && (
               <span className="card-row-saved">Saved name: {info.savedName}</span>
             )}
