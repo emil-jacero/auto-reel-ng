@@ -6,7 +6,7 @@ import { Pill } from '../../ui/Pill'
 import type { TrackClip } from '../layout'
 import { timeToPx } from '../model'
 import type { Layout } from '../model'
-import { onGrid } from '../position'
+import { onGrid, timedOf } from '../position'
 import type { Position } from '../position'
 import { useAnalysis } from './useAnalysis'
 import type { AnalysisControl, LaneSlot, LaneView, MarkModel } from './control'
@@ -24,6 +24,7 @@ import {
   dismissalKey,
   NEVER_ANALYZED,
   eventNote,
+  markSpan,
   neighbour,
   placeMarks,
   standingRefusal,
@@ -122,20 +123,24 @@ export function useSuggestions(
   // depends on which clips are drawn), and the rows the lane needs.
   const { groups, rows } = useMemo(() => {
     const limit = timeToPx(lay.totalMs, pps)
-    const spans = base.map((group) =>
-      group.marks.map((mark) => ({
-        startMs: lay.startsMs[group.clipIndex] + Math.round(mark.segment.start * 1000),
-        endMs: lay.startsMs[group.clipIndex] + Math.round(mark.segment.end * 1000),
-      })),
+    // Each mark through its clip's kept extent; one wholly inside a leading or a trailing
+    // cut is not drawn (`timeline-ripple-layout`).
+    const shown = base.map((group) =>
+      group.marks.flatMap((mark) => {
+        const kept = clips[group.clipIndex]?.kept
+        const span = kept === undefined ? null : markSpan(mark.segment, lay.startsMs[group.clipIndex], kept)
+        return span === null ? [] : [{ mark, span }]
+      }),
     )
+    const spans = shown.map((group) => group.map((entry) => entry.span))
     const stacked = placeMarks(spans, pps, MIN_MARK_PX, limit)
     const placed = base.map(
       (group, g): ClipMarks => ({
         ...group,
-        marks: group.marks.map((mark, i): MarkModel => {
+        marks: shown[g].map(({ mark, span }, i): MarkModel => {
           const box = stacked.placed[g][i]
-          const from = timeToPx(spans[g][i].startMs, pps)
-          const to = timeToPx(spans[g][i].endMs, pps)
+          const from = timeToPx(span.startMs, pps)
+          const to = timeToPx(span.endMs, pps)
           return {
             ...mark,
             ...box,
@@ -147,7 +152,7 @@ export function useSuggestions(
     )
     const anyNote = base.some((group) => group.notAnalyzed)
     return { groups: placed, rows: Math.max(stacked.count, anyNote ? 1 : 0) }
-  }, [base, lay, pps])
+  }, [base, clips, lay, pps])
 
   const byId = useMemo(() => {
     const map = new Map<string, MarkModel>()
@@ -193,10 +198,11 @@ export function useSuggestions(
     setRefusal(null)
     setRoving((was) => new Map(was).set(mark.identity, mark.id))
     const clip = clips[mark.clipIndex]
-    // The frame the suggestion starts on; the press does not play.
+    // The frame the suggestion starts on, held to the clip's kept frames (a mark partly in a
+    // leading cut starts at the block's left edge).
     seekTo({
       clip: mark.clipIndex,
-      ms: onGrid(clip.facts, Math.round(mark.segment.start * 1000)),
+      ms: onGrid(timedOf(clip), Math.round(mark.segment.start * 1000)),
     })
   }
 

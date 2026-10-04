@@ -93,14 +93,15 @@ export function SuggestionLane({
       const stop = tabStop(index)
       return (
         <div key={clip.identity} className="sg-group" role="group" aria-label={laneName(clip.name)}>
-          {group.notAnalyzed && inWindow && (
+          {group.notAnalyzed && inWindow && clip.kept.outMs > clip.kept.inMs && (
             <span
               className="sg-clip-note"
               data-after={shifted?.(index) || undefined}
               title={CLIP_NOT_ANALYZED}
               style={{
                 insetInlineStart: timeToPx(lay.startsMs[index], view.pps),
-                inlineSize: Math.max(1, timeToPx(clip.facts.durationMs, view.pps)),
+                // The note spans the clip's block: its kept extent (`timeline-ripple-layout`).
+                inlineSize: Math.max(1, timeToPx(clip.kept.outMs - clip.kept.inMs, view.pps)),
               }}
             >
               <span className="sg-clip-note-text">{CLIP_NOT_ANALYZED}</span>
