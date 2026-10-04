@@ -22,7 +22,7 @@ describe('playheadKey', () => {
   it('answers the slider\'s Up and Down as Right and Left, and leaves other keys alone', () => {
     assert.deepEqual(playheadKey('ArrowUp', false), { kind: 'frames', n: 1 })
     assert.deepEqual(playheadKey('ArrowDown', false), { kind: 'frames', n: -1 })
-    for (const key of ['a', 'Enter', 'Tab', '+', '-', '0', 'Escape']) {
+    for (const key of ['a', 'Enter', 'Tab', '+', '=', '-', '_', '0', '\\', 'Escape']) {
       assert.equal(playheadKey(key, false), null)
     }
   })

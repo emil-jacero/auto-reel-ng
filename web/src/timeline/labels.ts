@@ -286,9 +286,15 @@ export const PAUSE = 'Pause'
 export const ZOOM_IN = 'Zoom in'
 export const ZOOM_OUT = 'Zoom out'
 export const FIT = 'Fit'
+export const ZOOM = 'Zoom'
+
+/** The Zoom slider's value text: "Fit" at its left end, else the scale in words. */
+export function zoomValueText(pps: number, fitted: boolean): string {
+  return fitted ? FIT : `${Math.round(pps)} px per second`
+}
 export const PLAYHEAD = 'Playhead'
 export const TRACK_KEYS =
-  'Left and Right step a frame, Shift one second, Page Up and Page Down five seconds, Home and End go to the ends, Space plays. + and - zoom, 0 fits.'
+  'Left and Right step a frame, Shift one second, Page Up and Page Down five seconds, Home and End go to the ends, Space plays. + and - zoom, 0 fits, \\ toggles Fit.'
 export const NOT_STARTED =
   'The browser did not start playing. Press Play again.'
 

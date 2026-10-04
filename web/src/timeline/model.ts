@@ -325,6 +325,93 @@ export function fitPps(totalMs: Ms, viewWidth: number): number {
   return totalMs === 0 ? DEFAULT_PPS : clampPps((viewWidth * 1000) / totalMs)
 }
 
+/** The zoom slider's positions: 0 is Fit, `SLIDER_STEPS` the maximum scale. */
+export const SLIDER_STEPS = 200
+
+/**
+ * The zoom slider's position (0..SLIDER_STEPS) for a scale: logarithmic between Fit and `max`,
+ * rounded to a whole step, clamped. When Fit is already at or above `max` it is 0.
+ */
+export function ppsToSlider(pps: number, fit: number, max: number = MAX_PPS): number {
+  finitePositive('pps', pps)
+  finitePositive('fit', fit)
+  finitePositive('max', max)
+  if (fit >= max || pps <= fit) {
+    return 0
+  }
+  if (pps >= max) {
+    return SLIDER_STEPS
+  }
+  return Math.round((SLIDER_STEPS * Math.log(pps / fit)) / Math.log(max / fit))
+}
+
+/** The scale at a slider position: 0 is Fit exactly, SLIDER_STEPS `max` exactly; clamped. */
+export function sliderToPps(position: number, fit: number, max: number = MAX_PPS): number {
+  finite('position', position)
+  finitePositive('fit', fit)
+  finitePositive('max', max)
+  if (fit >= max || position <= 0) {
+    return fit
+  }
+  if (position >= SLIDER_STEPS) {
+    return max
+  }
+  return fit * (max / fit) ** (position / SLIDER_STEPS)
+}
+
+/**
+ * Where a zoom is anchored, in px from the view's left: the pointer when given (a Ctrl+wheel),
+ * else the playhead while it is in view, else the view's centre.
+ */
+export function anchorFor(playheadX: number, width: number, pointerX?: number): number {
+  finite('playheadX', playheadX)
+  finitePositive('width', width)
+  if (pointerX !== undefined) {
+    finite('pointerX', pointerX)
+    return Math.min(width, Math.max(0, pointerX))
+  }
+  return playheadX >= 0 && playheadX <= width ? playheadX : width / 2
+}
+
+/** The zoom step of the buttons and keys; a wheel event zooms by at most this much. */
+export const ZOOM_STEP = 1.5
+/** A wheel's line and page in px (`WheelEvent.deltaMode` 1 and 2). */
+const WHEEL_LINE_PX = 16
+
+/**
+ * The zoom factor of one Ctrl+wheel event: 100 px of wheel up is one 1.5x step in, down one step
+ * out, held to [1/1.5, 1.5]. A delta in lines or pages is turned into px first.
+ */
+export function wheelFactor(deltaY: number, deltaMode: number, viewHeight: number): number {
+  finite('deltaY', deltaY)
+  finitePositive('viewHeight', viewHeight)
+  const px = deltaMode === 1 ? deltaY * WHEEL_LINE_PX : deltaMode === 2 ? deltaY * viewHeight : deltaY
+  const factor = ZOOM_STEP ** (-px / 100)
+  return Math.min(ZOOM_STEP, Math.max(1 / ZOOM_STEP, factor))
+}
+
+/**
+ * The scale that shows `totalMs` in a view `viewWidth` wide with `gutter` px kept free at the end
+ * (the playhead's grip reaches that far past the last moment), and the canvas width that holds it:
+ * the track's whole pixels plus the gutter, never wider than the view at Fit.
+ */
+export function fitCanvas(
+  totalMs: Ms,
+  viewWidth: number,
+  gutter: number,
+): { pps: number; canvasPx: number } {
+  finitePositive('width', viewWidth)
+  finite('gutter', gutter)
+  const pps = fitPps(totalMs, Math.max(1, viewWidth - Math.max(0, gutter)))
+  return { pps, canvasPx: canvasWidth(totalMs, pps, gutter) }
+}
+
+/** The canvas's width at a scale: the track's whole pixels plus the end gutter. */
+export function canvasWidth(totalMs: Ms, pps: number, gutter: number): number {
+  finite('gutter', gutter)
+  return Math.floor(timeToPx(totalMs, pps)) + Math.max(0, gutter)
+}
+
 const TICK_STEPS_MS: readonly Ms[] = [500, 1000, 2000, 5000, 10000, 30000, 60000, 300000, 600000]
 const TICK_MIN_PX = 70
 

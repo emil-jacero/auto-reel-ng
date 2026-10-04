@@ -30,6 +30,14 @@ import {
   visibleClips,
   visibleTicks,
   zoomAt,
+  anchorFor,
+  canvasWidth,
+  fitCanvas,
+  ppsToSlider,
+  SLIDER_STEPS,
+  sliderToPps,
+  wheelFactor,
+  ZOOM_STEP,
 } from './model.ts'
 import type { ClipFacts, KeptFacts, Layout, Ms, View } from './model.ts'
 
@@ -587,5 +595,129 @@ describe('purity and dependencies', () => {
     assert.deepEqual([...new Set(specifiers)].sort(), ['../cuts/times.ts', '../preview/playback.ts'])
     assert.doesNotMatch(source, /^import\s+['"]/m, 'no bare side-effect import')
     assert.doesNotMatch(source, /\b(document|window|fetch|localStorage|require)\b\s*[.(]/)
+  })
+})
+
+describe('the zoom slider', () => {
+  it('keeps the maximum at 240 px per second', () => {
+    assert.equal(MAX_PPS, 240)
+  })
+
+  it('puts Fit at position 0 and the maximum at the last step, exactly', () => {
+    for (const fit of [4, 7.3, 40, 239]) {
+      assert.equal(sliderToPps(0, fit), fit)
+      assert.equal(sliderToPps(SLIDER_STEPS, fit), MAX_PPS)
+      assert.equal(ppsToSlider(fit, fit), 0)
+      assert.equal(ppsToSlider(MAX_PPS, fit), SLIDER_STEPS)
+    }
+  })
+
+  it('round-trips a scale through a position to within one step', () => {
+    const next = random(7)
+    for (let i = 0; i < 500; i += 1) {
+      const fit = MIN_PPS + next() * (MAX_PPS - MIN_PPS - 1)
+      const pps = fit + next() * (MAX_PPS - fit)
+      const back = sliderToPps(ppsToSlider(pps, fit), fit)
+      const step = (MAX_PPS / fit) ** (1 / SLIDER_STEPS)
+      assert.ok(back / pps <= step && pps / back <= step, `${pps} -> ${back} at fit ${fit}`)
+    }
+  })
+
+  it('is logarithmic: the middle is the geometric mean of Fit and the maximum', () => {
+    assert.ok(Math.abs(sliderToPps(SLIDER_STEPS / 2, 15) - Math.sqrt(15 * 240)) < 1e-9)
+    assert.equal(ppsToSlider(Math.sqrt(15 * 240), 15), SLIDER_STEPS / 2)
+  })
+
+  it('clamps outside its range', () => {
+    assert.equal(sliderToPps(-5, 20), 20)
+    assert.equal(sliderToPps(SLIDER_STEPS + 50, 20), MAX_PPS)
+    assert.equal(ppsToSlider(10, 20), 0)
+    assert.equal(ppsToSlider(500, 20), SLIDER_STEPS)
+  })
+
+  it('has nothing to move when Fit is already the maximum', () => {
+    assert.equal(ppsToSlider(MAX_PPS, MAX_PPS), 0)
+    assert.equal(sliderToPps(120, MAX_PPS), MAX_PPS)
+  })
+
+  it('refuses values that are not numbers', () => {
+    assert.throws(() => ppsToSlider(Number.NaN, 20), /pps/)
+    assert.throws(() => sliderToPps(Number.NaN, 20), /position/)
+    assert.throws(() => sliderToPps(10, 0), /fit/)
+  })
+})
+
+describe('anchorFor', () => {
+  it('anchors on the playhead while it is in view', () => {
+    assert.equal(anchorFor(300, 800), 300)
+    assert.equal(anchorFor(0, 800), 0)
+    assert.equal(anchorFor(800, 800), 800)
+  })
+
+  it('anchors on the centre when the playhead is out of view', () => {
+    assert.equal(anchorFor(-1, 800), 400)
+    assert.equal(anchorFor(801, 800), 400)
+  })
+
+  it('anchors on the pointer when one is given, held to the view', () => {
+    assert.equal(anchorFor(300, 800, 650), 650)
+    assert.equal(anchorFor(-50, 800, 120), 120)
+    assert.equal(anchorFor(300, 800, -10), 0)
+    assert.equal(anchorFor(300, 800, 900), 800)
+  })
+
+  it('keeps the anchored time in place through zoomAt', () => {
+    const view: View = { pps: 20, scrollLeft: 1000, width: 800 }
+    const x = anchorFor(250, view.width)
+    const before = (view.scrollLeft + x) / view.pps
+    const zoomed = zoomAt(view, 3, x, 600000)
+    assert.ok(Math.abs((zoomed.scrollLeft + x) / zoomed.pps - before) < 1e-9)
+  })
+})
+
+describe('wheelFactor', () => {
+  it('zooms in on a wheel turned up and out on one turned down', () => {
+    assert.ok(wheelFactor(-50, 0, 600) > 1)
+    assert.ok(wheelFactor(50, 0, 600) < 1)
+    assert.equal(wheelFactor(0, 0, 600), 1)
+    assert.ok(Math.abs(wheelFactor(-100, 0, 600) - ZOOM_STEP) < 1e-9)
+  })
+
+  it('holds one event to one 1.5x step', () => {
+    assert.equal(wheelFactor(-5000, 0, 600), ZOOM_STEP)
+    assert.equal(wheelFactor(5000, 0, 600), 1 / ZOOM_STEP)
+  })
+
+  it('turns lines and pages into px', () => {
+    assert.equal(wheelFactor(-3, 1, 600), wheelFactor(-48, 0, 600))
+    assert.equal(wheelFactor(0.1, 2, 600), wheelFactor(60, 0, 600))
+  })
+})
+
+describe('fitCanvas', () => {
+  it('is never wider than the view, gutter included, at any length and width', () => {
+    const next = random(11)
+    for (let i = 0; i < 1000; i += 1) {
+      const width = 200 + Math.floor(next() * 2000)
+      const gutter = [0, 12, 22][i % 3]
+      const totalMs = 1 + Math.floor(next() * 3_600_000)
+      const { pps, canvasPx } = fitCanvas(totalMs, width, gutter)
+      if (pps > MIN_PPS) {
+        assert.ok(canvasPx <= width, `${totalMs} ms in ${width} px: ${canvasPx}`)
+      }
+      // The last moment's line, and the grip around it, are inside the canvas.
+      assert.ok(timeToPx(totalMs, pps) + gutter <= canvasPx + 1)
+    }
+  })
+
+  it('keeps the 4 px/s floor for an event too long to fit', () => {
+    const { pps, canvasPx } = fitCanvas(10 * 3600 * 1000, 1200, 12)
+    assert.equal(pps, MIN_PPS)
+    assert.equal(canvasPx, 144000 + 12)
+  })
+
+  it('adds the gutter to the track\'s whole pixels when zoomed in', () => {
+    assert.equal(canvasWidth(10_000, 40.05, 12), 400 + 12)
+    assert.equal(canvasWidth(10_000, 40, 0), 400)
   })
 })

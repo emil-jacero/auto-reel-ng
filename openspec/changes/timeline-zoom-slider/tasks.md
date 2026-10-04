@@ -4,7 +4,7 @@ scratchpad only, in Chrome 154 (`localhost/playback-research:chrome`) and Firefo
 
 ## 1. Specs in step with main
 
-- [ ] 1.1 Before any code, re-read `origin/main`: if `help-text-declutter`, `timeline-ripple-layout` or `clip-edge-trim`
+- [x] 1.1 Before any code, re-read `origin/main`: if `help-text-declutter`, `timeline-ripple-layout` or `clip-edge-trim`
   has landed, re-copy the current text of every requirement this change MODIFIES that they changed too ("The track lays
   the clips out…", "A card is selected…", any zoom or toolbar text), keeping their behaviour and this change's edits.
   Test: `openspec validate timeline-zoom-slider --strict` passes.
@@ -17,7 +17,7 @@ scratchpad only, in Chrome 154 (`localhost/playback-research:chrome`) and Firefo
   `clientWidth − gutter`, canvas `floor(totalPx) + gutter`) and keep anything else found overflowing inside the canvas.
   Tests: `node:test` for the fitted width never exceeding the view (several lengths and widths, incl. the 4 px/s floor);
   Playwright asserts `scrollWidth == clientWidth` in all of the measured cases, Chrome and Firefox.
-- [ ] 2.2 Pure zoom helpers in `model.ts` / `labels.ts` (design D1–D3): `SLIDER_STEPS`, `ppsToSlider`, `sliderToPps`,
+- [x] 2.2 Pure zoom helpers in `model.ts` / `labels.ts` (design D1–D3): `SLIDER_STEPS`, `ppsToSlider`, `sliderToPps`,
   `anchorFor(playheadX, width, pointerX?)`, `wheelFactor(deltaY, deltaMode, viewHeight)`, `zoomValueText(pps, fitted)`.
   Tests (`node:test`): round-trip pps → position → pps within one step; position 0 is exactly Fit and `SLIDER_STEPS`
   exactly 240; clamps outside the range; `fit ≥ max` → 0; anchor = playhead when in view, centre when not, pointer
