@@ -33,6 +33,6 @@ def test_the_d24_entry_names_the_split_its_rules_and_the_version_bump() -> None:
     assert "video-card-bridge-window" in entry
     assert "N = ceil(window * fps)" in entry
     assert "A tail under 1 s is not split off" in entry
-    assert "`RENDER_GRAPH_VERSION` goes 8 to 9" in entry
+    assert "`RENDER_GRAPH_VERSION` goes 9 to 10" in entry
     assert "Measured (180 s 1080p30 H.264 first clip" in entry
     assert "for its whole length;" in entry  # the history of the cost it replaces

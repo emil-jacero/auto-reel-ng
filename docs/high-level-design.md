@@ -1708,7 +1708,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     copy do not work: the second stream's encoder delay is a gap of near-silence (about 1000 samples, 2048 more than
     the unsplit render) in the middle of continuous footage, which the tone test caught. The segment stays one entry
     for progress (the head and tail report their share of its weight), chapter times, copy eligibility and the
-    segment list; a dry run lists the three commands a run executes. `RENDER_GRAPH_VERSION` goes 8 to 9: an anchor
+    segment list; a dry run lists the three commands a run executes. `RENDER_GRAPH_VERSION` goes 9 to 10: an anchor
     under a video card gets another encoder start, so its bytes change for the same inputs (D-C8: every manifest is
     stale once, reason `engine`). Measured (180 s 1080p30 H.264 first clip, 7 s video card, median of 3, before and after interleaved on a shared host at load average 15 to 27, so wall time is noisy and
     ffmpeg CPU seconds is the steadier figure): **VAAPI** (AMD RX 9070 XT) wall 40.9 s to 30.2 s (-26%), ffmpeg CPU seconds

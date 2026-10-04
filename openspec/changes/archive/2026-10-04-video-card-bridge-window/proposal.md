@@ -30,7 +30,7 @@ section 6 (phase status unchanged), decision D-24 (title cards); no new D-number
   encoder's delay.
 - A tail shorter than 1 s is not split off (the saving is smaller than a second and costs an extra ffmpeg start
   and audio seam): the segment stays whole, as today.
-- `RENDER_GRAPH_VERSION` 8 -> 9 (see Impact).
+- `RENDER_GRAPH_VERSION` 9 -> 10 (see Impact).
 
 ## Non-goals
 
@@ -47,7 +47,7 @@ section 6 (phase status unchanged), decision D-24 (title cards); no new D-number
 
 - **Rendered output changes for identical inputs** (Principle IV): an event with a video card now has an extra
   segment boundary (a new encode start, a different GOP/audio-frame alignment after the split). So
-  `RENDER_GRAPH_VERSION` MUST bump, 8 -> 9, with a history line. The bump makes every event stale once (engine id
+  `RENDER_GRAPH_VERSION` MUST bump, 9 -> 10, with a history line. The bump makes every event stale once (engine id
   is part of the fingerprint), including events without a video card whose bytes are unchanged; that is the accepted
   over-bump trade-off of D-C8 (one archive re-render, bypassable only by `adopt-renders`, which re-adopts under
   the new id). Not bumping would leave rendered movies whose bytes differ from what `render --force` produces

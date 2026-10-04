@@ -41,7 +41,7 @@
 
 ## 4. render/ + staleness/ version bump
 
-- [x] 4.1 In `staleness/fingerprint.py` bump `RENDER_GRAPH_VERSION` 8 -> 9 (or the next free number if another
+- [x] 4.1 In `staleness/fingerprint.py` bump `RENDER_GRAPH_VERSION` 9 -> 10 (or the next free number if another
   merged change took 9) and add the history line `9: video-card-bridge-window (...)` in the comment block. Verify
   with the existing fingerprint tests updated for the new value (engine component differs from version 8 for the
   same event) and a manifest test showing an event rendered under 8 reads stale with reason `engine`.
