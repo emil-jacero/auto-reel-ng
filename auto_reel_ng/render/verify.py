@@ -17,7 +17,7 @@ from ..errors import RenderVerificationError
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..probe import probe_media
 from ..probe.metadata import ClipMetadata
-from .normalize import _normalize_sar
+from .concat import normalize_sar
 from .target import TargetSpec
 
 
@@ -91,7 +91,7 @@ def verify_output(
         mismatches.append(f"codec {facts.video_codec!r} != {target.video_codec!r}")
     if facts.pix_fmt != target.pix_fmt:
         mismatches.append(f"pix_fmt {facts.pix_fmt!r} != {target.pix_fmt!r}")
-    if _normalize_sar(facts.sample_aspect_ratio) != target.sample_aspect_ratio:
+    if normalize_sar(facts.sample_aspect_ratio) != target.sample_aspect_ratio:
         mismatches.append(f"SAR {facts.sample_aspect_ratio!r} != {target.sample_aspect_ratio!r}")
     if mismatches:
         raise RenderVerificationError(

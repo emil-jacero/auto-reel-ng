@@ -18,6 +18,20 @@ from typing import Optional, Sequence
 from ..errors import RenderError
 from ..ffmpeg.runtime import FfmpegRuntime
 
+UNSET_SAR_SPELLINGS: frozenset[str] = frozenset({"", "N/A", "0:1"})
+
+
+def normalize_sar(sample_aspect_ratio: Optional[str]) -> str:
+    """Map an unset SAR (absent, empty, ``N/A`` or ``0:1``) to square ``1:1``.
+
+    An unset SAR is displayed as square, so it is equivalent to ``1:1`` for copy
+    eligibility and for the concat pre-flight alike; any concrete value (``4:3``)
+    is returned unchanged so a real SAR difference still compares unequal.
+    """
+    if sample_aspect_ratio is None or sample_aspect_ratio in UNSET_SAR_SPELLINGS:
+        return "1:1"
+    return sample_aspect_ratio
+
 
 @dataclass(frozen=True)
 class CopyFields:
@@ -25,7 +39,8 @@ class CopyFields:
 
     The values are compared only for equality across the set, so each is held as
     the raw ffprobe scalar (``object``); their *names* document the copy-critical
-    fields the spike (exp 001) proved must agree.
+    fields the spike (exp 001) proved must agree. ``sample_aspect_ratio`` alone
+    is held normalized (:func:`normalize_sar`), so an unset SAR equals ``1:1``.
     """
 
     video_codec: object
@@ -53,12 +68,13 @@ def probe_copy_fields(runtime: FfmpegRuntime, path: Path) -> CopyFields:
 
     video: dict[str, object] = next((s for s in streams if s.get("codec_type") == "video"), {})
     audio: dict[str, object] = next((s for s in streams if s.get("codec_type") == "audio"), {})
+    raw_sar = video.get("sample_aspect_ratio")
     return CopyFields(
         video_codec=video.get("codec_name"),
         profile=video.get("profile"),
         width=video.get("width"),
         height=video.get("height"),
-        sample_aspect_ratio=video.get("sample_aspect_ratio"),
+        sample_aspect_ratio=normalize_sar(None if raw_sar is None else str(raw_sar)),
         pix_fmt=video.get("pix_fmt"),
         time_base=video.get("time_base"),
         audio_codec=audio.get("codec_name"),
@@ -113,6 +129,7 @@ def build_concat_command(
 
 __all__ = [
     "CopyFields",
+    "normalize_sar",
     "probe_copy_fields",
     "is_copy_uniform",
     "build_concat_list",
