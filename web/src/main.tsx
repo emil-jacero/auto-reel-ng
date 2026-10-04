@@ -5,7 +5,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
-import { documentRoot, keepOneVideoPlaying } from './playback/coordinator'
+import { installPagePlayback } from './playback/coordinator'
 
 const container = document.getElementById('root')
 if (container === null) {
@@ -13,7 +13,7 @@ if (container === null) {
 }
 
 // One video plays on the page, whichever players it holds (playback/coordinator.ts).
-keepOneVideoPlaying(documentRoot(document))
+installPagePlayback(document)
 
 createRoot(container).render(
   <StrictMode>

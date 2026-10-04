@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { probeProxy, proxyUrl } from '../api/clipMedia'
 import { mediaErrorWords } from '../movie/labels'
-import { anotherPlays } from '../playback/coordinator'
+import { anotherPlays, documentRoot, watchOtherStarts } from '../playback/coordinator'
 import { nextClip, onFrame, resumeOrYield, startFrom } from './follow'
 import { NOT_STARTED, playbackNote } from './labels'
 import type { Notice, PlaybackNote } from './labels'
@@ -148,6 +148,20 @@ export function useTimelineVideo({
         },
       }),
     [addressOf, disarm],
+  )
+
+  // Another video that starts while the operator's Play is still loading is the last start:
+  // the Timeline's claim on playing ends, and it yields when it would start.
+  useEffect(
+    () =>
+      watchOtherStarts(
+        documentRoot(document),
+        () => videoRef.current,
+        () => {
+          operatorStart.current = false
+        },
+      ),
+    [],
   )
 
   const startVideo = useCallback(() => {

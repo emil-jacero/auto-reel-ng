@@ -69,3 +69,32 @@ export function anotherPlays(self: unknown, videos: Iterable<PausableVideo>): bo
   }
   return false
 }
+
+/**
+ * Calls `onOther` whenever a video other than `self()` starts playing. The Timeline uses it
+ * to drop its claim on a Play that is still loading: the video started after the press is
+ * the last start, and wins.
+ */
+export function watchOtherStarts(
+  root: VideoRoot,
+  self: () => unknown,
+  onOther: () => void,
+): () => void {
+  const onPlay = (event: Event) => {
+    if (root.isVideo(event.target) && event.target !== self()) {
+      onOther()
+    }
+  }
+  root.addEventListener('play', onPlay, true)
+  return () => root.removeEventListener('play', onPlay, true)
+}
+
+/** What `installPagePlayback` needs of the page: the `document`'s event surface. */
+export type PageDocument = Pick<Document, 'addEventListener' | 'removeEventListener'> & {
+  querySelectorAll: Document['querySelectorAll']
+}
+
+/** Installs the page's one-video rule on `document` (called once, from `main.tsx`). */
+export function installPagePlayback(document: PageDocument): () => void {
+  return keepOneVideoPlaying(documentRoot(document as Document))
+}
