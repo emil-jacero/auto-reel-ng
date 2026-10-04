@@ -72,6 +72,7 @@ import {
   pxToTime,
   sliderToPps,
   timeToPx,
+  wheelFactor,
   zoomAt,
 } from './model'
 import { createPlayhead } from './playhead'
@@ -525,13 +526,35 @@ export function Timeline({
     setZoom({ pps: fitRef.current, fitted: true })
   }
   const onSlider = (position: number) => {
+    beforeFit.current = null
     if (position <= 0) {
       fitAll()
     } else {
       zoomTo(sliderToPps(position, fitRef.current))
     }
   }
+  // `\` (Premiere): Fit, and pressed again at Fit, back to the zoom before it. Any other zoom
+  // forgets that zoom.
+  const beforeFit = useRef<number | null>(null)
+  const toggleFit = () => {
+    const back = beforeFit.current
+    if (zoom.fitted || ppsRef.current <= fitRef.current + 1e-9) {
+      beforeFit.current = null
+      if (back !== null) {
+        zoomTo(back)
+      }
+    } else {
+      const now = ppsRef.current
+      fitAll()
+      beforeFit.current = now
+    }
+  }
   const onTrackKey = (key: string) => {
+    if (key === '\\') {
+      toggleFit()
+      return
+    }
+    beforeFit.current = null
     if (key === '0') {
       fitAll()
     } else if (key === '+' || key === '=') {
@@ -540,6 +563,50 @@ export function Timeline({
       zoomBy(1 / ZOOM_STEP)
     }
   }
+
+  // Ctrl+wheel (Cmd+wheel; a trackpad pinch arrives as a Ctrl+wheel) zooms about the pointer, at
+  // most once per animation frame. A listener of our own, not passive, so the page does not zoom
+  // instead; a wheel without Ctrl or Cmd is left to the browser.
+  const wheelZoom = useRef({ zoomTo, forget: () => undefined as void })
+  wheelZoom.current = {
+    zoomTo,
+    forget: () => {
+      beforeFit.current = null
+    },
+  }
+  useEffect(() => {
+    const el = scroller.current
+    if (el === null) {
+      return undefined
+    }
+    let factor = 1
+    let pointerX = 0
+    let frame = 0
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) {
+        return
+      }
+      event.preventDefault()
+      factor *= wheelFactor(event.deltaY, event.deltaMode, Math.max(1, el.clientHeight))
+      pointerX = event.clientX - el.getBoundingClientRect().left - el.clientLeft
+      if (frame === 0) {
+        frame = requestAnimationFrame(() => {
+          frame = 0
+          const by = factor
+          factor = 1
+          wheelZoom.current.forget()
+          wheelZoom.current.zoomTo(ppsRef.current * by, pointerX)
+        })
+      }
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      if (frame !== 0) {
+        cancelAnimationFrame(frame)
+      }
+    }
+  }, [])
 
   const onFilmFailed = useCallback(
     (identity: string) =>
@@ -655,7 +722,10 @@ export function Timeline({
             aria-label={ZOOM_OUT}
             title={ZOOM_OUT}
             aria-disabled={atFit || undefined}
-            onClick={() => zoomBy(1 / ZOOM_STEP)}
+            onClick={() => {
+              beforeFit.current = null
+              zoomBy(1 / ZOOM_STEP)
+            }}
           >
             <Icon name="minus" />
           </button>
@@ -672,11 +742,21 @@ export function Timeline({
             aria-label={ZOOM_IN}
             title={ZOOM_IN}
             aria-disabled={atMax || undefined}
-            onClick={() => zoomBy(ZOOM_STEP)}
+            onClick={() => {
+              beforeFit.current = null
+              zoomBy(ZOOM_STEP)
+            }}
           >
             <Icon name="plus" />
           </button>
-          <button type="button" className="btn btn-secondary" onClick={fitAll}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              beforeFit.current = null
+              fitAll()
+            }}
+          >
             <Icon name="maximize" />
             {FIT}
           </button>
