@@ -43,7 +43,9 @@ PathLike = Union[str, Path]
 #:    chapter cards).
 #: 9: title-card-date-place-shadow (the opening card's default subtitle and the video card's
 #:    soft shadow).
-RENDER_GRAPH_VERSION = 9
+#: 10: video-card-bridge-window (an anchor segment under a video card is encoded as a
+#:    card-window head and a tail, so its bytes change for the same inputs).
+RENDER_GRAPH_VERSION = 10
 
 #: The four fingerprint components, in the fixed order the combined hash uses.
 COMPONENTS = ("editorial", "defaults", "clip_set", "engine")

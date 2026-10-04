@@ -25,8 +25,9 @@ section 6 (phase status unchanged), decision D-24 (title cards); no new D-number
 - The split is **frame-exact on the target frame grid**: the head is a whole number of target frames, the tail starts
   at the head's end, so the joined result has exactly the frames the unsplit segment had (none dropped or
   duplicated) and the movie's duration and chapter times are unchanged within one frame.
-- The audio is cut at the same instant (sample-exact for the head's length) and joins without a gap or overlap of
-  more than one AAC frame.
+- The audio is encoded once for the whole segment (the pieces are video-only and a join command stream-copies their
+  video and encodes the audio from the source), so it is continuous across the join with no gap from a second AAC
+  encoder's delay.
 - A tail shorter than 1 s is not split off (the saving is smaller than a second and costs an extra ffmpeg start
   and audio seam): the segment stays whole, as today.
 - `RENDER_GRAPH_VERSION` 8 -> 9 (see Impact).
@@ -53,7 +54,7 @@ section 6 (phase status unchanged), decision D-24 (title cards); no new D-number
   while the gate calls them fresh, which Principle IV forbids. If another in-flight change has already taken 9,
   take the next free number at implementation time.
 - Fingerprint inputs: unchanged. `reel.yaml` / `config.yaml` schema: unchanged. Alembic migration and rescan: none.
-- Packages: `render/` (split, command building, progress weights), `staleness/` (the constant and its history
+- Packages: `render/` (split, command building, progress shares), `staleness/` (the constant and its history
   line only). CLI and API: both unchanged; `auto-reel render`, the worker and a dry-run (`_plan_only`) all go
   through the same render path, so the plan lists the head and tail commands.
 - Capabilities: `clip-normalize` (MODIFIED: the bridge covers the card window), `render-segments` (ADDED: the

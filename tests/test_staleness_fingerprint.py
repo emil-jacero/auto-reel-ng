@@ -29,12 +29,12 @@ from auto_reel_ng.staleness.manifest import write_manifest
 FFMPEG_VERSION = (7, 1)
 
 #: Golden hashes for ``_pinned_document()`` + ``_pinned_event_dir()`` (task 1.1).
-#: ENGINE/COMBINED re-pinned for RENDER_GRAPH_VERSION 9 (title-card-date-place-shadow; 8 was title-cards-default-on, 7 was title-card-model, 6 was clip-rotate-engine, 5 title-card-fonts); EDITORIAL, DEFAULTS and CLIP_SET are as before.
+#: ENGINE/COMBINED re-pinned for RENDER_GRAPH_VERSION 10 (video-card-bridge-window; 9 was title-card-date-place-shadow, 8 was title-cards-default-on, 7 was title-card-model, 6 was clip-rotate-engine, 5 title-card-fonts); EDITORIAL, DEFAULTS and CLIP_SET are as before.
 PINNED_EDITORIAL = "cfb295abf2c9f44e4ec05e5634beaf1b9b21235c21d65d0109a944509d848de4"
 PINNED_DEFAULTS = "9d1a9bf4432fae2ec90ade0e7eb1552455abd6da0fac7974d78a16d63113f555"
 PINNED_CLIP_SET = "b1c642b3cd29b949070b357534bae6e2077121b032f93fa34c7aa0df957b6663"
-PINNED_ENGINE = "2278bc82508cebbe33f0614295941fdc30fa95fda6999851946293b41e93d646"
-PINNED_COMBINED = "d63ba3598e33dc37388be66bb9a53faa10ee4ba5b85d4aa03c5555e6f3988472"
+PINNED_ENGINE = "4fa43f621b0b599b38ac97e39d41d8157420e9d135ce7b0f844bcf640cef1f77"
+PINNED_COMBINED = "cc9fadae574afc7fda8348fcede73d85b3fe12e6124dd082d759ec7efe538048"
 #: ``_hash_json({1: "a", "b": "c"})``: the fallback path, which tags every key with its type.
 PINNED_FALLBACK = "43ef72b9709103ca8e6941bcc4ae7e089a867d856cf5f73300d83181f52e17e1"
 
@@ -149,7 +149,7 @@ def test_version_8_manifest_is_engine_stale(
         patch.setattr(fingerprint_module, "RENDER_GRAPH_VERSION", 8)
         old = _fingerprint(event_dir)
         identity = fingerprint_module.engine_identity(FFMPEG_VERSION)
-    assert fingerprint_module.RENDER_GRAPH_VERSION == 9
+    assert fingerprint_module.RENDER_GRAPH_VERSION >= 9
     write_manifest(event_dir, old, output=output.name, engine_identity=identity)
 
     verdict = evaluate(event_dir, output, _fingerprint(event_dir))
@@ -514,6 +514,29 @@ def test_version_7_manifest_is_engine_stale(
         identity = fingerprint_module.engine_identity(FFMPEG_VERSION)
     assert identity.startswith("render_graph_version=7 ")
     assert fingerprint_module.RENDER_GRAPH_VERSION >= 8
+    write_manifest(event_dir, old, output=output.name, engine_identity=identity)
+
+    verdict = evaluate(event_dir, output, _fingerprint(event_dir))
+
+    assert verdict.stale is True
+    assert verdict.reasons == (StalenessReason.ENGINE,)
+
+
+def test_version_9_manifest_is_engine_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # video-card-bridge-window bumped RENDER_GRAPH_VERSION to 10 (an anchor under a video card is
+    # encoded as a card-window head and a tail): an output rendered under version 9 re-renders,
+    # for the engine reason alone.
+    event_dir = _event_dir(tmp_path)
+    output = event_dir / "Party.mp4"
+    output.write_bytes(b"rendered")
+    with monkeypatch.context() as patch:
+        patch.setattr(fingerprint_module, "RENDER_GRAPH_VERSION", 9)
+        old = _fingerprint(event_dir)
+        identity = fingerprint_module.engine_identity(FFMPEG_VERSION)
+    assert identity.startswith("render_graph_version=9 ")
+    assert fingerprint_module.RENDER_GRAPH_VERSION >= 10
     write_manifest(event_dir, old, output=output.name, engine_identity=identity)
 
     verdict = evaluate(event_dir, output, _fingerprint(event_dir))

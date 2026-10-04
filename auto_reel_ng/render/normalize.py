@@ -60,6 +60,22 @@ class NormalizeCommand:
 
 
 @dataclass(frozen=True)
+class AudioSidecar:
+    """A second output of a normalize command: the audio of a whole segment, encoded once.
+
+    A segment split at its card window is encoded as two video-only pieces; the one command that
+    encodes the later piece also cuts the audio of the *whole* segment (``start`` seconds into
+    the clip, ``duration`` long; ``None`` start for a whole clip) from the source into ``path``,
+    in parallel with its video. A join then copies video and audio together, with no second AAC
+    stream and so no encoder-delay gap inside continuous footage.
+    """
+
+    path: Path
+    start: Optional[float]
+    duration: float
+
+
+@dataclass(frozen=True)
 class _Stage:
     """One video-filter stage with its frame locations, for transfer insertion."""
 
@@ -334,6 +350,7 @@ def build_normalize_command(
     *,
     render_node: Optional[str] = None,
     force_software_decode: bool = False,
+    audio: bool | AudioSidecar = True,
 ) -> NormalizeCommand:
     """Build the ffmpeg command that normalizes ``segment`` to ``target``.
 
@@ -351,6 +368,13 @@ def build_normalize_command(
     ordinary frame-location transfers. A hardware-decodable clip is unchanged, and so is
     every clip on a profile that has no upload device to offer (it is never moved to a
     software decode it cannot upload from, short of ``force_software_decode``).
+
+    ``audio=False`` writes a video-only intermediate (``-an``: no audio map, no silence input).
+    It is for a piece of a segment split at its card window, whose audio is encoded once for
+    the whole segment: an :class:`AudioSidecar` as ``audio`` writes a video-only intermediate
+    and adds that audio as a second output of the one command, and
+    :func:`~auto_reel_ng.render.card_window.build_join_command` copies it in beside the joined
+    video.
     """
     if segment.is_synthetic:
         raise RenderError(
@@ -430,25 +454,21 @@ def build_normalize_command(
     args += ["-i", str(segment.source_path)]
     args += overlay_inputs
 
-    silence_input_index = 1 + len(segment.overlays)
-    if clip.has_audio:
-        audio_map = "0:a:0"
-    else:
-        layout = _channel_layout(target.audio_channels)
-        args += [
-            "-f",
-            "lavfi",
-            "-t",
-            _fmt(duration),
-            "-i",
-            f"anullsrc=channel_layout={layout}:sample_rate={target.audio_sample_rate}",
-        ]
-        audio_map = f"{silence_input_index}:a:0"
+    extra_args, audio_map = _extra_audio_input(
+        clip,
+        target,
+        audio,
+        input_index=1 + len(segment.overlays),
+        duration=duration,
+        source=segment.source_path,
+    )
+    args += extra_args
 
     if value:
         args += [flag, value]
     args += ["-map", map_label if map_label is not None else "0:v:0"]
-    args += ["-map", audio_map]
+    if audio is True:
+        args += ["-map", audio_map]
 
     args += ["-r", _fmt(target.fps)]
     args += list(encode.output_flags)
@@ -460,15 +480,10 @@ def build_normalize_command(
         args += ["-pix_fmt", target.pix_fmt]
     if segment.is_trimmed:
         args += ["-t", _fmt(duration)]
-    args += [
-        "-c:a",
-        target.audio_codec,
-        "-ar",
-        str(target.audio_sample_rate),
-        "-ac",
-        str(target.audio_channels),
-    ]
+    args += list(_audio_encode_flags(target)) if audio is True else ["-an"]
     args += [str(output_path)]
+    if isinstance(audio, AudioSidecar):
+        args += ["-map", audio_map, *_audio_encode_flags(target), str(audio.path)]
 
     return NormalizeCommand(
         args=tuple(args),
@@ -476,6 +491,46 @@ def build_normalize_command(
         duration=duration,
         warnings=tuple(warnings),
         hardware_decode=decode.frames_out is not FrameLocation.SYSTEM,
+    )
+
+
+def _extra_audio_input(
+    clip: ClipMetadata,
+    target: TargetSpec,
+    audio: bool | AudioSidecar,
+    *,
+    input_index: int,
+    duration: float,
+    source: Optional[Path],
+) -> tuple[list[str], str]:
+    """The extra input arguments a command's audio needs, and the stream label to map for it.
+
+    A muxed track (``audio`` true) of a clip without audio gets synthesized silence as input
+    ``input_index``; a sidecar reads the clip again for its audio alone (the hardware-decode
+    flags belong to the first input only) or, for a clip without audio, silence of its length.
+    """
+    if isinstance(audio, AudioSidecar) and clip.has_audio:
+        args: list[str] = []
+        if audio.start is not None:
+            args += ["-ss", _fmt(audio.start)]
+        return [*args, "-t", _fmt(audio.duration), "-i", str(source)], f"{input_index}:a:0"
+    if audio is False or clip.has_audio:
+        return [], "0:a:0"
+    length = audio.duration if isinstance(audio, AudioSidecar) else duration
+    layout = _channel_layout(target.audio_channels)
+    silence = f"anullsrc=channel_layout={layout}:sample_rate={target.audio_sample_rate}"
+    return ["-f", "lavfi", "-t", _fmt(length), "-i", silence], f"{input_index}:a:0"
+
+
+def _audio_encode_flags(target: TargetSpec) -> tuple[str, ...]:
+    """The audio codec, rate and channel flags every normalize command ends with."""
+    return (
+        "-c:a",
+        target.audio_codec,
+        "-ar",
+        str(target.audio_sample_rate),
+        "-ac",
+        str(target.audio_channels),
     )
 
 
@@ -637,6 +692,7 @@ def decide_copy_eligibility(
 
 
 __all__ = [
+    "AudioSidecar",
     "NormalizeCommand",
     "HDR_SLOWNESS_WARNING",
     "build_normalize_command",
