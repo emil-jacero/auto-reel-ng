@@ -506,8 +506,13 @@ export function Track({
             fallbackRef={gripRef}
           />
         )
-        // Tab order per clip: Trim In, its cut handles, Trim Out.
-        handleNodes.push(edge('start'))
+        // Tab order per clip: Trim In, its cut handles, Trim Out. While a drag ripples the track, the
+        // tools of the clips behind its edge are left out (a drag holds the one claim, and an invisible
+        // zone need not be moved on every frame); they come back with the released layout.
+        const tools = !after
+        if (tools) {
+          handleNodes.push(edge('start'))
+        }
         // The cut handles of a clip whose edge is in the air step out until it is released.
         if (
           detailed &&
@@ -541,7 +546,9 @@ export function Track({
             />,
           )
         }
-        handleNodes.push(edge('end'))
+        if (tools) {
+          handleNodes.push(edge('end'))
+        }
       }
       const blockProps: BlockProps = {
         eventId,
