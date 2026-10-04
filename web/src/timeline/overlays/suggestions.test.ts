@@ -529,6 +529,7 @@ describe('an approval, from the suggestion to reel.yaml and back', () => {
     metadata: { title: 'T', date: '2024-05-01', location: '', description: '' },
     cuts: new Map(),
     rotations: new Map(),
+    cards: new Map(),
   }
   const clip = 'C0012.MP4'
   const suggestion = { start: 0, end: 3.2033333, kind: 'black' }

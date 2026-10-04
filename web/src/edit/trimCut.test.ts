@@ -53,6 +53,7 @@ function setup(read: ReelDocument): { baseline: Baseline; draft: Draft } {
     metadata: { title: '', date: '', location: '', description: '' },
     cuts: new Map(),
     rotations: new Map(),
+    cards: new Map(),
   }
   return { baseline, draft }
 }
@@ -221,6 +222,7 @@ describe('layoutChanged', () => {
         metadata: { title: '', date: '', location: '', description: '' },
         cuts: new Map(),
         rotations: new Map(),
+        cards: new Map(),
       },
     }
   }

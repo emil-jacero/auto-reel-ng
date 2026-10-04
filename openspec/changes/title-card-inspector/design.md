@@ -111,3 +111,18 @@ the message. A message for no known field shows at the card's top.
 - The "Main title card" line and the opening card's `card.title` could be confused → the line stays as the event
   title's control (its requirement is unchanged); the inspector's title for the opening card says "Follows the event
   title" while empty, so the relation is on screen.
+
+## As built (2026-10-04)
+
+- Confirmed on a running service: the preview accepts a chapter not in the saved document and resolves an empty title
+  to it; `GET /fonts` returns nine families, one default. So D5 sends `chapter` = the draft name and no title.
+- D3: unset values come from the event's resolved `title_card` (the exact "Event style"), not the chapter's resolved
+  card, which already contains the override being cleared. The blocks and rows show the draft card
+  (`card/specs.ts`), so a typed title or a Black/Video change is on the Timeline at once.
+- D7: the font control is a native `<select>`: the nine families by display name, the default marked, and a first
+  "Event style" entry that clears the override.
+- D8: the inspector sits in `CardInspector`'s slot in the Timeline section (above the track), two columns when the
+  section is wide, stacked when narrow; it is not a side column beside the list.
+- A changed card of a chapter the document does not list is written from the view (it adopts that chapter's clips);
+  a card of a listed chapter is written onto the chapter as authored, so no NEW clip is adopted by a card edit.
+- A refused save that names a card selects that card so the message shows at its field.

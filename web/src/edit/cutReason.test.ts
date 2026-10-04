@@ -32,6 +32,7 @@ const draft: Draft = {
   metadata: { title: 'T', date: '2024-05-01', location: '', description: '' },
   cuts: new Map(),
   rotations: new Map(),
+  cards: new Map(),
 }
 
 const reasonsOf = (d: Draft) => (d.cuts.get('a.mp4') ?? []).map((cut) => cut.reason)

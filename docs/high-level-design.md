@@ -370,6 +370,14 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   live progress**, **clip thumbnails** (one frame per clip, **D-11**), and **the rendered movie on the event
   page** (**D-15**). The resolved `look` is shown
   **read-only**; editing it is v2. No timeline, no per-frame editing.
+- **v2 title-card inspector** (`title-card-inspector`, D-24): selecting a card (Timeline block or chapter row) opens its
+  inspector in Edit mode (`web/src/edit/card/`): title, subtitle, Black/Video, font (`GET /fonts`, by display name),
+  sizes, colour, position, each a per-card override with **Use event style** (the unset value is the event's resolved
+  `title_card`). Cards are a draft slice by chapter key; a save sends `card` only for changed cards (`{}` removes) and
+  the save bar counts them. The preview is `POST …/title-card/preview` (250 ms debounce, stale requests aborted,
+  previous image kept, failures in words, one retry after `Retry-After`); a Video card is laid over the **thumbnail
+  frame** of the clip it sits over (not the exact start: the preview has no frame-at-time option). Follow-ups: serve
+  the bundled font files so the picker can show each family in its own face, and a frame-at-time route.
 - **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview; `title-card-fonts`
   is the foundation of the card editor: the bundled font set and its registry, **D-22**; **the title card model
   has landed** as `title-card-model`, **D-24**: the per-chapter `card:` in `reel.yaml`; **its API is built** as

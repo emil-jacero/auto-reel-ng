@@ -3,9 +3,13 @@ import { useEffect, useId, useMemo, useState } from 'react'
 import type { EventDetail } from '../api/event'
 import type { ReadCutsState } from '../cuts/ReadCuts'
 import { Alert } from '../ui/Alert'
+import { CardInspectorPanel } from '../edit/card/Inspector'
+import type { CardEditing } from '../edit/card/editing.ts'
+import { backdropOf } from '../edit/card/specs.ts'
+import type { Backdrop } from '../edit/card/Preview'
 import { CardInspector, inspectorWords } from './CardInspector'
 import { Prepare, usePrepare } from './Prepare'
-import { cardSpecs, decoratorsRead } from './cards'
+import { cardPlacements, cardSpecs, decoratorsRead } from './cards'
 import type { CardsBinding } from './useCardSelection'
 import { analysisOf } from './overlays/control'
 import type { Dismissals } from './overlays/Dismissals'
@@ -35,6 +39,7 @@ export function TimelineSection({
   onFinished,
   editing = null,
   cards,
+  cardEditing = null,
 }: {
   eventId: string
   event: EventDetail
@@ -48,6 +53,8 @@ export function TimelineSection({
   editing?: EditBinding | null
   /** The page's one card selection (`useCardSelection`), shared with Edit mode's rows. */
   cards: CardsBinding
+  /** Edit mode's cards (`title-card-inspector`): the draft's specs and the inspector's edits; null in the read view. */
+  cardEditing?: CardEditing | null
 }) {
   const [open, setOpen] = useState(false)
   const headingId = useId()
@@ -70,7 +77,8 @@ export function TimelineSection({
     [eventId, read, editing, dismissals],
   )
   // Each chapter's resolved card, and whether the render draws them (`look.decorators`).
-  const specs = useMemo(() => cardSpecs(event), [event])
+  const savedSpecs = useMemo(() => cardSpecs(event), [event])
+  const specs = cardEditing?.specs ?? savedSpecs
   const decorators = decoratorsRead(
     editing === null ? read.look : editing.look,
     editing === null && read.failure !== null,
@@ -84,6 +92,39 @@ export function TimelineSection({
   useEffect(() => retain(specs.map((spec) => spec.chapter)), [retain, specs])
   const selectedSpec =
     cards.selected === null ? undefined : specs.find((spec) => spec.chapter === cards.selected)
+  // The selected card's inspector, in Edit mode: the card as the draft has it, and the clip a
+  // video card is laid over (the Timeline's own anchor when the clips are ready, else the
+  // chapter's first shown clip).
+  const selectedView =
+    editing !== null && cardEditing !== null && cards.selected !== null
+      ? cardEditing.view(cards.selected)
+      : null
+  const backdrop = useMemo<Backdrop | null>(() => {
+    if (cards.selected === null || selectedView === null) {
+      return null
+    }
+    const chapter = specs.findIndex((spec) => spec.chapter === cards.selected)
+    const placements =
+      clips === null || decorators === 'pending' || decorators === 'unreadable' || chapter === -1
+        ? null
+        : cardPlacements(
+            specs,
+            clips.map((clip) => ({
+              chapter: clip.chapter,
+              durationMs: clip.facts.durationMs,
+              spans: clip.spans,
+            })),
+            decorators,
+          )
+    const found = chapter === -1 ? null : backdropOf(chapter, shown.clips, placements)
+    const clip =
+      found === null
+        ? undefined
+        : event.chapters.flatMap((c) => c.clips).find((c) => c.identity === found.identity)
+    return clip === undefined || found === null
+      ? null
+      : { clip, name: found.name, turn: cutsRead.turns?.get(found.identity) ?? 0 }
+  }, [cards.selected, selectedView, specs, clips, decorators, shown, event, cutsRead.turns])
   const state = sectionState(open, shown.clips)
   const omitted = omittedWords(shown.omitted)
   return (
@@ -100,7 +141,25 @@ export function TimelineSection({
           {open ? 'Close timeline' : 'Open timeline'}
         </button>
       </header>
-      <CardInspector words={inspectorWords(selectedSpec)} />
+      {selectedView !== null && cardEditing !== null && cards.selected !== null ? (
+        <CardInspectorPanel
+          eventId={eventId}
+          saved={cards.selected}
+          view={selectedView}
+          editing={cardEditing}
+          spec={selectedSpec}
+          backdrop={backdrop}
+          onClose={() => {
+            // Focus goes back to the control that selected it, not to <body>.
+            document
+              .querySelector<HTMLElement>('main:not([hidden]) .card-row-select[data-selected]')
+              ?.focus({ preventScroll: true })
+            cards.clear()
+          }}
+        />
+      ) : (
+        <CardInspector words={inspectorWords(selectedSpec)} />
+      )}
       <div id={bodyId} className="timeline-body" hidden={!open}>
         {state !== 'closed' && (
           <>

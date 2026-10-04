@@ -34,7 +34,7 @@ draft (the title read from the folder name when the draft's is blank), and SHALL
 or the event's title. The subtitle SHALL be free text of any length that keeps its line breaks. The background SHALL be
 a choice of Black or Video, with the words "Text on black, before the chapter" and "Text over the start of the
 chapter's first clip" under them. The font SHALL be chosen from the service's font list (`GET /api/v1/fonts`) by its
-display name, the default marked, and SHALL name no family the list does not hold. Title size and subtitle size SHALL be
+display name, the default marked, and SHALL name no family the list does not hold (beside the families, one entry "Event style" clears the override). Title size and subtitle size SHALL be
 numbers, the text colour a colour input with its hex value, the position a choice of Top, Center and Bottom. The page
 SHALL apply none of the engine's value rules itself: it sends what was typed and shows the service's refusal. When the
 event detail could not resolve a card (`card: null`), the inspector SHALL show the reported `card_error`, SHALL show
@@ -66,7 +66,7 @@ for a value the service did not report.
 
 #### Scenario: Fonts come from the list
 - **WHEN** the inspector opens and the font list has nine entries
-- **THEN** the font control offers those nine by display name, the default marked, and no other
+- **THEN** the font control offers those nine by display name, the default marked, and no other family (plus the "Event style" entry)
 
 ### Requirement: The preview is drawn by the service while the operator edits
 The inspector SHALL show a preview of the draft card by posting it to `POST /api/v1/events/{event_id}/title-card/preview`

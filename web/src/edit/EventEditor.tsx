@@ -36,6 +36,11 @@ import type { CardsBinding } from '../timeline/useCardSelection'
 import { CardRowsContext } from './CardRow'
 import type { CardRowsModel } from './CardRow'
 import { cardRowInfo } from './cardRows'
+import type { CardEditing } from './card/editing.ts'
+import { cardsChangedCount, cardsChangedWords } from './card/model.ts'
+import type { CardDraft, CardField } from './card/model.ts'
+import { draftSpec } from './card/specs.ts'
+import type { EventStyle } from './card/specs.ts'
 import type { EditBinding } from '../timeline/editing'
 import type { Dismissals } from '../timeline/overlays/Dismissals'
 import { Alert } from '../ui/Alert'
@@ -76,6 +81,7 @@ import {
   addCut,
   adoptedNewCount,
   buildWriteBody,
+  cardRefusalOf,
   chapterChanges,
   changedFields,
   cutChanges,
@@ -99,20 +105,24 @@ import {
   movedSet,
   ordersOf,
   originOf,
+  readCardOf,
   readCuts,
   removeClip,
   removeCut,
   renameChapter,
+  resetCard,
   restoreChapter,
   restoreClip,
   restoreCut,
   rotateGroup,
   rotationChanges,
+  setCardField,
   trimCut,
   turnOf,
 } from './draft'
 import type {
   Baseline,
+  CardRefusal,
   ChapterChanges,
   ChapterKey,
   CutKey,
@@ -216,6 +226,8 @@ type Ready = {
   problem: SaveProblem | null
   /** The service's explanation of an unusable date or title, shown at those fields. */
   refusal: string | null
+  /** The last refused save's naming of a title card and its field, shown at that field. */
+  cardRefusal: CardRefusal | null
   /** Bumped by every failed answer, so focus moves to what explains it. */
   answers: number
 }
@@ -263,6 +275,8 @@ type Action =
   // The caller took the clips that are on disk; `rotateGroup` checks that a chapter plays them.
   | { type: 'rotate'; identities: readonly string[]; way: Way }
   | { type: 'name-unsent'; unsent: boolean }
+  | { type: 'card-field'; key: ChapterKey; field: CardField; value: CardDraft[CardField] }
+  | { type: 'card-reset'; key: ChapterKey }
   | { type: 'reset' }
   | { type: 'save-start'; pressed: Pressed }
   | { type: 'save-failed'; problem: SaveProblem | null; refusal: string | null }
@@ -276,7 +290,12 @@ function afterEdit(next: Ready): Ready {
   if (dirty || (next.problem === null && next.refusal === null)) {
     return next
   }
-  return { ...next, problem: next.problem?.kind === 'gone' ? next.problem : null, refusal: null }
+  return {
+    ...next,
+    problem: next.problem?.kind === 'gone' ? next.problem : null,
+    refusal: null,
+    cardRefusal: null,
+  }
 }
 
 /** Typed but not sendable: a date typed in part, a name not kept, or a cut typed and not added. */
@@ -295,7 +314,17 @@ function initialDraft(baseline: Baseline): Draft {
     metadata: metadataDraftOf(baseline.read),
     cuts: new Map(),
     rotations: new Map(),
+    cards: new Map(),
   }
+}
+
+/** A card refusal stays until the field it names (any field, for one naming none) is edited. */
+function afterCardEdit(state: Ready, draft: Draft, key: ChapterKey, field: CardField | null): Ready {
+  const refusal = state.cardRefusal
+  const retired =
+    refusal !== null && refusal.key === key && (field === null || refusal.field === field || refusal.field === null)
+  const next = withDraft(state, draft)
+  return retired ? { ...next, cardRefusal: null } : next
 }
 
 /** `state` with `draft`, unless the action changed nothing. */
@@ -349,6 +378,7 @@ function reduce(state: State, action: Action): State {
         pressed: null,
         problem: null,
         refusal: null,
+        cardRefusal: null,
         answers: 0,
       }
     }
@@ -514,9 +544,19 @@ function reduce(state: State, action: Action): State {
       return action.unsent === state.nameUnsent
         ? state
         : afterEdit({ ...state, nameUnsent: action.unsent })
+    case 'card-field':
+      return afterCardEdit(
+        state,
+        setCardField(state.baseline, state.draft, action.key, action.field, action.value),
+        action.key,
+        action.field,
+      )
+    case 'card-reset':
+      return afterCardEdit(state, resetCard(state.draft, action.key), action.key, null)
     case 'reset':
       return {
         ...state,
+        cardRefusal: null,
         draft: initialDraft(state.baseline),
         lastMoved: null,
         dateIncomplete: false,
@@ -537,6 +577,8 @@ function reduce(state: State, action: Action): State {
         pressed: null,
         problem: action.problem,
         refusal: action.refusal,
+        cardRefusal:
+          action.problem?.kind === 'refused' ? cardRefusalOf(state.draft, action.problem.detail) : null,
         answers: state.answers + 1,
       }
   }
@@ -714,6 +756,7 @@ function summarize(
   removed: number,
   cuts: { added: number; removed: number; trimmed: number },
   rotated: number,
+  cardsChanged: number,
   adopted: number,
 ): string {
   // An incomplete date reads as '' but is not a date left empty: it is named as such.
@@ -735,6 +778,7 @@ function summarize(
     cuts.removed > 0 && `${plural(cuts.removed, 'cut', 'cuts')} removed`,
     cuts.trimmed > 0 && `${plural(cuts.trimmed, 'cut', 'cuts')} trimmed`,
     rotated > 0 && rotatedCount(rotated),
+    cardsChangedWords(cardsChanged) ?? false,
     adopted > 0 && `adds ${plural(adopted, 'new clip', 'new clips')} to reel.yaml`,
   ].filter((part): part is string => part !== false)
   const text = parts.join(' · ')
@@ -1142,6 +1186,14 @@ export function EventEditor({
     }
   }
   const adopted = ready === null ? 0 : adoptedNewCount(ready.baseline, ready.draft, newClips)
+  const cardsChanged =
+    ready === null
+      ? 0
+      : cardsChangedCount(
+          listedChapters(ready.draft.chapters).map((chapter) => chapter.key),
+          ready.draft.cards,
+          (key) => readCardOf(ready.baseline, key),
+        )
   // Edits to save, and edits at all (a date typed in part, or a cut typed and not added,
   // is one, but cannot be saved).
   const edited = ready !== null && isDirty(ready.baseline, ready.draft)
@@ -1524,10 +1576,48 @@ export function EventEditor({
     resetCount,
   ])
 
-  // The card rows (`CardRow.tsx`): each chapter's saved card, matched by the name it was read with.
+  // The card rows (`CardRow.tsx`) and the Timeline's blocks: each chapter's saved card, matched by
+  // the name it was read with, as the draft would have it drawn (`card/specs.ts`).
   const liveDetail = liveEvent ?? detail
-  const specs = useMemo(() => (liveDetail === null ? [] : cardSpecs(liveDetail)), [liveDetail])
+  const savedSpecs = useMemo(() => (liveDetail === null ? [] : cardSpecs(liveDetail)), [liveDetail])
+  const eventStyle = useMemo<EventStyle | null>(() => {
+    const style = liveDetail?.title_card
+    return style == null
+      ? null
+      : {
+          duration: style.duration,
+          background: style.background,
+          font_family: style.font_family,
+          title_font_size: style.title_font_size,
+          subtitle_font_size: style.subtitle_font_size,
+          text_color: style.text_color,
+          position: style.position,
+        }
+  }, [liveDetail])
   const draftChapters = ready?.draft.chapters
+  const draftCards = ready?.draft.cards
+  const draftEventTitle = ready?.draft.metadata.title ?? ''
+  const baselineNow = ready?.baseline
+  const specs = useMemo(() => {
+    if (baselineNow === undefined || draftChapters === undefined || draftCards === undefined) {
+      return savedSpecs
+    }
+    return savedSpecs.map((spec) => {
+      const chapter = draftChapters.find((candidate) => candidate.readName === spec.chapter)
+      const card = chapter === undefined ? undefined : draftCards.get(chapter.key)
+      if (chapter === undefined || card === undefined) {
+        return spec
+      }
+      const typed = draftEventTitle.trim() === '' ? (resolved?.title ?? '') : draftEventTitle
+      return draftSpec(
+        spec,
+        eventStyle,
+        readCardOf(baselineNow, chapter.key),
+        card,
+        spec.chapter === '' ? typed : chapter.name,
+      )
+    })
+  }, [savedSpecs, draftChapters, draftCards, baselineNow, eventStyle, draftEventTitle, resolved])
   const { retain: retainCard, select: selectCard, clear: clearCard, selected: selectedCard } = cards
   // The selection ends with its chapter: deleted in the draft, it is gone from the list.
   useEffect(() => {
@@ -1539,6 +1629,77 @@ export function EventEditor({
       )
     }
   }, [draftChapters, retainCard])
+  // A refused save that names a card opens that card, so the message is at its field.
+  const refusedCard = ready?.cardRefusal ?? null
+  const refusedAnswer = ready?.answers ?? 0
+  useEffect(() => {
+    if (refusedCard === null || draftChapters === undefined) {
+      return
+    }
+    const chapter = draftChapters.find((candidate) => candidate.key === refusedCard.key)
+    if (chapter?.readName != null) {
+      selectCard(chapter.readName)
+    }
+    // Once per answer: selecting another card afterwards is the operator's.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refusedAnswer])
+  const cardEditing = useMemo<CardEditing | null>(() => {
+    if (baselineNow === undefined || draftChapters === undefined || draftCards === undefined) {
+      return null
+    }
+    const keyOf = (saved: string) =>
+      draftChapters.find((chapter) => chapter.readName === saved && !chapter.deleted)
+    return {
+      specs,
+      style: eventStyle,
+      styleError: liveDetail?.title_card_error ?? null,
+      view: (saved) => {
+        const chapter = keyOf(saved)
+        if (chapter === undefined) {
+          return null
+        }
+        return {
+          key: chapter.key,
+          name: chapter.name,
+          opening: saved === '',
+          card: draftCards.get(chapter.key) ?? readCardOf(baselineNow, chapter.key),
+          read: readCardOf(baselineNow, chapter.key),
+          eventTitle: draftEventTitle,
+          folderTitle: resolved?.title ?? null,
+          refusal:
+            refusedCard !== null && refusedCard.key === chapter.key
+              ? { field: refusedCard.field, message: refusedCard.message }
+              : null,
+        }
+      },
+      set: (saved, field, value) => {
+        const chapter = keyOf(saved)
+        if (chapter !== undefined && idle(latest.current)) {
+          dispatch({ type: 'card-field', key: chapter.key, field, value })
+        }
+      },
+      reset: (saved) => {
+        const chapter = keyOf(saved)
+        if (chapter !== undefined && idle(latest.current)) {
+          dispatch({ type: 'card-reset', key: chapter.key })
+        }
+      },
+      announce,
+      locked: listsLocked,
+    }
+  }, [
+    baselineNow,
+    draftChapters,
+    draftCards,
+    specs,
+    eventStyle,
+    liveDetail,
+    draftEventTitle,
+    resolved,
+    refusedCard,
+    announce,
+    listsLocked,
+  ])
   const cardRows = useMemo<CardRowsModel>(
     () => ({
       rowOf: (key) => {
@@ -2341,6 +2502,7 @@ export function EventEditor({
               onFinished={onProxiesFinished ?? NOTHING}
               editing={editing}
               cards={cards}
+              cardEditing={cardEditing}
             />
           )}
 
@@ -2529,6 +2691,7 @@ export function EventEditor({
                     ready.draft.removed.size,
                     cutChanges(ready.baseline, ready.draft),
                     rotationChanges(ready.baseline, ready.draft),
+                    cardsChanged,
                     adopted,
                   )
                 : ''
