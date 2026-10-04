@@ -10,7 +10,7 @@ guessed value (decision: fail loud / never fabricate).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Mapping, Optional
 
 from ...errors import TitleCardError
@@ -230,6 +230,44 @@ def resolve_card_config(
     return parse_title_card_config(layered)
 
 
+def overlay_config(config: TitleCardConfig) -> TitleCardConfig:
+    """The config a card drawn *over the picture* is rendered with.
+
+    A ``video`` card is text over the chapter's first clip, so its image has no opaque fill:
+    the same config with a fully transparent background. A ``black`` card is unchanged. Used
+    for the editor's preview of a ``video`` card, which the client lays over the clip's frame.
+    """
+    if config.background == "video":
+        return replace(config, background_opacity=0.0)
+    return config
+
+
+def check_card_styles(
+    look_title_card: Optional[Mapping[str, Any]], cards: Mapping[str, Optional[ChapterCard]]
+) -> None:
+    """Fail loud, naming the field, for a style the renderer would refuse.
+
+    ``look_title_card`` is parsed as a render parses it (``look.title_card.<field>`` in the
+    message), and each chapter's ``font_family`` must be in the registry (the loader cannot
+    check that: ``reel/`` is below ``render/``). The error names the chapter and ``card.<field>``.
+    The card's other values are the loader's and are not checked again.
+
+    Raises:
+        TitleCardError: the event-wide style or a chapter's font is refused.
+    """
+    parse_title_card_config(look_title_card)
+    for name, card in cards.items():
+        if card is None or card.font_family is None:
+            continue
+        try:
+            font_for(card.font_family)
+        except TitleCardError as exc:
+            raise TitleCardError(
+                f"chapter {name!r}: card.font_family {card.font_family!r} is not a bundled font "
+                f"family; use one of: {', '.join(registered_families())}"
+            ) from exc
+
+
 def _clamp_fades(fade_in: float, fade_out: float, duration: float) -> tuple[float, float]:
     """Scale the fades so their sum does not exceed ``duration`` (decision: clamp)."""
     total = fade_in + fade_out
@@ -248,4 +286,6 @@ __all__ = [
     "TitleCardConfig",
     "parse_title_card_config",
     "resolve_card_config",
+    "overlay_config",
+    "check_card_styles",
 ]

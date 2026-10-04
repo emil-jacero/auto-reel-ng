@@ -28,7 +28,13 @@ from ..config.project import (
     load_project_config,
     resolve_look_defaults,
 )
-from ..errors import EventMetadataError, ProxyCacheError, ProxyError, ReelError, ThumbnailError
+from ..errors import (
+    EventMetadataError,
+    ProxyCacheError,
+    ProxyError,
+    ReelError,
+    ThumbnailError,
+)
 from ..event.discovery import (
     ClipOrder,
     DiskListing,
@@ -66,6 +72,7 @@ from ..thumbs import (
     resolve_thumbnail_settings,
     thumbnail_path,
 )
+from .card_read import with_cards
 from .entity_tag import entity_tag
 from .movie_read import expected_output, movie_facts
 from .schemas import (
@@ -82,8 +89,10 @@ from .schemas import (
     ProxyFilmstripOut,
     ProxyOut,
     ProxyState,
+    ResolvedCardOut,
     SegmentOut,
     StalenessOut,
+    TitleStyleOut,
 )
 from .settings import ApiSettings
 
@@ -692,6 +701,7 @@ def get_event(
         resolved = _resolved_document(settings, event_dir, document)
         staleness = _verdict(settings, event_dir, resolved, runtime, look_defaults)
         movie = movie_facts(settings, event_dir, resolved.metadata)
+        chapters, title_card, title_card_error = with_cards(resolved, look_defaults, chapters)
     except (ReelError, OSError) as exc:
         raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
     latest_jobs = job_store.latest_by_project(str(settings.project_root), kind=JobKind.RENDER)
@@ -708,6 +718,8 @@ def get_event(
         latest_job=_job_summary(latest_jobs.get(event_id)),
         staleness=staleness,
         movie=movie,
+        title_card=title_card,
+        title_card_error=title_card_error,
     )
 
 

@@ -11,7 +11,7 @@ Conventions for every task below:
 
 ## 1. Gate and the engine seam
 
-- [ ] 1.1 Confirm that the archived `title-card-model` and `title-card-fonts` changes exist on `main`. If one does
+- [x] 1.1 Confirm that the archived `title-card-model` and `title-card-fonts` changes exist on `main`. If one does
   not, stop and report. Then check each row of design "Gate" against the code they left and write the real names
   into the design: the card value and its parse function and error class, the attribute a chapter's card has on
   the document, how `apply_editorial_write` takes a chapter's `card` (and `None` fields), the card resolver's
@@ -21,7 +21,7 @@ Conventions for every task below:
   design and specs are corrected (the `look.title_card` row decides whether task 2.2 adds an engine call), and
   `openspec validate title-card-write-api --strict` passes.
 
-- [ ] 1.2 render/: add `render_card_png(config, content, width, height) -> bytes` to `render/title/render.py`, make
+- [x] 1.2 render/: add `render_card_png(config, content, width, height) -> bytes` to `render/title/render.py`, make
   `render_title_card` call it and write the bytes, and make the look's resolution rule public as `look_resolution`
   in `render/target.py` (`_resolution` becomes a use of it, behaviour unchanged). Verify in the title-card render
   tests: the file `render_title_card` writes at a 1920x1080 target equals `render_card_png(…, 1920, 1080)` byte
@@ -32,7 +32,7 @@ Conventions for every task below:
 
 ## 2. api/ - the card in the editorial document
 
-- [ ] 2.1 `CardBody` (all-optional, `extra="forbid"`, shape only, no value rules) and `ChapterBody.card`;
+- [x] 2.1 `CardBody` (all-optional, `extra="forbid"`, shape only, no value rules) and `ChapterBody.card`;
   `document_to_body` fills it from the document's chapter (unset fields `null`, `card: null` for a chapter with
   no card entry); the engine already drops `None` card fields and removes an empty card, so `put_reel` does no shaping (design
   decisions 1-2). Verify in `tests/test_api_editorial_write.py` and
@@ -44,7 +44,7 @@ Conventions for every task below:
   stale verdict citing the editorial component and creates no job (the `requires_db` marker as in the
   neighbouring tests); the detail-shaped body is still rejected.
 
-- [ ] 2.2 Refusals name the field. Verify (tests first). The registry and `look.title_card` checks are made by the route before the write, with
+- [x] 2.2 Refusals name the field. Verify (tests first). The registry and `look.title_card` checks are made by the route before the write, with
   `render/title/config.py` (`event/` cannot import `render/`); no engine write path changes:
   `card.duration: -3`, an unregistered `card.font_family`, `card.background: "gradient"` and
   `card.position: "left"` each yield 400 whose `detail` names the chapter and the field; `card: {colour: "#fff"}`
@@ -54,7 +54,7 @@ Conventions for every task below:
 
 ## 3. api/ - the detail reports the resolved card
 
-- [ ] 3.1 `ResolvedCardOut`, `TitleStyleOut`, `ChapterOut.card`, `EventDetailOut.title_card` and
+- [x] 3.1 `ResolvedCardOut`, `TitleStyleOut`, `ChapterOut.card`, `EventDetailOut.title_card` and
   `title_card_error`, filled in `events_read.get_event` by the model's resolver over the document, the per-request
   project look defaults and the metadata (design decision 3); a bad event style yields `null` + the named error,
   never a 502 and never a default. Verify in `tests/test_api_events.py`: an event with no configuration reports
@@ -68,13 +68,13 @@ Conventions for every task below:
 
 ## 4. api/ - fonts and the preview
 
-- [ ] 4.1 `GET /api/v1/fonts` in a new `routes/title_cards.py` (registered in `app.py`), `FontOut`
+- [x] 4.1 `GET /api/v1/fonts` in a new `routes/title_cards.py` (registered in `app.py`), `FontOut`
   (`family`, `display_name`, `weights`, `default`) read from the registry module. Verify in
   `tests/test_api_fonts.py`: the list equals the registry in order with exactly one `default: true`; every listed
   family is accepted as `card.font_family` by a write and an unlisted one is refused (2.2); the route reads
   no project, disk or database (it answers with the app built on the schema-dump settings).
 
-- [ ] 4.2 `POST /api/v1/events/{event_id:path}/title-card/preview`: `PreviewCardBody` (length limits), the draft
+- [x] 4.2 `POST /api/v1/events/{event_id:path}/title-card/preview`: `PreviewCardBody` (length limits), the draft
   resolved by the same resolver as the detail, drawn by `render_card_png` at `look_resolution` of the event's
   resolved look, in the threadpool under `app.state.title_card_gate` (2 slots, 10 s wait, 503 + `Retry-After`),
   `image/png` with `Cache-Control: no-store`, every failure a problem body by cause (design decisions 5-6).
@@ -91,7 +91,7 @@ Conventions for every task below:
 
 ## 5. Schema, documentation and a real browser
 
-- [ ] 5.1 Regenerate `web/openapi.json` (`.venv/bin/python -m auto_reel_ng.api.openapi > web/openapi.json`) and
+- [x] 5.1 Regenerate `web/openapi.json` (`.venv/bin/python -m auto_reel_ng.api.openapi > web/openapi.json`) and
   `web/src/api/schema.d.ts` (`npm run generate:types` in the node container); extend the expected paths and models
   in `tests/test_api_openapi.py` (`/api/v1/fonts`, the preview path with an `image/png` 200 and its problem
   responses, `CardBody`, `ResolvedCardOut`, `TitleStyleOut`, `FontOut`, `title_card_error`). Verify: the drift
@@ -100,13 +100,13 @@ Conventions for every task below:
   `.venv/bin/python -m pytest` (in the background, generous timeout), black, isort, mypy and pylint are clean, and
   `openspec validate title-card-write-api --strict` passes.
 
-- [ ] 5.2 Record the change in `docs/high-level-design.md`: a §4.10 v2 paragraph (the editorial `card`, the detail's
+- [x] 5.2 Record the change in `docs/high-level-design.md`: a §4.10 v2 paragraph (the editorial `card`, the detail's
   resolved card and `title_card` with `title_card_error`, `GET /fonts`, the preview and its bounds, the transparent
   `video` preview) and a §6 slice line; no new D- number (D-20 is the timeline, D-21 the proxy contract). Verify:
   the paragraph names the routes, the gates and the "no CLI subcommand" decision, and a grep finds no stale claim
   that the opening card shows date and place or that the detail reports no `look`.
 
-- [ ] 5.3 Real-browser check, from the change's scratch directory only: against a service on this change's port
+- [x] 5.3 Real-browser check, from the change's scratch directory only: against a service on this change's port
   and dev library, with Playwright in `localhost/playback-research:chrome` and in the Firefox image, fetch the
   preview of a black and of a `video` draft and show each in an `<img>` over a coloured page and over a dark
   one, and PUT then GET a card (writes to the dev library copy only). Verify: both browsers decode the PNG at the

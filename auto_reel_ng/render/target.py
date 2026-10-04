@@ -63,8 +63,12 @@ class TargetSpec:  # pylint: disable=too-many-instance-attributes
         }
 
 
-def _resolution(look: Mapping[str, Any]) -> tuple[int, int]:
-    """``look.target_resolution`` (a pair of positive ints) or 1920x1080."""
+def look_resolution(look: Mapping[str, Any]) -> tuple[int, int]:
+    """``look.target_resolution`` (a pair of positive ints) or 1920x1080.
+
+    Public so a title-card preview can size its image the way a render does, without a probed
+    :class:`TargetSpec`.
+    """
     raw = look.get("target_resolution")
     if raw is None:
         return DEFAULT_TARGET_RESOLUTION
@@ -127,7 +131,7 @@ def derive_target(
     from the look; SAR is 1:1; audio params from the look (with sane defaults).
     The chosen codec is validated against the profile's usable encoders.
     """
-    width, height = _resolution(plan_look)
+    width, height = look_resolution(plan_look)
     codec = str(plan_look.get("video_codec", DEFAULT_VIDEO_CODEC))
     encoder = _resolve_encoder(profile, codec)
 

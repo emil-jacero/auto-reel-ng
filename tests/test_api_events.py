@@ -1547,3 +1547,176 @@ def test_the_events_list_carries_no_duration(
 
     assert "chapters" not in barbecue
     assert "duration" not in json.dumps(barbecue)
+
+
+# --------------------------------------------------------------------------- #
+# title-card-write-api: the detail's resolved cards                           #
+# --------------------------------------------------------------------------- #
+
+_CARD_EVENT = "2024/2024-07-04 - Barbecue"
+
+
+def _card_detail(client: TestClient) -> dict:
+    response = client.get(f"/api/v1/events/{quote(_CARD_EVENT, safe='/')}")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _write_card_reel(project: Path, text: str) -> Path:
+    path = project / "2024" / "2024-07-04 - Barbecue" / "reel.yaml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+CARD_DEFAULTS = {
+    "duration": 7.0,
+    "background": "black",
+    "font_family": "DejaVu Sans",
+    "title_font_size": 96,
+    "subtitle_font_size": 48,
+    "text_color": "#FFFFFF",
+    "position": "center",
+}
+
+
+def test_detail_with_no_card_configuration_reports_the_defaults(
+    client: TestClient, project: Path
+) -> None:
+    _write_card_reel(
+        project,
+        "version: 0\nmetadata:\n  title: Barbecue\n  date: 2024-07-04\n  location: Gon\n"
+        "  description: Grillat\nchapters:\n  - name: ''\n    clips: [00500.mp4]\n"
+        "  - name: Dag 2\n    clips: [clips/00600.mp4]\n",
+    )
+    body = _card_detail(client)
+    assert body["title_card_error"] is None
+    assert body["title_card"] == CARD_DEFAULTS
+    opening, day2 = body["chapters"]
+    assert opening["card"] == {
+        **CARD_DEFAULTS,
+        "title": "Barbecue",
+        "subtitle": "",
+    }  # no date/place
+    assert day2["card"] == {**CARD_DEFAULTS, "title": "Dag 2", "subtitle": ""}
+
+
+def test_detail_layers_project_event_and_chapter_and_overrides_the_title(
+    client: TestClient, project: Path
+) -> None:
+    (project / "config.yaml").write_text(
+        "look:\n  title_card:\n    font_family: Inter\n    position: top\n", encoding="utf-8"
+    )
+    _write_card_reel(
+        project,
+        "version: 0\nmetadata:\n  title: Barbecue\n  date: 2024-07-04\n"
+        "look:\n  title_card:\n    font_family: Pacifico\n    duration: 5\n"
+        "chapters:\n  - name: ''\n    clips: [00500.mp4]\n"
+        "  - name: Dag 2\n    card:\n      title: Dag två\n      subtitle: Stranden\n"
+        "      font_family: IBM Plex Mono\n      duration: 3\n      background: video\n"
+        "    clips: [clips/00600.mp4]\n",
+    )
+    body = _card_detail(client)
+    # The event layer replaces the project's whole title_card map (the existing look merge).
+    assert body["title_card"]["font_family"] == "Pacifico"
+    assert body["title_card"]["duration"] == 5.0
+    opening, day2 = body["chapters"]
+    assert opening["card"]["font_family"] == "Pacifico"
+    assert day2["name"] == "Dag 2"
+    assert day2["card"]["title"] == "Dag två"  # differs from the chapter name
+    assert day2["card"]["subtitle"] == "Stranden"
+    assert day2["card"]["font_family"] == "IBM Plex Mono"
+    assert day2["card"]["duration"] == 3.0
+    assert day2["card"]["background"] == "video"
+
+
+def test_detail_project_style_alone_reaches_the_cards(client: TestClient, project: Path) -> None:
+    (project / "config.yaml").write_text(
+        "look:\n  title_card:\n    font_family: Inter\n", encoding="utf-8"
+    )
+    body = _card_detail(client)
+    assert body["title_card"]["font_family"] == "Inter"
+    assert all(chapter["card"]["font_family"] == "Inter" for chapter in body["chapters"])
+
+
+def test_a_chapter_that_exists_only_on_disk_has_a_defaults_card(
+    client: TestClient, project: Path
+) -> None:
+    _write_card_reel(
+        project,
+        "version: 0\nmetadata:\n  title: Barbecue\n  date: 2024-07-04\n"
+        "chapters:\n  - name: ''\n    clips: [00500.mp4]\n",
+    )
+    body = _card_detail(client)
+    assert [chapter["name"] for chapter in body["chapters"]][0] == ""
+    for chapter in body["chapters"]:
+        assert chapter["card"] is not None and chapter["card_error"] is None
+        expected = chapter["name"] or "Barbecue"
+        assert chapter["card"]["title"] == expected
+        assert chapter["card"]["font_family"] == "DejaVu Sans"
+
+
+def test_a_bad_event_style_leaves_the_detail_open_with_the_named_error(
+    client: TestClient, project: Path
+) -> None:
+    _write_card_reel(
+        project,
+        "version: 0\nmetadata:\n  title: Barbecue\n  date: 2024-07-04\n"
+        "look:\n  title_card:\n    position: left\n"
+        "chapters:\n  - name: ''\n    clips: [00500.mp4]\n",
+    )
+    body = _card_detail(client)
+    assert body["title_card"] is None
+    assert "look.title_card.position" in body["title_card_error"]
+    assert all(chapter["card"] is None for chapter in body["chapters"])
+    assert [chapter["name"] for chapter in body["chapters"]][0] == ""
+    assert body["staleness"]["stale"] is True  # everything else is reported as usual
+    assert any(chapter["clips"] for chapter in body["chapters"])
+
+
+def test_a_chapter_card_the_registry_does_not_know_is_that_chapters_error(
+    client: TestClient, project: Path
+) -> None:
+    _write_card_reel(
+        project,
+        "version: 0\nmetadata:\n  title: Barbecue\n  date: 2024-07-04\n"
+        "chapters:\n  - name: ''\n    clips: [00500.mp4]\n"
+        "  - name: Dag 2\n    card: {font_family: Comic Sans}\n    clips: [clips/00600.mp4]\n",
+    )
+    body = _card_detail(client)
+    opening, day2 = body["chapters"]
+    assert opening["card"] is not None and opening["card_error"] is None
+    assert day2["card"] is None and "Comic Sans" in day2["card_error"]
+    assert body["title_card"] == CARD_DEFAULTS
+
+
+def test_the_card_read_starts_no_subprocess_and_writes_nothing(
+    client: TestClient, project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+
+    _write_card_reel(
+        project,
+        "version: 0\nmetadata:\n  title: Barbecue\n  date: 2024-07-04\n"
+        "chapters:\n  - name: ''\n    card: {title: Hej}\n    clips: [00500.mp4]\n",
+    )
+
+    def tree() -> dict:
+        return {
+            str(path): (path.stat().st_mtime_ns, path.stat().st_size)
+            for path in project.rglob("*")
+            if path.is_file()
+        }
+
+    before = tree()
+
+    def forbidden(*_a: object, **_k: object) -> None:
+        raise AssertionError("the detail must not start a subprocess")
+
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    assert _card_detail(client)["chapters"][0]["card"]["title"] == "Hej"
+    assert tree() == before
+
+
+def test_the_events_list_rows_carry_no_card(client: TestClient) -> None:
+    for row in client.get("/api/v1/events").json():
+        assert "title_card" not in row and "chapters" not in row

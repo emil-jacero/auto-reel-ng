@@ -616,3 +616,263 @@ def test_a_file_ruamel_cannot_write_back_is_400_and_stays_as_authored(
     assert response.status_code == 400
     assert "cannot be re-written" in response.json()["detail"]
     assert reel_path.read_text(encoding="utf-8") == UNEMITTABLE_REEL_YAML
+
+
+# --------------------------------------------------------------------------- #
+# title-card-write-api: a chapter's card in the editorial body                #
+# --------------------------------------------------------------------------- #
+
+CARD_REEL_YAML = """\
+version: 0
+metadata:
+  title: Original Title
+  date: 2024-07-04
+  location: Somewhere
+# the whole movie
+chapters:
+  # first chapter
+  - name: ""
+    card:
+      subtitle: Sommaren # keep me
+    clips:
+      - 00500.mp4
+  - name: Dag 2
+    clips:
+      - clips/00600.mp4
+"""
+
+CARD_BODY = {
+    "metadata": {"title": "Original Title", "date": "2024-07-04", "location": "Somewhere"},
+    "chapters": [
+        {"name": "", "clips": ["00500.mp4"]},
+        {"name": "Dag 2", "clips": ["clips/00600.mp4"]},
+    ],
+}
+
+
+def _with_card(card: object, *, name: str = "Dag 2", look: object = None) -> dict:
+    body = {**CARD_BODY, "chapters": [dict(chapter) for chapter in CARD_BODY["chapters"]]}
+    for chapter in body["chapters"]:
+        if chapter["name"] == name:
+            chapter["card"] = card
+    if look is not None:
+        body["look"] = look
+    return body
+
+
+def _reel_text(project: Path) -> str:
+    return (_event_dir(project) / "reel.yaml").read_text(encoding="utf-8")
+
+
+def _put(client: TestClient, body: dict):
+    return client.put(f"/api/v1/events/{_event_id()}/reel", json=body)
+
+
+def _assert_nothing_written(project: Path, before: str) -> None:
+    assert _reel_text(project) == before
+    assert sorted(path.name for path in _event_dir(project).iterdir() if path.is_file()) == [
+        "00500.mp4",
+        "reel.yaml",
+    ]
+
+
+def test_a_card_is_saved_echoed_and_read_back(client: TestClient, project: Path) -> None:
+    card = {
+        "title": "Dag två",
+        "subtitle": "Stranden",
+        "duration": 5,
+        "background": "video",
+        "font_family": "Inter",
+    }
+    response = _put(client, _with_card(card))
+    assert response.status_code == 200, response.text
+    echoed = response.json()["document"]["chapters"][1]
+    assert echoed["name"] == "Dag 2"  # the title override does not rename the chapter
+    assert echoed["card"]["title"] == "Dag två"
+    assert echoed["card"]["duration"] == 5
+    assert echoed["card"]["position"] is None  # unset fields are null
+    assert echoed["card"]["text_color"] is None
+    read = client.get(f"/api/v1/events/{_event_id()}/reel").json()["chapters"][1]
+    assert read == echoed
+
+    import yaml
+
+    chapter = yaml.safe_load(_reel_text(project))["chapters"][1]
+    assert chapter["clips"] == ["clips/00600.mp4"]
+    assert chapter["card"] == {**card, "duration": 5}  # exactly those five keys
+    assert list(chapter["card"]) == list(card)
+    assert "card" not in yaml.safe_load(_reel_text(project))["chapters"][0]
+
+
+def test_the_opening_card_lives_on_the_default_chapter_only(
+    client: TestClient, project: Path
+) -> None:
+    response = _put(client, _with_card({"subtitle": "Sommaren 2024"}, name=""))
+    assert response.status_code == 200, response.text
+    import yaml
+
+    chapters = yaml.safe_load(_reel_text(project))["chapters"]
+    assert chapters[0]["card"] == {"subtitle": "Sommaren 2024"}
+    assert "card" not in chapters[1]
+
+
+def test_an_unmodified_get_written_back_is_a_byte_for_byte_no_op(
+    client: TestClient, project: Path
+) -> None:
+    (_event_dir(project) / "reel.yaml").write_text(CARD_REEL_YAML, encoding="utf-8")
+    body = client.get(f"/api/v1/events/{_event_id()}/reel").json()
+    assert body["chapters"][0]["card"]["subtitle"] == "Sommaren"
+    assert body["chapters"][1]["card"] is None
+    stat_before = (_event_dir(project) / "reel.yaml").stat().st_mtime_ns
+    assert _put(client, body).status_code == 200
+    assert _reel_text(project) == CARD_REEL_YAML  # comments, including "# keep me", intact
+    assert (_event_dir(project) / "reel.yaml").stat().st_mtime_ns == stat_before
+
+
+def test_renaming_a_chapter_with_its_card_moves_the_card(client: TestClient, project: Path) -> None:
+    body = _with_card({"title": "Dag två", "duration": 4})
+    body["chapters"][1]["name"] = "Dag två"
+    response = _put(client, body)
+    assert response.status_code == 200, response.text
+    import yaml
+
+    chapters = yaml.safe_load(_reel_text(project))["chapters"]
+    assert [chapter["name"] for chapter in chapters] == ["", "Dag två"]
+    assert chapters[1]["card"] == {"title": "Dag två", "duration": 4}
+
+
+def test_an_empty_card_removes_it_and_a_missing_card_keeps_it(
+    client: TestClient, project: Path
+) -> None:
+    (_event_dir(project) / "reel.yaml").write_text(CARD_REEL_YAML, encoding="utf-8")
+    kept = _put(client, CARD_BODY)  # no "card" key at all on either chapter
+    assert kept.status_code == 200
+    assert "subtitle: Sommaren # keep me" in _reel_text(project)
+    removed = _put(client, _with_card({}, name=""))
+    assert removed.status_code == 200
+    assert "subtitle: Sommaren" not in _reel_text(project)
+    assert removed.json()["document"]["chapters"][0]["card"] is None
+    nulls = _put(client, _with_card({"title": None, "duration": None}))
+    assert nulls.status_code == 200
+    assert "card" not in _reel_text(project).split("Dag 2")[1]
+
+
+@pytest.mark.parametrize(
+    ("card", "needles"),
+    [
+        ({"duration": -3}, ["Dag 2", "card.duration"]),
+        ({"font_family": "Comic Sans"}, ["Dag 2", "card.font_family", "Comic Sans"]),
+        ({"background": "gradient"}, ["Dag 2", "card.background"]),
+        ({"position": "left"}, ["Dag 2", "card.position"]),
+        ({"text_color": "#fff"}, ["Dag 2", "card.text_color"]),
+        ({"title_font_size": 2}, ["Dag 2", "card.title_font_size"]),
+        ({"title": "  "}, ["Dag 2", "card.title"]),
+    ],
+)
+def test_an_invalid_card_is_a_400_naming_the_chapter_and_field(
+    client: TestClient, project: Path, card: dict, needles: list
+) -> None:
+    before = _reel_text(project)
+    response = _put(client, _with_card(card))
+    assert response.status_code == 400, response.text
+    for needle in needles:
+        assert needle in response.json()["detail"]
+    _assert_nothing_written(project, before)
+
+
+def test_an_unknown_card_key_is_rejected_naming_it(client: TestClient, project: Path) -> None:
+    before = _reel_text(project)
+    response = _put(client, _with_card({"colour": "#fff"}))
+    assert response.status_code == 422
+    assert "colour" in response.text
+    _assert_nothing_written(project, before)
+
+
+@pytest.mark.parametrize("card", [{"duration": True}, {"duration": "5"}, {"title_font_size": 1.5}])
+def test_card_values_of_the_wrong_json_type_are_rejected(
+    client: TestClient, project: Path, card: dict
+) -> None:
+    before = _reel_text(project)
+    assert _put(client, _with_card(card)).status_code == 422
+    _assert_nothing_written(project, before)
+
+
+def test_an_invalid_event_wide_card_style_is_refused_naming_the_field(
+    client: TestClient, project: Path
+) -> None:
+    before = _reel_text(project)
+    response = _put(client, _with_card(None, look={"title_card": {"title_font_size": "big"}}))
+    assert response.status_code == 400
+    assert "look.title_card.title_font_size" in response.json()["detail"]
+    _assert_nothing_written(project, before)
+    ok = _put(client, _with_card(None, look={"title_card": {"title_font_size": 80}}))
+    assert ok.status_code == 200
+
+
+def test_a_long_title_is_accepted_by_the_write(client: TestClient, project: Path) -> None:
+    assert _put(client, _with_card({"title": "x" * 300})).status_code == 200
+
+
+def test_every_registry_family_is_accepted_as_a_card_font(
+    client: TestClient, project: Path
+) -> None:
+    from auto_reel_ng.render.title import registered_families
+
+    for family in registered_families():
+        assert _put(client, _with_card({"font_family": family})).status_code == 200, family
+
+
+def test_a_detail_shaped_body_is_still_rejected(client: TestClient, project: Path) -> None:
+    detail = client.get(f"/api/v1/events/{_event_id()}").json()
+    assert _put(client, detail).status_code == 422
+
+
+def test_a_card_edit_on_a_fresh_event_is_stale_through_the_editorial_component(
+    client: TestClient, project: Path
+) -> None:
+    from auto_reel_ng.cli.adoption import persist, prepare_event
+    from auto_reel_ng.config.project import load_project_config, resolve_look_defaults
+    from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
+    from auto_reel_ng.render import output_relpath
+    from auto_reel_ng.staleness.fingerprint import compute_fingerprint, engine_identity
+    from auto_reel_ng.staleness.manifest import write_manifest
+
+    event_dir = _event_dir(project)
+    event = prepare_event(event_dir, order=DEFAULT_CLIP_ORDER, adopt=True)
+    persist(event)
+    runtime = FfmpegRuntime()
+    fingerprint = compute_fingerprint(
+        event.document,
+        event_dir=event_dir,
+        look_defaults=resolve_look_defaults(load_project_config(project)),
+        ffmpeg_version=runtime.version,
+    )
+    settings = resolve_api_settings(project, env={})
+    output = default_output_dir(settings.project_root) / output_relpath(event.document.metadata)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_bytes(b"already-rendered")
+    write_manifest(
+        event_dir,
+        fingerprint,
+        output=output.name,
+        engine_identity=engine_identity(runtime.version),
+    )
+    assert client.get(f"/api/v1/events/{_event_id()}").json()["staleness"]["stale"] is False
+
+    response = _put(client, {**_body_of(client), "chapters": _with_title(client)})
+    assert response.status_code == 200, response.text
+    staleness = response.json()["staleness"]
+    assert staleness["stale"] is True
+    assert any("editorial" in reason for reason in staleness["reasons"]), staleness
+    assert client.get("/api/v1/jobs").json() == []
+
+
+def _body_of(client: TestClient) -> dict:
+    body = client.get(f"/api/v1/events/{_event_id()}/reel").json()
+    return {key: value for key, value in body.items() if key != "chapters"}
+
+
+def _with_title(client: TestClient) -> list:
+    chapters = client.get(f"/api/v1/events/{_event_id()}/reel").json()["chapters"]
+    chapters[0]["card"] = {"title": "A new heading"}
+    return chapters

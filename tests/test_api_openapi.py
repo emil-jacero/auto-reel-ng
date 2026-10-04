@@ -51,6 +51,8 @@ EXPECTED_PATHS = {
     "/api/v1/events/{event_id}/movie",
     "/api/v1/events/{event_id}/proxy",
     "/api/v1/events/{event_id}/filmstrip",
+    "/api/v1/fonts",
+    "/api/v1/events/{event_id}/title-card/preview",
     "/api/v1/jobs",
     "/api/v1/jobs/{job_id}",
     "/api/v1/jobs/{job_id}/cancel",
@@ -84,6 +86,11 @@ EXPECTED_MODELS = {
     "ProblemOut",
     "WsMessage",
     "WsMessageType",
+    "CardBody",
+    "ResolvedCardOut",
+    "TitleStyleOut",
+    "FontOut",
+    "TitleCardPreviewBody",
 }
 
 #: The problem responses each events read declares (events-list-job-status-contract).
@@ -736,3 +743,56 @@ def test_committed_schema_is_not_stale() -> None:
         "  .venv/bin/python -m auto_reel_ng.api.openapi > web/openapi.json\n"
         f"Disagreement:\n  {detail}"
     )
+
+
+def test_the_title_card_models_and_routes_are_published() -> None:
+    schema = build_openapi_schema()
+    models = schema["components"]["schemas"]
+    # The write body: the card is optional and nullable on a chapter; every field is optional.
+    chapter = models["ChapterBody"]["properties"]["card"]
+    assert {"$ref": "#/components/schemas/CardBody"} in chapter["anyOf"]
+    assert "card" not in models["ChapterBody"].get("required", [])
+    assert "required" not in models["CardBody"]
+    assert set(models["CardBody"]["properties"]) == {
+        "title",
+        "subtitle",
+        "duration",
+        "background",
+        "font_family",
+        "title_font_size",
+        "subtitle_font_size",
+        "text_color",
+        "position",
+    }
+    # The detail: the resolved card has no null; the card, the style and the errors are nullable.
+    resolved = models["ResolvedCardOut"]
+    assert {"title", "subtitle", "duration", "font_family", "position"} <= set(resolved["required"])
+    assert set(models["TitleStyleOut"]["required"]) == {
+        "duration",
+        "background",
+        "font_family",
+        "title_font_size",
+        "subtitle_font_size",
+        "text_color",
+        "position",
+    }
+    detail = models["EventDetailOut"]["properties"]
+    assert {"title_card", "title_card_error"} <= set(detail)
+    assert "title_card" not in models["EventDetailOut"].get("required", [])
+    assert {"card", "card_error"} <= set(models["ChapterOut"]["properties"])
+    assert set(models["FontOut"]["required"]) == {"family", "display_name", "weights", "default"}
+
+    fonts = schema["paths"]["/api/v1/fonts"]["get"]["responses"]["200"]
+    assert fonts["content"]["application/json"]["schema"]["items"]["$ref"].endswith("/FontOut")
+
+    preview = schema["paths"]["/api/v1/events/{event_id}/title-card/preview"]["post"]
+    responses = preview["responses"]
+    assert set(responses) - {"422"} == {"200", "400", "404", "502", "503"}
+    assert list(responses["200"]["content"]) == ["image/png"]
+    for code in ("400", "404", "502", "503"):
+        ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
+        assert ref.endswith("/ProblemOut"), code
+    body = preview["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+    assert body.endswith("/TitleCardPreviewBody")
+    assert models["PreviewCardBody"]["properties"]["title"]["anyOf"][0]["maxLength"] == 200
+    assert models["PreviewCardBody"]["properties"]["subtitle"]["anyOf"][0]["maxLength"] == 400

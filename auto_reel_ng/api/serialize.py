@@ -8,6 +8,7 @@ from typing import Iterable
 from ..persistence.models import JobKind
 from ..reel.document import ReelDocument
 from .schemas import (
+    CardBody,
     ChapterBody,
     ClipPropertiesBody,
     EditorialDocumentBody,
@@ -32,7 +33,11 @@ def document_to_body(document: ReelDocument) -> EditorialDocumentBody:
         ),
         look=dict(document.look),
         chapters=[
-            ChapterBody(name=chapter.name, clips=[ref.identity for ref in chapter.clips])
+            ChapterBody(
+                name=chapter.name,
+                clips=[ref.identity for ref in chapter.clips],
+                card=CardBody(**chapter.card.to_dict()) if chapter.card is not None else None,
+            )
             for chapter in document.chapters
         ],
         clips={
