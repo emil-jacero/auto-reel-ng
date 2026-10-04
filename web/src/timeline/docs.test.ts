@@ -77,3 +77,24 @@ describe('docs/high-level-design.md and title-card-toggle', () => {
     assert.match(readme, /TitleCardsSwitch\.tsx/)
   })
 })
+
+/* The design document names the change in D-15, D-20, D-26, §4.9, §4.10 and §6 (event-poster-gui). */
+describe('docs/high-level-design.md and event-poster-gui', () => {
+  const text = readFileSync(new URL('../../../docs/high-level-design.md', import.meta.url), 'utf8')
+
+  it('names event-poster-gui in D-15, D-20, §4.9, §4.10 and §6', () => {
+    const lines = text.split('\n')
+    const at = lines.flatMap((line, i) => (line.includes('event-poster-gui') ? [i] : []))
+    const between = (from: string, to: string) => {
+      const a = lines.findIndex((line) => line.startsWith(from))
+      const b = lines.findIndex((line) => line.startsWith(to))
+      assert.ok(a > 0 && b > a, `${from} .. ${to}`)
+      return at.some((i) => i > a && i < b)
+    }
+    assert.ok(between('### 4.9 ', '### 4.10 '), '§4.9 names it')
+    assert.ok(between('### 4.10 ', '### 4.11 '), '§4.10 names it')
+    assert.ok(between('## 6. ', '## 7. '), '§6 names it')
+    assert.ok(between('- **D-15', '- **D-16'), 'D-15 names it')
+    assert.ok(between('- **D-20', '- **D-21'), 'D-20 names it')
+  })
+})

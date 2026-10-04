@@ -32,12 +32,12 @@ readable beside it, and the page SHALL announce nothing for a cover that loads.
 In Edit mode the Timeline SHALL offer **Use as poster**. Pressed, it SHALL set the draft's poster to the clip
 under the playhead and the playhead's time in that clip, in seconds to the millisecond and before the clip's cuts
 (a time inside a cut is allowed), and SHALL take the frame the Timeline's video shows as the draft picture of
-the poster area. It SHALL be disabled, with the reason in words, when the playhead is on a title-card block or
-outside every clip, when the video has no decoded frame at the playhead, and while a save or a Move clips is
+the poster area. It SHALL be disabled, with the reason in words, when the playhead is outside every clip (the playhead
+never rests on a title-card block: it stays on footage), when the video has no decoded frame at the playhead, and while a save or a Move clips is
 pending; a snapshot that fails SHALL change nothing and say so. Keyboard focus SHALL stay on the button and the
 change SHALL be announced once.
 
-Edit mode's **poster area** (the event header's cover, which Edit mode keeps) SHALL say what the poster is:
+Edit mode's **poster area** (a Poster panel above the Timeline; the page header's cover belongs to the read view) SHALL say what the poster is:
 **Default: first clip** when the draft has no poster, **Chosen frame** when it has one as saved, and **Chosen
 frame, not saved** for a draft that differs from the saved one. **Use default** SHALL remove the draft's poster and
 SHALL be unavailable when there is none. The poster is a part of the one draft: Save writes `poster` with the
@@ -64,8 +64,8 @@ rotation the page shows turned (`rotate`) SHALL be snapshotted and shown turned.
 - **THEN** the write carries `poster: null`, the area says "Default: first clip", and Reset before Save restores
   the saved poster
 
-#### Scenario: The button is off where there is no footage
-- **WHEN** the playhead is on a title-card block, or a save is pending
+#### Scenario: The button is off where it cannot act
+- **WHEN** a save is pending, an open clip preview holds the page's video, or the video has no decoded frame
 - **THEN** Use as poster is disabled and says why
 
 #### Scenario: A rotated clip is chosen turned

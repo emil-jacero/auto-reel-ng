@@ -3,6 +3,7 @@ import './timeline.css'
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -17,6 +18,7 @@ import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
 import { CutFields } from './CutFields'
 import type { Selected } from './CutFields'
+import { posterFromPlayhead, USE_AS_POSTER } from '../edit/poster.ts'
 import { PlayheadReadout } from './Playhead'
 import { PrepareButton, PrepareJob } from './Prepare'
 import type { PrepareControl } from './Prepare'
@@ -75,6 +77,7 @@ import {
   stepMs,
 } from './position'
 import type { Position } from './position'
+import { hasFrame, snapshotOf, useFrameReady } from './posterFrame'
 import { useTimelineVideo } from './useTimelineVideo'
 import { useVisibleRange } from './useVisibleRange'
 
@@ -126,6 +129,7 @@ export function Timeline({
     selection: CardsBinding
   }
 }) {
+  const posterWhyId = useId()
   const clipLay = useMemo(() => trackLayout(clips), [clips])
   const turns = cuts.turns ?? NO_TURNS
   const decorators = cards.decorators
@@ -483,6 +487,37 @@ export function Timeline({
   const atFit = pps <= fit + 1e-9
   const atMax = pps >= MAX_PPS - 1e-9
   const note = video.note
+  // Use as poster (Edit mode): why it cannot act now, in words, or null.
+  const frame = useFrameReady(video.videoRef, held)
+  const [posterFailed, setPosterFailed] = useState(false)
+  const posterWhy =
+    editing === null
+      ? null
+      : (() => {
+          const result = posterFromPlayhead(clips, playhead.get(), {
+            locked: editing.locked,
+            held,
+            frame,
+          })
+          return 'why' in result ? result.why : null
+        })()
+  const usePoster = () => {
+    const element = video.videoRef.current
+    const result = posterFromPlayhead(clips, playhead.get(), {
+      locked: editing?.locked ?? true,
+      held,
+      frame: hasFrame(element),
+    })
+    if (editing === null || element === null || 'why' in result) {
+      return
+    }
+    setPosterFailed(false)
+    const turn = turns.get(result.pick.clip) ?? 0
+    snapshotOf(element).then(
+      (url) => editing.onPoster(result.pick, { url, turn }),
+      () => setPosterFailed(true),
+    )
+  }
   return (
     <div className="timeline" data-trimming={trimming || undefined}>
       <div className="tl-stage" data-turned>
@@ -538,7 +573,34 @@ export function Timeline({
             {FIT}
           </button>
         </div>
+        {editing !== null && (
+          <div className="tl-poster">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              aria-disabled={posterWhy !== null || undefined}
+              aria-describedby={posterWhy !== null ? posterWhyId : undefined}
+              onClick={usePoster}
+            >
+              <Icon name="film" />
+              {USE_AS_POSTER}
+            </button>
+            {posterWhy !== null && (
+              <span id={posterWhyId} className="tl-poster-why">
+                {posterWhy}
+              </span>
+            )}
+          </div>
+        )}
       </div>
+      {posterFailed && (
+        <Alert
+          tone="warn"
+          role="alert"
+          title="The picture could not be copied."
+          detail="The poster is not changed."
+        />
+      )}
 
       <Track
         eventId={eventId}

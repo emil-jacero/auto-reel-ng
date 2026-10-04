@@ -10,6 +10,7 @@ import type { ClipTurns } from '../cuts/ReadCuts'
 import { TurnTag } from '../rotate/TurnTag'
 import type { ClipCuts } from '../cuts/ReadCuts'
 import { EventEditor } from '../edit/EventEditor'
+import { EventCover } from './EventCover'
 import { requestLeave, useSaving } from '../edit/unsaved'
 import { createClipPreviews } from '../preview/previews'
 import type { ClipPreviews } from '../preview/previews'
@@ -419,6 +420,9 @@ function EventDetailBody({
           )}
           <LoadStatus message={loading ? 'Reading event…' : updating ? 'Updating…' : ''} />
         </div>
+        {state.status === 'ready' && !editing && (
+          <EventCover eventId={eventId} event={state.event} name={name} />
+        )}
         {state.status === 'ready' && !editing && state.event.description != null && (
           <p className="description">{state.event.description}</p>
         )}

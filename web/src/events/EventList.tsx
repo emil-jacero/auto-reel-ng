@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { MouseEvent, RefObject } from 'react'
 
 import { fetchEvents } from '../api/events'
+import { posterUrl } from '../api/poster'
 import type { EventError, EventRow, EventSummary, Problem } from '../api/events'
 import { formatInstant } from '../format'
 import { MISSING_BLOCKS_ROW } from '../jobs/labels'
@@ -18,6 +19,8 @@ import { DATABASE_CAUSE, StalenessCell, folderName, plural } from './common'
 import { groupByYear, lookAlikes, needsRender } from './grouping'
 import type { YearGroup } from './grouping'
 import { FAILURE_LABEL, failureDetail, unansweredFailure } from './labels'
+import { rowCoverWords } from './cover.ts'
+import { PosterCover } from './PosterCover'
 import { CLIP_STATUS_LOOK, FAILURE_LOOK } from './tones'
 
 /**
@@ -130,29 +133,41 @@ function EventRow({ event, lookAlike }: { event: EventSummary; lookAlike: boolea
   // Called on every render, whether or not the row shows its path (rules of hooks).
   const alikeId = useId()
   const pathId = useId()
+  const name = event.title ?? folderName(event.event_id)
+  const cover = rowCoverWords(name)
   return (
     <tr role="row" onMouseDown={notePress} onClick={openRow}>
       <td role="cell" className="cell-date">
         {event.date != null && <time dateTime={event.date}>{event.date}</time>}
       </td>
       <td role="cell" className="cell-event">
-        {/*
-         * A look-alike's link is described by the note, then the path: two paths
-         * can differ only in letter case, which a screen reader does not voice.
-         */}
-        <a
-          href={eventHref(event.event_id)}
-          aria-describedby={lookAlike ? `${alikeId} ${pathId}` : undefined}
-        >
-          {event.title ?? folderName(event.event_id)}
-        </a>
-        {event.location != null && <span className="event-location"> · {event.location}</span>}
-        {lookAlike && (
-          <span className="event-folder">
-            <span id={pathId}>{event.event_id}</span>
-            <span id={alikeId}>{LOOK_ALIKE_NOTE}</span>
-          </span>
-        )}
+        <div className="event-cell">
+          {/* Lazy, in a reserved 16:9 box; "No poster" in the same box when there is none. */}
+          <PosterCover
+            src={posterUrl(event.event_id)}
+            alt={cover.alt}
+            none={cover.none}
+          />
+          <div className="event-cell-text">
+            {/*
+             * A look-alike's link is described by the note, then the path: two paths
+             * can differ only in letter case, which a screen reader does not voice.
+             */}
+            <a
+              href={eventHref(event.event_id)}
+              aria-describedby={lookAlike ? `${alikeId} ${pathId}` : undefined}
+            >
+              {name}
+            </a>
+            {event.location != null && <span className="event-location"> · {event.location}</span>}
+            {lookAlike && (
+              <span className="event-folder">
+                <span id={pathId}>{event.event_id}</span>
+                <span id={alikeId}>{LOOK_ALIKE_NOTE}</span>
+              </span>
+            )}
+          </div>
+        </div>
       </td>
       <td role="cell" className="cell-clips">
         <span className="clip-counts">

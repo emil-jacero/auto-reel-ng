@@ -95,6 +95,19 @@
     min-inline-size: 5.5rem;
   }
 
+  /* Use as poster (Edit mode) and, when it cannot act, why, in words beside it. */
+  .tl-poster {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-2);
+  }
+
+  .tl-poster-why {
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
   /*
    * The readout: the clip's name, then the clip's pair and the event's pair of times
    * (`ui/Clock.tsx`). The name is the only part that gives way, cut with an ellipsis; the

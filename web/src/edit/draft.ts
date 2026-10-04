@@ -5,6 +5,8 @@ import { normalizeTurn, stepTurn } from '../rotate/turn.ts'
 import { NO_CARD, cardBody, cardChanged, readCard, refusalOf, withField } from './card/model.ts'
 import type { CardDraft, CardField } from './card/model.ts'
 import { applyDecorators, setTitleCards } from './decorators.ts'
+import { posterBody, posterChanged, posterEntry } from './poster.ts'
+import type { PosterDraft, PosterPick } from './poster.ts'
 import { applyStyle, readStyle, styleChanged, withStyleField } from './cardStyle.ts'
 import type { StyleDraft, StyleField, StyleValue } from './cardStyle.ts'
 import type { Turn, Way } from '../rotate/turn.ts'
@@ -118,6 +120,12 @@ export type Draft = {
    * state read; absent otherwise, so an untouched draft is `look` as read.
    */
   decorators?: readonly unknown[]
+  /**
+   * The event's poster (`poster.ts`) while the operator has it different from the one read:
+   * a chosen frame, or `null` for the default. Absent (`undefined`) is as read, so an untouched
+   * draft writes no `poster` and the service keeps the one it holds.
+   */
+  poster?: PosterDraft
 }
 
 /** What Edit mode read: never changes during the session. */
@@ -395,6 +403,7 @@ export function buildWriteBody(baseline: Baseline, draft: Draft): ReelWriteBody 
     chapters,
     clips: withCuts(baseline, draft),
     ignore: read.ignore,
+    ...posterBody(read, draft.poster),
   }
 }
 
@@ -461,8 +470,34 @@ export function isDirty(baseline: Baseline, draft: Draft): boolean {
     changedRotations(baseline, draft).size > 0 ||
     changedCards(baseline, draft).size > 0 ||
     styleIsChanged(baseline, draft) ||
-    decoratorsChanged(draft)
+    decoratorsChanged(draft) ||
+    posterIsChanged(baseline, draft)
   )
+}
+
+// --- the poster ------------------------------------------------------------------------
+
+/** Whether the poster differs from the one read (put back, it is no change). */
+export function posterIsChanged(baseline: Baseline, draft: Draft): boolean {
+  return posterChanged(baseline.read, draft.poster)
+}
+
+/** `draft` with the poster a chosen frame, or `null` for the default; equal to the read one, no entry. */
+export function setPoster(baseline: Baseline, draft: Draft, next: PosterPick | null): Draft {
+  const entry = posterEntry(baseline.read, next)
+  return entry === draft.poster ||
+    (entry !== undefined && draft.poster !== undefined && samePick(entry, draft.poster))
+    ? draft
+    : { ...draft, poster: entry }
+}
+
+function samePick(a: PosterPick | null, b: PosterPick | null): boolean {
+  return a === b || (a !== null && b !== null && a.clip === b.clip && a.at === b.at)
+}
+
+/** `draft` with the poster as read. */
+export function resetPoster(draft: Draft): Draft {
+  return draft.poster === undefined ? draft : { ...draft, poster: undefined }
 }
 
 // --- the Title cards switch --------------------------------------------------------------

@@ -1,0 +1,72 @@
+/*
+ * The poster cover (`PosterCover.tsx`) in the event list and on the event page, and Edit
+ * mode's poster area (`edit/PosterPanel.tsx`). The box is `.clip-thumb` (thumbs.css).
+ */
+@layer components {
+  /* A list row: the cover beside the title, its width fixed so the rows do not shift. */
+  .event-cell {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--s-3);
+  }
+
+  .event-cell > .poster-cover {
+    flex: none;
+    inline-size: 6rem;
+  }
+
+  /*
+   * The text gives the cell its baseline (a cover has none), so the date, counts and verdict
+   * of the row still share the title's first line.
+   */
+  .event-cell-text {
+    min-inline-size: 0;
+    flex: 1;
+    align-self: baseline;
+  }
+
+  /* The page: the cover under the facts, as wide as a reading column allows. */
+  .event-cover {
+    margin: var(--s-3) 0 0;
+    max-inline-size: 22rem;
+  }
+
+  .event-cover > figcaption,
+  .poster-area-words {
+    margin-block-start: var(--s-1);
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
+  /* Edit mode's poster area. */
+  .poster-area {
+    display: grid;
+    gap: var(--s-3);
+    align-items: start;
+
+    & .poster-cover {
+      max-inline-size: 22rem;
+    }
+  }
+
+  .poster-area-state {
+    font-weight: 600;
+  }
+
+  .poster-area-note {
+    color: var(--fg-muted);
+  }
+
+  .poster-area-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+    align-items: center;
+  }
+
+  @media (width >= 40rem) {
+    .poster-area {
+      grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+    }
+  }
+}

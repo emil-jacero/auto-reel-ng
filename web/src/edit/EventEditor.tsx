@@ -19,13 +19,13 @@ import type { ReelDocument, ReelReadResult, ReelSaveResult, ReelWriteBody } from
 import type { CutHandlers, CutPanels, PanelState } from '../cuts/CutsPanel'
 import { keptCuts, trimmedWords } from '../cuts/times'
 import { markEventsChanged } from '../events/changes'
-import { clipNames, folderName, plural } from '../events/common'
+import { clipNames, fileName, folderName, plural } from '../events/common'
 import { FAILURE_LABEL, UNANSWERED_CAUSE, notReachableHint } from '../events/labels'
 import { FAILURE_LOOK } from '../events/tones'
 import { eventName } from '../jobs/labels'
 import { createClipPreviews } from '../preview/previews'
 import { groupTurnAnnouncement, rotatedCount, turnAnnouncement, turnsOf } from '../rotate/turn.ts'
-import type { Way } from '../rotate/turn.ts'
+import type { Turn, Way } from '../rotate/turn.ts'
 import type { RotateHandler } from '../rotate/RotateButtons'
 import type { ClipTurns } from '../cuts/ReadCuts'
 import { LIST_HREF } from '../route'
@@ -121,8 +121,10 @@ import {
   resetCard,
   resetDecorators,
   resetStyle,
+  setPoster,
   setStyleField,
   setTitleCardsOn,
+  posterIsChanged,
   decoratorsChanged,
   styleIsChanged,
   styleOf,
@@ -160,6 +162,9 @@ import {
 } from './marks'
 import { FIELD_LABEL, inheritHint, MetadataForm } from './MetadataForm'
 import type { Resolved } from './MetadataForm'
+import { PosterPanel } from './PosterPanel'
+import { POSTER_CHANGED, chosenWords } from './poster.ts'
+import type { PosterPick } from './poster.ts'
 import { SaveBar } from './SaveBar'
 import type { Operation, Pressed, SaveProblem } from './SaveBar'
 import { TitleCardContext } from './TitleCard'
@@ -302,6 +307,8 @@ type Action =
   // The Title cards switch (`title-card-toggle`); `readEnabled` is the service's answer for the document as read.
   | { type: 'title-cards'; on: boolean; readEnabled: boolean }
   | { type: 'title-cards-reset' }
+  // The event's poster (`poster.ts`): a chosen frame, or `null` for the default frame.
+  | { type: 'poster'; pick: PosterPick | null }
   | { type: 'reset' }
   | { type: 'save-start'; pressed: Pressed }
   | { type: 'save-failed'; problem: SaveProblem | null; refusal: string | null }
@@ -602,6 +609,8 @@ function reduce(state: State, action: Action): State {
       )
     case 'title-cards-reset':
       return withDraft(state, resetDecorators(state.draft))
+    case 'poster':
+      return withDraft(state, setPoster(state.baseline, state.draft, action.pick))
     case 'reset':
       return {
         ...state,
@@ -811,6 +820,7 @@ function summarize(
   cardsChanged: number,
   styleChanged: boolean,
   titleCards: boolean | null,
+  poster: boolean,
   adopted: number,
 ): string {
   // An incomplete date reads as '' but is not a date left empty: it is named as such.
@@ -835,6 +845,7 @@ function summarize(
     cardsChangedWords(cardsChanged) ?? false,
     styleChanged && CARD_STYLE_CHANGED,
     titleCards !== null && (titleCards ? TURNED_ON : TURNED_OFF),
+    poster && POSTER_CHANGED,
     adopted > 0 && `adds ${plural(adopted, 'new clip', 'new clips')} to reel.yaml`,
   ].filter((part): part is string => part !== false)
   const text = parts.join(' · ')
@@ -1631,6 +1642,59 @@ export function EventEditor({
     },
     [announce],
   )
+  // Use as poster: the frame the Timeline's video showed, kept as an object URL until the draft
+  // no longer needs it (another frame, Use default, Reset, a re-read, leaving).
+  const [posterFrame, setPosterFrame] = useState<
+    { url: string; turn: Turn; pick: PosterPick } | null
+  >(null)
+  const dropFrame = useCallback(() => {
+    setPosterFrame((was) => {
+      if (was !== null) {
+        URL.revokeObjectURL(was.url)
+      }
+      return null
+    })
+  }, [])
+  const frameRef = useRef(posterFrame)
+  frameRef.current = posterFrame
+  useEffect(
+    () => () => {
+      if (frameRef.current !== null) {
+        URL.revokeObjectURL(frameRef.current.url)
+      }
+    },
+    [],
+  )
+  const posterBaseline = ready?.baseline
+  const posterResets = ready?.resets
+  useEffect(() => dropFrame(), [posterBaseline, posterResets, dropFrame])
+  const onPoster = useCallback<EditBinding['onPoster']>(
+    (pick, snapshot) => {
+      const current = latest.current
+      if (current === null || current.pressed !== null || moving.current !== null) {
+        URL.revokeObjectURL(snapshot.url)
+        return
+      }
+      setPosterFrame((was) => {
+        if (was !== null) {
+          URL.revokeObjectURL(was.url)
+        }
+        return { ...snapshot, pick }
+      })
+      dispatch({ type: 'poster', pick })
+      announce(chosenWords(fileName(pick.clip), pick.at))
+    },
+    [announce],
+  )
+  const onUseDefault = useCallback(() => {
+    const current = latest.current
+    if (current === null || current.pressed !== null || moving.current !== null) {
+      return
+    }
+    dropFrame()
+    dispatch({ type: 'poster', pick: null })
+    announce('Poster set to the default frame, the first clip. Not saved.')
+  }, [announce, dropFrame])
   const resetCount = ready?.resets ?? 0
   const readLook = ready?.baseline.read.look
   const editing = useMemo<EditBinding | null>(() => {
@@ -1642,6 +1706,7 @@ export function EventEditor({
       turns: draftTurns,
       listed: (identity) => cutsOf(baseCuts, draftCuts, identity),
       onTrim,
+      onPoster,
       onAdd: cutHandlers.onAdd,
       locked: listsLocked,
       announce,
@@ -1659,6 +1724,7 @@ export function EventEditor({
     detail,
     listsLocked,
     onTrim,
+    onPoster,
     cutHandlers,
     announce,
     orderChanged,
@@ -2679,6 +2745,19 @@ export function EventEditor({
             </div>
           </section>
 
+          {detail !== null && (
+            <PosterPanel
+              eventId={eventId}
+              event={liveEvent ?? detail}
+              read={ready.baseline.read}
+              draft={ready.draft.poster}
+              orders={ready.draft.orders}
+              frame={posterFrame}
+              locked={locked}
+              onUseDefault={onUseDefault}
+            />
+          )}
+
           {editing !== null && detail !== null && (
             // Closed until opened; its cuts are the draft's, its clips and proxies the page's.
             <TimelineSection
@@ -2885,6 +2964,7 @@ export function EventEditor({
                     cardsChanged,
                     styleIsChanged(ready.baseline, ready.draft),
                     ready.draft.decorators === undefined ? null : titleCardsNow(ready.draft.decorators, false),
+                    posterIsChanged(ready.baseline, ready.draft),
                     adopted,
                   )
                 : ''
