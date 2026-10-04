@@ -149,6 +149,8 @@ export function jobAnnouncement(status: JobStatus, cancelRequested: boolean): st
 // --- the track --------------------------------------------------------------------------
 
 export const NO_CLIPS = 'This event has no clip to show.'
+/** The service did not say whether the render draws title cards: the stat counts the footage only. */
+export const CARDS_UNKNOWN = 'Whether title cards are drawn is not known.'
 export const FILM_FAILED = 'A filmstrip could not be loaded.'
 export const FILM_FAILED_DETAIL =
   'The clips whose picture is missing keep their names, cuts and place on the track.'
