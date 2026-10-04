@@ -14,6 +14,7 @@ from .schemas import (
     EditorialDocumentBody,
     JobOut,
     MetadataBody,
+    PosterBody,
     TrimBody,
 )
 
@@ -53,6 +54,11 @@ def document_to_body(document: ReelDocument) -> EditorialDocumentBody:
             for identity, props in document.clips.items()
         },
         ignore=list(document.ignore),
+        poster=(
+            PosterBody(clip=document.poster.clip, at=document.poster.at)
+            if document.poster is not None
+            else None
+        ),
     )
 
 

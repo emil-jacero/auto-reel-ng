@@ -30,14 +30,17 @@ document and clip set per request; rejected as the list's cost grows with the li
 `{clip, at, source}`: `source: event` with the chosen `clip` and `at`; `source: default` with the first played
 clip and `at: null` (the thumbnail's own frame time depends on the clip's duration, which a probe-free read does
 not know, so it is not invented). When the chosen clip cannot be used (missing, ignored, excluded) the detail
-reports the default and a `poster_note` naming why; when `reel.yaml`'s poster is unreadable it answers 200 with
-`poster: null` and a `poster_error`, as for `card` and `title_cards`. The page needs these to word "Default: first
+reports the default and a `poster_note` naming why; a poster the loader refuses
+makes `reel.yaml` unreadable, as any bad field does, and is the event's failure (the engine validates it at load,
+so there is no document to report a partial answer from). The played clips are the detail's own chapters (a NEW
+disk clip counts, a missing, ignored or excluded one does not): what a render adopts. The page needs these to word "Default: first
 clip" or "Chosen frame" and to jump the Timeline playhead to the chosen frame.
 
 **D3. Where the image comes from.** In order: (1) the rendered sidecar, only when the event is not stale and the
 manifest claims the sidecar (the verdict is probe-free, so is this); (2) a frame drawn at the poster time from the
-clip's ready proxy; (3) from the original clip through the engine's poster extraction, or, for the default, the
-engine's thumbnail. Draws are cached beside the thumbnails (`thumbs` cache, outside the library) keyed like D-11
+original clip through the engine's poster extraction (the render's own function, so the draw and the sidecar agree
+on turn, pixel aspect and HDR; the proxy is left out so there is one rule for the picture), or, for the default,
+the engine's thumbnail. Draws are cached beside the thumbnails (`thumbs` cache, outside the library) keyed like D-11
 (clip size, mtime, `at`, size, version) so a repeat answers without ffmpeg; a failed draw is remembered 60 s like a
 thumbnail's. Same extraction cap and single-flight as thumbnails, shared with them. The `ETag` identifies the
 bytes (sidecar: its size and mtime; draw: the cache key); `Cache-Control: private, no-cache`, so an edited poster

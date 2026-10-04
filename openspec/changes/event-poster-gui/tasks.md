@@ -1,12 +1,12 @@
 ## 1. Editorial body and detail (api)
 
-- [ ] 1.1 Carry `poster` in the editorial body models (`GET`/`PUT …/reel`: absent keeps, `null` removes, `{clip, at}` sets, unknown key rejected) with the engine's own validation and 400s naming `poster.clip` / `poster.at` (an unplayed clip is accepted, as the engine does); tests: set, keep, remove, refusals, byte-identical echo, stale verdict with no job (`pytest -m "not requires_db"`)
-- [ ] 1.2 Report `poster`, `poster_note` and `poster_error` on the event detail from the engine's poster resolution, probe-free, with `source` a closed enum; tests: chosen, default with `at: null`, fallback note, no playable clip, bad hand-edited value (200), no subprocess, no DB read
+- [x] 1.1 Carry `poster` in the editorial body models (`GET`/`PUT …/reel`: absent keeps, `null` removes, `{clip, at}` sets, unknown key rejected) with the engine's own validation and 400s naming `poster.clip` / `poster.at` (an unplayed clip is accepted, as the engine does); tests: set, keep, remove, refusals, byte-identical echo, stale verdict with no job (`pytest -m "not requires_db"`)
+- [x] 1.2 Report `poster` and `poster_note` on the event detail from the engine's poster resolution, probe-free, with `source` a closed enum; tests: chosen, default with `at: null`, fallback note, no playable clip, bad hand-edited value (the event failure), no subprocess, no DB read
 
 ## 2. Poster endpoint (api)
 
-- [ ] 2.1 Add `GET /api/v1/events/{event_id}/poster.jpg`: fresh sidecar, else proxy draw, else original draw, cached beside the thumbnails, `ETag`, `private, no-cache`, 304 without extraction, shared cap and single-flight, 60 s failure memory, 404/502 problem bodies, no DB, no writes; tests with real ffmpeg on small fixtures for each source, a cold-cache 304, a past-the-end `at`, and the library left byte-identical
-- [ ] 2.2 Regenerate `web/openapi.json` and `web/src/api/schema.d.ts`; the drift test finds nothing changed after regeneration and the schema holds the poster response, the detail fields and the body's `poster`
+- [x] 2.1 Add `GET /api/v1/events/{event_id}/poster.jpg`: fresh sidecar, else the engine's draw from the original, cached beside the thumbnails, `ETag`, `private, no-cache`, 304 without extraction, shared cap and single-flight, 60 s failure memory, 404/502 problem bodies, no DB, no writes; tests with real ffmpeg on small fixtures for each source, a cold-cache 304, a past-the-end `at`, and the library left byte-identical
+- [x] 2.2 Regenerate `web/openapi.json` and `web/src/api/schema.d.ts`; the drift test finds nothing changed after regeneration and the schema holds the poster response, the detail fields and the body's `poster`
 
 ## 3. Web: the model and the cover (web)
 

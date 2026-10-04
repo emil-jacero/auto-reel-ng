@@ -386,6 +386,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{event_id}/poster.jpg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Poster
+         * @description ``GET /api/v1/events/{event_id}/poster.jpg``: the event's effective poster.
+         *
+         *     The event detail's ``poster``, as an image: the rendered ``<movie stem>-poster.jpg`` while the
+         *     event is fresh and the manifest claims it, else the chosen frame drawn from the original (or
+         *     the first played clip's thumbnail for the default), cached beside the thumbnails. Draws share
+         *     the thumbnails' extraction cap and single-flight. ``no-cache`` with an ``ETag``: a saved poster
+         *     shows at once and a revalidation extracts nothing.
+         *
+         *     404 for an unknown event and for an event that plays no clip; 502 with
+         *     ``thumbnail_failure`` when the engine cannot make the frame, with the list's ``failure`` when
+         *     the event cannot be read. Nothing is written into the library and the database is never
+         *     touched.
+         */
+        get: operations["get_poster_api_v1_events__event_id__poster_jpg_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/{event_id}/proxies": {
         parameters: {
             query?: never;
@@ -759,6 +790,8 @@ export interface components {
              * @default []
              */
             ignore: string[];
+            /** @description The chosen poster frame. Absent in a write keeps the poster reel.yaml holds; `null` removes it; `{clip, at}` sets it. A document with none reads `null`. */
+            poster?: components["schemas"]["PosterBody"] | null;
         };
         /**
          * EditorialDocumentBody
@@ -796,6 +829,8 @@ export interface components {
              * @default []
              */
             ignore: string[];
+            /** @description The chosen poster frame. Absent in a write keeps the poster reel.yaml holds; `null` removes it; `{clip, at}` sets it. A document with none reads `null`. */
+            poster?: components["schemas"]["PosterBody"] | null;
         };
         /**
          * EditorialWriteResult
@@ -855,6 +890,10 @@ export interface components {
          *     ``title_cards`` is whether the effective decorators include ``title`` and where that was
          *     decided; it is present unless ``look.decorators`` is not a list, when it is ``null`` and
          *     ``title_cards_error`` names the field.
+         *
+         *     ``poster`` is the effective poster (see :class:`PosterOut`), ``null`` when no clip is played;
+         *     ``poster_note`` says why a poster ``reel.yaml`` names is not used (its clip is missing,
+         *     ignored or excluded), else ``null``. A poster the loader refuses is the event's failure.
          */
         EventDetailOut: {
             /** Event Id */
@@ -891,6 +930,9 @@ export interface components {
             title_cards?: components["schemas"]["TitleCardsOut"] | null;
             /** Title Cards Error */
             title_cards_error?: string | null;
+            poster?: components["schemas"]["PosterOut"] | null;
+            /** Poster Note */
+            poster_note?: string | null;
         };
         /**
          * EventErrorOut
@@ -1161,6 +1203,43 @@ export interface components {
             /** Chapters */
             chapters?: components["schemas"]["MovieChapterOut"][] | null;
         };
+        /**
+         * PosterBody
+         * @description The event's chosen poster frame, named as the ``reel.yaml`` ``poster`` keys.
+         *
+         *     Shape only: the key set and the JSON types. ``clip`` is a clip identity and ``at`` seconds into
+         *     that clip before its cuts; the value rules are the engine's and arrive as a 400 naming
+         *     ``poster.clip`` or ``poster.at``. Whether ``at`` is inside the clip needs a probe and is
+         *     checked at render.
+         */
+        PosterBody: {
+            /** Clip */
+            clip: string;
+            /** At */
+            at: number;
+        };
+        /**
+         * PosterOut
+         * @description The event's effective poster, as the engine's rules give it, probe-free.
+         *
+         *     ``source`` is ``event`` when ``reel.yaml`` names a clip the movie plays (then ``clip`` and
+         *     ``at``, seconds into that clip before its cuts, are its values) and ``default`` otherwise
+         *     (then ``clip`` is the first played clip and ``at`` is ``null``: the default frame's time
+         *     depends on a duration this read does not probe).
+         */
+        PosterOut: {
+            /** Clip */
+            clip: string;
+            /** At */
+            at?: number | null;
+            source: components["schemas"]["PosterSource"];
+        };
+        /**
+         * PosterSource
+         * @description Where the effective poster comes from: the document's choice or the default frame.
+         * @enum {string}
+         */
+        PosterSource: "event" | "default";
         /**
          * PreviewCardBody
          * @description A draft card for the preview: the editorial card plus the preview's text bounds.
@@ -2839,6 +2918,75 @@ export interface operations {
                     /** @description Strong entity-tag of the thumbnail: the engine's cache key, quoted */
                     ETag?: string;
                     /** @description Always `private, max-age=86400` */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+        };
+    };
+    get_poster_api_v1_events__event_id__poster_jpg_get: {
+        parameters: {
+            query?: {
+                /** @description An opaque cache-busting version; accepted and ignored */
+                v?: string | null;
+            };
+            header?: {
+                "If-None-Match"?: string | null;
+            };
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The event's poster: a JPEG, the render's own file once it is fresh */
+            200: {
+                headers: {
+                    /** @description Strong entity-tag of the image: the rendered file's size and mtime, or the engine's cache key, quoted */
+                    ETag?: string;
+                    /** @description Always `private, no-cache` */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description Not modified: `If-None-Match` names the current poster */
+            304: {
+                headers: {
+                    /** @description Strong entity-tag of the image: the rendered file's size and mtime, or the engine's cache key, quoted */
+                    ETag?: string;
+                    /** @description Always `private, no-cache` */
                     "Cache-Control"?: string;
                     [name: string]: unknown;
                 };
