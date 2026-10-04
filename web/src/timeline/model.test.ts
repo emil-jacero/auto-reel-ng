@@ -6,13 +6,18 @@ import { playheadWords, skipSpans, toMs } from '../preview/playback.ts'
 import {
   clampPps,
   clipAt,
+  clipToLayout,
   clipFacts,
   cutRects,
   cutSpans,
   DEFAULT_PPS,
+  edgeCut,
   fitPps,
   frameMs,
+  interiorSpans,
+  keptExtent,
   layout,
+  layoutToClip,
   MAX_PPS,
   minCutMs,
   MIN_PPS,
@@ -26,7 +31,7 @@ import {
   visibleTicks,
   zoomAt,
 } from './model.ts'
-import type { ClipFacts, Layout, Ms, View } from './model.ts'
+import type { ClipFacts, KeptFacts, Layout, Ms, View } from './model.ts'
 
 /** A small deterministic generator, so a property loop fails the same way twice. */
 function random(seed: number): () => number {
@@ -96,12 +101,12 @@ describe('layout and pixels', () => {
   const mixed = layout([clipFacts(24.96, 25), clipFacts(6.08, 25), clipFacts(0.48, 25)])
 
   it('lays clips of mixed durations end to end', () => {
-    assert.deepEqual(mixed, { startsMs: [0, 24960, 31040], totalMs: 31520 })
+    assert.deepEqual(mixed, { startsMs: [0, 24960, 31040], totalMs: 31520, inMs: [0, 0, 0] })
   })
 
   it('an empty list has no length and no clip at any time', () => {
     const none = layout([])
-    assert.deepEqual(none, { startsMs: [], totalMs: 0 })
+    assert.deepEqual(none, { startsMs: [], totalMs: 0, inMs: [] })
     assert.equal(clipAt(none, 0), null)
     assert.equal(clipAt(none, 5000), null)
   })
@@ -137,6 +142,126 @@ describe('layout and pixels', () => {
       assert.throws(() => pxToTime(10, pps), /pps/)
       assert.throws(() => timeToPx(10, pps), /pps/)
     }
+  })
+})
+
+/** A clip of `durationMs` at 25 fps with its cuts (seconds) and the extent they leave. */
+function kept(durationMs: Ms, cuts: { in: number; out: number }[]): KeptFacts & { cuts: typeof cuts } {
+  return { durationMs, fps: 25, ...keptExtent(cutSpans(cuts, durationMs), durationMs), cuts }
+}
+
+describe('the kept extent (timeline-ripple-layout)', () => {
+  // "Edge cuts shorten the layout": A has a leading cut, B a trailing one, C an interior one.
+  const A = kept(10000, [{ in: 0, out: 2 }])
+  const B = kept(8000, [{ in: 6, out: 8 }])
+  const C = kept(5000, [{ in: 1, out: 2 }])
+  const lay = layout([A, B, C])
+
+  it('edge cuts shorten the layout: starts 0, 8,000 and 14,000 ms, total 19,000 ms', () => {
+    assert.deepEqual(lay, { startsMs: [0, 8000, 14000], totalMs: 19000, inMs: [2000, 0, 0] })
+  })
+
+  it('a wholly cut clip takes no length, and its start is held by the next clip', () => {
+    const three = layout([kept(4000, []), kept(4000, [{ in: 0, out: 4 }]), kept(4000, [])])
+    assert.deepEqual(three.startsMs, [0, 4000, 4000])
+    assert.equal(three.totalMs, 8000)
+    assert.equal(clipAt(three, 4000), 2)
+    assert.equal(clipAt(three, 3999), 0)
+  })
+
+  it('never gives a clip of no length: wholly cut first, middle and last clips', () => {
+    const none = (d: Ms) => kept(d, [{ in: 0, out: d / 1000 }])
+    const first = layout([none(3000), kept(4000, []), kept(4000, [])])
+    assert.deepEqual(first.startsMs, [0, 0, 4000])
+    assert.equal(clipAt(first, -5), 1)
+    assert.equal(clipAt(first, 0), 1)
+    const last = layout([kept(4000, []), kept(4000, []), none(3000)])
+    assert.deepEqual(last.startsMs, [0, 4000, 8000])
+    assert.equal(clipAt(last, 8000), 1)
+    assert.equal(clipAt(last, 50000), 1)
+  })
+
+  it('extents from edge cuts: joined leading spans, and a trailing cut with an interior one', () => {
+    const one = [
+      { in: 0, out: 2 },
+      { in: 1.5, out: 3 },
+    ]
+    const spansOne = cutSpans(one, 10000)
+    const extentOne = keptExtent(spansOne, 10000)
+    assert.deepEqual(extentOne, { inMs: 3000, outMs: 10000 })
+    assert.deepEqual(interiorSpans(spansOne, extentOne), [])
+    assert.ok(one.every((cut) => edgeCut(cut, extentOne, 10000)))
+    const two = [
+      { in: 9.95, out: 10 },
+      { in: 4, out: 5 },
+    ]
+    const spansTwo = cutSpans(two, 10000)
+    const extentTwo = keptExtent(spansTwo, 10000)
+    assert.deepEqual(extentTwo, { inMs: 0, outMs: 9950 })
+    assert.deepEqual(interiorSpans(spansTwo, extentTwo), [{ from: 4000, to: 5000 }])
+    assert.deepEqual(
+      two.map((cut) => edgeCut(cut, extentTwo, 10000)),
+      [true, false],
+    )
+  })
+
+  it('a cut ending just short of the end, or past it, is a trailing cut', () => {
+    assert.deepEqual(keptExtent(cutSpans([{ in: 5, out: 5.95 }], 6020), 6020), { inMs: 0, outMs: 5000 })
+    assert.deepEqual(keptExtent(cutSpans([{ in: 5, out: 7 }], 6020), 6020), { inMs: 0, outMs: 5000 })
+    // 100 ms short is footage Play shows: not a trailing cut.
+    assert.deepEqual(keptExtent(cutSpans([{ in: 5, out: 5.92 }], 6020), 6020), { inMs: 0, outMs: 6020 })
+  })
+
+  it('the trailing cut is the first span Play ends the clip at', () => {
+    // Both spans end within 0.1 s of the end; Play stops at the first (`skipAt`).
+    const spans = cutSpans(
+      [
+        { in: 5.91, out: 5.93 },
+        { in: 5.95, out: 6 },
+      ],
+      6000,
+    )
+    const extent = keptExtent(spans, 6000)
+    assert.deepEqual(extent, { inMs: 0, outMs: 5910 })
+    assert.deepEqual(interiorSpans(spans, extent), [])
+  })
+
+  it('a span that is both leading and trailing leaves the extent empty', () => {
+    assert.deepEqual(keptExtent(cutSpans([{ in: 0, out: 5 }], 5050), 5050), { inMs: 0, outMs: 0 })
+    assert.deepEqual(keptExtent(cutSpans([{ in: 0, out: 9 }], 5050), 5050), { inMs: 0, outMs: 0 })
+    assert.equal(edgeCut({ in: 1, out: 2 }, { inMs: 0, outMs: 0 }, 5050), true)
+  })
+
+  it('no cut keeps the whole clip; a removed or empty cut is no edge cut', () => {
+    assert.deepEqual(keptExtent([], 7000), { inMs: 0, outMs: 7000 })
+    assert.equal(edgeCut({ in: 0, out: 2, removed: true }, { inMs: 2000, outMs: 7000 }, 7000), false)
+    assert.equal(edgeCut({ in: 8, out: 9 }, { inMs: 0, outMs: 7000 }, 7000), false)
+  })
+
+  it('round trip: every kept time maps to the layout and back to itself', () => {
+    const all = [A, B, C]
+    all.forEach((clip, index) => {
+      for (let ms = clip.inMs ?? 0; ms < (clip.outMs ?? clip.durationMs); ms += 1) {
+        const t = clipToLayout(lay, index, ms)
+        assert.deepEqual(layoutToClip(lay, t), { clip: index, ms })
+      }
+    })
+    assert.equal(clipToLayout(lay, 0, 5000), 3000)
+    assert.deepEqual(layoutToClip(lay, 3000), { clip: 0, ms: 5000 })
+  })
+
+  it('the movie keeps the render’s arithmetic: 18 s of the 19 s track here', () => {
+    assert.equal(movieLengthMs([A, B, C]), 18000)
+  })
+
+  it('handle rectangles leave out edge cuts and start at the block’s left edge', () => {
+    const cuts = [
+      { in: 0, out: 2 },
+      { in: 4, out: 5 },
+      { in: 9, out: 10 },
+    ]
+    const extent = keptExtent(cutSpans(cuts, 10000), 10000)
+    assert.deepEqual(cutRects(cuts, 10000, 40, extent), [{ index: 1, left: 80, width: 40 }])
   })
 })
 

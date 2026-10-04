@@ -1,6 +1,6 @@
 ## 1. Pure model
 
-- [ ] 1.1 `model.ts`: add `keptExtent` (design D1, reusing `cutSpans` and `toEnd`), interior spans, a `layout()` that lays
+- [x] 1.1 `model.ts`: add `keptExtent` (design D1, reusing `cutSpans` and `toEnd`), interior spans, a `layout()` that lays
   kept extents (zero length for an empty one, ties to the later clip in `clipAt`/`visibleClips`), and the
   `clipToLayout`/`layoutToClip` pair. Test in `model.test.ts`: every scenario of "Clips are laid out end to end from their
   durations and found by time" and the extent, trailing-slack and round-trip scenarios of "A clip's edge cuts set its

@@ -161,7 +161,7 @@ function frameMsOf(n: number, fps: number): number {
 describe('a place in a card', () => {
   const card = { chapter: 0, name: '', ms: 1200, lengthMs: 7000 }
   // The track layout puts the clip after its 7 s card.
-  const track = { startsMs: [7000, 9000, 10000], totalMs: 10480 }
+  const track = { startsMs: [7000, 9000, 10000], totalMs: 10480, inMs: [0, 0, 0] }
 
   it('keeps the anchor clip and counts card time in the timeline’s time', () => {
     assert.equal(globalMs(track, { clip: 0, ms: 0, card }), 1200)
@@ -169,7 +169,7 @@ describe('a place in a card', () => {
   })
 
   it('never reads a time before zero when the cards were switched off under the playhead', () => {
-    const off = { startsMs: [0, 2000, 3000], totalMs: 3480 }
+    const off = { startsMs: [0, 2000, 3000], totalMs: 3480, inMs: [0, 0, 0] }
     assert.equal(globalMs(off, { clip: 0, ms: 0, card }), 0)
   })
 

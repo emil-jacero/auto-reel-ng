@@ -320,6 +320,7 @@ export function clipTimeAt(map: CardMap, trackMs: Ms): TrackTime {
 /** The clips end to end with the black cards between them: where each clip starts on the track. */
 export function trackLayout(lay: Layout, map: CardMap): Layout {
   return {
+    ...lay,
     startsMs: lay.startsMs.map((start) => trackX(map, start)),
     totalMs: lay.totalMs + map.totalMs,
   }

@@ -98,7 +98,7 @@ describe('the readout in a title card', () => {
   const c = clips(60, 40)
   const lay = layout(c.map((x) => x.facts))
   // 3 s of black card before the first clip: the track is 3 s longer than the footage.
-  const track = { startsMs: [3000, 63000], totalMs: lay.totalMs + 3000 }
+  const track = { ...lay, startsMs: [3000, 63000], totalMs: lay.totalMs + 3000 }
   const card = { chapter: 0, name: '', ms: 1200, lengthMs: 3000 }
 
   it('reads Card time of length and counts the card in the Event time', () => {
@@ -124,7 +124,7 @@ describe('the readout in a title card', () => {
 
   it('holds a card longer than every clip to its own scale', () => {
     const short = clips(2)
-    const l = { startsMs: [75000], totalMs: 77000 }
+    const l = { startsMs: [75000], totalMs: 77000, inMs: [0] }
     const scales = readoutScales(short, l, 75000)
     const r = readoutOf({ clip: 0, ms: 0, card: { chapter: 0, name: '', ms: 70000, lengthMs: 75000 } }, short, l, scales)
     assert.equal(r.clip.length.text, '1:15.00')
