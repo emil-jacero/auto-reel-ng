@@ -11,7 +11,7 @@ scratchpad only, in Chrome 154 (`localhost/playback-research:chrome`) and Firefo
 
 ## 2. web/ — Fit and the zoom model
 
-- [ ] 2.1 Bug (a), Fit never scrolls (design D5): first measure in Playwright `scrollWidth − clientWidth` of
+- [x] 2.1 Bug (a), Fit never scrolls (design D5): first measure in Playwright `scrollWidth − clientWidth` of
   `.tl-viewport` at Fit (playhead at start and end; fine and coarse pointer; a 3.0 s black card at its 24 px minimum;
   1280 and 390) and record the numbers in the PR; then add the end gutter (`--tl-end-gutter`, Fit against
   `clientWidth − gutter`, canvas `floor(totalPx) + gutter`) and keep anything else found overflowing inside the canvas.

@@ -63,7 +63,7 @@ import { chapterBands, footageMs, movieMs, trackLayout } from './layout'
 import type { TrackClip } from './layout'
 import type { ShiftFrom } from './Track'
 import type { Layout } from './model'
-import { DEFAULT_PPS, MAX_PPS, fitPps, pxToTime, timeToPx, zoomAt } from './model'
+import { DEFAULT_PPS, MAX_PPS, fitCanvas, pxToTime, timeToPx, zoomAt } from './model'
 import { createPlayhead } from './playhead'
 import { afterRead, endPosition, globalMs, keptPosition, timedOf } from './position'
 import type { Position } from './position'
@@ -243,7 +243,17 @@ export function Timeline({
   const [announcement, setAnnouncement] = useState('')
   const [noPicture, setNoPicture] = useState<ReadonlySet<string>>(new Set())
 
-  const fit = range.width > 0 ? fitPps(lay.totalMs, range.width) : DEFAULT_PPS
+  // The playhead grip's half-width (`--tl-end-gutter`): the canvas keeps it free past the end, and
+  // Fit fits the timeline into the rest, so the grip at the last moment never makes it scroll.
+  const [gutter, setGutter] = useState(0)
+  useLayoutEffect(() => {
+    const el = grip.current
+    if (el !== null) {
+      const half = el.offsetWidth / 2
+      setGutter((was) => (was === half ? was : half))
+    }
+  }, [range.width])
+  const fit = range.width > 0 ? fitCanvas(lay.totalMs, range.width, gutter).pps : DEFAULT_PPS
   const wanted = zoom.fitted ? fit : Math.min(MAX_PPS, Math.max(fit, zoom.pps))
   const pps = wanted
   const ppsRef = useRef(pps)
@@ -660,6 +670,7 @@ export function Timeline({
         bands={bands}
         pps={pps}
         range={range}
+        gutter={gutter}
         turns={turns}
         scrollerRef={scroller}
         playhead={playhead}

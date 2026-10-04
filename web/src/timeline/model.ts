@@ -393,7 +393,8 @@ export function wheelFactor(deltaY: number, deltaMode: number, viewHeight: numbe
 /**
  * The scale that shows `totalMs` in a view `viewWidth` wide with `gutter` px kept free at the end
  * (the playhead's grip reaches that far past the last moment), and the canvas width that holds it:
- * the track's whole pixels plus the gutter, never wider than the view at Fit.
+ * the track's pixels rounded up plus the gutter, never wider than the view at Fit. One pixel is
+ * kept for that rounding.
  */
 export function fitCanvas(
   totalMs: Ms,
@@ -402,14 +403,29 @@ export function fitCanvas(
 ): { pps: number; canvasPx: number } {
   finitePositive('width', viewWidth)
   finite('gutter', gutter)
-  const pps = fitPps(totalMs, Math.max(1, viewWidth - Math.max(0, gutter)))
+  const pps = fitPps(totalMs, Math.max(1, viewWidth - Math.max(0, gutter) - 1))
   return { pps, canvasPx: canvasWidth(totalMs, pps, gutter) }
 }
 
-/** The canvas's width at a scale: the track's whole pixels plus the end gutter. */
+/** The canvas's width at a scale: the track's pixels rounded up, plus the end gutter. */
 export function canvasWidth(totalMs: Ms, pps: number, gutter: number): number {
   finite('gutter', gutter)
-  return Math.floor(timeToPx(totalMs, pps)) + Math.max(0, gutter)
+  return Math.ceil(timeToPx(totalMs, pps)) + Math.max(0, gutter)
+}
+
+/** A ruler label's room: its start padding and border (px), and a monospace figure at text-xs (px). */
+const TICK_PAD_PX = 15
+const TICK_CHAR_PX = 8
+
+/**
+ * Whether a ruler label of `text` written from `x` stays inside a canvas `canvasPx` wide. One that
+ * would reach past the end keeps its tick line and loses its words, so the canvas never grows past
+ * its width (a Fit with no scroll bar).
+ */
+export function tickLabelFits(x: number, text: string, canvasPx: number): boolean {
+  finite('x', x)
+  finite('canvasPx', canvasPx)
+  return x + TICK_PAD_PX + TICK_CHAR_PX * text.length <= canvasPx
 }
 
 const TICK_STEPS_MS: readonly Ms[] = [500, 1000, 2000, 5000, 10000, 30000, 60000, 300000, 600000]
