@@ -131,8 +131,11 @@ describe('the words', () => {
     assert.equal(moveReason(0, true), 'no-marks')
     assert.equal(moveReason(2, false), 'no-chapter')
     assert.equal(moveReason(2, true), null)
-    assert.equal(MOVE_REASON_WORDS['no-marks'], 'Mark clips to move them.')
-    assert.equal(MOVE_REASON_WORDS['no-chapter'], 'Choose a chapter to move them to.')
+    assert.equal(moveReason(2, true, true), 'busy')
+    assert.equal(moveReason(0, false, true), 'busy')
+    assert.equal(MOVE_REASON_WORDS['no-marks'], 'Mark a clip to move it.')
+    assert.equal(MOVE_REASON_WORDS['no-chapter'], 'Choose a chapter.')
+    assert.equal(MOVE_REASON_WORDS.busy, 'Unavailable while saving.')
   })
 
   it('add one sentence to the keyboard instructions', () => {

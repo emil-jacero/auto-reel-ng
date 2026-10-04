@@ -260,7 +260,7 @@
     }
 
     & .mark-move-why {
-      min-block-size: 1.25rem;
+      min-block-size: 2.5rem;
     }
   }
 
@@ -288,6 +288,11 @@
     .mark-line-slot {
       justify-content: flex-start;
       min-inline-size: 0;
+    }
+
+    /* Its own line whether it speaks or not, so a reason arriving moves no row. */
+    .mark-move .mark-move-why {
+      flex: 1 0 100%;
     }
   }
 

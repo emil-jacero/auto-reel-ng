@@ -2242,7 +2242,7 @@ export function EventEditor({
   }, [listedKeys, moveTo])
   const moveReasonId = useId()
   const moveSelectId = useId()
-  const moveWhy = moveReason(marks.size, moveTo !== '')
+  const moveWhy = moveReason(marks.size, moveTo !== '', listsLocked)
 
   // The main title card's line (TitleCard.tsx): the draft's title, edited in place of the form's.
   const draftTitle = ready?.draft.metadata.title ?? ''
@@ -2795,6 +2795,7 @@ export function EventEditor({
                     aria-label="Chapter to move the marked clips to"
                     value={moveTo}
                     aria-disabled={listsLocked || undefined}
+                    aria-describedby={moveReasonId}
                     onChange={(event) => {
                       if (!listsLocked) {
                         setMoveTo(event.currentTarget.value)
