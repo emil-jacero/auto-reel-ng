@@ -795,8 +795,7 @@ Every keyboard or control move, and every drop or cancel, SHALL be announced to 
 clip's name, as the event page's table names it, and its position out of the number of clips the chapter plays
 (its ignored clips, and the missing clips the operator removed, are not counted). Move up and Move down SHALL
 NOT take a clip into another chapter. A clip changes chapter only when it is dragged into another chapter (see
-"Edit mode drags clips between chapters") or moved with its chapter's Move clips control (see "Edit mode moves
-clips to another chapter"). A missing clip's drag SHALL stop at its own chapter's edge. Among the clips
+"Edit mode drags clips between chapters") or moved with Move marked to… (see "Edit mode moves the marked clips to a chapter"). A missing clip's drag SHALL stop at its own chapter's edge. Among the clips
 a chapter held when Edit mode opened and still holds, the page SHALL count as moved the fewest clips whose
 moves explain the new order, so that moving one clip from position 1 to position 5 moves one clip, not five.
 Each such clip counted as moved SHALL show its position from when Edit mode opened. A clip moved in from
@@ -832,8 +831,7 @@ movable like any other.
 #### Scenario: A clip cannot leave its chapter
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator activates **Move up** on `Kvällen/s1710002.mp4`,
   the first clip of `Kvällen`
-- **THEN** the control says that it is unavailable, nothing moves, and `Main` is unchanged: only a drag or Move
-  clips takes a clip into another chapter
+- **THEN** the control says that it is unavailable, nothing moves, and `Main` is unchanged: only a drag or Move marked to… takes a clip into another chapter
 
 #### Scenario: A missing clip cannot leave its chapter
 - **WHEN** on `2024-09-01 - Sommarlov`, after adding a chapter `Morgon`, the operator drags `borttagen.mp4`
@@ -2431,7 +2429,6 @@ these places:
 
 - the clip's row
 - the names of its controls: its handle, its move controls, and its remove or undo control
-- the Move clips dialog
 - what Edit mode announces about the clip
 
 Moving a clip within its chapter, or removing one, SHALL NOT change how its chapter names its clips. Two edits
@@ -2713,7 +2710,7 @@ be reachable with the keyboard and SHALL name, to assistive technology, the chap
 
 Each chapter SHALL offer only the controls that apply to it. An event that lists one chapter, the event's own,
 offers Add chapter and none of the others. The only chapter left, a deleted one aside, SHALL NOT offer Delete,
-Move up, Move down or Move clips, so that an event never saves without a chapter.
+Move up or Move down, so that an event never saves without a chapter.
 
 **The name field.** The field SHALL be named "Name of chapter <name>" to assistive technology. Before it is
 pressed, the title SHALL be named by the chapter's name alone, so that the chapter's heading, region and
@@ -2732,7 +2729,7 @@ controls are named as before, and that pressing it renames SHALL be its descript
   chapter's controls or clips, except that a refusal, and the notes of "Edit mode says what a chapter's name
   means for clips added later", appear under the field while it is open.
 - Reset, a save starting, and the unsaved-changes question SHALL close an open field without keeping what was
-  typed. While a save or a Move clips is pending, the title SHALL say that it is unavailable and SHALL NOT
+  typed. While a save or a move of marked clips is pending, the title SHALL say that it is unavailable and SHALL NOT
   open the field (the busy-control rule).
 - A field that holds a name typed and not kept SHALL count as unfinished, as a date typed in part and a cut
   typed and not added do: Save is unavailable, Ctrl+S saves nothing and says that a name is typed and not
@@ -2742,7 +2739,7 @@ controls are named as before, and that pressing it renames SHALL be its descript
 **The event's own chapter is the main title card.** Whatever the number of chapters, the event's own chapter
 SHALL show, under its heading and before its notes and controls, a line labelled "Main title card" that holds
 the event's title as a button of the same kind as a chapter's title. The chapter keeps its name, `Main` or
-`Clips`, in its heading, in its controls' names, in announcements and in Move clips.
+`Clips`, in its heading, in its controls' names, in announcements and in the chapter list of Move marked to….
 
 - The title shown SHALL be the title in the editor's draft when it is not blank, else the title the page
   resolved from the folder name, marked as from the folder name, else the word "Untitled". The page SHALL NOT
@@ -2783,9 +2780,9 @@ are saved, marked as deleted when the edits are saved. It lists none of its clip
 chapter the operator added in this Edit mode and then deletes SHALL simply be gone. A chapter that plays no
 clip SHALL say so in Edit mode, and that a chapter without clips is left out of the movie. While the event
 lists another chapter, a deleted one aside, it SHALL also say that clips can be dragged into it, or moved into
-it with another chapter's Move clips (see "Edit mode drags clips between chapters"). When it is the only
+it with Move marked to… (see "Edit mode drags clips between chapters"). When it is the only
 chapter listed, a deleted one aside, it SHALL NOT say that: no other chapter has a clip to drag or to move,
-and the page offers no Move clips there.
+and the page offers no Move marked to… there.
 
 The event's own chapter SHALL be headed `Main` while any other chapter is listed, a deleted one aside, and
 `Clips` otherwise, as on the event page. Every change to the chapters SHALL count as an unsaved edit, like a
@@ -2803,13 +2800,13 @@ change nothing when pressed.
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, whose clips are all in its own chapter, the
   operator presses Add chapter, types `Kvällen vid grillen` and confirms
 - **THEN** a chapter `Kvällen vid grillen` is listed last, saying that it plays no clip and that clips can be
-  dragged into it or moved into it with Move clips; the first chapter's heading reads `Main` instead of
+  dragged into it or moved into it with Move marked to…; the first chapter's heading reads `Main` instead of
   `Clips`; keyboard focus is on the new chapter's heading; the addition is announced; and the save bar says
   "1 chapter added"
 
 #### Scenario: A lone chapter offers only Add chapter
 - **WHEN** Edit mode opens on `2024-06-27 - Grillning med grannar`
-- **THEN** its one chapter offers no chapter rename, Move up, Move down, Move clips or Delete (its main title
+- **THEN** its one chapter offers no chapter rename, Move up, Move down or Delete (its main title
   card line edits the event's title), and the page offers Add chapter after it
 
 #### Scenario: A name already taken, or no name, is refused
@@ -2844,7 +2841,7 @@ change nothing when pressed.
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator tabs to the title `Kvällen`, presses Space,
   types `Kväll`, and presses Enter
 - **THEN** the chapter is named `Kväll`, keyboard focus is on its title, and the next Tab reaches the chapter's
-  Move clips
+  Move up
 
 #### Scenario: Leaving the field keeps an accepted name
 - **WHEN** the operator opens the field on `Kvällen`, types `Kväll`, and presses Tab
@@ -2971,12 +2968,12 @@ change nothing when pressed.
 #### Scenario: The last chapter stays
 - **WHEN** on `2024-06-27 - Grillning med grannar`, the operator adds a chapter `Kvällen vid grillen`, moves all
   four clips of `Main` to it, and deletes `Main`
-- **THEN** `Kvällen vid grillen` has a title that can be renamed, but no Delete, Move up, Move down or Move clips, and the save bar
+- **THEN** `Kvällen vid grillen` has a title that can be renamed, but no Delete, Move up or Move down, and the save bar
   says that 4 clips moved, 1 chapter was added and 1 chapter deleted
 
 #### Scenario: Chapter controls on a phone
 - **WHEN** the operator opens Edit mode on `2024-08-20 - Två kapitel - Tjörn` on a touch screen 320 pixels wide
-- **THEN** a tap anywhere in a 44 × 44 pixel area around each of `Kvällen`'s title, Move clips, Move up,
+- **THEN** a tap anywhere in a 44 × 44 pixel area around each of `Kvällen`'s title, Move up,
   Move down and Delete, and around `Main`'s main title card title and Add chapter, reaches that control and
   no other (centred on each, except
   that the areas of Move up and Move down meet at the edge they share, as a clip row's move pair's do), and
@@ -2985,147 +2982,29 @@ change nothing when pressed.
 #### Scenario: Chapter controls wait for a save
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, with a rename pending, the operator presses Save, and the
   service has not answered yet
-- **THEN** Add chapter and every chapter's title, Move up, Move down, Move clips and Delete, and the main
+- **THEN** Add chapter and every chapter's title, Move up, Move down and Delete, and the main
   title card's title, say that they are unavailable, and pressing them changes nothing and opens no field
 
 #### Scenario: A lone empty chapter does not point at Move clips
 - **WHEN** Edit mode opens on `2024-10-05 - Tom mapp`, an event whose folder holds no clip, and the operator
   presses Add chapter, types `Kvällen vid grillen` and confirms
 - **THEN** the new chapter, the only one listed, counts 0 clips, and it says "No clips. A chapter without
-  clips is left out of the movie." It does not mention dragging clips or Move clips, and it offers no Move clips
+  clips is left out of the movie." It does not mention dragging clips or Move marked to…, and the page offers no Move marked to…
 
 #### Scenario: A lone chapter whose only clip is ignored
 - **WHEN** Edit mode opens on `2024-10-06 - Bara ignorerad`, an event that lists one chapter, whose only clip
   `s1710004.mp4` is ignored
 - **THEN** the chapter lists the ignored clip under its heading and says "It plays no clip. A chapter without
-  clips is left out of the movie." It does not mention dragging clips or Move clips
+  clips is left out of the movie." It does not mention dragging clips or Move marked to…
 
 #### Scenario: A second chapter brings the hint back
 - **WHEN** on `2024-10-05 - Tom mapp`, with `Kvällen vid grillen` added, the operator presses Add chapter,
   types `Morgonen` and confirms
 - **THEN** both chapters say that they have no clips and that clips can be dragged into them or moved into
-  them with another chapter's Move clips
+  them with Move marked to…
 - **WHEN** the operator then deletes `Morgonen`
 - **THEN** `Kvällen vid grillen` says again, as it did before the addition, that it has no clips and is left
-  out of the movie, without mentioning dragging or Move clips
-
-### Requirement: Edit mode moves clips to another chapter
-
-While the event lists more than one chapter, a deleted one aside, each chapter SHALL offer **Move clips**. It
-SHALL let the operator pick any of the clips the chapter plays that are on disk, and one of the other
-chapters, and SHALL move the picked clips there. Two kinds of clip SHALL NOT be offered, and the page SHALL say
-why:
-
-- a missing clip, which stays in its chapter until its file is restored or it is removed from `reel.yaml`
-- an ignored clip, which is not played
-
-A chapter that plays no clip SHALL say that it has none to move. When exactly one other chapter is listed, it
-SHALL be chosen already. A **Pick all** control SHALL pick every clip offered at once, or clear them all, and
-SHALL show that it is mixed while only some are picked. A **Pick marked** control SHALL pick the clips offered that are
-marked ("Edit mode marks clips to move together"), and no other, besides any already picked. When no clip of the chapter
-is marked, pressing it SHALL pick nothing and the dialog SHALL say so beside it, in words; it SHALL follow the
-busy-control rule (aria-disabled, never `disabled`) and SHALL NOT close the dialog.
-
-The moved clips SHALL join the end of the chosen chapter's play order, in the order they had. The one
-exception is a clip that returns to the chapter it was in when Edit mode opened. It SHALL go right after
-whichever of the clips that came before it then comes last in that chapter's play order now, or first when
-none of them is still there. So clips moved to another chapter and back, with no move in between, leave
-nothing to save.
-
-After the move:
-
-- keyboard focus SHALL be on the Move clips control that was used
-- the move SHALL be announced with the number of clips and the chosen chapter's name
-- each moved clip SHALL show, in its row, the chapter it came from, instead of its old position
-- it SHALL count once as a moved clip, both in its new chapter's heading and in the save bar
-- it SHALL be unmarked; a marked clip that was not moved SHALL stay marked
-
-A clip moved to another chapter keeps its per-clip properties. Asking to move with no clip picked, or with no
-chapter chosen, SHALL say which is missing, move keyboard focus to it, and move nothing. Cancelling, or
-pressing Escape, SHALL move nothing and SHALL return focus to Move clips.
-
-Move clips SHALL stay offered beside dragging. A drag takes one clip into another chapter, to the place where
-it is dropped (see "Edit mode drags clips between chapters"), and a drag of a marked clip takes every marked clip
-(see "Dragging a marked clip moves the whole marked group"). Move clips moves any number of picked clips at
-once, always to the end of one chosen chapter. A clip's Move up and Move down still never take it into another chapter (see "The event page reorders
-clips within a chapter").
-
-#### Scenario: Moving two clips to Main
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens Move clips on `Kvällen`, picks
-  `s1710002.mp4` and `s1710003.mp4`, and moves them to `Main`
-- **THEN**
-  - `Main` plays `s1710001.mp4`, `Kvällen/s1710002.mp4` and `Kvällen/s1710003.mp4`, the last two marked as
-    coming from `Kvällen`, and its heading says 2 clips moved
-  - `Kvällen` plays `s1710004.mp4` alone, and its heading counts no clip moved
-  - keyboard focus is on `Kvällen`'s Move clips
-  - "2 clips moved to Main" is announced
-  - the save bar says that 2 clips moved
-
-#### Scenario: Moving a clip with the keyboard only
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, using only the keyboard, the operator activates Move clips on
-  `Kvällen`
-- **THEN** a dialog opens, named "Move clips from “Kvällen”", with keyboard focus on the box of `s1710002.mp4`.
-  It lists `s1710002.mp4`, `s1710003.mp4` and the new `s1710004.mp4`, and offers `Main`, already chosen as the
-  only other chapter.
-- **WHEN** the operator checks that box with Space, then moves focus to the dialog's button that moves the
-  clips, and presses Enter
-- **THEN** the dialog closes, `Kvällen/s1710002.mp4` is last in `Main`, and keyboard focus is back on
-  `Kvällen`'s Move clips
-
-#### Scenario: Moving clips back leaves nothing to save
-- **WHEN** after moving `s1710002.mp4` and `s1710003.mp4` from `Kvällen` to `Main` on
-  `2024-08-20 - Två kapitel - Tjörn`, the operator moves both back to `Kvällen` with `Main`'s Move clips
-- **THEN** `Kvällen` plays `s1710002.mp4`, `s1710003.mp4` and `s1710004.mp4` as read, and the page shows no
-  unsaved changes
-
-#### Scenario: Asking to move nothing
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, after adding a chapter `Morgon`, the operator opens Move clips
-  on `Kvällen` and asks to move without picking a clip
-- **THEN** the dialog stays open and says at the clips that one must be picked, with keyboard focus on the
-  first clip's box
-- **WHEN** the operator picks `s1710002.mp4` and asks again
-- **THEN** the dialog says at the chapters that one must be chosen, with keyboard focus on the first chapter's
-  choice, and nothing has moved
-
-#### Scenario: Ignored and missing clips are not offered
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens Move clips on `Main`
-- **THEN** the dialog lists only `s1710001.mp4`, not the ignored `s1710004.mp4`
-- **WHEN** on `2024-09-01 - Sommarlov`, after adding a chapter `Morgon`, the operator opens Move clips on `Main`
-- **THEN** the dialog lists `s1710002.mp4` and `s1710004.mp4`, not the missing `borttagen.mp4`, and says that a
-  missing clip stays in its chapter until its file is restored or it is removed
-
-#### Scenario: Picking clips by touch
-- **WHEN** on a touch screen 390 pixels wide, on `2024-08-20 - Två kapitel - Tjörn`, the operator opens Move clips
-  on `Kvällen`
-- **THEN** each clip's box and each chapter's choice takes a tap anywhere in a row at least 44 pixels tall and
-  as wide as the dialog's list, the rows do not overlap, and the dialog fits the window without scrolling the
-  page horizontally
-
-#### Scenario: Picking every clip at once
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens Move clips on `Kvällen` and checks Pick all
-- **THEN** all three clips are picked and the dialog says 3 of 3 picked
-- **WHEN** the operator then clears one clip
-- **THEN** Pick all shows that it is mixed, and checking it again picks all three; checking it once more picks
-  none
-
-#### Scenario: Escape moves nothing
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens Move clips on `Kvällen`, picks
-  `s1710002.mp4`, and presses Escape
-- **THEN** the dialog closes, both chapters are as they were, and keyboard focus is on `Kvällen`'s Move clips
-
-#### Scenario: Picking the marked clips
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator marks `Kvällen/s1710002.mp4` and `s1710001.mp4`, opens
-  Move clips on `Kvällen`, and presses Pick marked
-- **THEN** the dialog says 1 of 3 picked, with only `s1710002.mp4` checked
-- **WHEN** the operator moves the picked clip to `Main`
-- **THEN** `Kvällen/s1710002.mp4` is last in `Main` and no longer marked, `s1710001.mp4` is still marked, and "1 clip
-  moved to “Main”." is announced
-
-#### Scenario: Pick marked with nothing marked here
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, with only `s1710001.mp4` marked, the operator opens Move clips on
-  `Kvällen` and presses Pick marked
-- **THEN** no clip is picked, the dialog stays open and says that no clip of `Kvällen` is marked, and keyboard focus
-  stays on Pick marked
+  out of the movie, without mentioning dragging or Move marked to…
 
 ### Requirement: Edit mode says what a chapter's name means for clips added later
 
@@ -3434,8 +3313,8 @@ window 320 or 390 pixels wide. No panel SHALL make the page scroll horizontally 
 
 #### Scenario: A typed cut moves with its clip
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator types `2` as the start of a cut on
-  `Kvällen/s1710002.mp4`, which `Kvällen` names `s1710002.mp4`, adds nothing, and moves that clip to `Main`
-  with Move clips
+  `Kvällen/s1710002.mp4`, which `Kvällen` names `s1710002.mp4`, adds nothing, and marks that clip and moves it to
+  `Main` with Move marked to…
 - **THEN** the save bar now says that a cut was typed on `Kvällen/s1710002.mp4` but not added, Save says that
   it is unavailable, and the clip's Cuts panel, now in `Main`, is still shown with `2` in the start field
 
@@ -3556,12 +3435,12 @@ A drop into another chapter SHALL be one edit. The clip leaves its chapter and j
 position where it was dropped. Every other clip keeps its order. Then:
 
 - its row SHALL show the chapter it came from, and it SHALL count once as a moved clip, in its new chapter's
-  heading and in the save bar, as a clip moved with Move clips does
+  heading and in the save bar, as a clip moved with Move marked to… does
 - a clip dragged back to the chapter and the position it had when Edit mode opened SHALL count as no move;
   with no other edit, the page SHALL show no unsaved changes
 - it SHALL keep its cuts and its other per-clip properties. Its Cuts control SHALL be as it was, and its
   panel stays shown or hidden as it was and keeps any time typed but not added
-- Save SHALL write it as it writes a clip moved with Move clips ("Saving an edit writes only what the operator
+- Save SHALL write it as it writes a clip moved with Move marked to… ("Saving an edit writes only what the operator
   changed"). Reset, the unsaved-changes question, a conflict and Overwrite SHALL treat it as any other edit
 
 Every target in another chapter SHALL be announced to assistive technology, and so SHALL a drop and a
@@ -3578,23 +3457,23 @@ fully visible, not covered by the page header, the chapter's heading or the save
 space SHALL be scrolled so that its first line is (see "Edit mode keeps keyboard focus in view and never
 drops it").
 
-Move clips does not offer some clips, and those SHALL NOT be taken into another chapter by a drag either:
+Some clips cannot be marked ("Edit mode marks clips to move together"), so Move marked to… never moves them,
+and those SHALL NOT be taken into another chapter by a drag either:
 
 - a missing clip: its drag SHALL stop at its own chapter's edge, from the keyboard too. While more than one
   chapter is listed, its lift SHALL say that it stays in its chapter.
 - an ignored clip, and a missing clip the operator removed: neither has a handle
 
 A release over a deleted chapter's placeholder SHALL move nothing and SHALL be announced as a drop that
-changed nothing. While a save is in flight, or while a Move clips move is being applied, no clip SHALL be
-lifted, and a drop SHALL move nothing. The Move clips control and its dialog, and Move up and Move down,
-SHALL work as they did before.
+changed nothing. While a save is in flight, or while a move of marked clips is being applied, no clip SHALL be
+lifted, and a drop SHALL move nothing. Move marked to…, and Move up and Move down, SHALL work as they
+did before.
 
 Above the chapters, Edit mode SHALL say how clips are moved:
 
 - with one chapter: that a clip is dragged by its handle or moved with its arrows, and that a chapter can be
   added with Add chapter, below the chapters, after which clips can be dragged between chapters
-- with more than one chapter: that a clip can also be dragged into another chapter, and that a chapter's Move
-  clips moves several clips at once
+- with more than one chapter: that a clip can also be dragged into another chapter, and that Move marked to… moves the marked clips to a chapter
 
 On a coarse pointer a drag SHALL start only from the handle, as within a chapter. In a window 320 CSS pixels
 wide or wider, and in both color schemes, no state of a drag SHALL make the page scroll horizontally. Under
@@ -3706,8 +3585,8 @@ reduced motion, no clip SHALL slide into place, and the dragged copy SHALL NOT s
   `s1710004.mp4` in `Kvällen vid grillen`, and the save bar said that 1 chapter was added and 1 clip moved
 
 #### Scenario: A deleted chapter takes no clip
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator moves all three clips of `Kvällen` to `Main`
-  with Move clips, deletes `Kvällen`, adds a chapter `Morgon`, lifts `Kvällen/s1710004.mp4` (last in `Main`)
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator marks all three clips of `Kvällen` and moves them to `Main`
+  with Move marked to…, deletes `Kvällen`, adds a chapter `Morgon`, lifts `Kvällen/s1710004.mp4` (last in `Main`)
   from the keyboard and presses Down
 - **THEN** "Kvällen/s1710004.mp4 is over “Morgon”, position 1 of 1" is announced: the deleted `Kvällen` was
   passed over
@@ -3767,8 +3646,7 @@ reduced motion, no clip SHALL slide into place, and the dragged copy SHALL NOT s
 - **THEN** the hint above the chapters says that a chapter can be added with Add chapter, below the chapters,
   and that clips can then be dragged between chapters
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`
-- **THEN** the hint says that a clip can be dragged into another chapter, and that a chapter's Move clips moves
-  several clips at once
+- **THEN** the hint says that a clip can be dragged into another chapter, and that Move marked to… moves the marked clips to a chapter
 
 #### Scenario: Nothing shifts while dragging over another chapter
 - **WHEN** in a window 320 pixels wide, in the light and in the dark scheme, on `2024-08-20 - Två kapitel -
@@ -4147,10 +4025,10 @@ Close when the control that held it went:
 **Within Edit mode.**
 - Opening, closing, playing and seeking a preview SHALL write nothing and SHALL NOT count as an edit. They
   SHALL bring no save bar and SHALL NOT trigger the unsaved-changes question.
-- While a save is in flight or a Move clips is pending, Set From and Set To SHALL say that they are unavailable
+- While a save is in flight or a move of marked clips is pending, Set From and Set To SHALL say that they are unavailable
   and change nothing. Play, the playhead, Skip cuts and Close SHALL stay usable.
 - A clip moved within its chapter SHALL keep its preview, playing or not.
-- A clip moved into another chapter, by a drag or by Move clips, SHALL keep its preview open at the same time,
+- A clip moved into another chapter, by a drag or by Move marked to…, SHALL keep its preview open at the same time,
   paused. The reopened preview SHALL take no keyboard focus and SHALL NOT scroll the page. After a drop,
   keyboard focus is on the clip's handle, and the handle and the row's first line are fully visible, as
   "Edit mode drags clips between chapters" requires; a row made taller than the view by its preview is
@@ -4430,7 +4308,8 @@ probe's duration. A detail duration of `null` SHALL be treated as unknown, never
 
 #### Scenario: The length stays with the clip
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens and closes the preview of `s1710001.mp4`,
-  moves that clip to `Kvällen` with Move clips, and adds a cut from `5` to `7` on it there
+  marks that clip and moves it to `Kvällen` with
+  Move marked to…, and adds a cut from `5` to `7` on it there
 - **THEN** the cut is refused for ending after the clip's length
 
 #### Scenario: The preview's length wins over the service's duration
@@ -4550,7 +4429,7 @@ clock SHALL continue with the time it had left. An error notification stays unti
 - **AND** it disappears by itself about 5 seconds after the dialog closed
 
 #### Scenario: A notification already shown when the dialog opens
-- **WHEN** an error notification is shown on the event page and the operator then opens the Move clips
+- **WHEN** an error notification is shown on the event page and the operator then opens the Add chapter
   dialog
 - **THEN** the error notification is still visible above the dialog
 
@@ -4944,7 +4823,7 @@ When Save is held back, the press SHALL send nothing and SHALL announce why:
   ("Not saved: drop or cancel the lifted clip first."), because the order shown is not yet the order that
   a write would carry
 
-While a save is in flight, while a Move clips is still being applied, or while a dialog is open (including
+While a save is in flight, while a move of marked clips is still being applied, or while a dialog is open (including
 the question "Discard unsaved changes?" and the confirmation of Overwrite with mine), the press SHALL send
 nothing and say nothing. It SHALL NOT answer a dialog's question.
 
@@ -5642,8 +5521,8 @@ mark, taking precedence over the clip's Watch button where the two overlap; the 
 the clip's preview. The areas of the mark and of the row's other controls SHALL NOT otherwise overlap. When the primary
 pointer is fine, the mark SHALL keep the 24 pixel box and nothing around it.
 
-Three kinds of clip SHALL have no mark, as Move clips does not offer them ("Edit mode moves clips to another
-chapter"): a missing clip, an ignored clip, and a missing clip the operator removed. The line above the chapters SHALL
+Three kinds of clip SHALL have no mark, as a drag does not take them into another chapter ("Edit mode drags
+clips between chapters"): a missing clip, an ignored clip, and a missing clip the operator removed. The line above the chapters SHALL
 say so in a few words.
 
 Marking is not an edit. It SHALL NOT show the save bar, SHALL NOT count as an unsaved change, SHALL NOT enable Reset or
@@ -5651,8 +5530,8 @@ Save, and SHALL NOT make leaving Edit mode ask first. Marks SHALL be kept per cl
 mark SHALL stay on its clip when another edit moves the clip (Move up, Move down, a drag of another clip), and when the
 Cuts panel is opened or closed.
 
-A line above the chapters SHALL always be present in Edit mode, saying how clips are marked and that dragging a marked
-clip's handle moves all marked clips. While at least one clip is marked, the same line SHALL show how many ("1 clip
+A line above the chapters SHALL always be present in Edit mode, saying how clips are marked, that dragging a marked
+clip's handle moves all marked clips, and that Move marked to… moves them to a chapter. While at least one clip is marked, the same line SHALL show how many ("1 clip
 marked", "3 clips marked") and a **Clear marks** button. The line SHALL keep its height whether or not it shows the
 count, so that marking the first clip, and clearing the last mark, move no row.
 
@@ -5660,14 +5539,14 @@ Each change of a mark, and Clear marks, SHALL be announced once to assistive tec
 count ("s1710002.mp4 marked. 2 clips marked.", "s1710002.mp4 unmarked. No clips marked.", "Marks cleared."). Marks
 SHALL end as follows:
 
-- a clip that a drag or Move clips moves into another chapter, or that a group drag moves, SHALL be unmarked by that
+- a clip that a drag or Move marked to… moves into another chapter, or that a group drag moves, SHALL be unmarked by that
   move; a drop that changes nothing SHALL leave every mark
 - all marks SHALL end on a successful Save, on Reset, when Edit mode is left, and when the editor reads the event's
   `reel.yaml` again (Reload latest)
 - a drag of an unmarked clip, Move up, Move down, adding, renaming or deleting a chapter, and cut edits SHALL leave
   marks as they are
 
-The mark and Clear marks follow the busy-control rule: while a save is in flight or a Move clips is being applied, they
+The mark and Clear marks follow the busy-control rule: while a save is in flight or a move of marked clips is being applied, they
 SHALL be aria-disabled and ignore presses, never `disabled`. A mark's keyboard focus ring SHALL be visible in both
 color schemes and in forced colors. Pressing Clear marks SHALL move keyboard focus to that line, since the button leaves with the count.
 The mark SHALL NOT start a drag, and a press on it SHALL NOT lift its row. Marking
@@ -5758,13 +5637,13 @@ Every chapter, the group's own too, is a target of gaps while a group is held:
 After the drop:
 
 - each moved clip SHALL show the chapter it came from instead of its old position when it changed chapter, and SHALL
-  count once as a moved clip in its new chapter's heading and in the save bar, as a clip moved with Move clips does;
+  count once as a moved clip in its new chapter's heading and in the save bar, as a clip moved with Move marked to… does;
   within a chapter the page SHALL count the fewest clips that explain the new order, as for any reorder
 - a clip that returns to the chapter and place it had when Edit mode opened SHALL count as no move; with no other
   edit, the page SHALL show no unsaved changes
 - each clip SHALL keep its cuts and its other per-clip properties, its Cuts panel shown or hidden as it was, and any
   time typed but not added
-- Save SHALL write the order as it writes the order after Move clips, and Reset, the unsaved-changes question, a
+- Save SHALL write the order as it writes the order after Move marked to…, and Reset, the unsaved-changes question, a
   conflict and Overwrite SHALL treat it as any other edit
 - the moved clips SHALL be unmarked, and keyboard focus SHALL be on the lifted clip's handle in its new place, with the
   row's first line fully visible, below the page header and the chapter's heading and above the save bar
@@ -5781,7 +5660,7 @@ clips are over “Main”, starting at position 1 of 4.", "3 clips moved to “M
 marked clips dropped, unchanged." and "Move cancelled. 3 marked clips are back where they were." Within the group's
 only chapter a target is spoken as "starting at position 2 of 4" without the chapter's name.
 
-No group SHALL be lifted, and a drop SHALL move nothing, while a save is in flight or a Move clips is being applied.
+No group SHALL be lifted, and a drop SHALL move nothing, while a save is in flight or a move of marked clips is being applied.
 A release over a deleted chapter's placeholder SHALL move nothing and SHALL be announced as unchanged. A cancelled
 drag SHALL leave the marks. While a pointer holds a group, no other part of the page SHALL show the pointer over it
 and the pointer SHALL show that it holds the clips, as for a clip. Under reduced motion the copy SHALL NOT slide between
@@ -6397,8 +6276,7 @@ In Edit mode the Timeline SHALL offer **Use as poster**. Pressed, it SHALL set t
 under the playhead and the playhead's time in that clip, in seconds to the millisecond and before the clip's cuts
 (a time inside a cut is allowed), and SHALL take the frame the Timeline's video shows as the draft picture of
 the poster area. It SHALL be disabled, with the reason in words, when the playhead is outside every clip (the playhead
-never rests on a title-card block: it stays on footage), when the video has no decoded frame at the playhead, and while a save or a Move clips is
-pending; a snapshot that fails SHALL change nothing and say so. Keyboard focus SHALL stay on the button and the
+never rests on a title-card block: it stays on footage), when the video has no decoded frame at the playhead, and while a save or a move of marked clips is pending; a snapshot that fails SHALL change nothing and say so. Keyboard focus SHALL stay on the button and the
 change SHALL be announced once.
 
 Edit mode's **poster area** (a Poster panel above the Timeline; the page header's cover belongs to the read view) SHALL say what the poster is:
@@ -6444,3 +6322,119 @@ rotation the page shows turned (`rotate`) SHALL be snapshotted and shown turned.
 - **WHEN** the list, the page and Edit mode are opened and the Timeline's playhead is moved without pressing Use as
   poster
 - **THEN** no request other than reads is sent
+
+### Requirement: Edit mode moves the marked clips to a chapter
+
+While the event lists more than one chapter, a deleted one aside, the line above the chapters that offers Clear marks
+and Rotate marked left and right ("Edit mode marks clips to move together") SHALL also offer **Move marked to…**: a
+group named by those words, holding a chapter picker and a button named **Move**. No chapter SHALL offer a Move clips
+button, and the page SHALL NOT open a dialog to pick clips: the clips to move are the ones marked, and the page SHALL
+NOT have a Pick all or a Pick marked control. When the event lists one chapter, the control SHALL NOT be offered, as no
+other chapter has a place for a clip.
+
+The picker SHALL be a native `select` named "Chapter to move the marked clips to". It SHALL list every chapter the
+page lists, a deleted one aside, in the order the page lists them, each by the name its heading shows (the event's own
+chapter as `Main`, as its heading reads), and it SHALL start on a first option that is no chapter, "Choose a chapter".
+A chosen chapter that is then deleted SHALL return the picker to that option. Renaming a chapter SHALL change its name
+in the list.
+
+**Move** SHALL be `aria-disabled` (never `disabled`, as the busy-control rule says) and SHALL give its reason in words,
+named by `aria-describedby` and visible beside it, in each of these states, and press nothing:
+
+- no clip is marked: "Mark a clip to move it."
+- no chapter is chosen: "Choose a chapter."
+- a save is in flight, or a move of marked clips is pending: "Unavailable while saving."
+
+Pressing Move with a clip marked and a chapter chosen SHALL be one edit, made by the group move of "Dragging a marked
+clip moves the whole marked group" and not by logic of its own: the group is every marked clip, from every listed
+chapter, in page order; it SHALL leave the chapters it was in and SHALL join the end of the chosen chapter as one run, in
+page order. A marked clip that is already in the chosen chapter joins that run too, so the run is the last clips of the
+chapter. Every clip that is not marked SHALL keep its order and its chapter. A chapter that loses all its clips SHALL
+play none. A clip SHALL NOT be put back after its old predecessors when it returns to the chapter it was in when Edit
+mode opened: a move to the end is the same edit as a drop at the end of that chapter.
+
+After the move:
+
+- every moved clip SHALL be unmarked (the group is every marked clip, so no mark is left)
+- the move SHALL be announced once, politely, with the number of clips and the chosen chapter's name, "3 clips moved to
+  “Dag 2”." or "1 clip moved to “Main”."
+- each moved clip that changed chapter SHALL show, in its row, the chapter it came from instead of its old position,
+  and SHALL count once as a moved clip in its new chapter's heading and in the save bar, as a clip dragged does; within
+  a chapter, the page SHALL count the fewest clips that explain the new order
+- a clip SHALL keep its cuts and its other per-clip properties, its Cuts panel shown or hidden as it was, any time
+  typed but not added, and its preview open as "Edit mode previews a clip on request" says
+- Save SHALL write the order as it writes a drag's, and Reset, the unsaved-changes question, a conflict and Overwrite
+  SHALL treat the move as any other edit
+- keyboard focus SHALL stay on Move, the chosen chapter SHALL stay chosen, and no row SHALL be scrolled out of the
+  operator's view by the move
+
+A move that changes no chapter's order (the marked clips already are the last of the chosen chapter, in page order)
+SHALL leave the draft, the marks and the save bar as they are and SHALL be announced as "Nothing moved." A clip that
+has no mark (a missing clip, an ignored clip, a removed one) is never moved by this control, as it is never marked.
+
+Move marked to… SHALL stay beside dragging. A drag of a marked clip takes the marked group to the place where it is
+dropped (see "Dragging a marked clip moves the whole marked group"), from the keyboard on a handle too; Move marked
+to… takes the same group, always to the end of one chosen chapter, with a keyboard, a screen reader or a touch screen
+and with no drag at all. A clip's Move up and Move down still never take it into another chapter (see "The event page
+reorders clips within a chapter").
+
+On a coarse pointer the picker and Move SHALL each take a tap anywhere in an area at least 44 CSS pixels tall that does
+not overlap another control's. The group SHALL wrap in a window 320 CSS pixels wide, on its own line under the marks
+line's other controls, without a horizontal page scroll, in both color schemes. The group SHALL keep its place and its
+height whether or not a clip is marked, so that marking the first clip moves no row, and its focus ring SHALL be
+visible in both color schemes and in forced colors. Reading a screen SHALL NOT change what is chosen.
+
+#### Scenario: Moving two marked clips from different chapters to Test
+- **WHEN** in Edit mode on an event whose chapters are `Main`, `Kvällen` and `Test`, the operator marks `Main/a.mp4`
+  and `Kvällen/c.mp4`, chooses `Test` in the picker and presses Move
+- **THEN**
+  - `Test` plays what it played before and then `a.mp4` and `c.mp4`, last, in that page order
+  - neither clip is marked and the line above the chapters shows no count
+  - "2 clips moved to “Test”." was announced once
+  - the save bar says that 2 clips moved
+  - the picker still shows `Test`, and keyboard focus is on Move
+- **WHEN** the operator presses Save
+- **THEN** `reel.yaml` lists `a.mp4` and `c.mp4` last in `Test`'s clips and nothing else changed
+
+#### Scenario: Move says why it is unavailable
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`, with no clip marked
+- **THEN** Move is `aria-disabled` and not `disabled`, and the words "Mark a clip to move it." are beside it and are its
+  description
+- **WHEN** the operator marks `Kvällen/s1710002.mp4`
+- **THEN** its reason reads "Choose a chapter."
+- **WHEN** the operator chooses `Main` and presses Move
+- **THEN** `s1710002.mp4` is last in `Main`, marked as coming from `Kvällen`, unmarked, and "1 clip moved to “Main”." is
+  announced
+
+#### Scenario: Moving with the keyboard only
+- **WHEN** using only the keyboard on `2024-08-20 - Två kapitel - Tjörn`, the operator marks `Kvällen/s1710002.mp4` with
+  Space, tabs to the picker, chooses `Main` with the arrow keys, tabs to Move and presses Enter
+- **THEN** `s1710002.mp4` is last in `Main`, "1 clip moved to “Main”." was announced, and keyboard focus is on Move
+
+#### Scenario: The marked clips already are last
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator moves `Kvällen/s1710002.mp4` to `Main` and marks it
+  again, chooses `Main` and presses Move
+- **THEN** "Nothing moved." is announced, the clip is still marked, and the save bar counts what it counted before
+
+#### Scenario: One chapter offers no move
+- **WHEN** Edit mode opens on `2024-06-27 - Grillning med grannar`, whose clips are all in one chapter
+- **THEN** the line above the chapters offers no Move marked to…, and no chapter offers a Move clips button
+
+#### Scenario: The old per-chapter control is gone
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`, in Chrome and in Firefox
+- **THEN** the words "Move clips" appear nowhere on the page, in any chapter's controls, dialogs or accessible names
+
+#### Scenario: Move waits for a save
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, with a clip marked and a chapter chosen, the operator presses Save
+  and the service has not answered yet, and then presses Move
+- **THEN** Move is `aria-disabled` and says "Unavailable while saving.", and nothing moves
+
+#### Scenario: A deleted chapter leaves the picker
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator chooses `Kvällen` in the picker and then deletes `Kvällen`
+- **THEN** the picker lists `Main` only and shows "Choose a chapter"
+
+#### Scenario: The control fits a phone
+- **WHEN** on a touch screen 320 pixels wide, in the light and in the dark scheme, on
+  `2024-08-20 - Två kapitel - Tjörn`, the operator looks at the line above the chapters
+- **THEN** the picker and Move are on a line of their own, each takes a tap in an area at least 44 pixels tall, none
+  overlaps another, and the page does not scroll horizontally
