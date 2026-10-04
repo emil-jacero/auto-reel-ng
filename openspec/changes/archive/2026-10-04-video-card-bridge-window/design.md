@@ -85,7 +85,7 @@ Tail: the ordinary linear chain, no card input: `-ss 7 -i clip -vf "scale_vaapi=
 CPU chains with no transfers; the head differs only by its overlay. The CPU fallback is unchanged (Principle III).
 
 ### RENDER_GRAPH_VERSION
-**Decision**: bump 8 -> 9 with the history line `9: video-card-bridge-window (an anchor segment under a video card
+**Decision**: bump 9 -> 10 with the history line `10: video-card-bridge-window (an anchor segment under a video card
 is encoded as a card-window head and a tail, so its bytes change for the same inputs)`.
 **Rationale**: Principle IV, "any change that alters rendered bytes for identical inputs MUST bump". The anchor now
 has an extra encoder start (different GOP/AAC alignment); the over-bump cost on events without a video card is one
