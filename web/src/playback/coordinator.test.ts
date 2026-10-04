@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { anotherPlays, keepOneVideoPlaying, pauseOthers } from './coordinator.ts'
+import {
+  anotherPlays,
+  installPagePlayback,
+  keepOneVideoPlaying,
+  pauseOthers,
+  watchOtherStarts,
+} from './coordinator.ts'
 import type { VideoRoot } from './coordinator.ts'
 
 /*
@@ -150,32 +156,18 @@ describe('keepOneVideoPlaying', () => {
   })
 })
 
-describe('every pair of the page\'s players', () => {
-  const kinds = ['movie', 'read-view clip', 'edit-mode preview', 'timeline'] as const
-  for (const first of kinds) {
-    for (const second of kinds) {
-      if (first === second) {
-        continue
-      }
-      it(`${second} starting pauses ${first}, and only pauses it`, () => {
-        const root = rooted()
-        keepOneVideoPlaying(root)
-        const players = new Map(kinds.map((kind) => [kind, root.video()]))
-        const [a, b] = [players.get(first)!, players.get(second)!]
-        a.start(root)
-        b.start(root)
-        assert.deepEqual(a.calls, ['pause'])
-        assert.equal(a.paused, true)
-        assert.equal(b.paused, false)
-        assert.deepEqual(b.calls, [])
-        for (const kind of kinds) {
-          if (kind !== first && kind !== second) {
-            assert.deepEqual(players.get(kind)!.calls, [])
-          }
-        }
-      })
-    }
-  }
+describe('the rule is pair-agnostic', () => {
+  it('a start pauses whichever other video plays, and only pauses it', () => {
+    const root = rooted()
+    keepOneVideoPlaying(root)
+    const [a, b, bystander] = [root.video(), root.video(), root.video()]
+    a.start(root)
+    b.start(root)
+    assert.deepEqual(a.calls, ['pause'])
+    assert.equal(b.paused, false)
+    assert.deepEqual(b.calls, [])
+    assert.deepEqual(bystander.calls, [])
+  })
 
   it('a player started while two others play pauses both, once each', () => {
     const root = rooted()
@@ -212,5 +204,40 @@ describe('anotherPlays', () => {
     self.paused = false
     assert.equal(other.paused, true)
     assert.equal(anotherPlays(self, root.all), false)
+  })
+})
+
+describe('watchOtherStarts', () => {
+  it('fires for a video other than self, not for self or a non-video', () => {
+    const root = rooted()
+    const [self, other] = [root.video(), root.video()]
+    let heard = 0
+    const stop = watchOtherStarts(root, () => self, () => (heard += 1))
+    self.start(root)
+    assert.equal(heard, 0)
+    root.dispatch(new EventTarget())
+    assert.equal(heard, 0)
+    other.start(root)
+    assert.equal(heard, 1)
+    stop()
+    other.start(root)
+    assert.equal(heard, 1)
+  })
+})
+
+describe('installPagePlayback', () => {
+  it('adds a capturing play listener to the document, and removes it', () => {
+    const added: Array<[string, boolean]> = []
+    const removed: string[] = []
+    const doc = {
+      addEventListener: (type: string, _l: unknown, capture?: unknown) =>
+        added.push([type, capture === true]),
+      removeEventListener: (type: string) => removed.push(type),
+      querySelectorAll: () => [],
+    }
+    const stop = installPagePlayback(doc as never)
+    assert.deepEqual(added, [['play', true]])
+    stop()
+    assert.deepEqual(removed, ['play'])
   })
 })
