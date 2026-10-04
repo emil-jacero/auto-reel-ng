@@ -329,6 +329,27 @@ export function trackLayout(lay: Layout, map: CardMap): Layout {
   }
 }
 
+/**
+ * Where a chapter band starts on the track (clips `first`..`last`, track starts `startsMs`): at
+ * its black card when it has one, which is anchored at its first clip with footage, not
+ * always at `first` (a wholly cut first clip takes no length and lies after the card), else
+ * at its first clip. `leadMs` is each black card's length by its anchor clip.
+ */
+export function bandStartMs(
+  startsMs: readonly Ms[],
+  leadMs: ReadonlyMap<number, Ms>,
+  first: number,
+  last: number,
+): Ms {
+  for (let index = first; index <= last; index += 1) {
+    const lead = leadMs.get(index)
+    if (lead !== undefined) {
+      return Math.min(startsMs[first], startsMs[index] - lead)
+    }
+  }
+  return startsMs[first]
+}
+
 /** The movie's length: the footage less the cuts (`movie`), plus each black card once. */
 export function movieWithCards(movieMs: Ms, map: CardMap): Ms {
   return movieMs + map.totalMs

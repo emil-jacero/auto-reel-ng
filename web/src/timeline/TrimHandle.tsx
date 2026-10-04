@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { KeyboardEvent, MouseEvent, PointerEvent } from 'react'
+import type { KeyboardEvent, MouseEvent, PointerEvent, RefObject } from 'react'
 
 import { handleName, handleValueText, NOT_IN_CLIP, stoppedWords } from '../cuts/times'
 import type { TrimEdge } from '../cuts/times'
@@ -8,7 +8,15 @@ import { toMs } from '../preview/playback'
 import { ClockTime } from '../ui/Clock'
 import type { DragStore } from './dragStore'
 import type { TrimNote } from './editing'
-import { bareMousePress, handleRows, keyOutcome, nearestHandle, snapWords } from './handles'
+import {
+  bareMousePress,
+  becomesEdge,
+  handedOffWords,
+  handleRows,
+  keyOutcome,
+  nearestHandle,
+  snapWords,
+} from './handles'
 import type { SnapContext } from './handles'
 import type { ClipFacts, Extent, Ms } from './model'
 import { snapCandidates, timeToPx, trimEdge, trimLimits } from './model'
@@ -70,6 +78,7 @@ export function ClipHandles({
   onSelect,
   onTrim,
   announce,
+  fallbackRef,
 }: {
   identity: string
   name: string
@@ -105,6 +114,11 @@ export function ClipHandles({
     note: TrimNote,
   ) => void
   announce: (words: string) => void
+  /**
+   * Where focus goes when a focused handle goes away (its cut became the leading or the
+   * trailing cut): the playhead's grip, never <body>.
+   */
+  fallbackRef: RefObject<HTMLElement | null>
 }) {
   const registry = useRef(new Map<string, Registered>())
   const layer = useRef<HTMLDivElement>(null)
@@ -239,6 +253,7 @@ export function ClipHandles({
             onSelect={onSelect}
             onTrim={onTrim}
             announce={announce}
+            fallbackRef={fallbackRef}
           />
         )),
       )}
@@ -267,6 +282,7 @@ const TrimHandle = memo(function TrimHandle({
   onSelect,
   onTrim,
   announce,
+  fallbackRef,
 }: {
   identity: string
   name: string
@@ -294,6 +310,7 @@ const TrimHandle = memo(function TrimHandle({
     note: TrimNote,
   ) => void
   announce: (words: string) => void
+  fallbackRef: RefObject<HTMLElement | null>
 }) {
   const id = handleId(cut.key, edge)
   const number = at + 1
@@ -310,6 +327,8 @@ const TrimHandle = memo(function TrimHandle({
   const ppsRef = useRef(pps)
   ppsRef.current = pps
   const [focused, setFocused] = useState(false)
+  /** Said when this handle goes away because its last edit made its cut an edge cut. */
+  const handedOff = useRef<string | null>(null)
 
   const ownMs = toMs(edge === 'in' ? cut.in : cut.out)
   // The edge in the air, or null: only the dragged handle re-renders while it moves.
@@ -333,12 +352,21 @@ const TrimHandle = memo(function TrimHandle({
     return p.clip === clipIndex ? p.ms : null
   }
 
+  /** One edit of the draft; one that makes the cut an edge cut takes this handle away. */
+  const send = (ms: Ms, note: TrimNote) => {
+    const next = span(ms)
+    handedOff.current = becomesEdge(listed, at, next, facts.durationMs)
+      ? handedOffWords(number, name, edge)
+      : null
+    onTrim(identity, cut.key, next, note)
+  }
+
   /** A key's or Enter's result: one edit of the draft, if the edge moved. */
   const apply = (ms: Ms, spoken: boolean) => {
     if (ms === ownMs) {
       return
     }
-    onTrim(identity, cut.key, span(ms), { name, spoken })
+    send(ms, { name, spoken })
   }
 
   const cancel = () => {
@@ -373,6 +401,30 @@ const TrimHandle = memo(function TrimHandle({
     const shift = lo < left ? left - lo : hi > right ? right - hi : 0
     box.style.setProperty('--tip-shift', `${Math.round(shift)}px`)
   })
+
+  // A handle that goes away while it holds focus (an edit made its cut the leading or the
+  // trailing cut, or it was windowed out) hands focus to the playhead's grip: never to <body>
+  // (WCAG 2.4.3). A layout cleanup runs while the node is still in the document and focused.
+  useLayoutEffect(() => {
+    const node = el.current
+    return () => {
+      if (node === null || node !== document.activeElement) {
+        return
+      }
+      const words = handedOff.current
+      queueMicrotask(() => {
+        const grip = fallbackRef.current
+        const lost = document.activeElement === null || document.activeElement === document.body
+        if (!lost || grip === null || !grip.isConnected) {
+          return
+        }
+        grip.focus({ preventScroll: true })
+        if (words !== null) {
+          announce(words)
+        }
+      })
+    }
+  }, [fallbackRef, announce])
 
   // A save that starts ends a drag in progress, as if Escape were pressed.
   useEffect(() => {
@@ -470,7 +522,7 @@ const TrimHandle = memo(function TrimHandle({
       d !== null && d.identity === identity && d.key === cut.key && d.edge === edge ? d : null
     cancel()
     if (a.moved && last !== null && last.ms !== a.startMs) {
-      onTrim(identity, cut.key, span(last.ms), { name, spoken: true, snap: last.words || null })
+      send(last.ms, { name, spoken: true, snap: last.words || null })
     }
   }
 

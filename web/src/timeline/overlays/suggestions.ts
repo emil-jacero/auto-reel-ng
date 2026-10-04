@@ -256,7 +256,6 @@ export function suggestionKey(event: SuggestionKeyEvent): 'approve' | 'dismiss' 
 /** A mark's span in ms from the track's start. */
 export type MarkSpan = { startMs: number; endMs: number }
 
-/** Where a mark is drawn: its left edge and width in px from the track's start, and its row. */
 /**
  * Where a suggestion lies on the track (`timeline-ripple-layout`): its times in the clip
  * mapped through the clip's kept extent (`clipStartMs` is the clip's block's left edge, its
@@ -278,6 +277,7 @@ export function markSpan(
   return { startMs: clipStartMs + from - kept.inMs, endMs: clipStartMs + to - kept.inMs }
 }
 
+/** Where a mark is drawn: its left edge and width in px from the track's start, and its row. */
 export type Placed = { left: number; width: number; row: number }
 
 /**

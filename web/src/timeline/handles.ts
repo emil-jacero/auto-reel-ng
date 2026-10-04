@@ -1,5 +1,5 @@
 import type { ListedCut } from '../cuts/times.ts'
-import { edgeCut, frameMs, nearestFrame } from './model.ts'
+import { cutSpans, edgeCut, frameMs, keptExtent, nearestFrame } from './model.ts'
 import type { Extent, Ms } from './model.ts'
 
 /*
@@ -42,6 +42,27 @@ export function selectionStands(
   return listed.some(
     (cut) => cut.key === key && cut.removed !== true && (kept === null || !edgeCut(cut, kept, durationMs)),
   )
+}
+
+/**
+ * Whether cut `at`, moved to `span` (seconds, as the draft writes it), becomes part of the
+ * clip's leading or trailing cut: the edit takes its handles away (`timeline-ripple-layout`).
+ */
+export function becomesEdge(
+  listed: readonly ListedCut[],
+  at: number,
+  span: { in: number; out: number },
+  durationMs: Ms,
+): boolean {
+  const moved = listed.map((cut, i) => (i === at ? { ...cut, in: span.in, out: span.out } : cut))
+  const kept = keptExtent(cutSpans(moved, durationMs), durationMs)
+  return edgeCut(moved[at], kept, durationMs)
+}
+
+/** What is said when a trim turns cut `number` into the clip's leading or trailing cut. */
+export function handedOffWords(number: number, name: string, edge: 'in' | 'out'): string {
+  const end = edge === 'in' ? 'start' : 'end'
+  return `Cut ${number} of ${name} now trims the clip's ${end}; edit it in the Cuts panel.`
 }
 
 const SECOND_MS = 1000

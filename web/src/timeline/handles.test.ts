@@ -4,6 +4,8 @@ import { describe, it } from 'node:test'
 import {
   atPlayhead,
   bareMousePress,
+  becomesEdge,
+  handedOffWords,
   handleRows,
   keyOutcome,
   nearestHandle,
@@ -280,5 +282,29 @@ describe('selectionStands (timeline-ripple-layout)', () => {
     assert.equal(selectionStands(listed, 'c', kept, 6020), false)
     assert.equal(selectionStands(listed, 'z', kept, 6020), false)
     assert.equal(selectionStands(listed, 'a', null, 6020), true)
+  })
+})
+
+describe('becomesEdge', () => {
+  const cuts = [{ in: 3, out: 4 }]
+  it('a cut moved to start at 0 becomes the leading cut', () => {
+    assert.equal(becomesEdge(cuts, 0, { in: 0, out: 4 }, 10000), true)
+  })
+  it('a cut moved to the clip end becomes the trailing cut', () => {
+    assert.equal(becomesEdge(cuts, 0, { in: 3, out: 10 }, 10000), true)
+  })
+  it('a cut moved to touch the leading cut joins it', () => {
+    const two = [{ in: 0, out: 1 }, { in: 3, out: 4 }]
+    assert.equal(becomesEdge(two, 1, { in: 1, out: 4 }, 10000), true)
+  })
+  it('a cut that stays inside is still interior', () => {
+    assert.equal(becomesEdge(cuts, 0, { in: 2, out: 4 }, 10000), false)
+  })
+  it('says which end the cut now trims', () => {
+    assert.equal(
+      handedOffWords(1, 's1710003.mp4', 'in'),
+      "Cut 1 of s1710003.mp4 now trims the clip's start; edit it in the Cuts panel.",
+    )
+    assert.match(handedOffWords(2, 'a.mp4', 'out'), /clip's end/)
   })
 })
