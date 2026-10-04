@@ -23,10 +23,11 @@ from auto_reel_ng.accel.models import AcceleratorCapabilities, Device, Vendor
 from auto_reel_ng.accel.profiles import CPUProfile, NvencProfile, QsvProfile, VaapiProfile
 from auto_reel_ng.errors import FontResolutionError, RenderError, TitleCardError
 from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
+from auto_reel_ng.event.resolution import resolve
 from auto_reel_ng.probe import probe_media
 from auto_reel_ng.probe.metadata import AudioStream, ClipMetadata
 from auto_reel_ng.reel.card import ChapterCard
-from auto_reel_ng.reel.document import Metadata, Trim
+from auto_reel_ng.reel.document import Chapter, ClipRef, Metadata, ReelDocument, Trim
 from auto_reel_ng.render import (
     ProducedSegment,
     RenderOptions,
@@ -38,6 +39,8 @@ from auto_reel_ng.render import (
     get_producer,
     register_producer,
     render_movie,
+    resolve_decorator_names,
+    title_cards_state,
 )
 from auto_reel_ng.render.title import (
     TitleCardConfig,
@@ -1369,3 +1372,81 @@ def test_check_card_styles_names_the_event_style_field_and_the_chapter_font() ->
         check_card_styles({"title_font_size": "big"}, {})
     with pytest.raises(TitleCardError, match=r"'Dag 2'.*card\.font_family.*Comic Sans"):
         check_card_styles(None, {"Dag 2": ChapterCard(font_family="Comic Sans")})
+
+
+# --------------------------------------------------------------------------- #
+# title-cards-default-on (D-25): absent look.decorators means [title]         #
+# --------------------------------------------------------------------------- #
+
+
+def _two_chapter_document(event_look: Optional[dict] = None) -> ReelDocument:
+    return ReelDocument(
+        metadata=Metadata(title="Movie", date=date(2024, 6, 21), location="Home"),
+        look=event_look or {},
+        chapters=(
+            Chapter(name="", clips=(ClipRef("a.mp4"),)),
+            Chapter(name="Main", clips=(ClipRef("b.mp4"),)),
+        ),
+    )
+
+
+def _cards_through_the_render_path(
+    event_look: Optional[dict] = None, project_look: Optional[dict] = None
+) -> list[Segment]:
+    """The synthetic segments ``render_movie`` would build: its own three calls, in its order."""
+    plan = resolve(_two_chapter_document(event_look), look_defaults=project_look)
+    segments = build_segments(plan, Path("/ev"))
+    names = resolve_decorator_names(plan.look)
+    return [s for s in apply_decorators(names, plan, _target(), segments) if s.is_synthetic]
+
+
+def test_with_no_decorators_anywhere_every_chapter_gets_a_card() -> None:
+    cards = _cards_through_the_render_path()
+    assert [c.chapter for c in cards] == ["", "Main"]
+    assert all(c.producer == TITLE_PRODUCER for c in cards)
+
+
+@pytest.mark.parametrize("explicit", [[], ["none"]])
+def test_an_explicit_list_without_title_in_the_event_means_no_cards(explicit: list) -> None:
+    assert _cards_through_the_render_path(event_look={"decorators": explicit}) == []
+
+
+def test_a_project_empty_list_wins_over_the_default() -> None:
+    assert _cards_through_the_render_path(project_look={"decorators": []}) == []
+
+
+def test_an_event_title_list_wins_over_a_project_empty_list() -> None:
+    cards = _cards_through_the_render_path(
+        event_look={"decorators": ["title"]}, project_look={"decorators": []}
+    )
+    assert len(cards) == 2
+
+
+def test_title_cards_state_reports_the_deciding_layer() -> None:
+    assert title_cards_state({}, {}) == title_cards_state({"decorators": None}, {})
+    assert (title_cards_state({}, {}).enabled, title_cards_state({}, {}).source) == (
+        True,
+        "default",
+    )
+    project_off = title_cards_state({}, {"decorators": []})
+    assert (project_off.enabled, project_off.source) == (False, "project")
+    event_on = title_cards_state({"decorators": ["title"]}, {"decorators": []})
+    assert (event_on.enabled, event_on.source) == (True, "event")
+    event_off = title_cards_state({"decorators": ["none"]}, {"decorators": ["title"]})
+    assert (event_off.enabled, event_off.source) == (False, "event")
+    other = title_cards_state({"decorators": ["watermark"]}, {})
+    assert (other.enabled, other.source) == (False, "event")
+
+
+def test_title_cards_state_agrees_with_the_render_when_the_event_says_null() -> None:
+    """A null event value overrides the project's list in the merge, so both read `default`."""
+    state = title_cards_state({"decorators": None}, {"decorators": []})
+    assert (state.enabled, state.source) == (True, "default")
+    assert len(_cards_through_the_render_path({"decorators": None}, {"decorators": []})) == 2
+
+
+def test_title_cards_state_fails_loud_on_a_non_list() -> None:
+    with pytest.raises(RenderError, match="look.decorators"):
+        title_cards_state({"decorators": "title"}, {})
+    with pytest.raises(RenderError, match="look.decorators"):
+        title_cards_state({}, {"decorators": "title"})

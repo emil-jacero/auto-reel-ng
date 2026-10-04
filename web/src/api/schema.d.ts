@@ -851,6 +851,10 @@ export interface components {
          *     chapter's overrides) and each chapter's ``card`` the card a render would draw. When the
          *     event-wide ``look.title_card`` cannot be resolved, ``title_card`` and every ``card`` are
          *     ``null`` and ``title_card_error`` names the field; the rest of the detail is unaffected.
+         *
+         *     ``title_cards`` is whether the effective decorators include ``title`` and where that was
+         *     decided; it is present unless ``look.decorators`` is not a list, when it is ``null`` and
+         *     ``title_cards_error`` names the field.
          */
         EventDetailOut: {
             /** Event Id */
@@ -884,6 +888,9 @@ export interface components {
             title_card?: components["schemas"]["TitleStyleOut"] | null;
             /** Title Card Error */
             title_card_error?: string | null;
+            title_cards?: components["schemas"]["TitleCardsOut"] | null;
+            /** Title Cards Error */
+            title_cards_error?: string | null;
         };
         /**
          * EventErrorOut
@@ -1435,6 +1442,22 @@ export interface components {
             } | null;
             /** Event Title */
             event_title?: string | null;
+        };
+        /**
+         * TitleCardsOut
+         * @description Whether a render draws title cards, and which layer decided it (D-25).
+         *
+         *     ``source`` is ``event`` (the event's ``look.decorators``), ``project`` (the ``config.yaml``
+         *     one) or ``default`` (neither sets it: the effective decorators are ``[title]``).
+         */
+        TitleCardsOut: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "event" | "project" | "default";
         };
         /**
          * TitleStyleOut

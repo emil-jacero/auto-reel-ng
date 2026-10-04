@@ -242,6 +242,7 @@ metadata:
 look:                      # was title_card; extended with render/look settings
   target_resolution: [1920, 1080]
   codec: { video: hevc, audio: aac, quality: 22 }
+  decorators: [title]      # absent = [title], the cards are on; [] or [none] = no cards (D-25)
   title_card: { ... }      # font/size/color/position/bg/fade
 chapters:
   - name: default
@@ -747,6 +748,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `title-card-write-api` has landed (the API half of the card editor): the editorial `card`, the detail's resolved
    cards and `title_card`, `GET /fonts` and the PNG preview (§4.10); no render, fingerprint, schema-version or job
    change.
+   `title-cards-default-on` follows the user's "the opening card and each chapter's card should be created automatically":
+   cards are on unless `look.decorators` says otherwise, and the event detail reports `title_cards` (D-25;
+   `RENDER_GRAPH_VERSION` 8); the Timeline's `unset` guess still has to be replaced by reading it.
    `title-card-blocks` has landed (the web half begins): every chapter's card is a block on the Timeline and a row in Edit
    mode's chapter list, selectable, web-only and read only; editing a card comes next.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
@@ -1546,6 +1550,25 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Deliberately not here:** the card style, per-card fields, background-on-video, durations, the preview
     endpoint, the GUI, a weight setting, italics, user-supplied fonts, web fonts in the browser (D-10; the GUI previews
     with the engine's PNG).
+- **D-25 — Title cards are on unless `look.decorators` says otherwise** (2026-10-04, change
+  `title-cards-default-on`). The user asked for "a title card in the beginning" and "each chapter should generate a title
+  card"; until now a render drew none unless a project listed `title` in `look.decorators` (D-24 left that opt-in).
+  - **The rule.** `look.decorators` absent (or null) from the merged look, that is from both the event's `reel.yaml` and
+    the project's `config.yaml` (D-2: the event wins, a key at a time), means `[title]`. An explicit list keeps its
+    meaning: `[]`, `[none]` and any list without `title` draw no card; a non-list fails loud. The default lives in the
+    engine's one `resolve_decorator_names`, not in a template written to disk, so existing projects and hand-made
+    events get it and nothing is duplicated into files. `[]` is the way to say "no cards": it cannot be mistaken for unset.
+  - **The report.** `title_cards_state(event_look, project_look)` sits beside it and returns `enabled` and `source`
+    (`event`, `project` or `default`, by the same merge the render performs, so a null event value reads `default` in both).
+    The event detail carries it as `title_cards: {enabled, source}` (and `title_cards_error` with `title_cards: null`
+    for a non-list value: 200, nothing guessed), probe-free, so the web no longer has to infer an "unset" state.
+  - **Staleness.** `RENDER_GRAPH_VERSION` is raised from 7 to 8: every rendered event with no decorators now renders
+    cards, and the fingerprint cannot tell which events those are without a second path. **Every event with a manifest
+    from the previous engine reports stale once, reason `engine`** (D-C8 accepts one archive re-render). A project that
+    does not want cards writes `decorators: []` in its `config.yaml`.
+  - **Callers.** Neither the legacy importer nor `scripts/make_dev_library.py` writes `decorators` (tests assert it).
+  - **Follow-up, not here:** the web Timeline still guesses `off` / `unset` from the event's own `look`; it should read
+    `title_cards` instead (`event-timeline` / `timeline` specs).
 - **D-24 — A title card belongs to its chapter** (2026-10-03, change `title-card-model`, the engine half of the
   title-card work of GUI v2). The user asked for cards that are configured and edited, not only rendered: "text on
   black or text on a piece of video", the title and a subtitle editable again, the font and the length too.
@@ -1580,9 +1603,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     (the fingerprint cannot tell which looks use the `title` decorator without a second path; D-C8 accepts the cost
     of one re-render). A `reel.yaml` with no `card` hashes exactly as before, so the editorial ETag a client holds
     stays valid; adding a card moves the editorial component like any edit; an unrendered event is unaffected.
-  - **Deliberately not here:** the cards are still opt-in per project (`look.decorators: [title]`; making them the
-    default changes every render of every project); an event with no default chapter has no opening card; no API,
-    editor, preview or card over video (the font registry is D-22).
+  - **Deliberately not here:** an event with no default chapter has no opening card; no API, editor, preview or card
+    over video (the font registry is D-22). The cards were still opt-in here (`look.decorators: [title]`); that ended
+    with `title-cards-default-on` (**D-25**).
   - **The card over video (change `title-card-over-video`, 2026-10-03).** The user's reading of "text on a piece of
     video": the text sits over the start of the chapter's first clip while it plays, no time added. A `video` card
     gets no inserted segment: the decorator attaches it, as a producer-backed timed `OverlaySpec`, to the same anchor

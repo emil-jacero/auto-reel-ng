@@ -80,6 +80,8 @@ def test_render_adopts_new_clips_into_their_folders_chapters(
         _place_clip(clip, tva, identity, minute)
         _place_clip(clip, utan, identity, minute)
     (utan / REEL_FILENAME).write_text(NO_CHAPTERS_REEL, encoding="utf-8")
+    # This test is about chapter membership, not cards: the project opts out of title cards.
+    (root / "config.yaml").write_text("look:\n  decorators: []\n", encoding="utf-8")
     render = ["render", str(root), "-o", str(out), "--device", "cpu"]
 
     # 1. The first render seeds Två kapitel, and seeds the chapterless Utan kapitel too.
@@ -121,3 +123,27 @@ def test_render_adopts_new_clips_into_their_folders_chapters(
     assert tva_lines == [f"FRESH  {TVA_KAPITEL}: up to date, not rendered"], third
     assert (tva / REEL_FILENAME).read_bytes() == reel_before
     assert (movie.stat().st_mtime_ns, movie.read_bytes()) == movie_before
+
+
+@pytest.mark.has_ffmpeg
+def test_a_render_with_no_decorators_opens_the_chapter_with_its_card(
+    runtime: FfmpegRuntime,
+    make_clip,
+    has_fonts: None,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """title-cards-default-on: nothing names decorators, so the opening card is in the movie."""
+    clip = make_clip("source.mp4", width=320, height=240, fps=30, duration=1.0)
+    root = tmp_path / "library"
+    out = tmp_path / "library-output"
+    event = root / "2024" / TVA_KAPITEL
+    _place_clip(clip, event, "s1710001.mp4", 1)
+    (event / REEL_FILENAME).write_text(
+        "version: 0\nmetadata:\n  title: Kort\nlook:\n  title_card:\n    duration: 2\n",
+        encoding="utf-8",
+    )
+    assert main(["render", str(root), "-o", str(out), "--device", "cpu"]) == 0
+    capsys.readouterr()
+    (span,) = _movie_chapters(runtime, _movie(out, "2024-08-20"))
+    assert span[1] == pytest.approx(3.0, abs=0.4)  # the 1 s clip plus the 2 s card

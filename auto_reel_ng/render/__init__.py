@@ -24,6 +24,7 @@ from .chapters import aggregate_chapter_durations, build_ffmetadata
 from .concat import build_concat_command, build_concat_list, is_copy_uniform, probe_copy_fields
 from .decorators import (
     Decorator,
+    TitleCardsState,
     apply_decorators,
     get_decorator,
     make_attacher,
@@ -31,6 +32,7 @@ from .decorators import (
     none_decorator,
     register_decorator,
     resolve_decorator_names,
+    title_cards_state,
 )
 from .normalize import (
     HDR_SLOWNESS_WARNING,
@@ -96,6 +98,8 @@ __all__ = [
     "make_attacher",
     "resolve_decorator_names",
     "apply_decorators",
+    "TitleCardsState",
+    "title_cards_state",
     # normalize + copy eligibility
     "build_normalize_command",
     "build_synthetic_normalize_command",

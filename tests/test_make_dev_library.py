@@ -81,3 +81,9 @@ def test_ignore_adds_exactly_an_ignore_list(script: ModuleType, reel: Path) -> N
     assert out == ENGINE_REEL + "ignore:\n  - x.mp4\n"
     assert loads_document(out).ignore == ("x.mp4",)
     assert dumps_document(loads_document(out)) == out
+
+
+def test_the_dev_library_builder_never_writes_decorators(script: ModuleType) -> None:
+    """title-cards-default-on: the sample library renders cards, so the script opts nobody out."""
+    del script
+    assert "decorators" not in SCRIPT.read_text(encoding="utf-8")
