@@ -4,12 +4,15 @@ import type { KeyboardEvent, ReactNode } from 'react'
 import { Icon } from '../ui/Icon'
 import { ADDED_WORDS } from './cardRows'
 import { USES_EVENT_STYLE } from './cardStyle.ts'
+import { TitleCardContext } from './TitleCard'
+import { titleLine } from './inlineName'
 import type { CardRowInfo } from './cardRows'
 
 /*
  * The chapter's card row (`title-card-blocks`): at the head of each chapter in Edit mode, its
  * card in words (title, subtitle, length, Black or Video, font). Main's row is the opening
- * card and holds the event-title control (D-13) beside it. Pressing the row selects the card,
+ * card and its heading line is the event-title control (D-13, `title-card-toggle`): one row, the
+ * title shown once. Pressing the row selects the card,
  * the selection the Timeline's block shares; it writes nothing and requests nothing. A
  * chapter added in this session has no saved card, so its row says so and is not selectable.
  */
@@ -36,11 +39,16 @@ export const CardRow = memo(function CardRow({
   const model = useContext(CardRowsContext)
   const factsId = useId()
   const info = model?.rowOf(chapterKey) ?? null
+  // The opening card's heading line already shows the title: the facts do not say it twice.
+  const title = useContext(TitleCardContext)
+  const opening = Boolean(children)
+  const headed = opening && title !== null ? titleLine(title.draftTitle, title.resolvedTitle).text : null
   if (model === null || info === null) {
     return <>{children}</>
   }
   return (
-    <div className="card-row" data-kind={info.kind}>
+    <div className="card-row" data-kind={info.kind} data-opening={opening || undefined}>
+      {children}
       {info.kind === 'added' && (
         <p className="card-row-body">
           <span className="card-row-label">Title card</span>
@@ -77,10 +85,11 @@ export const CardRow = memo(function CardRow({
             Title card
           </span>
           <span id={factsId} className="card-row-facts">
-            <span className="card-row-title">{info.title}</span>
+            {info.title !== headed && <span className="card-row-title">{info.title}</span>}
             <span className="card-row-subtitle" data-empty={info.subtitle === 'No subtitle' || undefined}>
               {info.subtitle}
             </span>
+            {info.enabled === false && <span className="card-row-off">Not enabled</span>}
             <span className="card-row-length">{info.length}</span>
             <span className="card-row-look">{info.look}</span>
             <span className="card-row-font">{info.font}</span>
@@ -93,7 +102,6 @@ export const CardRow = memo(function CardRow({
           </span>
         </button>
       )}
-      {children}
     </div>
   )
 })

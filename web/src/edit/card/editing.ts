@@ -40,6 +40,8 @@ export type CardEditing = {
   /** Put the card back as read. */
   reset(saved: string): void
   announce(words: string): void
+  /** The Title cards switch while it differs from the state read (true: on); null: as the service said. */
+  titleCardsDraft: boolean | null
   /** A save is in flight, or a Move clips is pending. */
   locked: boolean
 }

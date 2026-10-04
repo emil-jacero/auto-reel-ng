@@ -43,3 +43,37 @@ describe('docs/high-level-design.md and title-card-duration-drag', () => {
     assert.ok(at.some((i) => i > s6 && i < s7), '§6 names it')
   })
 })
+
+/* The design document names the change in D-20, D-25, §4.10 and §6 (title-card-toggle). */
+describe('docs/high-level-design.md and title-card-toggle', () => {
+  const text = readFileSync(new URL('../../../docs/high-level-design.md', import.meta.url), 'utf8')
+
+  it('names title-card-toggle in D-20, D-25, §4.10 and §6', () => {
+    const lines = text.split('\n')
+    const at = lines.flatMap((line, i) => (line.includes('title-card-toggle') ? [i] : []))
+    const start = (prefix: string) => lines.findIndex((line) => line.startsWith(prefix))
+    const within = (from: number, to: number) => at.some((i) => i > from && i < to)
+    const d20 = start('- **D-20')
+    const d21 = start('- **D-21')
+    assert.ok(d20 > 0 && d21 > d20)
+    assert.ok(within(d20, d21), 'D-20 names it')
+    const d25 = start('- **D-25')
+    const d24 = start('- **D-24')
+    assert.ok(d25 > 0 && d24 > d25)
+    assert.ok(within(d25, d24), 'D-25 names it')
+    const s410 = start('### 4.10 ')
+    const s411 = start('### 4.11 ')
+    assert.ok(s410 > 0 && s411 > s410)
+    assert.ok(within(s410, s411), '§4.10 names it')
+    const s6 = start('## 6. ')
+    const s7 = start('## 7. ')
+    assert.ok(s6 > 0 && s7 > s6)
+    assert.ok(within(s6, s7), '§6 names it')
+  })
+
+  it('the README names the switch’s files', () => {
+    const readme = readFileSync(new URL('../../README.md', import.meta.url), 'utf8')
+    assert.match(readme, /decorators\.ts/)
+    assert.match(readme, /TitleCardsSwitch\.tsx/)
+  })
+})

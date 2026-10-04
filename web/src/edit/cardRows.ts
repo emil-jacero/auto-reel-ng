@@ -24,6 +24,8 @@ export type CardRowInfo =
       font: string
       /** Which style fields the draft card overrides, or that it uses the event style. */
       overrides: string
+      /** Whether the render draws the card (`title_cards.enabled`); null: the service gave no answer. */
+      enabled: boolean | null
       /** The row's accessible name. */
       words: string
       /** The draft's name when it differs from the saved one. */
@@ -41,6 +43,7 @@ export function cardRowInfo(
   chapter: { readName: string | null; name: string },
   specs: readonly CardSpec[],
   overrides: string = USES_EVENT_STYLE,
+  enabled: boolean | null = null,
 ): CardRowInfo | null {
   if (chapter.readName === null) {
     return { kind: 'added' }
@@ -73,7 +76,8 @@ export function cardRowInfo(
       look: background === 'video' ? 'Video' : 'Black',
       font: spec.card.fontFamily,
       overrides,
-      words: cardWords(spec.chapter, { durationMs, background }),
+      enabled,
+      words: cardWords(spec.chapter, { durationMs, background, off: enabled === false }),
       savedName,
     }
   } catch (error) {

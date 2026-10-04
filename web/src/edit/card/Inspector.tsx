@@ -10,6 +10,7 @@ import { Icon } from '../../ui/Icon'
 import type { CardEditing, CardView } from './editing.ts'
 import { ColorField } from './ColorField'
 import { FontField } from './FontField'
+import { BACKGROUND_OPTIONS, POSITION_OPTIONS } from './choice.ts'
 import { Choice, NumberField, TextField } from './Fields'
 import { CardPreview } from './Preview'
 import type { Backdrop } from './Preview'
@@ -174,15 +175,9 @@ export function CardInspectorPanel({
             label="Background"
             field="background"
             value={card.background}
-            options={[
-              { value: 'black', label: 'Black', words: 'Text on black, before the chapter' },
-              {
-                value: 'video',
-                label: 'Video',
-                words: 'Text over the start of the chapter’s first clip',
-              },
-            ]}
+            options={BACKGROUND_OPTIONS}
             inherited={inherited('background', style?.background)}
+            inheritedValue={style?.background ?? null}
             error={refused('background')}
             onChange={(value) => set('background', value)}
             {...shared}
@@ -228,12 +223,9 @@ export function CardInspectorPanel({
             label="Position"
             field="position"
             value={card.position}
-            options={[
-              { value: 'top', label: 'Top', words: null },
-              { value: 'center', label: 'Center', words: null },
-              { value: 'bottom', label: 'Bottom', words: null },
-            ]}
+            options={POSITION_OPTIONS}
             inherited={inherited('position', style?.position)}
+            inheritedValue={style?.position ?? null}
             error={refused('position')}
             onChange={(value) => set('position', value)}
             {...shared}

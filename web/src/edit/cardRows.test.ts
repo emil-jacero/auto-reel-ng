@@ -30,8 +30,19 @@ describe('cardRowInfo', () => {
       font: 'Sofia Sans',
       words: 'Title card for Dag 2, 4.0 s, over video',
       overrides: 'Uses the event style',
+      enabled: null,
       savedName: null,
     })
+  })
+
+  it('says Not enabled while the render draws no cards', () => {
+    const off = cardRowInfo({ readName: 'Dag 2', name: 'Dag 2' }, specs, undefined, false)
+    assert.ok(off?.kind === 'card')
+    assert.equal(off.enabled, false)
+    assert.equal(off.words, 'Title card for Dag 2, 4.0 s, over video, not enabled')
+    const on = cardRowInfo({ readName: 'Dag 2', name: 'Dag 2' }, specs, undefined, true)
+    assert.ok(on?.kind === 'card')
+    assert.equal(on.words, 'Title card for Dag 2, 4.0 s, over video')
   })
 
   it('says what the draft card overrides', () => {

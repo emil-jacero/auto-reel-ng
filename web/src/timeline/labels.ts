@@ -5,7 +5,7 @@ import { clockScale, formatClock } from '../clock.ts'
 import { formatTime } from '../cuts/times.ts'
 import { plural } from '../events/names.ts'
 import type { Tone } from '../ui/Pill.tsx'
-import type { DecoratorsRead, Placement } from './cards.ts'
+import type { CardsSource, Decorators, Placement } from './cards.ts'
 import type { Readiness } from './layout.ts'
 import type { Ms } from './model.ts'
 
@@ -170,30 +170,32 @@ export function movieWords(movie: Ms, footage: Ms, cards = ''): string {
 export const CARDS_NOT_PLAYED =
   'The Timeline plays footage only: it does not play title cards. A black card’s span is crossed without time passing.'
 
-/** The notes under the track about the title cards it cannot draw, each said once. */
+export const CARDS_OFF = 'Title cards are off for this event; the render draws none'
+export const CARDS_BY_PROJECT = 'Set by the project’s config.yaml.'
+export const CARDS_NO_ANSWER = 'The service did not say whether the render draws title cards, so none are drawn here'
+
+/**
+ * The notes under the track about the title cards it cannot draw, each said once. `decorators`
+ * and `source` are the service's answer (`title_cards`); `error` is its `title_cards_error`.
+ */
 export function cardsNotes(
   specs: readonly { chapter: string }[],
   placements: readonly Placement[],
-  decorators: DecoratorsRead,
+  decorators: Decorators,
+  source: CardsSource | null = null,
+  error: string | null = null,
 ): { title: string; detail?: string }[] {
   const notes: { title: string; detail?: string }[] = []
-  if (decorators === 'unreadable') {
+  if (decorators === 'invalid') {
     notes.push({
-      title: 'Whether the render draws title cards could not be read, so none are drawn here',
-    })
-  } else if (decorators === 'invalid') {
-    notes.push({
-      title: 'look.decorators in reel.yaml is not a list; the render refuses it, so no title card is drawn',
+      title: error ?? CARDS_NO_ANSWER,
+      ...(error === null ? {} : { detail: 'No title card is drawn here.' }),
     })
   } else if (placements.some((place) => place.kind === 'off')) {
     notes.push(
-      decorators === 'unset'
-        ? {
-            title: 'Title cards are not enabled in this event’s reel.yaml',
-            detail:
-              'A project default (config.yaml) may still enable them, so the render may draw them and the movie may be longer than shown.',
-          }
-        : { title: 'Title cards are off for this event; the render draws none' },
+      source === 'project'
+        ? { title: CARDS_OFF, detail: CARDS_BY_PROJECT }
+        : { title: CARDS_OFF },
     )
   }
   const unresolved = new Map<string, string[]>()

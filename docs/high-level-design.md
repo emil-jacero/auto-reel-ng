@@ -389,6 +389,14 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   sends `look` itself). An unset field shows the project default (the detail's resolved value) as a placeholder; a
   field cleared although the saved style set it says "Project default" with no number, because the lower layer is not
   known to the page and is never guessed. No API, engine or `RENDER_GRAPH_VERSION` change.
+- **v2 Title cards switch** (`title-card-toggle`, D-20, D-25): Edit mode's **Title cards: On / Off**
+  (`web/src/edit/TitleCardsSwitch.tsx`, pure model `decorators.ts`) edits the event's own `look.decorators` in the same
+  draft (Off removes `title` and keeps the other names; with no list it writes `[]`; On puts `title` first). The state the
+  page shows is the detail's `title_cards.enabled` (resolved by the engine from the event and the project), never a guess
+  from `reel.yaml`: the Timeline's card lane, the chapter list's rows and the movie's length follow it, and the draft's
+  switch before any save. Selecting a card opens the inspector below the track, so the track never moves. A choice with
+  no value of its own shows the value it inherits as pressed in a muted style with "(event style)" / "(project default)".
+  The event's own chapter shows one opening-card row whose heading is the "Main title card" control. Web only.
 - **v2:** look/style editor (**the look picker deferred from v1, now built as the event card style and the card inspector: one draft, one save**; title card live-ish preview; `title-card-fonts`
   is the foundation of the card editor: the bundled font set and its registry, **D-22**; **the title card model
   has landed** as `title-card-model`, **D-24**: the per-chapter `card:` in `reel.yaml`; **its API is built** as
@@ -770,6 +778,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    mode's chapter list, selectable, web-only and read only; editing a card comes next.
    `title-card-duration-drag` has landed (web only): a card's length is dragged on the Timeline's card block, written as
    `card.duration` by the existing `PUT .../reel`; `title-card-inspector` is the typed alternative.
+   `title-card-toggle` follows (web only): Edit mode's Title cards On / Off switch writes `look.decorators`, the Timeline and
+   the chapter rows read the API's `title_cards` instead of guessing, the opening card is one row, an inherited choice shows
+   pressed in a muted style, and the card inspector opens below the track; no API, engine or `RENDER_GRAPH_VERSION` change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1290,6 +1301,12 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     black card's drag keeps the committed layout, moves the layers behind the card by a `translate` (`data-after`) and draws
     the real layout once, on release. The handle lies in the card lane, a row of its own,
     so it never competes with a trim handle's area.
+  - **The card lane reads `title_cards.enabled` (`title-card-toggle`, 2026-10-04).** The page no longer infers whether the
+    render draws cards from the event's `look.decorators` (the project's `config.yaml` look is invisible to it): `cardsEnabled`
+    takes the detail's `title_cards` and the draft's Title cards switch while it differs; the model's `unset` state and the
+    "not counted" caveat are gone, and `title_cards: null` draws no block and says the service's `title_cards_error`.
+    The card inspector is rendered after the Timeline's body, so selecting a card (from a block, a row or a duration
+    handle, which selects again) never moves the track.
     **Drag cost, measured** (80 clips, 8 cards, 180 pointer moves at about 46 px/s, frames over 25 ms): the first build re-laid
     out the later content on each move and measured 9 to 24 % in Chrome at 4x (a loaded host), so the translate-and-commit-on-
     release build above replaced it. Now: unthrottled, Chrome 154 0 to 0.27 % and Firefox 155 0 to 3.2 % (median 0.8 %, nine
@@ -1606,8 +1623,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     from the previous engine reports stale once, reason `engine`** (D-C8 accepts one archive re-render). A project that
     does not want cards writes `decorators: []` in its `config.yaml`.
   - **Callers.** Neither the legacy importer nor `scripts/make_dev_library.py` writes `decorators` (tests assert it).
-  - **Follow-up, not here:** the web Timeline still guesses `off` / `unset` from the event's own `look`; it should read
-    `title_cards` instead (`event-timeline` / `timeline` specs).
+  - **The web reads it (`title-card-toggle`).** The Timeline and Edit mode read `title_cards` instead of guessing from the
+    event's `look`; the Title cards switch writes only the event's own `look.decorators` (Off: the list without `title`, or
+    `[]`; On: `title` first; back to the state read is no override). The web never infers the project's list, so it never
+    removes the key to "restore the default": a removed key would inherit a project opt-out the page cannot see.
 - **D-24 — A title card belongs to its chapter** (2026-10-03, change `title-card-model`, the engine half of the
   title-card work of GUI v2). The user asked for cards that are configured and edited, not only rendered: "text on
   black or text on a piece of video", the title and a subtitle editable again, the font and the length too.

@@ -145,6 +145,31 @@
     color: var(--fg);
   }
 
+  /*
+   * A choice that follows the value it inherits: that option reads as pressed but muted, with a
+   * dashed outline and the layer's words, so it is not mistaken for a chosen value (never by
+   * colour alone). Pressing it sets the value as an override.
+   */
+  .segmented label[data-inherited] {
+    border-style: dashed;
+    border-color: var(--fg-subtle);
+    background: var(--surface-raised);
+    color: var(--fg-muted);
+    font-style: italic;
+  }
+
+  .ci-inherited-tag {
+    font-size: var(--text-xs);
+    font-weight: 400;
+  }
+
+  @media (forced-colors: active) {
+    .segmented label[data-inherited] {
+      border-color: GrayText;
+      color: GrayText;
+    }
+  }
+
   .ci-words {
     display: grid;
     gap: 0.125rem;

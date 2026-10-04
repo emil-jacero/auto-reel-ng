@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 
 import {
   cardBlocks,
   cardDurationMs,
+  cardsEnabled,
+  cardsSource,
   cardSpecs,
-  decoratorsRead,
   cardMap,
   cardPlacements,
   cardSelection,
@@ -13,7 +15,6 @@ import {
   cardWords,
   clipTimeAt,
   movieWithCards,
-  titleCardsOn,
   trackLayout,
   trackX,
   visibleBlocks,
@@ -45,26 +46,36 @@ const clip = (chapter: number, durationMs: number, spans: CardClip['spans'] = []
   spans,
 })
 
-describe('titleCardsOn', () => {
-  it('is on for a list with title, off when absent or without it, invalid for a non-list', () => {
-    assert.equal(titleCardsOn({ decorators: ['title'] }), 'on')
-    assert.equal(titleCardsOn({ decorators: ['none', 'title'] }), 'on')
-    assert.equal(titleCardsOn({}), 'unset')
-    assert.equal(titleCardsOn(null), 'unset')
-    assert.equal(titleCardsOn({ decorators: [] }), 'off')
-    assert.equal(titleCardsOn({ decorators: ['none'] }), 'off')
-    assert.equal(titleCardsOn({ decorators: 'title' }), 'invalid')
+describe('cardsEnabled', () => {
+  it('is the service’s answer; the draft’s switch wins while it differs', () => {
+    assert.equal(cardsEnabled({ enabled: true, source: 'default' }), 'on')
+    assert.equal(cardsEnabled({ enabled: false, source: 'event' }), 'off')
+    assert.equal(cardsEnabled({ enabled: true, source: 'default' }, false), 'off')
+    assert.equal(cardsEnabled({ enabled: false, source: 'project' }, true), 'on')
+    assert.equal(cardsEnabled({ enabled: false, source: 'project' }, null), 'off')
+  })
+
+  it('has no answer for title_cards null, and never guesses one', () => {
+    assert.equal(cardsEnabled(null), 'invalid')
+    assert.equal(cardsEnabled(undefined), 'invalid')
+  })
+
+  it('names the layer that decided, the event once the draft differs', () => {
+    assert.equal(cardsSource({ enabled: false, source: 'project' }), 'project')
+    assert.equal(cardsSource({ enabled: false, source: 'project' }, false), 'project')
+    assert.equal(cardsSource({ enabled: false, source: 'project' }, true), 'event')
+    assert.equal(cardsSource(null), null)
+  })
+
+  it('the module no longer guesses from reel.yaml', () => {
+    for (const file of ['cards.ts', 'labels.ts', 'Timeline.tsx', 'TimelineSection.tsx']) {
+      const text = readFileSync(new URL(`./${file}`, import.meta.url), 'utf8')
+      assert.doesNotMatch(text, /\bunset\b|titleCardsOn|decoratorsRead|not counted/i, file)
+    }
   })
 })
 
-describe('decoratorsRead and cardSpecs', () => {
-  it('waits for a pending read, says an unreadable one, else reads the look', () => {
-    assert.equal(decoratorsRead(null, false), 'pending')
-    assert.equal(decoratorsRead(null, true), 'unreadable')
-    assert.equal(decoratorsRead({ decorators: ['title'] }, false), 'on')
-    assert.equal(decoratorsRead({}, false), 'unset')
-  })
-
+describe('cardSpecs', () => {
   it('reads the resolved cards, the chapter error before the event-wide one', () => {
     const detail = {
       title_card_error: 'look.title_card.font_family',

@@ -35,6 +35,10 @@ import { cardSpecs } from '../timeline/cards'
 import type { CardsBinding } from '../timeline/useCardSelection'
 import { CardRowsContext } from './CardRow'
 import { CardStylePanel } from './CardStylePanel'
+import { TURNED_OFF, TURNED_ON, TitleCardsSwitch } from './TitleCardsSwitch'
+import type { TitleCardsModel } from './TitleCardsSwitch'
+import { titleCardsNow } from './decorators.ts'
+import { cardsEnabled, cardsSource } from '../timeline/cards.ts'
 import type { CardStyleModel } from './CardStylePanel'
 import type { CardRowsModel } from './CardRow'
 import { cardRowInfo } from './cardRows'
@@ -115,8 +119,11 @@ import {
   removeCut,
   renameChapter,
   resetCard,
+  resetDecorators,
   resetStyle,
   setStyleField,
+  setTitleCardsOn,
+  decoratorsChanged,
   styleIsChanged,
   styleOf,
   restoreChapter,
@@ -292,6 +299,9 @@ type Action =
   | { type: 'card-reset'; key: ChapterKey }
   | { type: 'style-field'; field: StyleField; value: StyleValue | null }
   | { type: 'style-reset' }
+  // The Title cards switch (`title-card-toggle`); `readEnabled` is the service's answer for the document as read.
+  | { type: 'title-cards'; on: boolean; readEnabled: boolean }
+  | { type: 'title-cards-reset' }
   | { type: 'reset' }
   | { type: 'save-start'; pressed: Pressed }
   | { type: 'save-failed'; problem: SaveProblem | null; refusal: string | null }
@@ -585,6 +595,13 @@ function reduce(state: State, action: Action): State {
     }
     case 'style-reset':
       return { ...withDraft(state, resetStyle(state.draft)), styleRefusal: null }
+    case 'title-cards':
+      return withDraft(
+        state,
+        setTitleCardsOn(state.baseline, state.draft, action.readEnabled, action.on),
+      )
+    case 'title-cards-reset':
+      return withDraft(state, resetDecorators(state.draft))
     case 'reset':
       return {
         ...state,
@@ -793,6 +810,7 @@ function summarize(
   rotated: number,
   cardsChanged: number,
   styleChanged: boolean,
+  titleCards: boolean | null,
   adopted: number,
 ): string {
   // An incomplete date reads as '' but is not a date left empty: it is named as such.
@@ -816,6 +834,7 @@ function summarize(
     rotated > 0 && rotatedCount(rotated),
     cardsChangedWords(cardsChanged) ?? false,
     styleChanged && CARD_STYLE_CHANGED,
+    titleCards !== null && (titleCards ? TURNED_ON : TURNED_OFF),
     adopted > 0 && `adds ${plural(adopted, 'new clip', 'new clips')} to reel.yaml`,
   ].filter((part): part is string => part !== false)
   const text = parts.join(' · ')
@@ -1739,6 +1758,9 @@ export function EventEditor({
     // Once per answer: selecting another card afterwards is the operator's.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refusedAnswer])
+  // The Title cards switch: the draft's position while it differs from what the service said.
+  const draftDecorators = ready?.draft.decorators
+  const switchDraft = draftDecorators === undefined ? null : titleCardsNow(draftDecorators, false)
   const cardEditing = useMemo<CardEditing | null>(() => {
     if (baselineNow === undefined || draftChapters === undefined || draftCards === undefined) {
       return null
@@ -1782,9 +1804,11 @@ export function EventEditor({
         }
       },
       announce,
+      titleCardsDraft: switchDraft,
       locked: listsLocked,
     }
   }, [
+    switchDraft,
     baselineNow,
     draftChapters,
     draftCards,
@@ -1798,6 +1822,8 @@ export function EventEditor({
     announce,
     listsLocked,
   ])
+  const rowsState = cardsEnabled(liveDetail?.title_cards, switchDraft)
+  const rowsEnabled = rowsState === 'invalid' ? null : rowsState === 'on'
   const cardRows = useMemo<CardRowsModel>(
     () => ({
       rowOf: (key) => {
@@ -1810,13 +1836,14 @@ export function EventEditor({
               baselineNow === undefined || draftCards === undefined
                 ? undefined
                 : overrideWords(draftCards.get(chapter.key) ?? readCardOf(baselineNow, chapter.key)),
+              rowsEnabled,
             )
       },
       selected: selectedCard,
       select: selectCard,
       clear: clearCard,
     }),
-    [draftChapters, draftCards, baselineNow, specs, selectedCard, selectCard, clearCard],
+    [draftChapters, draftCards, baselineNow, specs, selectedCard, selectCard, clearCard, rowsEnabled],
   )
 
   // "Card style for this event": the draft's style against the one read, and what the cards inherit.
@@ -1843,6 +1870,32 @@ export function EventEditor({
             if (idle(latest.current)) {
               dispatch({ type: 'style-reset' })
               announce('Changes to the card style undone.')
+            }
+          },
+        }
+
+  // "Title cards: On / Off": the service's answer under the draft's switch.
+  const answer = liveDetail?.title_cards ?? null
+  const titleCardsModel: TitleCardsModel | null =
+    ready === null || detail === null
+      ? null
+      : {
+          answer,
+          error: liveDetail?.title_cards_error ?? null,
+          on: titleCardsNow(ready.draft.decorators, answer?.enabled ?? false),
+          source: cardsSource(answer, switchDraft),
+          changed: decoratorsChanged(ready.draft),
+          locked: listsLocked,
+          onSet: (on) => {
+            if (answer !== null && idle(latest.current)) {
+              dispatch({ type: 'title-cards', on, readEnabled: answer.enabled })
+              announce(on ? `${TURNED_ON}.` : `${TURNED_OFF}.`)
+            }
+          },
+          onReset: () => {
+            if (idle(latest.current)) {
+              dispatch({ type: 'title-cards-reset' })
+              announce('Change to the title cards undone.')
             }
           },
         }
@@ -2640,6 +2693,8 @@ export function EventEditor({
             />
           )}
 
+          {titleCardsModel !== null && <TitleCardsSwitch model={titleCardsModel} />}
+
           {styleModel !== null && <CardStylePanel model={styleModel} />}
 
           {detail !== null && (
@@ -2829,6 +2884,7 @@ export function EventEditor({
                     rotationChanges(ready.baseline, ready.draft),
                     cardsChanged,
                     styleIsChanged(ready.baseline, ready.draft),
+                    ready.draft.decorators === undefined ? null : titleCardsNow(ready.draft.decorators, false),
                     adopted,
                   )
                 : ''
