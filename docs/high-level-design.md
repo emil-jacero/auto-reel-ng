@@ -514,6 +514,14 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   Event time are rippled; the playhead, keys, filmstrip, marks, card anchors and Fit go through the extent. A leading or
   trailing cut has no handle on the Timeline until `clip-edge-trim` adds the edge tool; it stays editable in its Cuts panel.
   Web only: no engine, schema, API or `RENDER_GRAPH_VERSION` change.
+  **Clip edges are Trim In and Trim Out tools** (`clip-edge-trim`, D-20; the user's "like in Adobe Premiere", 2026-10-04): in
+  Edit mode the outer 8 px of each block's left and right edge (24 px with a finger) shows a yellow bracket cursor and
+  bracket; dragging an edge ripple-trims the clip's start or end, live (the block narrows, what follows slides), with a tip
+  `−0:00.5 · 0:03.02`, a red stop at the start or end of the file, snapping (8 px: the playhead, the clip's cuts, whole
+  seconds; `S` switches it, Alt bypasses it) and joining with an interior cut it reaches. The edit is the clip's leading or
+  trailing cut in `trims` (added `manual`, trimmed or removed), one draft edit per release; each edge is also a slider
+  (frame, Shift a second, Home/End) and `Q`/`W` trim the start/end of the clip under the playhead to it. Web only: no engine,
+  schema, API or `RENDER_GRAPH_VERSION` change.
   `proxy-enqueue-endpoint` has landed (D-21 "Enqueue over REST"): `POST /api/v1/events/{event_id}/proxies` enqueues the
   event's proxy job (201 / 200 `fresh` / 409), and a job reports its `kind` while `latest_job` stays the latest render;
   the timeline's Prepare state is its first web caller.
@@ -863,6 +871,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `timeline-zoom-slider` has landed on user feedback (web only; D-20): a Premiere-like Zoom slider, `\`, Ctrl/Cmd+wheel at the
    pointer and the zoom kept for the tab's session; Fit with no scroll bar; a toolbar that holds still while the Timeline
    seeks; and the Timeline only in Edit mode ("I only want it in edit mode"); no API, engine or `RENDER_GRAPH_VERSION` change.
+   `clip-edge-trim` has landed (web only; D-20): Premiere-style Trim In / Trim Out edge tools on the Edit-mode Timeline edit
+   a clip's leading and trailing cuts with a live ripple; no API, engine or `RENDER_GRAPH_VERSION` change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1564,6 +1574,26 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     or unreadable, a block press that only selects, a lane without decisions); this supersedes "the read view keeps its
     button" above. **Bundle:** JS 629.01 to 631.59 kB (203.87 to 204.98 gzip), CSS 88.10 to 89.40 kB (16.80 to 17.03
     gzip), against main with `timeline-ripple-layout`; no package added.
+  - **Clip edges are edited by edge tools (`clip-edge-trim`, 2026-10-05).** The user asked for Premiere's trim: hover a clip's
+    left or right edge, a trim tool shows, drag it ("Shorten + ripple"). **No new field:** an edge is the clip's **edge cut**,
+    the leading cut that ends latest or the trailing cut (Play's 100 ms rule) that starts earliest; `edgeTrim.ts` (pure,
+    `node:test`) gives its place (the gate's `keptExtent`, no second layout), its limits and the **one edit** a release, a key,
+    `Q` or `W` makes: add `[0, x]` / `[x, duration]` with the reason `manual`, trim the edge cut (key, place and reason kept;
+    a trailing cut keeps its listed `out`), or remove it at the start or end of the file; the editor applies it through
+    `addCut`/`trimCut`/`removeCut` (`applyEdgeEdit`, one `cut-edge` action), so `settled`, Reset, the Cuts panel's Undo and
+    the save bar's per-cut counts hold. **Joining is the render's union:** an edge that reaches an interior cut jumps to its far
+    side ("Joined with cut 1"); the other cut stays listed unchanged, so moving back un-joins it. **Limits:** the start of the
+    file (or the end of the leading span the other cuts form), and at least **three played frames** and a kept extent for the
+    track: a start trimmed into the clip's last 100 ms would be a cut to the end for `keptExtent` and Play, so on a 6.02 s,
+    50 fps clip the start stops at 5.92 s, not the 5.96 s three frames allow. **Snapping** is `snapTo`'s 8 px to the playhead,
+    the clip's other cut edges and whole seconds; `S` switches it for the page visit, Alt bypasses it. **Drawing:** each block
+    edge is a `role="slider"` zone inside its block (8 px fine, 24 px coarse, at most a third of the block; a focused tool
+    stays on a block narrowed below `MIN_DETAIL_PX`), with a 32 px SVG bracket cursor and the `ew-resize` fallback and a visible
+    bracket (tokens `--trim-edge`, `--trim-edge-ink`); one nearest-wins press test covers edge tools and cut handles. A drag
+    lives in the drag store (`EdgeDragging`, the one claim): the dragged block is drawn live with its left side kept, and what
+    follows moves by the change of its width through `ShiftFrom` (now a card's or a clip edge's, `shiftMs`), as behind a black
+    card; the draft is written once, on release. **Bundle:** JS 629.01 to 646.56 kB (203.87 to 209.42 gzip), CSS 88.10 to
+    92.54 kB (16.80 to 17.62 gzip) against origin/main, as `vite build` reports them; no package added.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
   1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every

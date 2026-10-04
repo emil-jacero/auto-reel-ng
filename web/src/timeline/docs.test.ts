@@ -194,3 +194,29 @@ describe('docs/high-level-design.md and timeline-zoom-slider', () => {
     assert.ok(within(s6, s7), '§6 names it')
   })
 })
+
+/* The design document names the change in D-20, §4.10 and §6, with the edge-cut model and the 100 ms end rule (clip-edge-trim). */
+describe('docs/high-level-design.md and clip-edge-trim', () => {
+  const text = readFileSync(new URL('../../../docs/high-level-design.md', import.meta.url), 'utf8')
+
+  it('names clip-edge-trim in D-20, §4.10 and §6', () => {
+    const lines = text.split('\n')
+    const at = lines.flatMap((line, i) => (line.includes('clip-edge-trim') ? [i] : []))
+    const d20 = lines.findIndex((line) => line.startsWith('- **D-20'))
+    const d21 = lines.findIndex((line) => line.startsWith('- **D-21'))
+    assert.ok(d20 > 0 && d21 > d20)
+    assert.ok(at.some((i) => i > d20 && i < d21), 'D-20 names it')
+    const s410 = lines.findIndex((line) => line.startsWith('### 4.10 '))
+    const s411 = lines.findIndex((line) => line.startsWith('### 4.11 '))
+    assert.ok(at.some((i) => i > s410 && i < s411), '§4.10 names it')
+    const s6 = lines.findIndex((line) => line.startsWith('## 6. '))
+    const s7 = lines.findIndex((line) => line.startsWith('## 7. '))
+    assert.ok(at.some((i) => i > s6 && i < s7), '§6 names it')
+  })
+
+  it('says an edge is the clip\'s leading or trailing cut, one edit per release, and the 5.92 s limit', () => {
+    assert.ok(text.includes('**No new field:** an edge is the clip\'s **edge cut**'))
+    assert.ok(text.includes('one `cut-edge` action'))
+    assert.ok(text.includes('the start stops at 5.92 s'))
+  })
+})
