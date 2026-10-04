@@ -4,6 +4,8 @@ import { describe, it } from 'node:test'
 import type { EnqueueProxiesResult } from '../api/proxies.ts'
 import {
   cardsNotes,
+  TRACK_KEYS,
+  zoomValueText,
   clipDescription,
   jobAnnouncement,
   jobEndWords,
@@ -250,5 +252,17 @@ describe('the movie stat on a rippled track (timeline-ripple-layout)', () => {
   it('counts the full footage, so edge cuts show as cuts: A, B and C of 10, 8 and 5 s', () => {
     // Kept 18 s of 23 s of footage; the rippled track (19 s) is not the footage.
     assert.equal(movieStat(18000, 23000), 'Movie 0:18.00 · footage 0:23.00 · cuts −0:05.00')
+  })
+})
+
+describe('zoom words', () => {
+  it('says Fit at the slider\'s left end and the scale in whole px per second elsewhere', () => {
+    assert.equal(zoomValueText(17.3, true), 'Fit')
+    assert.equal(zoomValueText(40, false), '40 px per second')
+    assert.equal(zoomValueText(239.6, false), '240 px per second')
+  })
+
+  it('names the backslash in the track\'s keys', () => {
+    assert.match(TRACK_KEYS, /\\ toggles Fit\.$/)
   })
 })
