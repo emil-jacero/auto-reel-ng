@@ -52,7 +52,10 @@ engine change, deleting a card's text when the switch is Off (the card edits sta
 ## Risks / Trade-offs
 
 - [The project's `decorators` list has other names and Off writes `[]`] → the switch says, when the source is
-  `project`, that saving writes this event's own list; the event overrides, as D-J says.
+  `project`, that saving writes this event's own list; the event overrides, as D-J says. Known limit: the event key wins
+  wholesale, so a project decorator other than `title` is dropped for that event on the first toggle. Only `none` and
+  `title` are registered today, so no output changes; the save bar does not name it and the service does not yet expose
+  the effective names, so a future registered decorator needs that exposure first.
 - [A hand-written radio style looks like a chosen value] → `data-inherited` is announced ("event style, not set") and
   scenario-tested by role and name.
 - [Pointer-down on the handle selects and the inspector now sits below] → asserted by Playwright: the track's bounding box

@@ -271,6 +271,12 @@ const CardHandleSlider = memo(function CardHandleSlider({
     if (event.ctrlKey || event.altKey || event.metaKey) {
       return
     }
+    if (event.key === 'Enter' || event.key === ' ') {
+      // Selecting is an activation, never a side effect of focus alone (WCAG 3.2.1).
+      event.preventDefault()
+      onSelect(chapter)
+      return
+    }
     const wanted =
       rangeNow === null || active.current !== null
         ? null
@@ -364,7 +370,6 @@ const CardHandleSlider = memo(function CardHandleSlider({
       onKeyDown={keyDown}
       onFocus={(event) => {
         setFocused(event.currentTarget.matches(':focus-visible'))
-        onSelect(chapter)
         keepInView()
       }}
       onBlur={() => setFocused(false)}
