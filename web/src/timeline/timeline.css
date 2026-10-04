@@ -82,7 +82,9 @@
    * A grid of fixed slots (`timeline-zoom-slider`): no state (seeking, a frame loading, playing,
    * the playhead in a card, Use as poster unable to act) adds text to it or moves a control.
    * One row when it fits; two (Play and the readout / zoom and poster), then three (zoom and
-   * poster each on a row of their own) on narrower Timelines, the same rows in every state.
+   * poster each on a row of their own) on narrower Timelines, the same rows in every state. The
+   * movie's length (`help-text-declutter`) is the last row: it changes with an edit, never with a
+   * seek or play.
    */
   .tl-controls {
     display: grid;
@@ -90,7 +92,8 @@
     grid-template-areas:
       'play readout'
       'zoom zoom'
-      'poster poster';
+      'poster poster'
+      'stat stat';
     align-items: center;
     gap: var(--s-2) var(--s-3);
   }
@@ -100,14 +103,17 @@
       grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-areas:
         'play readout readout'
-        'zoom zoom poster';
+        'zoom zoom poster'
+        'stat stat stat';
     }
   }
 
   @container tl (min-width: 64rem) {
     .tl-controls {
       grid-template-columns: auto minmax(0, 1fr) auto auto;
-      grid-template-areas: 'play readout zoom poster';
+      grid-template-areas:
+        'play readout zoom poster'
+        'stat stat stat stat';
     }
   }
 
@@ -246,6 +252,7 @@
   /* The movie's length, one line in the control row; the cuts and card terms wrap whole at 390 px. */
   .tl-stat {
     display: flex;
+    grid-area: stat;
     flex-wrap: wrap;
     gap: 0 var(--s-2);
     color: var(--fg-muted);
