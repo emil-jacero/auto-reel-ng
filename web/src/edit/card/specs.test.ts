@@ -17,7 +17,7 @@ const style: EventStyle = {
 }
 const spec: CardSpec = {
   chapter: 'Dag 2',
-  card: { duration: 4, background: 'video', title: 'Dag 2', subtitle: '', fontFamily: 'DejaVu Sans' },
+  card: { duration: 4, background: 'video', title: 'Dag 2', subtitle: '', defaultSubtitle: '', fontFamily: 'DejaVu Sans' },
   error: null,
 }
 
@@ -52,6 +52,43 @@ describe('draftSpec', () => {
     const unresolved: CardSpec = { chapter: 'A', card: null, error: 'bad' }
     assert.equal(draftSpec(unresolved, null, NO_CARD, draft, 'A'), unresolved)
     assert.equal(draftSpec(unresolved, style, NO_CARD, draft, 'A').card?.subtitle, 'S')
+  })
+})
+
+describe('draftSpec and the subtitle default', () => {
+  const opening: CardSpec = {
+    chapter: '',
+    card: {
+      duration: 4,
+      background: 'black',
+      title: 'Midsommar',
+      subtitle: '2024-08-20\nPlats: Tjörn',
+      defaultSubtitle: '2024-08-20\nPlats: Tjörn',
+      fontFamily: 'DejaVu Sans',
+    },
+    error: null,
+  }
+  const read = readCard({})
+
+  it('an unset subtitle shows the detail’s default, a typed one replaces it, "" is none', () => {
+    const edit = (subtitle: string | null) =>
+      draftSpec(opening, style, read, withField(read, 'subtitle', subtitle), 'Midsommar')
+    assert.equal(edit(null), opening)
+    assert.equal(edit('Hos mormor').card?.subtitle, 'Hos mormor')
+    assert.equal(edit('').card?.subtitle, '')
+    assert.equal(edit('').card?.defaultSubtitle, '2024-08-20\nPlats: Tjörn')
+  })
+
+  it('going back from "" to unset shows the default again', () => {
+    const saved = readCard({ subtitle: '' })
+    const savedSpec: CardSpec = { ...opening, card: { ...opening.card!, subtitle: '' } }
+    const back = draftSpec(savedSpec, style, saved, withField(saved, 'subtitle', null), 'Midsommar')
+    assert.equal(back.card?.subtitle, '2024-08-20\nPlats: Tjörn')
+  })
+
+  it('a chapter card has no default: unset stays empty', () => {
+    const draft = withField(read, 'title', 'X')
+    assert.equal(draftSpec(spec, style, read, draft, 'Dag 2').card?.subtitle, '')
   })
 })
 

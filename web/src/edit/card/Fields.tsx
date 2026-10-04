@@ -136,7 +136,10 @@ export function TextField({
   placeholder,
   follows,
   onChange,
+  action,
 }: Common & {
+  /** A button beside the control that sets the field to a value of its own (No subtitle). */
+  action?: { label: string; onPress: () => void } | null
   multiline: boolean
   /** The on-screen keyboard to ask for (numbers typed as text, to be refused by the service). */
   inputMode?: 'text' | 'numeric' | 'decimal'
@@ -157,8 +160,9 @@ export function TextField({
       onClear={onClear}
       words={words}
     >
-      {(control) =>
-        multiline ? (
+      {(control) => (
+        <>
+        {multiline ? (
           <textarea
             {...control}
             className="field-input ci-text ci-multiline"
@@ -182,8 +186,24 @@ export function TextField({
             aria-disabled={locked || undefined}
             onChange={(event) => onChange(event.currentTarget.value)}
           />
-        )
-      }
+        )}
+        {action != null && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-compact ci-action"
+            data-action={field}
+            aria-disabled={locked || undefined}
+            onClick={() => {
+              if (!locked) {
+                action.onPress()
+              }
+            }}
+          >
+            {action.label}
+          </button>
+        )}
+        </>
+      )}
     </FieldShell>
   )
 }

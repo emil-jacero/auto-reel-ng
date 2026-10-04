@@ -7,12 +7,12 @@ import { ADDED_WORDS, NO_SUBTITLE, cardRowInfo } from './cardRows.ts'
 const specs: CardSpec[] = [
   {
     chapter: '',
-    card: { duration: 3, background: 'black', title: 'Sommaren', subtitle: '', fontFamily: 'Sofia Sans' },
+    card: { duration: 3, background: 'black', title: 'Sommaren', subtitle: '', defaultSubtitle: '', fontFamily: 'Sofia Sans' },
     error: null,
   },
   {
     chapter: 'Dag 2',
-    card: { duration: 4, background: 'video', title: 'Dag två', subtitle: 'Stranden', fontFamily: 'Sofia Sans' },
+    card: { duration: 4, background: 'video', title: 'Dag två', subtitle: 'Stranden', defaultSubtitle: '', fontFamily: 'Sofia Sans' },
     error: null,
   },
   { chapter: 'Dag 3', card: null, error: 'card.font_family' },
@@ -59,6 +59,24 @@ describe('cardRowInfo', () => {
     assert.equal(row.title, 'Sommaren')
   })
 
+  it('shows the effective subtitle on one line, the default included, and No subtitle only when empty', () => {
+    const withText = (subtitle: string): CardSpec[] => [
+      {
+        chapter: '',
+        card: { duration: 3, background: 'black', title: 'T', subtitle, defaultSubtitle: '2024-08-20\nPlats: Tjörn', fontFamily: 'F' },
+        error: null,
+      },
+    ]
+    const subtitleOf = (subtitle: string) => {
+      const row = cardRowInfo({ readName: '', name: '' }, withText(subtitle))
+      assert.ok(row?.kind === 'card')
+      return row.subtitle
+    }
+    assert.equal(subtitleOf('2024-08-20\nPlats: Tjörn'), '2024-08-20 / Plats: Tjörn')
+    assert.equal(subtitleOf('Hos mormor'), 'Hos mormor')
+    assert.equal(subtitleOf(''), NO_SUBTITLE)
+  })
+
   it('says the saved name of a renamed chapter and keeps its saved card', () => {
     const row = cardRowInfo({ readName: 'Dag 2', name: 'Dag två' }, specs)
     assert.ok(row?.kind === 'card')
@@ -79,7 +97,7 @@ describe('cardRowInfo', () => {
       savedName: null,
     })
     const bad: CardSpec[] = [
-      { chapter: 'X', card: { duration: 0, background: 'black', title: '', subtitle: '', fontFamily: 'F' }, error: null },
+      { chapter: 'X', card: { duration: 0, background: 'black', title: '', subtitle: '', defaultSubtitle: '', fontFamily: 'F' }, error: null },
     ]
     assert.equal(cardRowInfo({ readName: 'X', name: 'X' }, bad)?.kind, 'unresolved')
   })

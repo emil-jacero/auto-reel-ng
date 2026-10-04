@@ -197,8 +197,10 @@ segment's length, its fades shrunk together, and the render reports a warning.
 
 A card has its own text, length and style (**D-24**, `title-card-model`). Its heading is the card's `title`, else
 the chapter's name, else (the opening card of the default chapter) the event title; its subtitle is free text,
-empty by default on every card, so **the opening card no longer shows the date, the location or the
-description**. Each card's length and style are the engine defaults, then the event-wide `look.title_card`, then
+empty by default on a chapter card. **The opening card's default subtitle is the event's date and place again**
+(`title-card-date-place-shadow`): the ISO date, then `Plats: <location>`, each only when known, never the
+description; any `subtitle` text replaces it and an explicit `subtitle: ""` means none. A card over video
+draws a soft drop shadow under its text (`RENDER_GRAPH_VERSION` 9). Each card's length and style are the engine defaults, then the event-wide `look.title_card`, then
 the chapter's own `card:` in `reel.yaml`, parsed once so the fades clamp to the card's own length.
 
 > ✅ **Resolved (§8.5):** Cairo + Pango, fail-loud font resolution, structural + tolerance-gated tests. The
@@ -379,6 +381,9 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   previous image kept, failures in words, one retry after `Retry-After`); a Video card is laid over the **thumbnail
   frame** of the clip it sits over (not the exact start: the preview has no frame-at-time option). Follow-ups: serve
   the bundled font files so the picker can show each family in its own face, and a frame-at-time route.
+- **v2 opening subtitle and shadow** (`title-card-date-place-shadow`, D-24): the opening card's Subtitle shows the
+  engine's `default_subtitle` (from the event detail) as its placeholder, **No subtitle** writes `""`, **Use default**
+  removes the key; rows show the effective subtitle. The page composes no default.
 - **v2 event card style** (`title-card-event-style`, D-24): **Card style for this event** (Edit mode, closed by default,
   `web/src/edit/CardStylePanel.tsx`, pure model `cardStyle.ts`) edits the event-wide `look.title_card` (font, title and
   subtitle size, colour, position, default length, default background) in the same draft as everything else. A card
@@ -774,7 +779,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    change.
    `title-cards-default-on` follows the user's "the opening card and each chapter's card should be created automatically":
    cards are on unless `look.decorators` says otherwise, and the event detail reports `title_cards` (D-25;
-   `RENDER_GRAPH_VERSION` 8); the Timeline's `unset` guess still has to be replaced by reading it.
+   `RENDER_GRAPH_VERSION` 8; `title-card-date-place-shadow` then restored the opening card's date and place and added the
+   video-card shadow, `RENDER_GRAPH_VERSION` 9); the Timeline's `unset` guess still has to be replaced by reading it.
    `title-card-blocks` has landed (the web half begins): every chapter's card is a block on the Timeline and a row in Edit
    mode's chapter list, selectable, web-only and read only; editing a card comes next.
    `title-card-duration-drag` has landed (web only): a card's length is dragged on the Timeline's card block, written as
@@ -1635,6 +1641,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     additive). The default chapter `""` holds the opening card. A chapter is renamed, reordered and deleted with its
     card by the machinery that already pairs chapters; a card is not a clip property and not a map keyed by a name
     the editor changes.
+  - **Opening subtitle and shadow** (`title-card-date-place-shadow`, user: "Opening subtitle: show date and location",
+    "Shadow on text: yes"). With no `subtitle` key the default chapter's card shows the ISO date and `Plats: <location>`
+    (`default_subtitle`, also reported by the event detail); `subtitle: ""` is the opt-out. A `video` card is drawn with a
+    blurred shadow (60 % alpha, offset 0.004 and blur 0.006 of the height); a `black` card is unchanged.
   - **The keys and their bounds** (named constants in `reel/card.py`, pinned by tests): `title` (not blank),
     `subtitle` (any text, empty allowed), `duration` (finite, 0.5 to 60 s), `background` (`black` | `video`),
     `font_family` (not blank in `reel/`, which cannot see fonts; the render layer checks it against the bundled registry (D-22) when the card's style is parsed),

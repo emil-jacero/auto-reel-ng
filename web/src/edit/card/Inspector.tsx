@@ -12,11 +12,15 @@ import { ColorField } from './ColorField'
 import { FontField } from './FontField'
 import { BACKGROUND_OPTIONS, POSITION_OPTIONS } from './choice.ts'
 import { Choice, NumberField, TextField } from './Fields'
+import type { FieldWords } from './Fields'
 import { CardPreview } from './Preview'
 import type { Backdrop } from './Preview'
 import { useFonts } from './useFonts.ts'
 import {
+  NO_SUBTITLE_WORDS,
   changedFields,
+  openingSubtitleFollows,
+  openingSubtitlePlaceholder,
   overBounds,
   previewRequest,
   titlePlaceholder,
@@ -37,6 +41,12 @@ import { overrideWords } from '../cardStyle.ts'
 
 export const NO_SUBTITLE_PLACEHOLDER = 'No subtitle'
 export const FOLLOW_SUBTITLE = 'Event style: no subtitle'
+/** The opening card's subtitle follows the engine's default, not the event style. */
+export const OPENING_SUBTITLE_WORDS: FieldWords = {
+  clear: 'Use default',
+  tag: 'Default',
+  hint: 'Default',
+}
 
 /** The inspector's name: the opening card is not a chapter's. */
 export function inspectorName(opening: boolean, name: string): string {
@@ -99,6 +109,10 @@ export function CardInspectorPanel({
     return words === '' ? 'unknown' : words
   }
   const shared = { locked, onClear: clear }
+  // The opening card alone has a default subtitle (the engine's date and place); the page shows
+  // the detail's value and composes none.
+  const defaultSubtitle = spec?.card?.defaultSubtitle ?? ''
+  const effectiveSubtitle = card.subtitle ?? defaultSubtitle
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Escape' && !event.defaultPrevented) {
@@ -165,8 +179,18 @@ export function CardInspectorPanel({
             field="subtitle"
             multiline
             value={card.subtitle}
-            placeholder={NO_SUBTITLE_PLACEHOLDER}
-            follows={FOLLOW_SUBTITLE}
+            placeholder={
+              opening
+                ? openingSubtitlePlaceholder(card.subtitle, defaultSubtitle)
+                : NO_SUBTITLE_PLACEHOLDER
+            }
+            follows={opening ? openingSubtitleFollows(defaultSubtitle) : FOLLOW_SUBTITLE}
+            words={opening ? OPENING_SUBTITLE_WORDS : undefined}
+            action={
+              opening && card.subtitle !== ''
+                ? { label: NO_SUBTITLE_WORDS, onPress: () => set('subtitle', '') }
+                : null
+            }
             error={refused('subtitle') ?? bound('subtitle')}
             onChange={(value) => set('subtitle', value === '' ? null : value)}
             {...shared}
@@ -237,7 +261,7 @@ export function CardInspectorPanel({
           eventId={eventId}
           request={request}
           title={card.title ?? follow.placeholder}
-          subtitle={card.subtitle ?? ''}
+          subtitle={effectiveSubtitle}
           video={effectiveBackground(card, style, spec) === 'video'}
           backdrop={backdrop}
           tooLong={over.length > 0}

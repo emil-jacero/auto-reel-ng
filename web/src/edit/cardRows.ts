@@ -1,6 +1,7 @@
 import { cardDurationMs, cardWords } from '../timeline/cards.ts'
 import type { CardSpec } from '../timeline/cards.ts'
 import { USES_EVENT_STYLE } from './cardStyle.ts'
+import { oneLine } from './card/model.ts'
 
 /*
  * The card row at the head of each chapter in Edit mode (`title-card-blocks`), as data: what
@@ -71,7 +72,7 @@ export function cardRowInfo(
       kind: 'card',
       chapter: spec.chapter,
       title: spec.card.title,
-      subtitle: spec.card.subtitle === '' ? NO_SUBTITLE : spec.card.subtitle,
+      subtitle: spec.card.subtitle === '' ? NO_SUBTITLE : oneLine(spec.card.subtitle),
       length: `${(durationMs / 1000).toFixed(1)} s`,
       look: background === 'video' ? 'Video' : 'Black',
       font: spec.card.fontFamily,
