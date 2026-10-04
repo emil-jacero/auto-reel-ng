@@ -191,60 +191,31 @@
   /* ------------------------------------------------------------ the marks line */
 
   /*
-   * How clips are marked, and, once any is, how many and Clear marks. The right slot always
-   * has the button's height and room, its children `hidden` rather than the slot, so the
-   * first mark and the last unmark move no row. Focused by script after Clear marks.
+   * How clips are marked, what to do with them, and why a control waits: one aligned toolbar
+   * (`edit-mode-declutter`). One height token for every button and the picker, one axis per row,
+   * one gap for items and one for rows; the reason is a single muted hint line below the controls
+   * that keeps its place whether it speaks or not, so the first mark moves no row. The count slot
+   * keeps its height, its children `hidden` rather than the slot. Focused by script after Clear marks.
    */
   .mark-line {
+    --mark-control-h: 2.25rem;
+    --mark-gap: var(--s-3);
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: var(--s-2) var(--s-4);
+    gap: var(--mark-gap);
     color: var(--fg-muted);
     font-size: var(--text-sm);
 
     &:focus {
       outline: none;
     }
-  }
 
-  .mark-line-slot {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: var(--s-3);
-    min-block-size: 1.625rem;
-    min-inline-size: 14rem;
-
-    & .mark-count {
-      color: var(--fg);
-      font-weight: 600;
-      white-space: nowrap;
-    }
-  }
-
-  /* Rotate marked left / right: a line of its own under the hint, wrapping at a phone's width. */
-  .mark-rotate {
-    grid-column: 1 / -1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--s-2) var(--s-4);
-  }
-
-  /*
-   * Move marked to…: label, native picker, Move and the reason, on a line of its own. The
-   * reason's slot keeps its line either way, so the first mark moves no row.
-   */
-  .mark-move {
-    grid-column: 1 / -1;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--s-2) var(--s-4);
-
-    & label {
-      color: var(--fg);
-      font-weight: 600;
+    /* The one height and corner of every control in the line; text is centred in it. */
+    & :is(.btn, select) {
+      box-sizing: border-box;
+      block-size: var(--mark-control-h);
+      min-block-size: var(--mark-control-h);
+      padding-block: 0;
+      border-radius: var(--r-md);
     }
 
     & select {
@@ -258,41 +229,115 @@
         outline-offset: 1px;
       }
     }
+  }
 
-    & .mark-move-why {
-      min-block-size: 2.5rem;
+  /* The marking hint at the start, the count and Clear marks at the end; one axis. */
+  .mark-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mark-gap);
+    min-block-size: var(--mark-control-h);
+
+    & > p {
+      flex: 1 1 14rem;
+      margin: 0;
     }
   }
 
-  /* A finger: each compact button's touch area reaches 9px up and down, so lines keep 24px apart. */
+  .mark-line-slot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--mark-gap);
+    min-block-size: var(--mark-control-h);
+    /* Room for the count and Clear marks even when hidden, so the hint wraps the same either way. */
+    min-inline-size: 15rem;
+
+    & .mark-count {
+      color: var(--fg);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+  }
+
+  /* Rotate marked left / right, then the Move group: groups wrap whole, each a row on one axis. */
+  .mark-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mark-gap) var(--s-6);
+  }
+
+  .mark-rotate,
+  .mark-move {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mark-gap);
+    min-inline-size: 0;
+  }
+
+  .mark-move {
+    & label {
+      display: inline-flex;
+      align-items: center;
+      min-block-size: var(--mark-control-h);
+      color: var(--fg);
+      font-weight: 600;
+    }
+  }
+
+  /* The reason: one muted line below the controls, from the toolbar's left edge; it keeps its line. */
+  .mark-move-why {
+    margin: 0;
+    min-block-size: 1.25rem;
+    line-height: 1.25rem;
+    color: var(--fg-muted);
+  }
+
+  /* A finger: the controls are 44 px themselves, so no row needs a larger gap to keep taps apart. */
   @media (pointer: coarse) {
     .mark-line {
-      row-gap: 1.5rem;
-    }
-
-    .mark-rotate,
-    .mark-move {
-      row-gap: 1.5rem;
-    }
-
-    .mark-move select {
-      min-block-size: 2.75rem;
+      --mark-control-h: 2.75rem;
     }
   }
 
+  /* Narrow: the Move group goes on a row of its own, label above, picker filling the row beside Move. */
   @media (width < 40rem) {
-    .mark-line {
-      grid-template-columns: minmax(0, 1fr);
+    .mark-head > p {
+      flex-basis: 100%;
     }
 
     .mark-line-slot {
-      justify-content: flex-start;
       min-inline-size: 0;
+      justify-content: flex-start;
     }
 
-    /* Its own line whether it speaks or not, so a reason arriving moves no row. */
-    .mark-move .mark-move-why {
-      flex: 1 0 100%;
+    .mark-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .mark-rotate {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+    }
+
+    .mark-move {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--s-1) var(--mark-gap);
+
+      & label {
+        grid-column: 1 / -1;
+      }
+
+      & select {
+        inline-size: 100%;
+        min-inline-size: 0;
+      }
     }
   }
 

@@ -7,7 +7,11 @@ import { Alert } from '../ui/Alert'
 import { Dialog } from '../ui/Dialog'
 import { CardInspectorPanel, inspectorName } from '../edit/card/Inspector'
 import type { CardEditing } from '../edit/card/editing.ts'
-import { backdropOf } from '../edit/card/specs.ts'
+import { backdropOf, effectiveBackground } from '../edit/card/specs.ts'
+import type { NameGate } from '../edit/card/NameField'
+import { doneHeld } from '../edit/card/nameField.ts'
+import { cardLimits, secondsToTenths } from './cardLength.ts'
+import type { CardRange } from './cardLength.ts'
 import type { Backdrop } from '../edit/card/Preview'
 import { CardInspector, inspectorWords } from './CardInspector'
 import { Prepare, usePrepare } from './Prepare'
@@ -18,20 +22,24 @@ import type { Dismissals } from './overlays/Dismissals'
 import { Timeline } from './Timeline'
 import type { EditBinding } from './editing'
 import { NO_CLIPS } from './labels'
-import { omittedWords, readiness, sectionState, shownClips, trackClips } from './layout'
+import { omittedWords, readiness, sectionOpen, sectionState, shownClips, trackClips } from './layout'
 
 /*
  * The event page's Timeline section: a heading and one button. Closed, it holds nothing:
  * no video, no request. Open, it shows what the clips' proxies allow: a note when there is
  * no clip to show, the Prepare state while any shown clip has no ready proxy, and the track
  * once every one has. The one thing it can start is the proxy job, by the Prepare button.
- * A Refresh or entering or leaving Edit mode replaces the page's content, so the section is
- * closed again afterwards.
+ * A Refresh or entering or leaving Edit mode replaces the page's content, so the read view's
+ * section is closed again afterwards. In Edit mode the section is open from the start and has
+ * no button (`edit-mode-declutter`): Edit mode is where the cuts are trimmed.
  *
  * In the read view it writes nothing and draws the cuts as saved. In Edit mode (`editing`)
  * it is the same section on the editor's draft: the draft's cuts, with a trim handle at
  * each edge of a cut (`timeline-trim`); the editor owns Save.
  */
+
+/** The Length field's range while no card is open (unused: the dialog is closed). */
+const NO_RANGE: CardRange = { adjustable: false, reason: '' }
 
 export function TimelineSection({
   eventId,
@@ -58,7 +66,8 @@ export function TimelineSection({
   /** Edit mode's cards (`title-card-inspector`): the draft's specs and the inspector's edits; null in the read view. */
   cardEditing?: CardEditing | null
 }) {
-  const [open, setOpen] = useState(false)
+  const [toggled, setToggled] = useState(false)
+  const open = sectionOpen(editing !== null, toggled)
   const headingId = useId()
   const bodyId = useId()
   const shown = useMemo(() => shownClips(event), [event])
@@ -98,8 +107,14 @@ export function TimelineSection({
     [specs, decorators, source, cardsError, cards, cardEditing?.previewStyle],
   )
   // The selection ends with its chapter, whenever the event is read again without it.
+  // In Edit mode the editor retains, from the draft's chapters (a chapter added there has a card to edit too).
   const { retain } = cards
-  useEffect(() => retain(specs.map((spec) => spec.chapter)), [retain, specs])
+  const retains = cardEditing === null
+  useEffect(() => {
+    if (retains) {
+      retain(specs.map((spec) => spec.chapter))
+    }
+  }, [retain, specs, retains])
   const selectedSpec =
     cards.selected === null ? undefined : specs.find((spec) => spec.chapter === cards.selected)
   // The card whose dialog is open, in Edit mode: the card as the draft has it, and the clip a
@@ -119,13 +134,10 @@ export function TimelineSection({
     }),
     [],
   )
-  const backdrop = useMemo<Backdrop | null>(() => {
-    if (cards.editing === null || selectedView === null) {
-      return null
-    }
-    const chapter = specs.findIndex((spec) => spec.chapter === cards.editing)
-    const placements =
-      clips === null || chapter === -1
+  // Where the dialog's card sits among the clips, when the Timeline knows them (not in Prepare).
+  const placements = useMemo(
+    () =>
+      clips === null
         ? null
         : cardPlacements(
             specs,
@@ -135,7 +147,14 @@ export function TimelineSection({
               spans: clip.spans,
             })),
             decorators,
-          )
+          ),
+    [specs, clips, decorators],
+  )
+  const backdrop = useMemo<Backdrop | null>(() => {
+    if (cards.editing === null || selectedView === null) {
+      return null
+    }
+    const chapter = specs.findIndex((spec) => spec.chapter === cards.editing)
     const found = chapter === -1 ? null : backdropOf(chapter, shown.clips, placements)
     const clip =
       found === null
@@ -144,22 +163,61 @@ export function TimelineSection({
     return clip === undefined || found === null
       ? null
       : { clip, name: found.name, turn: cutsRead.turns?.get(found.identity) ?? 0 }
-  }, [cards.editing, selectedView, specs, clips, decorators, shown, event, cutsRead.turns])
+  }, [cards.editing, selectedView, specs, placements, shown, event, cutsRead.turns])
+  // The limits of the dialog's Length field: the drag's own, from the card's placement.
+  const lengthRange = useMemo<CardRange>(() => {
+    if (cards.editing === null || selectedView === null) {
+      return NO_RANGE
+    }
+    const chapter = specs.findIndex((spec) => spec.chapter === cards.editing)
+    const spec = chapter === -1 ? undefined : specs[chapter]
+    const seconds = selectedView.card.duration ?? spec?.card?.duration ?? cardEditing?.style?.duration ?? 4
+    const currentTenths = secondsToTenths(seconds)
+    const place = placements?.find(
+      (candidate) =>
+        candidate.chapter === chapter && (candidate.kind === 'anchored' || candidate.kind === 'off'),
+    )
+    const background = effectiveBackground(selectedView.card, cardEditing?.style ?? null, spec)
+    if (place !== undefined && 'keptMs' in place) {
+      return cardLimits({ background: place.background, currentTenths, keptMs: place.keptMs })
+    }
+    if (background === 'video') {
+      return {
+        adjustable: false,
+        reason:
+          placements === null
+            ? 'Prepare the Timeline to see how much footage is under a video card.'
+            : 'The chapter has no footage to put the card over.',
+      }
+    }
+    return cardLimits({ background: 'black', currentTenths, keptMs: null })
+  }, [cards.editing, selectedView, specs, placements, cardEditing?.style])
+  // The Name field's gate: Done is held while it holds a refused name.
+  const nameGate = useRef<NameGate | null>(null)
+  const onDone = () => {
+    if (doneHeld(nameGate.current?.refusal() ?? null)) {
+      nameGate.current?.focus()
+      return
+    }
+    cards.dismiss()
+  }
   const state = sectionState(open, shown.clips)
   const omitted = omittedWords(shown.omitted)
   return (
     <section className="panel timeline-panel" aria-labelledby={headingId}>
       <header className="panel-header">
         <h2 id={headingId}>Timeline</h2>
-        <button
-          type="button"
-          className="btn btn-secondary tl-toggle"
-          aria-expanded={open}
-          aria-controls={bodyId}
-          onClick={() => setOpen((was) => !was)}
-        >
-          {open ? 'Close timeline' : 'Open timeline'}
-        </button>
+        {editing === null && (
+          <button
+            type="button"
+            className="btn btn-secondary tl-toggle"
+            aria-expanded={open}
+            aria-controls={bodyId}
+            onClick={() => setToggled((was) => !was)}
+          >
+            {open ? 'Close timeline' : 'Open timeline'}
+          </button>
+        )}
       </header>
       <div id={bodyId} className="timeline-body" hidden={!open}>
         {state !== 'closed' && (
@@ -207,11 +265,13 @@ export function TimelineSection({
               editing={cardEditing}
               spec={specs.find((spec) => spec.chapter === cards.editing)}
               backdrop={backdrop}
+              lengthRange={lengthRange}
+              gate={nameGate}
               onClose={cards.dismiss}
             />
           </div>
           <div className="dialog-actions">
-            <button type="button" className="btn btn-primary" onClick={cards.dismiss}>
+            <button type="button" className="btn btn-primary" onClick={onDone}>
               Done
             </button>
           </div>

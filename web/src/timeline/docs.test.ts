@@ -74,7 +74,7 @@ describe('docs/high-level-design.md and title-card-toggle', () => {
   it('the README names the switch’s files', () => {
     const readme = readFileSync(new URL('../../README.md', import.meta.url), 'utf8')
     assert.match(readme, /decorators\.ts/)
-    assert.match(readme, /TitleCardsSwitch\.tsx/)
+    assert.match(readme, /EventTab\.tsx/)
   })
 })
 

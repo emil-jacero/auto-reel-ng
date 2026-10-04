@@ -11,6 +11,7 @@ import {
   omittedWords,
   readiness,
   readProxy,
+  sectionOpen,
   sectionState,
   shownClips,
   trackClips,
@@ -352,5 +353,20 @@ describe('filmTiles', () => {
     const portrait: FilmGeometry = { tileWidth: 50, tileHeight: 90, columns: 10, tiles: 5, interval: 1 }
     const [first, second] = filmTiles(portrait, 5000, 40, all)
     assert.equal(Math.round(second.x - first.x), 30)
+  })
+})
+
+describe('sectionOpen', () => {
+  it('the read view is closed until its button opens it, and toggles', () => {
+    assert.equal(sectionOpen(false, false), false)
+    assert.equal(sectionOpen(false, true), true)
+  })
+
+  it('Edit mode is open on entry, with or without a press, and a Refresh keeps it so', () => {
+    assert.equal(sectionOpen(true, false), true)
+    assert.equal(sectionOpen(true, true), true)
+    assert.equal(sectionState(sectionOpen(true, false), [{ health: 'absent' }]), 'prepare')
+    assert.equal(sectionState(sectionOpen(true, false), [{ health: 'ready' }]), 'track')
+    assert.equal(sectionState(sectionOpen(false, false), [{ health: 'ready' }]), 'closed')
   })
 })

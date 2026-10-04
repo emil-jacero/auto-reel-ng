@@ -8,7 +8,7 @@ import type { NameRefusal, NoteInput } from './chapterNames'
 
 /*
  * The chapter dialog of Edit mode, over the shared `Dialog`: the name dialog
- * (Add chapter; a chapter is renamed at its title, `InlineName.tsx`).
+ * (Add chapter; a chapter is renamed in the card dialog, `card/NameField.tsx`).
  * Each is plain native form
  * controls in a `.dialog-fields` form, so its description is its one-sentence
  * explanation, never its fields (Dialog.tsx). Each is rendered only while open:

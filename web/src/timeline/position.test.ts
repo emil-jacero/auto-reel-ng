@@ -168,6 +168,11 @@ describe('a place in a card', () => {
     assert.equal(globalMs(track, { clip: 0, ms: 0 }), 7000)
   })
 
+  it('never reads a time before zero when the cards were switched off under the playhead', () => {
+    const off = { startsMs: [0, 2000, 3000], totalMs: 3480 }
+    assert.equal(globalMs(off, { clip: 0, ms: 0, card }), 0)
+  })
+
   it('is a clip position unchanged by the card field', () => {
     assert.deepEqual(clampPosition([{ facts: { durationMs: 2000 } }], { clip: 0, ms: 5000 }), {
       clip: 0,

@@ -10,6 +10,7 @@ import {
   cardLimits,
   cardTenthsAt,
   cardValueText,
+  parseCardLength,
   releasedWords,
   secondsToTenths,
   tenthsToSeconds,
@@ -248,5 +249,70 @@ describe('the layout follows a card’s duration (withDurations)', () => {
     assert.deepEqual(handle.range, { adjustable: true, min: 5, max: 30 })
     assert.equal(handle.chapter, '')
     assert.equal(handle.tenths, 30)
+  })
+})
+
+describe('parseCardLength (the dialog\'s Length field)', () => {
+  const black = cardLimits({ background: 'black', currentTenths: 40, keptMs: null })
+  const video = cardLimits({ background: 'video', currentTenths: 20, keptMs: 3400 })
+
+  it('takes whole tenths within the limits, as the drag does', () => {
+    for (const [text, tenths] of [
+      ['6', 60],
+      ['0.5', 5],
+      ['60', 600],
+      [' 4,5 ', 45],
+      ['4.0', 40],
+    ] as const) {
+      assert.deepEqual(parseCardLength(text, black), {
+        kind: 'set',
+        tenths,
+        seconds: tenthsToSeconds(tenths),
+      })
+    }
+  })
+
+  it('refuses 0.3 and 90 in words naming both limits, and keeps no value', () => {
+    for (const text of ['0.3', '90']) {
+      const result = parseCardLength(text, black)
+      assert.equal(result.kind, 'refused')
+      assert.match((result as { words: string }).words, /0\.5 s and 60\.0 s/)
+    }
+  })
+
+  it('refuses text that is not a number, and a value that is not a whole tenth, without rounding', () => {
+    for (const text of ['abc', '4.', '-3', '1e1', '4.04', '4.55']) {
+      assert.equal(parseCardLength(text, black).kind, 'refused', text)
+    }
+    assert.match(
+      (parseCardLength('4.04', black) as { words: string }).words,
+      /whole tenths/,
+    )
+  })
+
+  it('reads the empty text as no length of its own', () => {
+    assert.deepEqual(parseCardLength('', black), { kind: 'unset' })
+    assert.deepEqual(parseCardLength('  ', black), { kind: 'unset' })
+  })
+
+  it('bounds a video card by its clip and names the longest', () => {
+    assert.equal(parseCardLength('3.4', video).kind, 'set')
+    const result = parseCardLength('5', video)
+    assert.equal(result.kind, 'refused')
+    assert.match((result as { words: string }).words, /3\.4 s/)
+  })
+
+  it('a card that is not adjustable gives its reason and takes no value', () => {
+    const none = cardLimits({ background: 'video', currentTenths: 40, keptMs: null })
+    assert.deepEqual(parseCardLength('4', none), {
+      kind: 'refused',
+      words: 'The chapter has no footage to put the card over.',
+    })
+  })
+
+  it('a value read back equals the drag\'s', () => {
+    const at = cardTenthsAt(6000, 40, { min: 5, max: 600 })
+    const parsed = parseCardLength('6', black)
+    assert.equal(parsed.kind === 'set' && parsed.tenths, at.tenths)
   })
 })

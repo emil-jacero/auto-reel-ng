@@ -173,3 +173,45 @@ export function releasedWords(
   return `${head} The movie is ${tenthsWords(Math.abs(now - was))} ${now > was ? 'longer' : 'shorter'}.`
 }
 
+
+/** What typing a length means (`parseCardLength`). */
+export type LengthParse =
+  | { kind: 'set'; tenths: Tenths; seconds: number }
+  | { kind: 'unset' }
+  | { kind: 'refused'; words: string }
+
+/** `0.5 s and 60.0 s`: the limits of a range, in words. */
+function limitWords(range: { min: Tenths; max: Tenths }): string {
+  const footage = range.max < CARD_MAX_TENTHS
+  return footage
+    ? `between ${tenthsWords(range.min)} and ${tenthsWords(range.max)} (the footage under it)`
+    : `between ${tenthsWords(range.min)} and ${tenthsWords(range.max)}`
+}
+
+/**
+ * A length typed in the card dialog, in seconds, against the limits the drag has (`cardLimits`).
+ * Whole tenths only; a value outside the limits, not a number or not a whole tenth is refused in
+ * words and never rounded or clamped to something the operator did not type; empty means no
+ * length of the card's own (Use event style); a card that is not adjustable refuses with its reason.
+ */
+export function parseCardLength(text: string, range: CardRange): LengthParse {
+  const typed = text.trim()
+  if (typed === '') {
+    return { kind: 'unset' }
+  }
+  if (!range.adjustable) {
+    return { kind: 'refused', words: range.reason }
+  }
+  if (!/^\d+([.,]\d+)?$/.test(typed)) {
+    return { kind: 'refused', words: 'Enter the length in seconds, for example 4 or 4.5.' }
+  }
+  const seconds = Number(typed.replace(',', '.'))
+  const tenths = Math.round(seconds * 10)
+  if (Math.abs(seconds * 10 - tenths) > 1e-9) {
+    return { kind: 'refused', words: 'Use whole tenths of a second, for example 4.0 or 4.5.' }
+  }
+  if (tenths < range.min || tenths > range.max) {
+    return { kind: 'refused', words: `A title card is ${limitWords(range)} long.` }
+  }
+  return { kind: 'set', tenths, seconds: tenthsToSeconds(tenths) }
+}

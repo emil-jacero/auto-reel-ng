@@ -346,9 +346,9 @@ src/
 │   ├── ClipOrderList.tsx one chapter's clips: its sortable list, a drop target, buttons; Remove / Undo
 │   ├── ChapterTools.tsx  a chapter's tools row, a deleted chapter's placeholder, Add chapter
 │   ├── ChapterDialogs.tsx the name dialog (Add chapter) and Move clips
-│   ├── InlineName.tsx    a title that is its own rename control: button, field, keep / drop / refuse
+│   ├── EditTitlecard.tsx the chapter header bar's Edit Titlecard button (selects the card, opens the dialog)
 │   ├── inlineName.ts     the keep / unchanged / refused rule, the title line, the unkept-name test (pure, + inlineName.test.ts)
-│   ├── TitleCard.tsx     the event's own chapter's Main title card line, over the draft's title
+│   ├── chapterBar.ts     the button's words and a chapter's card id (pure)
 │   ├── chapterNames.ts   chapter name rules and what a name means for later clips (pure)
 │   ├── MetadataForm.tsx  title, date, location, description, and inherited values
 │   ├── SaveBar.tsx       the save bar and a failed save's alert
@@ -757,15 +757,15 @@ retry state machine, with injected timers and client), `specs.ts` (the draft car
 show it; the clip a video card sits over), the hooks `useFonts` / `usePreview`, and the components. The
 draft slice and the write are in `edit/draft.ts`. Pure parts are tested by `npm test`.
 
-`src/edit/cardStyle.ts` and `CardStylePanel.tsx` are the event-wide card style (`title-card-event-style`):
+`src/edit/cardStyle.ts` and `card/EventTab.tsx` are the event-wide card style (`title-card-event-style`):
 `cardStyle.ts` is the pure model (the seven `look.title_card` fields, `styleChanged`, `applyStyle` which gives the
-`look` a save writes, `overrides` / `overrideWords`, `effective`), `CardStylePanel.tsx` the "Card style for this
-event" disclosure in Edit mode. The style is `Draft.style` in `edit/draft.ts` beside the card drafts; the
+`look` a save writes, `overrides` / `overrideWords`, `effective`), `card/EventTab.tsx` the dialog's second tab,
+"All title cards in this event" (`edit-mode-declutter`). The style is `Draft.style` in `edit/draft.ts` beside the card drafts; the
 inspector's font and colour controls (`card/FontField.tsx`, `card/ColorField.tsx`) are shared with the panel.
 
-`src/edit/decorators.ts` and `TitleCardsSwitch.tsx` are the Title cards On / Off switch (`title-card-toggle`):
+`src/edit/decorators.ts` and `card/EventTab.tsx` are the Title cards On / Off switch (`title-card-toggle`):
 `decorators.ts` is the pure model (`setTitleCards` gives the event's own `look.decorators` a position means, `applyDecorators`
-the `look` a save writes), `TitleCardsSwitch.tsx` the control in Edit mode. The override is `Draft.decorators`; the state shown
+the `look` a save writes), the switch is in `card/EventTab.tsx`. The override is `Draft.decorators`; the state shown
 is the detail's `title_cards` (`timeline/cards.ts` `cardsEnabled`), never read from `reel.yaml`. `card/choice.ts` is the pure
 rule for which option of a Background / Position choice is shown chosen or inherited.
 
