@@ -79,7 +79,7 @@ With every shown clip ready, the Timeline SHALL show, in one horizontally scroll
 - the **clips end to end** in play order (a black title card's span, when the event draws one before a chapter, is between them, see "Each chapter's title card is a block on the Timeline"), each as wide as its proxy's duration at the current zoom, labelled with its name as the page names it. A proxy has the source's timestamps, so a time in a proxy is the same time in the source clip. A clip's length SHALL come from its proxy's facts, never from the browser's reading of a file and never defaulted; a clip shorter than a pixel at the current zoom SHALL still be drawn, one pixel wide at least, and the playhead SHALL be able to be put in it by keyboard.
 - a **chapter band** above the clips: one segment per chapter spanning its shown clips, labelled with the chapter's name, or as the page headings an unnamed chapter ("Main" beside named chapters, "Clips" when none is named). The band's labels stay in view while their chapter scrolls past.
 - each clip's **cuts**, as the event page lists them from `reel.yaml` (in Edit mode: as the Cuts panels list them now, the draft's, with the ones marked removed left out), drawn over the clip as spans with a hatch pattern and named by their reason in words ("manual", "black", "white", "freeze") in the span's text alternative; overlapping or touching cuts SHALL be drawn as the render joins them, one span; a cut that runs past the proxy's duration SHALL be drawn to the end of the clip only. In the read view the spans SHALL be read-only: no handle, no drag, no edit. In Edit mode each cut SHALL have the two trim handles of "Edit mode's cuts are trim handles", drawn over the joined span.
-- the **movie's length**: the sum of the shown clips' lengths minus the time the cuts remove, plus the lengths of the black title cards the track draws, beside the source length, in words ("Movie 3:12 of 3:45 of footage"; with black cards, "Movie 3:20 of 3:45 of footage, with 8 s of title cards")
+- the **movie stat**, one muted line in the Timeline's control row (beside Play and the zoom), not a paragraph of its own: the movie's length (the sum of the shown clips' lengths minus the time the cuts remove, plus the lengths of the black title cards the track draws), then the source length, the time the cuts remove and the cards' time, each named, separated by " · " ("Movie 3:12 · footage 3:45 · cuts −0:33"; with black cards, "Movie 3:20 · footage 3:45 · cuts −0:33 · cards +0:08"). The cuts term SHALL be left out when no cut removes time, and the cards term when no black card adds time. The line SHALL wrap by whole terms, never scroll the page, and be written by the clock ("Running times are written to a fixed width and say what they are")
 
 If the cuts cannot be read (the same read the page's cut summaries use), the Timeline SHALL show the track without cut spans and SHALL say in a note that the cuts could not be read, and SHALL NOT show the movie's length as if there were no cuts.
 
@@ -109,7 +109,7 @@ If the cuts cannot be read (the same read the page's cut summaries use), the Tim
 
 #### Scenario: Black cards count in the movie's length
 - **WHEN** an event of 3:45 of footage with 33 s of cuts draws two black cards of 4.0 s each
-- **THEN** the readout says "Movie 3:20 of 3:45 of footage, with 8 s of title cards", and a video card adds nothing to it
+- **THEN** the stat reads "Movie 3:28.00 · footage 3:45.00 · cuts −0:25.00 · cards +0:08.00", and a video card adds nothing to it
 
 ### Requirement: Each clip shows a filmstrip from its proxy's sprite
 
@@ -300,7 +300,7 @@ cut that covered a suggestion SHALL return it to pending with no other action, a
 session SHALL show its suggestion as cut on the first read.
 
 The lane SHALL tell the three kinds of "no suggestions" apart: an event whose analysis was never run (no clip has a cached entry, whatever the service's `analyzed` flag says: a
-rendered event has a cache directory) SHALL say "Not analyzed" and name the command that runs it; an analysed event with nothing found SHALL say nothing was
+rendered event has a cache directory) SHALL show a small muted badge "Not analyzed" and no sentence (the command that runs it, `auto-reel analyze <root>` and then Refresh, is in the Timeline help); an analysed event with nothing found SHALL say nothing was
 found; and in an analysed event a clip with no cached analysis (its file changed since) SHALL be marked "Not
 analyzed" in its own row, while a clip analysed with nothing found SHALL show no marks. A read that fails SHALL
 leave the timeline usable and show a note, not an alert, that says the suggestions could not be read and why,
@@ -357,14 +357,14 @@ in the words the page uses for its other reads.
 #### Scenario: A rendered but never analysed event
 
 - **WHEN** an event has been rendered (its cache directory holds only the render manifest) and was never analysed
-- **THEN** the lane says "Not analyzed" and names `auto-reel analyze`, and no clip row says "Not analyzed" or that
+- **THEN** the lane shows the badge "Not analyzed" and the Timeline help names `auto-reel analyze`, and no clip row says "Not analyzed" or that
   nothing was found
 
 #### Scenario: Never analysed, analysed clean, and a stale clip
 
 - **WHEN** one event has no analysis cache, a second was analysed and nothing was found, and in a third the
   file `C0003.MP4` was replaced after analysis while its siblings have entries
-- **THEN** the first says "Not analyzed" and names `auto-reel analyze`, the second says nothing was found, and
+- **THEN** the first shows the badge "Not analyzed" and the Timeline help names `auto-reel analyze`, the second says nothing was found, and
   the third marks only `C0003.MP4`'s row "Not analyzed"
 
 #### Scenario: Reopening reads again
@@ -597,7 +597,7 @@ A key that would pass a limit SHALL stop at the limit, and a key at the limit SH
 
 ### Requirement: The selected cut's times can be typed, and stay in step with the handles
 
-Under the track the Timeline SHALL show the **selected cut** in a group named "Cut <n> of <name>" with two text fields, "Start of cut <n> of <name>" and "End of cut <n> of <name>", showing the cut's times in the Cuts panel's time format. A cut SHALL be selected when one of its handles gets keyboard focus or is pressed, or its span is pressed; the selection SHALL stay until another cut is selected or the cut is removed. With no selected cut the group SHALL say so and hold no field.
+Under the track the Timeline SHALL show the **selected cut** in a group named "Cut <n> of <name>" with two text fields, "Start of cut <n> of <name>" and "End of cut <n> of <name>", showing the cut's times in the Cuts panel's time format. A cut SHALL be selected when one of its handles gets keyboard focus or is pressed, or its span is pressed; the selection SHALL stay until another cut is selected or the cut is removed. With no selected cut the group SHALL NOT be shown: no line says that nothing is selected, no field is drawn and no room is kept for it. The fields' hint (the time forms, Enter and Escape) SHALL be in the Timeline help, and the fields SHALL name it as their `aria-describedby`.
 
 A time typed in a field SHALL be taken on Enter or when the field loses focus, in the forms the Cuts panel accepts (seconds, `m:ss`, `h:mm:ss`, up to three decimals), and SHALL make one edit of the draft. It SHALL be refused, and nothing changed, for the reasons the Cuts panel refuses a typed cut and in its words: unreadable, too precise, an end not after the start, an overlap with another cut of the clip that is not removed (the cut itself excepted), an end after the clip's length (the proxy's duration). A refusal SHALL be shown at the field the Cuts panel's rule names for it and announced; when the time was taken with Enter that field receives keyboard focus, and when it was taken because the field lost focus the refusal stands in the same words and focus stays where the operator put it. Escape in a field SHALL put the cut's current time back. A typed time need not be a frame time: it is taken to the millisecond, as a typed cut is.
 
@@ -624,6 +624,12 @@ The fields, the handles, the span drawn and the Cuts panel's list SHALL show the
 #### Scenario: A field being typed in is left alone
 - **WHEN** the operator has typed `0:0` in the start field without pressing Enter and presses Shift+Right on the cut's end handle, then returns to the field
 - **THEN** the field still reads `0:0`, and Enter takes what is in it
+
+#### Scenario: Nothing is selected, nothing is shown
+- **WHEN** the Timeline opens and no cut has been selected
+- **THEN** no "Selected cut" group and no sentence about a selection is in the document
+- **WHEN** a cut's handle gets focus
+- **THEN** the group "Cut 1 of <name>" appears under the track with its two fields
 
 ### Requirement: Trim handles are large enough for a finger, and a swipe still scrolls
 
@@ -965,11 +971,11 @@ thing SHALL be selected on the Timeline: selecting a card SHALL end the selectio
 SHALL end the selection of a card. Pressing the selected card again SHALL leave it selected; Escape SHALL clear
 it, unless the card's dialog is open, where Escape closes the dialog and the card stays selected. The selection SHALL end when its chapter is deleted or no longer in the event after a read. A block and the button SHALL be buttons reached by Tab in document order, pressed by Enter or Space, with `aria-pressed`, named in words
 as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default chapter: "Title card for the opening,
-…"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", not enabled"). In the read view a selection SHALL open nothing but an inspector slot, a labelled region with the selected card's words; it SHALL write nothing, request nothing and be announced once through the polite status region. In Edit mode, pressing a block or the button SHALL also open that card's dialog (`web-app`, "A selected title card opens its inspector in Edit mode"), and there is no inspector slot in the page.
+…"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", not enabled"). In the read view a selection SHALL open nothing and SHALL show no text: the selected card's words ("Title card for <chapter>, 7.0 s, over video") are the block's accessible name and are announced once through a visually hidden polite status region that is always in the page; there SHALL be no visible panel, line or region under the Timeline for a selected card. It SHALL write nothing and request nothing. In Edit mode, pressing a block or the button SHALL also open that card's dialog (`web-app`, "A selected title card opens its inspector in Edit mode"), and the page shows no panel for it either.
 
 #### Scenario: One selection from either place
 - **WHEN** the operator presses the block of "Dag 2" on the Timeline in Edit mode
-- **THEN** the block is pressed, "Dag 2"'s Edit Titlecard button is shown pressed, and the card's dialog opens (Edit mode) or the inspector slot names the card (read view)
+- **THEN** the block is pressed, "Dag 2"'s Edit Titlecard button is shown pressed, and the card's dialog opens (Edit mode) or the status region announces the card once (read view) and no text panel appears
 
 #### Scenario: Selecting a cut ends a card selection
 - **WHEN** a card is selected and the operator presses a cut's span
@@ -981,7 +987,7 @@ as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default cha
 
 #### Scenario: A deleted chapter ends the selection
 - **WHEN** the selected card's chapter is deleted in the draft
-- **THEN** nothing is selected and the slot is gone
+- **THEN** nothing is selected and the status region is empty
 
 #### Scenario: Keyboard and names
 - **WHEN** a keyboard user tabs to the "Dag 2" block and presses Space
@@ -991,6 +997,10 @@ as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default cha
 #### Scenario: Reading changes nothing
 - **WHEN** a card is selected in the read view or in Edit mode
 - **THEN** no request is made and the Save bar shows no unsaved change
+
+#### Scenario: A selected card shows no text panel
+- **WHEN** the operator selects the block of "Test" (7.0 s, over video) in the read view, and again in Edit mode
+- **THEN** no visible text "Title card for Test, 7.0 s, over video" is in the page, outside the block's own name and the visually hidden status region, and the status region held that sentence once
 
 ### Requirement: A card block's end edge is dragged to set the card's length
 
@@ -1155,7 +1165,7 @@ if it is not ready when the card ends the card SHALL stay on its last frame unti
 span to its clamped end, drawn above the video at the same size and position, with the fades as opacity; it SHALL
 add no time and SHALL not touch the video. The card's fades SHALL be the project's default fades (2 s in, 2 s out)
 scaled so that their sum does not exceed the card's length, as the render clamps them, because the event detail does
-not carry them; the Timeline SHALL say once, in the card inspector slot's words, that a fade set by the event's or
+not carry them; the Timeline SHALL say once, in the Timeline's help, that a fade set by the event's or
 the project's `look.title_card` is not shown here.
 
 Pause and Play, Space on the playhead, and a seek SHALL work inside a card: Pause stops the card's clock where it is,

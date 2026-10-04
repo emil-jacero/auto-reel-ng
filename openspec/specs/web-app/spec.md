@@ -2697,7 +2697,7 @@ be reachable with the keyboard and SHALL name, to assistive technology, the chap
   button, no inline name field and no dialog of its own for a name. The event's own chapter (the default chapter,
   whose clips are the event folder's) has no name to rename: it is headed `Main` or `Clips` ("The event's own chapter
   is headed ..." below), its title card shows the event's title, and its Name field edits that title. Clips without a
-  chapter of their own join it. While the event lists other chapters, the page SHALL say this beside it.
+  chapter of their own join it. While the event lists other chapters, the page SHALL say this in the Clips help ("Each explanation sits behind a Help toggle of its section"), not as a line beside the chapter.
 - **Move up** and **Move down** SHALL move a chapter one place among the chapters, and SHALL be offered only
   while the event lists more than one chapter. After such a move, keyboard focus SHALL stay on the pressed
   control. At either end, the control that cannot move further SHALL say that it is unavailable.
@@ -3455,7 +3455,7 @@ changed nothing. While a save is in flight, or while a move of marked clips is b
 lifted, and a drop SHALL move nothing. Move marked to…, and Move up and Move down, SHALL work as they
 did before.
 
-Above the chapters, Edit mode SHALL say how clips are moved:
+In the Clips help ("Each explanation sits behind a Help toggle of its section"), Edit mode SHALL say how clips are moved:
 
 - with one chapter: that a clip is dragged by its handle or moved with its arrows, and that a chapter can be
   added with Add chapter, below the chapters, after which clips can be dragged between chapters
@@ -3629,10 +3629,10 @@ reduced motion, no clip SHALL slide into place, and the dragged copy SHALL NOT s
 
 #### Scenario: The hint says how to reach other chapters
 - **WHEN** Edit mode opens on `2024-06-27 - Grillning med grannar`, which has one chapter
-- **THEN** the hint above the chapters says that a chapter can be added with Add chapter, below the chapters,
+- **THEN** the Clips help, opened, says that a chapter can be added with Add chapter, below the chapters,
   and that clips can then be dragged between chapters
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`
-- **THEN** the hint says that a clip can be dragged into another chapter, and that Move marked to… moves the marked clips to a chapter
+- **THEN** the Clips help says that a clip can be dragged into another chapter, and that Move marked to… moves the marked clips to a chapter
 
 #### Scenario: Nothing shifts while dragging over another chapter
 - **WHEN** in a window 320 pixels wide, in the light and in the dark scheme, on `2024-08-20 - Två kapitel -
@@ -5508,7 +5508,7 @@ the clip's preview. The areas of the mark and of the row's other controls SHALL 
 pointer is fine, the mark SHALL keep the 24 pixel box and nothing around it.
 
 Three kinds of clip SHALL have no mark, as a drag does not take them into another chapter ("Edit mode drags
-clips between chapters"): a missing clip, an ignored clip, and a missing clip the operator removed. The line above the chapters SHALL
+clips between chapters"): a missing clip, an ignored clip, and a missing clip the operator removed. The Clips help SHALL
 say so in a few words.
 
 Marking is not an edit. It SHALL NOT show the save bar, SHALL NOT count as an unsaved change, SHALL NOT enable Reset or
@@ -5516,8 +5516,8 @@ Save, and SHALL NOT make leaving Edit mode ask first. Marks SHALL be kept per cl
 mark SHALL stay on its clip when another edit moves the clip (Move up, Move down, a drag of another clip), and when the
 Cuts panel is opened or closed.
 
-A line above the chapters SHALL always be present in Edit mode, saying how clips are marked, that dragging a marked
-clip's handle moves all marked clips, and that Move marked to… moves them to a chapter. While at least one clip is marked, the same line SHALL show how many ("1 clip
+A line above the chapters SHALL always be present in Edit mode and SHALL hold the Clips help's toggle. How clips are marked, that dragging a marked
+clip's handle moves all marked clips, and that Move marked to… moves them to a chapter SHALL be said in the Clips help, not in the line. While at least one clip is marked, the line SHALL show how many ("1 clip
 marked", "3 clips marked") and a **Clear marks** button. The line SHALL keep its height whether or not it shows the
 count, so that marking the first clip, and clearing the last mark, move no row.
 
@@ -5551,7 +5551,7 @@ a clip in a chapter that plays 400 clips, in a Chromium window 1280 × 900, SHAL
 #### Scenario: Missing and ignored clips have no mark
 - **WHEN** on `2024-09-01 - Sommarlov` the operator looks at the row of the missing `borttagen.mp4`, and on
   `2024-08-20 - Två kapitel - Tjörn` at the row of the ignored `s1710004.mp4`
-- **THEN** neither row has a mark, and the line above the chapters says that missing and ignored clips cannot be
+- **THEN** neither row has a mark, and the Clips help, opened, says that missing and ignored clips cannot be
   marked
 
 #### Scenario: Marking by touch next to the Watch button
@@ -5769,7 +5769,7 @@ window 1280 × 900).
 ### Requirement: Running times are written to a fixed width and say what they are
 
 Every time the client shows while something moves (the Timeline's readout under its video, the clip player's header,
-the Timeline's trim tip and its "Movie … of footage" line) SHALL be written by one formatter, the **clock**, and
+the Timeline's trim tip and its movie stat) SHALL be written by one formatter, the **clock**, and
 SHALL NOT be written in the form that the Cuts panel writes cut times in (`0:01.5`, `0:02.607`), which keeps its own
 job: a cut's time, a typed field, a spoken word. The ruler's tick labels and the chapter list's start times do not
 move while something plays and keep that form.
@@ -5798,8 +5798,7 @@ a clip that goes) or the clip's length being read can cause, and SHALL NOT chang
 clip's length, the second the time in the whole timeline (the clips end to end, before cuts) and its length. The
 clip pair's scale SHALL be that of the event's longest clip and the event pair's that of the whole timeline's length,
 so that passing from a 9-second clip into a 40-second one changes no width. The clip player's header reads `Clip
-0:20.48 of 0:20.64`. The Timeline's summary line reads `Movie 3:12.00 of 3:45.00 of footage`, to the scale of the
-footage's length. The trim tip reads the time alone, to the scale of its clip's length, and the words it adds when
+0:20.48 of 0:20.64`. The Timeline's movie stat reads `Movie 3:20.00 · footage 3:45.00 · cuts −0:33.00 · cards +0:08.00`, every time to the scale of the longest of them. The trim tip reads the time alone, to the scale of its clip's length, and the words it adds when
 the edge snaps SHALL NOT move that time.
 
 **The name.** The clip's name in the Timeline's readout SHALL be shown on one line and, when it does not fit, SHALL be
@@ -6346,7 +6345,7 @@ chapter as `Main`, as its heading reads), and it SHALL start on a first option t
 A chosen chapter that is then deleted SHALL return the picker to that option. Renaming a chapter SHALL change its name
 in the list.
 
-**Move** SHALL be `aria-disabled` (never `disabled`, as the busy-control rule says) and SHALL give its reason in words, named by `aria-describedby` and shown in the toolbar's one hint line ("The marks line is one aligned unit"), in each of these states, and press nothing:
+**Move** SHALL be `aria-disabled` (never `disabled`, as the busy-control rule says) and SHALL give its reason in words, named by `aria-describedby` and offered as the button's tooltip, and shown in the toolbar's one reason line ("The marks line is one aligned unit") only once Move is pressed in that state, in each of these states, and press nothing. No line of the reason SHALL be shown while Move is not pressed:
 
 - no clip is marked: "Mark a clip to move it."
 - no chapter is chosen: "Choose a chapter."
@@ -6404,10 +6403,9 @@ visible in both color schemes and in forced colors. Reading a screen SHALL NOT c
 
 #### Scenario: Move says why it is unavailable
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`, with no clip marked
-- **THEN** Move is `aria-disabled` and not `disabled`, and the words "Mark a clip to move it." are beside it and are its
-  description
+- **THEN** Move is `aria-disabled` and not `disabled`, and no line of words is beside it, "Mark a clip to move it." is its description and tooltip, and pressing it shows those words in the toolbar's reason line
 - **WHEN** the operator marks `Kvällen/s1710002.mp4`
-- **THEN** its reason reads "Choose a chapter."
+- **THEN** its description reads "Choose a chapter."
 - **WHEN** the operator chooses `Main` and presses Move
 - **THEN** `s1710002.mp4` is last in `Main`, marked as coming from `Kvällen`, unmarked, and "1 clip moved to “Main”." is
   announced
@@ -6546,13 +6544,11 @@ to… ("Edit mode marks clips to move together", "Edit mode moves the marked cli
 
 - **One control height.** Clear marks, both Rotate buttons, Move and the chapter picker SHALL have the same height, one size for the line (at least 44 CSS pixels
   where the primary pointer is coarse), and the same corner radius.
-- **One axis.** Controls in a row SHALL have their vertical centres within 1 CSS pixel of each other, and a text beside them (the
-  marking hint, the count of marked clips, the label "Move marked to…") SHALL be centred on the same axis. No item SHALL sit higher or lower than
+- **One axis.** Controls in a row SHALL have their vertical centres within 1 CSS pixel of each other, and a text beside them (the Help toggle, the count of marked clips, the label "Move marked to…") SHALL be centred on the same axis. No item SHALL sit higher or lower than
   its neighbours.
 - **Consistent gaps.** The gap between two controls of a group, between two groups and between two rows SHALL each be one value, the same in every row and at every width.
-- **Rows.** The first row SHALL hold the marking hint and, at its end, the count and Clear marks; the second SHALL hold Rotate marked left and right, then the Move marked to… group (label, picker,
-  Move) where it fits; the reason SHALL be one hint line below the controls, muted, starting at the toolbar's left edge. The reason SHALL NOT float beside Move. The hint line
-  SHALL keep its place and its height whether or not it speaks, so that marking the first clip moves no row.
+- **Rows.** The first row SHALL hold the Clips help's toggle and, at its end, the count and Clear marks; the second SHALL hold Rotate marked left and right, then the Move marked to… group (label, picker,
+  Move) where it fits; the reason SHALL be shown only after Move is pressed while it is unavailable, as one muted line below the controls, starting at the toolbar's left edge, and SHALL go when the marks, the chosen chapter or the save state change the reason. The reason SHALL NOT float beside Move. Marking or unmarking a clip SHALL move no row of the toolbar other than that line.
 - **Narrow windows.** Where the toolbar does not fit a row, it SHALL wrap by whole groups: the Move group goes on a row of its own with the label above, the picker filling the
   row beside Move; Rotate marked left and right share a row where they fit and otherwise take a row each at the same width. Every wrapped row SHALL keep the one height and the
   one axis, and nothing SHALL scroll horizontally at 320 CSS pixels.
@@ -6565,11 +6561,47 @@ to… ("Edit mode marks clips to move together", "Edit mode moves the marked cli
 
 #### Scenario: The reason is one muted line below
 - **WHEN** no clip is marked
+- **THEN** no reason line is shown, and Move's description is "Mark a clip to move it."
+- **WHEN** the operator presses Move
 - **THEN** "Mark a clip to move it." is one muted line below the controls, aligned to the toolbar's left edge, and not beside Move
 - **WHEN** the operator marks a clip
-- **THEN** no row of the toolbar and no chapter below it moves, and the line says "Choose a chapter."
+- **THEN** no row of the toolbar other than that line and no chapter below it moves, and the line says "Choose a chapter."
 
 #### Scenario: The toolbar wraps in aligned rows
 - **WHEN** the window is 390 px wide and again 320 px, light and dark
 - **THEN** the Move group is on its own row with the label above and the picker beside Move, every row's controls share one height and one centre line (within 1 px), the
-  hint line is below them, and the page does not scroll horizontally
+  reason line, when shown, is below them, and the page does not scroll horizontally
+
+### Requirement: Each explanation sits behind a Help toggle of its section
+
+The event page, in the read view and in Edit mode, SHALL keep instructional and explanatory text out of sight until asked for, and SHALL keep in sight every text that reports a state or needs an action. Each of these sections SHALL have **one** Help toggle in its header, a button named "Help" with an information icon: **Details** (Edit mode), **Poster** (Edit mode), **Timeline** (the read view and Edit mode), **Clips** (Edit mode: the row above the chapters, which holds the marks line) and the **Title cards** tab of the title card dialog. A section with no such text SHALL have no toggle.
+
+The toggle SHALL be a `button` with `aria-expanded` and `aria-controls` naming its panel, operable by Enter and Space, with a target at least 44 CSS pixels high and wide, and with a visible focus ring. Pressed, it SHALL show the panel under the header: a calm, muted block that is not an alert, holds the section's explanations as paragraphs, and moves nothing above it. The panel SHALL stay in the document when closed (`hidden`), so that a control it describes keeps its `aria-describedby`. Closed is the default. Each section's state SHALL be kept per section (not per event) in `localStorage`, read when the section mounts, written when the toggle is pressed, and every access SHALL be guarded: a browser that refuses storage, or throws, SHALL leave the toggle working for the page visit, closed at the start, and SHALL show no error. The Timeline's state SHALL be one state for both modes.
+
+Every text of these classes SHALL be in a panel and SHALL NOT be shown as a line of its own: the Details form's lead ("What reel.yaml says…", "Save writes these to reel.yaml…"), the Poster's "Pick the frame on the Timeline…", the Timeline's note that cards fade ("The Timeline fades a card…"), the note that dismissed suggestions return on reload, the cut fields' hint ("Enter takes a time; Escape puts the old one back"; the fields keep it as their `aria-describedby`), the Clips instructions ("Drag a clip by its handle…", "Mark clips with the box…", "The event's own chapter: …", "Ignored clips are not played and cannot be moved", "A missing clip is not on disk…"), the command that analyses an event (`auto-reel analyze <root>`, then Refresh), and the title cards tab's lead ("Every title card of this event follows these…"). The text SHALL be the same words as before. The classes that SHALL stay visible are: a refusal, an error or a warning; an unsaved or pending change and what saving will add ("Saving adds 2 new clips to reel.yaml"); a count ("2 clips marked", "1 ignored clip, not played"); the state words of a clip, a chapter, the poster and the render; a field's inherited-value hint; a reason an unavailable control gives (see "Edit mode moves the marked clips to a chapter"); the icon legend of the analysis lane; and the empty states of a chapter. Controls, fields, their names and what pressing them does SHALL NOT change.
+
+#### Scenario: A section's help is closed, opens and closes
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` with nothing stored
+- **THEN** the Details, Poster, Timeline and Clips sections each show a Help button with `aria-expanded="false"` and no explanation is visible
+- **WHEN** the operator presses the Clips Help button, by mouse and again by keyboard
+- **THEN** `aria-expanded` is `true` and "Drag a clip by its handle…" is visible under the header; pressing it again hides the panel, which stays in the document
+
+#### Scenario: The state persists across a reload
+- **WHEN** the operator opens the Timeline help, reloads the page, and then opens the same event in the read view
+- **THEN** the Timeline help is open in both, and the other sections' help is closed
+
+#### Scenario: Storage that throws
+- **WHEN** `localStorage` throws on every access
+- **THEN** every Help button works for the page visit, starts closed, and no error is shown
+
+#### Scenario: Action and state stay visible
+- **WHEN** an event with a missing clip, with an unsaved edit and with an event that needs a render is opened in Edit mode with every help closed
+- **THEN** the missing clip's status, the "Needs render" state with its reason, the save bar's unsaved changes and the marks count are visible, and the explanations are not
+
+#### Scenario: Fewer paragraphs of explanation
+- **WHEN** `2024-08-20 - Två kapitel - Tjörn` is opened in the read view and in Edit mode, in Chrome and in Firefox, light and dark, at 1280 and 390 px, with every help closed
+- **THEN** the number of visible paragraphs of instructional text is lower than before the change in each, the numbers are reported, and nothing overflows horizontally
+
+#### Scenario: A toggle is large enough to touch
+- **WHEN** any Help button is measured at 390 px
+- **THEN** it is at least 44 CSS pixels high and wide, and it has an accessible name that names its section
