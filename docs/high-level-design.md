@@ -1562,8 +1562,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     edit mode"): its section, Open / Close timeline and the card words slot are deleted, `editing` is required in the
     section, the Timeline, the track and the analysis control, and every read-view branch went with it (the cuts being read
     or unreadable, a block press that only selects, a lane without decisions); this supersedes "the read view keeps its
-    button" above. **Bundle:** JS 625.17 to 627.16 kB (202.44 to 203.33 gzip), CSS 88.10 to 89.40 kB (16.80 to 17.03
-    gzip); no package added.
+    button" above. **Bundle:** JS 629.01 to 631.59 kB (203.87 to 204.98 gzip), CSS 88.10 to 89.40 kB (16.80 to 17.03
+    gzip), against main with `timeline-ripple-layout`; no package added.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
   1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every
