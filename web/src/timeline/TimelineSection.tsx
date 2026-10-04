@@ -1,9 +1,11 @@
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 
 import type { EventDetail } from '../api/event'
 import type { ReadCutsState } from '../cuts/ReadCuts'
 import { Alert } from '../ui/Alert'
-import { CardInspectorPanel } from '../edit/card/Inspector'
+import { Dialog } from '../ui/Dialog'
+import { CardInspectorPanel, inspectorName } from '../edit/card/Inspector'
 import type { CardEditing } from '../edit/card/editing.ts'
 import { backdropOf } from '../edit/card/specs.ts'
 import type { Backdrop } from '../edit/card/Preview'
@@ -93,18 +95,28 @@ export function TimelineSection({
   useEffect(() => retain(specs.map((spec) => spec.chapter)), [retain, specs])
   const selectedSpec =
     cards.selected === null ? undefined : specs.find((spec) => spec.chapter === cards.selected)
-  // The selected card's inspector, in Edit mode: the card as the draft has it, and the clip a
+  // The card whose dialog is open, in Edit mode: the card as the draft has it, and the clip a
   // video card is laid over (the Timeline's own anchor when the clips are ready, else the
   // chapter's first shown clip).
   const selectedView =
-    editing !== null && cardEditing !== null && cards.selected !== null
-      ? cardEditing.view(cards.selected)
+    editing !== null && cardEditing !== null && cards.editing !== null
+      ? cardEditing.view(cards.editing)
       : null
+  // The dialog's first field, for the focus it opens on.
+  const dialogBody = useRef<HTMLDivElement>(null)
+  const firstField = useMemo<RefObject<HTMLElement | null>>(
+    () => ({
+      get current() {
+        return dialogBody.current?.querySelector<HTMLElement>('input, textarea, select') ?? null
+      },
+    }),
+    [],
+  )
   const backdrop = useMemo<Backdrop | null>(() => {
-    if (cards.selected === null || selectedView === null) {
+    if (cards.editing === null || selectedView === null) {
       return null
     }
-    const chapter = specs.findIndex((spec) => spec.chapter === cards.selected)
+    const chapter = specs.findIndex((spec) => spec.chapter === cards.editing)
     const placements =
       clips === null || chapter === -1
         ? null
@@ -125,7 +137,7 @@ export function TimelineSection({
     return clip === undefined || found === null
       ? null
       : { clip, name: found.name, turn: cutsRead.turns?.get(found.identity) ?? 0 }
-  }, [cards.selected, selectedView, specs, clips, decorators, shown, event, cutsRead.turns])
+  }, [cards.editing, selectedView, specs, clips, decorators, shown, event, cutsRead.turns])
   const state = sectionState(open, shown.clips)
   const omitted = omittedWords(shown.omitted)
   return (
@@ -171,33 +183,43 @@ export function TimelineSection({
           </>
         )}
       </div>
-      {/* After the track in the page, whatever the width: selecting a card never moves it. */}
-      {selectedView !== null && cardEditing !== null && cards.selected !== null ? (
-        <CardInspectorPanel
-          eventId={eventId}
-          saved={cards.selected}
-          view={selectedView}
-          editing={cardEditing}
-          spec={selectedSpec}
-          backdrop={backdrop}
-          onClose={() => {
-            // Focus goes back to the control that selected it, not to <body>.
-            document
-              .querySelector<HTMLElement>('main:not([hidden]) .card-row-select[data-selected]')
-              ?.focus({ preventScroll: true })
-            cards.clear()
-          }}
-        />
-      ) : (
-        <CardInspector
-          words={inspectorWords(selectedSpec)}
-          announced={inspectorWords(
-            cards.selected === null
-              ? undefined
-              : savedSpecs.find((spec) => spec.chapter === cards.selected),
-          )}
-        />
+      {/* Edit mode's one card editor: a modal over the page, so the operator never scrolls back to it. */}
+      {selectedView !== null && cardEditing !== null && cards.editing !== null && (
+        <Dialog
+          open
+          className="ci-dialog"
+          title={inspectorName(selectedView.opening, selectedView.name)}
+          onClose={cards.dismiss}
+          initialFocus={firstField}
+        >
+          <div className="dialog-fields" ref={dialogBody}>
+            <CardInspectorPanel
+              eventId={eventId}
+              saved={cards.editing}
+              view={selectedView}
+              editing={cardEditing}
+              spec={specs.find((spec) => spec.chapter === cards.editing)}
+              backdrop={backdrop}
+              onClose={cards.dismiss}
+            />
+          </div>
+          <div className="dialog-actions">
+            <button type="button" className="btn btn-primary" onClick={cards.dismiss}>
+              Done
+            </button>
+          </div>
+        </Dialog>
       )}
+      {/* The read view's words-only slot; Edit mode has no slot, the dialog is its editor. The status
+          region is there in both, so a selection is announced once. */}
+      <CardInspector
+        words={editing === null ? inspectorWords(selectedSpec) : null}
+        announced={inspectorWords(
+          cards.selected === null
+            ? undefined
+            : savedSpecs.find((spec) => spec.chapter === cards.selected),
+        )}
+      />
     </section>
   )
 }

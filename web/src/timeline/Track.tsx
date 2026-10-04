@@ -128,6 +128,8 @@ export type CardLaneModel = {
   /** The selected card's chapter or null. */
   selected: string | null
   onSelect: (chapter: string) => void
+  /** Activating a block's body: Edit mode opens the card's dialog, the read view only selects. */
+  onOpen: (chapter: string) => void
   onClear: () => void
 }
 
@@ -462,7 +464,7 @@ export function Track({
             selected={cardLane.selected}
             drag={cardLane.handles === null ? null : drag}
             shifting={shifting}
-            onSelect={cardLane.onSelect}
+            onOpen={cardLane.onOpen}
             onClear={cardLane.onClear}
           />
         )}

@@ -29,7 +29,7 @@ export function CardLane({
   selected,
   drag,
   shifting,
-  onSelect,
+  onOpen,
   onClear,
 }: {
   blocks: readonly CardBlock[]
@@ -43,7 +43,7 @@ export function CardLane({
   drag: DragStore | null
   /** A black card's drag in progress: the blocks behind the card move. */
   shifting: ShiftFrom | null
-  onSelect: (chapter: string) => void
+  onOpen: (chapter: string) => void
   onClear: () => void
 }) {
   const range = visibleBlocks(blocks, (window.from / pps) * 1000, (window.to / pps) * 1000)
@@ -62,7 +62,7 @@ export function CardLane({
           selected={selected === spec.chapter}
           drag={drag}
           behind={shifting !== null && block.startMs >= shifting.fromMs - 0.5}
-          onSelect={onSelect}
+          onOpen={onOpen}
           onClear={onClear}
         />,
       )
@@ -82,7 +82,7 @@ const CardBlockButton = memo(function CardBlockButton({
   selected: on,
   drag,
   behind,
-  onSelect,
+  onOpen,
   onClear,
 }: {
   block: CardBlock
@@ -93,7 +93,7 @@ const CardBlockButton = memo(function CardBlockButton({
   drag: DragStore | null
   /** Behind a black card being dragged: moved with it. */
   behind: boolean
-  onSelect: (chapter: string) => void
+  onOpen: (chapter: string) => void
   onClear: () => void
 }) {
   // The card's edge in the air: only this block follows it (a black card's drag moves the layers
@@ -129,7 +129,7 @@ const CardBlockButton = memo(function CardBlockButton({
       aria-label={words}
       title={words}
       style={{ insetInlineStart: timeToPx(block.startMs, pps), inlineSize: widthPx }}
-      onClick={() => onSelect(name)}
+      onClick={() => onOpen(name)}
       onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
         if (event.key === 'Escape' && on) {
           event.preventDefault()

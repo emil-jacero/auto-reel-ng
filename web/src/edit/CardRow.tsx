@@ -22,7 +22,8 @@ export type CardRowsModel = {
   rowOf(key: string): CardRowInfo | null
   /** The selected card's chapter (saved name) or null. */
   selected: string | null
-  select(chapter: string): void
+  /** Selects and opens the card's dialog (Edit mode's one card editor). */
+  open(chapter: string): void
   clear(): void
 }
 
@@ -72,7 +73,7 @@ export const CardRow = memo(function CardRow({
           aria-label={info.words}
           aria-describedby={factsId}
           data-selected={model.selected === info.chapter || undefined}
-          onClick={() => model.select(info.chapter)}
+          onClick={() => model.open(info.chapter)}
           onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
             if (event.key === 'Escape' && model.selected === info.chapter) {
               event.preventDefault()

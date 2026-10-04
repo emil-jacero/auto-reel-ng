@@ -200,12 +200,25 @@ export function Timeline({
     [clearCard],
   )
   const selectCard = selection.select
+  const openCard = selection.open
   const pickCard = useCallback(
     (chapter: string) => {
       setSelected(null)
       selectCard(chapter)
     },
     [selectCard],
+  )
+  // A block's body in Edit mode opens the card's dialog; the read view only selects.
+  const pressCard = useCallback(
+    (chapter: string) => {
+      setSelected(null)
+      if (editing === null) {
+        selectCard(chapter)
+      } else {
+        openCard(chapter)
+      }
+    },
+    [editing, selectCard, openCard],
   )
   // Reset, and a cut removed, end a selection.
   const epoch = editing?.epoch
@@ -363,7 +376,11 @@ export function Timeline({
     const inCard = clipTimeAt(map, pxToTime(x, ppsRef.current))
     if (surface === 'lane' && inCard.kind === 'card' && (phase === 'start' || phase === 'tap')) {
       // A press in a black card's span selects the card and leaves the playhead where it is.
-      pickCard(cards.specs[inCard.chapter].chapter)
+      if (phase === 'tap') {
+        pressCard(cards.specs[inCard.chapter].chapter)
+      } else {
+        pickCard(cards.specs[inCard.chapter].chapter)
+      }
       heldInCard.current = phase === 'start'
       return
     }
@@ -478,9 +495,10 @@ export function Timeline({
             onSet: editing === null ? null : editing.onCardDuration,
             selected: selection.selected,
             onSelect: pickCard,
+            onOpen: pressCard,
             onClear: selection.clear,
           },
-    [specs, blocks, leadMs, shifting, handles, editing, selection.selected, selection.clear, pickCard],
+    [specs, blocks, leadMs, shifting, handles, editing, selection.selected, selection.clear, pickCard, pressCard],
   )
   const cardNotes = cardsNotes(cards.specs, placements, decorators, cards.source, cards.error)
 
