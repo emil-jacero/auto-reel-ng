@@ -46,6 +46,7 @@ import type { EditBinding } from './editing'
 import { selectionStands } from './handles'
 import type { KeyAction } from './keys'
 import {
+  CARDS_UNKNOWN,
   cardsNotes,
   FILM_FAILED,
   FILM_FAILED_DETAIL,
@@ -888,9 +889,7 @@ export function Timeline({
 
       {editing.orderChanged && <Alert tone="info" role="note" title={ORDER_SAVED} />}
 
-      {decorators === 'invalid' && (
-        <p className="tl-summary">Whether title cards are drawn is not known.</p>
-      )}
+      {decorators === 'invalid' && <p className="tl-summary">{CARDS_UNKNOWN}</p>}
 
       {pictures.failures.map((failure) => (
         <Alert
@@ -983,7 +982,6 @@ function MovieStat({
     </span>
   )
 }
-
 
 /** Whether a clip preview of Edit mode is open, and so holds the page's one video. */
 function usePreviewHeld(previews: EditBinding['previews']): boolean {
