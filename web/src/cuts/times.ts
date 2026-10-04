@@ -516,7 +516,7 @@ export function fieldName(field: CutField, n: number, name: string): string {
 export const NO_SELECTED_CUT =
   'No cut selected. Select a cut by its handle or its span to type its times.'
 
-/** The group while a save or a Move clips is pending. */
+/** The group while a save or a move of marked clips is pending. */
 export const UNAVAILABLE = 'Trimming is unavailable while a save or a move is pending.'
 
 /** Said when Enter is pressed on a handle and the playhead is in another clip. */

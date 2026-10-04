@@ -327,7 +327,7 @@ export const ClipPreview = memo(function ClipPreview({
   cuts: readonly ListedCut[]
   /** The span the panel's fields hold, when they would make a cut; a hint for the bar. */
   typed?: { in: number; out: number } | null
-  /** A save or a Move clips is pending: Set From and Set To change nothing. */
+  /** A save or a move of marked clips is pending: Set From and Set To change nothing. */
   locked?: boolean
   /** The clip's editorial turn (`rotate`): the video and its poster are shown turned by it. */
   turn?: Turn

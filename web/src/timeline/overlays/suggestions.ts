@@ -112,7 +112,7 @@ export function approval(
   return checkCut(listed, formatTime(segment.start), formatTime(segment.end), length)
 }
 
-/** Said in the detail while a save or a Move clips is pending, as the trim fields say theirs. */
+/** Said in the detail while a save or a move of marked clips is pending, as the trim fields say theirs. */
 export const DECISIONS_UNAVAILABLE = 'Deciding is unavailable while a save or a move is pending.'
 
 /** What pressing Approve or Dismiss on a mark comes to: the page applies it, this decides it. */
@@ -132,7 +132,7 @@ type Pressed = {
   state: SuggestionState
   segment: Suggestion
   clipName: string
-  /** A save or a Move clips is pending: nothing is decided meanwhile. */
+  /** A save or a move of marked clips is pending: nothing is decided meanwhile. */
   locked: boolean
 }
 

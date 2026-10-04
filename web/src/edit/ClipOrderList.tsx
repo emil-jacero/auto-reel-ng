@@ -44,7 +44,7 @@ import { groupWords } from './marks'
  * handle (pointer, pen or touch), lift it from the keyboard on its handle, or
  * press its Move up / Move down buttons. A drag can also take it into another
  * chapter (`ChapterDrag.tsx`, the one drag-and-drop context, around every
- * chapter); so can the chapter's Move clips dialog (`ChapterDialogs.tsx`). Its
+ * chapter); so can the marks line's Move marked to… (`EventEditor.tsx`). Its
  * row then says where it came from. Move up and Move down never leave the
  * chapter. The chapter's tools row (`ChapterTools.tsx`) sits between its header
  * and its column strip.
@@ -165,7 +165,7 @@ const RowBody = memo(function RowBody({
   onWatch?: () => void
   /** Whether the clip is marked; null: it cannot be marked (no mark is shown). */
   marked?: boolean | null
-  /** A save or a Move clips is pending: the mark ignores presses. */
+  /** A save or a move of marked clips is pending: the mark ignores presses. */
   locked?: boolean
   onMark?: MarkHandler
   /** The clip's turn in the draft: its frame is shown turned by it. */
@@ -395,7 +395,7 @@ const ClipRow = memo(function ClipRow({
       ),
     [status, excluded, kept],
   )
-  // Shown or not lives in the editor's store too: Move clips, or a drag into another
+  // Shown or not lives in the editor's store too: Move marked to…, or a drag into another
   // chapter, mounts this row anew in its new chapter, and it opens as it was. Reset
   // empties the store and hides it.
   const [open, setOpen] = useState(() => panels.get(identity)?.open ?? false)
@@ -910,8 +910,8 @@ export const ClipOrderList = memo(function ClipOrderList({
         chapterKey={chapterKey}
         sectionRef={sectionRef}
         plays={plays}
-        // Move clips is per chapter and absent on a lone one (ChapterTools): no pointing at it.
-        words={emptyChapterWords(tools.moveClips === null, empty)}
+        // Move marked to… needs a second chapter (the tools row has a place only then).
+        words={emptyChapterWords(tools.place === null, empty)}
       />
       {plays && (
         <SortableContext id={chapterKey} items={items} strategy={strategy}>

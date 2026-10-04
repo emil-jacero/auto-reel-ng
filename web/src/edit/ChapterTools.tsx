@@ -10,7 +10,7 @@ import type { NameCheck } from './inlineName'
 
 /*
  * The chapter controls of Edit mode: a tools row under each chapter's heading
- * (its notes and its Move clips…, Move up / Move down and Delete), the
+ * (its notes, Move up / Move down and Delete), the
  * placeholder a deleted chapter leaves until the save, and Add chapter after
  * the last chapter.
  *
@@ -46,35 +46,26 @@ export type ChapterToolsModel = {
   notes: readonly string[]
   /** Its name field is open (`InlineName`, in the heading): one chapter at a time. */
   naming: boolean
-  /** Move clips: absent when the chapter is the only one; 'empty' when it plays no clip on disk. */
-  moveClips: 'offered' | 'empty' | null
   /** Move up / Move down: absent when the chapter is the only one. */
   place: ChapterPlace | null
   /** Delete: absent (undefined) when the chapter is the only one; why it stays, or null. */
   deleteRefusal: string | null | undefined
   /** Whether Delete was pressed while refused: its reason shows until the next chapter edit. */
   refusalShown: boolean
-  /** While a save or a Move clips is pending: every control is unavailable. */
+  /** While a save or a move of marked clips is pending: every control is unavailable. */
   locked: boolean
-  /** Its Move clips was pressed and the move has not landed yet: that control is busy. */
-  moveClipsBusy: boolean
   /** The name field in the heading (`ClipOrderList`), by the chapter's key. */
   nameField: NameFieldHandlers
-  onMoveClips: ChapterHandler
   onMoveChapter: ChapterMoveHandler
   onDelete: ChapterHandler
 }
 
 // Constant elements, as the clip rows' (ClipOrderList).
-const MOVE_CLIPS = <Icon name="arrow-right" />
 const UP = <Icon name="arrow-up" />
 const DOWN = <Icon name="arrow-down" />
 const DELETE = <Icon name="x" />
 const UNDO = <Icon name="rotate-ccw" />
 const ADD = <Icon name="plus" />
-
-/** "No clips to move.": Move clips' description while its chapter plays no clip on disk. */
-export const NO_CLIPS_TO_MOVE = 'No clips to move.'
 
 function Notes({ notes }: { notes: readonly string[] }) {
   return notes.length === 0 ? null : (
@@ -95,13 +86,10 @@ export const ChapterTools = memo(function ChapterTools({
   heading,
   headingId,
   notes,
-  moveClips,
   place,
   deleteRefusal,
   refusalShown,
   locked,
-  moveClipsBusy,
-  onMoveClips,
   onMoveChapter,
   onDelete,
 }: ChapterToolsModel & {
@@ -112,40 +100,15 @@ export const ChapterTools = memo(function ChapterTools({
   headingId: string
 }) {
   const refusalId = useId()
-  const emptyId = useId()
   const offersDelete = deleteRefusal !== undefined
-  if (notes.length === 0 && moveClips === null && place === null && !offersDelete) {
+  if (notes.length === 0 && place === null && !offersDelete) {
     return null
   }
   return (
     <div className="chapter-tools" role="group" aria-labelledby={headingId}>
       <Notes notes={notes} />
-      {(moveClips !== null || place !== null || offersDelete) && (
+      {(place !== null || offersDelete) && (
         <div className="chapter-actions">
-          {moveClips !== null && (
-            <button
-              type="button"
-              className="btn btn-ghost chapter-move-clips"
-              aria-label={`Move clips from ${heading}`}
-              aria-disabled={locked || moveClips === 'empty' || undefined}
-              aria-busy={moveClipsBusy || undefined}
-              aria-describedby={moveClips === 'empty' ? emptyId : undefined}
-              // The editor announces "No clips to move." for a press on an empty chapter.
-              onClick={() => {
-                if (!locked) {
-                  onMoveClips(chapterKey)
-                }
-              }}
-            >
-              {MOVE_CLIPS}
-              Move clips…
-            </button>
-          )}
-          {moveClips === 'empty' && (
-            <span id={emptyId} hidden>
-              {NO_CLIPS_TO_MOVE}
-            </span>
-          )}
           {place !== null && (
             <span className="chapter-order">
               <button

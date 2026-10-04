@@ -272,16 +272,16 @@ export function ChapterDrag({
   /** The clip's name as its row names it now (`nameNow`), and a chapter's heading (`headingIn`). */
   nameOf: (identity: string) => string
   headingOf: (key: ChapterKey) => string
-  /** `listsLocked`: a save in flight or a Move clips pending. */
+  /** `listsLocked`: a save in flight or a move of marked clips pending. */
   locked: boolean
   onReorder: MoveHandler
-  /** A drop into another chapter: false when the editor refused it (save or Move clips pending). */
+  /** A drop into another chapter: false when the editor refused it (save or move of marked clips pending). */
   onDropInto: (identity: string, from: ChapterKey, to: ChapterKey, at: number) => boolean
   /** The marked clips: lifting one of two or more lifts them all. */
   marked: ReadonlySet<string>
   /**
    * A group drop at gap `gap` of chapter `to`, lifted by `dragged`: false when it changed
-   * nothing or the editor refused it (save or Move clips pending).
+   * nothing or the editor refused it (save or move of marked clips pending).
    */
   onDropGroup: (dragged: string, to: ChapterKey, gap: number) => boolean
   /** Whether a clip is lifted now (a keyboard or pointer drag not yet dropped or cancelled). */
@@ -552,7 +552,7 @@ export function ChapterDrag({
 
   /*
    * A missing clip's copy stops at its own list's edges (the list is the row's
-   * parent, dnd-kit's container): it never leaves its chapter, as Move clips
+   * parent, dnd-kit's container): it never leaves its chapter, as Move marked to…
    * never offers it.
    */
   const modifiers = useMemo<Modifier[]>(() => {

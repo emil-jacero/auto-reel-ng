@@ -32,10 +32,10 @@ export type EditBinding = {
   /**
    * Add a cut to a clip's draft, as the Cuts panel's Add does (`timeline-overlay-decisions`):
    * the span in seconds, the reason `manual` unless one is given (an approved suggestion's
-   * kind). The editor ignores it while a save or a Move clips is pending.
+   * kind). The editor ignores it while a save or a move of marked clips is pending.
    */
   onAdd(identity: string, span: { in: number; out: number }, reason?: string): void
-  /** A save is in flight, or a Move clips is pending: the handles and fields change nothing. */
+  /** A save is in flight, or a move of marked clips is pending: the handles and fields change nothing. */
   locked: boolean
   /** Edit mode's one live region. */
   announce(words: string): void
@@ -48,7 +48,7 @@ export type EditBinding = {
   /**
    * One edit of the draft: the card of the chapter (saved name) takes `seconds`. `words` is
    * what the live region says (a drag's release); null for a key, whose result is the
-   * handle's value. Ignored while a save or a Move clips is pending.
+   * handle's value. Ignored while a save or a move of marked clips is pending.
    */
   onCardDuration(chapter: string, seconds: number, words: string | null): void
   /**

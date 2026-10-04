@@ -1092,52 +1092,10 @@ export function restoreChapter(draft: Draft, key: ChapterKey): Draft {
 }
 
 /**
- * `draft` with `identities` moved from chapter `from` to chapter `to`. Only the
- * clips `from` plays are moved, so a repeated call moves nothing. A clip that
- * returns to the chapter it was in when Edit mode opened goes back after its
- * original predecessors, as an undone removal does (`restoreClip`); these are
- * placed one by one in their original order, so a move and its reverse leave
- * nothing to save. The others join the end, in the order they had.
- */
-export function moveClips(
-  draft: Draft,
-  from: ChapterKey,
-  to: ChapterKey,
-  identities: readonly string[],
-  original: Orders,
-): Draft {
-  const source = draft.orders.get(from)
-  const target = draft.orders.get(to)
-  if (from === to || source === undefined || target === undefined) {
-    return draft
-  }
-  const picked = new Set(identities)
-  const moving = source.filter((identity) => picked.has(identity))
-  if (moving.length === 0) {
-    return draft
-  }
-  const home = original.get(to) ?? []
-  const homeAt = new Map(home.map((identity, index) => [identity, index]))
-  const returning = moving
-    .filter((identity) => homeAt.has(identity))
-    .sort((a, b) => (homeAt.get(a) ?? 0) - (homeAt.get(b) ?? 0))
-  let orders: Orders = new Map(draft.orders).set(
-    from,
-    source.filter((identity) => !picked.has(identity)),
-  )
-  for (const identity of returning) {
-    orders = restoreClip(orders, to, identity, home)
-  }
-  const joining = moving.filter((identity) => !homeAt.has(identity))
-  orders = new Map(orders).set(to, [...(orders.get(to) ?? []), ...joining])
-  return { ...draft, orders }
-}
-
-/**
  * `draft` with `identity` taken out of chapter `from` and put at index `at` of chapter
  * `to` (clamped to its length): a drop into another chapter. Only a clip `from` plays
  * moves, so a repeated call moves nothing; `from === to` is a reorder (`moveClip`), not
- * this, and returns `draft` unchanged. Unlike `moveClips`, a clip dropped back into the
+ * this, and returns `draft` unchanged. A clip dropped back into the
  * chapter it was in when Edit mode opened goes where it was dropped: at its original
  * index, that is its original order again, and nothing is left to save.
  */
@@ -1281,7 +1239,7 @@ export function groupPlace(
  * The gap is an index into `to`'s order as it is now (0..length). Every other clip keeps its
  * order and chapter. Only clips some chapter plays move, and a drop that changes no chapter's
  * order (a gap beside the group, a repeated call) returns `draft` itself. Moved clips are not
- * restored after their original predecessors (as `moveClipTo`, unlike `moveClips`): a group
+ * restored after their original predecessors (as `moveClipTo`): a group
  * dragged back over its contiguous original place restores the original order.
  */
 export function moveGroup(draft: Draft, group: readonly string[], to: ChapterKey, gap: number): Draft {
@@ -1326,6 +1284,27 @@ export function moveGroup(draft: Draft, group: readonly string[], to: ChapterKey
     changed = true
   }
   return changed ? { ...draft, orders } : draft
+}
+
+/**
+ * Move marked to…: the marked clips in page order (`groupOf`) put at the end of chapter `to`
+ * as one run, by the drag's own edit (`moveGroup` at the gap past the last clip). `moved` is
+ * the group that moved; when nothing changes (no mark, a stale mark, an unlisted target, a
+ * group already last there) it is empty and `draft` is returned itself.
+ */
+export function moveMarkedToEnd(
+  draft: Draft,
+  listed: readonly ChapterKey[],
+  marked: ReadonlySet<string>,
+  to: ChapterKey,
+): { draft: Draft; moved: readonly string[] } {
+  const target = draft.orders.get(to)
+  if (target === undefined || !listed.includes(to)) {
+    return { draft, moved: [] }
+  }
+  const group = groupOf(draft.orders, listed, marked)
+  const next = moveGroup(draft, group, to, target.length)
+  return next === draft ? { draft, moved: [] } : { draft: next, moved: group }
 }
 
 /** The turn `reel.yaml` holds for a clip: 0 for none or for a value that is not a quarter turn. */

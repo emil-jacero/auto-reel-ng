@@ -231,14 +231,52 @@
     gap: var(--s-2) var(--s-4);
   }
 
+  /*
+   * Move marked to…: label, native picker, Move and the reason, on a line of its own. The
+   * reason's slot keeps its line either way, so the first mark moves no row.
+   */
+  .mark-move {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2) var(--s-4);
+
+    & label {
+      color: var(--fg);
+      font-weight: 600;
+    }
+
+    & select {
+      inline-size: auto;
+      min-inline-size: 11rem;
+      max-inline-size: 100%;
+      appearance: auto;
+
+      &:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 1px;
+      }
+    }
+
+    & .mark-move-why {
+      min-block-size: 1.25rem;
+    }
+  }
+
   /* A finger: each compact button's touch area reaches 9px up and down, so lines keep 24px apart. */
   @media (pointer: coarse) {
     .mark-line {
       row-gap: 1.5rem;
     }
 
-    .mark-rotate {
+    .mark-rotate,
+    .mark-move {
       row-gap: 1.5rem;
+    }
+
+    .mark-move select {
+      min-block-size: 2.75rem;
     }
   }
 

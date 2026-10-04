@@ -42,6 +42,6 @@ export type CardEditing = {
   announce(words: string): void
   /** The Title cards switch while it differs from the state read (true: on); null: as the service said. */
   titleCardsDraft: boolean | null
-  /** A save is in flight, or a Move clips is pending. */
+  /** A save is in flight, or a move of marked clips is pending. */
   locked: boolean
 }
