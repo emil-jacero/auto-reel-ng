@@ -85,6 +85,7 @@ from auto_reel_ng.render.normalize import (
     display_turn,
     total_turn,
 )
+from auto_reel_ng.render.poster import PosterResolution
 from auto_reel_ng.staleness.manifest import read_manifest
 
 # --------------------------------------------------------------------------- #
@@ -113,6 +114,13 @@ def _amd_caps() -> AcceleratorCapabilities:
 
 def _amd_profile() -> VaapiProfile:
     return VaapiProfile(_amd_caps())
+
+
+@pytest.fixture(autouse=True)
+def _no_poster(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests are about the segments and the finalize of the movie, many on clip files that
+    do not exist: the poster stage has its own tests (``test_render_poster.py``)."""
+    monkeypatch.setattr(orch, "resolve_poster", lambda *_a, **_k: PosterResolution(None))
 
 
 def _clip(

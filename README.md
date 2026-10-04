@@ -752,6 +752,24 @@ A card's style is the engine defaults, then `look.title_card` (the whole event),
 chapter's `card`; the fades are clamped to the card's own length. `look.title_card` also takes
 `background: black | video`.
 
+### Poster frame (`poster`)
+
+Every render writes the event's poster beside the movie as `<movie stem>-poster.jpg` (what Jellyfin, Plex and Kodi
+look for) and embeds the same picture as the movie's cover. By default it is the first played clip's frame a quarter
+of the way in; to choose another, name a clip and a time in the ORIGINAL clip (before any trim):
+
+```yaml
+# <event>/reel.yaml
+poster:
+  clip: 2024/s1710002.mp4   # a clip of the event
+  at: 12.5                  # seconds into that clip
+```
+
+A `poster.clip` that is missing, ignored or excluded falls back to the default with a warning; an `at` past the end of
+the clip fails the event, naming the clip, the time and the clip's length. A render of an event written by an older
+engine is stale once (`engine`); a deleted sidecar makes the event stale (`output`); `prune-renamed` removes the
+sidecar of a superseded movie with it.
+
 ### Project `config.yaml`
 
 An optional `config.yaml` at the project root supplies shared defaults. Every field

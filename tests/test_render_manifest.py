@@ -170,7 +170,9 @@ def test_a_title_with_a_separator_renders_one_file_the_gate_finds(
     assert manifest is not None
     assert manifest.output == result.output_path.name
     assert result.output_path.parent == out / "2024"
-    assert sorted(path.name for path in out.rglob("*") if path.is_file()) == [manifest.output]
+    assert sorted(path.name for path in out.rglob("*") if path.is_file()) == sorted(
+        [manifest.output, manifest.poster]
+    )
     assert evaluate(tmp_path, result.output_path, fingerprint).reasons == ()
 
 

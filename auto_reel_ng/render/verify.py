@@ -21,8 +21,12 @@ from .normalize import _normalize_sar
 from .target import TargetSpec
 
 
-def _video_stream_count(runtime: FfmpegRuntime, path: Path) -> int:
-    """Count the video streams in ``path`` (a conforming movie has exactly one)."""
+def _video_streams(runtime: FfmpegRuntime, path: Path) -> tuple[list[str], list[str]]:
+    """The codec names of ``path``'s ``(movie, cover)`` video streams.
+
+    A cover is a video stream with the ``attached_pic`` disposition; it is not the movie's
+    video stream. A conforming movie has exactly one movie stream.
+    """
     result = runtime.run_ffprobe(
         [
             "-v",
@@ -30,24 +34,35 @@ def _video_stream_count(runtime: FfmpegRuntime, path: Path) -> int:
             "-select_streams",
             "v",
             "-show_entries",
-            "stream=index",
+            "stream=index,codec_name:stream_disposition=attached_pic",
             "-print_format",
             "json",
             str(path),
         ]
     )
     try:
-        return len(json.loads(result.stdout).get("streams", []))
+        streams = json.loads(result.stdout).get("streams", [])
     except json.JSONDecodeError:  # pragma: no cover - defensive
-        return 0
+        return [], []
+    movie: list[str] = []
+    covers: list[str] = []
+    for stream in streams:
+        attached = (stream.get("disposition") or {}).get("attached_pic")
+        (covers if attached else movie).append(str(stream.get("codec_name")))
+    return movie, covers
 
 
-def verify_output(runtime: FfmpegRuntime, path: Path, target: TargetSpec) -> ClipMetadata:
+def verify_output(
+    runtime: FfmpegRuntime, path: Path, target: TargetSpec, *, cover: bool = False
+) -> ClipMetadata:
     """Re-probe ``path`` and assert it matches ``target``; return its metadata.
 
     Raises:
         RenderVerificationError: if the file is not a single continuous video
-            stream matching the target resolution, codec, pixel format, and SAR.
+            stream matching the target resolution, codec, pixel format, and SAR; or, when
+            ``cover`` is set, if the file does not have exactly one ``mjpeg`` ``attached_pic``
+            stream. A cover is never counted as the movie's video stream or checked against
+            the target.
     """
     path = Path(path)
     # This catches the spike's failure mode — a broken concat that muxes at exit 0
@@ -55,10 +70,15 @@ def verify_output(runtime: FfmpegRuntime, path: Path, target: TargetSpec) -> Cli
     # target. It does not detect per-frame variable resolution *within* a single
     # stream; the whole-set equivalence pre-flight (concat.is_copy_uniform) is the
     # primary guard against that, and this re-probe is the backstop.
-    streams = _video_stream_count(runtime, path)
-    if streams != 1:
+    movie, covers = _video_streams(runtime, path)
+    if len(movie) != 1:
         raise RenderVerificationError(
-            f"{path.name}: expected a single video stream, found {streams}"
+            f"{path.name}: expected a single video stream, found {len(movie)}"
+        )
+    if cover and covers != ["mjpeg"]:
+        raise RenderVerificationError(
+            f"{path.name}: expected exactly one mjpeg cover stream, found "
+            f"{len(covers)}{' (' + ', '.join(covers) + ')' if covers else ''}"
         )
 
     facts = probe_media(path, runtime=runtime)

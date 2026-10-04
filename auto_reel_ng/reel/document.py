@@ -58,6 +58,22 @@ class Trim:
 
 
 @dataclass(frozen=True)
+class Poster:
+    """The operator's chosen poster frame: a clip and a time in the ORIGINAL clip.
+
+    ``at`` is seconds into the clip before any trim or cut. Whether ``clip`` is a clip of the
+    event, and whether ``at`` is inside it, is decided at render time (a load makes no probe).
+    """
+
+    clip: str
+    at: float
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize using the YAML vocabulary."""
+        return {"clip": self.clip, "at": self.at}
+
+
+@dataclass(frozen=True)
 class ClipRef:
     """A reference to a clip by its event-relative-path identity (D-C)."""
 
@@ -186,6 +202,8 @@ class ReelDocument:  # pylint: disable=too-many-instance-attributes
     ignore: tuple[str, ...] = ()
     #: The event's own sort rule, overriding the project's for clips entering this document.
     sort: Optional[ClipOrder] = None
+    #: The chosen poster frame; ``None`` means the default (first played clip's thumbnail frame).
+    poster: Optional[Poster] = None
     _data: Optional[Any] = field(default=None, compare=False, repr=False)
 
     @property
@@ -222,9 +240,10 @@ class ReelDocument:  # pylint: disable=too-many-instance-attributes
         """Convert to a plain dict for debug logging (excludes the raw round-trip data).
 
         This is also the staleness fingerprint's editorial input. ``sort`` is left
-        out: it only orders clips entering ``chapters``, which is hashed already.
+        out: it only orders clips entering ``chapters``, which is hashed already. ``poster``
+        is present only when set, so a document without one hashes as it did before posters.
         """
-        return {
+        data: dict[str, Any] = {
             "version": self.version,
             "metadata": self.metadata.to_dict(),
             "look": dict(self.look),
@@ -232,3 +251,6 @@ class ReelDocument:  # pylint: disable=too-many-instance-attributes
             "clips": {identity: props.to_dict() for identity, props in self.clips.items()},
             "ignore": list(self.ignore),
         }
+        if self.poster is not None:
+            data["poster"] = self.poster.to_dict()
+        return data

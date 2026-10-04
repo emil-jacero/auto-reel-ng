@@ -91,6 +91,7 @@ def apply_editorial_write(
         data = document_to_data(current)
         _apply_metadata(data, desired_data.get("metadata"))
         _apply_look(data, desired_data.get("look"))
+        _apply_poster(data, desired_data.get("poster"))
         _apply_chapters(data, desired_data.get("chapters"))
         _apply_clips(data, desired_data.get("clips"))
         _apply_ignore(data, desired_data.get("ignore"))
@@ -168,6 +169,45 @@ def _apply_look(data: CommentedMap, desired: Optional[Mapping[str, Any]]) -> Non
         section[key] = value
     if not section:
         data.pop("look", None)
+
+
+def _apply_poster(data: CommentedMap, desired: Any) -> None:
+    """Merge the event ``poster`` (the card semantics of the write, at the top level).
+
+    No ``poster`` key, or ``None``: the existing poster stays exactly as written, so a client
+    that does not know posters cannot erase one by omission. An empty mapping removes it. A
+    mapping with keys is merged into the existing node key by key (a key the desired poster
+    lacks is removed, an equal value is left as written, a different one is replaced); an event
+    without a poster gets a fresh one before its chapters. Anything that is not a mapping is put
+    in as given, for :func:`build_document` to refuse.
+    """
+    if desired is None:
+        return
+    if not isinstance(desired, Mapping):
+        data["poster"] = desired
+        return
+    if not desired:
+        data.pop("poster", None)
+        return
+    node = data.get("poster")
+    if not isinstance(node, CommentedMap):
+        fresh = CommentedMap()
+        for key in ("clip", "at"):
+            if key in desired:
+                fresh[key] = desired[key]
+        fresh.update({k: v for k, v in desired.items() if k not in fresh})
+        data.pop("poster", None)
+        later = [key for key in ("chapters", "clips", "ignore", "sort") if key in data]
+        data.insert(
+            min(list(data).index(key) for key in later) if later else len(data), "poster", fresh
+        )
+        return
+    for key in list(node):
+        if key not in desired:
+            del node[key]
+    for key, value in desired.items():
+        if key not in node or not _same_card_value(node[key], value):
+            node[key] = value
 
 
 def _apply_ignore(data: CommentedMap, desired: Optional[Iterable[str]]) -> None:
