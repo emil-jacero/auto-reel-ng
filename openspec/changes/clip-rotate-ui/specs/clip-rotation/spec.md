@@ -32,10 +32,10 @@ and a clip the operator removed SHALL NOT have the controls. When the primary po
 a tap in an area of at least 44 × 44 CSS pixels, reaching no other control. The controls SHALL NOT change a row's size or
 position, SHALL NOT start a drag, and SHALL NOT mark the clip.
 
-A turn SHALL be an edit of the draft like a cut: it SHALL show the save bar, enable Undo, Reset and Save, make leaving
+A turn SHALL be an edit of the draft like a cut: it SHALL show the save bar, enable Reset and Save, make leaving
 Edit mode ask first, and be written by Save as `clips.<identity>.rotate` in the same write as the other changes, with
-the clip's other properties unchanged. A draft whose turn equals the saved turn SHALL count as no change. Undo SHALL step
-back one turn press; Reset SHALL restore the saved turns. The controls SHALL be unavailable while a save or a move is
+the clip's other properties unchanged. A draft whose turn equals the saved turn SHALL count as no change. A turn SHALL be stepped back by the
+opposite turn; Reset SHALL restore the saved turns. The controls SHALL be unavailable while a save or a move is
 pending.
 
 Each press SHALL be announced once to assistive technology with the clip's name and the turn it now has ("s1710002.mp4
@@ -53,9 +53,9 @@ rotated 90 degrees right.", "s1710002.mp4 no longer rotated.").
 - **WHEN** a clip saved with `rotate: 90` is turned left once and saved
 - **THEN** its entry in `reel.yaml` has no `rotate` key, and the write has no `rotate: 0`
 
-#### Scenario: Undo and Reset
-- **WHEN** the operator turns a clip right three times, presses Undo once, then Reset
-- **THEN** after Undo the clip is turned 180 and after Reset it is as saved, and the page is not dirty
+#### Scenario: Stepping back and Reset
+- **WHEN** the operator turns a clip right three times, turns it left once, then presses Reset
+- **THEN** after the left turn the clip is turned 180 and after Reset it is as saved, and the page is not dirty
 
 #### Scenario: Turning is not marking and not dragging
 - **WHEN** the operator presses Rotate right on a clip
@@ -80,14 +80,14 @@ mode's save bar stays compact and fits the window" allows.
 
 The marks line (`Edit mode marks clips to move together`) SHALL offer **Rotate marked left** and **Rotate marked
 right**. Each SHALL turn every marked clip that is on disk by a quarter turn from that clip's own current turn in the
-draft, in one Undo step, and SHALL announce once how many clips were turned ("3 clips rotated right."). They SHALL be
+draft, in one step, and SHALL announce once how many clips were turned ("3 clips rotated right."). They SHALL be
 disabled, and say why to assistive technology, when no clip is marked. Turning the group SHALL NOT clear or change the
 marks. The buttons SHALL meet the touch-size rule above and SHALL fit the line at 390 pixels wide without making the page
 scroll horizontally.
 
 #### Scenario: Three marked clips with different turns
 - **WHEN** three clips with turns 0, 90 and 270 are marked and Rotate marked right is pressed
-- **THEN** their turns are 90, 180 and 0 (key removed), they stay marked, and one Undo restores all three
+- **THEN** their turns are 90, 180 and 0 (key removed), they stay marked, and Rotate marked left restores all three
 
 ### Requirement: Every picture of a clip shows its turn
 

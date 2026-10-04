@@ -17,7 +17,7 @@
 ## Goals / Non-Goals
 
 **Goals:** a sideways clip is fixed in one or two presses and the fix is visible everywhere before Save; remembered in
-`reel.yaml`; same Undo/Reset/Save model; works by keyboard and finger.
+`reel.yaml`; same Reset/Save model; works by keyboard and finger.
 
 **Non-Goals:** no engine, API, schema or cache change; no regenerating proxies, sprites or thumbnails; no flip/mirror;
 no arbitrary angles; no change to the rendered Movie player (the render already turned it); no rotate on the
@@ -26,33 +26,34 @@ Timeline's lane itself (the lane's widths are durations).
 ## Decisions
 
 1. **A pure turn model, `web/src/rotate/turn.ts`, under `npm test`.** `normalizeTurn(n)` maps any multiple of 90 (also
-   -90, 360, 450) into 0/90/180/270 and anything else to `null` (shown as no turn, never guessed; the loader refuses
-   such values). `stepTurn(current, ±1)` adds a quarter turn clockwise (+1, "right") or anticlockwise (-1, "left")
-   and returns 0 for no turn. `turnWords(90)` is "Rotated 90 degrees". `turnTransform(turn, box, shape)` returns the
-   CSS `transform` for a picture of aspect `shape` (width over height of the picture as served) in a box of aspect
-   `box`: `rotate(<turn>deg)` plus, for 90 and 270, `scale(k)` with `k = min(box / shape', shape' / box)`-style fit so
-   the turned picture lies inside the box (contain). Alternatives rejected: swapping the box to portrait (moves every
-   row, breaks the fixed 16:9 thumbnail contract and `no row moves`), and re-requesting a rotated thumbnail (a second
-   cache keyed by an editorial value; D-11 and D-21 keep editorial edits out of the caches).
+   -90, 360, 450) into 0/90/180/270 and anything else to `null` (shown as no turn, never guessed). `stepTurn(current,
+   way)` adds a quarter turn clockwise ("right") or anticlockwise ("left"). `turnWords(90)` is "Rotated 90 degrees";
+   `turnsOf(clips)` reads a document's turns. The fit is made in CSS, not computed: a box that holds a turned picture is
+   a size container (`container-type: size`), and for 90 and 270 the picture's own box is swapped (its width is the
+   box's height and the other way round, `100cqb` by `100cqi`) before it is rotated, so `object-fit: contain` fits any
+   picture shape whole in the unchanged box without measuring a box or a picture. Alternatives rejected: swapping the
+   box to portrait (moves every row, breaks the fixed 16:9 thumbnail contract and `no row moves`), a computed
+   `scale()` from measured aspects (needs a resize observer and the picture's dimensions before it is right), and
+   re-requesting a rotated thumbnail (a second cache keyed by an editorial value; D-11 and D-21 keep editorial edits
+   out of the caches).
 2. **Rotation lives in the draft as a map, `Rotations`, beside `Cuts`.** The baseline is read from the document; the
    draft holds only changed identities; a value equal to the baseline is dropped. `buildWriteBody` writes `rotate` for a
-   changed clip (0 writes nothing: the key is removed, as `entry.rotate == null` already means). Undo steps back
-   one change at a time like cuts; Reset clears the map.
+   changed clip (0 writes nothing: the key is removed, as `entry.rotate == null` already means). Edit mode has no
+   global Undo (its Undo buttons restore a removed clip, chapter or cut): a turn is stepped back by the opposite
+   turn, and Reset clears the map.
 3. **Controls are a pair of icon buttons per clip row** (`rotate-ccw`/`rotate-cw` icons; `Icon.tsx` gains `rotate-cw`),
    named "Rotate <name> left" / "Rotate <name> right", in the row's action cluster, each a 44 px target when the
    pointer is coarse and the row's existing control height otherwise (`Every control is large enough to touch`).
    The group buttons live in the marks line and are disabled when nothing on disk is marked.
-4. **Turned pictures share one wrapper.** A `Turned` component (`web/src/rotate/Turned.tsx`) wraps an image or video
-   in a box that keeps its own aspect and `overflow: hidden`, with the transform on the child; it takes the turn and the
-   picture's aspect. The play overlay and the mark box are siblings of the transform, never children, so they stay
-   upright and in their corners.
+4. **Turned pictures share one stylesheet.** `rotate.css` turns an `img` or `video` that has `data-turn` and is a direct
+   child of a `data-turned` box (the thumbnail box, the player's stage, the Timeline's stage). The play overlay and the
+   mark box are siblings of the picture, never children, so they stay upright and in their corners.
 5. **The Timeline** turns its single `<video>` element and each filmstrip tile the same way. The video element's box is
    the preview area; the tiles keep the lane height (90 px) and the clip's lane width (set by duration, never by shape),
    and a turned tile is fitted inside it. Trim handles, the playhead and the suggestions are untouched.
-6. **Aspect needs a shape.** The picture's shape comes from what the component already knows: the sprite geometry for
-   a tile (`facts` dims and `tile` size), `video.videoWidth/Height` for a video once metadata loads, the thumbnail's
-   `naturalWidth/Height` once loaded. Until known, the box is the fixed 16:9 and the turn is applied with the
-   16:9 shape; no layout shift because the box never changes size.
+6. **No shape is needed.** Because the fit is made by the browser (decision 1), the client reads no picture dimensions;
+   a tile of a filmstrip, whose picture is a sprite background, is turned inside its tile box with a scale from the tile's
+   own place (`tileWidth * scale` by the lane height), which the sprite geometry already gives.
 
 ## Risks / Trade-offs
 

@@ -10,7 +10,7 @@ shows the clip unturned, so the operator cannot see what the render will do or f
 
 - Edit mode gets **Rotate left** and **Rotate right** on every clip that a chapter plays and that is on disk (icons
   with accessible names, 44 px targets, keyboard), setting `clips.<identity>.rotate` in the **draft**; a turn back to
-  0 removes the key. Undo, Reset and Save behave as for every other edit; the save bar says "1 clip rotated".
+  0 removes the key. Reset and Save behave as for every other edit (a turn is stepped back by the opposite turn); the save bar says "1 clip rotated".
 - The marked group (`clip-group-select-drag`) gets **Rotate marked left** and **Rotate marked right**.
 - **Every picture of a clip shows the turn**, by a CSS transform on the picture the service already serves: thumbnails
   (read view and Edit mode), the clip player (read view Watch and Edit mode preview, copy and original), the Timeline's
