@@ -172,6 +172,8 @@ def extract_poster(
     output: Path,
 ) -> None:
     """Write the poster frame to ``output`` and verify it; no frame raises, never a stand-in."""
+    # A ``.part`` left by a killed render must never pass as this render's frame.
+    output.unlink(missing_ok=True)
     no_frame = f"no poster frame at {choice.at:g}s of {choice.identity!r} (the clip lasts {clip.duration:g}s)"
     try:
         runtime.run(poster_args(clip, choice, target=target, output=output))

@@ -60,6 +60,7 @@ from ..scheduler import (
 from ..staleness.fingerprint import Fingerprint, compute_fingerprint, engine_identity
 from ..staleness.gate import StalenessReason, Verdict, evaluate
 from ..staleness.manifest import write_manifest
+from ..thumbs.settings import resolve_thumbnail_position
 from .adoption import REEL_FILENAME, PreparedEvent
 from .build import build_render_job_from_event, prepare_and_persist
 from .context import project_context, resolve_project_root
@@ -120,6 +121,7 @@ def cmd_render(args: argparse.Namespace) -> int:
 
     runtime = FfmpegRuntime()
     look_defaults = resolve_look_defaults(ctx.config)
+    poster_position = resolve_thumbnail_position(ctx.config)
 
     # Select the acceleration profile once (D-CLI4); --device is the explicit override.
     inventory = detect_capabilities(runtime)
@@ -170,6 +172,7 @@ def cmd_render(args: argparse.Namespace) -> int:
                     render_node=render_node,
                     look_defaults=look_defaults,
                     dry_run=args.dry_run,
+                    poster_position=poster_position,
                 )
             )
         except EngineError as exc:
@@ -307,6 +310,7 @@ def _build_job(
     render_node: Optional[str],
     look_defaults: Mapping[str, object],
     dry_run: bool,
+    poster_position: float,
 ) -> RenderJob:
     """Resolve an already-gated candidate into a :class:`RenderJob`.
 
@@ -323,6 +327,7 @@ def _build_job(
         dry_run=dry_run,
         overwrite=True,
         fingerprint=candidate.fingerprint,
+        poster_position=poster_position,
     )
 
 
