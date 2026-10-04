@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 
 import { cardMap, cardPlacements, trackLayout } from './cards.ts'
 import type { CardClip, CardSpec } from './cards.ts'
-import { ModelError, layout } from './model.ts'
+import { ModelError, keptExtent, layout } from './model.ts'
 import {
   createCardClock,
   fadesOf,
@@ -183,16 +183,18 @@ describe('what is shown', () => {
 
 describe('the hand-over', () => {
   it('is the anchor clip’s start, or the end of a cut that begins at zero', () => {
-    assert.equal(handOverMs([]), 0)
-    assert.equal(handOverMs([{ from: 0, to: 3000 }]), 3000)
-    assert.equal(handOverMs([{ from: 1000, to: 3000 }]), 0)
+    assert.equal(handOverMs({ durationMs: 20000, spans: [] }), 0)
+    assert.equal(handOverMs({ durationMs: 20000, spans: [{ from: 0, to: 3000 }] }), 3000)
+    assert.equal(handOverMs({ durationMs: 20000, spans: [{ from: 1000, to: 3000 }] }), 0)
+    assert.equal(handOverMs(undefined), 0)
     assert.deepEqual(
-      videoTarget({ clip: 1, ms: 0, card: { chapter: 1, name: 'x', ms: 500, lengthMs: 4000 } }, () => [
-        { from: 0, to: 3000 },
-      ]),
+      videoTarget({ clip: 1, ms: 0, card: { chapter: 1, name: 'x', ms: 500, lengthMs: 4000 } }, () => ({
+        durationMs: 20000,
+        spans: [{ from: 0, to: 3000 }],
+      })),
       { clip: 1, ms: 3000 },
     )
-    assert.deepEqual(videoTarget({ clip: 1, ms: 700 }, () => []), { clip: 1, ms: 700 })
+    assert.deepEqual(videoTarget({ clip: 1, ms: 700 }, () => undefined), { clip: 1, ms: 700 })
   })
 
   it('waits for the seek: the clip must be loaded and settled', () => {
@@ -237,9 +239,8 @@ describe('the card clock', () => {
 
 describe('steps across cards', () => {
   const { map, lay, facts } = movie()
-  const first = () => 0
-  const step = (p: Parameters<typeof stepFramesOnTrack>[4], n: number) =>
-    stepFramesOnTrack(map, facts, names, first, p, n)
+  const step = (p: Parameters<typeof stepFramesOnTrack>[3], n: number) =>
+    stepFramesOnTrack(map, facts, names, p, n)
 
   it('skips nothing: a step into a card lands on its first instant', () => {
     const next = step({ clip: 0, ms: 19960 }, 1)
@@ -266,5 +267,43 @@ describe('steps across cards', () => {
     const back = step({ clip: 1, ms: 0 }, -1)
     assert.equal(back.card?.chapter, 1)
     assert.equal(back.card?.ms, 3900)
+  })
+})
+
+describe('a black card before a start-trimmed clip (timeline-ripple-layout)', () => {
+  // "Dag 2"'s 20 s clip has a cut from 0 to 2 s: the card sits directly before its block.
+  const clips = [clipOf(0, 8000), clipOf(1, 20000, [{ from: 0, to: 2000 }])]
+  const specs = [spec('', 3), spec('Dag 2', 4)]
+  const placements = cardPlacements(specs, clips, 'on')
+  const facts = clips.map((c) => ({
+    durationMs: c.durationMs,
+    fps: 25,
+    ...keptExtent(c.spans as { from: number; to: number }[], c.durationMs),
+  }))
+  const lay = layout(facts)
+  const map = cardMap(placements, lay)
+  const track = trackLayout(lay, map)
+  const step = (p: Parameters<typeof stepFramesOnTrack>[3], n: number) =>
+    stepFramesOnTrack(map, facts, names, p, n)
+
+  it('lays the clip by its extent after the card, and the track time of its kept start is the block’s edge', () => {
+    // opening card 3 s, clip 1 (8 s), card 4 s, clip 2 kept 18 s
+    assert.deepEqual(track.startsMs, [3000, 15000])
+    assert.equal(track.totalMs, 33000)
+    assert.equal(globalMs(track, { clip: 1, ms: 2000 }), 15000)
+    assert.deepEqual(positionOnTrack(map, lay, facts, names, 15000), { clip: 1, ms: 2000 })
+  })
+
+  it('a step out of the card lands on the clip’s first kept frame, and back into it', () => {
+    const inCard = positionOnTrack(map, lay, facts, names, 14950)
+    assert.equal(inCard.card?.chapter, 1)
+    assert.deepEqual(step(inCard, 1), { clip: 1, ms: 2000 })
+    assert.equal(step({ clip: 1, ms: 2000 }, -1).card?.chapter, 1)
+  })
+
+  it('the stages add up to the rippled track', () => {
+    const stages = stagesOf(map, lay)
+    const last = stages.at(-1)
+    assert.equal((last?.startMs ?? 0) + (last?.lengthMs ?? 0), track.totalMs)
   })
 })

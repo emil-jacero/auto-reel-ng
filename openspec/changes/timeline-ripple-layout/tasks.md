@@ -6,7 +6,7 @@
   durations and found by time" and the extent, trailing-slack and round-trip scenarios of "A clip's edge cuts set its
   kept extent" (leading + interior + trailing on one event, a wholly cut first/middle/last clip, the existing cases
   still pass).
-- [ ] 1.2 `position.ts` (and `play.ts` `positionOnTrack`/`stepFramesOnTrack`/`stagesOf`): first and last kept frame,
+- [x] 1.2 `position.ts` (and `play.ts` `positionOnTrack`/`stepFramesOnTrack`/`stagesOf`): first and last kept frame,
   `positionAt`, `stepFrames`, `clampPosition`, `startPosition`/`endPosition`, `globalMs` through the extent; a clip with no
   kept frame is passed over. Test in `position.test.ts` and `play.test.ts`: the positions, steps, few-frames and
   no-kept-frame scenarios, a black card before a start-trimmed clip, and the existing cases unchanged.
