@@ -10,7 +10,7 @@ import { timeToPx } from './model'
  * a lane of its own directly above the clips. Every block is a real button with a name in
  * words, and its look is told by shape and word as well as colour: a black card is a solid
  * block of its own span; a video card is an outlined block over the footage it sits on, with
- * an edge marker down to the clip; the off look is dashed with the word "off". Only the
+ * an edge marker down to the clip; the off look is dashed with the words "not enabled". Only the
  * blocks in the track's window are drawn.
  */
 
@@ -81,7 +81,7 @@ export function CardLane({
               {widthPx >= META_PX && (
                 <span className="tl-card-meta">
                   {cardSeconds(block.widthMs)} · {block.background === 'video' ? 'Video' : 'Black'}
-                  {block.off ? ' · off' : ''}
+                  {block.off ? ' · not enabled' : ''}
                 </span>
               )}
             </span>

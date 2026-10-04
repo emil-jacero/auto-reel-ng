@@ -498,6 +498,7 @@ export function Timeline({
 
       <p className="tl-summary">
         {cuts.cuts !== null && movieWords(movieWithCards(movieMs(clips, cuts.cuts), map), clipLay.totalMs, cardTimeWords(map))}
+        {decorators === 'unset' && placements.some((place) => place.kind === 'off') && '. Title cards are not counted.'}
         {cutsPending && CUTS_READING}
       </p>
 

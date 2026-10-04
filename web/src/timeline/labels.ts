@@ -186,7 +186,15 @@ export function cardsNotes(
       title: 'look.decorators in reel.yaml is not a list; the render refuses it, so no title card is drawn',
     })
   } else if (placements.some((place) => place.kind === 'off')) {
-    notes.push({ title: 'Title cards are off for this event; the render draws none' })
+    notes.push(
+      decorators === 'unset'
+        ? {
+            title: 'Title cards are not enabled in this event’s reel.yaml',
+            detail:
+              'A project default (config.yaml) may still enable them, so the render may draw them and the movie may be longer than shown.',
+          }
+        : { title: 'Title cards are off for this event; the render draws none' },
+    )
   }
   const unresolved = new Map<string, string[]>()
   const unreadable: string[] = []

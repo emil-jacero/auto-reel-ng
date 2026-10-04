@@ -49,8 +49,9 @@ describe('titleCardsOn', () => {
   it('is on for a list with title, off when absent or without it, invalid for a non-list', () => {
     assert.equal(titleCardsOn({ decorators: ['title'] }), 'on')
     assert.equal(titleCardsOn({ decorators: ['none', 'title'] }), 'on')
-    assert.equal(titleCardsOn({}), 'off')
-    assert.equal(titleCardsOn(null), 'off')
+    assert.equal(titleCardsOn({}), 'unset')
+    assert.equal(titleCardsOn(null), 'unset')
+    assert.equal(titleCardsOn({ decorators: [] }), 'off')
     assert.equal(titleCardsOn({ decorators: ['none'] }), 'off')
     assert.equal(titleCardsOn({ decorators: 'title' }), 'invalid')
   })
@@ -61,7 +62,7 @@ describe('decoratorsRead and cardSpecs', () => {
     assert.equal(decoratorsRead(null, false), 'pending')
     assert.equal(decoratorsRead(null, true), 'unreadable')
     assert.equal(decoratorsRead({ decorators: ['title'] }, false), 'on')
-    assert.equal(decoratorsRead({}, false), 'off')
+    assert.equal(decoratorsRead({}, false), 'unset')
   })
 
   it('reads the resolved cards, the chapter error before the event-wide one', () => {
@@ -305,7 +306,7 @@ describe('cardWords', () => {
     )
     assert.equal(
       cardWords('Dag 2', { durationMs: 4000, background: 'black', off: true }),
-      'Title card for Dag 2, 4.0 s, on black, off',
+      'Title card for Dag 2, 4.0 s, on black, not enabled',
     )
   })
 })

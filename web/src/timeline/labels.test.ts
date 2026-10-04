@@ -203,6 +203,7 @@ describe('title cards in the words', () => {
     assert.deepEqual(cardsNotes(specs, off, 'off'), [
       { title: 'Title cards are off for this event; the render draws none' },
     ])
+    assert.match(cardsNotes(specs, off, 'unset')[0].detail ?? '', /project default/)
     assert.equal(cardsNotes(specs, [], 'invalid').length, 1)
     assert.equal(cardsNotes(specs, [], 'unreadable').length, 1)
     assert.deepEqual(cardsNotes(specs, [], 'on'), [])
