@@ -11,12 +11,13 @@ import errno
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, Sequence
 
 import pytest
 from test_proxies_command import make_meta, vaapi_profile
@@ -804,9 +805,51 @@ def test_an_editorial_edit_never_invalidates_a_proxy(env: Env) -> None:
     assert first.directory == second.directory == third.directory
     assert [e.generated for e in (second, third)] == [False, False]
     assert len(env.runtime.runs) == 1
-    assert not any(
-        "rotate" in " ".join(run) or "transpose" in " ".join(run) for run in env.runtime.runs
+    assert not any(applies_rotation(run) for run in env.runtime.runs)
+
+
+def applies_rotation(run: Sequence[str]) -> bool:
+    """True when an ffmpeg command rotates: the flag, or a transpose/rotate filter in a graph.
+
+    Only filter-graph tokens count, never a path: a clip or cache directory may be named anything.
+    """
+    graphs = [run[i + 1] for i, arg in enumerate(run[:-1]) if arg in ("-vf", "-filter_complex")]
+    return "-noautorotate" in run or any(
+        re.search(r"(?:^|[,;\]\s])(?:transpose|rotate)=", graph) for graph in graphs
     )
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        ["ffmpeg", "-vf", "transpose=1,scale=-2:540"],
+        ["ffmpeg", "-vf", "scale=-2:540,rotate=PI/2"],
+        ["ffmpeg", "-filter_complex", "[0:v]scale=1:1[a];[a]transpose=2[v]"],
+        ["ffmpeg", "-noautorotate", "-i", "in.mp4"],
+    ],
+)
+def test_the_rotation_matcher_sees_rotation_graphs(run: List[str]) -> None:
+    assert applies_rotation(run)
+
+
+def test_the_rotation_matcher_ignores_paths_named_rotate() -> None:
+    run = ["ffmpeg", "-i", "/tmp/rotate-me/C0123.MP4", "-vf", "scale=-2:540", "/c/rotate/proxy.mp4"]
+    assert not applies_rotation(run)
+
+
+def test_an_editorial_edit_never_invalidates_a_proxy_under_a_rotate_path(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The path of the library and cache contains ``rotate``: the original test's check still holds."""
+    root = tmp_path_factory.mktemp("rotate-")
+    assert "rotate" in str(root)
+    env = Env(root, monkeypatch)
+    first = env.ensure()
+    (env.clip.parent / "reel.yaml").write_text("version: 0\nchapters: []\n", "utf-8")
+    assert env.ensure().directory == first.directory
+    assert len(env.runtime.runs) == 1
+    assert any("rotate" in " ".join(run) for run in env.runtime.runs)  # the path is in the argv
+    assert not any(applies_rotation(run) for run in env.runtime.runs)
 
 
 def test_a_read_only_cache_directory_is_a_cache_error(env: Env, tmp_path: Path) -> None:

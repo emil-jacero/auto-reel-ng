@@ -26,7 +26,13 @@ from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
 from auto_reel_ng.event.resolution import resolve
 from auto_reel_ng.probe import probe_media
 from auto_reel_ng.probe.metadata import AudioStream, ClipMetadata
-from auto_reel_ng.reel.card import ChapterCard
+from auto_reel_ng.reel.card import (
+    CARD_MAX_DURATION,
+    CARD_MAX_FONT_SIZE,
+    CARD_MIN_DURATION,
+    CARD_MIN_FONT_SIZE,
+    ChapterCard,
+)
 from auto_reel_ng.reel.document import Chapter, ClipRef, Metadata, ReelDocument, Trim
 from auto_reel_ng.render import (
     ProducedSegment,
@@ -52,6 +58,7 @@ from auto_reel_ng.render.title import (
 )
 from auto_reel_ng.render.title import render as card_render
 from auto_reel_ng.render.title import resolve_card, resolve_card_config, title_card_lines
+from auto_reel_ng.render.title.config import check_card_styles
 from auto_reel_ng.render.title.decorator import TITLE_PRODUCER
 
 # --------------------------------------------------------------------------- #
@@ -169,6 +176,85 @@ def test_malformed_value_fails_loud_naming_field() -> None:
         parse_title_card_config({"title_font_size": "big"})
     with pytest.raises(TitleCardError, match=r"position"):
         parse_title_card_config({"position": "sideways"})
+
+
+def test_an_unknown_key_is_refused_naming_it_and_the_allowed_fields() -> None:
+    with pytest.raises(TitleCardError, match=r"look\.title_card\.titel_font_size") as info:
+        parse_title_card_config({"titel_font_size": 80})
+    assert "title_font_size" in str(info.value)
+
+
+def test_every_real_field_still_parses() -> None:
+    every = {
+        "font_family": "DejaVu Sans",
+        "title_font_size": 80,
+        "subtitle_font_size": 40,
+        "text_color": "#112233",
+        "outline_color": "#445566",
+        "outline_width": 3.0,
+        "shadow_color": "#778899",
+        "shadow_offset": 4,
+        "shadow_opacity": 0.25,
+        "background_color": "#aabbcc",
+        "background_opacity": 0.5,
+        "fade_in": 1.0,
+        "fade_out": 1.5,
+        "duration": 6.0,
+        "position": "bottom",
+        "background": "video",
+    }
+    assert len(every) == len(dataclasses.fields(TitleCardConfig))
+    assert parse_title_card_config(every).to_dict() == every  # unchanged output for valid input
+
+
+def test_resolve_card_config_with_a_chapter_card_still_passes() -> None:
+    card = ChapterCard(title="Dag", duration=5.0, title_font_size=70, position="top")
+    config = resolve_card_config({"fade_in": 1.0}, card)
+    assert (config.duration, config.title_font_size, config.position) == (5.0, 70, "top")
+
+
+@pytest.mark.parametrize(
+    ("key", "low", "high"),
+    [
+        ("title_font_size", CARD_MIN_FONT_SIZE, CARD_MAX_FONT_SIZE),
+        ("subtitle_font_size", CARD_MIN_FONT_SIZE, CARD_MAX_FONT_SIZE),
+        ("duration", CARD_MIN_DURATION, CARD_MAX_DURATION),
+    ],
+)
+def test_sizes_and_duration_are_bounded_inclusively(key: str, low: float, high: float) -> None:
+    for ok in (low, high):
+        assert getattr(parse_title_card_config({key: ok}), key) == ok
+    step = 1 if key.endswith("size") else 0.01
+    for bad in (low - step, high + step):
+        with pytest.raises(TitleCardError, match=rf"look\.title_card\.{key} must be between"):
+            parse_title_card_config({key: bad})
+
+
+def test_nan_duration_is_refused() -> None:
+    with pytest.raises(TitleCardError, match=r"look\.title_card\.duration"):
+        parse_title_card_config({"duration": float("nan")})
+
+
+def test_fades_still_clamp_at_the_duration_bounds() -> None:
+    low = parse_title_card_config({"duration": CARD_MIN_DURATION, "fade_in": 2.0, "fade_out": 2.0})
+    assert low.fade_in + low.fade_out == pytest.approx(CARD_MIN_DURATION)
+    high = parse_title_card_config({"duration": CARD_MAX_DURATION})
+    assert (high.fade_in, high.fade_out) == (2.0, 2.0)
+
+
+def test_check_card_styles_refuses_an_unknown_key_and_a_wild_duration() -> None:
+    with pytest.raises(TitleCardError, match=r"look\.title_card\.colour"):
+        check_card_styles({"colour": "#fff"}, {})
+    with pytest.raises(TitleCardError, match=r"look\.title_card\.duration"):
+        check_card_styles({"duration": 900}, {})
+    check_card_styles({"duration": 7}, {})
+
+
+def test_no_library_script_writes_a_title_card_key() -> None:
+    """Audit: the dev-library and compose-seed scripts write no ``title_card``, so nothing is newly refused."""
+    scripts = Path(__file__).resolve().parent.parent / "scripts"
+    for script in scripts.glob("*.py"):
+        assert "title_card" not in script.read_text("utf-8"), script.name
 
 
 def test_config_to_dict_round_trips_fields() -> None:
