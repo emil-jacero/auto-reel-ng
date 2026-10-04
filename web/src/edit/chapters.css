@@ -104,8 +104,8 @@
 @layer screens {
   /*
    * Edit Titlecard (`EditTitlecard.tsx`): the chapter header bar's one button, after the name and
-   * before the clip count. Icon and words; a coarse pointer takes a 44 px target. The name wraps
-   * rather than pushing the button out of the bar.
+   * the clip count (which takes the free space), so its right edge is the same on every chapter.
+   * Icon and words; always a 44 px target. The name wraps rather than pushing the button out of the bar.
    */
   .edit-chapter > .panel-header {
     flex-wrap: wrap;
@@ -114,21 +114,16 @@
   .edit-titlecard {
     flex: none;
     gap: var(--s-2);
-    margin-inline-start: auto;
+    min-block-size: 2.75rem;
 
     &[aria-pressed='true'] {
       border-color: var(--accent);
       background: var(--accent-soft);
     }
-
-    & + .panel-meta {
-      margin-inline-start: 0;
-    }
   }
 
   @media (pointer: coarse) {
     .edit-titlecard {
-      min-block-size: 2.75rem;
       min-inline-size: 2.75rem;
     }
   }
