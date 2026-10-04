@@ -34,6 +34,7 @@ If the cuts cannot be read (the same read the page's cut summaries use), the Tim
 
 #### Scenario: The same cut in the read view and in Edit mode
 - **WHEN** a clip lists a cut from 2.0 to 4.0 s, and the operator opens the Timeline in the read view and then in Edit mode
+- **THEN** the read view draws the hatched span from 2.0 to 4.0 s with no handle, and Edit mode draws the same span with a start and an end handle
 
 #### Scenario: Black cards count in the movie's length
 - **WHEN** an event of 3:45 of footage with 33 s of cuts draws two black cards of 4.0 s each
@@ -61,9 +62,13 @@ colour alone:
 
 A chapter's card anchors at its first shown clip; when every part of that clip is cut, at the next shown clip of
 the chapter that has footage, as the render moves it. A chapter with no shown clip, or whose shown clips are
-wholly cut, SHALL have no block. When `look.decorators` does not include `title`, every chapter with footage SHALL
-have its block drawn in an off look (a dashed outline and the word "off", no time added) and the lane SHALL say
-once that the render draws no title cards for the event. When the event's card style or a chapter's card could not
+wholly cut, SHALL have no block. When the event's `reel.yaml` lists `look.decorators` without `title`, every chapter
+with footage SHALL have its block drawn in an off look (a dashed outline and the word "not enabled", no time added) and
+the lane SHALL say once that the render draws no title cards for the event. When `reel.yaml` has no
+`look.decorators` at all, the effective look may still come from the project's `config.yaml`, which the web cannot
+read: the blocks SHALL be drawn in the same look, the lane SHALL say that the cards are not enabled in this event's
+`reel.yaml` and that a project default may still enable them, and the movie's length SHALL say that title cards are
+not counted instead of presenting itself as final. When the event's card style or a chapter's card could not
 be resolved (`title_card_error`, `card_error`), the lane SHALL say so with the service's words and draw no block
 for the cards affected; a card with a duration that is not a finite number above zero SHALL be said as unreadable,
 never drawn at a guessed length. A card block SHALL be drawn only when in view (the track's windowing), and its
@@ -98,8 +103,12 @@ play cards.
 - **THEN** the lane has no block for it
 
 #### Scenario: The title decorator is off
-- **WHEN** the event's `look.decorators` is absent
+- **WHEN** the event's `reel.yaml` lists `look.decorators: [chapter]`
 - **THEN** the blocks are drawn in the off look with no time added, and the lane says the render draws no title cards
+
+#### Scenario: The decorators are not set in reel.yaml
+- **WHEN** the event's `reel.yaml` has no `look.decorators`
+- **THEN** the blocks are drawn in the off look, the lane says the cards are not enabled in this event's `reel.yaml` and a project default may still enable them, and the movie's length says that title cards are not counted
 
 #### Scenario: A card that cannot be resolved
 - **WHEN** the detail has `title_card_error: "look.title_card.font_family"` and every chapter's `card` is null
@@ -145,7 +154,7 @@ SHALL end the selection of a card. Pressing the selected card again SHALL leave 
 it. The selection SHALL end when its chapter is deleted or no longer in the event after a read. A block and a row
 SHALL be buttons reached by Tab in document order, pressed by Enter or Space, with `aria-pressed`, named in words
 as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default chapter: "Title card for the opening,
-…"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", off"). A selection SHALL open
+…"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", not enabled"). A selection SHALL open
 nothing but an inspector slot, a labelled region saying "Card editing comes next" with the selected card's words;
 it SHALL write nothing, request nothing and be announced once through the polite status region.
 
