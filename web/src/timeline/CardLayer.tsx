@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { memo, useSyncExternalStore } from 'react'
 
 import type { CardSpec, Placement } from './cards'
 import { shownAt } from './play'
@@ -14,7 +14,7 @@ import type { CardPictures } from './useCardImages'
  * card's image is missing its title is shown on black. It reads the playhead's store itself, so
  * a playing card renders this and not the track.
  */
-export function CardLayer({
+export const CardLayer = memo(function CardLayer({
   playhead,
   placements,
   specs,
@@ -54,4 +54,4 @@ export function CardLayer({
       )}
     </div>
   )
-}
+})

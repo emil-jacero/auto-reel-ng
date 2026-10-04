@@ -72,12 +72,23 @@ position in a ref and schedule one `requestAnimationFrame`; the frame calls `zoo
 frame is the pattern `useVisibleRange` and the drag store already use. The existing `useLayoutEffect([pps])` applies the
 scroll unchanged.
 
+Review (2026-10-05) made each zoom frame cheaper: `zoomTo` also sets the visible range it is about to scroll to
+(`useVisibleRange`'s `expect`, a sub-pixel `scrollLeft` rounding reads as no change), so a zoom renders the Timeline
+once, not twice; while the slider is dragged the track draws a quarter view of margin on each side instead of a whole
+view (`LIVE_OVERSCAN`, back to one view 200 ms after the slider's last zoom); the readout and the card layer are
+memoised. A preview of the drag (the drawn layers scaled with `scale`/`translate`, the zoom drawn on a pause and on
+release) was tried and dropped: it stretched the text and pictures and did not measurably lower the frame times,
+because most of a zoom frame's cost on the 400-clip fixture is the Edit page around the Timeline (see Risks).
+
 A pure helper `anchorFor(playheadX, width, pointerX?)` returns the anchor so the rule is unit-tested; `zoomAt` is
 reused as is.
 
 ### D3 — Keys, wheel and pinch
 
 - `\` joins `+ = - _ 0` in `Track.tsx`'s viewport key list and `onTrackKey`; `keys.ts` returns null for it (test).
+  A pure `trackZoomKey` (`keys.ts`) decides which keydown is a zoom key: never with Cmd, never with Ctrl alone (the
+  browser's zoom); a key typed with AltGr (Linux reports AltGraph, Windows Ctrl+Alt together) is the character typed,
+  and `\` also takes Alt alone, because macOS types it with Option on Swedish and German layouts.
   `\` at Fit with a remembered previous zoom restores it (anchored like D2); otherwise it remembers the current scale and
   fits. The remembered scale lives in a ref (`beforeFit`), cleared by any other zoom. `TRACK_KEYS` reads
   "+ and - zoom, 0 fits, \ toggles Fit."
@@ -117,7 +128,8 @@ the end.
 
 ### D6 — The toolbar is a grid of fixed slots; the poster reason is a tooltip, a description and a press-time tip
 
-`.tl-controls` becomes a CSS grid (one row at ≥ 600 px; two fixed rows below: Play + readouts / zoom + poster) whose
+`.tl-controls` becomes a CSS grid in the Timeline's size container (one row from 64rem; two from 31rem: Play + readouts
+/ zoom + poster; three below: Play + readouts / zoom / poster; the movie stat on a row of its own) whose rows and
 columns do not depend on state:
 
 - Play (its width fixed to the wider of Play / Pause);
@@ -130,8 +142,9 @@ columns do not depend on state:
   cannot act shows the reason in a tip positioned absolutely under the button (it takes no layout space; dismissed on
   blur, Escape, or when the reason ends) and says it once in the Timeline's polite live region.
 
-The readout and Play are already one component each; only CSS and the poster markup change. The 390 px second row is
-always present (same height whether or not the poster reason exists).
+The readout and Play are already one component each; only CSS and the poster markup change. The narrow rows are
+always present (same height whether or not the poster reason exists); at 390 px the Timeline is about 20rem wide, so
+the zoom group and Use as poster each take a row (both on one row would squeeze the slider below its hit area).
 
 ### D7 — The read view loses the Timeline; `editing` becomes required
 
@@ -216,7 +229,10 @@ restores the stored zoom; no job, no file, no DB row is touched.
 
 - [Per-frame re-render while dragging the slider on a large event] → rAF coalescing; Playwright measures the drag on
   the 400-clip fixture with 4x CPU throttling and must keep the existing gates (≤ 2 % of frames over 25 ms, as the trim
-  drag; scrub ≥ 30 fps).
+  drag; scrub ≥ 30 fps). Not met in Chrome at 4x (tasks 3.1 status): the thumb alone costs 1.4-2.1 %, a
+  zoom 30-34 %, and 7.4-7.9 % with the Edit page's clip list under `content-visibility: auto` — the page around the
+  Timeline is most of the cost. Options for the supervisor: that page-level change (a separate change: it touches the
+  clip list, its focus rings and dnd-kit's measuring), or a gate measured against the page's own floor.
 - [Non-passive wheel listener costs scroll performance] → it returns immediately without Ctrl/Meta; it is on the track
   box only.
 - [Shared requirements with in-flight changes] → `help-text-declutter` MODIFIES "The track lays the clips out…" and

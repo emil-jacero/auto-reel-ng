@@ -39,3 +39,35 @@ export function playheadKey(key: string, shift: boolean): KeyAction | null {
       return null
   }
 }
+
+/** The track's zoom keys: zoom in, out, Fit, and Fit and back (`\\`). */
+export const TRACK_ZOOM_KEYS: readonly string[] = ['+', '=', '-', '_', '0', '\\']
+
+/** What `trackZoomKey` reads of a keydown (`altGraph` is `getModifierState('AltGraph')`). */
+export type ZoomKeyPress = {
+  key: string
+  ctrlKey: boolean
+  altKey: boolean
+  metaKey: boolean
+  altGraph: boolean
+}
+
+/**
+ * The track zoom key a keydown is, or null. Cmd never (the browser's own zoom), Ctrl alone never
+ * (Ctrl+`-` and Ctrl+`0` are the browser's zoom too). A character typed with AltGr is the key it
+ * typed: Linux reports AltGraph, Windows reports AltGr as Ctrl+Alt together. `\` alone also takes
+ * Alt, because macOS types it with Option on many layouts (Swedish, German: Shift+Option+7).
+ */
+export function trackZoomKey(press: ZoomKeyPress): string | null {
+  const { key, ctrlKey, altKey, metaKey, altGraph } = press
+  if (metaKey || !TRACK_ZOOM_KEYS.includes(key)) {
+    return null
+  }
+  if (!ctrlKey && !altKey) {
+    return key
+  }
+  if (altGraph || (ctrlKey && altKey)) {
+    return key
+  }
+  return key === '\\' && altKey ? key : null
+}

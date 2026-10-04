@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from 'react'
+import { memo, useMemo, useSyncExternalStore } from 'react'
 import type { HTMLAttributes, KeyboardEvent, Ref } from 'react'
 
 import { ClockGroup } from '../ui/Clock'
@@ -93,7 +93,7 @@ export function PlayheadKeys({ id }: { id: string }) {
  * name as its tooltip), then `Clip` with the time in it and its length, then `Event` with
  * the time in the whole timeline and its length. Each time is in a cell of fixed width.
  */
-export function PlayheadReadout({
+export const PlayheadReadout = memo(function PlayheadReadout({
   playhead,
   clips,
   lay,
@@ -119,4 +119,4 @@ export function PlayheadReadout({
       </span>
     </p>
   )
-}
+})

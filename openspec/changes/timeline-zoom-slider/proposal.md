@@ -43,8 +43,8 @@ where the Timeline is shown. It depends on no unresolved §8 item.
 - **Bug (b): a toolbar that holds still.** The toolbar's controls keep their boxes while the Timeline is idle, seeks,
   loads a frame, plays, or has its playhead in a card: the clip's name in a fixed slot, ellipsized; the readouts at
   their clock widths; the zoom controls and slider; Use as poster with its reason as a tooltip and description only,
-  shown and announced when the disabled button is pressed, never as inline text. At 390 px the toolbar may take a
-  second row, the same row in every state.
+  shown and announced when the disabled button is pressed, never as inline text. Narrower, the toolbar may take
+  more rows (at 390 px three rows of controls and the movie stat), the same rows in every state.
 - **The read view has no Timeline.** The read view's Timeline section, its **Open timeline / Close timeline** button
   and its card inspector slot are removed with their code, strings, CSS and tests; the Timeline is shown only in Edit
   mode, open, as `edit-mode-declutter` made it. The read view keeps its clip list (▶ overlays, cut summaries, turns),
