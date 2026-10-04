@@ -33,26 +33,29 @@ scratchpad only, in Chrome 154 (`localhost/playback-research:chrome`) and Firefo
   "240 px per second"; Zoom in three times moves the slider right; a 3 s event's slider is disabled; with 4x CPU
   throttling on the 400-clip fixture a slider drag keeps ≤ 2 % of frames over 25 ms (Chrome and Firefox), and the scrub
   gates (≥ 30 fps median, frame-step p90 ≤ 60 ms) still hold.
-- [ ] 3.2 Keys and pointer (D3): `\` in the viewport key list and `onTrackKey` (Fit, and back to the zoom before it);
+  Status (2026-10-05): everything above passes in Chrome 154 and Firefox 155 except the Chrome 4x-throttled drag
+  gate: 48-58 % of frames over 25 ms (idle baseline on the same loaded host, load 11-19: 9-21 %). Firefox 1x: 0 %.
+  Scrub gates hold (Chrome 48.2 fps / p90 26.5 ms; Firefox 32.8 fps / p90 38.7 ms). Left open for a decision.
+- [x] 3.2 Keys and pointer (D3): `\` in the viewport key list and `onTrackKey` (Fit, and back to the zoom before it);
   `keys.ts` returns null for `\` and `=`; `TRACK_KEYS` names `\`; a non-passive `wheel` listener on `.tl-viewport` zooms
   on Ctrl/Meta (and pinch) about the pointer, `preventDefault` only then. Tests: `keys.test.ts`, `labels.test.ts`;
   Playwright — `=`, `-`, `0`, `\` twice (Fit, then back to the earlier scale); Ctrl+wheel keeps the time under the
   pointer within 1 px and leaves `visualViewport.scale` at 1; a plain wheel scrolls without zooming.
-- [ ] 3.3 Session memory (D4): a `zoomMemory.ts` module (key per event, `{fitted, pps}`, parse/validate, injected
+- [x] 3.3 Session memory (D4): a `zoomMemory.ts` module (key per event, `{fitted, pps}`, parse/validate, injected
   storage, in-memory mirror, every access in try/catch), restored on mount and re-bounded once the view is measured.
   Tests (`node:test`): corrupt, missing, non-finite and throwing storage → Fit; a stored scale above the max or below
   Fit is clamped; Playwright — zoom to 60 px/s, Save and Refresh keep it, a new browser context opens at Fit.
 
 ## 4. web/ — Toolbar and read view
 
-- [ ] 4.1 Bug (b), the toolbar holds still (D6): `.tl-controls` as a grid of fixed slots (one row ≥ 600 px, two fixed
+- [x] 4.1 Bug (b), the toolbar holds still (D6): `.tl-controls` as a grid of fixed slots (one row ≥ 600 px, two fixed
   rows below); the clip name ellipsized with its `title`; the inline `.tl-poster-why` removed; Use as poster's reason as
   `title` + `aria-describedby` (visually hidden), shown in an absolutely positioned tip and said once in the Timeline's
   live region when the disabled button is pressed. Tests: Playwright — the bounding boxes of Play, the readout parts,
   every zoom control and Use as poster are equal within 1 px across idle, a seek whose frame is loading (throttled proxy
   route), playing, and the playhead in a black card, at 1280 and 390, light and dark; pressing the button while loading
   shows "The picture is still loading." in the tip and the live region once; no horizontal page scroll at 320.
-- [ ] 4.2 The read view loses the Timeline (D7): remove `TimelineSection` from `EventDetail.tsx` `ReadyView` (and the
+- [x] 4.2 The read view loses the Timeline (D7): remove `TimelineSection` from `EventDetail.tsx` `ReadyView` (and the
   props only it used); make `editing` / `cardEditing` required in `TimelineSection`, `Timeline`, `Track` and
   `overlays/control.ts` and delete every `editing === null` branch, the Open/Close toggle, `sectionOpen`, the card
   inspector slot (keep its status region), `.tl-toggle` / `.tl-inspector*` CSS and the strings; delete or rewrite the
@@ -68,6 +71,6 @@ scratchpad only, in Chrome 154 (`localhost/playback-research:chrome`) and Firefo
   the per-tab session memory, MAX_PPS kept at 240 with the numbers from design.md, Fit's end gutter, the Timeline only in
   Edit mode — superseding "the read view keeps its button"); a §4.10 bullet and a §6 phase-8 note naming
   `timeline-zoom-slider`. Test: a `docs.test.ts` case asserting `timeline-zoom-slider` is named in D-20, §4.10 and §6.
-- [ ] 5.2 Gates: `npm test`, `npx tsc --noEmit` and `npm run build` in podman; the full Playwright run of 2.1, 3.1–3.3,
+- [x] 5.2 Gates: `npm test`, `npx tsc --noEmit` and `npm run build` in podman; the full Playwright run of 2.1, 3.1–3.3,
   4.1 and 4.2 in Chrome 154 and Firefox ≥ 155, light and dark, at 1280 and 390 px, screenshots looked at; no request
   other than reads during any zoom.
