@@ -34,16 +34,23 @@ model SHALL refuse a clip duration that is not a finite number above zero, as it
 For each edge the model SHALL give the lowest and highest place it may take, on the clip's frame grid. The start
 edge's lowest place SHALL be the end of the joined span that the clip's other cuts (not its edge cut, not removed)
 form from the clip's start, or 0 when they form none; that place of 0 is the **start of the file**. Its highest place
-SHALL be the latest frame time at which the clip still plays at least three of its frames: its duration less the
-time all its cuts cover, once, with the start trimmed to that place. The end edge SHALL mirror this: its highest place
+SHALL be the latest frame time at which the clip still plays at least three of its frames (its duration less the
+time all its cuts cover, once, with the start trimmed to that place) and still has a kept extent: a joined span that
+ends less than 100 ms before the clip's end is, for the track and Play, a cut to the end, so a start trimmed into the
+clip's last 100 ms would leave the clip nothing on the Timeline. The end edge SHALL mirror this: its highest place
 is the clip's duration (the **end of the file**) or the start of the joined span the other cuts form at the end, and
-its lowest place the earliest frame time at which the clip still plays three frames. The range SHALL always hold the
+its lowest place the earliest frame time at which the clip still plays three frames and has a kept extent. The range SHALL always hold the
 edge's current place, so a clip already playing fewer than three frames keeps its edges where they are and the range
 is never inverted.
 
-#### Scenario: The start edge can trim up to three played frames
+#### Scenario: The start edge can trim until the clip keeps its last 0.1 s
 - **WHEN** `s1710001.mp4` (6.02 s, 50 fps, three frames are 60 ms) lists cuts 1.0 to 2.5 s and 4.0 to 5.0 s
-- **THEN** its start edge may take places from 0 to 5.96 s, and at 5.96 s the clip plays 60 ms
+- **THEN** its start edge may take places from 0 to 5.92 s, and at 5.92 s the clip plays 100 ms (at 5.96 s it would
+  play three frames, but the track would keep nothing of it)
+
+#### Scenario: At a low frame rate three frames hold the start
+- **WHEN** a 6.0 s clip at 25 fps (three frames are 120 ms) has no cuts
+- **THEN** its start edge may take places from 0 to 5.88 s, and the limit is the three frames
 
 #### Scenario: Another cut holds the start
 - **WHEN** the clip lists a `black` cut 0 to 1.0 s and a `manual` cut 0 to 3.0 s
@@ -104,7 +111,7 @@ them.
 
 #### Scenario: A drag past the limit stops there
 - **WHEN** the start edge is moved to 6.5 s
-- **THEN** the edge is at 5.96 s, the clip plays three frames, and cuts 1 and 2 are reported as joined
+- **THEN** the edge is at 5.92 s, the clip plays 0.1 s, and cuts 1 and 2 are reported as joined
 
 #### Scenario: Snapping off
 - **WHEN** at 40 px per second the start edge is moved to 2.96 s with the whole second 3.0 s 1.6 px away, snapping on

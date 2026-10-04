@@ -11,7 +11,9 @@ zone the pointer SHALL show a trim cursor shaped as a bracket with arrows (`[` f
 as an image with the `ew-resize` keyword as its fallback, and the edge SHALL show a highlighted bracket, so the tool
 is visible without a cursor (a finger). Where a zone and an interior cut handle's area overlap, a press SHALL go to
 the nearer edge, the earlier of two equally near, and SHALL select and focus the tool that took it. The edge tools
-SHALL NOT exist in the read view, on a clip drawn as a bare block, or on a clip outside the window the track draws;
+SHALL NOT exist in the read view, on a clip drawn as a bare block, or on a clip outside the window the track draws,
+except that the tools of a clip whose edge tool holds focus stay until focus leaves them (a key that narrows the block
+to a bare one does not take the tool from under the keyboard);
 zooming in gives a narrow clip its tools.
 
 #### Scenario: Hovering a clip's left edge
@@ -45,7 +47,7 @@ of the file. While dragging, on every frame:
   ("−0:00.5 · 0:03.02"), and the words "Joined with cut <n>" when the edge has joined an interior cut
 - at the start or end of the file the edge SHALL be shown in the limit's colour with a changed bracket and the words
   "Start of the file" or "End of the file"; at another limit it SHALL say why it stopped ("The clip keeps three
-  frames"); the words carry the state, not the colour alone
+  frames", "The clip keeps 0.1 s", "Held by cut 1"); the words carry the state, not the colour alone
 - while snapped, a line SHALL show at the snapping place and the tip SHALL say what it snapped to ("Snapped to the
   playhead", "Snapped to cut 2 start", "Snapped to 0:03")
 
@@ -135,12 +137,12 @@ already holds, nothing SHALL change and the live region SHALL say why.
 - **THEN** the value is 0.06, the value text says "Start trimmed by 0.06 s", and the clip's Cuts panel lists a cut
   0:00 to 0:00.06
 
-#### Scenario: Home restores, End trims to three frames
+#### Scenario: Home restores, End trims to the limit
 - **WHEN** the operator presses Home
 - **THEN** the start is not trimmed and the cut is gone from the draft
 - **WHEN** the operator presses End
-- **THEN** the value is 5.96, the clip plays three frames, and the live region says the edge joined cuts 1 and 2 and
-  that the clip keeps three frames
+- **THEN** the value is 5.92, the clip plays 0.1 s, the tool keeps focus, and the live region says the edge joined
+  cuts 1 and 2 and that the clip keeps 0.1 s
 
 #### Scenario: Q trims the start to the playhead
 - **WHEN** the playhead is at 3.2 s of `s1710002.mp4` (not trimmed) and the operator presses `Q` with focus on the

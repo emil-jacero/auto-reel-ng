@@ -25,7 +25,7 @@ spans vanish, later clips slide left) and drops the handles of those spans; this
 - The edit is the clip's **leading / trailing cut** in `trims` — no new field: created (reason `manual`) when none
   exists, extended or shortened when one does, removed when dragged back to the file's limit; **one draft edit per
   release**, saved by the existing Save, put back by Reset. A drag that reaches an interior cut **joins** it (the
-  render's union rule) and says so; a clip always keeps at least three frames.
+  render's union rule) and says so; a clip always keeps at least three frames (and its last 0.1 s, the track's end rule).
 - **Keyboard and non-drag alternatives** (WCAG 2.5.7): each edge is a focusable slider (arrows 1 frame, Shift 1 s,
   Home/End the limits); `Q` trims the start of the clip under the playhead to the playhead and `W` its end
   (Premiere's keys), announced politely; a pressed edge selects its edge cut in the existing typed fields.
