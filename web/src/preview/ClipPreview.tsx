@@ -19,6 +19,9 @@ import { thumbnailUrl } from '../api/thumbnail'
 import type { CutField, ListedCut } from '../cuts/times'
 import { fileName } from '../events/common'
 import { FAILURE_LABEL, UNANSWERED_CAUSE, notReachableHint } from '../events/labels'
+import '../rotate/rotate.css'
+import { turnAttr } from '../rotate/turn.ts'
+import type { Turn } from '../rotate/turn.ts'
 import { Alert } from '../ui/Alert'
 import { ClockGroup } from '../ui/Clock'
 import { Icon } from '../ui/Icon'
@@ -308,6 +311,7 @@ export const ClipPreview = memo(function ClipPreview({
   cuts,
   typed = null,
   locked = false,
+  turn = 0,
   previews,
   onSet,
   onClose,
@@ -325,6 +329,8 @@ export const ClipPreview = memo(function ClipPreview({
   typed?: { in: number; out: number } | null
   /** A save or a Move clips is pending: Set From and Set To change nothing. */
   locked?: boolean
+  /** The clip's editorial turn (`rotate`): the video and its poster are shown turned by it. */
+  turn?: Turn
   previews: ClipPreviews
   /**
    * Set From / Set To at the playhead. Given none, the player is read-only (the event page's
@@ -984,11 +990,12 @@ export const ClipPreview = memo(function ClipPreview({
         />
       ) : (
         <>
-          <div className="preview-stage">
+          <div className="preview-stage" data-turned={turn !== 0 || undefined}>
             <video
               key={attempt}
               ref={videoRef}
               className="preview-video"
+              data-turn={turnAttr(turn)}
               preload="metadata"
               playsInline
               // Its controls are the house's own; Firefox would make the bare element a stop.

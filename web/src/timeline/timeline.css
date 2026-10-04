@@ -61,6 +61,7 @@
 
   /* --- the picture --- */
   .tl-stage {
+    position: relative;
     inline-size: min(100%, 32rem);
     aspect-ratio: 16 / 9;
     border-radius: var(--r-md);
@@ -257,6 +258,19 @@
   .tl-tile {
     position: absolute;
     inset-block: 0;
+    background-repeat: no-repeat;
+
+    /* A turned clip's tile: the frame sits in the tile's place on a dark ground, cut at the clip's end. */
+    &[data-turn] {
+      overflow: hidden;
+      background: var(--media-bg);
+    }
+  }
+
+  .tl-tile-pic {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
     background-repeat: no-repeat;
   }
 

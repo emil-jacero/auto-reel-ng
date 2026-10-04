@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { probeProxy, proxyUrl } from '../api/clipMedia'
+import { turnAttr } from '../rotate/turn.ts'
 import { mediaErrorWords } from '../movie/labels'
+import type { ClipTurns } from '../cuts/ReadCuts'
 import { anotherPlays, documentRoot, watchOtherStarts } from '../playback/coordinator'
 import { nextClip, onFrame, resumeOrYield, startFrom } from './follow'
 import { NOT_STARTED, playbackNote } from './labels'
@@ -60,11 +62,18 @@ export function useTimelineVideo({
   eventId,
   clips,
   playhead,
+  turns,
   held = false,
 }: {
   eventId: string
   clips: readonly TrackClip[]
   playhead: Playhead
+  /**
+   * Each clip's editorial turn (`rotate`; the draft's in Edit mode). The video is shown turned
+   * by the turn of the clip it holds, set with its `src` at a swap and again when a turn changes
+   * (a CSS attribute only: nothing is requested).
+   */
+  turns: ClipTurns
   /**
    * Another video holds the page (Edit mode's open clip preview): the Timeline renders no
    * `<video>`, so this lets go of it, keeps the playhead and plays nothing. When it is
@@ -77,6 +86,8 @@ export function useTimelineVideo({
   const [note, setNote] = useState<(PlaybackNote | Notice) | null>(null)
 
   const clipsRef = useRef(clips)
+  const turnsRef = useRef(turns)
+  turnsRef.current = turns
   const heldRef = useRef(held)
   heldRef.current = held
   const wantPlay = useRef(false) // the operator asked for Play and has not paused
@@ -99,6 +110,21 @@ export function useTimelineVideo({
   )
 
   const settleRef = useRef<() => void>(() => undefined)
+
+  /** Show the video turned by clip `clip`'s turn (the attribute `rotate.css` styles by). */
+  const applyTurn = useCallback((clip: number | null) => {
+    const video = videoRef.current
+    if (video === null) {
+      return
+    }
+    const identity = clip === null ? undefined : clipsRef.current[clip]?.identity
+    const value = turnAttr(identity === undefined ? 0 : (turnsRef.current.get(identity) ?? 0))
+    if (value === undefined) {
+      video.removeAttribute('data-turn')
+    } else {
+      video.setAttribute('data-turn', value)
+    }
+  }, [])
 
   /** Cancel the pending frame callback: a new src or a stop ends the old chain (Firefox drops it, never calling it). */
   const disarm = useCallback(() => {
@@ -126,6 +152,7 @@ export function useTimelineVideo({
           swapping.current = true
           loadedClip.current = clip
           loadedAddress.current = addressOf(clip)
+          applyTurn(clip)
           video.src = loadedAddress.current
         },
         seek(ms) {
@@ -147,7 +174,7 @@ export function useTimelineVideo({
           }
         },
       }),
-    [addressOf, disarm],
+    [addressOf, applyTurn, disarm],
   )
 
   // Another video that starts while the operator's Play is still loading is the last start:
@@ -418,6 +445,11 @@ export function useTimelineVideo({
       play()
     }
   }, [play, stopPlaying])
+
+  // A turn changed in the draft (or read anew): the video shows it at once, with no request.
+  useEffect(() => {
+    applyTurn(loadedClip.current)
+  }, [turns, clips, applyTurn])
 
   // The clips as the page last read them: a proxy made again has a new address.
   useEffect(() => {

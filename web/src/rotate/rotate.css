@@ -1,0 +1,68 @@
+/*
+ * A clip's turn on a picture (`clip-rotation`). The service serves every picture upright by
+ * the clip's display rotation; the editorial turn (`rotate`) is added here, as a CSS rotation
+ * of the picture inside its box. A box that holds a turned picture is a size container, and a
+ * quarter turn swaps the picture's own box (its width is the box's height and the other way
+ * round, in `cqb`/`cqi`) before turning it, so `object-fit: contain` fits the picture for the
+ * turned box: whole, never cropped, never stretched, for any picture shape. The box keeps
+ * its size and place. Overlays (play control, mark box, player controls) are siblings of the
+ * picture, never children, so they stay upright.
+ */
+@layer screens {
+  [data-turned] {
+    container-type: size;
+  }
+
+  /* In the `screens` layer, over the pictures' own rules (`.clip-thumb > img`, `.preview-video`, `.tl-video`). */
+  [data-turned] > [data-turn] {
+    transform-origin: 50% 50%;
+  }
+
+  [data-turned] > [data-turn='180'] {
+    rotate: 180deg;
+  }
+
+  [data-turned] > [data-turn='90'],
+  [data-turned] > [data-turn='270'] {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-start: 50%;
+    inline-size: 100cqb;
+    block-size: 100cqi;
+    translate: -50% -50%;
+  }
+
+  [data-turned] > [data-turn='90'] {
+    rotate: 90deg;
+  }
+
+  [data-turned] > [data-turn='270'] {
+    rotate: 270deg;
+  }
+
+  /* The pair of turn buttons in a clip row's tools (edit.css). */
+  .clip-rotate {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .clip-rotate .btn {
+    --_fg: var(--fg-subtle);
+  }
+
+  .clip-item:hover .clip-rotate .btn {
+    --_fg: var(--fg-muted);
+  }
+
+  /* The read view's tag: words and an icon, beside the clip's name. */
+  .turn-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-1);
+    margin-inline-start: var(--s-2);
+    color: var(--fg-muted);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    white-space: nowrap;
+  }
+}

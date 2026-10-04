@@ -1,4 +1,4 @@
-import type { ClipCuts } from '../cuts/ReadCuts'
+import type { ClipCuts, ClipTurns } from '../cuts/ReadCuts'
 import type { CutKey, DraftCut } from '../edit/draft'
 import type { ClipPreviews } from '../preview/previews'
 
@@ -18,6 +18,8 @@ export type TrimNote = { name: string; spoken: boolean; snap?: string | null }
 export type EditBinding = {
   /** The draft's cuts, the removed ones left out: what the track draws and Play skips. */
   cuts: ClipCuts
+  /** The draft's turns (`rotate`): what the video and the filmstrip tiles show. */
+  turns: ClipTurns
   /** A clip's cuts as its Cuts panel lists them: keys, reasons, removed ones in place. */
   listed(identity: string): readonly DraftCut[]
   /** One edit of the draft: the cut keeps its key, place and reason. */

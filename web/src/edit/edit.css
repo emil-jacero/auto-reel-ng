@@ -223,6 +223,25 @@
     }
   }
 
+  /* Rotate marked left / right: a line of its own under the hint, wrapping at a phone's width. */
+  .mark-rotate {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2) var(--s-4);
+  }
+
+  /* A finger: each compact button's touch area reaches 9px up and down, so lines keep 24px apart. */
+  @media (pointer: coarse) {
+    .mark-line {
+      row-gap: 1.5rem;
+    }
+
+    .mark-rotate {
+      row-gap: 1.5rem;
+    }
+  }
+
   @media (width < 40rem) {
     .mark-line {
       grid-template-columns: minmax(0, 1fr);
@@ -458,7 +477,7 @@
     }
   }
 
-  .clip-item > .clip-moves {
+  .clip-item > .clip-tools {
     grid-area: moves;
     padding-inline-end: var(--s-3);
   }
@@ -506,6 +525,20 @@
 
   .clip-mtime {
     color: var(--fg-muted);
+  }
+
+  /* A row's tools: Rotate left and right, then Move up and down, each pair in its own span. */
+  .clip-tools {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--s-2);
+  }
+
+  /* A finger: each pair's touch areas reach 12px outward, so the pairs keep 28px apart. */
+  @media (pointer: coarse) {
+    .clip-tools {
+      gap: 1.75rem;
+    }
   }
 
   .clip-moves {
@@ -648,7 +681,7 @@
 
     /* The grid's gap spaces the cells here, and the facts are one flex line. */
     :is(.clip-order-head, .clip-item) > :is(.clip-pos, .clip-file),
-    .clip-item > .clip-moves,
+    .clip-item > .clip-tools,
     :is(.clip-order-head, .clip-item) :is(.clip-status, .clip-size, .clip-mtime) {
       padding-inline: 0;
     }

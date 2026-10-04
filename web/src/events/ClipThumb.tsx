@@ -5,6 +5,9 @@ import type { ReactNode } from 'react'
 
 import type { Clip } from '../api/event'
 import { readFailedThumbnail, thumbnailUrl } from '../api/thumbnail'
+import '../rotate/rotate.css'
+import { turnAttr } from '../rotate/turn.ts'
+import type { Turn } from '../rotate/turn.ts'
 import { Icon } from '../ui/Icon'
 import { fileName } from './common'
 import { SERVICE_CAUSE, useThumbReporter } from './thumbHealth'
@@ -29,7 +32,9 @@ import { SERVICE_CAUSE, useThumbReporter } from './thumbHealth'
 /**
  * The thumbnail of one clip row; a missing clip requests nothing. `name` is the
  * clip's name as its row shows it (`clipNames`), for "Frame from …" and
- * "No preview for …"; it defaults to the file name. `overlay` is laid inside the box, over
+ * "No preview for …"; it defaults to the file name. `turn` is the clip's editorial turn
+ * (`rotate`): the frame is shown turned by it inside the same box (`rotate/rotate.css`); the
+ * overlay, the box and the "No preview" placeholder are never turned. `overlay` is laid inside the box, over
  * the image or the "No preview" placeholder (the read view's play control); a missing
  * clip has no box to lay it in and ignores it.
  */
@@ -38,11 +43,13 @@ export function ClipThumb({
   clip,
   name = fileName(clip.identity),
   overlay = null,
+  turn = 0,
 }: {
   eventId: string
   clip: Clip
   name?: string
   overlay?: ReactNode
+  turn?: Turn
 }) {
   // No file, no frame: an empty outline, hidden, since the row's status says why.
   if (clip.status === 'missing') {
@@ -57,6 +64,7 @@ export function ClipThumb({
       name={name}
       dimmed={clip.status === 'ignored'}
       overlay={overlay}
+      turn={turn}
     />
   )
 }
@@ -74,11 +82,13 @@ function LoadingThumb({
   name,
   dimmed,
   overlay,
+  turn,
 }: {
   src: string
   name: string
   dimmed: boolean
   overlay: ReactNode
+  turn: Turn
 }) {
   const [state, setState] = useState<ThumbState>('loading')
   const { report, clear } = useThumbReporter()
@@ -101,7 +111,12 @@ function LoadingThumb({
     }
   }, [failed, src, report, clear])
   return (
-    <span className="clip-thumb" data-state={state} data-dimmed={dimmed || undefined}>
+    <span
+      className="clip-thumb"
+      data-state={state}
+      data-dimmed={dimmed || undefined}
+      data-turned={(!failed && turn !== 0) || undefined}
+    >
       {state === 'failed' ? (
         <span className="clip-thumb-none" role="img" aria-label={`No preview for ${name}`}>
           <Icon name="film" />
@@ -118,6 +133,7 @@ function LoadingThumb({
           decoding="async"
           fetchPriority="low"
           draggable={false}
+          data-turn={turnAttr(turn)}
           onLoad={() => setState('loaded')}
           onError={() => setState('failed')}
         />

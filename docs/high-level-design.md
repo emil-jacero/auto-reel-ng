@@ -431,8 +431,12 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   pauses every other playing video when one starts (D-15, D-16, D-20).
   **A clip can be turned** (**D-23**): `clips.<identity>.rotate` is an extra clockwise turn on top of how the clip
   plays, so the engine half (`clip-rotate-engine`) makes the render honour it on every profile; the proxies, thumbnails
-  and filmstrips stay the file's (D-21) and are not rotated by the editorial value, so the GUI (`clip-rotate-gui`)
-  turns the picture it shows.
+  and filmstrips stay the file's (D-21) and are not rotated by the editorial value. **The GUI half has landed**
+  (`clip-rotate-ui`): Edit mode has Rotate left and Rotate right on every clip on disk and Rotate marked left / right
+  for a marked group, the turn is part of the draft (Reset, Save, "1 clip rotated", a turn of 0 removes the key), the
+  read view tags a turned clip ("Rotated 90 degrees" with an icon), and every picture of a clip (thumbnail, clip player,
+  Timeline video and filmstrip tiles) shows the turn by a CSS rotation of the picture the service already serves, with
+  no cache, endpoint or contract change.
 - **v3:** nothing is planned for the GUI: the timeline editor moved to v2 on 2026-10-01, and dragging
   across chapters landed in v1 (D-13, `cross-chapter-drag`; marked groups in v2, `clip-group-select-drag`).
 
@@ -714,7 +718,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    title fonts, one registry and an engine-owned fontconfig (**D-22**), with `RENDER_GRAPH_VERSION` 5 and no schema,
    API or web change; the card style, per-card fields, preview endpoint and editor read it.
    `clip-rotate-engine` has landed: `rotate` is an extra clockwise turn on top of the display rotation, applied by the
-   engine on every profile (D-23; `RENDER_GRAPH_VERSION` 6); `clip-rotate-gui`, the control and the turned previews, follows.
+   engine on every profile (D-23; `RENDER_GRAPH_VERSION` 6). `clip-rotate-ui` has landed (D-23, D-20): the Edit-mode controls, the
+   draft and the group turn, the read view's tag, and the turn shown on every thumbnail, player, Timeline video and filmstrip tile
+   by a CSS rotation; web-only, no render, fingerprint, schema, cache or job change.
    `time-readouts-legible` follows on user feedback: every running time on the Timeline and in the clip player is written to a
    fixed width by one clock and labelled in words (D-20, D-16), web-only, with no render, fingerprint, schema or job change.
    `title-card-model` has landed (D-24): the optional per-chapter `card:` and the engine that draws it; the write API
@@ -1294,7 +1300,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     like any other video. It does not take playback back across a clip boundary: when another video starts while its
     file is changing, its own resume yields and it stays paused (`resumeOrYield`, `timeline/follow.ts`). `npm run build` on `origin/main` and on this change: JS 533,160 to 533,333
     bytes (171,764 to 171,882 gzip -9), CSS 73,517 to 74,242 bytes (13,938 to 14,092 gzip -9); no package added.
-
+  - **Amended 2026-10-04, change `clip-rotate-ui`: the Timeline shows a clip's turn.** The one `<video>` carries the turn
+    of the clip it holds (set with its `src` at a swap, and again when the draft's turn changes, with no request), and
+    each filmstrip tile of a turned clip shows its frame rotated inside the same tile box. The lane's geometry (widths
+    by duration, tile height, trim handles, playhead, suggestions) does not depend on a turn.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
   1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every
@@ -1594,6 +1603,16 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     render logs the clip, both values and the total.
   - **Not here.** No GUI, no new key, no API or schema change. Proxies, thumbnails and filmstrips stay keyed by the
     file and are not rotated by the editorial value (D-20, D-21).
+  - **Amended 2026-10-04, change `clip-rotate-ui`: the GUI turns what it shows.** The pictures the service serves are
+    upright by the display rotation (measured on the rotated samples: the 720p phone clip's proxy is 540x960 with
+    facts `rotation` 270 and its thumbnail 101x180), so the client adds only the editorial `rotate`, as a CSS `rotate`
+    of the picture inside its own box. A box holding a turned picture is a size container, and a quarter turn swaps the
+    picture's box (its width is the box's height, in `cqb`/`cqi`) before turning it, so `object-fit: contain` fits any
+    picture shape whole inside an unchanged box; overlays are siblings and stay upright. The turn lives in the draft
+    (`rotations`, only clips whose turn differs from the saved one), is written as `clips.<identity>.rotate` and a turn
+    of 0 removes the key; a saved value that is not a quarter turn is shown as no turn.
+    `npm run build` on `origin/main` and on this change: JS 539,223 to 544,668 bytes (173,912 to 175,578 gzip -9, +1.7 KB), CSS
+    76,068 to 77,252 bytes (14,391 to 14,620 gzip -9); no package added; `npm test` runs 618 tests (599 before).
 
 ---
 

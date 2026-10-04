@@ -10,6 +10,7 @@ import { ClipPreview, useClipLength, usePreviewOpen } from '../preview/ClipPrevi
 import { HIDE_PLAYER, WATCH, hideName, setWords, watchName } from '../preview/playback'
 import type { ClipPreviews } from '../preview/previews'
 import type { ClipProxy } from '../preview/source'
+import type { Turn } from '../rotate/turn.ts'
 import { Icon } from '../ui/Icon'
 import {
   CUT_HINT,
@@ -207,6 +208,7 @@ export const CutsPanel = memo(function CutsPanel({
   duration,
   name,
   cuts,
+  turn = 0,
   open,
   locked,
   panels,
@@ -228,6 +230,8 @@ export const CutsPanel = memo(function CutsPanel({
   /** The clip's name as its row names it. */
   name: string
   cuts: readonly DraftCut[]
+  /** The clip's turn in the draft (`rotate`): its preview shows it. */
+  turn?: Turn
   open: boolean
   /** A save (or a Move clips) is pending: the fields and buttons change nothing. */
   locked: boolean
@@ -453,6 +457,7 @@ export const CutsPanel = memo(function CutsPanel({
           cuts={cuts}
           typed={typed}
           locked={locked}
+          turn={turn}
           previews={previews}
           onSet={setAt}
           onClose={closePlayer}
