@@ -39,7 +39,7 @@ opposite turn; Reset SHALL restore the saved turns. The controls SHALL be unavai
 pending.
 
 Each press SHALL be announced once to assistive technology with the clip's name and the turn it now has ("s1710002.mp4
-rotated 90 degrees right.", "s1710002.mp4 no longer rotated.").
+turned right, now rotated 90 degrees clockwise.", "s1710002.mp4 no longer rotated.").
 
 #### Scenario: Rotate right twice is 180
 - **WHEN** the operator presses Rotate right twice on a clip with no turn
