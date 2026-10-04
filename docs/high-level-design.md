@@ -1273,9 +1273,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     `CARD_MIN_DURATION` and `CARD_MAX_DURATION` (0.5 s, 60 s) and a test reads `reel/card.py` and fails when they differ; the
     server stays the authority (a refused value is a 400 on Save). A video card is bounded by the first kept span of its
     anchor clip, the footage the engine attaches it to, from the draft's cuts, so a trim edited a moment ago already counts; a
-    card longer than its footage keeps its value and can only be dragged down. The draft gains `cardDurations` (chapter key
-    to seconds, only values that differ from the resolved length), merged into the chapter's read `card` by `buildWriteBody`;
-    the Timeline lays the draft's lengths over the resolved cards (`withDurations`), so the release is one layout path; a
+    card longer than its footage keeps its value and can only be dragged down. A release is one edit of the
+    card's `duration` in `Draft.cards` (`setCardLength`; a length equal to the one read is no override), so Save, Reset and
+    the save bar are the inspector's own; the live drag lays its length over the specs (`withDurations`); a
     black card's drag keeps the committed layout, moves the layers behind the card by a `translate` (`data-after`) and draws
     the real layout once, on release. The handle lies in the card lane, a row of its own,
     so it never competes with a trim handle's area.

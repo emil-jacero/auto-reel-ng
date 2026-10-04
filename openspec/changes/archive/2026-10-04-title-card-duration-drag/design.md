@@ -33,11 +33,11 @@ Re-read against `origin/main` at `50d5ac7` (`title-card-blocks`, `title-card-wri
   first surviving *segment* ("Segment shorter than the card" clamps it), so a cut in the middle of the clip ends the
   footage. The bound is `Placement.keptMs`, which the blocks already use; `cardLimits` takes it as `keptMs` (null: no
   footage). A chapter with no footage has no block, so no handle; the pure rule still reports it.
-- **Difference 2: the draft has no card concept yet.** `Draft` gains `cardDurations` (chapter key -> seconds,
-  only values that differ from the resolved duration); `buildWriteBody` merges it into the chapter's read `card`
-  (`ChapterBody.card`: absent keeps the card, a present one replaces it, so the read overrides are carried and only
-  `duration` changes). The chapter row and the blocks read the resolved specs with the draft's durations laid over them
-  (`withDurations`), keyed by the chapter's saved name, which is what the selection uses.
+- **Difference 2: the draft's card is the inspector's** (`title-card-blocks`, `title-card-inspector`). A release is one
+  edit of the card's `duration` in `Draft.cards` (`setCardLength`: the length is rounded to a tenth, and one equal to the
+  length the page read is no override, so dragging away and back leaves no edit). Save, Reset, the save bar's count and
+  the chapter row already follow `Draft.cards`, and the blocks read the draft's specs (`card/specs.ts`). Only the live
+  drag lays a length over the specs (`withDurations`), keyed by the chapter's saved name, which is what the selection uses.
 - **Difference 3: no separate `shiftedLayout`.** The Timeline already derives every span from the specs, so the live
   shift of a black card's drag is `cardPlacements -> cardMap -> trackLayout` with the dragged duration laid over the
   specs (`withDurations`), one code path for the drag and for the release. The scenarios of the shift are tests of that
