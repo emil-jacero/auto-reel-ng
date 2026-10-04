@@ -146,6 +146,7 @@ export function TimelineSection({
             specs,
             clips.map((clip) => ({
               chapter: clip.chapter,
+              // The full length and every span: the placement derives the kept extent itself.
               durationMs: clip.facts.durationMs,
               spans: clip.spans,
             })),

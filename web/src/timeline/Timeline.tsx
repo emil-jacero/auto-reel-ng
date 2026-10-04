@@ -45,6 +45,7 @@ import type { CardsBinding } from './useCardSelection'
 import { createDragStore } from './dragStore'
 import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
+import { selectionStands } from './handles'
 import type { KeyAction } from './keys'
 import {
   CUTS_READING,
@@ -63,13 +64,13 @@ import {
   movieStat,
   playheadAnnouncement,
 } from './labels'
-import { chapterBands, movieMs, trackLayout } from './layout'
+import { chapterBands, footageMs, movieMs, trackLayout } from './layout'
 import type { TrackClip } from './layout'
 import type { ShiftFrom } from './Track'
 import type { Layout } from './model'
 import { DEFAULT_PPS, MAX_PPS, fitPps, pxToTime, timeToPx, zoomAt } from './model'
 import { createPlayhead } from './playhead'
-import { endPosition, globalMs, onGrid } from './position'
+import { afterRead, endPosition, globalMs, keptPosition, timedOf } from './position'
 import type { Position } from './position'
 import { hasFrame, snapshotOf, useFrameReady } from './posterFrame'
 import { useTimelineVideo } from './useTimelineVideo'
@@ -150,6 +151,7 @@ export function Timeline({
         all,
         clips.map((clip) => ({
           chapter: clip.chapter,
+          // The full length and every span: the placement derives the kept extent itself.
           durationMs: clip.facts.durationMs,
           spans: clip.spans,
         })),
@@ -178,12 +180,15 @@ export function Timeline({
   const names = useMemo(() => specs.map((spec) => spec.chapter), [specs])
   const leadMs = useMemo(() => new Map(map.gaps.map((gap) => [gap.clip, gap.lengthMs])), [map])
   const selection = cards.selection
-  const facts = useMemo(() => clips.map((clip) => clip.facts), [clips])
+  // Each clip's timing with its kept extent: the playhead's rules land on kept frames only.
+  const facts = useMemo(() => clips.map(timedOf), [clips])
   const bands = useMemo(() => chapterBands(chapterNames, clips), [chapterNames, clips])
   const movie = useMemo(
     () => (cuts.cuts === null ? null : movieMs(clips, cuts.cuts)),
     [clips, cuts.cuts],
   )
+  // The footage the movie line counts against: full durations, which edge cuts do not shorten.
+  const footage = useMemo(() => footageMs(clips), [clips])
   // The playhead opens at the start of the movie: its opening card when that is black.
   const playhead = useMemo(
     () => createPlayhead(trackStart(map, clipLay, facts, names)),
@@ -236,14 +241,19 @@ export function Timeline({
   useEffect(() => setSelected(null), [epoch])
   useEffect(() => {
     if (selected !== null && editing !== null) {
-      const there = editing
-        .listed(selected.identity)
-        .some((cut) => cut.key === selected.key && !cut.removed)
+      // A cut that became part of a leading or a trailing cut has no handle: nor a selection.
+      const clip = clips.find((c) => c.identity === selected.identity)
+      const there = selectionStands(
+        editing.listed(selected.identity),
+        selected.key,
+        clip?.kept ?? null,
+        clip?.facts.durationMs ?? 0,
+      )
       if (!there) {
         setSelected(null)
       }
     }
-  }, [editing, selected])
+  }, [editing, selected, clips])
 
   const scroller = useRef<HTMLDivElement>(null)
   const grip = useRef<HTMLDivElement>(null)
@@ -302,7 +312,8 @@ export function Timeline({
     }
   }, [pps, syncRange])
 
-  // The clips the page read again: the playhead stays only where it still means the same clip.
+  // The clips the page read again: the playhead stays only where it still means the same clip,
+  // and on a kept frame of it (a new leading or trailing cut moves it to the nearest one).
   const previous = useRef(clips)
   useEffect(() => {
     const was = previous.current
@@ -310,12 +321,11 @@ export function Timeline({
     if (was === clips) {
       return
     }
-    const at = playhead.get()
-    const now = clips[at.clip]
-    if (now === undefined || was[at.clip]?.identity !== now.identity) {
+    const next = afterRead(was, clips, playhead.get())
+    if (next === 'start') {
       video.seekTo(trackStart(map, clipLay, facts, names))
-    } else if (at.ms > now.facts.durationMs) {
-      video.seekTo({ clip: at.clip, ms: onGrid(now.facts, now.facts.durationMs) })
+    } else if (next !== null) {
+      video.seekTo(next)
     }
   }, [clips, facts, playhead, video])
 
@@ -329,7 +339,7 @@ export function Timeline({
     }
     const gap = map.gaps.find((g) => g.chapter === card.chapter && g.clip === at.clip)
     if (gap === undefined) {
-      video.seekTo(clips[at.clip] === undefined ? trackStart(map, clipLay, facts, names) : { clip: at.clip, ms: 0 })
+      video.seekTo(clips[at.clip] === undefined ? trackStart(map, clipLay, facts, names) : keptPosition(facts, at.clip, 0))
     } else if (gap.lengthMs !== card.lengthMs || names[gap.chapter] !== card.name) {
       video.seekTo({
         ...at,
@@ -617,6 +627,7 @@ export function Timeline({
           specs={specs}
           placeAll={placeAll}
           clipLay={clipLay}
+          footage={footage}
           map={map}
           movie={movie}
         />
@@ -774,6 +785,7 @@ function MovieStat({
   specs,
   placeAll,
   clipLay,
+  footage,
   map,
   movie,
 }: {
@@ -782,6 +794,8 @@ function MovieStat({
   specs: readonly CardSpec[]
   placeAll: (specs: readonly CardSpec[]) => Placement[]
   clipLay: Layout
+  /** The shown clips' full durations: "of footage". */
+  footage: number
   map: CardMap
   movie: number | null
 }) {
@@ -803,7 +817,8 @@ function MovieStat({
     return null
   }
   // One span per term: a narrow screen wraps between terms, never inside one.
-  const terms = movieStat(movie, clipLay.totalMs, now.totalMs).split(' \u00b7 ')
+  // The footage is the clips' full durations, which edge cuts do not shorten (not the rippled track).
+  const terms = movieStat(movie, footage, now.totalMs).split(' \u00b7 ')
   return (
     <span className="tl-stat">
       {terms.map((term, index) => (

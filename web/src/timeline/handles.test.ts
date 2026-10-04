@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { atPlayhead, bareMousePress, handleRows, keyOutcome, nearestHandle, snapWords, stepEdge } from './handles.ts'
+import {
+  atPlayhead,
+  bareMousePress,
+  handleRows,
+  keyOutcome,
+  nearestHandle,
+  selectionStands,
+  snapWords,
+  stepEdge,
+} from './handles.ts'
 import { cutSpans, frameMs, keptExtent, nearestFrame, trimLimits, clipFacts } from './model.ts'
 
 const clip = clipFacts(6.02, 25)
@@ -259,5 +268,17 @@ describe('handleRows (timeline-ripple-layout)', () => {
   it('without edge cuts every cut that is not removed has handles', () => {
     const listed = [{ in: 1, out: 2 }, { in: 3, out: 4 }]
     assert.equal(handleRows(listed, { inMs: 0, outMs: 6020 }, 6020).length, 2)
+  })
+})
+
+describe('selectionStands (timeline-ripple-layout)', () => {
+  it('ends when the selected cut became part of a leading cut, or was removed', () => {
+    const listed = [{ key: 'a', in: 0, out: 2.5 }, { key: 'b', in: 4, out: 5 }, { key: 'c', in: 3, out: 3.5, removed: true }]
+    const kept = keptExtent(cutSpans(listed, 6020), 6020)
+    assert.equal(selectionStands(listed, 'a', kept, 6020), false)
+    assert.equal(selectionStands(listed, 'b', kept, 6020), true)
+    assert.equal(selectionStands(listed, 'c', kept, 6020), false)
+    assert.equal(selectionStands(listed, 'z', kept, 6020), false)
+    assert.equal(selectionStands(listed, 'a', null, 6020), true)
   })
 })

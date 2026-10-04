@@ -318,7 +318,8 @@ export function Track({
       if (!hasKeptFrame(timedOf(clip))) {
         continue
       }
-      // The block spans the clip's kept extent: its left edge is the clip's kept start.
+      // The block spans the clip's kept extent: its left edge (`lay.startsMs`) is the clip's kept
+      // start, and the description says the full length beside the kept one.
       const left = timeToPx(lay.startsMs[index], pps)
       const inPx = timeToPx(clip.kept.inMs, pps)
       const keptMs = extentMs(clip.kept)

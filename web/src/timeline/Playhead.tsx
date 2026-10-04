@@ -44,6 +44,7 @@ export function PlayheadSlider({
 }) {
   const at = clampPosition(clips, useSyncExternalStore(playhead.subscribe, playhead.get))
   const clip = clips[at.clip]
+  // The value text says the clip's own time and its full length; `now` is the rippled track time.
   const now = globalMs(lay, at)
   return (
     <div
