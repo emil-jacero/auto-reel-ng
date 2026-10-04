@@ -5,8 +5,8 @@ import { dropGone } from './suggestions'
 
 /*
  * The suggestions dismissed during this page visit. It lives in the event page
- * (`events/EventDetail.tsx`), above both the read view and Edit mode, because the
- * Timeline section is closed again by a Refresh and by every switch between the two. It
+ * (`events/EventDetail.tsx`), above Edit mode, because the Timeline section is mounted
+ * anew by a Refresh, a Save and every re-entry into Edit mode. It
  * is not an edit: nothing is written, nothing is dirty, and a reload forgets it.
  */
 

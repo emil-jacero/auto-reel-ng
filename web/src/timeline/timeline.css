@@ -5,20 +5,11 @@
     position: static;
   }
 
-  /* After the Help toggle, which takes the free space. */
-  .tl-toggle {
-    margin-inline-start: 0;
-  }
-
   .timeline-body {
     display: grid;
     gap: var(--s-3);
     padding: var(--s-4);
     min-inline-size: 0;
-
-    &[hidden] {
-      display: none;
-    }
   }
 
   .timeline {

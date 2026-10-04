@@ -5,8 +5,9 @@ import { analysisOf, decideControl } from './control.ts'
 import type { Dismissals } from './Dismissals.ts'
 
 /*
- * What Edit mode's binding gives the lane to decide with (`timeline-overlay-decisions`):
- * nothing in the read view, and in Edit mode the editor's own add, lock and live region.
+ * What Edit mode's binding gives the lane to decide with (`timeline-overlay-decisions`): the
+ * editor's own add, lock and live region. The Timeline is Edit mode's only, so there is no
+ * read-view lane without a decision (`timeline-zoom-slider`).
  */
 
 type Add = [string, { in: number; out: number }, string | undefined]
@@ -31,10 +32,6 @@ function binding(locked = false) {
 }
 
 describe('decideControl', () => {
-  it('gives the read view no decision', () => {
-    assert.equal(decideControl(null), null)
-  })
-
   it('hands an approval to the editor’s add once, with the same three arguments', () => {
     const { added, editing } = binding()
     const decide = decideControl(editing)
@@ -66,38 +63,20 @@ describe('decideControl', () => {
 
 describe('analysisOf', () => {
   const dismissals = {} as Dismissals
-  const readView = { cuts: new Map([['a.mp4', [{ in: 5, out: 6 }]]]), failure: null, look: null }
-  const reading = { cuts: null, failure: null, look: null }
 
-  it('gives Edit mode’s lane a decision and the draft’s cuts, never "reading"', () => {
+  it('gives the lane a decision and the draft’s cuts', () => {
     const { added, editing } = binding()
-    const control = analysisOf('ev', reading, editing, dismissals)
-    assert.notEqual(control.decide, null)
-    assert.equal(control.cutsState, 'ok')
+    const control = analysisOf('ev', editing, dismissals)
     assert.deepEqual(control.cutsOf('a.mp4'), [
       { key: 'k1', in: 1, out: 2, reason: null, removed: false },
     ])
-    control.decide?.onApprove('a.mp4', { in: 3, out: 4 }, 'freeze')
+    assert.deepEqual(control.cutsOf('b.mp4'), [])
+    control.decide.onApprove('a.mp4', { in: 3, out: 4 }, 'freeze')
     assert.deepEqual(added, [['a.mp4', { in: 3, out: 4 }, 'freeze']])
   })
 
-  it('gives the read view no decision and the cuts as read', () => {
-    const control = analysisOf('ev', readView, null, dismissals)
-    assert.equal(control.decide, null)
-    assert.equal(control.cutsState, 'ok')
-    assert.deepEqual(control.cutsOf('a.mp4'), [{ in: 5, out: 6 }])
-    assert.deepEqual(control.cutsOf('b.mp4'), [])
-  })
-
-  it('says reading or unreadable in the read view while the cuts are not known', () => {
-    assert.equal(analysisOf('ev', reading, null, dismissals).cutsState, 'reading')
-    const failed = { cuts: null, failure: { cause: 'x', detail: null }, look: null }
-    assert.equal(analysisOf('ev', failed, null, dismissals).cutsState, 'unreadable')
-    assert.equal(analysisOf('ev', failed, null, dismissals).decide, null)
-  })
-
   it('carries the event and the page’s dismissals', () => {
-    const control = analysisOf('ev-7', readView, null, dismissals)
+    const control = analysisOf('ev-7', binding().editing, dismissals)
     assert.equal(control.eventId, 'ev-7')
     assert.equal(control.dismissals, dismissals)
   })

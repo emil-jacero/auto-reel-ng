@@ -4,9 +4,9 @@ import { cardSelection } from './cards.ts'
 import type { CardSelection } from './cards.ts'
 
 /*
- * The one card selection of the event page (`title-card-blocks`): kept above the read view
- * and Edit mode, as the dismissals are, so a Refresh or leaving Edit mode, which close the
- * Timeline section, do not end it. By the chapter's saved name. Not stored, not in the URL.
+ * The one card selection of the event page (`title-card-blocks`): kept above Edit mode, as
+ * the dismissals are, so a Refresh, a Save or leaving and re-entering Edit mode, which mount
+ * the Timeline section anew, do not end it. By the chapter's saved name. Not stored, not in the URL.
  */
 
 export type CardsBinding = {

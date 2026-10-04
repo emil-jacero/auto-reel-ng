@@ -846,8 +846,6 @@ function summarize(
 
 export const CARD_STYLE_CHANGED = 'card style changed'
 
-// The read view's cuts, which Edit mode's Timeline does not use: its cuts are the draft's.
-const NOT_READ = { cuts: null, turns: null, failure: null, look: null } as const
 const NOTHING = () => undefined
 
 // A chapter with no removed clip: one constant, so its list keeps its memoised props.
@@ -2682,12 +2680,11 @@ export function EventEditor({
             />
           )}
 
-          {editing !== null && detail !== null && (
-            // Closed until opened; its cuts are the draft's, its clips and proxies the page's.
+          {editing !== null && cardEditing !== null && detail !== null && (
+            // Open from the start; its cuts are the draft's, its clips and proxies the page's.
             <TimelineSection
               eventId={eventId}
               event={liveEvent ?? detail}
-              read={NOT_READ}
               dismissals={dismissals}
               onFinished={onProxiesFinished ?? NOTHING}
               editing={editing}

@@ -28,9 +28,9 @@ import type { VisibleRange } from './useVisibleRange'
  * The track: a ruler, the chapter band and the clips end to end at `pps`, inside the
  * Timeline's own horizontal scroller. Only what meets the visible range and a margin of
  * one view on each side is drawn (a 400-clip event holds a few dozen elements). The cuts
- * are spans with a hatch and a text alternative; in the read view that is all (no handle,
- * no drag). In Edit mode (`editing`) each clip drawn with its cuts also gets its trim
- * handles (`TrimHandle.tsx`), a layer after the playhead so that Tab reaches them after it.
+ * are spans with a hatch and a text alternative, and each clip drawn with its cuts gets its
+ * trim handles (`TrimHandle.tsx`), a layer after the playhead so that Tab reaches them after
+ * it. The Timeline is Edit mode's only.
  */
 
 /**
@@ -127,13 +127,13 @@ export type CardLaneModel = {
   specs: readonly CardSpec[]
   /** Clip index → the length of the black card that opens it: its chapter band starts at the card. */
   leadMs: ReadonlyMap<number, number>
-  /** The end-edge handles (Edit mode only; null in the read view) and the draft edit they write. */
-  handles: readonly CardHandle[] | null
-  onSet: ((chapter: string, seconds: number, words: string | null) => void) | null
+  /** The end-edge handles and the draft edit they write. */
+  handles: readonly CardHandle[]
+  onSet: (chapter: string, seconds: number, words: string | null) => void
   /** The selected card's chapter or null. */
   selected: string | null
   onSelect: (chapter: string) => void
-  /** Activating a block's body: Edit mode opens the card's dialog, the read view only selects. */
+  /** Activating a block's body opens the card's dialog. */
   onOpen: (chapter: string) => void
   /** A press in a black card's block also puts the playhead there (the track time of the press). */
   onPlace: (chapter: string, trackMs: number) => void
@@ -243,7 +243,6 @@ export function Track({
   bands,
   pps,
   range,
-  showCuts,
   turns,
   scrollerRef,
   playhead,
@@ -268,8 +267,6 @@ export function Track({
   bands: readonly ChapterBand[]
   pps: number
   range: VisibleRange
-  /** Whether the cuts were read: without them the clips are drawn whole. */
-  showCuts: boolean
   /** Each clip's turn (`rotate`): its tiles show the frame turned. */
   turns: ClipTurns
   scrollerRef: RefObject<HTMLDivElement | null>
@@ -284,8 +281,8 @@ export function Track({
   /** The analysis lane, a row of the canvas under the clips (`overlays/`). */
   lane?: LaneSlot
   onScrub: (x: number, phase: ScrubPhase, surface: ScrubSurface) => void
-  /** Edit mode's binding: the trim handles; null in the read view. */
-  editing: EditBinding | null
+  /** Edit mode's binding: the trim handles. */
+  editing: EditBinding
   drag: DragStore
   /** The selected cut, if any. */
   selected: { identity: string; key: string } | null
@@ -329,7 +326,7 @@ export function Track({
       const widthPx = timeToPx(keptMs, pps)
       const detailed = widthPx >= MIN_DETAIL_PX
       const descId = `${base}-c${index}`
-      if (editing !== null && detailed && showCuts) {
+      if (detailed) {
         const listed = editing.listed(clip.identity)
         if (listed.some((cut) => !cut.removed && !edgeCut(cut, clip.kept, clip.facts.durationMs))) {
           handleNodes.push(
@@ -373,7 +370,7 @@ export function Track({
           style={{ insetInlineStart: left, inlineSize: Math.max(1, widthPx) }}
         >
           <span id={descId} className="visually-hidden">
-            {clipDescription(clip.facts.durationMs, showCuts ? clip.cutCount : 0, keptMs)}
+            {clipDescription(clip.facts.durationMs, clip.cutCount, keptMs)}
           </span>
           {detailed && !noPicture.has(clip.identity) && (
             <Filmstrip
@@ -386,7 +383,6 @@ export function Track({
             />
           )}
           {detailed &&
-            showCuts &&
             clip.drawn.map((cut) => {
               const cutPx = timeToPx(cut.to - cut.from, pps)
               return (
@@ -484,7 +480,7 @@ export function Track({
             pps={pps}
             window={{ from: windowFrom, to: windowTo }}
             selected={cardLane.selected}
-            drag={cardLane.handles === null ? null : drag}
+            drag={drag}
             shifting={shifting}
             pictures={cardLane.pictures}
             onOpen={cardLane.onOpen}
@@ -512,8 +508,7 @@ export function Track({
           grab={grab}
         />
         <PlayheadKeys id={`${base}-keys`} />
-        {editing !== null && (
-          <>
+        <>
             <span id={keysId} className="visually-hidden">
               {TRIM_KEYS}
             </span>
@@ -522,7 +517,7 @@ export function Track({
             </span>
             {/* After the playhead: Tab reaches the handles after it, in time order; the
                 card handles come first, being in the lane above the clips. */}
-            {cardLane?.handles != null && cardLane.onSet !== null && (
+            {cardLane !== undefined && (
               <CardHandles
                 key={`cards-${editing.epoch}`}
                 handles={cardLane.handles}
@@ -540,8 +535,7 @@ export function Track({
             <div className="tl-trims-host" data-locked={editing.locked || undefined} key={editing.epoch}>
               {handleNodes}
             </div>
-          </>
-        )}
+        </>
       </div>
     </div>
   )

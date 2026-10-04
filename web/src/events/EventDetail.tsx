@@ -19,10 +19,7 @@ import { missingClipsReason } from '../jobs/labels'
 import { RenderControl } from '../jobs/RenderControl'
 import { MoviePanel } from '../movie/MoviePanel'
 import { useDismissals } from '../timeline/overlays/Dismissals'
-import type { Dismissals } from '../timeline/overlays/Dismissals'
 import { useCardSelection } from '../timeline/useCardSelection'
-import type { CardsBinding } from '../timeline/useCardSelection'
-import { TimelineSection } from '../timeline/TimelineSection'
 import { LIST_HREF } from '../route'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
@@ -119,10 +116,10 @@ function EventDetailBody({
 }) {
   const [state, setState] = useState<LoadState>({ status: 'loading', editPlace: true })
   const [editing, setEditing] = useState(false)
-  // The suggestions dismissed on this page visit: above the read view and Edit mode, which
-  // the Timeline section is closed by every switch between (`timeline/overlays`).
+  // The suggestions dismissed on this page visit: kept above Edit mode, whose Timeline is
+  // mounted anew by every Refresh, Save and re-entry (`timeline/overlays`).
   const dismissals = useDismissals()
-  // The card selected on the Timeline or in Edit mode's chapter list: one selection, kept here.
+  // The card selected on Edit mode's Timeline or chapter list: one selection, kept here.
   const cards = useCardSelection()
   // While a save is in flight, Refresh and Stop editing wait for its answer.
   const saving = useSaving()
@@ -506,14 +503,7 @@ function EventDetailBody({
           />
         ) : (
           <div className="page-content" aria-busy={updating || undefined}>
-            <ReadyView
-              eventId={eventId}
-              event={state.event}
-              dismissals={dismissals}
-              cards={cards}
-              onLostFocus={focusPage}
-              onFinished={reread}
-            />
+            <ReadyView eventId={eventId} event={state.event} onLostFocus={focusPage} />
           </div>
         ))}
     </main>
@@ -599,21 +589,12 @@ function clipRow(identity: string): HTMLElement | undefined {
 function ReadyView({
   eventId,
   event,
-  dismissals,
-  cards,
   onLostFocus,
-  onFinished,
 }: {
   eventId: string
   event: EventDetailData
-  /** The suggestions dismissed on this page visit (`useDismissals`, kept by the page). */
-  dismissals: Dismissals
-  /** The page's one card selection (`useCardSelection`). */
-  cards: CardsBinding
   /** Focus has nowhere in the rows to go: the page's heading takes it. */
   onLostFocus: () => void
-  /** A job the Timeline section followed has ended: the page re-reads quietly. */
-  onFinished: () => void
 }) {
   const clips = event.chapters.flatMap((chapter) => chapter.clips)
   const hasNamedChapter = event.chapters.some((chapter) => chapter.name !== '')
@@ -681,16 +662,7 @@ function ReadyView({
       )}
       <ReadCutsNote failure={read.failure} />
 
-      {/* Closed until opened; absent in Edit mode, which replaces this view. */}
-      <TimelineSection
-        eventId={eventId}
-        event={event}
-        read={read}
-        dismissals={dismissals}
-        onFinished={onFinished}
-        cards={cards}
-      />
-
+      {/* No Timeline here: it is Edit mode's (`timeline-zoom-slider`). */}
       {clips.length === 0 ? (
         <p className="empty-state">
           <Icon name="film" size={20} />
