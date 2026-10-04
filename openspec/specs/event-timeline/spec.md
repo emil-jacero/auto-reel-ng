@@ -76,10 +76,10 @@ If a clip's state is `ready` but the service reports no facts for it, the Timeli
 With every shown clip ready, the Timeline SHALL show, in one horizontally scrolling track:
 
 - a **ruler** with time labels in the page's time format (`m:ss`, with fractions only when zoomed in far enough that labels would repeat)
-- the **clips end to end** in play order (a black title card's span, when the event draws one before a chapter, is between them, see "Each chapter's title card is a block on the Timeline"), each as wide as its proxy's duration at the current zoom, labelled with its name as the page names it. A proxy has the source's timestamps, so a time in a proxy is the same time in the source clip. A clip's length SHALL come from its proxy's facts, never from the browser's reading of a file and never defaulted; a clip shorter than a pixel at the current zoom SHALL still be drawn, one pixel wide at least, and the playhead SHALL be able to be put in it by keyboard.
+- the **clips end to end** in play order (a black title card's span, when the event draws one before a chapter, is between them, see "Each chapter's title card is a block on the Timeline"), each as wide as its **kept extent** at the current zoom (its proxy's duration less a cut span that starts at the clip's beginning and a cut span that runs to its end, see "Edge cuts shorten a clip on the Timeline and the clips after it close up"), with no gap between one clip's block and the next, labelled with its name as the page names it and with the kept extent's length. A proxy has the source's timestamps, so a time in a proxy is the same time in the source clip. A clip's length SHALL come from its proxy's facts, never from the browser's reading of a file and never defaulted; a clip shorter than a pixel at the current zoom SHALL still be drawn, one pixel wide at least, and the playhead SHALL be able to be put in it by keyboard.
 - a **chapter band** above the clips: one segment per chapter spanning its shown clips, labelled with the chapter's name, or as the page headings an unnamed chapter ("Main" beside named chapters, "Clips" when none is named). The band's labels stay in view while their chapter scrolls past.
-- each clip's **cuts**, as the event page lists them from `reel.yaml` (in Edit mode: as the Cuts panels list them now, the draft's, with the ones marked removed left out), drawn over the clip as spans with a hatch pattern and named by their reason in words ("manual", "black", "white", "freeze") in the span's text alternative; overlapping or touching cuts SHALL be drawn as the render joins them, one span; a cut that runs past the proxy's duration SHALL be drawn to the end of the clip only. In the read view the spans SHALL be read-only: no handle, no drag, no edit. In Edit mode each cut SHALL have the two trim handles of "Edit mode's cuts are trim handles", drawn over the joined span.
-- the **movie stat**, one muted line in the Timeline's control row (beside Play and the zoom), not a paragraph of its own: the movie's length (the sum of the shown clips' lengths minus the time the cuts remove, plus the lengths of the black title cards the track draws), then the source length, the time the cuts remove and the cards' time, each named, separated by " · " ("Movie 3:12 · footage 3:45 · cuts −0:33"; with black cards, "Movie 3:20 · footage 3:45 · cuts −0:33 · cards +0:08"). The cuts term SHALL be left out when no cut removes time, and the cards term when no black card adds time. The line SHALL wrap by whole terms, never scroll the page, and be written by the clock ("Running times are written to a fixed width and say what they are")
+- each clip's **cuts**, as the event page lists them from `reel.yaml` (in Edit mode: as the Cuts panels list them now, the draft's, with the ones marked removed left out), drawn over the clip as spans with a hatch pattern and named by their reason in words ("manual", "black", "white", "freeze") in the span's text alternative; overlapping or touching cuts SHALL be drawn as the render joins them, one span. A joined span that starts at the clip's beginning (a **leading cut**) or runs to the clip's end or within 0.1 s of it (a **trailing cut**; a cut that runs past the proxy's duration is one) SHALL NOT be drawn: the clip's block starts after a leading cut and ends at a trailing cut's start. Only the spans between the two (**interior cuts**) are drawn, hatched, inside the block. In the read view the spans SHALL be read-only: no handle, no drag, no edit. In Edit mode each drawn cut SHALL have the two trim handles of "Edit mode's cuts are trim handles", drawn over the joined span; a leading or trailing cut has none.
+- the **movie stat**, one muted line in the Timeline's control row (beside Play and the zoom), not a paragraph of its own: the movie's length (the sum of the shown clips' lengths minus the time the cuts remove, plus the lengths of the black title cards the track draws), then the source length (the sum of the shown clips' full proxy durations, which edge cuts do not shorten, so the time a leading or trailing cut removes is in the cuts term), the time the cuts remove and the cards' time, each named, separated by " · " ("Movie 3:12 · footage 3:45 · cuts −0:33"; with black cards, "Movie 3:20 · footage 3:45 · cuts −0:33 · cards +0:08"). The cuts term SHALL be left out when no cut removes time, and the cards term when no black card adds time. The line SHALL wrap by whole terms, never scroll the page, and be written by the clock ("Running times are written to a fixed width and say what they are")
 
 If the cuts cannot be read (the same read the page's cut summaries use), the Timeline SHALL show the track without cut spans and SHALL say in a note that the cuts could not be read, and SHALL NOT show the movie's length as if there were no cuts.
 
@@ -110,6 +110,14 @@ If the cuts cannot be read (the same read the page's cut summaries use), the Tim
 #### Scenario: Black cards count in the movie's length
 - **WHEN** an event of 3:45 of footage with 33 s of cuts draws two black cards of 4.0 s each
 - **THEN** the stat reads "Movie 3:28.00 · footage 3:45.00 · cuts −0:25.00 · cards +0:08.00", and a video card adds nothing to it
+
+#### Scenario: Edge cuts shorten the blocks and close the gap
+- **WHEN** an event's clips are A (10.00 s, a cut from 0 to 2.00 s), B (8.00 s, a cut from 6.00 to 8.00 s) and C (5.00 s, a cut from 1.00 to 2.00 s), drawn at 40 px per second with no title card
+- **THEN** A's block is 320 px wide from 0, B's 240 px wide from 320 px and C's 200 px wide from 560 px, with no gap between them; no hatched span is drawn on A or B, C shows one hatched span from 600 to 640 px, the blocks are labelled 0:08, 0:06 and 0:05, and the stat reads "Movie 0:18.00 · footage 0:23.00 · cuts −0:05.00"
+
+#### Scenario: A cut past the end is a trailing cut
+- **WHEN** a 6.02 s clip lists a cut from 5.0 to 7.0 s
+- **THEN** its block is 5.0 s wide, no hatched span is drawn for that cut, and the next clip starts where the block ends
 
 ### Requirement: Each clip shows a filmstrip from its proxy's sprite
 
@@ -483,7 +491,7 @@ A handle SHALL take only places the cut can legally take, and its range SHALL al
 - the limits are frame times of the clip's own frame rate (taken from the proxy's facts), so that Home and End reach a time the clip can show
 - a cut touching another, one's end at the other's start, is a legal place
 
-A cut that runs past the clip's end SHALL have its end handle drawn at the clip's end, while the handle's value stays the cut's own end.
+A leading or trailing cut ("The track lays the clips out") is not drawn and SHALL have no handle; it stays listed and editable in its Cuts panel, and a cut that runs past the clip's end is such a trailing cut. A handle MAY be dragged or stepped to the clip's start or end, or to touch a leading or trailing cut, within its limits: on release the cut becomes part of the leading or trailing cut, its block shortens, its handles are gone and, if it was the selected cut, nothing is selected.
 
 Cuts the render joins into one span SHALL still have a handle each at their own edges.
 
@@ -503,9 +511,11 @@ Handles SHALL exist exactly where the track draws the clip's cut spans: a clip d
 
 #### Scenario: A cut past the clip's end
 - **WHEN** `s1710001.mp4` (6.02 s) lists a cut from 5.0 to 7.0 s
-- **THEN** the cut's end handle is drawn at the clip's end, reads 7 with a range that holds 7, and its value text says "0:07" and that the cut runs past the clip's end
-- **WHEN** the operator presses Left on it
-- **THEN** the end is one frame earlier, at 6.98 s
+- **THEN** the Timeline draws no span and no handle for it, the clip's block ends at 5.0 s of the clip, and the cut is listed in its Cuts panel with its times unchanged
+
+#### Scenario: A handle taken to the clip's start makes a leading cut
+- **WHEN** `s1710001.mp4` has a cut from 1.0 to 2.5 s and the operator presses Home on its start handle and then leaves the handle
+- **THEN** the cut runs from 0 to 2.5 s in the draft, the Timeline draws no span and no handle for it, the clip's block starts at 2.5 s of the clip and is 2.5 s shorter, the clips after it start 2.5 s earlier on the track, and no cut is selected
 
 #### Scenario: A clip too narrow to show its cuts
 - **WHEN** at the lowest zoom of a 400-clip event a clip is drawn as a block with no cut spans
@@ -867,11 +877,11 @@ colour alone:
 
 - a **black** card SHALL be a block of its own, as long as the card's `duration`, **before** the chapter's first
   footage, and SHALL add its length to the track: the clips after it start that much later. A cut at the start of
-  the chapter's first clip does not move it: the card opens the chapter, and the leading cut's hatch follows it.
+  the chapter's first clip does not move it: the card opens the chapter, directly before the clip's block, which starts at the first kept frame (a leading cut is not drawn).
 - a **video** card SHALL be a block over the **start** of the chapter's first footage, aligned with the footage it
   covers, joined to the clip by an edge marker, as long as the card's `duration` or the first kept span if that
   is shorter, and SHALL add no time. It SHALL start where the first kept span starts, so a clip whose first 3 s
-  are cut puts the block at 3 s.
+  are cut puts the block at the left edge of the clip's block, over 3 s of the clip.
 - the **opening card** (the default chapter's) SHALL be first when the default chapter plays first, as the page
   lists the chapters.
 
@@ -915,7 +925,8 @@ Edit mode and only selects in the read view) and SHALL also put the playhead the
 #### Scenario: A leading cut moves a video card, not a black card
 - **WHEN** the first clip of each of two chapters has a cut from 0 to 3.0 s, one chapter's card being black and
   the other's video
-- **THEN** the black card is drawn before the clip's start, and the video card begins at 3.0 s of the clip
+- **THEN** the black card is drawn directly before the clip's block, the video card begins at the left edge of the
+  clip's block (3.0 s of the clip), and no gap and no hatched span lies between either card and its footage
 
 #### Scenario: A card longer than its footage
 - **WHEN** a video card of 7.0 s is on a first clip whose first kept span is 3.0 s
@@ -1286,3 +1297,82 @@ Timeline closes. The cards' requests SHALL write nothing and SHALL not hold the 
 #### Scenario: Closing the Timeline lets go
 - **WHEN** the Timeline section is closed
 - **THEN** every object URL it made has been revoked and no request is in flight
+
+### Requirement: Edge cuts shorten a clip on the Timeline and the clips after it close up
+
+The Timeline SHALL show the movie as it will play at a clip's edges: a clip's block spans its kept extent only
+("The track lays the clips out"), and every place that maps between the track and a time in a clip SHALL go through
+it, the block's left edge being the clip's first kept time (the end of its leading cut, else 0): the ruler, the
+playhead and its grip, a scrub or press on the ruler or the track, the filmstrip, the interior cut spans and their
+handles, the analysis marks, the title-card blocks, the chapter band, Fit and the windowing. The ruler and the
+Event time SHALL count the track's time, in which edge cuts take no time (and black cards do, as before).
+
+A time in a clip SHALL stay the clip's own time: the readout SHALL say the playhead's time in the clip and the
+clip's full proxy duration ("Clip 0:05.00 of 0:10.00 · Event 0:03.00 of 0:19.00"), and so SHALL the playhead's value
+text, while the block's label says the kept length.
+
+The playhead SHALL never be inside a leading or a trailing cut. The **first kept frame** of a clip is its first
+frame at or after its first kept time, and its **last kept frame** its last frame before the start of its trailing
+cut (before its end when it has none). A scrub, a press, a key step, Home and End SHALL land on a kept frame: a
+frame step across a boundary SHALL land on the next clip's first kept frame or the previous clip's last kept frame,
+skipping none, and Home and End on the timeline's first and last kept frame (or the opening black card, as before).
+A clip that its cuts cover wholly, or whose kept extent holds no frame, SHALL have no block and no playhead position:
+the clips around it meet, and a step passes over it. When the clips or their cuts change under the playhead (an
+edit in a Cuts panel, an approved suggestion, a trim, the page reading the event again) so that its time is no longer
+kept, the playhead SHALL go to the nearest kept frame of the same clip.
+
+The filmstrip of a clip SHALL start at its first kept time: the tile drawn at a place `x` pixels into the block SHALL
+be the sprite's tile for the clip's second `first kept time + x / scale`. An analysis mark SHALL be placed by its
+times in the clip through the same map; the part of a mark inside a leading or trailing cut SHALL NOT be drawn, and
+a mark wholly inside one SHALL NOT be drawn (its state is cut). Play SHALL start a clip at its first kept frame and
+end it at its trailing cut's start, showing no frame of a leading or trailing cut, by the rules of "Play follows the
+playhead through the clips, skipping cuts". Use as poster SHALL take the playhead's clip and time as before, so it
+takes a kept frame or a frame inside an interior cut.
+
+#### Scenario: A press in a start-trimmed clip
+- **WHEN** clip A (10.00 s, 25 fps, a cut from 0 to 2.00 s) is first, followed by B (8.00 s, 25 fps, a cut from
+  6.00 to 8.00 s) and C (5.00 s, 25 fps), at 40 px per second with no title card, and the operator presses the track
+  at 0 px and then at 120 px
+- **THEN** the playhead is at A 2.00 s and the video shows A's frame at 2.00 s, reading "Clip 0:02.00 of 0:10.00 ·
+  Event 0:00.00 of 0:19.00", and then at A 5.00 s, reading "Clip 0:05.00 of 0:10.00 · Event 0:03.00 of 0:19.00"
+
+#### Scenario: A press at the end of an end-trimmed clip
+- **WHEN** the operator presses the same track at 559 px
+- **THEN** the playhead is at B 5.96 s, B's last kept frame, and never at a time of B from 6.00 s on
+
+#### Scenario: Keys cross the edges onto kept frames
+- **WHEN** the playhead is at B 5.96 s and the operator presses Right, then Left twice, then Home, then End
+- **THEN** it goes to C 0.00 s, back to B 5.96 s, to B 5.92 s, to A 2.00 s and to C 4.96 s
+
+#### Scenario: Play crosses the trimmed edges without showing them
+- **WHEN** the operator plays from A 9.00 s
+- **THEN** A plays to its end, B plays from 0 to its frame at 5.96 s, C plays from 0, the playhead moves on the track
+  without a jump back, and no frame of B from 6.00 s on is shown
+
+#### Scenario: The filmstrip starts at the kept start
+- **WHEN** A's sprite has one 96 px tile a second and A is drawn at 40 px per second
+- **THEN** the tile at A's block's left edge is the sprite's tile for second 2, and the tile 96 px into the block is
+  the one for second 4
+
+#### Scenario: A clip trimmed to a few frames
+- **WHEN** a 10.00 s, 25 fps clip has cuts from 0 to 4.00 s and from 4.12 s to 10.00 s
+- **THEN** its block is 0.12 s long, and frame steps take the playhead through 4.00, 4.04 and 4.08 s of it and on
+  into the next clip
+
+#### Scenario: A clip cut away entirely leaves no trace on the track
+- **WHEN** the middle one of three clips has a cut from 0 to its end
+- **THEN** it has no block, the third clip starts where the first ends, and Right on the first clip's last kept frame
+  lands on the third clip's first kept frame
+
+#### Scenario: A new leading cut moves the playhead
+- **WHEN** in Edit mode the playhead is at A 1.00 s of an event whose clip A has no cut, at 40 px per second, and the operator adds a cut
+  from 0 to 2.00 s to A in its Cuts panel
+- **THEN** A's block is 80 px shorter, the clips after it start 80 px earlier, and the playhead is at A 2.00 s
+
+#### Scenario: A suggestion inside a leading cut
+- **WHEN** A has a black-frames suggestion from 0 to 1.50 s and another from 1.00 to 3.00 s, and its leading cut runs from 0 to 2.00 s
+- **THEN** the analysis lane draws no mark for the first, and draws the second from A's block's left edge as partly cut
+
+#### Scenario: Fit fits what plays
+- **WHEN** the operator presses Fit on the event of A, B and C in a track 950 px wide
+- **THEN** the scale is 50 px per second, the 19 s of the track fill it, and C's block ends at 950 px
