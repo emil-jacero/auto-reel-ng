@@ -1,6 +1,7 @@
 import { useId, useRef } from 'react'
 import type { CSSProperties, KeyboardEvent, PointerEvent, RefObject } from 'react'
 
+import type { ClipTurns } from '../cuts/ReadCuts'
 import { TRIM_KEYS, formatTime, reasonWords } from '../cuts/times'
 import { Filmstrip } from './Filmstrip'
 import { PlayheadKeys, PlayheadSlider } from './Playhead'
@@ -120,6 +121,7 @@ export function Track({
   pps,
   range,
   showCuts,
+  turns,
   scrollerRef,
   playhead,
   gripRef,
@@ -142,6 +144,8 @@ export function Track({
   range: VisibleRange
   /** Whether the cuts were read: without them the clips are drawn whole. */
   showCuts: boolean
+  /** Each clip's turn (`rotate`): its tiles show the frame turned. */
+  turns: ClipTurns
   scrollerRef: RefObject<HTMLDivElement | null>
   playhead: Playhead
   gripRef: RefObject<HTMLDivElement | null>
@@ -247,6 +251,7 @@ export function Track({
               clip={clip}
               pps={pps}
               window={{ from: windowFrom - left, to: windowTo - left }}
+              turn={turns.get(clip.identity) ?? 0}
               onFail={onFilmFailed}
             />
           )}

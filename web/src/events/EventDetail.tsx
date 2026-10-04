@@ -5,7 +5,9 @@ import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useSt
 import { fetchEvent } from '../api/event'
 import type { Chapter, Clip, EventDetail as EventDetailData } from '../api/event'
 import type { Problem } from '../api/events'
-import { ReadCuts, ReadCutsNote, useReadCuts } from '../cuts/ReadCuts'
+import { NO_TURNS, ReadCuts, ReadCutsNote, useReadCuts } from '../cuts/ReadCuts'
+import type { ClipTurns } from '../cuts/ReadCuts'
+import { TurnTag } from '../rotate/TurnTag'
 import type { ClipCuts } from '../cuts/ReadCuts'
 import { EventEditor } from '../edit/EventEditor'
 import { requestLeave, useSaving } from '../edit/unsaved'
@@ -688,6 +690,7 @@ function ReadyView({
             chapter={chapter}
             heading={chapterHeading(chapter.name, hasNamedChapter)}
             cuts={read.cuts}
+            turns={read.turns ?? NO_TURNS}
             previews={previews}
             onAnnounce={announcer.announce}
           />
@@ -769,6 +772,7 @@ function ChapterPanel({
   chapter,
   heading,
   cuts,
+  turns,
   previews,
   onAnnounce,
 }: {
@@ -776,6 +780,8 @@ function ChapterPanel({
   chapter: Chapter
   heading: string
   cuts: ClipCuts | null
+  /** The saved turns (`rotate`): each picture shows its clip's, and a turned clip is tagged. */
+  turns: ClipTurns
   previews: ClipPreviews
   onAnnounce: (message: string) => void
 }) {
@@ -814,6 +820,7 @@ function ChapterPanel({
             const name = nameOf(clip.identity)
             // An excluded clip is not in the movie, so its cuts do not apply.
             const trims = clip.excluded ? undefined : cuts?.get(clip.identity)
+            const turn = turns.get(clip.identity) ?? 0
             const watchId = `${headingId}-w${index}`
             const playerId = `${headingId}-p${index}`
             return (
@@ -834,6 +841,7 @@ function ChapterPanel({
                       eventId={eventId}
                       clip={clip}
                       name={name}
+                      turn={turn}
                       overlay={
                         canWatch(clip) ? (
                           <PlayControl
@@ -849,6 +857,7 @@ function ChapterPanel({
                   </td>
                   <td role="cell" className="cell-file">
                     <ClipName name={name} />
+                    {!clip.excluded && <TurnTag turn={turn} />}
                     <ReadCuts cuts={trims} name={name} />
                   </td>
                   <td role="cell" className="cell-status">
@@ -872,6 +881,7 @@ function ChapterPanel({
                     clip={clip}
                     name={name}
                     cuts={trims ?? NO_TRIMS}
+                    turn={turn}
                     watchId={watchId}
                     playerId={playerId}
                     onAnnounce={onAnnounce}

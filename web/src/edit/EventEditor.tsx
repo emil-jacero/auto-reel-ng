@@ -24,6 +24,10 @@ import { FAILURE_LABEL, UNANSWERED_CAUSE, notReachableHint } from '../events/lab
 import { FAILURE_LOOK } from '../events/tones'
 import { eventName } from '../jobs/labels'
 import { createClipPreviews } from '../preview/previews'
+import { groupTurnAnnouncement, rotatedCount, turnAnnouncement, turnsOf } from '../rotate/turn.ts'
+import type { Way } from '../rotate/turn.ts'
+import type { RotateHandler } from '../rotate/RotateButtons'
+import type { ClipTurns } from '../cuts/ReadCuts'
 import { LIST_HREF } from '../route'
 import { focusPageHeading } from '../shell/AppShell'
 import { TimelineSection } from '../timeline/TimelineSection'
@@ -97,7 +101,10 @@ import {
   restoreChapter,
   restoreClip,
   restoreCut,
+  rotateGroup,
+  rotationChanges,
   trimCut,
+  turnOf,
 } from './draft'
 import type {
   Baseline,
@@ -248,6 +255,8 @@ type Action =
   | { type: 'cut-restore'; identity: string; key: CutKey }
   | { type: 'cut-trim'; identity: string; key: CutKey; span: { in: number; out: number } }
   | { type: 'cut-typed'; identity: string; typed: boolean }
+  // The caller took the clips that are on disk; `rotateGroup` checks that a chapter plays them.
+  | { type: 'rotate'; identities: readonly string[]; way: Way }
   | { type: 'name-unsent'; unsent: boolean }
   | { type: 'reset' }
   | { type: 'save-start'; pressed: Pressed }
@@ -280,6 +289,7 @@ function initialDraft(baseline: Baseline): Draft {
     removed: new Map(),
     metadata: metadataDraftOf(baseline.read),
     cuts: new Map(),
+    rotations: new Map(),
   }
 }
 
@@ -477,6 +487,11 @@ function reduce(state: State, action: Action): State {
       return withDraft(
         state,
         trimCut(state.baseline, state.draft, action.identity, action.key, action.span),
+      )
+    case 'rotate':
+      return withDraft(
+        state,
+        rotateGroup(state.baseline, state.draft, action.identities, action.way, () => true),
       )
     case 'cut-typed': {
       if (state.typed.has(action.identity) === action.typed) {
@@ -693,6 +708,7 @@ function summarize(
   moved: number,
   removed: number,
   cuts: { added: number; removed: number; trimmed: number },
+  rotated: number,
   adopted: number,
 ): string {
   // An incomplete date reads as '' but is not a date left empty: it is named as such.
@@ -713,6 +729,7 @@ function summarize(
     cuts.added > 0 && `${plural(cuts.added, 'cut', 'cuts')} added`,
     cuts.removed > 0 && `${plural(cuts.removed, 'cut', 'cuts')} removed`,
     cuts.trimmed > 0 && `${plural(cuts.trimmed, 'cut', 'cuts')} trimmed`,
+    rotated > 0 && rotatedCount(rotated),
     adopted > 0 && `adds ${plural(adopted, 'new clip', 'new clips')} to reel.yaml`,
   ].filter((part): part is string => part !== false)
   const text = parts.join(' · ')
@@ -723,7 +740,7 @@ function summarize(
 const TITLE = 'title' as const
 
 // The read view's cuts, which Edit mode's Timeline does not use: its cuts are the draft's.
-const NOT_READ = { cuts: null, failure: null } as const
+const NOT_READ = { cuts: null, turns: null, failure: null } as const
 const NOTHING = () => undefined
 
 // A chapter with no removed clip: one constant, so its list keeps its memoised props.
@@ -1444,6 +1461,27 @@ export function EventEditor({
   const baseCuts = ready?.baseline.cuts
   const draftCuts = ready?.draft.cuts
   const orderChanged = ready !== null && layoutChanged(ready.baseline, ready.draft)
+  // The clips' turns as saved, and as the draft has them: what every picture shows (`rotate/`).
+  const readClips = ready?.baseline.read.clips
+  const baseTurns = useMemo<ClipTurns>(
+    () => (readClips === undefined ? new Map() : turnsOf(readClips)),
+    [readClips],
+  )
+  const draftRotations = ready?.draft.rotations
+  const draftTurns = useMemo<ClipTurns>(() => {
+    if (draftRotations === undefined || draftRotations.size === 0) {
+      return baseTurns
+    }
+    const turns = new Map(baseTurns)
+    for (const [identity, turn] of draftRotations) {
+      if (turn === 0) {
+        turns.delete(identity)
+      } else {
+        turns.set(identity, turn)
+      }
+    }
+    return turns
+  }, [baseTurns, draftRotations])
   const resetCount = ready?.resets ?? 0
   const editing = useMemo<EditBinding | null>(() => {
     if (baseCuts === undefined || draftCuts === undefined || detail === null) {
@@ -1451,6 +1489,7 @@ export function EventEditor({
     }
     return {
       cuts: liveTrims(baseCuts, draftCuts),
+      turns: draftTurns,
       listed: (identity) => cutsOf(baseCuts, draftCuts, identity),
       onTrim,
       onAdd: cutHandlers.onAdd,
@@ -1463,6 +1502,7 @@ export function EventEditor({
   }, [
     baseCuts,
     draftCuts,
+    draftTurns,
     detail,
     listsLocked,
     onTrim,
@@ -1693,6 +1733,7 @@ export function EventEditor({
     return result
   }, [listedKeys, orders, marks])
   const markLineRef = useRef<HTMLDivElement>(null)
+  const rotateHintId = useId()
 
   // A mark or Clear marks: not while a save or a Move clips is pending, nor while a clip is
   // lifted (the group a drag lifted is the group it drops). Spoken once through the live region.
@@ -1721,6 +1762,43 @@ export function EventEditor({
     // The button leaves with the count: focus goes to the line, not to <body>.
     markLineRef.current?.focus({ preventScroll: true })
   }, [announce])
+
+  // Rotate left / right (`rotate/`): a clip on disk, not while a save or a Move clips is pending
+  // nor while a clip is lifted. One draft edit, spoken once with the turn the clip now has.
+  const onRotate = useCallback<RotateHandler>(
+    (identity, way) => {
+      const current = latest.current
+      if (!idle(current) || lifted.current || !onDisk(clips.get(identity))) {
+        return
+      }
+      const next = rotateGroup(current.baseline, current.draft, [identity], way, () => true)
+      if (next === current.draft) {
+        return
+      }
+      dispatch({ type: 'rotate', identities: [identity], way })
+      announce(turnAnnouncement(nameOfClip(identity), turnOf(current.baseline, next, identity), way))
+    },
+    [clips, announce, nameOfClip],
+  )
+  // Rotate marked left / right: every marked clip on disk, each from its own turn, one edit.
+  // The marks stay.
+  const onRotateMarked = useCallback(
+    (way: Way) => {
+      const current = latest.current
+      if (!idle(current) || lifted.current) {
+        return
+      }
+      const group = groupOf(current.draft.orders, listedKeys, current.marked).filter((identity) =>
+        onDisk(clips.get(identity)),
+      )
+      if (rotateGroup(current.baseline, current.draft, group, way, () => true) === current.draft) {
+        return
+      }
+      dispatch({ type: 'rotate', identities: group, way })
+      announce(groupTurnAnnouncement(group.length, way))
+    },
+    [clips, announce, listedKeys],
+  )
 
   // A group drop (`ChapterDrag`): the marked clips as one run at a gap of `to`, one edit.
   // False when it changes nothing or is refused (save or Move clips pending); the marks stay.
@@ -2275,6 +2353,31 @@ export function EventEditor({
                   Clear marks
                 </button>
               </span>
+              <span className="mark-rotate" role="group" aria-label="Marked clips">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-compact"
+                  aria-disabled={listsLocked || marks.size === 0 || undefined}
+                  aria-describedby={marks.size === 0 ? rotateHintId : undefined}
+                  onClick={() => onRotateMarked('left')}
+                >
+                  <Icon name="rotate-ccw" />
+                  Rotate marked left
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-compact"
+                  aria-disabled={listsLocked || marks.size === 0 || undefined}
+                  aria-describedby={marks.size === 0 ? rotateHintId : undefined}
+                  onClick={() => onRotateMarked('right')}
+                >
+                  <Icon name="rotate-cw" />
+                  Rotate marked right
+                </button>
+                <span id={rotateHintId} className="visually-hidden">
+                  Mark clips to rotate them together.
+                </span>
+              </span>
             </div>
           )}
 
@@ -2336,7 +2439,10 @@ export function EventEditor({
                       resets={ready.resets}
                       cutHandlers={cutHandlers}
                       marked={marksIn.get(chapter.key) ?? NO_MARKS}
+                      turns={ready.draft.rotations}
+                      baseTurns={baseTurns}
                       onMark={onMark}
+                      onRotate={onRotate}
                       onMove={onMove}
                       onRemove={onRemove}
                       onRestore={onRestore}
@@ -2380,6 +2486,7 @@ export function EventEditor({
                     movedCount,
                     ready.draft.removed.size,
                     cutChanges(ready.baseline, ready.draft),
+                    rotationChanges(ready.baseline, ready.draft),
                     adopted,
                   )
                 : ''

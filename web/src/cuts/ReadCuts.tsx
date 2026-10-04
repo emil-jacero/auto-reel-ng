@@ -7,6 +7,8 @@ import { fetchReel } from '../api/reel'
 import type { ReelDocument, ReelReadResult } from '../api/reel'
 import { plural } from '../events/common'
 import { FAILURE_LABEL, unansweredFailure } from '../events/labels'
+import { turnsOf } from '../rotate/turn.ts'
+import type { Turn } from '../rotate/turn.ts'
 import { Alert } from '../ui/Alert'
 import { CHEVRON, CutList, SCISSORS } from './CutsPanel'
 import { cutOutSeconds, formatLength } from './times'
@@ -24,7 +26,18 @@ export type ClipCuts = ReadonlyMap<string, readonly Trim[]>
 
 export type ReadFailure = { cause: string; detail: string | null }
 
-export type ReadCutsState = { cuts: ClipCuts | null; failure: ReadFailure | null }
+/** Identity → its saved turn (`rotate`, as a quarter turn); only clips with a turn. */
+export type ClipTurns = ReadonlyMap<string, Turn>
+
+/** No turns: one shared empty map, so a state without them keeps its identity. */
+export const NO_TURNS: ClipTurns = new Map()
+
+export type ReadCutsState = {
+  cuts: ClipCuts | null
+  /** The saved turns, read with the cuts from the same document; null when the read failed. */
+  turns?: ClipTurns | null
+  failure: ReadFailure | null
+}
 
 function cutsOf(document: ReelDocument): ClipCuts {
   return new Map(
@@ -59,7 +72,7 @@ export function failureOf(result: Exclude<ReelReadResult, { kind: 'ok' }>): Read
  * a newer read, or leaving the page, aborts the one in flight, silently.
  */
 export function useReadCuts(eventId: string, event: EventDetail): ReadCutsState {
-  const [state, setState] = useState<ReadCutsState>({ cuts: null, failure: null })
+  const [state, setState] = useState<ReadCutsState>({ cuts: null, turns: null, failure: null })
   useEffect(() => {
     const controller = new AbortController()
     fetchReel(eventId, controller.signal)
@@ -67,14 +80,14 @@ export function useReadCuts(eventId: string, event: EventDetail): ReadCutsState 
         if (!controller.signal.aborted) {
           setState(
             result.kind === 'ok'
-              ? { cuts: cutsOf(result.document), failure: null }
-              : { cuts: null, failure: failureOf(result) },
+              ? { cuts: cutsOf(result.document), turns: turnsOf(result.document.clips), failure: null }
+              : { cuts: null, turns: null, failure: failureOf(result) },
           )
         }
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setState({ cuts: null, failure: { cause: String(error), detail: null } })
+          setState({ cuts: null, turns: null, failure: { cause: String(error), detail: null } })
         }
       })
     return () => controller.abort()

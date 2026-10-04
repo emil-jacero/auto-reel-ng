@@ -10,7 +10,9 @@ import {
   useSyncExternalStore,
 } from 'react'
 
-import type { ClipCuts } from '../cuts/ReadCuts'
+import { NO_TURNS } from '../cuts/ReadCuts'
+import type { ClipCuts, ClipTurns } from '../cuts/ReadCuts'
+import '../rotate/rotate.css'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
 import { CutFields } from './CutFields'
@@ -71,6 +73,8 @@ const EDGE_PX = 24
 /** What the page's read of `reel.yaml` gave: the cuts, or why not (null cuts and no failure: not read yet). */
 export type CutsRead = {
   cuts: ClipCuts | null
+  /** The clips' turns (the draft's in Edit mode); null: not read, shown unturned. */
+  turns?: ClipTurns | null
   failure: { cause: string; detail: string | null } | null
 }
 
@@ -94,13 +98,14 @@ export function Timeline({
   editing?: EditBinding | null
 }) {
   const lay = useMemo(() => trackLayout(clips), [clips])
+  const turns = cuts.turns ?? NO_TURNS
   const facts = useMemo(() => clips.map((clip) => clip.facts), [clips])
   const bands = useMemo(() => chapterBands(chapterNames, clips), [chapterNames, clips])
   const playhead = useMemo(() => createPlayhead(startPosition()), [])
   const drag = useMemo(() => createDragStore(), [])
   const previews = editing?.previews ?? null
   const held = usePreviewHeld(previews)
-  const video = useTimelineVideo({ eventId, clips, playhead, held })
+  const video = useTimelineVideo({ eventId, clips, playhead, turns, held })
   // A trim in the air: the cuts' spans on the track step back while the live one is drawn.
   const trimming = useSyncExternalStore(drag.subscribe, () => drag.get() !== null)
   const [selected, setSelected] = useState<Selected | null>(null)
@@ -318,7 +323,7 @@ export function Timeline({
   const note = video.note
   return (
     <div className="timeline" data-trimming={trimming || undefined}>
-      <div className="tl-stage">
+      <div className="tl-stage" data-turned>
         {held ? (
           <p className="tl-stage-held">{PREVIEW_OPEN}</p>
         ) : (
@@ -381,6 +386,7 @@ export function Timeline({
         pps={pps}
         range={range}
         showCuts={cuts.cuts !== null}
+        turns={turns}
         scrollerRef={scroller}
         playhead={playhead}
         gripRef={grip}

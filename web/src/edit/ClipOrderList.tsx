@@ -17,11 +17,15 @@ import type { ReactNode, RefObject } from 'react'
 import type { Clip } from '../api/event'
 import { CutsPanel, CutsToggle } from '../cuts/CutsPanel'
 import type { CutHandlers, CutPanels } from '../cuts/CutsPanel'
+import type { ClipTurns } from '../cuts/ReadCuts'
 import { keptCuts } from '../cuts/times'
 import { ClipThumb } from '../events/ClipThumb'
 import { ClipName, ClipStatusPills, clipNames, formatBytes, plural } from '../events/common'
 import { formatInstant } from '../format'
 import { watchName } from '../preview/playback'
+import { RotateButtons } from '../rotate/RotateButtons'
+import type { RotateHandler } from '../rotate/RotateButtons'
+import type { Turn } from '../rotate/turn.ts'
 import { Icon } from '../ui/Icon'
 import { useGroupHeld, useReducedMotion } from './ChapterDrag'
 import { ChapterTools } from './ChapterTools'
@@ -29,7 +33,7 @@ import { InlineName } from './InlineName'
 import { TitleCard } from './TitleCard'
 import type { ChapterToolsModel } from './ChapterTools'
 import { cutsOf, keptOriginal, movedSet } from './draft'
-import type { ChapterKey, Cuts, DraftCut } from './draft'
+import type { ChapterKey, Cuts, DraftCut, Rotations } from './draft'
 import { CHAPTER_DROP } from './dragSlots'
 import { emptyChapterWords } from './emptyChapter'
 import { groupWords } from './marks'
@@ -142,6 +146,7 @@ const RowBody = memo(function RowBody({
   marked = null,
   locked = false,
   onMark,
+  turn = 0,
 }: {
   eventId: string
   clip: Clip
@@ -162,8 +167,10 @@ const RowBody = memo(function RowBody({
   /** A save or a Move clips is pending: the mark ignores presses. */
   locked?: boolean
   onMark?: MarkHandler
+  /** The clip's turn in the draft: its frame is shown turned by it. */
+  turn?: Turn
 }) {
-  const thumb = <ClipThumb eventId={eventId} clip={clip} name={name} />
+  const thumb = <ClipThumb eventId={eventId} clip={clip} name={name} turn={turn} />
   return (
     <>
       <span className="clip-pos">{position}</span>
@@ -292,7 +299,9 @@ const ClipRow = memo(function ClipRow({
   resets,
   cutHandlers,
   marked,
+  turn,
   onMark,
+  onRotate,
   onStep,
   onRemove,
 }: {
@@ -316,7 +325,10 @@ const ClipRow = memo(function ClipRow({
   cutHandlers: CutHandlers
   /** The clip is marked (to move with the other marked clips). */
   marked: boolean
+  /** Its turn in the draft (`rotate`). */
+  turn: Turn
   onMark: MarkHandler
+  onRotate: RotateHandler
   onStep: Step
   onRemove: (identity: string) => void
 }) {
@@ -452,15 +464,22 @@ const ClipRow = memo(function ClipRow({
         marked={cuttable ? marked : null}
         locked={locked}
         onMark={onMark}
+        turn={turn}
       />
-      <MoveButtons
-        identity={clip.identity}
-        name={name}
-        index={position - 1}
-        total={total}
-        locked={locked}
-        onStep={onStep}
-      />
+      <span className="clip-tools">
+        {/* A clip on disk turns, excluded or not: its picture is what the render will turn. */}
+        {(status === 'active' || status === 'new') && (
+          <RotateButtons identity={identity} name={name} locked={locked} onRotate={onRotate} />
+        )}
+        <MoveButtons
+          identity={clip.identity}
+          name={name}
+          index={position - 1}
+          total={total}
+          locked={locked}
+          onStep={onStep}
+        />
+      </span>
       {cuttable && (
         <CutsToggle
           cuts={cuts}
@@ -482,6 +501,7 @@ const ClipRow = memo(function ClipRow({
           duration={clip.duration ?? null}
           name={name}
           cuts={cuts}
+          turn={turn}
           open={open}
           locked={locked}
           panels={panels}
@@ -642,7 +662,10 @@ export const ClipOrderList = memo(function ClipOrderList({
   resets,
   cutHandlers,
   marked,
+  turns,
+  baseTurns,
   onMark,
+  onRotate,
   onMove,
   onRemove,
   onRestore,
@@ -688,7 +711,11 @@ export const ClipOrderList = memo(function ClipOrderList({
    * own marks are unchanged, so marking elsewhere re-renders no other list.
    */
   marked: ReadonlySet<string>
+  /** The draft's changed turns and the saved ones (never the draft itself, as `cuts`). */
+  turns: Rotations
+  baseTurns: ClipTurns
   onMark: MarkHandler
+  onRotate: RotateHandler
   onMove: MoveHandler
   onRemove: RemoveHandler
   onRestore: RestoreHandler
@@ -911,7 +938,9 @@ export const ClipOrderList = memo(function ClipOrderList({
                   resets={resets}
                   cutHandlers={cutHandlers}
                   marked={marked.has(identity)}
+                  turn={turns.get(identity) ?? baseTurns.get(identity) ?? 0}
                   onMark={onMark}
+                  onRotate={onRotate}
                   onStep={onStep}
                   onRemove={onRemoveRow}
                 />

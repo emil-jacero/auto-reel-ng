@@ -52,7 +52,7 @@ export function TimelineSection({
   const cuts = editing === null ? read.cuts : editing.cuts
   const clips = useMemo(() => trackClips(shown.clips, cuts), [shown, cuts])
   const cutsRead = useMemo(
-    () => (editing === null ? read : { cuts: editing.cuts, failure: null }),
+    () => (editing === null ? read : { cuts: editing.cuts, turns: editing.turns, failure: null }),
     [editing, read],
   )
   const prepare = usePrepare(eventId, onFinished)

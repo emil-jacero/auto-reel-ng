@@ -5,6 +5,7 @@ import type { Clip } from '../api/event'
 import type { Trim } from '../cuts/times'
 import { ClipPreview, usePreviewOpen } from '../preview/ClipPreview'
 import type { ClipPreviews } from '../preview/previews'
+import type { Turn } from '../rotate/turn.ts'
 import { Icon } from '../ui/Icon'
 import { canWatch, thumbControlName } from './watch'
 
@@ -131,6 +132,7 @@ export const PlayerRow = memo(function PlayerRow({
   clip,
   name,
   cuts,
+  turn = 0,
   watchId,
   playerId,
   onAnnounce,
@@ -141,6 +143,8 @@ export const PlayerRow = memo(function PlayerRow({
   name: string
   /** The clip's cuts as the page lists them: none for an excluded clip. */
   cuts: readonly Trim[]
+  /** The clip's saved turn (`rotate`): the player shows it. */
+  turn?: Turn
   watchId: string
   playerId: string
   onAnnounce: (message: string) => void
@@ -160,6 +164,7 @@ export const PlayerRow = memo(function PlayerRow({
           clip={clip}
           name={name}
           cuts={cuts}
+          turn={turn}
           watchId={watchId}
           playerId={playerId}
           onAnnounce={onAnnounce}
@@ -180,6 +185,7 @@ function OpenPlayer({
   clip,
   name,
   cuts,
+  turn,
   watchId,
   playerId,
   onAnnounce,
@@ -189,6 +195,7 @@ function OpenPlayer({
   clip: Clip
   name: string
   cuts: readonly Trim[]
+  turn: Turn
   watchId: string
   playerId: string
   onAnnounce: (message: string) => void
@@ -208,6 +215,7 @@ function OpenPlayer({
       proxy={opened.proxy ?? null}
       name={name}
       cuts={cuts}
+      turn={turn}
       previews={previews}
       onClose={onClose}
       onAnnounce={onAnnounce}

@@ -1,11 +1,13 @@
 import type { ClipStatus, EventDetail } from '../api/event'
 import type { ReelDocument, ReelWriteBody } from '../api/reel'
 import type { KnownReason } from '../cuts/times'
+import { normalizeTurn, stepTurn } from '../rotate/turn.ts'
+import type { Turn, Way } from '../rotate/turn.ts'
 
 /*
- * The editor's model, as pure functions. It has no runtime imports, only
- * `import type` (erased by type stripping), so a scratch script can run it
- * under Node as it is.
+ * The editor's model, as pure functions. Its only runtime import is the pure turn
+ * model (`rotate/turn.ts`, with the `.ts` extension), so `npm test` runs it under
+ * Node as it is.
  *
  * Two models meet here. The event detail is what the page shows: every
  * chapter with every clip, NEW, MISSING and IGNORED ones included. The
@@ -81,6 +83,9 @@ export type DraftCut = {
 /** Identity → its cuts as listed, in order. */
 export type Cuts = ReadonlyMap<string, readonly DraftCut[]>
 
+/** Identity → its turn in the draft (0 is a turn back to none); only clips that differ from the saved. */
+export type Rotations = ReadonlyMap<string, Turn>
+
 /** What the operator changed. */
 export type Draft = {
   /** Every chapter in the order shown: the read ones (deleted ones in place) and the added ones. */
@@ -90,6 +95,8 @@ export type Draft = {
   metadata: MetadataDraft
   /** The cuts of the clips whose cuts the operator changed, only those (`settled`). */
   cuts: Cuts
+  /** The turns of the clips the operator turned and whose turn now differs from the saved one. */
+  rotations: Rotations
 }
 
 /** What Edit mode read: never changes during the session. */
@@ -282,14 +289,14 @@ export function writtenFromView(baseline: Baseline, draft: Draft): DraftChapter[
     return listed
   }
   const changed = reordered(baseline.original, draft.orders)
-  const cut = changedCuts(baseline, draft)
+  const cut = new Set([...changedCuts(baseline, draft), ...changedRotations(baseline, draft)])
   if (changed.size === 0 && cut.size === 0) {
     return []
   }
   if (baseline.read.chapters.length === 0) {
     return listed
   }
-  // A NEW clip whose cuts changed: reel.yaml holds a clip's cuts only while a chapter
+  // A NEW clip whose cuts or turn changed: reel.yaml holds a clip's cuts only while a chapter
   // lists it, so the chapter that plays it is written from the view, adopting it.
   const inDocument = new Set(baseline.read.chapters.flatMap((chapter) => chapter.clips))
   for (const identity of cut) {
@@ -364,17 +371,26 @@ function withCuts(baseline: Baseline, draft: Draft): ReelWriteBody['clips'] {
   const clips = Object.fromEntries(
     Object.entries(baseline.read.clips).filter(([identity]) => !draft.removed.has(identity)),
   )
-  for (const identity of changedCuts(baseline, draft)) {
-    const trims = savedTrims(cutsOf(baseline.cuts, draft.cuts, identity))
+  const cut = changedCuts(baseline, draft)
+  const turned = changedRotations(baseline, draft)
+  for (const identity of new Set([...cut, ...turned])) {
     const entry = baseline.read.clips[identity]
+    const trims = cut.has(identity)
+      ? savedTrims(cutsOf(baseline.cuts, draft.cuts, identity))
+      : (entry?.trims ?? [])
+    const turn = turned.has(identity) ? turnOf(baseline, draft, identity) : null
     if (entry !== undefined) {
-      if (trims.length === 0 && entry.title == null && entry.rotate == null && !entry.exclude) {
+      const { rotate: read, ...rest } = entry
+      // A turn of 0 removes the key (never `rotate: 0`); an unturned clip keeps its read value.
+      const rotate = turn === null ? read : turn === 0 ? null : turn
+      if (trims.length === 0 && entry.title == null && rotate == null && !entry.exclude) {
         delete clips[identity]
       } else {
-        clips[identity] = { ...entry, trims }
+        clips[identity] = rotate == null ? { ...rest, trims } : { ...rest, trims, rotate }
       }
-    } else if (trims.length > 0) {
-      clips[identity] = { trims, exclude: false }
+    } else if (trims.length > 0 || (turn !== null && turn !== 0)) {
+      clips[identity] =
+        turn === null || turn === 0 ? { trims, exclude: false } : { trims, rotate: turn, exclude: false }
     }
   }
   return clips
@@ -397,13 +413,14 @@ export function adoptedNewCount(
 /**
  * Whether there is anything to save: a changed field, anything a save would
  * write from the view (an order that differs, a change to the chapter list), or
- * a clip whose saved cuts would differ.
+ * a clip whose saved cuts or turn would differ.
  */
 export function isDirty(baseline: Baseline, draft: Draft): boolean {
   return (
     changedFields(baseline.read, draft.metadata).length > 0 ||
     writtenFromView(baseline, draft).length > 0 ||
-    changedCuts(baseline, draft).size > 0
+    changedCuts(baseline, draft).size > 0 ||
+    changedRotations(baseline, draft).size > 0
   )
 }
 
@@ -1049,4 +1066,77 @@ export function moveGroup(draft: Draft, group: readonly string[], to: ChapterKey
     changed = true
   }
   return changed ? { ...draft, orders } : draft
+}
+
+/** The turn `reel.yaml` holds for a clip: 0 for none or for a value that is not a quarter turn. */
+export function savedTurn(read: ReelDocument, identity: string): Turn {
+  return normalizeTurn(read.clips[identity]?.rotate) ?? 0
+}
+
+/** A clip's turn as shown: the draft's when the operator turned it, else the saved one. */
+export function turnOf(baseline: Baseline, draft: Draft, identity: string): Turn {
+  return draft.rotations.get(identity) ?? savedTurn(baseline.read, identity)
+}
+
+/**
+ * `draft` with `identity` turned a quarter `way` from its turn now. Only a clip a chapter
+ * plays that `onDisk` says is there can be turned (a missing, ignored or removed clip is
+ * refused: the same draft back). A turn equal to the saved one leaves `draft.rotations`, so
+ * turning and turning back is no change.
+ */
+export function rotateClip(
+  baseline: Baseline,
+  draft: Draft,
+  identity: string,
+  way: Way,
+  onDisk: (identity: string) => boolean,
+): Draft {
+  return rotateGroup(baseline, draft, [identity], way, onDisk)
+}
+
+/**
+ * `draft` with every clip of `group` that a chapter plays and `onDisk` turned a quarter `way`
+ * from its own turn now, in one step. Clips that cannot be turned are left out; the same draft
+ * back when none can.
+ */
+export function rotateGroup(
+  baseline: Baseline,
+  draft: Draft,
+  group: readonly string[],
+  way: Way,
+  onDisk: (identity: string) => boolean,
+): Draft {
+  const played = new Set([...draft.orders.values()].flat())
+  const turnable = [...new Set(group)].filter(
+    (identity) => played.has(identity) && !draft.removed.has(identity) && onDisk(identity),
+  )
+  if (turnable.length === 0) {
+    return draft
+  }
+  const rotations = new Map(draft.rotations)
+  for (const identity of turnable) {
+    const next = stepTurn(turnOf(baseline, draft, identity), way)
+    if (next === savedTurn(baseline.read, identity)) {
+      rotations.delete(identity)
+    } else {
+      rotations.set(identity, next)
+    }
+  }
+  return { ...draft, rotations }
+}
+
+/** The clips whose turn would differ from the saved one; a removed clip's is left out with it. */
+export function changedRotations(baseline: Baseline, draft: Draft): ReadonlySet<string> {
+  const changed = new Set<string>()
+  for (const [identity, turn] of draft.rotations) {
+    if (!draft.removed.has(identity) && turn !== savedTurn(baseline.read, identity)) {
+      changed.add(identity)
+    }
+  }
+  return changed
+}
+
+/** How many clips the save bar counts as rotated. */
+export function rotationChanges(baseline: Baseline, draft: Draft): number {
+  return changedRotations(baseline, draft).size
 }
