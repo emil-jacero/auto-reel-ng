@@ -111,9 +111,11 @@ the handle has focus it SHALL be scrolled into view if its edge is outside the T
 The card handle's pressable area SHALL be at least 24 px wide for a fine pointer and 44 px for a coarse one, centred on
 the edge, and a swipe starting elsewhere on the Timeline SHALL still scroll it. The handle lies in the card lane, a row of its own above the clips, so its area SHALL NOT cover a trim
 handle's. While a save or a Move clips is pending the handle SHALL change nothing
-for any input, as trim handles do. The drag SHALL stay smooth in Chrome and in Firefox 155 or later: at 80 clips under
-a 4x CPU throttle in Chrome (and the same script, unthrottled, in Firefox), at most 2 % of the frames of a scripted
-drag of a black card, including the shift of the later content, take longer than 25 ms. The handle and its readout SHALL
+for any input, as trim handles do. The drag SHALL stay smooth in Chrome and in Firefox 155 or later: at 80 clips, in the median of at least five runs under
+a 4x CPU throttle in Chrome, at most 5 % of the frames of a scripted drag of a black card, including the shift of the
+later content, take longer than 25 ms (the same page idle takes up to 4 % on a shared host), and in the median of three
+runs of the same script unthrottled in Firefox at most 2 %. The later content SHALL be moved with the edge as already
+drawn layers, and the real layout drawn once, on release. The handle and its readout SHALL
 be legible in light and dark colour schemes at widths from 320 to 1280 px with no horizontal scrolling of the page, and
 SHALL NOT animate under reduced motion. No dependency SHALL be added.
 
@@ -131,7 +133,11 @@ SHALL NOT animate under reduced motion. No dependency SHALL be added.
 
 #### Scenario: A long event stays smooth
 - **WHEN** a black card is dragged in an 80-clip event under a 4x CPU throttle in Chrome, and unthrottled in Firefox
-- **THEN** at most 2 % of the frames take longer than 25 ms, and the figures are recorded
+- **THEN** the median over at least five runs (Chrome) and three runs (Firefox) is at most 5 % and 2 % of the frames over 25 ms, and the figures, with the idle page's in the same session, are recorded
+
+#### Scenario: The later content moves with the edge and lands where it was
+- **WHEN** a black card's edge is dragged 2 s longer and released
+- **THEN** during the drag every clip, chapter band after the card, card block, trim handle, analysis mark and the playhead behind the card is 2 s further right, the card's own chapter band is 2 s wider, the ruler's labels and the summary line show the new length, and on release the drawn layout is the same one (apart from the fitted zoom), with nothing left moved; Escape puts everything back
 
 #### Scenario: Layouts and schemes
 - **WHEN** the Timeline is shown at 1280 px and at 390 px, in light and in dark

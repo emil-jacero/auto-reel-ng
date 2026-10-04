@@ -35,9 +35,10 @@ import {
   movieWithCards,
   trackLayout as withCards,
 } from './cards'
-import type { CardSpec, DecoratorsRead, Placement } from './cards'
+import type { CardMap, CardSpec, DecoratorsRead, Placement } from './cards'
 import type { CardsBinding } from './useCardSelection'
 import { createDragStore } from './dragStore'
+import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
 import type { KeyAction } from './keys'
 import {
@@ -60,6 +61,8 @@ import {
 } from './labels'
 import { chapterBands, movieMs, trackLayout } from './layout'
 import type { TrackClip } from './layout'
+import type { ShiftFrom } from './Track'
+import type { Layout } from './model'
 import { DEFAULT_PPS, MAX_PPS, fitPps, pxToTime, timeToPx, zoomAt } from './model'
 import { createPlayhead } from './playhead'
 import {
@@ -119,29 +122,23 @@ export function Timeline({
   const turns = cuts.turns ?? NO_TURNS
   const decorators = cards.decorators
   const drag = useMemo(() => createDragStore(), [])
-  // A card's end edge in the air: its length is laid over the specs, so the layout, the blocks
-  // and the length are derived from it by the one path the release uses (`withDurations`).
-  const cardSpecsNow = cards.specs
-  const liveCard = useSyncExternalStore(drag.subscribe, () => {
+  // A black card's end edge in the air (its chapter, or null). The layout below is the committed
+  // one and does not change during the drag: the later layers are translated (`data-after`)
+  // (set below, without a render) and the real layout is drawn once, on release.
+  const specs = cards.specs
+  const dragChapter = useSyncExternalStore(drag.subscribe, () => {
     const d = drag.getCard()
     // Only a black card adds time and moves the rest; a video card's edge changes its own block.
-    return d !== null && cardSpecsNow.find((s) => s.chapter === d.chapter)?.card?.background === 'black'
-      ? d
+    return d !== null && specs.find((s) => s.chapter === d.chapter)?.card?.background === 'black'
+      ? d.chapter
       : null
   })
-  const specs = useMemo(
-    () =>
-      liveCard === null
-        ? cards.specs
-        : withDurations(cards.specs, new Map([[liveCard.chapter, liveCard.tenths / 10]])),
-    [cards.specs, liveCard],
-  )
-  const placements = useMemo<Placement[]>(
-    () =>
+  const placeAll = useCallback(
+    (all: readonly CardSpec[]): Placement[] =>
       decorators === 'pending' || decorators === 'unreadable'
         ? []
         : cardPlacements(
-            specs,
+            all,
             clips.map((clip) => ({
               chapter: clip.chapter,
               durationMs: clip.facts.durationMs,
@@ -149,18 +146,34 @@ export function Timeline({
             })),
             decorators,
           ),
-    [specs, clips, decorators],
+    [clips, decorators],
   )
+  const placements = useMemo(() => placeAll(specs), [placeAll, specs])
   // Clip time stays the one time of the playhead, the cuts and the marks; `lay` below is
   // where the clips are on the track, with the black cards' spans between them.
   const map = useMemo(() => cardMap(placements, clipLay), [placements, clipLay])
   const lay = useMemo(() => withCards(clipLay, map), [clipLay, map])
   const blocks = useMemo(() => cardBlocks(placements, lay), [placements, lay])
   const handles = useMemo(() => cardHandles(placements, blocks, specs), [placements, blocks, specs])
+  const shifting = useMemo(() => {
+    const handle = dragChapter === null ? undefined : handles.find((h) => h.chapter === dragChapter)
+    const block = handle === undefined ? undefined : blocks[handle.index]
+    return handle === undefined || block === undefined
+      ? null
+      : ({
+          chapter: handle.chapter,
+          fromMs: block.startMs + block.widthMs,
+          baseTenths: handle.tenths,
+        } satisfies ShiftFrom)
+  }, [dragChapter, handles, blocks])
   const leadMs = useMemo(() => new Map(map.gaps.map((gap) => [gap.clip, gap.lengthMs])), [map])
   const selection = cards.selection
   const facts = useMemo(() => clips.map((clip) => clip.facts), [clips])
   const bands = useMemo(() => chapterBands(chapterNames, clips), [chapterNames, clips])
+  const movie = useMemo(
+    () => (cuts.cuts === null ? null : movieMs(clips, cuts.cuts)),
+    [clips, cuts.cuts],
+  )
   const playhead = useMemo(() => createPlayhead(startPosition()), [])
   const previews = editing?.previews ?? null
   const held = usePreviewHeld(previews)
@@ -209,15 +222,41 @@ export function Timeline({
 
   const fit = range.width > 0 ? fitPps(lay.totalMs, range.width) : DEFAULT_PPS
   const wanted = zoom.fitted ? fit : Math.min(MAX_PPS, Math.max(fit, zoom.pps))
-  // A black card's drag changes the movie's length, and a fitted zoom would follow it and
-  // scale the whole track under the pointer: the zoom is held at what it was until release.
-  const settled = useRef(wanted)
-  if (liveCard === null) {
-    settled.current = wanted
-  }
-  const pps = liveCard === null ? wanted : settled.current
+  const pps = wanted
   const ppsRef = useRef(pps)
   ppsRef.current = pps
+
+  // The drag moves the layers behind the card by a translate on each of them (`data-after`): no
+  // React render and no inherited property to resolve under the whole track. Removed in the
+  // same commit that draws the released layout.
+  useLayoutEffect(() => {
+    const el = scroller.current
+    if (shifting === null || el === null) {
+      return undefined
+    }
+    const moved = new Set<HTMLElement>()
+    const apply = () => {
+      const d = drag.getCard()
+      if (d === null || d.chapter !== shifting.chapter) {
+        return // ended: the layout drawn in this commit takes over, the cleanup lets go
+      }
+      const by = `${timeToPx((d.tenths - shifting.baseTenths) * 100, ppsRef.current)}px 0`
+      for (const node of el.querySelectorAll<HTMLElement>('[data-after]')) {
+        if (node.style.translate !== by) {
+          node.style.translate = by
+          moved.add(node)
+        }
+      }
+    }
+    apply()
+    const off = drag.subscribe(apply)
+    return () => {
+      off()
+      for (const node of moved) {
+        node.style.translate = ''
+      }
+    }
+  }, [shifting, drag])
 
   // A zoom is applied after the commit that gave the canvas its new width.
   useLayoutEffect(() => {
@@ -424,13 +463,14 @@ export function Timeline({
             blocks,
             specs,
             leadMs,
+            shifting,
             handles: editing === null ? null : handles,
             onSet: editing === null ? null : editing.onCardDuration,
             selected: selection.selected,
             onSelect: pickCard,
             onClear: selection.clear,
           },
-    [specs, blocks, leadMs, handles, editing, selection.selected, selection.clear, pickCard],
+    [specs, blocks, leadMs, shifting, handles, editing, selection.selected, selection.clear, pickCard],
   )
   const cardNotes = cardsNotes(cards.specs, placements, decorators)
 
@@ -517,6 +557,7 @@ export function Timeline({
         selected={selected}
         onSelect={select}
         cardLane={cardLane}
+        shifting={shifting}
       />
 
       {editing !== null && (
@@ -525,11 +566,17 @@ export function Timeline({
 
       {editing?.orderChanged === true && <Alert tone="info" role="note" title={ORDER_SAVED} />}
 
-      <p className="tl-summary">
-        {cuts.cuts !== null && movieWords(movieWithCards(movieMs(clips, cuts.cuts), map), clipLay.totalMs, cardTimeWords(map))}
-        {decorators === 'unset' && placements.some((place) => place.kind === 'off') && '. Title cards are not counted.'}
-        {cutsPending && CUTS_READING}
-      </p>
+      <Summary
+        drag={drag}
+        shifting={shifting}
+        specs={specs}
+        placeAll={placeAll}
+        clipLay={clipLay}
+        map={map}
+        movie={movie}
+        notCounted={decorators === 'unset' && placements.some((place) => place.kind === 'off')}
+        pending={cutsPending}
+      />
 
       {blocks.length > 0 && <p className="tl-cards-note">{CARDS_NOT_PLAYED}</p>}
       {cardNotes.map((note) => (
@@ -570,6 +617,54 @@ export function Timeline({
 }
 
 const NEVER = () => () => undefined
+
+/**
+ * The summary line. It follows a black card's edge in the air (the length of the movie, the
+ * card time) by itself, so a drag renders this paragraph and not the Timeline.
+ */
+function Summary({
+  drag,
+  shifting,
+  specs,
+  placeAll,
+  clipLay,
+  map,
+  movie,
+  notCounted,
+  pending,
+}: {
+  drag: DragStore
+  shifting: ShiftFrom | null
+  specs: readonly CardSpec[]
+  placeAll: (specs: readonly CardSpec[]) => Placement[]
+  clipLay: Layout
+  map: CardMap
+  movie: number | null
+  notCounted: boolean
+  pending: boolean
+}) {
+  const tenths = useSyncExternalStore(drag.subscribe, () => {
+    const d = drag.getCard()
+    return shifting !== null && d !== null && d.chapter === shifting.chapter ? d.tenths : null
+  })
+  const now = useMemo(
+    () =>
+      tenths === null || shifting === null
+        ? map
+        : cardMap(
+            placeAll(withDurations(specs, new Map([[shifting.chapter, tenths / 10]]))),
+            clipLay,
+          ),
+    [tenths, shifting, map, specs, placeAll, clipLay],
+  )
+  return (
+    <p className="tl-summary">
+      {movie !== null && movieWords(movieWithCards(movie, now), clipLay.totalMs, cardTimeWords(now))}
+      {notCounted && '. Title cards are not counted.'}
+      {pending && CUTS_READING}
+    </p>
+  )
+}
 
 /** Whether a clip preview of Edit mode is open, and so holds the page's one video. */
 function usePreviewHeld(previews: EditBinding['previews'] | null): boolean {

@@ -15,6 +15,7 @@ import { cardSubject, cardWidthMs, visibleHandles } from './cards'
 import type { CardHandle } from './cards'
 import type { DragStore } from './dragStore'
 import { bareMousePress } from './handles'
+import type { ShiftFrom } from './Track'
 import { timeToPx } from './model'
 
 /*
@@ -40,6 +41,7 @@ export function CardHandles({
   pps,
   window,
   drag,
+  shifting = null,
   locked,
   keysId,
   selected,
@@ -50,6 +52,8 @@ export function CardHandles({
   pps: number
   window: { from: number; to: number }
   drag: DragStore
+  /** A black card's drag in progress: the handles behind the card move. */
+  shifting?: ShiftFrom | null
   locked: boolean
   keysId: string
   /** The selected card's chapter (saved name) or null. */
@@ -68,6 +72,7 @@ export function CardHandles({
           handle={handle}
           pps={pps}
           drag={drag}
+          behind={shifting !== null && handle.startMs >= shifting.fromMs - 0.5}
           locked={locked}
           keysId={keysId}
           selected={selected === handle.chapter}
@@ -84,6 +89,7 @@ const CardHandleSlider = memo(function CardHandleSlider({
   handle,
   pps,
   drag,
+  behind,
   locked,
   keysId,
   selected,
@@ -93,6 +99,8 @@ const CardHandleSlider = memo(function CardHandleSlider({
   handle: CardHandle
   pps: number
   drag: DragStore
+  /** Behind a black card being dragged: moved with it. */
+  behind: boolean
   locked: boolean
   keysId: string
   selected: boolean
@@ -323,6 +331,7 @@ const CardHandleSlider = memo(function CardHandleSlider({
       data-dragging={live !== null || undefined}
       data-snapped={(live !== null && live.snapped) || undefined}
       data-selected={selected || undefined}
+      data-after={behind || undefined}
       style={{ '--x': `${x}px` } as CSSProperties}
       onPointerDownCapture={() => {
         pointerSeen.current = true
@@ -374,7 +383,12 @@ const CardHandleSlider = memo(function CardHandleSlider({
           style={{ '--tip-shift': `${tipShift}px` } as CSSProperties}
         >
           Card <ClockTime cell={cardCell(shown)} /> s
-          {live !== null && live.words !== '' && <span className="tl-trim-snap">{live.words}</span>}
+          {live !== null && live.words !== '' && (
+            <span className="tl-card-snap-words">
+              {' · '}
+              {live.words}
+            </span>
+          )}
         </span>
       )}
       {live !== null && live.snapped && <span className="tl-card-snap-line" aria-hidden="true" />}

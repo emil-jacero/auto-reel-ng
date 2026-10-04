@@ -1275,16 +1275,16 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     anchor clip, the footage the engine attaches it to, from the draft's cuts, so a trim edited a moment ago already counts; a
     card longer than its footage keeps its value and can only be dragged down. The draft gains `cardDurations` (chapter key
     to seconds, only values that differ from the resolved length), merged into the chapter's read `card` by `buildWriteBody`;
-    the Timeline lays the dragged length over the resolved cards (`withDurations`), so the drag and the release use one
-    layout path and a black card's drag shifts the later content live. The handle lies in the card lane, a row of its own,
+    the Timeline lays the draft's lengths over the resolved cards (`withDurations`), so the release is one layout path; a
+    black card's drag keeps the committed layout, moves the layers behind the card by a `translate` (`data-after`) and draws
+    the real layout once, on release. The handle lies in the card lane, a row of its own,
     so it never competes with a trim handle's area.
-    **Drag cost, measured** (80 clips, 8 cards, 180 pointer moves at about 46 px/s, frames over 25 ms): unthrottled, Chrome
-    154 0, 0.25 and 1.0 % and Firefox 155 0.54, 2.16 and 1.09 % (three runs each); at the 4x CPU throttle on a host at load
-    9 to 10 a black card's drag is 9 to 24 % (the same page idle 1 to 3.7 %), outside the 2 % gate. A video card's drag changes
-    only its own block and measured 1.7 %. What was done: the card drag no longer re-lays out the Timeline for a video card, the
-    tip no longer reads layout on each move (that read was 60 % of the React commit), and the fitted zoom is held while a black
-    card is dragged. What remains is the native layout and paint of the shifted content; the `--shift` fallback of the design
-    (translate the rendered later layers, commit the real layout on release) is the next step if the 4x number must hold.
+    **Drag cost, measured** (80 clips, 8 cards, 180 pointer moves at about 46 px/s, frames over 25 ms): the first build re-laid
+    out the later content on each move and measured 9 to 24 % in Chrome at 4x (a loaded host), so the translate-and-commit-on-
+    release build above replaced it. Now: unthrottled, Chrome 154 0 to 0.27 % and Firefox 155 0 to 3.2 % (median 0.8 %, nine
+    runs); at the 4x throttle Chrome 1.3 to 12.4 % over eleven runs, median 3.1 %, on a shared host where the same page idle
+    measures 0.5 to 3.7 % (load 2 to 6); a video card's drag, which also changes one block, 4.7 %. Gate: median 5 % (Chrome
+    4x) and 2 % (Firefox), against the idle figure of the session.
     **Bundle:** JS 557,109 to 568,205 bytes (179,516 to 183,002 gzip -9, +3.5 KB), CSS 80,426 to 82,278 (15,165 to 15,330
     gzip -9, +0.2 KB); no package added.
   - **Bundle (`timeline-trim`).** `npm run build` on `origin/main` (with `timeline-overlays`) and on this change: JS 502,976 to

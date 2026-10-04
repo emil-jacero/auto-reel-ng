@@ -101,15 +101,23 @@ it refuses is a 400 on Save, shown as any save error. The browser makes no other
 value rules, `title-card-write-api` decision 1); omit the bounds and rely on the 400 (the operator could drag to 90 s
 and learn on Save).
 
-**5. A black card's drag re-lays out the rest of the timeline, windowed.**
-The pure `shiftedLayout(layout, afterIndex, deltaMs)` returns the layout with every span after the card moved; the
-total length, the ruler's end, the chapter bands and the playhead (which keeps its place in the content it is in, so
-a playhead after the card moves with it) are derived from it. The drag store carries `{ kind: 'card', chapter,
-tenths }`; only the visible window of the track, the ruler and the length readout subscribe, so the cost of a drag is
-the cost of re-placing the visible blocks, which are already windowed. If that misses the smoothness gate (task 4),
-the fallback is to translate the already-rendered later layers with one CSS custom property (`--shift`) during the
-drag and commit the real layout on release; the pure rule and its tests do not change.
+**5. A black card's drag translates the later layers and draws the real layout once, on release.**
+Measured first with the live relayout of every later block, ruler and band on each move: 9 to 24 % of the frames over
+25 ms in Chrome at 4x (the idle page 1 to 3.7 %), so the `--shift` fallback of the first design was built here, with one
+change: a `translate` set on each element behind the card (not a custom property inherited by the whole track), and
+`will-change: translate` on those so that a move is the compositor's and nothing is painted again (without it the
+translate alone still measured 6 to 15 %). The Timeline keeps the committed layout during the drag (`placements`, `lay`, `blocks` and `handles` are
+derived from the committed specs only), marks what starts at or after the card's end with `data-after` (clips, trim handles,
+chapter bands, card blocks and handles, analysis marks, the playhead if it is behind the card), and a layout effect
+subscribed to the drag store writes the translate (`(tenths - tenths at start) x 100 ms` in px) with no React render. The
+parts that show a value follow the edge by themselves, each with its own store subscription: the dragged block and
+handle, the dragged chapter's band (it grows), the ruler's ticks (their times are those of the new movie) and the
+summary line (movie length and card time, from `withDurations` over the committed specs). On release, Escape or a lock,
+the effect's cleanup lets go of the translates in the same commit that draws the new layout. The pure rules are
+unchanged. The fitted zoom no longer needs holding during the drag; it refits on release as before.
 A video card's drag changes only its own block: nothing shifts.
+*Known limit:* the window of drawn clips is that of the committed layout, so a drag that shortens a card by more than
+one view's width at high zoom can pull in content that was not drawn; it appears on release.
 
 **6. Release is one edit; the draft stores an override.**
 `setCardDuration(draft, chapter, seconds)` sets `card.duration` for that chapter (a card with only `duration` set is a
@@ -140,8 +148,9 @@ without pointer events (Firefox under touch emulation) is handed to the handle a
 
 - [The blocks' structure differs from the roles assumed here] -> task 1.1 maps roles to names and records the
   differences in the design before building; the pure rules do not depend on them.
-- [Re-laying out on each move of a black card is slower than a trim] -> windowing bounds the cost; the `--shift`
-  fallback in decision 5; the gate is measured in both browsers.
+- [Re-laying out on each move of a black card is slower than a trim] -> built as decision 5 (translate, relayout on
+  release); the gate is measured in both browsers against the idle page of the same session, because a shared host's own
+  noise (the idle page took up to 3.7 % of frames over 25 ms) is larger than the 2 % first written.
 - [Mirrored constants drift] -> the text-reading test (decision 4).
 - [Dragging past a video card's clip is blocked silently] -> the bound is in the slider's range, the readout stops, and
   the handle's description says "up to the first clip's length".
