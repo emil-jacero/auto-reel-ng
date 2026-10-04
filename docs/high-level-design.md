@@ -795,7 +795,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    pressed in a muted style, and the card inspector opens below the track; no API, engine or `RENDER_GRAPH_VERSION` change.
    `event-poster-engine` has landed (the engine half of "event poster frames"; D-26): the optional `poster: {clip, at}` in
    `reel.yaml`, the poster written as `<movie stem>-poster.jpg` beside the movie and embedded as its cover, claimed in the
-   render manifest and pruned with its movie; `RENDER_GRAPH_VERSION` 9. No API or web change: the picker follows.
+   render manifest and pruned with its movie; `RENDER_GRAPH_VERSION` 11. No API or web change: the picker follows.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1657,7 +1657,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     `poster` and no such file lies beside the movie.
   - **Staleness.** `poster` joins the editorial hash only when present, so a `reel.yaml` without one hashes as before and
     its ETag stays valid. The render now writes a second file and a cover for identical inputs, so
-    `RENDER_GRAPH_VERSION` is raised from 8 to 9: **every rendered event reports stale once, reason `engine`**
+    `RENDER_GRAPH_VERSION` is raised from 10 to 11: **every rendered event reports stale once, reason `engine`**
     (D-C8). No Alembic migration, no new dependency.
   - **Deliberately not here:** the picker and any API field (the page reads `poster` through a later change), chapter
     posters, animated art, NFO files, writing the sidecar for a movie that is not re-rendered, and the web player's poster
