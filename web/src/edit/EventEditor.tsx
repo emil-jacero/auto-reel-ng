@@ -117,6 +117,7 @@ import {
   rotateGroup,
   rotationChanges,
   setCardField,
+  setCardLength,
   trimCut,
   turnOf,
 } from './draft'
@@ -275,6 +276,8 @@ type Action =
   // The caller took the clips that are on disk; `rotateGroup` checks that a chapter plays them.
   | { type: 'rotate'; identities: readonly string[]; way: Way }
   | { type: 'name-unsent'; unsent: boolean }
+  // A title card's length from the Timeline (`title-card-duration-drag`); `resolved` is the one read.
+  | { type: 'card-length'; key: ChapterKey; seconds: number; resolved: number }
   | { type: 'card-field'; key: ChapterKey; field: CardField; value: CardDraft[CardField] }
   | { type: 'card-reset'; key: ChapterKey }
   | { type: 'reset' }
@@ -544,6 +547,13 @@ function reduce(state: State, action: Action): State {
       return action.unsent === state.nameUnsent
         ? state
         : afterEdit({ ...state, nameUnsent: action.unsent })
+    case 'card-length':
+      return afterCardEdit(
+        state,
+        setCardLength(state.baseline, state.draft, action.key, action.seconds, action.resolved),
+        action.key,
+        'duration',
+      )
     case 'card-field':
       return afterCardEdit(
         state,
@@ -1542,6 +1552,37 @@ export function EventEditor({
     }
     return turns
   }, [baseTurns, draftRotations])
+  // The title cards' lengths (`title-card-duration-drag`): a drag or a key on the Timeline is one
+  // edit of the card's `duration` in the draft (`title-card-inspector`), keyed there by the
+  // chapter's saved name and here by its key; the same guard as a trim.
+  const liveDetail = liveEvent ?? detail
+  const savedSpecs = useMemo(() => (liveDetail === null ? [] : cardSpecs(liveDetail)), [liveDetail])
+  const savedSpecsRef = useRef(savedSpecs)
+  savedSpecsRef.current = savedSpecs
+  const onCardDuration = useCallback<EditBinding['onCardDuration']>(
+    (chapter, seconds, words) => {
+      const current = latest.current
+      if (current === null || current.pressed !== null || moving.current !== null) {
+        return
+      }
+      const held = current.draft.chapters.find(
+        (candidate) => candidate.readName === chapter && !candidate.deleted,
+      )
+      const resolved = savedSpecsRef.current.find((spec) => spec.chapter === chapter)?.card?.duration
+      if (held === undefined || resolved === undefined) {
+        return
+      }
+      const next = setCardLength(current.baseline, current.draft, held.key, seconds, resolved)
+      if (next === current.draft) {
+        return
+      }
+      dispatch({ type: 'card-length', key: held.key, seconds, resolved })
+      if (words !== null) {
+        announce(words)
+      }
+    },
+    [announce],
+  )
   const resetCount = ready?.resets ?? 0
   const readLook = ready?.baseline.read.look
   const editing = useMemo<EditBinding | null>(() => {
@@ -1560,6 +1601,7 @@ export function EventEditor({
       previews: cutPanels.panels.previews,
       epoch: resetCount,
       look: readLook,
+      onCardDuration,
     }
   }, [
     readLook,
@@ -1574,12 +1616,11 @@ export function EventEditor({
     orderChanged,
     cutPanels,
     resetCount,
+    onCardDuration,
   ])
 
   // The card rows (`CardRow.tsx`) and the Timeline's blocks: each chapter's saved card, matched by
   // the name it was read with, as the draft would have it drawn (`card/specs.ts`).
-  const liveDetail = liveEvent ?? detail
-  const savedSpecs = useMemo(() => (liveDetail === null ? [] : cardSpecs(liveDetail)), [liveDetail])
   const eventStyle = useMemo<EventStyle | null>(() => {
     const style = liveDetail?.title_card
     return style == null

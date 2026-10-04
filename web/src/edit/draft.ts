@@ -507,6 +507,27 @@ export function setCard(baseline: Baseline, draft: Draft, key: ChapterKey, card:
   return { ...draft, cards }
 }
 
+/**
+ * `draft` with chapter `key`'s card length set to `seconds` (one decimal), as a drag or a key on
+ * the Timeline sets it (`title-card-duration-drag`). `resolved` is the length the page read for
+ * the card: a length equal to it is not an override, so dragging away and back leaves the card
+ * as it was. A non-number or a length of zero or less is refused by name.
+ */
+export function setCardLength(
+  baseline: Baseline,
+  draft: Draft,
+  key: ChapterKey,
+  seconds: number,
+  resolved: number,
+): Draft {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) {
+    throw new RangeError(`a card duration must be a finite number above zero, got ${String(seconds)}`)
+  }
+  const rounded = Math.round(seconds * 10) / 10
+  const value = rounded === resolved ? readCardOf(baseline, key).duration : rounded
+  return setCardField(baseline, draft, key, 'duration', value)
+}
+
 /** `draft` with one field of chapter `key`'s card set; `null` clears it (Use event style). */
 export function setCardField<F extends CardField>(
   baseline: Baseline,

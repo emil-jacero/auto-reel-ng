@@ -42,6 +42,7 @@ Re-read against `origin/main` at `50d5ac7` (`title-card-blocks`, `title-card-wri
   shift of a black card's drag is `cardPlacements -> cardMap -> trackLayout` with the dragged duration laid over the
   specs (`withDurations`), one code path for the drag and for the release. The scenarios of the shift are tests of that
   path. This removes a second layout rule that could disagree.
+- **Difference 4: the card lane is a row of its own,** so the card handle and the trim handles never overlap.
 - The drag store gets a second slot for the card drag (`getCard`/`setCard`) under the same claim, so one drag at a time
   holds across trims and cards.
 
@@ -131,9 +132,9 @@ never inside a field, never scroll the page.
 
 **9. Touch.**
 The handle's area is 24 px (fine) / 44 px (coarse) wide, `touch-action: none` on the handle only so a swipe on the
-rest of the track still scrolls; the press hand-over rule picks the nearer of a card handle and a trim handle where
-their areas overlap (a card's end can sit at a clip's start), and a mouse press without pointer events (Firefox under
-touch emulation) is handed over as for trims.
+rest of the track still scrolls. The handle lies in the card lane, a row of its own above the clips, so its area
+never covers a trim handle's and no press hand-over is needed (difference 4 in the findings above); a mouse press
+without pointer events (Firefox under touch emulation) is handed to the handle as for trims.
 
 ## Risks / Trade-offs
 

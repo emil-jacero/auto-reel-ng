@@ -26,7 +26,18 @@ export function inspectorWords(spec: CardSpec | undefined): string | null {
   }
 }
 
-export function CardInspector({ words }: { words: string | null }) {
+/**
+ * `words` is what the slot shows (the draft's length included); `announced` is what the status
+ * region says, from the card as the page read it, so a length changed by drag or key is
+ * spoken once by its own release words or its handle's value, not again here.
+ */
+export function CardInspector({
+  words,
+  announced = words,
+}: {
+  words: string | null
+  announced?: string | null
+}) {
   return (
     <>
       {words !== null && (
@@ -35,7 +46,7 @@ export function CardInspector({ words }: { words: string | null }) {
         </section>
       )}
       <p className="visually-hidden" role="status">
-        {words ?? ''}
+        {announced ?? ''}
       </p>
     </>
   )

@@ -26,6 +26,8 @@ import { Track } from './Track'
 import type { CardLaneModel, ScrubPhase, ScrubSurface } from './Track'
 import {
   cardBlocks,
+  cardHandles,
+  withDurations,
   cardMap,
   cardPlacements,
   cardTimeWords,
@@ -116,12 +118,30 @@ export function Timeline({
   const clipLay = useMemo(() => trackLayout(clips), [clips])
   const turns = cuts.turns ?? NO_TURNS
   const decorators = cards.decorators
+  const drag = useMemo(() => createDragStore(), [])
+  // A card's end edge in the air: its length is laid over the specs, so the layout, the blocks
+  // and the length are derived from it by the one path the release uses (`withDurations`).
+  const cardSpecsNow = cards.specs
+  const liveCard = useSyncExternalStore(drag.subscribe, () => {
+    const d = drag.getCard()
+    // Only a black card adds time and moves the rest; a video card's edge changes its own block.
+    return d !== null && cardSpecsNow.find((s) => s.chapter === d.chapter)?.card?.background === 'black'
+      ? d
+      : null
+  })
+  const specs = useMemo(
+    () =>
+      liveCard === null
+        ? cards.specs
+        : withDurations(cards.specs, new Map([[liveCard.chapter, liveCard.tenths / 10]])),
+    [cards.specs, liveCard],
+  )
   const placements = useMemo<Placement[]>(
     () =>
       decorators === 'pending' || decorators === 'unreadable'
         ? []
         : cardPlacements(
-            cards.specs,
+            specs,
             clips.map((clip) => ({
               chapter: clip.chapter,
               durationMs: clip.facts.durationMs,
@@ -129,19 +149,19 @@ export function Timeline({
             })),
             decorators,
           ),
-    [cards.specs, clips, decorators],
+    [specs, clips, decorators],
   )
   // Clip time stays the one time of the playhead, the cuts and the marks; `lay` below is
   // where the clips are on the track, with the black cards' spans between them.
   const map = useMemo(() => cardMap(placements, clipLay), [placements, clipLay])
   const lay = useMemo(() => withCards(clipLay, map), [clipLay, map])
   const blocks = useMemo(() => cardBlocks(placements, lay), [placements, lay])
+  const handles = useMemo(() => cardHandles(placements, blocks, specs), [placements, blocks, specs])
   const leadMs = useMemo(() => new Map(map.gaps.map((gap) => [gap.clip, gap.lengthMs])), [map])
   const selection = cards.selection
   const facts = useMemo(() => clips.map((clip) => clip.facts), [clips])
   const bands = useMemo(() => chapterBands(chapterNames, clips), [chapterNames, clips])
   const playhead = useMemo(() => createPlayhead(startPosition()), [])
-  const drag = useMemo(() => createDragStore(), [])
   const previews = editing?.previews ?? null
   const held = usePreviewHeld(previews)
   const video = useTimelineVideo({ eventId, clips, playhead, turns, held })
@@ -188,7 +208,14 @@ export function Timeline({
   const [noPicture, setNoPicture] = useState<ReadonlySet<string>>(new Set())
 
   const fit = range.width > 0 ? fitPps(lay.totalMs, range.width) : DEFAULT_PPS
-  const pps = zoom.fitted ? fit : Math.min(MAX_PPS, Math.max(fit, zoom.pps))
+  const wanted = zoom.fitted ? fit : Math.min(MAX_PPS, Math.max(fit, zoom.pps))
+  // A black card's drag changes the movie's length, and a fitted zoom would follow it and
+  // scale the whole track under the pointer: the zoom is held at what it was until release.
+  const settled = useRef(wanted)
+  if (liveCard === null) {
+    settled.current = wanted
+  }
+  const pps = liveCard === null ? wanted : settled.current
   const ppsRef = useRef(pps)
   ppsRef.current = pps
 
@@ -395,13 +422,15 @@ export function Timeline({
         ? undefined
         : {
             blocks,
-            specs: cards.specs,
+            specs,
             leadMs,
+            handles: editing === null ? null : handles,
+            onSet: editing === null ? null : editing.onCardDuration,
             selected: selection.selected,
             onSelect: pickCard,
             onClear: selection.clear,
           },
-    [cards.specs, blocks, leadMs, selection.selected, selection.clear, pickCard],
+    [specs, blocks, leadMs, handles, editing, selection.selected, selection.clear, pickCard],
   )
   const cardNotes = cardsNotes(cards.specs, placements, decorators)
 

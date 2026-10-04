@@ -3,13 +3,14 @@ import type { CSSProperties, KeyboardEvent, PointerEvent, RefObject } from 'reac
 
 import type { ClipTurns } from '../cuts/ReadCuts'
 import { TRIM_KEYS, formatTime, reasonWords } from '../cuts/times'
+import { CardHandles, CARD_KEYS } from './CardHandles'
 import { CardLane } from './CardLane'
 import { Filmstrip } from './Filmstrip'
 import { PlayheadKeys, PlayheadSlider } from './Playhead'
 import { ClipHandles } from './TrimHandle'
 import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
-import type { CardBlock, CardSpec } from './cards'
+import type { CardBlock, CardHandle, CardSpec } from './cards'
 import type { KeyAction } from './keys'
 import { clipDescription } from './labels'
 import { cutLabel } from './layout'
@@ -121,6 +122,9 @@ export type CardLaneModel = {
   specs: readonly CardSpec[]
   /** Clip index → the length of the black card that opens it: its chapter band starts at the card. */
   leadMs: ReadonlyMap<number, number>
+  /** The end-edge handles (Edit mode only; null in the read view) and the draft edit they write. */
+  handles: readonly CardHandle[] | null
+  onSet: ((chapter: string, seconds: number, words: string | null) => void) | null
   /** The selected card's chapter or null. */
   selected: string | null
   onSelect: (chapter: string) => void
@@ -360,6 +364,7 @@ export function Track({
             pps={pps}
             window={{ from: windowFrom, to: windowTo }}
             selected={cardLane.selected}
+            drag={cardLane.handles === null ? null : drag}
             onSelect={cardLane.onSelect}
             onClear={cardLane.onClear}
           />
@@ -388,7 +393,25 @@ export function Track({
             <span id={keysId} className="visually-hidden">
               {TRIM_KEYS}
             </span>
-            {/* After the playhead: Tab reaches the handles after it, in time order. */}
+            <span id={`${base}-card-keys`} className="visually-hidden">
+              {CARD_KEYS}
+            </span>
+            {/* After the playhead: Tab reaches the handles after it, in time order; the
+                card handles come first, being in the lane above the clips. */}
+            {cardLane?.handles != null && cardLane.onSet !== null && (
+              <CardHandles
+                key={`cards-${editing.epoch}`}
+                handles={cardLane.handles}
+                pps={pps}
+                window={{ from: windowFrom, to: windowTo }}
+                drag={drag}
+                locked={editing.locked}
+                keysId={`${base}-card-keys`}
+                selected={cardLane.selected}
+                onSelect={cardLane.onSelect}
+                onSet={cardLane.onSet}
+              />
+            )}
             <div className="tl-trims-host" data-locked={editing.locked || undefined} key={editing.epoch}>
               {handleNodes}
             </div>

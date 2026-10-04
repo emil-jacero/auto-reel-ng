@@ -21,8 +21,22 @@ export type Dragging = {
   words: string
 }
 
+/** A title card's end edge in the air (`title-card-duration-drag`): its chapter's saved name and length. */
+export type CardDragging = {
+  /** The chapter's saved name (`""` is the opening). */
+  chapter: string
+  tenths: number
+  /** Whether the edge snapped to a whole second. */
+  snapped: boolean
+  /** What it snapped to, in words (empty when it did not). */
+  words: string
+}
+
 export type DragStore = {
   get(): Dragging | null
+  /** The card edge being dragged: the same claim as a trim, so one drag at a time holds across both. */
+  getCard(): CardDragging | null
+  setCard(next: CardDragging | null): void
   /** Move the edge, or end the drag with null; listeners run only when something changed. */
   set(next: Dragging | null): void
   subscribe(listener: () => void): () => void
@@ -52,12 +66,32 @@ function same(a: Dragging | null, b: Dragging | null): boolean {
   )
 }
 
+function sameCard(a: CardDragging | null, b: CardDragging | null): boolean {
+  if (a === null || b === null) {
+    return a === b
+  }
+  return (
+    a.chapter === b.chapter && a.tenths === b.tenths && a.snapped === b.snapped && a.words === b.words
+  )
+}
+
 export function createDragStore(): DragStore {
   let at: Dragging | null = null
+  let card: CardDragging | null = null
   let owner: object | null = null
   const listeners = new Set<() => void>()
   return {
     get: () => at,
+    getCard: () => card,
+    setCard(next) {
+      if (sameCard(card, next)) {
+        return
+      }
+      card = next === null ? null : { ...next }
+      for (const listener of [...listeners]) {
+        listener()
+      }
+    },
     set(next) {
       if (same(at, next)) {
         return

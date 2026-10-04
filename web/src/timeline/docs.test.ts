@@ -16,3 +16,18 @@ describe('docs/high-level-design.md', () => {
     assert.ok(at.some((i) => i > 700 && i < 760), '§6 names it')
   })
 })
+
+/* The design document names the change in D-20, §4.10 and §6 (title-card-duration-drag). */
+describe('docs/high-level-design.md and title-card-duration-drag', () => {
+  const text = readFileSync(new URL('../../../docs/high-level-design.md', import.meta.url), 'utf8')
+
+  it('names title-card-duration-drag in D-20, §4.10 and §6', () => {
+    const lines = text.split('\n')
+    const at = lines.flatMap((line, i) => (line.includes('title-card-duration-drag') ? [i] : []))
+    const d20 = lines.findIndex((line) => line.startsWith('- **D-20'))
+    assert.ok(d20 > 0)
+    assert.ok(at.some((i) => i > d20 && i < d20 + 260), 'D-20 names it')
+    assert.ok(at.some((i) => i > 380 && i < 440), '§4.10 names it')
+    assert.ok(at.some((i) => i > 700 && i < 760), '§6 names it')
+  })
+})

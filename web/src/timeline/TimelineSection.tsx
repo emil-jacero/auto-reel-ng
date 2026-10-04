@@ -158,7 +158,14 @@ export function TimelineSection({
           }}
         />
       ) : (
-        <CardInspector words={inspectorWords(selectedSpec)} />
+        <CardInspector
+          words={inspectorWords(selectedSpec)}
+          announced={inspectorWords(
+            cards.selected === null
+              ? undefined
+              : savedSpecs.find((spec) => spec.chapter === cards.selected),
+          )}
+        />
       )}
       <div id={bodyId} className="timeline-body" hidden={!open}>
         {state !== 'closed' && (

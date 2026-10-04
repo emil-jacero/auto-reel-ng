@@ -109,8 +109,8 @@ the handle has focus it SHALL be scrolled into view if its edge is outside the T
 ### Requirement: The card handle is operable by touch, inert while a save is pending, and smooth
 
 The card handle's pressable area SHALL be at least 24 px wide for a fine pointer and 44 px for a coarse one, centred on
-the edge, and a swipe starting elsewhere on the Timeline SHALL still scroll it. Where its area overlaps a trim
-handle's, the nearer edge SHALL take the press. While a save or a Move clips is pending the handle SHALL change nothing
+the edge, and a swipe starting elsewhere on the Timeline SHALL still scroll it. The handle lies in the card lane, a row of its own above the clips, so its area SHALL NOT cover a trim
+handle's. While a save or a Move clips is pending the handle SHALL change nothing
 for any input, as trim handles do. The drag SHALL stay smooth in Chrome and in Firefox 155 or later: at 80 clips under
 a 4x CPU throttle in Chrome (and the same script, unthrottled, in Firefox), at most 2 % of the frames of a scripted
 drag of a black card, including the shift of the later content, take longer than 25 ms. The handle and its readout SHALL
@@ -121,9 +121,9 @@ SHALL NOT animate under reduced motion. No dependency SHALL be added.
 - **WHEN** a finger presses 20 px to either side of a card's end edge on a coarse-pointer device and moves
 - **THEN** the card handle takes it, and a swipe 60 px away scrolls the track
 
-#### Scenario: A card's end beside a clip's trim handle
-- **WHEN** a card's end edge and a cut's start handle are 10 px apart and the press lands nearer the card's edge
-- **THEN** the card's handle takes the press
+#### Scenario: A card's end above a clip's trim handle
+- **WHEN** a card's end edge sits at the same place along the track as a cut's start handle
+- **THEN** a press in the card lane takes the card's handle, and a press in the clip row takes the trim handle
 
 #### Scenario: A pending save
 - **WHEN** a save is in flight and the operator presses the handle or a key on it

@@ -40,6 +40,12 @@ export type EditBinding = {
   previews: ClipPreviews
   /** Changes when Reset puts the draft back: a selection and a drag do not survive it. */
   epoch: number
+  /**
+   * One edit of the draft: the card of the chapter (saved name) takes `seconds`. `words` is
+   * what the live region says (a drag's release); null for a key, whose result is the
+   * handle's value. Ignored while a save or a Move clips is pending.
+   */
+  onCardDuration(chapter: string, seconds: number, words: string | null): void
   /** The document's `look` as read: the title decorator decides whether the render draws cards. */
   look: unknown
 }

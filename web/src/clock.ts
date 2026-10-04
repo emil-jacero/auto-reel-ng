@@ -98,3 +98,15 @@ export type ClockCell = { text: string; ch: number }
 export function clockCell(ms: number | null, scale: ClockScale): ClockCell {
   return { text: formatClock(ms, scale), ch: clockChars(scale) }
 }
+
+/**
+ * A length in tenths of a second (a title card's), one decimal, in a cell as wide as the
+ * longest value (`longestTenths`), so the text does not change width while it is dragged:
+ * `4.0` in the cell of `60.0`. A value above the longest is shown as the longest.
+ */
+export function tenthsCell(tenths: number, longestTenths: number): ClockCell {
+  readable('a card length in tenths', tenths)
+  readable('the longest card length in tenths', longestTenths)
+  const shown = Math.min(Math.round(tenths), Math.floor(longestTenths))
+  return { text: (shown / 10).toFixed(1), ch: String(Math.floor(longestTenths / 10)).length + 2 }
+}

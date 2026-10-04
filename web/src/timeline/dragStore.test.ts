@@ -53,4 +53,33 @@ describe('the drag store', () => {
     assert.equal(store.owns(a), false)
     assert.equal(store.claim(b), true)
   })
+
+  it('holds a card edge in the air under the same claim, and tells readers only when it moved', () => {
+    const store = createDragStore()
+    let told = 0
+    store.subscribe(() => {
+      told += 1
+    })
+    const edge = { chapter: 'B', tenths: 40, snapped: true, words: 'Whole second' }
+    store.setCard(edge)
+    store.setCard({ ...edge })
+    assert.equal(told, 1)
+    assert.deepEqual(store.getCard(), edge)
+    assert.equal(store.get(), null, 'a card edge is not a trim')
+    store.setCard({ ...edge, tenths: 41, snapped: false, words: '' })
+    assert.equal(told, 2)
+    store.setCard(null)
+    assert.equal(store.getCard(), null)
+    assert.equal(told, 3)
+  })
+
+  it('refuses a card drag while a trim drag holds the store', () => {
+    const store = createDragStore()
+    const trim = {}
+    const card = {}
+    assert.equal(store.claim(trim), true)
+    assert.equal(store.claim(card), false)
+    store.unclaim(trim)
+    assert.equal(store.claim(card), true)
+  })
 })

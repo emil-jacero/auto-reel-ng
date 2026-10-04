@@ -429,6 +429,10 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   the clips (a black card is a span of its own before the chapter and adds time; a video card is a block over the start of the
   chapter's first footage and adds none), a card row at the head of each chapter, and one selection shared by both; read
   and select only, the editor of a card is the next changes.
+  **A card's length is dragged on the Timeline** (`title-card-duration-drag`, D-20): the end edge of a card block is a slider
+  (0.1 s steps, whole-second snap within 8 px, 0.5 s to 60 s, arrows/Shift/Home/End), a black card moves everything after it
+  while it is dragged, a video card is held to its footage; one edit of the draft, Reset and Save as for a cut. The typed
+  alternative is `title-card-inspector`.
   **Running times are legible and hold still** (`time-readouts-legible`, D-20 and D-16): the Timeline's readout, the clip player's
   header, the trim tip and the movie line are written by one fixed-width clock and say what each number is (`Clip 0:00.96 of
   0:39.84 · Event 1:02.40 of 2:29.76`); web-only.
@@ -753,6 +757,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `RENDER_GRAPH_VERSION` 8); the Timeline's `unset` guess still has to be replaced by reading it.
    `title-card-blocks` has landed (the web half begins): every chapter's card is a block on the Timeline and a row in Edit
    mode's chapter list, selectable, web-only and read only; editing a card comes next.
+   `title-card-duration-drag` has landed (web only): a card's length is dragged on the Timeline's card block, written as
+   `card.duration` by the existing `PUT .../reel`; `title-card-inspector` is the typed alternative.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1259,6 +1265,28 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     in its span selects the card), the anchor is the first shown clip (an explicit `title: true` elsewhere in the chapter is
     not in the detail), and the readout's "Event" time counts black cards. **Bundle:** JS 539,223 to 551,338 bytes (173,912 to
     177,719 gzip -9, +3.8 KB), CSS 76,068 to 79,203 (14,391 to 14,913 gzip -9, +0.5 KB); no package added.
+  - **Title card length by drag (`title-card-duration-drag`, 2026-10-04).** The card handle reuses the trim handle's parts:
+    the same drag store (one drag at a time across both, with a second slot for the card edge), the slider role, the
+    delta-from-where-the-edge-was rule, the 8 px snap (to whole seconds here), Escape, the lock while a save or Move is pending
+    and the clock's fixed-width cell (`tenthsCell`). The unit is an integer number of tenths (`cardLength.ts`, pure,
+    `node:test`), so no float reaches the draft or `reel.yaml`. **Mirrored bounds:** the web has two constants for the engine's
+    `CARD_MIN_DURATION` and `CARD_MAX_DURATION` (0.5 s, 60 s) and a test reads `reel/card.py` and fails when they differ; the
+    server stays the authority (a refused value is a 400 on Save). A video card is bounded by the first kept span of its
+    anchor clip, the footage the engine attaches it to, from the draft's cuts, so a trim edited a moment ago already counts; a
+    card longer than its footage keeps its value and can only be dragged down. The draft gains `cardDurations` (chapter key
+    to seconds, only values that differ from the resolved length), merged into the chapter's read `card` by `buildWriteBody`;
+    the Timeline lays the dragged length over the resolved cards (`withDurations`), so the drag and the release use one
+    layout path and a black card's drag shifts the later content live. The handle lies in the card lane, a row of its own,
+    so it never competes with a trim handle's area.
+    **Drag cost, measured** (80 clips, 8 cards, 180 pointer moves at about 46 px/s, frames over 25 ms): unthrottled, Chrome
+    154 0, 0.25 and 1.0 % and Firefox 155 0.54, 2.16 and 1.09 % (three runs each); at the 4x CPU throttle on a host at load
+    9 to 10 a black card's drag is 9 to 24 % (the same page idle 1 to 3.7 %), outside the 2 % gate. A video card's drag changes
+    only its own block and measured 1.7 %. What was done: the card drag no longer re-lays out the Timeline for a video card, the
+    tip no longer reads layout on each move (that read was 60 % of the React commit), and the fitted zoom is held while a black
+    card is dragged. What remains is the native layout and paint of the shifted content; the `--shift` fallback of the design
+    (translate the rendered later layers, commit the real layout on release) is the next step if the 4x number must hold.
+    **Bundle:** JS 557,109 to 568,205 bytes (179,516 to 183,002 gzip -9, +3.5 KB), CSS 80,426 to 82,278 (15,165 to 15,330
+    gzip -9, +0.2 KB); no package added.
   - **Bundle (`timeline-trim`).** `npm run build` on `origin/main` (with `timeline-overlays`) and on this change: JS 502,976 to
     521,304 bytes (160,932 to 167,683 gzip -9, +6.6 KB) and CSS 67,163 to 70,886 bytes (12,883 to 13,539 gzip -9, +0.6 KB); no
     package added. The research prototype's whole interaction layer was +5.6 KB gz. `npm test` runs 495 tests (438 before).
