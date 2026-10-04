@@ -190,10 +190,12 @@ card, rendered on a transparent canvas by the same `render_title_card`, to the c
 **timed overlay** (an `OverlaySpec` naming the `title` producer, materialized when the segment's command is built),
 over the segment's first `duration` seconds, faded in and out on its alpha channel. The normalize step loops the
 still, fades its alpha and composites it with the CPU `overlay` on every profile (on AMD between the CPU download and
-the upload, as the bridge always did), so the anchor segment is re-encoded through the CPU bridge for its whole
-length: experiment 003's advice was that "only the title segment pays CPU cost", and an over-video card gives it up
-for one segment per chapter (measured in the change's PR). A card longer than its segment is clamped to the
-segment's length, its fades shrunk together, and the render reports a warning.
+the upload, as the bridge always did). Only the card's window goes through that bridge: the anchor segment is split
+at the first target-frame boundary at or after the window's end (`video-card-bridge-window`), the head carries the
+card through the CPU bridge and the tail, the rest of the clip, takes the profile's ordinary hardware path. Experiment
+003's advice was that "only the title segment pays CPU cost"; an over-video card gives it up for the card's seconds of
+one segment per chapter. A card longer than its segment is clamped to the segment's length, its fades shrunk
+together, and the render reports a warning.
 
 A card has its own text, length and style (**D-24**, `title-card-model`). Its heading is the card's `title`, else
 the chapter's name, else (the opening card of the default chapter) the event title; its subtitle is free text,
@@ -1680,7 +1682,30 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     than its segment is clamped with a render warning rather than refused: a short opening clip is a legitimate edit.
     Staleness: no `RENDER_GRAPH_VERSION` bump (stays 7). An event that carried `video` failed loud before, so no output
     exists to be wrong; black cards are byte-identical; switching a card to `video` moves the editorial component.
-    Cost: the anchor segment goes through the CPU bridge for its whole length (see §4.4).
+    Cost: the anchor segment went through the CPU bridge for its whole length; `video-card-bridge-window` (below)
+    limits it to the card's window (see §4.4).
+  - **The card window is split off the anchor (change `video-card-bridge-window`, 2026-10-04).** A long first clip
+    encoded about twice as slowly as it needed to on VAAPI, because every frame of it was downloaded, overlaid with
+    nothing (`enable=between(t,0,7)` is false after the card) and uploaded again. The segment's normalize step now
+    materializes the card, then splits the segment into a **head** (from the segment's start for `N / fps` seconds,
+    `N = ceil(window * fps)`, a whole number of *target* frames) that keeps the overlay and the CPU bridge, and a
+    **tail** (the rest) with no overlay and no `filter_complex`. Both are re-encoded, so the boundary needs no keyframe,
+    and because the head is a whole number of frame periods the tail's output tick `k` lands on the source instant the
+    unsplit segment's tick `N + k` did: no frame is dropped or repeated. A tail under 1 s is not split off (the saving
+    is below the cost of another ffmpeg start), nor a window that covers the segment. The pieces are video-only; the
+    tail's command also writes the audio of the **whole** segment, encoded once, as a second output, and a third
+    command stream-copies video and audio together into the segment's one intermediate. Two AAC streams joined by a
+    copy do not work: the second stream's encoder delay is a gap of near-silence (about 1000 samples, 2048 more than
+    the unsplit render) in the middle of continuous footage, which the tone test caught. The segment stays one entry
+    for progress (the head and tail report their share of its weight), chapter times, copy eligibility and the
+    segment list; a dry run lists the three commands a run executes. `RENDER_GRAPH_VERSION` goes 8 to 9: an anchor
+    under a video card gets another encoder start, so its bytes change for the same inputs (D-C8: every manifest is
+    stale once, reason `engine`). Measured (180 s 1080p30 H.264 first clip, 7 s video card, median of 3, before and after interleaved on a shared host at load average 15 to 27, so wall time is noisy and
+    ffmpeg CPU seconds is the steadier figure): **VAAPI** (AMD RX 9070 XT) wall 40.9 s to 30.2 s (-26%), ffmpeg CPU seconds
+    113 to 19 (about 6x less: the 173 s of download, overlay and upload are gone); **CPU profile** wall 40.4 s to 39.1 s
+    (within noise), CPU seconds 400 to 350 (-12%, the overlay filter no longer runs over the tail). The PR #115
+    estimate of about 2x did not materialize in wall time: the hardware encode of the tail and the head's start-up are
+    still serial, and the host was never idle; the CPU cost of the bridge is what fell by a factor of six.
 
 - **D-23 — A clip's `rotate` is an extra clockwise turn on top of its display rotation** (2026-10-03, change
   `clip-rotate-engine`; D-20 keeps the timeline and D-21 the proxy contract). User request: "Some videos are rotated 90

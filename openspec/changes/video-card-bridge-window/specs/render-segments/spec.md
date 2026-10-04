@@ -2,7 +2,7 @@
 
 ### Requirement: A timed-overlay segment is split at its window
 
-Before normalizing, the engine SHALL split every source segment that carries a timed overlay into a **head** and a
+When normalizing a source segment that carries a timed overlay, the engine SHALL split it into a **head** and a
 **tail** over the same clip, so the CPU overlay bridge covers only the overlay's window. The overlay's window
 SHALL be the producer-materialized duration clamped to the segment's length. The head SHALL carry the overlay and
 cover the segment from its start for `N / fps` seconds, where `fps` is the target frame rate and `N` is the
@@ -12,20 +12,21 @@ duration. Both pieces SHALL be trimmed segments (never stream-copied) with the s
 `rotate` and source path; the tail SHALL NOT carry the overlay or its card input.
 
 The segment SHALL NOT be split when the tail would be shorter than 1 s, nor when the window covers the whole
-segment; it is then normalized whole, as before. A segment without a timed overlay SHALL be unchanged. The same
-expanded segment list SHALL be used to plan (dry-run), to run, to weigh progress, and to aggregate chapter times,
-so a dry run lists the commands a run executes.
+segment; it is then normalized whole, as before. A segment without a timed overlay SHALL be unchanged. The split
+is internal to the segment's normalize step: the segment stays one entry for progress, copy eligibility, measured
+durations and chapter aggregation, and a dry run SHALL list the head, the tail and the join commands a run executes.
 
-The joined result SHALL be frame-exact: the head and tail together SHALL have the video frames the unsplit segment
-had, none dropped or duplicated, with each frame at the same presentation time; the movie's duration and its
-chapter start and end times SHALL equal the unsplit render's within one frame. The audio SHALL be continuous across
-the join: the head's audio SHALL be exactly `round(H * sample_rate)` samples, and the movie's audio length SHALL
-be within one AAC frame (1024 samples) of the unsplit render's, with no dropout or click at the join. A clip
-without an audio track SHALL keep synthesized silence on both pieces.
+The pieces SHALL be encoded video-only and joined into the segment's one intermediate by a join command that
+stream-copies their video and encodes the segment's audio once, from the source, over the whole segment. The joined
+result SHALL be frame-exact: it SHALL have the video frames the unsplit segment had, none dropped or duplicated, with
+each frame at the same presentation time; the movie's duration and its chapter start and end times SHALL equal the
+unsplit render's within one frame. The audio SHALL be continuous across the join: the movie's audio length SHALL be
+within one AAC frame (1024 samples) of the unsplit render's, with no dropout or click at the join. A clip without an
+audio track SHALL keep synthesized silence of the segment's length.
 
 #### Scenario: A 180 s first clip under a 7 s card is split in two
 - **WHEN** a segment of a 180 s clip carries a 7 s timed overlay and the target is 30 fps
-- **THEN** the plan has a head of 0 s to 7 s carrying the overlay and a tail of 7 s to 180 s with no overlay, and
+- **THEN** the head is 0 s to 7 s carrying the overlay and the tail 7 s to 180 s with no overlay, and
   both are trimmed segments that are not copy-eligible
 
 #### Scenario: The split lands on the frame grid
@@ -59,10 +60,16 @@ without an audio track SHALL keep synthesized silence on both pieces.
 - **WHEN** a segment has no overlay, or only an untimed overlay
 - **THEN** the segment list is the plan's, unchanged
 
-#### Scenario: Dry run lists the head and the tail
+#### Scenario: Dry run lists the head, the tail and the join
 - **WHEN** an event with a video card on a long first clip is planned without running
-- **THEN** the planned commands include one command for the head with the card input and one for the tail without
+- **THEN** the planned commands include one command for the head with the card input, one for the tail without,
+  and the join that writes the segment's intermediate
 
 #### Scenario: Chapter times are unchanged
 - **WHEN** an event with a video card is rendered split and (with the split disabled in a test) unsplit
 - **THEN** the chapters' start and end times agree within one frame
+
+#### Scenario: Progress covers the pieces
+- **WHEN** a split segment is encoded
+- **THEN** the head reports its share of the segment's progress weight and the tail the rest, so progress still
+  reaches the segment's full weight and never goes backward

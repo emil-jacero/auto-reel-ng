@@ -606,9 +606,14 @@ def test_a_video_card_is_on_the_footage_for_its_window_and_adds_no_time(
     result, control = _render_pair(runtime, tmp_path, CPUProfile(), 12.0)
     assert result.warnings == ()
     _assert_card_over_footage(runtime, result, control, 12.0)
-    assert _chapter_marks(runtime, result.output_path) == _chapter_marks(
-        runtime, control.output_path
-    )
+    # The footage is split at the card's window (video-card-bridge-window), so the audio seam
+    # may shift a chapter's end by an encoder frame at most: the chapters agree within one frame.
+    marks = _chapter_marks(runtime, result.output_path)
+    ref_marks = _chapter_marks(runtime, control.output_path)
+    assert [m[2] for m in marks] == [m[2] for m in ref_marks]
+    for mark, ref in zip(marks, ref_marks):
+        assert float(mark[0]) == pytest.approx(float(ref[0]), abs=1.0 / 30)
+        assert float(mark[1]) == pytest.approx(float(ref[1]), abs=1.0 / 30)
 
 
 @pytest.mark.has_fonts
