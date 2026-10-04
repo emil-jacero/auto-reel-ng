@@ -5,7 +5,7 @@
 
 ## 2. Draft and drag state
 
-- [x] 2.1 Add the draft's card-duration edit (`setCardDuration`: one decimal, equal-to-resolved is no edit, Reset restores) and its unsaved/dirty counting and Save body, using the existing `PUT .../reel` shape; verify with `node:test` cases (edit, no-op, reset, the body carrying only `duration` for the card) and a Save against the dev service showing `card.duration` in `reel.yaml`
+- [x] 2.1 Add the draft's card-length edit (`setCardLength` over the inspector's `Draft.cards`: one decimal, equal-to-resolved is no override, Reset restores; its counting and Save body are the inspector's own); verify with `node:test` cases (edit, no-op, reset, the body carrying only `duration` for the card) and a Save against the dev service showing `card.duration` in `reel.yaml`
 - [x] 2.2 Extend the drag store with a card drag (chapter, tenths, snapped flag, words) under the existing one-drag-at-a-time claim, and add the one-decimal case to `clock.ts` for "Card 4.0 s"; verify with `node:test` cases (claim refused while a trim drag holds the store, listener runs only on change, fixed character count from 0.5 to 60.0)
 
 ## 3. The handle
