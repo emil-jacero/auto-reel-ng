@@ -17,18 +17,20 @@ intermediates, chapter times come from the measured intermediate durations (`agg
 segment's real length for a full clip only from probed facts (`options.clip_facts`). The plan-level decorator has
 neither.
 **Explored**: `render/decorators.py` (attacher sees plan, target, segment, but not the window), `render/orchestrator.py`
-`_build_segment_command` (materializes per segment, index-keyed scratch names `seg_NNN.mp4`, `card_NNN_n.png`), and
-a split inside one ffmpeg (a `split`/`trim` graph with a `concat` filter, head via CPU bridge, tail via GPU): rejected,
-since `concat` on VAAPI hardware frames is not a verified recipe on Mesa (exp 003/006 cover overlay and pad, not
-concat) and the hybrid graph would still need a second recipe per vendor.
-**Decision**: a new step `split_card_windows(segments, target, clip_facts, scratch)` in `render/segments.py`'s
-neighbour module (a pure function plus the producer call), run once at the top of both `_execute` and
-`_plan_only`, before progress is planned. It replaces each qualifying segment with `(head, tail)` and leaves every
-other segment untouched; later indices shift by one, so intermediates are named from the expanded list.
-**Rationale**: both paths see the same expanded list (a dry-run lists the same commands a run executes), progress
-weights and chapter aggregation work on real segments, and the normalize layer keeps taking one segment at a time
-with no new concept in it. Materialized overlays are carried on the head, so `_build_segment_command` does not
-materialize twice (the head's overlay already has `source`).
+`_build_segment_command` (materializes per segment, index-keyed scratch names), a split inside one ffmpeg (a
+`split`/`trim` graph with a `concat` filter, head via CPU bridge, tail via GPU): rejected, since `concat` on VAAPI
+hardware frames is not a verified recipe on Mesa; and an **expanded segment list** (replace the anchor by head and
+tail in `_execute`/`_plan_only`, so progress, chapters and concat see two segments): tried first and dropped, see
+"Audio continuity" (two audio streams cannot be joined without a gap).
+**Decision**: the split is internal to one segment's normalize step. A new `render/card_window.py` holds the pure
+`split_segment(segment, fps, length) -> (head, tail) | (segment,)` and the join command builder; the orchestrator's
+`_plan_encodes` materializes the segment's overlays, asks `split_segment`, and returns either one encode or a head
+encode, a tail encode and a join command. `_normalize_segment` runs them; `_plan_only` lists them. The segment stays
+**one entry** in the segment list: indices, `seg_NNN.mp4` naming, progress weights, copy eligibility, the measured
+intermediate durations and the chapter aggregation are unchanged.
+**Rationale**: no consumer of the segment list needs to learn about pieces, and a dry-run lists the very commands a
+run executes because both go through `_plan_encodes`. Materialized overlays are carried on the head, so the card is
+rendered once.
 
 ### The split rule (frame-exact)
 **Context**: head and tail are separate ffmpeg encodes joined by the concat demuxer; a boundary off the target
@@ -52,25 +54,29 @@ overlay's window and fades stay the clamped `W` (the last partial frame shows th
 split for a 0.5 s saving. A clamped window (`W < asked`) keeps its warning, emitted once for the head.
 
 ### Audio continuity
-**Context**: each piece encodes its own AAC stream; the existing joins between segments already rely on the concat
-demuxer, but a join inside continuous footage is audible if it gaps or clicks.
-**Decision**: both pieces cut audio with the same instants as the video (`-ss`/`-t` on the same input arguments, the
-existing normalize chain), and the head's audio is limited to exactly `round(H * rate)` samples (`atrim=end_sample`
-with `asetpts=N/SR/TB`) so head+tail sample counts equal the unsplit segment's. The join test (task 3) measures a
-continuous 440 Hz tone rendered split and unsplit: total audio length within 1024 samples (one AAC frame) of the
-unsplit render, and no sample step at the seam larger than the tone's own maximum step times 2. A clip with no audio
-track keeps the synthesized silence on both pieces, each sized to its video length.
-**Rationale**: the encoder's priming/padding is the only unavoidable error and is bounded by one AAC frame; if the test
-shows more, the fix is in the trim (decide at implementation, fail the task, never loosen the bound).
+**Context**: each piece encoded with its own AAC stream and joined by a stream copy leaves the second stream's
+encoder delay in the middle of continuous footage. Measured on a 20 s clip with a continuous 440 Hz tone split at
+7 s: the joined movie decoded 2048 samples (two AAC frames) longer than the unsplit render, with about 1000 samples
+of near-silence at the seam (peak 76 against 2900 for the tone). Cutting the head to exactly `round(H * rate)`
+samples (the first plan) cannot fix this: the gap is the tail's priming, not the head's length.
+**Decision**: the head and the tail are **video-only** (`-an`). A third command, the join, reads the pair through the
+concat demuxer with `-c:v copy` and encodes the audio **once** from the source over the whole segment (`-ss start -t
+duration` on the clip, the arguments the unsplit audio would have had), writing `seg_NNN.mp4`. A clip with no audio
+track gets the same `anullsrc` silence as before, sized to the segment. The tone test (task 3.1) measures the movie's
+audio length within 1024 samples of the unsplit render and no sample step at the seam above twice the tone's own
+largest step.
+**Rationale**: one AAC stream has no seam, so the bound is the unsplit render's own audio. The cost is one cheap
+audio-only encode per split segment.
 
 ### Emitted ffmpeg (VAAPI/AMD, 1080p30, 7 s card on a 180 s clip, W = 7)
-Head (N = 210, H = 7.0): today's overlay chain on a 7 s span:
-`-ss 0 -t 7 -i clip ... -loop 1 -framerate 30 -t 7 -i card.png -filter_complex "[0:v]<canvas>,hwdownload,format=nv12[vbase];
+Head (N = 210, H = 7.0): today's overlay chain on a 7 s span, video only:
+`-ss 0 -i clip ... -loop 1 -framerate 30 -t 7 -i card.png -filter_complex "[0:v]<canvas>,hwdownload,format=nv12[vbase];
 [1:v]format=rgba,fade=...[ov0];[vbase][ov0]overlay=x=0:y=0:format=auto:enable='between(t,0,7)'[vo0];
-[vo0]format=nv12,hwupload[vout]" -map [vout] ...`.
-Tail: the ordinary linear chain, no card input: `-ss 7 -t 173 -i clip -vf "scale_vaapi=...,pad_vaapi=..." ...`. On CPU
-and software profiles both pieces are CPU chains with no transfers; the head differs only by its overlay. The CPU
-fallback is unchanged (Principle III).
+[vo0]format=nv12,hwupload[vout]" -map [vout] -r 30 ... -t 7 -an seg_000_head.mp4`.
+Tail: the ordinary linear chain, no card input: `-ss 7 -i clip -vf "scale_vaapi=...,pad_vaapi=..." -map 0:v:0 ... -t 173
+-an seg_000_tail.mp4`. Join: `-f concat -safe 0 -i seg_000_join.txt -t 180 -i clip -map 0:v:0 -map 1:a:0 -c:v copy
+-c:a aac -ar 48000 -ac 2 seg_000.mp4` (with `-ss` for a trimmed segment). On CPU and software profiles both pieces are
+CPU chains with no transfers; the head differs only by its overlay. The CPU fallback is unchanged (Principle III).
 
 ### RENDER_GRAPH_VERSION
 **Decision**: bump 8 -> 9 with the history line `9: video-card-bridge-window (an anchor segment under a video card
@@ -89,8 +95,9 @@ the CPU profile is expected to be within noise. The numbers, not this expectatio
 
 ## Failure, idempotency
 - A segment with no clip facts, an unregistered producer or an unreadable card font fails loud exactly as today
-  (`RenderError` naming segment and cause), at the split step, before any encode starts.
-- A failed head or tail encode fails the render with that segment's index and label; no `.part` is finalized
-  (atomic finalize is unchanged). The software-decode retry applies per piece and is reported as today.
+  (`RenderError` naming segment and cause), before that segment's first encode starts.
+- A failed head, tail or join fails the render with that segment's index and label; no `.part` is finalized
+  (atomic finalize is unchanged). The software-decode retry applies per piece and is reported as today. A cancel
+  is polled between the pieces and the join as between segments.
 - Re-run, `--force` and worker restart mid-render: the split is a pure function of plan + target + facts +
-  producer output, so each yields the same expanded list and the same commands; scratch intermediates are per-run.
+  producer output, so each yields the same commands; scratch intermediates are per-run.

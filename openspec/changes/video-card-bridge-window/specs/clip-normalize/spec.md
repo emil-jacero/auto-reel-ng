@@ -8,7 +8,8 @@ composite via a CPU overlay bridge (downloading frames, overlaying, and re-uploa
 segment), leaving overlay-free segments fully on the hardware path. The CPU bridge SHALL run only over frames
 that can show an overlay: a source segment carrying a timed overlay is split at the end of the overlay's window
 (see `render-segments`, "A timed-overlay segment is split at its window"), so the bridge covers the head and the
-tail is an ordinary overlay-free segment on the hardware path.
+tail is an ordinary overlay-free segment on the hardware path. A video-only normalize (no audio map and no
+silence input) SHALL be available for the pieces of such a split.
 
 An `OverlaySpec` MAY name a registered `segment-producer` instead of an image, with the producer's opaque
 payload. The engine SHALL materialize such an overlay before it builds the segment's command, whether the
