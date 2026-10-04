@@ -28,7 +28,7 @@ in `ClipProperties.trims`, and the render's `kept_spans` already drops them (`re
   in-point), interior cut spans and their handles, the analysis marks (clipped to the extent), the title-card blocks
   (a black card sits right before the block, a video card at its left edge), the chapter band, Fit and windowing.
 - The readout keeps the clip's own time and full length ("Clip 0:05.00 of 0:25.00"); the Event time is the
-  rippled track time. The block's label says the kept length. The movie line's "of footage" stays the full source
+  rippled track time. The block's label says the kept length. The movie stat's "footage" term stays the full source
   length.
 - When cuts change under the playhead so its time is no longer kept, it moves to the nearest kept frame of the same
   clip.

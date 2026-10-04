@@ -39,7 +39,7 @@ and stops a clip; using them makes the drawing, the playhead and Play agree by c
 **Alternative**: a strict `to >= durationMs` for the trailing cut, matching the render byte for byte. Rejected: Play
 already ends the clip at such a span (`toEnd`, D-16: a browser's reported length can differ from the proxy's by
 tens of ms), so the Timeline would draw up to 99 ms the playhead could sit in but Play never shows. The cost is that
-the Timeline's total can be up to 0.1 s per clip shorter than the movie line (which keeps the render's arithmetic);
+the Timeline's total can be up to 0.1 s per clip shorter than the movie stat's Movie (which keeps the render's arithmetic);
 see Risks.
 
 ### D2. Layout time becomes rippled; clip time stays the one time of the model
@@ -95,12 +95,13 @@ The browser check uses Playwright from the scratchpad in Chrome 154 (`localhost/
   the helpers are the only exported mapping, a `grep` in task 2.3 for `startsMs\[` and `facts.durationMs` used as a
   width outside `model.ts`/`position.ts` must come back empty or justified, and the Playwright check measures handle,
   mark and card x against the block edge.
-- [The track total and the movie line can differ by < 0.1 s per clip with a trailing cut ending just short of the
-  end (D1)] → accepted, the movie line stays the render's arithmetic; documented in the HLD note.
+- [The track total and the movie stat can differ by < 0.1 s per clip with a trailing cut ending just short of the
+  end (D1)] → accepted, the movie stat stays the render's arithmetic; documented in the HLD note.
 - [Zero-width clips in the binary searches] → `clipAt`/`visibleClips` resolve ties to the later clip (they do today);
   tests cover a wholly cut first, middle and last clip.
-- [`help-text-declutter` is in flight on the Timeline toolbar] → this change touches no toolbar markup; if it lands
-  first, the implementer rebases onto it (by a new branch, never `git rebase`) and keeps its behaviour.
+- [`help-text-declutter` was in flight on the Timeline toolbar] → it landed first (2026-10-04): this change was
+  re-applied onto it by a new branch and cherry-picks (never `git rebase`), keeps its compact movie stat and passes the
+  stat the full footage (`footageMs`) rather than the rippled track total, so an edge cut counts in its `cuts` term.
 - [`timeline-zoom-slider` and `clip-edge-trim` edit the same files] → `clip-edge-trim` is gated on this change;
   `timeline-zoom-slider`'s `zoomTo`/Fit read `lay.totalMs`, which is the rippled total after this change, as wanted.
 
