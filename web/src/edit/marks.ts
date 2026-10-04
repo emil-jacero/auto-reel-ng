@@ -84,15 +84,19 @@ export function movedWords(count: number, chapter: string): string {
 export const NOTHING_MOVED = 'Nothing moved.'
 
 /** Why Move is unavailable, in words; null when it is available. */
-export type MoveReason = 'no-marks' | 'no-chapter'
+export type MoveReason = 'busy' | 'no-marks' | 'no-chapter'
 
 export const MOVE_REASON_WORDS: Record<MoveReason, string> = {
-  'no-marks': 'Mark clips to move them.',
-  'no-chapter': 'Choose a chapter to move them to.',
+  busy: 'Unavailable while saving.',
+  'no-marks': 'Mark a clip to move it.',
+  'no-chapter': 'Choose a chapter.',
 }
 
-/** The first reason Move cannot act (marks before chapter); null when it can. */
-export function moveReason(marks: number, chosen: boolean): MoveReason | null {
+/** The first reason Move cannot act (a save first, then marks, then chapter); null when it can. */
+export function moveReason(marks: number, chosen: boolean, busy = false): MoveReason | null {
+  if (busy) {
+    return 'busy'
+  }
   return marks === 0 ? 'no-marks' : chosen ? null : 'no-chapter'
 }
 
