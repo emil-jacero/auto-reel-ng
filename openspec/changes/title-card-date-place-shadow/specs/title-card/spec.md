@@ -93,7 +93,7 @@ height, blurred by about 0.006 of the image height, drawn under the outline and 
 offset shadow. The shadow SHALL stay inside the transparent canvas's rule: pixels away from the text and its shadow
 remain fully transparent. The result SHALL be deterministic: the same configuration, content and size SHALL give
 the same bytes on every run. A card whose background is `black` SHALL be pixel-identical to what was rendered before
-this requirement. A shadow turned off (`shadow_offset` 0 or `shadow_opacity` 0) SHALL draw none. The in-memory and
+this requirement. A shadow turned off (`shadow_offset` 0 or `shadow_opacity` 0) SHALL draw none. `shadow_opacity` SHALL scale the soft shadow's alpha (the default 0.5 giving the 60 % above, a lower value fainter); `shadow_offset` on a `video` card only switches the shadow on or off, its distance being the fixed fraction above. The in-memory and
 the file entry points SHALL both draw it, so a preview shows it.
 
 #### Scenario: Text over a bright frame is readable

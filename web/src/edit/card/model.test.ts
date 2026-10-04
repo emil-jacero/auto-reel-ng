@@ -115,7 +115,10 @@ describe('the opening subtitle placeholder', () => {
       openingSubtitlePlaceholder(null, '2024-08-20\nPlats: Tjörn'),
       'Default: 2024-08-20 / Plats: Tjörn',
     )
-    assert.equal(openingSubtitleFollows('2024-08-20\nPlats: Tjörn'), '2024-08-20 / Plats: Tjörn')
+    assert.equal(
+      openingSubtitleFollows('2024-08-20\nPlats: Tjörn'),
+      'Date and place as saved',
+    )
     assert.equal(openingSubtitlePlaceholder(null, ''), 'No subtitle')
   })
 
