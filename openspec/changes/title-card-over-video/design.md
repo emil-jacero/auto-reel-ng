@@ -97,6 +97,11 @@ would show), and a still that outlasts one frame.
 the existing transfer logic inserts `hwdownload,format=nv12` before and `format=nv12,hwupload` after on VAAPI
 and nothing on the CPU path. The `enable='between(t,0,<window>)'` expression is kept (`_overlay_enable`). An
 overlay without fades keeps the exact existing graph and arguments (existing goldens unchanged).
+**Found in the real render**: with the overlay's default output format, a following `format=nv12,hwupload` fails on
+Mesa ("Failed to upload frame: -22"); `overlay=...:format=auto` (the base picture's format) works, so a timed overlay
+always carries `format=auto`. Measured on this host's `renderD128` (180 s 1080p h264 anchor, one run each): 19.1 s
+without the card, 37.7 s with it; the CPU profile 41.8 s and 38.9 s.
+
 **Why CPU on NVIDIA/Intel too**: `overlay_cuda` / `overlay_qsv` taking an RGBA still with alpha fades is
 unverified on any host we have; only AMD (bridge) and CPU are exercised here. A uniform CPU composite is one
 tested path; the cost is one download/upload per anchor segment, the same cost AMD pays.

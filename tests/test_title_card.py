@@ -510,27 +510,177 @@ def test_a_cards_text_travels_on_its_segment() -> None:
     assert card.producer_config.content == TitleCardContent("Mottagningen", "Efteråt")  # type: ignore[union-attr]
 
 
-def test_a_video_background_on_a_card_fails_the_decorator_naming_the_chapter() -> None:
+def _video(**fields: object) -> ChapterCard:
+    return ChapterCard(background="video", **fields)  # type: ignore[arg-type]
+
+
+def _decorated(plan: RenderPlan, clip_facts: Optional[dict[str, ClipMetadata]] = None):
+    segments = build_segments(plan, Path("/ev"), clip_facts)
+    return apply_decorators(("title",), plan, _target(), segments)
+
+
+def test_a_video_card_is_attached_to_the_title_clip_and_inserts_nothing() -> None:
     plan = _plan(
         {"decorators": ["title"]},
-        ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4", is_title=True),)),
         ResolvedChapter(
-            name="Reception",
-            clips=(ResolvedClip(identity="b.mp4", is_title=True),),
-            card=ChapterCard(background="video"),
+            name="",
+            clips=(ResolvedClip(identity="a.mp4", is_title=True),),
+            card=_video(duration=5.0),
         ),
     )
-    with pytest.raises(TitleCardError, match="'Reception'.*'video'.*not rendered"):
-        apply_decorators(("title",), plan, _target(), build_segments(plan, Path("/ev")))
+    out = _decorated(plan)
+    assert [s.identity for s in out] == ["a.mp4"] and not any(s.is_synthetic for s in out)
+    (overlay,) = out[0].overlays
+    assert (overlay.producer, overlay.start, overlay.end) == (TITLE_PRODUCER, 0.0, 5.0)
+    assert (overlay.fade_in, overlay.fade_out) == (2.0, 2.0)
+    request = overlay.producer_config
+    assert isinstance(request, TitleCardRequest) and request.config.background == "video"
+    assert out[0].duration is None  # the segment's length is untouched
 
 
-def test_a_video_background_in_the_event_wide_style_fails_the_decorator() -> None:
+def test_the_event_wide_video_background_attaches_to_every_chapter() -> None:
     plan = _plan(
         {"decorators": ["title"], "title_card": {"background": "video"}},
         ResolvedChapter(name="", clips=(ResolvedClip(identity="a.mp4", is_title=True),)),
+        ResolvedChapter(name="Two", clips=(ResolvedClip(identity="b.mp4", is_title=True),)),
     )
-    with pytest.raises(TitleCardError, match="default chapter|''"):
-        apply_decorators(("title",), plan, _target(), build_segments(plan, Path("/ev")))
+    out = _decorated(plan)
+    assert [len(s.overlays) for s in out] == [1, 1] and not any(s.is_synthetic for s in out)
+
+
+def test_a_black_plan_is_unchanged_by_the_overlay_support() -> None:
+    plan = _three_chapters()
+    out = _decorated(plan)
+    assert [s.is_synthetic for s in out] == [True, False, True, False, True, False]
+    assert not any(s.overlays for s in out)
+
+
+def test_a_mixed_plan_attaches_the_video_card_and_inserts_the_black_one() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(
+            name="",
+            clips=(ResolvedClip(identity="a.mp4", is_title=True),),
+            card=_video(),
+        ),
+        ResolvedChapter(name="Two", clips=(ResolvedClip(identity="b.mp4", is_title=True),)),
+    )
+    out = _decorated(plan)
+    assert [(s.is_synthetic, s.identity, len(s.overlays)) for s in out] == [
+        (False, "a.mp4", 1),
+        (True, None, 0),
+        (False, "b.mp4", 0),
+    ]
+    assert out[1].chapter == "Two"
+
+
+def _clip_facts(identity: str, duration: float) -> ClipMetadata:
+    return ClipMetadata(
+        path=Path(identity),
+        duration=duration,
+        fps=30.0,
+        video_codec="h264",
+        profile="high",
+        width=1920,
+        height=1080,
+        sample_aspect_ratio="1:1",
+        display_aspect_ratio=None,
+        pix_fmt="yuv420p",
+        video_bitrate=None,
+        rotation=None,
+        color_transfer=None,
+        is_hdr=False,
+        audio=AudioStream("aac", 48000, 2, "stereo"),
+        creation_time=None,
+    )
+
+
+def test_a_partially_cut_video_title_clip_gets_one_overlay_on_its_first_kept_span() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(
+            name="",
+            clips=(
+                ResolvedClip(
+                    identity="a.mp4",
+                    is_title=True,
+                    cut_spans=(Trim(start=0.0, end=2.0), Trim(start=5.0, end=6.0)),
+                ),
+            ),
+            card=_video(),
+        ),
+    )
+    out = _decorated(plan, {"a.mp4": _clip_facts("a.mp4", 10.0)})
+    assert [(s.start, s.end, len(s.overlays)) for s in out] == [(2.0, 5.0, 1), (6.0, 10.0, 0)]
+
+
+def test_a_wholly_cut_video_title_clip_moves_the_overlay_to_the_next_segment() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(
+            name="",
+            clips=(
+                ResolvedClip(
+                    identity="a.mp4", is_title=True, cut_spans=(Trim(start=0.0, end=10.0),)
+                ),
+                ResolvedClip(identity="b.mp4"),
+            ),
+            card=_video(),
+        ),
+    )
+    out = _decorated(plan, {"a.mp4": _clip_facts("a.mp4", 10.0)})
+    assert [(s.identity, len(s.overlays)) for s in out] == [("b.mp4", 1)]
+
+
+def test_a_video_chapter_without_footage_or_title_clip_gets_no_overlay() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(
+            name="Cut",
+            clips=(
+                ResolvedClip(
+                    identity="a.mp4", is_title=True, cut_spans=(Trim(start=0.0, end=10.0),)
+                ),
+            ),
+            card=_video(),
+        ),
+        ResolvedChapter(
+            name="Plain",
+            clips=(ResolvedClip(identity="b.mp4", is_title=False),),
+            card=_video(),
+        ),
+    )
+    out = _decorated(plan, {"a.mp4": _clip_facts("a.mp4", 10.0)})
+    assert [(s.identity, s.overlays) for s in out] == [("b.mp4", ())]
+
+
+def test_a_video_card_on_a_later_explicit_title_clip_attaches_to_that_clip() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(
+            name="",
+            clips=(
+                ResolvedClip(identity="a.mp4", is_title=False),
+                ResolvedClip(identity="b.mp4", is_title=True),
+            ),
+            card=_video(),
+        ),
+    )
+    out = _decorated(plan)
+    assert [(s.identity, len(s.overlays)) for s in out] == [("a.mp4", 0), ("b.mp4", 1)]
+
+
+def test_the_decorator_stays_a_pure_function_for_a_video_card() -> None:
+    plan = _plan(
+        {"decorators": ["title"]},
+        ResolvedChapter(
+            name="", clips=(ResolvedClip(identity="a.mp4", is_title=True),), card=_video()
+        ),
+    )
+    segments = build_segments(plan, Path("/ev"))
+    first = apply_decorators(("title",), plan, _target(), segments)
+    assert first == apply_decorators(("title",), plan, _target(), segments)
+    assert segments[0].overlays == ()  # the input is not mutated
 
 
 def test_a_black_card_over_an_event_wide_video_background_is_allowed() -> None:
@@ -1140,20 +1290,3 @@ def test_a_render_draws_each_card_at_its_own_length_and_keeps_the_chapter_names(
     titles = [c.get("tags", {}).get("title", "") for c in json.loads(probe.stdout)["chapters"]]
     assert titles[1] == "Reception"  # the card says "Mottagningen"; the chapter keeps its name
     assert "Mottagningen" not in titles
-
-
-@pytest.mark.has_fonts
-@pytest.mark.has_ffmpeg
-def test_a_video_background_fails_the_render_loud_and_leaves_no_output(
-    has_fonts: None, runtime, make_clip, tmp_path: Path
-) -> None:
-    plan, options = _card_event(
-        runtime,
-        make_clip,
-        tmp_path,
-        CARD_REEL.replace("duration: 5, position: bottom", "duration: 5, background: video"),
-    )
-    with pytest.raises(TitleCardError, match="'Reception'.*'video'"):
-        render_movie(plan, CPUProfile(), options)
-    out = tmp_path / "out"
-    assert not out.exists() or not [p for p in out.rglob("*") if p.is_file()]

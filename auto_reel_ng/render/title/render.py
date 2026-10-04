@@ -159,7 +159,8 @@ def render_title_card(
 ) -> Path:
     """Render ``content`` to an RGBA PNG at the target resolution and return ``dest``.
 
-    The card fills the configured background, lays out each display line as a
+    A ``black`` card fills the configured background; a ``video`` card skips the fill and so is
+    transparent wherever nothing is drawn. The card lays out each display line as a
     centered Pango layout that wraps within the column, and draws an offset
     drop-shadow and a glyph outline under the fill per ``config``. The configured
     font family is resolved fail-loud before any drawing.
@@ -171,9 +172,11 @@ def render_title_card(
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, target.width, target.height)
     ctx = cairo.Context(surface)
 
-    bg_r, bg_g, bg_b = _parse_color(config.background_color)
-    ctx.set_source_rgba(bg_r, bg_g, bg_b, config.background_opacity)
-    ctx.paint()
+    if config.background != "video":
+        # A video card is overlaid on footage: its canvas stays fully transparent.
+        bg_r, bg_g, bg_b = _parse_color(config.background_color)
+        ctx.set_source_rgba(bg_r, bg_g, bg_b, config.background_opacity)
+        ctx.paint()
 
     column = max(1, target.width - 2 * _MARGIN)
     lines = title_card_lines(content)

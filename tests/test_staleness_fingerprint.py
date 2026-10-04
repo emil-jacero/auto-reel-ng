@@ -261,6 +261,38 @@ def test_adding_a_card_moves_only_the_editorial_component(tmp_path: Path) -> Non
         assert changed.component(name) == baseline.component(name)
 
 
+def test_a_black_to_video_background_moves_only_the_editorial_component(tmp_path: Path) -> None:
+    """title-card-over-video: the event turns stale for the editorial reason, no engine bump."""
+    event_dir = _event_dir(tmp_path)
+    plain = _document()
+
+    def with_background(background: str) -> ReelDocument:
+        return ReelDocument(
+            metadata=plain.metadata,
+            chapters=(
+                Chapter(
+                    name="",
+                    clips=plain.chapters[0].clips,
+                    card=ChapterCard(background=background),
+                ),
+            ),
+        )
+
+    black, video = (
+        compute_fingerprint(
+            with_background(background),
+            event_dir=event_dir,
+            look_defaults={},
+            ffmpeg_version=FFMPEG_VERSION,
+        )
+        for background in ("black", "video")
+    )
+    assert video.editorial != black.editorial
+    for name in ("defaults", "clip_set", "engine"):
+        assert video.component(name) == black.component(name)
+    assert fingerprint_module.RENDER_GRAPH_VERSION == 7
+
+
 def test_device_selection_does_not_move_the_fingerprint(tmp_path: Path) -> None:
     # The fingerprint never takes a profile/device argument at all, so a caller
     # rendering under CPU vs GPU necessarily computes the same value (D-C1).

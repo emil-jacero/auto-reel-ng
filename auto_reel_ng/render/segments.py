@@ -34,13 +34,29 @@ class OverlaySpec:
     real overlay content exists): a ``source`` to composite, an ``x``/``y``
     position expressed as ffmpeg overlay expressions, and a ``[start, end)``
     active window in segment-local seconds (``end`` ``None`` means "to the end").
+
+    An overlay may instead name a registered ``producer`` with its opaque
+    ``producer_config`` (a decorator is pure and cannot render): the render
+    materializes it into ``source``/``end``/fades before the segment's command is
+    built (:func:`~auto_reel_ng.render.producers.materialize_overlay`). A nonzero
+    ``fade_in``/``fade_out`` makes it a *timed* overlay: a still shown over
+    ``[start, end)``, faded in and out on its alpha channel.
     """
 
-    source: str
+    source: str = ""
     x: str = "0"
     y: str = "0"
     start: float = 0.0
     end: Optional[float] = None
+    producer: Optional[str] = None
+    producer_config: Optional[object] = None
+    fade_in: float = 0.0
+    fade_out: float = 0.0
+
+    @property
+    def is_timed(self) -> bool:
+        """True when the overlay fades, and so is composited as a looped, alpha-faded still."""
+        return self.fade_in > 0.0 or self.fade_out > 0.0
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a plain dict for debug logging and golden tests."""
@@ -50,6 +66,10 @@ class OverlaySpec:
             "y": self.y,
             "start": self.start,
             "end": self.end,
+            "producer": self.producer,
+            "producer_config": _payload_to_dict(self.producer_config),
+            "fade_in": self.fade_in,
+            "fade_out": self.fade_out,
         }
 
 

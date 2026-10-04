@@ -15,7 +15,7 @@ import logging
 import os
 import tempfile
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import Callable, Hashable, Mapping, Optional, Sequence, TypeVar
 
@@ -43,7 +43,7 @@ from .normalize import (
     build_synthetic_normalize_command,
     decide_copy_eligibility,
 )
-from .producers import get_producer
+from .producers import get_producer, materialize_overlay
 from .segments import Segment, build_segments
 from .target import TargetSpec, derive_target
 from .verify import verify_output
@@ -438,7 +438,9 @@ def _build_segment_command(
     A synthetic segment is first materialized through its producer (rendering its
     card image into ``scratch`` as a side effect), then built overlay-free; a
     source segment takes the probe-driven normalize path, with ``force_software_decode``
-    set only for the retry of a failed hardware-decode initialisation.
+    set only for the retry of a failed hardware-decode initialisation. A source segment's
+    producer-backed overlays (an attached title card) are materialized first, so a planned
+    command names a real image as a run one does.
     """
     intermediate = scratch / f"seg_{index:03d}.mp4"
     if segment.is_synthetic:
@@ -452,6 +454,14 @@ def _build_segment_command(
     if clip is None:
         raise RenderError(
             f"segment {index} ({_segment_label(segment)}) has no clip facts to normalize"
+        )
+    if any(overlay.producer is not None for overlay in segment.overlays):
+        segment = replace(
+            segment,
+            overlays=tuple(
+                materialize_overlay(overlay, target, scratch / f"card_{index:03d}_{n}.png")
+                for n, overlay in enumerate(segment.overlays)
+            ),
         )
     return build_normalize_command(
         segment,

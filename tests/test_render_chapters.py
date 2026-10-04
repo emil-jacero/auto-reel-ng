@@ -16,7 +16,7 @@ from auto_reel_ng.render.chapters import (
     build_ffmetadata,
     chapter_times,
 )
-from auto_reel_ng.render.segments import Segment
+from auto_reel_ng.render.segments import OverlaySpec, Segment
 from auto_reel_ng.render.title import TITLE_PRODUCER
 from auto_reel_ng.staleness.manifest import ChapterTime, TitleCardSpan
 
@@ -122,3 +122,30 @@ def test_two_cards_in_one_chapter_raise() -> None:
 def test_mismatched_lengths_raise() -> None:
     with pytest.raises(ValueError):
         chapter_times([_clip("A")], [1.0, 2.0])
+
+
+def _attached(chapter: str, identity: str = "a") -> Segment:
+    """A source segment carrying an attached (video-background) title card."""
+    return Segment(
+        chapter=chapter,
+        identity=identity,
+        overlays=(OverlaySpec(producer=TITLE_PRODUCER, end=3.0, fade_in=1.0, fade_out=1.0),),
+    )
+
+
+def test_an_attached_card_records_no_span_and_leaves_the_times_alone() -> None:
+    with_card = chapter_times([_attached("A"), _clip("A", "a2"), _clip("B", "b")], [2.0, 1.0, 2.0])
+    without = chapter_times([_clip("A"), _clip("A", "a2"), _clip("B", "b")], [2.0, 1.0, 2.0])
+
+    assert with_card == without
+    assert [c.title_card for c in with_card] == [None, None]
+
+
+def test_an_inserted_card_span_is_unaffected_by_another_chapters_attached_card() -> None:
+    segments = [_attached("A"), _card("B"), _clip("B", "b")]
+
+    first, second = chapter_times(segments, [2.0, 3.0, 1.0])
+
+    assert first.title_card is None
+    assert (first.start_ms, first.end_ms) == (0, 2000)
+    assert second.title_card == TitleCardSpan(start_ms=2000, end_ms=5000)
