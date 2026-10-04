@@ -708,10 +708,10 @@ staleness fingerprint.
 
 ### Title cards (`card`)
 
-With `look.decorators: [title]` every chapter opens with a title card, and the default chapter
+Title cards are on by default: every chapter opens with a title card, and the default chapter
 (`name: ""`, the clips at the event root) opens the movie with the opening card. A card needs no
 configuration: its heading is the chapter's name (the event title for the opening card), it has
-no subtitle, and its look comes from `look.title_card`. The opening card no longer shows the
+no subtitle, and its look comes from `look.title_card`. Set `look.decorators: []` (in the event `reel.yaml` or the project `config.yaml`) to turn them off. The opening card no longer shows the
 date, the place or the description; write them as the subtitle if you want them.
 
 A chapter may carry an optional `card` mapping that gives that one card its own text, length
