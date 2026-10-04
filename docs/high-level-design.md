@@ -1465,7 +1465,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     and not retried, an edit fetches only its own card after the inspector's 250 ms and the old image stays until the new one
     arrives, and closing the Timeline revokes every URL. The Timeline is a second client of the preview endpoint beside the
     inspector (the endpoint allows two at once; the Timeline asks for one, leaving the other slot to the inspector). While an
-    image is missing the card's title is shown on black. **Blocks** show the image as a miniature (cover, with a scrim under the
+    image is missing the card's title is shown on black. **Blocks** show the image as a miniature (cover, the words on a solid strip of the block's colour under the
     words), at least 24 px wide however far the track is zoomed out (the span on the track is unchanged), and a press in a black
     card's block or span also puts the playhead there. **Bundle:** JS 615.70 to 626.79 kB (198.39 to 202.01 gzip, +3.6 KB),
     CSS 90.82 to 91.86 kB (17.03 to 17.26 gzip), as `vite build` reports them; no package added.
