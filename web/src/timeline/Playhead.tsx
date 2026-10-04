@@ -60,7 +60,7 @@ export function PlayheadSlider({
         aria-valuemin={0}
         aria-valuemax={lay.totalMs / 1000}
         aria-valuenow={now / 1000}
-        aria-valuetext={playheadValueText(clip.name, at.ms, clip.facts.durationMs, now, lay.totalMs)}
+        aria-valuetext={playheadValueText(clip.name, at.ms, clip.facts.durationMs, now, lay.totalMs, at.card ?? null)}
         aria-describedby={describedBy}
         {...grab}
         onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
@@ -96,13 +96,16 @@ export function PlayheadReadout({
   playhead,
   clips,
   lay,
+  longestCardMs = 0,
 }: {
   playhead: PlayheadStore
   clips: readonly TrackClip[]
   lay: Layout
+  /** The longest black card, so that the pair's scale holds a card as well as a clip. */
+  longestCardMs?: number
 }) {
   const at = useSyncExternalStore(playhead.subscribe, playhead.get)
-  const scales = useMemo(() => readoutScales(clips, lay), [clips, lay])
+  const scales = useMemo(() => readoutScales(clips, lay, longestCardMs), [clips, lay, longestCardMs])
   const readout = readoutOf(at, clips, lay, scales)
   return (
     <p className="tl-readout">
@@ -110,7 +113,7 @@ export function PlayheadReadout({
         <span className="tl-readout-name" title={readout.name}>
           {readout.name}
         </span>
-        <ClockGroup label="Clip" time={readout.clip.time} length={readout.clip.length} />
+        <ClockGroup label={readout.label} time={readout.clip.time} length={readout.clip.length} />
         <ClockGroup label="Event" time={readout.event.time} length={readout.event.length} />
       </span>
     </p>

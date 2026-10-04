@@ -5,6 +5,7 @@ import { clockScale, formatClock } from '../clock.ts'
 import { formatTime } from '../cuts/times.ts'
 import { plural } from '../events/names.ts'
 import type { Tone } from '../ui/Pill.tsx'
+import { cardSubject } from './cards.ts'
 import type { CardsSource, Decorators, Placement } from './cards.ts'
 import type { Readiness } from './layout.ts'
 import type { Ms } from './model.ts'
@@ -167,8 +168,9 @@ export function movieWords(movie: Ms, footage: Ms, cards = ''): string {
 
 // --- title cards ------------------------------------------------------------------------
 
-export const CARDS_NOT_PLAYED =
-  'The Timeline plays footage only: it does not play title cards. A black card’s span is crossed without time passing.'
+/** Said once, in the card inspector slot's words: the detail does not carry a card's fades. */
+export const CARDS_FADES =
+  'The Timeline fades a card in and out over 2 s each, as the render does by default. A fade set by the event’s or the project’s look.title_card is not shown here.'
 
 export const CARDS_OFF = 'Title cards are off for this event; the render draws none'
 export const CARDS_BY_PROJECT = 'Set by the project’s config.yaml.'
@@ -237,14 +239,26 @@ export function playheadValueText(
   durationMs: Ms,
   atMs: Ms,
   totalMs: Ms,
+  card: { name: string; ms: Ms; lengthMs: Ms } | null = null,
 ): string {
+  if (card !== null) {
+    const seconds = (ms: Ms) => `${(ms / 1000).toFixed(1)} s`
+    return `title card for ${cardSubject(card.name)}, ${seconds(card.ms)} of ${seconds(card.lengthMs)}; event ${formatTime(atMs / 1000)} of ${formatTime(totalMs / 1000)}`
+  }
   const here = `clip ${formatTime(localMs / 1000)} of ${formatTime(durationMs / 1000)}`
   const all = `event ${formatTime(atMs / 1000)} of ${formatTime(totalMs / 1000)}`
   return `${name}, ${here}; ${all}`
 }
 
 /** Announced once when the playhead is placed: `Playhead at Harbour, 0:12.4`. */
-export function playheadAnnouncement(name: string, localMs: Ms): string {
+export function playheadAnnouncement(
+  name: string,
+  localMs: Ms,
+  card: { name: string; ms: Ms } | null = null,
+): string {
+  if (card !== null) {
+    return `Playhead at title card for ${cardSubject(card.name)}, ${formatTime(card.ms / 1000)}`
+  }
   return `Playhead at ${name}, ${formatTime(localMs / 1000)}`
 }
 

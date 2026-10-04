@@ -1,10 +1,11 @@
 import { memo, useSyncExternalStore } from 'react'
-import type { KeyboardEvent } from 'react'
+import type { CSSProperties, KeyboardEvent } from 'react'
 
 import { Icon } from '../ui/Icon'
-import { cardSeconds, cardWords, visibleBlocks } from './cards'
+import { cardBlockPx, cardSeconds, cardWords, visibleBlocks } from './cards'
 import type { DragStore } from './dragStore'
 import type { CardBlock, CardSpec } from './cards'
+import type { CardPictures } from './useCardImages'
 import type { ShiftFrom } from './Track'
 import { timeToPx } from './model'
 
@@ -29,7 +30,9 @@ export function CardLane({
   selected,
   drag,
   shifting,
+  pictures,
   onOpen,
+  onPlace,
   onClear,
 }: {
   blocks: readonly CardBlock[]
@@ -43,7 +46,11 @@ export function CardLane({
   drag: DragStore | null
   /** A black card's drag in progress: the blocks behind the card move. */
   shifting: ShiftFrom | null
+  /** Each card's image, when the Timeline has fetched it: the block's miniature. */
+  pictures: CardPictures
   onOpen: (chapter: string) => void
+  /** A press in a black card's block also puts the playhead there: the track time of the press. */
+  onPlace: (chapter: string, trackMs: number) => void
   onClear: () => void
 }) {
   const range = visibleBlocks(blocks, (window.from / pps) * 1000, (window.to / pps) * 1000)
@@ -58,11 +65,13 @@ export function CardLane({
           block={block}
           name={spec.chapter}
           title={spec.card?.title ?? null}
+          image={pictures.get(spec.chapter)?.url ?? null}
           pps={pps}
           selected={selected === spec.chapter}
           drag={drag}
           behind={shifting !== null && block.startMs >= shifting.fromMs - 0.5}
           onOpen={onOpen}
+          onPlace={onPlace}
           onClear={onClear}
         />,
       )
@@ -78,22 +87,27 @@ const CardBlockButton = memo(function CardBlockButton({
   block,
   name,
   title: cardTitle,
+  image,
   pps,
   selected: on,
   drag,
   behind,
   onOpen,
+  onPlace,
   onClear,
 }: {
   block: CardBlock
   name: string
   title: string | null
+  /** The card's image (an object URL), or null while it is missing. */
+  image: string | null
   pps: number
   selected: boolean
   drag: DragStore | null
   /** Behind a black card being dragged: moved with it. */
   behind: boolean
   onOpen: (chapter: string) => void
+  onPlace: (chapter: string, trackMs: number) => void
   onClear: () => void
 }) {
   // The card's edge in the air: only this block follows it (a black card's drag moves the layers
@@ -109,7 +123,7 @@ const CardBlockButton = memo(function CardBlockButton({
         ? Math.min(live.tenths * 100, block.keptMs)
         : live.tenths * 100
   const durationMs = live === null ? block.durationMs : live.tenths * 100
-  const widthPx = Math.max(2, timeToPx(widthMs, pps))
+  const widthPx = cardBlockPx(timeToPx(widthMs, pps))
   const words = cardWords(name, {
     durationMs,
     widthMs,
@@ -127,10 +141,24 @@ const CardBlockButton = memo(function CardBlockButton({
       data-selected={on || undefined}
       data-after={behind || undefined}
       aria-pressed={on}
-      aria-label={words}
-      title={words}
-      style={{ insetInlineStart: timeToPx(block.startMs, pps), inlineSize: widthPx }}
-      onClick={() => onOpen(name)}
+      data-image={image !== null || undefined}
+      data-words={widthPx >= TITLE_PX || undefined}
+      aria-label={title === null ? words : `${words}: ${title}`}
+      title={title === null ? words : `${title}. ${words}`}
+      style={{
+        insetInlineStart: timeToPx(block.startMs, pps),
+        inlineSize: widthPx,
+        ...(image === null ? {} : ({ '--tl-card-image': `url("${image}")` } as CSSProperties)),
+      }}
+      onClick={(event) => {
+        onOpen(name)
+        if (block.background === 'black' && !block.off) {
+          // Where in the block the press was, as a part of its span on the track.
+          const box = event.currentTarget.getBoundingClientRect()
+          const part = box.width > 0 ? (event.clientX - box.left) / box.width : 0
+          onPlace(name, block.startMs + Math.min(0.999, Math.max(0, part)) * widthMs)
+        }
+      }}
       onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
         if (event.key === 'Escape' && on) {
           event.preventDefault()

@@ -87,8 +87,15 @@ export function TimelineSection({
   const source = cardsSource(event.title_cards, switched)
   const cardsError = event.title_cards_error ?? null
   const cardBinding = useMemo(
-    () => ({ specs, decorators, source, error: cardsError, selection: cards }),
-    [specs, decorators, source, cardsError, cards],
+    () => ({
+      specs,
+      decorators,
+      source,
+      error: cardsError,
+      selection: cards,
+      previewStyle: cardEditing?.previewStyle,
+    }),
+    [specs, decorators, source, cardsError, cards, cardEditing?.previewStyle],
   )
   // The selection ends with its chapter, whenever the event is read again without it.
   const { retain } = cards

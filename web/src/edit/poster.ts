@@ -98,6 +98,7 @@ export type PosterContext = {
 export const WHY_LOCKED = 'Wait for the save to finish.'
 export const WHY_HELD = 'Close the clip preview to use the Timeline’s picture.'
 export const WHY_NO_FRAME = 'The picture is still loading.'
+export const WHY_IN_CARD = 'The playhead is in a title card. Move it onto a clip.'
 export const WHY_NO_CLIP = 'The playhead is not on a clip.'
 
 /**
@@ -106,9 +107,12 @@ export const WHY_NO_CLIP = 'The playhead is not on a clip.'
  */
 export function posterFromPlayhead(
   clips: readonly { identity: string; facts: { durationMs: number } }[],
-  position: { clip: number; ms: number },
+  position: { clip: number; ms: number; card?: unknown },
   context: PosterContext,
 ): { pick: PosterPick } | PosterBlock {
+  if (position.card != null) {
+    return { why: WHY_IN_CARD }
+  }
   const clip = clips[position.clip]
   if (clip === undefined || !Number.isFinite(position.ms) || position.ms < 0) {
     return { why: WHY_NO_CLIP }

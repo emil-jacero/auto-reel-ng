@@ -4,12 +4,14 @@ import { probeProxy, proxyUrl } from '../api/clipMedia'
 import { turnAttr } from '../rotate/turn.ts'
 import { mediaErrorWords } from '../movie/labels'
 import type { ClipTurns } from '../cuts/ReadCuts'
-import { anotherPlays, documentRoot, watchOtherStarts } from '../playback/coordinator'
+import { anotherPlays, documentRoot, pauseOthers, watchOtherStarts } from '../playback/coordinator'
 import { nextClip, onFrame, resumeOrYield, startFrom } from './follow'
 import { NOT_STARTED, playbackNote } from './labels'
 import type { Notice, PlaybackNote } from './labels'
+import type { CardMap } from './cards'
 import type { TrackClip } from './layout'
 import type { Playhead } from './playhead'
+import { createCardClock, handOverMs, handOverReady, videoTarget } from './play'
 import { endPosition, seekSeconds } from './position'
 import type { Position } from './position'
 import { createCoalescer } from './scrub'
@@ -23,6 +25,11 @@ import { createCoalescer } from './scrub'
  * page (`playback/coordinator.ts`, installed in `main.tsx`); this hook only yields its own
  * resume at a swap when another video plays. A proxy that fails to play is diagnosed by
  * one request for its first byte, as the clip preview does.
+ *
+ * A black title card (`timeline-plays-cards`) plays on the card clock (`play.ts`): nothing
+ * plays in the video, the playhead advances by elapsed real time, and the card's anchor clip
+ * is loaded and sought while the card lasts, so that the hand-over shows its first frame at
+ * once. A card whose time is up while that is not ready holds its last frame until it is.
  */
 
 export type TimelineVideo = {
@@ -64,10 +71,15 @@ export function useTimelineVideo({
   playhead,
   turns,
   held = false,
+  map,
+  names,
 }: {
   eventId: string
   clips: readonly TrackClip[]
   playhead: Playhead
+  /** The black cards among the clips, and the chapters' saved names by index. */
+  map: CardMap
+  names: readonly string[]
   /**
    * Each clip's editorial turn (`rotate`; the draft's in Edit mode). The video is shown turned
    * by the turn of the clip it holds, set with its `src` at a swap and again when a turn changes
@@ -86,6 +98,13 @@ export function useTimelineVideo({
   const [note, setNote] = useState<(PlaybackNote | Notice) | null>(null)
 
   const clipsRef = useRef(clips)
+  const mapRef = useRef(map)
+  mapRef.current = map
+  const namesRef = useRef(names)
+  namesRef.current = names
+  const clock = useMemo(() => createCardClock(), [])
+  const cardLoop = useRef<number | null>(null)
+  const handOverWait = useRef(false) // a card's time is up and its clip is not ready: the card holds
   const turnsRef = useRef(turns)
   turnsRef.current = turns
   const heldRef = useRef(held)
@@ -110,6 +129,8 @@ export function useTimelineVideo({
   )
 
   const settleRef = useRef<() => void>(() => undefined)
+  const handOverRef = useRef<() => void>(() => undefined)
+  const spansOf = useCallback((clip: number) => clipsRef.current[clip]?.spans ?? [], [])
 
   /** Show the video turned by clip `clip`'s turn (the attribute `rotate.css` styles by). */
   const applyTurn = useCallback((clip: number | null) => {
@@ -177,6 +198,8 @@ export function useTimelineVideo({
     [addressOf, applyTurn, disarm],
   )
 
+  const stopRef = useRef<() => void>(() => undefined)
+
   // Another video that starts while the operator's Play is still loading is the last start:
   // the Timeline's claim on playing ends, and it yields when it would start.
   useEffect(
@@ -186,6 +209,7 @@ export function useTimelineVideo({
         () => videoRef.current,
         () => {
           operatorStart.current = false
+          stopRef.current()
         },
       ),
     [],
@@ -219,6 +243,9 @@ export function useTimelineVideo({
   /** The load or seek in flight finished: on to the latest target, or start playing. */
   const settle = useCallback(() => {
     coalescer.settled()
+    if (handOverWait.current) {
+      handOverRef.current()
+    }
     if (!coalescer.busy() && afterSettle.current) {
       afterSettle.current = false
       startVideo()
@@ -234,23 +261,128 @@ export function useTimelineVideo({
       if (heldRef.current) {
         return // no video to move: the playhead has the place, and the video loads there when it is back
       }
-      coalescer.request({ clip: pos.clip, ms: pos.ms })
+      // In a card the video holds the anchor clip at its first kept time, ready for the hand-over.
+      coalescer.request(videoTarget(pos, spansOf))
       if (!coalescer.busy() && afterSettle.current) {
         afterSettle.current = false
         startVideo()
       }
     },
-    [coalescer, startVideo],
+    [coalescer, spansOf, startVideo],
   )
 
+  /** Stop the card clock where it is, and the playhead with it. */
+  const pauseCard = useCallback(() => {
+    if (cardLoop.current !== null) {
+      cancelAnimationFrame(cardLoop.current)
+      cardLoop.current = null
+    }
+    const at = playhead.get()
+    if (clock.running() && at.card != null) {
+      playhead.set({ ...at, card: { ...at.card, ms: clock.stop(performance.now()) } })
+    }
+    clock.stop(performance.now())
+    handOverWait.current = false
+  }, [clock, playhead])
+
   const stopPlaying = useCallback(() => {
+    pauseCard()
     wantPlay.current = false
     afterSettle.current = false
     operatorStart.current = false
     setPlaying(false)
     disarm()
     videoRef.current?.pause()
-  }, [disarm])
+  }, [disarm, pauseCard])
+  useEffect(() => {
+    stopRef.current = () => {
+      if (clock.running() || handOverWait.current) {
+        stopPlaying()
+      }
+    }
+  }, [clock, stopPlaying])
+
+  /** The card's time is up and its clip is ready: the clip starts from its first kept frame, and the card goes with its first presented frame. */
+  const completeHandOver = useCallback(() => {
+    handOverWait.current = false
+    const anchor = playhead.get().clip
+    clock.stop(performance.now())
+    // The playhead stays at the end of the card, whose image is at opacity 0 over black: the card
+    // goes when the video presents its first frame (`arm`), so the picture is never the bare page.
+    afterSettle.current = true
+    moveVideo({ clip: anchor, ms: handOverMs(spansOf(anchor)) })
+  }, [clock, moveVideo, playhead, spansOf])
+
+  const finishCard = useCallback(() => {
+    const anchor = playhead.get().clip
+    if (handOverReady({ busy: coalescer.busy(), loadedClip: loadedClip.current, anchor })) {
+      completeHandOver()
+    } else {
+      handOverWait.current = true
+    }
+  }, [coalescer, completeHandOver, playhead])
+  useEffect(() => {
+    handOverRef.current = () => {
+      const anchor = playhead.get().clip
+      if (handOverReady({ busy: coalescer.busy(), loadedClip: loadedClip.current, anchor })) {
+        completeHandOver()
+      }
+    }
+  }, [coalescer, completeHandOver, playhead])
+
+  /** The frame clock of a card: the time reached is elapsed real time, never a count of frames. */
+  const tickCard = useCallback(() => {
+    cardLoop.current = null
+    const at = playhead.get()
+    if (!wantPlay.current || !clock.running() || at.card == null) {
+      return
+    }
+    const { ms, due } = clock.read(performance.now())
+    playhead.set({ ...at, card: { ...at.card, ms } })
+    if (due) {
+      clock.stop(performance.now())
+      finishCard()
+      return
+    }
+    cardLoop.current = requestAnimationFrame(tickCard)
+  }, [clock, finishCard, playhead])
+
+  /** Run the card clock from the playhead's place in a card; nothing plays in the video meanwhile. */
+  const runCard = useCallback(() => {
+    const at = playhead.get()
+    const card = at.card
+    if (card == null) {
+      return
+    }
+    const video = videoRef.current
+    if (video !== null && !video.paused) {
+      ownPause.current = true
+      video.pause()
+    }
+    disarm()
+    // The Timeline's own start pauses every other player, as a start of its video does.
+    pauseOthers(video, document.querySelectorAll('video'))
+    handOverWait.current = false
+    if (cardLoop.current !== null) {
+      cancelAnimationFrame(cardLoop.current)
+    }
+    clock.start(performance.now(), card.ms, card.lengthMs)
+    cardLoop.current = requestAnimationFrame(tickCard)
+  }, [clock, disarm, playhead, tickCard])
+
+  /** Put the playhead in a card, load its clip behind it, and run the clock if the operator is playing. */
+  const enterCard = useCallback(
+    (pos: Position) => {
+      pauseCard()
+      playhead.set(pos)
+      afterSettle.current = false
+      moveVideo(pos)
+      if (wantPlay.current && !suspended.current) {
+        runCard()
+      }
+    },
+    [moveVideo, pauseCard, playhead, runCard],
+  )
 
   const advance = useCallback(() => {
     const from = loadedClip.current ?? playhead.get().clip
@@ -260,10 +392,25 @@ export function useTimelineVideo({
       playhead.set(endPosition(clipsRef.current.map((c) => c.facts)))
       return
     }
+    const gap = mapRef.current.gaps.find((g) => g.clip === next.clip)
+    if (gap !== undefined) {
+      // The chapter opens with a black card: it plays first, the clip loads behind it.
+      enterCard({
+        clip: gap.clip,
+        ms: 0,
+        card: {
+          chapter: gap.chapter,
+          name: namesRef.current[gap.chapter] ?? '',
+          ms: 0,
+          lengthMs: gap.lengthMs,
+        },
+      })
+      return
+    }
     playhead.set(next)
     afterSettle.current = true
     moveVideo(next)
-  }, [moveVideo, playhead, stopPlaying])
+  }, [enterCard, moveVideo, playhead, stopPlaying])
 
   // Each presented frame while playing: move the playhead, skip a cut, or end the clip.
   const arm = useCallback(() => {
@@ -388,38 +535,59 @@ export function useTimelineVideo({
 
   const seekTo = useCallback(
     (pos: Position) => {
+      if (pos.card != null) {
+        enterCard(pos)
+        return
+      }
+      pauseCard()
       playhead.set(pos)
       if (wantPlay.current && !suspended.current) {
         afterSettle.current = true
       }
       moveVideo(pos)
     },
-    [moveVideo, playhead],
+    [enterCard, moveVideo, pauseCard, playhead],
   )
 
   const scrubStart = useCallback(() => {
     if (wantPlay.current && !suspended.current) {
       suspended.current = true
       afterSettle.current = false
+      pauseCard()
       const video = videoRef.current
       if (video !== null && !video.paused) {
         ownPause.current = true
         video.pause()
       }
     }
-  }, [])
+  }, [pauseCard])
 
   const scrubEnd = useCallback(() => {
     if (suspended.current) {
       suspended.current = false
+      if (playhead.get().card != null) {
+        afterSettle.current = false
+        moveVideo(playhead.get())
+        runCard()
+        return
+      }
       afterSettle.current = true
       moveVideo(playhead.get())
     }
-  }, [moveVideo, playhead])
+  }, [moveVideo, playhead, runCard])
 
   const play = useCallback(() => {
     const spans = playable(clipsRef.current)
     const at = playhead.get()
+    if (at.card != null) {
+      // Play from inside a card goes on from there to the end of the card, then into the clip.
+      setNote(null)
+      wantPlay.current = true
+      operatorStart.current = true
+      setPlaying(true)
+      enterCard(at)
+      return
+    }
     const start = startFrom(spans, at) ?? nextClip(spans, -1)
     if (start === null) {
       setNote({
@@ -436,7 +604,7 @@ export function useTimelineVideo({
     afterSettle.current = true
     playhead.set(start)
     moveVideo(start)
-  }, [moveVideo, playhead])
+  }, [enterCard, moveVideo, playhead])
 
   const toggle = useCallback(() => {
     if (wantPlay.current) {
@@ -445,6 +613,17 @@ export function useTimelineVideo({
       play()
     }
   }, [play, stopPlaying])
+
+  // A page that is hidden pauses the card clock as it pauses a video.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden && clock.running()) {
+        stopPlaying()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [clock, stopPlaying])
 
   // A turn changed in the draft (or read anew): the video shows it at once, with no request.
   useEffect(() => {
@@ -478,6 +657,7 @@ export function useTimelineVideo({
     return () => {
       diagnosis.current?.abort()
       disarm()
+      pauseCard()
       ownPause.current = false
       if (video !== null) {
         video.pause()
@@ -490,7 +670,7 @@ export function useTimelineVideo({
       loadedAddress.current = null
       coalescer.failed()
     }
-  }, [coalescer, disarm, held, moveVideo, playhead])
+  }, [coalescer, disarm, held, moveVideo, pauseCard, playhead])
 
   return { videoRef, playing, note, seekTo, scrubStart, scrubEnd, toggle, handlers }
 }

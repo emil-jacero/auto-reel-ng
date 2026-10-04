@@ -469,8 +469,11 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   as the reason, Dismiss and Restore are the page's set; the read view offers no decision.
   **Title cards are visible on the Timeline and in Edit mode's chapter list** (`title-card-blocks`, D-20): a card lane above
   the clips (a black card is a span of its own before the chapter and adds time; a video card is a block over the start of the
-  chapter's first footage and adds none), a card row at the head of each chapter, and one selection shared by both; read
-  and select only, the editor of a card is the next changes.
+  chapter's first footage and adds none), a card row at the head of each chapter, and one selection shared by both.
+  **The Timeline plays and shows the title cards** (`timeline-plays-cards`, D-20): playing into a black card shows its
+  image over the picture and runs the playhead in real time for the card's length, then goes on into the chapter's first
+  clip; a video card's image is laid over the playing video for its window; the playhead can be put in a card (press, drag,
+  keys) and the readouts count card time.
   **A card's length is dragged on the Timeline** (`title-card-duration-drag`, D-20): the end edge of a card block is a slider
   (0.1 s steps, whole-second snap within 8 px, 0.5 s to 60 s, arrows/Shift/Home/End), a black card moves everything after it
   while it is dragged, a video card is held to its footage; one edit of the draft, Reset and Save as for a cut. The typed
@@ -804,6 +807,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    mode's chapter list, selectable, web-only and read only; editing a card comes next.
    `title-card-duration-drag` has landed (web only): a card's length is dragged on the Timeline's card block, written as
    `card.duration` by the existing `PUT .../reel`; `title-card-inspector` is the typed alternative.
+   `timeline-plays-cards` has landed (web only; D-20): the user's "I cannot actually see the title cards, or even play
+   them" reversed `title-card-blocks`' footage-only limit; no API, engine or `RENDER_GRAPH_VERSION` change.
    `title-card-toggle` follows (web only): Edit mode's Title cards On / Off switch writes `look.decorators`, the Timeline and
    the chapter rows read the API's `title_cards` instead of guessing, the opening card is one row, an inherited choice shows
    pressed in a muted style, and the card inspector opens below the track; no API, engine or `RENDER_GRAPH_VERSION` change.
@@ -1319,8 +1324,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     first is wholly cut; a video card starts at the end of a cut that begins at zero and is clamped to the first kept span; a
     black card adds its length), `cardMap`/`trackX`/`clipTimeAt` are the track map, **clip time stays the one time of the
     playhead, cuts, handles and marks** and only drawing is shifted, and the selection is a reducer by the chapter's saved
-    name. Honest limits: the Timeline plays footage only (the playhead crosses a black card without time passing and a press
-    in its span selects the card), the anchor is the first shown clip (an explicit `title: true` elsewhere in the chapter is
+    name. Honest limits: (the first, no card playback, was removed by `timeline-plays-cards` below), the anchor is the first shown clip (an explicit `title: true` elsewhere in the chapter is
     not in the detail), and the readout's "Event" time counts black cards. **Bundle:** JS 539,223 to 551,338 bytes (173,912 to
     177,719 gzip -9, +3.8 KB), CSS 76,068 to 79,203 (14,391 to 14,913 gzip -9, +0.5 KB); no package added.
   - **Title card length by drag (`title-card-duration-drag`, 2026-10-04).** The card handle reuses the trim handle's parts:
@@ -1431,8 +1435,40 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     there is no endpoint and no cache growth from arbitrary times. It is a preview of the proxy's frame, turned by the clip's
     editorial turn as every picture is; the saved poster is always the engine's frame from the original. The button is
     unavailable, with the reason in words, while a save or a move of marked clips is pending, an open clip preview holds the page's video,
-    or the video has no decoded frame. The playhead never rests on a title-card block (it stays on footage), so that case
-    cannot arise. No timeline library, no new runtime dependency.
+    or the video has no decoded frame. The playhead can rest in a black title card since `timeline-plays-cards`; there
+    the button is unavailable, with the reason in words (the picture is the card's, not a frame of a clip). No timeline library, no new runtime dependency.
+  - **The Timeline shows and plays the title cards (`timeline-plays-cards`, 2026-10-04).** The first use of the card blocks
+    said, verbatim, "It appears I cannot actually see the title cards, or even play them. The timeline selector just skips past
+    them", repeating the requirement of 2026-10-03, "I want the title cards to be visible in the editor", and reversing the
+    footage-only limit above. **One video plus a card layer:** the card is an `<img>` in a layer over the same 16:9 box as
+    the `<video>` (`object-fit: contain`, pointer-inert, `aria-hidden`; the readout and the slider carry the words). A black
+    card's layer is an opaque black `<div>` and only the image fades in it, so the clip loading behind it never shows; a video
+    card's layer is transparent and the image is laid over the playing video for its window (from the start of the first kept
+    span for the card's width). No second `<video>`, no canvas, no pre-rendered clip. **The card clock** (`play.ts`, pure, reads
+    no clock) is elapsed real time from `performance.now()` driven by `requestAnimationFrame`, never a count of frames, so a
+    slow frame does not stretch a card; a hidden page, Pause, another player's start and a scrub stop it and Play goes on
+    from the same place. **The hand-over:** while a card lasts, the hook loads and seeks the card's anchor clip at its first
+    kept time (the coalescer, paused); when the card's time is up it plays on from that frame, and if the seek has not
+    finished the card holds its last frame until it has (`handOverReady`). The card layer is taken away by the video's first
+    presented frame (`requestVideoFrameCallback`, the existing follow loop), not when the clip is told to play: removing it at
+    once showed one dark frame in about one Firefox run in six, none in 12 runs after. Chrome 154 and Firefox 155 were
+    sampled with a screenshot of the stage every ~100 ms across the hand-over, and every sample after the card was a video frame. **The playhead in a card:**
+    `Position` has an optional `card {chapter, name, ms, lengthMs}`; its `clip`/`ms` are the anchor clip and 0, so cuts, handles
+    and marks are unchanged; `globalMs` counts the card, frame steps move 0.1 s inside a card (the page does not know the movie's
+    output rate) and cross into and out of a card, seconds steps and Home land in one. **The fades are the engine's defaults**
+    (2 s in, 2 s out, scaled together to the length): `ResolvedCardOut` does not carry a card's fades, so a fade set by
+    `look.title_card` is not shown, and the Timeline says so once; carrying `fade_in`/`fade_out` on the detail is the
+    follow-up that removes this limit. **Card images** (`cardImages.ts`, pure, with the request, timer and URL functions
+    passed in): every card's image is fetched once when the Timeline opens, one request at a time in play order, each body built
+    by the inspector's own `previewRequest` from the resolved card (the draft's in Edit mode), the answers kept as object
+    URLs keyed by body and style; a 503 is waited out by `Retry-After` (1 to 30 s, three tries), any other failure is said once
+    and not retried, an edit fetches only its own card after the inspector's 250 ms and the old image stays until the new one
+    arrives, and closing the Timeline revokes every URL. The Timeline is a second client of the preview endpoint beside the
+    inspector (the endpoint allows two at once; the Timeline asks for one, leaving the other slot to the inspector). While an
+    image is missing the card's title is shown on black. **Blocks** show the image as a miniature (cover, with a scrim under the
+    words), at least 24 px wide however far the track is zoomed out (the span on the track is unchanged), and a press in a black
+    card's block or span also puts the playhead there. **Bundle:** JS 615.70 to 626.79 kB (198.39 to 202.01 gzip, +3.6 KB),
+    CSS 90.82 to 91.86 kB (17.03 to 17.26 gzip), as `vite build` reports them; no package added.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
   1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every
@@ -1754,6 +1790,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     (the fingerprint cannot tell which looks use the `title` decorator without a second path; D-C8 accepts the cost
     of one re-render). A `reel.yaml` with no `card` hashes exactly as before, so the editorial ETag a client holds
     stays valid; adding a card moves the editorial component like any edit; an unrendered event is unaffected.
+  - **A second client of the preview (`timeline-plays-cards`).** The Timeline draws every card's image with the same
+    `POST …/title-card/preview` the inspector uses (D-20), one request at a time; nothing about the endpoint changed.
   - **Deliberately not here:** an event with no default chapter has no opening card; no API, editor, preview or card
     over video (the font registry is D-22). The cards were still opt-in here (`look.decorators: [title]`); that ended
     with `title-cards-default-on` (**D-25**).

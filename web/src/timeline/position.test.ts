@@ -10,6 +10,7 @@ import {
   lastFrameMs,
   onGrid,
   positionAt,
+  samePosition,
   seekSeconds,
   startPosition,
   stepFrames,
@@ -156,3 +157,30 @@ describe('clampPosition', () => {
 function frameMsOf(n: number, fps: number): number {
   return Math.round((n * 1000) / fps)
 }
+
+describe('a place in a card', () => {
+  const card = { chapter: 0, name: '', ms: 1200, lengthMs: 7000 }
+  // The track layout puts the clip after its 7 s card.
+  const track = { startsMs: [7000, 9000, 10000], totalMs: 10480 }
+
+  it('keeps the anchor clip and counts card time in the timeline’s time', () => {
+    assert.equal(globalMs(track, { clip: 0, ms: 0, card }), 1200)
+    assert.equal(globalMs(track, { clip: 0, ms: 0 }), 7000)
+  })
+
+  it('is a clip position unchanged by the card field', () => {
+    assert.deepEqual(clampPosition([{ facts: { durationMs: 2000 } }], { clip: 0, ms: 5000 }), {
+      clip: 0,
+      ms: 2000,
+    })
+    const there = { clip: 0, ms: 0, card }
+    assert.equal(clampPosition([{ facts: { durationMs: 2000 } }], there), there)
+  })
+
+  it('tells two places in a card apart', () => {
+    assert.equal(samePosition({ clip: 0, ms: 0, card }, { clip: 0, ms: 0, card: { ...card } }), true)
+    assert.equal(samePosition({ clip: 0, ms: 0, card }, { clip: 0, ms: 0, card: { ...card, ms: 1300 } }), false)
+    assert.equal(samePosition({ clip: 0, ms: 0, card }, { clip: 0, ms: 0 }), false)
+    assert.equal(samePosition({ clip: 0, ms: 0 }, { clip: 0, ms: 0, card: null }), true)
+  })
+})
