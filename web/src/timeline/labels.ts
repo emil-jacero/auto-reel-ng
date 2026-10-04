@@ -237,10 +237,15 @@ export function cardsNotes(
   return notes
 }
 
-/** A clip's length and cuts, for its description. */
-export function clipDescription(durationMs: Ms, cutCount: number): string {
+/**
+ * A clip's length and cuts, for its description: `0:10 long, no cuts`; when edge cuts leave
+ * less of it on the track (`keptMs`), the kept length of the full one: `0:08 of 0:10 kept, 1 cut`.
+ */
+export function clipDescription(durationMs: Ms, cutCount: number, keptMs: Ms = durationMs): string {
   const cuts = cutCount === 0 ? 'no cuts' : plural(cutCount, 'cut', 'cuts')
-  return `${formatTime(durationMs / 1000)} long, ${cuts}`
+  return keptMs < durationMs
+    ? `${formatTime(keptMs / 1000)} of ${formatTime(durationMs / 1000)} kept, ${cuts}`
+    : `${formatTime(durationMs / 1000)} long, ${cuts}`
 }
 
 /**

@@ -8,9 +8,9 @@ import { toMs } from '../preview/playback'
 import { ClockTime } from '../ui/Clock'
 import type { DragStore } from './dragStore'
 import type { TrimNote } from './editing'
-import { bareMousePress, keyOutcome, nearestHandle, snapWords } from './handles'
+import { bareMousePress, handleRows, keyOutcome, nearestHandle, snapWords } from './handles'
 import type { SnapContext } from './handles'
-import type { ClipFacts, Ms } from './model'
+import type { ClipFacts, Extent, Ms } from './model'
 import { snapCandidates, timeToPx, trimEdge, trimLimits } from './model'
 import type { Playhead } from './playhead'
 import { tipOf } from './readout'
@@ -42,16 +42,6 @@ function coarse(): boolean {
 /** One handle's identity within its clip. */
 const handleId = (key: string, edge: TrimEdge) => `${key}:${edge}`
 
-type Row = { cut: DraftCut; index: number }
-
-/** A clip's cuts that are not removed, by start (a cut's handles are consecutive in Tab order). */
-function rowsOf(listed: readonly DraftCut[]): Row[] {
-  return listed
-    .map((cut, index) => ({ cut, index }))
-    .filter((row) => !row.cut.removed)
-    .sort((a, b) => a.cut.in - b.cut.in || a.index - b.index)
-}
-
 type Begin = (event: PointerEvent<HTMLElement>) => void
 /** What a handle offers its clip's layer: its element, a drag to begin, and to be chosen. */
 type Registered = { el: HTMLElement; begin: Begin; choose: () => void }
@@ -61,6 +51,7 @@ export function ClipHandles({
   name,
   index,
   facts,
+  kept,
   left,
   widthPx,
   totalPx,
@@ -81,7 +72,13 @@ export function ClipHandles({
   /** The clip's place among the shown clips: the playhead's `clip`. */
   index: number
   facts: ClipFacts
-  /** The clip's left edge and the whole canvas's width, in px. */
+  /** The clip's kept extent: a cut within its leading or trailing cut has no handle. */
+  kept: Extent
+  /**
+   * Where the clip's time 0 is on the canvas, in px: the block's left edge less its kept start
+   * (left of the block when the clip has a leading cut). The handles are placed from it by
+   * their time in the clip. And the whole canvas's width.
+   */
   left: number
   widthPx: number
   totalPx: number
@@ -107,7 +104,7 @@ export function ClipHandles({
 }) {
   const registry = useRef(new Map<string, Registered>())
   const layer = useRef<HTMLDivElement>(null)
-  const rows = rowsOf(listed)
+  const rows = handleRows(listed, kept, facts.durationMs)
   // The edge being dragged in this clip: its cut's live span and the snap line.
   const live = useSyncExternalStore(drag.subscribe, () => {
     const d = drag.get()

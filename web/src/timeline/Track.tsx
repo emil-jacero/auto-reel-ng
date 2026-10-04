@@ -16,10 +16,11 @@ import type { KeyAction } from './keys'
 import { clipDescription } from './labels'
 import { cutLabel } from './layout'
 import type { ChapterBand, TrackClip } from './layout'
-import { timeToPx, visibleClips, visibleTicks } from './model'
+import { edgeCut, extentMs, timeToPx, visibleClips, visibleTicks } from './model'
 import type { Layout } from './model'
 import type { LaneSlot } from './overlays/control'
 import type { Playhead } from './playhead'
+import { hasKeptFrame, timedOf } from './position'
 import type { VisibleRange } from './useVisibleRange'
 
 /*
@@ -312,13 +313,21 @@ export function Track({
   if (shown !== null) {
     for (let index = shown[0]; index <= shown[1]; index += 1) {
       const clip = clips[index]
+      // A clip that keeps no frame (its cuts cover it, or its extent holds none) has no block:
+      // the clips around it meet (`timeline-ripple-layout`).
+      if (!hasKeptFrame(timedOf(clip))) {
+        continue
+      }
+      // The block spans the clip's kept extent: its left edge is the clip's kept start.
       const left = timeToPx(lay.startsMs[index], pps)
-      const widthPx = timeToPx(clip.facts.durationMs, pps)
+      const inPx = timeToPx(clip.kept.inMs, pps)
+      const keptMs = extentMs(clip.kept)
+      const widthPx = timeToPx(keptMs, pps)
       const detailed = widthPx >= MIN_DETAIL_PX
       const descId = `${base}-c${index}`
       if (editing !== null && detailed && showCuts) {
         const listed = editing.listed(clip.identity)
-        if (listed.some((cut) => !cut.removed)) {
+        if (listed.some((cut) => !cut.removed && !edgeCut(cut, clip.kept, clip.facts.durationMs))) {
           handleNodes.push(
             <ClipHandles
               key={clip.identity}
@@ -326,8 +335,9 @@ export function Track({
               name={clip.name}
               index={index}
               facts={clip.facts}
-              left={left}
-              widthPx={widthPx}
+              kept={clip.kept}
+              left={left - inPx}
+              widthPx={inPx + widthPx}
               totalPx={totalPx}
               shifted={behind(shifting, lay.startsMs[index])}
               pps={pps}
@@ -358,7 +368,7 @@ export function Track({
           style={{ insetInlineStart: left, inlineSize: Math.max(1, widthPx) }}
         >
           <span id={descId} className="visually-hidden">
-            {clipDescription(clip.facts.durationMs, showCuts ? clip.cutCount : 0)}
+            {clipDescription(clip.facts.durationMs, showCuts ? clip.cutCount : 0, keptMs)}
           </span>
           {detailed && !noPicture.has(clip.identity) && (
             <Filmstrip
@@ -381,7 +391,7 @@ export function Track({
                   role="img"
                   aria-label={cutLabel(cut)}
                   data-reason={cut.reasons[0] ?? 'manual'}
-                  style={{ insetInlineStart: timeToPx(cut.from, pps), inlineSize: Math.max(2, cutPx) }}
+                  style={{ insetInlineStart: timeToPx(cut.from - clip.kept.inMs, pps), inlineSize: Math.max(2, cutPx) }}
                 >
                   {cutPx >= CUT_TEXT_PX && (
                     <span className="tl-cut-text" aria-hidden="true">
@@ -395,7 +405,7 @@ export function Track({
             <span className="tl-clip-label" aria-hidden="true">
               <span className="tl-clip-tag">
                 <span className="tl-clip-name">{clip.name}</span>
-                <span className="tl-clip-length">{formatTime(clip.facts.durationMs / 1000)}</span>
+                <span className="tl-clip-length">{formatTime(keptMs / 1000)}</span>
               </span>
             </span>
           )}
@@ -435,7 +445,7 @@ export function Track({
               lay.startsMs[band.first] - (cardLane?.leadMs.get(band.first) ?? 0),
               pps,
             )
-            const right = timeToPx(lay.startsMs[band.last] + clips[band.last].facts.durationMs, pps)
+            const right = timeToPx(lay.startsMs[band.last] + extentMs(clips[band.last].kept), pps)
             if (right < windowFrom || left > windowTo) {
               return null
             }
@@ -451,7 +461,7 @@ export function Track({
                 grows={
                   shifting !== null &&
                   starts < shifting.fromMs - 0.5 &&
-                  lay.startsMs[band.last] + clips[band.last].facts.durationMs >= shifting.fromMs - 0.5
+                  lay.startsMs[band.last] + extentMs(clips[band.last].kept) >= shifting.fromMs - 0.5
                 }
                 pps={pps}
                 drag={drag}

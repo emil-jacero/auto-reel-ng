@@ -1,5 +1,6 @@
-import { frameMs, nearestFrame } from './model.ts'
-import type { Ms } from './model.ts'
+import type { ListedCut } from '../cuts/times.ts'
+import { edgeCut, frameMs, nearestFrame } from './model.ts'
+import type { Extent, Ms } from './model.ts'
 
 /*
  * The pure parts of a trim handle that the model does not have (D-20): what a key does
@@ -9,6 +10,23 @@ import type { Ms } from './model.ts'
  * React, so `npm test` runs it. (Not `trim.ts`: `trim.test.ts` is the
  * model's own trim functions.)
  */
+
+/**
+ * A clip's cuts that have trim handles, with their place in the list, by start (a cut's two
+ * handles are consecutive in Tab order): not removed, and not within the leading or the trailing
+ * cut (`timeline-ripple-layout`: those are not drawn and have no handle; they stay listed in the
+ * Cuts panel). Two cuts with the same start keep their list order.
+ */
+export function handleRows<C extends ListedCut>(
+  listed: readonly C[],
+  kept: Extent,
+  durationMs: Ms,
+): { cut: C; index: number }[] {
+  return listed
+    .map((cut, index) => ({ cut, index }))
+    .filter((row) => row.cut.removed !== true && !edgeCut(row.cut, kept, durationMs))
+    .sort((a, b) => a.cut.in - b.cut.in || a.index - b.index)
+}
 
 const SECOND_MS = 1000
 const PAGE_MS = 5000

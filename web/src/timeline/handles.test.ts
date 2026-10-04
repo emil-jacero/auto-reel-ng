@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { atPlayhead, bareMousePress, keyOutcome, nearestHandle, snapWords, stepEdge } from './handles.ts'
-import { frameMs, nearestFrame, trimLimits, clipFacts } from './model.ts'
+import { atPlayhead, bareMousePress, handleRows, keyOutcome, nearestHandle, snapWords, stepEdge } from './handles.ts'
+import { cutSpans, frameMs, keptExtent, nearestFrame, trimLimits, clipFacts } from './model.ts'
 
 const clip = clipFacts(6.02, 25)
 const RANGE = [0, 2360] as const
@@ -228,5 +228,36 @@ describe('bareMousePress', () => {
     ]
     assert.equal(bareMousePress(false, 0), true)
     assert.equal(nearestHandle(121.6, edges, 24), 'a1:out')
+  })
+})
+
+describe('handleRows (timeline-ripple-layout)', () => {
+  it('a leading or a trailing cut has no handle; interior and removed-number order kept', () => {
+    const listed = [
+      { in: 4, out: 5 },
+      { in: 0, out: 1 },
+      { in: 2, out: 3, removed: true },
+      { in: 5.5, out: 7 },
+      { in: 2.5, out: 3 },
+    ]
+    const kept = keptExtent(cutSpans(listed, 6020), 6020)
+    assert.deepEqual(kept, { inMs: 1000, outMs: 5500 })
+    assert.deepEqual(
+      handleRows(listed, kept, 6020).map((row) => row.index),
+      [4, 0],
+    )
+  })
+
+  it('a handle taken to the clip’s start makes a leading cut: its handles are gone', () => {
+    const before = [{ in: 1, out: 2.5 }]
+    const after = [{ in: 0, out: 2.5 }]
+    const keptOf = (l: typeof before) => keptExtent(cutSpans(l, 6020), 6020)
+    assert.equal(handleRows(before, keptOf(before), 6020).length, 1)
+    assert.equal(handleRows(after, keptOf(after), 6020).length, 0)
+  })
+
+  it('without edge cuts every cut that is not removed has handles', () => {
+    const listed = [{ in: 1, out: 2 }, { in: 3, out: 4 }]
+    assert.equal(handleRows(listed, { inMs: 0, outMs: 6020 }, 6020).length, 2)
   })
 })

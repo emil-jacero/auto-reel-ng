@@ -18,7 +18,7 @@
 
 ## 2. The view
 
-- [ ] 2.1 `Track.tsx`, `Filmstrip.tsx`, `TrimHandle.tsx`, `Playhead.tsx`, `CardLane`/chapter band: blocks, interior cut
+- [x] 2.1 `Track.tsx`, `Filmstrip.tsx`, `TrimHandle.tsx`, `Playhead.tsx`, `CardLane`/chapter band: blocks, interior cut
   spans, handles (none for an edge cut), the playhead x and scrub, and chapter bands through the helpers; the block label
   shows the kept length; `labels.ts` `clipDescription` says the kept length of the full one. Test with `node:test` for the
   label and value-text strings (`labels.test.ts`, `readout.test.ts`: "Clip 0:05.00 of 0:10.00 · Event 0:03.00 of 0:19.00")
