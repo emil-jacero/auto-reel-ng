@@ -1906,7 +1906,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     frames with no transfer, measured on the host's AMD Radeon 860M: `N/A` without, `1:1` with), so the overlay-free
     chain, the video-card head (before its `hwdownload`) and its tail all carry SAR 1:1; and the concat pre-flight
     normalizes SAR (unset ≡ `1:1`, one shared helper with copy eligibility), so a metadata-only difference never fails
-    a render. VAAPI segment bytes change for identical inputs: **`RENDER_GRAPH_VERSION` goes 11 to 12** (D-C8).
+    a render. VAAPI segment bytes change for identical inputs, and on any profile a copy-eligible clip with an unset
+    SAR, which the raw pre-flight used to re-encode, now stays stream-copied: **`RENDER_GRAPH_VERSION` goes 11 to 12**
+    (D-C8).
 
 ---
 
