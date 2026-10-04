@@ -697,6 +697,101 @@
     pointer-events: none;
   }
 
+  /*
+   * The card handles (`title-card-duration-drag`): a layer over the card lane, after the
+   * clip handles in the stack. Each handle's area is a column centred on the block's end
+   * edge; the bar is the visible edge.
+   */
+  .tl-card-handles {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-start: calc(var(--tl-ruler-h) + var(--tl-band-h) + 2px);
+    block-size: calc(var(--tl-cards-row) - 2px);
+    z-index: 3;
+    pointer-events: none;
+  }
+
+  .tl-card-handle {
+    --card-handle-w: 1.5rem;
+
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: calc(var(--x) - var(--card-handle-w) / 2);
+    inline-size: var(--card-handle-w);
+    pointer-events: auto;
+    touch-action: none;
+    cursor: ew-resize;
+    user-select: none;
+    outline: none;
+  }
+
+  .tl-card-handle-bar {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: calc(50% - 3px);
+    inline-size: 6px;
+    border-radius: var(--r-sm);
+    background: var(--accent);
+    box-shadow: 0 0 0 1.5px var(--surface);
+    transition: inline-size var(--dur-fast) var(--ease-out);
+  }
+
+  .tl-card-handle:hover .tl-card-handle-bar,
+  .tl-card-handle[data-dragging] .tl-card-handle-bar {
+    inline-size: 8px;
+    inset-inline-start: calc(50% - 4px);
+  }
+
+  .tl-card-handle[data-selected] .tl-card-handle-bar {
+    box-shadow:
+      0 0 0 1.5px var(--surface),
+      0 0 0 3.5px var(--accent);
+  }
+
+  .tl-card-handle:focus-visible .tl-card-handle-bar {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 3px;
+  }
+
+  .tl-card-handle[aria-disabled='true'] .tl-card-handle-bar {
+    background: var(--idle);
+    opacity: 0.6;
+  }
+
+  /* The readout above the edge, in a cell of fixed width; the snap words hang above it. */
+  .tl-card-handle-tip {
+    position: absolute;
+    inset-block-end: calc(100% + 2px);
+    inset-inline-start: 50%;
+    translate: calc(-50% + var(--tip-shift, 0px)) 0;
+    z-index: 4;
+    padding: 1px var(--s-2);
+    border-radius: var(--r-sm);
+    background: var(--fg);
+    color: var(--bg);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    white-space: nowrap;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+
+    .clock-cell {
+      color: inherit;
+    }
+  }
+
+  /* The whole second the edge snapped to: a dashed line down the clips, with words in the tip. */
+  .tl-card-snap-line {
+    position: absolute;
+    inset-block-start: -0.25rem;
+    inset-inline-start: 50%;
+    block-size: calc(var(--tl-cards-row) + var(--tl-clip-h) + var(--s-3));
+    inline-size: 0;
+    border-inline-start: 2px dashed var(--fg);
+    box-shadow: 0 0 0 1px var(--surface);
+    pointer-events: none;
+  }
+
   /* --- the selected cut's fields --- */
   .tl-fields {
     display: flex;
@@ -735,6 +830,10 @@
   @media (pointer: coarse) {
     .tl-trim {
       --trim-w: 2.75rem;
+    }
+
+    .tl-card-handle {
+      --card-handle-w: 2.75rem;
     }
 
     .tl-fields .field-input {

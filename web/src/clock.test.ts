@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { formatTime } from './cuts/times.ts'
-import { clockChars, clockScale, formatClock } from './clock.ts'
+import { clockChars, clockScale, formatClock, tenthsCell } from './clock.ts'
 import type { ClockScale } from './clock.ts'
 
 const at = (ms: number | null, scale: ClockScale) => formatClock(ms, scale)
@@ -89,5 +89,23 @@ describe('the clock writes a running time to a fixed number of digits', () => {
       assert.throws(() => at(bad, scale), RangeError)
       assert.throws(() => clockScale(bad), RangeError)
     }
+  })
+})
+
+describe('tenthsCell', () => {
+  it('writes one decimal in a cell as wide as the longest value, whatever the value', () => {
+    const widths = new Set<number>()
+    for (let t = 5; t <= 600; t += 1) {
+      widths.add(tenthsCell(t, 600).ch)
+    }
+    assert.deepEqual([...widths], [4])
+    assert.equal(tenthsCell(40, 600).text, '4.0')
+    assert.equal(tenthsCell(5, 600).text, '0.5')
+    assert.equal(tenthsCell(900, 600).text, '60.0')
+  })
+
+  it('refuses a value that is not a time', () => {
+    assert.throws(() => tenthsCell(-1, 600), RangeError)
+    assert.throws(() => tenthsCell(Number.NaN, 600), RangeError)
   })
 })

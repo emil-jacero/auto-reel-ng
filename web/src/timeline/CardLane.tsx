@@ -1,7 +1,9 @@
+import { memo, useSyncExternalStore } from 'react'
 import type { KeyboardEvent } from 'react'
 
 import { Icon } from '../ui/Icon'
 import { cardSeconds, cardWords, visibleBlocks } from './cards'
+import type { DragStore } from './dragStore'
 import type { CardBlock, CardSpec } from './cards'
 import { timeToPx } from './model'
 
@@ -24,6 +26,7 @@ export function CardLane({
   pps,
   window,
   selected,
+  drag,
   onSelect,
   onClear,
 }: {
@@ -34,6 +37,8 @@ export function CardLane({
   window: { from: number; to: number }
   /** The selected card's chapter (saved name) or null. */
   selected: string | null
+  /** A video card's edge in the air changes its own block only (it adds no time), through this. */
+  drag: DragStore | null
   onSelect: (chapter: string) => void
   onClear: () => void
 }) {
@@ -43,52 +48,93 @@ export function CardLane({
     for (let index = range[0]; index <= range[1]; index += 1) {
       const block = blocks[index]
       const spec = specs[block.chapter]
-      const name = spec.chapter
-      const widthPx = Math.max(2, timeToPx(block.widthMs, pps))
-      const words = cardWords(name, {
-        durationMs: block.durationMs,
-        widthMs: block.widthMs,
-        background: block.background,
-        off: block.off,
-      })
-      const on = selected === name
-      const title = spec.card?.title === '' ? null : (spec.card?.title ?? null)
       nodes.push(
-        <button
+        <CardBlockButton
           key={block.chapter}
-          type="button"
-          className="tl-card"
-          data-kind={block.background}
-          data-off={block.off || undefined}
-          data-selected={on || undefined}
-          aria-pressed={on}
-          aria-label={words}
-          title={words}
-          style={{ insetInlineStart: timeToPx(block.startMs, pps), inlineSize: widthPx }}
-          onClick={() => onSelect(name)}
-          onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
-            if (event.key === 'Escape' && on) {
-              event.preventDefault()
-              onClear()
-            }
-          }}
-        >
-          {block.background === 'video' && <span className="tl-card-edge" aria-hidden="true" />}
-          {widthPx >= TITLE_PX && (
-            <span className="tl-card-text" aria-hidden="true">
-              {on && <Icon name="check" size={16} />}
-              <span className="tl-card-title">{title ?? (name === '' ? 'Opening' : name)}</span>
-              {widthPx >= META_PX && (
-                <span className="tl-card-meta">
-                  {cardSeconds(block.widthMs)} · {block.background === 'video' ? 'Video' : 'Black'}
-                  {block.off ? ' · not enabled' : ''}
-                </span>
-              )}
-            </span>
-          )}
-        </button>,
+          block={block}
+          name={spec.chapter}
+          title={spec.card?.title ?? null}
+          pps={pps}
+          selected={selected === spec.chapter}
+          drag={drag}
+          onSelect={onSelect}
+          onClear={onClear}
+        />,
       )
     }
   }
   return <div className="tl-cards">{nodes}</div>
 }
+
+/** The subscription of a block with no drag store: it never changes. */
+const NEVER = () => () => {}
+
+const CardBlockButton = memo(function CardBlockButton({
+  block,
+  name,
+  title: cardTitle,
+  pps,
+  selected: on,
+  drag,
+  onSelect,
+  onClear,
+}: {
+  block: CardBlock
+  name: string
+  title: string | null
+  pps: number
+  selected: boolean
+  drag: DragStore | null
+  onSelect: (chapter: string) => void
+  onClear: () => void
+}) {
+  // A video card's edge in the air: only this block follows it (the layout is unchanged).
+  const live = useSyncExternalStore(drag?.subscribe ?? NEVER, () => {
+    const d = drag?.getCard() ?? null
+    return block.background === 'video' && d !== null && d.chapter === name ? d : null
+  })
+  const widthMs = live === null ? block.widthMs : Math.min(live.tenths * 100, block.keptMs)
+  const durationMs = live === null ? block.durationMs : live.tenths * 100
+  const widthPx = Math.max(2, timeToPx(widthMs, pps))
+  const words = cardWords(name, {
+    durationMs,
+    widthMs,
+    background: block.background,
+    off: block.off,
+  })
+  const title = cardTitle === '' ? null : cardTitle
+  return (
+    <button
+      type="button"
+      className="tl-card"
+      data-kind={block.background}
+      data-off={block.off || undefined}
+      data-selected={on || undefined}
+      aria-pressed={on}
+      aria-label={words}
+      title={words}
+      style={{ insetInlineStart: timeToPx(block.startMs, pps), inlineSize: widthPx }}
+      onClick={() => onSelect(name)}
+      onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
+        if (event.key === 'Escape' && on) {
+          event.preventDefault()
+          onClear()
+        }
+      }}
+    >
+      {block.background === 'video' && <span className="tl-card-edge" aria-hidden="true" />}
+      {widthPx >= TITLE_PX && (
+        <span className="tl-card-text" aria-hidden="true">
+          {on && <Icon name="check" size={16} />}
+          <span className="tl-card-title">{title ?? (name === '' ? 'Opening' : name)}</span>
+          {widthPx >= META_PX && (
+            <span className="tl-card-meta">
+              {cardSeconds(widthMs)} · {block.background === 'video' ? 'Video' : 'Black'}
+              {block.off ? ' · not enabled' : ''}
+            </span>
+          )}
+        </span>
+      )}
+    </button>
+  )
+})

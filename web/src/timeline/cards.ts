@@ -1,4 +1,6 @@
 import type { EventDetail } from '../api/event.ts'
+import { cardLimits } from './cardLength.ts'
+import type { CardRange, Tenths } from './cardLength.ts'
 import { ModelError } from './model.ts'
 import type { Layout, Ms } from './model.ts'
 
@@ -97,6 +99,30 @@ export function cardSpecs(
       error: card == null ? (chapter.card_error ?? event.title_card_error ?? null) : null,
     }
   })
+}
+
+/**
+ * `specs` with the draft's card lengths laid over the resolved ones: `seconds` is by the
+ * chapter's saved name. The same array back when nothing changes, so memos hold. This is the
+ * one path of the drag and the release: the layout is always derived from the specs.
+ */
+export function withDurations(
+  specs: readonly CardSpec[],
+  seconds: ReadonlyMap<string, number> | null | undefined,
+): readonly CardSpec[] {
+  if (seconds === null || seconds === undefined || seconds.size === 0) {
+    return specs
+  }
+  let changed = false
+  const next = specs.map((spec) => {
+    const value = seconds.get(spec.chapter)
+    if (value === undefined || spec.card === null || spec.card.duration === value) {
+      return spec
+    }
+    changed = true
+    return { ...spec, card: { ...spec.card, duration: value } }
+  })
+  return changed ? next : specs
 }
 
 /** A card's length in whole milliseconds, or a `ModelError` naming it. */
@@ -316,6 +342,8 @@ export type CardBlock = {
   durationMs: Ms
   /** The anchor clip's index. */
   clip: number
+  /** The footage a video card is held to (`Placement.keptMs`). */
+  keptMs: Ms
 }
 
 /**
@@ -338,6 +366,7 @@ export function cardBlocks(placements: readonly Placement[], track: Layout): Car
       clamped: place.clamped,
       durationMs: place.durationMs,
       clip: place.clip,
+      keptMs: place.keptMs,
     })
   }
   return blocks
@@ -372,6 +401,81 @@ export function visibleBlocks(
     }
   }
   return low > first ? [first, low - 1] : null
+}
+
+// --- handles ---------------------------------------------------------------------------
+
+/** What a card's end-edge handle needs (`title-card-duration-drag`), in track order. */
+export type CardHandle = {
+  /** The block's index in `cardBlocks`' list. */
+  index: number
+  /** The chapter's saved name. */
+  chapter: string
+  background: Background
+  /** The card's length now. */
+  tenths: Tenths
+  range: CardRange
+  /** Where the block starts on the track. */
+  startMs: Ms
+  /** The footage a video card is held to (null: none for a black card). */
+  keptMs: Ms
+  /** A video card longer than its footage. */
+  clamped: boolean
+  /** The block's width now. */
+  widthMs: Ms
+}
+
+/** The width a block takes for a length: a black card's own, a video card's held to the footage. */
+export function cardWidthMs(handle: Pick<CardHandle, 'background' | 'keptMs'>, tenths: Tenths): Ms {
+  return handle.background === 'black' ? tenths * 100 : Math.min(tenths * 100, handle.keptMs)
+}
+
+/** One handle per drawn block (`cardBlocks`), with the limits its card has. */
+export function cardHandles(
+  placements: readonly Placement[],
+  blocks: readonly CardBlock[],
+  specs: readonly CardSpec[],
+): CardHandle[] {
+  const handles: CardHandle[] = []
+  let at = 0
+  for (const place of placements) {
+    if (place.kind !== 'anchored' && place.kind !== 'off') {
+      continue
+    }
+    const block = blocks[at]
+    const tenths = Math.round(place.durationMs / 100)
+    handles.push({
+      index: at,
+      chapter: specs[place.chapter].chapter,
+      background: place.background,
+      tenths,
+      range: cardLimits({ background: place.background, currentTenths: tenths, keptMs: place.keptMs }),
+      startMs: block.startMs,
+      keptMs: place.keptMs,
+      clamped: place.clamped,
+      widthMs: block.widthMs,
+    })
+    at += 1
+  }
+  return handles
+}
+
+/** The handles whose end edge meets `[fromMs, toMs]` of the track, as `[first, last]` or null. */
+export function visibleHandles(
+  handles: readonly CardHandle[],
+  fromMs: Ms,
+  toMs: Ms,
+): [number, number] | null {
+  let first = -1
+  let last = -1
+  handles.forEach((handle, index) => {
+    const edge = handle.startMs + handle.widthMs
+    if (edge >= fromMs && edge <= toMs) {
+      first = first === -1 ? index : first
+      last = index
+    }
+  })
+  return first === -1 ? null : [first, last]
 }
 
 // --- words -----------------------------------------------------------------------------
