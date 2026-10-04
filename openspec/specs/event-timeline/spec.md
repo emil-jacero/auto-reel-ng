@@ -78,10 +78,10 @@ With every shown clip ready, the Timeline SHALL show, in one horizontally scroll
 - a **ruler** with time labels in the page's time format (`m:ss`, with fractions only when zoomed in far enough that labels would repeat)
 - the **clips end to end** in play order (a black title card's span, when the event draws one before a chapter, is between them, see "Each chapter's title card is a block on the Timeline"), each as wide as its **kept extent** at the current zoom (its proxy's duration less a cut span that starts at the clip's beginning and a cut span that runs to its end, see "Edge cuts shorten a clip on the Timeline and the clips after it close up"), with no gap between one clip's block and the next, labelled with its name as the page names it and with the kept extent's length. A proxy has the source's timestamps, so a time in a proxy is the same time in the source clip. A clip's length SHALL come from its proxy's facts, never from the browser's reading of a file and never defaulted; a clip shorter than a pixel at the current zoom SHALL still be drawn, one pixel wide at least, and the playhead SHALL be able to be put in it by keyboard.
 - a **chapter band** above the clips: one segment per chapter spanning its shown clips, labelled with the chapter's name, or as the page headings an unnamed chapter ("Main" beside named chapters, "Clips" when none is named). The band's labels stay in view while their chapter scrolls past.
-- each clip's **cuts**, as the event page lists them from `reel.yaml` (in Edit mode: as the Cuts panels list them now, the draft's, with the ones marked removed left out), drawn over the clip as spans with a hatch pattern and named by their reason in words ("manual", "black", "white", "freeze") in the span's text alternative; overlapping or touching cuts SHALL be drawn as the render joins them, one span. A joined span that starts at the clip's beginning (a **leading cut**) or runs to the clip's end or within 0.1 s of it (a **trailing cut**; a cut that runs past the proxy's duration is one) SHALL NOT be drawn: the clip's block starts after a leading cut and ends at a trailing cut's start. Only the spans between the two (**interior cuts**) are drawn, hatched, inside the block. In the read view the spans SHALL be read-only: no handle, no drag, no edit. In Edit mode each drawn cut SHALL have the two trim handles of "Edit mode's cuts are trim handles", drawn over the joined span; a leading or trailing cut has none.
+- each clip's **cuts**, as the Cuts panels list them now (the editor's draft, with the ones marked removed left out), drawn over the clip as spans with a hatch pattern and named by their reason in words ("manual", "black", "white", "freeze") in the span's text alternative; overlapping or touching cuts SHALL be drawn as the render joins them, one span. A joined span that starts at the clip's beginning (a **leading cut**) or runs to the clip's end or within 0.1 s of it (a **trailing cut**; a cut that runs past the proxy's duration is one) SHALL NOT be drawn: the clip's block starts after a leading cut and ends at a trailing cut's start. Only the spans between the two (**interior cuts**) are drawn, hatched, inside the block. Each drawn cut SHALL have the two trim handles of "Edit mode's cuts are trim handles", drawn over the joined span; a leading or trailing cut has none.
 - the **movie stat**, one muted line in the Timeline's control row (beside Play and the zoom), not a paragraph of its own: the movie's length (the sum of the shown clips' lengths minus the time the cuts remove, plus the lengths of the black title cards the track draws), then the source length (the sum of the shown clips' full proxy durations, which edge cuts do not shorten, so the time a leading or trailing cut removes is in the cuts term), the time the cuts remove and the cards' time, each named, separated by " · " ("Movie 3:12 · footage 3:45 · cuts −0:33"; with black cards, "Movie 3:20 · footage 3:45 · cuts −0:33 · cards +0:08"). The cuts term SHALL be left out when no cut removes time, and the cards term when no black card adds time. The line SHALL wrap by whole terms, never scroll the page, and be written by the clock ("Running times are written to a fixed width and say what they are")
 
-If the cuts cannot be read (the same read the page's cut summaries use), the Timeline SHALL show the track without cut spans and SHALL say in a note that the cuts could not be read, and SHALL NOT show the movie's length as if there were no cuts.
+The cuts are the draft's, so the track never shows them as being read or as unreadable.
 
 #### Scenario: Clip widths follow the facts
 - **WHEN** an event has clips whose proxies report 24.96 s, 3.2 s and 0.48 s at 40 px per second
@@ -100,12 +100,14 @@ If the cuts cannot be read (the same read the page's cut summaries use), the Tim
 - **THEN** the track draws one hatched span from 2.0 to 5.0 s, and the movie's length is shorter by 3.0 s for that clip
 
 #### Scenario: A cut that cannot be read
-- **WHEN** reading `reel.yaml`'s cuts fails while the proxies are ready
-- **THEN** the track is shown without cut spans, a note says that the cuts could not be read, and no movie length is shown
+- **WHEN** reading `reel.yaml`'s cuts for the read view's cut summaries fails and the operator presses Edit
+- **THEN** the Timeline draws the cuts the editor's draft holds, with no note that the cuts are being read or could not
+  be read
 
 #### Scenario: The same cut in the read view and in Edit mode
-- **WHEN** a clip lists a cut from 2.0 to 4.0 s, and the operator opens the Timeline in the read view and then in Edit mode
-- **THEN** the read view draws the hatched span from 2.0 to 4.0 s with no handle, and Edit mode draws the same span with a start and an end handle
+- **WHEN** a clip lists a cut from 2.0 to 4.0 s, and the operator looks at the read view and then presses Edit
+- **THEN** the read view shows the cut in the clip's cut summary and draws no Timeline, and Edit mode's Timeline draws
+  the hatched span from 2.0 to 4.0 s with a start and an end handle
 
 #### Scenario: Black cards count in the movie's length
 - **WHEN** an event of 3:45 of footage with 33 s of cuts draws two black cards of 4.0 s each
@@ -145,17 +147,72 @@ A clip shorter than one second has one tile.
 
 ### Requirement: The track zooms, and draws only what is in view
 
-The Timeline SHALL offer **Zoom in**, **Zoom out** and **Fit** as buttons, and `+`, `-` and `0` as keys while the track has keyboard focus. **Fit** SHALL show the whole timeline in the track's width; zooming out SHALL stop at Fit, or at 4 px per second when the whole event is longer than the track is wide at that scale. Zooming in SHALL stop at 240 px per second. A zoom SHALL keep the playhead where it was in the track's view. The track SHALL scroll horizontally inside its own box; the page SHALL NOT scroll horizontally at any width from 320 to 1280 px.
+The Timeline SHALL offer **Zoom out**, a **Zoom** slider, **Zoom in** and **Fit** in its zoom group, and, while the
+track has keyboard focus, the keys `+` or `=` (zoom in), `-` (zoom out), `0` (fit) and `\` (fit, and pressed again at
+Fit, back to the zoom before it). **Fit** SHALL show the whole timeline in the track's width; zooming out SHALL stop at
+Fit, or at 4 px per second when the whole event is longer than the track is wide at that scale. Zooming in SHALL stop
+at 240 px per second. Zoom in and Zoom out SHALL change the scale by a factor of 1.5.
 
-The track SHALL draw only the clips, filmstrip tiles and ruler labels that intersect the visible range, plus a margin of one view width on each side. For an event of 400 clips, at the most zoomed-out level, the track SHALL hold fewer than 100 clip elements. Scrolling and zooming SHALL NOT change which clip a playhead time belongs to.
+The **Zoom** slider SHALL be a slider (a native range input) named "Zoom" whose left end is Fit and whose right end is
+240 px per second, with the scale between them logarithmic in the slider's position; its position SHALL always show the
+current scale, however it was reached (buttons, keys, wheel or Fit following a resized window). Its value text SHALL be
+"Fit" at its left end and otherwise the scale in words, rounded to a whole number ("40 px per second"). Arrow keys on it
+SHALL move it in small steps, Page Up and Page Down in larger ones, Home to Fit and End to the maximum. Dragging it SHALL
+zoom continuously, drawing at most once per animation frame. When Fit is already 240 px per second (a short event),
+the slider SHALL be disabled.
+
+A zoom from the buttons, the keys or the slider SHALL keep the playhead where it was in the track's view when the
+playhead is in view, and the moment at the centre of the view otherwise. Turning the wheel with Ctrl held (Cmd on
+macOS), and a trackpad pinch, over the track SHALL zoom about the pointer, keeping the moment under the pointer where it
+is, and SHALL NOT zoom the page; a wheel turned without Ctrl or Cmd SHALL scroll as before. The scale SHALL be kept per
+event for the browser tab's session: a Refresh, a Save, and leaving and re-entering Edit mode SHALL show the event at
+the scale it had (re-bounded to the current Fit and maximum), and a new tab SHALL open at Fit.
+
+The track SHALL scroll horizontally inside its own box; the page SHALL NOT scroll horizontally at any width from 320 to
+1280 px. At Fit the track's box SHALL NOT scroll horizontally either: its content SHALL be no wider than its box, with
+the playhead at the start or at the end of the timeline, with title card blocks drawn at their minimum width, and under
+a fine or a coarse pointer.
+
+The track SHALL draw only the clips, filmstrip tiles and ruler labels that intersect the visible range, plus a margin of
+one view width on each side. For an event of 400 clips, at the most zoomed-out level, the track SHALL hold fewer than
+100 clip elements. Scrolling and zooming SHALL NOT change which clip a playhead time belongs to. Zooming SHALL write
+nothing and send no request other than reads.
 
 #### Scenario: Fit shows the whole event
 - **WHEN** the operator presses Fit on an event of 10 minutes in a 1280 px window
 - **THEN** the whole event is inside the track's width, with no horizontal scroll bar on the page
 
+#### Scenario: Fit has no scroll bar of its own
+- **WHEN** an event with a 3.0 s black title card drawn at its 24 px minimum is at Fit, at 1280 and at 390 px, under a
+  fine and a coarse pointer, with the playhead first at the start and then at the end of the timeline
+- **THEN** in every case the track's box is not scrollable horizontally (its scroll width equals its client width)
+
 #### Scenario: Zooming keeps the playhead in view
 - **WHEN** the playhead is at 0:42 and the operator presses Zoom in three times
-- **THEN** the playhead is still inside the track's view, at the same horizontal place it had
+- **THEN** the playhead is still inside the track's view, at the same horizontal place it had, and the slider has moved
+  right
+
+#### Scenario: Dragging the slider zooms about the playhead
+- **WHEN** the playhead is in view and the operator drags the Zoom slider from its left end to its right end
+- **THEN** the scale rises continuously to 240 px per second, the playhead stays within 1 px of its horizontal place in
+  the view throughout, and the slider's value text reads "240 px per second"
+
+#### Scenario: Backslash toggles Fit
+- **WHEN** the track is at 90 px per second and the operator presses `\`, then `\` again
+- **THEN** the first press fits the whole event and the slider reads "Fit"; the second returns to 90 px per second
+
+#### Scenario: Ctrl and the wheel zoom at the pointer
+- **WHEN** the operator holds Ctrl and turns the wheel up with the pointer over 0:30 on the track
+- **THEN** the track zooms in, 0:30 stays under the pointer, and the browser's page zoom is unchanged
+
+#### Scenario: The zoom is kept for the session
+- **WHEN** the operator zooms an event's Timeline to 60 px per second and presses Save, and then opens the same event in
+  a new tab
+- **THEN** after the save the Timeline is still at 60 px per second; the new tab's Timeline opens at Fit
+
+#### Scenario: A short event cannot zoom
+- **WHEN** an event of 3 s fits at 240 px per second
+- **THEN** the slider is disabled and Zoom in is unavailable
 
 #### Scenario: A long event is windowed
 - **WHEN** an event of 400 clips is shown at its most zoomed-out level
@@ -163,7 +220,8 @@ The track SHALL draw only the clips, filmstrip tiles and ruler labels that inter
 
 #### Scenario: A phone-width window
 - **WHEN** the Timeline is shown 320 px wide
-- **THEN** the page has no horizontal scroll bar, the track scrolls inside its box, and its toolbar wraps without cutting off a control
+- **THEN** the page has no horizontal scroll bar, the track scrolls inside its box, and its toolbar wraps without
+  cutting off a control
 
 ### Requirement: The playhead scrubs one video
 
@@ -435,50 +493,6 @@ pixels wide, and down to 320, the lane and its detail SHALL NOT make the page sc
 - **WHEN** the system asks for reduced motion and a mark is selected
 - **THEN** nothing in the lane or its detail animates
 
-### Requirement: The read view and Edit mode each offer a Timeline that loads nothing until it is opened
-
-The event page SHALL show, in its read view and in Edit mode, a section headed "Timeline" (a level-two heading). In the read view it comes after the Movie section (when the page shows one) and before the event's chapters; in Edit mode it comes after the metadata form and before the chapters' lists, and it is the Timeline on which the operator trims cuts ("Edit mode's cuts are trim handles"). In the read view the section SHALL have a button, "Open timeline", that opens it; once open, the same button SHALL read "Close timeline". The button SHALL state whether the section is open (`aria-expanded`) and SHALL name the content it controls. In Edit mode the section SHALL have no such button and no way to close it: Edit mode's Timeline is where the cuts are trimmed, and it is open whenever Edit mode shows.
-
-The read view's section SHALL be closed when the page opens, after a Refresh and after leaving Edit mode. Edit mode's section SHALL be open from the moment Edit mode shows: pressing Edit opens Edit mode with the Timeline open (a Timeline open in the read view is replaced by Edit mode's, open), and a Refresh or a save keeps it open. While the read view's section is closed the page SHALL create no `<video>` for it and SHALL make no request for a proxy, a filmstrip or a proxy job, whatever the number of clips. An open Edit-mode Timeline of an event whose proxies are not all ready shows its Prepare state and nothing else, as the open read view does. While the event page is loading, or shows a failure, it SHALL show no Timeline section.
-
-Opening the Timeline SHALL change no state the service holds: it only reads. Starting a proxy job is a separate, explicit control (see "The Timeline asks for the clips' proxies when they are missing").
-
-In Edit mode the Timeline SHALL draw its clips, chapters and proxies as the event was last read (a proxy job that ends while Edit mode is open reads the event again, quietly, and the Timeline follows it; the editor's draft is not touched by that read), and its cuts as the draft lists them. It SHALL NOT draw the draft's unsaved order or chapters: when the draft has moved a clip, reordered or renamed a chapter, or added or deleted one, the Timeline SHALL say in a note that it shows the order last saved, and the cuts of every clip stay editable. Play on the Timeline SHALL skip the draft's cuts as they are now, so that a trim is heard and seen before it is saved. In Edit mode the cuts are never "being read" and never "unreadable": the draft holds them.
-
-#### Scenario: A closed timeline costs nothing
-- **WHEN** the operator opens the page of an event of 400 clips and does not press "Open timeline"
-- **THEN** the page holds no `<video>` for the Timeline and has made no request to a proxy or filmstrip address, and the Timeline section shows its heading and the "Open timeline" button, not expanded
-
-#### Scenario: Edit mode has its own, closed timeline
-- **WHEN** the operator opens the Timeline of `2024-06-27 - Grillning med grannar` and then presses Edit
-- **THEN** the read view's closed Timeline is not carried over: the page shows Edit mode with a Timeline section after the metadata form, open and showing its track, with no "Open timeline"
-  or "Close timeline" button anywhere in Edit mode; and leaving Edit mode shows the read view's Timeline section closed
-
-#### Scenario: Edit mode without proxies shows Prepare
-- **WHEN** the operator presses Edit on an event none of whose proxies is prepared
-- **THEN** the open Timeline shows its Prepare state with "Prepare proxies", the chapters' Edit Titlecard buttons and the
-  Details form work, and the page holds no `<video>` for the Timeline
-
-#### Scenario: Opening is a read
-- **WHEN** the operator opens the Timeline of an event whose proxies are all ready
-- **THEN** every request the client made for it was a read, no file under the library changed, and the jobs the service lists are the same as before
-
-#### Scenario: The movie and the timeline do not play together
-- **WHEN** the event's movie is playing and the operator presses Play on the Timeline
-- **THEN** the movie pauses and the Timeline plays; pressing the movie's Play while the Timeline plays pauses the Timeline
-
-#### Scenario: A reorder is not drawn
-- **WHEN** in Edit mode the operator moves `s1710002.mp4` above `s1710001.mp4` in its chapter's list and opens the Timeline
-- **THEN** the Timeline draws `s1710001.mp4` first, as last saved, and a note says that it shows the order last saved; after Save the Timeline draws the new order
-
-#### Scenario: Play skips a trim that is not saved
-- **WHEN** in Edit mode the operator trims the cut of `s1710001.mp4` to 1.0 to 3.5 s and plays the Timeline from 0.5 s
-- **THEN** no frame between 1.0 and 3.5 s is shown, and nothing has been written
-
-#### Scenario: Proxies prepared while editing
-- **WHEN** in Edit mode the Timeline shows its Prepare state, the operator presses "Prepare proxies", and the job ends
-- **THEN** the page reads the event again, the Timeline shows the track with the draft's cuts, and the draft, the save bar and the Cuts panels are as they were
-
 ### Requirement: Edit mode's cuts are trim handles
 
 In Edit mode, each cut the Timeline draws on a clip that offers a Cuts panel (an included or new clip on disk whose proxy is ready) SHALL have two **trim handles**, one on its start and one on its end. The handles belong to the cut as the clip's Cuts panel lists it: the cut keeps its place in the list, its number, its reason and its identity while a handle moves, and a cut marked removed has no handle. A handle SHALL be a slider (`role="slider"`, horizontal), reachable by Tab, in the order of time: the clips in play order, and in each clip the cuts by start, a cut's start handle before its end handle, after the playhead. It SHALL be named "Cut <n> start of <name>" or "Cut <n> end of <name>", where <name> is the clip as its row names it and <n> the cut's number in that clip's Cuts panel (the panel's own numbering, removed cuts counted), so no two handles of a clip share a name. It SHALL expose `aria-valuenow` as its time in the clip in seconds, and `aria-valuemin` and `aria-valuemax` as the least and greatest time it can take now, and a value text that gives its time in the Cuts panel's time format followed by the cut's span in words ("0:01.5, the cut runs 0:01.5 to 0:03"). A visible description, referenced by `aria-describedby`, SHALL list the keys of "A trim handle is moved by keyboard".
@@ -701,7 +715,7 @@ In Edit mode the analysis lane SHALL offer **Approve as cut** for a suggestion w
 
 Approving SHALL write nothing by itself. It is an edit of the draft: the save bar SHALL count one cut added, the unsaved-changes guard SHALL apply, and Save SHALL write the cut to `reel.yaml` as a trim with the kind as its `reason`, by the existing whole-document write ("Saving an edit writes only what the operator changed"). Removing the cut in the Cuts panel, and Reset, SHALL return the suggestion to pending with no other action, and an approval followed by its removal SHALL leave nothing to save. An approved cut, once saved, SHALL read as **cut** on the next read of the page, as a cut saved by hand over the same span does ("The timeline shows the event's analysis suggestions beside its clips").
 
-Approving SHALL be said once, politely, through Edit mode's one live region ("Approved black frames, 0:00 to 0:03.2, of C0012.MP4 as a cut; 1 cut added."). A refusal SHALL add nothing, SHALL be said in the live region and shown in the detail, in the Cuts panel's words ("Not approved: …", an overlap naming the cut by its number in the panel and saying to remove it first), and the suggestion SHALL keep its state. Approving a suggestion that is already cut, or dismissed, SHALL change nothing and say so ("Already cut: …", "Dismissed: … Restore it first."). The read view SHALL offer no approval: reading a screen never changes state.
+Approving SHALL be said once, politely, through Edit mode's one live region ("Approved black frames, 0:00 to 0:03.2, of C0012.MP4 as a cut; 1 cut added."). A refusal SHALL add nothing, SHALL be said in the live region and shown in the detail, in the Cuts panel's words ("Not approved: …", an overlap naming the cut by its number in the panel and saying to remove it first), and the suggestion SHALL keep its state. Approving a suggestion that is already cut, or dismissed, SHALL change nothing and say so ("Already cut: …", "Dismissed: … Restore it first.").
 
 #### Scenario: Approving adds a cut with the kind as its reason
 - **WHEN** in Edit mode a clip `C0012.MP4` of 25 s with no cuts has a pending black suggestion from 0 to 3.2033 s and the operator selects its mark and presses "Approve as cut"
@@ -732,21 +746,21 @@ Approving SHALL be said once, politely, through Edit mode's one live region ("Ap
 - **THEN** the draft holds one cut, and the second press says "Already cut: …"
 
 #### Scenario: The read view has no approval
-- **WHEN** the Timeline is opened on the event page's read view
-- **THEN** the detail of a selected mark has no Approve, Dismiss or Restore, the key A on a mark does nothing, and no request other than reads is made
+- **WHEN** the operator looks at the event page's read view of an event with pending suggestions
+- **THEN** it shows no Timeline, no mark and no Approve, Dismiss or Restore, and no request other than reads is made
 
 ### Requirement: A suggestion is dismissed for the page visit and restored, without an edit
 
 In Edit mode the analysis lane SHALL offer **Dismiss** for a pending suggestion and **Restore** for a dismissed one, as buttons in the detail of the selected mark and as the key **R** on the focused mark (R on a pending mark dismisses it, R on a dismissed mark restores it). A dismissed suggestion SHALL read **dismissed**, with its glyph and word, unless a cut covers any of its span, in which case it reads by its cuts ("A cut outranks a dismissal"). Restoring SHALL return it to pending. Dismissing SHALL NOT be an edit: no cut is added, the draft SHALL stay as it was, the save bar SHALL NOT appear, Save SHALL stay unavailable if nothing else was edited, and the unsaved-changes guard SHALL NOT apply, because `reel.yaml` has no field for a rejection and nothing is written.
 
-A dismissal SHALL last for the page visit: it SHALL survive opening and closing the Timeline, entering and leaving Edit mode, a Refresh and a Save, and SHALL be gone when the page is reloaded or left. A dismissal whose suggestion a new read of the analysis no longer lists SHALL be dropped silently. While any suggestion can be decided, the lane SHALL say once, as text, that dismissed suggestions come back when the page is reloaded. Dismissing and restoring SHALL each be said once through the live region ("Dismissed black frames, 0:00 to 0:03.2, of C0012.MP4.", "Restored …"). A suggestion that is cut or partly cut SHALL answer Dismiss with a statement ("Already cut: …", "Partly cut: … It is decided by the cut that overlaps it.") and change nothing.
+A dismissal SHALL last for the page visit: it SHALL survive leaving and re-entering Edit mode, a Refresh and a Save, and SHALL be gone when the page is reloaded or left. A dismissal whose suggestion a new read of the analysis no longer lists SHALL be dropped silently. While any suggestion can be decided, the lane SHALL say once, as text, that dismissed suggestions come back when the page is reloaded. Dismissing and restoring SHALL each be said once through the live region ("Dismissed black frames, 0:00 to 0:03.2, of C0012.MP4.", "Restored …"). A suggestion that is cut or partly cut SHALL answer Dismiss with a statement ("Already cut: …", "Partly cut: … It is decided by the cut that overlaps it.") and change nothing.
 
 #### Scenario: Dismiss and restore leave the draft alone
 - **WHEN** in Edit mode, with nothing edited, the operator presses R on a pending mark, then R again
 - **THEN** the mark reads dismissed with its `×` glyph and the word, then pending; no save bar appeared, Save was never enabled, and leaving Edit mode asked nothing
 
 #### Scenario: A dismissal outlives Edit mode and a Refresh
-- **WHEN** the operator dismisses a mark, leaves Edit mode, presses Refresh and opens the Timeline again
+- **WHEN** the operator dismisses a mark, leaves Edit mode, presses Refresh and presses Edit again
 - **THEN** the mark still reads dismissed; after a reload of the page it reads pending
 
 #### Scenario: A cut outranks a dismissal
@@ -759,7 +773,7 @@ A dismissal SHALL last for the page visit: it SHALL survive opening and closing 
 
 #### Scenario: The note is said once
 - **WHEN** Edit mode's Timeline shows marks that can be decided
-- **THEN** one line under the lane says that dismissed suggestions come back when the page is reloaded; the read view shows no such line
+- **THEN** one line under the lane says that dismissed suggestions come back when the page is reloaded
 
 ### Requirement: A and R decide only the focused mark, and the buttons decide the same
 
@@ -809,44 +823,9 @@ Where the press areas of two trim handles overlap and a press is handed to the n
 - **WHEN** the operator tabs from cut 1's end to cut 2's start
 - **THEN** cut 2 is selected
 
-### Requirement: The Timeline pauses, and is paused, like every other player
-
-The Timeline's video SHALL take part in the page's one rule that a video that starts pauses every other playing video
-("The event page plays one video at a time"), as one player among the others and with no rule of its own for any other
-player. Pressing Play on the Timeline while the Movie section's player or a clip's player plays SHALL pause that
-player where it is; a video of the page that starts while the Timeline plays SHALL pause the Timeline.
-
-A Timeline paused that way SHALL stay open, keep its playhead where it stopped, keep every handle and mark usable, and
-play on from the playhead when its own Play is pressed. Being paused by another player SHALL NOT be taken for the
-operator's Pause in any way that changes the Timeline: it SHALL NOT edit, select or move anything, SHALL NOT announce
-anything, and SHALL NOT start the Timeline again by itself. A change of the Timeline's file at a clip boundary SHALL be
-the Timeline continuing, not a start of another video: but when another video has started while the file was changing,
-the Timeline SHALL NOT take playback back, and SHALL stay paused at the boundary.
-
-#### Scenario: The Timeline starts while a clip plays
-- **WHEN** the player of `s1710001.mp4` plays at `0:03.2` and the operator presses Play on the Timeline
-- **THEN** the clip's player is paused at `0:03.2` and stays open, and the Timeline plays from its playhead
-
-#### Scenario: A clip starts while the Timeline plays
-- **WHEN** the Timeline plays across `s1710001.mp4` and the operator presses "Play s1710002.mp4" on that clip's
-  thumbnail and then the player's Play
-- **THEN** the Timeline is paused with its playhead at the place it stopped, it is still open, no handle or mark
-  has moved, nothing was announced, and the clip plays
-- **WHEN** the operator then presses the Timeline's Play
-- **THEN** the Timeline plays on from its playhead and the clip is paused
-
-#### Scenario: A start during a clip boundary is kept
-- **WHEN** the Timeline plays and, within the moment its file changes at the boundary between two clips, the
-  operator presses the Movie section's play
-- **THEN** the movie plays, the Timeline stays paused at the boundary and does not start again by itself
-
-#### Scenario: The movie and the Timeline in either order
-- **WHEN** the movie plays and the operator presses Play on the Timeline, and then presses the movie's play
-- **THEN** each start pauses the other, and neither player has closed or moved
-
 ### Requirement: The Timeline shows a clip's turn
 
-The Timeline SHALL show a clip turned by the clip's `rotate` (the draft's in Edit mode, the saved one in the read view),
+The Timeline SHALL show a clip turned by the clip's `rotate` (the draft's),
 as "Every picture of a clip shows its turn" requires: its one video, while the playhead is in the clip, and each tile of
 the clip's filmstrip. The turn SHALL be a transform of the proxy's picture and of the sprite's tiles; the proxy and the
 sprite SHALL NOT be requested again because of a turn. The track's geometry SHALL NOT depend on a turn: a clip's lane
@@ -864,13 +843,13 @@ video SHALL be turned by the next clip's turn before it is shown.
 - **THEN** the video is shown turned for the second clip, and unturned again after the next unturned clip
 
 #### Scenario: Turning in Edit mode shows at once
-- **WHEN** the operator presses Rotate right on a clip while the Timeline is open
+- **WHEN** the operator presses Rotate right on a clip in Edit mode
 - **THEN** its tiles and, when the playhead is in it, the video show the new turn with no request for a sprite or a proxy
 
 ### Requirement: Each chapter's title card is a block on the Timeline
 
 The Timeline SHALL show a lane of title cards directly above the clips, from the event detail's resolved cards
-(`chapters[].card`) and the detail's `title_cards.enabled` (the draft's Title cards switch while it differs, in Edit mode), with one block per chapter whose card the render draws: a
+(`chapters[].card`) and the detail's `title_cards.enabled` (the draft's Title cards switch while it differs), with one block per chapter whose card the render draws: a
 chapter with a shown clip that has footage left after the cuts, when title cards are enabled. The block
 SHALL show the card's title text (its resolved `title`), its length, and its look in words and shape, never by
 colour alone:
@@ -908,8 +887,8 @@ over the neighbouring track without moving it, so that a card is still pressed; 
 change. While a card's image is missing, the block SHALL show the card's title on black. The Timeline plays and shows
 the cards: "The Timeline plays the title cards as the movie will" and "The playhead can be put in a card" say how, and
 no note SHALL say that the Timeline does not play cards. A press in a black card's span or block SHALL do
-what activating the block does ("A selected title card opens its inspector in Edit mode": it opens the card's dialog in
-Edit mode and only selects in the read view) and SHALL also put the playhead there.
+what activating the block does ("A selected title card opens its inspector in Edit mode": it selects the card and opens its
+dialog) and SHALL also put the playhead there.
 
 #### Scenario: A black card before the second chapter
 - **WHEN** an event with the chapters "" (opening card black, 3.0 s) and "Dag 2" (black, 4.0 s) has a 20 s clip in
@@ -963,7 +942,7 @@ Edit mode and only selects in the read view) and SHALL also put the playhead the
 
 #### Scenario: A press in a black card's span
 - **WHEN** the operator presses inside a black card's block with the playhead at 5.0 s of a clip
-- **THEN** the card is selected (in Edit mode its dialog opens) and the playhead is in the card at the press, showing its image
+- **THEN** the card is selected, its dialog opens, and the playhead is in the card at the press, showing its image
 
 #### Scenario: A zoomed-out card stays pressable
 - **WHEN** a 3.0 s black card is drawn at 4 px per second (12 px wide)
@@ -977,28 +956,28 @@ Edit mode and only selects in the read view) and SHALL also put the playhead the
 ### Requirement: A card is selected from the Timeline or the list, as one selection
 
 The page SHALL hold one card selection, shared by the Timeline's blocks and Edit mode's chapter header bars, kept above both so
-that a Refresh or leaving Edit mode, which close the Timeline section, do not end it. Pressing a block, or a chapter's Edit Titlecard button, SHALL select that card, and the block and the button SHALL both show it selected, in more than colour (the button as pressed, with `aria-pressed`). At most one
+that a Refresh, a Save or leaving and re-entering Edit mode, which mount the Timeline again, do not end it. Pressing a block, or a chapter's Edit Titlecard button, SHALL select that card, and the block and the button SHALL both show it selected, in more than colour (the button as pressed, with `aria-pressed`). At most one
 thing SHALL be selected on the Timeline: selecting a card SHALL end the selection of a cut, and selecting a cut
 SHALL end the selection of a card. Pressing the selected card again SHALL leave it selected; Escape SHALL clear
 it, unless the card's dialog is open, where Escape closes the dialog and the card stays selected. The selection SHALL end when its chapter is deleted or no longer in the event after a read. A block and the button SHALL be buttons reached by Tab in document order, pressed by Enter or Space, with `aria-pressed`, named in words
 as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default chapter: "Title card for the opening,
-…"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", not enabled"). In the read view a selection SHALL open nothing and SHALL show no text: the selected card's words ("Title card for <chapter>, 7.0 s, over video") are the block's accessible name and are announced once through a visually hidden polite status region that is always in the page; there SHALL be no visible panel, line or region under the Timeline for a selected card. It SHALL write nothing and request nothing. In Edit mode, pressing a block or the button SHALL also open that card's dialog (`web-app`, "A selected title card opens its inspector in Edit mode"), and the page shows no panel for it either.
+…"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", not enabled"). Pressing a block or the button SHALL also open that card's dialog (`web-app`, "A selected title card opens its inspector in Edit mode"); a selection SHALL be announced once through the polite status region, and the page SHALL have no inspector slot or other line naming the selected card.
 
 #### Scenario: One selection from either place
 - **WHEN** the operator presses the block of "Dag 2" on the Timeline in Edit mode
-- **THEN** the block is pressed, "Dag 2"'s Edit Titlecard button is shown pressed, and the card's dialog opens (Edit mode) or the status region announces the card once (read view) and no text panel appears
+- **THEN** the block is pressed, "Dag 2"'s Edit Titlecard button is shown pressed, and the card's dialog opens
 
 #### Scenario: Selecting a cut ends a card selection
 - **WHEN** a card is selected and the operator presses a cut's span
 - **THEN** the cut is selected and the card is not
 
 #### Scenario: Refresh keeps the selection
-- **WHEN** a card is selected, the section is closed by a Refresh, and the read still lists the chapter
-- **THEN** its Edit Titlecard button (Edit mode) is shown pressed, and the block is pressed when the Timeline is opened again
+- **WHEN** a card is selected, the operator presses Refresh, and the read still lists the chapter
+- **THEN** its Edit Titlecard button is shown pressed, and so is its block on the Timeline
 
 #### Scenario: A deleted chapter ends the selection
 - **WHEN** the selected card's chapter is deleted in the draft
-- **THEN** nothing is selected and the status region is empty
+- **THEN** nothing is selected
 
 #### Scenario: Keyboard and names
 - **WHEN** a keyboard user tabs to the "Dag 2" block and presses Space
@@ -1006,11 +985,11 @@ as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default cha
   status says it once
 
 #### Scenario: Reading changes nothing
-- **WHEN** a card is selected in the read view or in Edit mode
+- **WHEN** a card is selected and its dialog is closed without a change
 - **THEN** no request is made and the Save bar shows no unsaved change
 
 #### Scenario: A selected card shows no text panel
-- **WHEN** the operator selects the block of "Test" (7.0 s, over video) in the read view, and again in Edit mode
+- **WHEN** the operator selects the block of "Test" (7.0 s, over video) in Edit mode and closes its dialog without a change
 - **THEN** no visible text "Title card for Test, 7.0 s, over video" is in the page, outside the block's own name and the visually hidden status region, and the status region held that sentence once
 
 ### Requirement: A card block's end edge is dragged to set the card's length
@@ -1376,3 +1355,98 @@ takes a kept frame or a frame inside an interior cut.
 #### Scenario: Fit fits what plays
 - **WHEN** the operator presses Fit on the event of A, B and C in a track 950 px wide
 - **THEN** the scale is 50 px per second, the 19 s of the track fill it, and C's block ends at 950 px
+
+### Requirement: The Timeline is shown only in Edit mode, open from the start
+
+The event page SHALL show a section headed "Timeline" (a level-two heading) only in Edit mode, after the metadata form
+and the Poster panel and before the chapters' lists; it is the Timeline on which the operator trims cuts ("Edit mode's
+cuts are trim handles"). The section SHALL be open whenever Edit mode shows: pressing Edit opens Edit mode with the
+Timeline open, and a Refresh or a save keeps it open. It SHALL have no button that opens or closes it.
+
+The read view SHALL show no Timeline: no section, no heading, no "Open timeline" or "Close timeline" button, no line
+or region naming a selected title card, and SHALL create no `<video>` for a Timeline and make no request for a proxy, a
+filmstrip, the analysis or a proxy job on its behalf, whatever the number of clips. The read view SHALL keep everything
+else it shows: the event's chapters and clips with their play controls, cut summaries and turns, the Movie section and
+the poster. While the event page is loading, or shows a failure, it SHALL show no Timeline section.
+
+An open Timeline of an event whose proxies are not all ready SHALL show its Prepare state and nothing else. Showing the
+Timeline SHALL change no state the service holds: it only reads. Starting a proxy job is a separate, explicit control
+(see "The Timeline asks for the clips' proxies when they are missing").
+
+The Timeline SHALL draw its clips, chapters and proxies as the event was last read (a proxy job that ends while Edit
+mode is open reads the event again, quietly, and the Timeline follows it; the editor's draft is not touched by that
+read), and its cuts as the draft lists them. It SHALL NOT draw the draft's unsaved order or chapters: when the draft
+has moved a clip, reordered or renamed a chapter, or added or deleted one, the Timeline SHALL say in a note that it
+shows the order last saved, and the cuts of every clip stay editable. Play on the Timeline SHALL skip the draft's cuts
+as they are now, so that a trim is heard and seen before it is saved. The cuts are never "being read" and never
+"unreadable": the draft holds them.
+
+#### Scenario: The read view has no Timeline
+- **WHEN** the operator opens the page of an event of 400 clips whose proxies are all ready
+- **THEN** the read view has no heading "Timeline", no "Open timeline" button and no title card line, the page holds no
+  `<video>` for a Timeline, and no request was made to a proxy, filmstrip, analysis or proxy-job address
+
+#### Scenario: Edit opens the Timeline, leaving closes it
+- **WHEN** the operator presses Edit on `2024-06-27 - Grillning med grannar` and later leaves Edit mode
+- **THEN** Edit mode shows a Timeline section after the metadata form, open and showing its track, with no "Open
+  timeline" or "Close timeline" button; after leaving, the read view shows no Timeline section and its clip list,
+  Movie section and poster as before
+
+#### Scenario: Edit mode without proxies shows Prepare
+- **WHEN** the operator presses Edit on an event none of whose proxies is prepared
+- **THEN** the open Timeline shows its Prepare state with "Prepare proxies", the chapters' Edit Titlecard buttons and the
+  Details form work, and the page holds no `<video>` for the Timeline
+
+#### Scenario: Showing is a read
+- **WHEN** the operator presses Edit on an event whose proxies are all ready
+- **THEN** every request the client made for the Timeline was a read, no file under the library changed, and the jobs
+  the service lists are the same as before
+
+#### Scenario: A reorder is not drawn
+- **WHEN** in Edit mode the operator moves `s1710002.mp4` above `s1710001.mp4` in its chapter's list
+- **THEN** the Timeline draws `s1710001.mp4` first, as last saved, and a note says that it shows the order last saved;
+  after Save the Timeline draws the new order
+
+#### Scenario: Play skips a trim that is not saved
+- **WHEN** in Edit mode the operator trims the cut of `s1710001.mp4` to 1.0 to 3.5 s and plays the Timeline from 0.5 s
+- **THEN** no frame between 1.0 and 3.5 s is shown, and nothing has been written
+
+#### Scenario: Proxies prepared while editing
+- **WHEN** in Edit mode the Timeline shows its Prepare state, the operator presses "Prepare proxies", and the job ends
+- **THEN** the page reads the event again, the Timeline shows the track with the draft's cuts, and the draft, the save
+  bar and the Cuts panels are as they were
+
+### Requirement: The Timeline's toolbar keeps its place while the Timeline seeks, loads and plays
+
+The Timeline's toolbar (Play, the playhead's readout with the clip's name and the Clip and Event times, the zoom group
+and Use as poster) SHALL lay out each control in a slot whose position and size do not depend on the Timeline's state:
+every control's box SHALL be the same, to within 1 CSS pixel, while the Timeline is idle, while a seek is loading its
+frame, while it plays, while the playhead is in a title card, and whether or not Use as poster can act. The clip's name
+SHALL stay on one line in its slot, cut with an ellipsis when it does not fit, with its whole text as its tooltip. No
+state SHALL add text to the toolbar's rows: the reason Use as poster cannot act SHALL be its tooltip and its accessible
+description, and SHALL be shown, in a tip that takes no room in the toolbar, and said once through the Timeline's
+polite live region, when the operator presses the button while it cannot act (`web-app`, "Edit mode chooses the event's
+poster on the Timeline"). Where the controls do not fit one row the toolbar MAY take more rows, at most three rows of
+controls plus the movie stat's row (at 390 CSS pixels: Play and the readout, the zoom group, Use as poster); each
+control SHALL then be in the same row and box in every state. The toolbar SHALL NOT make the page scroll
+horizontally at any width from 320 to 1280 px, in the light or the dark scheme.
+
+#### Scenario: A seek does not move the toolbar
+- **WHEN** at 1280 px the operator clicks the ruler far from the playhead, so the frame takes a moment to load, and Use
+  as poster cannot act until it has
+- **THEN** no text appears beside Use as poster, the clip's name and the Clip and Event times stay on one line, and
+  every control's box is the same as before the click and after the frame arrived
+
+#### Scenario: Playing and a card do not move the toolbar
+- **WHEN** the Timeline plays from a clip into a black title card and is paused there
+- **THEN** Play, the readout, the zoom group and Use as poster have the same boxes as when the Timeline was idle
+
+#### Scenario: The poster reason is given on demand
+- **WHEN** the video has no decoded frame at the playhead and the operator presses Use as poster
+- **THEN** a tip under the button says "The picture is still loading.", the live region says it once, the toolbar does
+  not change, and the poster is not changed
+
+#### Scenario: A phone-width toolbar
+- **WHEN** the Timeline is shown 390 px wide, idle, then seeking, then playing
+- **THEN** the toolbar has the same rows in each state (at most three rows of controls and the movie stat's row),
+  each control in the same box, and the page has no horizontal scroll bar

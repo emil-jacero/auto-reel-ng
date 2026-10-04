@@ -180,10 +180,10 @@ nothing and send no request other than reads.
 With every shown clip ready, the Timeline SHALL show, in one horizontally scrolling track:
 
 - a **ruler** with time labels in the page's time format (`m:ss`, with fractions only when zoomed in far enough that labels would repeat)
-- the **clips end to end** in play order (a black title card's span, when the event draws one before a chapter, is between them, see "Each chapter's title card is a block on the Timeline"), each as wide as its proxy's duration at the current zoom, labelled with its name as the page names it. A proxy has the source's timestamps, so a time in a proxy is the same time in the source clip. A clip's length SHALL come from its proxy's facts, never from the browser's reading of a file and never defaulted; a clip shorter than a pixel at the current zoom SHALL still be drawn, one pixel wide at least, and the playhead SHALL be able to be put in it by keyboard.
+- the **clips end to end** in play order (a black title card's span, when the event draws one before a chapter, is between them, see "Each chapter's title card is a block on the Timeline"), each as wide as its **kept extent** at the current zoom (its proxy's duration less a cut span that starts at the clip's beginning and a cut span that runs to its end, see "Edge cuts shorten a clip on the Timeline and the clips after it close up"), with no gap between one clip's block and the next, labelled with its name as the page names it and with the kept extent's length. A proxy has the source's timestamps, so a time in a proxy is the same time in the source clip. A clip's length SHALL come from its proxy's facts, never from the browser's reading of a file and never defaulted; a clip shorter than a pixel at the current zoom SHALL still be drawn, one pixel wide at least, and the playhead SHALL be able to be put in it by keyboard.
 - a **chapter band** above the clips: one segment per chapter spanning its shown clips, labelled with the chapter's name, or as the page headings an unnamed chapter ("Main" beside named chapters, "Clips" when none is named). The band's labels stay in view while their chapter scrolls past.
-- each clip's **cuts**, as the Cuts panels list them now (the editor's draft, with the ones marked removed left out), drawn over the clip as spans with a hatch pattern and named by their reason in words ("manual", "black", "white", "freeze") in the span's text alternative; overlapping or touching cuts SHALL be drawn as the render joins them, one span; a cut that runs past the proxy's duration SHALL be drawn to the end of the clip only. Each cut SHALL have the two trim handles of "Edit mode's cuts are trim handles", drawn over the joined span.
-- the **movie's length**: the sum of the shown clips' lengths minus the time the cuts remove, plus the lengths of the black title cards the track draws, beside the source length, in words ("Movie 3:12 of 3:45 of footage"; with black cards, "Movie 3:20 of 3:45 of footage, with 8 s of title cards")
+- each clip's **cuts**, as the Cuts panels list them now (the editor's draft, with the ones marked removed left out), drawn over the clip as spans with a hatch pattern and named by their reason in words ("manual", "black", "white", "freeze") in the span's text alternative; overlapping or touching cuts SHALL be drawn as the render joins them, one span. A joined span that starts at the clip's beginning (a **leading cut**) or runs to the clip's end or within 0.1 s of it (a **trailing cut**; a cut that runs past the proxy's duration is one) SHALL NOT be drawn: the clip's block starts after a leading cut and ends at a trailing cut's start. Only the spans between the two (**interior cuts**) are drawn, hatched, inside the block. Each drawn cut SHALL have the two trim handles of "Edit mode's cuts are trim handles", drawn over the joined span; a leading or trailing cut has none.
+- the **movie stat**, one muted line in the Timeline's control row (beside Play and the zoom), not a paragraph of its own: the movie's length (the sum of the shown clips' lengths minus the time the cuts remove, plus the lengths of the black title cards the track draws), then the source length (the sum of the shown clips' full proxy durations, which edge cuts do not shorten, so the time a leading or trailing cut removes is in the cuts term), the time the cuts remove and the cards' time, each named, separated by " · " ("Movie 3:12 · footage 3:45 · cuts −0:33"; with black cards, "Movie 3:20 · footage 3:45 · cuts −0:33 · cards +0:08"). The cuts term SHALL be left out when no cut removes time, and the cards term when no black card adds time. The line SHALL wrap by whole terms, never scroll the page, and be written by the clock ("Running times are written to a fixed width and say what they are")
 
 The cuts are the draft's, so the track never shows them as being read or as unreadable.
 
@@ -215,7 +215,15 @@ The cuts are the draft's, so the track never shows them as being read or as unre
 
 #### Scenario: Black cards count in the movie's length
 - **WHEN** an event of 3:45 of footage with 33 s of cuts draws two black cards of 4.0 s each
-- **THEN** the readout says "Movie 3:20 of 3:45 of footage, with 8 s of title cards", and a video card adds nothing to it
+- **THEN** the stat reads "Movie 3:28.00 · footage 3:45.00 · cuts −0:25.00 · cards +0:08.00", and a video card adds nothing to it
+
+#### Scenario: Edge cuts shorten the blocks and close the gap
+- **WHEN** an event's clips are A (10.00 s, a cut from 0 to 2.00 s), B (8.00 s, a cut from 6.00 to 8.00 s) and C (5.00 s, a cut from 1.00 to 2.00 s), drawn at 40 px per second with no title card
+- **THEN** A's block is 320 px wide from 0, B's 240 px wide from 320 px and C's 200 px wide from 560 px, with no gap between them; no hatched span is drawn on A or B, C shows one hatched span from 600 to 640 px, the blocks are labelled 0:08, 0:06 and 0:05, and the stat reads "Movie 0:18.00 · footage 0:23.00 · cuts −0:05.00"
+
+#### Scenario: A cut past the end is a trailing cut
+- **WHEN** a 6.02 s clip lists a cut from 5.0 to 7.0 s
+- **THEN** its block is 5.0 s wide, no hatched span is drawn for that cut, and the next clip starts where the block ends
 
 ### Requirement: In Edit mode a suggestion is approved as a cut of the draft
 
@@ -316,11 +324,11 @@ colour alone:
 
 - a **black** card SHALL be a block of its own, as long as the card's `duration`, **before** the chapter's first
   footage, and SHALL add its length to the track: the clips after it start that much later. A cut at the start of
-  the chapter's first clip does not move it: the card opens the chapter, and the leading cut's hatch follows it.
+  the chapter's first clip does not move it: the card opens the chapter, directly before the clip's block, which starts at the first kept frame (a leading cut is not drawn).
 - a **video** card SHALL be a block over the **start** of the chapter's first footage, aligned with the footage it
   covers, joined to the clip by an edge marker, as long as the card's `duration` or the first kept span if that
   is shorter, and SHALL add no time. It SHALL start where the first kept span starts, so a clip whose first 3 s
-  are cut puts the block at 3 s.
+  are cut puts the block at the left edge of the clip's block, over 3 s of the clip.
 - the **opening card** (the default chapter's) SHALL be first when the default chapter plays first, as the page
   lists the chapters.
 
@@ -364,7 +372,8 @@ dialog) and SHALL also put the playhead there.
 #### Scenario: A leading cut moves a video card, not a black card
 - **WHEN** the first clip of each of two chapters has a cut from 0 to 3.0 s, one chapter's card being black and
   the other's video
-- **THEN** the black card is drawn before the clip's start, and the video card begins at 3.0 s of the clip
+- **THEN** the black card is drawn directly before the clip's block, the video card begins at the left edge of the
+  clip's block (3.0 s of the clip), and no gap and no hatched span lies between either card and its footage
 
 #### Scenario: A card longer than its footage
 - **WHEN** a video card of 7.0 s is on a first clip whose first kept span is 3.0 s
@@ -446,6 +455,10 @@ as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default cha
 #### Scenario: Reading changes nothing
 - **WHEN** a card is selected and its dialog is closed without a change
 - **THEN** no request is made and the Save bar shows no unsaved change
+
+#### Scenario: A selected card shows no text panel
+- **WHEN** the operator selects the block of "Test" (7.0 s, over video) in Edit mode and closes its dialog without a change
+- **THEN** no visible text "Title card for Test, 7.0 s, over video" is in the page, outside the block's own name and the visually hidden status region, and the status region held that sentence once
 
 ## REMOVED Requirements
 

@@ -5401,7 +5401,7 @@ counts or its verdict ("Reading a screen never changes state").
 
 Whenever a video of the page starts to play while another video of the page is playing, the other SHALL be paused where
 it is. This SHALL hold between any two of the page's players, in either order: the Movie section's player, a clip's
-player in the read view, a clip's preview in Edit mode and the Timeline's video, however the video was started (its
+player in the read view, a clip's preview in Edit mode and the Timeline's video (Edit mode only), however the video was started (its
 own controls, a keyboard key, a chapter jump in the Movie section's chapter list, a thumbnail's play control, the
 Timeline's Play, or a player's Play after a thumbnail's control opened it). The rule SHALL be one rule for every video, held in
 one place, and not a rule per pair of players: a player added to the page SHALL be covered by it without being named
@@ -5437,10 +5437,10 @@ its file at a clip boundary, SHALL NOT count as starting. A video that is paused
 - **THEN** the first player has closed, as one player is open at a time, and only the second clip plays
 
 #### Scenario: The Timeline and a clip's player
-- **WHEN** the Timeline plays, the operator presses "Play s1710001.mp4" on a thumbnail and then the player's Play, and
-  then presses the Timeline's Play
-- **THEN** the Timeline is paused at its playhead while the clip plays, and then the clip is paused at its place
-  while the Timeline plays, and neither player has closed
+- **WHEN** in the read view the operator presses "Play s1710001.mp4" on a thumbnail and then the player's Play
+- **THEN** the clip plays and no Timeline video exists to pause: the read view has no Timeline (`event-timeline`, "The
+  Timeline is shown only in Edit mode, open from the start"); in Edit mode a clip's preview and the Timeline follow the
+  next scenario
 
 #### Scenario: Edit mode's preview and the Timeline
 - **WHEN** in Edit mode a clip's preview plays and the operator presses Play on the Timeline
@@ -5453,7 +5453,7 @@ A cut changed on the Edit-mode Timeline ("Edit mode's cuts are trim handles") SH
 - **The cut keeps what it is.** A trimmed cut keeps its place in the clip's list, its number and its reason (a cut an analysis made keeps its reason; a trim does not make it `manual`). Only its start or end changes. The Cuts panel SHALL list the new times at once, and a cut trimmed back to the times it was read with SHALL leave nothing to save, so that an edit and its reverse show no save bar. A cut typed in the Cuts panel and then trimmed stays an added cut.
 - **The save bar counts it.** The save bar SHALL say how many cuts were trimmed ("1 cut trimmed"), beside the cuts added and removed, counting a read cut whose saved start or end differs from the one read, on a clip whose saved cuts differ. A trim that leaves the saved cuts as they were SHALL count as nothing. Pressing Save SHALL send the same whole-document write under `If-Match` that every other edit sends, with the clip's changed `trims`: the service edits the span that changed in place and leaves the other spans, their comments and their style as authored ("A changed cut list edits only the spans that differ").
 - **Guards and reset.** A trimmed cut SHALL make the event count as having unsaved changes (leaving Edit mode, navigating away and closing the tab ask first, Ctrl+S and Cmd+S save). Reset SHALL put every trimmed cut back to the times it was read with, and the Timeline SHALL show them.
-- **A conflict.** When the save is refused because the event was changed elsewhere (412), the page SHALL show the conflict as for any edit, keeping the trims. "Reload latest (discard my changes)" SHALL discard the trims as it discards every edit (it leaves Edit mode and shows the event as read again, whose Timeline is closed and draws the cuts as saved), and "Overwrite with mine" SHALL write the trims over the latest.
+- **A conflict.** When the save is refused because the event was changed elsewhere (412), the page SHALL show the conflict as for any edit, keeping the trims. "Reload latest (discard my changes)" SHALL discard the trims as it discards every edit (it leaves Edit mode and shows the event as read again; Edit mode entered again draws the cuts as saved), and "Overwrite with mine" SHALL write the trims over the latest.
 - **Removed neighbours.** A removed cut is not a neighbour: a handle can be moved over the span of a removed cut. An Undo of that cut that would then overlap a cut is refused, as for a cut added in this Edit mode, and names the cut to remove first.
 - **Past the clip.** The Timeline's clip length is its proxy's duration. A trim SHALL NOT write a cut that ends after it (a typed time past it is refused), and a cut read from `reel.yaml` that already ends after it is saved as read until its end is moved.
 - **Nothing else is written.** Selecting a cut, moving the playhead, scrubbing, and a drag that was cancelled or that ended where it began SHALL write nothing and SHALL NOT count as an edit.
@@ -5482,7 +5482,7 @@ A cut changed on the Edit-mode Timeline ("Edit mode's cuts are trim handles") SH
 - **WHEN** the event's `reel.yaml` was changed elsewhere after Edit mode read it and the operator saves a trim
 - **THEN** the page says that the event was changed elsewhere since the operator started editing and offers "Reload latest (discard my changes)" and "Overwrite with mine", and the Timeline still draws the trim
 - **WHEN** the operator presses "Reload latest (discard my changes)"
-- **THEN** the page leaves Edit mode with no trim kept, no save bar remains, and opening the read view's Timeline draws the cuts of the reloaded document
+- **THEN** the page leaves Edit mode with no trim kept, no save bar remains, and pressing Edit again shows a Timeline that draws the cuts of the reloaded document
 
 #### Scenario: Undo of a removed cut over a trimmed one
 - **WHEN** cut 1 (1.0 to 2.5 s) is removed, cut 2 is trimmed to start at 2.0 s, and the operator presses Undo on cut 1
@@ -6282,8 +6282,13 @@ readable beside it, and the page SHALL announce nothing for a cover that loads.
 In Edit mode the Timeline SHALL offer **Use as poster**. Pressed, it SHALL set the draft's poster to the clip
 under the playhead and the playhead's time in that clip, in seconds to the millisecond and before the clip's cuts
 (a time inside a cut is allowed), and SHALL take the frame the Timeline's video shows as the draft picture of
-the poster area. It SHALL be disabled, with the reason in words, when the playhead is outside every clip (the playhead
-never rests on a title-card block: it stays on footage), when the video has no decoded frame at the playhead, and while a save or a move of marked clips is pending; a snapshot that fails SHALL change nothing and say so. Keyboard focus SHALL stay on the button and the
+the poster area. It SHALL be unavailable when the playhead is outside every clip (the playhead
+never rests on a title-card block: it stays on footage), when the video has no decoded frame at the playhead, and while a save or a move of marked clips is pending. The reason SHALL be given in words as the button's tooltip and
+accessible description and, when the operator presses the button while it cannot act, in a tip that takes no room in
+the Timeline's toolbar and once through the Timeline's live region; it SHALL NOT be written as text beside the button,
+and a reason that comes and goes (a seek's frame loading) SHALL NOT move any control of the toolbar (`event-timeline`,
+"The Timeline's toolbar keeps its place while the Timeline seeks, loads and plays"). A snapshot that fails SHALL
+change nothing and say so. Keyboard focus SHALL stay on the button and the
 change SHALL be announced once.
 
 Edit mode's **poster area** (a Poster panel above the Timeline; the page header's cover belongs to the read view) SHALL say what the poster is:
@@ -6315,7 +6320,8 @@ rotation the page shows turned (`rotate`) SHALL be snapshotted and shown turned.
 
 #### Scenario: The button is off where it cannot act
 - **WHEN** a save is pending, an open clip preview holds the page's video, or the video has no decoded frame
-- **THEN** Use as poster is disabled and says why
+- **THEN** Use as poster is unavailable, its tooltip and accessible description say why, and pressing it shows the
+  reason in a tip and says it once, with no text added to the toolbar and no control moved
 
 #### Scenario: A rotated clip is chosen turned
 - **WHEN** the clip is shown turned and Use as poster is pressed on it
