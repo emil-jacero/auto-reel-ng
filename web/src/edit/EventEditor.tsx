@@ -31,6 +31,11 @@ import type { ClipTurns } from '../cuts/ReadCuts'
 import { LIST_HREF } from '../route'
 import { focusPageHeading } from '../shell/AppShell'
 import { TimelineSection } from '../timeline/TimelineSection'
+import { cardSpecs } from '../timeline/cards'
+import type { CardsBinding } from '../timeline/useCardSelection'
+import { CardRowsContext } from './CardRow'
+import type { CardRowsModel } from './CardRow'
+import { cardRowInfo } from './cardRows'
 import type { EditBinding } from '../timeline/editing'
 import type { Dismissals } from '../timeline/overlays/Dismissals'
 import { Alert } from '../ui/Alert'
@@ -740,7 +745,7 @@ function summarize(
 const TITLE = 'title' as const
 
 // The read view's cuts, which Edit mode's Timeline does not use: its cuts are the draft's.
-const NOT_READ = { cuts: null, turns: null, failure: null } as const
+const NOT_READ = { cuts: null, turns: null, failure: null, look: null } as const
 const NOTHING = () => undefined
 
 // A chapter with no removed clip: one constant, so its list keeps its memoised props.
@@ -984,6 +989,7 @@ export function EventEditor({
   heading = 'Details',
   liveEvent = null,
   dismissals,
+  cards,
   onProxiesFinished,
   onSaved,
   onReload,
@@ -999,6 +1005,8 @@ export function EventEditor({
   liveEvent?: EventDetail | null
   /** The suggestions dismissed on this page visit (`useDismissals`, kept by the page). */
   dismissals: Dismissals
+  /** The page's one card selection (`useCardSelection`), shared with the Timeline's blocks. */
+  cards: CardsBinding
   /** A proxy job the Timeline followed has ended: the page reads the event again. */
   onProxiesFinished?: () => void
   onSaved: () => void
@@ -1483,6 +1491,7 @@ export function EventEditor({
     return turns
   }, [baseTurns, draftRotations])
   const resetCount = ready?.resets ?? 0
+  const readLook = ready?.baseline.read.look
   const editing = useMemo<EditBinding | null>(() => {
     if (baseCuts === undefined || draftCuts === undefined || detail === null) {
       return null
@@ -1498,8 +1507,10 @@ export function EventEditor({
       orderChanged,
       previews: cutPanels.panels.previews,
       epoch: resetCount,
+      look: readLook,
     }
   }, [
+    readLook,
     baseCuts,
     draftCuts,
     draftTurns,
@@ -1512,6 +1523,34 @@ export function EventEditor({
     cutPanels,
     resetCount,
   ])
+
+  // The card rows (`CardRow.tsx`): each chapter's saved card, matched by the name it was read with.
+  const liveDetail = liveEvent ?? detail
+  const specs = useMemo(() => (liveDetail === null ? [] : cardSpecs(liveDetail)), [liveDetail])
+  const draftChapters = ready?.draft.chapters
+  const { retain: retainCard, select: selectCard, clear: clearCard, selected: selectedCard } = cards
+  // The selection ends with its chapter: deleted in the draft, it is gone from the list.
+  useEffect(() => {
+    if (draftChapters !== undefined) {
+      retainCard(
+        draftChapters.flatMap((chapter) =>
+          chapter.readName !== null && !chapter.deleted ? [chapter.readName] : [],
+        ),
+      )
+    }
+  }, [draftChapters, retainCard])
+  const cardRows = useMemo<CardRowsModel>(
+    () => ({
+      rowOf: (key) => {
+        const chapter = draftChapters?.find((candidate) => candidate.key === key)
+        return chapter === undefined ? null : cardRowInfo(chapter, specs)
+      },
+      selected: selectedCard,
+      select: selectCard,
+      clear: clearCard,
+    }),
+    [draftChapters, specs, selectedCard, selectCard, clearCard],
+  )
 
   const onAddChapter = useCallback(() => {
     if (idle(latest.current)) {
@@ -2301,6 +2340,7 @@ export function EventEditor({
               dismissals={dismissals}
               onFinished={onProxiesFinished ?? NOTHING}
               editing={editing}
+              cards={cards}
             />
           )}
 
@@ -2390,6 +2430,7 @@ export function EventEditor({
 
           {detail !== null && (
             <TitleCardContext.Provider value={titleCard}>
+              <CardRowsContext.Provider value={cardRows}>
               <ChapterDrag
                 orders={ready.draft.orders}
                 listed={listedKeys}
@@ -2451,6 +2492,7 @@ export function EventEditor({
                   )
                 })}
               </ChapterDrag>
+              </CardRowsContext.Provider>
             </TitleCardContext.Provider>
           )}
 

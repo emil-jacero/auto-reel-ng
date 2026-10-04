@@ -37,6 +37,8 @@ export type ReadCutsState = {
   /** The saved turns, read with the cuts from the same document; null when the read failed. */
   turns?: ClipTurns | null
   failure: ReadFailure | null
+  /** The document's `look` (the title decorator is read from it); null until read or when unreadable. */
+  look: unknown
 }
 
 function cutsOf(document: ReelDocument): ClipCuts {
@@ -72,7 +74,7 @@ export function failureOf(result: Exclude<ReelReadResult, { kind: 'ok' }>): Read
  * a newer read, or leaving the page, aborts the one in flight, silently.
  */
 export function useReadCuts(eventId: string, event: EventDetail): ReadCutsState {
-  const [state, setState] = useState<ReadCutsState>({ cuts: null, turns: null, failure: null })
+  const [state, setState] = useState<ReadCutsState>({ cuts: null, turns: null, failure: null, look: null })
   useEffect(() => {
     const controller = new AbortController()
     fetchReel(eventId, controller.signal)
@@ -80,14 +82,19 @@ export function useReadCuts(eventId: string, event: EventDetail): ReadCutsState 
         if (!controller.signal.aborted) {
           setState(
             result.kind === 'ok'
-              ? { cuts: cutsOf(result.document), turns: turnsOf(result.document.clips), failure: null }
-              : { cuts: null, turns: null, failure: failureOf(result) },
+              ? {
+                  cuts: cutsOf(result.document),
+                  turns: turnsOf(result.document.clips),
+                  failure: null,
+                  look: result.document.look,
+                }
+              : { cuts: null, turns: null, failure: failureOf(result), look: null },
           )
         }
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setState({ cuts: null, turns: null, failure: { cause: String(error), detail: null } })
+          setState({ cuts: null, turns: null, failure: { cause: String(error), detail: null }, look: null })
         }
       })
     return () => controller.abort()

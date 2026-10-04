@@ -3,11 +3,13 @@ import type { CSSProperties, KeyboardEvent, PointerEvent, RefObject } from 'reac
 
 import type { ClipTurns } from '../cuts/ReadCuts'
 import { TRIM_KEYS, formatTime, reasonWords } from '../cuts/times'
+import { CardLane } from './CardLane'
 import { Filmstrip } from './Filmstrip'
 import { PlayheadKeys, PlayheadSlider } from './Playhead'
 import { ClipHandles } from './TrimHandle'
 import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
+import type { CardBlock, CardSpec } from './cards'
 import type { KeyAction } from './keys'
 import { clipDescription } from './labels'
 import { cutLabel } from './layout'
@@ -113,6 +115,18 @@ function useScrub(
   }
 }
 
+/** What the Track needs to draw the card lane. */
+export type CardLaneModel = {
+  blocks: readonly CardBlock[]
+  specs: readonly CardSpec[]
+  /** Clip index → the length of the black card that opens it: its chapter band starts at the card. */
+  leadMs: ReadonlyMap<number, number>
+  /** The selected card's chapter or null. */
+  selected: string | null
+  onSelect: (chapter: string) => void
+  onClear: () => void
+}
+
 export function Track({
   eventId,
   clips,
@@ -135,9 +149,11 @@ export function Track({
   drag,
   selected,
   onSelect,
+  cardLane,
 }: {
   eventId: string
   clips: readonly TrackClip[]
+  /** The clips end to end on the track, with the black cards' spans between them. */
   lay: Layout
   bands: readonly ChapterBand[]
   pps: number
@@ -165,6 +181,8 @@ export function Track({
   selected: { identity: string; key: string } | null
   /** A cut is selected: by its handle's focus or press. */
   onSelect: (identity: string, key: string) => void
+  /** The title cards' lane; absent, the Timeline draws none. */
+  cardLane?: CardLaneModel
 }) {
   const base = useId()
   const canvas = useRef<HTMLDivElement>(null)
@@ -307,6 +325,7 @@ export function Track({
           {
             inlineSize: totalPx,
             ...(analysisLane === undefined ? {} : { '--tl-lane-rows': analysisLane.rows }),
+            ...(cardLane === undefined ? {} : { '--tl-cards-h': 'var(--tl-cards-row)' }),
           } as CSSProperties
         }
       >
@@ -315,7 +334,10 @@ export function Track({
         </div>
         <ol className="tl-chapters" aria-label="Chapters">
           {bands.map((band) => {
-            const left = timeToPx(lay.startsMs[band.first], pps)
+            const left = timeToPx(
+              lay.startsMs[band.first] - (cardLane?.leadMs.get(band.first) ?? 0),
+              pps,
+            )
             const right = timeToPx(lay.startsMs[band.last] + clips[band.last].facts.durationMs, pps)
             if (right < windowFrom || left > windowTo) {
               return null
@@ -331,6 +353,17 @@ export function Track({
             )
           })}
         </ol>
+        {cardLane !== undefined && (
+          <CardLane
+            blocks={cardLane.blocks}
+            specs={cardLane.specs}
+            pps={pps}
+            window={{ from: windowFrom, to: windowTo }}
+            selected={cardLane.selected}
+            onSelect={cardLane.onSelect}
+            onClear={cardLane.onClear}
+          />
+        )}
         <div className="tl-lane" {...lane}>
           {clipNodes}
         </div>

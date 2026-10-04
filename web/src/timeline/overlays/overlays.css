@@ -14,7 +14,7 @@
   .tl-analysis {
     position: absolute;
     inset-inline: 0;
-    inset-block-start: calc(var(--tl-ruler-h) + var(--tl-band-h) + var(--s-2) + var(--tl-clip-h) + var(--s-1));
+    inset-block-start: calc(var(--tl-clip-top) + var(--tl-clip-h) + var(--s-1));
     block-size: var(--tl-lane-h);
     border-block-start: 1px solid var(--border);
     pointer-events: none;

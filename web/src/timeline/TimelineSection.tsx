@@ -1,9 +1,12 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 
 import type { EventDetail } from '../api/event'
 import type { ReadCutsState } from '../cuts/ReadCuts'
 import { Alert } from '../ui/Alert'
+import { CardInspector, inspectorWords } from './CardInspector'
 import { Prepare, usePrepare } from './Prepare'
+import { cardSpecs, decoratorsRead } from './cards'
+import type { CardsBinding } from './useCardSelection'
 import { analysisOf } from './overlays/control'
 import type { Dismissals } from './overlays/Dismissals'
 import { Timeline } from './Timeline'
@@ -31,6 +34,7 @@ export function TimelineSection({
   dismissals,
   onFinished,
   editing = null,
+  cards,
 }: {
   eventId: string
   event: EventDetail
@@ -42,6 +46,8 @@ export function TimelineSection({
   onFinished: () => void
   /** Edit mode's binding; null in the read view. */
   editing?: EditBinding | null
+  /** The page's one card selection (`useCardSelection`), shared with Edit mode's rows. */
+  cards: CardsBinding
 }) {
   const [open, setOpen] = useState(false)
   const headingId = useId()
@@ -63,6 +69,21 @@ export function TimelineSection({
     () => analysisOf(eventId, read, editing, dismissals),
     [eventId, read, editing, dismissals],
   )
+  // Each chapter's resolved card, and whether the render draws them (`look.decorators`).
+  const specs = useMemo(() => cardSpecs(event), [event])
+  const decorators = decoratorsRead(
+    editing === null ? read.look : editing.look,
+    editing === null && read.failure !== null,
+  )
+  const cardBinding = useMemo(
+    () => ({ specs, decorators, selection: cards }),
+    [specs, decorators, cards],
+  )
+  // The selection ends with its chapter, whenever the event is read again without it.
+  const { retain } = cards
+  useEffect(() => retain(specs.map((spec) => spec.chapter)), [retain, specs])
+  const selectedSpec =
+    cards.selected === null ? undefined : specs.find((spec) => spec.chapter === cards.selected)
   const state = sectionState(open, shown.clips)
   const omitted = omittedWords(shown.omitted)
   return (
@@ -79,6 +100,7 @@ export function TimelineSection({
           {open ? 'Close timeline' : 'Open timeline'}
         </button>
       </header>
+      <CardInspector words={inspectorWords(selectedSpec)} />
       <div id={bodyId} className="timeline-body" hidden={!open}>
         {state !== 'closed' && (
           <>
@@ -98,6 +120,7 @@ export function TimelineSection({
                 prepare={prepare}
                 analysis={analysis}
                 editing={editing}
+                cards={cardBinding}
               />
             )}
             {/* Always there while open, so the words put into it are announced. */}

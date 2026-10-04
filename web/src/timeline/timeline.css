@@ -24,6 +24,11 @@
     --tl-ruler-h: 1.75rem;
     --tl-band-h: 1.5rem;
     --tl-clip-h: 3.375rem; /* 54px: the tile height (FILM_TILE_HEIGHT) */
+    --tl-cards-row: 1.875rem; /* the card lane, when the track draws one */
+
+    /* A title card: black is a solid block, video an outlined one over the footage. */
+    --tl-card-black: light-dark(oklch(20% 0.01 260), oklch(8% 0.005 260));
+    --tl-card-black-fg: oklch(96% 0.004 260);
 
     display: grid;
     gap: var(--s-3);
@@ -163,9 +168,11 @@
   }
 
   .tl-canvas {
+    --tl-clip-top: calc(var(--tl-ruler-h) + var(--tl-band-h) + var(--tl-cards-h, 0px) + var(--s-2));
+
     position: relative;
     block-size: calc(
-      var(--tl-ruler-h) + var(--tl-band-h) + var(--tl-clip-h) + var(--s-3) + var(--tl-lane-h, 0px)
+      var(--tl-clip-top) + var(--tl-clip-h) + var(--s-1) + var(--tl-lane-h, 0px)
     );
     min-inline-size: 100%;
   }
@@ -227,10 +234,102 @@
     padding-inline: var(--s-2);
   }
 
+  /* --- the card lane (`CardLane.tsx`): above the clips, under the chapter band --- */
+  .tl-cards {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-start: calc(var(--tl-ruler-h) + var(--tl-band-h) + 2px);
+    block-size: calc(var(--tl-cards-row) - 2px);
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .tl-card {
+    position: absolute;
+    inset-block: 0;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    min-inline-size: 2px;
+    margin: 0;
+    padding: 0 var(--s-1);
+    overflow: visible;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+    font: inherit;
+    font-size: var(--text-xs);
+    line-height: 1.2;
+    text-align: start;
+    cursor: pointer;
+    pointer-events: auto;
+
+    &[data-kind='black'] {
+      background: var(--tl-card-black);
+      border-color: var(--fg-subtle);
+      color: var(--tl-card-black-fg);
+    }
+
+    &[data-kind='video'] {
+      background: var(--info-bg);
+      border-color: var(--accent);
+      border-block-start-width: 3px;
+      color: var(--info-fg);
+    }
+
+    /* Off: the render draws no card. Dashed and quiet, never by colour alone. */
+    &[data-off] {
+      background: var(--surface-2);
+      border: 1px dashed var(--fg-subtle);
+      color: var(--fg-muted);
+    }
+
+    &[data-selected] {
+      outline: 2px solid var(--fg);
+      outline-offset: 1px;
+      font-weight: 600;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+  }
+
+  .tl-card-text {
+    display: flex;
+    gap: var(--s-2);
+    align-items: center;
+    min-inline-size: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .tl-card-title {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tl-card-meta {
+    flex: none;
+    opacity: 0.85;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A video card sits on the footage: a stem joins it to the clip's start of its span. */
+  .tl-card-edge {
+    position: absolute;
+    inset-inline-start: -1px;
+    inset-block-start: 100%;
+    inline-size: 2px;
+    block-size: var(--s-2);
+    background: var(--accent);
+  }
+
   .tl-lane {
     position: absolute;
     inset-inline: 0;
-    inset-block-start: calc(var(--tl-ruler-h) + var(--tl-band-h) + var(--s-2));
+    inset-block-start: var(--tl-clip-top);
     block-size: var(--tl-clip-h);
     touch-action: pan-x pan-y;
   }
@@ -433,7 +532,7 @@
   .tl-trims-host {
     position: absolute;
     inset-inline: 0;
-    inset-block-start: calc(var(--tl-ruler-h) + var(--tl-band-h) + var(--s-2));
+    inset-block-start: var(--tl-clip-top);
     block-size: var(--tl-clip-h);
     z-index: 2;
     pointer-events: none;
@@ -675,5 +774,33 @@
       border-color: CanvasText;
       background-image: repeating-linear-gradient(135deg, CanvasText 0 2px, transparent 2px 7px);
     }
+  }
+}
+
+@layer screens {
+  .tl-inspector {
+    display: grid;
+    gap: var(--s-1);
+    margin: var(--s-3) var(--s-4) 0;
+    padding: var(--s-3);
+    border: 1px solid var(--border-strong);
+    border-inline-start: 4px solid var(--accent);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    font-size: var(--text-sm);
+  }
+
+  .tl-inspector-note {
+    color: var(--fg-muted);
+    font-size: var(--text-xs);
+  }
+
+  .tl-inspector-card {
+    font-weight: 600;
+  }
+
+  .tl-cards-note {
+    color: var(--fg-muted);
+    font-size: var(--text-xs);
   }
 }

@@ -40,4 +40,6 @@ export type EditBinding = {
   previews: ClipPreviews
   /** Changes when Reset puts the draft back: a selection and a drag do not survive it. */
   epoch: number
+  /** The document's `look` as read: the title decorator decides whether the render draws cards. */
+  look: unknown
 }

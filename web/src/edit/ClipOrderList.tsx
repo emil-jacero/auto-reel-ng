@@ -30,6 +30,7 @@ import { Icon } from '../ui/Icon'
 import { useGroupHeld, useReducedMotion } from './ChapterDrag'
 import { ChapterTools } from './ChapterTools'
 import { InlineName } from './InlineName'
+import { CardRow } from './CardRow'
 import { TitleCard } from './TitleCard'
 import type { ChapterToolsModel } from './ChapterTools'
 import { cutsOf, keptOriginal, movedSet } from './draft'
@@ -891,7 +892,7 @@ export const ClipOrderList = memo(function ClipOrderList({
       </header>
       {/* A refused name and what a name would mean, under the field (InlineName). */}
       <div ref={setNameHost} className="chapter-name-messages" />
-      {chapterName === '' && <TitleCard />}
+      <CardRow chapterKey={chapterKey}>{chapterName === '' && <TitleCard />}</CardRow>
       <ChapterTools chapterKey={chapterKey} heading={heading} headingId={headingId} {...tools} />
       {/* The column names, in the rows' own cells (edit.css places them by class). */}
       {!empty && (
