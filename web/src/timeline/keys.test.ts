@@ -69,3 +69,12 @@ describe('trackZoomKey', () => {
     assert.equal(trackZoomKey(press('-', { altKey: true })), null)
   })
 })
+
+describe('the edge tools\' letters (clip-edge-trim)', () => {
+  it('leaves Q, W and S to the track: they are not the playhead\'s keys', () => {
+    for (const key of ['q', 'w', 's', 'Q', 'W', 'S']) {
+      assert.equal(playheadKey(key, false), null)
+      assert.equal(playheadKey(key, true), null)
+    }
+  })
+})
