@@ -245,10 +245,14 @@ def overlay_config(config: TitleCardConfig) -> TitleCardConfig:
 def check_card_styles(
     look_title_card: Optional[Mapping[str, Any]], cards: Mapping[str, Optional[ChapterCard]]
 ) -> None:
-    """Fail loud, naming the field, for a style the renderer would refuse.
+    """Fail loud, naming the field, for the style errors the engine's parsers can detect.
 
     ``look_title_card`` is parsed as a render parses it (``look.title_card.<field>`` in the
-    message), and each chapter's ``font_family`` must be in the registry (the loader cannot
+    message). That parse keeps the engine's lax event-wide rules: it does not reject unknown
+    ``look.title_card`` keys and does not range-check ``title_font_size``,
+    ``subtitle_font_size`` or ``duration`` (only a per-card value is range-checked, by the
+    loader), so a "valid" event-wide style is not a promise the renderer draws it sensibly.
+    Tightening that is a follow-up to ``parse_title_card_config``, not to this check. Also, each chapter's ``font_family`` must be in the registry (the loader cannot
     check that: ``reel/`` is below ``render/``). The error names the chapter and ``card.<field>``.
     The card's other values are the loader's and are not checked again.
 
