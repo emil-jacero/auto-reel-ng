@@ -132,7 +132,11 @@ export function useTimelineVideo({
 
   const settleRef = useRef<() => void>(() => undefined)
   const handOverRef = useRef<() => void>(() => undefined)
-  const spansOf = useCallback((clip: number) => clipsRef.current[clip]?.spans ?? [], [])
+  // What the hand-over needs of a clip: its length and its spans (its kept start, `handOverMs`).
+  const handOverOf = useCallback((clip: number) => {
+    const c = clipsRef.current[clip]
+    return c === undefined ? undefined : { durationMs: c.facts.durationMs, spans: c.spans }
+  }, [])
 
   /** Show the video turned by clip `clip`'s turn (the attribute `rotate.css` styles by). */
   const applyTurn = useCallback((clip: number | null) => {
@@ -264,13 +268,13 @@ export function useTimelineVideo({
         return // no video to move: the playhead has the place, and the video loads there when it is back
       }
       // In a card the video holds the anchor clip at its first kept time, ready for the hand-over.
-      coalescer.request(videoTarget(pos, spansOf))
+      coalescer.request(videoTarget(pos, handOverOf))
       if (!coalescer.busy() && afterSettle.current) {
         afterSettle.current = false
         startVideo()
       }
     },
-    [coalescer, spansOf, startVideo],
+    [coalescer, handOverOf, startVideo],
   )
 
   /** Stop the card clock where it is, and the playhead with it. */
@@ -313,8 +317,8 @@ export function useTimelineVideo({
     // The playhead stays at the end of the card, whose image is at opacity 0 over black: the card
     // goes when the video presents its first frame (`arm`), so the picture is never the bare page.
     afterSettle.current = true
-    moveVideo({ clip: anchor, ms: handOverMs(spansOf(anchor)) })
-  }, [clock, moveVideo, playhead, spansOf])
+    moveVideo({ clip: anchor, ms: handOverMs(handOverOf(anchor)) })
+  }, [clock, moveVideo, playhead, handOverOf])
 
   const finishCard = useCallback(() => {
     const anchor = playhead.get().clip

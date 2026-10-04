@@ -1,9 +1,9 @@
 import { clipTimeAt } from './cards.ts'
 import type { CardMap, Placement } from './cards.ts'
-import { ModelError } from './model.ts'
+import { keptExtent, ModelError } from './model.ts'
 import type { Layout, Ms } from './model.ts'
-import { endPosition, positionAt, stepFrames } from './position.ts'
-import type { Position } from './position.ts'
+import { endPosition, firstKeptMs, positionAt, stepFrames } from './position.ts'
+import type { Position, Timed } from './position.ts'
 
 /*
  * Playing a movie of clips and cards on one clock (D-20, `timeline-plays-cards`): the play
@@ -36,7 +36,7 @@ export type Stage =
 
 /**
  * The play order on the track: for each shown clip, its black card (if its chapter has one
- * there) and then the clip. `lay` is the clips' layout without cards; the stage times add up to
+ * there) and then the clip, as long as its kept extent. `lay` is the clips' layout without cards; the stage times add up to
  * the track's total.
  */
 export function stagesOf(map: CardMap, lay: Layout): Stage[] {
@@ -63,7 +63,7 @@ export function stagesOf(map: CardMap, lay: Layout): Stage[] {
 export function positionOnTrack(
   map: CardMap,
   lay: Layout,
-  clips: readonly { durationMs: Ms; fps: number }[],
+  clips: readonly Timed[],
   names: readonly string[],
   trackMs: Ms,
 ): Position {
@@ -88,7 +88,7 @@ export function positionOnTrack(
 export function trackStart(
   map: CardMap,
   lay: Layout,
-  clips: readonly { durationMs: Ms; fps: number }[],
+  clips: readonly Timed[],
   names: readonly string[],
 ): Position {
   return positionOnTrack(map, lay, clips, names, 0)
@@ -145,21 +145,23 @@ export function shownAt(p: Position, placements: readonly Placement[]): Shown {
 
 // --- the hand-over ----------------------------------------------------------------------
 
+/** What the hand-over needs of a clip: its length and its joined cut spans. */
+export type HandOverClip = { durationMs: Ms; spans: readonly { from: Ms; to: Ms }[] }
+
 /**
- * The time of the anchor clip that follows its black card: the end of a cut that begins at
- * zero, else zero (the first kept time).
+ * The time of the anchor clip that follows its black card: its kept start (`keptExtent`: the
+ * end of a cut that begins at zero, else zero). A clip that is gone, or keeps nothing, gives 0.
  */
-export function handOverMs(spans: readonly { from: Ms; to: Ms }[]): Ms {
-  const first = spans[0]
-  return first !== undefined && first.from <= 0 ? first.to : 0
+export function handOverMs(clip: HandOverClip | undefined): Ms {
+  return clip === undefined ? 0 : keptExtent(clip.spans, clip.durationMs).inMs
 }
 
 /** What the video is asked to show while a position is a card: the anchor clip at its first kept time. */
 export function videoTarget(
   p: Position,
-  spans: (clip: number) => readonly { from: Ms; to: Ms }[],
+  clipOf: (clip: number) => HandOverClip | undefined,
 ): { clip: number; ms: Ms } {
-  return p.card == null ? { clip: p.clip, ms: p.ms } : { clip: p.clip, ms: handOverMs(spans(p.clip)) }
+  return p.card == null ? { clip: p.clip, ms: p.ms } : { clip: p.clip, ms: handOverMs(clipOf(p.clip)) }
 }
 
 /**
@@ -214,18 +216,16 @@ export function createCardClock(): CardClock {
 
 // --- steps across cards -----------------------------------------------------------------
 
-type Timed = { durationMs: Ms; fps: number }
-
 /**
  * The position `n` frames from `p` on the track with cards: a frame step into a card from the
  * clip before it lands on the card's first instant, from a card's end on the clip's first
- * frame; within a card a step is `CARD_STEP_MS` (the page does not know the movie's rate).
+ * kept frame; within a card a step is `CARD_STEP_MS` (the page does not know the movie's rate).
+ * `clips` carry their kept extents, so steps land on kept frames only.
  */
 export function stepFramesOnTrack(
   map: CardMap,
   clips: readonly Timed[],
   names: readonly string[],
-  firstKept: (clip: number) => Ms,
   p: Position,
   n: number,
 ): Position {
@@ -233,7 +233,7 @@ export function stepFramesOnTrack(
   if (p.card != null) {
     const ms = p.card.ms + n * CARD_STEP_MS
     if (ms >= p.card.lengthMs) {
-      return { clip: p.clip, ms: firstKept(p.clip) }
+      return { clip: p.clip, ms: firstKeptMs(clips[p.clip]) }
     }
     if (ms < 0) {
       return p.clip === 0 ? { ...p, card: { ...p.card, ms: 0 } } : endPositionOf(clips, p.clip - 1)

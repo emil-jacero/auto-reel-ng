@@ -365,7 +365,7 @@ function counted(l: Layout): { layout: Layout; reads: () => number } {
       return Reflect.get(target, key, receiver)
     },
   })
-  return { layout: { startsMs, totalMs: l.totalMs }, reads: () => reads }
+  return { layout: { startsMs, totalMs: l.totalMs, inMs: l.inMs }, reads: () => reads }
 }
 describe('windowing', () => {
   const big = layout(clips(5000, 25))

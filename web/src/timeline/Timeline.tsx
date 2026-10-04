@@ -39,7 +39,7 @@ import {
 } from './cards'
 import type { CardMap, CardSpec, CardsSource, Decorators, Placement } from './cards'
 import { cardJobs } from './cardRequests'
-import { handOverMs, positionOnTrack, stepFramesOnTrack, trackStart } from './play'
+import { positionOnTrack, stepFramesOnTrack, trackStart } from './play'
 import { useCardImages } from './useCardImages'
 import type { CardsBinding } from './useCardSelection'
 import { createDragStore } from './dragStore'
@@ -459,7 +459,7 @@ export function Timeline({
     let pos: Position
     switch (action.kind) {
       case 'frames':
-        pos = stepFramesOnTrack(map, facts, names, (clip) => handOverMs(clips[clip].spans), at, action.n)
+        pos = stepFramesOnTrack(map, facts, names, at, action.n)
         break
       case 'ms':
         pos = positionOnTrack(map, clipLay, facts, names, globalMs(lay, at) + action.ms)

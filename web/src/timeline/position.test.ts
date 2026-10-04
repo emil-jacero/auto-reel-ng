@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { layout } from './model.ts'
+import { cutSpans, keptExtent, layout } from './model.ts'
+import type { Ms } from './model.ts'
 import {
   clampPosition,
   endPosition,
+  firstKeptMs,
+  hasKeptFrame,
+  keptPosition,
+  lastKeptMs,
   globalMs,
   lastFrame,
   lastFrameMs,
@@ -174,12 +179,12 @@ describe('a place in a card', () => {
   })
 
   it('is a clip position unchanged by the card field', () => {
-    assert.deepEqual(clampPosition([{ facts: { durationMs: 2000 } }], { clip: 0, ms: 5000 }), {
+    assert.deepEqual(clampPosition([{ facts: { durationMs: 2000, fps: 25 } }], { clip: 0, ms: 5000 }), {
       clip: 0,
       ms: 2000,
     })
     const there = { clip: 0, ms: 0, card }
-    assert.equal(clampPosition([{ facts: { durationMs: 2000 } }], there), there)
+    assert.equal(clampPosition([{ facts: { durationMs: 2000, fps: 25 } }], there), there)
   })
 
   it('tells two places in a card apart', () => {
@@ -187,5 +192,107 @@ describe('a place in a card', () => {
     assert.equal(samePosition({ clip: 0, ms: 0, card }, { clip: 0, ms: 0, card: { ...card, ms: 1300 } }), false)
     assert.equal(samePosition({ clip: 0, ms: 0, card }, { clip: 0, ms: 0 }), false)
     assert.equal(samePosition({ clip: 0, ms: 0 }, { clip: 0, ms: 0, card: null }), true)
+  })
+})
+
+/** A 25 fps clip of `durationMs` with its kept extent from cuts given in seconds. */
+function trimmed(durationMs: Ms, cuts: { in: number; out: number }[] = []) {
+  return { durationMs, fps: 25, ...keptExtent(cutSpans(cuts, durationMs), durationMs) }
+}
+
+describe('the playhead on kept frames (timeline-ripple-layout)', () => {
+  // A (10 s, cut 0..2 s), B (8 s, cut 6..8 s), C (5 s, cut 1..2 s): starts 0, 8,000, 14,000.
+  const A2 = trimmed(10000, [{ in: 0, out: 2 }])
+  const B2 = trimmed(8000, [{ in: 6, out: 8 }])
+  const C2 = trimmed(5000, [{ in: 1, out: 2 }])
+  const abc = [A2, B2, C2]
+  const lay = layout(abc)
+
+  it('positions are held to kept frames: -5, 13,975 and 19,500 ms', () => {
+    assert.deepEqual(positionAt(lay, abc, -5), { clip: 0, ms: 2000 })
+    assert.deepEqual(positionAt(lay, abc, 13975), { clip: 1, ms: 5960 })
+    assert.deepEqual(positionAt(lay, abc, 19500), { clip: 2, ms: 4960 })
+  })
+
+  it('a press at 0 and 120 px (40 px/s) is A 2.00 s and A 5.00 s; at 559 px B 5.96 s', () => {
+    assert.deepEqual(positionAt(lay, abc, 0), { clip: 0, ms: 2000 })
+    assert.deepEqual(positionAt(lay, abc, 3000), { clip: 0, ms: 5000 })
+    assert.deepEqual(positionAt(lay, abc, 13975), { clip: 1, ms: 5960 })
+    assert.equal(globalMs(lay, { clip: 0, ms: 5000 }), 3000)
+    assert.equal(globalMs(lay, { clip: 1, ms: 5960 }), 13960)
+  })
+
+  it('steps cross the edges: B 5.96 s +1 is C 0, B 0 -1 is A 9.96 s', () => {
+    assert.deepEqual(stepFrames(abc, { clip: 1, ms: 5960 }, 1), { clip: 2, ms: 0 })
+    assert.deepEqual(stepFrames(abc, { clip: 1, ms: 0 }, -1), { clip: 0, ms: 9960 })
+    assert.deepEqual(stepFrames(abc, { clip: 2, ms: 0 }, -1), { clip: 1, ms: 5960 })
+    assert.deepEqual(stepFrames(abc, { clip: 1, ms: 5960 }, -1), { clip: 1, ms: 5920 })
+  })
+
+  it('Home and End are the first and last kept frames of the timeline', () => {
+    assert.deepEqual(startPosition(abc), { clip: 0, ms: 2000 })
+    assert.deepEqual(endPosition(abc), { clip: 2, ms: 4960 })
+    assert.deepEqual(endPosition([A2, B2]), { clip: 1, ms: 5960 })
+    assert.deepEqual(stepFrames(abc, { clip: 0, ms: 2000 }, -1), { clip: 0, ms: 2000 })
+  })
+
+  it('a few frames kept: 4,000, 4,040 and 4,080 ms, then on into the next clip', () => {
+    const few = trimmed(10000, [
+      { in: 0, out: 4 },
+      { in: 4.12, out: 10 },
+    ])
+    assert.deepEqual([few.inMs, few.outMs], [4000, 4120])
+    const two = [few, trimmed(3000)]
+    let p = { clip: 0, ms: firstKeptMs(few) }
+    const seen = [p.ms]
+    for (let i = 0; i < 3; i += 1) {
+      p = stepFrames(two, p, 1)
+      seen.push(p.clip === 0 ? p.ms : -1)
+    }
+    assert.deepEqual(seen, [4000, 4040, 4080, -1])
+    assert.deepEqual(p, { clip: 1, ms: 0 })
+    assert.equal(lastKeptMs(few), 4080)
+  })
+
+  it('a clip with no kept frame is passed over by steps and lookups', () => {
+    const none = { durationMs: 3000, fps: 25, inMs: 1001, outMs: 1030 }
+    assert.equal(hasKeptFrame(none), false)
+    const three = [trimmed(2000), none, trimmed(2000)]
+    const l3 = layout(three)
+    assert.deepEqual(stepFrames(three, { clip: 0, ms: 1960 }, 1), { clip: 2, ms: 0 })
+    assert.deepEqual(stepFrames(three, { clip: 2, ms: 0 }, -1), { clip: 0, ms: 1960 })
+    assert.deepEqual(positionAt(l3, three, 2010), { clip: 2, ms: 0 })
+  })
+
+  it('a wholly cut middle clip: Right on the first clip’s last kept frame lands on the third', () => {
+    const three = [trimmed(2000), trimmed(2000, [{ in: 0, out: 2 }]), trimmed(2000)]
+    const l3 = layout(three)
+    assert.deepEqual(l3.startsMs, [0, 2000, 2000])
+    assert.deepEqual(stepFrames(three, { clip: 0, ms: 1960 }, 1), { clip: 2, ms: 0 })
+    assert.deepEqual(positionAt(l3, three, 2000), { clip: 2, ms: 0 })
+  })
+
+  it('a time no longer kept goes to the nearest kept frame of its clip', () => {
+    const track = abc.map((facts) => ({ facts }))
+    assert.deepEqual(clampPosition(track, { clip: 0, ms: 1000 }), { clip: 0, ms: 2000 })
+    assert.deepEqual(clampPosition(track, { clip: 1, ms: 7000 }), { clip: 1, ms: 5960 })
+    const at = { clip: 2, ms: 1500 } // inside an interior cut: kept as it is
+    assert.equal(clampPosition(track, at), at)
+    assert.deepEqual(keptPosition(abc, 0, 1000), { clip: 0, ms: 2000 })
+  })
+
+  it('a new leading cut moves a playhead at A 1.00 s to A 2.00 s', () => {
+    const before = [{ facts: trimmed(10000) }]
+    const after = [{ facts: trimmed(10000, [{ in: 0, out: 2 }]) }]
+    assert.deepEqual(clampPosition(before, { clip: 0, ms: 1000 }), { clip: 0, ms: 1000 })
+    assert.deepEqual(clampPosition(after, { clip: 0, ms: 1000 }), { clip: 0, ms: 2000 })
+  })
+
+  it('a clip given with `kept` beside its facts is held the same way', () => {
+    const facts = { durationMs: 10000, fps: 25 }
+    assert.deepEqual(clampPosition([{ facts, kept: { inMs: 2000, outMs: 10000 } }], { clip: 0, ms: 0 }), {
+      clip: 0,
+      ms: 2000,
+    })
   })
 })

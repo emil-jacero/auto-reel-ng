@@ -1,8 +1,8 @@
 import { clockCell, clockScale } from '../clock.ts'
 import type { ClockCell, ClockScale } from '../clock.ts'
-import type { Layout } from './model.ts'
+import type { Extent, Layout } from './model.ts'
 import { clampPosition, globalMs } from './position.ts'
-import type { Position } from './position.ts'
+import type { Position, Timed } from './position.ts'
 
 /*
  * The Timeline's readout under the video, as data: the clip's name, then the time in the
@@ -24,7 +24,8 @@ export type Readout = {
   event: ReadoutPair
 }
 
-type Clips = readonly { name: string; facts: { durationMs: number } }[]
+/** The clips with their kept extents: the clip pair says the clip's own time and its full length. */
+type Clips = readonly { name: string; facts: Timed; kept?: Extent }[]
 export type ReadoutScales = { clip: ClockScale; event: ClockScale }
 
 /** The two scales depend only on the clips and layout, so a caller can hold them across ticks. */
