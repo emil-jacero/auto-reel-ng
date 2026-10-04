@@ -813,7 +813,8 @@ def applies_rotation(run: Sequence[str]) -> bool:
 
     Only filter-graph tokens count, never a path: a clip or cache directory may be named anything.
     """
-    graphs = [run[i + 1] for i, arg in enumerate(run[:-1]) if arg in ("-vf", "-filter_complex")]
+    graph_flags = ("-vf", "-af", "-lavfi", "-filter_complex", "-filter_complex_script")
+    graphs = [run[i + 1] for i, arg in enumerate(run[:-1]) if arg in graph_flags]
     return "-noautorotate" in run or any(
         re.search(r"(?:^|[,;\]\s])(?:transpose|rotate)=", graph) for graph in graphs
     )
