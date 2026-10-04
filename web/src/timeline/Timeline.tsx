@@ -40,7 +40,7 @@ import { cardJobs } from './cardRequests'
 import { positionOnTrack, stepFramesOnTrack, trackStart } from './play'
 import { useCardImages } from './useCardImages'
 import type { CardsBinding } from './useCardSelection'
-import { createDragStore } from './dragStore'
+import { createDragStore, shiftMs } from './dragStore'
 import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
 import { selectionStands } from './handles'
@@ -69,6 +69,7 @@ import {
   MAX_PPS,
   ZOOM_STEP,
   anchorFor,
+  extentMs,
   fitCanvas,
   pxToTime,
   sliderToPps,
@@ -168,17 +169,27 @@ export function Timeline({
   const lay = useMemo(() => withCards(clipLay, map), [clipLay, map])
   const blocks = useMemo(() => cardBlocks(placements, lay), [placements, lay])
   const handles = useMemo(() => cardHandles(placements, blocks, specs), [placements, blocks, specs])
-  const shifting = useMemo(() => {
+  // A clip edge in the air (`clip-edge-trim`): its clip, or null. Its block is drawn live by the
+  // track; what follows it moves by the change of its width, as behind a black card.
+  const edgeIdentity = useSyncExternalStore(drag.subscribe, () => drag.getEdge()?.identity ?? null)
+  const shifting = useMemo<ShiftFrom | null>(() => {
+    if (edgeIdentity !== null) {
+      const at = clips.findIndex((clip) => clip.identity === edgeIdentity)
+      return at < 0
+        ? null
+        : { kind: 'edge', identity: edgeIdentity, fromMs: lay.startsMs[at] + extentMs(clips[at].kept) }
+    }
     const handle = dragChapter === null ? undefined : handles.find((h) => h.chapter === dragChapter)
     const block = handle === undefined ? undefined : blocks[handle.index]
     return handle === undefined || block === undefined
       ? null
       : ({
+          kind: 'card',
           chapter: handle.chapter,
           fromMs: block.startMs + block.widthMs,
           baseTenths: handle.tenths,
         } satisfies ShiftFrom)
-  }, [dragChapter, handles, blocks])
+  }, [edgeIdentity, clips, lay, dragChapter, handles, blocks])
   const names = useMemo(() => specs.map((spec) => spec.chapter), [specs])
   const leadMs = useMemo(() => new Map(map.gaps.map((gap) => [gap.clip, gap.lengthMs])), [map])
   const selection = cards.selection
@@ -307,11 +318,11 @@ export function Timeline({
     }
     const moved = new Set<HTMLElement>()
     const apply = () => {
-      const d = drag.getCard()
-      if (d === null || d.chapter !== shifting.chapter) {
+      const ended = shifting.kind === 'card' ? drag.getCard() === null : drag.getEdge() === null
+      if (ended) {
         return // ended: the layout drawn in this commit takes over, the cleanup lets go
       }
-      const by = `${timeToPx((d.tenths - shifting.baseTenths) * 100, ppsRef.current)}px 0`
+      const by = `${timeToPx(shiftMs(drag, shifting), ppsRef.current)}px 0`
       for (const node of el.querySelectorAll<HTMLElement>('[data-after]')) {
         if (node.style.translate !== by) {
           node.style.translate = by
@@ -956,11 +967,13 @@ function MovieStat({
 }) {
   const tenths = useSyncExternalStore(drag.subscribe, () => {
     const d = drag.getCard()
-    return shifting !== null && d !== null && d.chapter === shifting.chapter ? d.tenths : null
+    return shifting !== null && shifting.kind === 'card' && d !== null && d.chapter === shifting.chapter
+      ? d.tenths
+      : null
   })
   const now = useMemo(
     () =>
-      tenths === null || shifting === null
+      tenths === null || shifting === null || shifting.kind !== 'card'
         ? map
         : cardMap(
             placeAll(withDurations(specs, new Map([[shifting.chapter, tenths / 10]]))),

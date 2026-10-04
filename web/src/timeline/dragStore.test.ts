@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { createDragStore } from './dragStore.ts'
-import type { Dragging } from './dragStore.ts'
+import { createDragStore, shiftMs } from './dragStore.ts'
+import type { Dragging, EdgeDragging } from './dragStore.ts'
 
 const drag: Dragging = { identity: 'a.mp4', key: 'r0', edge: 'out', ms: 3500, snappedTo: null, words: '' }
 
@@ -81,5 +81,66 @@ describe('the drag store', () => {
     assert.equal(store.claim(card), false)
     store.unclaim(trim)
     assert.equal(store.claim(card), true)
+  })
+})
+
+describe('the drag store and a clip edge (clip-edge-trim)', () => {
+  const edge: EdgeDragging = {
+    identity: 'a.mp4',
+    side: 'start',
+    x: 500,
+    place: 500,
+    snappedTo: null,
+    joined: [],
+    changeMs: -500,
+    playsMs: 3020,
+    extent: { inMs: 500, outMs: 6020 },
+    limit: null,
+    deltaMs: -500,
+    cuts: [{ in: 0, out: 0.5 }],
+    tip: '−0:00.5 · 0:03.02',
+    notes: [],
+  }
+
+  it('holds the edge in the air and tells its readers once per move', () => {
+    const store = createDragStore()
+    let calls = 0
+    store.subscribe(() => {
+      calls += 1
+    })
+    store.setEdge(edge)
+    store.setEdge({ ...edge })
+    assert.equal(calls, 1)
+    store.setEdge({ ...edge, x: 520, place: 520, deltaMs: -520, tip: 'x' })
+    assert.equal(calls, 2)
+    assert.equal(store.getEdge()?.x, 520)
+    // Cancel: back to nothing in the air.
+    store.setEdge(null)
+    assert.equal(calls, 3)
+    assert.equal(store.getEdge(), null)
+  })
+
+  it('an edge drag, a trim and a card share the one claim', () => {
+    const store = createDragStore()
+    const edgeToken = {}
+    const trimToken = {}
+    const cardToken = {}
+    assert.equal(store.claim(edgeToken), true)
+    assert.equal(store.claim(trimToken), false)
+    assert.equal(store.claim(cardToken), false)
+    store.unclaim(edgeToken)
+    assert.equal(store.claim(trimToken), true)
+    assert.equal(store.claim(edgeToken), false)
+  })
+
+  it('shiftMs: the dragged clip edge moves what follows by its block’s change, a card by its length', () => {
+    const store = createDragStore()
+    assert.equal(shiftMs(store, null), 0)
+    assert.equal(shiftMs(store, { kind: 'edge', identity: 'a.mp4' }), 0)
+    store.setEdge(edge)
+    assert.equal(shiftMs(store, { kind: 'edge', identity: 'a.mp4' }), -500)
+    assert.equal(shiftMs(store, { kind: 'edge', identity: 'b.mp4' }), 0)
+    store.setCard({ chapter: 'Beach', tenths: 35, snapped: false, words: '' })
+    assert.equal(shiftMs(store, { kind: 'card', chapter: 'Beach', baseTenths: 30 }), 500)
   })
 })

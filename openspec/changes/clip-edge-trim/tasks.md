@@ -19,7 +19,7 @@
   `timeline/editing.ts`, ignored while `locked`. Verify with `edit/edgeEdit.test.ts` (node:test): one release = one
   draft change, reverse edit leaves no dirty draft (`settled`), read cut removed then restored by the Cuts panel Undo,
   `cutChanges` counts, approved `black` cut keeps its reason.
-- [ ] 2.2 Extend `dragStore.ts` with an edge drag (`EdgeDragging`: identity, edge, place, change, joined, snappedTo,
+- [x] 2.2 Extend `dragStore.ts` with an edge drag (`EdgeDragging`: identity, edge, place, change, joined, snappedTo,
   words) sharing the one-drag `claim`, and drive the live ripple through the existing `ShiftFrom` transform (ticks,
   chapter band, card lane follow). Verify with `dragStore.test.ts` cases (claim exclusivity against trim and card
   drags, cancel restores, subscribers notified per move).
