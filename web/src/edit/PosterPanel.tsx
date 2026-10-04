@@ -7,6 +7,7 @@ import { thumbnailUrl } from '../api/thumbnail'
 import { folderName } from '../events/common'
 import { PosterCover } from '../events/PosterCover'
 import type { Turn } from '../rotate/turn.ts'
+import { HelpPanel, HelpToggle, useSectionHelp } from '../ui/help/HelpToggle'
 import { Icon } from '../ui/Icon'
 import {
   NOT_PLAYED_WORDS,
@@ -46,6 +47,7 @@ export function PosterPanel({
   onUseDefault: () => void
 }) {
   const headingId = useId()
+  const help = useSectionHelp('poster')
   const now = posterNow(read, draft)
   const state = posterState(read, draft, event)
   const words = posterStateWords(state)
@@ -68,7 +70,14 @@ export function PosterPanel({
     <section className="panel poster-area-panel" aria-labelledby={headingId}>
       <header className="panel-header">
         <h2 id={headingId}>Poster</h2>
+        <HelpToggle help={help} section="Poster" />
       </header>
+      <HelpPanel help={help}>
+        <p>
+          Pick the frame on the Timeline, then press Use as poster. The poster is the frame of the
+          original clip at that time; a render writes it beside the movie.
+        </p>
+      </HelpPanel>
       <div className="panel-body poster-area">
         <PosterCover
           src={src}
@@ -80,10 +89,6 @@ export function PosterPanel({
           <p className="poster-area-state">{words}</p>
           {notPlayed && <p className="poster-area-note">{NOT_PLAYED_WORDS}</p>}
           {note !== null && !notPlayed && <p className="poster-area-note">{note}</p>}
-          <p className="poster-area-words">
-            Pick the frame on the Timeline, then press Use as poster. The poster is the frame of the
-            original clip at that time; a render writes it beside the movie.
-          </p>
           <div className="poster-area-actions">
             <button
               type="button"

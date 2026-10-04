@@ -12,7 +12,6 @@ import {
   cardMap,
   cardPlacements,
   cardSelection,
-  cardTimeWords,
   cardWords,
   clipTimeAt,
   movieWithCards,
@@ -231,9 +230,9 @@ describe('the track map of black cards', () => {
     }
   })
 
-  it('counts the black cards once in the movie words', () => {
-    assert.equal(cardTimeWords(map), 'with 7 s of title cards')
-    assert.equal(cardTimeWords(cardMap([], lay)), '')
+  it('counts the black cards once in the movie', () => {
+    assert.equal(movieWithCards(0, map), 7000)
+    assert.equal(movieWithCards(0, cardMap([], lay)), 0)
   })
 
   it('moves nothing for a video card or an off card', () => {

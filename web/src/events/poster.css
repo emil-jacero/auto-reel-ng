@@ -31,8 +31,7 @@
     max-inline-size: 22rem;
   }
 
-  .event-cover > figcaption,
-  .poster-area-words {
+  .event-cover > figcaption {
     margin-block-start: var(--s-1);
     color: var(--fg-muted);
     font-size: var(--text-sm);

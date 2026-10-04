@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } 
 import type { KeyboardEvent, ReactNode } from 'react'
 
 import { Alert } from '../../ui/Alert'
+import { Pill } from '../../ui/Pill'
 import type { TrackClip } from '../layout'
 import { timeToPx } from '../model'
 import type { Layout } from '../model'
@@ -14,7 +15,6 @@ import { SuggestionLane } from './SuggestionLane'
 import type { ClipMarks } from './SuggestionLane'
 import {
   CUTS_WAIT_UNREADABLE,
-  DISMISSAL_NOTE,
   READING_WORDS,
   UNREADABLE_TITLE,
   clipNotAnalyzed,
@@ -22,6 +22,7 @@ import {
   decideApprove,
   decideDismiss,
   dismissalKey,
+  NEVER_ANALYZED,
   eventNote,
   neighbour,
   placeMarks,
@@ -381,7 +382,7 @@ function Notes({
   groups: readonly ClipMarks[]
   detail: ReactNode
 }) {
-  const { cutsState, decide } = control
+  const { cutsState } = control
   if (read.status === 'failed') {
     const { cause, detail: why } = read.failure
     return (
@@ -403,9 +404,15 @@ function Notes({
   const any = groups.some((group) => group.marks.length > 0)
   return (
     <div className="sg-strip">
-      {note !== null && <p className="sg-note">{note}</p>}
+      {note === NEVER_ANALYZED && (
+        <div className="sg-badge">
+          <Pill tone="idle" icon="minus">
+            {NEVER_ANALYZED}
+          </Pill>
+        </div>
+      )}
+      {note !== null && note !== NEVER_ANALYZED && <p className="sg-note">{note}</p>}
       {any && <Legend />}
-      {any && decide !== null && <p className="sg-note">{DISMISSAL_NOTE}</p>}
       {detail}
     </div>
   )

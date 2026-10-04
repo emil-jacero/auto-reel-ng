@@ -18,6 +18,7 @@ none of those sentences is wrong, so none is deleted, except two that repeat wha
   "Not analyzed" sentence becomes a small badge and the command moves into the Timeline help; the "No cut
   selected" group is not drawn until a cut is selected; the Move button's reason (`Mark a clip to move it.`)
   is its tooltip and description and appears as a line only after Move is pressed while unavailable.
+- **The selected-card read-out goes** (user, 2026-10-04: "Why is the notice \"Title card for test...\" showing in the timeline window?"): selecting a card block shows no visible panel under the Timeline in either mode; its words stay for assistive technology (the block's name and one visually hidden polite announcement).
 - No control, field, behavior or state message changes (the card dialog's fields included).
 
 ## Capabilities
@@ -33,7 +34,7 @@ None.
   how-to line), moving the marked clips (the permanent reason), the marks line (its hint row and reason line),
   and the clock (the movie stat's words).
 - `event-timeline`: MODIFIED the track's movie length (the compact stat), the analysis lane's "Not analyzed"
-  (a badge) and the selected cut's group (not drawn without a selection).
+  (a badge) and the selected cut's group (not drawn without a selection), the card selection (no visible read-out) and the card playback's fade note (it points to the Timeline help).
 
 ## Impact
 

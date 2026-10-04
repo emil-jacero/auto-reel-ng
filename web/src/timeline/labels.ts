@@ -158,12 +158,26 @@ export const CUTS_UNREADABLE_DETAIL =
 /** Shown while the page's read of the cuts is still on its way: Play waits for it. */
 export const CUTS_READING = 'Reading the cuts…'
 
-/** `Movie 3:12.00 of 3:45.00 of footage`, both to the footage's scale: it never changes width. */
-export function movieWords(movie: Ms, footage: Ms, cards = ''): string {
-  // Black cards can make the movie longer than the footage: the scale holds both.
-  const scale = clockScale(Math.max(movie, footage))
-  const words = `Movie ${formatClock(movie, scale)} of ${formatClock(footage, scale)} of footage`
-  return cards === '' ? words : `${words}, ${cards}`
+/**
+ * The movie's length as one compact line (`help-text-declutter`): `Movie 0:38.08 · footage 0:24.08 ·
+ * cuts −0:03.00 · cards +0:17.00`. `keptMs` is the footage that plays after the cuts, so the movie
+ * is `footage − cuts + cards`. A term for no cuts or no title cards is left out. Every time is written to
+ * one clock scale, the largest of them, so a trim drag or a card drag does not change its width.
+ */
+export function movieStat(keptMs: Ms, footageMs: Ms, cardsMs = 0): string {
+  const kept = Math.min(keptMs, footageMs)
+  const cuts = footageMs - kept
+  const cards = Math.max(0, cardsMs)
+  const movie = kept + cards
+  const scale = clockScale(Math.max(movie, footageMs))
+  const terms = [`Movie ${formatClock(movie, scale)}`, `footage ${formatClock(footageMs, scale)}`]
+  if (cuts > 0) {
+    terms.push(`cuts \u2212${formatClock(cuts, scale)}`)
+  }
+  if (cards > 0) {
+    terms.push(`cards +${formatClock(cards, scale)}`)
+  }
+  return terms.join(' \u00b7 ')
 }
 
 // --- title cards ------------------------------------------------------------------------

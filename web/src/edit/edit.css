@@ -29,11 +29,6 @@
     gap: var(--s-4);
   }
 
-  .edit-lede {
-    color: var(--fg-muted);
-    font-size: var(--text-sm);
-  }
-
   /* Two columns (title and date; location), one below 36rem. Every field keeps its label above it. */
   .metadata-form,
   .field-group {
@@ -231,7 +226,7 @@
     }
   }
 
-  /* The marking hint at the start, the count and Clear marks at the end; one axis. */
+  /* The Help toggle at the start, the count and Clear marks at the end; one axis. */
   .mark-head {
     display: flex;
     flex-wrap: wrap;
@@ -240,10 +235,16 @@
     gap: var(--mark-gap);
     min-block-size: var(--mark-control-h);
 
-    & > p {
-      flex: 1 1 14rem;
-      margin: 0;
+    /* The Clips Help toggle at the start; it keeps its own 44 px height, whatever the line's controls are. */
+    & > .help-toggle {
+      margin-inline-start: 0;
     }
+  }
+
+  .mark-line .help-toggle {
+    block-size: 2.75rem;
+    min-block-size: 2.75rem;
+    min-inline-size: 2.75rem;
   }
 
   .mark-line-slot {
@@ -289,7 +290,7 @@
     }
   }
 
-  /* The reason: one muted line below the controls, from the toolbar's left edge; it keeps its line. */
+  /* The reason: one muted line below the controls, from the toolbar's left edge, drawn only after Move is pressed while it cannot act. */
   .mark-move-why {
     margin: 0;
     min-block-size: 1.25rem;
@@ -306,10 +307,6 @@
 
   /* Narrow: the Move group goes on a row of its own, label above, picker filling the row beside Move. */
   @media (width < 40rem) {
-    .mark-head > p {
-      flex-basis: 100%;
-    }
-
     .mark-line-slot {
       min-inline-size: 0;
       justify-content: flex-start;

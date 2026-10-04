@@ -23,7 +23,7 @@ Class **A** stays visible (state or action), **B** moves into a section's help, 
 | "Pick the frame on the Timeline, then press Use as poster. The poster is the frame of the original clip at that time; a render writes it beside the movie." (`poster-area-words`) | E | B | Poster help |
 | Use as poster's disabled reason (`tl-poster-why`) | E | A | stays: reason of an unavailable control |
 | `Movie 3:12.00 of 3:45.00 of footage, with 8 s of title cards` (`tl-summary` paragraph under the track) | R, E | B (re-formed) | compact stat in the control row, class A as a number |
-| "The Timeline fades a card in and out over 2 s each… not shown here." (`CARDS_FADES`, `tl-cards-note`) | R, E | B | Timeline help (the card inspector keeps its own once-only words) |
+| "The Timeline fades a card in and out over 2 s each… not shown here." (`CARDS_FADES`, `tl-cards-note`) | R, E | B | Timeline help (the selected-card read-out is removed, D8) |
 | Lane "Not analyzed. Run `auto-reel analyze <root>`, then Refresh." (`NEVER_ANALYZED`) | R, E | B + A | badge "Not analyzed" stays (state); the command goes to the Timeline help |
 | "Analyzed: nothing to suggest." (`ANALYZED_CLEAN`) | R, E | A | stays: state |
 | Icon legend under the lane (`Legend`) | R, E | A | stays: names icon-only marks ("Every suggestion's kind…" requires it) |
@@ -100,6 +100,13 @@ the command is a Timeline help paragraph. Per-clip "Not analyzed" in a row is un
 **D7. The cut fields appear with a selection.** `CutFields` returns `null` when nothing is selected; the
 `tl-fields` slot has no reserved height, so the track moves down by one group when a cut is selected. Accepted:
 it happens in response to the operator's press; selection by keyboard focus is the same.
+
+**D8. The selected-card read-out is removed.** `timeline/CardInspector.tsx` draws a `section.tl-inspector`
+("Title card for Test, 7.0 s, over video") whenever a card is selected; since `edit-mode-declutter` moved the
+editor into a dialog it only repeats the block's accessible name (class C, redundant). The section is dropped
+in the read view and Edit mode; the always-present `role="status"` paragraph stays, visually hidden, and keeps
+announcing once per selection from the card as the page read it. `inspectorWords` stays (it feeds the
+announcement and the block name). `CARDS_FADES` no longer refers to the slot.
 
 ## Risks / Trade-offs
 

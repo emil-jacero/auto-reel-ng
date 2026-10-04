@@ -517,15 +517,6 @@ export function cardWords(
   return `Title card for ${cardSubject(chapterName)}, ${length}, ${look}${card.off === true ? ', not enabled' : ''}`
 }
 
-/** `with 8 s of title cards` for the movie's length; empty when no black card adds time. */
-export function cardTimeWords(map: CardMap): string {
-  if (map.totalMs <= 0) {
-    return ''
-  }
-  const seconds = map.totalMs / 1000
-  return `with ${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)} s of title cards`
-}
-
 // --- the selection ---------------------------------------------------------------------
 
 /** The selected card, by its chapter's saved name, and whether its dialog is open; none is null. */

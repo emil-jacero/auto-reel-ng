@@ -9,6 +9,7 @@ import type { Baseline, Draft } from '../../edit/draft.ts'
 import {
   ANALYZED_CLEAN,
   DECISIONS_UNAVAILABLE,
+  ANALYZE_COMMAND,
   NEVER_ANALYZED,
   alreadyCutWords,
   approvedWords,
@@ -374,7 +375,9 @@ describe('the words', () => {
     // The service says `analyzed` once the cache directory exists, and a render writes
     // its manifest there: no entries is never analysed, whatever the flag says.
     assert.equal(eventNote({ analyzed: true, segments: {} }), NEVER_ANALYZED)
-    assert.match(NEVER_ANALYZED, /auto-reel analyze/)
+    // The lane shows the badge; the command is the Timeline help's.
+    assert.equal(NEVER_ANALYZED, 'Not analyzed')
+    assert.equal(ANALYZE_COMMAND, 'Not analyzed. Run `auto-reel analyze <root>`, then Refresh.')
     assert.equal(eventNote({ analyzed: true, segments: { 'a.mp4': [] } }), ANALYZED_CLEAN)
     assert.equal(
       eventNote({

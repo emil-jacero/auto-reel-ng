@@ -7,7 +7,7 @@ import {
   clipDescription,
   jobAnnouncement,
   jobEndWords,
-  movieWords,
+  movieStat,
   noticeFor,
   notReadyWords,
   playbackNote,
@@ -114,17 +114,42 @@ describe('the playhead\'s words', () => {
     )
   })
 
-  it('writes the movie line to the footage\'s scale so it never changes width', () => {
-    assert.equal(movieWords(0, 225000), 'Movie 0:00.00 of 3:45.00 of footage')
-    assert.equal(movieWords(225000, 225000).length, movieWords(9990, 225000).length)
-    // a 70-minute footage has hours in both numbers
-    assert.equal(movieWords(3_600_000, 4_200_000), 'Movie 1:00:00.00 of 1:10:00.00 of footage')
-    assert.equal(movieWords(59_000, 4_200_000), 'Movie 0:00:59.00 of 1:10:00.00 of footage')
+  it('writes the movie stat to one clock scale so it never changes width', () => {
+    assert.equal(movieStat(0, 225000), 'Movie 0:00.00 \u00b7 footage 3:45.00 \u00b7 cuts \u22123:45.00')
+    // Same terms, a different time: the same width (the playhead or a trim drag moves the numbers).
+    assert.equal(movieStat(224000, 225000).length, movieStat(100000, 225000).length)
+    // 9.99 s to 10.00 s on a one-hour scale: the digits grow, the line does not.
+    assert.equal(movieStat(9990, 3_600_000, 1000).length, movieStat(10000, 3_600_000, 1000).length)
+    // a 70-minute footage has hours in every number
+    assert.equal(
+      movieStat(3_600_000, 4_200_000),
+      'Movie 1:00:00.00 \u00b7 footage 1:10:00.00 \u00b7 cuts \u22120:10:00.00',
+    )
+  })
+
+  it('leaves out the cuts term for no cuts and the cards term for no cards', () => {
+    assert.equal(movieStat(225000, 225000), 'Movie 3:45.00 \u00b7 footage 3:45.00')
+    assert.equal(movieStat(225000, 225000, 0), 'Movie 3:45.00 \u00b7 footage 3:45.00')
+    assert.equal(
+      movieStat(225000, 225000, 8000),
+      'Movie 3:53.00 \u00b7 footage 3:45.00 \u00b7 cards +0:08.00',
+    )
+  })
+
+  it('keeps movie = footage \u2212 cuts + cards', () => {
+    assert.equal(
+      movieStat(200000, 225000, 8000),
+      'Movie 3:28.00 \u00b7 footage 3:45.00 \u00b7 cuts \u22120:25.00 \u00b7 cards +0:08.00',
+    )
+    // Cards can make the movie longer than the footage: the scale holds both.
+    assert.equal(
+      movieStat(47650, 47650, 5000),
+      'Movie 0:52.65 \u00b7 footage 0:47.65 \u00b7 cards +0:05.00',
+    )
   })
 
   it('says the movie, the clip and a clip without cuts', () => {
-    assert.equal(movieWords(192000, 225000), 'Movie 3:12.00 of 3:45.00 of footage')
-    assert.equal(clipDescription(24960, 2), '0:24.96 long, 2 cuts')
+        assert.equal(clipDescription(24960, 2), '0:24.96 long, 2 cuts')
     assert.equal(clipDescription(3200, 0), '0:03.2 long, no cuts')
     assert.equal(clipDescription(3200, 1), '0:03.2 long, 1 cut')
   })
@@ -172,19 +197,6 @@ describe('createPlayhead', () => {
 })
 
 describe('title cards in the words', () => {
-  it('says the time black cards add to the movie, and nothing without them', () => {
-    assert.equal(
-      movieWords(200000, 225000, 'with 8 s of title cards'),
-      'Movie 3:20.00 of 3:45.00 of footage, with 8 s of title cards',
-    )
-    assert.equal(movieWords(200000, 225000, ''), 'Movie 3:20.00 of 3:45.00 of footage')
-    // Longer than the footage (cards add time): the movie is written whole, not cut to the footage.
-    assert.equal(
-      movieWords(52650, 47650, 'with 8 s of title cards'),
-      'Movie 0:52.65 of 0:47.65 of footage, with 8 s of title cards',
-    )
-  })
-
   it('says once what cannot be drawn, in the service’s words', () => {
     const specs = [{ chapter: '' }, { chapter: 'Dag 2' }]
     const unresolved: Placement[] = [

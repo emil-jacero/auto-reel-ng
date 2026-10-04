@@ -122,3 +122,25 @@ describe('docs/high-level-design.md and timeline-plays-cards', () => {
     assert.doesNotMatch(text, /plays footage only|crosses a black card without time/i)
   })
 })
+
+/* The design document names help-text-declutter in §4.10 and no longer describes a permanent movie line. */
+describe('docs/high-level-design.md and help-text-declutter', () => {
+  const text = readFileSync(new URL('../../../docs/high-level-design.md', import.meta.url), 'utf8')
+
+  it('names help-text-declutter in §4.10, §6 and D-20', () => {
+    const lines = text.split('\n')
+    const at = lines.flatMap((line, i) => (line.includes('help-text-declutter') ? [i] : []))
+    const s410 = lines.findIndex((line) => line.startsWith('### 4.10 '))
+    const s411 = lines.findIndex((line) => line.startsWith('### 4.11 '))
+    assert.ok(at.some((i) => i > s410 && i < s411), '§4.10 names it')
+    const s6 = lines.findIndex((line) => line.startsWith('## 6. '))
+    const s7 = lines.findIndex((line) => line.startsWith('## 7. '))
+    assert.ok(at.some((i) => i > s6 && i < s7), '§6 names it')
+    const d20 = lines.findIndex((line) => line.startsWith('- **D-20'))
+    assert.ok(at.some((i) => i > d20 && i < d20 + 220), 'D-20 names it')
+  })
+
+  it('no longer describes a permanent "Movie … of … of footage" line', () => {
+    assert.ok(!/Movie 3:12\.00 of 3:45\.00 of footage/.test(text))
+  })
+})

@@ -38,7 +38,7 @@ If the cuts cannot be read (the same read the page's cut summaries use), the Tim
 
 #### Scenario: Black cards count in the movie's length
 - **WHEN** an event of 3:45 of footage with 33 s of cuts draws two black cards of 4.0 s each
-- **THEN** the stat reads "Movie 3:20 · footage 3:45 · cuts −0:33 · cards +0:08", and a video card adds nothing to it
+- **THEN** the stat reads "Movie 3:28.00 · footage 3:45.00 · cuts −0:25.00 · cards +0:08.00", and a video card adds nothing to it
 
 ### Requirement: The timeline shows the event's analysis suggestions beside its clips
 
@@ -185,3 +185,97 @@ The fields, the handles, the span drawn and the Cuts panel's list SHALL show the
 - **THEN** no "Selected cut" group and no sentence about a selection is in the document
 - **WHEN** a cut's handle gets focus
 - **THEN** the group "Cut 1 of <name>" appears under the track with its two fields
+
+### Requirement: A card is selected from the Timeline or the list, as one selection
+
+The page SHALL hold one card selection, shared by the Timeline's blocks and Edit mode's chapter header bars, kept above both so
+that a Refresh or leaving Edit mode, which close the Timeline section, do not end it. Pressing a block, or a chapter's Edit Titlecard button, SHALL select that card, and the block and the button SHALL both show it selected, in more than colour (the button as pressed, with `aria-pressed`). At most one
+thing SHALL be selected on the Timeline: selecting a card SHALL end the selection of a cut, and selecting a cut
+SHALL end the selection of a card. Pressing the selected card again SHALL leave it selected; Escape SHALL clear
+it, unless the card's dialog is open, where Escape closes the dialog and the card stays selected. The selection SHALL end when its chapter is deleted or no longer in the event after a read. A block and the button SHALL be buttons reached by Tab in document order, pressed by Enter or Space, with `aria-pressed`, named in words
+as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default chapter: "Title card for the opening,
+…"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", not enabled"). In the read view a selection SHALL open nothing and SHALL show no text: the selected card's words ("Title card for <chapter>, 7.0 s, over video") are the block's accessible name and are announced once through a visually hidden polite status region that is always in the page; there SHALL be no visible panel, line or region under the Timeline for a selected card. It SHALL write nothing and request nothing. In Edit mode, pressing a block or the button SHALL also open that card's dialog (`web-app`, "A selected title card opens its inspector in Edit mode"), and the page shows no panel for it either.
+
+#### Scenario: One selection from either place
+- **WHEN** the operator presses the block of "Dag 2" on the Timeline in Edit mode
+- **THEN** the block is pressed, "Dag 2"'s Edit Titlecard button is shown pressed, and the card's dialog opens (Edit mode) or the status region announces the card once (read view) and no text panel appears
+
+#### Scenario: Selecting a cut ends a card selection
+- **WHEN** a card is selected and the operator presses a cut's span
+- **THEN** the cut is selected and the card is not
+
+#### Scenario: Refresh keeps the selection
+- **WHEN** a card is selected, the section is closed by a Refresh, and the read still lists the chapter
+- **THEN** its Edit Titlecard button (Edit mode) is shown pressed, and the block is pressed when the Timeline is opened again
+
+#### Scenario: A deleted chapter ends the selection
+- **WHEN** the selected card's chapter is deleted in the draft
+- **THEN** nothing is selected and the status region is empty
+
+#### Scenario: Keyboard and names
+- **WHEN** a keyboard user tabs to the "Dag 2" block and presses Space
+- **THEN** it is selected, a screen reader says "Title card for Dag 2, 4.0 s, over video, pressed", and the polite
+  status says it once
+
+#### Scenario: Reading changes nothing
+- **WHEN** a card is selected in the read view or in Edit mode
+- **THEN** no request is made and the Save bar shows no unsaved change
+
+#### Scenario: A selected card shows no text panel
+- **WHEN** the operator selects the block of "Test" (7.0 s, over video) in the read view, and again in Edit mode
+- **THEN** no visible text "Title card for Test, 7.0 s, over video" is in the page, outside the block's own name and the visually hidden status region, and the status region held that sentence once
+
+### Requirement: The Timeline plays the title cards as the movie will
+
+When the Timeline plays into a **black** card's span, the player area SHALL show that card's image in place of the
+video, fitted inside the same box as the video (letterboxed, uncropped), with the card's fade-in and fade-out as its
+opacity over the card's length. The playhead SHALL advance in real time for the card's whole `duration`, without any
+video playing, and then playback SHALL go on into the chapter's first clip at that clip's first kept frame. The
+Timeline SHALL load and seek that clip's proxy during the card, so that the hand-over shows the clip's frame with no
+gap of black or of a stale picture; the card's image SHALL be removed only when that frame is ready to be shown, and
+if it is not ready when the card ends the card SHALL stay on its last frame until it is. A **video** card's image
+(text on transparency) SHALL be laid over the playing video for the card's window, from the start of the first kept
+span to its clamped end, drawn above the video at the same size and position, with the fades as opacity; it SHALL
+add no time and SHALL not touch the video. The card's fades SHALL be the project's default fades (2 s in, 2 s out)
+scaled so that their sum does not exceed the card's length, as the render clamps them, because the event detail does
+not carry them; the Timeline SHALL say once, in the Timeline's help, that a fade set by the event's or
+the project's `look.title_card` is not shown here.
+
+Pause and Play, Space on the playhead, and a seek SHALL work inside a card: Pause stops the card's clock where it is,
+and Play goes on from there. A video that starts elsewhere on the page ("The Timeline pauses, and is paused, like every
+other player") SHALL pause the Timeline during a card too, with the playhead where it stopped and no announcement; the
+card's clock SHALL NOT go on by itself afterwards. A card's span in a cut-skipping play SHALL be played whole. The
+sound of a card is silence; the Timeline SHALL not start an audio element for it.
+
+The card clock SHALL be the browser's frame clock, and SHALL be driven by elapsed time, not by a count of frames, so a
+slow frame does not stretch the card. A page that is hidden SHALL pause the clock as it pauses a video.
+
+#### Scenario: Play from zero through the opening card
+- **WHEN** an event whose opening card is black and 7.0 s is played from 0:00 on Chrome 154 and on Firefox 155 or
+  newer
+- **THEN** the card's image is shown, the playhead moves from 0 to 7.0 s over about 7 s, and then the first clip's
+  video plays from its first frame with the card gone, and the sampled playhead never goes backwards
+
+#### Scenario: The hand-over has no gap
+- **WHEN** the card ends and the clip's proxy was loaded and sought during the card
+- **THEN** no sampled frame between the card's last frame and the clip's first shows the page's background, and the
+  video's `currentTime` is the clip's first kept time when the card goes
+
+#### Scenario: A video card over the video
+- **WHEN** the Timeline plays a chapter whose card is video and 4.0 s over its first clip
+- **THEN** the card's image is above the video for 4.0 s of the clip's time, the video keeps playing under it, the
+  card's opacity rises over its fade-in and falls over its fade-out, and the image is gone after the window
+
+#### Scenario: Pause and Play inside a card
+- **WHEN** the operator presses Pause 1.2 s into a 7.0 s black card and then Play
+- **THEN** the playhead stops at 1.2 s of the card, the image stays, the button says "Play", and Play goes on from 1.2 s
+  and ends the card 5.8 s later
+
+#### Scenario: Another player starts during a card
+- **WHEN** the Timeline is inside a black card and the operator presses Play on the event's movie
+- **THEN** the Timeline is paused with its playhead where it was, the movie plays, nothing is announced, and the card
+  does not go on
+
+#### Scenario: A slow frame does not stretch the card
+- **WHEN** the browser presents no frame for 500 ms during a 7.0 s card
+- **THEN** the card still ends 7.0 s after it began, within one frame
