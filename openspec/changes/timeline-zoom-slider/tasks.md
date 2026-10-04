@@ -64,7 +64,7 @@ scratchpad only, in Chrome 154 (`localhost/playback-research:chrome`) and Firefo
 
 ## 5. Docs and gates
 
-- [ ] 5.1 HLD (`docs/high-level-design.md`): amend D-20 (the zoom slider, `\`, Ctrl/Cmd+wheel and pinch at the pointer,
+- [x] 5.1 HLD (`docs/high-level-design.md`): amend D-20 (the zoom slider, `\`, Ctrl/Cmd+wheel and pinch at the pointer,
   the per-tab session memory, MAX_PPS kept at 240 with the numbers from design.md, Fit's end gutter, the Timeline only in
   Edit mode — superseding "the read view keeps its button"); a §4.10 bullet and a §6 phase-8 note naming
   `timeline-zoom-slider`. Test: a `docs.test.ts` case asserting `timeline-zoom-slider` is named in D-20, §4.10 and §6.

@@ -170,3 +170,27 @@ describe('docs/high-level-design.md and timeline-ripple-layout', () => {
     assert.ok(text.includes('"A trimmed clip is as wide as its proxy" no longer holds'))
   })
 })
+
+/* The design document names the change in D-20, §4.10 and §6 (timeline-zoom-slider). */
+describe('docs/high-level-design.md and timeline-zoom-slider', () => {
+  const text = readFileSync(new URL('../../../docs/high-level-design.md', import.meta.url), 'utf8')
+
+  it('names timeline-zoom-slider in D-20, §4.10 and §6', () => {
+    const lines = text.split('\n')
+    const at = lines.flatMap((line, i) => (line.includes('timeline-zoom-slider') ? [i] : []))
+    const start = (prefix: string) => lines.findIndex((line) => line.startsWith(prefix))
+    const within = (from: number, to: number) => at.some((i) => i > from && i < to)
+    const d20 = start('- **D-20')
+    const d21 = start('- **D-21')
+    assert.ok(d20 > 0 && d21 > d20)
+    assert.ok(within(d20, d21), 'D-20 names it')
+    const s410 = start('### 4.10 ')
+    const s411 = start('### 4.11 ')
+    assert.ok(s410 > 0 && s411 > s410)
+    assert.ok(within(s410, s411), '§4.10 names it')
+    const s6 = start('## 6. ')
+    const s7 = start('## 7. ')
+    assert.ok(s6 > 0 && s7 > s6)
+    assert.ok(within(s6, s7), '§6 names it')
+  })
+})
