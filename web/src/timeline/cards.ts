@@ -1,7 +1,7 @@
 import type { EventDetail } from '../api/event.ts'
 import { cardLimits } from './cardLength.ts'
 import type { CardRange, Tenths } from './cardLength.ts'
-import { ModelError } from './model.ts'
+import { emptyExtent, interiorSpans, keptExtent, ModelError } from './model.ts'
 import type { Layout, Ms } from './model.ts'
 
 /*
@@ -167,15 +167,18 @@ export type Placement =
   | { kind: 'unresolved'; chapter: number; error: string }
   | { kind: 'unreadable'; chapter: number; error: string }
 
-/** The first kept span of a clip: where it starts and how long it runs, or null when all is cut. */
+/**
+ * The first kept span of a clip: where it starts (its kept start, `keptExtent`, the left edge
+ * of its block) and how long it runs (to the first interior cut, else to the kept end), or
+ * null when the clip keeps nothing.
+ */
 function firstKept(clip: CardClip): { start: Ms; length: Ms } | null {
-  const first = clip.spans[0]
-  const start = first !== undefined && first.from <= 0 ? first.to : 0
-  if (start >= clip.durationMs) {
+  const extent = keptExtent(clip.spans, clip.durationMs)
+  if (emptyExtent(extent)) {
     return null
   }
-  const next = clip.spans.find((span) => span.from > start)
-  return { start, length: (next?.from ?? clip.durationMs) - start }
+  const next = interiorSpans(clip.spans, extent)[0]
+  return { start: extent.inMs, length: (next?.from ?? extent.outMs) - extent.inMs }
 }
 
 /**
@@ -358,8 +361,9 @@ export type CardBlock = {
 }
 
 /**
- * The blocks to draw, in track order. A black card starts at its clip's track start less its
- * own length; a video (or off) card starts where the first kept span starts.
+ * The blocks to draw, in track order. A black card starts at its clip's track start (the left
+ * edge of its block, its kept start) less its own length; a video (or off) card starts where
+ * the first kept span starts, which is that left edge.
  */
 export function cardBlocks(placements: readonly Placement[], track: Layout): CardBlock[] {
   const blocks: CardBlock[] = []
@@ -370,7 +374,9 @@ export function cardBlocks(placements: readonly Placement[], track: Layout): Car
     const black = place.kind === 'anchored' && place.background === 'black'
     blocks.push({
       chapter: place.chapter,
-      startMs: black ? track.startsMs[place.clip] - place.widthMs : track.startsMs[place.clip] + place.atMs,
+      startMs: black
+        ? track.startsMs[place.clip] - place.widthMs
+        : track.startsMs[place.clip] + place.atMs - (track.inMs[place.clip] ?? 0),
       widthMs: place.widthMs,
       background: place.background,
       off: place.kind === 'off',

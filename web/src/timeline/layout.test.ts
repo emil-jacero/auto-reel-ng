@@ -7,6 +7,7 @@ import {
   cutLabel,
   drawnCuts,
   filmTiles,
+  footageMs,
   movieMs,
   omittedWords,
   readiness,
@@ -284,6 +285,73 @@ describe('the track', () => {
   })
 })
 
+describe('edge cuts shorten the blocks (timeline-ripple-layout)', () => {
+  function shownOf(durations: number[]): ShownClip[] {
+    return shownClips({
+      chapters: [
+        chapter(
+          '',
+          durations.map((d, i) =>
+            clip(`c${i}.mp4`, { proxy: { state: 'ready', facts: facts(d), version: `v${i}` } as Clip['proxy'] }),
+          ),
+        ),
+      ],
+    }).clips
+  }
+  // A (10 s, a cut 0..2 s), B (8 s, a cut 6..8 s), C (5 s, a cut 1..2 s) at 40 px/s.
+  const cuts = new Map([
+    ['c0.mp4', [{ in: 0, out: 2 }]],
+    ['c1.mp4', [{ in: 6, out: 8 }]],
+    ['c2.mp4', [{ in: 1, out: 2, reason: 'black' }]],
+  ])
+  const clips = trackClips(shownOf([10, 8, 5]), cuts)!
+  const lay = trackLayout(clips)
+  const px = (ms: number) => timeToPx(ms, 40)
+
+  it('draws A 320 px from 0, B 240 px from 320 px, C 200 px from 560 px, with no gap', () => {
+    const blocks = clips.map((c, i) => [px(lay.startsMs[i]), px(c.kept.outMs - c.kept.inMs)])
+    assert.deepEqual(blocks, [
+      [0, 320],
+      [320, 240],
+      [560, 200],
+    ])
+    blocks.slice(1).forEach(([left], i) => assert.equal(left, blocks[i][0] + blocks[i][1]))
+  })
+
+  it('draws no hatched span on A or B, and C’s from 600 to 640 px', () => {
+    assert.deepEqual(clips[0].drawn, [])
+    assert.deepEqual(clips[1].drawn, [])
+    const [cut] = clips[2].drawn
+    assert.deepEqual(
+      [px(lay.startsMs[2] + cut.from - clips[2].kept.inMs), px(lay.startsMs[2] + cut.to - clips[2].kept.inMs)],
+      [600, 640],
+    )
+    // Play still skips every span, edge ones too.
+    assert.deepEqual(clips[0].spans, [{ from: 0, to: 2000 }])
+  })
+
+  it('the movie is 18 s of 23 s of footage, the track 19 s', () => {
+    assert.equal(movieMs(clips, cuts), 18000)
+    assert.equal(footageMs(clips), 23000)
+    assert.equal(lay.totalMs, 19000)
+  })
+
+  it('a cut past the end is a trailing cut: the 6.02 s clip is 5.0 s wide and the next starts there', () => {
+    const past = new Map([['c0.mp4', [{ in: 5, out: 7 }]]])
+    const two = trackClips(shownOf([6.02, 3]), past)!
+    assert.deepEqual(two[0].kept, { inMs: 0, outMs: 5000 })
+    assert.deepEqual(two[0].drawn, [])
+    assert.deepEqual(trackLayout(two).startsMs, [0, 5000])
+  })
+
+  it('a wholly cut clip has no length: the third starts where the first ends', () => {
+    const all = new Map([['c1.mp4', [{ in: 0, out: 4 }]]])
+    const three = trackClips(shownOf([4, 4, 4]), all)!
+    assert.deepEqual(trackLayout(three).startsMs, [0, 4000, 4000])
+    assert.deepEqual(three[1].drawn, [])
+  })
+})
+
 describe('omittedWords', () => {
   it('says how many were left out, each kind apart, singular and plural', () => {
     assert.deepEqual(omittedWords({ missing: 0, excluded: 0 }), [])
@@ -347,6 +415,15 @@ describe('filmTiles', () => {
     assert.equal(tiles[1].index, Math.floor(96 / 40 / 3)) // second 2.4 is in tile 0
     assert.equal(tiles[4].index, Math.floor(384 / 40 / 3)) // second 9.6: tile 3
     assert.equal(filmTiles(sparse, 360000, 40, { from: 14400 - 96, to: 14400 }).at(-1)!.index, 119)
+  })
+
+  it('starts at the kept start: tile 2 at 0 px and tile 4 at 96 px for an extent from 2 s', () => {
+    const tiles = filmTiles(film, { inMs: 2000, outMs: 10000 }, 40, all)
+    assert.equal(tiles[0].index, 2)
+    assert.equal(tiles[1].x, 96)
+    assert.equal(tiles[1].index, 4)
+    // The block is the extent's width: 8 s at 40 px/s.
+    assert.ok(tiles.at(-1)!.x + tiles.at(-1)!.width <= 320 + 1e-6)
   })
 
   it('scales a portrait sprite to a narrow place', () => {

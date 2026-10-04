@@ -5,8 +5,18 @@ import { chapterHeading } from '../events/labels.ts'
 import { clipNames, plural } from '../events/names.ts'
 import { copyHasSound, copyLengthMs } from '../preview/source.ts'
 import type { Skip } from '../preview/playback.ts'
-import { clipFacts, cutSpans, layout, movieLengthMs, timeToPx } from './model.ts'
-import type { ClipFacts, Layout, Ms } from './model.ts'
+import {
+  clipFacts,
+  cutSpans,
+  extentMs,
+  interiorSpans,
+  keptExtent,
+  layout,
+  movieLengthMs,
+  timeToPx,
+  wholeExtent,
+} from './model.ts'
+import type { ClipFacts, Extent, Layout, Ms } from './model.ts'
 
 /*
  * What the event page's Timeline shows, as pure rules (D-20): which clips, whether each
@@ -222,9 +232,17 @@ export type TrackClip = {
   version: string
   /** How many cuts `reel.yaml` lists for the clip. */
   cutCount: number
-  /** The spans the render leaves out, joined, clamped to the clip. */
+  /**
+   * The clip's kept extent (`timeline-ripple-layout`): its block spans only this, a leading
+   * and a trailing cut are not drawn, and the clips after it close up.
+   */
+  kept: Extent
+  /**
+   * The interior spans the render leaves out, joined, clamped to the clip, in the clip's own
+   * time (the block's left edge is `kept.inMs`); the leading and trailing cuts are not among them.
+   */
   drawn: DrawnCut[]
-  /** The cut spans as skip spans, for playing. */
+  /** Every cut span (leading and trailing too) as skip spans, for playing. */
   spans: Skip[]
 }
 
@@ -265,6 +283,8 @@ export function trackClips(
     }
     const trims = cuts?.get(clip.identity) ?? []
     const { facts, vfr, film, version } = clip.ready
+    const spans = cutSpans(trims, facts.durationMs)
+    const kept = keptExtent(spans, facts.durationMs)
     clips.push({
       identity: clip.identity,
       name: clip.name,
@@ -274,16 +294,22 @@ export function trackClips(
       film,
       version,
       cutCount: trims.length,
-      drawn: drawnCuts(trims, facts.durationMs),
-      spans: cutSpans(trims, facts.durationMs),
+      kept,
+      drawn: interiorSpans(drawnCuts(trims, facts.durationMs), kept),
+      spans,
     })
   }
   return clips
 }
 
-/** The clips end to end. */
+/** The clips end to end, each as long as its kept extent. */
 export function trackLayout(clips: readonly TrackClip[]): Layout {
-  return layout(clips.map((clip) => clip.facts))
+  return layout(clips.map((clip) => ({ ...clip.facts, ...clip.kept })))
+}
+
+/** The footage: the shown clips' full proxy durations, which edge cuts do not shorten (the movie line's "of footage"). */
+export function footageMs(clips: readonly { facts: { durationMs: Ms } }[]): Ms {
+  return clips.reduce((sum, clip) => sum + clip.facts.durationMs, 0)
 }
 
 /** The movie's length: the footage less the cuts, each span once (the render's rule). */
@@ -338,28 +364,30 @@ export function filmScale(film: FilmGeometry): number {
 export type Tile = { x: number; width: number; index: number; col: number; row: number }
 
 /**
- * The filmstrip tiles to draw for a clip of `durationMs` at `pps`, within the window
- * `[from, to)` (px from the clip's start). A tile is drawn `tileWidth * scale` px wide
- * (96 for the usual 160x90) and the place at `x` shows the sprite tile of second
- * `x / pps` (the first place the first second, the last no later than the sprite's last
- * tile); at a zoom where tiles would overlap, places are left out, not squeezed. A clip
- * of under a tile's width has one. The last place is cut to the clip's end.
+ * The filmstrip tiles to draw for a clip's block at `pps`, within the window `[from, to)` (px
+ * from the block's left edge). `kept` is the clip's kept extent (a length in ms is the whole
+ * clip): the block starts at its kept start. A tile is drawn `tileWidth * scale` px wide (96 for
+ * the usual 160x90) and the place at `x` shows the sprite tile of the clip's second
+ * `kept.inMs / 1000 + x / pps` (the first place the kept start, the last no later than the
+ * sprite's last tile); at a zoom where tiles would overlap, places are left out, not squeezed.
+ * A block of under a tile's width has one. The last place is cut to the block's end.
  */
 export function filmTiles(
   film: FilmGeometry,
-  durationMs: Ms,
+  kept: Ms | Extent,
   pps: number,
   window: { from: number; to: number },
 ): Tile[] {
+  const extent = typeof kept === 'number' ? wholeExtent(kept) : kept
   const placeWidth = film.tileWidth * filmScale(film)
-  const clipWidth = timeToPx(durationMs, pps)
+  const clipWidth = timeToPx(extentMs(extent), pps)
   const places = Math.max(1, Math.ceil(clipWidth / placeWidth))
   const first = Math.max(0, Math.floor(window.from / placeWidth))
   const last = Math.min(places - 1, Math.ceil(window.to / placeWidth) - 1)
   const tiles: Tile[] = []
   for (let place = first; place <= last; place += 1) {
     const x = place * placeWidth
-    const index = Math.min(film.tiles - 1, Math.floor(x / pps / film.interval))
+    const index = Math.min(film.tiles - 1, Math.floor((extent.inMs / 1000 + x / pps) / film.interval))
     tiles.push({
       x,
       width: Math.min(placeWidth, Math.max(1, clipWidth - x)),
