@@ -11,6 +11,8 @@ thumbnail lookup (:func:`thumbnail_source`): discovery's own listing decides whi
 clips have one, and ``thumbs/`` computes where it is cached (D-11).
 """
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 
 import logging
@@ -75,6 +77,7 @@ from ..thumbs import (
 from .card_read import title_cards_for, with_cards
 from .entity_tag import entity_tag
 from .movie_read import expected_output, movie_facts
+from .poster_read import poster_for
 from .schemas import (
     AnalysisOut,
     ChapterOut,
@@ -89,10 +92,8 @@ from .schemas import (
     ProxyFilmstripOut,
     ProxyOut,
     ProxyState,
-    ResolvedCardOut,
     SegmentOut,
     StalenessOut,
-    TitleStyleOut,
 )
 from .settings import ApiSettings
 
@@ -703,6 +704,7 @@ def get_event(
         movie = movie_facts(settings, event_dir, resolved.metadata)
         chapters, title_card, title_card_error = with_cards(resolved, look_defaults, chapters)
         title_cards, title_cards_error = title_cards_for(resolved, look_defaults)
+        poster, poster_note = poster_for(document, chapters)
     except (ReelError, OSError) as exc:
         raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
     latest_jobs = job_store.latest_by_project(str(settings.project_root), kind=JobKind.RENDER)
@@ -723,6 +725,8 @@ def get_event(
         title_card_error=title_card_error,
         title_cards=title_cards,
         title_cards_error=title_cards_error,
+        poster=poster,
+        poster_note=poster_note,
     )
 
 

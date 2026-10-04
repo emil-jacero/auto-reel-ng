@@ -345,6 +345,27 @@ class MovieOut(BaseModel):
     chapters: Optional[List[MovieChapterOut]] = None
 
 
+class PosterSource(StrEnum):
+    """Where the effective poster comes from: the document's choice or the default frame."""
+
+    EVENT = "event"
+    DEFAULT = "default"
+
+
+class PosterOut(BaseModel):
+    """The event's effective poster, as the engine's rules give it, probe-free.
+
+    ``source`` is ``event`` when ``reel.yaml`` names a clip the movie plays (then ``clip`` and
+    ``at``, seconds into that clip before its cuts, are its values) and ``default`` otherwise
+    (then ``clip`` is the first played clip and ``at`` is ``null``: the default frame's time
+    depends on a duration this read does not probe).
+    """
+
+    clip: str
+    at: Optional[float] = None
+    source: PosterSource
+
+
 class EventDetailOut(BaseModel):
     """One event's full detail: metadata, ordered chapters/clips, reconcile state,
     and its staleness verdict (change-detection, §8.14).
@@ -366,6 +387,10 @@ class EventDetailOut(BaseModel):
     ``title_cards`` is whether the effective decorators include ``title`` and where that was
     decided; it is present unless ``look.decorators`` is not a list, when it is ``null`` and
     ``title_cards_error`` names the field.
+
+    ``poster`` is the effective poster (see :class:`PosterOut`), ``null`` when no clip is played;
+    ``poster_note`` says why a poster ``reel.yaml`` names is not used (its clip is missing,
+    ignored or excluded), else ``null``. A poster the loader refuses is the event's failure.
     """
 
     event_id: str
@@ -383,6 +408,8 @@ class EventDetailOut(BaseModel):
     title_card_error: Optional[str] = None
     title_cards: Optional[TitleCardsOut] = None
     title_cards_error: Optional[str] = None
+    poster: Optional[PosterOut] = None
+    poster_note: Optional[str] = None
 
 
 class TrimBody(BaseModel):
@@ -480,6 +507,21 @@ class ChapterBody(BaseModel):
     card: Optional[CardBody] = None
 
 
+class PosterBody(BaseModel):
+    """The event's chosen poster frame, named as the ``reel.yaml`` ``poster`` keys.
+
+    Shape only: the key set and the JSON types. ``clip`` is a clip identity and ``at`` seconds into
+    that clip before its cuts; the value rules are the engine's and arrive as a 400 naming
+    ``poster.clip`` or ``poster.at``. Whether ``at`` is inside the clip needs a probe and is
+    checked at render.
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    clip: str
+    at: float
+
+
 class MetadataBody(BaseModel):
     """Event metadata in an editorial write."""
 
@@ -507,6 +549,13 @@ class EditorialDocumentBody(BaseModel):
     chapters: List[ChapterBody] = []
     clips: Dict[str, ClipPropertiesBody] = {}
     ignore: List[str] = []
+    poster: Optional[PosterBody] = Field(
+        default=None,
+        description=(
+            "The chosen poster frame. Absent in a write keeps the poster reel.yaml holds;"
+            " `null` removes it; `{clip, at}` sets it. A document with none reads `null`."
+        ),
+    )
 
 
 class EditorialWriteResult(BaseModel):

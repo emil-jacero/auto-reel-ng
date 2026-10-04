@@ -2721,6 +2721,135 @@
         }
       }
     },
+    "/api/v1/events/{event_id}/poster.jpg": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Poster",
+        "description": "``GET /api/v1/events/{event_id}/poster.jpg``: the event's effective poster.\n\nThe event detail's ``poster``, as an image: the rendered ``<movie stem>-poster.jpg`` while the\nevent is fresh and the manifest claims it, else the chosen frame drawn from the original (or\nthe first played clip's thumbnail for the default), cached beside the thumbnails. Draws share\nthe thumbnails' extraction cap and single-flight. ``no-cache`` with an ``ETag``: a saved poster\nshows at once and a revalidation extracts nothing.\n\n404 for an unknown event and for an event that plays no clip; 502 with\n``thumbnail_failure`` when the engine cannot make the frame, with the list's ``failure`` when\nthe event cannot be read. Nothing is written into the library and the database is never\ntouched.",
+        "operationId": "get_poster_api_v1_events__event_id__poster_jpg_get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An opaque cache-busting version; accepted and ignored",
+              "title": "V"
+            },
+            "description": "An opaque cache-busting version; accepted and ignored"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The event's poster: a JPEG, the render's own file once it is fresh",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the image: the rendered file's size and mtime, or the engine's cache key, quoted",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: `If-None-Match` names the current poster",
+            "headers": {
+              "ETag": {
+                "description": "Strong entity-tag of the image: the rendered file's size and mtime, or the engine's cache key, quoted",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/events/{event_id}/proxies": {
       "post": {
         "tags": [
@@ -3569,6 +3698,17 @@
             "type": "array",
             "title": "Ignore",
             "default": []
+          },
+          "poster": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PosterBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The chosen poster frame. Absent in a write keeps the poster reel.yaml holds; `null` removes it; `{clip, at}` sets it. A document with none reads `null`."
           }
         },
         "additionalProperties": false,
@@ -3611,6 +3751,17 @@
             "type": "array",
             "title": "Ignore",
             "default": []
+          },
+          "poster": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PosterBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The chosen poster frame. Absent in a write keeps the poster reel.yaml holds; `null` removes it; `{clip, at}` sets it. A document with none reads `null`."
           }
         },
         "additionalProperties": false,
@@ -3808,6 +3959,27 @@
               }
             ],
             "title": "Title Cards Error"
+          },
+          "poster": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PosterOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "poster_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Note"
           }
         },
         "type": "object",
@@ -3816,7 +3988,7 @@
           "staleness"
         ],
         "title": "EventDetailOut",
-        "description": "One event's full detail: metadata, ordered chapters/clips, reconcile state,\nand its staleness verdict (change-detection, §8.14).\n\n``missing`` lists every clip the document lists that disk does not have, excluded or\nnot. ``blocking_missing`` is the subset a render needs: the missing clips the document\ndoes not exclude (an excluded clip is never probed, so its absence cannot fail a\nrender).\n\n``movie`` is ``None`` when the event has no rendered movie, by the rule\n``GET …/movie`` uses (see :class:`MovieOut` for what it holds). It is always present on\nthe wire, and the events list does not carry it.\n\n``title_card`` is the event's resolved card style (the event-wide layer, before any\nchapter's overrides) and each chapter's ``card`` the card a render would draw. When the\nevent-wide ``look.title_card`` cannot be resolved, ``title_card`` and every ``card`` are\n``null`` and ``title_card_error`` names the field; the rest of the detail is unaffected.\n\n``title_cards`` is whether the effective decorators include ``title`` and where that was\ndecided; it is present unless ``look.decorators`` is not a list, when it is ``null`` and\n``title_cards_error`` names the field."
+        "description": "One event's full detail: metadata, ordered chapters/clips, reconcile state,\nand its staleness verdict (change-detection, §8.14).\n\n``missing`` lists every clip the document lists that disk does not have, excluded or\nnot. ``blocking_missing`` is the subset a render needs: the missing clips the document\ndoes not exclude (an excluded clip is never probed, so its absence cannot fail a\nrender).\n\n``movie`` is ``None`` when the event has no rendered movie, by the rule\n``GET …/movie`` uses (see :class:`MovieOut` for what it holds). It is always present on\nthe wire, and the events list does not carry it.\n\n``title_card`` is the event's resolved card style (the event-wide layer, before any\nchapter's overrides) and each chapter's ``card`` the card a render would draw. When the\nevent-wide ``look.title_card`` cannot be resolved, ``title_card`` and every ``card`` are\n``null`` and ``title_card_error`` names the field; the rest of the detail is unaffected.\n\n``title_cards`` is whether the effective decorators include ``title`` and where that was\ndecided; it is present unless ``look.decorators`` is not a list, when it is ``null`` and\n``title_cards_error`` names the field.\n\n``poster`` is the effective poster (see :class:`PosterOut`), ``null`` when no clip is played;\n``poster_note`` says why a poster ``reel.yaml`` names is not used (its clip is missing,\nignored or excluded), else ``null``. A poster the loader refuses is the event's failure."
       },
       "EventErrorOut": {
         "properties": {
@@ -4347,6 +4519,64 @@
         ],
         "title": "MovieOut",
         "description": "The rendered movie's version and chapter times, read from the render manifest.\n\nProbe-free: the manifest and a ``stat`` are the only reads. The facts describe the movie\n**on disk**, the last render's, not the current editorial state (the staleness verdict says\nwhether it is outdated).\n\n``recorded_at`` is when the render record was written (timezone-aware UTC): the engine writes\nit only after the atomic finalize verified the movie, so for a render it is when the render\nfinished; for a movie ``adopt-renders`` recorded it is when it was adopted. It is not the\nfile's modification time. ``fingerprint`` is the first 12 hexadecimal characters of the\nmanifest's combined fingerprint: the identity of the **inputs** the render was made from, not\na hash of the movie's bytes (two renders of identical inputs share it). Together they are\nthe movie's version.\n\n``chapters`` is the recorded chapter list, in recorded order. ``None`` means unknown: the\nmanifest records no chapter times (written before they were recorded, or adopted rather than\nrendered) or its list is unreadable. It is never ``[]`` for unknown; a recorded empty list is\nreported as empty."
+      },
+      "PosterBody": {
+        "properties": {
+          "clip": {
+            "type": "string",
+            "title": "Clip"
+          },
+          "at": {
+            "type": "number",
+            "title": "At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "clip",
+          "at"
+        ],
+        "title": "PosterBody",
+        "description": "The event's chosen poster frame, named as the ``reel.yaml`` ``poster`` keys.\n\nShape only: the key set and the JSON types. ``clip`` is a clip identity and ``at`` seconds into\nthat clip before its cuts; the value rules are the engine's and arrive as a 400 naming\n``poster.clip`` or ``poster.at``. Whether ``at`` is inside the clip needs a probe and is\nchecked at render."
+      },
+      "PosterOut": {
+        "properties": {
+          "clip": {
+            "type": "string",
+            "title": "Clip"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PosterSource"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clip",
+          "source"
+        ],
+        "title": "PosterOut",
+        "description": "The event's effective poster, as the engine's rules give it, probe-free.\n\n``source`` is ``event`` when ``reel.yaml`` names a clip the movie plays (then ``clip`` and\n``at``, seconds into that clip before its cuts, are its values) and ``default`` otherwise\n(then ``clip`` is the first played clip and ``at`` is ``null``: the default frame's time\ndepends on a duration this read does not probe)."
+      },
+      "PosterSource": {
+        "type": "string",
+        "enum": [
+          "event",
+          "default"
+        ],
+        "title": "PosterSource",
+        "description": "Where the effective poster comes from: the document's choice or the default frame."
       },
       "PreviewCardBody": {
         "properties": {

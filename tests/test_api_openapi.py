@@ -796,3 +796,32 @@ def test_the_title_card_models_and_routes_are_published() -> None:
     assert body.endswith("/TitleCardPreviewBody")
     assert models["PreviewCardBody"]["properties"]["title"]["anyOf"][0]["maxLength"] == 200
     assert models["PreviewCardBody"]["properties"]["subtitle"]["anyOf"][0]["maxLength"] == 400
+
+
+def test_the_poster_models_and_route_are_published() -> None:
+    schema = build_openapi_schema()
+    models = schema["components"]["schemas"]
+    # The write body: optional and nullable (absent keeps, null removes); strict two-key shape.
+    for name in ("EditorialDocumentBody-Input", "EditorialDocumentBody-Output"):
+        assert "poster" not in models[name].get("required", []), name
+        assert {"$ref": "#/components/schemas/PosterBody"} in (
+            models[name]["properties"]["poster"]["anyOf"]
+        ), name
+    assert set(models["PosterBody"]["required"]) == {"clip", "at"}
+    assert models["PosterBody"]["additionalProperties"] is False
+    # The detail: the poster and its note are nullable; ``source`` is a closed enumeration.
+    detail = models["EventDetailOut"]["properties"]
+    assert {"poster", "poster_note"} <= set(detail)
+    assert "poster" not in models["EventDetailOut"].get("required", [])
+    assert set(models["PosterOut"]["required"]) == {"clip", "source"}
+    assert models["PosterSource"]["enum"] == ["event", "default"]
+
+    route = schema["paths"]["/api/v1/events/{event_id}/poster.jpg"]["get"]
+    responses = route["responses"]
+    assert set(responses) - {"422"} == {"200", "304", "404", "502"}
+    assert list(responses["200"]["content"]) == ["image/jpeg"]
+    assert set(responses["200"]["headers"]) == {"ETag", "Cache-Control"}
+    assert set(responses["304"]["headers"]) == {"ETag", "Cache-Control"}
+    for code in ("404", "502"):
+        ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
+        assert ref.endswith("/ProblemOut"), code

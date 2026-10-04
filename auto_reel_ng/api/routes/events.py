@@ -13,7 +13,7 @@ import re
 import time
 from functools import partial
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import JSONResponse, Response
@@ -39,8 +39,10 @@ from ...reel.document import ReelDocument
 from ...render.title.config import check_card_styles
 from ...staleness.fingerprint import editorial_hash
 from ...thumbs import is_cached, one_line_cause, recorded_failure, thumbnail_for
+from ...thumbs.poster import poster_draw_for
 from .. import events_read, proxy_read
 from ..media import etag_matches
+from ..poster_source import PosterImage, PosterUnavailableError, poster_image
 from ..problem import (
     bad_gateway,
     bad_request,
@@ -252,7 +254,9 @@ def _thumbnail_headers(etag: str) -> dict[str, str]:
     return {"ETag": etag, "Cache-Control": THUMBNAIL_CACHE_CONTROL}
 
 
-async def _revalidated(if_none_match: str, source: events_read.ThumbnailSource) -> bool:
+async def _revalidated(
+    if_none_match: str, source: Union[events_read.ThumbnailSource, PosterImage]
+) -> bool:
     """RFC 9110 ``If-None-Match`` under weak comparison, decided before any extraction.
 
     A ``W/`` prefix is ignored and a comma-separated list is accepted. ``*`` matches
@@ -287,36 +291,46 @@ def _read_extracted_thumbnail(path: Path) -> bytes:
 
 
 async def _serve_thumbnail(
-    request: Request, source: events_read.ThumbnailSource, if_none_match: Optional[str]
+    request: Request,
+    source: Union[events_read.ThumbnailSource, PosterImage],
+    if_none_match: Optional[str],
+    *,
+    extract: Optional[Callable[[], Path]] = None,
+    headers: Optional[Callable[[str], dict[str, str]]] = None,
 ) -> Response:
     """The 304, the cached 200, a recorded failure, or the 200 of an extraction under the gate.
 
     A cached thumbnail never waits for a slot, and neither does a clip whose failure the
     engine recorded in the last minute: that failure is raised here with no process and no
     slot. The engine's errors propagate to the route, which answers them by cause.
+
+    The poster route shares this: it passes its own ``extract`` (a frame draw instead of the
+    thumbnail) and ``headers`` (``no-cache``, so a saved poster shows at once).
     """
+    headers = headers or _thumbnail_headers
     if if_none_match is not None and await _revalidated(if_none_match, source):
-        return Response(status_code=304, headers=_thumbnail_headers(source.etag))
+        return Response(status_code=304, headers=headers(source.etag))
     body = await run_in_threadpool(_read_cached_thumbnail, source.cache_path)
     if body is not None:
-        return Response(body, media_type="image/jpeg", headers=_thumbnail_headers(source.etag))
+        return Response(body, media_type="image/jpeg", headers=headers(source.etag))
     failure = await run_in_threadpool(recorded_failure, source.clip_path, source.cache_path)
     if failure is not None:
         raise failure
 
     gate: ThumbnailGate = request.app.state.thumbnail_gate
-    extract = partial(
-        thumbnail_for,
-        source.clip_path,
-        position=source.position,
-        cache_dir=source.cache_dir,
-        runtime=request.app.state.runtime,
-    )
+    if extract is None:
+        extract = partial(
+            thumbnail_for,
+            source.clip_path,
+            position=source.position,
+            cache_dir=source.cache_dir,
+            runtime=request.app.state.runtime,
+        )
     path = await gate.produce(source.cache_path.stem, extract)
     body = await run_in_threadpool(_read_extracted_thumbnail, path)
     # The key of the bytes served, not the one computed before extraction: a clip that
     # changed mid-request must not get the old key's strong tag.
-    return Response(body, media_type="image/jpeg", headers=_thumbnail_headers(f'"{path.stem}"'))
+    return Response(body, media_type="image/jpeg", headers=headers(f'"{path.stem}"'))
 
 
 def _thumbnail_failed(event_id: str, clip: str, detail: str) -> JSONResponse:
@@ -416,6 +430,122 @@ async def get_thumbnail(
         return _clip_failed(event_id, clip, exc)
     except ThumbnailCacheError as exc:
         return _thumbnail_failed(event_id, clip, str(exc))
+
+
+#: A poster is never reused without asking: ``no-cache`` plus a validator, so a poster the operator
+#: just saved shows at once and a revalidation costs a 304 with no extraction.
+POSTER_CACHE_CONTROL = "private, no-cache"
+
+_POSTER_HEADERS = {
+    "ETag": {
+        "description": "Strong entity-tag of the image: the rendered file's size and mtime, or the"
+        " engine's cache key, quoted",
+        "schema": {"type": "string"},
+    },
+    "Cache-Control": {
+        "description": f"Always `{POSTER_CACHE_CONTROL}`",
+        "schema": {"type": "string"},
+    },
+}
+
+
+def _poster_headers(etag: str) -> dict[str, str]:
+    return {"ETag": etag, "Cache-Control": POSTER_CACHE_CONTROL}
+
+
+def _poster_extraction(request: Request, image: PosterImage) -> Callable[[], Path]:
+    """The draw for a poster that is not on disk: the chosen frame, or the clip's thumbnail."""
+    runtime = request.app.state.runtime
+    if image.kind == "chosen":
+        return partial(
+            poster_draw_for,
+            image.clip_path,
+            at=image.at,
+            rotate=image.rotate,
+            cache_dir=image.cache_dir,
+            runtime=runtime,
+        )
+    if image.kind == "default":
+        return partial(
+            thumbnail_for,
+            image.clip_path,
+            position=image.position,
+            cache_dir=image.cache_dir,
+            runtime=runtime,
+        )
+
+    def vanished() -> Path:
+        raise ThumbnailError(str(image.clip_path), "the rendered poster is no longer there")
+
+    return vanished
+
+
+@router.get(
+    "/events/{event_id:path}/poster.jpg",
+    response_class=Response,
+    responses={
+        200: {
+            "description": "The event's poster: a JPEG, the render's own file once it is fresh",
+            "content": {"image/jpeg": {"schema": {"type": "string", "format": "binary"}}},
+            "headers": _POSTER_HEADERS,
+        },
+        304: {
+            "description": "Not modified: `If-None-Match` names the current poster",
+            "headers": _POSTER_HEADERS,
+        },
+        404: {"model": ProblemOut},
+        502: {"model": ProblemOut},
+    },
+)
+async def get_poster(
+    event_id: str,
+    request: Request,
+    _version: Optional[str] = Query(
+        default=None,
+        alias="v",
+        description="An opaque cache-busting version; accepted and ignored",
+    ),
+    _if_none_match: Optional[str] = Header(default=None, alias="If-None-Match"),
+) -> Response:
+    """``GET /api/v1/events/{event_id}/poster.jpg``: the event's effective poster.
+
+    The event detail's ``poster``, as an image: the rendered ``<movie stem>-poster.jpg`` while the
+    event is fresh and the manifest claims it, else the chosen frame drawn from the original (or
+    the first played clip's thumbnail for the default), cached beside the thumbnails. Draws share
+    the thumbnails' extraction cap and single-flight. ``no-cache`` with an ``ETag``: a saved poster
+    shows at once and a revalidation extracts nothing.
+
+    404 for an unknown event and for an event that plays no clip; 502 with
+    ``thumbnail_failure`` when the engine cannot make the frame, with the list's ``failure`` when
+    the event cannot be read. Nothing is written into the library and the database is never
+    touched.
+    """
+    settings = _settings(request)
+    if_none_match = ", ".join(request.headers.getlist("if-none-match")) or None
+    try:
+        image = await run_in_threadpool(poster_image, settings, event_id, request.app.state.runtime)
+        return await _serve_thumbnail(
+            request,
+            image,
+            if_none_match,
+            extract=_poster_extraction(request, image),
+            headers=_poster_headers,
+        )
+    except events_read.EventNotFoundError:
+        return not_found(
+            f"no event {event_id!r} under the configured project root", event_id=event_id
+        )
+    except PosterUnavailableError as exc:
+        return not_found(str(exc), event_id=event_id)
+    except events_read.EventReadError as exc:
+        logger.warning("poster: %s: %s", event_id, exc.detail)
+        return _event_read_failed(exc, event_id)
+    except (ConfigError, LayoutError) as exc:
+        return _thumbnail_failed(event_id, "poster", str(exc))
+    except ThumbnailError as exc:
+        return _clip_failed(event_id, Path(exc.clip).name, exc)
+    except ThumbnailCacheError as exc:
+        return _thumbnail_failed(event_id, "poster", str(exc))
 
 
 def _proxy_job_active(job_id: object, event_id: str) -> JSONResponse:
@@ -616,6 +746,10 @@ def put_reel(
         )
 
     desired_data = payload.model_dump(by_alias=True)
+    # The wire says absent keeps and null removes; the engine's write keeps on None and removes
+    # on an empty mapping.
+    if "poster" in payload.model_fields_set and payload.poster is None:
+        desired_data["poster"] = {}
     try:
         # The two title-card rules the loader cannot own (``reel/`` is below ``render/``): the
         # event-wide style as a render parses it, and a card's font against the registry.

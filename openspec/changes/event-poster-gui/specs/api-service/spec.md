@@ -57,9 +57,8 @@ of the default depends on a duration the read does not probe). `poster` is `null
 render plays. When `reel.yaml` holds a poster whose clip is missing, ignored or excluded, `source` is `default`
 and `poster_note` names the clip and the reason; otherwise `poster_note` is `null`.
 
-When the poster in `reel.yaml` cannot be resolved (a hand-edited value the engine refuses) the detail SHALL still
-answer 200 so the author can open the event and correct it: `poster` is `null` and `poster_error` names the field
-and the reason; nothing is guessed in its place. Absence of an error is `poster_error: null`. The report SHALL be
+A poster in `reel.yaml` that the engine's loader refuses is a document the engine cannot read, and is reported as
+the events list reports any such document (the event's failure), never guessed at. The report SHALL be
 probe-free and read-only and SHALL add no database read. The published OpenAPI schema SHALL carry `poster` with
 `source` as a closed enumeration, and the checked-in generated web types SHALL match it.
 
@@ -77,12 +76,11 @@ probe-free and read-only and SHALL add no database read. The published OpenAPI s
 
 #### Scenario: An event with no playable clip has no poster
 - **WHEN** every clip of the event is ignored or missing
-- **THEN** `poster` is `null` and `poster_error` is `null`
+- **THEN** `poster` is `null`
 
-#### Scenario: A bad poster does not lock the event
+#### Scenario: A bad poster is the event's failure like any bad field
 - **WHEN** `reel.yaml` holds `poster: {clip: 3, at: "x"}`
-- **THEN** the detail is 200, `poster` is `null` and `poster_error` names `poster`, while the clips, chapters and
-  verdict are reported as usual
+- **THEN** the detail is the 502 the events list reports for an unreadable `reel.yaml`, naming `poster`
 
 #### Scenario: The read is read-only and probe-free
 - **WHEN** the detail is read
@@ -94,9 +92,10 @@ The service SHALL expose `GET /api/v1/events/{event_id}/poster.jpg`, which retur
 ignored. The picture SHALL come, in this order, from:
 1. the rendered sidecar `<movie stem>-poster.jpg`, only when the event's staleness verdict is not stale and the
    render manifest claims that sidecar; the bytes are served as they are
-2. a frame drawn at the poster's `at` from the clip's proxy when the clip's proxy is ready (for a default poster,
-   the first played clip's thumbnail frame)
-3. the same frame drawn from the original clip by the engine's poster extraction
+2. a frame drawn from the original clip by the engine's poster extraction (the same function the render uses, so
+   rotation, pixel aspect and HDR agree with the sidecar the next render writes), at 640x360, at the poster's `at`
+   (for a default poster, the first played clip's thumbnail frame). The proxy is not used: its frame times and
+   turn would be a second rule for the same picture.
 
 A draw SHALL be cached outside the library, in the thumbnail cache directory, keyed by the clip's size and
 modification time, the frame time, the drawn size and the engine's poster version, so a repeat is served without
@@ -119,15 +118,10 @@ publish its 200 (`image/jpeg` with the headers), 304, 404 and 502 in the OpenAPI
 - **WHEN** a rendered, fresh event whose manifest claims `…-poster.jpg` is requested
 - **THEN** the response is 200 with the sidecar's bytes, and no ffmpeg or ffprobe process starts
 
-#### Scenario: A stale event draws the chosen frame from the proxy
-- **WHEN** the event is stale after its poster changed, the chosen clip's proxy is ready, and the endpoint is
-  requested
-- **THEN** the response is 200 `image/jpeg` of the frame at `at`, drawn from the proxy, and no file is created
-  under the event's folder
-
-#### Scenario: No proxy draws from the original
-- **WHEN** the clip has no proxy and the endpoint is requested
-- **THEN** the frame is drawn from the original and a repeat request starts no process
+#### Scenario: A stale event draws the chosen frame from the original
+- **WHEN** the event is stale after its poster changed and the endpoint is requested
+- **THEN** the response is 200 `image/jpeg` of the frame at `at`, no file is created under the event's folder,
+  and a repeat request starts no process
 
 #### Scenario: A chosen frame is told apart from the default
 - **WHEN** the same event is requested before and after a save that sets a poster at a different frame
