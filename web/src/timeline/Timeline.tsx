@@ -81,6 +81,8 @@ import type { Position } from './position'
 import { hasFrame, snapshotOf, useFrameReady } from './posterFrame'
 import { useTimelineVideo } from './useTimelineVideo'
 import { useVisibleRange } from './useVisibleRange'
+import { restoredZoom, zoomMemory } from './zoomMemory'
+import type { ZoomMemo } from './zoomMemory'
 import { ZoomSlider } from './ZoomSlider'
 
 /*
@@ -248,7 +250,10 @@ export function Timeline({
   const scroller = useRef<HTMLDivElement>(null)
   const grip = useRef<HTMLDivElement>(null)
   const [range, syncRange] = useVisibleRange(scroller)
-  const [zoom, setZoom] = useState({ pps: DEFAULT_PPS, fitted: true })
+  // The zoom this event had in this tab, else Fit (`zoomMemory`, design D4).
+  const [zoom, setZoom] = useState<ZoomMemo>(
+    () => zoomMemory.read(eventId) ?? { pps: DEFAULT_PPS, fitted: true },
+  )
   const pendingScroll = useRef<number | null>(null)
   const dragging = useRef(false)
   const [announcement, setAnnouncement] = useState('')
@@ -265,8 +270,16 @@ export function Timeline({
     }
   }, [range.width])
   const fit = range.width > 0 ? fitCanvas(lay.totalMs, range.width, gutter).pps : DEFAULT_PPS
-  const wanted = zoom.fitted ? fit : Math.min(MAX_PPS, Math.max(fit, zoom.pps))
-  const pps = wanted
+  // Held to [Fit, MAX_PPS] as the view now is: Fit follows the view, a kept scale is re-bounded.
+  const shown = restoredZoom(zoom, fit, MAX_PPS) ?? zoom
+  const pps = shown.pps
+  const measured = range.width > 0
+  // Kept for the tab's session once the view is measured (never the scale before it was).
+  useEffect(() => {
+    if (measured) {
+      zoomMemory.write(eventId, { fitted: shown.fitted, pps })
+    }
+  }, [eventId, measured, shown.fitted, pps])
   // The scale as last requested: set by a zoom before its render, so two zooms in one frame
   // anchor on the second's real starting scale (design D2); a render brings it back in step.
   const ppsRef = useRef(pps)
