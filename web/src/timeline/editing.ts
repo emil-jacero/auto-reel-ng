@@ -3,6 +3,7 @@ import type { CutKey, DraftCut } from '../edit/draft'
 import type { ClipPreviews } from '../preview/previews'
 import type { PosterPick } from '../edit/poster.ts'
 import type { Turn } from '../rotate/turn.ts'
+import type { EdgeEdit } from './edgeTrim.ts'
 
 /*
  * What Edit mode gives the Timeline (`timeline-trim`): the draft's cuts to draw and play,
@@ -29,6 +30,12 @@ export type EditBinding = {
   listed(identity: string): readonly DraftCut[]
   /** One edit of the draft: the cut keeps its key, place and reason. */
   onTrim(identity: string, key: CutKey, span: { in: number; out: number }, note: TrimNote): void
+  /**
+   * A clip edge tool's one edit (`clip-edge-trim`): add, trim or remove the clip's leading or
+   * trailing cut, as `edgeEdit` gave it. `words` is what the live region says (a release, `Q`,
+   * `W`); null for a key, whose result is the slider's value. Ignored while `locked`.
+   */
+  onEdge(identity: string, edit: EdgeEdit, words: string | null): void
   /**
    * Add a cut to a clip's draft, as the Cuts panel's Add does (`timeline-overlay-decisions`):
    * the span in seconds, the reason `manual` unless one is given (an approved suggestion's

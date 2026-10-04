@@ -49,6 +49,7 @@ import { draftEventStyle, previewStyle, readStyle, styleRefusalOf } from './card
 import type { StyleField, StyleRefusal, StyleValue } from './cardStyle.ts'
 import type { EventStyle } from './card/specs.ts'
 import type { EditBinding } from '../timeline/editing'
+import type { EdgeEdit } from '../timeline/edgeTrim.ts'
 import type { Dismissals } from '../timeline/overlays/Dismissals'
 import { Alert } from '../ui/Alert'
 import { Dialog } from '../ui/Dialog'
@@ -82,6 +83,7 @@ import {
   addChapter,
   addCut,
   adoptedNewCount,
+  applyEdgeEdit,
   buildWriteBody,
   cardRefusalOf,
   chapterChanges,
@@ -289,6 +291,8 @@ type Action =
   | { type: 'cut-remove'; identity: string; key: CutKey }
   | { type: 'cut-restore'; identity: string; key: CutKey }
   | { type: 'cut-trim'; identity: string; key: CutKey; span: { in: number; out: number } }
+  // A clip edge tool's one edit (`clip-edge-trim`); `key` is the next `a<n>`, taken by an add.
+  | { type: 'cut-edge'; identity: string; edit: EdgeEdit; key: CutKey }
   | { type: 'cut-typed'; identity: string; typed: boolean }
   // The caller took the clips that are on disk; `rotateGroup` checks that a chapter plays them.
   | { type: 'rotate'; identities: readonly string[]; way: Way }
@@ -549,6 +553,17 @@ function reduce(state: State, action: Action): State {
         state,
         trimCut(state.baseline, state.draft, action.identity, action.key, action.span),
       )
+    case 'cut-edge': {
+      if (action.edit.kind === 'add' && action.key !== `a${state.nextCut + 1}`) {
+        return state
+      }
+      const draft = applyEdgeEdit(state.baseline, state.draft, action.identity, action.edit, action.key)
+      if (draft === state.draft) {
+        return state
+      }
+      const next = withDraft(state, draft)
+      return action.edit.kind === 'add' ? { ...next, nextCut: state.nextCut + 1 } : next
+    }
     case 'rotate':
       return withDraft(
         state,
@@ -1531,6 +1546,26 @@ export function EventEditor({
     [announce],
   )
 
+  // A clip edge tool's edit (`clip-edge-trim`): a release, a key or Q/W is one draft edit, with
+  // the same guard as a trim; `words` is said once (null: a key, whose result is the slider's value).
+  const onEdge = useCallback<EditBinding['onEdge']>(
+    (identity, edit, words) => {
+      const current = latest.current
+      if (current === null || current.pressed !== null || moving.current) {
+        return
+      }
+      const key = `a${current.nextCut + 1}`
+      if (applyEdgeEdit(current.baseline, current.draft, identity, edit, key) === current.draft) {
+        return
+      }
+      dispatch({ type: 'cut-edge', identity, edit, key })
+      if (words !== null) {
+        announce(words)
+      }
+    },
+    [announce],
+  )
+
   // What the Timeline gets of the draft (`timeline/editing.ts`); null for the needs-attention form.
   const baseCuts = ready?.baseline.cuts
   const draftCuts = ready?.draft.cuts
@@ -1651,6 +1686,7 @@ export function EventEditor({
       turns: draftTurns,
       listed: (identity) => cutsOf(baseCuts, draftCuts, identity),
       onTrim,
+      onEdge,
       onPoster,
       onAdd: cutHandlers.onAdd,
       locked: listsLocked,
@@ -1669,6 +1705,7 @@ export function EventEditor({
     detail,
     listsLocked,
     onTrim,
+    onEdge,
     onPoster,
     cutHandlers,
     announce,
