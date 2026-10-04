@@ -363,7 +363,8 @@ and `reel.yaml` with no probe and no database read; a poster the loader refuses 
 `GET /api/v1/events/{event_id}/poster.jpg` serves it: the rendered `<movie stem>-poster.jpg` while the event is not stale
 and the manifest claims it, else the chosen frame drawn from the ORIGINAL clip with the render's own extraction
 (`thumbs.poster`, 640x360, cached beside the thumbnails keyed like D-11 plus the frame time and turn) or, for the default,
-the first played clip's thumbnail. It shares the thumbnails' extraction cap and single-flight and 60-second failure
+the first played clip's thumbnail (an approximation: once the event is rendered and fresh the sidecar shows the engine's
+default frame, whose time can differ from `thumbnails.position`, so an unedited default may change on the first render). It shares the thumbnails' extraction cap and single-flight and 60-second failure
 memory, answers `ETag` with `Cache-Control: private, no-cache` (a saved poster shows at once; a revalidation is a 304
 with no extraction), 404 for an event that plays no clip and 502 with the thumbnail failure kind for a frame the engine
 cannot make. `PUT …/reel` carries `poster` (absent keeps, `null` removes, `{clip, at}` sets).
