@@ -163,8 +163,12 @@ def test_on_vaapi_only_the_head_goes_through_the_cpu_bridge() -> None:
     assert graph.endswith("[vo0]format=nv12,hwupload[vout]")
     assert head.duration == 7.0
 
-    assert _after(tail.args, "-ss") == "7"
+    assert _after(tail.args, "-ss") == "6.5"
     assert _output_tail(tail.args, "/t/tail.mp4") == ("-t", "173", "-an", "/t/tail.mp4")
+    # the 15 lead-in ticks are converted at the target rate, then dropped by count
+    assert _after(tail.args, "-vf").endswith(
+        "fps=30:start_time=0,trim=start_frame=15,setpts=PTS-STARTPTS"
+    )
     joined = " ".join(tail.args)
     assert tail.duration == 173.0
     assert "scale_vaapi" in _after(tail.args, "-vf")
@@ -178,7 +182,7 @@ def test_on_the_cpu_profile_the_head_has_the_overlay_and_the_tail_is_plain() -> 
     assert "overlay=" in _after(head.args, "-filter_complex")
     assert "hwdownload" not in " ".join(head.args) and "hwupload" not in " ".join(head.args)
     assert "-filter_complex" not in tail.args and "overlay" not in " ".join(tail.args)
-    assert _after(tail.args, "-ss") == "7"
+    assert _after(tail.args, "-ss") == "6.5"
 
 
 def test_a_hardware_overlay_profile_still_uses_the_cpu_overlay_for_the_head() -> None:
@@ -221,7 +225,7 @@ def test_a_trimmed_segments_audio_is_cut_from_its_own_span() -> None:
     head, tail = _pair(CPUProfile(), start=12.0)
     i = tail.args.index("-i", tail.args.index("-i") + 1)
     assert tail.args[i - 4 : i + 2] == ("-ss", "12", "-t", "180", "-i", "/ev/clip.mp4")
-    assert _after(head.args, "-ss") == "12" and _after(tail.args, "-ss") == "19"
+    assert _after(head.args, "-ss") == "12" and _after(tail.args, "-ss") == "18.5"
 
 
 def test_a_clip_without_audio_gets_silence_of_the_segments_length_beside_the_tail() -> None:
@@ -369,13 +373,13 @@ _W, _H = 320, 180
 _LEVELS = 28  # luma = 16 + 8 * (frame % 28): a frame number read back from a flat corner
 
 
-def _signature_clip(runtime, path: Path, duration: float, *, audio: bool) -> Path:
+def _signature_clip(runtime, path: Path, duration: float, *, audio: bool, rate: int = 30) -> Path:
     args = [
         "-y",
         "-f",
         "lavfi",
         "-i",
-        f"color=c=black:s={_W}x{_H}:r=30:d={duration},"
+        f"color=c=black:s={_W}x{_H}:r={rate}:d={duration},"
         f"geq=lum='16+8*mod(N,{_LEVELS})':cb=128:cr=128",
     ]
     if audio:
@@ -387,16 +391,26 @@ def _signature_clip(runtime, path: Path, duration: float, *, audio: bool) -> Pat
     return path
 
 
-def _event(runtime, tmp_path: Path, name: str, *, audio: bool, duration: float = 20.0):
+def _event(
+    runtime,
+    tmp_path: Path,
+    name: str,
+    *,
+    audio: bool,
+    duration: float = 20.0,
+    rate: int = 30,
+    card: float = 7.0,
+):
     event = tmp_path / name
     event.mkdir()
-    _signature_clip(runtime, event / "a.mp4", duration, audio=audio)
+    _signature_clip(runtime, event / "a.mp4", duration, audio=audio, rate=rate)
     facts = {"a.mp4": probe_media(event / "a.mp4", runtime=runtime)}
     plan = RenderPlan(
         metadata=Metadata(title="Movie", date=date(2024, 6, 21), location=""),
         look={
             "decorators": ["title"],
             "target_resolution": [_W, _H],
+            "fps": 30,
             "video_codec": "h264",
             "title_card": {"fade_in": 1.0, "fade_out": 1.0, "text_color": "#FFFFFF"},
         },
@@ -404,7 +418,7 @@ def _event(runtime, tmp_path: Path, name: str, *, audio: bool, duration: float =
             ResolvedChapter(
                 name="",
                 clips=(ResolvedClip(identity="a.mp4", is_title=True),),
-                card=ChapterCard(background="video", duration=7.0),
+                card=ChapterCard(background="video", duration=card),
             ),
         ),
     )
@@ -414,12 +428,12 @@ def _event(runtime, tmp_path: Path, name: str, *, audio: bool, duration: float =
     return plan, options
 
 
-def _render_both(runtime, tmp_path, monkeypatch, *, audio: bool):
-    plan, options = _event(runtime, tmp_path, "split", audio=audio)
+def _render_both(runtime, tmp_path, monkeypatch, *, audio: bool, rate: int = 30, card: float = 7.0):
+    plan, options = _event(runtime, tmp_path, "split", audio=audio, rate=rate, card=card)
     split = render_movie(plan, CPUProfile(), options)
     with monkeypatch.context() as patch:
         patch.setattr(orch, "split_segment", lambda segment, fps, length: (segment,))
-        plan2, options2 = _event(runtime, tmp_path, "whole", audio=audio)
+        plan2, options2 = _event(runtime, tmp_path, "whole", audio=audio, rate=rate, card=card)
         whole = render_movie(plan2, CPUProfile(), options2)
     return split.output_path, whole.output_path
 
@@ -469,6 +483,31 @@ def test_the_split_movie_has_every_frame_of_the_unsplit_one(
     # consecutive through the join (frames 205-215 straddle it), and the same picture as unsplit
     expected = [round(8 * (n % _LEVELS) * 255 / 219) for n in range(600)]  # gray: full range
     assert max(abs(a - b) for a, b in zip(levels, expected)) <= 4
+    assert max(abs(a - b) for a, b in zip(levels, ref_levels)) <= 2
+
+
+@pytest.mark.has_fonts
+@pytest.mark.has_ffmpeg
+@pytest.mark.parametrize(
+    ("rate", "card"), [(25, 7.5), (24, 7.5), (25, 7.0)], ids=["25-7.5s", "24-7.5s", "25-7s"]
+)
+def test_a_source_rate_below_the_target_rate_keeps_the_unsplit_picture_at_the_seam(
+    has_fonts: None,
+    runtime,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rate: int,
+    card: float,
+) -> None:
+    split, whole = _render_both(runtime, tmp_path, monkeypatch, audio=True, rate=rate, card=card)
+    frames, ref = _frames(runtime, split), _frames(runtime, whole)
+    assert len(frames) == len(ref) == 600
+    times = [float(f["pts_time"]) for f in frames]
+    assert times == pytest.approx([float(f["pts_time"]) for f in ref], abs=1e-4)
+    levels, ref_levels = _corner_levels(runtime, split), _corner_levels(runtime, whole)
+    seam = round(card * 30)
+    # the seam frame itself: it repeats the source frame the unsplit render holds there
+    assert abs(levels[seam] - ref_levels[seam]) <= 2
     assert max(abs(a - b) for a, b in zip(levels, ref_levels)) <= 2
 
 
