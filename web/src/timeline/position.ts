@@ -71,7 +71,9 @@ export function globalMs(l: Layout, p: Position): Ms {
   const card = p.card
   return card == null
     ? l.startsMs[p.clip] + p.ms
-    : l.startsMs[p.clip] - card.lengthMs + card.ms
+    : // A render between a layout change (the cards switched off) and the playhead being put back
+      // reads a card position the layout no longer has: never a time before zero.
+      Math.max(0, l.startsMs[p.clip] - card.lengthMs + card.ms)
 }
 
 /** Whether two positions are the same place. */

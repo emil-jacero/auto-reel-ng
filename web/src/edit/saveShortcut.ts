@@ -63,7 +63,7 @@ export function holdWords(
         parts.push('the date is incomplete')
       }
       if (nameTyped) {
-        parts.push('a name is typed and not kept')
+        parts.push('the name is refused')
       }
       if (cutsTyped) {
         parts.push('a cut is typed and not added')
@@ -96,9 +96,17 @@ export function saveKeyAction(state: {
   moving: boolean
   lifted: boolean
   dialogOpen: boolean
+  /** The card dialog's Name field holds a refused name: Ctrl+S says why it saves nothing. */
+  nameRefused?: boolean
   hold: SaveHold | null
 }): SaveKeyAction {
-  if (state.repeat || state.saving || state.pressed || state.moving || state.dialogOpen) {
+  if (
+    state.repeat ||
+    state.saving ||
+    state.pressed ||
+    state.moving ||
+    (state.dialogOpen && state.nameRefused !== true)
+  ) {
     return 'ignore'
   }
   if (state.lifted) {

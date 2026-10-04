@@ -55,15 +55,15 @@ test('each hold says why, naming what the bar names', () => {
   )
   assert.equal(
     holdWords('unfinished', false, false, true),
-    'Not saved: a name is typed and not kept.',
+    'Not saved: the name is refused.',
   )
   assert.equal(
     holdWords('unfinished', true, false, true),
-    'Not saved: the date is incomplete and a name is typed and not kept.',
+    'Not saved: the date is incomplete and the name is refused.',
   )
   assert.equal(
     holdWords('unfinished', false, true, true),
-    'Not saved: a name is typed and not kept and a cut is typed and not added.',
+    'Not saved: the name is refused and a cut is typed and not added.',
   )
   assert.match(holdWords('conflict', false, false), /Reload latest or Overwrite with mine/)
   assert.match(holdWords('gone', false, false), /no longer exists/)
@@ -92,6 +92,13 @@ test('a repeat, a save in flight, a pending move of marked clips or an open dial
   }
   assert.equal(saveKeyAction({ ...quiet, dialogOpen: true }), 'ignore')
   assert.equal(saveKeyAction({ ...quiet, dialogOpen: true, lifted: true }), 'ignore')
+})
+
+test('an open dialog is silent, except while its Name field holds a refused name', () => {
+  const open = { ...quiet, dialogOpen: true, hold: 'unfinished' as const }
+  assert.equal(saveKeyAction(open), 'ignore')
+  assert.equal(saveKeyAction({ ...open, nameRefused: true }), 'announce')
+  assert.equal(saveKeyAction({ ...open, nameRefused: true, saving: true }), 'ignore')
 })
 
 test('a lifted clip sends nothing and says so, before Save is judged', () => {

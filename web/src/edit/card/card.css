@@ -409,4 +409,118 @@
       forced-color-adjust: none;
     }
   }
+
+  /* The two tabs (`Inspector.tsx`): a row of native buttons, the shown one underlined and in the accent. */
+  .ci-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-1) var(--s-4);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .ci-tab {
+    min-block-size: 2.75rem;
+    padding: 0 var(--s-1);
+    border: 0;
+    border-block-end: 3px solid transparent;
+    margin-block-end: -1px;
+    background: none;
+    color: var(--fg-muted);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--fg);
+    }
+
+    &[aria-selected='true'] {
+      border-block-end-color: var(--accent);
+      color: var(--fg);
+    }
+
+    &[data-problem] {
+      color: var(--err-fg);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+      border-radius: var(--r-sm);
+    }
+  }
+
+  .ci-panels {
+    min-inline-size: 0;
+  }
+
+  .ci-name-notes {
+    display: grid;
+    gap: var(--s-1);
+
+    &:empty {
+      display: none;
+    }
+  }
+
+  .ci-lede {
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
+  .ci-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+
+  /* "Title cards: On / Off" (`EventTab.tsx`): the segmented control is the page's own. */
+  .tcs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2) var(--s-4);
+    padding: var(--s-2) var(--s-3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    min-inline-size: 0;
+
+    &[data-changed] {
+      border-inline-start: 4px solid var(--accent);
+    }
+  }
+
+  .tcs-label {
+    font-weight: 600;
+  }
+
+  .tcs-note {
+    flex: 1 1 14rem;
+    margin: 0;
+    min-inline-size: 0;
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
+  .tcs-error {
+    color: var(--err-fg);
+  }
+
+  /* A coarse pointer: every control of the dialog takes a 44 px tap. */
+  @media (pointer: coarse) {
+    .ci :is(.btn, .field-input, .ci-swatch) {
+      min-block-size: 2.75rem;
+    }
+
+    .ci .btn,
+    .ci .ci-swatch {
+      min-inline-size: 2.75rem;
+    }
+
+    .ci .segmented label {
+      min-block-size: 2.75rem;
+      min-inline-size: 2.75rem;
+    }
+  }
 }

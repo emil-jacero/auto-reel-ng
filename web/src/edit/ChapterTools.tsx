@@ -6,7 +6,6 @@ import { memo, useId } from 'react'
 import type { ChapterKey } from './draft'
 import { DELETED_DROP } from './dragSlots'
 import { Icon } from '../ui/Icon'
-import type { NameCheck } from './inlineName'
 
 /*
  * The chapter controls of Edit mode: a tools row under each chapter's heading
@@ -25,27 +24,14 @@ import type { NameCheck } from './inlineName'
 export type ChapterHandler = (key: ChapterKey) => void
 export type ChapterMoveHandler = (key: ChapterKey, delta: -1 | 1) => void
 
-/**
- * What a chapter's name field does, one stable object for all chapters (so a keystroke or a
- * metadata edit re-renders no list): the editor's, called with the chapter's key.
- */
-export type NameFieldHandlers = {
-  open: ChapterHandler
-  check: (key: ChapterKey, typed: string) => NameCheck
-  notes: (key: ChapterKey, typed: string) => readonly string[]
-  keep: (key: ChapterKey, name: string) => void
-  drop: ChapterHandler
-  unsent: (unsent: boolean) => void
-}
-
 /** A chapter's place among the listed chapters, for Move up / Move down; absent when alone. */
 export type ChapterPlace = { first: boolean; last: boolean }
 
 /** What a chapter's tools row shows and does: decided by the editor, one object per chapter. */
 export type ChapterToolsModel = {
   notes: readonly string[]
-  /** Its name field is open (`InlineName`, in the heading): one chapter at a time. */
-  naming: boolean
+  /** The chapter's card id (`cardIdOf`): what its Edit Titlecard button selects. */
+  cardId: string
   /** Move up / Move down: absent when the chapter is the only one. */
   place: ChapterPlace | null
   /** Delete: absent (undefined) when the chapter is the only one; why it stays, or null. */
@@ -54,8 +40,6 @@ export type ChapterToolsModel = {
   refusalShown: boolean
   /** While a save or a move of marked clips is pending: every control is unavailable. */
   locked: boolean
-  /** The name field in the heading (`ClipOrderList`), by the chapter's key. */
-  nameField: NameFieldHandlers
   onMoveChapter: ChapterMoveHandler
   onDelete: ChapterHandler
 }

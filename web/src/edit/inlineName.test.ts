@@ -3,14 +3,7 @@ import { test } from 'node:test'
 
 import { NAME_REFUSAL, checkName } from './chapterNames.ts'
 import type { DraftChapter } from './draft.ts'
-import {
-  FILE_NAME_NOTE,
-  UNTITLED,
-  acceptAnything,
-  decideName,
-  nameUnsent,
-  titleLine,
-} from './inlineName.ts'
+import { FILE_NAME_NOTE, decideName } from './inlineName.ts'
 
 const chapter = (key: string, name: string, deleted = false): DraftChapter => ({
   key,
@@ -53,33 +46,6 @@ test('a deleted chapter keeps its name taken', () => {
   const decision = decideName('gammal', 'Kvällen', (typed) => checkName(withDeleted, typed, 'r1'))
   assert.equal(decision.kind, 'refused')
   assert.equal(decision.kind === 'refused' && decision.refusal, 'taken-deleted')
-})
-
-test('the title is kept as typed: empty, spaces and any text', () => {
-  assert.deepEqual(decideName('', 'Grillning', acceptAnything), { kind: 'keep', name: '' })
-  assert.deepEqual(decideName('Grillkväll  ', 'Grillning', acceptAnything), {
-    kind: 'keep',
-    name: 'Grillkväll  ',
-  })
-  assert.deepEqual(decideName('main', 'Grillning', acceptAnything), { kind: 'keep', name: 'main' })
-  // Nothing typed over an inherited (empty) title, or spaces over it, changes nothing.
-  assert.deepEqual(decideName('   ', '', acceptAnything), { kind: 'unchanged' })
-})
-
-test('the title line prefers the draft, then the folder title, then Untitled', () => {
-  assert.deepEqual(titleLine('Eget', 'Mapp'), { text: 'Eget', source: 'draft' })
-  assert.deepEqual(titleLine('', 'Mapp'), { text: 'Mapp', source: 'folder' })
-  assert.deepEqual(titleLine('   ', 'Mapp'), { text: 'Mapp', source: 'folder' })
-  assert.deepEqual(titleLine('', null), { text: UNTITLED, source: 'none' })
-  assert.deepEqual(titleLine(' ', '  '), { text: UNTITLED, source: 'none' })
-})
-
-test('a name is unsent when the stripped text differs from the current name', () => {
-  assert.equal(nameUnsent('Kvällen', 'Kvällen'), false)
-  assert.equal(nameUnsent(' Kvällen ', 'Kvällen'), false)
-  assert.equal(nameUnsent('Kväll', 'Kvällen'), true)
-  assert.equal(nameUnsent('', 'Kvällen'), true)
-  assert.equal(nameUnsent('', ''), false)
 })
 
 test('the file-name note names no file', () => {

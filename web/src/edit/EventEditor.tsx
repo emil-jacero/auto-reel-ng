@@ -33,20 +33,19 @@ import { focusPageHeading } from '../shell/AppShell'
 import { TimelineSection } from '../timeline/TimelineSection'
 import { cardSpecs } from '../timeline/cards'
 import type { CardsBinding } from '../timeline/useCardSelection'
-import { CardRowsContext } from './CardRow'
-import { CardStylePanel } from './CardStylePanel'
-import { TURNED_OFF, TURNED_ON, TitleCardsSwitch } from './TitleCardsSwitch'
-import type { TitleCardsModel } from './TitleCardsSwitch'
+import { CardButtonContext } from './EditTitlecard'
+import type { CardButtonModel } from './EditTitlecard'
+import { cardIdOf } from './chapterBar.ts'
+import { TURNED_OFF, TURNED_ON } from './card/EventTab'
+import type { CardStyleModel, TitleCardsModel } from './card/EventTab'
 import { titleCardsNow } from './decorators.ts'
-import { cardsEnabled, cardsSource } from '../timeline/cards.ts'
-import type { CardStyleModel } from './CardStylePanel'
-import type { CardRowsModel } from './CardRow'
-import { cardRowInfo } from './cardRows'
-import type { CardEditing } from './card/editing.ts'
+import { cardsSource } from '../timeline/cards.ts'
+import type { CardEditing, NameBinding } from './card/editing.ts'
+import { anyTitle, nameLabel, settleWords } from './card/nameField.ts'
 import { cardsChangedCount, cardsChangedWords } from './card/model.ts'
 import type { CardDraft, CardField } from './card/model.ts'
 import { draftSpec } from './card/specs.ts'
-import { draftEventStyle, overrideWords, previewStyle, readStyle, styleRefusalOf } from './cardStyle.ts'
+import { draftEventStyle, previewStyle, readStyle, styleRefusalOf } from './cardStyle.ts'
 import type { StyleField, StyleRefusal, StyleValue } from './cardStyle.ts'
 import type { EventStyle } from './card/specs.ts'
 import type { EditBinding } from '../timeline/editing'
@@ -69,12 +68,7 @@ import {
 } from './chapterNames'
 import { ChapterDrag } from './ChapterDrag'
 import { AddChapter, DeletedChapter } from './ChapterTools'
-import type {
-  ChapterHandler,
-  ChapterMoveHandler,
-  ChapterToolsModel,
-  NameFieldHandlers,
-} from './ChapterTools'
+import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './ChapterTools'
 import { ClipOrderList } from './ClipOrderList'
 import type {
   MarkHandler,
@@ -170,8 +164,6 @@ import { POSTER_CHANGED, chosenWords } from './poster.ts'
 import type { PosterPick } from './poster.ts'
 import { SaveBar } from './SaveBar'
 import type { Operation, Pressed, SaveProblem } from './SaveBar'
-import { TitleCardContext } from './TitleCard'
-import type { TitleCardModel } from './TitleCard'
 import { holdWords, isSaveChord, LIFTED_WORDS, saveHold, saveKeyAction } from './saveShortcut'
 import {
   discardAndLeave,
@@ -197,10 +189,10 @@ import {
  * means for clips added later (D-12) is said beside the chapter
  * (`chapterNames.ts`). So are each clip's cuts, in a panel under its row
  * (`cuts/CutsPanel.tsx`): a cut typed but not added holds Save back, as a date
- * typed in part does, and so does a name typed in a chapter's title and not kept.
- * A chapter is renamed at its title (`InlineName.tsx`, one field open at a time:
- * `naming`); the event's own chapter shows the main title card, which edits the
- * draft's title as the metadata form's Title field does (`TitleCard.tsx`).
+ * typed in part does, and so does a refused name in the card dialog's Name field.
+ * A chapter is renamed in that dialog (`card/NameField.tsx`, opened by the chapter's Edit
+ * Titlecard button), the event's own chapter's name being the draft's title as the metadata
+ * form's Title field edits it.
  *
  * `event` is the page's detail, read once at mount: a later re-read of the page
  * never changes the order shown or the draft. It is null for the needs-attention
@@ -234,7 +226,7 @@ type Ready = {
   dateIncomplete: boolean
   /** The clips whose cut fields hold typed text not added as a cut: never saved. */
   typed: ReadonlySet<string>
-  /** An open name field (`InlineName`) holds text not yet kept: unfinished, like a typed cut. */
+  /** The card dialog's Name field holds a refused name: unfinished, like a typed cut. */
   nameUnsent: boolean
   /**
    * The clips marked to move together (edit/marks.ts). Beside the draft, not in it: marking
@@ -831,7 +823,7 @@ function summarize(
     typeof typed === 'string'
       ? `cut typed on ${typed}, not added`
       : typed > 0 && `cuts typed on ${typed} clips, not added`,
-    nameUnsent && 'name typed, not kept',
+    nameUnsent && 'name refused',
     chapters.added > 0 && `${plural(chapters.added, 'chapter', 'chapters')} added`,
     chapters.renamed > 0 && `${plural(chapters.renamed, 'chapter', 'chapters')} renamed`,
     chapters.deleted > 0 && `${plural(chapters.deleted, 'chapter', 'chapters')} deleted`,
@@ -853,9 +845,6 @@ function summarize(
 }
 
 export const CARD_STYLE_CHANGED = 'card style changed'
-
-/** What `naming` holds while the main title card's field is open (a chapter key never is). */
-const TITLE = 'title' as const
 
 // The read view's cuts, which Edit mode's Timeline does not use: its cuts are the draft's.
 const NOT_READ = { cuts: null, turns: null, failure: null, look: null } as const
@@ -1689,7 +1678,7 @@ export function EventEditor({
     onCardDuration,
   ])
 
-  // The card rows (`CardRow.tsx`) and the Timeline's blocks: each chapter's saved card, matched by
+  // The dialog's cards and the Timeline's blocks: each chapter's saved card, matched by
   // the name it was read with, as the draft would have it drawn (`card/specs.ts`).
   const savedStyle = useMemo<EventStyle | null>(() => {
     const style = liveDetail?.title_card
@@ -1755,14 +1744,12 @@ export function EventEditor({
     draftEventTitle,
     resolved,
   ])
-  const { retain: retainCard, open: openCard, clear: clearCard, selected: selectedCard } = cards
+  const { retain: retainCard, open: openCard, selected: selectedCard } = cards
   // The selection ends with its chapter: deleted in the draft, it is gone from the list.
   useEffect(() => {
     if (draftChapters !== undefined) {
       retainCard(
-        draftChapters.flatMap((chapter) =>
-          chapter.readName !== null && !chapter.deleted ? [chapter.readName] : [],
-        ),
+        draftChapters.flatMap((chapter) => (chapter.deleted ? [] : [cardIdOf(chapter)])),
       )
     }
   }, [draftChapters, retainCard])
@@ -1774,8 +1761,8 @@ export function EventEditor({
       return
     }
     const chapter = draftChapters.find((candidate) => candidate.key === refusedCard.key)
-    if (chapter?.readName != null) {
-      openCard(chapter.readName)
+    if (chapter !== undefined) {
+      openCard(cardIdOf(chapter))
     }
     // Once per answer: selecting another card afterwards is the operator's.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1783,12 +1770,163 @@ export function EventEditor({
   // The Title cards switch: the draft's position while it differs from what the service said.
   const draftDecorators = ready?.draft.decorators
   const switchDraft = draftDecorators === undefined ? null : titleCardsNow(draftDecorators, false)
+  // "Card style for this event": the draft's style against the one read, and what the cards inherit.
+  const styleModel = useMemo<CardStyleModel | null>(
+    () =>
+      ready === null || detail === null
+        ? null
+        : {
+            read: readStyle(ready.baseline.read.look),
+            style: styleOf(ready.baseline, ready.draft),
+            resolved: savedStyle,
+            error: liveDetail?.title_card_error ?? null,
+            refusal: ready.styleRefusal,
+            locked: listsLocked,
+            onSet: (field: StyleField, value: StyleValue | null) => {
+              if (idle(latest.current)) {
+                dispatch({ type: 'style-field', field, value })
+              }
+            },
+            onReset: () => {
+              if (idle(latest.current)) {
+                dispatch({ type: 'style-reset' })
+                announce('Changes to the card style undone.')
+              }
+            },
+          },
+    // `idle` and `latest` are stable by construction (a ref and a closure over refs).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ready?.baseline, ready?.draft, ready?.styleRefusal, savedStyle, liveDetail, listsLocked, detail, announce],
+  )
+
+  // "Title cards: On / Off": the service's answer under the draft's switch.
+  const answer = liveDetail?.title_cards ?? null
+  const switchModel = useMemo<TitleCardsModel | null>(
+    () =>
+      ready === null || detail === null
+        ? null
+        : {
+            answer,
+            error: liveDetail?.title_cards_error ?? null,
+            on: titleCardsNow(ready.draft.decorators, answer?.enabled ?? false),
+            source: cardsSource(answer, switchDraft),
+            changed: decoratorsChanged(ready.draft),
+            locked: listsLocked,
+            onSet: (on: boolean) => {
+              if (answer !== null && idle(latest.current)) {
+                dispatch({ type: 'title-cards', on, readEnabled: answer.enabled })
+                announce(on ? `${TURNED_ON}.` : `${TURNED_OFF}.`)
+              }
+            },
+            onReset: () => {
+              if (idle(latest.current)) {
+                dispatch({ type: 'title-cards-reset' })
+                announce('Change to the title cards undone.')
+              }
+            },
+          },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ready?.draft, answer, liveDetail, switchDraft, listsLocked, detail, announce],
+  )
+
+  // The dialog's Name field (`edit-mode-declutter`): a chapter's name, or for the event's own
+  // chapter the title the Details form edits. The editor's one name rule: `checkName`.
+  const onNameRefused = useCallback((refused: boolean) => {
+    dispatch({ type: 'name-unsent', unsent: refused })
+  }, [])
+  const titleChanged = changed.includes('title')
+  const draftMetadata = ready?.draft.metadata
+  const readDocument = ready?.baseline.read
+  const nameFor = useCallback(
+    (saved: string): NameBinding | null => {
+      const chapter = draftChapters?.find(
+        (candidate) => cardIdOf(candidate) === saved && !candidate.deleted,
+      )
+      if (chapter === undefined || draftMetadata === undefined || readDocument === undefined) {
+        return null
+      }
+      const key = chapter.key
+      const event = chapter.name === ''
+      return {
+        event,
+        label: nameLabel(event, chapter.name),
+        value: event ? draftMetadata.title : chapter.name,
+        check: (typed) =>
+          event ? anyTitle(typed) : checkName(latest.current?.draft.chapters ?? [], typed, key),
+        notes: (typed) =>
+          latest.current === null || event
+            ? []
+            : nameDialogNote(
+                { chapters: latest.current.draft.chapters, folders, ignored: ignoredOf },
+                key,
+                typed,
+              ),
+        placeholder: resolved?.title ?? '',
+        hint: (typed) =>
+          inheritHint('title', readDocument, { ...draftMetadata, title: typed }, resolved),
+        fileNameChanged: titleChanged,
+        write: (name) => {
+          const current = latest.current
+          if (!idle(current)) {
+            return
+          }
+          if (event) {
+            if (current.draft.metadata.title !== name) {
+              dispatch({ type: 'field', field: 'title', value: name })
+            }
+            return
+          }
+          if (renameChapter(current.draft, key, name) !== current.draft) {
+            dispatch({ type: 'chapter-rename', key, name })
+          }
+        },
+        refused: onNameRefused,
+        settled: (was) => {
+          const current = latest.current
+          if (current === null) {
+            return
+          }
+          const nowName = event
+            ? current.draft.metadata.title
+            : (current.draft.chapters.find((candidate) => candidate.key === key)?.name ?? '')
+          const words = settleWords(
+            event ? 'event' : 'chapter',
+            was,
+            nowName,
+            event ? '' : notesIn(current.draft, key),
+          )
+          if (words !== null) {
+            announce(words)
+          }
+        },
+      }
+    },
+    [
+      draftChapters,
+      draftMetadata,
+      readDocument,
+      folders,
+      ignoredOf,
+      resolved,
+      titleChanged,
+      notesIn,
+      announce,
+      onNameRefused,
+    ],
+  )
+
   const cardEditing = useMemo<CardEditing | null>(() => {
-    if (baselineNow === undefined || draftChapters === undefined || draftCards === undefined) {
+    if (
+      baselineNow === undefined ||
+      draftChapters === undefined ||
+      draftCards === undefined ||
+      styleModel === null ||
+      switchModel === null
+    ) {
       return null
     }
     const keyOf = (saved: string) =>
-      draftChapters.find((chapter) => chapter.readName === saved && !chapter.deleted)
+      draftChapters.find((chapter) => cardIdOf(chapter) === saved && !chapter.deleted)
     return {
       specs,
       style: eventStyle,
@@ -1801,8 +1939,8 @@ export function EventEditor({
         }
         return {
           key: chapter.key,
-          name: chapter.name,
-          opening: saved === '',
+          name: chapterHeading(chapter.name, hasNamedChapter),
+          opening: chapter.name === '',
           card: draftCards.get(chapter.key) ?? readCardOf(baselineNow, chapter.key),
           read: readCardOf(baselineNow, chapter.key),
           eventTitle: draftEventTitle,
@@ -1811,6 +1949,7 @@ export function EventEditor({
             refusedCard !== null && refusedCard.key === chapter.key
               ? { field: refusedCard.field, message: refusedCard.message }
               : null,
+          added: chapter.readName === null,
         }
       },
       set: (saved, field, value) => {
@@ -1828,7 +1967,26 @@ export function EventEditor({
       announce,
       titleCardsDraft: switchDraft,
       locked: listsLocked,
+      name: nameFor,
+      setLength: (saved, seconds) => {
+        const chapter = keyOf(saved)
+        const resolvedLength =
+          chapter?.readName == null
+            ? undefined
+            : savedSpecsRef.current.find((spec) => spec.chapter === chapter.readName)?.card?.duration
+        if (chapter === undefined || !idle(latest.current)) {
+          return
+        }
+        if (resolvedLength === undefined) {
+          dispatch({ type: 'card-field', key: chapter.key, field: 'duration', value: seconds })
+        } else {
+          dispatch({ type: 'card-length', key: chapter.key, seconds, resolved: resolvedLength })
+        }
+      },
+      styleModel,
+      switchModel,
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     switchDraft,
     baselineNow,
@@ -1843,84 +2001,15 @@ export function EventEditor({
     refusedCard,
     announce,
     listsLocked,
+    hasNamedChapter,
+    nameFor,
+    styleModel,
+    switchModel,
   ])
-  const rowsState = cardsEnabled(liveDetail?.title_cards, switchDraft)
-  const rowsEnabled = rowsState === 'invalid' ? null : rowsState === 'on'
-  const cardRows = useMemo<CardRowsModel>(
-    () => ({
-      rowOf: (key) => {
-        const chapter = draftChapters?.find((candidate) => candidate.key === key)
-        return chapter === undefined
-          ? null
-          : cardRowInfo(
-              chapter,
-              specs,
-              baselineNow === undefined || draftCards === undefined
-                ? undefined
-                : overrideWords(draftCards.get(chapter.key) ?? readCardOf(baselineNow, chapter.key)),
-              rowsEnabled,
-            )
-      },
-      selected: selectedCard,
-      open: openCard,
-      clear: clearCard,
-    }),
-    [draftChapters, draftCards, baselineNow, specs, selectedCard, openCard, clearCard, rowsEnabled],
+  const cardButtons = useMemo<CardButtonModel>(
+    () => ({ selected: selectedCard, open: openCard }),
+    [selectedCard, openCard],
   )
-
-  // "Card style for this event": the draft's style against the one read, and what the cards inherit.
-  const styleModel: CardStyleModel | null =
-    ready === null || detail === null
-      ? null
-      : {
-          eventId,
-          read: readStyle(ready.baseline.read.look),
-          style: styleOf(ready.baseline, ready.draft),
-          resolved: savedStyle,
-          error: liveDetail?.title_card_error ?? null,
-          refusal: ready.styleRefusal,
-          previewStyle: styleForPreview,
-          eventTitle: draftEventTitle,
-          folderTitle: resolved?.title ?? null,
-          locked: listsLocked,
-          onSet: (field, value) => {
-            if (idle(latest.current)) {
-              dispatch({ type: 'style-field', field, value })
-            }
-          },
-          onReset: () => {
-            if (idle(latest.current)) {
-              dispatch({ type: 'style-reset' })
-              announce('Changes to the card style undone.')
-            }
-          },
-        }
-
-  // "Title cards: On / Off": the service's answer under the draft's switch.
-  const answer = liveDetail?.title_cards ?? null
-  const titleCardsModel: TitleCardsModel | null =
-    ready === null || detail === null
-      ? null
-      : {
-          answer,
-          error: liveDetail?.title_cards_error ?? null,
-          on: titleCardsNow(ready.draft.decorators, answer?.enabled ?? false),
-          source: cardsSource(answer, switchDraft),
-          changed: decoratorsChanged(ready.draft),
-          locked: listsLocked,
-          onSet: (on) => {
-            if (answer !== null && idle(latest.current)) {
-              dispatch({ type: 'title-cards', on, readEnabled: answer.enabled })
-              announce(on ? `${TURNED_ON}.` : `${TURNED_OFF}.`)
-            }
-          },
-          onReset: () => {
-            if (idle(latest.current)) {
-              dispatch({ type: 'title-cards-reset' })
-              announce('Change to the title cards undone.')
-            }
-          },
-        }
 
   const onAddChapter = useCallback(() => {
     if (idle(latest.current)) {
@@ -1928,60 +2017,6 @@ export function EventEditor({
       setChapterDialog({ kind: 'add' })
     }
   }, [])
-
-  // The one open name field (`InlineName`): a chapter's title, or the main title card's 'title'.
-  // Opening another replaces it; Reset, a save, Delete or Move chapter of its chapter, the leave
-  // question and a re-read close it, keeping nothing.
-  const [naming, setNaming] = useState<ChapterKey | typeof TITLE | null>(null)
-  const closeNaming = useCallback((key: ChapterKey | typeof TITLE) => {
-    setNaming((open) => (open === key ? null : open))
-  }, [])
-  const onNameUnsent = useCallback((unsent: boolean) => {
-    dispatch({ type: 'name-unsent', unsent })
-  }, [])
-
-  // A name is kept as the existing edit (D5): a chapter's by `chapter-rename`, the title by the
-  // metadata form's own `field` action, so the form's Title shows it and Reset undoes it.
-  const keepChapterName = useCallback(
-    (key: ChapterKey, name: string) => {
-      const current = latest.current
-      closeNaming(key)
-      if (!idle(current)) {
-        return
-      }
-      const before = headingIn(current.draft, key)
-      const next = renameChapter(current.draft, key, name)
-      if (next === current.draft) {
-        return
-      }
-      dispatch({ type: 'chapter-rename', key, name })
-      announce(`“${before}” renamed to “${name}”.${notesIn(next, key)}`)
-    },
-    [announce, notesIn, closeNaming],
-  )
-  const nameField = useMemo<NameFieldHandlers>(
-    () => ({
-      open: (key) => {
-        if (idle(latest.current)) {
-          setRefusedDelete(null)
-          setNaming(key)
-        }
-      },
-      check: (key, typed) => checkName(latest.current?.draft.chapters ?? [], typed, key),
-      notes: (key, typed) =>
-        latest.current === null
-          ? []
-          : nameDialogNote(
-              { chapters: latest.current.draft.chapters, folders, ignored: ignoredOf },
-              key,
-              typed,
-            ),
-      keep: keepChapterName,
-      drop: closeNaming,
-      unsent: onNameUnsent,
-    }),
-    [folders, ignoredOf, keepChapterName, closeNaming, onNameUnsent],
-  )
 
   const onMoveChapter = useCallback<ChapterMoveHandler>(
     (key, delta) => {
@@ -1994,13 +2029,12 @@ export function EventEditor({
         return
       }
       setRefusedDelete(null)
-      closeNaming(key)
       // The section moves in the DOM, which drops its focus: put it back (effects below).
       focusAfter.current = { key, target: delta < 0 ? 'chapter-up' : 'chapter-down' }
       dispatch({ type: 'chapter-move', key, delta })
       announce(`“${headingIn(next, key)}” moved to ${placeIn(next, key)}.`)
     },
-    [announce, closeNaming],
+    [announce],
   )
 
   const onDeleteChapter = useCallback<ChapterHandler>(
@@ -2026,7 +2060,6 @@ export function EventEditor({
         return
       }
       setRefusedDelete(null)
-      closeNaming(key)
       const next = deleteChapter(current.draft, key)
       dispatch({ type: 'chapter-delete', key })
       if (chapter.readName === null) {
@@ -2037,7 +2070,7 @@ export function EventEditor({
         announce(`“${heading}” will be deleted when you save.${notesIn(next, key)}`)
       }
     },
-    [announce, clips, ignoredOf, notesIn, closeNaming],
+    [announce, clips, ignoredOf, notesIn],
   )
 
   const onUndoDelete = useCallback<ChapterHandler>(
@@ -2244,62 +2277,6 @@ export function EventEditor({
   const moveSelectId = useId()
   const moveWhy = moveReason(marks.size, moveTo !== '', listsLocked)
 
-  // The main title card's line (TitleCard.tsx): the draft's title, edited in place of the form's.
-  const draftTitle = ready?.draft.metadata.title ?? ''
-  const draftMetadata = ready?.draft.metadata
-  const readDocument = ready?.baseline.read
-  const titleChanged = changed.includes('title')
-  const titleCard = useMemo<TitleCardModel>(
-    () => ({
-      draftTitle,
-      resolvedTitle: resolved?.title ?? null,
-      changed: titleChanged,
-      open: naming === TITLE,
-      locked: listsLocked,
-      inheritHint: (typed) =>
-        readDocument === undefined || draftMetadata === undefined
-          ? null
-          : inheritHint('title', readDocument, { ...draftMetadata, title: typed }, resolved),
-      onOpen: () => {
-        if (idle(latest.current)) {
-          setNaming(TITLE)
-        }
-      },
-      onKeep: (title) => {
-        const current = latest.current
-        closeNaming(TITLE)
-        if (!idle(current) || current.draft.metadata.title === title) {
-          return
-        }
-        dispatch({ type: 'field', field: 'title', value: title })
-        announce(
-          title.trim() === ''
-            ? 'Title cleared. It inherits from the folder name.'
-            : `Title set to “${title.trim()}”.`,
-        )
-      },
-      onDrop: () => closeNaming(TITLE),
-      onUnsent: onNameUnsent,
-    }),
-    [
-      draftTitle,
-      draftMetadata,
-      readDocument,
-      resolved,
-      titleChanged,
-      naming,
-      listsLocked,
-      announce,
-      closeNaming,
-      onNameUnsent,
-    ],
-  )
-
-  // The open name field, if its chapter is still listed (an undone deletion brings it back closed).
-  const openName =
-    naming === TITLE || (naming !== null && listed.some((chapter) => chapter.key === naming))
-      ? naming
-      : null
   // Each listed chapter's tools: what it offers, its notes and why it cannot go. A
   // chapter's object is kept while what it shows is unchanged, so its list re-renders
   // only when its own tools change.
@@ -2330,12 +2307,11 @@ export function EventEditor({
         : undefined
       const model: ChapterToolsModel = {
         notes: lines,
-        naming: openName === chapter.key,
+        cardId: cardIdOf(chapter),
         place: several ? { first: index === 0, last: index === listed.length - 1 } : null,
         deleteRefusal: refusal,
         refusalShown: refusedDelete === chapter.key && refusal != null,
         locked: listsLocked,
-        nameField,
         onMoveChapter,
         onDelete: onDeleteChapter,
       }
@@ -2356,8 +2332,6 @@ export function EventEditor({
     clips,
     refusedDelete,
     listsLocked,
-    openName,
-    nameField,
     onMoveChapter,
     onDeleteChapter,
   ])
@@ -2367,16 +2341,8 @@ export function EventEditor({
   const shownDialog = leaveQuestion === 0 ? chapterDialog : null
   useEffect(() => {
     if (leaveQuestion !== 0) {
-      setChapterDialog(null)
-      setNaming(null)
     }
   }, [leaveQuestion])
-  // A save starting and a re-read close the open name field too, keeping nothing.
-  const savePending = ready?.pressed != null
-  const readBaseline = ready?.baseline
-  useEffect(() => {
-    setNaming(null)
-  }, [savePending, readBaseline])
 
   // Focus after a chapter edit, once its result is on screen (`focusAfter`): a layout
   // effect, so no frame paints with focus on <body> after a section moved. The new
@@ -2504,6 +2470,7 @@ export function EventEditor({
         moving: moving.current,
         lifted: lifted.current,
         dialogOpen: document.querySelector('dialog[open]') !== null,
+        nameRefused: current.nameUnsent,
         hold,
       })
       if (action === 'lifted') {
@@ -2708,10 +2675,6 @@ export function EventEditor({
             />
           )}
 
-          {titleCardsModel !== null && <TitleCardsSwitch model={titleCardsModel} />}
-
-          {styleModel !== null && <CardStylePanel model={styleModel} />}
-
           {detail !== null && (
             <div className="edit-hint">
               <Icon name="info" />
@@ -2746,84 +2709,90 @@ export function EventEditor({
             // How clips are marked, and, once any is, how many and Clear marks. Its slot keeps
             // its height and room either way, so the first mark moves no row.
             <div ref={markLineRef} className="mark-line" tabIndex={-1}>
-              <p>{MARK_HINT}</p>
-              <span className="mark-line-slot">
-                <span className="mark-count" hidden={marks.size === 0}>
-                  {countWords(marks.size)}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-compact"
-                  hidden={marks.size === 0}
-                  aria-disabled={listsLocked || undefined}
-                  onClick={onClearMarks}
-                >
-                  Clear marks
-                </button>
-              </span>
-              <span className="mark-rotate" role="group" aria-label="Marked clips">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-compact"
-                  aria-disabled={listsLocked || marks.size === 0 || undefined}
-                  aria-describedby={marks.size === 0 ? rotateHintId : undefined}
-                  onClick={() => onRotateMarked('left')}
-                >
-                  <Icon name="rotate-ccw" />
-                  Rotate marked left
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-compact"
-                  aria-disabled={listsLocked || marks.size === 0 || undefined}
-                  aria-describedby={marks.size === 0 ? rotateHintId : undefined}
-                  onClick={() => onRotateMarked('right')}
-                >
-                  <Icon name="rotate-cw" />
-                  Rotate marked right
-                </button>
-                <span id={rotateHintId} className="visually-hidden">
-                  Mark clips to rotate them together.
-                </span>
-              </span>
-              {listedKeys.length > 1 && (
-                <span className="mark-move" role="group" aria-label="Move marked clips">
-                  <label htmlFor={moveSelectId}>Move marked to…</label>
-                  <select
-                    id={moveSelectId}
-                    className="field-input"
-                    aria-label="Chapter to move the marked clips to"
-                    value={moveTo}
-                    aria-disabled={listsLocked || undefined}
-                    aria-describedby={moveReasonId}
-                    onChange={(event) => {
-                      if (!listsLocked) {
-                        setMoveTo(event.currentTarget.value)
-                      }
-                    }}
-                  >
-                    <option value="">Choose a chapter</option>
-                    {listed.map((chapter) => (
-                      <option key={chapter.key} value={chapter.key}>
-                        {chapterHeading(chapter.name, hasNamedChapter)}
-                      </option>
-                    ))}
-                  </select>
+              <div className="mark-head">
+                <p>{MARK_HINT}</p>
+                <span className="mark-line-slot">
+                  <span className="mark-count" hidden={marks.size === 0}>
+                    {countWords(marks.size)}
+                  </span>
                   <button
                     type="button"
                     className="btn btn-secondary btn-compact"
-                    aria-disabled={listsLocked || moveWhy !== null || undefined}
-                    aria-busy={movePending || undefined}
-                    aria-describedby={moveReasonId}
-                    onClick={onMoveMarked}
+                    hidden={marks.size === 0}
+                    aria-disabled={listsLocked || undefined}
+                    onClick={onClearMarks}
                   >
-                    <Icon name="arrow-right" />
-                    Move
+                    Clear marks
                   </button>
-                  <span id={moveReasonId} className="mark-move-why">
-                    {moveWhy === null ? '' : MOVE_REASON_WORDS[moveWhy]}
+                </span>
+              </div>
+              <div className="mark-actions">
+                <span className="mark-rotate" role="group" aria-label="Marked clips">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-compact"
+                    aria-disabled={listsLocked || marks.size === 0 || undefined}
+                    aria-describedby={marks.size === 0 ? rotateHintId : undefined}
+                    onClick={() => onRotateMarked('left')}
+                  >
+                    <Icon name="rotate-ccw" />
+                    Rotate marked left
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-compact"
+                    aria-disabled={listsLocked || marks.size === 0 || undefined}
+                    aria-describedby={marks.size === 0 ? rotateHintId : undefined}
+                    onClick={() => onRotateMarked('right')}
+                  >
+                    <Icon name="rotate-cw" />
+                    Rotate marked right
+                  </button>
+                  <span id={rotateHintId} className="visually-hidden">
+                    Mark clips to rotate them together.
                   </span>
                 </span>
+                {listedKeys.length > 1 && (
+                  <span className="mark-move" role="group" aria-label="Move marked clips">
+                    <label htmlFor={moveSelectId}>Move marked to…</label>
+                    <select
+                      id={moveSelectId}
+                      className="field-input"
+                      aria-label="Chapter to move the marked clips to"
+                      value={moveTo}
+                      aria-disabled={listsLocked || undefined}
+                      aria-describedby={moveReasonId}
+                      onChange={(event) => {
+                        if (!listsLocked) {
+                          setMoveTo(event.currentTarget.value)
+                        }
+                      }}
+                    >
+                      <option value="">Choose a chapter</option>
+                      {listed.map((chapter) => (
+                        <option key={chapter.key} value={chapter.key}>
+                          {chapterHeading(chapter.name, hasNamedChapter)}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-compact"
+                      aria-disabled={listsLocked || moveWhy !== null || undefined}
+                      aria-busy={movePending || undefined}
+                      aria-describedby={moveReasonId}
+                      onClick={onMoveMarked}
+                    >
+                      <Icon name="arrow-right" />
+                      Move
+                    </button>
+                  </span>
+                )}
+              </div>
+              {listedKeys.length > 1 && (
+                <p id={moveReasonId} className="mark-move-why">
+                  {moveWhy === null ? '' : MOVE_REASON_WORDS[moveWhy]}
+                </p>
               )}
             </div>
           )}
@@ -2836,8 +2805,7 @@ export function EventEditor({
           )}
 
           {detail !== null && (
-            <TitleCardContext.Provider value={titleCard}>
-              <CardRowsContext.Provider value={cardRows}>
+            <CardButtonContext.Provider value={cardButtons}>
               <ChapterDrag
                 orders={ready.draft.orders}
                 listed={listedKeys}
@@ -2899,8 +2867,7 @@ export function EventEditor({
                   )
                 })}
               </ChapterDrag>
-              </CardRowsContext.Provider>
-            </TitleCardContext.Provider>
+            </CardButtonContext.Provider>
           )}
 
           {detail !== null && <AddChapter locked={listsLocked} onAdd={onAddChapter} />}
@@ -2948,7 +2915,6 @@ export function EventEditor({
             onReset={() => {
               // The panels' fields go first, so the remounted panels start empty.
               cutPanels.clear()
-              setNaming(null)
               dispatch({ type: 'reset' })
               // The bar leaves with its buttons: focus goes to the page's heading now; the
               // effect on `resets` scrolls it into view once the page has settled.

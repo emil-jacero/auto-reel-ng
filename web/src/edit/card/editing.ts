@@ -1,6 +1,9 @@
 import type { CardSpec } from '../../timeline/cards.ts'
 import type { CardDraft, CardField } from './model.ts'
 import type { EventStyle } from './specs.ts'
+import type { CardStyleModel, TitleCardsModel } from './EventTab'
+import type { NameCheck } from '../inlineName.ts'
+import type { ReactNode } from 'react'
 
 /*
  * What Edit mode gives the inspector (`title-card-inspector`): the draft's cards to show and a
@@ -24,6 +27,36 @@ export type CardView = {
   folderTitle: string | null
   /** The service's refusal of the last save for this card, and the field it names. */
   refusal: { field: CardField | null; message: string } | null
+  /** A chapter added in this Edit mode: its card is drawn after Save, and the dialog says so. */
+  added: boolean
+}
+
+/**
+ * The dialog's Name field for one card (`edit-mode-declutter`): a chapter's name, or for the
+ * event's own chapter the event's title. The rules are the editor's (`checkName`,
+ * `decideName`); the field writes each accepted name to the draft as it is typed.
+ */
+export type NameBinding = {
+  /** The event's own chapter: the field edits the title the Details form edits. */
+  event: boolean
+  /** The field's accessible name, from the name the draft held when the dialog opened. */
+  label: string
+  /** The name (the title) in the draft now. */
+  value: string
+  check(typed: string): NameCheck
+  /** What the typed chapter name would mean for clips added later, in words. */
+  notes(typed: string): readonly string[]
+  /** The event title only: the page's resolved title (the placeholder) and the Details form's hint for the typed text. */
+  placeholder: string
+  hint(typed: string): ReactNode
+  /** The event title differs from the one read: saving changes the movie's file name. */
+  fileNameChanged: boolean
+  /** Write an accepted name to the draft. */
+  write(name: string): void
+  /** The field holds a refused name (true) or not: it holds Save. */
+  refused(refused: boolean): void
+  /** Said once when the field settles: a rename from `was`, with the words that follow it. */
+  settled(was: string): void
 }
 
 export type CardEditing = {
@@ -44,4 +77,11 @@ export type CardEditing = {
   titleCardsDraft: boolean | null
   /** A save is in flight, or a move of marked clips is pending. */
   locked: boolean
+  /** The Name field of the card of the chapter saved as `saved`. */
+  name(saved: string): NameBinding | null
+  /** The card's length in seconds, from the dialog's Length field (the drag's edit). */
+  setLength(saved: string, seconds: number): void
+  /** The event-wide style and the Title cards switch of the second tab. */
+  styleModel: CardStyleModel
+  switchModel: TitleCardsModel
 }

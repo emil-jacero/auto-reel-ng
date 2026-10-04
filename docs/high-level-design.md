@@ -403,7 +403,7 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   engine's `default_subtitle` (from the event detail) as its placeholder, **No subtitle** writes `""`, **Use default**
   removes the key; rows show the effective subtitle. The page composes no default.
 - **v2 event card style** (`title-card-event-style`, D-24): **Card style for this event** (Edit mode, closed by default,
-  `web/src/edit/CardStylePanel.tsx`, pure model `cardStyle.ts`) edits the event-wide `look.title_card` (font, title and
+  `web/src/edit/card/EventTab.tsx`, superseded UI: see `edit-mode-declutter`; pure model `cardStyle.ts`) edits the event-wide `look.title_card` (font, title and
   subtitle size, colour, position, default length, default background) in the same draft as everything else. A card
   says which style fields it overrides (`Overrides font, color` / `Uses the event style`; read from the draft card, so a
   value equal to the event's still counts), **Use event style** falls back to the *draft* style, and every preview sends
@@ -412,8 +412,16 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   sends `look` itself). An unset field shows the project default (the detail's resolved value) as a placeholder; a
   field cleared although the saved style set it says "Project default" with no number, because the lower layer is not
   known to the page and is never guessed. No API, engine or `RENDER_GRAPH_VERSION` change.
+- **v2 Edit mode declutter** (`edit-mode-declutter`, D-13, D-20, D-24, D-25; web only): the card dialog is the one place for every
+  name and title-card setting, the same for Main and chapters: tab **This title card** (Name first, an existing card title
+  shown as "Card title (overrides the name)" with **Use the name**, then the card's fields and **Length**) and tab **All title
+  cards in this event** (the event style and the Title cards On / Off switch), one live preview outside the tabs. A chapter's
+  section is its header bar (plain-text name, **Edit Titlecard**, clip count) and its clips; the rename pencils, "Main title
+  card" line, card rows, "Card style for this event" and Title cards sections are gone (they remain history under D-13, D-24
+  and D-25). Edit mode opens with the Timeline open and no Open/Close button (D-20; the read view keeps its button). The marks
+  line is one aligned toolbar (one control height token, one axis, the reason as one hint line below). No API or engine change.
 - **v2 Title cards switch** (`title-card-toggle`, D-20, D-25): Edit mode's **Title cards: On / Off**
-  (`web/src/edit/TitleCardsSwitch.tsx`, pure model `decorators.ts`) edits the event's own `look.decorators` in the same
+  (now the dialog's second tab, `web/src/edit/card/EventTab.tsx`; superseded UI, see `edit-mode-declutter`; pure model `decorators.ts`) edits the event's own `look.decorators` in the same
   draft (Off removes `title` and keeps the other names; with no list it writes `[]`; On puts `title` first). The state the
   page shows is the detail's `title_cards.enabled` (resolved by the engine from the event and the project), never a guess
   from `reel.yaml`: the Timeline's card lane, the chapter list's rows and the movie's length follow it, and the draft's

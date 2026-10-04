@@ -156,10 +156,10 @@ be reachable with the keyboard and SHALL name, to assistive technology, the chap
   SHALL show and announce why the chapter cannot be deleted.
 
 **The header bar.** Every chapter's header bar, the event's own chapter's too, SHALL hold, in this order, the chapter's name as plain
-text, an **Edit Titlecard** button, the chapter's clip count and its tools (Move up, Move down, Delete, offered by the rules above). The
+text, an **Edit Titlecard** button and the chapter's clip count; the chapter's tools (Move up, Move down, Delete, offered by the rules above) stay in their own row under the bar, which is sticky and keeps one line. The
 button SHALL show an icon and the words "Edit Titlecard", SHALL be named "Edit title card for <name>" (the event's own chapter: its
 heading) and SHALL open the title card dialog on the "This title card" tab ("A selected title card opens its inspector in Edit mode"). A
-chapter's section SHALL show nothing between its header bar and its clips but the notes of this requirement and of "Edit mode says what
+chapter's section SHALL show nothing between its header bar and its clips but the tools row and the notes of this requirement and of "Edit mode says what
 a chapter's name means for clips added later": no card row, no "Main title card" line, no source line ("from the folder name"). A chapter added in the draft has no saved card, and its
 button SHALL be offered all the same: the dialog says that its card is drawn after Save and keeps the preview from the draft.
 
