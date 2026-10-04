@@ -2,9 +2,10 @@
 
 Importing this module registers two seams: the ``title`` **producer** (which
 renders the card image via :func:`render_title_card` and returns a
-:class:`ProducedSegment`) and the ``title`` **decorator** (an inserter that places
-one synthetic title segment immediately before each chapter's title clip, or
-before the chapter's first surviving segment when cuts remove that clip entirely).
+:class:`ProducedSegment`) and the ``title`` **decorator** (which places one card per chapter at the chapter's title
+clip, or at the chapter's first surviving segment when cuts remove that clip entirely: an
+inserted synthetic segment immediately before it for a ``black`` card, or an overlay attached
+to it for a ``video`` card, so no time is added).
 The card config is parsed from ``look.title_card`` at decorate time and carried on
 the synthetic segment as an opaque :class:`TitleCardRequest` the producer
 interprets.
@@ -12,7 +13,7 @@ interprets.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping, Optional
 
@@ -20,7 +21,7 @@ from ...errors import TitleCardError
 from ...event.plan import RenderPlan, ResolvedChapter
 from ..decorators import register_decorator
 from ..producers import ProducedSegment, register_producer
-from ..segments import Segment
+from ..segments import OverlaySpec, Segment
 from .config import TitleCardConfig, resolve_card_config
 from .content import TitleCardContent, compose_content
 from .render import render_title_card
@@ -120,32 +121,43 @@ def _anchor_indexes(
 
 
 def _card_requests(plan: RenderPlan, anchors: Mapping[str, int]) -> dict[str, TitleCardRequest]:
-    """Each anchored chapter's card, resolved before any segment is built or encoded.
-
-    Raises:
-        TitleCardError: a card whose effective ``background`` is ``video`` (not rendered by
-            this engine; it is never drawn as black), naming the chapter.
-    """
+    """Each anchored chapter's card, resolved before any segment is built or encoded."""
     requests: dict[str, TitleCardRequest] = {}
     for name in anchors:
         chapter = _chapter_by_name(plan, name)
-        if chapter is None:
-            continue
-        request = resolve_card(plan, chapter)
-        if request.config.background == "video":
-            raise TitleCardError(
-                f"chapter {chapter.name!r}: card background 'video' is not rendered by this engine"
-            )
-        requests[name] = request
+        if chapter is not None:
+            requests[name] = resolve_card(plan, chapter)
     return requests
+
+
+def _attached(segment: Segment, request: TitleCardRequest) -> Segment:
+    """``segment`` with the card attached as a timed overlay over its first ``duration`` seconds.
+
+    The overlay names the ``title`` producer and carries the same request an inserted card
+    would, so the render materializes it into a transparent image when the command is built.
+    Nothing about the segment's length changes.
+    """
+    config = request.config
+    overlay = OverlaySpec(
+        producer=TITLE_PRODUCER,
+        producer_config=request,
+        start=0.0,
+        end=config.duration,
+        fade_in=config.fade_in,
+        fade_out=config.fade_out,
+    )
+    return replace(segment, overlays=segment.overlays + (overlay,))
 
 
 def title_decorator(
     plan: RenderPlan, target: "TargetSpec", segments: tuple[Segment, ...]
 ) -> tuple[Segment, ...]:
-    """Insert one synthetic title segment at each titled chapter's anchor (D-E).
+    """Place each titled chapter's card at its anchor (D-E): inserted, or attached over video.
 
-    For every chapter that resolved a title clip, a synthetic segment carrying the
+    A chapter whose card has the background ``video`` gets no segment: the card is attached to
+    its anchor segment as a timed overlay over the segment's first ``duration`` seconds, adding
+    no time (``clip-normalize`` clamps it to a shorter segment). For every other chapter that
+    resolved a title clip, a synthetic segment carrying the
     ``title`` producer, the chapter's own card duration, and its :class:`TitleCardRequest`
     (:func:`resolve_card`: the event-wide style with the chapter's ``card`` overrides) is
     placed immediately before that clip's first segment, recording the chapter it precedes so
@@ -174,6 +186,10 @@ def title_decorator(
             and segment.chapter not in inserted
         ):
             request = requests.get(segment.chapter)
+            if request is not None and request.config.background == "video":
+                result.append(_attached(segment, request))
+                inserted.add(segment.chapter)
+                continue
             if request is not None:
                 result.append(
                     Segment(

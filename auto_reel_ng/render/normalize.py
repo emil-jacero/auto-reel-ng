@@ -25,6 +25,7 @@ from typing import Mapping, Optional
 
 from ..accel.models import FrameLocation, OpClass, OpParams
 from ..accel.profiles.base import AccelProfile, needs_transfer
+from ..accel.profiles.cpu import CPUProfile
 from ..errors import RenderError
 from ..probe.metadata import ClipMetadata
 from .producers import ProducedSegment
@@ -139,6 +140,73 @@ def _overlay_enable(overlay: OverlaySpec) -> Optional[str]:
     return f"between(t,{_fmt(overlay.start)},{_fmt(overlay.end)})"
 
 
+#: A window shorter than the asked one by less than this is not a clamp (probe rounding).
+_CLAMP_TOLERANCE_S = 1e-3
+
+
+def _clamp_timed_overlays(
+    segment: Segment, duration: float
+) -> tuple[tuple[OverlaySpec, ...], list[str]]:
+    """Clamp each timed overlay's window to the segment's ``duration``; collect the warnings.
+
+    A timed overlay (one that fades) shows from the segment's start for its ``end`` seconds. When
+    that is longer than the segment the window becomes the segment's length, the fades shrink
+    together (the same proportional rule as the title card's own fade clamp) so their sum fits the
+    window, and a warning names the segment, the asked and the shown seconds. Other overlays pass
+    through untouched.
+
+    Raises:
+        RenderError: a timed overlay that does not start at the segment's start.
+    """
+    out: list[OverlaySpec] = []
+    warnings: list[str] = []
+    for overlay in segment.overlays:
+        if not overlay.is_timed:
+            out.append(overlay)
+            continue
+        if overlay.start != 0.0:
+            raise RenderError(
+                f"segment {segment.identity}: a timed overlay starts at the segment's start, "
+                f"got start={overlay.start}"
+            )
+        asked = overlay.end if overlay.end is not None else duration
+        window = min(asked, duration)
+        fade_in, fade_out = overlay.fade_in, overlay.fade_out
+        if asked - window > _CLAMP_TOLERANCE_S:
+            warnings.append(
+                f"segment {segment.identity}: overlay shown for {_fmt(window)} s of the "
+                f"{_fmt(asked)} s asked, the segment is only {_fmt(window)} s long"
+            )
+        if fade_in + fade_out > window:
+            scale = window / (fade_in + fade_out)
+            fade_in, fade_out = fade_in * scale, fade_out * scale
+        out.append(replace(overlay, end=window, fade_in=fade_in, fade_out=fade_out))
+    return tuple(out), warnings
+
+
+def _clamped(segment: Segment, duration: float, warnings: list[str]) -> Segment:
+    """``segment`` with its timed overlays clamped; the clamp warnings are logged and appended."""
+    overlays, clamp_warnings = _clamp_timed_overlays(segment, duration)
+    for warning in clamp_warnings:
+        logger.warning("%s", warning)
+    warnings.extend(clamp_warnings)
+    return replace(segment, overlays=overlays)
+
+
+def _timed_overlay_chain(overlay: OverlaySpec, input_index: int, label: str) -> str:
+    """The filter chain that turns the looped card still into an alpha-faded overlay stream."""
+    window = overlay.end if overlay.end is not None else 0.0
+    parts = ["format=rgba"]
+    if overlay.fade_in > 0.0:
+        parts.append(f"fade=t=in:st=0:d={_fmt(overlay.fade_in)}:alpha=1")
+    if overlay.fade_out > 0.0:
+        parts.append(
+            f"fade=t=out:st={_fmt(max(0.0, window - overlay.fade_out))}"
+            f":d={_fmt(overlay.fade_out)}:alpha=1"
+        )
+    return f"[{input_index}:v]{','.join(parts)}[{label}]"
+
+
 def _needs_pad(clip: ClipMetadata, turn: int, target: TargetSpec) -> bool:
     """Whether normalizing ``clip`` onto the canvas leaves a region to pad.
 
@@ -202,18 +270,22 @@ def _build_video_graph(
     *,
     decode_out: FrameLocation,
     encode_in: FrameLocation,
+    fps: float,
 ) -> tuple[str, str, list[str], Optional[str]]:
     """Return ``(flag, value, extra_input_args, map_label)`` for the video chain.
 
     Overlay-free segments use a linear ``-vf`` chain on the hardware path; a
     segment carrying overlays switches to ``-filter_complex`` with a CPU bridge
-    around the overlay (the AMD path, ``can_overlay_hw=False``).
+    around the overlay (the AMD path, ``can_overlay_hw=False``). A *timed* overlay (it fades) is a
+    still looped for its window at ``fps``, faded on its alpha channel and composited with the CPU
+    ``overlay`` whatever the profile; every overlay of such a segment then uses the CPU one.
     """
     canvas = _canvas_stages(segment, clip, profile, params)
     if not segment.overlays:
         return ("-vf", _compose_linear(canvas, decode_out, encode_in), [], None)
 
-    overlay_fragment = profile.fragment(OpClass.OVERLAY, params)
+    timed = any(overlay.is_timed for overlay in segment.overlays)
+    overlay_fragment = (CPUProfile() if timed else profile).fragment(OpClass.OVERLAY, params)
     overlay_loc = overlay_fragment.frames_in
     pre = _compose_linear(canvas, decode_out, overlay_loc)
 
@@ -226,13 +298,23 @@ def _build_video_graph(
     extra_inputs: list[str] = []
     for index, overlay in enumerate(segment.overlays):
         input_index = 1 + index
+        overlay_stream = f"{input_index}:v"
+        if overlay.is_timed:
+            window = overlay.end if overlay.end is not None else 0.0
+            extra_inputs += ["-loop", "1", "-framerate", _fmt(fps), "-t", _fmt(window)]
+            chains.append(_timed_overlay_chain(overlay, input_index, f"ov{index}"))
+            overlay_stream = f"ov{index}"
         extra_inputs += ["-i", overlay.source]
         expr = f"{overlay_fragment.filter}=x={overlay.x}:y={overlay.y}"
+        if overlay.is_timed:
+            # The default output format makes a following ``format=nv12,hwupload`` fail on
+            # Mesa ("Failed to upload frame"); ``auto`` keeps the base picture's format.
+            expr += ":format=auto"
         enable = _overlay_enable(overlay)
         if enable is not None:
             expr += f":enable='{enable}'"
         out_label = f"vo{index}"
-        chains.append(f"[{current}][{input_index}:v]{expr}[{out_label}]")
+        chains.append(f"[{current}][{overlay_stream}]{expr}[{out_label}]")
         current = out_label
 
     tail = needs_transfer(overlay_loc, encode_in)
@@ -319,11 +401,18 @@ def build_normalize_command(
             warnings.append(HDR_SLOWNESS_WARNING)
             logger.warning("%s: %s", segment.identity, HDR_SLOWNESS_WARNING)
 
-    flag, value, overlay_inputs, map_label = _build_video_graph(
-        segment, clip, profile, params, decode_out=decode.frames_out, encode_in=encode.frames_in
-    )
-
     duration = segment.span_duration if segment.span_duration is not None else clip.duration
+    segment = _clamped(segment, duration, warnings)
+
+    flag, value, overlay_inputs, map_label = _build_video_graph(
+        segment,
+        clip,
+        profile,
+        params,
+        decode_out=decode.frames_out,
+        encode_in=encode.frames_in,
+        fps=target.fps,
+    )
 
     # A software decode opens no device, so a chain that uploads to a hardware
     # encoder must name one; a hardware decode names its own, shared with filters.

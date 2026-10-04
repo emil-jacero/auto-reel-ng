@@ -57,7 +57,7 @@ The problems we are **explicitly fixing**:
 | 1 | GPU = NVENC **encode only**; decode/scale/pad/overlay on CPU; frames bounce CPU↔GPU | Capability-driven **acceleration profiles**; keep frames GPU-resident |
 | 2 | **2–3 full re-encodes** per clip (convert → scale-pad → concat) | Normalize-once on GPU + **stream-copy concat** fast path |
 | 3 | **Chapters are illusory** — never written to the container | Write real `ffmetadata` chapter markers |
-| 4 | moviepy title cards spawn their own `libx264`/`aac` ffmpeg, ignore chosen codec, hardcoded fonts | Render card to image, encode it as **its own segment** (overlay-free) with the chosen codec |
+| 4 | moviepy title cards spawn their own `libx264`/`aac` ffmpeg, ignore chosen codec, hardcoded fonts | Render card to image, encode it as **its own segment** (overlay-free) with the chosen codec; a `video`-background card is instead an alpha-faded overlay on the chapter's first segment (`title-card-over-video`) |
 | 5 | Fragile probe: `time.sleep(1)`/clip, per-clip exiftool+ffprobe, **silent fake-metadata fallback** | One robust probe layer; **fail loud**, never fabricate dimensions/fps |
 | 6 | **No rotation / SAR / HDR handling** (`is_hdr` computed, never used) | Normalize rotation/SAR; HDR→SDR tonemap |
 | 7 | **GPU-unaware concurrency** — N movies each launch NVENC, oversubscribe | GPU-aware **job scheduler** |
@@ -173,17 +173,27 @@ Replace moviepy. Render the title card to an **RGBA PNG at the target resolution
 optional background, outline/shadow) behind a **single swappable renderer seam** (`render_title_card`), then
 ship it as **its own synthetic segment** — looped, faded with the `fade` filter, given a synthesized silent
 audio track, and encoded to the **target spec with the chosen codec** like any other segment. This is
-**card-as-segment, overlay-free** (decision **D-A**): no `overlay`/`overlay_vaapi` and no CPU overlay bridge,
-so it is fully on-GPU on every vendor — sidestepping the AMD `overlay_vaapi` gap (exp 003) the original
-"overlay in the main graph" wording would have hit. A generic, name-keyed **producer registry** materializes a
+**card-as-segment, overlay-free** (decision **D-A**) for a card on a `black` background: no `overlay`/`overlay_vaapi`
+and no CPU overlay bridge, so it is fully on-GPU on every vendor — sidestepping the AMD `overlay_vaapi` gap
+(exp 003) the original "overlay in the main graph" wording would have hit. A generic, name-keyed **producer registry** materializes a
 synthetic segment's content by its `producer` key (the title card is the first registration; intro/outro/
 transition bumpers reuse the seam). Fonts are resolved **by family name through fontconfig**, from a **bundled set of nine
 families** (DejaVu Sans, the default, plus eight OFL families, `fonts/`, one registry `render/title/fonts.py`) under a
 fontconfig the engine points at itself, so no system font is involved and the image and a dev host draw the same
 glyphs (**D-22**); an unresolved family or weight **fails loud** rather than silently substituting. The same
 `render_title_card` seam produces the future GUI look-editor preview, so preview is byte-identical to the
-render. The title-over-footage *overlay* look stays a future addition via the decorator seam's `attacher`
-(non-goal here).
+render.
+
+A card with the background `video` is the other look (`title-card-over-video`, **D-24**): text over the start of the
+chapter's first clip while it plays, no time added. The `title` decorator inserts no segment for it; it attaches the
+card, rendered on a transparent canvas by the same `render_title_card`, to the chapter's anchor segment as a
+**timed overlay** (an `OverlaySpec` naming the `title` producer, materialized when the segment's command is built),
+over the segment's first `duration` seconds, faded in and out on its alpha channel. The normalize step loops the
+still, fades its alpha and composites it with the CPU `overlay` on every profile (on AMD between the CPU download and
+the upload, as the bridge always did), so the anchor segment is re-encoded through the CPU bridge for its whole
+length: experiment 003's advice was that "only the title segment pays CPU cost", and an over-video card gives it up
+for one segment per chapter (measured in the change's PR). A card longer than its segment is clamped to the
+segment's length, its fades shrunk together, and the render reports a warning.
 
 A card has its own text, length and style (**D-24**, `title-card-model`). Its heading is the card's `title`, else
 the chapter's name, else (the opening card of the default chapter) the event title; its subtitle is free text,
@@ -192,7 +202,7 @@ description**. Each card's length and style are the engine defaults, then the ev
 the chapter's own `card:` in `reel.yaml`, parsed once so the fades clamp to the card's own length.
 
 > ✅ **Resolved (§8.5):** Cairo + Pango, fail-loud font resolution, structural + tolerance-gated tests. The
-> title-over-footage overlay variant remains future work.
+> title-over-footage overlay variant is built (`title-card-over-video`, D-24).
 
 ### 4.5 Analysis pass (black / white / freeze → ML later)
 
@@ -362,8 +372,8 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   **read-only**; editing it is v2. No timeline, no per-frame editing.
 - **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview; `title-card-fonts`
   is the foundation of the card editor: the bundled font set and its registry, **D-22**; **the title card model
-  has landed** as `title-card-model`, **D-24**: the per-chapter `card:` in `reel.yaml`, with the write API, the
-  card over the clip's start and the editor to follow); **the full
+  has landed** as `title-card-model`, **D-24**: the per-chapter `card:` in `reel.yaml`; **the card over the clip's
+  start has landed** as `title-card-over-video`, with the write API and the editor to follow); **the full
   timeline editor, moved from v3** — a per-clip track with proxies, filmstrip, drag-trim in/out and scrub
   preview (built: scrub in `timeline-view`, trim handles in `timeline-trim`, D-20); **analysis review built as overlays on that timeline** (built: approve black/white/freeze trims in place on Edit mode's draft, `timeline-overlay-decisions`;
   not a separate screen); event poster frames; and, beside the proxy work, chapter times in the render
@@ -696,8 +706,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    engine on every profile (D-23; `RENDER_GRAPH_VERSION` 6); `clip-rotate-gui`, the control and the turned previews, follows.
    `time-readouts-legible` follows on user feedback: every running time on the Timeline and in the clip player is written to a
    fixed width by one clock and labelled in words (D-20, D-16), web-only, with no render, fingerprint, schema or job change.
-   `title-card-model` has landed (D-24): the optional per-chapter `card:` and the engine that draws it; the write API,
-   the card over video and the editor follow. It raised `RENDER_GRAPH_VERSION` to 7, so every rendered event reports
+   `title-card-model` has landed (D-24): the optional per-chapter `card:` and the engine that draws it; the write API
+   and the editor follow. `title-card-over-video` has landed (the engine half of "text on video"; no version bump):
+   a `video` card is attached over the chapter's first segment instead of failing the render. It raised `RENDER_GRAPH_VERSION` to 7, so every rendered event reports
    stale once (reason `engine`).
    `chapter-inline-rename` (GUI v2) follows: a chapter is renamed by pressing its title, and the event's own
    chapter shows the main title card, whose title is the event's (D-13); web-only, same.
@@ -1510,8 +1521,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     `resolve_card(plan, chapter)` is the one function that returns a card's effective config and text; the decorator
     uses it now and the API's resolved-card read will use it later (Principle V).
   - **`background: video` is stored but not rendered here.** An event that reaches it fails loud with a typed error
-    naming the chapter; it is never drawn as black. `title-card-over-video` replaces the error, and the editor must
-    not offer `video` before then.
+    naming the chapter; it is never drawn as black. `title-card-over-video` replaced the error (below).
   - **Writers keep the card.** The round-trip writer keeps a card's comments and key order. The editorial write
     treats a chapter's `card` as: **no key or `null` leaves the card as written**, `{}` removes it, and a mapping is
     merged key by key (a key left out is removed, an equal value stays as written, a fresh card goes after `name`).
@@ -1526,6 +1536,19 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Deliberately not here:** the cards are still opt-in per project (`look.decorators: [title]`; making them the
     default changes every render of every project); an event with no default chapter has no opening card; no API,
     editor, preview or card over video (the font registry is D-22).
+  - **The card over video (change `title-card-over-video`, 2026-10-03).** The user's reading of "text on a piece of
+    video": the text sits over the start of the chapter's first clip while it plays, no time added. A `video` card
+    gets no inserted segment: the decorator attaches it, as a producer-backed timed `OverlaySpec`, to the same anchor
+    a black card precedes (the title clip's first kept span, else the chapter's first surviving segment), so segment,
+    chapter and movie lengths and the chapter times are untouched by construction (the chapter's recorded title-card
+    span is `null`, as for a chapter with no card segment). The card is rendered on a transparent canvas by the one
+    renderer (only the fill is skipped); normalize loops the still for the window, fades its alpha, and composites
+    with the CPU `overlay` (`format=auto`, without which Mesa fails the following `hwupload`) on every profile, never
+    a hardware overlay filter, because only the AMD bridge and the CPU are exercised on our hosts. A window longer
+    than its segment is clamped with a render warning rather than refused: a short opening clip is a legitimate edit.
+    Staleness: no `RENDER_GRAPH_VERSION` bump (stays 7). An event that carried `video` failed loud before, so no output
+    exists to be wrong; black cards are byte-identical; switching a card to `video` moves the editorial component.
+    Cost: the anchor segment goes through the CPU bridge for its whole length (see §4.4).
 
 - **D-23 — A clip's `rotate` is an extra clockwise turn on top of its display rotation** (2026-10-03, change
   `clip-rotate-engine`; D-20 keeps the timeline and D-21 the proxy contract). User request: "Some videos are rotated 90

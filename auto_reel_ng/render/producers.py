@@ -11,12 +11,12 @@ bumpers) reuse the seam. The title card registers the first producer.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from ..errors import RenderError
-from .segments import Segment
+from .segments import OverlaySpec, Segment
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .target import TargetSpec
@@ -73,8 +73,37 @@ def get_producer(name: str) -> Producer:
         ) from exc
 
 
+def materialize_overlay(overlay: OverlaySpec, target: "TargetSpec", dest: Path) -> OverlaySpec:
+    """Turn a producer-backed overlay into a plain one: its image, window and fades.
+
+    Asks the registered producer (the one that serves inserted segments too) to render
+    the overlay's image to ``dest``, and returns a copy whose ``source`` is that image,
+    whose window is ``[0, duration)`` and whose fades are the produced timings. An overlay
+    without a producer is returned as it is.
+
+    Raises:
+        RenderError: the overlay names a producer that is not registered.
+    """
+    if overlay.producer is None:
+        return overlay
+    producer = get_producer(overlay.producer)
+    carrier = Segment(
+        chapter="", producer=overlay.producer, producer_config=overlay.producer_config
+    )
+    produced = producer(carrier, target, dest)
+    return replace(
+        overlay,
+        source=str(produced.image_path),
+        start=0.0,
+        end=produced.duration,
+        fade_in=produced.fade_in,
+        fade_out=produced.fade_out,
+    )
+
+
 __all__ = [
     "ProducedSegment",
+    "materialize_overlay",
     "Producer",
     "register_producer",
     "get_producer",
