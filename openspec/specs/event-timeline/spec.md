@@ -639,7 +639,7 @@ When the primary pointer is coarse, each trim handle SHALL take a press anywhere
 
 ### Requirement: Trimming is unavailable while a save or a move is pending, and where there is nothing to trim
 
-While a save is in flight or a Move clips is pending, the trim handles and the selected cut's fields SHALL say that they are unavailable (`aria-disabled`, in words in the group) and SHALL change nothing when used, as the Cuts panel's controls do; the playhead and playing SHALL stay usable. A clip with no ready proxy SHALL have no timeline presence ("The Timeline asks for the clips' proxies when they are missing"), so it has no handle; its cuts stay editable in its Cuts panel by typed times. A drag in progress when a save starts SHALL end as if Escape were pressed.
+While a save is in flight or a move of marked clips is pending, the trim handles and the selected cut's fields SHALL say that they are unavailable (`aria-disabled`, in words in the group) and SHALL change nothing when used, as the Cuts panel's controls do; the playhead and playing SHALL stay usable. A clip with no ready proxy SHALL have no timeline presence ("The Timeline asks for the clips' proxies when they are missing"), so it has no handle; its cuts stay editable in its Cuts panel by typed times. A drag in progress when a save starts SHALL end as if Escape were pressed.
 
 #### Scenario: A pending save leaves handles inert
 - **WHEN** a cut was trimmed, the operator presses Save, and the service has not answered
@@ -761,7 +761,7 @@ The keys **A** (approve) and **R** (dismiss or restore) SHALL act only when the 
 
 ### Requirement: Decisions are unavailable while a save or a move is pending
 
-While a save is in flight or a Move clips is pending, Approve, Dismiss and Restore SHALL say that they are unavailable (`aria-disabled` on the buttons, in words in the detail, as the trim handles do) and SHALL change nothing, whether pressed or keyed; selecting a mark, moving between marks and the playhead SHALL stay usable. A decision SHALL never be announced as done when no change was made.
+While a save is in flight or a move of marked clips is pending, Approve, Dismiss and Restore SHALL say that they are unavailable (`aria-disabled` on the buttons, in words in the detail, as the trim handles do) and SHALL change nothing, whether pressed or keyed; selecting a mark, moving between marks and the playhead SHALL stay usable. A decision SHALL never be announced as done when no change was made.
 
 #### Scenario: A pending save blocks the decision
 - **WHEN** the operator presses Save and, before the service answers, presses Approve as cut on a pending mark and presses A on another
@@ -1114,7 +1114,7 @@ the handle has focus it SHALL be scrolled into view if its edge is outside the T
 
 The card handle's pressable area SHALL be at least 24 px wide for a fine pointer and 44 px for a coarse one, centred on
 the edge, and a swipe starting elsewhere on the Timeline SHALL still scroll it. The handle lies in the card lane, a row of its own above the clips, so its area SHALL NOT cover a trim
-handle's. While a save or a Move clips is pending the handle SHALL change nothing
+handle's. While a save or a move of marked clips is pending the handle SHALL change nothing
 for any input, as trim handles do. The drag SHALL stay smooth in Chrome and in Firefox 155 or later: at 80 clips, in the median of at least five runs under
 a 4x CPU throttle in Chrome, at most 5 % of the frames of a scripted drag of a black card, including the shift of the
 later content, take longer than 25 ms (the same page idle takes up to 4 % on a shared host), and in the median of three
