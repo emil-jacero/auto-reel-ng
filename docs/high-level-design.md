@@ -387,7 +387,7 @@ project MUST NOT read clip content to fill a response field, by hash any more th
 The north star is a **full timeline editor**, but we ship in thin slices:
 
 - **v1 (tiny, ship first):** scan/ingest view (events + clips), **drag-reorder clips** (persist to
-  `reel.yaml`), **chapter edits, Move clips and dragging clips (singly or as a marked group) between chapters** (**D-13**), **typed cuts** (**D-14**), **a clip's preview with Set From / Set To** (**D-16**), edit basic metadata (title/date/location/description), **schedule a render and watch
+  `reel.yaml`), **chapter edits, Move marked to… and dragging clips (singly or as a marked group) between chapters** (**D-13**), **typed cuts** (**D-14**), **a clip's preview with Set From / Set To** (**D-16**), edit basic metadata (title/date/location/description), **schedule a render and watch
   live progress**, **clip thumbnails** (one frame per clip, **D-11**), and **the rendered movie on the event
   page** (**D-15**). The resolved `look` is shown
   **read-only**; editing it is v2. No timeline, no per-frame editing.
@@ -526,7 +526,7 @@ change directories:
 | A | `web-app-scaffold` | `web/` + the static mount + schema→types pipeline; no screen |
 | B | event list screen | the scan/ingest view, over slice 0's verdicts |
 | C | event detail screen | chapters/clips read-only, using the per-clip `size`/`mtime` file facts. `movie-player-screen` plays the event's rendered movie (D-15) |
-| D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency — landed in `event-edit-screen` (the event page's Edit mode). `missing-clips-screen` adds the explicit removal of a MISSING clip's entry (never automatic) and holds Render back while an event lists one. `chapter-management-screen` adds the chapter edits (add, rename, move, delete when empty; `chapter-inline-rename` makes a chapter's title the rename control and the event's own chapter's main title card the event title's) and Move clips between chapters (D-13). `clip-cuts-screen` adds a clip's cuts, listed, added from typed times and removed in Edit mode, and shown on the event page (D-14). `cross-chapter-drag` lets a clip be dragged into another chapter (D-13). `clip-preview-screen` plays a clip in its Cuts panel, sets a cut at the playhead, skips cuts as the movie will, and refuses a cut past the length the browser reads (D-16) |
+| D | reorder + metadata save | the first write: `ETag`/`If-Match`, 412 conflict handling, the one drag-and-drop dependency — landed in `event-edit-screen` (the event page's Edit mode). `missing-clips-screen` adds the explicit removal of a MISSING clip's entry (never automatic) and holds Render back while an event lists one. `chapter-management-screen` adds the chapter edits (add, rename, move, delete when empty; `chapter-inline-rename` makes a chapter's title the rename control and the event's own chapter's main title card the event title's) and Move clips between chapters (D-13; `move-marked-to` replaced the per-chapter dialog with Move marked to… in the marks line). `clip-cuts-screen` adds a clip's cuts, listed, added from typed times and removed in Edit mode, and shown on the event page (D-14). `cross-chapter-drag` lets a clip be dragged into another chapter (D-13). `clip-preview-screen` plays a clip in its Cuts panel, sets a cut at the playhead, skips cuts as the movie will, and refuses a cut past the length the browser reads (D-16) |
 | E | render + live progress | `POST /jobs` (201 / 200-fresh / 409), the WS hook, cancel — landed in `render-progress-screen` |
 
 C, D and E were designed only after A and B had been used against a real library; all three have
@@ -773,6 +773,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    Watch on each clip (D-16), also web-only and with no render, fingerprint, schema or job change.
    `clip-group-select-drag` (GUI v2) follows: Edit mode marks clips and a drag of a marked clip moves the whole
    marked group (D-13); web-only, no render, fingerprint, schema or job change.
+   `move-marked-to` (GUI v2) follows `clip-group-select-drag`: the per-chapter Move clips is replaced by Move marked to… in the marks line; web-only.
    `title-card-fonts` is the foundation of the card editor (the look editor's title-card half): a bundled set of nine
    title fonts, one registry and an engine-owned fontconfig (**D-22**), with `RENDER_GRAPH_VERSION` 5 and no schema,
    API or web change; the card style, per-card fields, preview endpoint and editor read it.
@@ -990,7 +991,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   followed in `cross-chapter-drag` (2026-10-01), at the operator's request, beside Move clips: any position,
   an empty chapter too, by pointer and keyboard. In `clip-group-select-drag` (2026-10-03), at the operator's
   request, a drag of a marked clip takes every marked clip, to the drop position, in one edit, and Move clips
-  has a Pick marked button. A missing clip stays in its chapter. A save that
+  has a Pick marked button. `move-marked-to` (GUI v2, 2026-10-04), at the operator's request, removed the
+  per-chapter Move clips and its dialog: the marks line has Move marked to… (a chapter picker and Move), the
+  non-drag way to move the marked clips to the end of a chapter, by the drag's own edit. A missing clip stays in its chapter. A save that
   changes the chapter list writes every chapter as shown, so every NEW clip is adopted where the page shows
   it; a chapter's name then only decides where later clips go (D-12). The event's own chapter keeps no name,
   and a chapter is deleted only once empty. The page follows the engine's chapter-name rules
@@ -1357,7 +1360,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     and removing the cut or Reset returns the suggestion to pending (state is derived, not stored). An overlap (a partly cut
     suggestion included) or a span past the proxy's end is refused in the panel's words with nothing added. **Dismiss** and
     **Restore** (**R** toggles) are the page's set, no edit, no Save, no unsaved-changes guard, and survive leaving Edit
-    mode, Refresh and Save, not a reload. While a save or a Move clips is pending the buttons are `aria-disabled` and the
+    mode, Refresh and Save, not a reload. While a save or a move of marked clips is pending the buttons are `aria-disabled` and the
     detail says so in words, and the keys are left to the browser. Verified in Chrome 154.0.8037.92 and Firefox 155.0: 86
     of 86 checks each, light and dark at 1280 and 390 (and 320), the detail buttons' tap area 44 px under a coarse pointer,
     button text contrast at least 5.65:1 (light) and 7.03:1 (dark), no horizontal page scroll. **Measured with decisions
@@ -1425,7 +1428,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     an object URL for the poster area ("Chosen frame, not saved"): the service is never asked to draw an unsaved time, so
     there is no endpoint and no cache growth from arbitrary times. It is a preview of the proxy's frame, turned by the clip's
     editorial turn as every picture is; the saved poster is always the engine's frame from the original. The button is
-    unavailable, with the reason in words, while a save or Move clips is pending, an open clip preview holds the page's video,
+    unavailable, with the reason in words, while a save or a move of marked clips is pending, an open clip preview holds the page's video,
     or the video has no decoded frame. The playhead never rests on a title-card block (it stays on footage), so that case
     cannot arise. No timeline library, no new runtime dependency.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline

@@ -10,8 +10,10 @@ import {
   countWords,
   groupWords,
   markWords,
-  markedAmong,
-  pickMarked,
+  MOVE_REASON_WORDS,
+  NOTHING_MOVED,
+  movedWords,
+  moveReason,
   pruneMarks,
   toggleMark,
 } from './marks.ts'
@@ -80,26 +82,6 @@ describe('afterMove', () => {
   })
 })
 
-describe('pickMarked', () => {
-  it('picks the offered clips that are marked, and no other', () => {
-    const picked = pickMarked([TWO, THREE], new Set([TWO, ONE]), new Set())
-    assert.deepEqual([...picked], [TWO])
-  })
-
-  it('adds to what is picked already', () => {
-    const picked = pickMarked([TWO, THREE], new Set([TWO]), new Set([THREE]))
-    assert.deepEqual([...picked].sort(), [THREE, TWO].sort())
-  })
-
-  it('returns the same set when no offered clip is marked, or all are picked already', () => {
-    const picked = new Set([THREE])
-    assert.equal(pickMarked([TWO, THREE], new Set([ONE]), picked), picked)
-    assert.equal(pickMarked([TWO, THREE], new Set([THREE]), picked), picked)
-    assert.equal(markedAmong([TWO, THREE], new Set([ONE])), 0)
-    assert.equal(markedAmong([TWO, THREE], new Set([TWO, ONE])), 1)
-  })
-})
-
 describe('the words', () => {
   it('say a mark and the count, singular and plural', () => {
     assert.equal(markWords('s1710003.mp4', true, 2), 's1710003.mp4 marked. 2 clips marked.')
@@ -136,6 +118,21 @@ describe('the words', () => {
     assert.equal(groupWords.badge(2, null, 2, 4), '2 clips, starting at position 2 of 4')
     assert.match(groupWords.over(2, null, 2, 4), /starting at position 2 of 4\.$/)
     assert.doesNotMatch(groupWords.over(2, null, 2, 4), /“/)
+  })
+
+  it('say Move marked to…: the count, the chapter, the singular and the no-op', () => {
+    assert.equal(movedWords(3, 'Dag 2'), '3 clips moved to “Dag 2”.')
+    assert.equal(movedWords(1, 'Test'), '1 clip moved to “Test”.')
+    assert.equal(NOTHING_MOVED, 'Nothing moved.')
+  })
+
+  it('give Move’s reason: marks first, then the chapter, none when it can act', () => {
+    assert.equal(moveReason(0, false), 'no-marks')
+    assert.equal(moveReason(0, true), 'no-marks')
+    assert.equal(moveReason(2, false), 'no-chapter')
+    assert.equal(moveReason(2, true), null)
+    assert.equal(MOVE_REASON_WORDS['no-marks'], 'Mark clips to move them.')
+    assert.equal(MOVE_REASON_WORDS['no-chapter'], 'Choose a chapter to move them to.')
   })
 
   it('add one sentence to the keyboard instructions', () => {

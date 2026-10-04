@@ -39,7 +39,7 @@ export type InlineNameProps = {
   /** The button's description: what pressing it does. */
   hint: string
   open: boolean
-  /** A save or a Move clips is pending: the button says so and opens nothing. */
+  /** A save or a move of marked clips is pending: the button says so and opens nothing. */
   locked: boolean
   check: (typed: string) => NameCheck
   /** What the typed text would mean, shown under the field: nothing when there is none. */

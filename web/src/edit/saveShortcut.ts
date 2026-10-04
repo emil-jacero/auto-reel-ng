@@ -85,7 +85,7 @@ export type SaveKeyAction = 'ignore' | 'announce' | 'lifted' | 'save'
 
 /**
  * The order of the guards for a Ctrl+S press. A repeat, a save in flight (`saving`, or the
- * button pressed), a Move clips pending and an open dialog send nothing and say nothing; a
+ * button pressed), a move of marked clips pending and an open dialog send nothing and say nothing; a
  * lifted clip sends nothing too but says so (the order shown is not the order that would be
  * sent); then Save's own hold.
  */

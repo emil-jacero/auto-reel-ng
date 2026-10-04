@@ -85,7 +85,7 @@ test('a press saves, or says why not, when nothing else is going on', () => {
   assert.equal(saveKeyAction({ ...quiet, hold: 'conflict' }), 'announce')
 })
 
-test('a repeat, a save in flight, a pending Move clips or an open dialog is silent', () => {
+test('a repeat, a save in flight, a pending move of marked clips or an open dialog is silent', () => {
   for (const over of [{ repeat: true }, { saving: true }, { pressed: true }, { moving: true }]) {
     assert.equal(saveKeyAction({ ...quiet, ...over }), 'ignore', JSON.stringify(over))
     assert.equal(saveKeyAction({ ...quiet, ...over, hold: 'nothing' }), 'ignore')

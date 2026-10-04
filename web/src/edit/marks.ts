@@ -54,24 +54,6 @@ export function afterMove(
   return kept.length === marked.size ? marked : kept.length === 0 ? NO_MARKS : new Set(kept)
 }
 
-/**
- * What Pick marked picks: `picked` plus the clips the dialog offers that are marked. The same
- * set when that adds nothing (including when no offered clip is marked).
- */
-export function pickMarked(
-  offered: readonly string[],
-  marked: ReadonlySet<string>,
-  picked: ReadonlySet<string>,
-): ReadonlySet<string> {
-  const add = offered.filter((identity) => marked.has(identity) && !picked.has(identity))
-  return add.length === 0 ? picked : new Set([...picked, ...add])
-}
-
-/** How many offered clips are marked: 0 means Pick marked has nothing to pick. */
-export function markedAmong(offered: readonly string[], marked: ReadonlySet<string>): number {
-  return offered.filter((identity) => marked.has(identity)).length
-}
-
 function clips(count: number): string {
   return `${count} ${count === 1 ? 'clip' : 'clips'}`
 }
@@ -90,8 +72,29 @@ export const CLEARED_WORDS = 'Marks cleared.'
 
 /** The marks line's sentence: how clips are marked and what a marked clip's handle does. */
 export const MARK_HINT =
-  'Mark clips with the box at the top right of their frames; dragging a marked clip’s handle ' +
-  'moves all marked clips together. Missing and ignored clips cannot be marked.'
+  'Mark clips with the box at the top right of their frames; dragging a marked clip’s handle, ' +
+  'or Move marked to…, moves all marked clips together. Missing and ignored clips cannot be marked.'
+
+/** What Move marked to… says: "3 clips moved to “Dag 2”." (the singular for one clip). */
+export function movedWords(count: number, chapter: string): string {
+  return `${clips(count)} moved to “${chapter}”.`
+}
+
+/** What a press that changes nothing says. */
+export const NOTHING_MOVED = 'Nothing moved.'
+
+/** Why Move is unavailable, in words; null when it is available. */
+export type MoveReason = 'no-marks' | 'no-chapter'
+
+export const MOVE_REASON_WORDS: Record<MoveReason, string> = {
+  'no-marks': 'Mark clips to move them.',
+  'no-chapter': 'Choose a chapter to move them to.',
+}
+
+/** The first reason Move cannot act (marks before chapter); null when it can. */
+export function moveReason(marks: number, chosen: boolean): MoveReason | null {
+  return marks === 0 ? 'no-marks' : chosen ? null : 'no-chapter'
+}
 
 /** The sentence added to the keyboard instructions while two or more clips are marked. */
 export const GROUP_INSTRUCTIONS =

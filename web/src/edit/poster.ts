@@ -87,7 +87,7 @@ export function playedInDraft(pick: PosterPick, orders: ReadonlyMap<string, read
 export type PosterBlock = { why: string }
 
 export type PosterContext = {
-  /** A save is in flight, or a Move clips is pending. */
+  /** A save is in flight, or a move of marked clips is pending. */
   locked: boolean
   /** Another video holds the page (an open clip preview): the Timeline shows none. */
   held: boolean
