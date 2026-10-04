@@ -2690,10 +2690,13 @@ be reachable with the keyboard and SHALL name, to assistive technology, the chap
 
 - **Add chapter**, after the last chapter, SHALL ask for a name and add an empty chapter with that name at the
   end.
-- **Rename** SHALL ask for a new name for a chapter. The event's own chapter (the default chapter, whose clips
-  are the event folder's) SHALL NOT offer it. That chapter has no name of its own: its title card shows the
-  event's title, and clips without a chapter of their own join it. While the event lists other chapters, the
-  page SHALL say this beside it.
+- **Rename** SHALL start at the chapter's title. Edit mode SHALL show each chapter's title as a button
+  with a pencil icon that is visible without hover or focus, and there SHALL be no separate Rename button
+  or dialog. Pressing the title (with a pointer, or Enter or Space on it) SHALL turn it into a text field that
+  holds the chapter's name, selected. The event's own chapter (the default chapter, whose clips are the event
+  folder's) has no name to rename. Its title card shows the event's title, and clips without a chapter of
+  their own join it. While the event lists other chapters, the page SHALL say this beside it. Its title card
+  is edited as "The event's own chapter is the main title card" below says.
 - **Move up** and **Move down** SHALL move a chapter one place among the chapters, and SHALL be offered only
   while the event lists more than one chapter. After such a move, keyboard focus SHALL stay on the pressed
   control. At either end, the control that cannot move further SHALL say that it is unavailable.
@@ -2708,7 +2711,52 @@ Each chapter SHALL offer only the controls that apply to it. An event that lists
 offers Add chapter and none of the others. The only chapter left, a deleted one aside, SHALL NOT offer Delete,
 Move up, Move down or Move clips, so that an event never saves without a chapter.
 
-When the browser's primary pointer is coarse, each of these controls, Add chapter and Undo SHALL take a tap
+**The name field.** The field SHALL be named "Name of chapter <name>" to assistive technology. Before it is
+pressed, the title SHALL be named by the chapter's name alone, so that the chapter's heading, region and
+controls are named as before, and that pressing it renames SHALL be its description.
+
+- Enter, not during an input-method composition, SHALL keep the name. So SHALL moving keyboard focus out of
+  the field. Escape SHALL drop what was typed. After Enter or Escape, keyboard focus SHALL be on the title
+  again; after focus moves out of the field it stays where the operator put it.
+- A name equal to the chapter's current name, once the spaces around it are removed, SHALL close the field and
+  change nothing, and nothing is announced.
+- A refused name SHALL be explained under the field and announced. The field stays open and keeps its text.
+  On Enter it keeps keyboard focus; when focus has already left the field, the field does not take it back.
+- At most one name field SHALL be open. Pressing another title closes the open field: an accepted name typed
+  in it is kept, as when focus leaves it, and a refused one is dropped.
+- Opening and closing the field SHALL NOT change the height of the chapter's heading row, nor move the
+  chapter's controls or clips, except that a refusal, and the notes of "Edit mode says what a chapter's name
+  means for clips added later", appear under the field while it is open.
+- Reset, a save starting, and the unsaved-changes question SHALL close an open field without keeping what was
+  typed. While a save or a Move clips is pending, the title SHALL say that it is unavailable and SHALL NOT
+  open the field (the busy-control rule).
+- A field that holds a name typed and not kept SHALL count as unfinished, as a date typed in part and a cut
+  typed and not added do: Save is unavailable, Ctrl+S saves nothing and says that a name is typed and not
+  kept, and leaving Edit mode asks first. Pressing Save with a pointer first moves focus out of the field,
+  which keeps an accepted name before the press lands.
+
+**The event's own chapter is the main title card.** Whatever the number of chapters, the event's own chapter
+SHALL show, under its heading and before its notes and controls, a line labelled "Main title card" that holds
+the event's title as a button of the same kind as a chapter's title. The chapter keeps its name, `Main` or
+`Clips`, in its heading, in its controls' names, in announcements and in Move clips.
+
+- The title shown SHALL be the title in the editor's draft when it is not blank, else the title the page
+  resolved from the folder name, marked as from the folder name, else the word "Untitled". The page SHALL NOT
+  guess a title.
+- Pressing it SHALL open the same field on the draft's title, the one the metadata form's Title field edits.
+  A title kept there appears in the Title field, a title typed in the Title field appears on the line, and
+  Reset, the changed mark and the save bar's "Title" treat them as one edit. Enter and Escape, leaving the
+  field, the one open field, the unfinished rule and the busy rule are the name field's.
+- Any text SHALL be kept as the title, with no rule of the page's. A blank title means that it inherits from
+  the folder name, and the field SHALL say so in the words of the metadata form ("Left empty: inherits from
+  the folder name when saved"). The service's refusal of an unusable title stays at the metadata form and is
+  retired by editing the title in either place.
+- While the draft's title differs from the title read, the line SHALL say that saving changes the movie's
+  file name, that if the movie was already rendered the next render saves it under the new name, and that the
+  movie under its old name stays on disk. It SHALL NOT name a file: the event page names them after the
+  save, from the verdict.
+
+When the browser's primary pointer is coarse, each of these controls, the chapter titles, the main title card's title, Add chapter and Undo SHALL take a tap
 anywhere in an area of at least 44 × 44 CSS pixels around it that reaches no other control, as every button
 does ("Every control is large enough to touch").
 
@@ -2721,7 +2769,8 @@ loads:
   other chapter of the event, including a deleted chapter not yet saved, and from `Main`, the name the page
   shows for the event's own chapter. So `ß`, `ss`, `SS` and `ẞ` are one name, as are `Kvällen` and `KVÄLLEN`.
 
-A refused name SHALL be explained at the name field, which keeps keyboard focus, and nothing SHALL change. The
+A refused name SHALL be explained at the name field, which keeps keyboard focus when the name was asked for
+with Enter or in the Add chapter dialog, and nothing SHALL change. The
 name saved is the accepted name without the spaces around it. A chapter's name SHALL be described to the
 operator as the words on its title card in the movie.
 
@@ -2756,8 +2805,8 @@ change nothing when pressed.
 
 #### Scenario: A lone chapter offers only Add chapter
 - **WHEN** Edit mode opens on `2024-06-27 - Grillning med grannar`
-- **THEN** its one chapter offers no Rename, Move up, Move down, Move clips or Delete, and the page offers Add
-  chapter after it
+- **THEN** its one chapter offers no chapter rename, Move up, Move down, Move clips or Delete (its main title
+  card line edits the event's title), and the page offers Add chapter after it
 
 #### Scenario: A name already taken, or no name, is refused
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator adds a chapter named `kvällen`, then one named
@@ -2779,15 +2828,100 @@ change nothing when pressed.
   `reel.yaml`, which loads
 
 #### Scenario: Renaming a chapter
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator renames `Kvällen` to ` Kväll på stranden `,
-  with spaces around it
-- **THEN** the chapter's heading reads `Kväll på stranden`. Keyboard focus is back on its Rename control. The
-  rename is announced, and the save bar says that 1 chapter was renamed.
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator presses the title `Kvällen`
+- **THEN** the title becomes a text field named "Name of chapter Kvällen", with `Kvällen` selected and keyboard
+  focus in it, and the chapter's heading row is no taller, and its controls and clips no lower, than before
+  (within 1 pixel)
+- **WHEN** the operator types ` Kväll på stranden `, with spaces around it, and presses Enter
+- **THEN** the heading reads `Kväll på stranden`, keyboard focus is on that title, the rename is announced,
+  and the save bar says that 1 chapter was renamed. The chapter offers no Rename button.
+
+#### Scenario: Renaming with the keyboard only
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator tabs to the title `Kvällen`, presses Space,
+  types `Kväll`, and presses Enter
+- **THEN** the chapter is named `Kväll`, keyboard focus is on its title, and the next Tab reaches the chapter's
+  Move clips
+
+#### Scenario: Leaving the field keeps an accepted name
+- **WHEN** the operator opens the field on `Kvällen`, types `Kväll`, and presses Tab
+- **THEN** the chapter is named `Kväll`, keyboard focus is on the control after the title and not on the
+  title, and the rename is announced
+
+#### Scenario: Escape drops what was typed
+- **WHEN** the operator opens the field on `Kvällen`, types `Kväll`, and presses Escape
+- **THEN** the title reads `Kvällen`, keyboard focus is on it, nothing is announced, and the page shows no
+  unsaved changes
+
+#### Scenario: Pressing the title and changing nothing
+- **WHEN** the operator opens the field on `Kvällen` and presses Enter without typing, and again types
+  `Kvällen` with spaces around it and presses Enter
+- **THEN** each time the field closes, keyboard focus is on the title, and nothing is announced or counted as
+  an edit
+
+#### Scenario: A refused rename keeps the field open
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens the field on `Kvällen`, types `main` and
+  presses Enter
+- **THEN** the field stays open with `main`, keeps keyboard focus, and explains under it that `Main` is how the
+  page names the event's own chapter. The refusal is announced, the field is marked invalid, and no chapter
+  changes. Typing `Morgon` removes the refusal.
+
+#### Scenario: A refused name is not lost when focus leaves
+- **WHEN** the operator types `main` in that field and presses Tab
+- **THEN** the field stays open with its refusal, keyboard focus is on the control after it, and the chapter
+  is still named `Kvällen`
+
+#### Scenario: An empty name, and a name already taken
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, after adding a chapter `Morgon`, the operator opens the
+  field on `Morgon`, presses Enter with the name deleted, and then types `KVÄLLEN` and presses Enter
+- **THEN** the first is refused because a chapter needs a name, and the second because a chapter called
+  `Kvällen` exists, each in the words Add chapter's dialog uses for the same name
+
+#### Scenario: One field at a time
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, after adding a chapter `Morgon`, the operator opens the
+  field on `Kvällen`, types `Kväll`, and presses the title `Morgon`
+- **THEN** `Kvällen` is renamed `Kväll`, and only the field on `Morgon` is open
+- **WHEN** the operator types `main` in `Morgon`'s field and presses the title `Kväll`
+- **THEN** `Morgon` keeps its name, `Morgon`'s field is closed, and only the field on `Kväll` is open
+
+#### Scenario: A name typed and not kept holds Save
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator changes the title in the metadata form, opens
+  the field on `Kvällen`, types `Kväll`, and presses Ctrl+S
+- **THEN** nothing is saved, "Not saved: a name is typed and not kept." is announced, and Save says that it is
+  unavailable. After the operator presses Enter and then Ctrl+S, one save is sent and carries both edits.
+
+#### Scenario: Reset closes the field
+- **WHEN** the operator opens the field on `Kvällen`, types `Kväll`, and presses Reset
+- **THEN** no field is open, the title reads `Kvällen`, and the page shows no unsaved changes
 
 #### Scenario: The event's own chapter keeps no name
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`
-- **THEN** `Main` offers no Rename and says that it has no name of its own because its title card shows the
-  event's title, while `Kvällen` offers Rename
+- **THEN** `Main` has no chapter rename and says that it has no name of its own because its title card shows the
+  event's title. Under `Main`'s heading, a line "Main title card" shows the title `Två kapitel` as a button
+  with a pencil icon, and `Kvällen` has its own title button in its heading.
+
+#### Scenario: Renaming the main title card edits the event's title
+- **WHEN** Edit mode opens on `2024-06-27 - Grillning med grannar`, in which one chapter is listed, and the
+  operator presses the title on the "Main title card" line, types `Grillkväll med grannarna`, and presses
+  Enter
+- **THEN** the line shows `Grillkväll med grannarna`, the metadata form's Title field holds the same, keyboard
+  focus is on the line's title, and the save bar says "Title" changed. The chapter is still headed `Clips`.
+  The line says that saving changes the movie's file name, and names no file.
+- **WHEN** the operator then types `Grillkväll` in the metadata form's Title field
+- **THEN** the line shows `Grillkväll`
+- **WHEN** the operator saves
+- **THEN** one `PUT` is sent whose metadata title is `Grillkväll` and whose chapters and clips are as read,
+  and the line no longer says anything about the file name
+
+#### Scenario: Emptying the main title card
+- **WHEN** the operator opens the field on the main title card of `2024-06-27 - Grillning med grannar`, which
+  reads `Grillning med grannar` from `reel.yaml`, deletes the text, and presses Enter
+- **THEN** the field, while it was open, said "Left empty: inherits from the folder name when saved". The line
+  now shows the title resolved from the folder name, marked as from the folder name, and the Title field is
+  empty with the same hint.
+
+#### Scenario: The main title card with no title at all
+- **WHEN** the page has no title for the event, in `reel.yaml` or resolved from the folder name
+- **THEN** the line shows "Untitled" in muted type, and pressing it opens an empty field
 
 #### Scenario: Moving a chapter up
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator presses Move up on `Kvällen`
@@ -2833,21 +2967,22 @@ change nothing when pressed.
 #### Scenario: The last chapter stays
 - **WHEN** on `2024-06-27 - Grillning med grannar`, the operator adds a chapter `Kvällen vid grillen`, moves all
   four clips of `Main` to it, and deletes `Main`
-- **THEN** `Kvällen vid grillen` offers Rename, but no Delete, Move up, Move down or Move clips, and the save bar
+- **THEN** `Kvällen vid grillen` has a title that can be renamed, but no Delete, Move up, Move down or Move clips, and the save bar
   says that 4 clips moved, 1 chapter was added and 1 chapter deleted
 
 #### Scenario: Chapter controls on a phone
 - **WHEN** the operator opens Edit mode on `2024-08-20 - Två kapitel - Tjörn` on a touch screen 320 pixels wide
-- **THEN** a tap anywhere in a 44 × 44 pixel area around each of `Kvällen`'s Rename, Move clips, Move up,
-  Move down and Delete, and around Add chapter, reaches that control and no other (centred on each, except
+- **THEN** a tap anywhere in a 44 × 44 pixel area around each of `Kvällen`'s title, Move clips, Move up,
+  Move down and Delete, and around `Main`'s main title card title and Add chapter, reaches that control and
+  no other (centred on each, except
   that the areas of Move up and Move down meet at the edge they share, as a clip row's move pair's do), and
   the page does not scroll horizontally
 
 #### Scenario: Chapter controls wait for a save
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, with a rename pending, the operator presses Save, and the
   service has not answered yet
-- **THEN** Add chapter and every chapter's Rename, Move up, Move down, Move clips and Delete say that they are
-  unavailable, and pressing them changes nothing
+- **THEN** Add chapter and every chapter's title, Move up, Move down, Move clips and Delete, and the main
+  title card's title, say that they are unavailable, and pressing them changes nothing and opens no field
 
 #### Scenario: A lone empty chapter does not point at Move clips
 - **WHEN** Edit mode opens on `2024-10-05 - Tom mapp`, an event whose folder holds no clip, and the operator
@@ -2994,7 +3129,8 @@ A clip that appears in an event's folder after its `reel.yaml` exists joins, at 
 named after the folder it is in (by case folding, as below), or the event's own chapter when no chapter has
 that name. So a
 chapter's name decides where clips added to that folder later go. Edit mode SHALL say so wherever an edit
-changes that. It SHALL say it in the name dialog, as the name is typed, and beside the chapter after the edit,
+changes that. It SHALL say it under the name field of a rename and in the Add chapter dialog, as the name is typed, and
+beside the chapter after the edit,
 until the edits are saved or undone:
 
 - **Renaming or deleting a chapter whose name was the name of a folder of the event that holds clips.** No
@@ -3018,10 +3154,14 @@ renamed between two spellings of a folder's name keeps them. The page SHALL say 
 folder's own spelling, and nothing when it changes nothing.
 
 #### Scenario: Renaming a chapter named after its folder
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens Rename on `Kvällen` and types `Kväll`
-- **THEN** before the rename is confirmed, the dialog says that no chapter will be named after the folder
-  `Kvällen`, so clips added to it later will join `Main`. After it is confirmed, the chapter `Kväll` says the
-  same.
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator presses the title `Kvällen` and types `Kväll`
+- **THEN** before the name is kept, the text under the field says that no chapter will be named after the
+  folder `Kvällen`, so clips added to it later will join `Main`. After Enter keeps it, the chapter `Kväll`
+  says the same.
+
+#### Scenario: Dropping a rename says nothing
+- **WHEN** after typing `Kväll` as above, the operator presses Escape
+- **THEN** the text under the field is gone, and the chapter `Kvällen` says nothing about later clips
 
 #### Scenario: A name that differs from the folder's only in case
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator renames `Kvällen` to `kvällen`
@@ -3048,7 +3188,7 @@ folder's own spelling, and nothing when it changes nothing.
 #### Scenario: Renaming a chapter that lists an ignored clip
 - **WHEN** the `reel.yaml` of `2024-08-20 - Två kapitel - Tjörn` also ignores `Kvällen/s1710004.mp4`, and the
   operator renames `Kvällen` to `Kväll`
-- **THEN** the dialog and then the chapter say that its 1 ignored clip will be listed under `Main`. After
+- **THEN** the text under the field and then the chapter say that its 1 ignored clip will be listed under `Main`. After
   saving, the page lists `Kvällen/s1710004.mp4` as ignored under the event's own chapter, and `Kväll` lists
   `Kvällen/s1710002.mp4` and `Kvällen/s1710003.mp4`.
 
