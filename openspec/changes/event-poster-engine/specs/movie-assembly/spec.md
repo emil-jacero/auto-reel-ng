@@ -68,7 +68,7 @@ for the movie (a regular file inside the output folder that no manifest or expec
 without its movie is not listed. A scan or render gate SHALL cite the existing `output` reason, with no probe,
 when the manifest records a `poster` and no regular file of that name lies beside the movie; a manifest with
 `poster: null` or without the field expects no sidecar. The editorial `poster` is a fingerprint input, and the
-rendered output changes for identical inputs, so `RENDER_GRAPH_VERSION` SHALL be 9.
+rendered output changes for identical inputs, so `RENDER_GRAPH_VERSION` SHALL be 11.
 
 #### Scenario: The manifest names the sidecar
 - **WHEN** an event is rendered with a poster

@@ -31,7 +31,7 @@ ffmpeg, in Chrome and Firefox (task 5).
 - `render-manifest.json` claims the sidecar (`poster`, a bare file name or `null`); the claims guard,
   `prune-renamed` and the scan treat the sidecar with its movie.
 - **Rendered output changes for identical inputs** (the movie now carries a cover and has a sibling file), so
-  `RENDER_GRAPH_VERSION` goes 8 → 9 and every rendered event shows stale once. `poster` joins the editorial
+  `RENDER_GRAPH_VERSION` goes 10 → 11 and every rendered event shows stale once. `poster` joins the editorial
   hash only when present, so a document without it hashes as before.
 - `reel.yaml` schema: one new optional key, no `version` change. No Alembic migration, no rescan. No new
   dependency (Principle VII).
