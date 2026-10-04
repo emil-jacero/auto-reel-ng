@@ -1,7 +1,6 @@
 import { clockCell, clockScale } from '../clock.ts'
 import type { ClockCell, ClockScale } from '../clock.ts'
 import type { Layout } from './model.ts'
-import { cardSubject } from './cards.ts'
 import { clampPosition, globalMs } from './position.ts'
 import type { Position } from './position.ts'
 
@@ -16,7 +15,7 @@ import type { Position } from './position.ts'
 export type ReadoutPair = { time: ClockCell; length: ClockCell }
 
 export type Readout = {
-  /** The clip the playhead is in, or the title card in words; the whole name is the tooltip. */
+  /** The clip the playhead is in, or the title card's chapter (`Opening` for the default one); the whole name is the tooltip. */
   name: string
   /** What the pair is: `Clip`, or `Card` while the playhead is in a title card. */
   label: 'Clip' | 'Card'
@@ -48,7 +47,7 @@ export function readoutOf(
   const card = here.card ?? null
   if (card !== null) {
     return {
-      name: `Title card for ${cardSubject(card.name)}`,
+      name: card.name === '' ? 'Opening' : card.name,
       label: 'Card',
       clip: {
         time: clockCell(card.ms, clipScale),
