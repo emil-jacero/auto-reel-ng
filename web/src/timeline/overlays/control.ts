@@ -108,6 +108,8 @@ export type LaneView = {
   pps: number
   /** The clips in the window, as `visibleClips` gives them. */
   shown: [number, number] | null
+  /** Whether the clip is behind a title card being dragged: its marks move. */
+  shifted?: (clipIndex: number) => boolean
 }
 
 /** The lane as `Track` draws it: a canvas row of `rows` mark rows, filled by `render`. */

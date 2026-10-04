@@ -1,4 +1,4 @@
-import { useId, useRef } from 'react'
+import { useId, useRef, useSyncExternalStore } from 'react'
 import type { CSSProperties, KeyboardEvent, PointerEvent, RefObject } from 'react'
 
 import type { ClipTurns } from '../cuts/ReadCuts'
@@ -131,6 +131,100 @@ export type CardLaneModel = {
   onClear: () => void
 }
 
+/**
+ * A black card's edge in the air: everything that starts at `fromMs` or later is drawn where it
+ * was and translated by the Timeline (no render, `data-after`), and what spans it grows by it. The real layout is drawn once, on release.
+ */
+export type ShiftFrom = {
+  /** The card's chapter (saved name). */
+  chapter: string
+  /** Where the card ends on the track, before the drag. */
+  fromMs: number
+  /** The card's length before the drag. */
+  baseTenths: number
+}
+
+/** Whether something that starts at `ms` is behind a dragged card's end. */
+const behind = (shift: ShiftFrom | null, ms: number): boolean => shift !== null && ms >= shift.fromMs - 0.5
+
+/**
+ * The ruler's ticks. During a black card's drag they follow its edge by themselves (the movie
+ * is longer or shorter by the shift, and a tick's time is the time of the movie as it will be),
+ * so that the labels are never those of the layout before the drag.
+ */
+function Ticks({
+  lay,
+  view,
+  overscan,
+  drag,
+  shifting,
+}: {
+  lay: Layout
+  view: { pps: number; scrollLeft: number; width: number }
+  overscan: number
+  drag: DragStore
+  shifting: ShiftFrom | null
+}) {
+  const delta = useSyncExternalStore(drag.subscribe, () => {
+    const d = drag.getCard()
+    return shifting !== null && d !== null && d.chapter === shifting.chapter
+      ? (d.tenths - shifting.baseTenths) * 100
+      : 0
+  })
+  if (overscan === 0) {
+    return null
+  }
+  const total = lay.totalMs + delta
+  const ticks = visibleTicks({ ...lay, totalMs: total }, view, overscan)
+  const nodes = []
+  for (let i = ticks.first; i <= ticks.last; i += 1) {
+    const ms = i * ticks.stepMs
+    nodes.push(
+      <span key={i} className="tl-tick" style={{ insetInlineStart: timeToPx(ms, view.pps) }}>
+        {formatTime(ms / 1000)}
+      </span>,
+    )
+  }
+  return <>{nodes}</>
+}
+
+/** A chapter's band; the one of a dragged black card follows its edge by itself. */
+function ChapterBand({
+  heading,
+  left,
+  right,
+  behind: after,
+  grows,
+  pps,
+  drag,
+  shifting,
+}: {
+  heading: string
+  left: number
+  right: number
+  behind: boolean
+  grows: boolean
+  pps: number
+  drag: DragStore
+  shifting: ShiftFrom | null
+}) {
+  const delta = useSyncExternalStore(drag.subscribe, () => {
+    const d = drag.getCard()
+    return grows && shifting !== null && d !== null && d.chapter === shifting.chapter
+      ? (d.tenths - shifting.baseTenths) * 100
+      : 0
+  })
+  return (
+    <li
+      className="tl-chapter"
+      data-after={after || undefined}
+      style={{ insetInlineStart: left, inlineSize: right - left + timeToPx(delta, pps) }}
+    >
+      <span className="tl-chapter-name">{heading}</span>
+    </li>
+  )
+}
+
 export function Track({
   eventId,
   clips,
@@ -154,6 +248,7 @@ export function Track({
   selected,
   onSelect,
   cardLane,
+  shifting = null,
 }: {
   eventId: string
   clips: readonly TrackClip[]
@@ -187,6 +282,8 @@ export function Track({
   onSelect: (identity: string, key: string) => void
   /** The title cards' lane; absent, the Timeline draws none. */
   cardLane?: CardLaneModel
+  /** A black card's drag in progress (`ShiftFrom`), or null. */
+  shifting?: ShiftFrom | null
 }) {
   const base = useId()
   const canvas = useRef<HTMLDivElement>(null)
@@ -199,21 +296,8 @@ export function Track({
   const view = { pps, scrollLeft: range.left, width: Math.max(1, range.width) }
   const overscan = range.width
   const shown = range.width === 0 ? null : visibleClips(lay, view, overscan)
-  const ticks = range.width === 0 ? null : visibleTicks(lay, view, overscan)
   const windowFrom = range.left - overscan
   const windowTo = range.left + range.width + overscan
-
-  const tickNodes = []
-  if (ticks !== null) {
-    for (let i = ticks.first; i <= ticks.last; i += 1) {
-      const ms = i * ticks.stepMs
-      tickNodes.push(
-        <span key={i} className="tl-tick" style={{ insetInlineStart: timeToPx(ms, pps) }}>
-          {formatTime(ms / 1000)}
-        </span>,
-      )
-    }
-  }
 
   const clipNodes = []
   const handleNodes = []
@@ -238,6 +322,7 @@ export function Track({
               left={left}
               widthPx={widthPx}
               totalPx={totalPx}
+              shifted={behind(shifting, lay.startsMs[index])}
               pps={pps}
               listed={listed}
               playhead={playhead}
@@ -261,6 +346,7 @@ export function Track({
           aria-label={clip.name}
           aria-describedby={descId}
           data-index={index}
+          data-after={behind(shifting, lay.startsMs[index]) || undefined}
           data-no-picture={noPicture.has(clip.identity) || undefined}
           style={{ insetInlineStart: left, inlineSize: Math.max(1, widthPx) }}
         >
@@ -334,7 +420,7 @@ export function Track({
         }
       >
         <div className="tl-ruler" aria-hidden="true" {...ruler}>
-          {tickNodes}
+          <Ticks lay={lay} view={view} overscan={overscan} drag={drag} shifting={shifting} />
         </div>
         <ol className="tl-chapters" aria-label="Chapters">
           {bands.map((band) => {
@@ -346,14 +432,24 @@ export function Track({
             if (right < windowFrom || left > windowTo) {
               return null
             }
+            const starts = lay.startsMs[band.first] - (cardLane?.leadMs.get(band.first) ?? 0)
             return (
-              <li
+              <ChapterBand
                 key={band.first}
-                className="tl-chapter"
-                style={{ insetInlineStart: left, inlineSize: right - left }}
-              >
-                <span className="tl-chapter-name">{band.heading}</span>
-              </li>
+                heading={band.heading}
+                left={left}
+                right={right}
+                behind={behind(shifting, starts)}
+                // The dragged card's chapter band starts at the card and grows with it.
+                grows={
+                  shifting !== null &&
+                  starts < shifting.fromMs - 0.5 &&
+                  lay.startsMs[band.last] + clips[band.last].facts.durationMs >= shifting.fromMs - 0.5
+                }
+                pps={pps}
+                drag={drag}
+                shifting={shifting}
+              />
             )
           })}
         </ol>
@@ -365,6 +461,7 @@ export function Track({
             window={{ from: windowFrom, to: windowTo }}
             selected={cardLane.selected}
             drag={cardLane.handles === null ? null : drag}
+            shifting={shifting}
             onSelect={cardLane.onSelect}
             onClear={cardLane.onClear}
           />
@@ -374,7 +471,7 @@ export function Track({
         </div>
         {analysisLane !== undefined && (
           <div className="tl-analysis">
-            {analysisLane.render({ clips, lay, pps, shown })}
+            {analysisLane.render({ clips, lay, pps, shown, shifted: (index) => behind(shifting, lay.startsMs[index]) })}
           </div>
         )}
         <PlayheadSlider
@@ -382,6 +479,7 @@ export function Track({
           clips={clips}
           lay={lay}
           pps={pps}
+          shiftFromMs={shifting === null ? null : shifting.fromMs - 0.5}
           gripRef={gripRef}
           onKey={onKey}
           describedBy={`${base}-keys`}
@@ -405,6 +503,7 @@ export function Track({
                 pps={pps}
                 window={{ from: windowFrom, to: windowTo }}
                 drag={drag}
+                shifting={shifting}
                 locked={editing.locked}
                 keysId={`${base}-card-keys`}
                 selected={cardLane.selected}

@@ -24,6 +24,7 @@ export function PlayheadSlider({
   clips,
   lay,
   pps,
+  shiftFromMs = null,
   gripRef,
   onKey,
   describedBy,
@@ -33,6 +34,8 @@ export function PlayheadSlider({
   clips: readonly TrackClip[]
   lay: Layout
   pps: number
+  /** A black card's drag in progress: a playhead at or after this time moves with the layers behind the card. */
+  shiftFromMs?: number | null
   gripRef: Ref<HTMLDivElement>
   onKey: (action: KeyAction) => void
   describedBy: string
@@ -43,7 +46,10 @@ export function PlayheadSlider({
   const clip = clips[at.clip]
   const now = globalMs(lay, at)
   return (
-    <div className="tl-playhead" style={{ insetInlineStart: timeToPx(now, pps) }}>
+    <div
+      className="tl-playhead"
+      data-after={(shiftFromMs !== null && now >= shiftFromMs) || undefined}
+      style={{ insetInlineStart: timeToPx(now, pps) }}>
       <div
         ref={gripRef}
         className="tl-grip"

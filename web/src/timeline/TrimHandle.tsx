@@ -64,6 +64,7 @@ export function ClipHandles({
   left,
   widthPx,
   totalPx,
+  shifted = false,
   pps,
   listed,
   playhead,
@@ -84,6 +85,8 @@ export function ClipHandles({
   left: number
   widthPx: number
   totalPx: number
+  /** Behind a black card being dragged: moved with it. */
+  shifted?: boolean
   pps: number
   /** The clip's cuts as its Cuts panel lists them. */
   listed: readonly DraftCut[]
@@ -174,6 +177,7 @@ export function ClipHandles({
       ref={layer}
       className="tl-trims"
       data-index={index}
+      data-after={shifted || undefined}
       onPointerDownCapture={() => {
         pointerSeen.current = true
       }}

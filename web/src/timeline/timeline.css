@@ -203,6 +203,12 @@
     white-space: nowrap;
   }
 
+  /* Behind a black card being dragged (the Timeline translates them): their own layers, so a
+     move of the edge is the compositor's work and nothing is painted again. */
+  [data-after] {
+    will-change: translate;
+  }
+
   .tl-chapters {
     position: absolute;
     inset-inline: 0;
@@ -725,21 +731,38 @@
     outline: none;
   }
 
+  /* An outlined bar with a grip, so it reads as a different control from a cut's solid trim bar. */
   .tl-card-handle-bar {
     position: absolute;
     inset-block: 0;
-    inset-inline-start: calc(50% - 3px);
-    inline-size: 6px;
+    inset-inline-start: calc(50% - 5px);
+    inline-size: 10px;
+    box-sizing: border-box;
+    border: 2px solid var(--accent);
     border-radius: var(--r-sm);
-    background: var(--accent);
+    background: var(--surface);
     box-shadow: 0 0 0 1.5px var(--surface);
     transition: inline-size var(--dur-fast) var(--ease-out);
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset-block-start: 50%;
+      inset-inline: 0;
+      block-size: 9px;
+      translate: 0 -50%;
+      background: repeating-linear-gradient(
+        to bottom,
+        var(--accent) 0 1.5px,
+        transparent 1.5px 3px
+      );
+    }
   }
 
   .tl-card-handle:hover .tl-card-handle-bar,
   .tl-card-handle[data-dragging] .tl-card-handle-bar {
-    inline-size: 8px;
-    inset-inline-start: calc(50% - 4px);
+    inline-size: 12px;
+    inset-inline-start: calc(50% - 6px);
   }
 
   .tl-card-handle[data-selected] .tl-card-handle-bar {
@@ -778,6 +801,10 @@
     .clock-cell {
       color: inherit;
     }
+  }
+
+  .tl-card-snap-words {
+    font-weight: 600;
   }
 
   /* The whole second the edge snapped to: a dashed line down the clips, with words in the tip. */

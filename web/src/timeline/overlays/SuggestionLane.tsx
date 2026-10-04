@@ -68,7 +68,7 @@ export function SuggestionLane({
   onFocus: (id: string) => void
   onBlur: (id: string) => void
 }) {
-  const { clips, lay, shown } = view
+  const { clips, lay, shown, shifted } = view
   const drawn = new Set<number>()
   if (shown !== null) {
     for (let index = shown[0]; index <= shown[1]; index += 1) {
@@ -96,6 +96,7 @@ export function SuggestionLane({
           {group.notAnalyzed && inWindow && (
             <span
               className="sg-clip-note"
+              data-after={shifted?.(index) || undefined}
               title={CLIP_NOT_ANALYZED}
               style={{
                 insetInlineStart: timeToPx(lay.startsMs[index], view.pps),
@@ -117,6 +118,7 @@ export function SuggestionLane({
                 data-kind={mark.segment.kind}
                 data-state={mark.state}
                 data-selected={selected || undefined}
+                data-after={shifted?.(index) || undefined}
                 aria-label={markName(mark.segment, mark.state)}
                 aria-current={selected || undefined}
                 aria-controls={selected ? detailId : undefined}

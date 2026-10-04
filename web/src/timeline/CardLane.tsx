@@ -5,6 +5,7 @@ import { Icon } from '../ui/Icon'
 import { cardSeconds, cardWords, visibleBlocks } from './cards'
 import type { DragStore } from './dragStore'
 import type { CardBlock, CardSpec } from './cards'
+import type { ShiftFrom } from './Track'
 import { timeToPx } from './model'
 
 /*
@@ -27,6 +28,7 @@ export function CardLane({
   window,
   selected,
   drag,
+  shifting,
   onSelect,
   onClear,
 }: {
@@ -39,6 +41,8 @@ export function CardLane({
   selected: string | null
   /** A video card's edge in the air changes its own block only (it adds no time), through this. */
   drag: DragStore | null
+  /** A black card's drag in progress: the blocks behind the card move. */
+  shifting: ShiftFrom | null
   onSelect: (chapter: string) => void
   onClear: () => void
 }) {
@@ -57,6 +61,7 @@ export function CardLane({
           pps={pps}
           selected={selected === spec.chapter}
           drag={drag}
+          behind={shifting !== null && block.startMs >= shifting.fromMs - 0.5}
           onSelect={onSelect}
           onClear={onClear}
         />,
@@ -76,6 +81,7 @@ const CardBlockButton = memo(function CardBlockButton({
   pps,
   selected: on,
   drag,
+  behind,
   onSelect,
   onClear,
 }: {
@@ -85,15 +91,23 @@ const CardBlockButton = memo(function CardBlockButton({
   pps: number
   selected: boolean
   drag: DragStore | null
+  /** Behind a black card being dragged: moved with it. */
+  behind: boolean
   onSelect: (chapter: string) => void
   onClear: () => void
 }) {
-  // A video card's edge in the air: only this block follows it (the layout is unchanged).
+  // The card's edge in the air: only this block follows it (a black card's drag moves the layers
+  // behind it with it; the layout is not drawn again until release).
   const live = useSyncExternalStore(drag?.subscribe ?? NEVER, () => {
     const d = drag?.getCard() ?? null
-    return block.background === 'video' && d !== null && d.chapter === name ? d : null
+    return d !== null && d.chapter === name ? d : null
   })
-  const widthMs = live === null ? block.widthMs : Math.min(live.tenths * 100, block.keptMs)
+  const widthMs =
+    live === null
+      ? block.widthMs
+      : block.background === 'video'
+        ? Math.min(live.tenths * 100, block.keptMs)
+        : live.tenths * 100
   const durationMs = live === null ? block.durationMs : live.tenths * 100
   const widthPx = Math.max(2, timeToPx(widthMs, pps))
   const words = cardWords(name, {
@@ -110,6 +124,7 @@ const CardBlockButton = memo(function CardBlockButton({
       data-kind={block.background}
       data-off={block.off || undefined}
       data-selected={on || undefined}
+      data-after={behind || undefined}
       aria-pressed={on}
       aria-label={words}
       title={words}
