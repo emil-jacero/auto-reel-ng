@@ -292,3 +292,34 @@ def test_two_different_drafts_share_no_state(client: TestClient) -> None:
         ra, rb = a.result(timeout=20), b.result(timeout=20)
     assert ra.content == _expected("Alpha")
     assert rb.content == _expected("Beta")
+
+
+def test_a_cancelled_waiter_keeps_the_draw_slot_until_the_draw_ends() -> None:
+    import asyncio
+
+    async def scenario() -> tuple[bool, bool]:
+        gate = PreviewGate(limit=1, wait=0.2)
+        started, release = threading.Event(), threading.Event()
+
+        def draw() -> int:
+            started.set()
+            release.wait(10)
+            return 1
+
+        first = asyncio.create_task(gate.run(draw))
+        while not started.is_set():
+            await asyncio.sleep(0.01)
+        first.cancel()
+        await asyncio.sleep(0.05)
+        try:
+            await gate.run(lambda: 2)
+            second_ran = True
+        except Exception:  # PreviewBusyError: the slot is still held by the running draw
+            second_ran = False
+        release.set()
+        await asyncio.sleep(0.2)
+        return second_ran, await gate.run(lambda: 3) == 3
+
+    second_ran, after = asyncio.run(scenario())
+    assert second_ran is False
+    assert after is True

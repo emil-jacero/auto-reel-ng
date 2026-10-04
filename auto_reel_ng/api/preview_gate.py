@@ -3,7 +3,7 @@
 A preview is a draft drawn with Cairo/Pango on the server; an editor can send one per
 keystroke. :class:`PreviewGate` keeps a burst from filling the threadpool: requests wait on an
 ``asyncio`` semaphore (no thread held while waiting), only a draw in progress holds a worker,
-and a request that cannot start within the wait limit is refused (503) and is never drawn
+and a draw keeps its slot until its thread ends, even if the request is cancelled; a request that cannot start within the wait limit is refused (503) and is never drawn
 afterwards. Modelled on :class:`~auto_reel_ng.api.thumbnails.ThumbnailGate`.
 """
 
@@ -48,10 +48,22 @@ class PreviewGate:
             raise PreviewBusyError(
                 f"the title-card preview is busy: no draw slot free within {self.wait:g} s"
             ) from exc
+        # The slot is released when the draw thread finishes, not when this coroutine
+        # ends: a cancelled request leaves the draw running, and it must keep its slot.
         try:
-            return await run_in_threadpool(draw)
-        finally:
+            task = asyncio.ensure_future(run_in_threadpool(draw))
+        except BaseException:
             self._slots.release()
+            raise
+        task.add_done_callback(self._settled)
+        # asyncio.wait never cancels the task, so a cancelled waiter abandons the draw only.
+        await asyncio.wait((task,))
+        return task.result()
+
+    def _settled(self, task: "asyncio.Future[_T]") -> None:
+        self._slots.release()
+        if not task.cancelled():
+            task.exception()  # mark retrieved: no "never retrieved" log for abandoned draws
 
 
 __all__ = ["MAX_CONCURRENT_PREVIEWS", "PREVIEW_WAIT_SECONDS", "PreviewBusyError", "PreviewGate"]
