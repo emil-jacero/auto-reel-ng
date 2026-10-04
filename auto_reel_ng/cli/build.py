@@ -23,6 +23,7 @@ from ..reel import ReelDocument, is_excluded
 from ..render import RenderJob, RenderOptions
 from ..render.orchestrator import ProgressCallback, ShouldCancel
 from ..staleness.fingerprint import Fingerprint
+from ..thumbs.settings import DEFAULT_POSITION
 from .adoption import PreparedEvent, persist, prepare_event
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,7 @@ def build_render_job_from_event(  # pylint: disable=too-many-arguments,too-many-
     should_cancel: Optional[ShouldCancel] = None,
     temp_dir: Optional[Path] = None,
     fingerprint: Optional[Fingerprint] = None,
+    poster_position: float = DEFAULT_POSITION,
 ) -> RenderJob:
     """Probe ``event``'s clips, resolve its plan, and build a :class:`RenderJob`.
 
@@ -120,6 +122,7 @@ def build_render_job_from_event(  # pylint: disable=too-many-arguments,too-many-
         should_cancel=should_cancel,
         temp_dir=temp_dir,
         fingerprint=fingerprint,
+        poster_position=poster_position,
     )
     return RenderJob(plan=plan, profile=profile, options=options)
 
@@ -139,6 +142,7 @@ def build_render_job(  # pylint: disable=too-many-arguments,too-many-positional-
     should_cancel: Optional[ShouldCancel] = None,
     temp_dir: Optional[Path] = None,
     fingerprint: Optional[Fingerprint] = None,
+    poster_position: float = DEFAULT_POSITION,
 ) -> Tuple[RenderJob, PreparedEvent]:
     """Prepare/adopt ``event_dir``, probe its clips, resolve the plan, build a job.
 
@@ -161,6 +165,7 @@ def build_render_job(  # pylint: disable=too-many-arguments,too-many-positional-
         should_cancel=should_cancel,
         temp_dir=temp_dir,
         fingerprint=fingerprint,
+        poster_position=poster_position,
     )
     return job, event
 

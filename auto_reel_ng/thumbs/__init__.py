@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from .settings import ThumbnailSettings, resolve_thumbnail_settings
+from .settings import (
+    ThumbnailSettings,
+    resolve_thumbnail_position,
+    resolve_thumbnail_settings,
+)
 from .thumbnail import (
     FAILURE_TTL_SECONDS,
     STALE_TEMPORARY_AGE,
@@ -29,6 +33,7 @@ __all__ = [
     "one_line_cause",
     "recorded_duration",
     "recorded_failure",
+    "resolve_thumbnail_position",
     "resolve_thumbnail_settings",
     "sweep_stale_temporaries",
     "thumbnail_args",

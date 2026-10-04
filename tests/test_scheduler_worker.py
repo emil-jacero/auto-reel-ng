@@ -1715,3 +1715,27 @@ def test_a_job_for_the_owner_of_a_movie_a_stale_manifest_also_records_is_not_ref
     job = job_store.get(job_id)
     assert job is not None and job.status == JobStatus.DONE, job and job.error
     assert renders == [1]
+
+
+def test_default_build_job_passes_the_configured_thumbnail_position(
+    job_store: JobStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default poster frame follows ``thumbnails.position`` of the job's own project."""
+    from auto_reel_ng.scheduler import worker as worker_module
+
+    name = "2024-07-04 - Barbecue"
+    (tmp_path / name).mkdir()
+    (tmp_path / name / "a.mp4").write_bytes(b"")
+    (tmp_path / "config.yaml").write_text("thumbnails:\n  position: 0.5\n", encoding="utf-8")
+    seen: dict[str, object] = {}
+
+    def capture(_event: object, **kwargs: object) -> str:
+        seen.update(kwargs)
+        return "job"
+
+    monkeypatch.setattr(worker_module, "build_render_job_from_event", capture)
+    job = job_store.get(job_store.enqueue(str(tmp_path), name))
+    assert job is not None
+    runtime = Mock(name="runtime", version=(7, 1))
+    default_build_job(job, runtime=runtime, profile=CPUProfile(), render_node=None)
+    assert seen["poster_position"] == 0.5

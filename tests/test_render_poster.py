@@ -107,6 +107,12 @@ def test_the_default_is_the_first_played_clip_at_the_thumbnail_position() -> Non
     assert warnings == ()
 
 
+def test_the_default_follows_the_configured_thumbnail_position() -> None:
+    plan = _plan(ResolvedClip("a.mp4"))
+    choice, _ = resolve_poster(plan, {"a.mp4": _facts("a.mp4", duration=40.0)}, position=0.5)
+    assert choice == PosterChoice("a.mp4", 20.0, None, "default")
+
+
 def test_an_explicit_poster_is_taken_from_the_original_clip_before_trims() -> None:
     clip = ResolvedClip("b.mp4", cut_spans=(Trim(0.0, 20.0),), rotate=90)
     plan = _plan(ResolvedClip("a.mp4"), clip, poster=Poster("b.mp4", 30.0))
@@ -261,6 +267,7 @@ def _render(
     cut: tuple[Trim, ...] = (),
     overwrite: bool = False,
     fingerprint: bool = False,
+    poster_position: float = 0.25,
 ):
     plan = _plan(ResolvedClip(clip.name, cut_spans=cut), poster=poster, unplayed=unplayed)
     plan = replace(plan, metadata=Metadata(title="Movie"))
@@ -279,6 +286,7 @@ def _render(
         runtime=runtime,
         overwrite=overwrite,
         fingerprint=fp,
+        poster_position=poster_position,
     )
     return render_movie(plan, CPUProfile(), options)
 
@@ -354,6 +362,29 @@ def test_a_time_past_the_end_fails_before_anything_is_written(
         _render(runtime, red_blue, out, poster=Poster("a.mp4", 90.0), fingerprint=True)
     assert not out.exists() or not list(out.rglob("*"))
     assert not manifest_path(red_blue.parent).exists()
+
+
+@ffmpeg
+def test_a_render_takes_the_default_frame_at_the_configured_position(
+    runtime: FfmpegRuntime, red_blue: Path, tmp_path: Path
+) -> None:
+    result = _render(runtime, red_blue, tmp_path / "out", poster_position=0.75)
+    assert result.poster_path is not None
+    assert _is_blue(runtime, result.poster_path)  # 75% of 8 s = 6 s: blue, not the 25% red
+
+
+@ffmpeg
+def test_a_stale_part_never_passes_as_the_frame(
+    runtime: FfmpegRuntime, red_blue: Path, tmp_path: Path
+) -> None:
+    facts = probe_media(red_blue, runtime=runtime)
+    out = tmp_path / "p.part"
+    out.write_bytes(b"\xff\xd8stale")
+    with pytest.raises(PosterFrameError, match="a.mp4"):
+        extract_poster(
+            runtime, facts, PosterChoice("a.mp4", 50.0, None, "explicit"), target=TARGET, output=out
+        )
+    assert not out.exists()
 
 
 @ffmpeg
