@@ -44,8 +44,9 @@ honours SAR today — unchanged); the proxy chain (`proxies/command.py` already 
    raw `N/A` would fail the pre-flight and trigger a needless re-encode).
 3. **Both fixes, not either.** (1) makes the output correct metadata (the movie's SAR is 1:1, as the target spec
    says); (2) stops a metadata-only difference from failing a render on any future path.
-4. **`RENDER_GRAPH_VERSION` 12.** VAAPI segment bytes change (the SPS carries VUI aspect 1:1); CPU output is
-   unchanged but the bump is engine-wide by design (D-C8 over-bump accepted).
+4. **`RENDER_GRAPH_VERSION` 12.** VAAPI segment bytes change (the SPS carries VUI aspect 1:1). CPU output can
+   change too, in one narrow case: a copy-eligible clip with an unset SAR used to fail the raw pre-flight and be
+   re-encoded with `setsar=1`; it now stays stream-copied (Decision 2). The bump is engine-wide by design (D-C8).
 
 ## Risks / Trade-offs
 
