@@ -9,6 +9,7 @@ import type { CardPictures } from './useCardImages'
 import { Filmstrip } from './Filmstrip'
 import { PlayheadKeys, PlayheadSlider } from './Playhead'
 import { ClipHandles } from './TrimHandle'
+import { shiftMs } from './dragStore'
 import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
 import { bandStartMs } from './cards'
@@ -144,17 +145,27 @@ export type CardLaneModel = {
 }
 
 /**
- * A black card's edge in the air: everything that starts at `fromMs` or later is drawn where it
- * was and translated by the Timeline (no render, `data-after`), and what spans it grows by it. The real layout is drawn once, on release.
+ * A black card's edge, or a clip's edge (`clip-edge-trim`), in the air: everything that starts at
+ * `fromMs` or later is drawn where it was and translated by the Timeline (no render,
+ * `data-after`), and what spans it grows by it (`shiftMs`). The real layout is drawn once, on release.
  */
-export type ShiftFrom = {
-  /** The card's chapter (saved name). */
-  chapter: string
-  /** Where the card ends on the track, before the drag. */
-  fromMs: number
-  /** The card's length before the drag. */
-  baseTenths: number
-}
+export type ShiftFrom =
+  | {
+      kind: 'card'
+      /** The card's chapter (saved name). */
+      chapter: string
+      /** Where the card ends on the track, before the drag. */
+      fromMs: number
+      /** The card's length before the drag. */
+      baseTenths: number
+    }
+  | {
+      kind: 'edge'
+      /** The clip whose edge is dragged. */
+      identity: string
+      /** Where the clip's block ends on the track, before the drag. */
+      fromMs: number
+    }
 
 /** Whether something that starts at `ms` is behind a dragged card's end. */
 const behind = (shift: ShiftFrom | null, ms: number): boolean => shift !== null && ms >= shift.fromMs - 0.5
@@ -180,12 +191,7 @@ function Ticks({
   drag: DragStore
   shifting: ShiftFrom | null
 }) {
-  const delta = useSyncExternalStore(drag.subscribe, () => {
-    const d = drag.getCard()
-    return shifting !== null && d !== null && d.chapter === shifting.chapter
-      ? (d.tenths - shifting.baseTenths) * 100
-      : 0
-  })
+  const delta = useSyncExternalStore(drag.subscribe, () => shiftMs(drag, shifting))
   if (overscan === 0) {
     return null
   }
@@ -225,12 +231,7 @@ function ChapterBand({
   drag: DragStore
   shifting: ShiftFrom | null
 }) {
-  const delta = useSyncExternalStore(drag.subscribe, () => {
-    const d = drag.getCard()
-    return grows && shifting !== null && d !== null && d.chapter === shifting.chapter
-      ? (d.tenths - shifting.baseTenths) * 100
-      : 0
-  })
+  const delta = useSyncExternalStore(drag.subscribe, () => (grows ? shiftMs(drag, shifting) : 0))
   return (
     <li
       className="tl-chapter"

@@ -1,3 +1,4 @@
+import type { EdgeAt, Side } from './edgeTrim.ts'
 import type { Edge, Ms } from './model.ts'
 
 /*
@@ -32,11 +33,32 @@ export type CardDragging = {
   words: string
 }
 
+/**
+ * A clip's edge in the air (`clip-edge-trim`): where the edge tool put it (`edgeAt`), and how
+ * much the clip's block is wider or narrower than before the press (`deltaMs`, the length every
+ * later block, card, band and tick moves by), with the tip's text and its notes.
+ */
+export type EdgeDragging = Pick<
+  EdgeAt,
+  'x' | 'place' | 'snappedTo' | 'joined' | 'changeMs' | 'playsMs' | 'extent' | 'limit'
+> & {
+  identity: string
+  side: Side
+  deltaMs: Ms
+  /** The cuts as they would be: what the live block draws. */
+  cuts: readonly { in: number; out: number; reason?: string | null }[]
+  tip: string
+  notes: readonly string[]
+}
+
 export type DragStore = {
   get(): Dragging | null
   /** The card edge being dragged: the same claim as a trim, so one drag at a time holds across both. */
   getCard(): CardDragging | null
   setCard(next: CardDragging | null): void
+  /** The clip edge being dragged: the same claim as a trim and a card. */
+  getEdge(): EdgeDragging | null
+  setEdge(next: EdgeDragging | null): void
   /** Move the edge, or end the drag with null; listeners run only when something changed. */
   set(next: Dragging | null): void
   subscribe(listener: () => void): () => void
@@ -75,9 +97,45 @@ function sameCard(a: CardDragging | null, b: CardDragging | null): boolean {
   )
 }
 
+function sameEdge(a: EdgeDragging | null, b: EdgeDragging | null): boolean {
+  if (a === null || b === null) {
+    return a === b
+  }
+  return (
+    a.identity === b.identity &&
+    a.side === b.side &&
+    a.x === b.x &&
+    a.place === b.place &&
+    a.snappedTo === b.snappedTo &&
+    a.limit === b.limit &&
+    a.tip === b.tip &&
+    a.notes.join('\n') === b.notes.join('\n')
+  )
+}
+
+/**
+ * How far everything after a drag's edge is moved now (ms on the track): a black card's change
+ * of length, or a clip edge's change of its block's width; 0 when the drag is not `shift`'s.
+ */
+export function shiftMs(
+  store: Pick<DragStore, 'getCard' | 'getEdge'>,
+  shift: { kind: 'card'; chapter: string; baseTenths: number } | { kind: 'edge'; identity: string } | null,
+): Ms {
+  if (shift === null) {
+    return 0
+  }
+  if (shift.kind === 'card') {
+    const d = store.getCard()
+    return d !== null && d.chapter === shift.chapter ? (d.tenths - shift.baseTenths) * 100 : 0
+  }
+  const e = store.getEdge()
+  return e !== null && e.identity === shift.identity ? e.deltaMs : 0
+}
+
 export function createDragStore(): DragStore {
   let at: Dragging | null = null
   let card: CardDragging | null = null
+  let edge: EdgeDragging | null = null
   let owner: object | null = null
   const listeners = new Set<() => void>()
   return {
@@ -88,6 +146,16 @@ export function createDragStore(): DragStore {
         return
       }
       card = next === null ? null : { ...next }
+      for (const listener of [...listeners]) {
+        listener()
+      }
+    },
+    getEdge: () => edge,
+    setEdge(next) {
+      if (sameEdge(edge, next)) {
+        return
+      }
+      edge = next === null ? null : { ...next }
       for (const listener of [...listeners]) {
         listener()
       }
