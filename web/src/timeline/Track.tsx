@@ -507,7 +507,6 @@ export function Track({
                 locked={editing.locked}
                 keysId={`${base}-card-keys`}
                 selected={cardLane.selected}
-                onSelect={cardLane.onSelect}
                 onSet={cardLane.onSet}
               />
             )}
