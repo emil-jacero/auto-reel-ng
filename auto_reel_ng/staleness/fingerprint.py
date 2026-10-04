@@ -46,7 +46,9 @@ PathLike = Union[str, Path]
 #: 10: video-card-bridge-window (an anchor segment under a video card is encoded as a
 #:    card-window head and a tail, so its bytes change for the same inputs).
 #: 11: event-poster-engine (the movie carries an embedded cover and has a ``-poster.jpg`` sidecar).
-RENDER_GRAPH_VERSION = 11
+#: 12: vaapi-sar-uniform (every VAAPI normalize sets SAR 1:1; the concat pre-flight treats an
+#:    unset SAR as 1:1).
+RENDER_GRAPH_VERSION = 12
 
 #: The four fingerprint components, in the fixed order the combined hash uses.
 COMPONENTS = ("editorial", "defaults", "clip_set", "engine")

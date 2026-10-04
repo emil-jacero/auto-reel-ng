@@ -161,7 +161,7 @@ def test_the_render_graph_version_is_nine_and_moves_the_engine_component(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     event_dir = _event(tmp_path)
-    assert fingerprint_module.RENDER_GRAPH_VERSION == 11
+    assert fingerprint_module.RENDER_GRAPH_VERSION >= 11  # event-poster-engine moved it to 11
     now = _record(event_dir, MOVIE)
     monkeypatch.setattr(fingerprint_module, "RENDER_GRAPH_VERSION", 8)
     before = compute_fingerprint(
