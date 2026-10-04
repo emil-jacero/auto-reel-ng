@@ -1,3 +1,4 @@
+import { samePosition } from './position.ts'
 import type { Position } from './position.ts'
 
 /*
@@ -19,10 +20,10 @@ export function createPlayhead(initial: Position): Playhead {
   return {
     get: () => at,
     set(p) {
-      if (p.clip === at.clip && p.ms === at.ms) {
+      if (samePosition(p, at)) {
         return
       }
-      at = { clip: p.clip, ms: p.ms }
+      at = p.card == null ? { clip: p.clip, ms: p.ms } : { clip: p.clip, ms: p.ms, card: p.card }
       for (const listener of [...listeners]) {
         listener()
       }

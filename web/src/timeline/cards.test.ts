@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 
 import {
+  cardBlockPx,
   cardBlocks,
   cardDurationMs,
   cardsEnabled,
@@ -341,5 +342,13 @@ describe('cardSelection', () => {
     assert.equal(cardSelection.selectCut(dag), null)
     assert.equal(cardSelection.clear(null), null)
     assert.equal(cardSelection.selectCut(null), null)
+  })
+})
+
+describe('a zoomed-out card stays pressable', () => {
+  it('is at least 24 px wide however narrow its span', () => {
+    assert.equal(cardBlockPx(12), 24)
+    assert.equal(cardBlockPx(2), 24)
+    assert.equal(cardBlockPx(160), 160)
   })
 })

@@ -5,6 +5,7 @@ import type { ClipTurns } from '../cuts/ReadCuts'
 import { TRIM_KEYS, formatTime, reasonWords } from '../cuts/times'
 import { CardHandles, CARD_KEYS } from './CardHandles'
 import { CardLane } from './CardLane'
+import type { CardPictures } from './useCardImages'
 import { Filmstrip } from './Filmstrip'
 import { PlayheadKeys, PlayheadSlider } from './Playhead'
 import { ClipHandles } from './TrimHandle'
@@ -128,6 +129,10 @@ export type CardLaneModel = {
   /** The selected card's chapter or null. */
   selected: string | null
   onSelect: (chapter: string) => void
+  /** A press in a black card's block also puts the playhead there (the track time of the press). */
+  onPlace: (chapter: string, trackMs: number) => void
+  /** The cards' images: the blocks' miniatures. */
+  pictures: CardPictures
   onClear: () => void
 }
 
@@ -462,7 +467,9 @@ export function Track({
             selected={cardLane.selected}
             drag={cardLane.handles === null ? null : drag}
             shifting={shifting}
+            pictures={cardLane.pictures}
             onSelect={cardLane.onSelect}
+            onPlace={cardLane.onPlace}
             onClear={cardLane.onClear}
           />
         )}

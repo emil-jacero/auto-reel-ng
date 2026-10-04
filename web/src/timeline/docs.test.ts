@@ -98,3 +98,27 @@ describe('docs/high-level-design.md and event-poster-gui', () => {
     assert.ok(between('- **D-20', '- **D-21'), 'D-20 names it')
   })
 })
+
+/* The design document names the change in D-20, D-24, §4.10 and §6 (timeline-plays-cards), and no text says the Timeline plays footage only. */
+describe('docs/high-level-design.md and timeline-plays-cards', () => {
+  const text = readFileSync(new URL('../../../docs/high-level-design.md', import.meta.url), 'utf8')
+
+  it('names timeline-plays-cards in D-20, D-24, §4.10 and §6', () => {
+    const lines = text.split('\n')
+    const at = lines.flatMap((line, i) => (line.includes('timeline-plays-cards') ? [i] : []))
+    const between = (from: string, to: string) => {
+      const a = lines.findIndex((line) => line.startsWith(from))
+      const b = lines.findIndex((line) => line.startsWith(to))
+      assert.ok(a > 0 && b > a, `${from} .. ${to}`)
+      return at.some((i) => i > a && i < b)
+    }
+    assert.ok(between('### 4.10 ', '### 4.11 '), '§4.10 names it')
+    assert.ok(between('## 6. ', '## 7. '), '§6 names it')
+    assert.ok(between('- **D-20', '- **D-21'), 'D-20 names it')
+    assert.ok(between('- **D-24', '- **D-23'), 'D-24 names it as a second client of the preview')
+  })
+
+  it('says nowhere that the Timeline plays footage only, or crosses a card without time', () => {
+    assert.doesNotMatch(text, /plays footage only|crosses a black card without time/i)
+  })
+})

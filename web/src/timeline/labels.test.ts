@@ -218,3 +218,15 @@ describe('title cards in the words', () => {
     assert.equal(cardsNotes(specs, bad, 'on')[0].detail, 'Dag 2: card duration must be positive')
   })
 })
+
+describe('the slider and the announcement in a title card', () => {
+  it('names the title card and the event time including cards', () => {
+    const card = { name: '', ms: 1200, lengthMs: 7000 }
+    assert.equal(
+      playheadValueText('s1.mp4', 0, 40000, 1200, 163760, card),
+      'title card for the opening, 1.2 s of 7.0 s; event 0:01.2 of 2:43.76',
+    )
+    assert.equal(playheadAnnouncement('s1.mp4', 0, card), 'Playhead at title card for the opening, 0:01.2')
+    assert.match(playheadValueText('s1.mp4', 0, 40000, 1200, 163760, { ...card, name: 'Dag 2' }), /^title card for Dag 2,/)
+  })
+})
