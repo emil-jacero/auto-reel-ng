@@ -277,11 +277,39 @@ describe('selectionStands (timeline-ripple-layout)', () => {
   it('ends when the selected cut became part of a leading cut, or was removed', () => {
     const listed = [{ key: 'a', in: 0, out: 2.5 }, { key: 'b', in: 4, out: 5 }, { key: 'c', in: 3, out: 3.5, removed: true }]
     const kept = keptExtent(cutSpans(listed, 6020), 6020)
-    assert.equal(selectionStands(listed, 'a', kept, 6020), false)
+    // `a` is the clip's leading edge cut: the Trim In tool selects it (clip-edge-trim).
+    assert.equal(selectionStands(listed, 'a', kept, 6020), true)
     assert.equal(selectionStands(listed, 'b', kept, 6020), true)
     assert.equal(selectionStands(listed, 'c', kept, 6020), false)
     assert.equal(selectionStands(listed, 'z', kept, 6020), false)
     assert.equal(selectionStands(listed, 'a', null, 6020), true)
+  })
+})
+
+describe('selectionStands and the edge tools (clip-edge-trim)', () => {
+  it('a cut joined inside the leading cut, not the edge cut itself, ends the selection', () => {
+    const listed = [{ key: 'a', in: 0, out: 2.5 }, { key: 'd', in: 1, out: 2 }, { key: 'e', in: 5, out: 6.02 }]
+    const kept = keptExtent(cutSpans(listed, 6020), 6020)
+    assert.equal(selectionStands(listed, 'a', kept, 6020), true)
+    assert.equal(selectionStands(listed, 'd', kept, 6020), false)
+    assert.equal(selectionStands(listed, 'e', kept, 6020), true)
+  })
+})
+
+describe('nearestHandle across edge tools and cut handles (clip-edge-trim)', () => {
+  // A clip's Trim In at 100 px, its cut 1 start handle 5 px in; the previous clip's Trim Out at 100 px too.
+  const targets = [
+    { id: 'b|edge:start', px: 100 },
+    { id: 'b|r0:in', px: 105 },
+    { id: 'a|edge:end', px: 100 },
+  ]
+  it('a press nearer the clip edge goes to the edge tool, nearer the cut to its handle', () => {
+    assert.equal(nearestHandle(101, targets.slice(0, 2), 24), 'b|edge:start')
+    assert.equal(nearestHandle(104, targets.slice(0, 2), 24), 'b|r0:in')
+  })
+  it('equally near: the earlier edge; the boundary’s two tools tie and the first listed wins', () => {
+    assert.equal(nearestHandle(102.5, targets.slice(0, 2), 24), 'b|edge:start')
+    assert.equal(nearestHandle(100, [targets[2], targets[0]], 24), 'a|edge:end')
   })
 })
 
