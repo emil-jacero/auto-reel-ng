@@ -93,6 +93,7 @@ export function createCardImages<Request>(io: ImagesIo<Request>): CardImages<Req
   let waiting: unknown = null
   let disposed = false
   let version = 0
+  let waitingFor: string | null = null
 
   const emit = () => {
     version += 1
@@ -109,6 +110,15 @@ export function createCardImages<Request>(io: ImagesIo<Request>): CardImages<Req
     if (entry.url !== null) {
       io.revokeUrl(entry.url)
       entry.url = null
+    }
+  }
+
+  /** Stop waiting out a 503 for `chapter` (it was edited or let go), so the queue goes on. */
+  function stopWaiting(chapter: string): void {
+    if (waiting !== null && waitingFor === chapter) {
+      io.clearTimer(waiting)
+      waiting = null
+      waitingFor = null
     }
   }
 
@@ -166,8 +176,10 @@ export function createCardImages<Request>(io: ImagesIo<Request>): CardImages<Req
         pump()
         return
       }
+      waitingFor = chapter
       waiting = io.setTimer(() => {
         waiting = null
+        waitingFor = null
         if (!disposed && entries.get(chapter) === entry && entry.key === key) {
           void run(chapter, entry, tries - 1)
         } else {
@@ -206,6 +218,7 @@ export function createCardImages<Request>(io: ImagesIo<Request>): CardImages<Req
         if (!listed.has(chapter)) {
           release(entry)
           entries.delete(chapter)
+          stopWaiting(chapter)
           const at = queue.indexOf(chapter)
           if (at !== -1) {
             queue.splice(at, 1)
@@ -242,6 +255,7 @@ export function createCardImages<Request>(io: ImagesIo<Request>): CardImages<Req
           const chapter = job.chapter
           entry.quiet = io.setTimer(() => {
             entry.quiet = null
+            stopWaiting(chapter)
             if (current?.chapter === chapter) {
               current.abort.abort()
             }
@@ -288,6 +302,7 @@ export function createCardImages<Request>(io: ImagesIo<Request>): CardImages<Req
       if (waiting !== null) {
         io.clearTimer(waiting)
         waiting = null
+        waitingFor = null
       }
       for (const entry of entries.values()) {
         release(entry)
