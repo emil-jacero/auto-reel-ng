@@ -72,6 +72,11 @@ def resolve_thumbnail_settings(config: ProjectConfig, project_root: Path) -> Thu
     return ThumbnailSettings(position=position, cache_dir=cache_dir)
 
 
+def resolve_thumbnail_position(config: ProjectConfig) -> float:
+    """``thumbnails.position`` alone (D-2): the frame the thumbnail and the default poster use."""
+    return _resolve_position(config.thumbnails.get("position"))
+
+
 def _resolve_position(value: object) -> float:
     """``thumbnails.position``: a finite number strictly between 0 and 1, else fail loud."""
     if value is None:
@@ -163,5 +168,6 @@ __all__ = [
     "DEFAULT_POSITION",
     "ThumbnailSettings",
     "default_cache_dir",
+    "resolve_thumbnail_position",
     "resolve_thumbnail_settings",
 ]

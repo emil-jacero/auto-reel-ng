@@ -57,6 +57,7 @@ from ..render.claims import (
 )
 from ..staleness.fingerprint import compute_fingerprint
 from ..staleness.gate import evaluate
+from ..thumbs.settings import resolve_thumbnail_position
 from .config import DEFAULT_PROXY_SLOTS
 from .pools import CapacityPools
 from .progress import ThrottledProgress
@@ -139,6 +140,7 @@ def default_build_job(
         look_defaults=look_defaults,
         overwrite=True,
         fingerprint=fingerprint,
+        poster_position=resolve_thumbnail_position(config),
     )
 
 

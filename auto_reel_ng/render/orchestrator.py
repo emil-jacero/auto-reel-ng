@@ -34,6 +34,7 @@ from ..probe.metadata import ClipMetadata
 from ..reel.document import Metadata
 from ..staleness.fingerprint import Fingerprint, engine_identity
 from ..staleness.manifest import write_manifest
+from ..thumbs.settings import DEFAULT_POSITION
 from .chapters import aggregate_chapter_durations, build_ffmetadata, chapter_times
 from .concat import build_concat_command, build_concat_list, is_copy_uniform
 from .decorators import apply_decorators, resolve_decorator_names
@@ -87,7 +88,8 @@ class RenderOptions:  # pylint: disable=too-many-instance-attributes
     completing or failing the render. ``fingerprint``, when given, is
     the caller's pre-render staleness fingerprint (change-detection, D-C5); the
     render manifest is written from it immediately after the atomic finalize
-    succeeds, and never on skip/dry-run/failure/absent fingerprint.
+    succeeds, and never on skip/dry-run/failure/absent fingerprint. ``poster_position`` is the
+    configured ``thumbnails.position``: where the default poster frame is taken.
     """
 
     event_dir: Path
@@ -101,6 +103,7 @@ class RenderOptions:  # pylint: disable=too-many-instance-attributes
     temp_dir: Optional[Path] = None
     should_cancel: Optional[ShouldCancel] = None
     fingerprint: Optional[Fingerprint] = None
+    poster_position: float = DEFAULT_POSITION
 
 
 @dataclass(frozen=True)
@@ -344,7 +347,7 @@ def render_movie(plan: RenderPlan, profile: AccelProfile, options: RenderOptions
     """
     target = resolve_target(plan, profile, options.clip_facts)
     # Before any segment is built or encoded: a poster time past its clip's end fails the event.
-    poster = resolve_poster(plan, options.clip_facts)
+    poster = resolve_poster(plan, options.clip_facts, position=options.poster_position)
 
     segments = build_segments(plan, options.event_dir, options.clip_facts)
     names = resolve_decorator_names(plan.look)
