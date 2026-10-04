@@ -377,7 +377,15 @@ export function Timeline({
     if (surface === 'lane' && inCard.kind === 'card' && (phase === 'start' || phase === 'tap')) {
       // A press in a black card's span selects the card and leaves the playhead where it is.
       if (phase === 'tap') {
-        pressCard(cards.specs[inCard.chapter].chapter)
+        const chapter = cards.specs[inCard.chapter].chapter
+        if (editing !== null) {
+          // The tap is on the scrub surface; the block is the opener the dialog returns focus to.
+          const block = Array.from(
+            document.querySelectorAll<HTMLElement>('button.tl-card[data-card]'),
+          ).find((b) => b.dataset.card === chapter)
+          block?.focus({ preventScroll: true })
+        }
+        pressCard(chapter)
       } else {
         pickCard(cards.specs[inCard.chapter].chapter)
       }
