@@ -39,9 +39,14 @@ export function turnWords(turn: Turn): string {
   return turn === 0 ? '' : `Rotated ${turn} degrees`
 }
 
-/** One press, as announced: "s1710002.mp4 rotated 90 degrees right." / "… no longer rotated." */
+/**
+ * One press, as announced: the way pressed, then the state in the same clockwise words as the
+ * tag. "s1.mp4 turned left, now rotated 270 degrees clockwise." / "… no longer rotated."
+ */
 export function turnAnnouncement(name: string, turn: Turn, way: Way): string {
-  return turn === 0 ? `${name} no longer rotated.` : `${name} rotated ${turn} degrees ${way}.`
+  return turn === 0
+    ? `${name} no longer rotated.`
+    : `${name} turned ${way}, now rotated ${turn} degrees clockwise.`
 }
 
 /** One group press, as announced: "3 clips rotated right." */

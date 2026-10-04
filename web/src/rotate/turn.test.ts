@@ -59,8 +59,14 @@ describe('words', () => {
   })
 
   it('announces one press and one group press', () => {
-    assert.equal(turnAnnouncement('s1.mp4', 90, 'right'), 's1.mp4 rotated 90 degrees right.')
-    assert.equal(turnAnnouncement('s1.mp4', 270, 'left'), 's1.mp4 rotated 270 degrees left.')
+    assert.equal(
+      turnAnnouncement('s1.mp4', 90, 'right'),
+      's1.mp4 turned right, now rotated 90 degrees clockwise.',
+    )
+    assert.equal(
+      turnAnnouncement('s1.mp4', 270, 'left'),
+      's1.mp4 turned left, now rotated 270 degrees clockwise.',
+    )
     assert.equal(turnAnnouncement('s1.mp4', 0, 'left'), 's1.mp4 no longer rotated.')
     assert.equal(groupTurnAnnouncement(3, 'right'), '3 clips rotated right.')
     assert.equal(groupTurnAnnouncement(1, 'left'), '1 clip rotated left.')

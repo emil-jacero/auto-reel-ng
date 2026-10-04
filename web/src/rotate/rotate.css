@@ -54,12 +54,11 @@
     --_fg: var(--fg-muted);
   }
 
-  /* The read view's tag: words and an icon, beside the clip's name. */
+  /* The read view's tag: words and an icon, beside the clip's name (a collapsing space, not a margin, so a wrapped tag stays flush). */
   .turn-tag {
     display: inline-flex;
     align-items: center;
     gap: var(--s-1);
-    margin-inline-start: var(--s-2);
     color: var(--fg-muted);
     font-family: var(--font-sans);
     font-size: var(--text-sm);

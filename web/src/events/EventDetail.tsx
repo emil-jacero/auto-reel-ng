@@ -857,6 +857,7 @@ function ChapterPanel({
                   </td>
                   <td role="cell" className="cell-file">
                     <ClipName name={name} />
+                    {!clip.excluded && turn !== 0 && ' '}
                     {!clip.excluded && <TurnTag turn={turn} />}
                     <ReadCuts cuts={trims} name={name} />
                   </td>
