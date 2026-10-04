@@ -1323,7 +1323,9 @@ export interface components {
          * @description What a render draws for one chapter's card: its text and its effective style.
          *
          *     ``title`` is the chapter's override, else the chapter name (the event title for the default
-         *     chapter); ``subtitle`` is the override, else empty.
+         *     chapter); ``subtitle`` is the effective one: the override when the card has the key (``""``
+         *     included), else ``default_subtitle`` - the opening card's date and place text (possibly
+         *     empty), and ``""`` for any other chapter.
          */
         ResolvedCardOut: {
             /** Duration */
@@ -1344,6 +1346,8 @@ export interface components {
             title: string;
             /** Subtitle */
             subtitle: string;
+            /** Default Subtitle */
+            default_subtitle: string;
         };
         /**
          * SegmentOut

@@ -174,11 +174,14 @@ class ResolvedCardOut(TitleStyleOut):
     """What a render draws for one chapter's card: its text and its effective style.
 
     ``title`` is the chapter's override, else the chapter name (the event title for the default
-    chapter); ``subtitle`` is the override, else empty.
+    chapter); ``subtitle`` is the effective one: the override when the card has the key (``""``
+    included), else ``default_subtitle`` - the opening card's date and place text (possibly
+    empty), and ``""`` for any other chapter.
     """
 
     title: str
     subtitle: str
+    default_subtitle: str
 
 
 class ChapterOut(BaseModel):

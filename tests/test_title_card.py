@@ -22,6 +22,8 @@ from auto_reel_ng.accel import detect_capabilities, select_profile
 from auto_reel_ng.accel.models import AcceleratorCapabilities, Device, Vendor
 from auto_reel_ng.accel.profiles import CPUProfile, NvencProfile, QsvProfile, VaapiProfile
 from auto_reel_ng.errors import FontResolutionError, RenderError, TitleCardError
+from auto_reel_ng.event import DEFAULT_CLIP_ORDER
+from auto_reel_ng.event.metadata import load_event_document
 from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
 from auto_reel_ng.event.resolution import resolve
 from auto_reel_ng.probe import probe_media
@@ -53,6 +55,7 @@ from auto_reel_ng.render.title import (
     TitleCardContent,
     TitleCardRequest,
     compose_content,
+    default_subtitle,
     parse_title_card_config,
     registered_families,
 )
@@ -290,13 +293,63 @@ def test_an_empty_subtitle_gives_one_line() -> None:
     assert title_card_lines(TitleCardContent(heading="Midsommar", subtitle="")) == ["Midsommar"]
 
 
-def test_opening_card_shows_the_title_only_not_date_place_or_description() -> None:
-    plan = _opening_plan()
-    content = compose_content(plan, plan.chapters[0])
+def _compose(plan: RenderPlan) -> TitleCardContent:
+    return compose_content(plan, plan.chapters[0])
+
+
+def test_opening_card_defaults_to_date_and_place_and_never_the_description() -> None:
+    content = _compose(_opening_plan())
+    assert content == TitleCardContent(heading="Midsommar", subtitle="2024-06-21\nPlats: Dalarna")
+    assert default_subtitle(_opening_plan(), _opening_plan().chapters[0]) == content.subtitle
+    assert title_card_lines(content) == ["Midsommar", "2024-06-21\nPlats: Dalarna"]
+    assert "Familjen" not in content.subtitle
+
+
+def _meta_plan(**metadata: object) -> RenderPlan:
+    return RenderPlan(
+        metadata=Metadata(title="Midsommar", **metadata),  # type: ignore[arg-type]
+        chapters=(ResolvedChapter(name="", clips=()),),
+    )
+
+
+def test_the_default_subtitle_names_only_what_the_metadata_has() -> None:
+    assert _compose(_meta_plan(date=date(2024, 8, 20))).subtitle == "2024-08-20"
+    assert _compose(_meta_plan(location="Tjörn")).subtitle == "Plats: Tjörn"
+    assert _compose(_meta_plan()).subtitle == ""  # neither: no failure, heading only
+    assert _compose(_meta_plan(location="  ")).subtitle == ""
+
+
+def test_the_folder_name_date_is_the_default_subtitle_date(tmp_path: Path) -> None:
+    event = tmp_path / "2024-08-20 - Midsommar - Tjörn"
+    event.mkdir()
+    (event / "a.mp4").write_bytes(b"")
+    document, _ = load_event_document(event, order=DEFAULT_CLIP_ORDER)
+    plan = resolve(document)
+    assert plan.metadata.date == date(2024, 8, 20)  # seeded from the folder name (D-12)
+    assert _compose(plan).subtitle == "2024-08-20\nPlats: Tjörn"
+
+
+def test_an_explicit_subtitle_replaces_the_default() -> None:
+    assert _compose(_opening_plan(subtitle="Hos mormor")).subtitle == "Hos mormor"
+
+
+def test_an_explicit_empty_subtitle_is_the_heading_only_not_the_default() -> None:
+    content = _compose(_opening_plan(subtitle=""))
     assert content == TitleCardContent(heading="Midsommar", subtitle="")
-    lines = title_card_lines(content)
-    assert lines == ["Midsommar"]
-    assert not any("2024" in line or "Plats" in line or "Familjen" in line for line in lines)
+    assert title_card_lines(content) == ["Midsommar"]
+
+
+def test_a_card_with_other_keys_but_no_subtitle_still_gets_the_default() -> None:
+    assert _compose(_opening_plan(title="Hej")).subtitle == "2024-06-21\nPlats: Dalarna"
+
+
+def test_a_chapter_card_has_no_default_subtitle() -> None:
+    plan = RenderPlan(
+        metadata=Metadata(title="Midsommar", date=date(2024, 6, 21), location="Dalarna"),
+        chapters=(ResolvedChapter(name="Dag 2", clips=()),),
+    )
+    assert compose_content(plan, plan.chapters[0]) == TitleCardContent(heading="Dag 2")
+    assert default_subtitle(plan, plan.chapters[0]) == ""
 
 
 def test_opening_card_carries_a_free_text_subtitle() -> None:

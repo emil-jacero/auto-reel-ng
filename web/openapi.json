@@ -4800,6 +4800,10 @@
           "subtitle": {
             "type": "string",
             "title": "Subtitle"
+          },
+          "default_subtitle": {
+            "type": "string",
+            "title": "Default Subtitle"
           }
         },
         "type": "object",
@@ -4812,10 +4816,11 @@
           "text_color",
           "position",
           "title",
-          "subtitle"
+          "subtitle",
+          "default_subtitle"
         ],
         "title": "ResolvedCardOut",
-        "description": "What a render draws for one chapter's card: its text and its effective style.\n\n``title`` is the chapter's override, else the chapter name (the event title for the default\nchapter); ``subtitle`` is the override, else empty."
+        "description": "What a render draws for one chapter's card: its text and its effective style.\n\n``title`` is the chapter's override, else the chapter name (the event title for the default\nchapter); ``subtitle`` is the effective one: the override when the card has the key (``\"\"``\nincluded), else ``default_subtitle`` - the opening card's date and place text (possibly\nempty), and ``\"\"`` for any other chapter."
       },
       "SegmentOut": {
         "properties": {

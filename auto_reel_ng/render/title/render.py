@@ -17,6 +17,7 @@ rather than letting Pango silently substitute a different typeface.
 from __future__ import annotations
 
 import io
+import math
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -34,6 +35,15 @@ _MARGIN = 96
 
 #: The weight a card is drawn at (a weight is not yet selectable in ``look.title_card``).
 _CARD_WEIGHT = 400
+
+#: A ``video`` card's soft shadow (``title-card-date-place-shadow``): alpha, offset and blur as
+#: fractions of the image height. The colour is the card's ``shadow_color``.
+_SOFT_SHADOW_ALPHA = 0.6
+_SOFT_SHADOW_OFFSET = 0.004
+_SOFT_SHADOW_BLUR = 0.006
+#: A blur spreads thin strokes into a faint halo; the blurred coverage is doubled (saturating at
+#: full) so the shadow reaches its alpha next to the glyphs and still fades out over the blur.
+_SOFT_SHADOW_GAIN = 2
 
 
 def _load_backend() -> tuple[Any, Any, Any]:
@@ -178,27 +188,53 @@ def render_card_png(
         ctx.paint()
 
     column = max(1, width - 2 * _MARGIN)
-    lines = title_card_lines(content)
+    placed = _place_layouts(ctx, (pango, pangocairo), config, content, column, height)
+    soft = config.background == "video" and config.has_shadow
+    if soft:
+        _draw_soft_shadow(cairo, pangocairo, ctx, config, placed, width, height, column)
+    for layout, top in placed:
+        _draw_layout(
+            ctx, pango, pangocairo, config, layout, width, top, column, hard_shadow=not soft
+        )
+
+    buffer = io.BytesIO()
+    surface.write_to_png(buffer)
+    return buffer.getvalue()
+
+
+def _place_layouts(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    ctx: Any,
+    backend: tuple[Any, Any],
+    config: TitleCardConfig,
+    content: TitleCardContent,
+    column: int,
+    height: int,
+) -> list[tuple[Any, float]]:
+    """Lay out each display line (title size, then subtitle size) and stack them: ``(layout, y)``."""
+    pango, pangocairo = backend
     layouts = []
     total_height = 0
-    for index, text in enumerate(lines):
+    for index, text in enumerate(title_card_lines(content)):
         size = config.title_font_size if index == 0 else config.subtitle_font_size
         layout = _make_layout(
-            ctx, pango, pangocairo, family=family, weight=_CARD_WEIGHT, size=size, width=column
+            ctx,
+            pango,
+            pangocairo,
+            family=config.resolved_family,
+            weight=_CARD_WEIGHT,
+            size=size,
+            width=column,
         )
         layout.set_text(text, -1)
         _, logical = layout.get_pixel_extents()
         layouts.append((layout, logical.height))
         total_height += logical.height
-
     y = _start_y(config.position, height, total_height)
+    placed: list[tuple[Any, float]] = []
     for layout, layout_height in layouts:
-        _draw_layout(ctx, pango, pangocairo, config, layout, width, y, column)
+        placed.append((layout, y))
         y += layout_height
-
-    buffer = io.BytesIO()
-    surface.write_to_png(buffer)
-    return buffer.getvalue()
+    return placed
 
 
 def render_title_card(
@@ -213,6 +249,70 @@ def render_title_card(
     """
     dest.write_bytes(render_card_png(config, content, target.width, target.height))
     return dest
+
+
+def _gaussian_weights(radius: int) -> list[float]:
+    """Normalised Gaussian weights for offsets ``-radius..radius`` (sigma = radius / 2)."""
+    sigma = max(radius, 1) / 2.0
+    raw = [math.exp(-(i * i) / (2.0 * sigma * sigma)) for i in range(-radius, radius + 1)]
+    total = sum(raw)
+    return [w / total for w in raw]
+
+
+def _blur_mask(cairo: Any, mask: Any, radius: int) -> Any:
+    """Return ``mask`` (an A8 surface) blurred by a separable Gaussian, deterministically.
+
+    Each pass adds shifted, weighted copies of the surface with Cairo's integer-exact ``ADD``
+    operator, so the result has no random, locale or thread input and needs no numpy.
+    """
+    width, height = mask.get_width(), mask.get_height()
+    weights = _gaussian_weights(radius)
+    source = mask
+    for horizontal in (True, False):
+        target = cairo.ImageSurface(cairo.FORMAT_A8, width, height)
+        tctx = cairo.Context(target)
+        tctx.set_operator(cairo.OPERATOR_ADD)
+        for index, weight in enumerate(weights):
+            shift = index - radius
+            tctx.set_source_surface(source, shift if horizontal else 0, 0 if horizontal else shift)
+            tctx.paint_with_alpha(weight * (1 if horizontal else _SOFT_SHADOW_GAIN))
+        source = target
+    return source
+
+
+def _draw_soft_shadow(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    cairo: Any,
+    pangocairo: Any,
+    ctx: Any,
+    config: TitleCardConfig,
+    placed: list[tuple[Any, float]],
+    width: int,
+    height: int,
+    column: int,
+) -> None:
+    """Draw the blurred drop shadow of every placed layout under the text (``video`` cards)."""
+    offset = round(_SOFT_SHADOW_OFFSET * height)
+    radius = max(1, round(_SOFT_SHADOW_BLUR * height))
+    # Only the band of rows the text and its blurred shadow can touch is blurred (a speed-up
+    # that changes no pixel: everything outside it is transparent either way).
+    reach = offset + 2 * radius + 2
+    top_row = max(0, int(min(top for _, top in placed)) - reach)
+    bottom_row = min(
+        height,
+        int(max(top + layout.get_pixel_extents()[1].height for layout, top in placed)) + reach + 1,
+    )
+    mask = cairo.ImageSurface(cairo.FORMAT_A8, width, max(1, bottom_row - top_row))
+    mctx = cairo.Context(mask)
+    mctx.set_source_rgba(0.0, 0.0, 0.0, 1.0)
+    x = (width - column) / 2.0
+    for layout, top in placed:
+        mctx.move_to(x + offset, top + offset - top_row)
+        pangocairo.layout_path(mctx, layout)
+        mctx.fill()
+    blurred = _blur_mask(cairo, mask, radius)
+    sr, sg, sb = _parse_color(config.shadow_color)
+    ctx.set_source_rgba(sr, sg, sb, _SOFT_SHADOW_ALPHA)
+    ctx.mask_surface(blurred, 0, top_row)
 
 
 def _start_y(position: str, canvas_height: int, block_height: int) -> float:
@@ -233,12 +333,17 @@ def _draw_layout(  # pylint: disable=too-many-arguments,too-many-positional-argu
     canvas_width: int,
     y: float,
     column: int,
+    *,
+    hard_shadow: bool = True,
 ) -> None:
-    """Draw one layout (shadow, outline, fill) centered horizontally at ``y``."""
+    """Draw one layout (shadow, outline, fill) centered horizontally at ``y``.
+
+    ``hard_shadow`` False skips the offset shadow (a ``video`` card draws its soft one first).
+    """
     del pango  # symmetry with _make_layout's signature; not needed here
     x = (canvas_width - column) / 2.0
 
-    if config.has_shadow:
+    if hard_shadow and config.has_shadow:
         sr, sg, sb = _parse_color(config.shadow_color)
         ctx.set_source_rgba(sr, sg, sb, config.shadow_opacity)
         ctx.move_to(x + config.shadow_offset, y + config.shadow_offset)

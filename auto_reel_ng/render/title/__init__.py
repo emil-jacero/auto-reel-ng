@@ -15,7 +15,7 @@ from .config import (
     parse_title_card_config,
     resolve_card_config,
 )
-from .content import TitleCardContent, compose_content, title_card_lines
+from .content import TitleCardContent, compose_content, default_subtitle, title_card_lines
 from .decorator import (
     TITLE_PRODUCER,
     TitleCardRequest,
@@ -48,6 +48,7 @@ __all__ = [
     "TitleCardContent",
     "title_card_lines",
     "compose_content",
+    "default_subtitle",
     "render_card_png",
     "render_title_card",
     "TitleCardRequest",
