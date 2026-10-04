@@ -150,8 +150,29 @@
   .tl-zoom {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: var(--s-2);
     margin-inline-start: auto;
+  }
+
+  /* The Zoom slider: Fit at its left end, the maximum at its right; a fixed width. */
+  .tl-zoom-slider {
+    inline-size: 8rem;
+    block-size: 2rem;
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+  }
+
+  @media (pointer: coarse) {
+    .tl-zoom-slider {
+      block-size: 2.75rem;
+    }
   }
 
   /* The movie's length, one line in the control row; the cuts and card terms wrap whole at 390 px. */
