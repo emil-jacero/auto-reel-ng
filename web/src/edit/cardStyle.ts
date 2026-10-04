@@ -76,8 +76,8 @@ export function normaliseValue(field: StyleField, raw: unknown): StyleValue | nu
     if (trimmed === '') {
       return null
     }
-    const number = Number(trimmed)
-    return Number.isFinite(number) ? number : text
+    // Only plain decimals read as numbers: '0x50', '0b11' and '1e2' are sent as typed and refused.
+    return /^-?\d+(\.\d+)?$/.test(trimmed) ? Number(trimmed) : text
   }
   return text === '' ? null : text
 }

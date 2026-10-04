@@ -216,7 +216,7 @@ export function CardStylePanel({ model }: { model: CardStyleModel }) {
             subtitle=""
             video={background === 'video'}
             backdrop={null}
-            backdropNote="Text over the start of each chapter’s first clip, shown here on a pattern."
+            backdropNote="Text over the start of each chapter’s first clip, shown here on a pattern, without the opening card’s own overrides."
             tooLong={false}
           />
         </div>
