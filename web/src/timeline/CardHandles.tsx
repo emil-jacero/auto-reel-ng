@@ -45,7 +45,6 @@ export function CardHandles({
   locked,
   keysId,
   selected,
-  onSelect,
   onSet,
 }: {
   handles: readonly CardHandle[]
@@ -56,9 +55,8 @@ export function CardHandles({
   shifting?: ShiftFrom | null
   locked: boolean
   keysId: string
-  /** The selected card's chapter (saved name) or null. */
+  /** The selected card's chapter (saved name) or null: shown, never set from a handle. */
   selected: string | null
-  onSelect: (chapter: string) => void
   onSet: (chapter: string, seconds: number, words: string | null) => void
 }) {
   const range = visibleHandles(handles, (window.from / pps) * 1000, (window.to / pps) * 1000)
@@ -76,7 +74,6 @@ export function CardHandles({
           locked={locked}
           keysId={keysId}
           selected={selected === handle.chapter}
-          onSelect={onSelect}
           onSet={onSet}
         />,
       )
@@ -93,7 +90,6 @@ const CardHandleSlider = memo(function CardHandleSlider({
   locked,
   keysId,
   selected,
-  onSelect,
   onSet,
 }: {
   handle: CardHandle
@@ -104,7 +100,6 @@ const CardHandleSlider = memo(function CardHandleSlider({
   locked: boolean
   keysId: string
   selected: boolean
-  onSelect: (chapter: string) => void
   onSet: (chapter: string, seconds: number, words: string | null) => void
 }) {
   const { chapter, background, tenths, range: committed } = handle
@@ -220,7 +215,6 @@ const CardHandleSlider = memo(function CardHandleSlider({
     }
     target.setPointerCapture(event.pointerId)
     target.focus({ preventScroll: true })
-    onSelect(chapter)
     active.current = next
   }
 
@@ -310,7 +304,6 @@ const CardHandleSlider = memo(function CardHandleSlider({
     event.preventDefault()
     if (!locked) {
       el.current?.focus({ preventScroll: true })
-      onSelect(chapter)
     }
   }
 
@@ -364,7 +357,6 @@ const CardHandleSlider = memo(function CardHandleSlider({
       onKeyDown={keyDown}
       onFocus={(event) => {
         setFocused(event.currentTarget.matches(':focus-visible'))
-        onSelect(chapter)
         keepInView()
       }}
       onBlur={() => setFocused(false)}

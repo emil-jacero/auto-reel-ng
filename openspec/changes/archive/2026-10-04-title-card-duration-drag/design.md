@@ -65,7 +65,7 @@ Re-read against `origin/main` at `50d5ac7` (`title-card-blocks`, `title-card-wri
 A card block's end edge carries `role="slider"` named "Title card length, <chapter>" (the opening card: the event's
 opening), `aria-valuemin/max/now` in seconds and `aria-valuetext` "Card 4.0 s", focusable, in Tab order after the
 playhead and before the clip handles of the same position. Pointer movement is applied as a delta from where the edge
-was (no jump to the pointer), as for a trim. Pressing a handle selects its card (the shared selection).
+was (no jump to the pointer), as for a trim. Pressing a handle does not select its card: in Edit mode the selection opens the inspector panel above the track, which would move the handle from under the pointer (found when merging onto `title-card-inspector`).
 *Alternative:* a numeric field only - already what the inspector will offer; the request was to *drag*.
 
 **2. Values are tenths of a second; the unit is an integer.**

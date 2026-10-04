@@ -998,8 +998,9 @@ chapter list's card row, the save bar and the draft show nothing new until the p
 the snap to a whole second SHALL be given in words and by a line, not by colour alone. Releasing SHALL make one edit
 of the draft, the card's duration, and announce the result once, politely, through Edit mode's one live region ("Title
 card for Reception now 6.0 s. The movie is 2.0 s longer."). Escape, or the browser cancelling the pointer, SHALL end the
-drag with the card as it was and no edit. A drag that ends where it began SHALL make no edit. Pressing the handle SHALL
-select the card, as pressing its block does.
+drag with the card as it was and no edit. A drag that ends where it began SHALL make no edit. Pressing or focusing the handle SHALL
+not select the card: Edit mode opens the card's inspector on selection, which would move the track out from under the
+pointer mid-drag; the block and the chapter row select it.
 
 #### Scenario: A drag sets the length
 - **WHEN** at 40 px per second the operator presses the end edge of the opening card (4.0 s, black) and moves the pointer 80 px right
