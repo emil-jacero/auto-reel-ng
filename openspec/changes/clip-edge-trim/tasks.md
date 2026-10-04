@@ -51,7 +51,7 @@
 
 ## 5. Docs
 
-- [ ] 5.1 Update `docs/high-level-design.md`: amend D-20 (edge tools edit leading/trailing cuts, no new field; one
+- [x] 5.1 Update `docs/high-level-design.md`: amend D-20 (edge tools edit leading/trailing cuts, no new field; one
   edit per release; join by the render's union; three played frames; `Q`/`W`/`S`), add the §4.10 v2 note and the §6
   roadmap note for `clip-edge-trim`. Verify `openspec validate clip-edge-trim --strict` passes and the HLD mentions
   `clip-edge-trim` under D-20, §4.10 and §6.
