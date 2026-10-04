@@ -41,20 +41,21 @@ export type CardClip = {
 export type Background = 'black' | 'video'
 
 /** What `look.decorators` says about the title decorator. */
-export type Decorators = 'on' | 'off' | 'invalid'
+export type Decorators = 'on' | 'off' | 'unset' | 'invalid'
 
 /**
  * Whether the render draws title cards: `look.decorators` is a list that includes
- * `title` (on), is absent or a list without it (off), or is anything else (the render
- * refuses a non-list, so no card is drawn).
+ * `title` (on), a list without it (off), absent (unset: this reel.yaml does not say, and the
+ * project's `config.yaml` look may still enable the cards; the service does not expose that),
+ * or anything else (the render refuses a non-list, so no card is drawn).
  */
 export function titleCardsOn(look: unknown): Decorators {
   if (look === null || typeof look !== 'object' || Array.isArray(look)) {
-    return 'off'
+    return 'unset'
   }
   const raw = (look as Record<string, unknown>).decorators
   if (raw === undefined || raw === null) {
-    return 'off'
+    return 'unset'
   }
   if (!Array.isArray(raw)) {
     return 'invalid'
@@ -190,7 +191,7 @@ export function cardPlacements(
       }
       const widthMs = background === 'black' ? durationMs : Math.min(durationMs, kept.length)
       out.push({
-        kind: decorators === 'on' ? 'anchored' : 'off',
+        kind: decorators === 'on' ? 'anchored' : 'off', // 'off' and 'unset' both draw dashed
         chapter,
         clip: index,
         atMs: kept.start,
@@ -387,7 +388,7 @@ export function cardSubject(chapterName: string): string {
 
 /**
  * `Title card for Dag 2, 4.0 s, over video` / `…, on black`; a clamped video card
- * `3.0 s of 7.0 s`; the off look adds `, off`.
+ * `3.0 s of 7.0 s`; the off look adds `, not enabled`.
  */
 export function cardWords(
   chapterName: string,
@@ -399,7 +400,7 @@ export function cardWords(
       ? `${cardSeconds(width)} of ${cardSeconds(card.durationMs)}`
       : cardSeconds(card.durationMs)
   const look = card.background === 'video' ? 'over video' : 'on black'
-  return `Title card for ${cardSubject(chapterName)}, ${length}, ${look}${card.off === true ? ', off' : ''}`
+  return `Title card for ${cardSubject(chapterName)}, ${length}, ${look}${card.off === true ? ', not enabled' : ''}`
 }
 
 /** `with 8 s of title cards` for the movie's length; empty when no black card adds time. */

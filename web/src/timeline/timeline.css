@@ -266,6 +266,8 @@
     &[data-kind='black'] {
       background: var(--tl-card-black);
       border-color: var(--fg-subtle);
+      /* Dark theme: the fill is as dark as the lane, so a light inner ring draws the shape. */
+      box-shadow: inset 0 0 0 1px light-dark(transparent, oklch(60% 0.01 260));
       color: var(--tl-card-black-fg);
     }
 
