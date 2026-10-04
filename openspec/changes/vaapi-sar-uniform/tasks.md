@@ -11,7 +11,7 @@
 ## 3. Real renders
 
 - [x] 3.1 In `tests/test_render_rotate.py` style add the minimal repro (`chapters: [{name: '', clips: [h264-1080p25-aac.mp4, hevc-mov-rotate90-aac.mov]}]`, `clips: {hevc-mov-rotate90-aac.mov: {rotate: 270}}`, samples symlinked into a tmp library, never written) rendered on the CPU profile (`has_ffmpeg`) and on VAAPI (`gpu`, skipped when absent), each with `--force` semantics: assert the render succeeds and every intermediate segment and the final movie probe `sample_aspect_ratio` `1:1`; confirm the VAAPI variant fails on `origin/main` before the fix (red → green), with `TMPDIR` set to a path that does not contain the word "rotate".
-- [ ] 3.2 Re-render the full Provklipp `reel.yaml` from the debug report against a scratch copy of its clips (symlinks; never the user's library or `auto-reel-media`) on VAAPI and on CPU; record both results (success, final movie SAR, any warnings) for the PR body.
+- [x] 3.2 Re-render the full Provklipp `reel.yaml` from the debug report against a scratch copy of its clips (symlinks; never the user's library or `auto-reel-media`) on VAAPI and on CPU; record both results (success, final movie SAR, any warnings) for the PR body.
 
 ## 4. Version, docs, gates
 
