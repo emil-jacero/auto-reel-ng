@@ -1,6 +1,6 @@
 ## 1. Pure model (timeline)
 
-- [ ] 1.1 Rebase on the merged gate `timeline-ripple-layout`: read its `model.ts`/`layout.ts` kept-extent functions
+- [x] 1.1 Rebase on the merged gate `timeline-ripple-layout`: read its `model.ts`/`layout.ts` kept-extent functions
   and its spec deltas, then add `web/src/timeline/edgeTrim.ts` (pure, no DOM/React): edge places and edge cuts
   reusing the gate's kept-extent function (no second layout), `edgeLimits` (other-cut lowest place, three played
   frames, range holds the current place), `edgeAt` (snap to playhead / interior cut edges / whole seconds within
@@ -8,7 +8,7 @@
   remove / none, reasons and keys kept). Verify with `web/src/timeline/edgeTrim.test.ts` under `npm test` covering
   every scenario of the `timeline` delta (start/end, cut past the end, two cuts at the start, join and un-join,
   6.5 s → 5.96 s, black reason kept, back to 0 removes, bad duration → `ModelError`).
-- [ ] 1.2 Add the key logic: `edgeKey` (Left/Right frame, Shift 1 s, Home/End limits) and `trimToPlayhead` for `Q`/`W`
+- [x] 1.2 Add the key logic: `edgeKey` (Left/Right frame, Shift 1 s, Home/End limits) and `trimToPlayhead` for `Q`/`W`
   (clip under the playhead, card refusal, no-op words, playhead place after), and make `keys.ts` `playheadKey` and the
   track key handler return null for `q`, `w`, `s`. Verify with new cases in `edgeTrim.test.ts` and `keys.test.ts`.
 
