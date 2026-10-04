@@ -446,10 +446,10 @@ def test_amd_vaapi_normalize_chain() -> None:
     )
     args = command.args
     assert _subseq(args, ["-hwaccel", "vaapi"])
-    # An exact 16:9 clip fills the canvas: scale_vaapi alone, no pad, no transfer.
+    # An exact 16:9 clip fills the canvas: scale_vaapi then setsar=1, no pad, no transfer.
     assert _subseq(
         args,
-        ["-vf", "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease"],
+        ["-vf", "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease,setsar=1"],
     )
     assert _subseq(args, ["-c:v", "h264_vaapi"])
     assert _subseq(args, ["-map", "0:v:0"]) and _subseq(args, ["-map", "0:a:0"])
@@ -492,7 +492,9 @@ def test_exact_16_9_clip_stays_on_gpu_with_faulty_fill(size: tuple[int, int]) ->
         _faulty_fill_profile(),
         Path("/t/seg.mp4"),
     )
-    assert _vf(command) == "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease"
+    assert _vf(command) == (
+        "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease,setsar=1"
+    )
 
 
 def test_portrait_clip_with_correct_fill_pads_on_gpu() -> None:
@@ -505,7 +507,7 @@ def test_portrait_clip_with_correct_fill_pads_on_gpu() -> None:
     )
     assert _vf(command) == (
         "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease,"
-        "pad_vaapi=w=1920:h=1080:x=(ow-iw)/2:y=(oh-ih)/2:color=black"
+        "pad_vaapi=w=1920:h=1080:x=(ow-iw)/2:y=(oh-ih)/2:color=black,setsar=1"
     )
 
 
@@ -609,7 +611,8 @@ def test_mpeg4_clip_on_vaapi_decodes_in_software_and_uploads() -> None:
     assert list(args[1:5]) == _VAAPI_UPLOAD
     assert args.index("-init_hw_device") < args.index("-i")
     assert _vf(command) == (
-        "format=nv12,hwupload,scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease"
+        "format=nv12,hwupload,"
+        "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease,setsar=1"
     )
     assert _subseq(args, ["-c:v", "h264_vaapi"])
     assert command.hardware_decode is False
@@ -636,7 +639,7 @@ def test_rotated_mpeg4_clip_transposes_then_uploads() -> None:
     assert command.args.count("-init_hw_device") == 1
     assert _vf(command) == (
         "transpose=1,format=nv12,hwupload,"
-        "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease"
+        "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease,setsar=1"
     )
 
 
@@ -665,7 +668,9 @@ def test_mpeg4_clip_needing_bars_with_correct_fill_pads_on_gpu_after_upload() ->
         Path("/t/seg.mp4"),
     )
     assert _vf(command).startswith("format=nv12,hwupload,scale_vaapi=")
-    assert _vf(command).endswith("pad_vaapi=w=1920:h=1080:x=(ow-iw)/2:y=(oh-ih)/2:color=black")
+    assert _vf(command).endswith(
+        "pad_vaapi=w=1920:h=1080:x=(ow-iw)/2:y=(oh-ih)/2:color=black,setsar=1"
+    )
 
 
 def test_ten_bit_h264_clip_decodes_in_software_and_reaches_the_encoder_as_nv12() -> None:
@@ -847,6 +852,7 @@ _CPU_TAIL = (
 )
 _VAAPI_SCALE = "scale_vaapi=w=640:h=360:force_original_aspect_ratio=decrease"
 _VAAPI_PAD = ",pad_vaapi=w=640:h=360:x=(ow-iw)/2:y=(oh-ih)/2:color=black"
+_VAAPI_SAR = ",setsar=1"  # every VAAPI normalize ends in square pixels (vaapi-sar-uniform)
 
 
 def _phone_clip(rotation: Optional[int] = 270, **overrides: object) -> ClipMetadata:
@@ -915,7 +921,8 @@ def test_vaapi_display_rotation_downloads_transposes_and_uploads() -> None:
     # phone clip rendered sideways. The engine now applies the turn between the transfers.
     command = _normalize(None, _phone_clip(), _amd_profile())
     assert _vf(command) == (
-        f"hwdownload,format=nv12,transpose=1,format=nv12,hwupload,{_VAAPI_SCALE}{_VAAPI_PAD}"
+        "hwdownload,format=nv12,transpose=1,format=nv12,hwupload,"
+        f"{_VAAPI_SCALE}{_VAAPI_PAD}{_VAAPI_SAR}"
     )
     assert _subseq(command.args, ["-hwaccel_output_format", "vaapi", "-noautorotate", "-i"])
 
@@ -923,13 +930,15 @@ def test_vaapi_display_rotation_downloads_transposes_and_uploads() -> None:
 def test_vaapi_rotate_adds_to_the_display_rotation() -> None:
     command = _normalize(90, _phone_clip(), _amd_profile())
     assert _vf(command) == (
-        f"hwdownload,format=nv12,transpose=1,transpose=1,format=nv12,hwupload,{_VAAPI_SCALE}"
+        "hwdownload,format=nv12,transpose=1,transpose=1,format=nv12,hwupload,"
+        f"{_VAAPI_SCALE}{_VAAPI_SAR}"
     )
 
 
 def test_vaapi_rotate_that_cancels_the_display_rotation_stays_on_the_gpu() -> None:
     command = _normalize(270, _phone_clip(), _amd_profile())
-    assert _vf(command) == _VAAPI_SCALE  # a stored 16:9 needs no bars, no download
+    # A stored 16:9 needs no bars, no download -- but still square pixels (the Provklipp bug).
+    assert _vf(command) == f"{_VAAPI_SCALE}{_VAAPI_SAR}"
     assert "-noautorotate" in command.args
 
 

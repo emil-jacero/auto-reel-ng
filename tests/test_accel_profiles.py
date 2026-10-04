@@ -104,18 +104,20 @@ def test_amd_normalize_uses_native_scale_pad() -> None:
     frag = VaapiProfile(_amd_caps()).fragment(OpClass.NORMALIZE, params)
     assert frag.filter == (
         "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease,"
-        "pad_vaapi=w=1920:h=1080:x=(ow-iw)/2:y=(oh-ih)/2:color=black"
+        "pad_vaapi=w=1920:h=1080:x=(ow-iw)/2:y=(oh-ih)/2:color=black,setsar=1"
     )
     assert frag.frames_in is FrameLocation.VAAPI
     assert frag.frames_out is FrameLocation.VAAPI
 
 
 @pytest.mark.parametrize("pad_fill_ok", [True, False])
-def test_amd_normalize_without_bars_is_scale_vaapi_alone(pad_fill_ok: bool) -> None:
-    """An exact-aspect clip fills the canvas: scale_vaapi alone, whatever the fill flag."""
+def test_amd_normalize_without_bars_is_scale_vaapi_then_setsar(pad_fill_ok: bool) -> None:
+    """An exact-aspect clip fills the canvas: scale_vaapi + setsar, whatever the fill flag."""
     caps = dataclasses.replace(_amd_caps(), pad_fill_ok=pad_fill_ok)
     frag = VaapiProfile(caps).fragment(OpClass.NORMALIZE, HD)
-    assert frag.filter == "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease"
+    assert frag.filter == (
+        "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease,setsar=1"
+    )
     assert frag.frames_in is FrameLocation.VAAPI
     assert frag.frames_out is FrameLocation.VAAPI
 

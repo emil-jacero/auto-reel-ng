@@ -5,8 +5,8 @@
 
 ## 2. Every normalize path sets SAR 1:1
 
-- [ ] 2.1 In `accel/profiles/vaapi.py` make the VAAPI normalize fragment end in `,setsar=1` for both the scale-only and the scale+pad filter (no transfer added; the self-test strings unchanged); update the VAAPI goldens in `tests/test_accel_profiles.py` / `tests/test_render.py` and verify they pass.
-- [ ] 2.2 Golden-graph tests: every VAAPI normalize command contains `setsar=1` — overlay-free (total turn 0 with an `N/A`-SAR clip, a turned clip, a padded clip with and without `pad_fill_ok`, a lead-in segment) and both video-card bridge commands (head with the CPU overlay, tail on the GPU; extend `tests/test_card_window.py`), and the head's `setsar` sits before its `hwdownload`/overlay with no extra transfer; plus a parametrized test that the CPU, QSV and NVENC normalize fragments (pad and no pad) end in `setsar=1`.
+- [x] 2.1 In `accel/profiles/vaapi.py` make the VAAPI normalize fragment end in `,setsar=1` for both the scale-only and the scale+pad filter (no transfer added; the self-test strings unchanged); update the VAAPI goldens in `tests/test_accel_profiles.py` / `tests/test_render.py` and verify they pass.
+- [x] 2.2 Golden-graph tests: every VAAPI normalize command contains `setsar=1` — overlay-free (total turn 0 with an `N/A`-SAR clip, a turned clip, a padded clip with and without `pad_fill_ok`, a lead-in segment) and both video-card bridge commands (head with the CPU overlay, tail on the GPU; extend `tests/test_card_window.py`), and the head's `setsar` sits before its `hwdownload`/overlay with no extra transfer; plus a parametrized test that the CPU, QSV and NVENC normalize fragments (pad and no pad) end in `setsar=1`.
 
 ## 3. Real renders
 
