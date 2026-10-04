@@ -27,6 +27,7 @@
     display: grid;
     gap: var(--s-3);
     min-inline-size: 0;
+    container: tl / inline-size;
   }
 
   /* --- Prepare --- */
@@ -77,28 +78,77 @@
     object-fit: contain;
   }
 
-  /* --- transport, readout and zoom --- */
+  /* --- transport, readout and zoom ---
+   * A grid of fixed slots (`timeline-zoom-slider`): no state (seeking, a frame loading, playing,
+   * the playhead in a card, Use as poster unable to act) adds text to it or moves a control.
+   * One row when it fits; two (Play and the readout / zoom and poster), then three (zoom and
+   * poster each on a row of their own) on narrower Timelines, the same rows in every state.
+   */
   .tl-controls {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      'play readout'
+      'zoom zoom'
+      'poster poster';
     align-items: center;
     gap: var(--s-2) var(--s-3);
   }
 
+  @container tl (min-width: 31rem) {
+    .tl-controls {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-areas:
+        'play readout readout'
+        'zoom zoom poster';
+    }
+  }
+
+  @container tl (min-width: 64rem) {
+    .tl-controls {
+      grid-template-columns: auto minmax(0, 1fr) auto auto;
+      grid-template-areas: 'play readout zoom poster';
+    }
+  }
+
+  /* Play as wide as Pause: both words hold the same cell, the one not shown kept invisible. */
   .tl-play {
-    min-inline-size: 5.5rem;
+    grid-area: play;
   }
 
-  /* Use as poster (Edit mode) and, when it cannot act, why, in words beside it. */
+  .tl-play-words {
+    display: inline-grid;
+
+    & > * {
+      grid-area: 1 / 1;
+    }
+
+    & > [data-off] {
+      visibility: hidden;
+    }
+  }
+
+  /* Use as poster: why it cannot act is its tooltip and description, and, pressed, a tip that
+     takes no room in the toolbar. */
   .tl-poster {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--s-1) var(--s-2);
+    position: relative;
+    grid-area: poster;
+    justify-self: end;
   }
 
-  .tl-poster-why {
-    color: var(--fg-muted);
+  .tl-poster-tip {
+    position: absolute;
+    z-index: 2;
+    inset-block-start: calc(100% + var(--s-1));
+    inset-inline-end: 0;
+    inline-size: max-content;
+    max-inline-size: min(20rem, 80vw);
+    padding: var(--s-2) var(--s-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    color: var(--fg);
     font-size: var(--text-sm);
   }
 
@@ -110,8 +160,9 @@
    */
   .tl-readout {
     container-type: inline-size;
-    flex: 1 1 14rem;
+    grid-area: readout;
     min-inline-size: 0;
+    margin: 0;
     font-size: var(--text-sm);
   }
 
@@ -131,8 +182,21 @@
     white-space: nowrap;
   }
 
-  /* The separator is drawn, so a wrap leaves no stray one at the start of a line. */
-  @container (min-width: 40rem) {
+  /* The first pair's word is Clip or Card: a cell as wide as the wider, so the pair keeps its box
+     when the playhead goes into a card. */
+  .tl-readout-name + .clock-group .clock-key {
+    display: inline-block;
+    min-inline-size: 2.75em;
+  }
+
+  /* The separator is drawn, so a wrap leaves no stray one at the start of a line. From 34rem the
+     name and both pairs are one line (the toolbar's one-row width at 1280 px leaves the readout
+     about 36rem): the line does not wrap, the name gives way with its ellipsis. */
+  @container (min-width: 34rem) {
+    .tl-readout-line {
+      flex-wrap: nowrap;
+    }
+
     .tl-readout .clock-group + .clock-group::before {
       content: '·';
       margin-inline-end: var(--s-3);
@@ -141,7 +205,7 @@
     }
   }
 
-  @container (max-width: 39.99rem) {
+  @container (max-width: 33.99rem) {
     .tl-readout-name {
       flex-basis: 100%;
     }
@@ -149,15 +213,19 @@
 
   .tl-zoom {
     display: flex;
-    flex-wrap: wrap;
+    grid-area: zoom;
     align-items: center;
+    justify-content: flex-end;
     gap: var(--s-2);
-    margin-inline-start: auto;
+    min-inline-size: 0;
   }
 
-  /* The Zoom slider: Fit at its left end, the maximum at its right; a fixed width. */
+  /* The Zoom slider: Fit at its left end, the maximum at its right; a fixed width (it gives
+     way only on a Timeline too narrow for the zoom row). */
   .tl-zoom-slider {
+    flex: 0 1 8rem;
     inline-size: 8rem;
+    min-inline-size: 4rem;
     block-size: 2rem;
     margin: 0;
     accent-color: var(--accent);

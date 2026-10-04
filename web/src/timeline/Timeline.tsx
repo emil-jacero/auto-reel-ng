@@ -664,14 +664,31 @@ export function Timeline({
     })
     return 'why' in result ? result.why : null
   })()
+  // Pressed while it cannot act: the reason in a tip under the button (no room taken in the
+  // toolbar), said once in the live region; the tip goes on blur, Escape, or with the reason.
+  const [posterTip, setPosterTip] = useState<string | null>(null)
+  const reasonGone = posterWhy === null
+  useEffect(() => {
+    if (reasonGone) {
+      setPosterTip(null)
+    }
+  }, [reasonGone])
   const usePoster = () => {
     const element = video.videoRef.current
+    // What the button shows first (it looks unavailable: it does not act), then the video now.
     const result = posterFromPlayhead(clips, playhead.get(), {
       locked: editing.locked,
       held,
-      frame: hasFrame(element),
+      frame: posterWhy === null && hasFrame(element),
     })
-    if (element === null || 'why' in result) {
+    if ('why' in result) {
+      const why = posterWhy ?? result.why
+      setPosterTip(why)
+      setAnnouncement(why)
+      return
+    }
+    setPosterTip(null)
+    if (element === null) {
       return
     }
     setPosterFailed(false)
@@ -715,7 +732,14 @@ export function Timeline({
           onClick={toggle}
         >
           <Icon name={video.playing ? 'pause' : 'play'} />
-          {video.playing ? PAUSE : PLAY}
+          <span className="tl-play-words">
+            <span data-off={video.playing || undefined} aria-hidden={video.playing || undefined}>
+              {PLAY}
+            </span>
+            <span data-off={!video.playing || undefined} aria-hidden={!video.playing || undefined}>
+              {PAUSE}
+            </span>
+          </span>
         </button>
         <PlayheadReadout playhead={playhead} clips={clips} lay={lay} longestCardMs={longestCardMs} />
         <MovieStat
@@ -779,15 +803,27 @@ export function Timeline({
             type="button"
             className="btn btn-secondary"
             aria-disabled={posterWhy !== null || undefined}
-            aria-describedby={posterWhy !== null ? posterWhyId : undefined}
+            aria-describedby={posterWhyId}
+            title={posterWhy ?? undefined}
             onClick={usePoster}
+            onBlur={() => setPosterTip(null)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && posterTip !== null) {
+                event.preventDefault()
+                setPosterTip(null)
+              }
+            }}
           >
             <Icon name="film" />
             {USE_AS_POSTER}
           </button>
-          {posterWhy !== null && (
-            <span id={posterWhyId} className="tl-poster-why">
-              {posterWhy}
+          {/* Always there: its words are the button's description while it cannot act. */}
+          <span id={posterWhyId} className="visually-hidden">
+            {posterWhy ?? ''}
+          </span>
+          {posterTip !== null && (
+            <span className="tl-poster-tip" aria-hidden="true">
+              {posterTip}
             </span>
           )}
         </div>
