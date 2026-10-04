@@ -11,6 +11,7 @@ import { PlayheadKeys, PlayheadSlider } from './Playhead'
 import { ClipHandles } from './TrimHandle'
 import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
+import { bandStartMs } from './cards'
 import type { CardBlock, CardHandle, CardSpec } from './cards'
 import type { KeyAction } from './keys'
 import { clipDescription } from './labels'
@@ -49,6 +50,8 @@ const CUT_TEXT_PX = 72
 /** A touch that moves less than this and ends within `TAP_MS` is a tap. */
 const TAP_PX = 8
 const TAP_MS = 600
+/** No black cards: no band starts before its first clip. */
+const NO_LEAD: ReadonlyMap<number, number> = new Map()
 
 type Pointer = { id: number; x: number; y: number; at: number }
 
@@ -351,6 +354,7 @@ export function Track({
               onSelect={onSelect}
               onTrim={editing.onTrim}
               announce={editing.announce}
+              fallbackRef={gripRef}
             />,
           )
         }
@@ -442,15 +446,17 @@ export function Track({
         </div>
         <ol className="tl-chapters" aria-label="Chapters">
           {bands.map((band) => {
-            const left = timeToPx(
-              lay.startsMs[band.first] - (cardLane?.leadMs.get(band.first) ?? 0),
-              pps,
+            const starts = bandStartMs(
+              lay.startsMs,
+              cardLane?.leadMs ?? NO_LEAD,
+              band.first,
+              band.last,
             )
+            const left = timeToPx(starts, pps)
             const right = timeToPx(lay.startsMs[band.last] + extentMs(clips[band.last].kept), pps)
             if (right < windowFrom || left > windowTo) {
               return null
             }
-            const starts = lay.startsMs[band.first] - (cardLane?.leadMs.get(band.first) ?? 0)
             return (
               <ChapterBand
                 key={band.first}

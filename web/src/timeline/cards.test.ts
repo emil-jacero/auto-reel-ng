@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 
 import {
+  bandStartMs,
   cardBlockPx,
   cardBlocks,
   cardDurationMs,
@@ -348,6 +349,24 @@ describe('cards at a trimmed clip (timeline-ripple-layout)', () => {
     assert.ok(place.kind === 'anchored')
     assert.equal(place.keptMs, 3000)
     assert.equal(cardWords('', { durationMs: place.durationMs, widthMs: place.widthMs, background: 'video' }), 'Title card for the opening, 3.0 s of 7.0 s, over video')
+  })
+
+  it('a chapter band covers its black card when its first clip is wholly cut', () => {
+    // A 4 s (opening); P 4 s cut 0-4 s and Q 4 s ("Dag 2", a 3 s black card).
+    const cut = [clip(0, 4000), clip(1, 4000, [{ from: 0, to: 4000 }]), clip(1, 4000)]
+    const l = layout(
+      cut.map((c) => ({ durationMs: c.durationMs, fps: 25, ...keptExtent(c.spans as Skip[], c.durationMs) })),
+    )
+    const placements = cardPlacements([spec('', 3, 'video'), spec('Dag 2', 3)], cut, 'on')
+    const map = cardMap(placements, l)
+    const track = trackLayout(l, map)
+    const block = cardBlocks(placements, track).find((b) => b.chapter === 1)!
+    assert.deepEqual([block.startMs, block.startMs + block.widthMs], [4000, 7000])
+    const lead = new Map(map.gaps.map((gap) => [gap.clip, gap.lengthMs]))
+    assert.equal(lead.has(1), false)
+    assert.equal(bandStartMs(track.startsMs, lead, 1, 2), 4000)
+    assert.equal(bandStartMs(track.startsMs, lead, 0, 0), 0)
+    assert.equal(bandStartMs(track.startsMs, new Map(), 1, 2), track.startsMs[1])
   })
 
   it('a chapter whose clips keep nothing has no card', () => {
