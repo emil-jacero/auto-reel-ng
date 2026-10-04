@@ -25,7 +25,10 @@ export type CardSpec = {
     duration: number
     background: string
     title: string
+    /** The effective subtitle: the card's own (`""` is none), else the default. */
     subtitle: string
+    /** What the subtitle is while the card has no `subtitle` key (the engine's value). */
+    defaultSubtitle: string
     fontFamily: string
   } | null
   error: string | null
@@ -92,6 +95,7 @@ export function cardSpecs(
               background: card.background,
               title: card.title,
               subtitle: card.subtitle,
+              defaultSubtitle: card.default_subtitle,
               fontFamily: card.font_family,
             },
       error: card == null ? (chapter.card_error ?? event.title_card_error ?? null) : null,

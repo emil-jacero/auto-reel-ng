@@ -12,6 +12,8 @@ import {
   changedFields,
   isUnset,
   normalise,
+  openingSubtitleFollows,
+  openingSubtitlePlaceholder,
   overBounds,
   previewRequest,
   readCard,
@@ -68,6 +70,58 @@ describe('cardBody', () => {
 
   it('keeps line breaks in a subtitle', () => {
     assert.deepEqual(cardBody(withField(NO_CARD, 'subtitle', 'a\nb')), { subtitle: 'a\nb' })
+  })
+})
+
+describe('the subtitle keeps "" and unset apart', () => {
+  it('"" round-trips as "", unset as absent', () => {
+    assert.equal(readCard({ subtitle: '' }).subtitle, '')
+    assert.equal(readCard({}).subtitle, null)
+    assert.deepEqual(cardBody(readCard({ subtitle: '' })), { subtitle: '' })
+    assert.deepEqual(cardBody(readCard({})), {})
+  })
+
+  it('is a change between "" and unset, in both directions, and "" is a card that saves', () => {
+    const none = readCard({})
+    const empty = withField(none, 'subtitle', '')
+    assert.equal(cardChanged(none, empty), true)
+    assert.equal(cardChanged(empty, none), true)
+    assert.equal(cardChanged(empty, readCard({ subtitle: '' })), false)
+    assert.equal(isUnset(empty), false)
+    assert.deepEqual(changedFields(none, empty), ['subtitle'])
+  })
+
+  it('the other text fields still treat "" as unset', () => {
+    assert.equal(normalise(withField(NO_CARD, 'title', '')).title, null)
+    assert.equal(normalise(withField(NO_CARD, 'text_color', '')).text_color, null)
+  })
+
+  it('the preview request carries subtitle "" and none when unset', () => {
+    const request = (subtitle: string | null) =>
+      previewRequest({
+        opening: true,
+        chapterName: '',
+        card: withField(NO_CARD, 'subtitle', subtitle),
+        eventTitle: 'T',
+      })
+    assert.deepEqual(request('')?.card, { subtitle: '' })
+    assert.deepEqual(request(null)?.card, {})
+  })
+})
+
+describe('the opening subtitle placeholder', () => {
+  it('shows the engine’s default on one line while unset, and never composes one', () => {
+    assert.equal(
+      openingSubtitlePlaceholder(null, '2024-08-20\nPlats: Tjörn'),
+      'Default: 2024-08-20 / Plats: Tjörn',
+    )
+    assert.equal(openingSubtitleFollows('2024-08-20\nPlats: Tjörn'), '2024-08-20 / Plats: Tjörn')
+    assert.equal(openingSubtitlePlaceholder(null, ''), 'No subtitle')
+  })
+
+  it('says No subtitle once the subtitle is "" or typed', () => {
+    assert.equal(openingSubtitlePlaceholder('', '2024-08-20'), 'No subtitle')
+    assert.equal(openingSubtitlePlaceholder('Hej', '2024-08-20'), 'No subtitle')
   })
 })
 

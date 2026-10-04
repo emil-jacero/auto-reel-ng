@@ -33,6 +33,7 @@ const card = (seconds: number, background = 'black'): CardSpec['card'] => ({
   background,
   title: 't',
   subtitle: '',
+  defaultSubtitle: '',
   fontFamily: 'Sofia Sans',
 })
 const spec = (chapter: string, seconds: number, background = 'black'): CardSpec => ({
@@ -95,6 +96,7 @@ describe('cardSpecs', () => {
             position: 'center',
             title: 'Dag två',
             subtitle: 'Stranden',
+            default_subtitle: '2024-08-20',
           },
         },
       ],
@@ -109,6 +111,7 @@ describe('cardSpecs', () => {
           background: 'video',
           title: 'Dag två',
           subtitle: 'Stranden',
+          defaultSubtitle: '2024-08-20',
           fontFamily: 'Sofia Sans',
         },
         error: null,

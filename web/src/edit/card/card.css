@@ -125,6 +125,12 @@
     color: var(--accent);
   }
 
+  /* The opening subtitle's No subtitle: beside the field, left aligned like the clear button. */
+  .ci-action {
+    align-self: flex-start;
+    color: var(--accent);
+  }
+
   .ci-multiline {
     min-block-size: 4.5rem;
     max-block-size: 14rem;

@@ -187,7 +187,7 @@ describe('the words', () => {
 describe('the layout follows a card’s duration (withDurations)', () => {
   const spec = (chapter: string, seconds: number, background = 'black'): CardSpec => ({
     chapter,
-    card: { duration: seconds, background, title: 't', subtitle: '', fontFamily: 'f' },
+    card: { duration: seconds, background, title: 't', subtitle: '', defaultSubtitle: '', fontFamily: 'f' },
     error: null,
   })
   const specs = [spec('', 4), spec('B', 4), spec('C', 4)]

@@ -27,7 +27,7 @@ export type EventStyle = {
 /**
  * The card as the render would draw it with the draft's overrides: the event style under the
  * set overrides, the title as `titleNow` says while unset (the chapter's name now; the event's
- * title for the opening card), the subtitle empty while unset. A card the draft did not change,
+ * title for the opening card), the subtitle the detail's default while unset (empty for a chapter card; never composed here). A card the draft did not change,
  * under an event style that is as saved, is the saved spec itself, so a block and a row keep
  * their identity. `styleEdited`: the draft changed the event style, so every card is drawn
  * from `read` (the card as read) and `style`. A field the page does not know (no style, no
@@ -52,11 +52,13 @@ export function draftSpec(
   if (duration === undefined || background === undefined || fontFamily === undefined) {
     return spec
   }
+  const defaultSubtitle = base?.defaultSubtitle ?? ''
   const card = {
     duration,
     background,
     title: own.title ?? titleNow,
-    subtitle: own.subtitle ?? '',
+    subtitle: own.subtitle ?? defaultSubtitle,
+    defaultSubtitle,
     fontFamily,
   }
   return { ...spec, card, error: null }

@@ -68,6 +68,14 @@ function textOf(value: string | null | undefined): string | null {
   return value == null || value === '' ? null : value
 }
 
+/**
+ * The subtitle keeps `""` (no subtitle) apart from `null` (unset: the opening card's date and
+ * place, the engine's default). The other text fields have no such difference: empty is unset.
+ */
+function subtitleOf(value: string | null | undefined): string | null {
+  return value ?? null
+}
+
 function numberOf(value: number | null | undefined): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
@@ -90,11 +98,11 @@ export function readCard(card: CardBody | null | undefined): CardDraft {
   })
 }
 
-/** An empty text, or a number that is not one, is no override. */
+/** An empty text (the subtitle excepted: `""` is "no subtitle"), or a number that is not one, is no override. */
 export function normalise(card: CardDraft): CardDraft {
   return {
     title: textOf(card.title),
-    subtitle: textOf(card.subtitle),
+    subtitle: subtitleOf(card.subtitle),
     duration: numberOf(card.duration),
     background: textOf(card.background),
     font_family: textOf(card.font_family),
@@ -143,6 +151,34 @@ export function withField<F extends CardField>(
   value: CardDraft[F],
 ): CardDraft {
   return card[field] === value ? card : { ...card, [field]: value }
+}
+
+// --- the subtitle's default ---------------------------------------------------------------
+
+export const NO_SUBTITLE_WORDS = 'No subtitle'
+
+/** The engine's default text (lines joined by newlines) on one line: `2024-08-20 / Plats: Tjörn`. */
+export function oneLine(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .join(' / ')
+}
+
+/**
+ * The opening card's Subtitle placeholder: while the subtitle is unset the engine's default
+ * (`Default: 2024-08-20 / Plats: Tjörn`; `No subtitle` when it has none), else `No subtitle`.
+ * The page never composes the default: `defaultSubtitle` is the detail's `default_subtitle`.
+ */
+export function openingSubtitlePlaceholder(subtitle: string | null, defaultSubtitle: string): string {
+  const line = oneLine(defaultSubtitle)
+  return subtitle === null && line !== '' ? `Default: ${line}` : NO_SUBTITLE_WORDS
+}
+
+/** What an unset opening subtitle follows, in words (the hint under the field). */
+export function openingSubtitleFollows(defaultSubtitle: string): string {
+  const line = oneLine(defaultSubtitle)
+  return line === '' ? NO_SUBTITLE_WORDS : line
 }
 
 /** Whether a field is typed as text (else a number). */
