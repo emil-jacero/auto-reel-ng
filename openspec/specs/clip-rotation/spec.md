@@ -1,7 +1,7 @@
 # clip-rotation Specification
 
 ## Purpose
-TBD - created by archiving change clip-rotate-ui. Update Purpose after archive.
+Lets an editor turn a clip a quarter turn left or right in Edit mode, keeps the turn in the draft until it is saved to reel.yaml, and shows the turn on every picture of the clip and as a tag in the read view.
 
 ## Requirements
 
