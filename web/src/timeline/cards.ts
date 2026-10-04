@@ -42,37 +42,35 @@ export type CardClip = {
 
 export type Background = 'black' | 'video'
 
-/** What `look.decorators` says about the title decorator. */
-export type Decorators = 'on' | 'off' | 'unset' | 'invalid'
+/** Whether the render draws title cards, as the service reports it; `invalid` is no answer (`title_cards: null`). */
+export type Decorators = 'on' | 'off' | 'invalid'
+
+/** Which layer decided it (`TitleCardsOut.source`). */
+export type CardsSource = 'event' | 'project' | 'default'
+
+/** The event detail's `title_cards`: the engine's answer from the event and the project's look. */
+export type TitleCardsAnswer = { enabled: boolean; source: CardsSource } | null | undefined
 
 /**
- * Whether the render draws title cards: `look.decorators` is a list that includes
- * `title` (on), a list without it (off), absent (unset: this reel.yaml does not say, and the
- * project's `config.yaml` look may still enable the cards; the service does not expose that),
- * or anything else (the render refuses a non-list, so no card is drawn).
+ * Whether the render draws title cards: the service's answer (`title_cards`), which resolves
+ * the event's `look.decorators` over the project's the way the render does, so the page cannot
+ * disagree with a render. `draft` is Edit mode's Title cards switch while it differs from the
+ * answer (true: on). No answer (`title_cards: null`, `look.decorators` not a list) is `invalid`:
+ * nothing is guessed from `reel.yaml` (Principle I).
  */
-export function titleCardsOn(look: unknown): Decorators {
-  if (look === null || typeof look !== 'object' || Array.isArray(look)) {
-    return 'unset'
-  }
-  const raw = (look as Record<string, unknown>).decorators
-  if (raw === undefined || raw === null) {
-    return 'unset'
-  }
-  if (!Array.isArray(raw)) {
+export function cardsEnabled(answer: TitleCardsAnswer, draft: boolean | null = null): Decorators {
+  if (answer === null || answer === undefined) {
     return 'invalid'
   }
-  return raw.some((name) => String(name) === 'title') ? 'on' : 'off'
+  return (draft ?? answer.enabled) ? 'on' : 'off'
 }
 
-/** `titleCardsOn`, or why it cannot be said yet: the page's read of `reel.yaml` is pending or failed. */
-export type DecoratorsRead = Decorators | 'pending' | 'unreadable'
-
-export function decoratorsRead(look: unknown, readFailed: boolean): DecoratorsRead {
-  if (look === null || look === undefined) {
-    return readFailed ? 'unreadable' : 'pending'
+/** Which layer decided: the event's own list once the draft's switch differs, else the answer's. */
+export function cardsSource(answer: TitleCardsAnswer, draft: boolean | null = null): CardsSource | null {
+  if (answer === null || answer === undefined) {
+    return null
   }
-  return titleCardsOn(look)
+  return draft === null || draft === answer.enabled ? answer.source : 'event'
 }
 
 /**
@@ -180,7 +178,7 @@ function firstKept(clip: CardClip): { start: Ms; length: Ms } | null {
  * Per chapter, whether and where its title card is drawn. A chapter anchors at its first
  * shown clip, or at the next shown clip with footage when every part of the first is cut
  * (as the render moves it); with no footage it has no card. A video card is held to the
- * first kept span, a black card adds its length. `decorators` other than `on` makes the
+ * first kept span, a black card adds its length. `decorators` `off` makes the
  * anchored chapters `off`; `invalid` places nothing.
  */
 export function cardPlacements(
@@ -217,7 +215,7 @@ export function cardPlacements(
       }
       const widthMs = background === 'black' ? durationMs : Math.min(durationMs, kept.length)
       out.push({
-        kind: decorators === 'on' ? 'anchored' : 'off', // 'off' and 'unset' both draw dashed
+        kind: decorators === 'on' ? 'anchored' : 'off',
         chapter,
         clip: index,
         atMs: kept.start,

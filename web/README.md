@@ -761,6 +761,12 @@ draft slice and the write are in `edit/draft.ts`. Pure parts are tested by `npm 
 event" disclosure in Edit mode. The style is `Draft.style` in `edit/draft.ts` beside the card drafts; the
 inspector's font and colour controls (`card/FontField.tsx`, `card/ColorField.tsx`) are shared with the panel.
 
+`src/edit/decorators.ts` and `TitleCardsSwitch.tsx` are the Title cards On / Off switch (`title-card-toggle`):
+`decorators.ts` is the pure model (`setTitleCards` gives the event's own `look.decorators` a position means, `applyDecorators`
+the `look` a save writes), `TitleCardsSwitch.tsx` the control in Edit mode. The override is `Draft.decorators`; the state shown
+is the detail's `title_cards` (`timeline/cards.ts` `cardsEnabled`), never read from `reel.yaml`. `card/choice.ts` is the pure
+rule for which option of a Background / Position choice is shown chosen or inherited.
+
 Movie playback is checked ad hoc in Chrome (Playwright's channel `chrome`) or Firefox,
 never in Playwright's bundled Chromium, which cannot decode H.264 and would make a
 working player look broken.

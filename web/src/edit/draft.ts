@@ -4,6 +4,7 @@ import type { KnownReason } from '../cuts/times'
 import { normalizeTurn, stepTurn } from '../rotate/turn.ts'
 import { NO_CARD, cardBody, cardChanged, readCard, refusalOf, withField } from './card/model.ts'
 import type { CardDraft, CardField } from './card/model.ts'
+import { applyDecorators, setTitleCards } from './decorators.ts'
 import { applyStyle, readStyle, styleChanged, withStyleField } from './cardStyle.ts'
 import type { StyleDraft, StyleField, StyleValue } from './cardStyle.ts'
 import type { Turn, Way } from '../rotate/turn.ts'
@@ -112,6 +113,11 @@ export type Draft = {
    * different from the one read; absent otherwise, so an untouched draft is `look` as read.
    */
   style?: StyleDraft
+  /**
+   * The event's own `look.decorators` (`decorators.ts`) while the Title cards switch is not at the
+   * state read; absent otherwise, so an untouched draft is `look` as read.
+   */
+  decorators?: readonly unknown[]
 }
 
 /** What Edit mode read: never changes during the session. */
@@ -385,7 +391,7 @@ export function buildWriteBody(baseline: Baseline, draft: Draft): ReelWriteBody 
       location: field('location'),
       description: field('description'),
     },
-    look: applyStyle(read.look, draft.style),
+    look: applyDecorators(applyStyle(read.look, draft.style), draft.decorators),
     chapters,
     clips: withCuts(baseline, draft),
     ignore: read.ignore,
@@ -454,8 +460,38 @@ export function isDirty(baseline: Baseline, draft: Draft): boolean {
     changedCuts(baseline, draft).size > 0 ||
     changedRotations(baseline, draft).size > 0 ||
     changedCards(baseline, draft).size > 0 ||
-    styleIsChanged(baseline, draft)
+    styleIsChanged(baseline, draft) ||
+    decoratorsChanged(draft)
   )
+}
+
+// --- the Title cards switch --------------------------------------------------------------
+
+/** Whether the Title cards switch is away from the state read (put back, it is no change). */
+export function decoratorsChanged(draft: Draft): boolean {
+  return draft.decorators !== undefined
+}
+
+/**
+ * `draft` with the Title cards switch at `on`. `readEnabled` is what the event detail said for
+ * the document as read; a position equal to it drops the entry (`setTitleCards`).
+ */
+export function setTitleCardsOn(
+  baseline: Baseline,
+  draft: Draft,
+  readEnabled: boolean,
+  on: boolean,
+): Draft {
+  const next = setTitleCards(baseline.read.look, readEnabled, on)
+  if (next === undefined) {
+    return draft.decorators === undefined ? draft : { ...draft, decorators: undefined }
+  }
+  return { ...draft, decorators: next }
+}
+
+/** `draft` with the Title cards switch as read. */
+export function resetDecorators(draft: Draft): Draft {
+  return draft.decorators === undefined ? draft : { ...draft, decorators: undefined }
 }
 
 // --- the event's card style ------------------------------------------------------------

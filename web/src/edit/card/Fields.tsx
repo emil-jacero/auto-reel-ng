@@ -2,6 +2,8 @@ import { Fragment, useId } from 'react'
 import type { ReactNode } from 'react'
 
 import { Icon } from '../../ui/Icon'
+import { inheritedTag, optionState } from './choice.ts'
+import type { ChoiceOption } from './choice.ts'
 
 /*
  * The inspector's field shells: a label, the control, the muted "Event style" value while the
@@ -246,9 +248,14 @@ export function NumberField({
   )
 }
 
-export type ChoiceOption = { value: string; label: string; words: string | null }
+export type { ChoiceOption }
 
-/** Background and position: native radios in a segmented control; none is chosen while unset. */
+/**
+ * Background and position: native radios in a segmented control. A set field has its option
+ * chosen; an unset one has none chosen and shows the value it inherits as pressed in a muted
+ * style (`data-inherited`, a dashed outline and the layer's words), which pressing sets as an
+ * override. An inherited value the page does not know shows none.
+ */
 export function Choice({
   label,
   field,
@@ -259,11 +266,14 @@ export function Choice({
   value,
   options,
   inherited,
+  inheritedValue,
   onChange,
 }: Common & {
   value: string | null
   options: readonly ChoiceOption[]
   inherited: ReactNode
+  /** The option the field inherits, or null when the page does not know it. */
+  inheritedValue: string | null
   onChange: (value: string) => void
 }) {
   const name = useId()
@@ -292,7 +302,9 @@ export function Choice({
             aria-labelledby={`${control.id}-label`}
             aria-describedby={control['aria-describedby']}
           >
-            {shown.map((option) => (
+            {shown.map((option) => {
+              const state = optionState(option.value, value, inheritedValue)
+              return (
               <Fragment key={option.value}>
                 <input
                   className="visually-hidden"
@@ -307,16 +319,25 @@ export function Choice({
                     }
                   }}
                 />
-                <label htmlFor={`${name}-${option.value}`}>{option.label}</label>
+                <label
+                  htmlFor={`${name}-${option.value}`}
+                  data-inherited={state === 'inherited' || undefined}
+                >
+                  {option.label}
+                  {state === 'inherited' && (
+                    <span className="ci-inherited-tag"> {inheritedTag((words ?? CARD_WORDS).tag)}</span>
+                  )}
+                </label>
               </Fragment>
-            ))}
+              )
+            })}
           </div>
           {options.some((option) => option.words !== null) && (
             <ul className="ci-words">
               {options.map((option) =>
                 option.words === null ? null : (
                   <li key={option.value} data-chosen={value === option.value || undefined}>
-                    <strong>{option.label}</strong> {option.words}
+                    <strong>{option.label}:</strong> {option.words}
                   </li>
                 ),
               )}

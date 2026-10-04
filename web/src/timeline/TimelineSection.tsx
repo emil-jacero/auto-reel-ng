@@ -9,7 +9,7 @@ import { backdropOf } from '../edit/card/specs.ts'
 import type { Backdrop } from '../edit/card/Preview'
 import { CardInspector, inspectorWords } from './CardInspector'
 import { Prepare, usePrepare } from './Prepare'
-import { cardPlacements, cardSpecs, decoratorsRead } from './cards'
+import { cardPlacements, cardSpecs, cardsEnabled, cardsSource } from './cards'
 import type { CardsBinding } from './useCardSelection'
 import { analysisOf } from './overlays/control'
 import type { Dismissals } from './overlays/Dismissals'
@@ -76,16 +76,17 @@ export function TimelineSection({
     () => analysisOf(eventId, read, editing, dismissals),
     [eventId, read, editing, dismissals],
   )
-  // Each chapter's resolved card, and whether the render draws them (`look.decorators`).
+  // Each chapter's resolved card, and whether the render draws them: the service's answer
+  // (`title_cards`), under Edit mode's Title cards switch while that differs (`title-card-toggle`).
   const savedSpecs = useMemo(() => cardSpecs(event), [event])
   const specs = cardEditing?.specs ?? savedSpecs
-  const decorators = decoratorsRead(
-    editing === null ? read.look : editing.look,
-    editing === null && read.failure !== null,
-  )
+  const switched = cardEditing?.titleCardsDraft ?? null
+  const decorators = cardsEnabled(event.title_cards, switched)
+  const source = cardsSource(event.title_cards, switched)
+  const cardsError = event.title_cards_error ?? null
   const cardBinding = useMemo(
-    () => ({ specs, decorators, selection: cards }),
-    [specs, decorators, cards],
+    () => ({ specs, decorators, source, error: cardsError, selection: cards }),
+    [specs, decorators, source, cardsError, cards],
   )
   // The selection ends with its chapter, whenever the event is read again without it.
   const { retain } = cards
@@ -105,7 +106,7 @@ export function TimelineSection({
     }
     const chapter = specs.findIndex((spec) => spec.chapter === cards.selected)
     const placements =
-      clips === null || decorators === 'pending' || decorators === 'unreadable' || chapter === -1
+      clips === null || chapter === -1
         ? null
         : cardPlacements(
             specs,
@@ -141,32 +142,6 @@ export function TimelineSection({
           {open ? 'Close timeline' : 'Open timeline'}
         </button>
       </header>
-      {selectedView !== null && cardEditing !== null && cards.selected !== null ? (
-        <CardInspectorPanel
-          eventId={eventId}
-          saved={cards.selected}
-          view={selectedView}
-          editing={cardEditing}
-          spec={selectedSpec}
-          backdrop={backdrop}
-          onClose={() => {
-            // Focus goes back to the control that selected it, not to <body>.
-            document
-              .querySelector<HTMLElement>('main:not([hidden]) .card-row-select[data-selected]')
-              ?.focus({ preventScroll: true })
-            cards.clear()
-          }}
-        />
-      ) : (
-        <CardInspector
-          words={inspectorWords(selectedSpec)}
-          announced={inspectorWords(
-            cards.selected === null
-              ? undefined
-              : savedSpecs.find((spec) => spec.chapter === cards.selected),
-          )}
-        />
-      )}
       <div id={bodyId} className="timeline-body" hidden={!open}>
         {state !== 'closed' && (
           <>
@@ -196,6 +171,33 @@ export function TimelineSection({
           </>
         )}
       </div>
+      {/* After the track in the page, whatever the width: selecting a card never moves it. */}
+      {selectedView !== null && cardEditing !== null && cards.selected !== null ? (
+        <CardInspectorPanel
+          eventId={eventId}
+          saved={cards.selected}
+          view={selectedView}
+          editing={cardEditing}
+          spec={selectedSpec}
+          backdrop={backdrop}
+          onClose={() => {
+            // Focus goes back to the control that selected it, not to <body>.
+            document
+              .querySelector<HTMLElement>('main:not([hidden]) .card-row-select[data-selected]')
+              ?.focus({ preventScroll: true })
+            cards.clear()
+          }}
+        />
+      ) : (
+        <CardInspector
+          words={inspectorWords(selectedSpec)}
+          announced={inspectorWords(
+            cards.selected === null
+              ? undefined
+              : savedSpecs.find((spec) => spec.chapter === cards.selected),
+          )}
+        />
+      )}
     </section>
   )
 }

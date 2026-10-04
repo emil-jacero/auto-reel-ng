@@ -218,7 +218,7 @@ clips, their cut spans, the resolved card and whether `look.decorators` includes
 `anchored` when it has a shown clip with footage left after the cuts, the anchor being the chapter's first shown
 clip, or the next shown clip with footage when every part of the first is cut; the anchor's start SHALL be the
 end of a cut span that begins at zero of the anchor clip, else zero. Otherwise it SHALL be `no-footage`. When the
-decorator is not `title`, anchored chapters SHALL be `off` (the model says `unset` when the document has no decorators at all, `off` when it lists some without `title`). A card's duration SHALL be taken in whole
+decorator is not `title`, anchored chapters SHALL be `off`. A card's duration SHALL be taken in whole
 milliseconds from seconds, and a value that is not a finite number above zero SHALL be refused with a
 `ModelError` naming the card, never replaced. A **video** card's width SHALL be the lesser of its duration and
 the anchor's first kept span, and the model SHALL report that it was clamped; a **black** card's width SHALL be

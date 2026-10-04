@@ -35,7 +35,7 @@ import {
   movieWithCards,
   trackLayout as withCards,
 } from './cards'
-import type { CardMap, CardSpec, DecoratorsRead, Placement } from './cards'
+import type { CardMap, CardSpec, CardsSource, Decorators, Placement } from './cards'
 import type { CardsBinding } from './useCardSelection'
 import { createDragStore } from './dragStore'
 import type { DragStore } from './dragStore'
@@ -116,7 +116,15 @@ export function Timeline({
   /** Edit mode's binding (trim handles, the draft's cuts); null in the read view. */
   editing?: EditBinding | null
   /** The title cards: the event's resolved cards, the decorator, the page's one selection. */
-  cards: { specs: readonly CardSpec[]; decorators: DecoratorsRead; selection: CardsBinding }
+  cards: {
+    specs: readonly CardSpec[]
+    /** The service's answer (`title_cards`), the draft's switch laid over it; `invalid` is no answer. */
+    decorators: Decorators
+    source: CardsSource | null
+    /** The detail's `title_cards_error`, said when there is no answer. */
+    error: string | null
+    selection: CardsBinding
+  }
 }) {
   const clipLay = useMemo(() => trackLayout(clips), [clips])
   const turns = cuts.turns ?? NO_TURNS
@@ -135,17 +143,15 @@ export function Timeline({
   })
   const placeAll = useCallback(
     (all: readonly CardSpec[]): Placement[] =>
-      decorators === 'pending' || decorators === 'unreadable'
-        ? []
-        : cardPlacements(
-            all,
-            clips.map((clip) => ({
-              chapter: clip.chapter,
-              durationMs: clip.facts.durationMs,
-              spans: clip.spans,
-            })),
-            decorators,
-          ),
+      cardPlacements(
+        all,
+        clips.map((clip) => ({
+          chapter: clip.chapter,
+          durationMs: clip.facts.durationMs,
+          spans: clip.spans,
+        })),
+        decorators,
+      ),
     [clips, decorators],
   )
   const placements = useMemo(() => placeAll(specs), [placeAll, specs])
@@ -472,7 +478,7 @@ export function Timeline({
           },
     [specs, blocks, leadMs, shifting, handles, editing, selection.selected, selection.clear, pickCard],
   )
-  const cardNotes = cardsNotes(cards.specs, placements, decorators)
+  const cardNotes = cardsNotes(cards.specs, placements, decorators, cards.source, cards.error)
 
   const atFit = pps <= fit + 1e-9
   const atMax = pps >= MAX_PPS - 1e-9
@@ -574,7 +580,7 @@ export function Timeline({
         clipLay={clipLay}
         map={map}
         movie={movie}
-        notCounted={decorators === 'unset' && placements.some((place) => place.kind === 'off')}
+        cardsUnknown={decorators === 'invalid'}
         pending={cutsPending}
       />
 
@@ -630,7 +636,7 @@ function Summary({
   clipLay,
   map,
   movie,
-  notCounted,
+  cardsUnknown,
   pending,
 }: {
   drag: DragStore
@@ -640,7 +646,8 @@ function Summary({
   clipLay: Layout
   map: CardMap
   movie: number | null
-  notCounted: boolean
+  /** No answer on whether the render draws cards: the length is the footage's alone. */
+  cardsUnknown: boolean
   pending: boolean
 }) {
   const tenths = useSyncExternalStore(drag.subscribe, () => {
@@ -660,7 +667,7 @@ function Summary({
   return (
     <p className="tl-summary">
       {movie !== null && movieWords(movieWithCards(movie, now), clipLay.totalMs, cardTimeWords(now))}
-      {notCounted && '. Title cards are not counted.'}
+      {cardsUnknown && '. Whether title cards are drawn is not known.'}
       {pending && CUTS_READING}
     </p>
   )

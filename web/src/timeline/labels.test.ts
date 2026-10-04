@@ -203,9 +203,16 @@ describe('title cards in the words', () => {
     assert.deepEqual(cardsNotes(specs, off, 'off'), [
       { title: 'Title cards are off for this event; the render draws none' },
     ])
-    assert.match(cardsNotes(specs, off, 'unset')[0].detail ?? '', /project default/)
+    assert.deepEqual(cardsNotes(specs, off, 'off', 'project'), [
+      { title: 'Title cards are off for this event; the render draws none', detail: 'Set by the project’s config.yaml.' },
+    ])
+    assert.deepEqual(cardsNotes(specs, [], 'invalid', null, 'look.decorators is not a list'), [
+      { title: 'look.decorators is not a list', detail: 'No title card is drawn here.' },
+    ])
     assert.equal(cardsNotes(specs, [], 'invalid').length, 1)
-    assert.equal(cardsNotes(specs, [], 'unreadable').length, 1)
+    for (const note of [...cardsNotes(specs, off, 'off', 'default'), ...cardsNotes(specs, [], 'invalid')]) {
+      assert.doesNotMatch(`${note.title} ${note.detail ?? ''}`, /unset|not counted|project default/)
+    }
     assert.deepEqual(cardsNotes(specs, [], 'on'), [])
     const bad: Placement[] = [{ kind: 'unreadable', chapter: 1, error: 'card duration must be positive' }]
     assert.equal(cardsNotes(specs, bad, 'on')[0].detail, 'Dag 2: card duration must be positive')

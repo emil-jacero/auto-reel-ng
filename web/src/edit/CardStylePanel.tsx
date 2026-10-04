@@ -5,6 +5,7 @@ import { useEffect, useId, useState } from 'react'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
 import { ColorField } from './card/ColorField'
+import { BACKGROUND_OPTIONS, POSITION_OPTIONS } from './card/choice.ts'
 import { Choice, TextField } from './card/Fields'
 import type { FieldWords } from './card/Fields'
 import { FontField } from './card/FontField'
@@ -87,6 +88,11 @@ export function CardStylePanel({ model }: { model: CardStyleModel }) {
     const { value, source } = effective(field, NO_CARD, { ...style, [field]: null }, read, resolved)
     return source === 'default' && value !== null ? styleWords(field, value, list) : ''
   }
+  // The option an unset choice inherits (the saved project default), or null when not known.
+  const inheritedOf = (field: StyleField): string | null => {
+    const { value, source } = effective(field, NO_CARD, { ...style, [field]: null }, read, resolved)
+    return source === 'default' && typeof value === 'string' ? value : null
+  }
   const placeholder = (field: StyleField): string => follows(field) || PROJECT_DEFAULT
   const clear = (field: string) => model.onSet(field as StyleField, null)
   const shared = { locked, onClear: clear, words: WORDS }
@@ -165,12 +171,9 @@ export function CardStylePanel({ model }: { model: CardStyleModel }) {
               label="Position"
               field="position"
               value={text(style.position)}
-              options={[
-                { value: 'top', label: 'Top', words: null },
-                { value: 'center', label: 'Center', words: null },
-                { value: 'bottom', label: 'Bottom', words: null },
-              ]}
+              options={POSITION_OPTIONS}
               inherited={follows('position')}
+              inheritedValue={inheritedOf('position')}
               error={at('position')}
               onChange={(value) => model.onSet('position', value)}
               {...shared}
@@ -180,15 +183,9 @@ export function CardStylePanel({ model }: { model: CardStyleModel }) {
               label="Background"
               field="background"
               value={text(style.background)}
-              options={[
-                { value: 'black', label: 'Black', words: 'Text on black, before the chapter' },
-                {
-                  value: 'video',
-                  label: 'Video',
-                  words: 'Text over the start of the chapter’s first clip',
-                },
-              ]}
+              options={BACKGROUND_OPTIONS}
               inherited={follows('background')}
+              inheritedValue={inheritedOf('background')}
               error={at('background')}
               onChange={(value) => model.onSet('background', value)}
               {...shared}
