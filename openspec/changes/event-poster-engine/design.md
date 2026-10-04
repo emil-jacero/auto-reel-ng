@@ -82,7 +82,7 @@ covered movie through the existing media endpoint (Playwright from the scratchpa
   verdict cites the existing `output` reason (the render output is not whole) — no new reason code, no probe.
   A manifest with `poster: null` or no field expects no sidecar.
 - Fingerprint: `poster` is in the editorial component only when present (a document without it hashes as
-  before). `RENDER_GRAPH_VERSION` 8 → 9 ("9: event-poster-engine — the movie carries a cover and a
+  before). `RENDER_GRAPH_VERSION` 9 → 10 ("10: event-poster-engine — the movie carries a cover and a
   `-poster.jpg` sidecar"). Clip signals are unchanged: no probe enters the fingerprint (IV).
 
 ### Writers

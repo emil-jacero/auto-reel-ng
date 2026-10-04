@@ -14,7 +14,7 @@
 
 - [x] 3.1 Manifest `poster` field, the sidecar claim in `render/claims.py`, the `output` verdict for a missing sidecar (`manifest.py`, `gate.py`). Test: the field's fail-open reads, a deleted sidecar is stale with reason `output`, an old manifest stays fresh, another event's recorded poster refuses an unforced render.
 - [x] 3.2 `prune-renamed` lists and deletes the sidecar with its movie (`cli/prune.py`). Test: both deleted with `--yes`, an orphan sidecar not listed, a claimed sidecar kept.
-- [x] 3.3 Bump `RENDER_GRAPH_VERSION` to 9 with its history line, naming the cover and the sidecar. Test: the fingerprint of an unchanged event differs from version 8's and a poster edit changes the editorial component.
+- [x] 3.3 Bump `RENDER_GRAPH_VERSION` to 10 with its history line, naming the cover and the sidecar. Test: the fingerprint of an unchanged event differs from version 9's and a poster edit changes the editorial component.
 
 ## 4. Verification and docs
 
