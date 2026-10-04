@@ -1,0 +1,46 @@
+/* A section's Help toggle and panel (`HelpToggle.tsx`). Tokens only. */
+@layer components {
+  /* An icon and a word; at least 44 × 44 CSS px to touch. */
+  .help-toggle {
+    min-block-size: 2.75rem;
+    min-inline-size: 2.75rem;
+    margin-inline-start: auto;
+    color: var(--fg-muted);
+  }
+
+  .help-toggle[aria-expanded='true'] {
+    color: var(--fg);
+    background: var(--surface-hover);
+  }
+
+  .help-toggle:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  /* A calm block under the header: muted, not an alert, nothing above it moves. */
+  .help-panel {
+    display: grid;
+    gap: var(--s-2);
+    padding: var(--s-3) var(--s-4);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+
+    &[hidden] {
+      display: none;
+    }
+
+    /* Under a section's header, inside its frame. */
+    .panel > & {
+      margin: var(--s-3) var(--s-4) 0;
+    }
+
+    & p {
+      margin: 0;
+      max-inline-size: 70ch;
+    }
+  }
+}

@@ -512,9 +512,11 @@ export function fieldName(field: CutField, n: number, name: string): string {
   return `${field === 'start' ? 'Start' : 'End'} of cut ${n} of ${name}`
 }
 
-/** The group with no selected cut. */
-export const NO_SELECTED_CUT =
-  'No cut selected. Select a cut by its handle or its span to type its times.'
+/** How the Selected cut group is reached; the Timeline's help says it (the group is not drawn without a cut). */
+export const SELECT_CUT_HINT = 'Select a cut by its handle or its span to type its times.'
+
+/** What the group's time fields take; the fields describe themselves by it, in the Timeline's help. */
+export const CUT_FIELDS_HINT = `${TIME_FORMS}. Enter takes a time; Escape puts the old one back.`
 
 /** The group while a save or a move of marked clips is pending. */
 export const UNAVAILABLE = 'Trimming is unavailable while a save or a move is pending.'

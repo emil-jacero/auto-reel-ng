@@ -420,6 +420,12 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   card" line, card rows, "Card style for this event" and Title cards sections are gone (they remain history under D-13, D-24
   and D-25). Edit mode opens with the Timeline open and no Open/Close button (D-20; the read view keeps its button). The marks
   line is one aligned toolbar (one control height token, one axis, the reason as one hint line below). No API or engine change.
+- **v2 help text declutter** (`help-text-declutter`, D-20; web only): the event page keeps state and actions in sight and puts
+  explanations behind one **Help** toggle per section (Details, Poster, Timeline, Clips, and the card dialog's Title cards tab;
+  `web/src/ui/help/`; open state per section in `localStorage`, closed by default, guarded). The movie's length is one compact
+  stat in the Timeline's control row (`Movie 0:38.08 · footage 0:24.08 · cards +0:14.00`), an event never analysed shows a
+  **Not analyzed** badge (the command is in the Timeline help), the cut fields are drawn only for a selected cut, and Move's
+  reason is its tooltip and description, shown as a line only after Move is pressed while it cannot act. No API or engine change.
 - **v2 Title cards switch** (`title-card-toggle`, D-20, D-25): Edit mode's **Title cards: On / Off**
   (now the dialog's second tab, `web/src/edit/card/EventTab.tsx`; superseded UI, see `edit-mode-declutter`; pure model `decorators.ts`) edits the event's own `look.decorators` in the same
   draft (Off removes `title` and keeps the other names; with no list it writes `[]`; On puts `title` first). The state the
@@ -828,6 +834,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `event-poster-gui` has landed (the GUI half; D-26, D-20, D-15): the detail's `poster` and `poster_note`, `GET …/poster.jpg`, `poster` in
    the editorial body, a cover on every list row and the event page, Use as poster on the Edit-mode Timeline and the poster area
    with Use default; no engine, job, schema-version or `RENDER_GRAPH_VERSION` change. The v2 list is closed.
+   `help-text-declutter` follows (web only, D-20): the explanations of the event page sit behind a Help toggle per section; no API, engine or `RENDER_GRAPH_VERSION` change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1181,6 +1188,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   `timeline-model`, the first slice of GUI v2; the research calls this decision D-18, a number the bug round
   took, and the proxy contract it calls D-19 is **D-21**, recorded by the proxy changes). (§4.10) A chapter's title
   card (**D-24**) is the timeline's later block: the card model is in `reel.yaml` before the timeline shows it.
+  The Timeline's explanations (the cards' fade, the analyse command, the cut fields' hint) live in its Help toggle
+  (`help-text-declutter`); its control row carries the movie stat, and the lane shows a Not analyzed badge.
   - **The chapter band reuses the chapter list's rule.** `usableChapters` (`web/src/movie/chapters.ts`,
     `movie-chapter-list`) decides whether the detail's chapter times may be relied on; the timeline's chapter
     band calls it rather than a second check.
@@ -1406,7 +1415,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     **Two decimals** for playback readouts (a frame at 25 or 30 fps is 40 or 33 ms; a third digit changes every frame), **three**
     for the trim tip, which shows the time the edge will hold. The Timeline's readout reads `Clip 0:00.96 of 0:39.84 · Event
     1:02.40 of 2:29.76`: the clip pair is at the scale of the event's longest clip and the event pair at the whole timeline's,
-    so crossing a clip changes no width; the summary line reads `Movie 3:12.00 of 3:45.00 of footage`; the slider's value
+    so crossing a clip changes no width; the Timeline's control row carries the stat `Movie 3:12.00 · footage 3:45.00 · cuts −0:33.00` (one clock scale for every term, so it keeps its width; the Timeline's explanations live in its Help toggle, `help-text-declutter`); the slider's value
     text stays in the Cuts panel's form but says "clip" and "event" (`Harbour, clip 0:12.4 of 0:24.96; event 1:12 of 3:12`;
     padding is for eyes and "00:09" is read badly). **The layout is half of it**: each time is an inline cell of
     `calc(var(--ch) * 1ch)` in the mono face with tabular figures (`ui/Clock.tsx`, the inline style only sets the property),

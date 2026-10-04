@@ -5,6 +5,8 @@ import type { EventDetail } from '../api/event'
 import type { ReadCutsState } from '../cuts/ReadCuts'
 import { Alert } from '../ui/Alert'
 import { Dialog } from '../ui/Dialog'
+import { HelpPanel, HelpToggle, useSectionHelp } from '../ui/help/HelpToggle'
+import { CUT_FIELDS_HINT, SELECT_CUT_HINT } from '../cuts/times'
 import { CardInspectorPanel, inspectorName } from '../edit/card/Inspector'
 import type { CardEditing } from '../edit/card/editing.ts'
 import { backdropOf, effectiveBackground } from '../edit/card/specs.ts'
@@ -19,9 +21,10 @@ import { cardPlacements, cardSpecs, cardsEnabled, cardsSource } from './cards'
 import type { CardsBinding } from './useCardSelection'
 import { analysisOf } from './overlays/control'
 import type { Dismissals } from './overlays/Dismissals'
+import { ANALYZE_COMMAND, DISMISSAL_NOTE } from './overlays/suggestions'
 import { Timeline } from './Timeline'
 import type { EditBinding } from './editing'
-import { NO_CLIPS } from './labels'
+import { CARDS_FADES, NO_CLIPS } from './labels'
 import { omittedWords, readiness, sectionOpen, sectionState, shownClips, trackClips } from './layout'
 
 /*
@@ -70,6 +73,8 @@ export function TimelineSection({
   const open = sectionOpen(editing !== null, toggled)
   const headingId = useId()
   const bodyId = useId()
+  const cutHintId = useId()
+  const help = useSectionHelp('timeline')
   const shown = useMemo(() => shownClips(event), [event])
   const chapterNames = useMemo(() => event.chapters.map((chapter) => chapter.name), [event])
   // In Edit mode the cuts are the draft's: never "being read" and never "unreadable".
@@ -115,8 +120,6 @@ export function TimelineSection({
       retain(specs.map((spec) => spec.chapter))
     }
   }, [retain, specs, retains])
-  const selectedSpec =
-    cards.selected === null ? undefined : specs.find((spec) => spec.chapter === cards.selected)
   // The card whose dialog is open, in Edit mode: the card as the draft has it, and the clip a
   // video card is laid over (the Timeline's own anchor when the clips are ready, else the
   // chapter's first shown clip).
@@ -207,6 +210,7 @@ export function TimelineSection({
     <section className="panel timeline-panel" aria-labelledby={headingId}>
       <header className="panel-header">
         <h2 id={headingId}>Timeline</h2>
+        <HelpToggle help={help} section="Timeline" />
         {editing === null && (
           <button
             type="button"
@@ -219,6 +223,13 @@ export function TimelineSection({
           </button>
         )}
       </header>
+      <HelpPanel help={help}>
+        <p>{CARDS_FADES}</p>
+        <p>{ANALYZE_COMMAND}</p>
+        {editing !== null && <p>{DISMISSAL_NOTE}</p>}
+        {editing !== null && <p>{SELECT_CUT_HINT}</p>}
+        {editing !== null && <p id={cutHintId}>{CUT_FIELDS_HINT}</p>}
+      </HelpPanel>
       <div id={bodyId} className="timeline-body" hidden={!open}>
         {state !== 'closed' && (
           <>
@@ -239,6 +250,7 @@ export function TimelineSection({
                 analysis={analysis}
                 editing={editing}
                 cards={cardBinding}
+                cutHintId={cutHintId}
               />
             )}
             {/* Always there while open, so the words put into it are announced. */}
@@ -277,10 +289,8 @@ export function TimelineSection({
           </div>
         </Dialog>
       )}
-      {/* The read view's words-only slot; Edit mode has no slot, the dialog is its editor. The status
-          region is there in both, so a selection is announced once. */}
+      {/* No visible read-out: the status region announces a selection once, in both modes. */}
       <CardInspector
-        words={editing === null ? inspectorWords(selectedSpec) : null}
         announced={inspectorWords(
           cards.selected === null
             ? undefined

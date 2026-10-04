@@ -5,8 +5,9 @@
     position: static;
   }
 
+  /* After the Help toggle, which takes the free space. */
   .tl-toggle {
-    margin-inline-start: auto;
+    margin-inline-start: 0;
   }
 
   .timeline-body {
@@ -160,11 +161,25 @@
     margin-inline-start: auto;
   }
 
-  .tl-summary {
+  /* The movie's length, one line in the control row; the cuts and card terms wrap whole at 390 px. */
+  .tl-stat {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 var(--s-2);
     color: var(--fg-muted);
     font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
-    min-block-size: 1.25em;
+    min-inline-size: 0;
+  }
+
+  .tl-stat-term {
+    white-space: nowrap;
+  }
+
+  /* Reading the cuts / whether cards are drawn: words only while they apply. */
+  .tl-summary {
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
   }
 
   /* --- the track --- */
@@ -872,7 +887,6 @@
     min-inline-size: 0;
   }
 
-  .tl-fields-none,
   .tl-fields-locked {
     color: var(--fg-muted);
     font-size: var(--text-sm);
@@ -950,32 +964,6 @@
 }
 
 @layer screens {
-  .tl-inspector {
-    display: grid;
-    gap: var(--s-1);
-    margin: var(--s-3) var(--s-4) 0;
-    padding: var(--s-3);
-    border: 1px solid var(--border-strong);
-    border-inline-start: 4px solid var(--accent);
-    border-radius: var(--r-md);
-    background: var(--surface-2);
-    font-size: var(--text-sm);
-  }
-
-  .tl-inspector-note {
-    color: var(--fg-muted);
-    font-size: var(--text-xs);
-  }
-
-  .tl-inspector-card {
-    font-weight: 600;
-  }
-
-  .tl-cards-note {
-    color: var(--fg-muted);
-    font-size: var(--text-xs);
-  }
-
   /* --- the card on the picture (`CardLayer.tsx`) --- */
   .tl-card-layer {
     position: absolute;

@@ -34,9 +34,7 @@ import {
   cardMap,
   cardPlacements,
   cardSubject,
-  cardTimeWords,
   clipTimeAt,
-  movieWithCards,
   trackLayout as withCards,
 } from './cards'
 import type { CardMap, CardSpec, CardsSource, Decorators, Placement } from './cards'
@@ -52,7 +50,6 @@ import {
   CUTS_READING,
   CUTS_UNREADABLE,
   CUTS_UNREADABLE_DETAIL,
-  CARDS_FADES,
   cardsNotes,
   FILM_FAILED,
   FILM_FAILED_DETAIL,
@@ -63,7 +60,7 @@ import {
   PLAY,
   ZOOM_IN,
   ZOOM_OUT,
-  movieWords,
+  movieStat,
   playheadAnnouncement,
 } from './labels'
 import { chapterBands, movieMs, trackLayout } from './layout'
@@ -105,6 +102,7 @@ export function Timeline({
   analysis,
   editing = null,
   cards,
+  cutHintId,
 }: {
   eventId: string
   clips: readonly TrackClip[]
@@ -127,6 +125,8 @@ export function Timeline({
     error: string | null
     selection: CardsBinding
   }
+  /** The id of the Timeline help's paragraph that says what the cut fields take (Edit mode). */
+  cutHintId: string
 }) {
   const posterWhyId = useId()
   const clipLay = useMemo(() => trackLayout(clips), [clips])
@@ -611,6 +611,15 @@ export function Timeline({
           {video.playing ? PAUSE : PLAY}
         </button>
         <PlayheadReadout playhead={playhead} clips={clips} lay={lay} longestCardMs={longestCardMs} />
+        <MovieStat
+          drag={drag}
+          shifting={shifting}
+          specs={specs}
+          placeAll={placeAll}
+          clipLay={clipLay}
+          map={map}
+          movie={movie}
+        />
         <div className="tl-zoom" role="group" aria-label="Zoom">
           <button
             type="button"
@@ -693,24 +702,19 @@ export function Timeline({
       />
 
       {editing !== null && (
-        <CutFields selected={selected} clips={clips} editing={editing} drag={drag} />
+        <CutFields
+          selected={selected}
+          clips={clips}
+          editing={editing}
+          drag={drag}
+          hintId={cutHintId}
+        />
       )}
 
       {editing?.orderChanged === true && <Alert tone="info" role="note" title={ORDER_SAVED} />}
 
-      <Summary
-        drag={drag}
-        shifting={shifting}
-        specs={specs}
-        placeAll={placeAll}
-        clipLay={clipLay}
-        map={map}
-        movie={movie}
-        cardsUnknown={decorators === 'invalid'}
-        pending={cutsPending}
-      />
+      <SummaryNotes cardsUnknown={decorators === 'invalid'} pending={cutsPending} />
 
-      {blocks.length > 0 && <p className="tl-cards-note">{CARDS_FADES}</p>}
       {pictures.failures.map((failure) => (
         <Alert
           key={failure.chapter}
@@ -760,10 +764,11 @@ export function Timeline({
 const NEVER = () => () => undefined
 
 /**
- * The summary line. It follows a black card's edge in the air (the length of the movie, the
- * card time) by itself, so a drag renders this paragraph and not the Timeline.
+ * The movie's length as one line in the control row (`help-text-declutter`). It follows a black
+ * card's edge in the air (the length of the movie, the card time) by itself, so a drag renders
+ * this span and not the Timeline.
  */
-function Summary({
+function MovieStat({
   drag,
   shifting,
   specs,
@@ -771,8 +776,6 @@ function Summary({
   clipLay,
   map,
   movie,
-  cardsUnknown,
-  pending,
 }: {
   drag: DragStore
   shifting: ShiftFrom | null
@@ -781,9 +784,6 @@ function Summary({
   clipLay: Layout
   map: CardMap
   movie: number | null
-  /** No answer on whether the render draws cards: the length is the footage's alone. */
-  cardsUnknown: boolean
-  pending: boolean
 }) {
   const tenths = useSyncExternalStore(drag.subscribe, () => {
     const d = drag.getCard()
@@ -799,10 +799,32 @@ function Summary({
           ),
     [tenths, shifting, map, specs, placeAll, clipLay],
   )
+  if (movie === null) {
+    return null
+  }
+  // One span per term: a narrow screen wraps between terms, never inside one.
+  const terms = movieStat(movie, clipLay.totalMs, now.totalMs).split(' \u00b7 ')
+  return (
+    <span className="tl-stat">
+      {terms.map((term, index) => (
+        <span key={term.split(' ')[0]} className="tl-stat-term">
+          {index > 0 && '\u00b7 '}
+          {term}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+/** What the stat cannot say: the cuts are still being read, or whether cards are drawn is not known. */
+function SummaryNotes({ cardsUnknown, pending }: { cardsUnknown: boolean; pending: boolean }) {
+  if (!cardsUnknown && !pending) {
+    return null
+  }
   return (
     <p className="tl-summary">
-      {movie !== null && movieWords(movieWithCards(movie, now), clipLay.totalMs, cardTimeWords(now))}
-      {cardsUnknown && '. Whether title cards are drawn is not known.'}
+      {cardsUnknown && 'Whether title cards are drawn is not known.'}
+      {cardsUnknown && pending && ' '}
       {pending && CUTS_READING}
     </p>
   )

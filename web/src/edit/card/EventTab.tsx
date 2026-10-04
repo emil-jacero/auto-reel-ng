@@ -1,6 +1,7 @@
 import { Fragment, useId } from 'react'
 
 import { Alert } from '../../ui/Alert'
+import { HelpPanel, HelpToggle, useSectionHelp } from '../../ui/help/HelpToggle'
 import type { CardsSource } from '../../timeline/cards.ts'
 import { changedStyleFields, effective, styleRefusalOf } from '../cardStyle.ts'
 import type { StyleDraft, StyleField, StyleRefusal, StyleValue } from '../cardStyle.ts'
@@ -94,6 +95,7 @@ export function styleProblems(model: Pick<CardStyleModel, 'read' | 'style' | 'er
 export function EventTab({ style: model, cards }: { style: CardStyleModel; cards: TitleCardsModel }) {
   const { read, style, resolved, error, refusal, locked } = model
   const headingId = useId()
+  const help = useSectionHelp('cards')
   const { state: fonts } = useFonts()
   const list = fonts.status === 'ok' ? fonts.fonts : []
   const changed = changedStyleFields(read, style)
@@ -141,6 +143,15 @@ export function EventTab({ style: model, cards }: { style: CardStyleModel; cards
 
   return (
     <div className="ci-fields ci-event" data-changed={changed.length > 0 || undefined}>
+      <div className="ci-help-row">
+        <HelpToggle help={help} section="Title cards" />
+      </div>
+      <HelpPanel help={help}>
+        <p className="ci-lede" id={headingId}>
+          Every title card of this event follows these. A card can override any of them. A field
+          left empty follows the project default.
+        </p>
+      </HelpPanel>
       <TitleCardsSwitch model={cards} />
       {error !== null && savedActive && (
         <Alert tone="err" title="The service refused this style." detail={error} />
@@ -148,10 +159,6 @@ export function EventTab({ style: model, cards }: { style: CardStyleModel; cards
       {refusal !== null && refusal.field === null && (
         <Alert tone="err" title="The service refused this style." detail={refusal.message} />
       )}
-      <p className="ci-lede" id={headingId}>
-        Every title card of this event follows these. A card can override any of them. A field left
-        empty follows the project default.
-      </p>
       <div className="ci-fields" role="group" aria-labelledby={headingId}>
         <FontField
           value={text(style.font_family)}

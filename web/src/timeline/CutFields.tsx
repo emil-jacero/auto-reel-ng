@@ -2,8 +2,6 @@ import { useId, useRef, useState, useSyncExternalStore } from 'react'
 import type { KeyboardEvent } from 'react'
 
 import {
-  NO_SELECTED_CUT,
-  TIME_FORMS,
   UNAVAILABLE,
   checkTrim,
   fieldName,
@@ -37,21 +35,21 @@ export function CutFields({
   clips,
   editing,
   drag,
+  hintId,
 }: {
   selected: Selected | null
   clips: readonly TrackClip[]
   editing: EditBinding
   drag: DragStore
+  /** The id of the Timeline help's paragraph that says what the fields take. */
+  hintId: string
 }) {
   const clip = selected === null ? undefined : clips.find((c) => c.identity === selected.identity)
   const listed = selected === null ? [] : editing.listed(selected.identity)
   const at = selected === null ? -1 : listed.findIndex((c) => c.key === selected.key && !c.removed)
   if (selected === null || clip === undefined || at === -1) {
-    return (
-      <div className="tl-fields" role="group" aria-label="Selected cut">
-        <p className="tl-fields-none">{NO_SELECTED_CUT}</p>
-      </div>
-    )
+    // Nothing is drawn without a selected cut; the Timeline's help says how to select one.
+    return null
   }
   return (
     <Fields
@@ -62,6 +60,7 @@ export function CutFields({
       at={at}
       editing={editing}
       drag={drag}
+      hintId={hintId}
     />
   )
 }
@@ -73,6 +72,7 @@ function Fields({
   at,
   editing,
   drag,
+  hintId,
 }: {
   selected: Selected
   clip: TrackClip
@@ -80,6 +80,7 @@ function Fields({
   at: number
   editing: EditBinding
   drag: DragStore
+  hintId: string
 }) {
   const cut = listed[at]
   const number = at + 1
@@ -101,7 +102,6 @@ function Fields({
   const shown = (field: CutField): string => typed[field] ?? now[field]
   const length = clip.facts.durationMs / 1000
   const errorId = `${base}-error`
-  const hintId = `${base}-hint`
 
   /** Take what was typed in `field` (and the other field's text as it shows). */
   const commit = (field: CutField, byEnter: boolean) => {
@@ -200,9 +200,6 @@ function Fields({
           {refusalWords(refusal)}
         </p>
       )}
-      <p className="field-hint tl-fields-hint" id={hintId}>
-        {TIME_FORMS}. Enter takes a time; Escape puts the old one back.
-      </p>
       {locked && <p className="tl-fields-locked">{UNAVAILABLE}</p>}
     </div>
   )

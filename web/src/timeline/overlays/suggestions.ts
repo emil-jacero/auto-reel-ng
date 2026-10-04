@@ -410,8 +410,10 @@ export function laneName(clipName: string): string {
 
 export const READING_WORDS = 'Reading the suggestions…'
 export const UNREADABLE_TITLE = 'Suggestions could not be read'
-/** The event was never analysed; the root is not known to the page, so the command has a placeholder. */
-export const NEVER_ANALYZED = 'Not analyzed. Run `auto-reel analyze <root>`, then Refresh.'
+/** The state of an event that was never analysed: the lane's badge (`help-text-declutter`). */
+export const NEVER_ANALYZED = 'Not analyzed'
+/** What to do about it, in the Timeline's help; the root is not known to the page, so the command has a placeholder. */
+export const ANALYZE_COMMAND = 'Not analyzed. Run `auto-reel analyze <root>`, then Refresh.'
 export const ANALYZED_CLEAN = 'Analyzed: nothing to suggest.'
 export const CLIP_NOT_ANALYZED = 'Not analyzed'
 export const CUTS_WAIT_UNREADABLE =

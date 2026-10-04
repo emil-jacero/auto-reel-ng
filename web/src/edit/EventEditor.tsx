@@ -53,13 +53,14 @@ import type { Dismissals } from '../timeline/overlays/Dismissals'
 import { Alert } from '../ui/Alert'
 import { Dialog } from '../ui/Dialog'
 import { Icon } from '../ui/Icon'
+import { HelpPanel, HelpToggle, useSectionHelp } from '../ui/help/HelpToggle'
+import { clipsHelpLines, newClipsLine } from './clipsHelp.ts'
 import { Pill } from '../ui/Pill'
 import { SkeletonRows } from '../ui/Skeleton'
 import { keepToastsClearOf, toast } from '../ui/toast'
 import { NameDialog } from './ChapterDialogs'
 import {
   OWN_CHAPTER_HEADING,
-  OWN_CHAPTER_NOTE,
   checkName,
   diskFolders,
   ignoredStaying,
@@ -144,7 +145,6 @@ import type {
 } from './draft'
 import {
   CLEARED_WORDS,
-  MARK_HINT,
   MOVE_REASON_WORDS,
   NOTHING_MOVED,
   NO_MARKS,
@@ -1075,6 +1075,8 @@ export function EventEditor({
   const [overwriteAsked, setOverwriteAsked] = useState(false)
   const leaveQuestion = usePendingLeave()
   const detailsId = useId()
+  const detailsHelp = useSectionHelp('details')
+  const clipsHelp = useSectionHelp('clips')
   const inFlight = useRef<AbortController | null>(null)
   // A second press while a save is in flight sends nothing.
   const saving = useRef(false)
@@ -2275,7 +2277,23 @@ export function EventEditor({
   }, [listedKeys, moveTo])
   const moveReasonId = useId()
   const moveSelectId = useId()
+  // The reason line shows only once Move is pressed while it cannot act; it goes when Move can.
+  const [moveReasonShown, setMoveReasonShown] = useState(false)
   const moveWhy = moveReason(marks.size, moveTo !== '', listsLocked)
+  useEffect(() => {
+    if (moveWhy === null) {
+      setMoveReasonShown(false)
+    }
+  }, [moveWhy])
+  const moveWhyWords = moveWhy === null ? '' : MOVE_REASON_WORDS[moveWhy]
+  const onMovePressed = () => {
+    if (moveWhy !== null) {
+      setMoveReasonShown(true)
+      announce(moveWhyWords)
+      return
+    }
+    onMoveMarked()
+  }
 
   // Each listed chapter's tools: what it offers, its notes and why it cannot go. A
   // chapter's object is kept while what it shows is unchanged, so its list re-renders
@@ -2288,7 +2306,6 @@ export function EventEditor({
       const heading = chapterHeading(chapter.name, hasNamedChapter)
       const order = orders?.get(chapter.key) ?? NONE_REMOVED
       const lines = [
-        chapter.name === '' && several && OWN_CHAPTER_NOTE,
         chapter.readName === null && 'New chapter.',
         chapter.readName !== null &&
           chapter.name !== chapter.readName &&
@@ -2507,6 +2524,7 @@ export function EventEditor({
   const retrying = state.status === 'failed' && state.retrying === true
   const hasIgnored = chapters.some((chapter) => chapter.ignored.length > 0)
   const hasMissing = [...clips.values()].some((clip) => clip.status === 'missing')
+  const newClipsText = newClipsLine(adopted, newClips.size > 0, plural(adopted, 'new clip', 'new clips'))
   const clipCount = chapters.reduce((sum, chapter) => sum + chapter.movable.length, 0)
 
   return (
@@ -2618,9 +2636,10 @@ export function EventEditor({
               <h2 ref={detailsHeadingRef} id={detailsId} tabIndex={-1}>
                 {heading}
               </h2>
+              <HelpToggle help={detailsHelp} section="Details" />
             </header>
-            <div className="panel-body">
-              <p className="edit-lede">
+            <HelpPanel help={detailsHelp}>
+              <p>
                 {detail === null ? (
                   <>
                     Save writes these to <code>reel.yaml</code>. A field left empty keeps inheriting
@@ -2632,6 +2651,8 @@ export function EventEditor({
                   </>
                 )}
               </p>
+            </HelpPanel>
+            <div className="panel-body">
               <MetadataForm
                 key={ready.resets}
                 read={ready.baseline.read}
@@ -2675,33 +2696,10 @@ export function EventEditor({
             />
           )}
 
-          {detail !== null && (
+          {detail !== null && newClipsText !== null && (
             <div className="edit-hint">
               <Icon name="info" />
-              <p>
-                {/* With one chapter, where chapters come from: once, they were not found. */}
-                {listed.length > 1
-                  ? 'Drag a clip by its handle, or use its arrows, to reorder it. Drag it into ' +
-                    'another chapter to move it there; mark clips and use Move marked to… to move several ' +
-                    'at once.'
-                  : 'Drag a clip by its handle, or use its arrows. To split the event into ' +
-                    'chapters, use Add chapter below the chapters; clips can then be dragged ' +
-                    'between them.'}
-                {hasIgnored && ' Ignored clips are not played and cannot be moved.'}
-                {hasMissing &&
-                  ' A missing clip is not on disk and stays in its chapter: restore the file, or ' +
-                    'remove it from reel.yaml.'}
-                {adopted > 0 ? (
-                  <strong>
-                    {' '}
-                    Saving adds {plural(adopted, 'new clip', 'new clips')} to reel.yaml.
-                  </strong>
-                ) : (
-                  newClips.size > 0 &&
-                  ' A new clip joins reel.yaml once its chapter’s order, one of its cuts, or ' +
-                    'the list of chapters is saved.'
-                )}
-              </p>
+              <p>{adopted > 0 ? <strong>{newClipsText}</strong> : newClipsText}</p>
             </div>
           )}
 
@@ -2710,7 +2708,7 @@ export function EventEditor({
             // its height and room either way, so the first mark moves no row.
             <div ref={markLineRef} className="mark-line" tabIndex={-1}>
               <div className="mark-head">
-                <p>{MARK_HINT}</p>
+                <HelpToggle help={clipsHelp} section="Clips" />
                 <span className="mark-line-slot">
                   <span className="mark-count" hidden={marks.size === 0}>
                     {countWords(marks.size)}
@@ -2726,6 +2724,16 @@ export function EventEditor({
                   </button>
                 </span>
               </div>
+              <HelpPanel help={clipsHelp}>
+                {clipsHelpLines({
+                  several: listed.length > 1,
+                  hasIgnored,
+                  hasMissing,
+                  ownChapter: listed.some((chapter) => chapter.name === ''),
+                }).map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </HelpPanel>
               <div className="mark-actions">
                 <span className="mark-rotate" role="group" aria-label="Marked clips">
                   <button
@@ -2781,7 +2789,8 @@ export function EventEditor({
                       aria-disabled={listsLocked || moveWhy !== null || undefined}
                       aria-busy={movePending || undefined}
                       aria-describedby={moveReasonId}
-                      onClick={onMoveMarked}
+                      title={moveWhy === null ? undefined : moveWhyWords}
+                      onClick={onMovePressed}
                     >
                       <Icon name="arrow-right" />
                       Move
@@ -2790,8 +2799,8 @@ export function EventEditor({
                 )}
               </div>
               {listedKeys.length > 1 && (
-                <p id={moveReasonId} className="mark-move-why">
-                  {moveWhy === null ? '' : MOVE_REASON_WORDS[moveWhy]}
+                <p id={moveReasonId} className={moveReasonShown ? 'mark-move-why' : 'visually-hidden'}>
+                  {moveWhyWords}
                 </p>
               )}
             </div>
