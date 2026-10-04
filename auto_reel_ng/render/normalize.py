@@ -28,6 +28,7 @@ from ..accel.profiles.base import AccelProfile, needs_transfer
 from ..accel.profiles.cpu import CPUProfile
 from ..errors import RenderError
 from ..probe.metadata import ClipMetadata
+from .concat import normalize_sar
 from .producers import ProducedSegment
 from .segments import OverlaySpec, Segment
 from .target import TargetSpec
@@ -235,7 +236,7 @@ def _needs_pad(clip: ClipMetadata, turn: int, target: TargetSpec) -> bool:
     quarter_turn = turn % 180 == 90
     width, height = (clip.height, clip.width) if quarter_turn else (clip.width, clip.height)
     canvas = Fraction(target.width, target.height)
-    sar = Fraction(_normalize_sar(clip.sample_aspect_ratio).replace(":", "/"))
+    sar = Fraction(normalize_sar(clip.sample_aspect_ratio).replace(":", "/"))
     pixel_aspect = Fraction(width, height)
     return pixel_aspect != canvas or pixel_aspect * sar != canvas
 
@@ -647,13 +648,6 @@ def build_synthetic_normalize_command(
     )
 
 
-def _normalize_sar(sample_aspect_ratio: Optional[str]) -> str:
-    """Treat an absent/``N/A`` SAR as square (1:1) for equivalence comparison."""
-    if sample_aspect_ratio is None or sample_aspect_ratio in ("", "N/A", "0:1"):
-        return "1:1"
-    return sample_aspect_ratio
-
-
 def copy_eligible(segment: Segment, clip: Optional[ClipMetadata], target: TargetSpec) -> bool:
     """Decide whether ``segment`` can skip normalization (the stream-copy path).
 
@@ -673,7 +667,7 @@ def copy_eligible(segment: Segment, clip: Optional[ClipMetadata], target: Target
     video_ok = (
         clip.width == target.width
         and clip.height == target.height
-        and _normalize_sar(clip.sample_aspect_ratio) == target.sample_aspect_ratio
+        and normalize_sar(clip.sample_aspect_ratio) == target.sample_aspect_ratio
         and clip.pix_fmt == target.pix_fmt
         and clip.video_codec == target.video_codec
         and abs(clip.fps - target.fps) <= 1e-3

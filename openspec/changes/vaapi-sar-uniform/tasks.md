@@ -1,7 +1,7 @@
 ## 1. Pre-flight compares SAR normalized
 
-- [ ] 1.1 Move the unset-SAR rule (`None`/`""`/`N/A`/`0:1` → `1:1`) out of `render/normalize.py` `_normalize_sar` into one shared helper used by both `copy_eligible`/`_needs_pad` and `render/concat.py` `probe_copy_fields`, so `CopyFields.sample_aspect_ratio` holds the normalized value; verify with unit tests in `tests/test_render.py` (or the existing concat tests) that `is_copy_uniform` is True for fields differing only by `N/A`/`0:1`/missing vs `1:1`, False for `4:3` vs `1:1`, and the existing copy-eligibility tests still pass.
-- [ ] 1.2 Add a `has_ffmpeg` test that encodes two tiny mp4s with the CPU encoder (one with SAR left unset, one with `setsar=1`; assert the first really probes `N/A`/`0:1` so the test is not vacuous) and asserts `is_copy_uniform` over them is True.
+- [x] 1.1 Move the unset-SAR rule (`None`/`""`/`N/A`/`0:1` → `1:1`) out of `render/normalize.py` `_normalize_sar` into one shared helper used by both `copy_eligible`/`_needs_pad` and `render/concat.py` `probe_copy_fields`, so `CopyFields.sample_aspect_ratio` holds the normalized value; verify with unit tests in `tests/test_render.py` (or the existing concat tests) that `is_copy_uniform` is True for fields differing only by `N/A`/`0:1`/missing vs `1:1`, False for `4:3` vs `1:1`, and the existing copy-eligibility tests still pass.
+- [x] 1.2 Add a `has_ffmpeg` test that encodes two tiny mp4s with the CPU encoder (one with SAR left unset, one with `setsar=1`; assert the first really probes `N/A`/`0:1` so the test is not vacuous) and asserts `is_copy_uniform` over them is True.
 
 ## 2. Every normalize path sets SAR 1:1
 
