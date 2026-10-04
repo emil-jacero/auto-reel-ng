@@ -220,7 +220,11 @@ database.
 
 ### Requirement: Title decorator places each chapter's card
 
-The engine SHALL register a `title` decorator (an inserter) selectable via `look.decorators`. When applied, it
+The engine SHALL register a `title` decorator (an inserter) selectable via `look.decorators`. When
+`look.decorators` is absent (or null) from the resolved look, that is from both the event's `reel.yaml` and the
+project `config.yaml`, the effective decorators SHALL be `[title]`. An explicit list SHALL keep its meaning: `[]`,
+`[none]` and any list that does not include `title` SHALL produce no title segment. A non-list value SHALL fail
+loud. When applied, the `title` decorator
 SHALL insert one synthetic title segment for each chapter that resolved a title clip (the clip resolved as
 `is_title`), carrying the producer reference, the chapter's own card duration, the chapter's effective card
 config (the event-wide style with the chapter's `card` overrides applied) and text, and the chapter membership of
@@ -231,7 +235,7 @@ surviving source segment of the same chapter, so the chapter still opens with it
 chapter is cut away, so that the chapter has no source segment, no card SHALL be inserted for it. A chapter
 that resolved no title clip SHALL get no card. A card whose effective background is `video` SHALL NOT be inserted as a segment; it SHALL be attached to the
 anchor segment instead, and never drawn as a black card (see "A video-background card is attached over the
-chapter's first segment"). When `look.decorators` does not include `title` (or is absent),
+chapter's first segment"). When the effective decorators do not include `title`,
 no title segment SHALL be produced and behavior SHALL be unchanged.
 
 #### Scenario: Title segment inserted before a chapter's title clip
@@ -242,9 +246,42 @@ no title segment SHALL be produced and behavior SHALL be unchanged.
 - **WHEN** the `title` decorator is applied to a plan with two chapters that each have a title clip
 - **THEN** a synthetic title segment is inserted before each chapter's title clip
 
+#### Scenario: Absent decorators render the cards
+- **WHEN** neither the event's `reel.yaml` nor the project `config.yaml` sets `look.decorators`, and the plan has
+  a default chapter and one named chapter, each with a title clip
+- **THEN** the render's segment list has an opening card and a card for the named chapter, each before its title clip
+
 #### Scenario: No title decorator means no card
-- **WHEN** `look.decorators` does not include `title`
+- **WHEN** `look.decorators` is an explicit list that does not include `title`
 - **THEN** the segment list contains no synthetic title segment
+
+#### Scenario: An explicit empty list means no cards
+- **WHEN** the event's `reel.yaml` sets `look.decorators: []`
+- **THEN** the segment list contains no synthetic title segment
+
+#### Scenario: The none decorator means no cards
+- **WHEN** `look.decorators` is `[none]`
+- **THEN** the segment list contains no synthetic title segment
+
+#### Scenario: A list without title means no cards
+- **WHEN** `look.decorators` lists another decorator and not `title`
+- **THEN** the segment list contains no synthetic title segment
+
+#### Scenario: The project's explicit list wins over the default
+- **WHEN** the project `config.yaml` sets `look.decorators: []` and the event's `reel.yaml` does not set it
+- **THEN** the segment list contains no synthetic title segment
+
+#### Scenario: The event's list wins over the project's
+- **WHEN** the project `config.yaml` sets `look.decorators: []` and the event's `reel.yaml` sets `[title]`
+- **THEN** the render draws the cards
+
+#### Scenario: A non-list value fails loud
+- **WHEN** `look.decorators` is the string `title`
+- **THEN** the render fails with an error naming `look.decorators`
+
+#### Scenario: Previously rendered events become stale once
+- **WHEN** an event rendered by the previous engine version, with no decorators, is checked for staleness
+- **THEN** it is stale with reason `engine`
 
 #### Scenario: Partially cut title clip keeps its anchor
 - **WHEN** the chapter's title clip has a cut span over its first seconds and a kept span after it
