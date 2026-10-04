@@ -1,7 +1,8 @@
-import { useId, useRef, useSyncExternalStore } from 'react'
+import { useId, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, KeyboardEvent, PointerEvent, RefObject } from 'react'
 
 import type { ClipTurns } from '../cuts/ReadCuts'
+import type { Turn } from '../rotate/turn.ts'
 import { TRIM_KEYS, formatTime, reasonWords } from '../cuts/times'
 import { CardHandles, CARD_KEYS } from './CardHandles'
 import { CardLane } from './CardLane'
@@ -9,6 +10,9 @@ import type { CardPictures } from './useCardImages'
 import { Filmstrip } from './Filmstrip'
 import { PlayheadKeys, PlayheadSlider } from './Playhead'
 import { ClipHandles } from './TrimHandle'
+import { EdgeTool } from './EdgeHandles'
+import type { PressTargets, SnapSwitch } from './EdgeHandles'
+import { EDGE_KEYS } from './edgeTrim'
 import { shiftMs } from './dragStore'
 import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
@@ -17,9 +21,18 @@ import type { CardBlock, CardHandle, CardSpec } from './cards'
 import { trackZoomKey } from './keys'
 import type { KeyAction } from './keys'
 import { clipDescription } from './labels'
-import { cutLabel } from './layout'
+import { cutLabel, drawnCuts } from './layout'
 import type { ChapterBand, TrackClip } from './layout'
-import { canvasWidth, edgeCut, extentMs, tickLabelFits, timeToPx, visibleClips, visibleTicks } from './model'
+import {
+  canvasWidth,
+  edgeCut,
+  extentMs,
+  interiorSpans,
+  tickLabelFits,
+  timeToPx,
+  visibleClips,
+  visibleTicks,
+} from './model'
 import type { Layout } from './model'
 import type { LaneSlot } from './overlays/control'
 import type { Playhead } from './playhead'
@@ -52,6 +65,17 @@ const CUT_TEXT_PX = 72
 /** A touch that moves less than this and ends within `TAP_MS` is a tap. */
 const TAP_PX = 8
 const TAP_MS = 600
+/** What the edge tools say while a save or a move of marked clips is pending. */
+const EDGE_LOCKED = 'Trimming is unavailable while the save runs or marked clips are moved.'
+
+/** Whether a key's target takes text: the track's letters never reach a field. */
+function inField(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || target.matches('input, textarea, select, [contenteditable="true"]'))
+  )
+}
+
 /** No black cards: no band starts before its first clip. */
 const NO_LEAD: ReadonlyMap<number, number> = new Map()
 
@@ -243,6 +267,103 @@ function ChapterBand({
   )
 }
 
+/** What a clip's block needs besides the clip. */
+type BlockProps = {
+  eventId: string
+  index: number
+  left: number
+  pps: number
+  window: { from: number; to: number }
+  turn: Turn
+  noPicture: boolean
+  onFilmFailed: (identity: string) => void
+  after: boolean
+  descId: string
+}
+
+/** A clip's block over its kept extent: its filmstrip, its interior cuts and its name. */
+function ClipBlock({ clip, eventId, index, left, pps, window, turn, noPicture, onFilmFailed, after, descId }: BlockProps & { clip: TrackClip }) {
+  const keptMs = extentMs(clip.kept)
+  const widthPx = timeToPx(keptMs, pps)
+  const detailed = widthPx >= MIN_DETAIL_PX
+  return (
+    <div
+      className="tl-clip"
+      role="group"
+      tabIndex={-1}
+      aria-label={clip.name}
+      aria-describedby={descId}
+      data-index={index}
+      data-after={after || undefined}
+      data-no-picture={noPicture || undefined}
+      style={{ insetInlineStart: left, inlineSize: Math.max(1, widthPx) }}
+    >
+      <span id={descId} className="visually-hidden">
+        {clipDescription(clip.facts.durationMs, clip.cutCount, keptMs)}
+      </span>
+      {detailed && !noPicture && (
+        <Filmstrip
+          eventId={eventId}
+          clip={clip}
+          pps={pps}
+          window={{ from: window.from - left, to: window.to - left }}
+          turn={turn}
+          onFail={onFilmFailed}
+        />
+      )}
+      {detailed &&
+        clip.drawn.map((cut) => {
+          const cutPx = timeToPx(cut.to - cut.from, pps)
+          return (
+            <span
+              key={cut.from}
+              className="tl-cut"
+              role="img"
+              aria-label={cutLabel(cut)}
+              data-reason={cut.reasons[0] ?? 'manual'}
+              style={{ insetInlineStart: timeToPx(cut.from - clip.kept.inMs, pps), inlineSize: Math.max(2, cutPx) }}
+            >
+              {cutPx >= CUT_TEXT_PX && (
+                <span className="tl-cut-text" aria-hidden="true">
+                  {cut.reasons.length === 0 ? 'Cut' : cut.reasons.map(reasonWords).join(', ')}
+                </span>
+              )}
+            </span>
+          )
+        })}
+      {widthPx >= NAME_PX && (
+        <span className="tl-clip-label" aria-hidden="true">
+          <span className="tl-clip-tag">
+            <span className="tl-clip-name">{clip.name}</span>
+            <span className="tl-clip-length">{formatTime(keptMs / 1000)}</span>
+          </span>
+        </span>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The block of a clip whose edge is dragged (`clip-edge-trim`): drawn from the edge in the air,
+ * its left side where it was, as wide as its new kept extent, its tiles and cuts from the new in-point.
+ */
+function LiveClipBlock({ clip, drag, ...props }: BlockProps & { clip: TrackClip; drag: DragStore }) {
+  const live = useSyncExternalStore(drag.subscribe, () => {
+    const e = drag.getEdge()
+    return e !== null && e.identity === clip.identity ? e : null
+  })
+  if (live === null) {
+    return <ClipBlock clip={clip} {...props} />
+  }
+  const durationMs = clip.facts.durationMs
+  const shown: TrackClip = {
+    ...clip,
+    kept: live.extent,
+    drawn: interiorSpans(drawnCuts(live.cuts, durationMs), live.extent),
+  }
+  return <ClipBlock clip={shown} {...props} />
+}
+
 export function Track({
   eventId,
   clips,
@@ -268,6 +389,8 @@ export function Track({
   onSelect,
   cardLane,
   shifting = null,
+  snapping,
+  onEdgeKey,
 }: {
   eventId: string
   clips: readonly TrackClip[]
@@ -303,8 +426,12 @@ export function Track({
   onSelect: (identity: string, key: string) => void
   /** The title cards' lane; absent, the Timeline draws none. */
   cardLane?: CardLaneModel
-  /** A black card's drag in progress (`ShiftFrom`), or null. */
+  /** A black card's or a clip edge's drag in progress (`ShiftFrom`), or null. */
   shifting?: ShiftFrom | null
+  /** The edge drags' snapping switch (`S`). */
+  snapping: SnapSwitch
+  /** `q`, `w` and `s` on the track in Edit mode (`clip-edge-trim`). */
+  onEdgeKey: (key: 'q' | 'w' | 's') => void
 }) {
   const base = useId()
   const canvas = useRef<HTMLDivElement>(null)
@@ -312,6 +439,12 @@ export function Track({
   const ruler = useScrub(canvas, onScrub, focusGrip, 'ruler')
   const lane = useScrub(canvas, onScrub, focusGrip, 'lane')
   const grab = useScrub(canvas, onScrub, focusGrip, 'ruler')
+  // Every cut handle and edge tool: one nearest-wins press test across them.
+  const [targets] = useState<PressTargets>(() => new Map())
+  const edgeDragged = shifting !== null && shifting.kind === 'edge' ? shifting.identity : null
+  // The clip whose edge tool holds focus: its tools stay while the block is too narrow for detail
+  // (an End that trims the clip to three frames leaves its tool there for a Home).
+  const [focusedEdge, setFocusedEdge] = useState<string | null>(null)
 
   const totalPx = timeToPx(lay.totalMs, pps)
   const canvasPx = canvasWidth(lay.totalMs, pps, gutter)
@@ -324,6 +457,8 @@ export function Track({
   const clipNodes = []
   const handleNodes = []
   const keysId = `${base}-trim-keys`
+  const edgeKeysId = `${base}-edge-keys`
+  const lockedId = `${base}-edge-locked`
   if (shown !== null) {
     for (let index = shown[0]; index <= shown[1]; index += 1) {
       const clip = clips[index]
@@ -340,9 +475,45 @@ export function Track({
       const widthPx = timeToPx(keptMs, pps)
       const detailed = widthPx >= MIN_DETAIL_PX
       const descId = `${base}-c${index}`
-      if (detailed) {
+      const after = behind(shifting, lay.startsMs[index])
+      if (detailed || focusedEdge === clip.identity) {
         const listed = editing.listed(clip.identity)
-        if (listed.some((cut) => !cut.removed && !edgeCut(cut, clip.kept, clip.facts.durationMs))) {
+        const edge = (side: 'start' | 'end') => (
+          <EdgeTool
+            key={`${clip.identity}|${side}`}
+            identity={clip.identity}
+            name={clip.name}
+            clipIndex={index}
+            side={side}
+            facts={clip.facts}
+            kept={clip.kept}
+            listed={listed}
+            blockLeft={left}
+            widthPx={widthPx}
+            pps={pps}
+            after={after}
+            playhead={playhead}
+            drag={drag}
+            locked={editing.locked}
+            keysId={edgeKeysId}
+            lockedId={lockedId}
+            selectedKey={selected?.identity === clip.identity ? selected.key : null}
+            targets={targets}
+            snapping={snapping}
+            onSelect={onSelect}
+            onEdge={editing.onEdge}
+            onFocusChange={setFocusedEdge}
+            fallbackRef={gripRef}
+          />
+        )
+        // Tab order per clip: Trim In, its cut handles, Trim Out.
+        handleNodes.push(edge('start'))
+        // The cut handles of a clip whose edge is in the air step out until it is released.
+        if (
+          detailed &&
+          edgeDragged !== clip.identity &&
+          listed.some((cut) => !cut.removed && !edgeCut(cut, clip.kept, clip.facts.durationMs))
+        ) {
           handleNodes.push(
             <ClipHandles
               key={clip.identity}
@@ -354,7 +525,7 @@ export function Track({
               left={left - inPx}
               widthPx={inPx + widthPx}
               totalPx={totalPx}
-              shifted={behind(shifting, lay.startsMs[index])}
+              shifted={after}
               pps={pps}
               listed={listed}
               playhead={playhead}
@@ -366,65 +537,30 @@ export function Track({
               onTrim={editing.onTrim}
               announce={editing.announce}
               fallbackRef={gripRef}
+              targets={targets}
             />,
           )
         }
+        handleNodes.push(edge('end'))
+      }
+      const blockProps: BlockProps = {
+        eventId,
+        index,
+        left,
+        pps,
+        window: { from: windowFrom, to: windowTo },
+        turn: turns.get(clip.identity) ?? 0,
+        noPicture: noPicture.has(clip.identity),
+        onFilmFailed,
+        after,
+        descId,
       }
       clipNodes.push(
-        <div
-          key={clip.identity}
-          className="tl-clip"
-          role="group"
-          tabIndex={-1}
-          aria-label={clip.name}
-          aria-describedby={descId}
-          data-index={index}
-          data-after={behind(shifting, lay.startsMs[index]) || undefined}
-          data-no-picture={noPicture.has(clip.identity) || undefined}
-          style={{ insetInlineStart: left, inlineSize: Math.max(1, widthPx) }}
-        >
-          <span id={descId} className="visually-hidden">
-            {clipDescription(clip.facts.durationMs, clip.cutCount, keptMs)}
-          </span>
-          {detailed && !noPicture.has(clip.identity) && (
-            <Filmstrip
-              eventId={eventId}
-              clip={clip}
-              pps={pps}
-              window={{ from: windowFrom - left, to: windowTo - left }}
-              turn={turns.get(clip.identity) ?? 0}
-              onFail={onFilmFailed}
-            />
-          )}
-          {detailed &&
-            clip.drawn.map((cut) => {
-              const cutPx = timeToPx(cut.to - cut.from, pps)
-              return (
-                <span
-                  key={cut.from}
-                  className="tl-cut"
-                  role="img"
-                  aria-label={cutLabel(cut)}
-                  data-reason={cut.reasons[0] ?? 'manual'}
-                  style={{ insetInlineStart: timeToPx(cut.from - clip.kept.inMs, pps), inlineSize: Math.max(2, cutPx) }}
-                >
-                  {cutPx >= CUT_TEXT_PX && (
-                    <span className="tl-cut-text" aria-hidden="true">
-                      {cut.reasons.length === 0 ? 'Cut' : cut.reasons.map(reasonWords).join(', ')}
-                    </span>
-                  )}
-                </span>
-              )
-            })}
-          {widthPx >= NAME_PX && (
-            <span className="tl-clip-label" aria-hidden="true">
-              <span className="tl-clip-tag">
-                <span className="tl-clip-name">{clip.name}</span>
-                <span className="tl-clip-length">{formatTime(keptMs / 1000)}</span>
-              </span>
-            </span>
-          )}
-        </div>,
+        edgeDragged === clip.identity ? (
+          <LiveClipBlock key={clip.identity} clip={clip} drag={drag} {...blockProps} />
+        ) : (
+          <ClipBlock key={clip.identity} clip={clip} {...blockProps} />
+        ),
       )
     }
   }
@@ -448,6 +584,16 @@ export function Track({
         if (key !== null) {
           event.preventDefault()
           onTrackKey(key)
+          return
+        }
+        if (event.ctrlKey || event.altKey || event.metaKey) {
+          return
+        }
+        // Q, W and S: the edge tools' keys, never in a field.
+        const letter = event.key.toLowerCase()
+        if ((letter === 'q' || letter === 'w' || letter === 's') && !inField(event.target)) {
+          event.preventDefault()
+          onEdgeKey(letter)
         }
       }}
     >
@@ -544,6 +690,14 @@ export function Track({
             <span id={keysId} className="visually-hidden">
               {TRIM_KEYS}
             </span>
+            <span id={edgeKeysId} className="visually-hidden">
+              {EDGE_KEYS}
+            </span>
+            {editing.locked && (
+              <span id={lockedId} className="visually-hidden">
+                {EDGE_LOCKED}
+              </span>
+            )}
             <span id={`${base}-card-keys`} className="visually-hidden">
               {CARD_KEYS}
             </span>

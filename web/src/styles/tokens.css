@@ -50,6 +50,9 @@
     --idle-bg: light-dark(oklch(95% 0.006 260), oklch(27% 0.014 260));
     --idle-fg: light-dark(oklch(43% 0.02 260), oklch(83% 0.016 260));
     --idle: var(--fg-subtle);
+    /* The clip edge tools (`clip-edge-trim`): a yellow bracket, outlined in ink so it holds 3:1 on any ground. */
+    --trim-edge: light-dark(oklch(84% 0.17 92), oklch(86% 0.16 92));
+    --trim-edge-ink: light-dark(oklch(21% 0.02 260), oklch(12% 0.01 260));
 
     /* Shadows: floating layers only (dialog, toast). */
     --shadow-color: light-dark(oklch(22% 0.02 260 / 0.1), oklch(0% 0 0 / 0.45));

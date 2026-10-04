@@ -26,14 +26,14 @@
 
 ## 3. Components (web/timeline)
 
-- [ ] 3.1 Add `EdgeHandles.tsx` + `timeline.css`: zones inside the block (8 / 24 px, ≤ a third of the block),
+- [x] 3.1 Add `EdgeHandles.tsx` + `timeline.css`: zones inside the block (8 / 24 px, ≤ a third of the block),
   bracket SVG cursors (32×32 data URI, hotspot, `ew-resize` fallback), visible bracket, slider semantics (names,
   values, value text, `aria-describedby`), pointer lifecycle (capture, 3 px slop, Escape/cancel/lost capture, Alt,
   `touch-action: none`), tip, limit colour and words, snap line, `locked` state, reduced motion, light/dark tokens;
   mount only in Edit mode on detailed, windowed blocks; extend `nearestHandle`/`winnerAt` so edges and interior
   handles share one nearest-wins hit test; a pressed/focused edge selects its edge cut in `CutFields`. Verify with
   `handles.test.ts` cases for the shared hit test, `npx tsc --noEmit` and `npm run build` in the node:22 container.
-- [ ] 3.2 Wire `Q`, `W` and `S` in `Timeline.tsx`/`Track.tsx` (focus rules, never in fields), the release and key
+- [x] 3.2 Wire `Q`, `W` and `S` in `Timeline.tsx`/`Track.tsx` (focus rules, never in fields), the release and key
   announcements through Edit mode's live region, and Tab order (Trim In, cut handles, Trim Out per clip). Verify with
   `npm test`, `tsc` and the Playwright keyboard checks of 4.1.
 

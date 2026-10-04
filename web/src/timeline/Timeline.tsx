@@ -41,6 +41,7 @@ import { positionOnTrack, stepFramesOnTrack, trackStart } from './play'
 import { useCardImages } from './useCardImages'
 import type { CardsBinding } from './useCardSelection'
 import { createDragStore, shiftMs } from './dragStore'
+import { edgeAnnouncement, edgeEdit, snappingWords, toPlayheadRefusal, trimToPlayhead } from './edgeTrim'
 import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
 import { selectionStands } from './handles'
@@ -93,6 +94,8 @@ import { ZoomSlider } from './ZoomSlider'
  * themselves, so a scrub or a playing video re-renders them and not the whole track.
  */
 
+/** What `Q` and `W` say while a save or a move of marked clips is pending. */
+const EDGE_UNAVAILABLE = 'Nothing trimmed: trimming is unavailable while the save runs or marked clips are moved.'
 /** The playhead is brought back into view when it comes this close to the scroller's edge. */
 const EDGE_PX = 24
 /** The track's margin around the view during a slider drag, in views (else one view a side). */
@@ -278,6 +281,9 @@ export function Timeline({
   const pendingScroll = useRef<number | null>(null)
   const dragging = useRef(false)
   const [announcement, setAnnouncement] = useState('')
+  // The edge drags' snapping (`S`), on until switched off, for as long as the page is open.
+  const snapping = useRef(true)
+  const edgeSide = useSyncExternalStore(drag.subscribe, () => drag.getEdge()?.side ?? null)
   const [noPicture, setNoPicture] = useState<ReadonlySet<string>>(new Set())
 
   // The playhead grip's half-width (`--tl-end-gutter`): the canvas keeps it free past the end, and
@@ -647,6 +653,37 @@ export function Timeline({
     }
   }, [])
 
+  /** `Q`/`W`: trim the start or end of the clip under the playhead to it; `S`: snapping off/on. */
+  const onEdgeKey = (key: 'q' | 'w' | 's') => {
+    if (key === 's') {
+      snapping.current = !snapping.current
+      editing.announce(snappingWords(snapping.current))
+      return
+    }
+    if (editing.locked) {
+      editing.announce(EDGE_UNAVAILABLE)
+      return
+    }
+    const side = key === 'q' ? 'start' : 'end'
+    const at = playhead.get()
+    const clip = at.card == null ? clips[at.clip] : undefined
+    if (clip === undefined) {
+      editing.announce(toPlayheadRefusal({ kind: 'refused', why: 'not-in-clip' }, side, null))
+      return
+    }
+    const listed = editing.listed(clip.identity)
+    const result = trimToPlayhead(listed, side, at.ms, clip.facts)
+    if (result.kind !== 'edit') {
+      editing.announce(toPlayheadRefusal(result, side, clip.name))
+      return
+    }
+    editing.onEdge(
+      clip.identity,
+      edgeEdit(listed, side, result.at.x, clip.facts),
+      edgeAnnouncement(clip.name, side, result.at, clip.facts.durationMs),
+    )
+  }
+
   const onFilmFailed = useCallback(
     (identity: string) =>
       setNoPicture((held) => (held.has(identity) ? held : new Set(held).add(identity))),
@@ -725,7 +762,7 @@ export function Timeline({
     )
   }
   return (
-    <div className="timeline" data-trimming={trimming || undefined}>
+    <div className="timeline" data-trimming={trimming || undefined} data-edge-side={edgeSide ?? undefined}>
       <div className="tl-stage" data-turned>
         {held ? (
           <p className="tl-stage-held">{PREVIEW_OPEN}</p>
@@ -888,6 +925,8 @@ export function Timeline({
         onSelect={select}
         cardLane={cardLane}
         shifting={shifting}
+        snapping={snapping}
+        onEdgeKey={onEdgeKey}
       />
 
       <CutFields

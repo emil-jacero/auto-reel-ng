@@ -860,6 +860,194 @@
   }
 
   /*
+   * The clip edge tools (`clip-edge-trim`): Trim In along a block's left edge and Trim Out along
+   * its right, each a zone inside its own block (--zone: 8 px fine, 24 px coarse, at most a third
+   * of the block) at the edge's place --x on the canvas. The cursor is a yellow bracket with
+   * arrows (32 px SVG; the image's colours are literal, a data URI cannot read a token), with
+   * the ew-resize keyword as its fallback; the bracket on the edge shows the tool without one.
+   */
+  .timeline {
+    --cursor-trim-in: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 6h-4v20h4' stroke='%231a1a1a' stroke-width='5.5'/%3E%3Cpath d='M3 16h8M6 13l-3 3l3 3M21 16h8M26 13l3 3l-3 3' stroke='%231a1a1a' stroke-width='4.5'/%3E%3Cpath d='M19 6h-4v20h4' stroke='%23ffd21f' stroke-width='3'/%3E%3Cpath d='M3 16h8M6 13l-3 3l3 3M21 16h8M26 13l3 3l-3 3' stroke='%23ffd21f' stroke-width='2'/%3E%3C/g%3E%3C/svg%3E") 15 16, ew-resize;
+    --cursor-trim-out: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 6h4v20h-4' stroke='%231a1a1a' stroke-width='5.5'/%3E%3Cpath d='M3 16h8M6 13l-3 3l3 3M21 16h8M26 13l3 3l-3 3' stroke='%231a1a1a' stroke-width='4.5'/%3E%3Cpath d='M13 6h4v20h-4' stroke='%23ffd21f' stroke-width='3'/%3E%3Cpath d='M3 16h8M6 13l-3 3l3 3M21 16h8M26 13l3 3l-3 3' stroke='%23ffd21f' stroke-width='2'/%3E%3C/g%3E%3C/svg%3E") 17 16, ew-resize;
+  }
+
+  .tl-edge {
+    position: absolute;
+    inset-block: 0;
+    inline-size: var(--zone);
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+    outline: none;
+
+    &[data-side='start'] {
+      inset-inline-start: var(--x);
+      cursor: var(--cursor-trim-in);
+    }
+
+    &[data-side='end'] {
+      inset-inline-start: calc(var(--x) - var(--zone));
+      cursor: var(--cursor-trim-out);
+    }
+
+    &[aria-disabled='true'] {
+      cursor: not-allowed;
+    }
+  }
+
+  /* A drag holds the trim cursor over the whole track, so it does not flicker off the narrow zone. */
+  .timeline[data-edge-side='start'] :is(.tl-canvas, .tl-canvas *) {
+    cursor: var(--cursor-trim-in);
+  }
+
+  .timeline[data-edge-side='end'] :is(.tl-canvas, .tl-canvas *) {
+    cursor: var(--cursor-trim-out);
+  }
+
+  /*
+   * A tip over an edge rises over the card lane's handles while it shows: the tip shows while its
+   * tool is dragged or holds focus. (Not `:has()`, which the tip's text, changing on every move,
+   * would make the browser test again.)
+   */
+  .tl-trims-host:focus-within,
+  .timeline[data-edge-side] .tl-trims-host {
+    z-index: 4;
+  }
+
+  /* The bracket: `[` on a Trim In, `]` on a Trim Out, yellow with an ink outline. */
+  .tl-edge-bracket {
+    position: absolute;
+    inset-block: 3px;
+    inline-size: 7px;
+    border: 3px solid var(--trim-edge);
+    box-shadow:
+      0 0 0 1.5px var(--trim-edge-ink),
+      inset 0 0 0 1.5px var(--trim-edge-ink);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out);
+    pointer-events: none;
+  }
+
+  .tl-edge[data-side='start'] .tl-edge-bracket {
+    inset-inline-start: 0;
+    border-inline-end: 0;
+    border-start-start-radius: var(--r-sm);
+    border-end-start-radius: var(--r-sm);
+  }
+
+  .tl-edge[data-side='end'] .tl-edge-bracket {
+    inset-inline-end: 0;
+    border-inline-start: 0;
+    border-start-end-radius: var(--r-sm);
+    border-end-end-radius: var(--r-sm);
+  }
+
+  .tl-edge:hover .tl-edge-bracket,
+  .tl-edge:focus-visible .tl-edge-bracket,
+  .tl-edge[data-dragging] .tl-edge-bracket {
+    opacity: 1;
+  }
+
+  .tl-edge[data-selected] .tl-edge-bracket {
+    opacity: 1;
+    border-width: 4px;
+  }
+
+  .tl-edge:focus-visible .tl-edge-bracket {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  /* At the start or the end of the file: the limit's colour and a closed bracket (a stop bar). */
+  .tl-edge[data-limit='file'] .tl-edge-bracket {
+    border-color: var(--err);
+    border-width: 4px;
+  }
+
+  .tl-edge[data-limit='file'] .tl-edge-bracket::after {
+    content: '';
+    position: absolute;
+    inset-block: -3px;
+    inline-size: 3px;
+    background: var(--err);
+  }
+
+  .tl-edge[data-side='start'][data-limit='file'] .tl-edge-bracket::after {
+    inset-inline-start: -7px;
+  }
+
+  .tl-edge[data-side='end'][data-limit='file'] .tl-edge-bracket::after {
+    inset-inline-end: -7px;
+  }
+
+  .tl-edge[aria-disabled='true'] .tl-edge-bracket {
+    border-color: var(--idle);
+    border-style: dashed;
+  }
+
+  .tl-edge-snap-line {
+    position: absolute;
+    inset-block: -0.25rem;
+    inline-size: 0;
+    border-inline-start: 2px dashed var(--fg);
+    box-shadow: 0 0 0 1px var(--surface);
+    pointer-events: none;
+  }
+
+  .tl-edge[data-side='start'] .tl-edge-snap-line {
+    inset-inline-start: -1px;
+  }
+
+  .tl-edge[data-side='end'] .tl-edge-snap-line {
+    inset-inline-end: -1px;
+  }
+
+  /* The tip over the edge: the signed change and the new playing length, then its notes. */
+  .tl-edge-tip {
+    position: absolute;
+    inset-block-end: calc(100% + 2px);
+    z-index: 4;
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: center;
+    gap: 2px;
+    translate: calc(-50% + var(--tip-shift, 0px)) 0;
+    pointer-events: none;
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+
+  .tl-edge[data-side='start'] .tl-edge-tip {
+    inset-inline-start: 0;
+  }
+
+  .tl-edge[data-side='end'] .tl-edge-tip {
+    inset-inline-start: 100%;
+  }
+
+  .tl-edge-tip-time,
+  .tl-edge-note {
+    padding: 1px var(--s-2);
+    border-radius: var(--r-sm);
+    background: var(--fg);
+    color: var(--bg);
+  }
+
+  .tl-edge-tip-time {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tl-edge-note {
+    font-weight: 600;
+
+    &[data-file] {
+      background: var(--err);
+    }
+  }
+
+  /*
    * The card handles (`title-card-duration-drag`): a layer over the card lane, after the
    * clip handles in the stack. Each handle's area is a column centred on the block's end
    * edge; the bar is the visible edge.
@@ -1014,6 +1202,11 @@
       --trim-w: 2.75rem;
     }
 
+    /* No hover on a finger: the bracket is always there to be seen. */
+    .tl-edge .tl-edge-bracket {
+      opacity: 0.8;
+    }
+
     .tl-card-handle {
       --card-handle-w: 2.75rem;
     }
@@ -1028,6 +1221,18 @@
   }
 
   @media (forced-colors: active) {
+    .tl-edge-bracket {
+      forced-color-adjust: none;
+      border-color: Highlight;
+      box-shadow: none;
+    }
+
+    .tl-edge[data-limit='file'] .tl-edge-bracket,
+    .tl-edge[data-limit='file'] .tl-edge-bracket::after {
+      border-color: Mark;
+      background: Mark;
+    }
+
     .tl-trim-bar,
     .tl-trim-bar::after,
     .tl-trim-ghost {

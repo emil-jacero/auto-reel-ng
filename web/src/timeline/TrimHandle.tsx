@@ -7,6 +7,8 @@ import type { DraftCut } from '../edit/draft'
 import { toMs } from '../preview/playback'
 import { ClockTime } from '../ui/Clock'
 import type { DragStore } from './dragStore'
+import { pressWinner } from './EdgeHandles'
+import type { PressTarget, PressTargets } from './EdgeHandles'
 import type { TrimNote } from './editing'
 import {
   bareMousePress,
@@ -14,7 +16,6 @@ import {
   handedOffWords,
   handleRows,
   keyOutcome,
-  nearestHandle,
   snapWords,
 } from './handles'
 import type { SnapContext } from './handles'
@@ -43,20 +44,10 @@ import { tipOf } from './readout'
 /** A press this close to where it began (px) is a click, not a drag. */
 const SLOP_PX = 3
 
-/** The area of a handle, in px, by pointer: its press reach. */
-const FINE_PX = 24
-const COARSE_PX = 44
-
-function coarse(): boolean {
-  return typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
-}
-
-/** One handle's identity within its clip. */
-const handleId = (key: string, edge: TrimEdge) => `${key}:${edge}`
+/** One handle's identity on the track (the press targets hold the edge tools too). */
+const handleId = (identity: string, key: string, edge: TrimEdge) => `${identity}|${key}:${edge}`
 
 type Begin = (event: PointerEvent<HTMLElement>) => void
-/** What a handle offers its clip's layer: its element, a drag to begin, and to be chosen. */
-type Registered = { el: HTMLElement; begin: Begin; choose: () => void }
 
 export function ClipHandles({
   identity,
@@ -79,6 +70,7 @@ export function ClipHandles({
   onTrim,
   announce,
   fallbackRef,
+  targets,
 }: {
   identity: string
   name: string
@@ -119,9 +111,12 @@ export function ClipHandles({
    * trailing cut): the playhead's grip, never <body>.
    */
   fallbackRef: RefObject<HTMLElement | null>
+  /**
+   * The track's press targets: this clip's handles and every edge tool, so a press where areas
+   * overlap goes to the nearest edge of any of them (`clip-edge-trim`).
+   */
+  targets: PressTargets
 }) {
-  const registry = useRef(new Map<string, Registered>())
-  const layer = useRef<HTMLDivElement>(null)
   const rows = handleRows(listed, kept, facts.durationMs)
   // The edge being dragged in this clip: its cut's live span and the snap line.
   const live = useSyncExternalStore(drag.subscribe, () => {
@@ -132,30 +127,9 @@ export function ClipHandles({
   /** Whether a pointer sequence is in progress: its compat `mousedown` is not a bare one. */
   const pointerSeen = useRef(false)
 
-  /** Which handle a press at `clientX` on handle `id` belongs to: the nearer edge where two areas overlap. */
-  const winnerAt = (clientX: number, id: string): string => {
-    const box = layer.current?.getBoundingClientRect()
-    const reach = coarse() ? COARSE_PX : FINE_PX
-    const contenders = rows.flatMap(({ cut }) =>
-      (['in', 'out'] as const).flatMap((edge) => {
-        const entry = registry.current.get(handleId(cut.key, edge))
-        if (entry === undefined) {
-          return []
-        }
-        const area = entry.el.getBoundingClientRect()
-        if (clientX < area.left || clientX > area.right) {
-          return []
-        }
-        const ms = Math.min(facts.durationMs, toMs(edge === 'in' ? cut.in : cut.out))
-        return [{ id: handleId(cut.key, edge), px: timeToPx(ms, pps) }]
-      }),
-    )
-    return nearestHandle(clientX - (box?.left ?? 0), contenders, reach) ?? id
-  }
-
-  /** A press on a handle goes to the nearer edge where the areas of two overlap. */
+  /** A press on a handle goes to the nearer edge where the areas of two overlap (edge tools too). */
   const press = (event: PointerEvent<HTMLElement>, id: string) => {
-    registry.current.get(winnerAt(event.clientX, id))?.begin(event)
+    targets.get(pressWinner(targets, event.clientX, id))?.begin(event)
   }
 
   /**
@@ -165,13 +139,13 @@ export function ClipHandles({
    */
   const bareMouseDown = (event: MouseEvent<HTMLElement>) => {
     const target = event.target as Element
-    const hit = [...registry.current].find(([, entry]) => entry.el.contains(target))
+    const hit = [...targets].find(([, entry]) => entry.el.contains(target))
     if (hit === undefined || !bareMousePress(pointerSeen.current, event.button)) {
       return
     }
     event.preventDefault()
     if (!locked) {
-      registry.current.get(winnerAt(event.clientX, hit[0]))?.choose()
+      targets.get(pressWinner(targets, event.clientX, hit[0]))?.choose()
     }
   }
 
@@ -189,7 +163,6 @@ export function ClipHandles({
 
   return (
     <div
-      ref={layer}
       className="tl-trims"
       data-index={index}
       data-after={shifted || undefined}
@@ -232,7 +205,7 @@ export function ClipHandles({
       {rows.flatMap(({ cut, index: at }) =>
         (['in', 'out'] as const).map((edge) => (
           <TrimHandle
-            key={handleId(cut.key, edge)}
+            key={handleId(identity, cut.key, edge)}
             identity={identity}
             name={name}
             clipIndex={index}
@@ -248,7 +221,7 @@ export function ClipHandles({
             locked={locked}
             keysId={keysId}
             selected={selectedKey === cut.key}
-            registry={registry.current}
+            registry={targets}
             onPress={press}
             onSelect={onSelect}
             onTrim={onTrim}
@@ -300,7 +273,7 @@ const TrimHandle = memo(function TrimHandle({
   locked: boolean
   keysId: string
   selected: boolean
-  registry: Map<string, Registered>
+  registry: PressTargets
   onPress: (event: PointerEvent<HTMLElement>, id: string) => void
   onSelect: (identity: string, key: string) => void
   onTrim: (
@@ -312,7 +285,7 @@ const TrimHandle = memo(function TrimHandle({
   announce: (words: string) => void
   fallbackRef: RefObject<HTMLElement | null>
 }) {
-  const id = handleId(cut.key, edge)
+  const id = handleId(identity, cut.key, edge)
   const number = at + 1
   const el = useRef<HTMLDivElement>(null)
   const tip = useRef<HTMLSpanElement>(null)
@@ -483,7 +456,13 @@ const TrimHandle = memo(function TrimHandle({
     onSelect(identity, cut.key)
   }
   useEffect(() => {
-    registry.set(id, { el: el.current as HTMLElement, begin, choose })
+    const target: PressTarget = {
+      el: el.current as HTMLElement,
+      px: () => left + timeToPx(Math.min(facts.durationMs, ownMs), ppsRef.current),
+      begin,
+      choose,
+    }
+    registry.set(id, target)
     return () => {
       registry.delete(id)
     }

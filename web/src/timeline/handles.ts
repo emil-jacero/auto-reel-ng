@@ -1,6 +1,7 @@
 import type { ListedCut } from '../cuts/times.ts'
 import { cutSpans, edgeCut, frameMs, keptExtent, nearestFrame } from './model.ts'
 import type { Extent, Ms } from './model.ts'
+import { edgeCutOf } from './edgeTrim.ts'
 
 /*
  * The pure parts of a trim handle that the model does not have (D-20): what a key does
@@ -31,7 +32,8 @@ export function handleRows<C extends ListedCut>(
 /**
  * Whether a selected cut still stands: listed, not removed, and not part of a leading or a
  * trailing cut (a handle released at the clip's edge makes it one: its handles are gone, so is
- * the selection).
+ * the selection) unless it is the clip's edge cut, which the edge tools select
+ * (`clip-edge-trim`).
  */
 export function selectionStands(
   listed: readonly (ListedCut & { key: string })[],
@@ -39,9 +41,14 @@ export function selectionStands(
   kept: Extent | null,
   durationMs: Ms,
 ): boolean {
-  return listed.some(
-    (cut) => cut.key === key && cut.removed !== true && (kept === null || !edgeCut(cut, kept, durationMs)),
-  )
+  const cut = listed.find((c) => c.key === key)
+  if (cut === undefined || cut.removed === true) {
+    return false
+  }
+  if (kept === null || !edgeCut(cut, kept, durationMs)) {
+    return true
+  }
+  return (['start', 'end'] as const).some((side) => edgeCutOf(listed, side, durationMs)?.cut === cut)
 }
 
 /**
