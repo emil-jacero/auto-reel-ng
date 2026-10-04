@@ -19,17 +19,21 @@ export function CardLayer({
   placements,
   specs,
   pictures,
+  playing,
 }: {
   playhead: Playhead
   placements: readonly Placement[]
   specs: readonly CardSpec[]
   pictures: CardPictures
+  /** Only real-time play fades; a paused or scrubbed position shows the card in full. */
+  playing: boolean
 }) {
   const at = useSyncExternalStore(playhead.subscribe, playhead.get)
   const shown = shownAt(at, placements)
   if (shown.kind === 'clip') {
     return null
   }
+  const opacity = playing ? shown.opacity : 1
   const spec = specs[shown.chapter]
   const url = pictures.get(spec?.chapter ?? '')?.url ?? null
   const title = spec?.card?.title ?? ''
@@ -38,13 +42,13 @@ export function CardLayer({
       className="tl-card-layer"
       data-kind={shown.kind}
       data-chapter={spec?.chapter}
-      data-opacity={shown.opacity.toFixed(3)}
+      data-opacity={opacity.toFixed(3)}
       aria-hidden="true"
     >
       {url !== null ? (
-        <img src={url} alt="" draggable={false} style={{ opacity: shown.opacity }} />
+        <img src={url} alt="" draggable={false} style={{ opacity }} />
       ) : (
-        <p className="tl-card-fallback" style={{ opacity: shown.opacity }}>
+        <p className="tl-card-fallback" style={{ opacity }}>
           {title}
         </p>
       )}

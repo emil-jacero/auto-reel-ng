@@ -147,6 +147,25 @@ describe('the card images', () => {
     assert.notEqual(images.get('b')?.url, before?.url)
   })
 
+  it('stops waiting out a 503 for a card that was edited, and draws the new request at once', async () => {
+    const { log, images } = rig((_request, call) =>
+      call === 1 ? { kind: 'busy', retryAfter: 30 } : { kind: 'image', png: new Blob(['x']) },
+    )
+    images.sync([job('a')])
+    await settle()
+    assert.equal(log.calls.length, 1)
+    images.sync([job('a', 'edited')])
+    // The quiet timer is the live one (the 503 wait is the older one): fire the newest.
+    const quiet = log.timers[log.timers.length - 1]
+    assert.equal(quiet.ms, QUIET_MS)
+    quiet.live = false
+    quiet.run()
+    await settle()
+    assert.deepEqual(log.calls[1], { chapter: 'a', text: 'edited' })
+    assert.equal(images.get('a')?.state, 'ready')
+    assert.equal(log.timers.filter((t) => t.live).length, 0)
+  })
+
   it('takes only the last of several quick edits', async () => {
     const { log, images } = rig()
     images.sync([job('a')])

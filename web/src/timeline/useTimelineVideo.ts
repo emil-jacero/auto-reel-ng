@@ -109,6 +109,8 @@ export function useTimelineVideo({
   turnsRef.current = turns
   const heldRef = useRef(held)
   heldRef.current = held
+  /** Play was pressed while a clip preview held the video. */
+  const playWhenFree = useRef(false)
   const wantPlay = useRef(false) // the operator asked for Play and has not paused
   const afterSettle = useRef(false) // start the video once it has arrived at its target
   const operatorStart = useRef(false) // the pending start is the operator's own Play
@@ -286,6 +288,7 @@ export function useTimelineVideo({
   }, [clock, playhead])
 
   const stopPlaying = useCallback(() => {
+    playWhenFree.current = false
     pauseCard()
     wantPlay.current = false
     afterSettle.current = false
@@ -577,6 +580,13 @@ export function useTimelineVideo({
   }, [moveVideo, playhead, runCard])
 
   const play = useCallback(() => {
+    if (heldRef.current) {
+      // A clip preview still holds the page's video (it is being closed): no card clock now, or it
+      // would run over the preview and hand over to a video that is not there. Play goes on when
+      // the Timeline has its video back.
+      playWhenFree.current = true
+      return
+    }
     const spans = playable(clipsRef.current)
     const at = playhead.get()
     if (at.card != null) {
@@ -671,6 +681,14 @@ export function useTimelineVideo({
       coalescer.failed()
     }
   }, [coalescer, disarm, held, moveVideo, pauseCard, playhead])
+
+  // Play was pressed while a clip preview held the video: it goes on once the video is the Timeline's.
+  useEffect(() => {
+    if (!held && playWhenFree.current) {
+      playWhenFree.current = false
+      play()
+    }
+  }, [held, play])
 
   return { videoRef, playing, note, seekTo, scrubStart, scrubEnd, toggle, handlers }
 }
