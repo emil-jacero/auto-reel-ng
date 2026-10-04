@@ -151,6 +151,18 @@ def test_an_overlay_spec_built_the_old_way_serializes_its_old_keys() -> None:
     assert not overlay.is_timed
 
 
+def test_a_materialized_overlay_with_no_fades_is_still_timed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def produce(segment: Segment, target: TargetSpec, dest: Path) -> ProducedSegment:
+        return ProducedSegment(image_path=dest, duration=4.0, fade_in=0.0, fade_out=0.0)
+
+    monkeypatch.setitem(producers._REGISTRY, "flat-card", produce)  # pylint: disable=W0212
+    overlay = OverlaySpec(producer="flat-card")
+    assert not overlay.is_timed
+    assert materialize_overlay(overlay, _target(), tmp_path / "c.png").is_timed
+
+
 def test_an_overlay_with_a_fade_is_timed() -> None:
     assert OverlaySpec(fade_in=0.5).is_timed and OverlaySpec(fade_out=0.5).is_timed
 
@@ -332,6 +344,23 @@ def test_a_timed_overlay_must_start_with_the_segment() -> None:
         _build(_segment(overlays=(_card_overlay(start=1.0),)), CPUProfile())
 
 
+def test_a_timed_overlay_with_both_fades_zero_is_looped_with_no_fade_filters() -> None:
+    overlay = _card_overlay(fade_in=0.0, fade_out=0.0, timed=True)
+    command = _build(_segment(overlays=(overlay,)), _amd())
+    graph = _graph(command.args)
+    assert "-loop" in command.args
+    assert "[1:v]format=rgba[ov0]" in graph and "fade=" not in graph
+    assert ":format=auto" in graph
+
+
+def test_a_timed_overlay_with_both_fades_zero_is_clamped_to_the_segment() -> None:
+    from auto_reel_ng.render.normalize import _clamp_timed_overlays  # pylint: disable=C0415
+
+    overlay = _card_overlay(fade_in=0.0, fade_out=0.0, timed=True)
+    out, warnings = _clamp_timed_overlays(_segment(overlays=(overlay,)), 3.0)
+    assert out[0].end == 3.0 and len(warnings) == 1
+
+
 def test_an_overlay_without_fades_keeps_the_old_graph() -> None:
     plain = OverlaySpec(source="title.png", x="10", y="20")
     command = _build(_segment(overlays=(plain,)), _amd())
@@ -469,7 +498,9 @@ def _grey_clip(runtime, path: Path, duration: float) -> Path:
     return path
 
 
-def _event(runtime, tmp_path: Path, name: str, *, duration: float, video_card: bool):
+def _event(
+    runtime, tmp_path: Path, name: str, *, duration: float, video_card: bool, fade: float = 2.0
+):
     event = tmp_path / name
     event.mkdir()
     _grey_clip(runtime, event / "a.mp4", duration)
@@ -481,7 +512,7 @@ def _event(runtime, tmp_path: Path, name: str, *, duration: float, video_card: b
             "decorators": ["title"] if video_card else ["none"],
             "target_resolution": [_W, _H],
             "video_codec": "h264",
-            "title_card": {"fade_in": 2.0, "fade_out": 2.0, "text_color": "#FFFFFF"},
+            "title_card": {"fade_in": fade, "fade_out": fade, "text_color": "#FFFFFF"},
         },
         chapters=(
             ResolvedChapter(
@@ -531,8 +562,8 @@ def _footage(luma: list[int]) -> int:
     return sum(1 for v in luma if 80 <= v <= 112)
 
 
-def _render_pair(runtime, tmp_path: Path, profile, duration: float):
-    plan, options = _event(runtime, tmp_path, "card", duration=duration, video_card=True)
+def _render_pair(runtime, tmp_path: Path, profile, duration: float, fade: float = 2.0):
+    plan, options = _event(runtime, tmp_path, "card", duration=duration, video_card=True, fade=fade)
     control_plan, control_options = _event(
         runtime, tmp_path, "control", duration=duration, video_card=False
     )
@@ -652,3 +683,27 @@ def test_a_clamped_video_card_renders_on_the_hardware_profile(
     result, control = _render_pair(runtime, tmp_path, profile, 3.0)
     assert len(result.warnings) == 1
     _assert_card_over_footage(runtime, result, control, 3.0)
+
+
+@pytest.mark.has_fonts
+@pytest.mark.has_ffmpeg
+def test_a_video_card_with_no_fades_clamps_and_warns_on_the_cpu(
+    has_fonts: None, runtime, tmp_path: Path
+) -> None:
+    result, control = _render_pair(runtime, tmp_path, CPUProfile(), 3.0, fade=0.0)
+    assert len(result.warnings) == 1 and "3 s of the 7 s asked" in result.warnings[0]
+    _assert_card_over_footage(runtime, result, control, 3.0)
+
+
+@pytest.mark.gpu
+@pytest.mark.has_fonts
+@pytest.mark.has_ffmpeg
+@pytest.mark.parametrize("duration", [12.0, 3.0])
+def test_a_video_card_with_no_fades_renders_on_the_hardware_profile(
+    has_fonts: None, runtime, tmp_path: Path, duration: float
+) -> None:
+    profile = select_profile(detect_capabilities(runtime))
+    if profile.vendor is Vendor.CPU:
+        pytest.skip("no usable hardware accelerator on this host")
+    result, control = _render_pair(runtime, tmp_path, profile, duration, fade=0.0)
+    _assert_card_over_footage(runtime, result, control, duration)
