@@ -73,3 +73,7 @@ audio track SHALL keep synthesized silence of the segment's length.
 - **WHEN** a split segment is encoded
 - **THEN** the head reports its share of the segment's progress weight and the tail the rest, so progress still
   reaches the segment's full weight and never goes backward
+
+#### Scenario: A source slower than the target keeps the unsplit picture at the seam
+- **WHEN** a 25 fps first clip with a 7.5 s card is rendered into a 30 fps movie, split and unsplit
+- **THEN** every frame, including the first frame of the tail, shows the same source frame as the unsplit render
