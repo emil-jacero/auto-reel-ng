@@ -1,5 +1,5 @@
 import type { ListedCut } from '../cuts/times.ts'
-import { skipSpans, toMs } from '../preview/playback.ts'
+import { skipSpans, toEnd, toMs } from '../preview/playback.ts'
 import type { Skip } from '../preview/playback.ts'
 
 /*
@@ -115,22 +115,115 @@ export const MAX_PPS = 240
 export const DEFAULT_PPS = 40
 export const SNAP_PX = 8
 
-/** Clips end to end: where each starts and how long the whole is. */
-export type Layout = { startsMs: readonly Ms[]; totalMs: Ms }
+/**
+ * A clip's **kept extent** (`timeline-ripple-layout`): the range `[inMs, outMs)` of its own
+ * time the Timeline lays out. `inMs` is the end of a leading cut (a joined span from 0), else
+ * 0; `outMs` the start of a trailing cut (the first joined span that runs to the clip's end or
+ * ends less than `END_SLACK_MS` before it, the span Play ends the clip at), else the
+ * duration. Empty (`outMs <= inMs`) when the cuts leave nothing; then it is `{0, 0}`.
+ */
+export type Extent = { inMs: Ms; outMs: Ms }
 
-/** The clips laid end to end, each as long as its own duration. */
-export function layout(clips: readonly ClipFacts[]): Layout {
+/** A clip's facts with its kept extent; without one the whole clip is kept. */
+export type KeptFacts = ClipFacts & Partial<Extent>
+
+/** The whole clip: what a clip with no edge cut keeps. */
+export function wholeExtent(durationMs: Ms): Extent {
+  return { inMs: 0, outMs: durationMs }
+}
+
+/**
+ * The kept extent of a clip of `durationMs` from its joined cut spans (`cutSpans`): the rule
+ * Play already uses to start a clip (`nextClip`) and to end it (`skipAt`), so that what the
+ * Timeline draws, where the playhead can go and what Play shows are the same.
+ */
+export function keptExtent(spans: readonly Skip[], durationMs: Ms): Extent {
+  finitePositive('durationMs', durationMs)
+  const first = spans[0]
+  const inMs = first !== undefined && first.from <= 0 ? first.to : 0
+  const trailing = spans.find((span) => toEnd(span, durationMs))
+  const outMs = trailing === undefined ? durationMs : trailing.from
+  return outMs <= inMs ? { inMs: 0, outMs: 0 } : { inMs, outMs }
+}
+
+/** Whether an extent keeps nothing. */
+export function emptyExtent(e: Extent): boolean {
+  return e.outMs <= e.inMs
+}
+
+/** How long an extent is. */
+export function extentMs(e: Extent): Ms {
+  return Math.max(0, e.outMs - e.inMs)
+}
+
+/**
+ * The spans the Timeline draws inside the block: the joined spans that are neither the
+ * leading cut nor at or after the trailing one, in the clip's own time.
+ */
+export function interiorSpans<S extends Skip>(spans: readonly S[], extent: Extent): S[] {
+  if (emptyExtent(extent)) {
+    return []
+  }
+  return spans.filter((span) => span.from >= extent.inMs && span.to <= extent.outMs && span.from > 0)
+}
+
+/**
+ * Whether a listed cut lies within the leading or the trailing cut of a clip (it has no
+ * handle and is not drawn). A removed cut, or one that is empty within the clip, is not one.
+ * In a clip that keeps nothing every cut is.
+ */
+export function edgeCut(cut: ListedCut, extent: Extent, durationMs: Ms): boolean {
+  if (cut.removed === true) {
+    return false
+  }
+  const from = Math.max(0, toMs(cut.in))
+  const to = Math.min(durationMs, toMs(cut.out))
+  if (to <= from) {
+    return false
+  }
+  return emptyExtent(extent) || to <= extent.inMs || from >= extent.outMs
+}
+
+/** Clips end to end: where each starts, how long the whole is, and each clip's kept start. */
+export type Layout = { startsMs: readonly Ms[]; totalMs: Ms; inMs: readonly Ms[] }
+
+/**
+ * The clips laid end to end, each as long as its kept extent (its own duration when it has
+ * none): a clip that keeps nothing takes no length.
+ */
+export function layout(clips: readonly KeptFacts[]): Layout {
   const startsMs: Ms[] = []
+  const ins: Ms[] = []
   let totalMs = 0
   clips.forEach((clip, index) => {
     finitePositive(`clips[${index}].durationMs`, clip.durationMs)
     if (!Number.isInteger(clip.durationMs)) {
       throw new ModelError(`clips[${index}].durationMs must be whole milliseconds`)
     }
+    const kept = extentOf(clip)
     startsMs.push(totalMs)
-    totalMs += clip.durationMs
+    ins.push(kept.inMs)
+    totalMs += extentMs(kept)
   })
-  return { startsMs, totalMs }
+  return { startsMs, totalMs, inMs: ins }
+}
+
+/** A clip's extent: its own, else the whole clip. */
+export function extentOf(clip: KeptFacts): Extent {
+  return clip.inMs === undefined || clip.outMs === undefined
+    ? wholeExtent(clip.durationMs)
+    : { inMs: clip.inMs, outMs: clip.outMs }
+}
+
+/** The layout time of a time in a clip: the clip's start plus the time less its kept start. */
+export function clipToLayout(l: Layout, clip: number, ms: Ms): Ms {
+  return l.startsMs[clip] + ms - (l.inMs[clip] ?? 0)
+}
+
+/** The clip that holds a layout time and the time in it (the inverse of `clipToLayout`); null for no clips. */
+export function layoutToClip(l: Layout, t: Ms): { clip: number; ms: Ms } | null {
+  const clip = clipAt(l, t)
+  return clip === null ? null : { clip, ms: t - l.startsMs[clip] + (l.inMs[clip] ?? 0) }
 }
 
 /**
@@ -143,7 +236,17 @@ export function clipAt(l: Layout, t: Ms): number | null {
   if (n === 0) {
     return null
   }
-  return lastAtOrBefore(l.startsMs, t, 0, n - 1) ?? 0
+  let clip = lastAtOrBefore(l.startsMs, Math.max(0, t), 0, n - 1) ?? 0
+  // Never a clip of no length: at or past the total, the last clip that has one.
+  while (clip > 0 && lengthOf(l, clip) === 0) {
+    clip -= 1
+  }
+  return clip
+}
+
+/** How long clip `i` is in the layout. */
+function lengthOf(l: Layout, i: number): Ms {
+  return (l.startsMs[i + 1] ?? l.totalMs) - l.startsMs[i]
 }
 
 /** The last index in [lo, hi] whose start is at or before `t`, else null. */
@@ -326,25 +429,31 @@ export function movieLengthMs(
 /**
  * One rectangle per listed cut that is not removed, keyed by its place in the list
  * (`index`, from 0; the Cuts panel and `playheadWords` call it `index + 1`, and a
- * handle's name uses the same number), for its own span clamped to the clip. A cut past the end is drawn up to it; one
- * wholly past it, or empty, has none.
+ * handle's name uses the same number), for its own span clamped to the clip, in px from the
+ * block's left edge (the extent's start). A cut past the end is drawn up to it; one wholly
+ * past it, or empty, has none; one within a leading or trailing cut (`edgeCut`) has none.
  */
 export function cutRects(
   cuts: readonly ListedCut[],
   durationMs: Ms,
   pps: number,
+  extent: Extent = wholeExtent(durationMs),
 ): { index: number; left: number; width: number }[] {
   finitePositive('durationMs', durationMs)
   finitePositive('pps', pps)
   const rects: { index: number; left: number; width: number }[] = []
   cuts.forEach((cut, index) => {
-    if (cut.removed === true) {
+    if (cut.removed === true || edgeCut(cut, extent, durationMs)) {
       return
     }
     const from = Math.max(0, toMs(cut.in))
     const to = Math.min(durationMs, toMs(cut.out))
     if (to > from) {
-      rects.push({ index, left: timeToPx(from, pps), width: timeToPx(to - from, pps) })
+      rects.push({
+        index,
+        left: timeToPx(from - extent.inMs, pps),
+        width: timeToPx(to - from, pps),
+      })
     }
   })
   return rects
