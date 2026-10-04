@@ -257,6 +257,27 @@ export function suggestionKey(event: SuggestionKeyEvent): 'approve' | 'dismiss' 
 export type MarkSpan = { startMs: number; endMs: number }
 
 /** Where a mark is drawn: its left edge and width in px from the track's start, and its row. */
+/**
+ * Where a suggestion lies on the track (`timeline-ripple-layout`): its times in the clip
+ * mapped through the clip's kept extent (`clipStartMs` is the clip's block's left edge, its
+ * kept start), the part inside a leading or a trailing cut left out. Null when the mark lies
+ * wholly inside one (its state is cut: it is not drawn), or the clip keeps nothing.
+ */
+export function markSpan(
+  segment: Pick<Suggestion, 'start' | 'end'>,
+  clipStartMs: number,
+  kept: { inMs: number; outMs: number },
+): MarkSpan | null {
+  const start = toMs(segment.start)
+  const end = toMs(segment.end)
+  if (kept.outMs <= kept.inMs || start >= kept.outMs || end < kept.inMs || (end === kept.inMs && end > start)) {
+    return null
+  }
+  const from = Math.max(start, kept.inMs)
+  const to = Math.min(end, kept.outMs)
+  return { startMs: clipStartMs + from - kept.inMs, endMs: clipStartMs + to - kept.inMs }
+}
+
 export type Placed = { left: number; width: number; row: number }
 
 /**

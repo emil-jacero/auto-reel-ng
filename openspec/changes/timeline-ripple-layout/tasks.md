@@ -23,7 +23,7 @@
   shows the kept length; `labels.ts` `clipDescription` says the kept length of the full one. Test with `node:test` for the
   label and value-text strings (`labels.test.ts`, `readout.test.ts`: "Clip 0:05.00 of 0:10.00 · Event 0:03.00 of 0:19.00")
   and in task 3.1 for the drawing.
-- [ ] 2.2 `overlays/useSuggestions.tsx` and `SuggestionLane.tsx`: marks and the "Not analyzed" note mapped through the
+- [x] 2.2 `overlays/useSuggestions.tsx` and `SuggestionLane.tsx`: marks and the "Not analyzed" note mapped through the
   extent, clipped, a mark wholly inside an edge cut not drawn. Test in `overlays/suggestions.test.ts` (or a new pure
   placement test): the "A suggestion inside a leading cut" scenario and the existing stacking cases.
 - [ ] 2.3 `Timeline.tsx`: the clips-read-again effect clamps the playhead to the nearest kept frame; the selection ends

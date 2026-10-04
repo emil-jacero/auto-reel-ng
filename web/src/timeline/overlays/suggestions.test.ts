@@ -21,6 +21,7 @@ import {
   dropGone,
   eventNote,
   laneName,
+  markSpan,
   decideApprove,
   decideDismiss,
   placeMarks,
@@ -639,5 +640,33 @@ describe('standingRefusal', () => {
     const gone = [{ in: 2, out: 4, removed: true }]
     assert.equal(standingRefusal(kept, 'a', 'pending', gone), null)
     assert.equal(decideApprove({ ...base, state: 'pending', listed: gone }).kind, 'approve')
+  })
+})
+
+describe('marks on a rippled track (timeline-ripple-layout)', () => {
+  // A's leading cut runs from 0 to 2.00 s; its block starts at track time 0.
+  const kept = { inMs: 2000, outMs: 10000 }
+
+  it('a suggestion inside a leading cut is not drawn; one across it starts at the block’s left edge', () => {
+    assert.equal(markSpan({ start: 0, end: 1.5 }, 0, kept), null)
+    assert.deepEqual(markSpan({ start: 1, end: 3 }, 0, kept), { startMs: 0, endMs: 1000 })
+    const placed = placeMarks([[markSpan({ start: 1, end: 3 }, 0, kept)!]], 40, 44)
+    assert.equal(placed.placed[0][0].left, 0)
+  })
+
+  it('maps a kept suggestion by the clip’s start less its kept start, and clips one into a trailing cut', () => {
+    assert.deepEqual(markSpan({ start: 4, end: 5 }, 8000, kept), { startMs: 10000, endMs: 11000 })
+    assert.deepEqual(markSpan({ start: 9.5, end: 12 }, 8000, kept), { startMs: 15500, endMs: 16000 })
+    assert.equal(markSpan({ start: 10, end: 11 }, 8000, kept), null)
+    assert.equal(markSpan({ start: 1, end: 2 }, 8000, kept), null)
+  })
+
+  it('keeps a point mark at the kept start, and draws nothing in a clip that keeps nothing', () => {
+    assert.deepEqual(markSpan({ start: 2, end: 2 }, 0, kept), { startMs: 0, endMs: 0 })
+    assert.equal(markSpan({ start: 1, end: 3 }, 0, { inMs: 0, outMs: 0 }), null)
+  })
+
+  it('a clip with no edge cut maps as before', () => {
+    assert.deepEqual(markSpan({ start: 1, end: 3 }, 5000, { inMs: 0, outMs: 6000 }), { startMs: 6000, endMs: 8000 })
   })
 })
