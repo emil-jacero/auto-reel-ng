@@ -55,8 +55,11 @@ reaching an interior cut's start makes the edge **jump to that cut's end** ("Joi
 in the list unchanged (overlap is legal in the document, CM §1) — dragging back un-joins it, so nothing is lost and
 the cut's reason survives. Limits: the lowest place is the end of the leading union formed by the other cuts alone
 (0 in the normal case, the file's limit, drawn red); the highest is the last frame time at which the clip still
-**plays at least three frames** (duration minus the union of all its cuts), the `minCutMs` rule turned around; a join
-that would go below three frames stops the edge before the joined cut. An edge cut may be a single frame long (unlike
+**plays at least three frames** (duration minus the union of all its cuts), the `minCutMs` rule turned around, and
+still **has a kept extent** for the gate: `keptExtent` takes a span ending less than `END_SLACK_MS` (100 ms) before
+the clip's end as a cut to the end (Play's rule), so a start trimmed into the last 100 ms would empty the block. On a
+50 fps clip that is 5.92 s of 6.02 s, not the 5.96 s three frames allow (found when implementing; the scenarios say
+5.92). A join that would break either rule stops the edge before the joined cut. An edge cut may be a single frame long (unlike
 an interior cut's 3-frame minimum): trimming one frame off a start is the commonest edge edit.
 
 ### D4 — Leading drag anchors the block's left; trailing drag moves with the pointer

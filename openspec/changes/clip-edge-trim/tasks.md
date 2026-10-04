@@ -7,7 +7,7 @@
   8 px or nearest frame, snapping-off flag, join reporting, change and played length) and `edgeEdit` (add / trim /
   remove / none, reasons and keys kept). Verify with `web/src/timeline/edgeTrim.test.ts` under `npm test` covering
   every scenario of the `timeline` delta (start/end, cut past the end, two cuts at the start, join and un-join,
-  6.5 s → 5.96 s, black reason kept, back to 0 removes, bad duration → `ModelError`).
+  6.5 s → 5.92 s (the gate's 100 ms end rule; three frames would be 5.96 s), black reason kept, back to 0 removes, bad duration → `ModelError`).
 - [x] 1.2 Add the key logic: `edgeKey` (Left/Right frame, Shift 1 s, Home/End limits) and `trimToPlayhead` for `Q`/`W`
   (clip under the playhead, card refusal, no-op words, playhead place after), and make `keys.ts` `playheadKey` and the
   track key handler return null for `q`, `w`, `s`. Verify with new cases in `edgeTrim.test.ts` and `keys.test.ts`.
