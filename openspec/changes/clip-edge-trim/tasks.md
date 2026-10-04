@@ -14,7 +14,7 @@
 
 ## 2. Draft and drag state (web/edit, web/timeline)
 
-- [ ] 2.1 Add one reducer action `cut-edge` in `edit/EventEditor.tsx` applying an `edgeEdit` through `addCut` /
+- [x] 2.1 Add one reducer action `cut-edge` in `edit/EventEditor.tsx` applying an `edgeEdit` through `addCut` /
   `trimCut` / `removeCut` (key `a<nextCut+1>`, reason `manual`), and `EditBinding.onEdge(identity, edit, note)` in
   `timeline/editing.ts`, ignored while `locked`. Verify with `edit/edgeEdit.test.ts` (node:test): one release = one
   draft change, reverse edit leaves no dirty draft (`settled`), read cut removed then restored by the Cuts panel Undo,

@@ -10,6 +10,7 @@ import type { PosterDraft, PosterPick } from './poster.ts'
 import { applyStyle, readStyle, styleChanged, withStyleField } from './cardStyle.ts'
 import type { StyleDraft, StyleField, StyleValue } from './cardStyle.ts'
 import type { Turn, Way } from '../rotate/turn.ts'
+import type { EdgeEdit } from '../timeline/edgeTrim.ts'
 
 /*
  * The editor's model, as pure functions. Its only runtime import is the pure turn
@@ -907,6 +908,31 @@ export function changedCuts(baseline: Baseline, draft: Draft): ReadonlySet<strin
     }
   }
   return changed
+}
+
+/**
+ * A clip edge tool's one edit (`clip-edge-trim`): the edit `edgeEdit` gave for a release, a key
+ * or `Q`/`W`, applied through the cut functions above, so it is one draft change that `settled`
+ * drops when it puts the cuts back as read. An added edge cut takes `key` (the caller's next
+ * `a<n>`); a trimmed or removed one keeps its own key, place and reason.
+ */
+export function applyEdgeEdit(
+  baseline: Baseline,
+  draft: Draft,
+  identity: string,
+  edit: EdgeEdit,
+  key: CutKey,
+): Draft {
+  switch (edit.kind) {
+    case 'none':
+      return draft
+    case 'add':
+      return addCut(baseline, draft, identity, edit.span, key, edit.reason)
+    case 'trim':
+      return trimCut(baseline, draft, identity, edit.key, edit.span)
+    case 'remove':
+      return removeCut(baseline, draft, identity, edit.key)
+  }
 }
 
 /**
