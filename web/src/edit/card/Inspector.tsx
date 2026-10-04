@@ -162,11 +162,12 @@ export function CardInspectorPanel({
   return (
     <div className="ci">
       <header className="ci-head">
-        <p className="ci-overrides">{overrideWords(card)}</p>
+        <p className="ci-overrides" hidden={tab !== 'card'}>{overrideWords(card)}</p>
         <div className="ci-head-actions">
           <button
             type="button"
             className="btn btn-secondary btn-compact"
+            hidden={tab !== 'card'}
             aria-disabled={locked || changed.length === 0 || undefined}
             onClick={() => {
               if (!locked && changed.length > 0) {
