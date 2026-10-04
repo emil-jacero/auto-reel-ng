@@ -417,7 +417,7 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   draft (Off removes `title` and keeps the other names; with no list it writes `[]`; On puts `title` first). The state the
   page shows is the detail's `title_cards.enabled` (resolved by the engine from the event and the project), never a guess
   from `reel.yaml`: the Timeline's card lane, the chapter list's rows and the movie's length follow it, and the draft's
-  switch before any save. Selecting a card opens the inspector below the track, so the track never moves. A choice with
+  switch before any save. Activating a card (its chapter row or its Timeline block) opens the card editor in a modal dialog over the page (`card-editor-dialog`), so the operator never scrolls back to it and the track never moves. A choice with
   no value of its own shows the value it inherits as pressed in a muted style with "(event style)" / "(project default)".
   The event's own chapter shows one opening-card row whose heading is the "Main title card" control. Web only.
 - **v2:** look/style editor (**the look picker deferred from v1, now built as the event card style and the card inspector: one draft, one save**; title card live-ish preview; `title-card-fonts`
@@ -807,6 +807,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `title-card-toggle` follows (web only): Edit mode's Title cards On / Off switch writes `look.decorators`, the Timeline and
    the chapter rows read the API's `title_cards` instead of guessing, the opening card is one row, an inherited choice shows
    pressed in a muted style, and the card inspector opens below the track; no API, engine or `RENDER_GRAPH_VERSION` change.
+   `card-editor-dialog` follows (web only): the card inspector opens in a modal dialog (`ui/Dialog`) from the row or the block
+   instead; the inline slot under the track is gone; no API, engine or `RENDER_GRAPH_VERSION` change.
    `event-poster-engine` has landed (the engine half of "event poster frames"; D-26): the optional `poster: {clip, at}` in
    `reel.yaml`, the poster written as `<movie stem>-poster.jpg` beside the movie and embedded as its cover, claimed in the
    render manifest and pruned with its movie; `RENDER_GRAPH_VERSION` 11.

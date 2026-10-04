@@ -520,17 +520,26 @@ export function cardTimeWords(map: CardMap): string {
 
 // --- the selection ---------------------------------------------------------------------
 
-/** The selected card, by its chapter's saved name; none is null. */
-export type CardSelection = { chapter: string } | null
+/** The selected card, by its chapter's saved name, and whether its dialog is open; none is null. */
+export type CardSelection = { chapter: string; editing: boolean } | null
 
 export const cardSelection = {
+  /** Selects without opening the dialog (a press on a duration handle); the dialog stays as it was. */
   select(state: CardSelection, chapter: string): CardSelection {
-    return state?.chapter === chapter ? state : { chapter }
+    return state?.chapter === chapter ? state : { chapter, editing: false }
+  },
+  /** Selects and opens the dialog, also when the card is already selected. */
+  open(state: CardSelection, chapter: string): CardSelection {
+    return state?.chapter === chapter && state.editing ? state : { chapter, editing: true }
+  },
+  /** Closes the dialog; the card stays selected. */
+  dismiss(state: CardSelection): CardSelection {
+    return state === null || !state.editing ? state : { chapter: state.chapter, editing: false }
   },
   clear(state: CardSelection): CardSelection {
     return state === null ? state : null
   },
-  /** Ends a selection whose chapter is not among `names`. */
+  /** Ends a selection (and its dialog) whose chapter is not among `names`. */
   chapters(state: CardSelection, names: readonly string[]): CardSelection {
     return state === null || names.includes(state.chapter) ? state : null
   },

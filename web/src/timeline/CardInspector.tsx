@@ -3,8 +3,8 @@ import type { CardSpec } from './cards'
 
 /*
  * The inspector slot (`title-card-blocks`): in the read view, selecting a card names it in a
- * labelled region and nothing more; it writes nothing and requests nothing. Edit mode fills the
- * slot with the card's inspector instead (`edit/card/Inspector.tsx`, `title-card-inspector`).
+ * labelled region and nothing more; it writes nothing and requests nothing. Edit mode has no slot:
+ * a card's editor is a dialog (`edit/card/Inspector.tsx`, `card-editor-dialog`).
  * Its words also go once through a polite status region that is always there, so a selection
  * is announced when it changes.
  */

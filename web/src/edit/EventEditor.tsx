@@ -1755,7 +1755,7 @@ export function EventEditor({
     draftEventTitle,
     resolved,
   ])
-  const { retain: retainCard, select: selectCard, clear: clearCard, selected: selectedCard } = cards
+  const { retain: retainCard, open: openCard, clear: clearCard, selected: selectedCard } = cards
   // The selection ends with its chapter: deleted in the draft, it is gone from the list.
   useEffect(() => {
     if (draftChapters !== undefined) {
@@ -1775,7 +1775,7 @@ export function EventEditor({
     }
     const chapter = draftChapters.find((candidate) => candidate.key === refusedCard.key)
     if (chapter?.readName != null) {
-      selectCard(chapter.readName)
+      openCard(chapter.readName)
     }
     // Once per answer: selecting another card afterwards is the operator's.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1862,10 +1862,10 @@ export function EventEditor({
             )
       },
       selected: selectedCard,
-      select: selectCard,
+      open: openCard,
       clear: clearCard,
     }),
-    [draftChapters, draftCards, baselineNow, specs, selectedCard, selectCard, clearCard, rowsEnabled],
+    [draftChapters, draftCards, baselineNow, specs, selectedCard, openCard, clearCard, rowsEnabled],
   )
 
   // "Card style for this event": the draft's style against the one read, and what the cards inherit.

@@ -50,12 +50,15 @@ export function Dialog({
   title,
   onClose,
   initialFocus,
+  className,
   children,
 }: {
   open: boolean
   title: string
   onClose: () => void
   initialFocus?: RefObject<HTMLElement | null>
+  /** Added to `dialog` for a dialog that needs its own size (the card editor). */
+  className?: string
   children: ReactNode
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -109,7 +112,7 @@ export function Dialog({
   return (
     <dialog
       ref={dialogRef}
-      className="dialog"
+      className={className === undefined ? 'dialog' : `dialog ${className}`}
       aria-labelledby={titleId}
       aria-describedby={body.length > 0 ? bodyId : undefined}
       onClose={() => {

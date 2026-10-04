@@ -1,8 +1,5 @@
 import './card.css'
 
-import { useId } from 'react'
-import type { KeyboardEvent } from 'react'
-
 import type { Font } from '../../api/fonts.ts'
 import type { CardSpec } from '../../timeline/cards.ts'
 import { Alert } from '../../ui/Alert'
@@ -31,12 +28,13 @@ import { effectiveBackground, styleWords } from './specs.ts'
 import { overrideWords } from '../cardStyle.ts'
 
 /*
- * The title-card inspector (`title-card-inspector`), Edit mode's one card editor. It renders in
- * the Timeline section's slot for the card selected on the Timeline or in a chapter's row.
+ * The title-card inspector (`title-card-inspector`), Edit mode's one card editor. It is the
+ * body of the modal dialog (`card-editor-dialog`) that a card's row or Timeline block opens;
+ * the dialog (`ui/Dialog`) carries the title, Escape and the Done button.
  * Every field is a per-card override: unset, it shows what the event style gives; set, it
  * offers Use event style. Typing a title never renames the chapter. The preview is the service's
  * own drawing of the draft (`Preview.tsx`). All edits go into the editor's one draft; the
- * inspector keeps no value of its own. It is not a modal, and Escape closes it.
+ * inspector keeps no value of its own.
  */
 
 export const NO_SUBTITLE_PLACEHOLDER = 'No subtitle'
@@ -73,7 +71,6 @@ export function CardInspectorPanel({
   backdrop: Backdrop | null
   onClose: () => void
 }) {
-  const headingId = useId()
   const { state: fonts } = useFonts()
   const list: readonly Font[] = fonts.status === 'ok' ? fonts.fonts : []
   const { card, opening } = view
@@ -114,22 +111,10 @@ export function CardInspectorPanel({
   const defaultSubtitle = spec?.card?.defaultSubtitle ?? ''
   const effectiveSubtitle = card.subtitle ?? defaultSubtitle
 
-  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === 'Escape' && !event.defaultPrevented) {
-      event.preventDefault()
-      onClose()
-    }
-  }
-
   return (
-    <section className="ci" aria-labelledby={headingId} onKeyDown={onKeyDown}>
+    <div className="ci">
       <header className="ci-head">
-        <div className="ci-heading">
-          <h3 id={headingId} className="ci-title">
-            {name}
-          </h3>
-          <p className="ci-overrides">{overrideWords(card)}</p>
-        </div>
+        <p className="ci-overrides">{overrideWords(card)}</p>
         <div className="ci-head-actions">
           <button
             type="button"
@@ -267,6 +252,6 @@ export function CardInspectorPanel({
           tooLong={over.length > 0}
         />
       </div>
-    </section>
+    </div>
   )
 }
