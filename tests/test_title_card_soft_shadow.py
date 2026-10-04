@@ -194,3 +194,12 @@ def test_white_text_is_readable_over_a_bright_frame_with_the_shadow() -> None:
     # far from the text nothing changes
     far = (5, 5)
     assert on_luma[far[0]][far[1]] == off_luma[far[0]][far[1]] == frame
+
+
+def test_shadow_opacity_scales_the_soft_shadow() -> None:
+    def peak_extra(opacity: float) -> int:
+        off = _alpha(_without_shadow())
+        on = _alpha(render_card_png(_config(shadow_opacity=opacity), CONTENT, W, H))
+        return max(on[y][x] for y in range(H) for x in range(W) if not off[y][x])
+
+    assert peak_extra(0.25) < peak_extra(0.5)

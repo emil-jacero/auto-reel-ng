@@ -127,7 +127,7 @@
 
   /* The opening subtitle's No subtitle: beside the field, left aligned like the clear button. */
   .ci-action {
-    align-self: flex-start;
+    justify-self: start;
     color: var(--accent);
   }
 

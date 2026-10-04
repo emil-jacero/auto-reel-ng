@@ -178,7 +178,7 @@ export function openingSubtitlePlaceholder(subtitle: string | null, defaultSubti
 /** What an unset opening subtitle follows, in words (the hint under the field). */
 export function openingSubtitleFollows(defaultSubtitle: string): string {
   const line = oneLine(defaultSubtitle)
-  return line === '' ? NO_SUBTITLE_WORDS : line
+  return line === '' ? NO_SUBTITLE_WORDS : 'Date and place as saved'
 }
 
 /** Whether a field is typed as text (else a number). */

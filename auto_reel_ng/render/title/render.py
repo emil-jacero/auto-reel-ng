@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ...errors import FontResolutionError, TitleCardBackendError, TitleCardError
-from .config import TitleCardConfig
+from .config import DEFAULT_SHADOW_OPACITY, TitleCardConfig
 from .content import TitleCardContent, title_card_lines
 from .fonts import BUNDLED_FONTS, DEFAULT_FONT_FAMILY, configure_fontconfig, fonts_dir
 
@@ -311,7 +311,10 @@ def _draw_soft_shadow(  # pylint: disable=too-many-arguments,too-many-positional
         mctx.fill()
     blurred = _blur_mask(cairo, mask, radius)
     sr, sg, sb = _parse_color(config.shadow_color)
-    ctx.set_source_rgba(sr, sg, sb, _SOFT_SHADOW_ALPHA)
+    # shadow_opacity scales the soft shadow's alpha (the default opacity gives the fixed alpha);
+    # shadow_offset only switches it on or off.
+    alpha = _SOFT_SHADOW_ALPHA * min(1.0, config.shadow_opacity / DEFAULT_SHADOW_OPACITY)
+    ctx.set_source_rgba(sr, sg, sb, alpha)
     ctx.mask_surface(blurred, 0, top_row)
 
 
