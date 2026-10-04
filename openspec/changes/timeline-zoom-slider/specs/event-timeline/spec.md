@@ -70,8 +70,9 @@ SHALL stay on one line in its slot, cut with an ellipsis when it does not fit, w
 state SHALL add text to the toolbar's rows: the reason Use as poster cannot act SHALL be its tooltip and its accessible
 description, and SHALL be shown, in a tip that takes no room in the toolbar, and said once through the Timeline's
 polite live region, when the operator presses the button while it cannot act (`web-app`, "Edit mode chooses the event's
-poster on the Timeline"). At a width where the controls do not fit one row (390 CSS pixels) the toolbar MAY take a
-second row; it SHALL then hold the same controls in every state. The toolbar SHALL NOT make the page scroll
+poster on the Timeline"). Where the controls do not fit one row the toolbar MAY take more rows, at most three rows of
+controls plus the movie stat's row (at 390 CSS pixels: Play and the readout, the zoom group, Use as poster); each
+control SHALL then be in the same row and box in every state. The toolbar SHALL NOT make the page scroll
 horizontally at any width from 320 to 1280 px, in the light or the dark scheme.
 
 #### Scenario: A seek does not move the toolbar
@@ -91,8 +92,8 @@ horizontally at any width from 320 to 1280 px, in the light or the dark scheme.
 
 #### Scenario: A phone-width toolbar
 - **WHEN** the Timeline is shown 390 px wide, idle, then seeking, then playing
-- **THEN** the toolbar has the same two rows in each state, each control in the same box, and the page has no
-  horizontal scroll bar
+- **THEN** the toolbar has the same rows in each state (at most three rows of controls and the movie stat's row),
+  each control in the same box, and the page has no horizontal scroll bar
 
 ## MODIFIED Requirements
 

@@ -93,6 +93,9 @@ import { ZoomSlider } from './ZoomSlider'
 
 /** The playhead is brought back into view when it comes this close to the scroller's edge. */
 const EDGE_PX = 24
+/** The track's margin around the view during a slider drag, in views (else one view a side). */
+const LIVE_OVERSCAN = 0.25
+const LIVE_SETTLE_MS = 200
 
 export function Timeline({
   eventId,
@@ -249,7 +252,13 @@ export function Timeline({
 
   const scroller = useRef<HTMLDivElement>(null)
   const grip = useRef<HTMLDivElement>(null)
-  const [range, syncRange] = useVisibleRange(scroller)
+  const [range, syncRange, expectRange] = useVisibleRange(scroller)
+  // A Zoom slider drag in progress: the track draws a narrower margin around the view while it
+  // lasts (`LIVE_OVERSCAN`), so each of its frames lays out fewer clips; the full margin comes
+  // back `LIVE_SETTLE_MS` after the slider's last zoom.
+  const [live, setLive] = useState(false)
+  const settle = useRef(0)
+  useEffect(() => () => window.clearTimeout(settle.current), [])
   // The zoom this event had in this tab, else Fit (`zoomMemory`, design D4).
   const [zoom, setZoom] = useState<ZoomMemo>(
     () => zoomMemory.read(eventId) ?? { pps: DEFAULT_PPS, fitted: true },
@@ -526,6 +535,8 @@ export function Timeline({
     const next = zoomAt(view, to / from, anchor, lay.totalMs)
     pendingScroll.current = next.scrollLeft
     ppsRef.current = next.pps
+    // The range the zoom will show, in the same render: one render per zoom, not two.
+    expectRange(next.scrollLeft)
     setZoom({ pps: next.pps, fitted: next.pps <= fitNow + 1e-9 })
   }
   const zoomBy = (factor: number) => zoomTo(ppsRef.current * factor)
@@ -540,6 +551,9 @@ export function Timeline({
   }
   const onSlider = (position: number) => {
     beforeFit.current = null
+    setLive(true)
+    window.clearTimeout(settle.current)
+    settle.current = window.setTimeout(() => setLive(false), LIVE_SETTLE_MS)
     if (position <= 0) {
       fitAll()
     } else {
@@ -844,6 +858,7 @@ export function Timeline({
         bands={bands}
         pps={pps}
         range={range}
+        overscan={live ? LIVE_OVERSCAN : 1}
         gutter={gutter}
         turns={turns}
         scrollerRef={scroller}

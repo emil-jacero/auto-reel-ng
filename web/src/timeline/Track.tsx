@@ -13,6 +13,7 @@ import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
 import { bandStartMs } from './cards'
 import type { CardBlock, CardHandle, CardSpec } from './cards'
+import { trackZoomKey } from './keys'
 import type { KeyAction } from './keys'
 import { clipDescription } from './labels'
 import { cutLabel } from './layout'
@@ -41,9 +42,6 @@ export type ScrubPhase = 'start' | 'move' | 'end' | 'tap'
 
 /** Where a scrub began: the ruler (and the grip), or the clips' lane. */
 export type ScrubSurface = 'ruler' | 'lane'
-
-/** The zoom keys of the track's box: zoom in, out, Fit, and Fit and back (`\\`). */
-const TRACK_ZOOM_KEYS = ['+', '=', '-', '_', '0', '\\']
 
 /** Clips narrower than this are drawn as a block only: no name, picture or cuts. */
 const MIN_DETAIL_PX = 6
@@ -251,6 +249,7 @@ export function Track({
   bands,
   pps,
   range,
+  overscan: overscanViews = 1,
   gutter,
   turns,
   scrollerRef,
@@ -276,6 +275,8 @@ export function Track({
   bands: readonly ChapterBand[]
   pps: number
   range: VisibleRange
+  /** The margin drawn on each side of the view, in views (one; less during a slider drag). */
+  overscan?: number
   /** The px kept free past the timeline's end: the playhead's grip reaches that far (Fit, D5). */
   gutter: number
   /** Each clip's turn (`rotate`): its tiles show the frame turned. */
@@ -314,7 +315,7 @@ export function Track({
   const totalPx = timeToPx(lay.totalMs, pps)
   const canvasPx = canvasWidth(lay.totalMs, pps, gutter)
   const view = { pps, scrollLeft: range.left, width: Math.max(1, range.width) }
-  const overscan = range.width
+  const overscan = Math.round(range.width * overscanViews)
   const shown = range.width === 0 ? null : visibleClips(lay, view, overscan)
   const windowFrom = range.left - overscan
   const windowTo = range.left + range.width + overscan
@@ -436,9 +437,16 @@ export function Track({
       // leaves nothing to scroll, and the next zoom key would go nowhere.
       tabIndex={-1}
       onKeyDown={(event: KeyboardEvent) => {
-        if (!event.ctrlKey && !event.altKey && !event.metaKey && TRACK_ZOOM_KEYS.includes(event.key)) {
+        const key = trackZoomKey({
+          key: event.key,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          metaKey: event.metaKey,
+          altGraph: event.getModifierState('AltGraph'),
+        })
+        if (key !== null) {
           event.preventDefault()
-          onTrackKey(event.key)
+          onTrackKey(key)
         }
       }}
     >
