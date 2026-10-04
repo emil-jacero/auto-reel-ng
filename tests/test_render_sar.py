@@ -21,6 +21,7 @@ from auto_reel_ng.accel.profiles.base import AccelProfile
 from auto_reel_ng.event.plan import RenderPlan, ResolvedChapter, ResolvedClip
 from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
 from auto_reel_ng.probe import probe_media
+from auto_reel_ng.reel.card import ChapterCard
 from auto_reel_ng.reel.document import Metadata
 from auto_reel_ng.render import RenderOptions
 from auto_reel_ng.render import orchestrator as orch
@@ -114,3 +115,59 @@ def test_the_provklipp_case_renders_with_square_pixels_on_vaapi(
 ) -> None:
     movie, seen = _render(runtime, _hardware_profile(runtime), tmp_path, monkeypatch)
     _assert_square_throughout(runtime, movie, seen)
+
+
+def _spy_segment_outputs(
+    runtime: FfmpegRuntime, monkeypatch: pytest.MonkeyPatch
+) -> dict[str, Optional[str]]:
+    """Probe the raw SAR of every normalize command's output right after it runs."""
+    sars: dict[str, Optional[str]] = {}
+    real = orch._run_segment  # pylint: disable=protected-access
+
+    def _spy(index, segment, command, **kwargs):  # type: ignore[no-untyped-def]
+        real(index, segment, command, **kwargs)
+        sars[command.output_path.name] = _raw_sar(runtime, command.output_path)
+
+    monkeypatch.setattr(orch, "_run_segment", _spy)
+    return sars
+
+
+@pytest.mark.gpu
+def test_both_halves_of_a_sar_less_video_card_anchor_probe_square_on_vaapi(
+    has_fonts: None, runtime: FfmpegRuntime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    profile = _hardware_profile(runtime)
+    event = tmp_path / "card"
+    event.mkdir()
+    clip = event / "a.mp4"
+    runtime.run(
+        ["-y", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=30:duration=12"]
+        + ["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=12"]
+        + ["-vf", "setsar=0", "-c:v", "libx264", "-pix_fmt", "yuv420p"]
+        + ["-c:a", "aac", "-ac", "2", "-shortest", str(clip)]
+    )
+    assert _raw_sar(runtime, clip) in (None, "N/A", "0:1")
+    plan = RenderPlan(
+        metadata=Metadata(title="Movie"),
+        look={"decorators": ["title"], "target_resolution": [320, 180], "video_codec": "h264"},
+        chapters=(
+            ResolvedChapter(
+                name="",
+                clips=(ResolvedClip(identity="a.mp4", is_title=True),),
+                card=ChapterCard(background="video", duration=4.0),
+            ),
+        ),
+    )
+    sars = _spy_segment_outputs(runtime, monkeypatch)
+    options = RenderOptions(
+        event_dir=event,
+        output_dir=event / "out",
+        clip_facts={"a.mp4": probe_media(clip, runtime=runtime)},
+        runtime=runtime,
+    )
+    movie = render_movie(plan, profile, options).output_path
+
+    # the card-window head (CPU overlay bridge) and its tail on the GPU both ran
+    assert any(n.endswith("_head.mp4") for n in sars) and any(n.endswith("_tail.mp4") for n in sars)
+    assert set(sars.values()) == {"1:1"}, sars
+    assert _raw_sar(runtime, movie) == "1:1"
