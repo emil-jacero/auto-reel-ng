@@ -25,12 +25,13 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path, PurePosixPath
-from typing import Callable, Dict, Iterable, List, Mapping, Sequence
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence
 
 from ..ingest import EventRef, LayoutError, get_layout
 from ..render import output_relpath
 from ..render.claims import claimed_movie
-from ..staleness.manifest import read_manifest, recorded_output_in
+from ..render.poster import poster_path
+from ..staleness.manifest import read_manifest, recorded_output_in, records_poster
 from .commands import _checked_documents
 from .context import ProjectContext, project_context
 
@@ -44,6 +45,9 @@ class PruneCandidate:
     event_dir: Path
     path: Path
     replaced_by: Path
+    #: The movie's ``-poster.jpg`` sidecar when one lies beside it and nothing claims it; it is
+    #: listed and deleted with the movie. Never a candidate of its own.
+    poster: Optional[Path] = None
 
 
 def _key(path: Path | PurePosixPath) -> str:
@@ -110,7 +114,7 @@ def plan_prune(
                 continue
             if _same_file(path, current):
                 continue
-            if claimed_movie(event_dir, path, events=all_events) is not None:
+            if claimed_movie(event_dir, path, events=all_events, poster=False) is not None:
                 continue  # another event's manifest records it as its movie
             if not loaded:
                 claims, loaded = dict(expected()), True
@@ -120,7 +124,16 @@ def plan_prune(
                 for other, claim in claims.items()
             ):
                 continue  # another event's current expected output path: a pending takeover
-            candidates.setdefault(_key(path), PruneCandidate(event_dir, path, current))
+            sidecar = poster_path(path)
+            if not _is_plain_file_inside(sidecar, output_dir) or any(
+                records_poster(other, sidecar) for other in all_events
+            ):
+                sidecar_or_none: Optional[Path] = None  # none, or another event's recorded poster
+            else:
+                sidecar_or_none = sidecar
+            candidates.setdefault(
+                _key(path), PruneCandidate(event_dir, path, current, poster=sidecar_or_none)
+            )
     return sorted(candidates.values(), key=lambda candidate: str(candidate.path))
 
 
@@ -129,8 +142,9 @@ def _print_error(message: str) -> None:
 
 
 def _line(marker: str, candidate: PruneCandidate, output_dir: Path) -> str:
+    with_poster = "" if candidate.poster is None else " + poster"
     return (
-        f"{marker}  {candidate.path.relative_to(output_dir)}  "
+        f"{marker}  {candidate.path.relative_to(output_dir)}{with_poster}  "
         f"(event {candidate.event_dir.name}; now {candidate.replaced_by.relative_to(output_dir)})"
     )
 
@@ -188,6 +202,10 @@ def cmd_prune_renamed(args: argparse.Namespace) -> int:
             if not _is_plain_file_inside(candidate.path, ctx.output_dir):
                 continue  # gone or changed since the plan: not an error, nothing to delete
             candidate.path.unlink()
+            if candidate.poster is not None and _is_plain_file_inside(
+                candidate.poster, ctx.output_dir
+            ):
+                candidate.poster.unlink()
         except OSError as exc:
             failed += 1
             print(f"ERROR  {candidate.path.relative_to(ctx.output_dir)}: {exc.strerror or exc}")

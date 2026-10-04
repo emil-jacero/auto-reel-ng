@@ -29,7 +29,7 @@ from auto_reel_ng.staleness.manifest import write_manifest
 FFMPEG_VERSION = (7, 1)
 
 #: Golden hashes for ``_pinned_document()`` + ``_pinned_event_dir()`` (task 1.1).
-#: ENGINE/COMBINED re-pinned for RENDER_GRAPH_VERSION 10 (video-card-bridge-window; 9 was title-card-date-place-shadow, 8 was title-cards-default-on, 7 was title-card-model, 6 was clip-rotate-engine, 5 title-card-fonts); EDITORIAL, DEFAULTS and CLIP_SET are as before.
+#: ENGINE/COMBINED re-pinned for RENDER_GRAPH_VERSION 11 (event-poster-engine; 10 was video-card-bridge-window, 9 was title-card-date-place-shadow, 8 was title-cards-default-on, 7 was title-card-model, 6 was clip-rotate-engine, 5 title-card-fonts); EDITORIAL, DEFAULTS and CLIP_SET are as before.
 PINNED_EDITORIAL = "cfb295abf2c9f44e4ec05e5634beaf1b9b21235c21d65d0109a944509d848de4"
 PINNED_DEFAULTS = "9d1a9bf4432fae2ec90ade0e7eb1552455abd6da0fac7974d78a16d63113f555"
 PINNED_CLIP_SET = "b1c642b3cd29b949070b357534bae6e2077121b032f93fa34c7aa0df957b6663"

@@ -39,7 +39,27 @@ def resolve(
         for chapter in document.chapters
     )
     look = _merge_look(look_defaults, document.look)
-    return RenderPlan(metadata=document.metadata, look=look, chapters=chapters)
+    return RenderPlan(
+        metadata=document.metadata,
+        look=look,
+        chapters=chapters,
+        poster=document.poster,
+        poster_unplayed=_poster_unplayed(document, chapters),
+    )
+
+
+def _poster_unplayed(
+    document: ReelDocument, chapters: tuple[ResolvedChapter, ...]
+) -> Optional[str]:
+    """Why the document's poster clip is not in the movie, or ``None`` (played, or no poster)."""
+    poster = document.poster
+    if poster is None or any(c.identity == poster.clip for ch in chapters for c in ch.clips):
+        return None
+    if poster.clip in document.ignore:
+        return "ignored"
+    if is_excluded(document.clips, poster.clip):
+        return "excluded"
+    return "missing"
 
 
 def _resolve_chapter(

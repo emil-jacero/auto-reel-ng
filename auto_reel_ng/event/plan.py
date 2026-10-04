@@ -15,7 +15,7 @@ from pathlib import PurePosixPath
 from typing import Any, Mapping, Optional
 
 from ..reel.card import ChapterCard
-from ..reel.document import Metadata, Trim
+from ..reel.document import Metadata, Poster, Trim
 
 
 @dataclass(frozen=True)
@@ -75,11 +75,19 @@ class RenderPlan:
     metadata: Metadata = field(default_factory=Metadata)
     look: Mapping[str, Any] = field(default_factory=dict)
     chapters: tuple[ResolvedChapter, ...] = ()
+    #: The document's chosen poster frame; ``None`` when it sets none (the default frame).
+    poster: Optional[Poster] = None
+    #: Why ``poster``'s clip is not played by the movie (``missing``, ``ignored``, ``excluded``),
+    #: or ``None`` when it is played or there is no poster. The render falls back with a warning.
+    poster_unplayed: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a plain dict for debug logging."""
-        return {
+        data: dict[str, Any] = {
             "metadata": self.metadata.to_dict(),
             "look": dict(self.look),
             "chapters": [c.to_dict() for c in self.chapters],
         }
+        if self.poster is not None:
+            data["poster"] = self.poster.to_dict()
+        return data

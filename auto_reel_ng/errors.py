@@ -141,6 +141,15 @@ class RenderVerificationError(RenderError):
     """
 
 
+class PosterFrameError(RenderError):
+    """The poster frame the operator chose (or the default) does not exist in its clip.
+
+    Raised before anything is encoded when ``poster.at`` is not less than the clip's probed
+    duration, and by the extraction when ffmpeg yields no frame at the chosen time. The message
+    names the clip, the time and the duration; no other time and no placeholder is used instead.
+    """
+
+
 class RenderCancelledError(RenderError):
     """A render was stopped by a cooperative cancel request.
 

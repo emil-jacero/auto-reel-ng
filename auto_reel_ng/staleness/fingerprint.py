@@ -45,7 +45,8 @@ PathLike = Union[str, Path]
 #:    soft shadow).
 #: 10: video-card-bridge-window (an anchor segment under a video card is encoded as a
 #:    card-window head and a tail, so its bytes change for the same inputs).
-RENDER_GRAPH_VERSION = 10
+#: 11: event-poster-engine (the movie carries an embedded cover and has a ``-poster.jpg`` sidecar).
+RENDER_GRAPH_VERSION = 11
 
 #: The four fingerprint components, in the fixed order the combined hash uses.
 COMPONENTS = ("editorial", "defaults", "clip_set", "engine")

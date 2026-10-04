@@ -248,6 +248,9 @@ look:                      # was title_card; extended with render/look settings
   codec: { video: hevc, audio: aac, quality: 22 }
   decorators: [title]      # absent = [title], the cards are on; [] or [none] = no cards (D-25)
   title_card: { ... }      # font/size/color/position/bg/fade
+poster:                    # optional: the frame that stands for the movie (D-26)
+  clip: 00400.mp4          #   a clip of the event (its identity)
+  at: 12.5                 #   seconds into the ORIGINAL clip, before trims; absent = the default frame
 chapters:
   - name: default
     is_default: true
@@ -421,7 +424,7 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   follow); **the full
   timeline editor, moved from v3** — a per-clip track with proxies, filmstrip, drag-trim in/out and scrub
   preview (built: scrub in `timeline-view`, trim handles in `timeline-trim`, D-20); **analysis review built as overlays on that timeline** (built: approve black/white/freeze trims in place on Edit mode's draft, `timeline-overlay-decisions`;
-  not a separate screen); event poster frames; and, beside the proxy work, chapter times in the render
+  not a separate screen); event poster frames (the engine half built, `event-poster-engine`, D-26: the optional `poster:` in `reel.yaml`, a `-poster.jpg` beside the movie and an embedded cover; the picker in the page follows); and, beside the proxy work, chapter times in the render
   manifest (built, change `render-chapter-times`) and a movie version in the event detail (built: the detail's
   `movie` carries the version and the chapter list, change `movie-facts-read`); the chapter jump list of the
   movie player that shows them is built too (change `movie-chapter-list`, D-15). v2 starts with a
@@ -790,6 +793,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `title-card-toggle` follows (web only): Edit mode's Title cards On / Off switch writes `look.decorators`, the Timeline and
    the chapter rows read the API's `title_cards` instead of guessing, the opening card is one row, an inherited choice shows
    pressed in a muted style, and the card inspector opens below the track; no API, engine or `RENDER_GRAPH_VERSION` change.
+   `event-poster-engine` has landed (the engine half of "event poster frames"; D-26): the optional `poster: {clip, at}` in
+   `reel.yaml`, the poster written as `<movie stem>-poster.jpg` beside the movie and embedded as its cover, claimed in the
+   render manifest and pruned with its movie; `RENDER_GRAPH_VERSION` 9. No API or web change: the picker follows.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1615,6 +1621,48 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Deliberately not here:** the card style, per-card fields, background-on-video, durations, the preview
     endpoint, the GUI, a weight setting, italics, user-supplied fonts, web fonts in the browser (D-10; the GUI previews
     with the engine's PNG).
+- **D-26 — An event has a poster frame** (2026-10-04, change `event-poster-engine`, the engine half of the last open v2
+  item). A media server (Jellyfin, Plex, Kodi) that scans the output folder saw a bare `.mp4` and a black tile, and the
+  operator could not choose the frame.
+  - **The key.** An optional top-level `poster: {clip, at}` in `reel.yaml` (schema stays `version: 0`, additive): `clip` is
+    a clip identity, `at` a number of seconds `>= 0` into the ORIGINAL clip, before any trim. Both keys are required; the
+    loader fails loud naming `poster.<key>` on an unknown key, a missing key, a non-number (a boolean is none), a negative
+    or non-finite `at`, or a clip that is not an event-relative identity. Whether the clip exists and `at` lies inside it is
+    not checked at load (a load makes no probe); the render does. `null` or no key is the default frame.
+  - **Writers keep it.** The round-trip writer keeps its comments and key order; a document built from fields writes it
+    after `look` and before `chapters`. The editorial write treats it as `card:` (D-24): no key or `null` leaves it as
+    written, `{}` removes it, a mapping is merged key by key; the merged document is validated before anything is written.
+  - **Which frame.** With a `poster` whose clip the movie plays: that clip at `at`. Otherwise the first played clip at the
+    thumbnail position (D-11, `DEFAULT_POSITION` of the probed duration). A `poster.clip` that is missing, ignored or
+    excluded falls back to the default with one render warning naming the clip and the reason; it never fails the render.
+    A played clip whose `at` is not less than its probed duration is a typed `PosterFrameError` naming the clip, the time
+    and the duration, raised before anything is encoded: the operator asked for a frame that does not exist, and picking
+    another would fabricate one (Principle I). No frame at that time raises the same error; there is no placeholder.
+  - **The extraction.** One CPU ffmpeg run on the original clip (a single frame, so every profile shares it): input seek,
+    autorotate off, the renderer's own turn (display rotation plus `rotate`, D-23), the HDR tone-map when the probe says
+    PQ/HLG, square pixels, then fitted and padded to the movie's size, JPEG `-q:v 2`.
+  - **Atomic with the movie.** The poster is extracted to `<stem>-poster.jpg.part` and verified (a JPEG of the target
+    size) before the encode. After the movie is assembled and verified, the cover is embedded by a stream copy into
+    `<movie>.cover.part` (`attached_pic`, `mjpeg`; streams, chapters and metadata unchanged; `+faststart` again), which is
+    verified again and replaces the movie `.part`. The poster is renamed into place, the movie last, then the manifest. A
+    kill before the renames leaves only `.part` files and no manifest. A kill between the two renames leaves a new poster
+    beside the previous movie and no new manifest, so the event reads stale and the next render replaces both.
+  - **Verification ignores the cover.** A video stream with the `attached_pic` disposition is not the movie's video stream:
+    `verify_output` requires exactly one other video stream and, when a cover is expected, exactly one `mjpeg` cover.
+  - **Claims.** The manifest gains `poster`, the bare name of the sidecar that render wrote, or `null` (schema version 1;
+    absent or malformed reads as `null`, fail-open as `superseded` does). The sidecar is a claim on a file: a render
+    refuses, unforced, to replace a regular file another event's manifest records as its `poster` (the claimed-movie
+    error). `prune-renamed` lists and deletes a superseded movie's sidecar with it, never a sidecar another event records,
+    and never lists a sidecar alone. A scan cites the existing `output` reason, with no probe, when the manifest records a
+    `poster` and no such file lies beside the movie.
+  - **Staleness.** `poster` joins the editorial hash only when present, so a `reel.yaml` without one hashes as before and
+    its ETag stays valid. The render now writes a second file and a cover for identical inputs, so
+    `RENDER_GRAPH_VERSION` is raised from 8 to 9: **every rendered event reports stale once, reason `engine`**
+    (D-C8). No Alembic migration, no new dependency.
+  - **Deliberately not here:** the picker and any API field (the page reads `poster` through a later change), chapter
+    posters, animated art, NFO files, writing the sidecar for a movie that is not re-rendered, and the web player's poster
+    (it keeps the first played clip's thumbnail until the picker lands). An event whose plan has no clip cannot be rendered
+    at all, so "no poster" is only the resolver's answer there.
 - **D-25 — Title cards are on unless `look.decorators` says otherwise** (2026-10-04, change
   `title-cards-default-on`). The user asked for "a title card in the beginning" and "each chapter should generate a title
   card"; until now a render drew none unless a project listed `title` in `look.decorators` (D-24 left that opt-in).

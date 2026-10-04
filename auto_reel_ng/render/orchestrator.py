@@ -45,6 +45,17 @@ from .normalize import (
     build_synthetic_normalize_command,
     decide_copy_eligibility,
 )
+from .poster import (
+    PosterChoice,
+    PosterResolution,
+    cover_part_path,
+    embed_cover,
+    extract_poster,
+    poster_args,
+    poster_part_path,
+    poster_path,
+    resolve_poster,
+)
 from .producers import get_producer, materialize_overlay
 from .segments import OverlaySpec, Segment, build_segments
 from .target import TargetSpec, derive_target
@@ -103,6 +114,9 @@ class RenderResult:
     dry_run: bool = False
     commands: tuple[tuple[str, ...], ...] = ()
     warnings: tuple[str, ...] = ()
+    #: The poster sidecar this render wrote (or would write, on a dry run); ``None`` when the
+    #: event has no played clip or the render was skipped.
+    poster_path: Optional[Path] = None
 
 
 @dataclass(frozen=True)
@@ -333,6 +347,8 @@ def render_movie(plan: RenderPlan, profile: AccelProfile, options: RenderOptions
     error is re-raised; the final path itself is never touched until the rename.
     """
     target = resolve_target(plan, profile, options.clip_facts)
+    # Before any segment is built or encoded: a poster time past its clip's end fails the event.
+    poster = resolve_poster(plan, options.clip_facts)
 
     segments = build_segments(plan, options.event_dir, options.clip_facts)
     names = resolve_decorator_names(plan.look)
@@ -345,7 +361,7 @@ def render_movie(plan: RenderPlan, profile: AccelProfile, options: RenderOptions
     _require_inside(output_path, Path(options.output_dir))
 
     if options.dry_run:
-        return _plan_only(segments, target, profile, options, output_path)
+        return _plan_only(segments, target, profile, options, output_path, poster=poster)
 
     if output_path.exists() and not output_path.is_file():
         # A folder (or other non-file) where the movie belongs is not a render to skip or to
@@ -359,13 +375,17 @@ def render_movie(plan: RenderPlan, profile: AccelProfile, options: RenderOptions
         return RenderResult(output_path=output_path, skipped=True)
 
     try:
-        return _execute(segments, target, profile, options, output_path)
+        return _execute(segments, target, profile, options, output_path, poster=poster)
     except BaseException:
-        # Never present a half-written output as a finished render; the final path
-        # is untouched until the atomic rename, so only the .part needs cleanup.
-        part_path = _part_path(output_path)
-        if part_path.exists():
-            part_path.unlink()
+        # Never present a half-written output as a finished render; the final paths
+        # are untouched until the atomic renames, so only the .part files need cleanup.
+        for leftover in (
+            _part_path(output_path),
+            cover_part_path(output_path),
+            poster_part_path(output_path),
+        ):
+            if leftover.exists():
+                leftover.unlink()
         raise
 
 
@@ -388,6 +408,8 @@ def _plan_only(
     profile: AccelProfile,
     options: RenderOptions,
     output_path: Path,
+    *,
+    poster: PosterResolution = PosterResolution(None),
 ) -> RenderResult:
     """Build and report the planned commands without executing or writing (dry-run)."""
     scratch = Path(options.temp_dir) if options.temp_dir else Path("dry-run")
@@ -422,11 +444,23 @@ def _plan_only(
     list_file = scratch / "concat.txt"
     metadata_file = scratch / "chapters.ffmeta"
     commands.append(build_concat_command(list_file, output_path, metadata_file=metadata_file))
+    if poster.choice is not None:
+        commands.append(
+            tuple(
+                poster_args(
+                    options.clip_facts[poster.choice.identity],
+                    poster.choice,
+                    target=target,
+                    output=poster_part_path(output_path),
+                )
+            )
+        )
     return RenderResult(
         output_path=output_path,
         dry_run=True,
         commands=tuple(commands),
-        warnings=tuple(warnings),
+        warnings=(*poster.warnings, *warnings),
+        poster_path=None if poster.choice is None else poster_path(output_path),
     )
 
 
@@ -813,18 +847,27 @@ def _execute(
     profile: AccelProfile,
     options: RenderOptions,
     output_path: Path,
+    *,
+    poster: PosterResolution = PosterResolution(None),
 ) -> RenderResult:
-    """Run the full pipeline: normalize/copy, equivalence-guard, assemble, verify, finalize."""
+    """Run the full pipeline: normalize/copy, equivalence-guard, assemble, verify, finalize.
+
+    The poster frame is extracted first (a ``.part`` beside the movie) so a frame that cannot be
+    read fails the event before the encode; it is embedded into the verified movie, and the
+    poster is renamed into place just before the movie, which is renamed last.
+    """
     runtime = options.runtime
     progress = _plan_progress(segments, options)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     part_path = _part_path(output_path)
+    if poster.choice is not None:
+        _extract_poster(poster.choice, target, options, output_path)
 
     with tempfile.TemporaryDirectory(
         prefix="auto-reel-render-", dir=str(options.temp_dir) if options.temp_dir else None
     ) as tmp:
         scratch = Path(tmp)
-        warnings: list[str] = []
+        warnings: list[str] = list(poster.warnings)
         intermediates: list[Path] = []
         copied_indices: list[int] = []
         for index, segment in enumerate(segments):
@@ -897,6 +940,8 @@ def _execute(
         # Verify the .part file, not the final path: a file only ever appears at
         # output_path once it is known-complete (the atomic-finalize guarantee).
         verify_output(runtime, part_path, target)
+        if poster.choice is not None:
+            _embed_poster(runtime, part_path, output_path, target)
         os.replace(part_path, output_path)
 
         # The manifest is written only once the output is known-complete, and only
@@ -909,9 +954,43 @@ def _execute(
                 output=output_path.name,
                 engine_identity=engine_identity(runtime.version),
                 chapters=chapters,
+                poster=None if poster.choice is None else poster_path(output_path).name,
             )
 
-    return RenderResult(output_path=output_path, warnings=tuple(warnings))
+    return RenderResult(
+        output_path=output_path,
+        warnings=tuple(warnings),
+        poster_path=None if poster.choice is None else poster_path(output_path),
+    )
+
+
+def _extract_poster(
+    choice: PosterChoice, target: TargetSpec, options: RenderOptions, output_path: Path
+) -> None:
+    """Write the poster frame to its ``.part`` beside the movie, verified."""
+    extract_poster(
+        options.runtime,
+        options.clip_facts[choice.identity],
+        choice,
+        target=target,
+        output=poster_part_path(output_path),
+    )
+
+
+def _embed_poster(
+    runtime: FfmpegRuntime, part_path: Path, output_path: Path, target: TargetSpec
+) -> None:
+    """Embed the extracted poster into the verified ``part_path`` and move the poster into place.
+
+    The cover goes into ``<movie>.cover.part``, which is verified again (exactly one ``mjpeg``
+    cover beside the one video stream) and replaces the movie ``.part``; the poster is then renamed
+    to its final name, just before the caller renames the movie, which is always last.
+    """
+    cover_part = cover_part_path(output_path)
+    embed_cover(runtime, part_path, poster_part_path(output_path), cover_part)
+    verify_output(runtime, cover_part, target, cover=True)
+    os.replace(cover_part, part_path)
+    os.replace(poster_part_path(output_path), poster_path(output_path))
 
 
 def render_batch(jobs: Sequence[RenderJob]) -> list[BatchOutcome]:
