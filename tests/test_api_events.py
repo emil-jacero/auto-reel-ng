@@ -1638,6 +1638,30 @@ def test_detail_project_style_alone_reaches_the_cards(client: TestClient, projec
     assert all(chapter["card"]["font_family"] == "Inter" for chapter in body["chapters"])
 
 
+@pytest.mark.parametrize(
+    ("style", "field"),
+    [
+        ("titel_font_size: 80", "titel_font_size"),
+        ("duration: 900", "duration"),
+        ("title_font_size: 4000", "title_font_size"),
+        ("subtitle_font_size: 2", "subtitle_font_size"),
+    ],
+)
+def test_a_hand_written_lax_style_leaves_the_detail_open_with_the_named_error(
+    client: TestClient, project: Path, style: str, field: str
+) -> None:
+    _write_card_reel(
+        project,
+        "version: 0\nmetadata:\n  title: Barbecue\n  date: 2024-07-04\n"
+        f"look:\n  title_card:\n    {style}\n"
+        "chapters:\n  - name: ''\n    clips: [00500.mp4]\n",
+    )
+    body = _card_detail(client)
+    assert body["title_card"] is None
+    assert f"look.title_card.{field}" in body["title_card_error"]
+    assert all(chapter["card"] is None for chapter in body["chapters"])
+
+
 def test_a_chapter_that_exists_only_on_disk_has_a_defaults_card(
     client: TestClient, project: Path
 ) -> None:

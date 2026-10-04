@@ -809,6 +809,25 @@ def test_an_invalid_event_wide_card_style_is_refused_naming_the_field(
     assert ok.status_code == 200
 
 
+@pytest.mark.parametrize(
+    ("style", "field"),
+    [
+        ({"titel_font_size": 80}, "titel_font_size"),
+        ({"duration": 900}, "duration"),
+        ({"title_font_size": 4000}, "title_font_size"),
+        ({"subtitle_font_size": 2}, "subtitle_font_size"),
+    ],
+)
+def test_a_lax_event_wide_style_is_a_400_naming_the_field(
+    client: TestClient, project: Path, style: dict, field: str
+) -> None:
+    before = _reel_text(project)
+    response = _put(client, _with_card(None, look={"title_card": style}))
+    assert response.status_code == 400, response.text
+    assert f"look.title_card.{field}" in response.json()["detail"]
+    _assert_nothing_written(project, before)
+
+
 def test_a_long_title_is_accepted_by_the_write(client: TestClient, project: Path) -> None:
     assert _put(client, _with_card({"title": "x" * 300})).status_code == 200
 

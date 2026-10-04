@@ -402,7 +402,8 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   has landed** as `title-card-model`, **D-24**: the per-chapter `card:` in `reel.yaml`; **its API is built** as
   `title-card-write-api`: `PUT`/`GET …/reel` carry each chapter's `card` (the overrides; `{}` removes, absent or `null`
   keeps; a refusal is a 400 naming the chapter and the field, and a `look.title_card` or font the engine refuses is
-  refused the same way), the event detail reports every chapter's resolved `card` and the event's `title_card` (the
+  refused the same way; the event-wide `look.title_card` is parsed as strictly as a chapter's card, so an unknown key or a
+  `title_font_size`, `subtitle_font_size` or `duration` outside the card bounds is refused, naming the field), the event detail reports every chapter's resolved `card` and the event's `title_card` (the
   read exposure of the title-card part of `look`; the engine's `resolve_card`, probe-free, with `title_card_error`
   and a per-chapter `card_error` instead of a 502 when a hand edit cannot be resolved), `GET /api/v1/fonts` lists the
   registry (D-22), and `POST …/title-card/preview` draws one draft card as an `image/png` with the renderer's own

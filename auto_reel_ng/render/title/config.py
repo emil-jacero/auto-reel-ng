@@ -10,11 +10,19 @@ guessed value (decision: fail loud / never fabricate).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from typing import Any, Mapping, Optional
 
 from ...errors import TitleCardError
-from ...reel.card import CARD_BACKGROUNDS, CARD_POSITIONS, ChapterCard
+from ...reel.card import (
+    CARD_BACKGROUNDS,
+    CARD_MAX_DURATION,
+    CARD_MAX_FONT_SIZE,
+    CARD_MIN_DURATION,
+    CARD_MIN_FONT_SIZE,
+    CARD_POSITIONS,
+    ChapterCard,
+)
 from .fonts import DEFAULT_FONT_FAMILY, font_for, registered_families
 
 #: Documented defaults carried over from auto-reel when ``look.title_card`` is silent.
@@ -142,6 +150,24 @@ def _require(mapping: Mapping[str, Any], key: str, kind: type, *, default: Any) 
     return raw  # pragma: no cover - kind is always one of the three above
 
 
+def _check_known_keys(raw: Mapping[str, Any]) -> None:
+    """Refuse a key that is not a :class:`TitleCardConfig` field (a typo must not be ignored)."""
+    allowed = [field.name for field in fields(TitleCardConfig)]
+    for key in raw:
+        if key not in allowed:
+            raise TitleCardError(
+                f"look.title_card.{key} is not a title-card field; use one of: {', '.join(allowed)}"
+            )
+
+
+def _check_range(key: str, value: float, low: float, high: float, unit: str) -> None:
+    """Fail loud, naming the field, value and inclusive range; a NaN is outside every range."""
+    if not low <= value <= high:
+        raise TitleCardError(
+            f"look.title_card.{key} must be between {low} and {high}{unit}, got {value}"
+        )
+
+
 def _parse_font_family(raw: Mapping[str, Any]) -> Optional[str]:
     """The configured family in the registry's spelling, or ``None`` (the default)."""
     value = _require(raw, "font_family", str, default=None)
@@ -159,7 +185,7 @@ def _parse_font_family(raw: Mapping[str, Any]) -> Optional[str]:
 def parse_title_card_config(raw: Optional[Mapping[str, Any]]) -> TitleCardConfig:
     """Parse a :class:`TitleCardConfig` from the opaque ``look.title_card`` sub-map.
 
-    Absent fields take their documented defaults; a malformed value fails loud.
+    Absent fields take their documented defaults; a malformed, unknown or out-of-range value fails loud.
     The combined fade durations are clamped so their sum never exceeds the card
     duration (a card never fades for longer than it is shown).
     """
@@ -167,6 +193,7 @@ def parse_title_card_config(raw: Optional[Mapping[str, Any]]) -> TitleCardConfig
         raw = {}
     if not isinstance(raw, Mapping):
         raise TitleCardError(f"look.title_card must be a mapping, got {raw!r}")
+    _check_known_keys(raw)
 
     position = _require(raw, "position", str, default=DEFAULT_POSITION)
     if position not in _POSITIONS:
@@ -182,16 +209,24 @@ def parse_title_card_config(raw: Optional[Mapping[str, Any]]) -> TitleCardConfig
         )
 
     duration = _require(raw, "duration", float, default=DEFAULT_DURATION)
+    _check_range("duration", duration, CARD_MIN_DURATION, CARD_MAX_DURATION, " seconds")
+    title_font_size = _require(raw, "title_font_size", int, default=DEFAULT_TITLE_FONT_SIZE)
+    subtitle_font_size = _require(
+        raw, "subtitle_font_size", int, default=DEFAULT_SUBTITLE_FONT_SIZE
+    )
+    for key, size in (
+        ("title_font_size", title_font_size),
+        ("subtitle_font_size", subtitle_font_size),
+    ):
+        _check_range(key, size, CARD_MIN_FONT_SIZE, CARD_MAX_FONT_SIZE, "")
     fade_in = _require(raw, "fade_in", float, default=DEFAULT_FADE_IN)
     fade_out = _require(raw, "fade_out", float, default=DEFAULT_FADE_OUT)
     fade_in, fade_out = _clamp_fades(fade_in, fade_out, duration)
 
     return TitleCardConfig(
         font_family=_parse_font_family(raw),
-        title_font_size=_require(raw, "title_font_size", int, default=DEFAULT_TITLE_FONT_SIZE),
-        subtitle_font_size=_require(
-            raw, "subtitle_font_size", int, default=DEFAULT_SUBTITLE_FONT_SIZE
-        ),
+        title_font_size=title_font_size,
+        subtitle_font_size=subtitle_font_size,
         text_color=_require(raw, "text_color", str, default=DEFAULT_TEXT_COLOR),
         outline_color=_require(raw, "outline_color", str, default=DEFAULT_OUTLINE_COLOR),
         outline_width=_require(raw, "outline_width", float, default=DEFAULT_OUTLINE_WIDTH),
@@ -248,11 +283,9 @@ def check_card_styles(
     """Fail loud, naming the field, for the style errors the engine's parsers can detect.
 
     ``look_title_card`` is parsed as a render parses it (``look.title_card.<field>`` in the
-    message). That parse keeps the engine's lax event-wide rules: it does not reject unknown
-    ``look.title_card`` keys and does not range-check ``title_font_size``,
-    ``subtitle_font_size`` or ``duration`` (only a per-card value is range-checked, by the
-    loader), so a "valid" event-wide style is not a promise the renderer draws it sensibly.
-    Tightening that is a follow-up to ``parse_title_card_config``, not to this check. Also, each chapter's ``font_family`` must be in the registry (the loader cannot
+    message). That parse is as strict as a chapter's card: it rejects unknown ``look.title_card``
+    keys and range-checks ``title_font_size``, ``subtitle_font_size`` and ``duration`` with the
+    card's own bounds. Also, each chapter's ``font_family`` must be in the registry (the loader cannot
     check that: ``reel/`` is below ``render/``). The error names the chapter and ``card.<field>``.
     The card's other values are the loader's and are not checked again.
 
