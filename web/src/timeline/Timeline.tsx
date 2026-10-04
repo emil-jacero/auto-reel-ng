@@ -63,13 +63,24 @@ import { chapterBands, footageMs, movieMs, trackLayout } from './layout'
 import type { TrackClip } from './layout'
 import type { ShiftFrom } from './Track'
 import type { Layout } from './model'
-import { DEFAULT_PPS, MAX_PPS, fitCanvas, pxToTime, timeToPx, zoomAt } from './model'
+import {
+  DEFAULT_PPS,
+  MAX_PPS,
+  ZOOM_STEP,
+  anchorFor,
+  fitCanvas,
+  pxToTime,
+  sliderToPps,
+  timeToPx,
+  zoomAt,
+} from './model'
 import { createPlayhead } from './playhead'
 import { afterRead, endPosition, globalMs, keptPosition, timedOf } from './position'
 import type { Position } from './position'
 import { hasFrame, snapshotOf, useFrameReady } from './posterFrame'
 import { useTimelineVideo } from './useTimelineVideo'
 import { useVisibleRange } from './useVisibleRange'
+import { ZoomSlider } from './ZoomSlider'
 
 /*
  * Edit mode's Timeline (D-20): the picture, the transport and zoom, and the track. It writes
@@ -77,7 +88,6 @@ import { useVisibleRange } from './useVisibleRange'
  * themselves, so a scrub or a playing video re-renders them and not the whole track.
  */
 
-const ZOOM_STEP = 1.5
 /** The playhead is brought back into view when it comes this close to the scroller's edge. */
 const EDGE_PX = 24
 
@@ -256,8 +266,12 @@ export function Timeline({
   const fit = range.width > 0 ? fitCanvas(lay.totalMs, range.width, gutter).pps : DEFAULT_PPS
   const wanted = zoom.fitted ? fit : Math.min(MAX_PPS, Math.max(fit, zoom.pps))
   const pps = wanted
+  // The scale as last requested: set by a zoom before its render, so two zooms in one frame
+  // anchor on the second's real starting scale (design D2); a render brings it back in step.
   const ppsRef = useRef(pps)
   ppsRef.current = pps
+  const fitRef = useRef(fit)
+  fitRef.current = fit
 
   // The drag moves the layers behind the card by a translate on each of them (`data-after`): no
   // React render and no inherited property to resolve under the whole track. Removed in the
@@ -291,11 +305,15 @@ export function Timeline({
     }
   }, [shifting, drag])
 
-  // A zoom is applied after the commit that gave the canvas its new width.
+  // A zoom is applied after the commit that gave the canvas its new width. The browser rounds
+  // `scrollLeft` to whole pixels: the exact value is kept, so a run of zooms (a slider drag)
+  // anchors on it and the half pixels do not add up.
+  const exactScroll = useRef<number | null>(null)
   useLayoutEffect(() => {
     const el = scroller.current
     if (el !== null && pendingScroll.current !== null) {
       el.scrollLeft = pendingScroll.current
+      exactScroll.current = pendingScroll.current
       pendingScroll.current = null
       syncRange()
     }
@@ -468,30 +486,50 @@ export function Timeline({
     announce(pos)
   }
 
-  const zoomBy = (factor: number) => {
+  /**
+   * The one zoom path: to `target` px per second, held to [Fit, MAX_PPS], keeping the moment under
+   * the anchor where it is: the pointer when given (Ctrl+wheel), else the playhead while it is in
+   * view, else the view's centre. Reaching Fit sets Fit, which then follows a resized view.
+   */
+  const zoomTo = (target: number, pointerX?: number) => {
     const el = scroller.current
-    if (el === null) {
+    if (el === null || el.clientWidth === 0) {
       return
     }
-    const target = Math.min(MAX_PPS, Math.max(fit, pps * factor))
-    if (Math.abs(target - pps) < 1e-9) {
+    const from = ppsRef.current
+    const fitNow = fitRef.current
+    const to = Math.min(MAX_PPS, Math.max(fitNow, target))
+    if (Math.abs(to - from) < 1e-9) {
       return
     }
-    const view = { pps, scrollLeft: el.scrollLeft, width: Math.max(1, el.clientWidth) }
-    // Keep the playhead where it is in the view; centre on the view when it is out of it.
-    const px = timeToPx(globalMs(lay, playhead.get()), pps) - el.scrollLeft
-    const anchor = px >= 0 && px <= view.width ? px : view.width / 2
-    const next = zoomAt(view, target / pps, anchor, lay.totalMs)
+    const exact = exactScroll.current
+    const scrollLeft =
+      pendingScroll.current ??
+      (exact !== null && Math.abs(el.scrollLeft - exact) < 1 ? exact : el.scrollLeft)
+    const view = { pps: from, scrollLeft, width: Math.max(1, el.clientWidth) }
+    const playheadX = timeToPx(globalMs(lay, playhead.get()), from) - scrollLeft
+    const anchor = anchorFor(playheadX, view.width, pointerX)
+    const next = zoomAt(view, to / from, anchor, lay.totalMs)
     pendingScroll.current = next.scrollLeft
-    setZoom({ pps: next.pps, fitted: false })
+    ppsRef.current = next.pps
+    setZoom({ pps: next.pps, fitted: next.pps <= fitNow + 1e-9 })
   }
+  const zoomBy = (factor: number) => zoomTo(ppsRef.current * factor)
   const fitAll = () => {
     pendingScroll.current = 0
     if (scroller.current !== null) {
       scroller.current.scrollLeft = 0 // also when the scale does not change (the floor of 4 px/s)
       syncRange()
     }
-    setZoom({ pps: fit, fitted: true })
+    ppsRef.current = fitRef.current
+    setZoom({ pps: fitRef.current, fitted: true })
+  }
+  const onSlider = (position: number) => {
+    if (position <= 0) {
+      fitAll()
+    } else {
+      zoomTo(sliderToPps(position, fitRef.current))
+    }
   }
   const onTrackKey = (key: string) => {
     if (key === '0') {
@@ -621,6 +659,13 @@ export function Timeline({
           >
             <Icon name="minus" />
           </button>
+          <ZoomSlider
+            pps={pps}
+            fit={fit}
+            fitted={atFit}
+            disabled={fit >= MAX_PPS - 1e-9}
+            onZoom={onSlider}
+          />
           <button
             type="button"
             className="btn btn-secondary btn-icon"
