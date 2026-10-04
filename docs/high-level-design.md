@@ -116,7 +116,7 @@ Legend: ✅ verified on dev host, ⚠️ verified-broken on dev host, ❓ untest
 | Logical op | NVIDIA (CUDA/NVENC) ❓ | Intel (QSV/VAAPI) ❓ | AMD (VAAPI) — tested | CPU |
 |---|---|---|---|---|
 | decode | `-hwaccel cuda -hwaccel_output_format cuda` | `-hwaccel qsv` / `vaapi` | ✅ `-init_hw_device vaapi=va:<node> -filter_hw_device va -hwaccel vaapi -hwaccel_device va -hwaccel_output_format vaapi` (one named device shared with filters, exp 006) **for the codecs in the profile's `hw_decode` set** (h264 8-bit, hevc/vp9/av1 10-bit; 4:2:0 only); any other clip (MPEG-4 Part 2, MJPEG, 10-bit H.264, 4:2:2) is decoded in software and goes through `format=nv12,hwupload` (D-18) | software |
-| scale + pad | `scale_cuda`/`scale_npp` (+`pad`?) | `vpp_qsv` scale **only** (no pad) → libplacebo or CPU pad | `scale_vaapi` ✅; `pad_vaapi` ⚠️ geometry correct, **fill colour ignored on Mesa** (exp 006) — the self-test's `pad_fill_ok` decides; clips needing bars fall back to CPU `scale,pad` | `scale,pad` |
+| scale + pad | `scale_cuda`/`scale_npp` (+`pad`?) | `vpp_qsv` scale **only** (no pad) → libplacebo or CPU pad | `scale_vaapi,setsar=1` ✅ (`scale_vaapi,pad_vaapi,setsar=1` with bars); `pad_vaapi` ⚠️ geometry correct, **fill colour ignored on Mesa** (exp 006) — the self-test's `pad_fill_ok` decides; clips needing bars fall back to CPU `scale,pad,setsar=1` | `scale,pad,setsar=1` |
 | overlay (title) | `overlay_cuda` | `overlay_qsv` | ⚠️ `overlay_vaapi` **unsupported on Mesa** → CPU bridge / title-as-segment | `overlay` |
 | tonemap HDR→SDR | `libplacebo` / CUDA | `tonemap_vaapi` / QSV | ⚠️ **all GPU paths fail** → CPU only | `zscale,tonemap` |
 | encode | `h264_nvenc`/`hevc_nvenc`/`av1_nvenc` | `*_qsv` | ✅ `h264_vaapi`/`hevc_vaapi`/`av1_vaapi` | `libx264`/`libx265`/`svtav1` |
@@ -153,8 +153,13 @@ Per movie:
    The rotation is the clip's **display rotation plus the editorial `rotate`** (an extra clockwise turn,
    **D-23**), applied by the engine as one CPU transpose chain on every profile with ffmpeg's own autorotate off;
    a clip with a display rotation or a `rotate` is never stream-copied.
+   **Every normalize path ends in an explicit SAR of 1:1** (`setsar=1`, on every profile and every turn, including a
+   net turn of 0 on VAAPI where the chain is otherwise a bare `scale_vaapi`; `vaapi-sar-uniform`, D-23 addendum), so a
+   source whose SAR is unset never yields a segment with an unset SAR.
    Title clips get the card **overlaid in this same pass** (no separate moviepy encode).
-3. **Concat.** Stream-copy concat of the (now uniform) set.
+3. **Concat.** Stream-copy concat of the (now uniform) set. The equivalence pre-flight compares the copy-critical
+   fields from `ffprobe`, with the SAR **normalized** by the same rule copy eligibility uses (absent, empty, `N/A` and
+   `0:1` count as `1:1`; any concrete SAR is compared as probed).
 4. **Chapters.** Generate an `ffmetadata` file with `[CHAPTER]` entries from chapter boundaries and mux it in.
 
 Audio is normalized in the same normalize pass (sample rate / channels / codec) so concat can stream-copy.
@@ -831,6 +836,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `event-poster-engine` has landed (the engine half of "event poster frames"; D-26): the optional `poster: {clip, at}` in
    `reel.yaml`, the poster written as `<movie stem>-poster.jpg` beside the movie and embedded as its cover, claimed in the
    render manifest and pruned with its movie; `RENDER_GRAPH_VERSION` 11.
+   `vaapi-sar-uniform` (bug fix, `RENDER_GRAPH_VERSION` 12): every VAAPI normalize ends in `setsar=1` and the concat
+   pre-flight compares SAR normalized, so a SAR-less clip turned back to its stored orientation renders on VAAPI
+   (D-23 addendum).
    `event-poster-gui` has landed (the GUI half; D-26, D-20, D-15): the detail's `poster` and `poster_note`, `GET …/poster.jpg`, `poster` in
    the editorial body, a cover on every list row and the event page, Use as poster on the Edit-mode Timeline and the poster area
    with Use default; no engine, job, schema-version or `RENDER_GRAPH_VERSION` change. The v2 list is closed.
@@ -1889,6 +1897,16 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     of 0 removes the key; a saved value that is not a quarter turn is shown as no turn.
     `npm run build` on `origin/main` and on this change: JS 539,223 to 544,668 bytes (173,912 to 175,578 gzip -9, +1.7 KB), CSS
     76,068 to 77,252 bytes (14,391 to 14,620 gzip -9); no package added; `npm test` runs 618 tests (599 before).
+  - **Addendum 2026-10-04, change `vaapi-sar-uniform`: a net turn of 0 still sets square pixels.** A user render failed
+    on VAAPI with "segments could not be made copy-uniform" (event `2025-01-15 - Provklipp`): a clip with no SAR
+    (`N/A`) and a display rotation of 90 with `rotate: 270` has a total turn of 0, so it adds no transpose stage, and a
+    16:9 clip needs no pad — the VAAPI chain was a bare `scale_vaapi`, which passes the unset SAR through. Its segment
+    probed `sample_aspect_ratio=N/A` beside `1:1` ones and the raw-string pre-flight refused the set (the CPU chain
+    always ended in `setsar=1`). Now the VAAPI normalize fragment ends in `setsar=1` (metadata-only; it runs on VAAPI
+    frames with no transfer, measured on the host's AMD Radeon 860M: `N/A` without, `1:1` with), so the overlay-free
+    chain, the video-card head (before its `hwdownload`) and its tail all carry SAR 1:1; and the concat pre-flight
+    normalizes SAR (unset ≡ `1:1`, one shared helper with copy eligibility), so a metadata-only difference never fails
+    a render. VAAPI segment bytes change for identical inputs: **`RENDER_GRAPH_VERSION` goes 11 to 12** (D-C8).
 
 ---
 
