@@ -14,7 +14,6 @@ import { Legend, SuggestionDetail } from './SuggestionDetail'
 import { SuggestionLane } from './SuggestionLane'
 import type { ClipMarks } from './SuggestionLane'
 import {
-  CUTS_WAIT_UNREADABLE,
   READING_WORDS,
   UNREADABLE_TITLE,
   clipNotAnalyzed,
@@ -87,10 +86,9 @@ export function useSuggestions(
     }
   }, [read, dismissals])
 
-  const cutsKnown = control?.cutsState === 'ok'
   const cutsOf = control?.cutsOf
   const base = useMemo(() => {
-    if (read.status !== 'ok' || !cutsKnown || cutsOf === undefined || held === undefined) {
+    if (read.status !== 'ok' || cutsOf === undefined || held === undefined) {
       return NO_GROUPS
     }
     const { analysis } = read
@@ -117,7 +115,7 @@ export function useSuggestions(
         }),
       }
     })
-  }, [read, cutsKnown, cutsOf, held, clips])
+  }, [read, cutsOf, held, clips])
 
   // Where each mark sits at this scale: stacked over the whole track (a mark's row never
   // depends on which clips are drawn), and the rows the lane needs.
@@ -351,7 +349,6 @@ export function useSuggestions(
     lane,
     strip: (
       <Notes
-        control={control}
         read={read}
         groups={groups}
         detail={
@@ -360,7 +357,7 @@ export function useSuggestions(
               id={detailId}
               mark={selected}
               clipName={nameOf(selected)}
-              decide={decide}
+              decide={control.decide}
               refusal={standingRefusal(
                 refusal,
                 selected.id,
@@ -379,17 +376,14 @@ export function useSuggestions(
 }
 
 function Notes({
-  control,
   read,
   groups,
   detail,
 }: {
-  control: AnalysisControl
   read: ReturnType<typeof useAnalysis>
   groups: readonly ClipMarks[]
   detail: ReactNode
 }) {
-  const { cutsState } = control
   if (read.status === 'failed') {
     const { cause, detail: why } = read.failure
     return (
@@ -401,11 +395,8 @@ function Notes({
       />
     )
   }
-  if (read.status !== 'ok' || cutsState === 'reading') {
+  if (read.status !== 'ok') {
     return <p className="sg-note">{READING_WORDS}</p>
-  }
-  if (cutsState === 'unreadable') {
-    return <p className="sg-note">{CUTS_WAIT_UNREADABLE}</p>
   }
   const note = eventNote(read.analysis)
   const any = groups.some((group) => group.marks.length > 0)

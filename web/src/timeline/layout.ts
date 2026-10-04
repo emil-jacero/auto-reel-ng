@@ -194,22 +194,10 @@ export function readiness(clips: readonly Pick<ShownClip, 'health'>[]): Readines
   return counts
 }
 
-/** What the section shows: closed wins; no clip to show is `none`; else Prepare until all are ready. */
-export type SectionState = 'closed' | 'none' | 'prepare' | 'track'
+/** What Edit mode's section shows: no clip to show is `none`; else Prepare until all are ready. */
+export type SectionState = 'none' | 'prepare' | 'track'
 
-/**
- * Whether the section is open. The read view opens it with its button (`toggled`) and starts
- * closed, costing nothing; Edit mode (`editing`) is where the cuts are trimmed, so it is open
- * from the start, has no button, and a Refresh keeps it open (`edit-mode-declutter`).
- */
-export function sectionOpen(editing: boolean, toggled: boolean): boolean {
-  return editing || toggled
-}
-
-export function sectionState(open: boolean, clips: readonly Pick<ShownClip, 'health'>[]): SectionState {
-  if (!open) {
-    return 'closed'
-  }
+export function sectionState(clips: readonly Pick<ShownClip, 'health'>[]): SectionState {
   if (clips.length === 0) {
     return 'none'
   }

@@ -7,7 +7,7 @@ import type { Turn } from '../rotate/turn.ts'
 /*
  * What Edit mode gives the Timeline (`timeline-trim`): the draft's cuts to draw and play,
  * the way to change one, and the editor's state that decides whether the handles act.
- * `null` is the read view, which draws the cuts as saved and writes nothing. Types only.
+ * The Timeline is shown only in Edit mode, so it always has one. Types only.
  */
 
 /**

@@ -11,8 +11,6 @@ import {
   useSyncExternalStore,
 } from 'react'
 
-import { NO_TURNS } from '../cuts/ReadCuts'
-import type { ClipCuts, ClipTurns } from '../cuts/ReadCuts'
 import '../rotate/rotate.css'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
@@ -48,9 +46,6 @@ import type { EditBinding } from './editing'
 import { selectionStands } from './handles'
 import type { KeyAction } from './keys'
 import {
-  CUTS_READING,
-  CUTS_UNREADABLE,
-  CUTS_UNREADABLE_DETAIL,
   cardsNotes,
   FILM_FAILED,
   FILM_FAILED_DETAIL,
@@ -77,8 +72,8 @@ import { useTimelineVideo } from './useTimelineVideo'
 import { useVisibleRange } from './useVisibleRange'
 
 /*
- * The open Timeline (D-20): the picture, the transport and zoom, and the track. Read only:
- * it writes nothing. The pieces that move often are small and read the playhead's store
+ * Edit mode's Timeline (D-20): the picture, the transport and zoom, and the track. It writes
+ * nothing itself: its edits go to the editor's draft. The pieces that move often are small and read the playhead's store
  * themselves, so a scrub or a playing video re-renders them and not the whole track.
  */
 
@@ -86,34 +81,24 @@ const ZOOM_STEP = 1.5
 /** The playhead is brought back into view when it comes this close to the scroller's edge. */
 const EDGE_PX = 24
 
-/** What the page's read of `reel.yaml` gave: the cuts, or why not (null cuts and no failure: not read yet). */
-export type CutsRead = {
-  cuts: ClipCuts | null
-  /** The clips' turns (the draft's in Edit mode); null: not read, shown unturned. */
-  turns?: ClipTurns | null
-  failure: { cause: string; detail: string | null } | null
-}
-
 export function Timeline({
   eventId,
   clips,
   chapterNames,
-  cuts,
   prepare,
   analysis,
-  editing = null,
+  editing,
   cards,
   cutHintId,
 }: {
   eventId: string
   clips: readonly TrackClip[]
   chapterNames: readonly string[]
-  cuts: CutsRead
   prepare: PrepareControl
   /** The analysis lane (`overlays/`): absent, the Timeline has none and reads no analysis. */
   analysis?: AnalysisControl
-  /** Edit mode's binding (trim handles, the draft's cuts); null in the read view. */
-  editing?: EditBinding | null
+  /** Edit mode's binding: the draft's cuts and turns, the trim handles, the poster. */
+  editing: EditBinding
   /** The title cards: the event's resolved cards, the decorator, the page's one selection. */
   cards: {
     specs: readonly CardSpec[]
@@ -131,7 +116,7 @@ export function Timeline({
 }) {
   const posterWhyId = useId()
   const clipLay = useMemo(() => trackLayout(clips), [clips])
-  const turns = cuts.turns ?? NO_TURNS
+  const turns = editing.turns
   const decorators = cards.decorators
   const drag = useMemo(() => createDragStore(), [])
   // A black card's end edge in the air (its chapter, or null). The layout below is the committed
@@ -183,10 +168,8 @@ export function Timeline({
   // Each clip's timing with its kept extent: the playhead's rules land on kept frames only.
   const facts = useMemo(() => clips.map(timedOf), [clips])
   const bands = useMemo(() => chapterBands(chapterNames, clips), [chapterNames, clips])
-  const movie = useMemo(
-    () => (cuts.cuts === null ? null : movieMs(clips, cuts.cuts)),
-    [clips, cuts.cuts],
-  )
+  const draftCuts = editing.cuts
+  const movie = useMemo(() => movieMs(clips, draftCuts), [clips, draftCuts])
   // The footage the movie line counts against: full durations, which edge cuts do not shorten.
   const footage = useMemo(() => footageMs(clips), [clips])
   // The playhead opens at the start of the movie: its opening card when that is black.
@@ -194,7 +177,7 @@ export function Timeline({
     () => createPlayhead(trackStart(map, clipLay, facts, names)),
     [],
   )
-  const previews = editing?.previews ?? null
+  const previews = editing.previews
   const held = usePreviewHeld(previews)
   const video = useTimelineVideo({ eventId, clips, playhead, turns, held, map, names })
   // Every card's image, asked for once when the Timeline opens (one request at a time).
@@ -224,23 +207,19 @@ export function Timeline({
     },
     [selectCard],
   )
-  // A block's body in Edit mode opens the card's dialog; the read view only selects.
+  // A block's body opens the card's dialog.
   const pressCard = useCallback(
     (chapter: string) => {
       setSelected(null)
-      if (editing === null) {
-        selectCard(chapter)
-      } else {
-        openCard(chapter)
-      }
+      openCard(chapter)
     },
-    [editing, selectCard, openCard],
+    [openCard],
   )
   // Reset, and a cut removed, end a selection.
-  const epoch = editing?.epoch
+  const epoch = editing.epoch
   useEffect(() => setSelected(null), [epoch])
   useEffect(() => {
-    if (selected !== null && editing !== null) {
+    if (selected !== null) {
       // A cut that became part of a leading or a trailing cut has no handle: nor a selection.
       const clip = clips.find((c) => c.identity === selected.identity)
       const there = selectionStands(
@@ -365,23 +344,19 @@ export function Timeline({
     [lay, playhead, syncRange],
   )
 
-  // Play shows no frame the movie omits: until the cuts are read (or known unreadable) it waits.
-  const cutsPending = cuts.cuts === null && cuts.failure === null
   // Edit mode's open clip preview makes room for the Timeline's video when asked: closed,
   // then the video is created at the playhead (`useTimelineVideo`, `held`).
   const takePage = () => {
-    const open = previews?.open() ?? null
-    if (previews !== null && open !== null) {
+    const open = previews.open()
+    if (open !== null) {
       previews.hide(open)
     }
   }
   const toggle = () => {
-    if (!cutsPending || video.playing) {
-      if (!video.playing) {
-        takePage()
-      }
-      video.toggle()
+    if (!video.playing) {
+      takePage()
     }
+    video.toggle()
   }
 
   const announce = (pos: Position) =>
@@ -389,7 +364,7 @@ export function Timeline({
 
   /** A press on a cut's span selects the cut (a place in a card is no clip's). */
   const selectUnder = (pos: Position) => {
-    if (editing === null || pos.card != null) {
+    if (pos.card != null) {
       return
     }
     const at = clips[pos.clip]
@@ -412,13 +387,11 @@ export function Timeline({
         // A press in a black card's span selects the card, and the playhead goes there too.
         const chapter = cards.specs[inCard.chapter].chapter
         if (phase === 'tap') {
-          if (editing !== null) {
-            // The tap is on the scrub surface; the block is the opener the dialog returns focus to.
-            const block = Array.from(
-              document.querySelectorAll<HTMLElement>('button.tl-card[data-card]'),
-            ).find((b) => b.dataset.card === chapter)
-            block?.focus({ preventScroll: true })
-          }
+          // The tap is on the scrub surface; the block is the opener the dialog returns focus to.
+          const block = Array.from(
+            document.querySelectorAll<HTMLElement>('button.tl-card[data-card]'),
+          ).find((b) => b.dataset.card === chapter)
+          block?.focus({ preventScroll: true })
           pressCard(chapter)
         } else {
           pickCard(chapter)
@@ -536,8 +509,8 @@ export function Timeline({
             specs,
             leadMs,
             shifting,
-            handles: editing === null ? null : handles,
-            onSet: editing === null ? null : editing.onCardDuration,
+            handles,
+            onSet: editing.onCardDuration,
             selected: selection.selected,
             onSelect: pickCard,
             onOpen: pressCard,
@@ -555,25 +528,22 @@ export function Timeline({
   // Use as poster (Edit mode): why it cannot act now, in words, or null.
   const frame = useFrameReady(video.videoRef, held)
   const [posterFailed, setPosterFailed] = useState(false)
-  const posterWhy =
-    editing === null
-      ? null
-      : (() => {
-          const result = posterFromPlayhead(clips, playhead.get(), {
-            locked: editing.locked,
-            held,
-            frame,
-          })
-          return 'why' in result ? result.why : null
-        })()
+  const posterWhy = (() => {
+    const result = posterFromPlayhead(clips, playhead.get(), {
+      locked: editing.locked,
+      held,
+      frame,
+    })
+    return 'why' in result ? result.why : null
+  })()
   const usePoster = () => {
     const element = video.videoRef.current
     const result = posterFromPlayhead(clips, playhead.get(), {
-      locked: editing?.locked ?? true,
+      locked: editing.locked,
       held,
       frame: hasFrame(element),
     })
-    if (editing === null || element === null || 'why' in result) {
+    if (element === null || 'why' in result) {
       return
     }
     setPosterFailed(false)
@@ -614,7 +584,6 @@ export function Timeline({
         <button
           type="button"
           className="btn btn-primary tl-play"
-          aria-disabled={(cutsPending && !video.playing) || undefined}
           onClick={toggle}
         >
           <Icon name={video.playing ? 'pause' : 'play'} />
@@ -657,25 +626,23 @@ export function Timeline({
             {FIT}
           </button>
         </div>
-        {editing !== null && (
-          <div className="tl-poster">
-            <button
-              type="button"
-              className="btn btn-secondary"
-              aria-disabled={posterWhy !== null || undefined}
-              aria-describedby={posterWhy !== null ? posterWhyId : undefined}
-              onClick={usePoster}
-            >
-              <Icon name="film" />
-              {USE_AS_POSTER}
-            </button>
-            {posterWhy !== null && (
-              <span id={posterWhyId} className="tl-poster-why">
-                {posterWhy}
-              </span>
-            )}
-          </div>
-        )}
+        <div className="tl-poster">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            aria-disabled={posterWhy !== null || undefined}
+            aria-describedby={posterWhy !== null ? posterWhyId : undefined}
+            onClick={usePoster}
+          >
+            <Icon name="film" />
+            {USE_AS_POSTER}
+          </button>
+          {posterWhy !== null && (
+            <span id={posterWhyId} className="tl-poster-why">
+              {posterWhy}
+            </span>
+          )}
+        </div>
       </div>
       {posterFailed && (
         <Alert
@@ -693,7 +660,6 @@ export function Timeline({
         bands={bands}
         pps={pps}
         range={range}
-        showCuts={cuts.cuts !== null}
         turns={turns}
         scrollerRef={scroller}
         playhead={playhead}
@@ -712,19 +678,19 @@ export function Timeline({
         shifting={shifting}
       />
 
-      {editing !== null && (
-        <CutFields
-          selected={selected}
-          clips={clips}
-          editing={editing}
-          drag={drag}
-          hintId={cutHintId}
-        />
+      <CutFields
+        selected={selected}
+        clips={clips}
+        editing={editing}
+        drag={drag}
+        hintId={cutHintId}
+      />
+
+      {editing.orderChanged && <Alert tone="info" role="note" title={ORDER_SAVED} />}
+
+      {decorators === 'invalid' && (
+        <p className="tl-summary">Whether title cards are drawn is not known.</p>
       )}
-
-      {editing?.orderChanged === true && <Alert tone="info" role="note" title={ORDER_SAVED} />}
-
-      <SummaryNotes cardsUnknown={decorators === 'invalid'} pending={cutsPending} />
 
       {pictures.failures.map((failure) => (
         <Alert
@@ -745,14 +711,6 @@ export function Timeline({
         {announcement}
       </p>
 
-      {cuts.failure !== null && (
-        <Alert
-          tone="warn"
-          role="note"
-          title={CUTS_UNREADABLE}
-          detail={`${CUTS_UNREADABLE_DETAIL} ${cuts.failure.cause}${cuts.failure.detail === null ? '' : ` ${cuts.failure.detail}`}`}
-        />
-      )}
       {noPicture.size > 0 && (
         <Alert tone="warn" role="note" title={FILM_FAILED} detail={FILM_FAILED_DETAIL} />
       )}
@@ -771,8 +729,6 @@ export function Timeline({
     </div>
   )
 }
-
-const NEVER = () => () => undefined
 
 /**
  * The movie's length as one line in the control row (`help-text-declutter`). It follows a black
@@ -797,7 +753,7 @@ function MovieStat({
   /** The shown clips' full durations: "of footage". */
   footage: number
   map: CardMap
-  movie: number | null
+  movie: number
 }) {
   const tenths = useSyncExternalStore(drag.subscribe, () => {
     const d = drag.getCard()
@@ -813,9 +769,6 @@ function MovieStat({
           ),
     [tenths, shifting, map, specs, placeAll, clipLay],
   )
-  if (movie === null) {
-    return null
-  }
   // One span per term: a narrow screen wraps between terms, never inside one.
   // The footage is the clips' full durations, which edge cuts do not shorten (not the rippled track).
   const terms = movieStat(movie, footage, now.totalMs).split(' \u00b7 ')
@@ -831,24 +784,8 @@ function MovieStat({
   )
 }
 
-/** What the stat cannot say: the cuts are still being read, or whether cards are drawn is not known. */
-function SummaryNotes({ cardsUnknown, pending }: { cardsUnknown: boolean; pending: boolean }) {
-  if (!cardsUnknown && !pending) {
-    return null
-  }
-  return (
-    <p className="tl-summary">
-      {cardsUnknown && 'Whether title cards are drawn is not known.'}
-      {cardsUnknown && pending && ' '}
-      {pending && CUTS_READING}
-    </p>
-  )
-}
 
 /** Whether a clip preview of Edit mode is open, and so holds the page's one video. */
-function usePreviewHeld(previews: EditBinding['previews'] | null): boolean {
-  return useSyncExternalStore(
-    previews === null ? NEVER : previews.subscribe,
-    () => previews !== null && previews.open() !== null,
-  )
+function usePreviewHeld(previews: EditBinding['previews']): boolean {
+  return useSyncExternalStore(previews.subscribe, () => previews.open() !== null)
 }

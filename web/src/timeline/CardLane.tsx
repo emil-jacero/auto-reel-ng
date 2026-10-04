@@ -43,7 +43,7 @@ export function CardLane({
   /** The selected card's chapter (saved name) or null. */
   selected: string | null
   /** A video card's edge in the air changes its own block only (it adds no time), through this. */
-  drag: DragStore | null
+  drag: DragStore
   /** A black card's drag in progress: the blocks behind the card move. */
   shifting: ShiftFrom | null
   /** Each card's image, when the Timeline has fetched it: the block's miniature. */
@@ -80,9 +80,6 @@ export function CardLane({
   return <div className="tl-cards">{nodes}</div>
 }
 
-/** The subscription of a block with no drag store: it never changes. */
-const NEVER = () => () => {}
-
 const CardBlockButton = memo(function CardBlockButton({
   block,
   name,
@@ -103,7 +100,7 @@ const CardBlockButton = memo(function CardBlockButton({
   image: string | null
   pps: number
   selected: boolean
-  drag: DragStore | null
+  drag: DragStore
   /** Behind a black card being dragged: moved with it. */
   behind: boolean
   onOpen: (chapter: string) => void
@@ -112,8 +109,8 @@ const CardBlockButton = memo(function CardBlockButton({
 }) {
   // The card's edge in the air: only this block follows it (a black card's drag moves the layers
   // behind it with it; the layout is not drawn again until release).
-  const live = useSyncExternalStore(drag?.subscribe ?? NEVER, () => {
-    const d = drag?.getCard() ?? null
+  const live = useSyncExternalStore(drag.subscribe, () => {
+    const d = drag.getCard()
     return d !== null && d.chapter === name ? d : null
   })
   const widthMs =

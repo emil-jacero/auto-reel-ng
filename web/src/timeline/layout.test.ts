@@ -12,7 +12,6 @@ import {
   omittedWords,
   readiness,
   readProxy,
-  sectionOpen,
   sectionState,
   shownClips,
   trackClips,
@@ -112,7 +111,7 @@ describe('shownClips', () => {
     })
     assert.equal(clips.length, 0)
     assert.equal(omitted.missing, 2)
-    assert.equal(sectionState(true, clips), 'none')
+    assert.equal(sectionState(clips), 'none')
   })
 })
 
@@ -172,12 +171,10 @@ describe('readiness and sectionState', () => {
     assert.equal(readiness([]).open, false)
   })
 
-  it('chooses the state: closed wins, no clips is none, one not ready is prepare, all ready is track', () => {
-    assert.equal(sectionState(false, health('ready')), 'closed')
-    assert.equal(sectionState(false, []), 'closed')
-    assert.equal(sectionState(true, []), 'none')
-    assert.equal(sectionState(true, health('ready', 'absent')), 'prepare')
-    assert.equal(sectionState(true, health('ready', 'ready')), 'track')
+  it('chooses the state: no clips is none, one not ready is prepare, all ready is track', () => {
+    assert.equal(sectionState([]), 'none')
+    assert.equal(sectionState(health('ready', 'absent')), 'prepare')
+    assert.equal(sectionState(health('ready', 'ready')), 'track')
   })
 
   it('treats 24 ready and 1 failed as prepare', () => {
@@ -185,7 +182,7 @@ describe('readiness and sectionState', () => {
     const r = readiness(health(...clips))
     assert.equal(r.ready, 24)
     assert.equal(r.failed, 1)
-    assert.equal(sectionState(true, health(...clips)), 'prepare')
+    assert.equal(sectionState(health(...clips)), 'prepare')
   })
 })
 
@@ -430,20 +427,5 @@ describe('filmTiles', () => {
     const portrait: FilmGeometry = { tileWidth: 50, tileHeight: 90, columns: 10, tiles: 5, interval: 1 }
     const [first, second] = filmTiles(portrait, 5000, 40, all)
     assert.equal(Math.round(second.x - first.x), 30)
-  })
-})
-
-describe('sectionOpen', () => {
-  it('the read view is closed until its button opens it, and toggles', () => {
-    assert.equal(sectionOpen(false, false), false)
-    assert.equal(sectionOpen(false, true), true)
-  })
-
-  it('Edit mode is open on entry, with or without a press, and a Refresh keeps it so', () => {
-    assert.equal(sectionOpen(true, false), true)
-    assert.equal(sectionOpen(true, true), true)
-    assert.equal(sectionState(sectionOpen(true, false), [{ health: 'absent' }]), 'prepare')
-    assert.equal(sectionState(sectionOpen(true, false), [{ health: 'ready' }]), 'track')
-    assert.equal(sectionState(sectionOpen(false, false), [{ health: 'ready' }]), 'closed')
   })
 })

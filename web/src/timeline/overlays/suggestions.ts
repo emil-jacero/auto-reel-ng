@@ -437,8 +437,6 @@ export const NEVER_ANALYZED = 'Not analyzed'
 export const ANALYZE_COMMAND = 'Not analyzed. Run `auto-reel analyze <root>`, then Refresh.'
 export const ANALYZED_CLEAN = 'Analyzed: nothing to suggest.'
 export const CLIP_NOT_ANALYZED = 'Not analyzed'
-export const CUTS_WAIT_UNREADABLE =
-  'Suggestions are not shown because the cuts they are compared with could not be read.'
 export const DISMISSAL_NOTE = 'Dismissed suggestions come back when the page is reloaded.'
 
 /**
