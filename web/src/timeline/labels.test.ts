@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 
 import type { EnqueueProxiesResult } from '../api/proxies.ts'
 import {
+  cardsNotes,
   clipDescription,
   jobAnnouncement,
   jobEndWords,
@@ -16,6 +17,7 @@ import {
   readyCountWords,
 } from './labels.ts'
 import { readiness } from './layout.ts'
+import type { Placement } from './cards.ts'
 import type { ProxyHealth } from './layout.ts'
 import { createPlayhead } from './playhead.ts'
 
@@ -166,5 +168,45 @@ describe('createPlayhead', () => {
     const a = p.get()
     p.set({ clip: 0, ms: 0 })
     assert.equal(p.get(), a)
+  })
+})
+
+describe('title cards in the words', () => {
+  it('says the time black cards add to the movie, and nothing without them', () => {
+    assert.equal(
+      movieWords(200000, 225000, 'with 8 s of title cards'),
+      'Movie 3:20.00 of 3:45.00 of footage, with 8 s of title cards',
+    )
+    assert.equal(movieWords(200000, 225000, ''), 'Movie 3:20.00 of 3:45.00 of footage')
+    // Longer than the footage (cards add time): the movie is written whole, not cut to the footage.
+    assert.equal(
+      movieWords(52650, 47650, 'with 8 s of title cards'),
+      'Movie 0:52.65 of 0:47.65 of footage, with 8 s of title cards',
+    )
+  })
+
+  it('says once what cannot be drawn, in the service’s words', () => {
+    const specs = [{ chapter: '' }, { chapter: 'Dag 2' }]
+    const unresolved: Placement[] = [
+      { kind: 'unresolved', chapter: 0, error: 'look.title_card.font_family' },
+      { kind: 'unresolved', chapter: 1, error: 'look.title_card.font_family' },
+    ]
+    assert.deepEqual(cardsNotes(specs, unresolved, 'on'), [
+      {
+        title: 'A title card could not be resolved: look.title_card.font_family',
+        detail: 'Not drawn for the opening, Dag 2.',
+      },
+    ])
+    const off: Placement[] = [
+      { kind: 'off', chapter: 0, clip: 0, atMs: 0, background: 'black', durationMs: 1, keptMs: 1, widthMs: 1, clamped: false },
+    ]
+    assert.deepEqual(cardsNotes(specs, off, 'off'), [
+      { title: 'Title cards are off for this event; the render draws none' },
+    ])
+    assert.equal(cardsNotes(specs, [], 'invalid').length, 1)
+    assert.equal(cardsNotes(specs, [], 'unreadable').length, 1)
+    assert.deepEqual(cardsNotes(specs, [], 'on'), [])
+    const bad: Placement[] = [{ kind: 'unreadable', chapter: 1, error: 'card duration must be positive' }]
+    assert.equal(cardsNotes(specs, bad, 'on')[0].detail, 'Dag 2: card duration must be positive')
   })
 })

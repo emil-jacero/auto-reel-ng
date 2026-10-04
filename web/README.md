@@ -390,6 +390,7 @@ src/
 │   ├── playhead.ts       the playhead's external store; labels.ts: the Timeline's words, the Prepare answers (pure)
 │   ├── handles.ts        what a key does to a trim handle, Enter at the playhead, which overlapping handle a finger meant, when a mouse press came without pointer events, what a snap says (pure, + handles.test.ts)
 │   ├── dragStore.ts      the edge in the air while a handle is dragged: only the handle, its live span and the fields read it (pure)
+│   ├── cards.ts          the title cards (pure): placement as the render does, the black-card track map, words, the selection reducer (+ cards.test.ts); CardLane.tsx draws the lane, CardInspector.tsx the slot, useCardSelection.ts the page's selection
 │   ├── editing.ts        what Edit mode gives the Timeline: the draft's cuts, onTrim, onAdd, locked, the preview store (types)
 │   ├── TrimHandle.tsx    a clip's trim handles: sliders with pointer capture, snapping and keys
 │   ├── CutFields.tsx     the selected cut's Start and End, typed, in step with the handles

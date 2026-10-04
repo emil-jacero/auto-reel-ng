@@ -189,6 +189,89 @@
     gap: var(--s-1);
   }
 
+  /* A chapter's title card (`CardRow.tsx`): at the head of the chapter, read only. */
+  .card-row {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .card-row-select,
+  .card-row-body {
+    box-sizing: border-box;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--s-1) var(--s-3);
+    inline-size: 100%;
+    margin: 0;
+    padding: var(--s-2) var(--s-4);
+    border: 0;
+    border-inline-start: 4px solid var(--border-strong);
+    background: transparent;
+    color: var(--fg);
+    font: inherit;
+    font-size: var(--text-sm);
+    text-align: start;
+  }
+
+  .card-row-select {
+    cursor: pointer;
+
+    &:hover {
+      background: var(--surface-hover);
+    }
+
+    &[data-selected] {
+      border-inline-start-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: -2px;
+    }
+  }
+
+  .card-row-label {
+    display: inline-flex;
+    gap: var(--s-1);
+    align-items: center;
+    flex: 1 0 100%;
+    color: var(--fg-muted);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+
+  .card-row-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-1) var(--s-3);
+    align-items: baseline;
+  }
+
+  .card-row-title {
+    font-weight: 600;
+  }
+
+  .card-row-subtitle[data-empty],
+  .card-row-font,
+  .card-row-saved,
+  .card-row-words {
+    color: var(--fg-muted);
+  }
+
+  .card-row-length {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .card-row-look {
+    padding: 0 var(--s-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+    font-size: var(--text-xs);
+    font-weight: 600;
+  }
+
   /* The main title card: the event's title, between the heading and the tools. */
   .title-card {
     display: flex;

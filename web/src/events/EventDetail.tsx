@@ -19,6 +19,8 @@ import { RenderControl } from '../jobs/RenderControl'
 import { MoviePanel } from '../movie/MoviePanel'
 import { useDismissals } from '../timeline/overlays/Dismissals'
 import type { Dismissals } from '../timeline/overlays/Dismissals'
+import { useCardSelection } from '../timeline/useCardSelection'
+import type { CardsBinding } from '../timeline/useCardSelection'
 import { TimelineSection } from '../timeline/TimelineSection'
 import { LIST_HREF } from '../route'
 import { Alert } from '../ui/Alert'
@@ -119,6 +121,8 @@ function EventDetailBody({
   // The suggestions dismissed on this page visit: above the read view and Edit mode, which
   // the Timeline section is closed by every switch between (`timeline/overlays`).
   const dismissals = useDismissals()
+  // The card selected on the Timeline or in Edit mode's chapter list: one selection, kept here.
+  const cards = useCardSelection()
   // While a save is in flight, Refresh and Stop editing wait for its answer.
   const saving = useSaving()
   const shown = useRef(false)
@@ -478,6 +482,7 @@ function EventDetailBody({
           event={null}
           heading="Fix the date or title"
           dismissals={dismissals}
+          cards={cards}
           onSaved={leaveEditMode}
           onReload={leaveEditMode}
         />
@@ -490,6 +495,7 @@ function EventDetailBody({
             event={state.event}
             liveEvent={liveOf(state)}
             dismissals={dismissals}
+            cards={cards}
             onProxiesFinished={reread}
             onSaved={leaveEditMode}
             onReload={leaveEditMode}
@@ -500,6 +506,7 @@ function EventDetailBody({
               eventId={eventId}
               event={state.event}
               dismissals={dismissals}
+              cards={cards}
               onLostFocus={focusPage}
               onFinished={reread}
             />
@@ -589,6 +596,7 @@ function ReadyView({
   eventId,
   event,
   dismissals,
+  cards,
   onLostFocus,
   onFinished,
 }: {
@@ -596,6 +604,8 @@ function ReadyView({
   event: EventDetailData
   /** The suggestions dismissed on this page visit (`useDismissals`, kept by the page). */
   dismissals: Dismissals
+  /** The page's one card selection (`useCardSelection`). */
+  cards: CardsBinding
   /** Focus has nowhere in the rows to go: the page's heading takes it. */
   onLostFocus: () => void
   /** A job the Timeline section followed has ended: the page re-reads quietly. */
@@ -674,6 +684,7 @@ function ReadyView({
         read={read}
         dismissals={dismissals}
         onFinished={onFinished}
+        cards={cards}
       />
 
       {clips.length === 0 ? (

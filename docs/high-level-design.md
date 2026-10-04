@@ -416,6 +416,10 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   is mounted there too and shows state from the draft's cuts. **Approving, dismissing and restoring a suggestion have
   landed in Edit mode** (`timeline-overlay-decisions`): Approve adds the suggestion to the draft as a cut with its kind
   as the reason, Dismiss and Restore are the page's set; the read view offers no decision.
+  **Title cards are visible on the Timeline and in Edit mode's chapter list** (`title-card-blocks`, D-20): a card lane above
+  the clips (a black card is a span of its own before the chapter and adds time; a video card is a block over the start of the
+  chapter's first footage and adds none), a card row at the head of each chapter, and one selection shared by both; read
+  and select only, the editor of a card is the next changes.
   **Running times are legible and hold still** (`time-readouts-legible`, D-20 and D-16): the Timeline's readout, the clip player's
   header, the trim tip and the movie line are written by one fixed-width clock and say what each number is (`Clip 0:00.96 of
   0:39.84 · Event 1:02.40 of 2:29.76`); web-only.
@@ -735,6 +739,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `title-card-write-api` has landed (the API half of the card editor): the editorial `card`, the detail's resolved
    cards and `title_card`, `GET /fonts` and the PNG preview (§4.10); no render, fingerprint, schema-version or job
    change.
+   `title-card-blocks` has landed (the web half begins): every chapter's card is a block on the Timeline and a row in Edit
+   mode's chapter list, selectable, web-only and read only; editing a card comes next.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1231,6 +1237,16 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     proxy's `facts.duration`, which is the source's: the Sony, the rotated HEVC (14.633333 s; the proxy's container says
     14.651995 because its audio runs 18 ms longer) and the legacy MPEG-4 (756.5 s) match ffprobe to the microsecond, so End
     does not leave a sliver of footage.
+  - **Title card blocks (`title-card-blocks`, 2026-10-04).** The Timeline gains a card lane directly above the clips, from the
+    detail's resolved cards and `look.decorators` (read from `reel.yaml`; in Edit mode the baseline's). `cards.ts` is the pure
+    model: `cardPlacements` follows the render (anchor = the chapter's first shown clip, or the next with footage when the
+    first is wholly cut; a video card starts at the end of a cut that begins at zero and is clamped to the first kept span; a
+    black card adds its length), `cardMap`/`trackX`/`clipTimeAt` are the track map, **clip time stays the one time of the
+    playhead, cuts, handles and marks** and only drawing is shifted, and the selection is a reducer by the chapter's saved
+    name. Honest limits: the Timeline plays footage only (the playhead crosses a black card without time passing and a press
+    in its span selects the card), the anchor is the first shown clip (an explicit `title: true` elsewhere in the chapter is
+    not in the detail), and the readout's "Event" time counts black cards. **Bundle:** JS 539,223 to 551,338 bytes (173,912 to
+    177,719 gzip -9, +3.8 KB), CSS 76,068 to 79,203 (14,391 to 14,913 gzip -9, +0.5 KB); no package added.
   - **Bundle (`timeline-trim`).** `npm run build` on `origin/main` (with `timeline-overlays`) and on this change: JS 502,976 to
     521,304 bytes (160,932 to 167,683 gzip -9, +6.6 KB) and CSS 67,163 to 70,886 bytes (12,883 to 13,539 gzip -9, +0.6 KB); no
     package added. The research prototype's whole interaction layer was +5.6 KB gz. `npm test` runs 495 tests (438 before).

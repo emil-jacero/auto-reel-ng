@@ -5,6 +5,7 @@ import { clockScale, formatClock } from '../clock.ts'
 import { formatTime } from '../cuts/times.ts'
 import { plural } from '../events/names.ts'
 import type { Tone } from '../ui/Pill.tsx'
+import type { DecoratorsRead, Placement } from './cards.ts'
 import type { Readiness } from './layout.ts'
 import type { Ms } from './model.ts'
 
@@ -157,9 +158,57 @@ export const CUTS_UNREADABLE_DETAIL =
 export const CUTS_READING = 'Reading the cuts…'
 
 /** `Movie 3:12.00 of 3:45.00 of footage`, both to the footage's scale: it never changes width. */
-export function movieWords(movie: Ms, footage: Ms): string {
-  const scale = clockScale(footage)
-  return `Movie ${formatClock(movie, scale)} of ${formatClock(footage, scale)} of footage`
+export function movieWords(movie: Ms, footage: Ms, cards = ''): string {
+  // Black cards can make the movie longer than the footage: the scale holds both.
+  const scale = clockScale(Math.max(movie, footage))
+  const words = `Movie ${formatClock(movie, scale)} of ${formatClock(footage, scale)} of footage`
+  return cards === '' ? words : `${words}, ${cards}`
+}
+
+// --- title cards ------------------------------------------------------------------------
+
+export const CARDS_NOT_PLAYED =
+  'The Timeline plays footage only: it does not play title cards. A black card’s span is crossed without time passing.'
+
+/** The notes under the track about the title cards it cannot draw, each said once. */
+export function cardsNotes(
+  specs: readonly { chapter: string }[],
+  placements: readonly Placement[],
+  decorators: DecoratorsRead,
+): { title: string; detail?: string }[] {
+  const notes: { title: string; detail?: string }[] = []
+  if (decorators === 'unreadable') {
+    notes.push({
+      title: 'Whether the render draws title cards could not be read, so none are drawn here',
+    })
+  } else if (decorators === 'invalid') {
+    notes.push({
+      title: 'look.decorators in reel.yaml is not a list; the render refuses it, so no title card is drawn',
+    })
+  } else if (placements.some((place) => place.kind === 'off')) {
+    notes.push({ title: 'Title cards are off for this event; the render draws none' })
+  }
+  const unresolved = new Map<string, string[]>()
+  const unreadable: string[] = []
+  for (const place of placements) {
+    const name = specs[place.chapter]?.chapter ?? ''
+    const who = name === '' ? 'the opening' : name
+    if (place.kind === 'unresolved') {
+      unresolved.set(place.error, [...(unresolved.get(place.error) ?? []), who])
+    } else if (place.kind === 'unreadable') {
+      unreadable.push(`${who}: ${place.error}`)
+    }
+  }
+  for (const [error, who] of unresolved) {
+    notes.push({
+      title: `A title card could not be resolved: ${error}`,
+      detail: `Not drawn for ${who.join(', ')}.`,
+    })
+  }
+  if (unreadable.length > 0) {
+    notes.push({ title: 'A title card has a length or look that cannot be read', detail: unreadable.join('; ') })
+  }
+  return notes
 }
 
 /** A clip's length and cuts, for its description. */

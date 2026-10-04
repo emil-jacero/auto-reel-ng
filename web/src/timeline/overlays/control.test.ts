@@ -66,8 +66,8 @@ describe('decideControl', () => {
 
 describe('analysisOf', () => {
   const dismissals = {} as Dismissals
-  const readView = { cuts: new Map([['a.mp4', [{ in: 5, out: 6 }]]]), failure: null }
-  const reading = { cuts: null, failure: null }
+  const readView = { cuts: new Map([['a.mp4', [{ in: 5, out: 6 }]]]), failure: null, look: null }
+  const reading = { cuts: null, failure: null, look: null }
 
   it('gives Edit mode’s lane a decision and the draft’s cuts, never "reading"', () => {
     const { added, editing } = binding()
@@ -91,7 +91,7 @@ describe('analysisOf', () => {
 
   it('says reading or unreadable in the read view while the cuts are not known', () => {
     assert.equal(analysisOf('ev', reading, null, dismissals).cutsState, 'reading')
-    const failed = { cuts: null, failure: { cause: 'x', detail: null } }
+    const failed = { cuts: null, failure: { cause: 'x', detail: null }, look: null }
     assert.equal(analysisOf('ev', failed, null, dismissals).cutsState, 'unreadable')
     assert.equal(analysisOf('ev', failed, null, dismissals).decide, null)
   })

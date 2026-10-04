@@ -23,7 +23,18 @@ import type { PrepareControl } from './Prepare'
 import type { AnalysisControl } from './overlays/control'
 import { useSuggestions } from './overlays/useSuggestions'
 import { Track } from './Track'
-import type { ScrubPhase, ScrubSurface } from './Track'
+import type { CardLaneModel, ScrubPhase, ScrubSurface } from './Track'
+import {
+  cardBlocks,
+  cardMap,
+  cardPlacements,
+  cardTimeWords,
+  clipTimeAt,
+  movieWithCards,
+  trackLayout as withCards,
+} from './cards'
+import type { CardSpec, DecoratorsRead, Placement } from './cards'
+import type { CardsBinding } from './useCardSelection'
 import { createDragStore } from './dragStore'
 import type { EditBinding } from './editing'
 import type { KeyAction } from './keys'
@@ -31,6 +42,8 @@ import {
   CUTS_READING,
   CUTS_UNREADABLE,
   CUTS_UNREADABLE_DETAIL,
+  CARDS_NOT_PLAYED,
+  cardsNotes,
   FILM_FAILED,
   FILM_FAILED_DETAIL,
   FIT,
@@ -86,6 +99,7 @@ export function Timeline({
   prepare,
   analysis,
   editing = null,
+  cards,
 }: {
   eventId: string
   clips: readonly TrackClip[]
@@ -96,9 +110,34 @@ export function Timeline({
   analysis?: AnalysisControl
   /** Edit mode's binding (trim handles, the draft's cuts); null in the read view. */
   editing?: EditBinding | null
+  /** The title cards: the event's resolved cards, the decorator, the page's one selection. */
+  cards: { specs: readonly CardSpec[]; decorators: DecoratorsRead; selection: CardsBinding }
 }) {
-  const lay = useMemo(() => trackLayout(clips), [clips])
+  const clipLay = useMemo(() => trackLayout(clips), [clips])
   const turns = cuts.turns ?? NO_TURNS
+  const decorators = cards.decorators
+  const placements = useMemo<Placement[]>(
+    () =>
+      decorators === 'pending' || decorators === 'unreadable'
+        ? []
+        : cardPlacements(
+            cards.specs,
+            clips.map((clip) => ({
+              chapter: clip.chapter,
+              durationMs: clip.facts.durationMs,
+              spans: clip.spans,
+            })),
+            decorators,
+          ),
+    [cards.specs, clips, decorators],
+  )
+  // Clip time stays the one time of the playhead, the cuts and the marks; `lay` below is
+  // where the clips are on the track, with the black cards' spans between them.
+  const map = useMemo(() => cardMap(placements, clipLay), [placements, clipLay])
+  const lay = useMemo(() => withCards(clipLay, map), [clipLay, map])
+  const blocks = useMemo(() => cardBlocks(placements, lay), [placements, lay])
+  const leadMs = useMemo(() => new Map(map.gaps.map((gap) => [gap.clip, gap.lengthMs])), [map])
+  const selection = cards.selection
   const facts = useMemo(() => clips.map((clip) => clip.facts), [clips])
   const bands = useMemo(() => chapterBands(chapterNames, clips), [chapterNames, clips])
   const playhead = useMemo(() => createPlayhead(startPosition()), [])
@@ -109,10 +148,21 @@ export function Timeline({
   // A trim in the air: the cuts' spans on the track step back while the live one is drawn.
   const trimming = useSyncExternalStore(drag.subscribe, () => drag.get() !== null)
   const [selected, setSelected] = useState<Selected | null>(null)
+  const clearCard = selection.clear
   const select = useCallback(
-    (identity: string, key: string) =>
-      setSelected((was) => (was?.identity === identity && was.key === key ? was : { identity, key })),
-    [],
+    (identity: string, key: string) => {
+      setSelected((was) => (was?.identity === identity && was.key === key ? was : { identity, key }))
+      clearCard()
+    },
+    [clearCard],
+  )
+  const selectCard = selection.select
+  const pickCard = useCallback(
+    (chapter: string) => {
+      setSelected(null)
+      selectCard(chapter)
+    },
+    [selectCard],
   )
   // Reset, and a cut removed, end a selection.
   const epoch = editing?.epoch
@@ -222,10 +272,32 @@ export function Timeline({
     }
   }
 
+  /** The playhead's position for a track px, or null inside a black card (nothing to play there). */
+  const positionOf = (x: number, surface: ScrubSurface): Position | null => {
+    const at = clipTimeAt(map, pxToTime(x, ppsRef.current))
+    if (at.kind === 'clip') {
+      return positionAt(clipLay, facts, at.ms)
+    }
+    // The ruler goes to the footage after the card; a press on the lane selects the card.
+    return surface === 'ruler' ? positionAt(clipLay, facts, at.afterMs) : null
+  }
+  const heldInCard = useRef(false)
+
   const scrubAt = (x: number, phase: ScrubPhase, surface: ScrubSurface) => {
+    const inCard = clipTimeAt(map, pxToTime(x, ppsRef.current))
+    if (surface === 'lane' && inCard.kind === 'card' && (phase === 'start' || phase === 'tap')) {
+      // A press in a black card's span selects the card and leaves the playhead where it is.
+      pickCard(cards.specs[inCard.chapter].chapter)
+      heldInCard.current = phase === 'start'
+      return
+    }
+    if (heldInCard.current) {
+      heldInCard.current = phase !== 'end'
+      return
+    }
     if (phase === 'tap') {
       // A tap drags nothing: place the playhead and let a playing video go on from there.
-      const pos = positionAt(lay, facts, pxToTime(x, ppsRef.current))
+      const pos = positionOf(x, surface) ?? playhead.get()
       takePage()
       video.seekTo(pos)
       announce(pos)
@@ -239,10 +311,10 @@ export function Timeline({
       takePage()
       video.scrubStart()
       if (surface === 'lane') {
-        selectUnder(positionAt(lay, facts, pxToTime(x, ppsRef.current)))
+        selectUnder(positionOf(x, surface) ?? playhead.get())
       }
     }
-    const pos = positionAt(lay, facts, pxToTime(x, ppsRef.current))
+    const pos = positionOf(x, surface) ?? playhead.get()
     video.seekTo(pos)
     if (phase === 'end') {
       dragging.current = false
@@ -262,7 +334,7 @@ export function Timeline({
         pos = stepFrames(facts, at, action.n)
         break
       case 'ms':
-        pos = stepMs(lay, facts, at, action.ms)
+        pos = stepMs(clipLay, facts, at, action.ms)
         break
       case 'to':
         pos = action.where === 'start' ? startPosition() : endPosition(facts)
@@ -317,6 +389,21 @@ export function Timeline({
   )
 
   const suggestions = useSuggestions(analysis, { clips, lay, pps, seekTo: video.seekTo })
+  const cardLane = useMemo<CardLaneModel | undefined>(
+    () =>
+      blocks.length === 0
+        ? undefined
+        : {
+            blocks,
+            specs: cards.specs,
+            leadMs,
+            selected: selection.selected,
+            onSelect: pickCard,
+            onClear: selection.clear,
+          },
+    [cards.specs, blocks, leadMs, selection.selected, selection.clear, pickCard],
+  )
+  const cardNotes = cardsNotes(cards.specs, placements, decorators)
 
   const atFit = pps <= fit + 1e-9
   const atMax = pps >= MAX_PPS - 1e-9
@@ -400,6 +487,7 @@ export function Timeline({
         drag={drag}
         selected={selected}
         onSelect={select}
+        cardLane={cardLane}
       />
 
       {editing !== null && (
@@ -409,9 +497,14 @@ export function Timeline({
       {editing?.orderChanged === true && <Alert tone="info" role="note" title={ORDER_SAVED} />}
 
       <p className="tl-summary">
-        {cuts.cuts !== null && movieWords(movieMs(clips, cuts.cuts), lay.totalMs)}
+        {cuts.cuts !== null && movieWords(movieWithCards(movieMs(clips, cuts.cuts), map), clipLay.totalMs, cardTimeWords(map))}
         {cutsPending && CUTS_READING}
       </p>
+
+      {blocks.length > 0 && <p className="tl-cards-note">{CARDS_NOT_PLAYED}</p>}
+      {cardNotes.map((note) => (
+        <Alert key={note.title} tone="info" role="note" title={note.title} detail={note.detail} />
+      ))}
 
       {suggestions.strip}
 
