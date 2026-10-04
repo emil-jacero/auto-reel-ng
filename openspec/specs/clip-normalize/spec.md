@@ -99,7 +99,11 @@ clips SHALL NOT be tonemapped.
 For a segment carrying one or more `OverlaySpec` entries, the engine SHALL composite them during the normalize
 pass. It SHALL use the profile's hardware overlay only when `can_overlay_hw` is true; otherwise it SHALL
 composite via a CPU overlay bridge (downloading frames, overlaying, and re-uploading only as needed for that
-segment), leaving overlay-free segments fully on the hardware path.
+segment), leaving overlay-free segments fully on the hardware path. The CPU bridge SHALL run only over frames
+that can show an overlay: a source segment carrying a timed overlay is split at the end of the overlay's window
+(see `render-segments`, "A timed-overlay segment is split at its window"), so the bridge covers the head and the
+tail is an ordinary overlay-free segment on the hardware path. A video-only normalize (no audio map and no
+silence input) SHALL be available for the pieces of such a split.
 
 An `OverlaySpec` MAY name a registered `segment-producer` instead of an image, with the producer's opaque
 payload. The engine SHALL materialize such an overlay before it builds the segment's command, whether the
@@ -158,6 +162,11 @@ SHALL be composited exactly as before this requirement was extended.
 - **WHEN** a segment's overlay names a producer that is not registered
 - **THEN** building its command raises a render error naming the producer and the registered producers, and no
   command is produced without the overlay
+
+#### Scenario: The bridge does not cover footage after the card
+- **WHEN** a 7 s timed overlay is attached to a 180 s first clip on a host where `can_overlay_hw` is false
+- **THEN** the head's command has the download, overlay and upload for its 7 s, and the tail's command (173 s)
+  contains no overlay, no card input, no `-filter_complex`, and no `hwdownload` or `hwupload`
 
 ### Requirement: Audio normalization and synthesized silence
 
