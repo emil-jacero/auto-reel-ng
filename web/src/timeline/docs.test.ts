@@ -144,3 +144,29 @@ describe('docs/high-level-design.md and help-text-declutter', () => {
     assert.ok(!/Movie 3:12\.00 of 3:45\.00 of footage/.test(text))
   })
 })
+
+/* The design document names the change in D-20, §4.10 and §6, and no longer says an edge cut is drawn (timeline-ripple-layout). */
+describe('docs/high-level-design.md and timeline-ripple-layout', () => {
+  const text = readFileSync(new URL('../../../docs/high-level-design.md', import.meta.url), 'utf8')
+
+  it('names timeline-ripple-layout in D-20, §4.10 and §6', () => {
+    const lines = text.split('\n')
+    const at = lines.flatMap((line, i) => (line.includes('timeline-ripple-layout') ? [i] : []))
+    const d20 = lines.findIndex((line) => line.startsWith('- **D-20'))
+    const d21 = lines.findIndex((line) => line.startsWith('- **D-21'))
+    assert.ok(d20 > 0 && d21 > d20)
+    assert.ok(at.some((i) => i > d20 && i < d21), 'D-20 names it')
+    const s410 = lines.findIndex((line) => line.startsWith('### 4.10 '))
+    const s411 = lines.findIndex((line) => line.startsWith('### 4.11 '))
+    assert.ok(at.some((i) => i > s410 && i < s411), '§4.10 names it')
+    const s6 = lines.findIndex((line) => line.startsWith('## 6. '))
+    const s7 = lines.findIndex((line) => line.startsWith('## 7. '))
+    assert.ok(at.some((i) => i > s6 && i < s7), '§6 names it')
+  })
+
+  it('says no leading cut is drawn hatched, nor that a trimmed clip is as wide as its proxy', () => {
+    assert.ok(!/leading cut[^.]*(is|are) drawn hatched/i.test(text))
+    assert.ok(!/leading cut's hatch follows/i.test(text))
+    assert.ok(text.includes('"A trimmed clip is as wide as its proxy" no longer holds'))
+  })
+})

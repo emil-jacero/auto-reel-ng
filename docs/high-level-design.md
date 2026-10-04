@@ -500,6 +500,13 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   **Running times are legible and hold still** (`time-readouts-legible`, D-20 and D-16): the Timeline's readout, the clip player's
   header, the trim tip and the movie line are written by one fixed-width clock and say what each number is (`Clip 0:00.96 of
   0:39.84 · Event 1:02.40 of 2:29.76`); web-only.
+  **Edge cuts ripple on the Timeline** (`timeline-ripple-layout`, D-20; the user's "Shorten + ripple", 2026-10-04): a clip's
+  block spans only its **kept extent**, from the end of a leading cut to the start of a trailing cut (Play's 0.1 s rule), so
+  the trimmed start and end are not drawn and the clips after it close up; interior cuts stay hatched with their handles.
+  Clip time is unchanged (the readout says `Clip 0:05.00 of 0:10.00`, the clip's own time and full length); the track and the
+  Event time are rippled; the playhead, keys, filmstrip, marks, card anchors and Fit go through the extent. A leading or
+  trailing cut has no handle on the Timeline until `clip-edge-trim` adds the edge tool; it stays editable in its Cuts panel.
+  Web only: no engine, schema, API or `RENDER_GRAPH_VERSION` change.
   `proxy-enqueue-endpoint` has landed (D-21 "Enqueue over REST"): `POST /api/v1/events/{event_id}/proxies` enqueues the
   event's proxy job (201 / 200 `fresh` / 409), and a job reports its `kind` while `latest_job` stays the latest render;
   the timeline's Prepare state is its first web caller.
@@ -843,6 +850,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    the editorial body, a cover on every list row and the event page, Use as poster on the Edit-mode Timeline and the poster area
    with Use default; no engine, job, schema-version or `RENDER_GRAPH_VERSION` change. The v2 list is closed.
    `help-text-declutter` follows (web only, D-20): the explanations of the event page sit behind a Help toggle per section; no API, engine or `RENDER_GRAPH_VERSION` change.
+   `timeline-ripple-layout` has landed (web only; D-20), the first of the trim changes the user asked for on 2026-10-04: the
+   Timeline lays each clip by its kept extent, so edge cuts ripple; `clip-edge-trim` (the Premiere-style edge tool) and
+   `timeline-zoom-slider` follow; no API, engine or `RENDER_GRAPH_VERSION` change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1494,6 +1504,24 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     words), at least 24 px wide however far the track is zoomed out (the span on the track is unchanged), and a press in a black
     card's block or span also puts the playhead there. **Bundle:** JS 615.70 to 626.79 kB (198.39 to 202.01 gzip, +3.6 KB),
     CSS 90.82 to 91.86 kB (17.03 to 17.26 gzip), as `vite build` reports them; no package added.
+  - **The layout is by kept extent (`timeline-ripple-layout`, 2026-10-04).** The user chose "Shorten + ripple": the trimmed
+    start and end of a clip disappear, its block gets shorter and later clips slide left, so the Timeline shows the movie as it
+    will play. "A trimmed clip is as wide as its proxy" no longer holds. **One rule:** `keptExtent` (`model.ts`) takes the
+    clip's joined spans (`cutSpans`, the client twin of `kept_spans`): `in` is the end of a span from 0 (a **leading cut**),
+    `out` the start of the first span that runs to the end or ends less than `END_SLACK_MS` (100 ms) before it (a **trailing
+    cut**, where Play's `skipAt` already ends a clip); the spans between are interior cuts, the only ones drawn hatched.
+    `cards.ts firstKept` and `play.ts handOverMs` call it, so the drawing, the playhead and Play agree by construction.
+    **Clip time stays the one time of the model:** `Position`, cuts, handles, `trimLimits`, the coalescer, `follow.ts`, the
+    suggestions and the poster are unchanged; `Layout` gains each clip's `inMs`, and `clipToLayout` (`startsMs + ms - inMs`)
+    and its inverse replace every `startsMs + ms`. **The playhead lives on kept frames** (`position.ts`): the first frame at or
+    after `in`, the last before `out`; a clip with none is passed over; when the cuts change under it, it goes to the nearest kept
+    frame of its clip (`afterRead`). The filmstrip tile at `x` is the clip's second `in + x / pps`; a mark is mapped through the
+    extent and clipped to it (`markSpan`); a black card sits directly before the block, a video card at its left edge. The
+    movie stat's `footage` term stays the full durations (`footageMs`), so edge cuts count in its `cuts` term. **Honest limits:** the track total can be up to 0.1 s
+    per clip shorter than the movie stat's `Movie` when a trailing cut ends just short of the end (the stat keeps the render's
+    arithmetic); a chapter whose only footage is under 0.1 s before such a cut has no card on the Timeline though the render
+    would draw one there; a leading or trailing cut has no handle on the Timeline until `clip-edge-trim`, and the layout
+    changes when an interior handle is released at an edge, not during its drag.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
   1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every

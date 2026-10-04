@@ -34,7 +34,7 @@
 
 ## 3. Browser verification
 
-- [ ] 3.1 Playwright from `$SCRATCH` (never in the repo) in Chrome 154 (`localhost/playback-research:chrome`) and Firefox
+- [x] 3.1 Playwright from `$SCRATCH` (never in the repo) in Chrome 154 (`localhost/playback-research:chrome`) and Firefox
   ≥ 155 (`localhost/pcm-audio-research:pw163`), Edit mode, on a dev library event with a start-trimmed and an
   end-trimmed clip (writes routed only as the brief says): blocks shortened with no gap (block rects abut within 1 px),
   no hatched span on the edge cuts, the filmstrip's first tile at each block edge is the tile of the kept start, a press
@@ -45,7 +45,7 @@
 
 ## 4. Docs
 
-- [ ] 4.1 Update the HLD: §4.10 (a `timeline-ripple-layout` note: edge cuts ripple, kept extent with Play's 0.1 s
+- [x] 4.1 Update the HLD: §4.10 (a `timeline-ripple-layout` note: edge cuts ripple, kept extent with Play's 0.1 s
   rule, clip time unchanged, the < 0.1 s total-vs-movie difference, edge handles until `clip-edge-trim`), §6 (phase-8
   status line), and D-20 (a bullet: the layout is by kept extent; "a trimmed clip is as wide as its proxy" no longer
   holds). Verify with a `grep` that no HLD text says a leading cut is drawn hatched on the Timeline, and that
