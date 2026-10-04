@@ -2,6 +2,8 @@ import type { ClipStatus, EventDetail } from '../api/event'
 import type { ReelDocument, ReelWriteBody } from '../api/reel'
 import type { KnownReason } from '../cuts/times'
 import { normalizeTurn, stepTurn } from '../rotate/turn.ts'
+import { NO_CARD, cardBody, cardChanged, readCard, refusalOf, withField } from './card/model.ts'
+import type { CardDraft, CardField } from './card/model.ts'
 import type { Turn, Way } from '../rotate/turn.ts'
 
 /*
@@ -97,6 +99,12 @@ export type Draft = {
   cuts: Cuts
   /** The turns of the clips the operator turned and whose turn now differs from the saved one. */
   rotations: Rotations
+  /**
+   * The title cards the operator touched, by chapter key (`card/model.ts`): the nine overrides,
+   * `null` = follow the event style. A card counts as changed only while it differs from the
+   * one read (`cardOf`).
+   */
+  cards: ReadonlyMap<ChapterKey, CardDraft>
 }
 
 /** What Edit mode read: never changes during the session. */
@@ -281,7 +289,9 @@ export function layoutChanged(baseline: Baseline, draft: Draft): boolean {
  *   clips) too
  * - otherwise the chapters whose order changed (reordered, a missing clip
  *   removed, a clip moved in or out), and the chapter that plays a NEW clip
- *   whose cuts changed; none for a metadata-only edit or a listed clip's cuts
+ *   whose cuts changed, and a chapter the document does not list whose card
+ *   changed; none for a metadata-only edit, a listed clip's cuts or a listed
+ *   chapter's card (written onto the chapter as authored, `buildWriteBody`)
  */
 export function writtenFromView(baseline: Baseline, draft: Draft): DraftChapter[] {
   const listed = listedChapters(draft.chapters)
@@ -290,6 +300,13 @@ export function writtenFromView(baseline: Baseline, draft: Draft): DraftChapter[
   }
   const changed = reordered(baseline.original, draft.orders)
   const cut = new Set([...changedCuts(baseline, draft), ...changedRotations(baseline, draft)])
+  // A changed card of a chapter the document does not list (shown only from disk): there is no
+  // chapter to put it on, so the chapter is written from the view, as an order change does.
+  for (const key of changedCards(baseline, draft)) {
+    if (!isAuthored(baseline, key)) {
+      changed.add(key)
+    }
+  }
   if (changed.size === 0 && cut.size === 0) {
     return []
   }
@@ -334,16 +351,24 @@ export function buildWriteBody(baseline: Baseline, draft: Draft): ReelWriteBody 
     changed.has(name) ? asSaved(metadata[name]) : (read.metadata[name] ?? null)
 
   const fromView = new Set(writtenFromView(baseline, draft).map((chapter) => chapter.key))
+  // A card is sent only for a chapter whose card changed: `{}` when it now sets nothing (removes
+  // it). Every other chapter sends none, or as read, and the service keeps its card.
+  const carded = changedCards(baseline, draft)
+  const cardOfKey = (key: ChapterKey) => cardBody(cardOf(baseline, draft, key))
   const chapters =
-    fromView.size === 0
+    fromView.size === 0 && carded.size === 0
       ? read.chapters
       : listedChapters(draft.chapters).flatMap((chapter) => {
           if (fromView.has(chapter.key)) {
-            return [{ name: chapter.name, clips: [...(draft.orders.get(chapter.key) ?? [])] }]
+            const body = { name: chapter.name, clips: [...(draft.orders.get(chapter.key) ?? [])] }
+            return [carded.has(chapter.key) ? { ...body, card: cardOfKey(chapter.key) } : body]
           }
           // Not written from the view: unrenamed, so its read name finds it in the document.
           const authored = read.chapters.find((listed) => listed.name === chapter.readName)
-          return authored === undefined ? [] : [authored]
+          if (authored === undefined) {
+            return []
+          }
+          return [carded.has(chapter.key) ? { ...authored, card: cardOfKey(chapter.key) } : authored]
         })
 
   return {
@@ -420,8 +445,107 @@ export function isDirty(baseline: Baseline, draft: Draft): boolean {
     changedFields(baseline.read, draft.metadata).length > 0 ||
     writtenFromView(baseline, draft).length > 0 ||
     changedCuts(baseline, draft).size > 0 ||
-    changedRotations(baseline, draft).size > 0
+    changedRotations(baseline, draft).size > 0 ||
+    changedCards(baseline, draft).size > 0
   )
+}
+
+// --- title cards ---------------------------------------------------------------------
+
+/** Whether the document lists the chapter `key` was read as (a chapter shown only from disk is not). */
+function isAuthored(baseline: Baseline, key: ChapterKey): boolean {
+  const chapter = baseline.chapters.find((listed) => listed.key === key)
+  return (
+    chapter !== undefined &&
+    chapter.readName !== null &&
+    baseline.read.chapters.some((listed) => listed.name === chapter.readName)
+  )
+}
+
+/** Chapter `key`'s card as `reel.yaml` holds it: no override for a chapter the document does not list. */
+export function readCardOf(baseline: Baseline, key: ChapterKey): CardDraft {
+  const chapter = baseline.chapters.find((listed) => listed.key === key)
+  if (chapter === undefined || chapter.readName === null) {
+    return NO_CARD
+  }
+  return readCard(baseline.read.chapters.find((listed) => listed.name === chapter.readName)?.card)
+}
+
+/** Chapter `key`'s card now: the draft's when the operator touched it, else as read. */
+export function cardOf(baseline: Baseline, draft: Draft, key: ChapterKey): CardDraft {
+  return draft.cards.get(key) ?? readCardOf(baseline, key)
+}
+
+/**
+ * The chapters a save keeps whose card differs from the one read. A deleted chapter's card
+ * goes with it (and comes back with its Undo); an edit set back to what was read is no change.
+ */
+export function changedCards(baseline: Baseline, draft: Draft): ReadonlySet<ChapterKey> {
+  return new Set(
+    listedChapters(draft.chapters)
+      .filter((chapter) => {
+        const card = draft.cards.get(chapter.key)
+        return card !== undefined && cardChanged(readCardOf(baseline, chapter.key), card)
+      })
+      .map((chapter) => chapter.key),
+  )
+}
+
+/** `draft` with chapter `key`'s card set to `card`; an entry equal to the read card is dropped. */
+export function setCard(baseline: Baseline, draft: Draft, key: ChapterKey, card: CardDraft): Draft {
+  const chapter = draft.chapters.find((listed) => listed.key === key)
+  // An added chapter has no card to edit; a deleted one is not edited.
+  if (chapter === undefined || chapter.deleted || chapter.readName === null) {
+    return draft
+  }
+  const cards = new Map(draft.cards)
+  if (cardChanged(readCardOf(baseline, key), card)) {
+    cards.set(key, card)
+  } else if (!cards.delete(key)) {
+    return draft
+  }
+  return { ...draft, cards }
+}
+
+/** `draft` with one field of chapter `key`'s card set; `null` clears it (Use event style). */
+export function setCardField<F extends CardField>(
+  baseline: Baseline,
+  draft: Draft,
+  key: ChapterKey,
+  field: F,
+  value: CardDraft[F],
+): Draft {
+  const now = cardOf(baseline, draft, key)
+  const next = withField(now, field, value)
+  return next === now ? draft : setCard(baseline, draft, key, next)
+}
+
+/** The refusal of a write, placed on the card it names: the chapter's key and the field (null: none named). */
+export type CardRefusal = { key: ChapterKey; field: CardField | null; message: string }
+
+/**
+ * Which kept chapter's card a refused save names, by the name the write sent (its draft name).
+ * Null when the message names none of them.
+ */
+export function cardRefusalOf(draft: Draft, detail: string): CardRefusal | null {
+  const refusal = refusalOf(detail)
+  if (refusal.chapter === null) {
+    return null
+  }
+  const chapter = listedChapters(draft.chapters).find((listed) => listed.name === refusal.chapter)
+  return chapter === undefined
+    ? null
+    : { key: chapter.key, field: refusal.field, message: refusal.message }
+}
+
+/** `draft` with chapter `key`'s card as read. */
+export function resetCard(draft: Draft, key: ChapterKey): Draft {
+  if (!draft.cards.has(key)) {
+    return draft
+  }
+  const cards = new Map(draft.cards)
+  cards.delete(key)
+  return { ...draft, cards }
 }
 
 // A clip without cuts: one constant, so its row keeps its memoised props.

@@ -749,6 +749,12 @@ visit only, are no edit and need no Save. `decideControl` (`overlays/control.ts`
 `locked`, `announce`); the decision rules (`decideApprove`, `decideDismiss` in `suggestions.ts`) are pure and tested under `npm test`. While a save or a
 Move clips is pending the decisions are unavailable and the detail says so.
 
+`src/edit/card/` is the title-card inspector (`title-card-inspector`): `model.ts` (the nine overrides,
+change detection, the preview request, which field a refusal names), `preview.ts` (the debounce, abort and
+retry state machine, with injected timers and client), `specs.ts` (the draft card as the blocks and rows
+show it; the clip a video card sits over), the hooks `useFonts` / `usePreview`, and the components. The
+draft slice and the write are in `edit/draft.ts`. Pure parts are tested by `npm test`.
+
 Movie playback is checked ad hoc in Chrome (Playwright's channel `chrome`) or Firefox,
 never in Playwright's bundled Chromium, which cannot decode H.264 and would make a
 working player look broken.

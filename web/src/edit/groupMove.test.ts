@@ -47,6 +47,7 @@ function setup(lists: Record<string, string[]>): { baseline: Baseline; draft: Dr
     metadata: { title: '', date: '', location: '', description: '' },
     cuts: new Map(),
     rotations: new Map(),
+    cards: new Map(),
   }
   return { baseline, draft }
 }
