@@ -3787,6 +3787,27 @@
               }
             ],
             "title": "Title Card Error"
+          },
+          "title_cards": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TitleCardsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title_cards_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title Cards Error"
           }
         },
         "type": "object",
@@ -3795,7 +3816,7 @@
           "staleness"
         ],
         "title": "EventDetailOut",
-        "description": "One event's full detail: metadata, ordered chapters/clips, reconcile state,\nand its staleness verdict (change-detection, §8.14).\n\n``missing`` lists every clip the document lists that disk does not have, excluded or\nnot. ``blocking_missing`` is the subset a render needs: the missing clips the document\ndoes not exclude (an excluded clip is never probed, so its absence cannot fail a\nrender).\n\n``movie`` is ``None`` when the event has no rendered movie, by the rule\n``GET …/movie`` uses (see :class:`MovieOut` for what it holds). It is always present on\nthe wire, and the events list does not carry it.\n\n``title_card`` is the event's resolved card style (the event-wide layer, before any\nchapter's overrides) and each chapter's ``card`` the card a render would draw. When the\nevent-wide ``look.title_card`` cannot be resolved, ``title_card`` and every ``card`` are\n``null`` and ``title_card_error`` names the field; the rest of the detail is unaffected."
+        "description": "One event's full detail: metadata, ordered chapters/clips, reconcile state,\nand its staleness verdict (change-detection, §8.14).\n\n``missing`` lists every clip the document lists that disk does not have, excluded or\nnot. ``blocking_missing`` is the subset a render needs: the missing clips the document\ndoes not exclude (an excluded clip is never probed, so its absence cannot fail a\nrender).\n\n``movie`` is ``None`` when the event has no rendered movie, by the rule\n``GET …/movie`` uses (see :class:`MovieOut` for what it holds). It is always present on\nthe wire, and the events list does not carry it.\n\n``title_card`` is the event's resolved card style (the event-wide layer, before any\nchapter's overrides) and each chapter's ``card`` the card a render would draw. When the\nevent-wide ``look.title_card`` cannot be resolved, ``title_card`` and every ``card`` are\n``null`` and ``title_card_error`` names the field; the rest of the detail is unaffected.\n\n``title_cards`` is whether the effective decorators include ``title`` and where that was\ndecided; it is present unless ``look.decorators`` is not a list, when it is ``null`` and\n``title_cards_error`` names the field."
       },
       "EventErrorOut": {
         "properties": {
@@ -4937,6 +4958,30 @@
         "type": "object",
         "title": "TitleCardPreviewBody",
         "description": "A draft title card to draw: nothing here is saved.\n\n``chapter`` is the chapter's name (``\"\"`` for the opening card). ``style`` is an optional\ndraft of the event-wide ``look.title_card`` (the event's saved one when absent) and\n``event_title`` an optional draft of the title the opening card defaults to."
+      },
+      "TitleCardsOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "event",
+              "project",
+              "default"
+            ],
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "source"
+        ],
+        "title": "TitleCardsOut",
+        "description": "Whether a render draws title cards, and which layer decided it (D-25).\n\n``source`` is ``event`` (the event's ``look.decorators``), ``project`` (the ``config.yaml``\none) or ``default`` (neither sets it: the effective decorators are ``[title]``)."
       },
       "TitleStyleOut": {
         "properties": {

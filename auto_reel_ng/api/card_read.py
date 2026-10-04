@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from typing import List, Mapping, Optional
 
-from ..errors import TitleCardError
+from ..errors import RenderError, TitleCardError
 from ..event.plan import ResolvedChapter
 from ..event.resolution import resolve
 from ..reel import ReelDocument
+from ..render import title_cards_state
 from ..render.title import TitleCardConfig, resolve_card, resolve_card_config
-from .schemas import ChapterOut, ResolvedCardOut, TitleStyleOut
+from .schemas import ChapterOut, ResolvedCardOut, TitleCardsOut, TitleStyleOut
 
 
 def style_out(config: TitleCardConfig) -> TitleStyleOut:
@@ -70,4 +71,20 @@ def with_cards(
     return described, style_out(style), None
 
 
-__all__ = ["style_out", "with_cards"]
+def title_cards_for(
+    resolved: ReelDocument, look_defaults: Mapping[str, object]
+) -> tuple[Optional[TitleCardsOut], Optional[str]]:
+    """Whether a render draws title cards and who decided, from the engine's own function.
+
+    Read-only and probe-free: :func:`~auto_reel_ng.render.title_cards_state` over the event's
+    ``look`` and the project's. A ``look.decorators`` that is not a list is not guessed at: it
+    answers ``(None, error)``, as a bad card style does.
+    """
+    try:
+        state = title_cards_state(resolved.look, look_defaults)
+    except RenderError as exc:
+        return None, str(exc)
+    return TitleCardsOut(enabled=state.enabled, source=state.source), None
+
+
+__all__ = ["style_out", "title_cards_for", "with_cards"]

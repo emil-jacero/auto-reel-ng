@@ -141,6 +141,17 @@ class ClipOut(BaseModel):
     excluded: bool = False
 
 
+class TitleCardsOut(BaseModel):
+    """Whether a render draws title cards, and which layer decided it (D-25).
+
+    ``source`` is ``event`` (the event's ``look.decorators``), ``project`` (the ``config.yaml``
+    one) or ``default`` (neither sets it: the effective decorators are ``[title]``).
+    """
+
+    enabled: bool
+    source: Literal["event", "project", "default"]
+
+
 class TitleStyleOut(BaseModel):
     """The title-card style the engine resolves: the layers' result, never a null.
 
@@ -348,6 +359,10 @@ class EventDetailOut(BaseModel):
     chapter's overrides) and each chapter's ``card`` the card a render would draw. When the
     event-wide ``look.title_card`` cannot be resolved, ``title_card`` and every ``card`` are
     ``null`` and ``title_card_error`` names the field; the rest of the detail is unaffected.
+
+    ``title_cards`` is whether the effective decorators include ``title`` and where that was
+    decided; it is present unless ``look.decorators`` is not a list, when it is ``null`` and
+    ``title_cards_error`` names the field.
     """
 
     event_id: str
@@ -363,6 +378,8 @@ class EventDetailOut(BaseModel):
     movie: Optional[MovieOut] = None
     title_card: Optional[TitleStyleOut] = None
     title_card_error: Optional[str] = None
+    title_cards: Optional[TitleCardsOut] = None
+    title_cards_error: Optional[str] = None
 
 
 class TrimBody(BaseModel):

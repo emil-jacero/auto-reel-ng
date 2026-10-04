@@ -247,3 +247,20 @@ def test_a_failed_write_keeps_the_events_old_reel_yaml(
     assert "ERROR  2024-05-01 - First:" in out
     assert (event / "reel.yaml").read_text(encoding="utf-8") == "metadata:\n  title: Old\n"
     assert load_document(last / "reel.yaml").metadata.title == "Last"
+
+
+def test_an_imported_event_writes_no_decorators_so_its_title_cards_stay_on(
+    root: Path,
+) -> None:
+    """title-cards-default-on: nothing the importer writes opts an event out of its cards."""
+    from auto_reel_ng.render import title_cards_state
+
+    event_dir = _event(root, "2024-05-01 - First", _good("First"))
+
+    assert main(["import", str(root)]) == 0
+
+    document = load_document(event_dir / "reel.yaml")
+    assert "decorators" not in document.look
+    assert "decorators" not in (event_dir / "reel.yaml").read_text(encoding="utf-8")
+    state = title_cards_state(document.look, {})
+    assert (state.enabled, state.source) == (True, "default")

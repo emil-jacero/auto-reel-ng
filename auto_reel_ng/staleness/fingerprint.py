@@ -39,7 +39,9 @@ PathLike = Union[str, Path]
 #:    rotate; a display-rotated clip is never stream-copied).
 #: 7: title-card-model (the opening card shows the event title and a free-text subtitle only;
 #:    each card takes its own length and style).
-RENDER_GRAPH_VERSION = 7
+#: 8: title-cards-default-on (an event with no ``look.decorators`` now renders its opening and
+#:    chapter cards).
+RENDER_GRAPH_VERSION = 8
 
 #: The four fingerprint components, in the fixed order the combined hash uses.
 COMPONENTS = ("editorial", "defaults", "clip_set", "engine")

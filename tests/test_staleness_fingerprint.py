@@ -29,12 +29,12 @@ from auto_reel_ng.staleness.manifest import write_manifest
 FFMPEG_VERSION = (7, 1)
 
 #: Golden hashes for ``_pinned_document()`` + ``_pinned_event_dir()`` (task 1.1).
-#: ENGINE/COMBINED re-pinned for RENDER_GRAPH_VERSION 7 (title-card-model; 6 was clip-rotate-engine, 5 title-card-fonts); EDITORIAL, DEFAULTS and CLIP_SET are as before.
+#: ENGINE/COMBINED re-pinned for RENDER_GRAPH_VERSION 8 (title-cards-default-on; 7 was title-card-model, 6 was clip-rotate-engine, 5 title-card-fonts); EDITORIAL, DEFAULTS and CLIP_SET are as before.
 PINNED_EDITORIAL = "cfb295abf2c9f44e4ec05e5634beaf1b9b21235c21d65d0109a944509d848de4"
 PINNED_DEFAULTS = "9d1a9bf4432fae2ec90ade0e7eb1552455abd6da0fac7974d78a16d63113f555"
 PINNED_CLIP_SET = "b1c642b3cd29b949070b357534bae6e2077121b032f93fa34c7aa0df957b6663"
-PINNED_ENGINE = "eff99b0f11f902eeae8a74752f74249d453490ff6a35761780a39b457f117de1"
-PINNED_COMBINED = "97dd20729ebb5d6b57c5ee87a5b645d09a2bce6f06044bc03d2ac7158203f230"
+PINNED_ENGINE = "9fb8b03cf9e3db5266e997c6495009cf2f2d7b719cf8c86c7eefbef45c779cb2"
+PINNED_COMBINED = "d247ad136ce1d455df35de78d834bc15a161f0a6888827e0ba3aa0f8cbe57e32"
 #: ``_hash_json({1: "a", "b": "c"})``: the fallback path, which tags every key with its type.
 PINNED_FALLBACK = "43ef72b9709103ca8e6941bcc4ae7e089a867d856cf5f73300d83181f52e17e1"
 
@@ -218,7 +218,7 @@ def test_version_6_manifest_is_engine_stale_and_the_new_version_gates_fresh(
         old = _fingerprint(event_dir)
         old_identity = fingerprint_module.engine_identity(FFMPEG_VERSION)
     assert old_identity.startswith("render_graph_version=6 ")
-    assert fingerprint_module.RENDER_GRAPH_VERSION == 7
+    assert fingerprint_module.RENDER_GRAPH_VERSION >= 7
     new = _fingerprint(event_dir)
     # Only the engine component moved: a card-less document hashes exactly as before.
     assert new.engine != old.engine
@@ -290,7 +290,7 @@ def test_a_black_to_video_background_moves_only_the_editorial_component(tmp_path
     assert video.editorial != black.editorial
     for name in ("defaults", "clip_set", "engine"):
         assert video.component(name) == black.component(name)
-    assert fingerprint_module.RENDER_GRAPH_VERSION == 7
+    assert fingerprint_module.RENDER_GRAPH_VERSION >= 7
 
 
 def test_device_selection_does_not_move_the_fingerprint(tmp_path: Path) -> None:
@@ -476,3 +476,26 @@ def test_keys_that_differ_only_in_type_are_not_conflated() -> None:
 def test_the_fallback_hash_is_pinned() -> None:
     """The tag format (``<type>:<key>``) is hashed content; it must not drift silently."""
     assert fingerprint_module._hash_json({1: "a", "b": "c"}) == PINNED_FALLBACK
+
+
+def test_version_7_manifest_is_engine_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # title-cards-default-on bumped RENDER_GRAPH_VERSION to 8 (an event with no look.decorators
+    # now renders its cards): an output rendered under version 7 re-renders, for the engine
+    # reason alone.
+    event_dir = _event_dir(tmp_path)
+    output = event_dir / "Party.mp4"
+    output.write_bytes(b"rendered")
+    with monkeypatch.context() as patch:
+        patch.setattr(fingerprint_module, "RENDER_GRAPH_VERSION", 7)
+        old = _fingerprint(event_dir)
+        identity = fingerprint_module.engine_identity(FFMPEG_VERSION)
+    assert identity.startswith("render_graph_version=7 ")
+    assert fingerprint_module.RENDER_GRAPH_VERSION >= 8
+    write_manifest(event_dir, old, output=output.name, engine_identity=identity)
+
+    verdict = evaluate(event_dir, output, _fingerprint(event_dir))
+
+    assert verdict.stale is True
+    assert verdict.reasons == (StalenessReason.ENGINE,)

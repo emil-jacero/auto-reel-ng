@@ -319,9 +319,14 @@ def test_unknown_decorator_fails_loud() -> None:
         apply_decorators(("bogus",), RenderPlan(), _target(), (_source_segment(),))
 
 
-def test_resolve_decorator_names_defaults_to_none() -> None:
-    assert resolve_decorator_names({}) == ("none",)
+def test_resolve_decorator_names_defaults_to_title() -> None:
+    assert resolve_decorator_names({}) == ("title",)
+    assert resolve_decorator_names({"decorators": None}) == ("title",)
     assert resolve_decorator_names({"decorators": ["title", "watermark"]}) == ("title", "watermark")
+    # An explicit list keeps its meaning: no title in it, no cards.
+    assert resolve_decorator_names({"decorators": []}) == ()
+    assert resolve_decorator_names({"decorators": ["none"]}) == ("none",)
+    assert "title" not in resolve_decorator_names({"decorators": ["watermark"]})
     with pytest.raises(RenderError, match="must be a list"):
         resolve_decorator_names({"decorators": "title"})
 

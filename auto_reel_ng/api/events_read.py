@@ -72,7 +72,7 @@ from ..thumbs import (
     resolve_thumbnail_settings,
     thumbnail_path,
 )
-from .card_read import with_cards
+from .card_read import title_cards_for, with_cards
 from .entity_tag import entity_tag
 from .movie_read import expected_output, movie_facts
 from .schemas import (
@@ -702,6 +702,7 @@ def get_event(
         staleness = _verdict(settings, event_dir, resolved, runtime, look_defaults)
         movie = movie_facts(settings, event_dir, resolved.metadata)
         chapters, title_card, title_card_error = with_cards(resolved, look_defaults, chapters)
+        title_cards, title_cards_error = title_cards_for(resolved, look_defaults)
     except (ReelError, OSError) as exc:
         raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
     latest_jobs = job_store.latest_by_project(str(settings.project_root), kind=JobKind.RENDER)
@@ -720,6 +721,8 @@ def get_event(
         movie=movie,
         title_card=title_card,
         title_card_error=title_card_error,
+        title_cards=title_cards,
+        title_cards_error=title_cards_error,
     )
 
 

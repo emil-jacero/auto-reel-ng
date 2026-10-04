@@ -1720,3 +1720,75 @@ def test_the_card_read_starts_no_subprocess_and_writes_nothing(
 def test_the_events_list_rows_carry_no_card(client: TestClient) -> None:
     for row in client.get("/api/v1/events").json():
         assert "title_card" not in row and "chapters" not in row
+
+
+# --------------------------------------------------------------------------- #
+# title-cards-default-on: the detail's title_cards report                     #
+# --------------------------------------------------------------------------- #
+
+_PLAIN_REEL = (
+    "version: 0\nmetadata:\n  title: Barbecue\n  date: 2024-07-04\n{look}"
+    "chapters:\n  - name: ''\n    clips: [00500.mp4]\n"
+)
+
+
+def _reel_with_look(project: Path, look: str = "") -> None:
+    _write_card_reel(project, _PLAIN_REEL.format(look=look))
+
+
+def test_detail_reports_title_cards_on_by_default(client: TestClient, project: Path) -> None:
+    _reel_with_look(project)
+    body = _card_detail(client)
+    assert body["title_cards"] == {"enabled": True, "source": "default"}
+    assert body["title_cards_error"] is None
+
+
+def test_detail_reports_title_cards_when_there_is_no_reel_yaml(client: TestClient) -> None:
+    assert _card_detail(client)["title_cards"] == {"enabled": True, "source": "default"}
+
+
+def test_detail_reports_an_event_opt_out(client: TestClient, project: Path) -> None:
+    _reel_with_look(project, "look:\n  decorators: []\n")
+    assert _card_detail(client)["title_cards"] == {"enabled": False, "source": "event"}
+
+
+def test_detail_reports_a_project_opt_out(client: TestClient, project: Path) -> None:
+    (project / "config.yaml").write_text("look:\n  decorators: []\n", encoding="utf-8")
+    _reel_with_look(project)
+    assert _card_detail(client)["title_cards"] == {"enabled": False, "source": "project"}
+
+
+def test_detail_reports_the_event_overriding_the_project(client: TestClient, project: Path) -> None:
+    (project / "config.yaml").write_text("look:\n  decorators: []\n", encoding="utf-8")
+    _reel_with_look(project, "look:\n  decorators: [title]\n")
+    assert _card_detail(client)["title_cards"] == {"enabled": True, "source": "event"}
+
+
+def test_detail_reports_a_list_without_title_as_disabled(client: TestClient, project: Path) -> None:
+    _reel_with_look(project, "look:\n  decorators: [none]\n")
+    assert _card_detail(client)["title_cards"] == {"enabled": False, "source": "event"}
+
+
+def test_a_bad_decorators_value_does_not_lock_the_event(client: TestClient, project: Path) -> None:
+    _reel_with_look(project, "look:\n  decorators: title\n")
+    body = _card_detail(client)
+    assert body["title_cards"] is None
+    assert "look.decorators" in body["title_cards_error"]
+    assert body["staleness"]["stale"] is True  # everything else is reported as usual
+    assert any(chapter["clips"] for chapter in body["chapters"])
+
+
+def test_the_title_cards_read_writes_nothing_and_starts_no_subprocess(
+    client: TestClient, project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+
+    _reel_with_look(project)
+    event_dir = project / "2024" / "2024-07-04 - Barbecue"
+    before = sorted(p.relative_to(project) for p in project.rglob("*"))
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda *a, **k: pytest.fail("the title_cards read ran a subprocess")
+    )
+    assert _card_detail(client)["title_cards"] == {"enabled": True, "source": "default"}
+    assert sorted(p.relative_to(project) for p in project.rglob("*")) == before
+    assert not (event_dir / ".auto-reel").exists()
