@@ -968,16 +968,14 @@ that a Refresh or leaving Edit mode, which close the Timeline section, do not en
 SHALL select that card, and the block and the row SHALL both show it selected, in more than colour. At most one
 thing SHALL be selected on the Timeline: selecting a card SHALL end the selection of a cut, and selecting a cut
 SHALL end the selection of a card. Pressing the selected card again SHALL leave it selected; Escape SHALL clear
-it. The selection SHALL end when its chapter is deleted or no longer in the event after a read. A block and a row
+it, unless the card's dialog is open, where Escape closes the dialog and the card stays selected. The selection SHALL end when its chapter is deleted or no longer in the event after a read. A block and a row
 SHALL be buttons reached by Tab in document order, pressed by Enter or Space, with `aria-pressed`, named in words
 as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default chapter: "Title card for the opening,
-…"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", not enabled"). A selection SHALL open
-nothing but an inspector slot, a labelled region saying "Card editing comes next" with the selected card's words;
-it SHALL write nothing, request nothing and be announced once through the polite status region.
+…"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", not enabled"). In the read view a selection SHALL open nothing but an inspector slot, a labelled region with the selected card's words; it SHALL write nothing, request nothing and be announced once through the polite status region. In Edit mode, pressing a block or a row SHALL also open that card's dialog (`web-app`, "A selected title card opens its inspector in Edit mode"), and there is no inspector slot in the page.
 
 #### Scenario: One selection from either place
 - **WHEN** the operator presses the block of "Dag 2" on the Timeline in Edit mode
-- **THEN** the block is pressed, "Dag 2"'s row is shown selected, and the inspector slot names the card
+- **THEN** the block is pressed, "Dag 2"'s row is shown selected, and the card's dialog opens (Edit mode) or the inspector slot names the card (read view)
 
 #### Scenario: Selecting a cut ends a card selection
 - **WHEN** a card is selected and the operator presses a cut's span
@@ -1012,8 +1010,7 @@ chapter list's card row, the save bar and the draft show nothing new until the p
 the snap to a whole second SHALL be given in words and by a line, not by colour alone. Releasing SHALL make one edit
 of the draft, the card's duration, and announce the result once, politely, through Edit mode's one live region ("Title
 card for Reception now 6.0 s. The movie is 2.0 s longer."). Escape, or the browser cancelling the pointer, SHALL end the
-drag with the card as it was and no edit. A drag that ends where it began SHALL make no edit. Pressing the handle SHALL also select that card, as pressing its block does (the inspector opens below the track, so
-selecting never moves the track out from under the pointer).
+drag with the card as it was and no edit. A drag that ends where it began SHALL make no edit. Pressing the handle SHALL also select that card, as pressing its block does, but SHALL NOT open the card's dialog (a modal opening under the pointer would end the drag); activating the block's body opens it.
 
 #### Scenario: A drag sets the length
 - **WHEN** at 40 px per second the operator presses the end edge of the opening card (4.0 s, black) and moves the pointer 80 px right
@@ -1041,7 +1038,7 @@ selecting never moves the track out from under the pointer).
 
 #### Scenario: A handle press selects the card
 - **WHEN** the operator presses a card's end edge in Edit mode
-- **THEN** the card is selected, its inspector opens below the track, and the track has not moved
+- **THEN** the card is selected, no dialog opens, and the track has not moved
 
 #### Scenario: Reset and Save are as for any edit
 - **WHEN** the operator changes a card's length and presses Reset
