@@ -104,7 +104,7 @@ describe('the readout in a title card', () => {
   it('reads Card time of length and counts the card in the Event time', () => {
     const r = readoutOf({ clip: 0, ms: 0, card }, c, track)
     assert.equal(readoutWords(r), 'Card 0:01.20 of 0:03.00 · Event 0:01.20 of 1:43.00')
-    assert.equal(r.name, 'Title card for the opening')
+    assert.equal(r.name, 'Opening')
     assert.equal(r.label, 'Card')
   })
 
@@ -119,7 +119,7 @@ describe('the readout in a title card', () => {
     assert.equal(inCard.clip.time.ch, inClip.clip.time.ch)
     assert.equal(inCard.clip.length.ch, inClip.clip.length.ch)
     assert.equal(inClip.label, 'Clip')
-    assert.equal(readoutOf({ clip: 1, ms: 0, card: { ...card, chapter: 1, name: 'Dag 2' } }, c, track).name, 'Title card for Dag 2')
+    assert.equal(readoutOf({ clip: 1, ms: 0, card: { ...card, chapter: 1, name: 'Dag 2' } }, c, track).name, 'Dag 2')
   })
 
   it('holds a card longer than every clip to its own scale', () => {
