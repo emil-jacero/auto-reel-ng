@@ -50,13 +50,29 @@
     min-inline-size: 0;
   }
 
+  /* Narrow: the preview leads, a compact sticky strip, so an edit is seen as it is made. */
+  .ci-preview {
+    order: -1;
+    position: sticky;
+    inset-block-start: calc(var(--header-h) + var(--s-1));
+    z-index: 3;
+    inline-size: min(100%, calc(26svh * 16 / 9));
+    margin-inline: auto;
+    padding-block: var(--s-1);
+    background: var(--bg);
+  }
+
   @container ci (inline-size >= 44rem) {
     .ci-body {
       grid-template-columns: minmax(0, 1fr) minmax(18rem, 26rem);
     }
 
     .ci-preview {
-      position: sticky;
+      order: 0;
+      inline-size: 100%;
+      margin-inline: 0;
+      padding-block: 0;
+      background: none;
       inset-block-start: calc(var(--header-h) + var(--s-3));
     }
   }
