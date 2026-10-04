@@ -1711,7 +1711,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     segment list; a dry run lists the three commands a run executes. `RENDER_GRAPH_VERSION` goes 9 to 10: an anchor
     under a video card gets another encoder start, so its bytes change for the same inputs (D-C8: every manifest is
     stale once, reason `engine`). Measured (180 s 1080p30 H.264 first clip, 7 s video card, median of 3, before and after interleaved on a shared host at load average 15 to 27, so wall time is noisy and
-    ffmpeg CPU seconds is the steadier figure): **VAAPI** (AMD RX 9070 XT) wall 40.9 s to 30.2 s (-26%), ffmpeg CPU seconds
+    ffmpeg CPU seconds is the steadier figure): **VAAPI** (AMD Radeon 860M, integrated) wall 40.9 s to 30.2 s (-26%), ffmpeg CPU seconds
     113 to 19 (about 6x less: the 173 s of download, overlay and upload are gone); **CPU profile** wall 40.4 s to 39.1 s
     (within noise), CPU seconds 400 to 350 (-12%, the overlay filter no longer runs over the tail). The PR #115
     estimate of about 2x did not materialize in wall time: the hardware encode of the tail and the head's start-up are
