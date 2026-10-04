@@ -72,9 +72,12 @@ class VaapiProfile(HardwareProfile):
             vf = vaapi_normalize_filter(width, height, params.fill_color)
         else:
             vf = vaapi_scale_filter(width, height)
+        # Square pixels explicitly, like every other profile's normalize: scale_vaapi passes
+        # the source SAR through, so an unset (N/A) SAR would otherwise survive into the
+        # segment. setsar is metadata-only and runs on VAAPI frames without a transfer.
         return OpFragment(
             op=OpClass.NORMALIZE,
-            filter=vf,
+            filter=f"{vf},setsar=1",
             frames_in=FrameLocation.VAAPI,
             frames_out=FrameLocation.VAAPI,
         )

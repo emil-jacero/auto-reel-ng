@@ -277,7 +277,7 @@ def test_a_timed_overlay_on_the_amd_profile_bridges_to_the_cpu_around_a_looped_f
         args[args.index("-loop") : args.index("-loop") + 8]
     )
     assert graph == (
-        "[0:v]scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease,"
+        "[0:v]scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease,setsar=1,"
         "hwdownload,format=nv12[vbase];" + _TIMED_CHAIN + ";[vo0]format=nv12,hwupload[vout]"
     )
     assert args[args.index("-map") + 1] == "[vout]"
@@ -366,7 +366,7 @@ def test_an_overlay_without_fades_keeps_the_old_graph() -> None:
     command = _build(_segment(overlays=(plain,)), _amd())
     assert "-loop" not in command.args and "-framerate" not in command.args
     assert _graph(command.args) == (
-        "[0:v]scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease,"
+        "[0:v]scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease,setsar=1,"
         "hwdownload,format=nv12[vbase];[vbase][1:v]overlay=x=10:y=20[vo0];"
         "[vo0]format=nv12,hwupload[vout]"
     )
