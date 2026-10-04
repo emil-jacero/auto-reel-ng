@@ -282,8 +282,13 @@
     cursor: pointer;
     pointer-events: auto;
 
+    /* The card's miniature: its own image, fitted to cover the block. */
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+
     &[data-kind='black'] {
-      background: var(--tl-card-black);
+      background-color: var(--tl-card-black);
       border-color: var(--fg-subtle);
       /* Dark theme: the fill is as dark as the lane, so a light inner ring draws the shape. */
       box-shadow: inset 0 0 0 1px light-dark(transparent, oklch(60% 0.01 260));
@@ -291,7 +296,7 @@
     }
 
     &[data-kind='video'] {
-      background: var(--info-bg);
+      background-color: var(--info-bg);
       border-color: var(--accent);
       border-block-start-width: 3px;
       color: var(--info-fg);
@@ -323,6 +328,29 @@
     min-inline-size: 0;
     overflow: hidden;
     white-space: nowrap;
+  }
+
+  /* The miniature is the card's own image; where words are written a scrim of the block's colour keeps them readable. */
+  .tl-card[data-image] {
+    background-image: var(--tl-card-image);
+  }
+
+  .tl-card[data-image][data-words] {
+    --tl-scrim: oklch(8% 0.005 260 / 0.8);
+    background-image: linear-gradient(90deg, var(--tl-scrim) 0, var(--tl-scrim) 55%, transparent 100%), var(--tl-card-image);
+  }
+
+  .tl-card[data-image][data-words][data-kind='video'] {
+    --tl-scrim: color-mix(in oklch, var(--info-bg) 90%, transparent);
+  }
+
+  /* Over a miniature the words keep their contrast by a shadow in the block's own colour. */
+  .tl-card[data-image] .tl-card-text {
+    text-shadow: 0 0 3px var(--tl-card-black), 0 0 1px var(--tl-card-black);
+  }
+
+  .tl-card[data-image][data-kind='video'] .tl-card-text {
+    text-shadow: 0 0 3px var(--info-bg), 0 0 1px var(--info-bg);
   }
 
   .tl-card-title {
@@ -943,5 +971,37 @@
   .tl-cards-note {
     color: var(--fg-muted);
     font-size: var(--text-xs);
+  }
+
+  /* --- the card on the picture (`CardLayer.tsx`) --- */
+  .tl-card-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  /* A black card hides the video by being opaque; only its image fades, over the black. */
+  .tl-card-layer[data-kind='black'] {
+    background: oklch(0% 0 0);
+  }
+
+  .tl-card-layer img {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: contain;
+  }
+
+  .tl-card-fallback {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: var(--s-3);
+    color: oklch(96% 0.004 260);
+    font-size: var(--text-lg);
+    text-align: center;
+    text-wrap: balance;
   }
 }

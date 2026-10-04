@@ -391,6 +391,8 @@ src/
 │   ├── handles.ts        what a key does to a trim handle, Enter at the playhead, which overlapping handle a finger meant, when a mouse press came without pointer events, what a snap says (pure, + handles.test.ts)
 │   ├── dragStore.ts      the edge in the air while a handle is dragged: only the handle, its live span and the fields read it (pure)
 │   ├── cards.ts          the title cards (pure): placement as the render does, the black-card track map, words, the selection reducer (+ cards.test.ts); CardLane.tsx draws the lane, CardInspector.tsx the slot, useCardSelection.ts the page's selection
+│   ├── play.ts           the play clock (pure; `timeline-plays-cards`): stages, a position on the track with cards, the fades' opacity, the hand-over, the card clock (+ play.test.ts); CardLayer.tsx draws the card over the picture
+│   ├── cardImages.ts     the cards' images (pure queue: one request at a time, 503 waited out, only an edited card fetched again) (+ cardImages.test.ts); cardRequests.ts builds the requests, useCardImages.ts is the hook
 │   ├── editing.ts        what Edit mode gives the Timeline: the draft's cuts, onTrim, onAdd, locked, the preview store (types)
 │   ├── TrimHandle.tsx    a clip's trim handles: sliders with pointer capture, snapping and keys
 │   ├── CutFields.tsx     the selected cut's Start and End, typed, in step with the handles

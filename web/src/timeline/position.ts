@@ -7,8 +7,15 @@ import type { Layout, Ms } from './model.ts'
  * Pure, in whole milliseconds like `model.ts`, whose frame times it uses.
  */
 
-/** The playhead: the shown clip's index and the time in that clip. */
-export type Position = { clip: number; ms: Ms }
+/**
+ * The playhead inside a black title card (`timeline-plays-cards`): the card's chapter (index
+ * and saved name), the time elapsed in it and its length. The `clip`/`ms` of such a position
+ * are the card's anchor clip and 0, so every consumer of clip time is unchanged.
+ */
+export type CardAt = { chapter: number; name: string; ms: Ms; lengthMs: Ms }
+
+/** The playhead: the shown clip's index and the time in that clip, or a place in a card. */
+export type Position = { clip: number; ms: Ms; card?: CardAt | null }
 
 type Timed = { durationMs: Ms; fps: number }
 
@@ -56,9 +63,27 @@ export function onGrid(clip: Timed, ms: Ms): Ms {
   return frameMs(frameIndex(clip, ms), clip.fps)
 }
 
-/** The timeline's time of a position. */
+/**
+ * The timeline's time of a position. With `l` the track's layout (the clips with the black
+ * cards between them), a place in a card is the card's start plus the time in it.
+ */
 export function globalMs(l: Layout, p: Position): Ms {
-  return l.startsMs[p.clip] + p.ms
+  const card = p.card
+  return card == null
+    ? l.startsMs[p.clip] + p.ms
+    : l.startsMs[p.clip] - card.lengthMs + card.ms
+}
+
+/** Whether two positions are the same place. */
+export function samePosition(a: Position, b: Position): boolean {
+  const x = a.card ?? null
+  const y = b.card ?? null
+  return (
+    a.clip === b.clip &&
+    a.ms === b.ms &&
+    (x === y ||
+      (x !== null && y !== null && x.chapter === y.chapter && x.ms === y.ms && x.lengthMs === y.lengthMs))
+  )
 }
 
 /**

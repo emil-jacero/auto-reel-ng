@@ -93,3 +93,40 @@ describe('held readout scales', () => {
     assert.deepEqual(readoutOf(at, c, lay, readoutScales(c, lay)), readoutOf(at, c, lay))
   })
 })
+
+describe('the readout in a title card', () => {
+  const c = clips(60, 40)
+  const lay = layout(c.map((x) => x.facts))
+  // 3 s of black card before the first clip: the track is 3 s longer than the footage.
+  const track = { startsMs: [3000, 63000], totalMs: lay.totalMs + 3000 }
+  const card = { chapter: 0, name: '', ms: 1200, lengthMs: 3000 }
+
+  it('reads Card time of length and counts the card in the Event time', () => {
+    const r = readoutOf({ clip: 0, ms: 0, card }, c, track)
+    assert.equal(readoutWords(r), 'Card 0:01.20 of 0:03.00 · Event 0:01.20 of 1:43.00')
+    assert.equal(r.name, 'Title card for the opening')
+    assert.equal(r.label, 'Card')
+  })
+
+  it('counts three seconds into the opening card as Event 0:03.00', () => {
+    const r = readoutOf({ clip: 0, ms: 0, card: { ...card, ms: 3000 } }, c, track)
+    assert.match(readoutWords(r), /Event 0:03\.00 of 1:43\.00$/)
+  })
+
+  it('keeps the width of its cells between a card and a clip', () => {
+    const inCard = readoutOf({ clip: 0, ms: 0, card }, c, track)
+    const inClip = readoutOf({ clip: 0, ms: 500 }, c, track)
+    assert.equal(inCard.clip.time.ch, inClip.clip.time.ch)
+    assert.equal(inCard.clip.length.ch, inClip.clip.length.ch)
+    assert.equal(inClip.label, 'Clip')
+    assert.equal(readoutOf({ clip: 1, ms: 0, card: { ...card, chapter: 1, name: 'Dag 2' } }, c, track).name, 'Title card for Dag 2')
+  })
+
+  it('holds a card longer than every clip to its own scale', () => {
+    const short = clips(2)
+    const l = { startsMs: [75000], totalMs: 77000 }
+    const scales = readoutScales(short, l, 75000)
+    const r = readoutOf({ clip: 0, ms: 0, card: { chapter: 0, name: '', ms: 70000, lengthMs: 75000 } }, short, l, scales)
+    assert.equal(r.clip.length.text, '1:15.00')
+  })
+})

@@ -332,6 +332,14 @@ export function movieWithCards(movieMs: Ms, map: CardMap): Ms {
 
 // --- blocks ----------------------------------------------------------------------------
 
+/** A block is at least this wide, however far the track is zoomed out, so that a card is still pressed. */
+export const MIN_BLOCK_PX = 24
+
+/** The width a block is drawn at: its span, or the least that can be pressed. */
+export function cardBlockPx(spanPx: number): number {
+  return Math.max(MIN_BLOCK_PX, spanPx)
+}
+
 /** A card as the lane draws it: a span of the track, with its look and words. */
 export type CardBlock = {
   chapter: number
