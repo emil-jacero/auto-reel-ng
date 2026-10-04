@@ -29,8 +29,15 @@ describe('cardRowInfo', () => {
       look: 'Video',
       font: 'Sofia Sans',
       words: 'Title card for Dag 2, 4.0 s, over video',
+      overrides: 'Uses the event style',
       savedName: null,
     })
+  })
+
+  it('says what the draft card overrides', () => {
+    const row = cardRowInfo({ readName: 'Dag 2', name: 'Dag 2' }, specs, 'Overrides font, color')
+    assert.ok(row?.kind === 'card')
+    assert.equal(row.overrides, 'Overrides font, color')
   })
 
   it('makes Main’s row the opening card, with "No subtitle" for an empty one', () => {

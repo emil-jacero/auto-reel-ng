@@ -4,6 +4,8 @@ import type { KnownReason } from '../cuts/times'
 import { normalizeTurn, stepTurn } from '../rotate/turn.ts'
 import { NO_CARD, cardBody, cardChanged, readCard, refusalOf, withField } from './card/model.ts'
 import type { CardDraft, CardField } from './card/model.ts'
+import { applyStyle, readStyle, styleChanged, withStyleField } from './cardStyle.ts'
+import type { StyleDraft, StyleField, StyleValue } from './cardStyle.ts'
 import type { Turn, Way } from '../rotate/turn.ts'
 
 /*
@@ -105,6 +107,11 @@ export type Draft = {
    * one read (`cardOf`).
    */
   cards: ReadonlyMap<ChapterKey, CardDraft>
+  /**
+   * The event-wide card style (`look.title_card`, `cardStyle.ts`) while the operator has it
+   * different from the one read; absent otherwise, so an untouched draft is `look` as read.
+   */
+  style?: StyleDraft
 }
 
 /** What Edit mode read: never changes during the session. */
@@ -330,8 +337,8 @@ export function writtenFromView(baseline: Baseline, draft: Draft): DraftChapter[
 /**
  * The PUT body: `read` with only the operator's edits applied.
  *
- * - `look` and `ignore` go back as read, and so does `clips` (per-clip
- *   properties), less the entries of the `removed` clips: the engine refuses
+ * - `ignore` goes back as read, and so does `look` but for `look.title_card` (`applyStyle`). `clips` (per-clip
+ *   properties) go back as read, less the entries of the `removed` clips: the engine refuses
  *   properties for a clip no chapter lists. A moved clip keeps its entry: it is
  *   keyed by identity, not by chapter. A clip whose cuts changed gets its new
  *   `trims` (`withCuts`).
@@ -378,7 +385,7 @@ export function buildWriteBody(baseline: Baseline, draft: Draft): ReelWriteBody 
       location: field('location'),
       description: field('description'),
     },
-    look: read.look,
+    look: applyStyle(read.look, draft.style),
     chapters,
     clips: withCuts(baseline, draft),
     ignore: read.ignore,
@@ -446,8 +453,45 @@ export function isDirty(baseline: Baseline, draft: Draft): boolean {
     writtenFromView(baseline, draft).length > 0 ||
     changedCuts(baseline, draft).size > 0 ||
     changedRotations(baseline, draft).size > 0 ||
-    changedCards(baseline, draft).size > 0
+    changedCards(baseline, draft).size > 0 ||
+    styleIsChanged(baseline, draft)
   )
+}
+
+// --- the event's card style ------------------------------------------------------------
+
+/** The event-wide card style now: the draft's when the operator touched it, else as read. */
+export function styleOf(baseline: Baseline, draft: Draft): StyleDraft {
+  return draft.style ?? readStyle(baseline.read.look)
+}
+
+/** Whether the card style differs from the one read (put back, it is no change). */
+export function styleIsChanged(baseline: Baseline, draft: Draft): boolean {
+  return draft.style !== undefined && styleChanged(readStyle(baseline.read.look), draft.style)
+}
+
+/** `draft` with one field of the card style set; `null` clears it. An entry equal to the read one is dropped. */
+export function setStyleField(
+  baseline: Baseline,
+  draft: Draft,
+  field: StyleField,
+  value: StyleValue | null,
+): Draft {
+  const now = styleOf(baseline, draft)
+  const next = withStyleField(now, field, value)
+  if (next === now) {
+    return draft
+  }
+  if (!styleChanged(readStyle(baseline.read.look), next)) {
+    // Put back to the read value: nothing to save, and the entry goes with it.
+    return draft.style === undefined ? draft : { ...draft, style: undefined }
+  }
+  return { ...draft, style: next }
+}
+
+/** `draft` with the card style as read. */
+export function resetStyle(draft: Draft): Draft {
+  return draft.style === undefined ? draft : { ...draft, style: undefined }
 }
 
 // --- title cards ---------------------------------------------------------------------

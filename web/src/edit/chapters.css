@@ -264,6 +264,16 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .card-row-overrides {
+    color: var(--fg-muted);
+    font-size: var(--text-xs);
+
+    &[data-overrides] {
+      color: var(--accent);
+      font-weight: 600;
+    }
+  }
+
   .card-row-look {
     padding: 0 var(--s-2);
     border: 1px solid var(--border-strong);

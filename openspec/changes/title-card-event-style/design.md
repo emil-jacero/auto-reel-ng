@@ -73,7 +73,6 @@ closed by default, a native `<details>`-style control so it needs no new depende
 ## Risks / Trade-offs
 
 - A cleared field has no number to show (Decision 3). Accepted: honest over pretty; the preview shows it.
-- The inspector's merged names may differ from the assumption; the first task reads them.
 - Two overlapping requirements in `web-app` ("Saving an edit writes only what the operator changed") may have
   been modified by `title-card-inspector` for card writes. This delta only ADDs a requirement that states the
   `look` exception, so it cannot clash; archiving may fold the two sentences together.

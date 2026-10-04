@@ -213,6 +213,8 @@ export type PreviewRequest = {
   chapter: string
   card: CardBody
   event_title?: string
+  /** A draft of the event-wide `look.title_card` (the whole map); absent: the saved one. */
+  style?: { [key: string]: unknown }
 }
 
 /** The fields over the preview's bounds, in field order. */
@@ -245,6 +247,8 @@ export function previewRequest(args: {
   chapterName: string
   card: CardDraft
   eventTitle: string
+  /** The draft event style as the save would write it, when it is not the saved one. */
+  style?: { [key: string]: unknown }
 }): PreviewRequest | null {
   const card = normalise(args.card)
   if (overBounds(card).length > 0) {
@@ -253,6 +257,9 @@ export function previewRequest(args: {
   const request: PreviewRequest = { chapter: args.chapterName, card: cardBody(card) }
   if (args.opening && args.eventTitle.trim() !== '') {
     request.event_title = args.eventTitle
+  }
+  if (args.style !== undefined) {
+    request.style = args.style
   }
   return request
 }

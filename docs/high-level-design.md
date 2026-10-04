@@ -379,7 +379,17 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   previous image kept, failures in words, one retry after `Retry-After`); a Video card is laid over the **thumbnail
   frame** of the clip it sits over (not the exact start: the preview has no frame-at-time option). Follow-ups: serve
   the bundled font files so the picker can show each family in its own face, and a frame-at-time route.
-- **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview; `title-card-fonts`
+- **v2 event card style** (`title-card-event-style`, D-24): **Card style for this event** (Edit mode, closed by default,
+  `web/src/edit/CardStylePanel.tsx`, pure model `cardStyle.ts`) edits the event-wide `look.title_card` (font, title and
+  subtitle size, colour, position, default length, default background) in the same draft as everything else. A card
+  says which style fields it overrides (`Overrides font, color` / `Uses the event style`; read from the draft card, so a
+  value equal to the event's still counts), **Use event style** falls back to the *draft* style, and every preview sends
+  that draft as the body's `style`. A save writes `look` as read with only `look.title_card`'s edited fields changed
+  (`fade_in`, outline and every other key kept; the sub-map is removed when its last key is cleared; an unchanged style
+  sends `look` itself). An unset field shows the project default (the detail's resolved value) as a placeholder; a
+  field cleared although the saved style set it says "Project default" with no number, because the lower layer is not
+  known to the page and is never guessed. No API, engine or `RENDER_GRAPH_VERSION` change.
+- **v2:** look/style editor (**the look picker deferred from v1, now built as the event card style and the card inspector: one draft, one save**; title card live-ish preview; `title-card-fonts`
   is the foundation of the card editor: the bundled font set and its registry, **D-22**; **the title card model
   has landed** as `title-card-model`, **D-24**: the per-chapter `card:` in `reel.yaml`; **its API is built** as
   `title-card-write-api`: `PUT`/`GET …/reel` carry each chapter's `card` (the overrides; `{}` removes, absent or `null`
@@ -744,6 +754,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    and the editor follow. `title-card-over-video` has landed (the engine half of "text on video"; no version bump):
    a `video` card is attached over the chapter's first segment instead of failing the render. It raised `RENDER_GRAPH_VERSION` to 7, so every rendered event reports
    stale once (reason `engine`).
+   `title-card-event-style` (GUI v2) follows `title-card-inspector`: the event-wide card style is edited in the page; web-only, same.
    `chapter-inline-rename` (GUI v2) follows: a chapter is renamed by pressing its title, and the event's own
    chapter shows the main title card, whose title is the event's (D-13); web-only, same.
    `clip-play-overlay-one-player` follows on user feedback: the read view's Play is a button on the clip's thumbnail, and
@@ -1620,6 +1631,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     uses it now and the API's resolved-card read will use it later (Principle V).
   - **`background: video` is stored but not rendered here.** An event that reaches it fails loud with a typed error
     naming the chapter; it is never drawn as black. `title-card-over-video` replaced the error (below).
+  - **The event layer is editable in the page** (`title-card-event-style`): Edit mode writes `look.title_card` through the
+    editorial `PUT`. An unset field shows the resolved project default; a cleared field the saved style set shows
+    "Project default" with no number, as the layer below it is not known to the client.
   - **Writers keep the card.** The round-trip writer keeps a card's comments and key order. The editorial write
     treats a chapter's `card` as: **no key or `null` leaves the card as written**, `{}` removes it, and a mapping is
     merged key by key (a key left out is removed, an equal value stays as written, a fresh card goes after `name`).

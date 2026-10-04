@@ -2,7 +2,6 @@ import { Fragment, useId } from 'react'
 import type { ReactNode } from 'react'
 
 import { Icon } from '../../ui/Icon'
-import type { CardField } from './model.ts'
 
 /*
  * The inspector's field shells: a label, the control, the muted "Event style" value while the
@@ -17,6 +16,15 @@ export function ids(...parts: (string | false | null | undefined)[]): string | u
   return kept.length > 0 ? kept.join(' ') : undefined
 }
 
+/** What the clear button and the unset tag say: a card's field follows the event style. */
+export type FieldWords = { clear: string; tag: string; hint: string }
+export const CARD_WORDS: FieldWords = { clear: 'Use event style', tag: 'Event style', hint: 'Event style' }
+
+/** The hint of an unset field: what it follows and the value, or the words alone while the value is not known. */
+export function hintOf(words: FieldWords, inherited: ReactNode): ReactNode {
+  return inherited === '' ? words.hint : <>{words.hint}: {inherited}</>
+}
+
 /** What a control needs to be tied to its shell. */
 export type Control = {
   id: string
@@ -26,7 +34,8 @@ export type Control = {
 
 type ShellProps = {
   label: string
-  field: CardField
+  /** The field's name, for tests and styling (`data-field`). */
+  field: string
   /** The card sets this field (else it inherits). */
   set: boolean
   /** The inherited value, or the words that say what an unset field follows. */
@@ -34,7 +43,9 @@ type ShellProps = {
   /** The message at the field: the service's refusal, or the preview's bound. */
   error: string | null
   locked: boolean
-  onClear: (field: CardField) => void
+  onClear: (field: string) => void
+  /** The clear button's words and the tag of an unset field: the card's, or the event style's. */
+  words?: FieldWords
   /** A native radio group labels itself with a span, not a <label for>. */
   group?: boolean
 }
@@ -47,6 +58,7 @@ export function FieldShell({
   error,
   locked,
   onClear,
+  words = CARD_WORDS,
   group = false,
   children,
 }: ShellProps & { children: (control: Control) => ReactNode }) {
@@ -74,7 +86,7 @@ export function FieldShell({
           <button
             type="button"
             className="btn btn-ghost btn-compact ci-clear"
-            aria-label={`Use event style for ${label.toLowerCase()}`}
+            aria-label={`${words.clear} for ${label.toLowerCase()}`}
             aria-disabled={locked || undefined}
             onClick={() => {
               if (!locked) {
@@ -82,10 +94,10 @@ export function FieldShell({
               }
             }}
           >
-            Use event style
+            {words.clear}
           </button>
         ) : (
-          <span className="ci-style-tag">Event style</span>
+          <span className="ci-style-tag">{words.tag}</span>
         )}
       </div>
       {children(control)}
@@ -104,7 +116,7 @@ export function FieldShell({
   )
 }
 
-type Common = Pick<ShellProps, 'label' | 'field' | 'locked' | 'onClear'> & {
+type Common = Pick<ShellProps, 'label' | 'field' | 'locked' | 'onClear' | 'words'> & {
   error: string | null
 }
 
@@ -114,14 +126,18 @@ export function TextField({
   field,
   locked,
   onClear,
+  words,
   error,
   multiline,
+  inputMode,
   value,
   placeholder,
   follows,
   onChange,
 }: Common & {
   multiline: boolean
+  /** The on-screen keyboard to ask for (numbers typed as text, to be refused by the service). */
+  inputMode?: 'text' | 'numeric' | 'decimal'
   value: string | null
   placeholder: string
   /** What the field follows while empty, in words. */
@@ -137,6 +153,7 @@ export function TextField({
       error={error}
       locked={locked}
       onClear={onClear}
+      words={words}
     >
       {(control) =>
         multiline ? (
@@ -156,6 +173,7 @@ export function TextField({
             type="text"
             className="field-input ci-text"
             autoComplete="off"
+            inputMode={inputMode}
             value={value ?? ''}
             placeholder={placeholder}
             readOnly={locked}
@@ -174,6 +192,7 @@ export function NumberField({
   field,
   locked,
   onClear,
+  words,
   error,
   value,
   placeholder,
@@ -190,10 +209,11 @@ export function NumberField({
       label={label}
       field={field}
       set={value !== null}
-      inherited={<>Event style: {inherited}</>}
+      inherited={hintOf(words ?? CARD_WORDS, inherited)}
       error={error}
       locked={locked}
       onClear={onClear}
+      words={words}
     >
       {(control) => (
         <input
@@ -234,6 +254,7 @@ export function Choice({
   field,
   locked,
   onClear,
+  words,
   error,
   value,
   options,
@@ -246,15 +267,21 @@ export function Choice({
   onChange: (value: string) => void
 }) {
   const name = useId()
+  // A value written by hand that is none of the options (`middle`) stays shown, and chosen.
+  const shown =
+    value !== null && !options.some((option) => option.value === value)
+      ? [...options, { value, label: value, words: null }]
+      : options
   return (
     <FieldShell
       label={label}
       field={field}
       set={value !== null}
-      inherited={<>Event style: {inherited}</>}
+      inherited={hintOf(words ?? CARD_WORDS, inherited)}
       error={error}
       locked={locked}
       onClear={onClear}
+      words={words}
       group
     >
       {(control) => (
@@ -265,7 +292,7 @@ export function Choice({
             aria-labelledby={`${control.id}-label`}
             aria-describedby={control['aria-describedby']}
           >
-            {options.map((option) => (
+            {shown.map((option) => (
               <Fragment key={option.value}>
                 <input
                   className="visually-hidden"

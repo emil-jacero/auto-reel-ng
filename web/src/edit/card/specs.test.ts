@@ -55,6 +55,28 @@ describe('draftSpec', () => {
   })
 })
 
+describe('draftSpec under an edited event style', () => {
+  it('draws a card the operator did not touch from the draft style', () => {
+    const edited = { ...style, background: 'video', font_family: 'Playfair Display' }
+    const next = draftSpec(spec, edited, NO_CARD, undefined, 'Dag 2', true)
+    assert.notEqual(next, spec)
+    assert.equal(next.card?.fontFamily, 'Playfair Display')
+    assert.equal(next.card?.title, 'Dag 2')
+  })
+
+  it('keeps a card’s own font over a changed style', () => {
+    const read = readCard({ font_family: 'Own Font' })
+    const edited = { ...style, font_family: 'Playfair Display' }
+    assert.equal(draftSpec(spec, edited, read, read, 'Dag 2', true).card?.fontFamily, 'Own Font')
+  })
+
+  it('does not invent a field the page does not know', () => {
+    const unresolved: CardSpec = { chapter: 'A', card: null, error: 'bad' }
+    const partial: EventStyle = { text_color: '#00FF00' }
+    assert.equal(draftSpec(unresolved, partial, NO_CARD, undefined, 'A', true), unresolved)
+  })
+})
+
 describe('effectiveBackground', () => {
   it('the draft, then the event style, then the saved card', () => {
     assert.equal(effectiveBackground(withField(NO_CARD, 'background', 'video'), style, spec), 'video')
