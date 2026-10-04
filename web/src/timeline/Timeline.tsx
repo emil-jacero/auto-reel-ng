@@ -563,7 +563,15 @@ export function Timeline({
             {...video.handlers}
           />
         )}
-        <CardLayer playhead={playhead} placements={placements} specs={specs} pictures={pictures} />
+        {!held && (
+          <CardLayer
+            playhead={playhead}
+            placements={placements}
+            specs={specs}
+            pictures={pictures}
+            playing={video.playing}
+          />
+        )}
       </div>
 
       <div className="tl-controls">
