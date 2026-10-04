@@ -34,17 +34,19 @@ from ..probe.metadata import ClipMetadata
 from ..reel.document import Metadata
 from ..staleness.fingerprint import Fingerprint, engine_identity
 from ..staleness.manifest import write_manifest
+from .card_window import build_join_command, split_segment
 from .chapters import aggregate_chapter_durations, build_ffmetadata, chapter_times
 from .concat import build_concat_command, build_concat_list, is_copy_uniform
 from .decorators import apply_decorators, resolve_decorator_names
 from .normalize import (
+    AudioSidecar,
     NormalizeCommand,
     build_normalize_command,
     build_synthetic_normalize_command,
     decide_copy_eligibility,
 )
 from .producers import get_producer, materialize_overlay
-from .segments import Segment, build_segments
+from .segments import OverlaySpec, Segment, build_segments
 from .target import TargetSpec, derive_target
 from .verify import verify_output
 
@@ -287,10 +289,12 @@ class _Progress:
         if self._callback is not None:
             self._callback(value)
 
-    def step(self, index: int) -> Optional[ProgressCallback]:
+    def step(self, index: int, lo: float = 0.0, hi: float = 1.0) -> Optional[ProgressCallback]:
         """Return a callback scaling a step's local fraction into the global one.
 
         ``None`` when nobody listens or the step carries no weight (nothing to report).
+        ``lo``/``hi`` confine the step to that share of its segment's weight: a segment encoded
+        as two pieces reports each piece over its own share.
         """
         weight = self._weights.get(index, 0.0)
         if self._callback is None or weight <= 0.0 or self._total <= 0.0:
@@ -299,7 +303,7 @@ class _Progress:
         span = self._end - self._start
 
         def scaled(local: float) -> None:
-            done = before + weight * min(1.0, max(0.0, local))
+            done = before + weight * (lo + (hi - lo) * min(1.0, max(0.0, local)))
             self._emit(self._start + span * done / self._total)
 
         return scaled
@@ -387,9 +391,9 @@ def _plan_only(
 ) -> RenderResult:
     """Build and report the planned commands without executing or writing (dry-run)."""
     scratch = Path(options.temp_dir) if options.temp_dir else Path("dry-run")
-    # A synthetic segment is materialized (its card image rendered) to plan its
+    # A synthetic segment, or an attached card, is materialized (its image rendered) to plan its
     # command, so the scratch dir must exist for those renders.
-    if any(segment.is_synthetic for segment in segments):
+    if any(segment.is_synthetic or segment.overlays for segment in segments):
         scratch.mkdir(parents=True, exist_ok=True)
     commands: list[tuple[str, ...]] = []
     warnings: list[str] = []
@@ -398,12 +402,22 @@ def _plan_only(
         if segment.copy_eligible and segment.source_path is not None:
             intermediates.append(segment.source_path)
             continue
-        command = _build_segment_command(
-            index, segment, target=target, profile=profile, options=options, scratch=scratch
-        )
-        commands.append(command.args)
-        warnings.extend(command.warnings)
-        intermediates.append(command.output_path)
+        plan = _plan_encodes(index, segment, target=target, options=options, scratch=scratch)
+        for encode in plan.encodes:
+            command = _build_segment_command(
+                index,
+                encode.segment,
+                target=target,
+                profile=profile,
+                options=options,
+                scratch=scratch,
+                encode=encode,
+            )
+            commands.append(command.args)
+            warnings.extend(command.warnings)
+        if plan.join is not None:
+            commands.append(plan.join.args)
+        intermediates.append(plan.join.output_path if plan.join else plan.encodes[0].output)
 
     list_file = scratch / "concat.txt"
     metadata_file = scratch / "chapters.ffmeta"
@@ -423,6 +437,35 @@ def _segment_label(segment: Segment) -> str:
     return repr(segment.identity)
 
 
+def _unmaterialized(overlay: OverlaySpec) -> bool:
+    """Whether ``overlay`` names a producer whose image has not been rendered yet."""
+    return overlay.producer is not None and not overlay.source
+
+
+def _materialize_overlays(
+    index: int, segment: Segment, target: TargetSpec, scratch: Path
+) -> Segment:
+    """``segment`` with its producer-backed overlays rendered into ``scratch`` (once each).
+
+    The title card's image, window and fades only exist after its producer has run, and the split
+    at the card window needs the window, so the overlays are materialized before anything else
+    is decided about the segment. An overlay already materialized is left as it is.
+    """
+    if not any(_unmaterialized(overlay) for overlay in segment.overlays):
+        return segment
+    return replace(
+        segment,
+        overlays=tuple(
+            (
+                materialize_overlay(overlay, target, scratch / f"card_{index:03d}_{n}.png")
+                if _unmaterialized(overlay)
+                else overlay
+            )
+            for n, overlay in enumerate(segment.overlays)
+        ),
+    )
+
+
 def _build_segment_command(
     index: int,
     segment: Segment,
@@ -432,6 +475,7 @@ def _build_segment_command(
     options: RenderOptions,
     scratch: Path,
     force_software_decode: bool = False,
+    encode: Optional["_Encode"] = None,
 ) -> NormalizeCommand:
     """Build the normalize command for one segment (synthetic or source).
 
@@ -440,9 +484,10 @@ def _build_segment_command(
     source segment takes the probe-driven normalize path, with ``force_software_decode``
     set only for the retry of a failed hardware-decode initialisation. A source segment's
     producer-backed overlays (an attached title card) are materialized first, so a planned
-    command names a real image as a run one does.
+    command names a real image as a run one does. ``encode`` names the intermediate (default
+    ``seg_NNN.mp4``) and whether it carries audio (a piece of a split segment does not).
     """
-    intermediate = scratch / f"seg_{index:03d}.mp4"
+    intermediate = encode.output if encode is not None else scratch / f"seg_{index:03d}.mp4"
     if segment.is_synthetic:
         assert segment.producer is not None
         producer = get_producer(segment.producer)
@@ -455,14 +500,7 @@ def _build_segment_command(
         raise RenderError(
             f"segment {index} ({_segment_label(segment)}) has no clip facts to normalize"
         )
-    if any(overlay.producer is not None for overlay in segment.overlays):
-        segment = replace(
-            segment,
-            overlays=tuple(
-                materialize_overlay(overlay, target, scratch / f"card_{index:03d}_{n}.png")
-                for n, overlay in enumerate(segment.overlays)
-            ),
-        )
+    segment = _materialize_overlays(index, segment, target, scratch)
     return build_normalize_command(
         segment,
         clip,
@@ -471,7 +509,76 @@ def _build_segment_command(
         intermediate,
         render_node=options.render_node,
         force_software_decode=force_software_decode,
+        audio=(encode.sidecar or encode.audio) if encode is not None else True,
     )
+
+
+@dataclass(frozen=True)
+class _Encode:
+    """One ffmpeg encode of a segment, or of a piece of it (see :func:`_plan_encodes`)."""
+
+    segment: Segment
+    output: Path
+    audio: bool = True
+    #: The share ``[lo, hi]`` of the segment's progress weight this encode covers.
+    share: tuple[float, float] = (0.0, 1.0)
+    #: The whole segment's audio, written beside this encode's video (the tail of a split).
+    sidecar: Optional[AudioSidecar] = None
+
+
+@dataclass(frozen=True)
+class _SegmentEncodes:
+    """How one segment is encoded: whole, or as a head and a tail joined (``join`` is set)."""
+
+    segment: Segment
+    encodes: tuple[_Encode, ...]
+    join: Optional[NormalizeCommand] = None
+    join_list: Optional[Path] = None
+
+
+def _plan_encodes(
+    index: int, segment: Segment, *, target: TargetSpec, options: RenderOptions, scratch: Path
+) -> _SegmentEncodes:
+    """Decide how ``segment`` is encoded: one command, or a card-window head, a tail and a join.
+
+    A source segment carrying a timed overlay (the card over a chapter's first clip) is split
+    where the card's window ends (:func:`~auto_reel_ng.render.card_window.split_segment`), so the
+    CPU overlay bridge covers the head only and the tail keeps the profile's hardware path. The
+    pieces are video-only and a join command stream-copies them and encodes the audio once for
+    the whole segment. Any other segment is encoded whole, exactly as before. The overlays are
+    materialized here (the window is only known then); a clip without facts is left whole for its
+    command to refuse.
+    """
+    if segment.is_synthetic:
+        return _SegmentEncodes(segment, (_Encode(segment, scratch / f"seg_{index:03d}.mp4"),))
+    segment = _materialize_overlays(index, segment, target, scratch)
+    whole = (_Encode(segment, scratch / f"seg_{index:03d}.mp4"),)
+    clip = options.clip_facts.get(segment.identity) if segment.identity else None
+    if clip is None or not segment.overlays:
+        return _SegmentEncodes(segment, whole)
+    length = segment.span_duration if segment.span_duration is not None else clip.duration
+    pieces = split_segment(segment, target.fps, length)
+    if len(pieces) != 2:
+        return _SegmentEncodes(segment, whole)
+    head, tail = pieces
+    cut = ((head.end or 0.0) - (head.start or 0.0)) / length
+    list_file = scratch / f"seg_{index:03d}_join.txt"
+    audio_path = scratch / f"seg_{index:03d}_audio.m4a"
+    sidecar = AudioSidecar(audio_path, segment.start, length)
+    encodes = (
+        _Encode(head, scratch / f"seg_{index:03d}_head.mp4", audio=False, share=(0.0, cut)),
+        _Encode(
+            tail,
+            scratch / f"seg_{index:03d}_tail.mp4",
+            audio=False,
+            share=(cut, 1.0),
+            sidecar=sidecar,
+        ),
+    )
+    join = build_join_command(
+        list_file, audio_path, scratch / f"seg_{index:03d}.mp4", duration=length
+    )
+    return _SegmentEncodes(segment, encodes, join, list_file)
 
 
 #: ffmpeg phrases for a hardware decoder that could not be set up for a stream. Only these
@@ -499,7 +606,7 @@ def _run_segment(
     command: NormalizeCommand,
     *,
     options: RenderOptions,
-    progress: _Progress,
+    on_progress: Optional[ProgressCallback],
 ) -> None:
     """Run one segment's normalize command under the stall limit and the cancel check.
 
@@ -512,7 +619,7 @@ def _run_segment(
         options.runtime.run_with_progress(
             command.args,
             duration=command.duration,
-            on_progress=progress.step(index),
+            on_progress=on_progress,
             stall_timeout=SEGMENT_STALL_TIMEOUT_S,
             should_cancel=options.should_cancel,
         )
@@ -534,12 +641,68 @@ def _normalize_segment(
 ) -> tuple[Path, tuple[str, ...]]:
     """Normalize one segment (synthetic or source) to an intermediate; return ``(path, warnings)``.
 
-    A source segment whose hardware decode fails to initialise is run once more with
-    software decode (``_retry_in_software``); every other failure is raised as it is.
+    A source segment under a card is encoded as a head and a tail and joined
+    (:func:`_plan_encodes`); every other segment is one encode. A source segment whose hardware
+    decode fails to initialise is run once more with software decode (``_retry_in_software``);
+    every other failure is raised as it is.
     """
     try:
+        plan = _plan_encodes(index, segment, target=target, options=options, scratch=scratch)
+    except RenderError as exc:
+        raise RenderError(
+            f"normalize failed for segment {index} ({_segment_label(segment)}): {exc}"
+        ) from exc
+    warnings: list[str] = []
+    paths: list[Path] = []
+    for encode in plan.encodes:
+        path, encode_warnings = _encode_segment(
+            index,
+            encode,
+            target=target,
+            profile=profile,
+            options=options,
+            scratch=scratch,
+            progress=progress,
+        )
+        paths.append(path)
+        warnings.extend(encode_warnings)
+    if plan.join is None or plan.join_list is None:
+        return paths[0], tuple(warnings)
+    plan.join_list.write_text(build_concat_list(paths), encoding="utf-8")
+    _check_cancelled(options, before=f"the join of segment {index}")
+    try:
+        _run_segment(index, plan.segment, plan.join, options=options, on_progress=None)
+    except RenderCancelledError:
+        raise
+    except EngineError as exc:
+        raise RenderError(
+            f"normalize failed for segment {index} ({_segment_label(plan.segment)}): "
+            f"joining its card window and the rest failed: {exc}"
+        ) from exc
+    return plan.join.output_path, tuple(warnings)
+
+
+def _encode_segment(
+    index: int,
+    encode: _Encode,
+    *,
+    target: TargetSpec,
+    profile: AccelProfile,
+    options: RenderOptions,
+    scratch: Path,
+    progress: _Progress,
+) -> tuple[Path, tuple[str, ...]]:
+    """Run one encode of a segment; retry once in software when its hardware decode cannot start."""
+    segment = encode.segment
+    try:
         command = _build_segment_command(
-            index, segment, target=target, profile=profile, options=options, scratch=scratch
+            index,
+            segment,
+            target=target,
+            profile=profile,
+            options=options,
+            scratch=scratch,
+            encode=encode,
         )
     except RenderError as exc:
         raise RenderError(
@@ -547,8 +710,9 @@ def _normalize_segment(
         ) from exc
     for warning in command.warnings:
         logger.warning("segment %s: %s", _segment_label(segment), warning)
+    on_progress = progress.step(index, *encode.share)
     try:
-        _run_segment(index, segment, command, options=options, progress=progress)
+        _run_segment(index, segment, command, options=options, on_progress=on_progress)
     except RenderCancelledError:
         raise  # a cancel is not a failure to wrap, nor a hardware-decode failure to retry
     except EngineError as exc:
@@ -559,35 +723,36 @@ def _normalize_segment(
             ) from exc
         return _retry_in_software(
             index,
-            segment,
+            encode,
             first=exc,
             target=target,
             profile=profile,
             options=options,
             scratch=scratch,
-            progress=progress,
+            on_progress=on_progress,
         )
     return command.output_path, command.warnings
 
 
 def _retry_in_software(
     index: int,
-    segment: Segment,
+    encode: _Encode,
     *,
     first: EngineError,
     target: TargetSpec,
     profile: AccelProfile,
     options: RenderOptions,
     scratch: Path,
-    progress: _Progress,
+    on_progress: Optional[ProgressCallback],
 ) -> tuple[Path, tuple[str, ...]]:
-    """Run one segment again with software decode after its hardware decode failed to start.
+    """Run one encode again with software decode after its hardware decode failed to start.
 
     The retry writes the same intermediate (``-y`` replaces the failed attempt's partial
     file) and happens at most once. The recovered first failure is logged and returned as
     a warning so it reaches the render result; a failed retry is raised with both
     attempts' detail, never dropped.
     """
+    segment = encode.segment
     label = _segment_label(segment)
     failure = _hw_decode_init_failure(first) or str(first)
     warning = f"segment {label}: hardware decode failed, retrying with software decode: {failure}"
@@ -601,6 +766,7 @@ def _retry_in_software(
             options=options,
             scratch=scratch,
             force_software_decode=True,
+            encode=encode,
         )
     except RenderError as rebuild_error:
         # The profile cannot express the software path (e.g. no verified upload device).
@@ -609,7 +775,7 @@ def _retry_in_software(
             f"({failure}) and the software retry cannot be built: {rebuild_error}"
         ) from first
     try:
-        _run_segment(index, segment, command, options=options, progress=progress)
+        _run_segment(index, segment, command, options=options, on_progress=on_progress)
     except RenderCancelledError:
         raise  # a cancel is not a failure to wrap, nor a hardware-decode failure to retry
     except EngineError as exc:
