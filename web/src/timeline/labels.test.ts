@@ -152,6 +152,9 @@ describe('the playhead\'s words', () => {
         assert.equal(clipDescription(24960, 2), '0:24.96 long, 2 cuts')
     assert.equal(clipDescription(3200, 0), '0:03.2 long, no cuts')
     assert.equal(clipDescription(3200, 1), '0:03.2 long, 1 cut')
+    // timeline-ripple-layout: edge cuts leave less of the clip on the track.
+    assert.equal(clipDescription(10000, 1, 8000), '0:08 of 0:10 kept, 1 cut')
+    assert.equal(clipDescription(10000, 1, 10000), '0:10 long, 1 cut')
   })
 })
 

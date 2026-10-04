@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { layout } from './model.ts'
+import { cutSpans, keptExtent, layout } from './model.ts'
 import { readoutOf, readoutScales, readoutWords, tipOf } from './readout.ts'
 
 const clips = (...seconds: number[]) =>
@@ -128,5 +128,28 @@ describe('the readout in a title card', () => {
     const scales = readoutScales(short, l, 75000)
     const r = readoutOf({ clip: 0, ms: 0, card: { chapter: 0, name: '', ms: 70000, lengthMs: 75000 } }, short, l, scales)
     assert.equal(r.clip.length.text, '1:15.00')
+  })
+})
+
+describe('the readout on a rippled track (timeline-ripple-layout)', () => {
+  const trimmed = (name: string, durationMs: number, cuts: { in: number; out: number }[]) => {
+    const facts = { durationMs, fps: 25 }
+    return { name, facts, kept: keptExtent(cutSpans(cuts, durationMs), durationMs) }
+  }
+  const c = [
+    trimmed('A', 10000, [{ in: 0, out: 2 }]),
+    trimmed('B', 8000, [{ in: 6, out: 8 }]),
+    trimmed('C', 5000, [{ in: 1, out: 2 }]),
+  ]
+  const lay = layout(c.map((x) => ({ ...x.facts, ...x.kept })))
+
+  it('says the clip’s own time and full length, and the rippled event time', () => {
+    assert.equal(readoutWords(readoutOf({ clip: 0, ms: 2000 }, c, lay)), 'Clip 0:02.00 of 0:10.00 · Event 0:00.00 of 0:19.00')
+    assert.equal(readoutWords(readoutOf({ clip: 0, ms: 5000 }, c, lay)), 'Clip 0:05.00 of 0:10.00 · Event 0:03.00 of 0:19.00')
+    assert.equal(readoutWords(readoutOf({ clip: 1, ms: 5960 }, c, lay)), 'Clip 0:05.96 of 0:08.00 · Event 0:13.96 of 0:19.00')
+  })
+
+  it('reads a playhead left inside a leading cut as the clip’s first kept frame', () => {
+    assert.equal(readoutWords(readoutOf({ clip: 0, ms: 1000 }, c, lay)), 'Clip 0:02.00 of 0:10.00 · Event 0:00.00 of 0:19.00')
   })
 })

@@ -48,7 +48,8 @@ export function Filmstrip({
   const rows = Math.ceil(film.tiles / film.columns)
   const size = `${film.columns * film.tileWidth * scale}px ${rows * FILM_TILE_HEIGHT}px`
   const image = `url(${JSON.stringify(url)})`
-  const tiles = filmTiles(film, clip.facts.durationMs, pps, window)
+  // The block starts at the clip's kept start: so do its tiles (`timeline-ripple-layout`).
+  const tiles = filmTiles(film, clip.kept, pps, window)
   const place = film.tileWidth * scale
   // A quarter turn swaps the frame's sides: it is scaled to lie inside the place.
   const fit = turn === 90 || turn === 270 ? Math.min(place / FILM_TILE_HEIGHT, FILM_TILE_HEIGHT / place) : 1
