@@ -98,6 +98,7 @@ def materialize_overlay(overlay: OverlaySpec, target: "TargetSpec", dest: Path) 
         end=produced.duration,
         fade_in=produced.fade_in,
         fade_out=produced.fade_out,
+        timed=True,
     )
 
 

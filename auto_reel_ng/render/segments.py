@@ -39,7 +39,7 @@ class OverlaySpec:
     ``producer_config`` (a decorator is pure and cannot render): the render
     materializes it into ``source``/``end``/fades before the segment's command is
     built (:func:`~auto_reel_ng.render.producers.materialize_overlay`). A nonzero
-    ``fade_in``/``fade_out`` makes it a *timed* overlay: a still shown over
+    ``fade_in``/``fade_out`` (or a materialized producer) makes it a *timed* overlay: a still shown over
     ``[start, end)``, faded in and out on its alpha channel.
     """
 
@@ -52,11 +52,13 @@ class OverlaySpec:
     producer_config: Optional[object] = None
     fade_in: float = 0.0
     fade_out: float = 0.0
+    #: Set when a producer materialized the overlay: it is a looped still even with no fades.
+    timed: bool = False
 
     @property
     def is_timed(self) -> bool:
-        """True when the overlay fades, and so is composited as a looped, alpha-faded still."""
-        return self.fade_in > 0.0 or self.fade_out > 0.0
+        """True for a producer-materialized or fading overlay: a looped, alpha-faded still."""
+        return self.timed or self.fade_in > 0.0 or self.fade_out > 0.0
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a plain dict for debug logging and golden tests."""
