@@ -2,7 +2,7 @@
 
 - [x] 1.1 In `render/title/config.py`, make `parse_title_card_config` refuse unknown keys (allowed set derived from the `TitleCardConfig` fields) with a `TitleCardError` naming `look.title_card.<key>` and listing the allowed fields. Test (`tests/test_title_card_config.py` or the existing config test module): a typo key is refused naming it; every real field still parses; `resolve_card_config` with a chapter card still passes.
 - [x] 1.2 In the same parser, bound `title_font_size`, `subtitle_font_size` (`CARD_MIN_FONT_SIZE`..`CARD_MAX_FONT_SIZE`) and `duration` (`CARD_MIN_DURATION`..`CARD_MAX_DURATION`) using the constants from `reel/card.py`, inclusive, NaN refused, error naming field, value and range. Test: parametrized below/at/above each bound for the three fields; fades clamp unchanged at the bounds.
-- [x] 1.3 Test no rendered-output change: a fully valid `look.title_card` (all sixteen fields) parses to the same `TitleCardConfig` as before and the staleness fingerprint of an event with it is unchanged; `RENDER_GRAPH_VERSION` is not edited (assert the existing value in the fingerprint tests still passes untouched).
+- [x] 1.3 Test no rendered-output change: a fully valid `look.title_card` (all sixteen fields) parses to the same `TitleCardConfig` (checked by a `to_dict` round-trip); `RENDER_GRAPH_VERSION` is not edited, and the existing fingerprint/version pins pass untouched (no dedicated fingerprint test).
 - [x] 1.4 Update the `check_card_styles` docstring (the laxness paragraph) to say the event-wide style is strict; keep the font-registry check for chapters. Test: `check_card_styles` refuses an unknown event-wide key and an out-of-range duration, naming `look.title_card.<field>`.
 
 ## 2. API
@@ -17,4 +17,4 @@
 
 ## 4. Docs
 
-- [x] 4.1 HLD: in the title-card notes of `docs/high-level-design.md` (§4.10 / §6, near the card-model entry) record that the event-wide `look.title_card` is parsed as strictly as a chapter card (unknown keys and size/duration bounds refused, naming the field); no new D-number is needed (D-20/D-21 are the timeline and proxy contract and are untouched). Test: the docs test that bounds HLD sections by heading finds the note.
+- [x] 4.1 HLD: in the title-card notes of `docs/high-level-design.md` (§4.10 / §6, near the card-model entry) record that the event-wide `look.title_card` is parsed as strictly as a chapter card (unknown keys and size/duration bounds refused, naming the field); no new D-number is needed (D-20/D-21 are the timeline and proxy contract and are untouched). No test (docs-only edit).

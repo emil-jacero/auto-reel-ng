@@ -185,7 +185,8 @@ def _parse_font_family(raw: Mapping[str, Any]) -> Optional[str]:
 def parse_title_card_config(raw: Optional[Mapping[str, Any]]) -> TitleCardConfig:
     """Parse a :class:`TitleCardConfig` from the opaque ``look.title_card`` sub-map.
 
-    Absent fields take their documented defaults; a malformed, unknown or out-of-range value fails loud.
+    Absent fields take their documented defaults; a malformed, unknown or out-of-range value
+    fails loud.
     The combined fade durations are clamped so their sum never exceeds the card
     duration (a card never fades for longer than it is shown).
     """
@@ -285,8 +286,9 @@ def check_card_styles(
     ``look_title_card`` is parsed as a render parses it (``look.title_card.<field>`` in the
     message). That parse is as strict as a chapter's card: it rejects unknown ``look.title_card``
     keys and range-checks ``title_font_size``, ``subtitle_font_size`` and ``duration`` with the
-    card's own bounds. Also, each chapter's ``font_family`` must be in the registry (the loader cannot
-    check that: ``reel/`` is below ``render/``). The error names the chapter and ``card.<field>``.
+    card's own bounds. Also, each chapter's ``font_family`` must be in the registry (the loader
+    cannot check that: ``reel/`` is below ``render/``). The error names the chapter and
+    ``card.<field>``.
     The card's other values are the loader's and are not checked again.
 
     Raises:
