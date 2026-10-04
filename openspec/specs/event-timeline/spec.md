@@ -848,8 +848,8 @@ video SHALL be turned by the next clip's turn before it is shown.
 ### Requirement: Each chapter's title card is a block on the Timeline
 
 The Timeline SHALL show a lane of title cards directly above the clips, from the event detail's resolved cards
-(`chapters[].card`) and the event's `look.decorators`, with one block per chapter whose card the render draws: a
-chapter with a shown clip that has footage left after the cuts, when `look.decorators` includes `title`. The block
+(`chapters[].card`) and the detail's `title_cards.enabled` (the draft's Title cards switch while it differs, in Edit mode), with one block per chapter whose card the render draws: a
+chapter with a shown clip that has footage left after the cuts, when title cards are enabled. The block
 SHALL show the card's title text (its resolved `title`), its length, and its look in words and shape, never by
 colour alone:
 
@@ -865,13 +865,13 @@ colour alone:
 
 A chapter's card anchors at its first shown clip; when every part of that clip is cut, at the next shown clip of
 the chapter that has footage, as the render moves it. A chapter with no shown clip, or whose shown clips are
-wholly cut, SHALL have no block. When the event's `reel.yaml` lists `look.decorators` without `title`, every chapter
-with footage SHALL have its block drawn in an off look (a dashed outline and the word "not enabled", no time added) and
-the lane SHALL say once that the render draws no title cards for the event. When `reel.yaml` has no
-`look.decorators` at all, the effective look may still come from the project's `config.yaml`, which the web cannot
-read: the blocks SHALL be drawn in the same look, the lane SHALL say that the cards are not enabled in this event's
-`reel.yaml` and that a project default may still enable them, and the movie's length SHALL say that title cards are
-not counted instead of presenting itself as final. When the event's card style or a chapter's card could not
+wholly cut, SHALL have no block. When title cards are not enabled, every chapter with footage SHALL have its block drawn in an off look (a dashed
+outline and the word "not enabled", no time added) and the lane SHALL say once that the render draws no title cards for
+the event, adding "set by the project's config.yaml" when the detail's `title_cards.source` is `project`. The page
+SHALL NOT guess the effective state from `reel.yaml` alone: it SHALL use the detail's `title_cards`, which the
+engine resolves from the event and the project, and the movie's length SHALL be presented as final whenever that
+answer exists, never with a "not counted" caveat. When `title_cards` is null (`title_cards_error`), the lane SHALL
+say so with the service's words and draw no block. When the event's card style or a chapter's card could not
 be resolved (`title_card_error`, `card_error`), the lane SHALL say so with the service's words and draw no block
 for the cards affected; a card with a duration that is not a finite number above zero SHALL be said as unreadable,
 never drawn at a guessed length. A card block SHALL be drawn only when in view (the track's windowing), and its
@@ -906,12 +906,25 @@ play cards.
 - **THEN** the lane has no block for it
 
 #### Scenario: The title decorator is off
-- **WHEN** the event's `reel.yaml` lists `look.decorators: [chapter]`
+- **WHEN** the detail has `title_cards: {enabled: false, source: "event"}`
 - **THEN** the blocks are drawn in the off look with no time added, and the lane says the render draws no title cards
 
 #### Scenario: The decorators are not set in reel.yaml
-- **WHEN** the event's `reel.yaml` has no `look.decorators`
-- **THEN** the blocks are drawn in the off look, the lane says the cards are not enabled in this event's `reel.yaml` and a project default may still enable them, and the movie's length says that title cards are not counted
+- **WHEN** the event's `reel.yaml` has no `look.decorators` and the detail has `title_cards: {enabled: true, source: "default"}`
+- **THEN** the blocks are drawn as cards that play, their black lengths are in the movie's length, and nothing says
+  "unset" or "not counted"
+
+#### Scenario: The project turns them off
+- **WHEN** the detail has `title_cards: {enabled: false, source: "project"}`
+- **THEN** the blocks are off, and the lane says it is set by the project's config.yaml
+
+#### Scenario: The decorators are not a list
+- **WHEN** the detail has `title_cards: null` and `title_cards_error` names `look.decorators`
+- **THEN** the lane shows that text and no block, and the movie's length does not claim to count cards
+
+#### Scenario: The switch is turned off in the draft
+- **WHEN** in Edit mode the operator turns Title cards Off and has not saved
+- **THEN** the blocks go off and the movie's length drops the black cards at once, and Reset brings them back
 
 #### Scenario: A card that cannot be resolved
 - **WHEN** the detail has `title_card_error: "look.title_card.font_family"` and every chapter's `card` is null
@@ -925,12 +938,13 @@ play cards.
 
 Edit mode's chapter list SHALL show, at the head of each chapter, a row for that chapter's card from the event
 detail's resolved card: its title, its subtitle ("No subtitle" when empty), its duration, "Black" or "Video" and
-its font name, in words. The default chapter's row SHALL be the opening card and SHALL keep the press-to-edit
-event-title control the main title card has, which edits the draft's title as before. The row SHALL be matched to
+its font name, in words. The default chapter's row SHALL be the opening card and SHALL be the only place the main title card is shown: its heading
+line SHALL be the "Main title card" press-to-edit event-title control, which edits the draft's title as before, and the
+page SHALL NOT show a second line for it beside the row. The row SHALL be matched to
 its chapter by the chapter's key. A chapter added in the draft has no saved card: its row SHALL say that its card
 is drawn after Save, and SHALL NOT be selectable. A chapter whose draft name differs from the saved name SHALL show
 the saved card and say the saved name. A card that could not be resolved SHALL say so in words in its row and
-SHALL NOT show values. The row SHALL write nothing and request nothing.
+SHALL NOT show values. A row drawn while title cards are not enabled SHALL say "Not enabled". The row SHALL write nothing and request nothing.
 
 #### Scenario: A row for each chapter
 - **WHEN** Edit mode opens on an event with the chapters "" and "Dag 2", the latter with a 4.0 s video card in
@@ -940,8 +954,8 @@ SHALL NOT show values. The row SHALL write nothing and request nothing.
 
 #### Scenario: Main's row is the opening card
 - **WHEN** the operator opens the default chapter in Edit mode
-- **THEN** its row is named for the opening card, shows the event title, and the title control still edits
-  `metadata.title` in the draft and follows the metadata form
+- **THEN** there is one opening-card row, named for the opening card, whose heading is the "Main title card" control showing the event title, and that control still edits
+  `metadata.title` in the draft and follows the metadata form; no second "Main title card" line exists
 
 #### Scenario: A chapter added in the draft
 - **WHEN** the operator adds a chapter "Dag 3" and has not saved
@@ -998,9 +1012,8 @@ chapter list's card row, the save bar and the draft show nothing new until the p
 the snap to a whole second SHALL be given in words and by a line, not by colour alone. Releasing SHALL make one edit
 of the draft, the card's duration, and announce the result once, politely, through Edit mode's one live region ("Title
 card for Reception now 6.0 s. The movie is 2.0 s longer."). Escape, or the browser cancelling the pointer, SHALL end the
-drag with the card as it was and no edit. A drag that ends where it began SHALL make no edit. Pressing or focusing the handle SHALL
-not select the card: Edit mode opens the card's inspector on selection, which would move the track out from under the
-pointer mid-drag; the block and the chapter row select it.
+drag with the card as it was and no edit. A drag that ends where it began SHALL make no edit. Pressing the handle SHALL also select that card, as pressing its block does (the inspector opens below the track, so
+selecting never moves the track out from under the pointer).
 
 #### Scenario: A drag sets the length
 - **WHEN** at 40 px per second the operator presses the end edge of the opening card (4.0 s, black) and moves the pointer 80 px right
@@ -1025,6 +1038,10 @@ pointer mid-drag; the block and the chapter row select it.
 #### Scenario: A drag that ends where it began
 - **WHEN** the operator drags the edge away and back to 4.0 s and releases
 - **THEN** the draft is unchanged and the save bar does not count a change
+
+#### Scenario: A handle press selects the card
+- **WHEN** the operator presses a card's end edge in Edit mode
+- **THEN** the card is selected, its inspector opens below the track, and the track has not moved
 
 #### Scenario: Reset and Save are as for any edit
 - **WHEN** the operator changes a card's length and presses Reset
