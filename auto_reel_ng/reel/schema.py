@@ -37,6 +37,7 @@ from .document import (
     ClipProperties,
     ClipRef,
     Metadata,
+    Poster,
     ReelDocument,
     SortMethod,
     Trim,
@@ -63,6 +64,7 @@ def build_document(data: Mapping[str, Any], *, source: str = "<document>") -> Re
     clips = _parse_clips(data.get("clips"), source=source)
     ignore = _parse_ignore(data.get("ignore"), source=source)
     sort = _parse_sort(data.get("sort"), source=source)
+    poster = _parse_poster(data.get("poster"), source=source)
 
     _validate_cross_references(chapters, clips, ignore, source=source)
 
@@ -74,6 +76,7 @@ def build_document(data: Mapping[str, Any], *, source: str = "<document>") -> Re
         clips=clips,
         ignore=ignore,
         sort=sort,
+        poster=poster,
         _data=data,
     )
 
@@ -337,6 +340,32 @@ def _parse_trims(raw: Any, *, loc: str) -> tuple[Trim, ...]:
         reason = _opt_str(span.get("reason"), loc=f"{sloc}.reason")
         trims.append(Trim(start=start, end=end, reason=reason))
     return tuple(trims)
+
+
+POSTER_KEYS = ("clip", "at")
+
+
+def _parse_poster(raw: Any, *, source: str) -> Optional[Poster]:
+    """Parse the optional ``poster: {clip, at}``; absent or ``null`` is the default frame.
+
+    Both keys are required; nothing is dropped, clamped or corrected. Whether the clip exists
+    and ``at`` is inside it is the render's to check: a load makes no probe.
+    """
+    if raw is None:
+        return None
+    loc = f"{source}: poster"
+    if not isinstance(raw, Mapping):
+        raise ReelParseError(f"{loc} must be a mapping, got {type(raw).__name__}")
+    for key in raw:
+        if key not in POSTER_KEYS:
+            raise ReelParseError(
+                f"{loc}.{key}: unknown poster key; the allowed keys are {', '.join(POSTER_KEYS)}"
+            )
+    for key in POSTER_KEYS:
+        if raw.get(key) is None:
+            raise ReelParseError(f"{loc}.{key}: required")
+    clip = _parse_identity(raw["clip"], loc=f"{loc}.clip")
+    return Poster(clip=clip, at=_req_time(raw["at"], loc=f"{loc}.at"))
 
 
 def _parse_ignore(raw: Any, *, source: str) -> tuple[str, ...]:

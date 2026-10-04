@@ -22,13 +22,14 @@ import os
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path, PurePosixPath
-from typing import Dict, Iterable, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterable, Optional, Sequence, Tuple
 
 from ..event.claims import checked_claim
 from ..event.discovery import ClipOrder
 from ..ingest import get_layout
-from ..staleness.manifest import records_output
+from ..staleness.manifest import records_output, records_poster
 from .orchestrator import find_output_collisions, output_relpath
+from .poster import poster_path
 
 
 @dataclass(frozen=True)
@@ -98,28 +99,33 @@ class ClaimedMovie:
 
 
 def claimed_movie(
-    event_dir: Path, output_path: Path, *, events: Iterable[Path]
+    event_dir: Path, output_path: Path, *, events: Iterable[Path], poster: bool = True
 ) -> Optional[ClaimedMovie]:
     """The other events among ``events`` whose render manifest records ``output_path``.
 
-    ``None`` unless ``output_path`` is an existing regular file: a render that creates a new file
-    replaces nothing. ``event_dir`` itself is never a claimant (compared lexically with
-    ``os.path.abspath``, never resolving symlinks, as :func:`output_collision` does), and ``None``
-    is returned when its own manifest records ``output_path``: the file is then the event's own
-    movie (for instance after a forced takeover of a kept movie another manifest still records),
-    so replacing it destroys nothing that is not already its own. The other
-    event need not load or be processable: its manifest records a file on disk whatever state its
-    ``reel.yaml`` is in. An unreadable manifest claims nothing (the manifest module's fail-open
-    convention). Read-only.
+    The movie and its poster sidecar (:func:`~.poster.poster_path`) are each a claim on a file: an
+    existing regular file at either path that another event's manifest records (as ``output`` or as
+    ``poster``) is claimed by that event. ``None`` unless a path is an existing regular file: a
+    render that creates a new file replaces nothing. ``event_dir`` itself is never a claimant
+    (compared lexically with ``os.path.abspath``, never resolving symlinks, as
+    :func:`output_collision` does), and a path ``event_dir``'s own manifest records is its own file,
+    so replacing it destroys nothing that is not already its own (for instance after a forced
+    takeover of a kept movie another manifest still records). The other event need not load or be
+    processable: its manifest records a file on disk whatever state its ``reel.yaml`` is in. An
+    unreadable manifest claims nothing (the manifest module's fail-open convention). Read-only.
+
+    ``poster=False`` asks about the movie alone (``prune-renamed`` decides its sidecar apart).
     """
-    if not output_path.is_file() or records_output(event_dir, output_path):
-        return None
     named = os.path.abspath(event_dir)
-    claimants = {
-        other
-        for other in events
-        if os.path.abspath(other) != named and records_output(other, output_path)
-    }
+    others = [other for other in events if os.path.abspath(other) != named]
+    claimants: set[Path] = set()
+    checks: list[tuple[Path, Callable[[Path, Path], bool]]] = [(output_path, records_output)]
+    if poster:
+        checks.append((poster_path(output_path), records_poster))
+    for path, records in checks:
+        if not path.is_file() or records(event_dir, path):
+            continue
+        claimants.update(other for other in others if records(other, path))
     if not claimants:
         return None
     return ClaimedMovie(output_path=output_path, recorded_by=tuple(sorted(claimants, key=str)))

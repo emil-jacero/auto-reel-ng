@@ -88,6 +88,9 @@ def evaluate(event_dir: PathLike, output_path: PathLike, fingerprint: Fingerprin
     up once (:func:`_renamed_output`); when it is found the verdict also names it and the
     expected output (``renamed_from``, ``output_name``), and carries neither name otherwise.
 
+    A movie that is there but whose recorded poster sidecar (``manifest.poster``) is not a regular
+    file beside it is not a whole output: it cites ``output`` too, with no probe.
+
     A changed component is mapped through :class:`StalenessReason`, so a component
     with no reason member raises :class:`ValueError` here rather than reaching a
     client as an untyped reason.
@@ -111,6 +114,8 @@ def evaluate(event_dir: PathLike, output_path: PathLike, fingerprint: Fingerprin
         else:
             reasons.append(StalenessReason.OUTPUT_RENAMED)
             renamed_from, output_name = old_movie.name, expected.name
+    elif not _poster_whole(manifest, expected):
+        reasons.append(StalenessReason.OUTPUT)
 
     return Verdict(
         stale=bool(reasons),
@@ -118,6 +123,18 @@ def evaluate(event_dir: PathLike, output_path: PathLike, fingerprint: Fingerprin
         renamed_from=renamed_from,
         output_name=output_name,
     )
+
+
+def _poster_whole(manifest: RenderManifest, expected: Path) -> bool:
+    """Whether the poster sidecar the manifest records lies beside the movie as a regular file.
+
+    A manifest that records none (``None``, absent, malformed) expects no sidecar. A bare file
+    name only; no probe, a stat of one path.
+    """
+    if manifest.poster is None:
+        return True
+    sidecar = recorded_movie_path(manifest.poster, expected)
+    return sidecar is not None and sidecar.is_file()
 
 
 def rendered_output(event_dir: PathLike, output_path: PathLike) -> Optional[Path]:

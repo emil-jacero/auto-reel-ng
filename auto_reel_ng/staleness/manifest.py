@@ -75,6 +75,10 @@ class RenderManifest:
     #: has none (written before the field existed, adopted without a render, or malformed). Never a
     #: fingerprint component and never a verdict input.
     chapters: Optional[Tuple[ChapterTime, ...]] = None
+    #: The bare file name of the poster sidecar that render wrote beside the movie, or ``None``
+    #: (no poster, written before the field existed, adopted without a render, or malformed).
+    #: A claim on that file; not a fingerprint component.
+    poster: Optional[str] = None
 
 
 def manifest_path(event_dir: PathLike) -> Path:
@@ -89,6 +93,7 @@ def write_manifest(
     output: str,
     engine_identity: str,
     chapters: Optional[Sequence[ChapterTime]] = None,
+    poster: Optional[str] = None,
 ) -> Path:
     """Write the render manifest for ``event_dir`` and return its path.
 
@@ -103,6 +108,9 @@ def write_manifest(
     ``chapters`` is the chapter times a render measured for this movie; ``None`` (the default, and
     what adoption passes) records ``null``. The previous manifest's chapters are never carried over:
     they describe a movie this write replaces, or one nobody measured.
+
+    ``poster`` is the bare file name of the sidecar this render wrote beside the movie, ``None``
+    when it wrote none. Like ``chapters`` it is never carried over from the previous manifest.
     """
     path = manifest_path(event_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -118,6 +126,7 @@ def write_manifest(
         "written_at": datetime.now(timezone.utc).isoformat(),
         "superseded": superseded,
         "chapters": None if chapters is None else [_chapter_payload(c) for c in chapters],
+        "poster": poster,
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
@@ -147,6 +156,7 @@ def read_manifest(event_dir: PathLike) -> Optional[RenderManifest]:
             written_at=str(payload["written_at"]),
             superseded=_superseded_names(payload.get("superseded")),
             chapters=_chapter_times(payload.get("chapters")),
+            poster=_poster_name(payload.get("poster")),
         )
     except (KeyError, TypeError, ValueError) as exc:
         logger.debug("Render manifest %s unreadable: %s", path, exc)
@@ -163,6 +173,17 @@ def _superseded_names(value: object) -> Tuple[str, ...]:
         return ()
     names: List[str] = list(value)
     return tuple(names)
+
+
+def _poster_name(value: object) -> Optional[str]:
+    """The ``poster`` field as a bare file name; ``None`` for an absent or malformed field.
+
+    Tolerant on purpose, like ``superseded``: a field that is not a bare file name expects no
+    sidecar and claims no file, and it must not make an otherwise valid manifest unreadable.
+    """
+    if not isinstance(value, str) or value in _NOT_A_FILE_NAME or Path(value).name != value:
+        return None
+    return value
 
 
 def _chapter_payload(chapter: ChapterTime) -> dict[str, object]:
@@ -278,6 +299,20 @@ def records_output(event_dir: PathLike, output_path: PathLike) -> bool:
     return recorded is not None and _path_key(recorded) == _path_key(Path(output_path))
 
 
+def records_poster(event_dir: PathLike, poster_path: PathLike) -> bool:
+    """True when ``event_dir``'s readable render manifest records exactly ``poster_path``.
+
+    The poster claim as :func:`records_output` is the movie's: the recorded name is placed beside
+    the movie (:func:`recorded_movie_path` rules, so a dated movie's sidecar is in its year
+    folder) and compared NFC-normalised and case-insensitively. Reads the manifest only.
+    """
+    manifest = read_manifest(event_dir)
+    if manifest is None or manifest.poster is None:
+        return False
+    recorded = recorded_movie_path(manifest.poster, poster_path)
+    return recorded is not None and _path_key(recorded) == _path_key(Path(poster_path))
+
+
 def _path_key(path: Path) -> str:
     return unicodedata.normalize("NFC", str(path)).casefold()
 
@@ -300,4 +335,5 @@ __all__ = [
     "recorded_output_path",
     "recorded_movie_path",
     "records_output",
+    "records_poster",
 ]

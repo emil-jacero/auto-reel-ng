@@ -154,6 +154,8 @@ def _build_fresh(doc: ReelDocument) -> CommentedMap:
         data["metadata"] = meta
     if doc.look:
         data["look"] = CommentedMap(doc.look)
+    if doc.poster is not None:
+        data["poster"] = CommentedMap(doc.poster.to_dict())
     if doc.chapters:
         data["chapters"] = _chapters_seq(doc)
     clips = _clips_map(doc)

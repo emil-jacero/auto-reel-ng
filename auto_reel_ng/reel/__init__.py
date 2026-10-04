@@ -14,6 +14,7 @@ from .document import (
     ClipProperties,
     ClipRef,
     Metadata,
+    Poster,
     ReelDocument,
     Trim,
     is_excluded,
@@ -34,6 +35,7 @@ __all__ = [
     "ClipRef",
     "ClipProperties",
     "Trim",
+    "Poster",
     "is_excluded",
     # load / validate
     "load_document",

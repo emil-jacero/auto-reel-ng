@@ -144,8 +144,11 @@ def test_retitle_scans_as_renamed_and_render_keeps_the_old_movie(
     assert main(["render", str(root), "--force"]) == 0
     capsys.readouterr()
     assert sorted(path.name for path in year_dir.iterdir()) == [
+        "2024-06-21 - Fest-poster.jpg",
         "2024-06-21 - Fest.mp4",
+        "2024-06-21 - Party Renamed-poster.jpg",
         "2024-06-21 - Party Renamed.mp4",
+        "2024-06-21 - Party-poster.jpg",
         "2024-06-21 - Party.mp4",
     ]
     assert (new.stat().st_size, new.stat().st_mtime_ns) == (new_stat.st_size, new_stat.st_mtime_ns)
