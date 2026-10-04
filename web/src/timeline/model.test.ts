@@ -33,6 +33,7 @@ import {
   anchorFor,
   canvasWidth,
   fitCanvas,
+  tickLabelFits,
   ppsToSlider,
   SLIDER_STEPS,
   sliderToPps,
@@ -706,7 +707,7 @@ describe('fitCanvas', () => {
         assert.ok(canvasPx <= width, `${totalMs} ms in ${width} px: ${canvasPx}`)
       }
       // The last moment's line, and the grip around it, are inside the canvas.
-      assert.ok(timeToPx(totalMs, pps) + gutter <= canvasPx + 1)
+      assert.ok(timeToPx(totalMs, pps) + gutter <= canvasPx)
     }
   })
 
@@ -717,7 +718,17 @@ describe('fitCanvas', () => {
   })
 
   it('adds the gutter to the track\'s whole pixels when zoomed in', () => {
-    assert.equal(canvasWidth(10_000, 40.05, 12), 400 + 12)
+    assert.equal(canvasWidth(10_000, 40.05, 12), 401 + 12)
     assert.equal(canvasWidth(10_000, 40, 0), 400)
+  })
+})
+
+describe('tickLabelFits', () => {
+  it('keeps a label that ends inside the canvas and drops one that would reach past it', () => {
+    assert.equal(tickLabelFits(0, '0:00', 1116), true)
+    assert.equal(tickLabelFits(1000, '4:00', 1116), true) // 1000 + 15 + 32 = 1047
+    assert.equal(tickLabelFits(1080, '4:00', 1116), false)
+    assert.equal(tickLabelFits(1116 - 47, '4:00', 1116), true)
+    assert.equal(tickLabelFits(1116 - 46, '4:00', 1116), false)
   })
 })

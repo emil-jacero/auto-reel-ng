@@ -17,7 +17,7 @@ import type { KeyAction } from './keys'
 import { clipDescription } from './labels'
 import { cutLabel } from './layout'
 import type { ChapterBand, TrackClip } from './layout'
-import { edgeCut, extentMs, timeToPx, visibleClips, visibleTicks } from './model'
+import { canvasWidth, edgeCut, extentMs, tickLabelFits, timeToPx, visibleClips, visibleTicks } from './model'
 import type { Layout } from './model'
 import type { LaneSlot } from './overlays/control'
 import type { Playhead } from './playhead'
@@ -167,12 +167,15 @@ function Ticks({
   lay,
   view,
   overscan,
+  canvasPx,
   drag,
   shifting,
 }: {
   lay: Layout
   view: { pps: number; scrollLeft: number; width: number }
   overscan: number
+  /** The canvas's width: a label that would reach past it is not written (its line stays). */
+  canvasPx: number
   drag: DragStore
   shifting: ShiftFrom | null
 }) {
@@ -190,9 +193,11 @@ function Ticks({
   const nodes = []
   for (let i = ticks.first; i <= ticks.last; i += 1) {
     const ms = i * ticks.stepMs
+    const x = timeToPx(ms, view.pps)
+    const text = formatTime(ms / 1000)
     nodes.push(
-      <span key={i} className="tl-tick" style={{ insetInlineStart: timeToPx(ms, view.pps) }}>
-        {formatTime(ms / 1000)}
+      <span key={i} className="tl-tick" style={{ insetInlineStart: x }}>
+        {tickLabelFits(x, text, canvasPx) ? text : null}
       </span>,
     )
   }
@@ -243,6 +248,7 @@ export function Track({
   bands,
   pps,
   range,
+  gutter,
   turns,
   scrollerRef,
   playhead,
@@ -267,6 +273,8 @@ export function Track({
   bands: readonly ChapterBand[]
   pps: number
   range: VisibleRange
+  /** The px kept free past the timeline's end: the playhead's grip reaches that far (Fit, D5). */
+  gutter: number
   /** Each clip's turn (`rotate`): its tiles show the frame turned. */
   turns: ClipTurns
   scrollerRef: RefObject<HTMLDivElement | null>
@@ -301,6 +309,7 @@ export function Track({
   const grab = useScrub(canvas, onScrub, focusGrip, 'ruler')
 
   const totalPx = timeToPx(lay.totalMs, pps)
+  const canvasPx = canvasWidth(lay.totalMs, pps, gutter)
   const view = { pps, scrollLeft: range.left, width: Math.max(1, range.width) }
   const overscan = range.width
   const shown = range.width === 0 ? null : visibleClips(lay, view, overscan)
@@ -431,14 +440,21 @@ export function Track({
         ref={canvas}
         style={
           {
-            inlineSize: totalPx,
+            inlineSize: canvasPx,
             ...(analysisLane === undefined ? {} : { '--tl-lane-rows': analysisLane.rows }),
             ...(cardLane === undefined ? {} : { '--tl-cards-h': 'var(--tl-cards-row)' }),
           } as CSSProperties
         }
       >
         <div className="tl-ruler" aria-hidden="true" {...ruler}>
-          <Ticks lay={lay} view={view} overscan={overscan} drag={drag} shifting={shifting} />
+          <Ticks
+            lay={lay}
+            view={view}
+            overscan={overscan}
+            canvasPx={canvasPx}
+            drag={drag}
+            shifting={shifting}
+          />
         </div>
         <ol className="tl-chapters" aria-label="Chapters">
           {bands.map((band) => {
