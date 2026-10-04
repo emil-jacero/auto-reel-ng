@@ -10,7 +10,7 @@
   `positionAt`, `stepFrames`, `clampPosition`, `startPosition`/`endPosition`, `globalMs` through the extent; a clip with no
   kept frame is passed over. Test in `position.test.ts` and `play.test.ts`: the positions, steps, few-frames and
   no-kept-frame scenarios, a black card before a start-trimmed clip, and the existing cases unchanged.
-- [ ] 1.3 `layout.ts` and `cards.ts`: `TrackClip` carries its extent and interior `drawn` spans; `trackLayout` uses the
+- [x] 1.3 `layout.ts` and `cards.ts`: `TrackClip` carries its extent and interior `drawn` spans; `trackLayout` uses the
   extent; a separate `footageMs` (full durations) for the movie line; `filmTiles` starts at `inMs`; `cardPlacements`/
   `firstKept` and `handOverMs` call the extent; `cardBlocks` puts a video card at the block's left edge; which listed
   cuts lie within an edge cut. Test in `layout.test.ts` and `cards.test.ts`: the filmstrip and card scenarios of "A clip's

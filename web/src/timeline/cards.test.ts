@@ -20,7 +20,9 @@ import {
   visibleBlocks,
 } from './cards.ts'
 import type { CardClip, CardSpec, Placement } from './cards.ts'
-import { ModelError, layout } from './model.ts'
+import { ModelError, keptExtent, layout } from './model.ts'
+import { globalMs } from './position.ts'
+import type { Skip } from '../preview/playback.ts'
 
 /*
  * The title cards' pure layer (`cards.ts`), run by `npm test`, against the scenarios of
@@ -301,6 +303,56 @@ describe('the track map of black cards', () => {
     assert.equal(range[1] - range[0] + 1, 5)
     assert.ok(touched < 80, `touched ${touched} blocks`)
     assert.equal(visibleBlocks(blocks, 9_000_000, 9_100_000), null)
+  })
+})
+
+describe('cards at a trimmed clip (timeline-ripple-layout)', () => {
+  // Clip 0 (8 s) in the opening chapter, clip 1 (20 s, a cut from 0 to 2 s) opens "Dag 2".
+  const clips = [clip(0, 8000), clip(1, 20000, [{ from: 0, to: 2000 }])]
+  const lay = layout(
+    clips.map((c) => ({ durationMs: c.durationMs, fps: 25, ...keptExtent(c.spans as Skip[], c.durationMs) })),
+  )
+
+  it('a black card of 3 s spans 8,000 to 11,000 ms and the clip’s 2,000 ms is 11,000 ms on the track', () => {
+    const placements = cardPlacements([spec('', 3, 'video'), spec('Dag 2', 3)], clips, 'on')
+    const map = cardMap(placements, lay)
+    const track = trackLayout(lay, map)
+    assert.equal(lay.startsMs[1], 8000)
+    const block = cardBlocks(placements, track).find((b) => b.chapter === 1)!
+    assert.deepEqual([block.startMs, block.startMs + block.widthMs], [8000, 11000])
+    assert.equal(track.startsMs[1], 11000)
+    assert.equal(globalMs(track, { clip: 1, ms: 2000 }), 11000)
+  })
+
+  it('a video card begins at the left edge of the clip’s block (3.0 s of the clip), no gap', () => {
+    const cut = [clip(0, 8000), clip(1, 20000, [{ from: 0, to: 3000 }])]
+    const l = layout(
+      cut.map((c) => ({ durationMs: c.durationMs, fps: 25, ...keptExtent(c.spans as Skip[], c.durationMs) })),
+    )
+    const placements = cardPlacements([spec('', 3, 'video'), spec('Dag 2', 4, 'video')], cut, 'on')
+    const map = cardMap(placements, l)
+    const track = trackLayout(l, map)
+    const block = cardBlocks(placements, track).find((b) => b.chapter === 1)!
+    assert.equal(block.startMs, track.startsMs[1])
+    const place = placements[1]
+    assert.ok(place.kind === 'anchored' && place.atMs === 3000)
+  })
+
+  it('a video card is held to the first kept span, ending at a trailing cut', () => {
+    const placements = cardPlacements(
+      [spec('', 7, 'video')],
+      [clip(0, 10000, [{ from: 0, to: 4000 }, { from: 7000, to: 10000 }])],
+      'on',
+    )
+    const place = placements[0]
+    assert.ok(place.kind === 'anchored')
+    assert.equal(place.keptMs, 3000)
+    assert.equal(cardWords('', { durationMs: place.durationMs, widthMs: place.widthMs, background: 'video' }), 'Title card for the opening, 3.0 s of 7.0 s, over video')
+  })
+
+  it('a chapter whose clips keep nothing has no card', () => {
+    const placements = cardPlacements([spec('', 3)], [clip(0, 5050, [{ from: 0, to: 5000 }])], 'on')
+    assert.deepEqual(placements, [{ kind: 'no-footage', chapter: 0 }])
   })
 })
 
