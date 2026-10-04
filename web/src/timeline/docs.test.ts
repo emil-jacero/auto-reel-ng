@@ -13,7 +13,10 @@ describe('docs/high-level-design.md', () => {
     assert.ok(d20 > 0)
     assert.ok(at.some((i) => i > d20 && i < d20 + 220), 'D-20 names it')
     assert.ok(at.some((i) => i > 380 && i < 440), '§4.10 names it')
-    assert.ok(at.some((i) => i > 700 && i < 800), '§6 names it')
+    const s6 = lines.findIndex((line) => line.startsWith('## 6. '))
+    const s7 = lines.findIndex((line) => line.startsWith('## 7. '))
+    assert.ok(s6 > 0 && s7 > s6)
+    assert.ok(at.some((i) => i > s6 && i < s7), '§6 names it')
   })
 })
 
