@@ -199,8 +199,8 @@ export function NumberField({
         <input
           {...control}
           type="number"
-          inputMode="decimal"
-          step="any"
+          inputMode="numeric"
+          step={1}
           className="field-input ci-number"
           value={value ?? ''}
           placeholder={placeholder}
@@ -209,7 +209,10 @@ export function NumberField({
           onChange={(event) => {
             const raw = event.currentTarget.value
             if (raw === '') {
-              onChange(null)
+              // A partial entry such as "-" or "1e" reads as '' but is not a cleared field.
+              if (!event.currentTarget.validity.badInput) {
+                onChange(null)
+              }
               return
             }
             const parsed = Number(raw)

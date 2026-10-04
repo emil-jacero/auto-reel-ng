@@ -39,7 +39,9 @@ export function CardPreview({
   tooLong: boolean
 }) {
   const view = useCardPreview(eventId, request)
+  const current = view.state === 'ready' || view.state === 'idle'
   const alt =
+    (current ? '' : 'Last drawn preview, which may not show the current text. ') +
     `Preview of the title card: ${title === '' ? 'no title' : title}` +
     (subtitle === '' ? '' : `, subtitle ${subtitle.replace(/\s+/g, ' ')}`)
   const [aspect, setAspect] = useState<string | null>(null)
