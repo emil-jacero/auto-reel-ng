@@ -18,6 +18,11 @@ that all segments share the copy-critical parameters: video `codec_name`, `profi
 NOT use the ffmpeg exit code to decide copy safety, because mismatched resolution/SAR mux at exit 0 while
 breaking playback.
 
+The `sample_aspect_ratio` SHALL be compared **normalized**, by the same rule copy eligibility uses: an absent,
+empty, `N/A` or `0:1` value (an unset SAR, displayed as square) SHALL count as `1:1`. Any other value SHALL be
+compared as probed, so a segment with a concrete non-square SAR still differs from a 1:1 one. No other field
+SHALL be normalized.
+
 #### Scenario: Uniform set concatenates by stream copy
 - **WHEN** all segments share the copy-critical video and audio parameters
 - **THEN** the engine concatenates them with the concat demuxer and `-c copy`
@@ -29,6 +34,15 @@ breaking playback.
 #### Scenario: Exit code is never the copy-safety signal
 - **WHEN** deciding whether to stream-copy
 - **THEN** the decision is made from probe data before running concat, not from a concat command's exit status
+
+#### Scenario: An unset SAR matches 1:1
+- **WHEN** two segments agree on every copy-critical field except that one probes `sample_aspect_ratio` `N/A`
+  (or `0:1`, or none) and the other `1:1`
+- **THEN** the set is uniform and is joined by stream copy without a re-encode or a render error
+
+#### Scenario: A real SAR difference still blocks the copy
+- **WHEN** one segment probes `sample_aspect_ratio` `4:3` and another `1:1`, all else equal
+- **THEN** the set is not uniform
 
 ### Requirement: Chapter markers from measured durations
 
