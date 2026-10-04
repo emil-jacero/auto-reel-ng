@@ -94,7 +94,7 @@ re-render each, accepted by D-C8. The fingerprint's inputs are unchanged (engine
 ### Measurement
 **Decision**: the implementation measures wall-clock encode time of the anchor segment, before (the pre-change
 revision, `git stash`-free: run the same fixture on origin/main's worktree) and after, on a 180 s first clip with a
-7 s video card, on the VAAPI profile (this host, AMD RX 9070 XT) and the CPU profile, three runs each, median, and
+7 s video card, on the VAAPI profile (this host, AMD Radeon 860M, integrated) and the CPU profile, three runs each, median, and
 records the numbers (and the clip's codec/resolution/fps) in the HLD D-24 paragraph. The expected result is the
 VAAPI anchor going from the bridge-bound rate to roughly the GPU-only rate (about 2x, the figure PR #115 recorded);
 the CPU profile is expected to be within noise. The numbers, not this expectation, go into the HLD.
