@@ -121,6 +121,7 @@ const CardBlockButton = memo(function CardBlockButton({
     <button
       type="button"
       className="tl-card"
+      data-card={name}
       data-kind={block.background}
       data-off={block.off || undefined}
       data-selected={on || undefined}
