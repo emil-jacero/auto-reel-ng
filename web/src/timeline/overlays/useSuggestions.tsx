@@ -257,6 +257,7 @@ export function useSuggestions(
         clipName: nameOf(mark),
         locked: decide.locked,
         listed: control?.cutsOf(mark.identity) ?? [],
+        // An approval is a cut in the clip's own time, held to its full length.
         length: clips[mark.clipIndex].facts.durationMs / 1000,
       }),
     )

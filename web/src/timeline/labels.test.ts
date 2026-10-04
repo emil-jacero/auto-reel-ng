@@ -245,3 +245,10 @@ describe('the slider and the announcement in a title card', () => {
     assert.match(playheadValueText('s1.mp4', 0, 40000, 1200, 163760, { ...card, name: 'Dag 2' }), /^title card for Dag 2,/)
   })
 })
+
+describe('the movie stat on a rippled track (timeline-ripple-layout)', () => {
+  it('counts the full footage, so edge cuts show as cuts: A, B and C of 10, 8 and 5 s', () => {
+    // Kept 18 s of 23 s of footage; the rippled track (19 s) is not the footage.
+    assert.equal(movieStat(18000, 23000), 'Movie 0:18.00 · footage 0:23.00 · cuts −0:05.00')
+  })
+})

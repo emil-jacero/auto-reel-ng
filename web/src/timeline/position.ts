@@ -143,6 +143,32 @@ export function clampPosition(
   return p.ms > end ? { clip: p.clip, ms: end } : p
 }
 
+/**
+ * Where the playhead goes when the page reads the clips again (a cut edited in a Cuts panel, an
+ * approved suggestion, a trim, a refresh): `start` when its clip is gone or is another clip
+ * now; the last frame when its time is past a shortened clip; the nearest kept frame of its
+ * clip when its time is no longer kept (`timeline-ripple-layout`); null when it stays.
+ */
+export function afterRead(
+  was: readonly { identity: string }[],
+  clips: readonly { identity: string; facts: Timed; kept?: Extent }[],
+  at: Position,
+): Position | 'start' | null {
+  const now = clips[at.clip]
+  if (now === undefined || was[at.clip]?.identity !== now.identity) {
+    return 'start'
+  }
+  if (at.card != null) {
+    return null
+  }
+  const timed = timedOf(now)
+  if (at.ms > now.facts.durationMs) {
+    return { clip: at.clip, ms: onGrid(timed, now.facts.durationMs) }
+  }
+  const held = clampPosition(clips, at)
+  return samePosition(held, at) ? null : held
+}
+
 /** A clip's timing with its kept extent, from a track clip (`facts` and `kept`). */
 export function timedOf(clip: { facts: Timed; kept?: Extent }): Timed {
   return clip.kept === undefined ? clip.facts : { ...clip.facts, ...clip.kept }

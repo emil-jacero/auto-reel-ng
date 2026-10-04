@@ -28,6 +28,22 @@ export function handleRows<C extends ListedCut>(
     .sort((a, b) => a.cut.in - b.cut.in || a.index - b.index)
 }
 
+/**
+ * Whether a selected cut still stands: listed, not removed, and not part of a leading or a
+ * trailing cut (a handle released at the clip's edge makes it one: its handles are gone, so is
+ * the selection).
+ */
+export function selectionStands(
+  listed: readonly (ListedCut & { key: string })[],
+  key: string,
+  kept: Extent | null,
+  durationMs: Ms,
+): boolean {
+  return listed.some(
+    (cut) => cut.key === key && cut.removed !== true && (kept === null || !edgeCut(cut, kept, durationMs)),
+  )
+}
+
 const SECOND_MS = 1000
 const PAGE_MS = 5000
 

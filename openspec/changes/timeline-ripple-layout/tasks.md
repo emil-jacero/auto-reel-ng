@@ -26,7 +26,7 @@
 - [x] 2.2 `overlays/useSuggestions.tsx` and `SuggestionLane.tsx`: marks and the "Not analyzed" note mapped through the
   extent, clipped, a mark wholly inside an edge cut not drawn. Test in `overlays/suggestions.test.ts` (or a new pure
   placement test): the "A suggestion inside a leading cut" scenario and the existing stacking cases.
-- [ ] 2.3 `Timeline.tsx`: the clips-read-again effect clamps the playhead to the nearest kept frame; the selection ends
+- [x] 2.3 `Timeline.tsx`: the clips-read-again effect clamps the playhead to the nearest kept frame; the selection ends
   when its cut becomes an edge cut; Fit, zoom anchoring and the playhead scroll use the rippled layout; the movie line
   uses `footageMs`. Test with `node:test` for any pure helper extracted, and verify by `grep -n "startsMs\[\|facts.durationMs"
   web/src/timeline --include=*.tsx` that no remaining use draws a width or an x without the extent (each left one is

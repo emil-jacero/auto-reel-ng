@@ -4,6 +4,7 @@ import { describe, it } from 'node:test'
 import { cutSpans, keptExtent, layout } from './model.ts'
 import type { Ms } from './model.ts'
 import {
+  afterRead,
   clampPosition,
   endPosition,
   firstKeptMs,
@@ -294,5 +295,32 @@ describe('the playhead on kept frames (timeline-ripple-layout)', () => {
       clip: 0,
       ms: 2000,
     })
+  })
+})
+
+describe('afterRead: the playhead when the clips are read again (timeline-ripple-layout)', () => {
+  const clip = (identity: string, durationMs: number, cuts: { in: number; out: number }[] = []) => ({
+    identity,
+    facts: { durationMs, fps: 25 },
+    kept: keptExtent(cutSpans(cuts, durationMs), durationMs),
+  })
+
+  it('a new leading cut moves the playhead at A 1.00 s to A 2.00 s', () => {
+    const was = [clip('A', 10000), clip('B', 8000)]
+    const now = [clip('A', 10000, [{ in: 0, out: 2 }]), clip('B', 8000)]
+    assert.deepEqual(afterRead(was, now, { clip: 0, ms: 1000 }), { clip: 0, ms: 2000 })
+  })
+
+  it('a new trailing cut moves it back to the last kept frame; a kept time stays', () => {
+    const was = [clip('B', 8000)]
+    const now = [clip('B', 8000, [{ in: 6, out: 8 }])]
+    assert.deepEqual(afterRead(was, now, { clip: 0, ms: 7000 }), { clip: 0, ms: 5960 })
+    assert.equal(afterRead(was, now, { clip: 0, ms: 3000 }), null)
+  })
+
+  it('another clip in its place is the start; a shortened clip holds it to its last frame', () => {
+    assert.equal(afterRead([clip('A', 10000)], [clip('X', 10000)], { clip: 0, ms: 0 }), 'start')
+    assert.equal(afterRead([clip('A', 10000)], [], { clip: 0, ms: 0 }), 'start')
+    assert.deepEqual(afterRead([clip('A', 10000)], [clip('A', 5000)], { clip: 0, ms: 9000 }), { clip: 0, ms: 4960 })
   })
 })

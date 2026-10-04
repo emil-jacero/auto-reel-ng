@@ -26,6 +26,10 @@ import { tipOf } from './readout'
  *
  * The handles of a clip are one layer (`ClipHandles`), windowed with the clip, drawn after
  * the playhead so that Tab reaches them after it, in time order.
+ *
+ * A handle works in the clip's own time against its full length (`facts.durationMs`), as the
+ * cut is written; the layer is placed at the clip's time 0 (the block's left edge less its kept
+ * start, `timeline-ripple-layout`), so that the clip time of an edge is its x in the layer.
  */
 
 /** A press this close to where it began (px) is a click, not a drag. */

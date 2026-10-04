@@ -100,6 +100,7 @@ function Fields({
     end: formatTime(live?.edge === 'out' ? live.ms / 1000 : cut.out),
   }
   const shown = (field: CutField): string => typed[field] ?? now[field]
+  // The Cuts panel's fields are in the clip's own time, against its full length.
   const length = clip.facts.durationMs / 1000
   const errorId = `${base}-error`
 
