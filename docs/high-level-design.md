@@ -423,7 +423,8 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   cards in this event** (the event style and the Title cards On / Off switch), one live preview outside the tabs. A chapter's
   section is its header bar (plain-text name, **Edit Titlecard**, clip count) and its clips; the rename pencils, "Main title
   card" line, card rows, "Card style for this event" and Title cards sections are gone (they remain history under D-13, D-24
-  and D-25). Edit mode opens with the Timeline open and no Open/Close button (D-20; the read view keeps its button). The marks
+  and D-25). Edit mode opens with the Timeline open and no Open/Close button (D-20; the read view kept its button until
+  `timeline-zoom-slider` removed the read view's Timeline). The marks
   line is one aligned toolbar (one control height token, one axis, the reason as one hint line below). No API or engine change.
 - **v2 help text declutter** (`help-text-declutter`, D-20; web only): the event page keeps state and actions in sight and puts
   explanations behind one **Help** toggle per section (Details, Poster, Timeline, Clips, and the card dialog's Title cards tab;
@@ -431,6 +432,12 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   stat in the Timeline's control row (`Movie 0:38.08 · footage 0:24.08 · cards +0:14.00`), an event never analysed shows a
   **Not analyzed** badge (the command is in the Timeline help), the cut fields are drawn only for a selected cut, and Move's
   reason is its tooltip and description, shown as a line only after Move is pressed while it cannot act. No API or engine change.
+- **v2 Timeline zoom slider, still toolbar, Edit mode only** (`timeline-zoom-slider`, D-20; web only): a **Zoom** slider
+  (native range input, Fit at its left end, 240 px/s at its right, logarithmic) beside Zoom out / Zoom in / Fit, `\` toggles
+  Fit and back, Ctrl/Cmd+wheel and a trackpad pinch zoom about the pointer, and the zoom is kept per event for the tab's
+  session; Fit never shows a scroll bar in the track's box; the toolbar is a grid of fixed slots, so seeking, a loading
+  frame, playing and a card never move a control (Use as poster's reason is a tooltip, a description and a tip on press);
+  the read view has no Timeline: it is Edit mode's only. No API, engine or `RENDER_GRAPH_VERSION` change.
 - **v2 Title cards switch** (`title-card-toggle`, D-20, D-25): Edit mode's **Title cards: On / Off**
   (now the dialog's second tab, `web/src/edit/card/EventTab.tsx`; superseded UI, see `edit-mode-declutter`; pure model `decorators.ts`) edits the event's own `look.decorators` in the same
   draft (Off removes `title` and keeps the other names; with no list it writes `[]`; On puts `title` first). The state the
@@ -851,8 +858,11 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    with Use default; no engine, job, schema-version or `RENDER_GRAPH_VERSION` change. The v2 list is closed.
    `help-text-declutter` follows (web only, D-20): the explanations of the event page sit behind a Help toggle per section; no API, engine or `RENDER_GRAPH_VERSION` change.
    `timeline-ripple-layout` has landed (web only; D-20), the first of the trim changes the user asked for on 2026-10-04: the
-   Timeline lays each clip by its kept extent, so edge cuts ripple; `clip-edge-trim` (the Premiere-style edge tool) and
-   `timeline-zoom-slider` follow; no API, engine or `RENDER_GRAPH_VERSION` change.
+   Timeline lays each clip by its kept extent, so edge cuts ripple; `clip-edge-trim` (the Premiere-style edge tool)
+   follows; no API, engine or `RENDER_GRAPH_VERSION` change.
+   `timeline-zoom-slider` has landed on user feedback (web only; D-20): a Premiere-like Zoom slider, `\`, Ctrl/Cmd+wheel at the
+   pointer and the zoom kept for the tab's session; Fit with no scroll bar; a toolbar that holds still while the Timeline
+   seeks; and the Timeline only in Edit mode ("I only want it in edit mode"); no API, engine or `RENDER_GRAPH_VERSION` change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1522,6 +1532,38 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     arithmetic); a chapter whose only footage is under 0.1 s before such a cut has no card on the Timeline though the render
     would draw one there; a leading or trailing cut has no handle on the Timeline until `clip-edge-trim`, and the layout
     changes when an interior handle is released at an edge, not during its drag.
+  - **The zoom is a slider; Fit never scrolls; the toolbar holds still; the Timeline is Edit mode's only
+    (`timeline-zoom-slider`, 2026-10-04).** The user asked for Premiere's zoom ("the zoom in and out should have a slider
+    as well. just like in Adobe premiere") and reported two bugs: a scroll bar under the track at Fit, and a toolbar that
+    jumped while a seek's frame loaded. **The slider** is a native range input of 200 steps whose left end is Fit and whose
+    right end is MAX_PPS, logarithmic between (`ppsToSlider` / `sliderToPps` in `model.ts`); its position is derived from
+    the scale on every render, never stored, so the buttons, the keys, the wheel and a Fit that follows a resized view move
+    it too, and a drag asks for one zoom per animation frame. **One zoom path:** `zoomTo(target, pointerX?)` holds the
+    target to [Fit, MAX_PPS] and keeps the moment under the anchor in place (`anchorFor`: the pointer for Ctrl/Cmd+wheel,
+    else the playhead while it is in view, else the view's centre); the requested scale and the exact scroll offset are kept
+    in refs, because two zooms in one frame anchored on a stale scale and the browser rounds `scrollLeft` (a slider drag
+    drifted 1.11 px before, 0.81 / 0.48 px in Chrome / Firefox after). **Keys and pointer:** `\` fits and returns to the zoom
+    before (Premiere); a non-passive `wheel` listener on the track's box zooms on Ctrl or Cmd (a trackpad pinch arrives as
+    Ctrl+wheel; Premiere's Alt is not used, Ctrl+wheel is the page zoom the operator would hit by accident) and prevents the
+    page zoom; a plain wheel is the browser's. **Session memory:** `sessionStorage` `auto-reel:timeline-zoom:<event>`,
+    `{fitted, pps}`, every access guarded and mirrored in memory, re-bounded to the current Fit and maximum; a Refresh, a
+    Save, a reload and leaving Edit mode keep it, a new tab opens at Fit. **MAX_PPS stays 240:** a 25 fps frame is 9.6 px
+    there; frame level (about 1,000 px/s) would need a width cap from the event's length (3 h is 10.8 M px at 1,000 px/s,
+    21.6 M at 2,000, past Firefox's about 17.9 M), finer ruler ticks and a denser filmstrip sprite (one tile a second
+    repeats above 96 px/s), and a new perf run; frame accuracy stays the keyboard's. **Fit without a scroll bar:** measured
+    22 px of scroll at Fit (the last ruler label written past the canvas end) and 11 to 22 px more at the end (the playhead's
+    grip, centred on the last moment, 12 px fine / 22 px coarse); the canvas now keeps an end gutter of the grip's
+    half-width (`--tl-end-gutter`, read from the grip), Fit fits the timeline into the rest less a pixel for rounding
+    (`fitCanvas`), and a ruler label that would reach past the end keeps its line, not its words; 0 px in every measured
+    case. **A toolbar of fixed slots:** a grid in a size container (one row from 64rem, two from 31rem, three below, the
+    same rows in every state), Play as wide as Pause, the Clip / Card word in a fixed cell, the readout one line from 34rem,
+    and Use as poster's reason never written beside it: it is the button's title and description, and a press while it
+    cannot act shows it in a tip that takes no room and says it once. **The read view has no Timeline** ("I only want it in
+    edit mode"): its section, Open / Close timeline and the card words slot are deleted, `editing` is required in the
+    section, the Timeline, the track and the analysis control, and every read-view branch went with it (the cuts being read
+    or unreadable, a block press that only selects, a lane without decisions); this supersedes "the read view keeps its
+    button" above. **Bundle:** JS 625.17 to 625.23 kB (202.44 to 202.59 gzip), CSS 88.10 to 88.63 kB (16.80 to 16.93
+    gzip); no package added.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
   1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every
