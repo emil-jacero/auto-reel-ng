@@ -53,6 +53,12 @@ overlay's window and fades stay the clamped `W` (the last partial frame shows th
 **Rationale**: no keyframe dependence because both pieces are re-encoded; the 1.0 s floor stops a 7.5 s clip being
 split for a 0.5 s saving. A clamped window (`W < asked`) keeps its warning, emitted once for the head.
 
+**Mixed rates**: when the source rate is below the target rate (25 fps into 30), the `fps` filter holds the source frame
+that precedes a tick; a tail that starts cold at the boundary has no such predecessor and picks the next frame for its
+first tick. The tail therefore starts `L = min(N, ceil(0.5 * fps)) / fps` early (`-ss s0 + H - L`), converts the rate with
+`fps=<fps>:start_time=0` (the same tick grid as the unsplit render, shifted by a whole number of ticks) and drops its
+first `L * fps` ticks by count with `trim=start_frame`, `setpts=PTS-STARTPTS`. The tail's output length is unchanged.
+
 ### Audio continuity
 **Context**: each piece encoded with its own AAC stream and joined by a stream copy leaves the second stream's
 encoder delay in the middle of continuous footage. Measured on a 20 s clip with a continuous 440 Hz tone split at

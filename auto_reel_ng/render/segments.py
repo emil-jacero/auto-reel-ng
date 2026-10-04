@@ -103,6 +103,9 @@ class Segment:  # pylint: disable=too-many-instance-attributes
     producer_config: Optional[object] = None
     overlays: tuple[OverlaySpec, ...] = ()
     copy_eligible: bool = False
+    #: Seconds of footage decoded before ``start`` and discarded after the frame-rate conversion
+    #: (a whole number of target frames; the tail of a split segment, see ``card_window``).
+    lead_in: float = 0.0
 
     @property
     def is_synthetic(self) -> bool:

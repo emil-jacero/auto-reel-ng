@@ -9,7 +9,10 @@ hardware path). Both are re-encoded, so no keyframe is needed at the boundary.
 
 The boundary is a whole number of *target* frames, so the joined pieces hold exactly the frames
 the unsplit segment had: the tail's tick ``k`` falls on the source instant the unsplit segment's
-tick ``N + k`` did. The functions are pure; the card is materialized before the split because the
+tick ``N + k`` did. That also holds when the source rate differs from the target rate: the tail
+starts :data:`LEAD_IN_S` early, on the same tick grid shifted by a whole number of ticks, so the
+rate conversion holds the same source frame at the boundary as the unsplit render, and the
+extra lead-in frames are dropped from the output. The functions are pure; the card is materialized before the split because the
 window is only known after the producer has been asked. The pieces are video-only; the join
 carries the segment's audio once (a sidecar of the tail's command), so no audio seam exists.
 """
@@ -26,6 +29,10 @@ from .segments import Segment
 #: A tail shorter than this is not split off: the saving is smaller than the extra ffmpeg start
 #: and join it costs.
 MIN_TAIL_S = 1.0
+
+#: Footage decoded ahead of the tail's first frame (and dropped after the rate conversion), so the
+#: conversion sees the source frame that precedes the boundary, as it does in the unsplit render.
+LEAD_IN_S = 0.5
 
 #: Absorbs float noise when a window is an exact multiple of the frame period.
 _FRAME_EPSILON = 1e-6
@@ -57,8 +64,10 @@ def split_segment(segment: Segment, fps: float, length: float) -> tuple[Segment,
         is_full_clip=False,
         copy_eligible=False,
     )
+    lead_frames = min(frames, math.ceil(LEAD_IN_S * fps))
     tail = replace(
         segment,
+        lead_in=lead_frames / fps,
         start=first + head_length,
         end=first + length,
         is_full_clip=False,
@@ -88,4 +97,4 @@ def build_join_command(
     return NormalizeCommand(args=args, output_path=Path(output_path), duration=duration)
 
 
-__all__ = ["MIN_TAIL_S", "build_join_command", "split_segment"]
+__all__ = ["LEAD_IN_S", "MIN_TAIL_S", "build_join_command", "split_segment"]

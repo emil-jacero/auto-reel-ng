@@ -298,7 +298,15 @@ def _build_video_graph(
     """
     canvas = _canvas_stages(segment, clip, profile, params)
     if not segment.overlays:
-        return ("-vf", _compose_linear(canvas, decode_out, encode_in), [], None)
+        chain = _compose_linear(canvas, decode_out, encode_in)
+        if segment.lead_in > 0.0:
+            # Convert the rate (``start_time=0`` holds the first frame back to tick 0 when the
+            # seek landed between two source frames), then drop the lead-in ticks by count: a
+            # time-based cut would depend on where the encoder's first timestamp falls.
+            lead = round(segment.lead_in * fps)
+            drop = f"fps={_fmt(fps)}:start_time=0,trim=start_frame={lead},setpts=PTS-STARTPTS"
+            chain = f"{chain},{drop}" if chain else drop
+        return ("-vf", chain, [], None)
 
     timed = any(overlay.is_timed for overlay in segment.overlays)
     overlay_fragment = (CPUProfile() if timed else profile).fragment(OpClass.OVERLAY, params)
@@ -450,7 +458,7 @@ def build_normalize_command(
         # every profile); ffmpeg's own would run twice on the CPU and not at all on VAAPI.
         args.append("-noautorotate")
     if segment.start is not None:
-        args += ["-ss", _fmt(segment.start)]
+        args += ["-ss", _fmt(segment.start - segment.lead_in)]
     args += ["-i", str(segment.source_path)]
     args += overlay_inputs
 
