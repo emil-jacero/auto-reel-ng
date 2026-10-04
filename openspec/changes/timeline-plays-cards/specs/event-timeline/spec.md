@@ -35,13 +35,14 @@ look SHALL meet the contrast of the rest of the page in the light and in the dar
 Each block SHALL show a miniature of its card as its background: the card's own image ("Card images are fetched
 once and kept"), fitted to cover the block, so that a black card is dark and a video card is its text over the
 clip's filmstrip. A black card's block SHALL keep a light inner ring in the dark scheme, so that it is told from the
-page. The card's title SHALL be written over the miniature when it fits the block, and the block's accessible name
+page. The card's title SHALL be written on a solid strip of the block's colour over the miniature when it fits the block, so that the title inside the miniature never shows through behind it, and the block's accessible name
 and tooltip SHALL carry it always. A block SHALL be at least 24 px wide however far the track is zoomed out, drawn
 over the neighbouring track without moving it, so that a card is still pressed; its time on the track SHALL not
 change. While a card's image is missing, the block SHALL show the card's title on black. The Timeline plays and shows
 the cards: "The Timeline plays the title cards as the movie will" and "The playhead can be put in a card" say how, and
-no note SHALL say that the Timeline does not play cards. A press in a black card's span SHALL select the card and
-SHALL also put the playhead there.
+no note SHALL say that the Timeline does not play cards. A press in a black card's span or block SHALL do
+what activating the block does ("A selected title card opens its inspector in Edit mode": it opens the card's dialog in
+Edit mode and only selects in the read view) and SHALL also put the playhead there.
 
 #### Scenario: A black card before the second chapter
 - **WHEN** an event with the chapters "" (opening card black, 3.0 s) and "Dag 2" (black, 4.0 s) has a 20 s clip in
@@ -94,7 +95,7 @@ SHALL also put the playhead there.
 
 #### Scenario: A press in a black card's span
 - **WHEN** the operator presses inside a black card's block with the playhead at 5.0 s of a clip
-- **THEN** the card is selected and the playhead is in the card at the press, showing its image
+- **THEN** the card is selected (in Edit mode its dialog opens) and the playhead is in the card at the press, showing its image
 
 #### Scenario: A zoomed-out card stays pressable
 - **WHEN** a 3.0 s black card is drawn at 4 px per second (12 px wide)
@@ -102,7 +103,7 @@ SHALL also put the playhead there.
 
 #### Scenario: A block shows its card
 - **WHEN** a black card's image has been fetched and the Timeline is in the dark scheme
-- **THEN** the block's background is that image, its title is written over it when it fits, its accessible name
+- **THEN** the block's background is that image, its title is written on a solid strip over it when it fits, its accessible name
   carries the title, and a light ring marks its edge
 
 ### Requirement: Play follows the playhead through the clips, skipping cuts

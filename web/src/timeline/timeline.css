@@ -330,27 +330,30 @@
     white-space: nowrap;
   }
 
-  /* The miniature is the card's own image; where words are written a scrim of the block's colour keeps them readable. */
+  /* The miniature is the card's own image. Where words are written they sit on a solid strip of the
+     block's colour, so the title inside the miniature never shows through behind them. */
   .tl-card[data-image] {
     background-image: var(--tl-card-image);
   }
 
+  /* Where words are written the whole miniature is dimmed, so its own title is a faint picture, not a second label. */
   .tl-card[data-image][data-words] {
-    --tl-scrim: oklch(8% 0.005 260 / 0.8);
-    background-image: linear-gradient(90deg, var(--tl-scrim) 0, var(--tl-scrim) 55%, transparent 100%), var(--tl-card-image);
+    --tl-dim: oklch(8% 0.005 260 / 0.8);
+    background-image: linear-gradient(var(--tl-dim), var(--tl-dim)), var(--tl-card-image);
   }
 
   .tl-card[data-image][data-words][data-kind='video'] {
-    --tl-scrim: color-mix(in oklch, var(--info-bg) 90%, transparent);
+    --tl-dim: color-mix(in oklch, var(--info-bg) 82%, transparent);
   }
 
-  /* Over a miniature the words keep their contrast by a shadow in the block's own colour. */
-  .tl-card[data-image] .tl-card-text {
-    text-shadow: 0 0 3px var(--tl-card-black), 0 0 1px var(--tl-card-black);
+  .tl-card[data-image][data-words] .tl-card-text {
+    padding-inline: var(--s-1);
+    border-radius: var(--r-sm);
+    background: oklch(8% 0.005 260 / 0.92);
   }
 
-  .tl-card[data-image][data-kind='video'] .tl-card-text {
-    text-shadow: 0 0 3px var(--info-bg), 0 0 1px var(--info-bg);
+  .tl-card[data-image][data-words][data-kind='video'] .tl-card-text {
+    background: color-mix(in oklch, var(--info-bg) 94%, transparent);
   }
 
   .tl-card-title {
