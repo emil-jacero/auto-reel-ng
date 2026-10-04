@@ -141,11 +141,46 @@ class ClipOut(BaseModel):
     excluded: bool = False
 
 
+class TitleStyleOut(BaseModel):
+    """The title-card style the engine resolves: the layers' result, never a null.
+
+    The project ``config.yaml`` ``look``, then the event's ``look.title_card``, then (for a
+    chapter's :class:`ResolvedCardOut`) the chapter's own overrides, resolved by the engine's
+    own function. ``background`` is ``black`` or ``video``; ``position`` is ``center``, ``top``
+    or ``bottom``; ``font_family`` is a family of ``GET /api/v1/fonts``.
+    """
+
+    duration: float
+    background: str
+    font_family: str
+    title_font_size: int
+    subtitle_font_size: int
+    text_color: str
+    position: str
+
+
+class ResolvedCardOut(TitleStyleOut):
+    """What a render draws for one chapter's card: its text and its effective style.
+
+    ``title`` is the chapter's override, else the chapter name (the event title for the default
+    chapter); ``subtitle`` is the override, else empty.
+    """
+
+    title: str
+    subtitle: str
+
+
 class ChapterOut(BaseModel):
-    """One chapter: its name (``""`` is the default/root chapter) and ordered clips."""
+    """One chapter: its name (``""`` is the default/root chapter), ordered clips and card.
+
+    ``card`` is the resolved title card, or ``null`` when it cannot be resolved (then
+    ``card_error`` says why: the event-wide style, or this chapter's own card).
+    """
 
     name: str
     clips: List[ClipOut] = []
+    card: Optional[ResolvedCardOut] = None
+    card_error: Optional[str] = None
 
 
 class JobSummaryOut(BaseModel):
@@ -308,6 +343,11 @@ class EventDetailOut(BaseModel):
     ``movie`` is ``None`` when the event has no rendered movie, by the rule
     ``GET …/movie`` uses (see :class:`MovieOut` for what it holds). It is always present on
     the wire, and the events list does not carry it.
+
+    ``title_card`` is the event's resolved card style (the event-wide layer, before any
+    chapter's overrides) and each chapter's ``card`` the card a render would draw. When the
+    event-wide ``look.title_card`` cannot be resolved, ``title_card`` and every ``card`` are
+    ``null`` and ``title_card_error`` names the field; the rest of the detail is unaffected.
     """
 
     event_id: str
@@ -321,6 +361,8 @@ class EventDetailOut(BaseModel):
     latest_job: Optional[JobSummaryOut] = None
     staleness: StalenessOut
     movie: Optional[MovieOut] = None
+    title_card: Optional[TitleStyleOut] = None
+    title_card_error: Optional[str] = None
 
 
 class TrimBody(BaseModel):
@@ -347,13 +389,75 @@ class ClipPropertiesBody(BaseModel):
     exclude: bool = False
 
 
+class CardBody(BaseModel):
+    """A chapter's title-card **overrides**, named as the ``reel.yaml`` ``card`` keys.
+
+    Shape only: the key set and the JSON types. Every value rule (ranges, the ``background``
+    and ``position`` vocabularies, the font registry) is the engine's and arrives as a 400
+    naming the field, so no vocabulary is defined twice. ``null``/absent means "no override".
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    title: Optional[str] = None
+    subtitle: Optional[str] = None
+    duration: Optional[float] = None
+    background: Optional[str] = None
+    font_family: Optional[str] = None
+    title_font_size: Optional[int] = None
+    subtitle_font_size: Optional[int] = None
+    text_color: Optional[str] = None
+    position: Optional[str] = None
+
+
+class PreviewCardBody(CardBody):
+    """A draft card for the preview: the editorial card plus the preview's text bounds.
+
+    The bounds belong to the preview only; the editorial ``card`` has no length limit of
+    its own, so a longer hand-written title still round-trips.
+    """
+
+    title: Optional[str] = Field(default=None, max_length=200)
+    subtitle: Optional[str] = Field(default=None, max_length=400)
+
+
+class TitleCardPreviewBody(BaseModel):
+    """A draft title card to draw: nothing here is saved.
+
+    ``chapter`` is the chapter's name (``""`` for the opening card). ``style`` is an optional
+    draft of the event-wide ``look.title_card`` (the event's saved one when absent) and
+    ``event_title`` an optional draft of the title the opening card defaults to.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    chapter: str = ""
+    card: Optional[PreviewCardBody] = None
+    style: Optional[Dict[str, Any]] = None
+    event_title: Optional[str] = Field(default=None, max_length=200)
+
+
+class FontOut(BaseModel):
+    """One bundled title-card font, as the registry lists it."""
+
+    family: str
+    display_name: str
+    weights: List[int]
+    default: bool
+
+
 class ChapterBody(BaseModel):
-    """One chapter in an editorial write: a name and its ordered clip identities."""
+    """One chapter in an editorial write: a name, its ordered clip identities and its card.
+
+    ``card`` is ``null`` for a chapter with no card entry. Written ``null`` or absent it keeps
+    the card ``reel.yaml`` holds; written with no field set (``{}``) it removes it.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     name: str
     clips: List[str] = []
+    card: Optional[CardBody] = None
 
 
 class MetadataBody(BaseModel):
@@ -604,7 +708,13 @@ __all__ = [
     "EventDetailOut",
     "TrimBody",
     "ClipPropertiesBody",
+    "CardBody",
+    "FontOut",
+    "PreviewCardBody",
+    "TitleCardPreviewBody",
     "ChapterBody",
+    "ResolvedCardOut",
+    "TitleStyleOut",
     "MetadataBody",
     "EditorialDocumentBody",
     "EditorialWriteResult",

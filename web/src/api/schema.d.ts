@@ -184,6 +184,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/fonts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Fonts
+         * @description ``GET /api/v1/fonts``: the bundled title-card fonts, in the registry's order.
+         *
+         *     A read of the registry module only: no project, disk or database. ``family`` is the name
+         *     ``card.font_family`` and ``look.title_card.font_family`` accept; exactly one font is the
+         *     ``default`` the engine uses when none is named.
+         */
+        get: operations["list_fonts_api_v1_fonts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{event_id}/title-card/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Title Card
+         * @description ``POST /api/v1/events/{event_id}/title-card/preview``: draw one draft card as a PNG.
+         *
+         *     The draft (chapter, card, optionally the event style and title) is resolved by the same
+         *     engine function as the event detail and drawn by the renderer a render uses, at the
+         *     event's target resolution. A ``video`` card is the text on a transparent background, for
+         *     the client to lay over the clip's picture. Read-only and light: no file, cache, ffmpeg,
+         *     probe or database is touched. At most two draws run at once; a request that cannot start
+         *     within the wait limit is answered 503 with ``Retry-After``.
+         */
+        post: operations["preview_title_card_api_v1_events__event_id__title_card_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events": {
         parameters: {
             query?: never;
@@ -526,8 +577,39 @@ export interface components {
             outcome: components["schemas"]["CancelOutcome"];
         };
         /**
+         * CardBody
+         * @description A chapter's title-card **overrides**, named as the ``reel.yaml`` ``card`` keys.
+         *
+         *     Shape only: the key set and the JSON types. Every value rule (ranges, the ``background``
+         *     and ``position`` vocabularies, the font registry) is the engine's and arrives as a 400
+         *     naming the field, so no vocabulary is defined twice. ``null``/absent means "no override".
+         */
+        CardBody: {
+            /** Title */
+            title?: string | null;
+            /** Subtitle */
+            subtitle?: string | null;
+            /** Duration */
+            duration?: number | null;
+            /** Background */
+            background?: string | null;
+            /** Font Family */
+            font_family?: string | null;
+            /** Title Font Size */
+            title_font_size?: number | null;
+            /** Subtitle Font Size */
+            subtitle_font_size?: number | null;
+            /** Text Color */
+            text_color?: string | null;
+            /** Position */
+            position?: string | null;
+        };
+        /**
          * ChapterBody
-         * @description One chapter in an editorial write: a name and its ordered clip identities.
+         * @description One chapter in an editorial write: a name, its ordered clip identities and its card.
+         *
+         *     ``card`` is ``null`` for a chapter with no card entry. Written ``null`` or absent it keeps
+         *     the card ``reel.yaml`` holds; written with no field set (``{}``) it removes it.
          */
         ChapterBody: {
             /** Name */
@@ -537,10 +619,14 @@ export interface components {
              * @default []
              */
             clips: string[];
+            card?: components["schemas"]["CardBody"] | null;
         };
         /**
          * ChapterOut
-         * @description One chapter: its name (``""`` is the default/root chapter) and ordered clips.
+         * @description One chapter: its name (``""`` is the default/root chapter), ordered clips and card.
+         *
+         *     ``card`` is the resolved title card, or ``null`` when it cannot be resolved (then
+         *     ``card_error`` says why: the event-wide style, or this chapter's own card).
          */
         ChapterOut: {
             /** Name */
@@ -550,6 +636,9 @@ export interface components {
              * @default []
              */
             clips: components["schemas"]["ClipOut"][];
+            card?: components["schemas"]["ResolvedCardOut"] | null;
+            /** Card Error */
+            card_error?: string | null;
         };
         /**
          * ClipOut
@@ -757,6 +846,11 @@ export interface components {
          *     ``movie`` is ``None`` when the event has no rendered movie, by the rule
          *     ``GET …/movie`` uses (see :class:`MovieOut` for what it holds). It is always present on
          *     the wire, and the events list does not carry it.
+         *
+         *     ``title_card`` is the event's resolved card style (the event-wide layer, before any
+         *     chapter's overrides) and each chapter's ``card`` the card a render would draw. When the
+         *     event-wide ``look.title_card`` cannot be resolved, ``title_card`` and every ``card`` are
+         *     ``null`` and ``title_card_error`` names the field; the rest of the detail is unaffected.
          */
         EventDetailOut: {
             /** Event Id */
@@ -787,6 +881,9 @@ export interface components {
             latest_job?: components["schemas"]["JobSummaryOut"] | null;
             staleness: components["schemas"]["StalenessOut"];
             movie?: components["schemas"]["MovieOut"] | null;
+            title_card?: components["schemas"]["TitleStyleOut"] | null;
+            /** Title Card Error */
+            title_card_error?: string | null;
         };
         /**
          * EventErrorOut
@@ -848,6 +945,20 @@ export interface components {
             blocking_missing_count: number;
             latest_job?: components["schemas"]["JobSummaryOut"] | null;
             staleness: components["schemas"]["StalenessOut"];
+        };
+        /**
+         * FontOut
+         * @description One bundled title-card font, as the registry lists it.
+         */
+        FontOut: {
+            /** Family */
+            family: string;
+            /** Display Name */
+            display_name: string;
+            /** Weights */
+            weights: number[];
+            /** Default */
+            default: boolean;
         };
         /**
          * FreshResult
@@ -1044,6 +1155,33 @@ export interface components {
             chapters?: components["schemas"]["MovieChapterOut"][] | null;
         };
         /**
+         * PreviewCardBody
+         * @description A draft card for the preview: the editorial card plus the preview's text bounds.
+         *
+         *     The bounds belong to the preview only; the editorial ``card`` has no length limit of
+         *     its own, so a longer hand-written title still round-trips.
+         */
+        PreviewCardBody: {
+            /** Title */
+            title?: string | null;
+            /** Subtitle */
+            subtitle?: string | null;
+            /** Duration */
+            duration?: number | null;
+            /** Background */
+            background?: string | null;
+            /** Font Family */
+            font_family?: string | null;
+            /** Title Font Size */
+            title_font_size?: number | null;
+            /** Subtitle Font Size */
+            subtitle_font_size?: number | null;
+            /** Text Color */
+            text_color?: string | null;
+            /** Position */
+            position?: string | null;
+        };
+        /**
          * ProblemOut
          * @description The shared problem body every deliberate error uses (D-A6), as published in the schema.
          *
@@ -1174,6 +1312,33 @@ export interface components {
          */
         ProxyState: "absent" | "ready" | "stale" | "failed";
         /**
+         * ResolvedCardOut
+         * @description What a render draws for one chapter's card: its text and its effective style.
+         *
+         *     ``title`` is the chapter's override, else the chapter name (the event title for the default
+         *     chapter); ``subtitle`` is the override, else empty.
+         */
+        ResolvedCardOut: {
+            /** Duration */
+            duration: number;
+            /** Background */
+            background: string;
+            /** Font Family */
+            font_family: string;
+            /** Title Font Size */
+            title_font_size: number;
+            /** Subtitle Font Size */
+            subtitle_font_size: number;
+            /** Text Color */
+            text_color: string;
+            /** Position */
+            position: string;
+            /** Title */
+            title: string;
+            /** Subtitle */
+            subtitle: string;
+        };
+        /**
          * SegmentOut
          * @description One detected segment (black/white/freeze span) for a clip.
          */
@@ -1249,6 +1414,53 @@ export interface components {
          * @enum {string}
          */
         ThumbnailFailure: "thumbnail_failed";
+        /**
+         * TitleCardPreviewBody
+         * @description A draft title card to draw: nothing here is saved.
+         *
+         *     ``chapter`` is the chapter's name (``""`` for the opening card). ``style`` is an optional
+         *     draft of the event-wide ``look.title_card`` (the event's saved one when absent) and
+         *     ``event_title`` an optional draft of the title the opening card defaults to.
+         */
+        TitleCardPreviewBody: {
+            /**
+             * Chapter
+             * @default
+             */
+            chapter: string;
+            card?: components["schemas"]["PreviewCardBody"] | null;
+            /** Style */
+            style?: {
+                [key: string]: unknown;
+            } | null;
+            /** Event Title */
+            event_title?: string | null;
+        };
+        /**
+         * TitleStyleOut
+         * @description The title-card style the engine resolves: the layers' result, never a null.
+         *
+         *     The project ``config.yaml`` ``look``, then the event's ``look.title_card``, then (for a
+         *     chapter's :class:`ResolvedCardOut`) the chapter's own overrides, resolved by the engine's
+         *     own function. ``background`` is ``black`` or ``video``; ``position`` is ``center``, ``top``
+         *     or ``bottom``; ``font_family`` is a family of ``GET /api/v1/fonts``.
+         */
+        TitleStyleOut: {
+            /** Duration */
+            duration: number;
+            /** Background */
+            background: string;
+            /** Font Family */
+            font_family: string;
+            /** Title Font Size */
+            title_font_size: number;
+            /** Subtitle Font Size */
+            subtitle_font_size: number;
+            /** Text Color */
+            text_color: string;
+            /** Position */
+            position: string;
+        };
         /**
          * TrimBody
          * @description One cut span (``in``/``out``/``reason``), the reel.yaml YAML vocabulary.
@@ -2248,6 +2460,99 @@ export interface operations {
             };
             /** @description Bad Gateway */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+        };
+    };
+    list_fonts_api_v1_fonts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FontOut"][];
+                };
+            };
+        };
+    };
+    preview_title_card_api_v1_events__event_id__title_card_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TitleCardPreviewBody"];
+            };
+        };
+        responses: {
+            /** @description The card as an RGBA PNG at the event's target resolution */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

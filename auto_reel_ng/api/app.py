@@ -23,10 +23,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..persistence.engine import make_engine, make_session_factory
 from ..persistence.job_store import JobStore
+from .preview_gate import PreviewGate
 from .problem import service_unavailable
 from .routes.events import router as events_router
 from .routes.jobs import router as jobs_router
 from .routes.media import router as media_router
+from .routes.title_cards import router as title_cards_router
 from .settings import ApiSettings
 from .thumbnails import ThumbnailGate
 from .ws import JobsHub, publish_ws_schema
@@ -76,6 +78,8 @@ def create_app(settings: ApiSettings, *, auth_checker: Optional[AuthChecker] = N
     runtime = FfmpegRuntime()
     # One per app: the thumbnail route's extraction bound is per service process (D-11).
     thumbnail_gate = ThumbnailGate()
+    # One per app: the title-card preview's draw bound is per service process.
+    title_card_gate = PreviewGate()
 
     @asynccontextmanager
     async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -93,6 +97,7 @@ def create_app(settings: ApiSettings, *, auth_checker: Optional[AuthChecker] = N
     app.state.jobs_hub = jobs_hub
     app.state.runtime = runtime
     app.state.thumbnail_gate = thumbnail_gate
+    app.state.title_card_gate = title_card_gate
 
     checker = auth_checker or _default_auth_checker
 
@@ -120,6 +125,7 @@ def create_app(settings: ApiSettings, *, auth_checker: Optional[AuthChecker] = N
     # is greedy over ``/`` and Starlette tries routes in registration order, so the media
     # router's ``…/media`` and ``…/movie`` would otherwise be read as event ids.
     app.include_router(media_router)
+    app.include_router(title_cards_router)
     app.include_router(events_router)
     app.include_router(jobs_router)
     app.include_router(ws_router)

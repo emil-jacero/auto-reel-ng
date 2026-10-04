@@ -1290,3 +1290,82 @@ def test_a_render_draws_each_card_at_its_own_length_and_keeps_the_chapter_names(
     titles = [c.get("tags", {}).get("title", "") for c in json.loads(probe.stdout)["chapters"]]
     assert titles[1] == "Reception"  # the card says "Mottagningen"; the chapter keeps its name
     assert "Mottagningen" not in titles
+
+
+# --------------------------------------------------------------------------- #
+# title-card-write-api: the in-memory entry point and the helpers the API uses #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.has_fonts
+def test_render_card_png_equals_the_file_a_render_writes(has_fonts: None, tmp_path: Path) -> None:
+    from auto_reel_ng.render.title import render_card_png
+
+    config = parse_title_card_config({"font_family": "DejaVu Sans"})
+    content = TitleCardContent(heading="Midsommar", subtitle="Dalarna")
+    dest = tmp_path / "card.png"
+    _render(config, content, _target(width=1920, height=1080), dest)
+    assert dest.read_bytes() == render_card_png(config, content, 1920, 1080)
+
+
+@pytest.mark.has_fonts
+def test_zero_opacity_background_is_transparent_except_the_text(
+    has_fonts: None, tmp_path: Path
+) -> None:
+    import cairo
+
+    from auto_reel_ng.render.title import render_card_png
+
+    config = parse_title_card_config({"background_opacity": 0})
+    data = render_card_png(config, TitleCardContent(heading="HELLO"), 640, 360)
+    path = tmp_path / "t.png"
+    path.write_bytes(data)
+    surface = cairo.ImageSurface.create_from_png(str(path))
+    assert surface.get_format() == cairo.FORMAT_ARGB32
+    pixels = surface.get_data()
+    stride = surface.get_stride()
+
+    def alpha(x: int, y: int) -> int:
+        return int(pixels[y * stride + x * 4 + 3])
+
+    assert alpha(2, 2) == 0
+    assert max(alpha(x, 180) for x in range(640)) > 0  # the text row has opaque pixels
+
+
+@pytest.mark.has_fonts
+def test_render_card_png_fails_loud_on_an_unresolvable_family(has_fonts: None) -> None:
+    from auto_reel_ng.render.title import render_card_png
+
+    with pytest.raises(FontResolutionError, match="No Such Family ZZZ"):
+        render_card_png(
+            TitleCardConfig(font_family="No Such Family ZZZ"), TitleCardContent(heading="x"), 64, 64
+        )
+
+
+def test_look_resolution_default_pair_and_fail_loud() -> None:
+    from auto_reel_ng.render.target import look_resolution
+
+    assert look_resolution({}) == (1920, 1080)
+    assert look_resolution({"target_resolution": [1280, 720]}) == (1280, 720)
+    with pytest.raises(RenderError, match="look.target_resolution"):
+        look_resolution({"target_resolution": [0, 1080]})
+
+
+def test_overlay_config_is_transparent_only_for_a_video_card() -> None:
+    from auto_reel_ng.render.title import overlay_config
+
+    black = parse_title_card_config({"background": "black"})
+    video = parse_title_card_config({"background": "video"})
+    assert overlay_config(black) == black
+    assert overlay_config(video).background_opacity == 0.0
+    assert dataclasses.replace(overlay_config(video), background_opacity=1.0) == video
+
+
+def test_check_card_styles_names_the_event_style_field_and_the_chapter_font() -> None:
+    from auto_reel_ng.render.title import check_card_styles
+
+    check_card_styles({"title_font_size": 80}, {"": ChapterCard(font_family="DejaVu Sans")})
+    with pytest.raises(TitleCardError, match=r"look\.title_card\.title_font_size"):
+        check_card_styles({"title_font_size": "big"}, {})
+    with pytest.raises(TitleCardError, match=r"'Dag 2'.*card\.font_family.*Comic Sans"):
+        check_card_styles(None, {"Dag 2": ChapterCard(font_family="Comic Sans")})

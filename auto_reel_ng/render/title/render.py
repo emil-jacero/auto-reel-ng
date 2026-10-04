@@ -16,11 +16,12 @@ rather than letting Pango silently substitute a different typeface.
 
 from __future__ import annotations
 
+import io
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ...errors import FontResolutionError, TitleCardError
+from ...errors import FontResolutionError, TitleCardBackendError, TitleCardError
 from .config import TitleCardConfig
 from .content import TitleCardContent, title_card_lines
 from .fonts import BUNDLED_FONTS, DEFAULT_FONT_FAMILY, configure_fontconfig, fonts_dir
@@ -58,7 +59,7 @@ def _load_backend() -> tuple[Any, Any, Any]:
 
         return cairo, Pango, PangoCairo
     except (ImportError, ValueError) as exc:  # ValueError: gi.require_version mismatch
-        raise TitleCardError(
+        raise TitleCardBackendError(
             "title-card rendering requires Cairo + Pango (pycairo + PyGObject) and the "
             "Pango GObject-introspection typelib; none usable on this host"
         ) from exc
@@ -151,25 +152,23 @@ def _make_layout(  # pylint: disable=too-many-arguments
     return layout
 
 
-def render_title_card(
-    config: TitleCardConfig,
-    content: TitleCardContent,
-    target: "TargetSpec",
-    dest: Path,
-) -> Path:
-    """Render ``content`` to an RGBA PNG at the target resolution and return ``dest``.
+def render_card_png(
+    config: TitleCardConfig, content: TitleCardContent, width: int, height: int
+) -> bytes:
+    """Render ``content`` to RGBA PNG **bytes** at ``width`` x ``height``.
 
-    A ``black`` card fills the configured background; a ``video`` card skips the fill and so is
-    transparent wherever nothing is drawn. The card lays out each display line as a
-    centered Pango layout that wraps within the column, and draws an offset
-    drop-shadow and a glyph outline under the fill per ``config``. The configured
-    font family is resolved fail-loud before any drawing.
+    A ``black`` card fills the configured background (with its opacity); a ``video`` card skips the
+    fill and so is transparent wherever nothing is drawn. The card lays out each display line as a
+    centered Pango layout that wraps within the column, and draws an offset drop-shadow and a glyph
+    outline under the fill per ``config``. The configured font family is resolved fail-loud before
+    any drawing. Needs no destination file, no ffmpeg and no probed target, so a preview and a
+    render draw through this one function.
     """
     cairo, pango, pangocairo = _load_backend()
     family = config.resolved_family
     _resolve_font_or_raise(family, _CARD_WEIGHT, pango, pangocairo)
 
-    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, target.width, target.height)
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
     ctx = cairo.Context(surface)
 
     if config.background != "video":
@@ -178,7 +177,7 @@ def render_title_card(
         ctx.set_source_rgba(bg_r, bg_g, bg_b, config.background_opacity)
         ctx.paint()
 
-    column = max(1, target.width - 2 * _MARGIN)
+    column = max(1, width - 2 * _MARGIN)
     lines = title_card_lines(content)
     layouts = []
     total_height = 0
@@ -192,12 +191,27 @@ def render_title_card(
         layouts.append((layout, logical.height))
         total_height += logical.height
 
-    y = _start_y(config.position, target.height, total_height)
-    for layout, height in layouts:
-        _draw_layout(ctx, pango, pangocairo, config, layout, target.width, y, column)
-        y += height
+    y = _start_y(config.position, height, total_height)
+    for layout, layout_height in layouts:
+        _draw_layout(ctx, pango, pangocairo, config, layout, width, y, column)
+        y += layout_height
 
-    surface.write_to_png(str(dest))
+    buffer = io.BytesIO()
+    surface.write_to_png(buffer)
+    return buffer.getvalue()
+
+
+def render_title_card(
+    config: TitleCardConfig,
+    content: TitleCardContent,
+    target: "TargetSpec",
+    dest: Path,
+) -> Path:
+    """Render ``content`` to an RGBA PNG at the target resolution and return ``dest``.
+
+    Writes exactly the bytes :func:`render_card_png` returns for the target's width and height.
+    """
+    dest.write_bytes(render_card_png(config, content, target.width, target.height))
     return dest
 
 
@@ -245,4 +259,4 @@ def _draw_layout(  # pylint: disable=too-many-arguments,too-many-positional-argu
     pangocairo.show_layout(ctx, layout)
 
 
-__all__ = ["render_title_card", "verify_bundled_fonts"]
+__all__ = ["render_card_png", "render_title_card", "verify_bundled_fonts"]

@@ -115,6 +115,14 @@ class TitleCardError(RenderError):
     """
 
 
+class TitleCardBackendError(TitleCardError):
+    """The Cairo + Pango drawing backend is not usable in this process.
+
+    Distinct from a refused style or a missing font so a caller can tell "this host cannot
+    draw cards" (a 503) from "this card cannot be drawn" (the card's fault).
+    """
+
+
 class FontResolutionError(TitleCardError):
     """A configured font family did not resolve through fontconfig.
 

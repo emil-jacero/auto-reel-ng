@@ -114,7 +114,9 @@ def test_read_returns_the_full_editorial_state(client: TestClient) -> None:
         "description": None,
     }
     assert body["look"] == {"resolution": "1080p", "fps": 30}
-    assert body["chapters"] == [{"name": "", "clips": ["00500.mp4", "clips/00600.mp4"]}]
+    assert body["chapters"] == [
+        {"name": "", "clips": ["00500.mp4", "clips/00600.mp4"], "card": None}  # no card entry: null
+    ]
     assert body["clips"]["00500.mp4"]["trims"] == [{"in": 0.0, "out": 1.5, "reason": "black"}]
     assert body["clips"]["00500.mp4"]["rotate"] == 90
     assert body["ignore"] == ["clips/00700.mp4"]
@@ -368,3 +370,28 @@ def test_detail_view_is_not_an_editorial_write_body(client: TestClient) -> None:
         tuple(error["loc"])[-1] for error in rejected.json()["detail"] if error["loc"][0] == "body"
     }
     assert {"event_id", "staleness"} <= offending
+
+
+def test_read_returns_a_chapters_card_with_unset_fields_null(
+    client: TestClient, project: Path
+) -> None:
+    text = (_event_dir(project) / "reel.yaml").read_text(encoding="utf-8")
+    (_event_dir(project) / "reel.yaml").write_text(
+        text.replace(
+            '  - name: ""\n',
+            '  - name: ""\n    card:\n      title: Heading\n      duration: 4\n',
+        ),
+        encoding="utf-8",
+    )
+    card = client.get(f"/api/v1/events/{_event_id()}/reel").json()["chapters"][0]["card"]
+    assert card == {
+        "title": "Heading",
+        "subtitle": None,
+        "duration": 4.0,
+        "background": None,
+        "font_family": None,
+        "title_font_size": None,
+        "subtitle_font_size": None,
+        "text_color": None,
+        "position": None,
+    }

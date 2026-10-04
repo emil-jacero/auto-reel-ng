@@ -9,6 +9,7 @@ the library (D-11): a per-clip read on request, never a field of the read model.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from functools import partial
 from pathlib import Path
@@ -27,12 +28,15 @@ from ...errors import (
     ReelError,
     ThumbnailCacheError,
     ThumbnailError,
+    TitleCardError,
 )
 from ...event.editorial import apply_editorial_write
 from ...ingest import LayoutError
 from ...persistence.job_store import JobStore
 from ...persistence.models import JobKind
+from ...reel.card import ChapterCard
 from ...reel.document import ReelDocument
+from ...render.title.config import check_card_styles
 from ...staleness.fingerprint import editorial_hash
 from ...thumbs import is_cached, one_line_cause, recorded_failure, thumbnail_for
 from .. import events_read, proxy_read
@@ -526,6 +530,24 @@ def get_event(event_id: str, request: Request) -> Union[EventDetailOut, Response
         return _event_read_failed(exc, event_id)
 
 
+_CARD_LOC = re.compile(r"chapters\[(\d+)\]\.card\.")
+
+
+def _name_chapters(message: str, payload: EditorialDocumentBody) -> str:
+    """Add the chapter's name to the engine's ``chapters[i].card.<key>`` field reference.
+
+    The loader locates a refused value by index; the client edits chapters by name.
+    """
+
+    def named(match: "re.Match[str]") -> str:
+        index = int(match.group(1))
+        if index >= len(payload.chapters):
+            return match.group(0)
+        return f"chapters[{index}] ({payload.chapters[index].name!r}).card."
+
+    return _CARD_LOC.sub(named, message)
+
+
 @router.put(
     "/events/{event_id:path}/reel",
     response_model=EditorialWriteResult,
@@ -595,13 +617,23 @@ def put_reel(
 
     desired_data = payload.model_dump(by_alias=True)
     try:
+        # The two title-card rules the loader cannot own (``reel/`` is below ``render/``): the
+        # event-wide style as a render parses it, and a card's font against the registry.
+        check_card_styles(
+            payload.look.get("title_card"),
+            {
+                chapter.name: ChapterCard(font_family=chapter.card.font_family)
+                for chapter in payload.chapters
+                if chapter.card is not None
+            },
+        )
         document = apply_editorial_write(event_dir, desired_data)
     except EventMetadataError as exc:  # before ReelError: it is a subclass
         return bad_request(
             str(exc), event_id=event_id, failure=EventFailure.UNUSABLE_METADATA.value
         )
-    except ReelError as exc:  # the submitted state is invalid
-        return bad_request(str(exc), event_id=event_id)
+    except (ReelError, TitleCardError) as exc:  # the submitted state is invalid
+        return bad_request(_name_chapters(str(exc), payload), event_id=event_id)
     except OSError as exc:  # the filesystem refused the save
         logger.warning("editorial write: %s: %s", event_id, exc)
         return bad_gateway(f"reel.yaml could not be saved: {exc}", event_id=event_id)

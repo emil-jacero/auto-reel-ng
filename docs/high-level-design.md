@@ -372,8 +372,18 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   **read-only**; editing it is v2. No timeline, no per-frame editing.
 - **v2:** look/style editor (**the look picker deferred from v1**; title card live-ish preview; `title-card-fonts`
   is the foundation of the card editor: the bundled font set and its registry, **D-22**; **the title card model
-  has landed** as `title-card-model`, **D-24**: the per-chapter `card:` in `reel.yaml`; **the card over the clip's
-  start has landed** as `title-card-over-video`, with the write API and the editor to follow); **the full
+  has landed** as `title-card-model`, **D-24**: the per-chapter `card:` in `reel.yaml`; **its API is built** as
+  `title-card-write-api`: `PUT`/`GET …/reel` carry each chapter's `card` (the overrides; `{}` removes, absent or `null`
+  keeps; a refusal is a 400 naming the chapter and the field, and a `look.title_card` or font the engine refuses is
+  refused the same way), the event detail reports every chapter's resolved `card` and the event's `title_card` (the
+  read exposure of the title-card part of `look`; the engine's `resolve_card`, probe-free, with `title_card_error`
+  and a per-chapter `card_error` instead of a 502 when a hand edit cannot be resolved), `GET /api/v1/fonts` lists the
+  registry (D-22), and `POST …/title-card/preview` draws one draft card as an `image/png` with the renderer's own
+  `render_card_png` at the event's target resolution (a `video` card as text on transparency; no cache, no ffmpeg, no
+  database; at most two at once, 503 with `Retry-After` after 10 s; free text bounded to 200/400 characters on the
+  preview only). There is deliberately no CLI subcommand: the engine surface is `auto-reel render` of a `card:` in
+  `reel.yaml`. **the card over the clip's start has landed** as `title-card-over-video`, with the editor to
+  follow); **the full
   timeline editor, moved from v3** — a per-clip track with proxies, filmstrip, drag-trim in/out and scrub
   preview (built: scrub in `timeline-view`, trim handles in `timeline-trim`, D-20); **analysis review built as overlays on that timeline** (built: approve black/white/freeze trims in place on Edit mode's draft, `timeline-overlay-decisions`;
   not a separate screen); event poster frames; and, beside the proxy work, chapter times in the render
@@ -463,7 +473,8 @@ while designing it: `jobs-client-contract` (the published jobs answers, cancel o
 frames) and `jobs-project-guards` (the output-collision refusal and project-scoped jobs). Its follow-up
 `job-summary-times` gave the events reads' latest job its start and finish times, so a screen dates a
 job it knows only from a read by its state. **The
-resolved `look`, shown read-only in the v1 sketch above, is not exposed by any endpoint**; it is
+resolved `look`, shown read-only in the v1 sketch above, is not exposed by any endpoint** (v2 exposes its
+title-card part only, as the detail's `title_card`, with `title-card-write-api`); it is
 deferred to v2 with the look editor rather than adding a read surface for a field v1 only displays.
 
 #### Decision D-8 — Frontend stack (LOCKED, 2026-08-31)
@@ -715,6 +726,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `clip-play-overlay-one-player` follows on user feedback: the read view's Play is a button on the clip's thumbnail, and
    one page-wide coordinator pauses any other playing video when one starts (D-15, D-16, D-20), web-only, with no render,
    fingerprint, schema or job change.
+   `title-card-write-api` has landed (the API half of the card editor): the editorial `card`, the detail's resolved
+   cards and `title_card`, `GET /fonts` and the PNG preview (§4.10); no render, fingerprint, schema-version or job
+   change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,

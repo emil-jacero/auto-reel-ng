@@ -2144,6 +2144,134 @@
         }
       }
     },
+    "/api/v1/fonts": {
+      "get": {
+        "tags": [
+          "title-cards"
+        ],
+        "summary": "List Fonts",
+        "description": "``GET /api/v1/fonts``: the bundled title-card fonts, in the registry's order.\n\nA read of the registry module only: no project, disk or database. ``family`` is the name\n``card.font_family`` and ``look.title_card.font_family`` accept; exactly one font is the\n``default`` the engine uses when none is named.",
+        "operationId": "list_fonts_api_v1_fonts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FontOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Fonts Api V1 Fonts Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events/{event_id}/title-card/preview": {
+      "post": {
+        "tags": [
+          "title-cards"
+        ],
+        "summary": "Preview Title Card",
+        "description": "``POST /api/v1/events/{event_id}/title-card/preview``: draw one draft card as a PNG.\n\nThe draft (chapter, card, optionally the event style and title) is resolved by the same\nengine function as the event detail and drawn by the renderer a render uses, at the\nevent's target resolution. A ``video`` card is the text on a transparent background, for\nthe client to lay over the clip's picture. Read-only and light: no file, cache, ffmpeg,\nprobe or database is touched. At most two draws run at once; a request that cannot start\nwithin the wait limit is answered 503 with ``Retry-After``.",
+        "operationId": "preview_title_card_api_v1_events__event_id__title_card_preview_post",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TitleCardPreviewBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The card as an RGBA PNG at the event's target resolution",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/events": {
       "get": {
         "tags": [
@@ -3102,6 +3230,113 @@
         "title": "CancelResult",
         "description": "The body of ``POST /api/v1/jobs/{id}/cancel``: the outcome the store applied (D-S6).\n\n``outcome`` and ``status`` come from the one transaction that applied the cancel,\nso they always agree. ``outcome`` is typed with the store's own closed vocabulary,\nso the schema publishes the enumeration and generated clients get an exhaustive\nunion (D-8, §4.10); the wire values are unchanged."
       },
+      "CardBody": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtitle"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
+          "background": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Background"
+          },
+          "font_family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Font Family"
+          },
+          "title_font_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title Font Size"
+          },
+          "subtitle_font_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtitle Font Size"
+          },
+          "text_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Color"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CardBody",
+        "description": "A chapter's title-card **overrides**, named as the ``reel.yaml`` ``card`` keys.\n\nShape only: the key set and the JSON types. Every value rule (ranges, the ``background``\nand ``position`` vocabularies, the font registry) is the engine's and arrives as a 400\nnaming the field, so no vocabulary is defined twice. ``null``/absent means \"no override\"."
+      },
       "ChapterBody": {
         "properties": {
           "name": {
@@ -3115,6 +3350,16 @@
             "type": "array",
             "title": "Clips",
             "default": []
+          },
+          "card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CardBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -3123,7 +3368,7 @@
           "name"
         ],
         "title": "ChapterBody",
-        "description": "One chapter in an editorial write: a name and its ordered clip identities."
+        "description": "One chapter in an editorial write: a name, its ordered clip identities and its card.\n\n``card`` is ``null`` for a chapter with no card entry. Written ``null`` or absent it keeps\nthe card ``reel.yaml`` holds; written with no field set (``{}``) it removes it."
       },
       "ChapterOut": {
         "properties": {
@@ -3138,6 +3383,27 @@
             "type": "array",
             "title": "Clips",
             "default": []
+          },
+          "card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedCardOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "card_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Card Error"
           }
         },
         "type": "object",
@@ -3145,7 +3411,7 @@
           "name"
         ],
         "title": "ChapterOut",
-        "description": "One chapter: its name (``\"\"`` is the default/root chapter) and ordered clips."
+        "description": "One chapter: its name (``\"\"`` is the default/root chapter), ordered clips and card.\n\n``card`` is the resolved title card, or ``null`` when it cannot be resolved (then\n``card_error`` says why: the event-wide style, or this chapter's own card)."
       },
       "ClipOut": {
         "properties": {
@@ -3500,6 +3766,27 @@
                 "type": "null"
               }
             ]
+          },
+          "title_card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TitleStyleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title_card_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title Card Error"
           }
         },
         "type": "object",
@@ -3508,7 +3795,7 @@
           "staleness"
         ],
         "title": "EventDetailOut",
-        "description": "One event's full detail: metadata, ordered chapters/clips, reconcile state,\nand its staleness verdict (change-detection, §8.14).\n\n``missing`` lists every clip the document lists that disk does not have, excluded or\nnot. ``blocking_missing`` is the subset a render needs: the missing clips the document\ndoes not exclude (an excluded clip is never probed, so its absence cannot fail a\nrender).\n\n``movie`` is ``None`` when the event has no rendered movie, by the rule\n``GET …/movie`` uses (see :class:`MovieOut` for what it holds). It is always present on\nthe wire, and the events list does not carry it."
+        "description": "One event's full detail: metadata, ordered chapters/clips, reconcile state,\nand its staleness verdict (change-detection, §8.14).\n\n``missing`` lists every clip the document lists that disk does not have, excluded or\nnot. ``blocking_missing`` is the subset a render needs: the missing clips the document\ndoes not exclude (an excluded clip is never probed, so its absence cannot fail a\nrender).\n\n``movie`` is ``None`` when the event has no rendered movie, by the rule\n``GET …/movie`` uses (see :class:`MovieOut` for what it holds). It is always present on\nthe wire, and the events list does not carry it.\n\n``title_card`` is the event's resolved card style (the event-wide layer, before any\nchapter's overrides) and each chapter's ``card`` the card a render would draw. When the\nevent-wide ``look.title_card`` cannot be resolved, ``title_card`` and every ``card`` are\n``null`` and ``title_card_error`` names the field; the rest of the detail is unaffected."
       },
       "EventErrorOut": {
         "properties": {
@@ -3641,6 +3928,38 @@
         ],
         "title": "EventSummaryOut",
         "description": "One event as listed by ``GET /api/v1/events``.\n\n``clip_count`` is the clips the event lists that are not ignored (ACTIVE, NEW and\nMISSING), the number the event's detail page counts; ``ignored_count`` is the IGNORED\nones, which ``clip_count`` leaves out. ``missing_count`` counts every missing clip;\n``blocking_missing_count`` only those a render needs (the detail's ``blocking_missing``)."
+      },
+      "FontOut": {
+        "properties": {
+          "family": {
+            "type": "string",
+            "title": "Family"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "weights": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Weights"
+          },
+          "default": {
+            "type": "boolean",
+            "title": "Default"
+          }
+        },
+        "type": "object",
+        "required": [
+          "family",
+          "display_name",
+          "weights",
+          "default"
+        ],
+        "title": "FontOut",
+        "description": "One bundled title-card font, as the registry lists it."
       },
       "FreshResult": {
         "properties": {
@@ -4008,6 +4327,115 @@
         "title": "MovieOut",
         "description": "The rendered movie's version and chapter times, read from the render manifest.\n\nProbe-free: the manifest and a ``stat`` are the only reads. The facts describe the movie\n**on disk**, the last render's, not the current editorial state (the staleness verdict says\nwhether it is outdated).\n\n``recorded_at`` is when the render record was written (timezone-aware UTC): the engine writes\nit only after the atomic finalize verified the movie, so for a render it is when the render\nfinished; for a movie ``adopt-renders`` recorded it is when it was adopted. It is not the\nfile's modification time. ``fingerprint`` is the first 12 hexadecimal characters of the\nmanifest's combined fingerprint: the identity of the **inputs** the render was made from, not\na hash of the movie's bytes (two renders of identical inputs share it). Together they are\nthe movie's version.\n\n``chapters`` is the recorded chapter list, in recorded order. ``None`` means unknown: the\nmanifest records no chapter times (written before they were recorded, or adopted rather than\nrendered) or its list is unreadable. It is never ``[]`` for unknown; a recorded empty list is\nreported as empty."
       },
+      "PreviewCardBody": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 400
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtitle"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
+          "background": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Background"
+          },
+          "font_family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Font Family"
+          },
+          "title_font_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title Font Size"
+          },
+          "subtitle_font_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtitle Font Size"
+          },
+          "text_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Color"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PreviewCardBody",
+        "description": "A draft card for the preview: the editorial card plus the preview's text bounds.\n\nThe bounds belong to the preview only; the editorial ``card`` has no length limit of\nits own, so a longer hand-written title still round-trips."
+      },
       "ProblemOut": {
         "properties": {
           "title": {
@@ -4314,6 +4742,60 @@
         "title": "ProxyState",
         "description": "A clip's proxy state: a closed vocabulary the schema publishes (D-8, §4.10, D-21).\n\n``absent``: no usable entry and nothing recorded (never prepared, or the file or the\nproxy version changed, which moves the cache key). ``ready``: a usable proxy, filmstrip\nand facts. ``stale``: an entry exists for the clip as it is now but cannot be used\n(damaged facts, an empty file). ``failed``: the last attempt failed and nothing usable\nexists. The wire values are the engine's :class:`~auto_reel_ng.proxies.ProxyStatus`."
       },
+      "ResolvedCardOut": {
+        "properties": {
+          "duration": {
+            "type": "number",
+            "title": "Duration"
+          },
+          "background": {
+            "type": "string",
+            "title": "Background"
+          },
+          "font_family": {
+            "type": "string",
+            "title": "Font Family"
+          },
+          "title_font_size": {
+            "type": "integer",
+            "title": "Title Font Size"
+          },
+          "subtitle_font_size": {
+            "type": "integer",
+            "title": "Subtitle Font Size"
+          },
+          "text_color": {
+            "type": "string",
+            "title": "Text Color"
+          },
+          "position": {
+            "type": "string",
+            "title": "Position"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "subtitle": {
+            "type": "string",
+            "title": "Subtitle"
+          }
+        },
+        "type": "object",
+        "required": [
+          "duration",
+          "background",
+          "font_family",
+          "title_font_size",
+          "subtitle_font_size",
+          "text_color",
+          "position",
+          "title",
+          "subtitle"
+        ],
+        "title": "ResolvedCardOut",
+        "description": "What a render draws for one chapter's card: its text and its effective style.\n\n``title`` is the chapter's override, else the chapter name (the event title for the default\nchapter); ``subtitle`` is the override, else empty."
+      },
       "SegmentOut": {
         "properties": {
           "start": {
@@ -4408,6 +4890,97 @@
         ],
         "title": "ThumbnailFailure",
         "description": "Why a clip's thumbnail could not be served: the API's classification of engine errors.\n\nA kind describes the *clip*, never the service: a thumbnail cache that cannot be\nwritten or an invalid ``config.yaml`` answers 502 with no kind at all."
+      },
+      "TitleCardPreviewBody": {
+        "properties": {
+          "chapter": {
+            "type": "string",
+            "title": "Chapter",
+            "default": ""
+          },
+          "card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreviewCardBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style"
+          },
+          "event_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Title"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TitleCardPreviewBody",
+        "description": "A draft title card to draw: nothing here is saved.\n\n``chapter`` is the chapter's name (``\"\"`` for the opening card). ``style`` is an optional\ndraft of the event-wide ``look.title_card`` (the event's saved one when absent) and\n``event_title`` an optional draft of the title the opening card defaults to."
+      },
+      "TitleStyleOut": {
+        "properties": {
+          "duration": {
+            "type": "number",
+            "title": "Duration"
+          },
+          "background": {
+            "type": "string",
+            "title": "Background"
+          },
+          "font_family": {
+            "type": "string",
+            "title": "Font Family"
+          },
+          "title_font_size": {
+            "type": "integer",
+            "title": "Title Font Size"
+          },
+          "subtitle_font_size": {
+            "type": "integer",
+            "title": "Subtitle Font Size"
+          },
+          "text_color": {
+            "type": "string",
+            "title": "Text Color"
+          },
+          "position": {
+            "type": "string",
+            "title": "Position"
+          }
+        },
+        "type": "object",
+        "required": [
+          "duration",
+          "background",
+          "font_family",
+          "title_font_size",
+          "subtitle_font_size",
+          "text_color",
+          "position"
+        ],
+        "title": "TitleStyleOut",
+        "description": "The title-card style the engine resolves: the layers' result, never a null.\n\nThe project ``config.yaml`` ``look``, then the event's ``look.title_card``, then (for a\nchapter's :class:`ResolvedCardOut`) the chapter's own overrides, resolved by the engine's\nown function. ``background`` is ``black`` or ``video``; ``position`` is ``center``, ``top``\nor ``bottom``; ``font_family`` is a family of ``GET /api/v1/fonts``."
       },
       "TrimBody": {
         "properties": {
