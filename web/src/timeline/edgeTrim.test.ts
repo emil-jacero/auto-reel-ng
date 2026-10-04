@@ -7,6 +7,7 @@ import {
   edgeCutOf,
   edgeEdit,
   edgeKey,
+  edgeKeyWords,
   edgeLimits,
   edgeNotes,
   edgePlaces,
@@ -15,7 +16,7 @@ import {
   playedMs,
   trimToPlayhead,
 } from './edgeTrim.ts'
-import { ModelError } from './model.ts'
+import { cutSpans, keptExtent, ModelError } from './model.ts'
 import type { ClipFacts } from './model.ts'
 
 /* `s1710001.mp4`: 6.02 s at 50 fps, three frames are 60 ms (the spec's clip). */
@@ -77,12 +78,26 @@ describe('edge places and edge cuts', () => {
 })
 
 describe('edge limits', () => {
-  it('the start edge may trim up to three played frames', () => {
+  it('the start edge may trim until the clip keeps its last 0.1 s, the track’s end rule', () => {
     const limits = edgeLimits(INTERIOR, 'start', F)
     assert.equal(limits.lowest, 0)
-    assert.equal(limits.highest, 5960)
+    // Three frames would be 5.96 s, but a leading cut ending less than 100 ms before the end is
+    // a cut to the end for the track and Play (END_SLACK_MS): the clip would keep nothing.
+    assert.equal(limits.highest, 5920)
     assert.equal(limits.lowWhy, 'file')
-    assert.equal(playedMs([...INTERIOR, { in: 0, out: 5.96 }], F.durationMs), 60)
+    assert.equal(limits.highWhy, 'slack')
+    assert.equal(playedMs([...INTERIOR, { in: 0, out: 5.92 }], F.durationMs), 100)
+    assert.deepEqual(keptExtent(cutSpans([...INTERIOR, { in: 0, out: 5.96 }], F.durationMs), F.durationMs), {
+      inMs: 0,
+      outMs: 0,
+    })
+  })
+
+  it('at 25 fps three frames are longer than 0.1 s: the frame rule holds the start', () => {
+    const limits = edgeLimits([], 'start', { durationMs: 6000, fps: 25 })
+    assert.equal(limits.highest, 5880)
+    assert.equal(limits.highWhy, 'frames')
+    assert.equal(playedMs([{ in: 0, out: 5.88 }], 6000), 120)
   })
 
   it('another cut holds the start: the lowest place is its end, not the file’s start', () => {
@@ -186,11 +201,11 @@ describe('edgeAt and edgeEdit', () => {
 
   it('a drag past the limit stops there, joining cuts 1 and 2', () => {
     const at = edgeAt(INTERIOR, 'start', 6500, F, 40, SNAP)
-    assert.equal(at.place, 5960)
-    assert.equal(at.playsMs, 60)
+    assert.equal(at.place, 5920)
+    assert.equal(at.playsMs, 100)
     assert.deepEqual(at.joined, [1, 2])
-    assert.equal(at.limit, 'frames')
-    assert.deepEqual(edgeNotes('start', at, null), ['The clip keeps three frames', 'Joined with cuts 1 and 2'])
+    assert.equal(at.limit, 'slack')
+    assert.deepEqual(edgeNotes('start', at, null), ['The clip keeps 0.1 s', 'Joined with cuts 1 and 2'])
   })
 
   it('snaps to a whole second within 8 px, and not when snapping is off', () => {
@@ -245,15 +260,15 @@ describe('edge keys', () => {
     assert.equal(edgeValueText('start', 60, F.durationMs, playedMs(listed, F.durationMs)), 'Start trimmed by 0.06 s, plays 0:03.46')
   })
 
-  it('Home restores, End trims to three played frames', () => {
+  it('Home restores, End trims to the limit', () => {
     const listed = [cut('a1', 0, 0.06), ...INTERIOR]
     const home = edgeKey('Home', false, listed, 'start', F)
     assert.equal(home, 0)
     assert.deepEqual(edgeEdit(listed, 'start', home as number, F), { kind: 'remove', key: 'a1' })
     const end = edgeKey('End', false, INTERIOR, 'start', F)
-    assert.equal(end, 5960)
+    assert.equal(end, 5920)
     const at = edgeAt(INTERIOR, 'start', end as number, F, 40, { playheadMs: null, snapping: false })
-    assert.match(edgeAnnouncement('s1710001.mp4', 'start', at, F.durationMs), /joined cuts 1 and 2\. The clip keeps three frames\./)
+    assert.match(edgeAnnouncement('s1710001.mp4', 'start', at, F.durationMs), /joined cuts 1 and 2\. The clip keeps 0\.1 s\./)
   })
 
   it('Shift steps a second to the nearest frame; a step outward skips past a cut it would land in', () => {
@@ -261,6 +276,25 @@ describe('edge keys', () => {
     // Joined at 2.5 s by a cut 0–1.2: Left would land in cut 1, so it goes to the frame before it.
     const listed = [cut('a1', 0, 1.2), ...INTERIOR]
     assert.equal(edgeKey('ArrowLeft', false, listed, 'start', F), 980)
+  })
+
+  it('a key says only a join and a limit', () => {
+    const end = edgeAt(INTERIOR, 'start', 5920, F, 40, { playheadMs: null, snapping: false })
+    assert.equal(edgeKeyWords('start', end, null), 'The start joined cuts 1 and 2. The clip keeps 0.1 s.')
+    const frames = edgeAt([], 'end', 0, F, 40, { playheadMs: null, snapping: false })
+    assert.equal(frames.place, 60)
+    assert.equal(edgeKeyWords('end', frames, null), 'The clip keeps three frames.')
+    const step = edgeAt(INTERIOR, 'start', 20, F, 40, { playheadMs: null, snapping: false })
+    assert.equal(edgeKeyWords('start', step, null), null)
+  })
+
+  it('a limit off the frame grid is taken exactly', () => {
+    // 29.97 fps: 1000 ms is not a frame time; a cut 0–1.0 holds the start there.
+    const listed = [cut('r0', 0, 1.0, 'black'), cut('r1', 0, 2.0)]
+    const f = { durationMs: 6000, fps: 30000 / 1001 }
+    const home = edgeKey('Home', false, listed, 'start', f)
+    assert.equal(home, 1000)
+    assert.equal(edgeAt(listed, 'start', home as number, f, 40, { playheadMs: null, snapping: false }).x, 1000)
   })
 
   it('a key that is not the edge’s is null', () => {

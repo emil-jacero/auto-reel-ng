@@ -150,8 +150,11 @@ function placeWith(others: readonly ListedCut[], side: Side, x: Ms, durationMs: 
   return side === 'start' ? edges.inMs : edges.outMs
 }
 
-/** Why an edge stops at a limit: the file's start or end, another cut, or three played frames. */
-export type LimitWhy = 'file' | 'cut' | 'frames'
+/**
+ * Why an edge stops at a limit: the file's start or end, another cut, three played frames, or
+ * the clip's last 100 ms, which the track and Play take as its end (`END_SLACK_MS`).
+ */
+export type LimitWhy = 'file' | 'cut' | 'frames' | 'slack'
 
 /** The range of `x` a side's edge cut may take, and why each end is there. */
 export type EdgeLimits = {
@@ -199,7 +202,15 @@ export function edgeLimits(listed: readonly ListedCut[], side: Side, f: ClipFact
   const otherCuts = others.map((row) => row.cut)
   const alone = edgesOf(cutSpans(otherCuts, d), d)
   const short = minCutMs(f.fps)
-  const plays = (x: Ms) => playedMs(withEdge(otherCuts, side, x, d, edge?.cut ?? null), d)
+  const after = (x: Ms) => withEdge(otherCuts, side, x, d, edge?.cut ?? null)
+  // Three played frames (the render's length), and a kept extent at all: the track and Play take
+  // a span within END_SLACK_MS of the clip's end as its end, so a clip whose cuts leave only its
+  // last 100 ms keeps nothing on the Timeline (`timeline-ripple-layout`).
+  const threeFrames = (x: Ms) => playedMs(after(x), d) >= short
+  const keepsSome = (x: Ms) => {
+    const kept = keptExtent(cutSpans(after(x), d), d)
+    return kept.outMs > kept.inMs
+  }
   const places = edgePlaces(listed, d)
   const holding = (from: Ms, to: Ms): number | null => {
     const row = others.find((r) => {
@@ -211,53 +222,63 @@ export function edgeLimits(listed: readonly ListedCut[], side: Side, f: ClipFact
   if (side === 'start') {
     const currentX = edge === null ? places.start : Math.min(d, toMs(edge.cut.out))
     const lowest = alone.inMs
-    // The latest frame from `lowest` at which three frames still play: `plays` falls as x rises.
-    let lo = Math.ceil((lowest * f.fps) / 1000)
-    let hi = Math.floor((d * f.fps) / 1000)
-    let found: Ms | null = null
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1
-      const x = frameMs(mid, f.fps)
-      if (x >= lowest && x <= d && plays(x) >= short) {
-        found = x
-        lo = mid + 1
-      } else if (x < lowest) {
-        lo = mid + 1
-      } else {
-        hi = mid - 1
+    // The latest frame from `lowest` that still passes: both tests fail from some x on.
+    const latest = (ok: (x: Ms) => boolean): Ms => {
+      let lo = Math.ceil((lowest * f.fps) / 1000)
+      let hi = Math.floor((d * f.fps) / 1000)
+      let found: Ms = lowest
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1
+        const x = frameMs(mid, f.fps)
+        if (x < lowest) {
+          lo = mid + 1
+        } else if (x <= d && ok(x)) {
+          found = x
+          lo = mid + 1
+        } else {
+          hi = mid - 1
+        }
       }
+      return found
     }
-    const highest = found ?? lowest
+    const byFrames = latest(threeFrames)
+    const bySlack = latest(keepsSome)
+    const highest = Math.min(byFrames, bySlack)
     return {
       lowest: Math.min(lowest, currentX),
       highest: Math.max(highest, currentX),
       lowWhy: lowest === 0 ? 'file' : 'cut',
-      highWhy: 'frames',
+      highWhy: bySlack < byFrames ? 'slack' : 'frames',
       currentX,
       holdingCut: lowest === 0 ? null : holding(0, lowest),
     }
   }
   const currentX = edge === null ? places.end : Math.max(0, toMs(edge.cut.in))
   const highest = alone.outMs
-  // The earliest frame up to `highest` at which three frames play: `plays` rises with x.
-  let lo = 0
-  let hi = Math.floor((highest * f.fps) / 1000)
-  let found: Ms | null = null
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1
-    const x = frameMs(mid, f.fps)
-    if (x <= highest && plays(x) >= short) {
-      found = x
-      hi = mid - 1
-    } else {
-      lo = mid + 1
+  // The earliest frame up to `highest` that passes: both tests pass from some x on.
+  const earliest = (ok: (x: Ms) => boolean): Ms => {
+    let lo = 0
+    let hi = Math.floor((highest * f.fps) / 1000)
+    let found: Ms = highest
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1
+      const x = frameMs(mid, f.fps)
+      if (x <= highest && ok(x)) {
+        found = x
+        hi = mid - 1
+      } else {
+        lo = mid + 1
+      }
     }
+    return found
   }
-  const lowest = found ?? highest
+  const byFrames = earliest(threeFrames)
+  const bySlack = earliest(keepsSome)
+  const lowest = Math.max(byFrames, bySlack)
   return {
     lowest: Math.min(lowest, currentX),
     highest: Math.max(highest, currentX),
-    lowWhy: 'frames',
+    lowWhy: bySlack > byFrames ? 'slack' : 'frames',
     highWhy: highest === d ? 'file' : 'cut',
     currentX,
     holdingCut: highest === d ? null : holding(highest, d),
@@ -284,6 +305,8 @@ export type EdgeAt = {
   extent: { inMs: Ms; outMs: Ms }
   /** Which limit holds the edge, or null. */
   limit: LimitWhy | null
+  /** The clip's cuts with the edge here (the edge cut keeps its reason; a new one is `manual`). */
+  cuts: readonly (ListedCut & { reason?: string | null })[]
 }
 
 /** What an edge can snap to besides the cuts: the playhead's time in this clip, or null. */
@@ -341,7 +364,9 @@ export function edgeAt(
         pps,
       )
     : { ms: wantedMs, target: null }
-  const placed = snapped.target === null ? nearestFrame(wantedMs, f.fps) : snapped.ms
+  // A limit asked for exactly (Home, End, a key at a limit) is taken as it is, never moved to the grid.
+  const exact = wantedMs === limits.lowest || wantedMs === limits.highest
+  const placed = exact ? wantedMs : snapped.target === null ? nearestFrame(wantedMs, f.fps) : snapped.ms
   const x = Math.min(limits.highest, Math.max(limits.lowest, placed))
   const hit = snapped.target !== null && x === snapped.target ? candidates.find((c) => c.ms === x) : undefined
   const place = placeWith(otherCuts, side, x, d, edge?.cut ?? null)
@@ -372,7 +397,15 @@ export function edgeAt(
     playsMs: plays,
     extent: kept,
     limit,
+    cuts: [
+      ...otherCuts,
+      { ...edgeSpan(side, x, d, edge?.cut ?? null), reason: reasonOf(edge?.cut) ?? 'manual' },
+    ],
   }
+}
+
+function reasonOf(cut: ListedCut | undefined): string | null | undefined {
+  return cut === undefined ? undefined : (cut as { reason?: string | null }).reason
 }
 
 /** The one edit a release makes (spec: add, trim, remove, or nothing). */
@@ -520,6 +553,8 @@ export function edgeNotes(side: Side, at: Pick<EdgeAt, 'limit' | 'joined' | 'sna
     notes.push(side === 'start' ? 'Start of the file' : 'End of the file')
   } else if (at.limit === 'frames') {
     notes.push('The clip keeps three frames')
+  } else if (at.limit === 'slack') {
+    notes.push('The clip keeps 0.1 s')
   } else if (at.limit === 'cut') {
     notes.push(holdingCut === null ? 'Held by another cut' : `Held by cut ${holdingCut}`)
   }
@@ -592,8 +627,31 @@ export function edgeAnnouncement(
   }
   if (at.limit === 'frames') {
     tail.push('The clip keeps three frames.')
+  } else if (at.limit === 'slack') {
+    tail.push('The clip keeps 0.1 s.')
   }
   return [head, ...tail].join(' ')
+}
+
+/**
+ * What a key's edit says (the slider's value says the rest): a join and a limit only, or null:
+ * `The start joined cuts 1 and 2. The clip keeps three frames.`, `Start of the file.`
+ */
+export function edgeKeyWords(side: Side, at: Pick<EdgeAt, 'joined' | 'limit'>, holdingCut: number | null): string | null {
+  const words: string[] = []
+  if (at.joined.length > 0) {
+    words.push(`The ${side} joined ${cutList(at.joined)}.`)
+  }
+  if (at.limit === 'file') {
+    words.push(side === 'start' ? 'Start of the file.' : 'End of the file.')
+  } else if (at.limit === 'frames') {
+    words.push('The clip keeps three frames.')
+  } else if (at.limit === 'slack') {
+    words.push('The clip keeps 0.1 s.')
+  } else if (at.limit === 'cut') {
+    words.push(holdingCut === null ? 'Held by another cut.' : `Held by cut ${holdingCut}.`)
+  }
+  return words.length === 0 ? null : words.join(' ')
 }
 
 /** Said for `Q`/`W` when nothing changes. */
