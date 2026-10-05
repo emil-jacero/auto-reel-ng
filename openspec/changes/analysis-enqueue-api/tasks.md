@@ -59,7 +59,7 @@ Conventions for every task below:
   `submit` raising `OperationalError` → 503; an id containing `/` reaches the route and `GET /events/{id}` still
   reaches the detail.
 
-- [ ] 3.3 Add `POST /api/v1/analysis` and `AnalyzeAllResult` (design D3), walking the events list's own event set and
+- [x] 3.3 Add `POST /api/v1/analysis` and `AnalyzeAllResult` (design D3), walking the events list's own event set and
   using one `latest_by_project(kind=ANALYSIS)` read. Verify in `tests/test_api_analysis_enqueue.py` (`requires_db`):
   the four-event project gives `queued` 2 / `fresh` 1 / `active` 1, two unforced rows; the repeat gives 0 / 1 / 3 and
   no row; one unlistable event lands in `unreadable` with `unreadable_disk` while another is queued; a
