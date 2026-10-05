@@ -24,6 +24,19 @@ confirms against the merged code before anything else):
 | `AnalysisOut.state`, `clips{identity: {state, detail}}`, `job: JobOut \| null` | closed `AnalysisState` `never \| stale \| current \| analyzing \| failed`; GET also declares 503 | the words mapping is keyed by the generated union, so a rename fails `tsc` |
 | `JobKind` includes `analysis` in `JobOut` and every WS frame | yes | `isAnalysis` follows the generated value |
 
+**Confirmed against `origin/main` (task 1.1, `web/src/api/schema.d.ts` and `auto_reel_ng/api/schemas.py` after
+`36624908`):** every row holds as written. Real names: `AnalysisEnqueueRequest{force: boolean = false}` (body
+optional); 201 `JobOut`; 200 `AnalysisFreshResult{event_id, status: "fresh", clip_count, failed_count}`; 409
+`ProblemOut` with `conflict: "active_job"`, `job_id` and **`forced`** (new to this table: `false` when a forced
+request met a `running` unforced job, which keeps running unforced — "ask again once it ends"); 404 / 502 / 503
+`ProblemOut` (503 with `check: "database"`). `POST /api/v1/analysis` → 200
+`AnalyzeAllResult{queued, fresh, active, unreadable: AnalyzeAllUnreadable{event_id, detail, failure?}[]}`, 502, 503.
+`AnalysisOut{analyzed (legacy), segments, state: AnalysisState, clips: {[identity]: ClipAnalysisOut{state,
+detail?}}, job?: JobOut | null}`; `AnalysisState = "never" | "stale" | "current" | "analyzing" | "failed"`;
+`JobKind = "render" | "proxy" | "analysis"`. `fetchAnalysis` already accepted the 503 (the gate's own change).
+The one adaptation: an `active` answer with `forced: false` to a Re-analyze says the running analysis is not a
+re-analysis ("Re-analyze again once it ends"), in the status region, not as a failure.
+
 ## Goals / Non-Goals
 
 **Goals:** honest badge everywhere it appears, Re-analyze, Analyze all, the header count, suggestions that follow
