@@ -2862,11 +2862,11 @@ required status and value.
 
 ### Requirement: Job kind is a closed, published vocabulary
 Every job the service reports SHALL carry its `kind`, drawn from the job store's closed set of job kinds:
-`render` and `proxy`. `kind` SHALL be present, non-null and **required** wherever the service describes a job: in
+`render`, `proxy` and `analysis`. `kind` SHALL be present, non-null and **required** wherever the service describes a job: in
 the job detail (`GET /api/v1/jobs/{id}`), in each item of the jobs list, in the job the enqueue returns, in the
 latest-job summary that the events list rows and the event detail carry, and in every job of a WebSocket frame.
 `GET /api/v1/jobs` lists the served project's jobs of every kind, each marked, and the job detail answers for a
-job of either. It SHALL have the same value for the same job in all of them. The service's OpenAPI schema SHALL publish the set
+job of any of them. It SHALL have the same value for the same job in all of them. The service's OpenAPI schema SHALL publish the set
 as an enumeration rather than as a free-form string, so a client can derive an exhaustive type, and removing or
 renaming a value is a compile-time failure in generated client code rather than a silent runtime change (D-8,
 §4.10); the latest-job model's `kind` SHALL be defined exactly as the job detail's.
@@ -2897,10 +2897,16 @@ received before.
 
 #### Scenario: The schema publishes the kind set
 - **WHEN** the service's OpenAPI schema is generated
-- **THEN** the job's `kind` is described as the enumeration `render`, `proxy`, is in the job detail's `required`
+- **THEN** the job's `kind` is described as the enumeration `render`, `proxy`, `analysis`, is in the job detail's `required`
   list and in the latest-job model's, and the two definitions are identical
 - **AND** a client generated from it that handles every kind exhaustively fails to compile until it handles
-  `proxy`
+  `proxy` and `analysis`
+
+#### Scenario: An analysis job says it is an analysis job on every read
+- **WHEN** `auto-reel analyze --enqueue` queued an analysis job for `2024/Blandat`, and it is read through
+  `GET /api/v1/jobs/{id}`, `GET /api/v1/jobs` and a WebSocket frame while it runs
+- **THEN** all three carry `kind: "analysis"` and `event_dir` `2024/Blandat`, and the event's `latest_job` on
+  `GET /api/v1/events` is still its latest render (or null when it has none)
 
 ### Requirement: An event's latest job is its latest render job
 Wherever an events response carries an event's latest job (each summary row of `GET /api/v1/events`, and
