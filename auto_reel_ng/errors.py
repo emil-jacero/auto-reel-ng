@@ -171,6 +171,17 @@ class AnalysisError(EngineError):
     """
 
 
+class AnalysisStateError(EngineError):
+    """A clip's analysis state cannot be read from the disk (``analysis-enqueue-api``).
+
+    Raised when a clip of the event cannot be statted, or its sidecar entry exists but cannot be
+    read (permission denied, an I/O error): the state of such a clip is never guessed as
+    ``never`` (Principle I). A sibling of :class:`AnalysisError`, not a subclass: nothing was
+    analyzed, and the analysis job's per-clip handling must not catch it as a clip's failure.
+    The message names the clip or entry and the OS error.
+    """
+
+
 class ThumbnailError(EngineError):
     """A clip could not give a thumbnail (D-11).
 

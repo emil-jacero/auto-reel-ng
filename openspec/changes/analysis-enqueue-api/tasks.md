@@ -20,7 +20,7 @@ Conventions for every task below:
 
 ## 2. analysis/ - the state rule
 
-- [ ] 2.1 Add `analysis/state.py` (design D1): `ClipAnalysisState`, `ClipAnalysis`, `clip_analysis_states(event_dir)`
+- [x] 2.1 Add `analysis/state.py` (design D1): `ClipAnalysisState`, `ClipAnalysis`, `clip_analysis_states(event_dir)`
   over `scan_event(event_dir).identities`, `event_disk_state(clips)` and `needs_analysis(clips)`, reading each entry
   through a new `analysis/cache.py inspect_entry` that tells a missing file from an unreadable one (typed
   `AnalysisStateError` in `errors.py`). No `cli/` edit (design D6). Verify in `tests/test_analysis_state.py` (no

@@ -29,7 +29,7 @@ import logging
 import os
 import secrets
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -186,6 +186,68 @@ def _read_payload(
     if payload.get("signal") != signal:
         return None  # stale: the clip changed since this entry was written
     return payload
+
+
+class EntryFileKind(StrEnum):
+    """What a clip's sidecar entry file holds, judged against the clip's current signal."""
+
+    #: No entry file: the clip was never analyzed, and never failed.
+    ABSENT = "absent"
+    #: A result (segments) for the clip as it is now.
+    RESULT = "result"
+    #: A failure marker for the clip as it is now.
+    FAILURE = "failure"
+    #: Anything else: an entry or marker for another signal, another version, or unparseable.
+    OTHER = "other"
+
+
+@dataclass(frozen=True)
+class EntryRecord:
+    """:func:`inspect_entry`'s answer: the entry's kind, with its segments or its cause."""
+
+    kind: EntryFileKind
+    segments: Optional[List[Segment]] = None
+    failure: Optional[str] = None
+
+
+def inspect_entry(event_dir: PathLike, identity: str, signal: Dict[str, object]) -> EntryRecord:
+    """Tell what the entry of ``identity`` holds for ``signal``, without the "cold" softening.
+
+    For the analysis state (``analysis-enqueue-api``): unlike :func:`read_entry`, an entry file
+    that is absent (:attr:`EntryFileKind.ABSENT`) is told apart from one that exists but is of
+    another signal or version or cannot be parsed (:attr:`EntryFileKind.OTHER`), and a file that
+    exists but cannot be read raises. Reads one file; never writes.
+
+    Raises:
+        OSError: the entry file exists but cannot be read (any error but its absence).
+    """
+    path = _entry_path(event_dir, identity)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return EntryRecord(EntryFileKind.ABSENT)
+    except UnicodeDecodeError:  # bytes that are not text: not an entry this build wrote
+        return EntryRecord(EntryFileKind.OTHER)
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return EntryRecord(EntryFileKind.OTHER)
+    if (
+        not isinstance(payload, dict)
+        or payload.get("version") != _ENTRY_VERSION
+        or payload.get("signal") != signal
+    ):
+        return EntryRecord(EntryFileKind.OTHER)
+    if "segments" in payload:
+        try:
+            segments = [_segment_from_dict(s) for s in payload["segments"]]
+        except (KeyError, TypeError, ValueError):
+            return EntryRecord(EntryFileKind.OTHER)
+        return EntryRecord(EntryFileKind.RESULT, segments=segments)
+    failure = payload.get("failure")
+    if isinstance(failure, str):
+        return EntryRecord(EntryFileKind.FAILURE, failure=failure)
+    return EntryRecord(EntryFileKind.OTHER)
 
 
 def read_failure(event_dir: PathLike, identity: str, signal: Dict[str, object]) -> Optional[str]:
