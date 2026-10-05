@@ -241,4 +241,15 @@ describe('docs/high-level-design.md and edit-list-paint-cost', () => {
     assert.ok(s6 > 0 && s7 > s6)
     assert.ok(at.some((i) => i > s6 && i < s7), '§6 names it')
   })
+
+  it('names the edge tools’ zoom-settle rule in D-20 (design D6)', () => {
+    const lines = text.split('\n')
+    const d20 = lines.findIndex((line) => line.startsWith('- **D-20'))
+    const d21 = lines.findIndex((line) => line.startsWith('- **D-21'))
+    const note = lines.slice(d20, d21).join(' ').replace(/\s+/g, ' ')
+    assert.match(note, /zoom settles/)
+    assert.match(note, /150 ms/)
+    assert.match(note, /`zoomSettle`/)
+    assert.match(note, /holds focus/)
+  })
 })

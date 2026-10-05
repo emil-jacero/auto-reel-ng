@@ -442,8 +442,9 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   skip drawing while far out of view (`content-visibility: auto` with a remembered, measured `contain-intrinsic-size`; a
   focused row, the drop target and the lifted row are drawn whole), and each chapter's played list is one composited
   layer. A Zoom-slider drag on a 400-clip event, Chrome at 4x CPU throttle, went from about 50 % of frames over 25 ms
-  to a median 0.36 % (9.34 % once `clip-edge-trim`'s edge tools merged: open), and a clip-edge drag on 80 clips holds at
-  0 %; zoom, scrub and play render no clip row. No API, engine or `RENDER_GRAPH_VERSION` change.
+  to a median 0.58 % with `clip-edge-trim`'s edge tools leaving the track while a zoom is in progress (back 150 ms after
+  it settles, a focused one kept), and a clip-edge drag on 80 clips holds at 0 %; zoom, scrub and play render no clip
+  row. No API, engine or `RENDER_GRAPH_VERSION` change.
 - **v2 Title cards switch** (`title-card-toggle`, D-20, D-25): Edit mode's **Title cards: On / Off**
   (now the dialog's second tab, `web/src/edit/card/EventTab.tsx`; superseded UI, see `edit-mode-declutter`; pure model `decorators.ts`) edits the event's own `look.decorators` in the same
   draft (Off removes `title` and keeps the other names; with no list it writes `[]`; On puts `title` first). The state the
@@ -880,8 +881,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `clip-edge-trim` has landed (web only; D-20): Premiere-style Trim In / Trim Out edge tools on the Edit-mode Timeline edit
    a clip's leading and trailing cuts with a live ripple; no API, engine or `RENDER_GRAPH_VERSION` change.
    `edit-list-paint-cost` follows them (web only; D-20): the Edit page's 400-row clip list no longer repaints and
-   re-layerizes on every Timeline frame, which closes the edge drag's gate; the slider drag's is open again after the
-   edge tools merged; no API, engine or `RENDER_GRAPH_VERSION` change.
+   re-layerizes on every Timeline frame, and the edge tools step aside while a zoom is in progress, which closes both
+   the edge drag's and the slider drag's gates; no API, engine or `RENDER_GRAPH_VERSION` change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1645,8 +1646,18 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     51.0 %), Firefox 0 %, scrub 56.9 / 50.1 fps and frame-step p90 27.3 / 25.9 ms. The difference from 0.36 % is the
     edge tools: each zoom re-renders and lays out the ones in view (their `x` changes), adding 2 ms of React commit and
     the scroll restore's forced layout per zoom at 4x; a scratch build that never renders them measures about 1 %, one
-    that hides them with `display: none` 3-6 %, CSS containment of them nothing. That fix belongs to the Timeline and
-    is left open. No package added.
+    that hides them with `display: none` 3-6 %, CSS containment of them nothing. **The edge tools step aside while a
+    zoom is in progress** (design D6 of the change; `zoomSettle`): from a zoom's first input (the Zoom slider, the zoom
+    buttons, `=`/`-` and their key repeat, Ctrl/Cmd+wheel or pinch) until the zoom settles, the track renders no Trim
+    In or Trim Out tool, as behind a rippling drag, except the one that holds focus (or is dragged) when the zoom
+    starts. The zoom settles on the slider's release (the position still waiting for its frame is zoomed to first), or
+    150 ms after the last input of any other kind; Timeline state changes twice per zoom, not per input, and the tools
+    come back once, at the new scale, where the trim cursor and bracket show under a pointer that did not move (Chrome
+    and Firefox). A press on the slider takes focus, so a slider drag keeps no tool. **Final figures** (quiet host, load
+    1.0-2.3, one session, medians): the **slider drag** on 400 clips 0.58 % in Chrome 4x (0.30-1.47 % over 15 drags,
+    p95 19-22 ms; idle 0 %; `origin/main` 50.0 %), Firefox 0 %; the **edge drag** on 80 clips 0 % in Chrome 4x
+    (0-0.27 %, idle 0 %; `origin/main` 0.16 %), Firefox 0 %; scrub 55.9 / 48.6 fps and frame-step p90 27.6 / 25.9 ms in
+    Chrome / Firefox. Both gates (≤ 2 %) are met. No package added.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
   1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every
