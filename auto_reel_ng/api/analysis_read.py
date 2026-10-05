@@ -9,6 +9,7 @@ enqueues through :func:`~auto_reel_ng.scheduler.submit_analysis`, the function
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
@@ -19,18 +20,28 @@ from ..analysis.state import (
     ClipAnalysisState,
     clip_analysis_states,
     event_disk_state,
+    needs_analysis,
 )
+from ..errors import AnalysisStateError
+from ..ingest import get_layout
 from ..persistence.job_store import JobStore
-from ..persistence.models import Job, JobKind
-from .events_read import EventReadError, classify_event_failure, listed_event_dir
+from ..persistence.models import Job, JobKind, JobStatus
+from ..scheduler import submit_analysis
+from .events_read import EventReadError, classify_event_failure, event_id_for, listed_event_dir
 from .schemas import (
     AnalysisOut,
     AnalysisState,
+    AnalyzeAllResult,
+    AnalyzeAllUnreadable,
     ClipAnalysisOut,
     SegmentOut,
 )
 from .serialize import job_to_out
 from .settings import ApiSettings
+
+logger = logging.getLogger(__name__)
+
+_ACTIVE = (JobStatus.QUEUED, JobStatus.RUNNING)
 
 
 @dataclass(frozen=True)
@@ -114,4 +125,52 @@ def failed_count(clips: Sequence[ClipAnalysis]) -> int:
     return sum(1 for clip in clips if clip.state is ClipAnalysisState.FAILED)
 
 
-__all__ = ["EventAnalysis", "failed_count", "get_analysis", "read_event_clips"]
+def analyze_all(settings: ApiSettings, store: JobStore) -> AnalyzeAllResult:
+    """``POST /api/v1/analysis``: queue an unforced analysis job for every event that needs one.
+
+    Walks the events the events list shows, in its order. Per event: an active analysis job
+    (one read of the latest analysis job per event, before the walk) counts ``active``; a
+    folder, clip or entry that cannot be read is one ``unreadable`` item and the walk goes on
+    (Principle I's per-event isolation); no ``never`` or ``stale`` clip counts ``fresh``;
+    otherwise :func:`~auto_reel_ng.scheduler.submit_analysis` inserts the job, ``queued`` (or
+    ``active`` when a concurrent insert won). ``reel.yaml`` is never read.
+
+    Raises:
+        LayoutError / OSError: the project walk failed; nothing was queued.
+        SQLAlchemyError: the job store cannot be reached; rows inserted before stay queued.
+    """
+    project_root = settings.project_root
+    refs = list(get_layout(settings.layout_name)(settings.walk_root))
+    latest = store.latest_by_project(str(project_root), kind=JobKind.ANALYSIS)
+    result = AnalyzeAllResult(queued=0, fresh=0, active=0, unreadable=[])
+    for ref in refs:
+        event_id = event_id_for(settings, ref.event_dir)
+        held = latest.get(event_id)
+        if held is not None and held.status in _ACTIVE:
+            result.active += 1
+            continue
+        try:
+            clips = clip_analysis_states(ref.event_dir)
+        except AnalysisStateError as exc:
+            result.unreadable.append(AnalyzeAllUnreadable(event_id=event_id, detail=str(exc)))
+            continue
+        except OSError as exc:
+            failure = classify_event_failure(exc)
+            result.unreadable.append(
+                AnalyzeAllUnreadable(event_id=event_id, detail=str(exc), failure=failure)
+            )
+            continue
+        if not needs_analysis(clips):
+            result.fresh += 1
+            continue
+        submission = submit_analysis(store, project_root, [ref.event_dir], force=False)[0]
+        if submission.created:
+            result.queued += 1
+        else:
+            result.active += 1
+    for item in result.unreadable:
+        logger.warning("analyze all: %s: %s", item.event_id, item.detail)
+    return result
+
+
+__all__ = ["EventAnalysis", "analyze_all", "failed_count", "get_analysis", "read_event_clips"]

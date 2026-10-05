@@ -1,4 +1,4 @@
-"""The analysis routes (``analysis-enqueue-api``): the read and the per-event enqueue.
+"""The analysis routes (``analysis-enqueue-api``): the read, the per-event enqueue, Analyze all.
 
 Thin wiring over :mod:`..analysis_read`. The read and the per-event enqueue take an event id
 with ``/`` in it, so this router is included before the events router: both are greedy
@@ -28,6 +28,7 @@ from ..schemas import (
     AnalysisEnqueueRequest,
     AnalysisFreshResult,
     AnalysisOut,
+    AnalyzeAllResult,
     EnqueueConflict,
     JobOut,
     ProblemOut,
@@ -202,6 +203,30 @@ def enqueue_analysis(
     job = store.get(submission.job_id)
     assert job is not None  # nosec B101 - just inserted, must be readable
     return job_to_out(job)
+
+
+@router.post(
+    "/analysis",
+    response_model=AnalyzeAllResult,
+    responses={502: {"model": ProblemOut}, 503: {"model": ProblemOut}},
+)
+@job_store_unreachable
+def analyze_all(request: Request) -> Union[AnalyzeAllResult, Response]:
+    """``POST /api/v1/analysis``: Analyze all.
+
+    Considers every event the events list shows, in its order: an event with a queued or
+    running analysis job counts ``active``; one whose folder, a clip or a cache entry cannot
+    be read is listed in ``unreadable`` and the others are still considered; one where no clip
+    reads ``never`` or ``stale`` counts ``fresh``; every other event gets an unforced analysis
+    job and counts ``queued``. No body. A project walk that fails is a 502 with nothing
+    enqueued; an unreachable job store a 503 (jobs inserted before it stay queued, and a repeat
+    counts them ``active``). Nothing is started or written but job rows; ``reel.yaml`` is never
+    read.
+    """
+    try:
+        return analysis_read.analyze_all(_settings(request), request.app.state.job_store)
+    except (LayoutError, OSError) as exc:
+        return bad_gateway(f"event scan failed: {exc}")
 
 
 __all__ = ["router"]

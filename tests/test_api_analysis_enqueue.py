@@ -359,3 +359,176 @@ def test_an_id_with_a_slash_reaches_the_route_and_the_detail_still_answers(
     assert client.post(_url(GRILLNING)).status_code == 201
     detail = client.get(f"/api/v1/events/{quote(GRILLNING, safe='/')}")
     assert detail.status_code == 200 and detail.json()["event_id"] == GRILLNING
+
+
+# --------------------------------------------------------------------------- #
+# POST /api/v1/analysis: Analyze all
+# --------------------------------------------------------------------------- #
+
+NEVER_EVENT = "2024/2024-06-27 - Grillning med grannar"
+STALE_EVENT = "2024/2024-07-04 - Barbecue"
+CURRENT_EVENT = "2023/2023-06-23 - Midsommar - Dalarna"
+RUNNING_EVENT = "2024/Blandat"
+
+FOUR: Dict[str, List[str]] = {
+    NEVER_EVENT: ["00100.mp4", "00200.mp4"],
+    STALE_EVENT: ["00500.mp4", "clips/00600.mp4"],
+    CURRENT_EVENT: ["C0001.MP4"],
+    RUNNING_EVENT: ["a.mp4"],
+}
+
+
+@pytest.fixture
+def four(tmp_path: Path) -> Path:
+    """A project of four events: never, stale, current, and one with a running analysis job."""
+    root = tmp_path / "four"
+    for event_id, identities in FOUR.items():
+        for identity in identities:
+            clip = root / event_id / identity
+            clip.parent.mkdir(parents=True, exist_ok=True)
+            clip.write_bytes(f"clip {event_id} {identity}".encode())
+    analyze(root / STALE_EVENT, *FOUR[STALE_EVENT])
+    replace(root / STALE_EVENT / "00500.mp4")
+    analyze(root / CURRENT_EVENT, *FOUR[CURRENT_EVENT])
+    return root
+
+
+@pytest.fixture
+def four_client(four: Path, postgres_container: str, store: JobStore) -> Iterator[TestClient]:
+    settings = resolve_api_settings(four, env={"DATABASE_URL": postgres_container})
+    with TestClient(create_app(settings)) as test_client:
+        yield test_client
+
+
+def _running(store: JobStore, root: Path, event_id: str) -> str:
+    job_id = store.submit(str(root), event_id, kind=JobKind.ANALYSIS).job_id
+    claimed = store.claim_next("worker-1")
+    assert claimed is not None and claimed.id == job_id
+    return str(job_id)
+
+
+def test_analyze_all_queues_what_needs_it(
+    four_client: TestClient, store: JobStore, four: Path, no_processes: None
+) -> None:
+    running = _running(store, four, RUNNING_EVENT)
+    before = snapshot(four)
+
+    response = four_client.post("/api/v1/analysis")
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"queued": 2, "fresh": 1, "active": 1, "unreadable": []}
+    queued = [row for row in _rows(store) if str(row.id) != running]
+    assert sorted(row.event_dir for row in queued) == sorted([NEVER_EVENT, STALE_EVENT])
+    assert all(row.status is JobStatus.QUEUED and row.force is False for row in queued)
+    assert snapshot(four) == before
+
+
+def test_a_repeat_finds_the_jobs_it_queued(
+    four_client: TestClient, store: JobStore, four: Path
+) -> None:
+    _running(store, four, RUNNING_EVENT)
+    four_client.post("/api/v1/analysis")
+    rows = len(_rows(store))
+
+    response = four_client.post("/api/v1/analysis")
+
+    assert response.json() == {"queued": 0, "fresh": 1, "active": 3, "unreadable": []}
+    assert len(_rows(store)) == rows
+
+
+def test_one_unreadable_event_costs_only_itself(
+    four_client: TestClient, store: JobStore, four: Path
+) -> None:
+    if os.geteuid() == 0:
+        pytest.skip("root ignores file permissions")
+    (four / STALE_EVENT).chmod(0)
+    try:
+        response = four_client.post("/api/v1/analysis")
+    finally:
+        (four / STALE_EVENT).chmod(0o755)
+
+    assert response.status_code == 200
+    body = response.json()
+    (item,) = body["unreadable"]
+    assert item["event_id"] == STALE_EVENT and item["failure"] == "unreadable_disk"
+    assert (body["queued"], body["fresh"], body["active"]) == (2, 1, 0)  # never + running's
+    assert NEVER_EVENT in {row.event_dir for row in _rows(store)}
+
+
+def test_an_unreadable_cache_entry_is_listed_without_a_kind(
+    four_client: TestClient, store: JobStore, four: Path
+) -> None:
+    if os.geteuid() == 0:
+        pytest.skip("root ignores file permissions")
+    entry = _entry_path(four / CURRENT_EVENT, "C0001.MP4")
+    entry.chmod(0)
+    try:
+        body = four_client.post("/api/v1/analysis").json()
+    finally:
+        entry.chmod(0o644)
+
+    (item,) = body["unreadable"]
+    assert item["event_id"] == CURRENT_EVENT and item["failure"] is None
+    assert "C0001.MP4" in item["detail"]
+
+
+def test_ignored_folders_are_not_considered(
+    four_client: TestClient, store: JobStore, four: Path
+) -> None:
+    ignored = four / "2024" / "2024-08-01 - Ignorerad"
+    ignored.mkdir(parents=True)
+    (ignored / "x.mp4").write_bytes(b"never analyzed")
+    (ignored / ".reelignore").write_text("")
+
+    body = four_client.post("/api/v1/analysis").json()
+
+    assert body["queued"] + body["fresh"] + body["active"] == 4
+    assert "2024/2024-08-01 - Ignorerad" not in {row.event_dir for row in _rows(store)}
+
+
+def test_a_failed_walk_queues_nothing(four: Path, postgres_container: str, store: JobStore) -> None:
+    import dataclasses
+
+    settings = resolve_api_settings(four, env={"DATABASE_URL": postgres_container})
+    broken = dataclasses.replace(settings, layout_name="no-such-layout")
+    with TestClient(create_app(broken)) as client:
+        response = client.post("/api/v1/analysis")
+
+    assert response.status_code == 502 and "no-such-layout" in response.json()["detail"]
+    assert _rows(store) == []
+
+
+def test_a_store_that_fails_mid_walk_is_a_503_and_keeps_what_it_queued(
+    four_client: TestClient, store: JobStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app_store = four_client.app.state.job_store
+    real_submit = app_store.submit
+    calls: List[str] = []
+
+    def flaky(project_root: str, event_dir: str, **kwargs: Any) -> Any:
+        calls.append(event_dir)
+        if len(calls) == 2:
+            raise OperationalError("insert", {}, Exception("connection refused"))
+        return real_submit(project_root, event_dir, **kwargs)
+
+    monkeypatch.setattr(app_store, "submit", flaky)
+
+    response = four_client.post("/api/v1/analysis")
+
+    assert response.status_code == 503 and response.json()["check"] == "database"
+    assert [row.event_dir for row in _rows(store)] == calls[:1]
+
+
+def test_an_event_with_an_active_job_is_not_read(
+    four_client: TestClient, store: JobStore, four: Path
+) -> None:
+    if os.geteuid() == 0:
+        pytest.skip("root ignores file permissions")
+    _running(store, four, RUNNING_EVENT)
+    (four / RUNNING_EVENT).chmod(0)
+    try:
+        body = four_client.post("/api/v1/analysis").json()
+    finally:
+        (four / RUNNING_EVENT).chmod(0o755)
+
+    assert body["active"] == 1 and body["unreadable"] == []
