@@ -519,11 +519,18 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   The analysis job has landed (`analysis-job`, D-27): the worker detects black/white/freeze spans in an event's
   originals as an `analysis` job, after renders and proxy jobs, so "Not analyzed" can be fixed without the CLI once
   `analysis-enqueue-api` (the REST enqueue and an analysis state), `analysis-web-controls` (Re-analyze and Analyze
-  all) and `analysis-auto-sweep` (the worker's automatic, capped sweep) follow; until then `auto-reel analyze
-  --enqueue` queues it. **`analysis-enqueue-api` has landed** (D-27 "Enqueue over REST and state"): `POST
+  all) and `analysis-auto-sweep` (the worker's automatic, capped sweep) follow (before them, `auto-reel
+  analyze --enqueue` queued it). **`analysis-enqueue-api` has landed** (D-27 "Enqueue over REST and state"): `POST
   …/events/{event_id}/analysis` (`force` = Re-analyze), `POST /api/v1/analysis` (Analyze all) and the
-  `never | stale | current | analyzing | failed` state with the active job on `GET …/analysis`; the web's screens
-  are unchanged until `analysis-web-controls`.
+  `never | stale | current | analyzing | failed` state with the active job on `GET …/analysis`.
+  **v2 analysis from the web has landed** (`analysis-web-controls`, D-20): the event page makes one analysis read
+  (on opening, on Refresh and when the event's `analysis` job ends, live over the jobs WebSocket; never on a timer)
+  and shows its published state as a badge on the header's facts line in both modes and in the Timeline's lane
+  ("Not analyzed", "Analysis out of date", "Waiting to analyze" / "Analyzing… 42%", "Analysis failed for N clips";
+  none when current), with per-clip notes; **Re-analyze** (`POST …/analysis {force: true}`; "Analyze" while never
+  analysed) in the read view's actions and beside the Timeline's badge in Edit mode; **Analyze all**
+  (`POST /api/v1/analysis`) on the event list with its counts as a line; the header's own "N to analyze" count. The
+  operator analyzes from the page: the terminal command is only an aside in the Timeline help.
   The timeline is built in the repo (**D-20**); its pure model has landed (`timeline-model`) and **the read-only
   Timeline has landed on the event page** (`timeline-view`): its own section, closed until opened, a Prepare state
   when a clip has no ready proxy, then one track (ruler, chapter band, clips laid out from the proxy facts, cuts as
@@ -862,6 +869,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `analysis-enqueue-api` has landed: the per-event and Analyze-all enqueues over `submit_analysis` and the analysis
    state on the read (an `api/` + `analysis/` change; no render, fingerprint, schema-version or
    `RENDER_GRAPH_VERSION` change, no migration, no `cli/` change).
+   `analysis-web-controls` has landed: the web half (`web/src/analysis/`): the page's one analysis read and its
+   state badge in the header and the Timeline's lane, Re-analyze, Analyze all, the header's analysis count, and
+   the refresh on the job's end (a `web/` change only; no API, engine or staleness change).
    `movie-chapter-list` is the first user of `movie-facts-read`: the movie player's chapter jump list and the
    movie's version in the facts, a `web/` change only (D-15).
    `proxy-enqueue-endpoint` has landed next: `POST /api/v1/events/{event_id}/proxies`, `kind` on the jobs shapes and the
@@ -1384,14 +1394,16 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     touch). Kind is an icon and a word, state a glyph (`?` `✓` `◐` `×`) and a word, never colour alone. The three
     kinds of "no suggestions" are told apart, from the entries and not the service's `analyzed` flag (which is true
     for any event whose cache directory exists, and a render's manifest creates it): no clip has an entry (never analysed,
-    with the command), entries and nothing found, and a clip with no entry among others that have. Analysis is never
-    started from the page. A legend under the lane spells out the icons and glyphs. Deciding needs the Timeline on
+    with the command), entries and nothing found, and a clip with no entry among others that have (superseded by
+    the published state, below). Analysis was not started from the page until `analysis-web-controls`. A legend under the lane spells out the icons and glyphs. Deciding needs the Timeline on
     Edit mode's draft, so the lane takes an `analysis` value whose `decide` is null in the read view, where it offers
     no decision and no note about one; the decision rules (`decideApprove`, `decideDismiss`) are pure and tested.
     The requirements for them are in `event-timeline`, written by `timeline-overlay-decisions` (below).
     Since `analysis-enqueue-api` the read carries a closed `state` per event and per clip (`never | stale | current
-    | analyzing | failed`, D-27); the lane's notes will read it instead of the entries and `analyzed`, with
-    Re-analyze and Analyze all (`analysis-web-controls`).
+    | analyzing | failed`, D-27). Since `analysis-web-controls` the lane shows the event page's one analysis read
+    instead of reading on mount (the header's badge and the lane's never disagree, and the end of the event's
+    `analysis` job redraws the lane in place, keeping zoom and playhead); its badge and per-clip notes are the
+    published state, never the entries or `analyzed`; the selected mark survives a new read that still lists it.
   - **Prepare enqueues the proxy job** (`proxy-job`): the timeline's Prepare state enqueues the D-21 `proxy` job for the event; a render does not wait for it. It calls `POST /api/v1/events/{event_id}/proxies` (`proxy-enqueue-endpoint`) and follows the job on the WebSocket, whose jobs carry `kind`.
   - **Trim handles (change `timeline-trim`, 2026-10-03): the same Timeline in Edit mode, on the draft.** Edit mode mounts
     the one `TimelineSection` after the metadata form, closed until opened, with `editing` set: its cuts are the draft's

@@ -253,3 +253,33 @@ describe('docs/high-level-design.md and edit-list-paint-cost', () => {
     assert.match(note, /holds focus/)
   })
 })
+
+/* The design document records analysis-web-controls (§4.10, D-20, §6). */
+describe('docs/high-level-design.md and analysis-web-controls', () => {
+  const text = readFileSync(new URL('../../../docs/high-level-design.md', import.meta.url), 'utf8')
+  const lines = text.split('\n')
+  const start = (prefix: string) => lines.findIndex((line) => line.startsWith(prefix))
+
+  it('names analysis-web-controls in §4.10, D-20 and §6', () => {
+    const at = lines.flatMap((line, i) => (line.includes('analysis-web-controls') ? [i] : []))
+    const within = (from: number, to: number) => at.some((i) => i > from && i < to)
+    const s410 = start('### 4.10 ')
+    const s411 = start('### 4.11 ')
+    assert.ok(s410 > 0 && s411 > s410)
+    assert.ok(within(s410, s411), '§4.10 names it')
+    const s6 = start('## 6. ')
+    const s7 = start('## 7. ')
+    assert.ok(within(s6, s7), '§6 names it')
+    const d20 = start('- **D-20')
+    const d21 = start('- **D-21')
+    assert.ok(within(d20, d21), 'D-20 names it')
+  })
+
+  it('§4.10 says the operator analyzes from the page, not that the command is how', () => {
+    const s410 = lines.slice(start('### 4.10 '), start('### 4.11 ')).join('\n')
+    assert.match(s410, /v2 analysis from the web has landed/)
+    assert.match(s410, /The\s+operator analyzes from the page/)
+    assert.doesNotMatch(s410, /until then `auto-reel analyze/)
+    assert.doesNotMatch(s410, /Run `auto-reel analyze/)
+  })
+})
