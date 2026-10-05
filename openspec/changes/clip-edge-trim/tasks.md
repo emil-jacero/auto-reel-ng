@@ -39,13 +39,13 @@
 
 ## 4. Browser verification (scratchpad only)
 
-- [ ] 4.1 Playwright from `$SCRATCH` in Chrome (`localhost/playback-research:chrome`) and Firefox ≥ 155
+- [x] 4.1 Playwright from `$SCRATCH` in Chrome (`localhost/playback-research:chrome`) and Firefox ≥ 155
   (`localhost/pcm-audio-research:pw163`) against the dev service on port 8441 (DB `arel_clip_edge_trim`, library
   `dev-clip-edge-trim`): hover cursor (computed style has `url(` and `ew-resize`) and bracket, boundary hand-over,
   start and end drags with live ripple and tip, join/un-join, red limit + words, restore removes the cut, Escape and
   zero move, Alt and `S`, keyboard sliders, `Q`/`W`, locked during save, no tools outside Edit mode, Save writes the
   expected `trims` to `reel.yaml` (route only the write globs); light/dark at 1280 and 390; screenshots looked at.
-- [ ] 4.2 Gates: 400-clip windowing count of edge tools, scripted edge drag on an 80-clip event under 4x throttle in
+- [x] 4.2 Gates: 400-clip windowing count of edge tools, scripted edge drag on an 80-clip event under 4x throttle in
   Chrome (≤ 2 % frames over 25 ms, median vs idle page recorded), no horizontal page scroll 320–1280 px; record the
   numbers and the gzip bundle size before/after (`npm run build`) in the PR body.
 
