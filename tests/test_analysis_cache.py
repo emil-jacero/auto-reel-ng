@@ -254,3 +254,96 @@ def test_an_entry_of_the_previous_format_still_reads(event_dir: Path) -> None:
         encoding="utf-8",
     )
     assert read_entry(event_dir, "clip.mp4", signal) == SEGMENTS
+
+
+# --------------------------------------------------------------------------- #
+# entry_state / pending_clips (analysis-auto-sweep 1.1): the one stat-only rule the analysis
+# job and the automatic sweep share.
+# --------------------------------------------------------------------------- #
+
+
+def _forbid_media_reads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make every ffmpeg/ffprobe start and every content hash raise."""
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError(f"a media read or process was started: {args!r}")
+
+    import subprocess  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(subprocess, "Popen", refuse)
+    monkeypatch.setattr(subprocess, "run", refuse)
+    monkeypatch.setattr(cache_module, "analyze_clip", refuse)
+    monkeypatch.setattr(cache_module, "_content_hash", refuse)
+
+
+def _event_of_five(tmp_path: Path) -> Path:
+    """current.mp4 (entry), stale.mp4 (entry for an old signal), new.mp4 (nothing),
+    failed.mp4 (marker for its signal), refailed.mp4 (marker for an old signal)."""
+    event = tmp_path / "event"
+    event.mkdir()
+    for name in ("current", "stale", "new", "failed", "refailed"):
+        (event / f"{name}.mp4").write_bytes(name.encode())
+    signal = cache_module.clip_signal
+    cache_module.write_entry(event, "current.mp4", signal(event / "current.mp4"), SEGMENTS)
+    cache_module.write_entry(event, "stale.mp4", signal(event / "stale.mp4"), SEGMENTS)
+    cache_module.write_failure(event, "failed.mp4", signal(event / "failed.mp4"), "moov missing")
+    cache_module.write_failure(
+        event, "refailed.mp4", signal(event / "refailed.mp4"), "moov missing"
+    )
+    (event / "stale.mp4").write_bytes(b"stale, re-copied and longer")
+    (event / "refailed.mp4").write_bytes(b"refailed, now a good copy")
+    return event
+
+
+def test_entry_state_tells_current_failed_and_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    event = _event_of_five(tmp_path)
+    _forbid_media_reads(monkeypatch)
+    states = {
+        name: cache_module.entry_state(event, name, cache_module.clip_signal(event / name))
+        for name in ("current.mp4", "stale.mp4", "new.mp4", "failed.mp4", "refailed.mp4")
+    }
+    assert {name: state.kind for name, state in states.items()} == {
+        "current.mp4": cache_module.EntryKind.CURRENT,
+        "stale.mp4": cache_module.EntryKind.MISSING,
+        "new.mp4": cache_module.EntryKind.MISSING,
+        "failed.mp4": cache_module.EntryKind.FAILED,
+        "refailed.mp4": cache_module.EntryKind.MISSING,
+    }
+    assert states["failed.mp4"].failure == "moov missing"
+    assert states["current.mp4"].failure is None and states["new.mp4"].failure is None
+
+
+def test_pending_clips_are_the_missing_ones_found_without_media_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    event = _event_of_five(tmp_path)
+    before = {p: p.stat().st_mtime_ns for p in event.rglob("*")}
+    _forbid_media_reads(monkeypatch)
+    assert cache_module.pending_clips(event) == ["new.mp4", "refailed.mp4", "stale.mp4"]
+    assert {p: p.stat().st_mtime_ns for p in event.rglob("*")} == before  # nothing written
+
+
+def test_pending_clips_of_a_fully_analyzed_event_is_empty(tmp_path: Path) -> None:
+    event = tmp_path / "event"
+    (event / "Chapter").mkdir(parents=True)
+    (event / "a.mp4").write_bytes(b"a")
+    (event / "Chapter" / "b.mov").write_bytes(b"b")
+    for identity in ("a.mp4", "Chapter/b.mov"):
+        cache_module.write_entry(event, identity, cache_module.clip_signal(event / identity), [])
+    assert cache_module.pending_clips(event) == []
+
+
+def test_a_corrupt_entry_is_missing(tmp_path: Path) -> None:
+    event = tmp_path / "event"
+    event.mkdir()
+    (event / "a.mp4").write_bytes(b"a")
+    path = cache_module.write_entry(event, "a.mp4", cache_module.clip_signal(event / "a.mp4"), [])
+    path.write_text("{not json", encoding="utf-8")
+    assert cache_module.pending_clips(event) == ["a.mp4"]
+
+
+def test_pending_clips_of_an_unlistable_event_raises(tmp_path: Path) -> None:
+    with pytest.raises(OSError):
+        cache_module.pending_clips(tmp_path / "gone")
