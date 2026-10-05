@@ -15,10 +15,12 @@ from test_scheduler_worker import _cpu_render_job, _failed_error, _gpu_render_jo
 from auto_reel_ng.accel.profiles import CPUProfile
 from auto_reel_ng.analysis.models import Segment
 from auto_reel_ng.errors import AnalysisError, FfmpegCancelledError
+from auto_reel_ng.persistence.engine import session_scope
 from auto_reel_ng.persistence.job_store import JobStore
 from auto_reel_ng.persistence.models import Job, JobKind, JobStatus
 from auto_reel_ng.proxies import ProxySettings
 from auto_reel_ng.render import RenderJob, RenderResult
+from auto_reel_ng.scheduler import analysis_job as analysis_job_module
 from auto_reel_ng.scheduler.analysis_job import AnalysisJobHandler
 from auto_reel_ng.scheduler.pools import CapacityPools
 from auto_reel_ng.scheduler.proxy_job import ProxyJobHandler
@@ -236,10 +238,6 @@ def test_a_higher_priority_does_not_put_an_analysis_job_before_a_proxy_job(
 
 def _bump(store: JobStore, job_id: Any) -> None:
     """Raise a job's ``priority`` straight in the table (no store API sets it)."""
-    from auto_reel_ng.persistence.engine import (  # pylint: disable=import-outside-toplevel
-        session_scope,
-    )
-
     with session_scope(store._session_factory) as session:  # pylint: disable=protected-access
         job = session.get(Job, job_id)
         assert job is not None
@@ -314,8 +312,6 @@ def test_renders_are_never_starved_by_ten_queued_analysis_jobs(fx: Fixture) -> N
 def test_an_analysis_job_starts_no_clip_while_a_proxy_job_runs(
     fx: Fixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from auto_reel_ng.scheduler import analysis_job as analysis_job_module  # pylint: disable=import-outside-toplevel
-
     monkeypatch.setattr(analysis_job_module, "YIELD_POLL_S", 0.02)
     proxy_id = fx.proxy(fx.event("px"))
     assert fx.store.claim_next("other-worker") is not None  # the proxy job runs elsewhere
