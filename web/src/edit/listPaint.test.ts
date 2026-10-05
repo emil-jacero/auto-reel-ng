@@ -80,6 +80,11 @@ describe('the clip rows skip drawing off screen', () => {
     assert.equal(declaration(rule.body, 'contain-intrinsic-size'), 'auto var(--clip-row-h)')
   })
 
+  it('rows are drawn as before in a panel too narrow for their tools (under 20.25rem)', () => {
+    const [rule] = skipping
+    assert.deepEqual(rule.at, ['@layer screens', '@container (width >= 20.25rem)'])
+  })
+
   it('a focused row, a drop target and the lifted row are drawn whole (no paint containment)', () => {
     const [rule] = skipping
     const excluded = /:not\(([^)]*\([^)]*\)[^)]*|[^)]*)\)/.exec(rule.selector)?.[1] ?? ''

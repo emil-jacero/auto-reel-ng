@@ -396,11 +396,16 @@
    * barely moves and scroll anchoring keeps what is in view still. Skipped rows stay in the
    * page: focusable, read by assistive technology, found by find in page, measured by
    * dnd-kit. Paint containment would cut what a row draws outside its box, so a row with
-   * focus (its ring), the drop line (drag.css) or the lifted row is drawn as before.
+   * focus (its ring), the drop line (drag.css) or the lifted row is drawn as before. In a
+   * panel under 20.25rem (a window under about 355px) a row's tools are wider than the row
+   * (they overflow it, and below 340px the page) and containment would cut them off: rows
+   * there are drawn as before.
    */
-  .clip-order > .clip-item:not(:focus-within, [data-drop-before], [data-dragging]) {
-    content-visibility: auto;
-    contain-intrinsic-size: auto var(--clip-row-h);
+  @container (width >= 20.25rem) {
+    .clip-order > .clip-item:not(:focus-within, [data-drop-before], [data-dragging]) {
+      content-visibility: auto;
+      contain-intrinsic-size: auto var(--clip-row-h);
+    }
   }
 
   /*
