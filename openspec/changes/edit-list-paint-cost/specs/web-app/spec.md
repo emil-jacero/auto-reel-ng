@@ -5,7 +5,8 @@
 Edit mode SHALL let the browser skip drawing the clip rows that are far out of view (CSS `content-visibility: auto`
 on each row), giving every row not yet drawn a block size close to a drawn row's and every row once drawn the size it
 was drawn at, so that the page's scroll height and the place of what is in view do not change as rows come into view.
-Every row SHALL stay in the page while skipped: focusable by Tab, read by assistive technology, found by the browser's
+In a clip list narrower than 20.25rem, where a row's own controls are wider than the row, rows SHALL be drawn as
+before (not skipped), so that no control is cut off. Every row SHALL stay in the page while skipped: focusable by Tab, read by assistive technology, found by the browser's
 find in page, a drop target for a drag, and reachable by keyboard reorder.
 
 Rows coming into view SHALL NOT move the page: while the operator scrolls the list, the row at the top of the view SHALL
