@@ -7,10 +7,13 @@ ffmpeg; the real store, worker and handler end to end is ``test_scheduler_analys
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
+import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -301,7 +304,9 @@ def test_the_store_is_read_once_per_sweep(store: MemoryStore, project: Project) 
         project.event(f"2024-0{month}-01 - E{month}", "a.mp4")
     _sweep(store, project, max_events=10).sweep_once()
     reads = [call for call in store.calls if not call.startswith("submit")]
-    assert sorted(reads) == sorted(["list_by_status:queued:None", "list_by_status:running:None"])
+    assert sorted(reads) == sorted(
+        ["list_by_status:queued:None", "list_by_status:running:None", "latest_by_project:analysis"]
+    )
 
 
 def test_an_empty_project_enqueues_nothing(store: MemoryStore, project: Project) -> None:
@@ -312,3 +317,86 @@ def test_an_empty_project_enqueues_nothing(store: MemoryStore, project: Project)
 def test_a_bad_cap_is_refused(store: MemoryStore, project: Project) -> None:
     with pytest.raises(ValueError, match="max_events"):
         _sweep(store, project, max_events=0)
+
+
+# --------------------------------------------------------------------------- #
+# 2.2 back-off after a canceled or failed analysis job
+# --------------------------------------------------------------------------- #
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _ended(
+    store: MemoryStore, project: Project, event: Path, status: JobStatus, *, at: datetime
+) -> Row:
+    return store.add(
+        project.root,
+        event,
+        JobKind.ANALYSIS,
+        status,
+        created_at=at - timedelta(seconds=30),
+        finished_at=at,
+    )
+
+
+@pytest.mark.parametrize("status", [JobStatus.CANCELED, JobStatus.FAILED])
+def test_a_canceled_or_failed_job_is_not_re_enqueued_while_nothing_changes(
+    store: MemoryStore, project: Project, status: JobStatus
+) -> None:
+    event = project.event("2024-01-01 - Party", "a.mp4", "b.mp4")
+    project.analyzed(event, "a.mp4")  # b.mp4 still has no entry: it is due
+    _ended(store, project, event, status, at=_now() + timedelta(seconds=1))
+    for _ in range(3):
+        assert _sweep(store, project).sweep_once().enqueued == ()
+
+
+def test_touching_a_clip_after_the_cancel_makes_the_event_due_again(
+    store: MemoryStore, project: Project
+) -> None:
+    event = project.event("2024-01-01 - Party", "a.mp4", "b.mp4")
+    project.analyzed(event, "a.mp4")
+    _ended(store, project, event, JobStatus.CANCELED, at=_now())
+    time.sleep(0.02)
+    os.utime(event / "a.mp4")  # its mtime and ctime move past the job's end
+    assert _sweep(store, project).sweep_once().enqueued == (project.rel(event),)
+
+
+def test_a_clip_copied_in_with_an_old_mtime_still_counts_through_ctime(
+    store: MemoryStore, project: Project, tmp_path: Path
+) -> None:
+    event = project.event("2024-01-01 - Party", "a.mp4")
+    camera = tmp_path / "camera.mp4"
+    camera.write_bytes(b"straight from the SD card")
+    os.utime(camera, (1_000_000_000, 1_000_000_000))  # 2001
+    _ended(store, project, event, JobStatus.CANCELED, at=_now())
+    time.sleep(0.02)
+    shutil.copy2(camera, event / "b.mp4")  # keeps the 2001 mtime; its ctime is now
+    assert (event / "b.mp4").stat().st_mtime < 1_000_000_001
+    assert _sweep(store, project).sweep_once().enqueued == (project.rel(event),)
+
+
+def test_a_newer_done_job_lifts_the_back_off(store: MemoryStore, project: Project) -> None:
+    event = project.event("2024-01-01 - Party", "a.mp4", "b.mp4")
+    project.analyzed(event, "a.mp4")
+    later = _now() + timedelta(seconds=60)
+    _ended(store, project, event, JobStatus.CANCELED, at=later - timedelta(seconds=10))
+    _ended(store, project, event, JobStatus.DONE, at=later)  # b.mp4 was added after it
+    assert _sweep(store, project).sweep_once().enqueued == (project.rel(event),)
+
+
+def test_the_back_off_is_per_event(store: MemoryStore, project: Project) -> None:
+    canceled = project.event("2024-02-01 - Canceled", "a.mp4")
+    other = project.event("2024-01-01 - Other", "a.mp4")
+    _ended(store, project, canceled, JobStatus.CANCELED, at=_now() + timedelta(seconds=1))
+    assert _sweep(store, project).sweep_once().enqueued == (project.rel(other),)
+
+
+def test_a_backed_off_event_does_not_count_toward_the_cap(
+    store: MemoryStore, project: Project
+) -> None:
+    events = [project.event(f"2024-0{m}-01 - E{m}", "a.mp4") for m in (1, 2, 3)]
+    _ended(store, project, events[2], JobStatus.FAILED, at=_now() + timedelta(seconds=1))
+    report = _sweep(store, project, max_events=2).sweep_once()
+    assert report.enqueued == (project.rel(events[1]), project.rel(events[0]))

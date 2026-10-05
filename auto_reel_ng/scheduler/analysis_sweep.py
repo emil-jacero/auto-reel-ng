@@ -36,12 +36,13 @@ import logging
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, List, Mapping, Optional, Sequence
 
 from sqlalchemy.exc import SQLAlchemyError
 
 from ..analysis.cache import pending_clips
 from ..config.project import ProjectConfig
+from ..event import scan_event
 from ..ingest import DEFAULT_LAYOUT, get_layout
 from ..persistence.job_store import JobStore
 from ..persistence.models import Job, JobKind, JobStatus
@@ -100,8 +101,9 @@ class AnalysisSweep:
                 logger.debug("analysis sweep: the queue is busy; nothing enqueued")
                 return SweepReport(busy=True)
             active = {job.event_dir for job in running if job.kind == JobKind.ANALYSIS.value}
+            latest = self._store.latest_by_project(project, kind=JobKind.ANALYSIS)
             events = self._walk()
-            return self._enqueue_due(events, active)
+            return self._enqueue_due(events, active, latest)
         except SQLAlchemyError as exc:
             logger.error("analysis sweep: the job store failed; trying again later: %s", exc)
             return SweepReport(error=f"job store: {exc}")
@@ -125,7 +127,9 @@ class AnalysisSweep:
 
     # ------------------------------------------------------------------ enqueue
 
-    def _enqueue_due(self, events: Sequence[Path], active: set[str]) -> SweepReport:
+    def _enqueue_due(
+        self, events: Sequence[Path], active: set[str], latest: Mapping[str, Job]
+    ) -> SweepReport:
         enqueued: List[str] = []
         job_ids: List[uuid.UUID] = []
         for event_dir in events:
@@ -134,7 +138,7 @@ class AnalysisSweep:
             relative = self._relative(event_dir)
             if relative is None or relative in active:
                 continue
-            if not self._due(event_dir):
+            if not self._due(event_dir, latest.get(relative)):
                 continue
             (submission,) = submit_analysis(self._store, self._root, [event_dir], force=False)
             if submission.created:
@@ -157,13 +161,45 @@ class AnalysisSweep:
             logger.warning("analysis sweep: skipping %s: outside the project root", event_dir)
             return None
 
-    def _due(self, event_dir: Path) -> bool:
-        """Whether a non-forced ``analysis`` job of ``event_dir`` would analyze a clip."""
+    def _due(self, event_dir: Path, latest: Optional[Job]) -> bool:
+        """Whether a non-forced ``analysis`` job of ``event_dir`` would analyze a clip, and the
+        event's latest analysis job, if it was canceled or failed, does not hold it back."""
         try:
-            return bool(pending_clips(event_dir))
+            if not pending_clips(event_dir):
+                return False
+            if latest is None or latest.status not in BACK_OFF_STATUSES:
+                return True
+            if _changed_since(event_dir, latest):
+                return True
         except OSError as exc:
             logger.warning("analysis sweep: skipping %s: cannot read it: %s", event_dir, exc)
             return False
+        logger.debug(
+            "analysis sweep: %s: its last analysis job %s ended %s and nothing changed since",
+            event_dir,
+            latest.id,
+            latest.status.value,
+        )
+        return False
+
+
+def _changed_since(event_dir: Path, job: Job) -> bool:
+    """Whether a clip file of ``event_dir`` changed after ``job`` finished.
+
+    A clip's ``st_mtime`` or ``st_ctime`` later than the job's ``finished_at`` (its
+    ``created_at`` should a terminal row lack one) counts: an ingest tool that preserves a
+    camera file's old mtime still moves the copy's ctime.
+
+    Raises:
+        OSError: the folder cannot be listed or a clip cannot be statted.
+    """
+    ended = job.finished_at if job.finished_at is not None else job.created_at
+    threshold = ended.timestamp()
+    for identity in scan_event(event_dir).identities:
+        stat = (event_dir / identity).stat()
+        if max(stat.st_mtime, stat.st_ctime) > threshold:
+            return True
+    return False
 
 
 __all__ = ["AnalysisSweep", "SweepReport", "BUSY_RUNNING_KINDS", "BACK_OFF_STATUSES", "Wait"]
