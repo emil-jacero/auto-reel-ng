@@ -727,3 +727,62 @@ def test_submit_analysis_queues_one_analysis_job_per_event_idempotently(
         row["kind"] == JobKind.ANALYSIS and row["force"] is True for row in harness.store.submitted
     )
     assert harness.store.submitted[0]["project_root"] == str(harness.root)
+
+
+# --------------------------------------------------------------------------- #
+# staleness: the sidecar shares .auto-reel/cache/ with the render manifest
+# --------------------------------------------------------------------------- #
+
+
+def test_analysis_does_not_make_a_fresh_event_stale(harness: Harness) -> None:
+    from auto_reel_ng.cli.adoption import (  # pylint: disable=import-outside-toplevel
+        persist,
+        prepare_event,
+    )
+    from auto_reel_ng.config import default_output_dir  # pylint: disable=import-outside-toplevel
+    from auto_reel_ng.config.project import (  # pylint: disable=import-outside-toplevel
+        ProjectConfig,
+        resolve_look_defaults,
+    )
+    from auto_reel_ng.event import DEFAULT_CLIP_ORDER  # pylint: disable=import-outside-toplevel
+    from auto_reel_ng.render import output_relpath  # pylint: disable=import-outside-toplevel
+    from auto_reel_ng.staleness.fingerprint import (  # pylint: disable=import-outside-toplevel
+        compute_fingerprint,
+        engine_identity,
+    )
+    from auto_reel_ng.staleness.gate import evaluate  # pylint: disable=import-outside-toplevel
+    from auto_reel_ng.staleness.manifest import (  # pylint: disable=import-outside-toplevel
+        manifest_path,
+        write_manifest,
+    )
+
+    harness.clip("a.mp4")
+    harness.clip("b.mp4")
+    event = prepare_event(harness.event, order=DEFAULT_CLIP_ORDER, adopt=True)
+    persist(event)
+    version = (8, 1)
+
+    def verdict() -> Any:
+        fingerprint = compute_fingerprint(
+            event.document,
+            event_dir=harness.event,
+            look_defaults=resolve_look_defaults(ProjectConfig()),
+            ffmpeg_version=version,
+        )
+        output = default_output_dir(harness.root) / output_relpath(event.document.metadata)
+        return fingerprint, output, evaluate(harness.event, output, fingerprint)
+
+    fingerprint, output, _ = verdict()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_bytes(b"already-rendered")
+    write_manifest(
+        harness.event, fingerprint, output=output.name, engine_identity=engine_identity(version)
+    )
+    assert verdict()[2].stale is False
+    manifest = manifest_path(harness.event).read_bytes()
+
+    harness.run()
+
+    assert harness.analyzed == ["a.mp4", "b.mp4"]
+    assert verdict()[2].stale is False
+    assert manifest_path(harness.event).read_bytes() == manifest
