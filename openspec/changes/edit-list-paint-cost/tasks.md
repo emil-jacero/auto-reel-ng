@@ -6,16 +6,27 @@ recorded per run.
 
 ## 1. Measure first
 
-- [ ] 1.1 Baseline and breakdown (design E1): on this worktree's `origin/main` build (port 8460, DB
+- [x] 1.1 Baseline and breakdown (design E1): on this worktree's `origin/main` build (port 8460, DB
   `arel_edit_list_paint_cost`, the 400-clip `2024-07-06 - Fyrahundra` event), run #140's `perf_slider.py` (copied into
   SCRATCH): Chrome 4x `idle` and `slider` ×5 each, Firefox `slider` ×3, the scrub and frame-step scripts; capture a CDP
   trace of one drag with and without the injected `content-visibility: auto` row style and attribute the frame cost
   (script / style+layout / paint / layerize+commit / raster) to page subtrees. Test: the numbers and the breakdown are
   in SCRATCH and the PR body, and reproduce #140's 30–34 % / 7.4–7.9 % within the run-to-run spread (if not, say so
   before changing anything).
-- [ ] 1.2 Render count (design D4): a scratch-only patch (`React.Profiler` around the chapter list, `window.__rowCommits`)
+  Status: on `origin/main` 12007da the Chrome 4x drag measured 33.8-64.0 % (median of five launches 44.1 %; 33.8-48.3 %
+  at load 2.5-2.9, so above #140's 30-34 % on this busier host), idle 0-3.7 %, Firefox 0 %; with the row style injected
+  6.8-9.4 % (#140: 7.4-7.9 %). Trace of one drag at 4x: layerize (`PaintArtifactCompositor::Update`) 9.8 s, paint 5.6 s,
+  layout 3.2 s; with the injection 1.5 / 0.9 / 0.8 s; with the clip list removed 0.23 s of layerize. The rest under the
+  injection is the list's drawn rows (about 60 ms of layerize each per drag; every inline `<svg>` icon is its own paint
+  chunk) and the skipped rows (about 0.5 s together). Making the list's `<ol>` its own composited layer took layerize to
+  0.41 s and the drag to 0-2.95 % (median 0.6 %); thumbnails, the sticky chapter header, the app header's backdrop
+  filter, the panels above and an isolation group changed nothing measurable.
+- [x] 1.2 Render count (design D4): a scratch-only patch (`React.Profiler` around the chapter list, `window.__rowCommits`)
   built in podman from a scratch copy of `web/`; Playwright drags the slider Fit→240, scrubs across 20 clips, plays 5 s.
   Test: the count is recorded; any non-zero count names the changed props (`changedProps`).
+  Status: 0 renders of `ClipRow`, `RowBody`, `ClipOrderList`, `ChapterDrag`, `EventEditor`, `PosterPanel`, `SaveBar`,
+  `MetadataForm` and `TimelineSection` for the zoom, the scrub (the video moved to another clip) and 5 s of play, in
+  Chrome 154 and Firefox 155 (the counter build counted 400 `ClipRow` renders on opening, so it counts).
 
 ## 2. web/ — The clip list stops repainting
 
