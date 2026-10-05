@@ -122,7 +122,8 @@ function EventDetailBody({
   // mounted anew by every Refresh, Save and re-entry (`timeline/overlays`).
   const dismissals = useDismissals()
   // The event's analysis: one read for the header's badge, Re-analyze and Edit mode's Timeline.
-  const analysis = useEventAnalysis(eventId)
+  // An analysis job seen ending found the suggestions again: the dismissals are forgotten.
+  const analysis = useEventAnalysis(eventId, { onAnalyzed: dismissals.clear })
   // The card selected on Edit mode's Timeline or chapter list: one selection, kept here.
   const cards = useCardSelection()
   // While a save is in flight, Refresh and Stop editing wait for its answer.

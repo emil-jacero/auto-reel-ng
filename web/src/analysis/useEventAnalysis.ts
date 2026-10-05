@@ -10,7 +10,7 @@ import { getState, isActive, load, merge, subscribe, wasReconciled } from '../jo
 import { useAnalysisJob } from '../jobs/useJob'
 import { badgeOf, neverAnalyzed } from './badge'
 import type { AnalysisRead, Badge } from './badge'
-import { endWords, onJobChange, recheckKey } from './refresh'
+import { clearsDismissals, endWords, onJobChange, recheckKey, startKey } from './refresh'
 import type { Observed } from './refresh'
 
 /*
@@ -62,12 +62,24 @@ function problemAlert(problem: Problem, eventId: string): ActionAlert {
   return { title: problem.title, detail: problem.detail }
 }
 
+export type AnalysisOptions = {
+  /**
+   * Called when the read an end of the event's analysis job caused answers (`clearsDismissals`):
+   * the page forgets its dismissals then, together with the new read.
+   */
+  onAnalyzed?: () => void
+}
+
 /** Read the event's analysis and follow its analysis job; one binding per event page. */
-export function useEventAnalysis(eventId: string): AnalysisBinding {
+export function useEventAnalysis(eventId: string, options: AnalysisOptions = {}): AnalysisBinding {
   const [read, setRead] = useState<AnalysisRead>({ status: 'reading' })
   const inFlight = useRef<AbortController | null>(null)
   // A job end seen live, said once the read it caused answers.
   const sayAfterRead = useRef<Parameters<typeof endWords>[0] | null>(null)
+  // A job end that found the suggestions again: `onAnalyzed` runs once the read it caused answers.
+  const analyzedAfterRead = useRef(false)
+  const onAnalyzed = useRef(options.onAnalyzed)
+  onAnalyzed.current = options.onAnalyzed
 
   const reload = useCallback(() => {
     inFlight.current?.abort()
@@ -80,6 +92,10 @@ export function useEventAnalysis(eventId: string): AnalysisBinding {
       }
       inFlight.current = null
       setRead(next)
+      if (analyzedAfterRead.current) {
+        analyzedAfterRead.current = false
+        onAnalyzed.current?.()
+      }
       const ended = sayAfterRead.current
       sayAfterRead.current = null
       if (ended !== null) {
@@ -127,6 +143,7 @@ export function useEventAnalysis(eventId: string): AnalysisBinding {
     seen.current = next
     if (change.reload) {
       sayAfterRead.current = change.announce ? change.endedAs : null
+      analyzedAfterRead.current = clearsDismissals(change)
       // This re-read also answers the shown read's "analyzing": the check below makes no other.
       const shown = shownRead.current
       if (shown.status === 'ok') {
@@ -151,6 +168,20 @@ export function useEventAnalysis(eventId: string): AnalysisBinding {
   const [own, setOwn] = useState<string | null>(null)
   const [alert, setAlert] = useState<ActionAlert | null>(null)
   const trusted = live || (liveJob !== null && liveJob.id === own)
+
+  // A trusted job of the event started after the shown read: read once more, so the clip rows
+  // say which clips it analyzes and the badge how many (`startKey`).
+  const started = useRef<string | null>(null)
+  const liveId = liveJob?.id ?? null
+  const liveStatus = liveJob?.status ?? null
+  useEffect(() => {
+    const job = liveId === null || liveStatus === null ? null : { id: liveId, status: liveStatus }
+    const key = startKey(read, job, trusted, started.current)
+    if (key !== null) {
+      started.current = key
+      reload()
+    }
+  }, [read, liveId, liveStatus, trusted, reload])
   const badge = useMemo(() => badgeOf(read, liveJob, trusted), [read, liveJob, trusted])
   const analyzing = badge?.state === 'analyzing'
 

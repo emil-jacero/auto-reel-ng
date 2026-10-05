@@ -84,8 +84,13 @@ holds for the event. `useEventAnalysis` watches it: on an observed transition ac
 once and asks the page's status region to announce ("Analysis finished." or "Analysis failed for N clips." from
 the new read); a reconciled end (the store's `load(…, {knownActive})` after a reconnect) reloads without the
 announcement. When the read says `analyzing` but the live connection holds no active analysis job for the event,
-it reloads once per read (a guard flag, so a stale service answer cannot loop). No timer, no polling (spec "one
-connection").
+it reloads once per read (a guard flag, so a stale service answer cannot loop). When a trusted job of the event
+becomes active and the shown read predates it (it names no job, or another), it reloads once per job (`startKey`):
+the service overlays the clips the job analyzes as `analyzing` only while it is active, so this read gives the
+clip rows their "Analyzing…" and the badge its "Analyzing N clips…". An end of the job the page saw active (not a
+cancel) also forgets the page's dismissals once its read answers (`clearsDismissals`, `onAnalyzed`): a forced
+re-analysis of unchanged clips finds the same spans, so without this a dismissal would survive it. No timer, no
+polling (spec "one connection").
 
 *Alternative:* re-read on every delta frame — rejected, one GET per progress tick.
 
@@ -129,8 +134,8 @@ says little. The visually hidden prefix "Render jobs:" becomes "Jobs:".
 - [The lane refreshes under a pressed mark or open detail] → keep the selected mark by its dismissal key
   (`dismissalKey`, clip + span + kind); when the new read lacks it, the detail closes and focus moves to the lane
   group. Tested in `suggestions.test.ts`.
-- [Dismissals keyed by span] → a re-analysis that finds the same span keeps it dismissed for the visit; one with a
-  different span shows it pending: the honest outcome, stated in the help.
+- [Dismissals keyed by span] → a re-analysis would find the same span and keep it dismissed for the visit, so the
+  end of an analysis job the page saw forgets every dismissal (D3): Re-analyze brings them back, as the help says.
 
 ## Migration Plan
 
