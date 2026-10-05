@@ -342,14 +342,16 @@ The Timeline SHALL expose its structure to assistive technology: the section is 
 
 ### Requirement: The timeline shows the event's analysis suggestions beside its clips
 
-When the Timeline shows its track (the section open and every shown clip's proxy ready), it SHALL read the
-event's cached analysis (`GET …/analysis`) and draw each suggestion (a black, white or frozen span that analysis
-found) as a **mark** in an analysis lane, a row below the clips' row, under the clip it belongs to, placed by its
-start and end in the clip, at the timeline's zoom. The read SHALL be made only then: a closed Timeline, and one
-that is still preparing proxies, SHALL make no request for the analysis ("The event page offers a Timeline that
-loads nothing until it is opened"). Closing and opening the Timeline, which a Refresh does, SHALL read it
-again; a read that closing the Timeline or leaving the page has made pointless SHALL be abandoned. The page
-SHALL NOT start an analysis, and the read SHALL NOT change anything.
+When the Timeline shows its track (the section open and every shown clip's proxy ready), it SHALL draw each
+suggestion of the event's cached analysis (a black, white or frozen span that analysis found) as a **mark** in an
+analysis lane, a row below the clips' row, under the clip it belongs to, placed by its start and end in the clip,
+at the timeline's zoom. The Timeline SHALL NOT read the analysis itself: it SHALL show the event page's one read of
+it (`GET …/analysis`, capability `web-app`, "The event page shows the event's analysis state"), so the lane, its
+badge and the page header always show the same read. When that read is replaced (a Refresh, the end of the event's
+analysis job), the lane SHALL show the new read without the Timeline being closed or the page reloaded, keeping its
+zoom, scroll position and playhead. A Timeline that is closed or still preparing proxies SHALL draw no lane. The
+read SHALL NOT change anything; an analysis is started only by the operator's Re-analyze (below) or by the
+service's own background analysis, never by showing the lane.
 
 A mark SHALL have, as text, its kind in words (Black frames, White frames, Frozen picture, or an unrecognised
 kind as written), its start, its end and its length, written as times in a clip are everywhere ("Times are
@@ -365,18 +367,31 @@ dismissed it during this page visit and no cut covers any of it; otherwise **pen
 cut that covered a suggestion SHALL return it to pending with no other action, and a cut saved in an earlier
 session SHALL show its suggestion as cut on the first read.
 
-The lane SHALL tell the three kinds of "no suggestions" apart: an event whose analysis was never run (no clip has a cached entry, whatever the service's `analyzed` flag says: a
-rendered event has a cache directory) SHALL show a small muted badge "Not analyzed" and no sentence (the command that runs it, `auto-reel analyze <root>` and then Refresh, is in the Timeline help); an analysed event with nothing found SHALL say nothing was
-found; and in an analysed event a clip with no cached analysis (its file changed since) SHALL be marked "Not
-analyzed" in its own row, while a clip analysed with nothing found SHALL show no marks. A read that fails SHALL
-leave the timeline usable and show a note, not an alert, that says the suggestions could not be read and why,
-in the words the page uses for its other reads.
+The lane's control row SHALL show the event's analysis badge, in the same words, glyph and tone as the page
+header shows it ("The event page shows the event's analysis state"): **Not analyzed** (never), **Analysis out of
+date** (stale), **Analyzing…** with the job's live progress (analyzing), **Analysis failed for N clips** (failed),
+and no badge when the analysis is current. The badge state SHALL be the service's published analysis state, never
+inferred from the `analyzed` flag or from which clips have segments. An event whose analysis is current with
+nothing found SHALL say nothing was found. Each clip's row SHALL carry its own clip's state when it is not
+current: "Not analyzed", "Analysis out of date", "Analyzing…" or "Analysis failed", in words and with a glyph; a
+clip analysed with nothing found SHALL show no marks and no note. In Edit mode, beside the badge, the control row
+SHALL offer **Re-analyze** ("Analyze" while the event was never analysed), the same action as the page header's
+(capability `web-app`, "The operator re-analyzes an event from its page"). A read that fails SHALL leave the
+timeline usable and show a note, not an alert, that says the suggestions could not be read and why, in the words
+the page uses for its other reads.
+
+The Timeline help SHALL say what Re-analyze does: the suggestions are found again from the clips, cuts already
+approved stay in the event's cuts, and dismissed suggestions come back. It SHALL list, while the analysis failed
+for any clip, each such clip's name with the service's failure text. The terminal command (`auto-reel analyze
+<root>`) SHALL appear only there, as an aside that the same runs from a terminal; no sentence outside the help
+SHALL name it.
 
 #### Scenario: A closed or preparing timeline reads no analysis
 
-- **WHEN** the operator opens the page of an analysed event and does not open the Timeline, or opens it while a
+- **WHEN** the operator opens the page of an analysed event and does not open Edit mode, or opens it while a
   clip's proxy is not ready
-- **THEN** no request to `…/analysis` has been made, and the first one is made when the track is shown
+- **THEN** no analysis lane is drawn, the Timeline itself has made no request to `…/analysis`, and the page has
+  made exactly one (the header's), whose answer the lane shows once the track is shown
 
 #### Scenario: Suggestions are drawn under their clip
 
@@ -422,22 +437,43 @@ in the words the page uses for its other reads.
 
 #### Scenario: A rendered but never analysed event
 
-- **WHEN** an event has been rendered (its cache directory holds only the render manifest) and was never analysed
-- **THEN** the lane shows the badge "Not analyzed" and the Timeline help names `auto-reel analyze`, and no clip row says "Not analyzed" or that
-  nothing was found
+- **WHEN** an event has been rendered (its cache directory holds only the render manifest), was never analysed,
+  and the service reports its analysis state as never
+- **THEN** the lane's control row shows the badge "Not analyzed" and an Analyze button, no clip row says that
+  nothing was found, and no text outside the Timeline help names `auto-reel analyze`
 
 #### Scenario: Never analysed, analysed clean, and a stale clip
 
-- **WHEN** one event has no analysis cache, a second was analysed and nothing was found, and in a third the
-  file `C0003.MP4` was replaced after analysis while its siblings have entries
-- **THEN** the first shows the badge "Not analyzed" and the Timeline help names `auto-reel analyze`, the second says nothing was found, and
-  the third marks only `C0003.MP4`'s row "Not analyzed"
+- **WHEN** one event's analysis state is never, a second's is current with nothing found, and in a third the
+  file `C0003.MP4` was replaced after analysis, so the service reports the event and that clip as stale
+- **THEN** the first shows the badge "Not analyzed", the second shows no badge and says nothing was found, and
+  the third shows the badge "Analysis out of date" and marks only `C0003.MP4`'s row "Analysis out of date"
+
+#### Scenario: The lane follows an analysis that finishes
+
+- **WHEN** the Timeline of an event shows its track in Edit mode, the operator presses Re-analyze, and the
+  analysis job ends done
+- **THEN** the badge reads "Analyzing…" with the job's progress while it runs, and when it ends the lane shows
+  the new suggestions without a Refresh, a reload or the Timeline being closed, with the same zoom and playhead
+
+#### Scenario: Re-analyze brings dismissed suggestions back
+
+- **WHEN** the operator dismisses the black suggestion 0:00–0:03 of `C0002.MP4`, presses Re-analyze, and the job
+  ends done finding the same span
+- **THEN** that suggestion reads pending again, with no reload of the page
 
 #### Scenario: Reopening reads again
 
-- **WHEN** the operator re-runs `auto-reel analyze`, presses Refresh (which closes the Timeline) and opens the
-  Timeline again
-- **THEN** the lane shows the new suggestions
+- **WHEN** the operator re-runs `auto-reel analyze` from a terminal and presses Refresh
+- **THEN** the page reads the analysis again, and the lane shows the new suggestions once the Timeline shows its
+  track
+
+#### Scenario: A failed clip is named in the help
+
+- **WHEN** the service reports the event's analysis as failed for `C0007.MP4` with the text "ffmpeg exited 1:
+  Invalid data found when processing input"
+- **THEN** the badge reads "Analysis failed for 1 clip", `C0007.MP4`'s row reads "Analysis failed", and the
+  Timeline help lists `C0007.MP4` with that text
 
 #### Scenario: A failed read leaves the timeline
 
@@ -447,7 +483,8 @@ in the words the page uses for its other reads.
 
 #### Scenario: Reading the analysis changes nothing
 
-- **WHEN** the page shows the timeline of an analysed event and the operator makes no edit
+- **WHEN** the page shows the timeline of an analysed event and the operator makes no edit and does not press
+  Re-analyze
 - **THEN** no request other than reads is made, and no analysis is started
 
 ### Requirement: Suggestions are operable by keyboard and never shown by colour alone
