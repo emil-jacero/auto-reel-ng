@@ -442,9 +442,10 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   skip drawing while far out of view (`content-visibility: auto` with a remembered, measured `contain-intrinsic-size`; a
   focused row, the drop target and the lifted row are drawn whole), and each chapter's played list is one composited
   layer. A Zoom-slider drag on a 400-clip event, Chrome at 4x CPU throttle, went from about 50 % of frames over 25 ms
-  to a median 0.58 % with `clip-edge-trim`'s edge tools leaving the track while a zoom is in progress (back 150 ms after
-  it settles, a focused one kept), and a clip-edge drag on 80 clips holds at 0 %; zoom, scrub and play render no clip
-  row. No API, engine or `RENDER_GRAPH_VERSION` change.
+  to a median 0.58 % with `clip-edge-trim`'s edge tools leaving the track while a zoom is in progress (back once the
+  zoom settles: on the slider's release, or 150 ms after the last wheel or key input; a focused one kept), and a
+  clip-edge drag on 80 clips holds at 0 %; zoom, scrub and play render no clip row. No API, engine or
+  `RENDER_GRAPH_VERSION` change.
 - **v2 Title cards switch** (`title-card-toggle`, D-20, D-25): Edit mode's **Title cards: On / Off**
   (now the dialog's second tab, `web/src/edit/card/EventTab.tsx`; superseded UI, see `edit-mode-declutter`; pure model `decorators.ts`) edits the event's own `look.decorators` in the same
   draft (Off removes `title` and keeps the other names; with no list it writes `[]`; On puts `title` first). The state the
