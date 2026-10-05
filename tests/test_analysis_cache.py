@@ -7,6 +7,7 @@ cache's read/write/invalidate behavior and that a warm hit skips detection entir
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import List, Optional
 
@@ -122,3 +123,134 @@ def test_signal_mismatch_returns_none() -> None:
     """read_entry treats a differing signal as stale (returns None)."""
     # No entry written at all -> also None (missing entry is cold).
     assert read_entry(Path("/no/such/event"), "clip.mp4", {"size": 1, "mtime_ns": 1}) is None
+
+
+# -- analysis-job: atomic writes, failure markers, force (task 1.1) -----------------------
+
+
+def _signal(event_dir: Path) -> dict[str, object]:
+    return cache_module.clip_signal(event_dir / "clip.mp4")
+
+
+def test_failed_replace_keeps_previous_entry_and_no_temporary_file(
+    event_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A write that fails at the rename leaves the old entry intact and removes its temp file."""
+    signal = _signal(event_dir)
+    cache_module.write_entry(event_dir, "clip.mp4", signal, SEGMENTS)
+
+    def broken_replace(src: object, dst: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(cache_module.os, "replace", broken_replace)
+    with pytest.raises(OSError, match="disk full"):
+        cache_module.write_entry(event_dir, "clip.mp4", signal, [])
+
+    assert read_entry(event_dir, "clip.mp4", signal) == SEGMENTS
+    assert [p.name for p in cache_dir(event_dir).iterdir() if ".part" in p.name] == []
+
+
+def test_write_entry_goes_through_a_temporary_file(
+    event_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The entry is renamed into place from a temporary file in the same directory."""
+    seen: list[tuple[Path, Path]] = []
+    real_replace = cache_module.os.replace
+
+    def spying_replace(src: str, dst: str) -> None:
+        seen.append((Path(src), Path(dst)))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(cache_module.os, "replace", spying_replace)
+    path = cache_module.write_entry(event_dir, "clip.mp4", _signal(event_dir), SEGMENTS)
+
+    assert len(seen) == 1
+    src, dst = seen[0]
+    assert dst == path and src.parent == path.parent and ".part-" in src.name
+    assert not src.exists()
+
+
+def test_failure_marker_round_trips_and_is_not_an_entry(event_dir: Path) -> None:
+    """A marker carries its cause for the same signal and reads as no result."""
+    signal = _signal(event_dir)
+    cache_module.write_failure(event_dir, "clip.mp4", signal, "cannot probe")
+
+    assert cache_module.read_failure(event_dir, "clip.mp4", signal) == "cannot probe"
+    assert read_entry(event_dir, "clip.mp4", signal) is None
+
+
+def test_failure_marker_with_an_old_signal_is_ignored(event_dir: Path) -> None:
+    """A marker written for an earlier version of the clip does not apply to the new one."""
+    old = _signal(event_dir)
+    cache_module.write_failure(event_dir, "clip.mp4", old, "cannot probe")
+
+    new = {**old, "size": 999}
+    assert cache_module.read_failure(event_dir, "clip.mp4", new) is None
+
+
+def test_success_replaces_a_failure_marker(event_dir: Path) -> None:
+    """Writing an entry over a marker leaves the entry and no marker."""
+    signal = _signal(event_dir)
+    cache_module.write_failure(event_dir, "clip.mp4", signal, "cannot probe")
+    cache_module.write_entry(event_dir, "clip.mp4", signal, SEGMENTS)
+
+    assert read_entry(event_dir, "clip.mp4", signal) == SEGMENTS
+    assert cache_module.read_failure(event_dir, "clip.mp4", signal) is None
+    assert len(list(cache_dir(event_dir).glob("*.json"))) == 1
+
+
+def test_an_entry_is_not_a_failure(event_dir: Path) -> None:
+    """``read_failure`` answers ``None`` for a normal entry and for a missing one."""
+    signal = _signal(event_dir)
+    assert cache_module.read_failure(event_dir, "clip.mp4", signal) is None
+    cache_module.write_entry(event_dir, "clip.mp4", signal, SEGMENTS)
+    assert cache_module.read_failure(event_dir, "clip.mp4", signal) is None
+
+
+def test_a_leftover_temporary_file_is_never_read(
+    event_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A killed writer's ``*.part-*`` file is not an entry: the clip is still cold."""
+    detector = _install_detector(monkeypatch)
+    entry = cache_module._entry_path(event_dir, "clip.mp4")  # pylint: disable=protected-access
+    entry.parent.mkdir(parents=True)
+    leftover = entry.with_name(entry.name + ".part-123-abc")
+    leftover.write_text('{"version": 1, "segments": [', encoding="utf-8")
+
+    results = analyze_event(event_dir)
+
+    assert detector.calls == [event_dir / "clip.mp4"]
+    assert results == {"clip.mp4": SEGMENTS}
+    assert leftover.exists()  # left alone, never read
+
+
+def test_force_reruns_detection_on_a_warm_cache(
+    event_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``force=True`` ignores a current entry and detects again."""
+    detector = _install_detector(monkeypatch)
+    analyze_event(event_dir)
+    detector.calls.clear()
+
+    analyze_event(event_dir, force=True)
+
+    assert detector.calls == [event_dir / "clip.mp4"]
+
+
+def test_an_entry_of_the_previous_format_still_reads(event_dir: Path) -> None:
+    """An entry exactly as the pre-marker build wrote it is still a hit."""
+    signal = _signal(event_dir)
+    entry = cache_module._entry_path(event_dir, "clip.mp4")  # pylint: disable=protected-access
+    entry.parent.mkdir(parents=True)
+    entry.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "identity": "clip.mp4",
+                "signal": signal,
+                "segments": [{"start": 0.0, "end": 3.0, "kind": "black", "confidence": 0.5}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert read_entry(event_dir, "clip.mp4", signal) == SEGMENTS
