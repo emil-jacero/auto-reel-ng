@@ -135,3 +135,137 @@ describe('fetchAnalysis', () => {
     await assert.rejects(analysis.fetchAnalysis('e', controller.signal), { name: 'AbortError' })
   })
 })
+
+const enqueue = (eventId = '2024/e', force = true) => analysis.enqueueAnalysis(eventId, { force })
+
+describe('enqueueAnalysis', () => {
+  it('POSTs {"force":true} to the event analysis route, each id segment encoded, unabortable', async () => {
+    const asked = serve(() => json(201, { id: 'j1', kind: 'analysis' }))
+    await enqueue('2024/Sommar på Öland')
+    assert.equal(asked.length, 1)
+    assert.equal(asked[0].url, '/api/v1/events/2024/Sommar%20p%C3%A5%20%C3%96land/analysis')
+    assert.equal(asked[0].init?.method, 'POST')
+    assert.equal(asked[0].init?.body, '{"force":true}')
+    assert.equal(new Headers(asked[0].init?.headers).get('Content-Type'), 'application/json')
+    assert.equal(asked[0].init?.signal, undefined)
+  })
+
+  it('sends {"force":false} for an unforced press', async () => {
+    const asked = serve(() => json(201, { id: 'j1', kind: 'analysis' }))
+    await enqueue('e', false)
+    assert.equal(asked[0].init?.body, '{"force":false}')
+  })
+
+  it('reads 201 as the queued job', async () => {
+    const job = { id: 'j1', kind: 'analysis', status: 'queued' }
+    serve(() => json(201, job))
+    assert.deepEqual(await enqueue(), { kind: 'enqueued', job })
+  })
+
+  it('reads 200 fresh as nothing to analyze', async () => {
+    const fresh = { event_id: '2024/e', status: 'fresh', clip_count: 3, failed_count: 0 }
+    serve(() => json(200, fresh))
+    assert.deepEqual(await enqueue(), { kind: 'fresh', fresh })
+  })
+
+  it('reads 409 active_job as the active job, with whether it is forced', async () => {
+    const body = problem(409)
+    serve(() => json(409, { ...body, conflict: 'active_job', job_id: 'j9', forced: false }))
+    const result = await enqueue()
+    assert.equal(result.kind, 'active')
+    if (result.kind === 'active') {
+      assert.equal(result.jobId, 'j9')
+      assert.equal(result.forced, false)
+    }
+    serve(() => json(409, { ...body, conflict: 'active_job', job_id: 'j9' }))
+    const unknown = await enqueue()
+    assert.equal(unknown.kind === 'active' && unknown.forced, null)
+  })
+
+  it('reads a 409 without the active_job kind or its job id as unpublished, never guessed', async () => {
+    serve(() => json(409, { ...problem(409), conflict: 'output_collision' }))
+    assert.equal((await enqueue()).kind, 'unpublished')
+    serve(() => json(409, { ...problem(409), conflict: 'active_job' }))
+    assert.equal((await enqueue()).kind, 'unpublished')
+  })
+
+  it('reads 404 and 502 problems as problems', async () => {
+    serve(() => json(404, problem(404)))
+    assert.deepEqual(await enqueue(), { kind: 'problem', problem: problem(404) })
+    serve(() => json(502, problem(502)))
+    assert.deepEqual(await enqueue(), { kind: 'problem', problem: problem(502) })
+  })
+
+  it('reads a 503 as the database only when the problem names it', async () => {
+    const down = { ...problem(503), check: 'database' }
+    serve(() => json(503, down))
+    assert.deepEqual(await enqueue(), { kind: 'database', problem: down })
+    serve(() => json(503, problem(503)))
+    assert.equal((await enqueue()).kind, 'unpublished')
+  })
+
+  it('names the request when the status is one the route does not publish', async () => {
+    serve(() => new Response('boom', { status: 500, statusText: 'Internal Server Error' }))
+    assert.deepEqual(await enqueue('2024/Sommar på Öland'), {
+      kind: 'unpublished',
+      message: 'POST /api/v1/events/2024/Sommar på Öland/analysis answered 500 Internal Server Error',
+    })
+  })
+
+  it('reads no answer at all as unreachable', async () => {
+    globalThis.fetch = (async () => {
+      throw new TypeError('Failed to fetch')
+    }) as typeof fetch
+    assert.deepEqual(await enqueue(), { kind: 'unreachable', message: 'TypeError: Failed to fetch' })
+  })
+})
+
+describe('analyzeAll', () => {
+  const counts = { queued: 12, fresh: 3, active: 1, unreadable: [] }
+
+  it('POSTs to /api/v1/analysis with no body, unabortable', async () => {
+    const asked = serve(() => json(200, counts))
+    await analysis.analyzeAll()
+    assert.equal(asked.length, 1)
+    assert.equal(asked[0].url, '/api/v1/analysis')
+    assert.equal(asked[0].init?.method, 'POST')
+    assert.equal(asked[0].init?.body, undefined)
+    assert.equal(asked[0].init?.signal, undefined)
+  })
+
+  it('reads 200 as the counts', async () => {
+    const unreadable = [{ event_id: '2024/x', detail: 'Permission denied' }]
+    serve(() => json(200, { ...counts, unreadable }))
+    assert.deepEqual(await analysis.analyzeAll(), {
+      kind: 'counted',
+      result: { ...counts, unreadable },
+    })
+  })
+
+  it('reads a 200 without the counts as unpublished', async () => {
+    serve(() => json(200, { queued: 1 }))
+    assert.equal((await analysis.analyzeAll()).kind, 'unpublished')
+  })
+
+  it('reads 502 as a problem and a 503 naming the database as the database', async () => {
+    serve(() => json(502, problem(502)))
+    assert.deepEqual(await analysis.analyzeAll(), { kind: 'problem', problem: problem(502) })
+    const down = { ...problem(503), check: 'database' }
+    serve(() => json(503, down))
+    assert.deepEqual(await analysis.analyzeAll(), { kind: 'database', problem: down })
+    serve(() => json(503, problem(503)))
+    assert.equal((await analysis.analyzeAll()).kind, 'unpublished')
+  })
+
+  it('reads no answer as unreachable and a 404 as unpublished', async () => {
+    globalThis.fetch = (async () => {
+      throw new TypeError('Failed to fetch')
+    }) as typeof fetch
+    assert.equal((await analysis.analyzeAll()).kind, 'unreachable')
+    serve(() => json(404, problem(404)))
+    assert.deepEqual(await analysis.analyzeAll(), {
+      kind: 'unpublished',
+      message: 'POST /api/v1/analysis answered 404',
+    })
+  })
+})
