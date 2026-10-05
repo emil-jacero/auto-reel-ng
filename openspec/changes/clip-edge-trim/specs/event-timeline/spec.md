@@ -50,8 +50,11 @@ of the file. While dragging, on every frame:
   frames", "The clip keeps 0.1 s", "Held by cut 1"); the words carry the state, not the colour alone
 - while snapped, a line SHALL show at the snapping place and the tip SHALL say what it snapped to ("Snapped to the
   playhead", "Snapped to cut 2 start", "Snapped to 0:03")
+- the dragged clip's own analysis marks SHALL be hidden (they are drawn from its committed extent and would stray from
+  its footage); the marks of the clips after it move with them, and the release draws every mark where it belongs
 
-The rest of the editor SHALL NOT change until release: the Cuts panels, the save bar and the draft show nothing new.
+The rest of the editor SHALL NOT change until release: the Cuts panels, the save bar and the draft show nothing new,
+and `Q` and `W` pressed while any press or drag on the Timeline is held SHALL edit nothing.
 Releasing SHALL make the one edit the model gives for the place (add, trim or remove the edge cut, or nothing), as one
 edit of the draft, saved by the existing Save and put back by Reset; the clip's Cuts panel then lists the cut as any
 cut. Releasing SHALL announce the result once, politely, through Edit mode's one live region ("s1710001.mp4 start
@@ -170,7 +173,8 @@ and `W`; a drag in progress when a save starts SHALL end as if Escape were press
 moving SHALL drag the edge and SHALL NOT scroll the track; a swipe elsewhere still scrolls it. The Timeline SHALL keep
 its gates with edge tools: at 400 clips the elements it creates stay bounded by the view (windowing counts edge
 tools); at 80 clips under a 4x CPU throttle in Chrome, at most 2 % of the frames of a scripted edge drag take longer
-than 25 ms; every width from 320 to 1280 px fits without a horizontal page scroll bar; with `prefers-reduced-motion:
+than 25 ms; at every width from 320 to 1280 px the edge tools, their tip and the ripple SHALL NOT widen the page beyond what it
+is without them (the Edit page's own 17 px overflow at 320 px predates this change and is not its gate); with `prefers-reduced-motion:
 reduce` the brackets, tip and ripple do not animate; the brackets, limit edge, tip and snap line follow the page's
 scheme in light and dark with the contrast the page meets; and an edge's state (hovered, focused, dragged, snapped, at
 a limit, unavailable) is never shown by colour alone. All of this SHALL hold in Chrome 154 and Firefox 155 or newer.
@@ -190,3 +194,51 @@ a limit, unavailable) is never shown by colour alone. All of this SHALL hold in 
 - **WHEN** Edit mode's Timeline is looked at in Chrome and Firefox at 1280 and 390 px, light and dark, during an edge
   drag at the start of the file
 - **THEN** the page does not scroll horizontally and the bracket, the limit edge, its words and the tip are legible
+
+## MODIFIED Requirements
+
+### Requirement: Edit mode's cuts are trim handles
+
+In Edit mode, each cut the Timeline draws on a clip that offers a Cuts panel (an included or new clip on disk whose proxy is ready) SHALL have two **trim handles**, one on its start and one on its end. The handles belong to the cut as the clip's Cuts panel lists it: the cut keeps its place in the list, its number, its reason and its identity while a handle moves, and a cut marked removed has no handle. A handle SHALL be a slider (`role="slider"`, horizontal), reachable by Tab, in the order of time: the clips in play order, and in each clip the cuts by start, a cut's start handle before its end handle, after the playhead. It SHALL be named "Cut <n> start of <name>" or "Cut <n> end of <name>", where <name> is the clip as its row names it and <n> the cut's number in that clip's Cuts panel (the panel's own numbering, removed cuts counted), so no two handles of a clip share a name. It SHALL expose `aria-valuenow` as its time in the clip in seconds, and `aria-valuemin` and `aria-valuemax` as the least and greatest time it can take now, and a value text that gives its time in the Cuts panel's time format followed by the cut's span in words ("0:01.5, the cut runs 0:01.5 to 0:03"). A visible description, referenced by `aria-describedby`, SHALL list the keys of "A trim handle is moved by keyboard".
+
+A handle SHALL take only places the cut can legally take, and its range SHALL always hold the value it has:
+
+- the **start** can go no earlier than the clip's start or the end of the nearest cut before it that it does not overlap, and no later than three frames of the clip before its own end
+- the **end** can go no later than the clip's length (the proxy's duration) or the start of the nearest cut after it that it does not overlap, and no earlier than three frames of the clip after its own start
+- a cut already shorter than three frames, a cut that runs past the clip's end, and cuts that overlap each other in `reel.yaml` SHALL keep a range that holds their current times; looking at a cut SHALL NOT change it
+- the limits are frame times of the clip's own frame rate (taken from the proxy's facts), so that Home and End reach a time the clip can show
+- a cut touching another, one's end at the other's start, is a legal place
+
+A leading or trailing cut ("The track lays the clips out") is not drawn and SHALL have no handle; it stays listed and editable in its Cuts panel, and a cut that runs past the clip's end is such a trailing cut. A handle MAY be dragged or stepped to the clip's start or end, or to touch a leading or trailing cut, within its limits: on release the cut becomes part of the leading or trailing cut, its block shortens and its handles are gone. If it was the selected cut, it stays selected when it is now the clip's edge cut (the leading cut that ends latest, or the trailing cut that starts earliest), whose times its Trim In or Trim Out ("In Edit mode a clip block's edges are Trim In and Trim Out tools") and the selected cut's fields now edit; otherwise nothing is selected.
+
+Cuts the render joins into one span SHALL still have a handle each at their own edges.
+
+Handles SHALL exist exactly where the track draws the clip's cut spans: a clip drawn too narrow to show its cuts (the track draws it as a block) has no handle until the operator zooms in, and a clip outside the window the track draws has none either ("The track zooms, and draws only what is in view"). Moving the playhead scrolls the view to it, which brings the clips around it, and so their handles, into the window; this is how keyboard focus reaches a cut that is far from the view.
+
+#### Scenario: Handles are named and carry their limits
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, whose `s1710001.mp4` (6.02 s, a 50 fps proxy, three frames are 60 ms) has a cut from 1.0 to 2.5 s and one from 4.0 to 5.0 s, the operator opens the Timeline and tabs to its first handle
+- **THEN** the handle is named "Cut 1 start of s1710001.mp4", has `aria-valuenow` 1, `aria-valuemin` 0 and `aria-valuemax` 2.44, and says "0:01, the cut runs 0:01 to 0:02.5"; the next Tab stops at "Cut 1 end of s1710001.mp4" with `aria-valuemin` 1.06 and `aria-valuemax` 4
+
+#### Scenario: A removed cut has no handle
+- **WHEN** the operator removes cut 1 of `s1710001.mp4` in its Cuts panel
+- **THEN** the Timeline draws no handle for it and the handles of the other cut keep the names "Cut 2 start of s1710001.mp4" and "Cut 2 end of s1710001.mp4"; pressing Undo brings cut 1's handles back
+
+#### Scenario: A cut shorter than three frames is not widened
+- **WHEN** a cut of 5.000 to 5.050 s was read from `reel.yaml`, and the operator focuses its end handle and then its start handle
+- **THEN** the end handle's range begins at 5.05 and the start handle's ends at 5.0, so each can only widen the cut; the cut is unchanged by focusing, and Left on the end handle (which would shorten it further) changes nothing
+
+#### Scenario: A cut past the clip's end
+- **WHEN** `s1710001.mp4` (6.02 s) lists a cut from 5.0 to 7.0 s
+- **THEN** the Timeline draws no span and no handle for it, the clip's block ends at 5.0 s of the clip, and the cut is listed in its Cuts panel with its times unchanged
+
+#### Scenario: A handle taken to the clip's start makes a leading cut
+- **WHEN** `s1710001.mp4` has a cut from 1.0 to 2.5 s and the operator presses Home on its start handle and then leaves the handle
+- **THEN** the cut runs from 0 to 2.5 s in the draft, the Timeline draws no span and no handle for it, the clip's block starts at 2.5 s of the clip and is 2.5 s shorter, the clips after it start 2.5 s earlier on the track, and cut 1 stays selected as the clip's start edge cut, its fields showing 0 to 2.5 s
+
+#### Scenario: A clip too narrow to show its cuts
+- **WHEN** at the lowest zoom of a 400-clip event a clip is drawn as a block with no cut spans
+- **THEN** it has no handle, its cuts are still listed and editable in its Cuts panel, and zooming in until its cuts are drawn gives it its handles
+
+#### Scenario: Overlapping cuts from disk
+- **WHEN** a clip lists cuts 2.0 to 4.0 s and 3.5 to 5.0 s
+- **THEN** the track draws one joined span with four handles, each with a range that holds its current time, and no range is inverted

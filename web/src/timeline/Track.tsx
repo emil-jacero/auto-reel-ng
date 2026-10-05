@@ -678,7 +678,14 @@ export function Track({
         </div>
         {analysisLane !== undefined && (
           <div className="tl-analysis">
-            {analysisLane.render({ clips, lay, pps, shown, shifted: (index) => behind(shifting, lay.startsMs[index]) })}
+            {analysisLane.render({
+              clips,
+              lay,
+              pps,
+              shown,
+              shifted: (index) => behind(shifting, lay.startsMs[index]),
+              held: (index) => clips[index]?.identity === edgeDragged,
+            })}
           </div>
         )}
         <PlayheadSlider

@@ -1592,8 +1592,17 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     bracket (tokens `--trim-edge`, `--trim-edge-ink`); one nearest-wins press test covers edge tools and cut handles. A drag
     lives in the drag store (`EdgeDragging`, the one claim): the dragged block is drawn live with its left side kept, and what
     follows moves by the change of its width through `ShiftFrom` (now a card's or a clip edge's, `shiftMs`), as behind a black
-    card; the draft is written once, on release. **Bundle:** JS 629.01 to 646.56 kB (203.87 to 209.42 gzip), CSS 88.10 to
-    92.54 kB (16.80 to 17.62 gzip) against origin/main, as `vite build` reports them; no package added.
+    card; the draft is written once, on release; the dragged clip's own analysis marks hide until the release, and
+    `Q`/`W` wait while any press or drag holds the Timeline. **Drag cost, measured** (2026-10-05; 80 clips, 180 pointer
+    moves on a Trim Out, frames over 25 ms): Chrome 154 at 4x 2.8, 10.8, 11.0, 16.5, 15.8, 14.4 and 6.1 % (median 11.0 %
+    over seven runs, p95 24 to 37 ms) with the idle page at 0 % in the same sessions (load 4 to 10); Firefox 155
+    unthrottled 0.28 to 0.56 %. A trace gives about 9 ms of `Layerize` per frame at 4x against 2 ms of script and 4 ms
+    of layout: any geometry change on the page (a block's width, a translate, a tool's place) relayerizes the whole
+    page, whose bulk is the Edit page's clip list (with the list hidden 0.69 ms per frame, and the drag 0.27, 0.92 and
+    6.0 %). The spec's gate (2 % in Chrome 4x) is not met; `edit-list-paint-cost` carries the list's paint cost and the
+    gate is to be measured again after it (injecting `content-visibility: auto` on the rows alone halved `Layerize` but
+    measured 4.6 to 20.8 %). **Bundle:** JS 629.01 to 646.95 kB (203.87 to 209.54 gzip), CSS 88.10 to
+    92.58 kB (16.80 to 17.62 gzip) against origin/main, as `vite build` reports them; no package added.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
   1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every

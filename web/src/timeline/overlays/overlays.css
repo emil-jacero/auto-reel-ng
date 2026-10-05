@@ -27,6 +27,11 @@
     pointer-events: none;
   }
 
+  /* A clip whose edge is in the air (clip-edge-trim): its marks wait for the release. */
+  .sg-group[data-edge-held] {
+    visibility: hidden;
+  }
+
   /* --- a mark --- */
   .sg-mark {
     --_edge: var(--border-strong);

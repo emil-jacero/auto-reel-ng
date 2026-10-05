@@ -132,6 +132,22 @@ export function shiftMs(
   return e !== null && e.identity === shift.identity ? e.deltaMs : 0
 }
 
+/**
+ * Whether a press or a drag holds the store now (a trim handle, a card edge or a clip edge, from
+ * its press on): the keys that edit the draft (`Q`, `W`) wait for its release.
+ */
+export function held(store: DragStore): boolean {
+  if (store.get() !== null || store.getCard() !== null || store.getEdge() !== null) {
+    return true
+  }
+  const probe = {}
+  if (!store.claim(probe)) {
+    return true
+  }
+  store.unclaim(probe)
+  return false
+}
+
 export function createDragStore(): DragStore {
   let at: Dragging | null = null
   let card: CardDragging | null = null

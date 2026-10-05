@@ -189,6 +189,25 @@ describe('edgeAt and edgeEdit', () => {
     assert.deepEqual(edgeEdit(listed, 'end', at.x, F), { kind: 'trim', key: 'r2', span: { in: 5.0, out: 7.0 } })
   })
 
+  it('an end edge cut short of the file’s end, behind another cut: past its own out it is removed', () => {
+    // r0 ends 70 ms before the end (Play's slack makes it the trailing cut); r1 starts after it.
+    const listed = [cut('r0', 5.0, 5.95, 'black'), cut('r1', 5.96, 6.02, 'freeze')]
+    assert.equal(edgeCutOf(listed, 'end', F.durationMs)?.cut.key, 'r0')
+    const limits = edgeLimits(listed, 'end', F)
+    assert.equal(limits.highest, 5960)
+    // A drag far past the end, and End: the place r1 holds, and r0 has nothing left to cut.
+    for (const wanted of [99999, edgeKey('End', false, listed, 'end', F, limits)!]) {
+      const at = edgeAt(listed, 'end', wanted, F, 40, SNAP, limits)
+      assert.equal(at.x, 5960)
+      assert.equal(at.place, 5960)
+      assert.ok(at.cuts.every((c) => c.out > c.in), 'no inverted span in the live cuts')
+      assert.deepEqual(edgeEdit(listed, 'end', at.x, F), { kind: 'remove', key: 'r0' })
+    }
+    // Short of r0's out it is still trimmed, never inverted.
+    const at = edgeAt(listed, 'end', 5500, F, 40, { playheadMs: null, snapping: false }, limits)
+    assert.deepEqual(edgeEdit(listed, 'end', at.x, F), { kind: 'trim', key: 'r0', span: { in: 5.5, out: 5.95 } })
+  })
+
   it('trimming an end adds the span to the clip’s duration', () => {
     const at = edgeAt(INTERIOR, 'end', 5520, F, 40, SNAP)
     assert.deepEqual(edgeEdit(INTERIOR, 'end', at.x, F), {

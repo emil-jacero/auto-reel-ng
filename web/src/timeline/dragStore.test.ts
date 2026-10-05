@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { createDragStore, shiftMs } from './dragStore.ts'
+import { createDragStore, held, shiftMs } from './dragStore.ts'
 import type { Dragging, EdgeDragging } from './dragStore.ts'
 
 const drag: Dragging = { identity: 'a.mp4', key: 'r0', edge: 'out', ms: 3500, snappedTo: null, words: '' }
@@ -131,6 +131,23 @@ describe('the drag store and a clip edge (clip-edge-trim)', () => {
     store.unclaim(edgeToken)
     assert.equal(store.claim(trimToken), true)
     assert.equal(store.claim(edgeToken), false)
+  })
+
+  it('held: a press (before any move) or a drag holds the store; the probe leaves it free', () => {
+    const store = createDragStore()
+    assert.equal(held(store), false)
+    assert.equal(store.claim({}), true, 'the probe gave the claim back')
+    const fresh = createDragStore()
+    const press = {}
+    fresh.claim(press)
+    assert.equal(held(fresh), true)
+    assert.equal(fresh.owns(press), true, 'the probe never takes a held claim')
+    fresh.unclaim(press)
+    fresh.setEdge(edge)
+    assert.equal(held(fresh), true)
+    fresh.setEdge(null)
+    fresh.setCard({ chapter: 'Beach', tenths: 35, snapped: false, words: '' })
+    assert.equal(held(fresh), true)
   })
 
   it('shiftMs: the dragged clip edge moves what follows by its block’s change, a card by its length', () => {

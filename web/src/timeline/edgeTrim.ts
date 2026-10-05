@@ -124,13 +124,20 @@ function othersOf<C extends ListedCut>(listed: readonly C[], edge: Indexed<C> | 
     .filter((row) => row.index !== edge?.index && row.cut.removed !== true)
 }
 
-/** The edge cut a side would have with its inner end at `x` (ms), as a listed cut. */
-function edgeSpan(side: Side, x: Ms, durationMs: Ms, edge: ListedCut | null): ListedCut {
+/**
+ * The edge cut a side would have with its inner end at `x` (ms), as a listed cut; null when that
+ * span is empty. An end edge cut that ends short of the file's end (Play's slack) behind another
+ * cut can be moved past its own out, where the other cuts hold the place: it then has no span left.
+ */
+function edgeSpan(side: Side, x: Ms, durationMs: Ms, edge: ListedCut | null): ListedCut | null {
   if (side === 'start') {
-    return { in: 0, out: x / 1000 }
+    // A leading cut keeps its in as listed (at or before 0).
+    const from = edge === null ? 0 : edge.in
+    return x > toMs(from) ? { in: from, out: x / 1000 } : null
   }
   // A trailing cut keeps its out as listed (one read past the end too).
-  return { in: x / 1000, out: edge === null ? durationMs / 1000 : edge.out }
+  const out = edge === null ? durationMs / 1000 : edge.out
+  return toMs(out) > x ? { in: x / 1000, out } : null
 }
 
 /** The cuts with the side's edge cut set to `x`. */
@@ -141,7 +148,8 @@ function withEdge(
   durationMs: Ms,
   edge: ListedCut | null,
 ): ListedCut[] {
-  return [...others, edgeSpan(side, x, durationMs, edge)]
+  const span = edgeSpan(side, x, durationMs, edge)
+  return span === null ? [...others] : [...others, span]
 }
 
 /** The place of a side's edge with its edge cut's inner end at `x`. */
@@ -370,6 +378,7 @@ export function edgeAt(
   const x = Math.min(limits.highest, Math.max(limits.lowest, placed))
   const hit = snapped.target !== null && x === snapped.target ? candidates.find((c) => c.ms === x) : undefined
   const place = placeWith(otherCuts, side, x, d, edge?.cut ?? null)
+  const span = edgeSpan(side, x, d, edge?.cut ?? null)
   const after = withEdge(otherCuts, side, x, d, edge?.cut ?? null)
   const spans = cutSpans(after, d)
   const kept = edgesOf(spans, d)
@@ -397,10 +406,7 @@ export function edgeAt(
     playsMs: plays,
     extent: kept,
     limit,
-    cuts: [
-      ...otherCuts,
-      { ...edgeSpan(side, x, d, edge?.cut ?? null), reason: reasonOf(edge?.cut) ?? 'manual' },
-    ],
+    cuts: span === null ? otherCuts : [...otherCuts, { ...span, reason: reasonOf(edge?.cut) ?? 'manual' }],
   }
 }
 
@@ -434,21 +440,19 @@ export function edgeEdit<C extends ListedCut & { key: string }>(
   const before = edgePlaces(listed, d)[side]
   const place = placeWith(otherCuts, side, x, d, edge?.cut ?? null)
   const fileLimit = side === 'start' ? 0 : d
-  if (edge !== null && place === fileLimit) {
+  const span = edgeSpan(side, x, d, edge?.cut ?? null)
+  // Back to the file's limit, or past the edge cut's own far end (the other cuts hold the place):
+  // the edge cut has nothing left to remove.
+  if (edge !== null && (place === fileLimit || span === null)) {
     return { kind: 'remove', key: edge.cut.key }
   }
-  if (place === before) {
+  if (place === before || span === null) {
     return { kind: 'none' }
   }
-  const span = edgeSpan(side, x, d, edge?.cut ?? null)
   if (edge === null) {
     return { kind: 'add', span: { in: span.in, out: span.out }, reason: 'manual' }
   }
-  return {
-    kind: 'trim',
-    key: edge.cut.key,
-    span: side === 'start' ? { in: edge.cut.in, out: span.out } : { in: span.in, out: edge.cut.out },
-  }
+  return { kind: 'trim', key: edge.cut.key, span: { in: span.in, out: span.out } }
 }
 
 // --- keys ------------------------------------------------------------------------------
