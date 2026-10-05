@@ -69,6 +69,11 @@ decision below that has no line in this breakdown is skipped.
   find-in-page (`content-visibility: auto`, unlike `hidden`, does not hide content from either).
 - Scroll anchoring (`overflow-anchor: auto`, the default) keeps the visible row in place when a row above the view gets
   its real size. No rule in the edit page may set `overflow-anchor: none` on the page scroller; one is checked for.
+- As built: `contain-intrinsic-size` sizes the **content box**, so `--clip-row-h` is a row's height less its 17 px of
+  padding and border (a first try with whole-row heights grew the page 15 %): 3.1875rem (58-64rem panel), 4.5rem (from
+  64rem, the 8rem frame), 3.75rem (under 58rem), 5.125rem (under 30rem). The rule sits in `@container (width >=
+  20.25rem)`: under it a row's tools already overflow the row (on `main` too, the page itself below 340 px), and
+  containment would cut the Move down button.
 
 ### D2 — Paint containment must not clip what a row draws outside itself
 
@@ -80,6 +85,10 @@ overlay (`drag.css`, `box-shadow` spread), the mark checkbox's ring, the rotate 
 Fix per case: draw the ring inset (`outline-offset` ≤ 0) or move the outside decoration to an element that is not
 inside the contained `li` (dnd-kit's `DragOverlay` already renders in a portal). No visual regression is accepted;
 screenshots are compared with `main`'s.
+
+As built: neither — the rule skips the rows that draw outside themselves, `:not(:focus-within, [data-drop-before],
+[data-dragging])`, so a focused row, the drop target and the lifted row are drawn exactly as before (pixel-equal
+screenshots), and the other rows have nothing outside their box. Toggling containment on one row costs nothing measurable.
 
 ### D3 — dnd-kit measures correct rects for rows that were skipped
 
@@ -110,6 +119,15 @@ Candidates, in the order the profile is expected to show them:
 - **Thumbnails**: every `<img>` in a row gets `loading="lazy" decoding="async"` (only `ClipThumb` is known to have it).
 - **Large layers**: the trace's layer list for the Edit page during a drag; a layer the size of the list is removed by
   removing whatever promotes it.
+
+As built (E1's breakdown): none of the candidates above showed in the trace (the save bar is hidden during a zoom; the
+app header's backdrop filter, the sticky chapter header and the thumbnails changed nothing when switched off). The cost
+left after D1 was the **layerize of the rows in view** (each icon `<svg>` is its own paint chunk; about 60 ms per drawn
+row per drag), so each chapter's played list is given **its own composited layer** (`.edit-chapter > ol.clip-order {
+will-change: transform }`): layerize 1.5 s -> 0.5 s per traced drag, and the list's layer is not repainted while the
+Timeline zooms. This is the one large layer the page adds, on purpose: it is tiled (only tiles near the view are
+rastered), and the trade is a memory cost for the gate. Side effect: the list's content snaps to whole pixels, so glyph
+and thumbnail antialiasing differ from `main`'s at sub-pixel level (nothing moves).
 
 ## Research & Decisions
 
