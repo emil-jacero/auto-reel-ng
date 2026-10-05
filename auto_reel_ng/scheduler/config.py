@@ -9,11 +9,12 @@ other CLI option follows (D-2).
 
 from __future__ import annotations
 
+import math
 import os
 import socket
 import uuid
 from dataclasses import dataclass
-from typing import Optional
+from typing import Mapping, Optional
 
 from ..config.project import ConfigError, ProjectConfig
 
@@ -39,6 +40,17 @@ DEFAULT_PROXY_SLOTS = 1
 #: would only wait for that token.
 DEFAULT_ANALYSIS_SLOTS = 1
 
+#: Whether the worker sweeps its project for events whose analysis is due (``analysis-auto-sweep``):
+#: on, so an idle worker brings every event's black/white/freeze suggestions up to date itself.
+DEFAULT_AUTO_ANALYZE = True
+
+#: Seconds between automatic analysis sweeps: "every few minutes"; analysis takes minutes per
+#: event (D-27), so a faster sweep buys nothing.
+DEFAULT_AUTO_ANALYZE_INTERVAL_S = 300.0
+
+#: At most this many events a sweep enqueues, so the first sweep over a large archive trickles.
+DEFAULT_AUTO_ANALYZE_MAX_EVENTS = 2
+
 
 def worker_identity() -> str:
     """A fresh, unique worker id: ``host:pid:nonce`` (D-S5).
@@ -59,6 +71,9 @@ class WorkerConfig:
     cpu_slots: int
     proxy_slots: int = DEFAULT_PROXY_SLOTS
     analysis_slots: int = DEFAULT_ANALYSIS_SLOTS
+    auto_analyze: bool = DEFAULT_AUTO_ANALYZE
+    auto_analyze_interval: float = DEFAULT_AUTO_ANALYZE_INTERVAL_S
+    auto_analyze_max_events: int = DEFAULT_AUTO_ANALYZE_MAX_EVENTS
 
 
 def _resolve_float(
@@ -83,6 +98,41 @@ def _resolve_int(flag: Optional[int], config_value: object, default: int, *, key
     if isinstance(config_value, int) and not isinstance(config_value, bool):
         return config_value
     raise ConfigError(f"worker.{key} must be an integer, got {type(config_value).__name__}")
+
+
+def _resolve_bool(config_value: object, default: bool, *, key: str) -> bool:
+    """A ``worker.<key>`` boolean over ``default``; anything but ``true``/``false`` fails loud."""
+    if config_value is None:
+        return default
+    if isinstance(config_value, bool):
+        return config_value
+    raise ConfigError(f"worker.{key} must be true or false, got {config_value!r}")
+
+
+def _resolve_auto_analyze(worker_cfg: Mapping[str, object]) -> tuple[bool, float, int]:
+    """``worker.auto_analyze``, ``auto_analyze_interval`` and ``auto_analyze_max_events``."""
+    enabled = _resolve_bool(
+        worker_cfg.get("auto_analyze"), DEFAULT_AUTO_ANALYZE, key="auto_analyze"
+    )
+    interval = _resolve_float(
+        None,
+        worker_cfg.get("auto_analyze_interval"),
+        DEFAULT_AUTO_ANALYZE_INTERVAL_S,
+        key="auto_analyze_interval",
+    )
+    if not math.isfinite(interval) or interval <= 0:
+        raise ConfigError(
+            f"worker.auto_analyze_interval must be a number of seconds above 0, got {interval}"
+        )
+    max_events = _resolve_int(
+        None,
+        worker_cfg.get("auto_analyze_max_events"),
+        DEFAULT_AUTO_ANALYZE_MAX_EVENTS,
+        key="auto_analyze_max_events",
+    )
+    if max_events < 1:
+        raise ConfigError(f"worker.auto_analyze_max_events must be at least 1, got {max_events}")
+    return enabled, interval, max_events
 
 
 def resolve_worker_config(
@@ -118,6 +168,7 @@ def resolve_worker_config(
         raise ConfigError(
             f"worker.analysis_slots must be at least 1, got {resolved_analysis_slots}"
         )
+    auto_analyze, auto_analyze_interval, auto_analyze_max_events = _resolve_auto_analyze(worker_cfg)
     return WorkerConfig(
         poll_interval=_resolve_float(
             poll_interval,
@@ -136,6 +187,9 @@ def resolve_worker_config(
         ),
         proxy_slots=resolved_proxy_slots,
         analysis_slots=resolved_analysis_slots,
+        auto_analyze=auto_analyze,
+        auto_analyze_interval=auto_analyze_interval,
+        auto_analyze_max_events=auto_analyze_max_events,
     )
 
 
@@ -148,4 +202,7 @@ __all__ = [
     "DEFAULT_CPU_SLOTS",
     "DEFAULT_PROXY_SLOTS",
     "DEFAULT_ANALYSIS_SLOTS",
+    "DEFAULT_AUTO_ANALYZE",
+    "DEFAULT_AUTO_ANALYZE_INTERVAL_S",
+    "DEFAULT_AUTO_ANALYZE_MAX_EVENTS",
 ]
