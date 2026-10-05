@@ -91,6 +91,20 @@ recorded per run.
   from `main`'s only in sub-pixel glyph and thumbnail antialiasing (zoomed, nothing moves). A loading thumbnail's
   shimmer (6 x 1.6 s) repaints its row until it ends, on `main` too.
 
+- [ ] 2.5 Edge tools out while zooming (design D6, supervisor decision 2026-10-05; `event-timeline` MODIFIED "In Edit
+  mode a clip block's edges are Trim In and Trim Out tools"): a pure settle helper `web/src/timeline/zoomSettle.ts`
+  (zoom input starts/extends a zoom; slider `pointerup`/`lostpointercapture` settles at once; any other input settles
+  `SETTLE_MS = 150` after the last; cancel on unmount), a `zooming` flag in Timeline state set once per zoom, fed by the
+  slider, Ctrl/Cmd+wheel and pinch, the zoom buttons and `=`/`-` (key repeat included); `Track.tsx` pushes no
+  `edge('start'|'end')` while `zooming`, beside the existing rippling-drag rule, except the one tool focused at the
+  zoom's start. Test: `zoomSettle.test.ts` (`node:test`, injected clock): a burst of wheel inputs 40 ms apart is one
+  zoom settling 150 ms after the last; a slider press held 2 s stays open and settles on release; key repeat; cancel;
+  a pure "which edge tools to render" case keeps only the focused tool while zooming and all in-window tools after.
+  Playwright in Chrome 154 and Firefox 155 on the 80-clip event (scripts in SCRATCH): during a slider drag, a
+  Ctrl+wheel burst and held `=`, `.timeline` holds 0 edge tools (1 with one focused, still `document.activeElement`);
+  after settle the in-view count equals the count before the zoom; the trim cursor and bracket show under a pointer
+  that did not move; the render counter of 1.2 still shows 0 clip-row renders. `npm test`, both `tsc` configs pass.
+
 ## 3. The gate
 
 - [ ] 3.1 Re-run 1.1's measurement on this branch (event-timeline requirement): Chrome 4x `slider` ×5 with `idle` ×5 in
@@ -118,13 +132,16 @@ recorded per run.
   CSS containment of the tools, no bracket, no cursor: no change (8-11 %). Open for the supervisor: the candidate fix
   is in the Timeline (`clip-edge-trim`'s code, not this change's), e.g. leaving the edge tools out while a zoom is in
   progress, as they already are behind a rippling drag.
+  Supervisor decision (2026-10-05): the 2 % stays; that fix is task 2.5. Re-run this task on the final build after 2.5
+  (Chrome 4x `slider` x5 with `idle`, Firefox x3, scrub and frame-step in both); if still above 2 %, record the best
+  with the breakdown and stop again.
 - [ ] 3.2 Close #140's gate: if 3.1 meets 2 %, tick `timeline-zoom-slider`'s tasks 3.1 and 5.2 in
   `openspec/changes/archive/2026-10-05-timeline-zoom-slider/tasks.md`, each with a one-line status naming
   `edit-list-paint-cost` and the figures (the `event-timeline` zoom requirement has no frame figure, so its text is not
   changed). Test: `openspec validate edit-list-paint-cost --strict` passes; `grep -c '\- \[ \]'` on that archived file
   is 0.
   Status: reopened with 3.1 after the merge; the archived tasks 3.1 and 5.2 are unticked again, with the figures.
-- [x] 3.3 Close #141's gate (`clip-edge-trim` task 4.2): after merging `origin/main`, run its scripted Trim Out edge
+- [ ] 3.3 Close #141's gate (`clip-edge-trim` task 4.2): after merging `origin/main`, run its scripted Trim Out edge
   drag (80 clips, the third clip in view, 180 moves, about 45 px per second; `edge_perf.py` in SCRATCH from its
   `perf.py`) in Chrome 154 at 4x, five launches each with an idle run first, `origin/main` in the same session, and in
   Firefox 155 ×3; record both gates in the HLD under D-20 and tick `clip-edge-trim`'s 4.2 with the figures if ≤ 2 %.
@@ -134,14 +151,20 @@ recorded per run.
   0.47 / 1.97 / 0.31 / 0.32 / 0.15 % -> median 0.32 % (idle 0-0.56 %); Firefox 0 % in all three. On a host this quiet
   `main` also stays under 2 % (#141's 11.0 % median was at load 4-10), so the margin is the measure: a traced drag's
   layerize went from 7.6 s to 0.19 s and BeginMainFrame from a median 14.4 ms (p95 25.6) to 1.7 ms (p95 14.0).
+  Reopened (2026-10-05): re-run on the final build after 2.5 (the edge drag must not regress). `clip-edge-trim` 4.2 is
+  already ticked on this branch (commit 2696ccb) with the pre-2.5 figures: replace its status line with the final ones,
+  or untick it if the final build misses 2 %.
 
 ## 4. Docs and gates
 
-- [x] 4.1 HLD (`docs/high-level-design.md`): a D-20 note (Edit page paint cost: per-row `content-visibility` with a
+- [ ] 4.1 HLD (`docs/high-level-design.md`): a D-20 note (Edit page paint cost: per-row `content-visibility` with a
   remembered intrinsic size, zero clip-row renders on zoom/scrub/play, the before/after figures and the idle floor), a
   §4.10 bullet and a §6 phase-9 note naming `edit-list-paint-cost`. Test: a `docs.test.ts` case asserting
   `edit-list-paint-cost` is named in D-20, §4.10 and §6.
-- [x] 4.2 Gates: `npm test`, `npx tsc --noEmit` and `npm run build` in podman; the full Playwright run of 2.2–2.4 and
+  Reopened (2026-10-05): add to the D-20 note the edge tools' zoom-settle rule (D6, 150 ms, focused tool kept) and both
+  final gate figures (#140 slider drag on 400 clips and #141 edge drag on 80 clips, Chrome 4x with idle, Firefox) from
+  3.1/3.3; the `docs.test.ts` case also asserts the settle rule is named in D-20.
+- [ ] 4.2 Gates: `npm test`, `npx tsc --noEmit` and `npm run build` in podman; the full Playwright run of 2.2–2.4 and
   3.1 in Chrome 154 and Firefox ≥ 155, light and dark, 1280 and 390 px, screenshots looked at; no request other than
   reads during any zoom, scrub, play or scroll.
   Status: in podman node:22, `npm ci`, `npm test` 1028/1028, `tsc --noEmit` (app and test configs) clean, `npm run
@@ -156,3 +179,5 @@ recorded per run.
   each (looked at), group drag 55/59, marks 52/55, move marked 34/37 and rotate rows 4/4 in both, each as on
   `origin/main` (their stale parts fail the same way there; the card dialog, rotate, save-bar and keyboard suites stop
   at the same stale step on both builds). Full pytest 3664 passed (Python untouched).
+  Reopened (2026-10-05): repeat on the final build after 2.5 (`npm test`, both `tsc`, `npm run build`, the suites above
+  plus 2.5's Playwright in Chrome 154 and Firefox 155, light/dark 1280/390 shots looked at).

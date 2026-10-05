@@ -31,6 +31,14 @@ is involved: the evidence is the measurement above, which this change re-runs.
 - **The #140 gate is re-run** (same fixture, same 180-move drag, Chrome 4x and Firefox), with the scrub and frame-step
   gates. Target ≤ 2 % in Chrome. If 2 % is not reachable, the best achieved, with the breakdown, is reported and the
   change stops there for the supervisor's decision (the new requirement's figure then follows that decision).
+- **The edge tools step aside while a zoom is in progress** (supervisor decision 2026-10-05, after this change's first
+  run stopped blocked): once `clip-edge-trim` (#141) merged, the slider drag on 400 clips rose from a 0.36 % median to
+  9.34 %, because every zoom re-renders and re-positions the in-view Trim In / Trim Out tools (each tool's `x` changes,
+  so `memo` cannot hold; a scratch build without them measured 0.32-3.05 %). The 2 % requirement is not relaxed.
+  Instead the Track leaves the edge tools out from a zoom's first input until it settles (slider release, or ~150 ms
+  after the last Ctrl/Cmd+wheel, pinch, button or `=`/`-` input), exactly as it already leaves them out behind a
+  rippling drag (`d5f1e2f`), keeps the one tool that holds focus, and renders them once on settle; the hover cursor
+  returns without a pointer move.
 - If the gate is met, `timeline-zoom-slider`'s open tasks 3.1 and 5.2 are ticked in the archive with a status line
   naming this change; the "track zooms" requirement in `event-timeline` needs no wording change (it has no numeric
   frame gate — the gate is this change's ADDED requirement).
@@ -39,8 +47,9 @@ is involved: the evidence is the measurement above, which this change re-runs.
 
 - Virtualising the clip list (unmounting off-screen rows): it would break dnd-kit's sortable measuring, keyboard
   reorder's focus and find-in-page; `content-visibility` keeps every row in the DOM and in the accessibility tree.
-- Any change to the Timeline's own rendering (windowing, `LIVE_OVERSCAN`, the zoom path) — `timeline-zoom-slider`
-  owns those and its numbers show the Timeline is not the bulk of the cost.
+- Any other change to the Timeline's own rendering (windowing, `LIVE_OVERSCAN`, the zoom math) — `timeline-zoom-slider`
+  owns those and its numbers show the Timeline is not the bulk of the cost. The one Timeline change is the edge tools'
+  zoom-settle omission above.
 - Raising `MAX_PPS`, a drag preview, or changing any gate other than the slider-drag one.
 - The read view's clip list (no Timeline on that page since `timeline-zoom-slider`).
 - Engine, API, CLI, scheduler: untouched.
@@ -57,11 +66,14 @@ is involved: the evidence is the measurement above, which this change re-runs.
   Zoom-slider drag on a 400-clip event meets a frame gate in Chrome (4x throttle) and Firefox.
 - `web-app`: ADDED requirement — Edit mode's clip list skips drawing rows out of view without moving the page, and
   every row stays focusable, readable by assistive technology, draggable and reorderable by keyboard.
+- `event-timeline`: MODIFIED requirement "In Edit mode a clip block's edges are Trim In and Trim Out tools" — the edge
+  tools do not exist while a zoom is in progress (except the focused one) and return once it settles.
 
 ## Impact
 
 - Package: `web/` only (`src/edit/` CSS and `ClipOrderList.tsx`, `src/edit/EventEditor.tsx` prop stability, possibly
-  `src/timeline/TimelineSection.tsx`), plus `docs/high-level-design.md`. Neither the CLI nor the API is touched
+  `src/timeline/TimelineSection.tsx`), `src/timeline/Track.tsx` / `Timeline.tsx` and a pure zoom-settle helper in
+  `src/timeline/` (edge tools out while zooming), plus `docs/high-level-design.md`. Neither the CLI nor the API is touched
   (Principle V: nothing to reach).
 - Rendered output for identical inputs: unchanged — no `RENDER_GRAPH_VERSION` bump. Staleness fingerprint inputs:
   unchanged.
