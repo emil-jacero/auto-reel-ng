@@ -398,6 +398,13 @@ events reads' `latest_job` (which is always the latest *render* job) and in ever
 enqueue's 201 / 200 fresh / 409 semantics (D-21 "Enqueue over REST"); it is a job-lifecycle route, so Principle V holds:
 the work is `auto-reel proxies`'s, and the API only owns enqueue, follow and cancel. Proxy jobs share the one WebSocket.
 
+The kinds are now `render | proxy | analysis` (`analysis-job`, D-27). `POST /api/v1/events/{event_id}/analysis`
+(optional `{force}`, Re-analyze) and `POST /api/v1/analysis` (Analyze all) enqueue analysis jobs
+(`analysis-enqueue-api`, D-27 "Enqueue over REST and state") through `submit_analysis`, the CLI's own enqueue
+function, with the same 201 / 200 fresh / 409 semantics; the freshness rule is the engine's (`analysis/state.py`).
+`GET …/analysis` reports a closed per-event and per-clip `state` and the active analysis `job`; `analyzing` is a
+fact of the job store, so this read, unlike before, needs the database and declares a 503.
+
 **The same rule bounds content hashing.** The staleness fingerprint's clip-set component has a content-hash
 opt-in (`compute_fingerprint(use_hash=True)`) that sha256s every clip's bytes; on a per-event read that is a
 deliberate, bounded cost, but a whole-library read must never take it — an events **list** would turn one
@@ -513,7 +520,10 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   originals as an `analysis` job, after renders and proxy jobs, so "Not analyzed" can be fixed without the CLI once
   `analysis-enqueue-api` (the REST enqueue and an analysis state), `analysis-web-controls` (Re-analyze and Analyze
   all) and `analysis-auto-sweep` (the worker's automatic, capped sweep) follow; until then `auto-reel analyze
-  --enqueue` queues it.
+  --enqueue` queues it. **`analysis-enqueue-api` has landed** (D-27 "Enqueue over REST and state"): `POST
+  …/events/{event_id}/analysis` (`force` = Re-analyze), `POST /api/v1/analysis` (Analyze all) and the
+  `never | stale | current | analyzing | failed` state with the active job on `GET …/analysis`; the web's screens
+  are unchanged until `analysis-web-controls`.
   The timeline is built in the repo (**D-20**); its pure model has landed (`timeline-model`) and **the read-only
   Timeline has landed on the event page** (`timeline-view`): its own section, closed until opened, a Prepare state
   when a clip has no ready proxy, then one track (ruler, chapter band, clips laid out from the proxy facts, cuts as
@@ -849,6 +859,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    (`worker.auto_analyze`, on by default; every 300 s; two events per sweep, newest first; quiet while the queue
    is busy; back-off after a canceled or failed job); the handler and the sweep share one "needs analysis" rule;
    no migration, API, schema or web change.
+   `analysis-enqueue-api` has landed: the per-event and Analyze-all enqueues over `submit_analysis` and the analysis
+   state on the read (an `api/` + `analysis/` change; no render, fingerprint, schema-version or
+   `RENDER_GRAPH_VERSION` change, no migration, no `cli/` change).
    `movie-chapter-list` is the first user of `movie-facts-read`: the movie player's chapter jump list and the
    movie's version in the facts, a `web/` change only (D-15).
    `proxy-enqueue-endpoint` has landed next: `POST /api/v1/events/{event_id}/proxies`, `kind` on the jobs shapes and the
@@ -1376,6 +1389,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     Edit mode's draft, so the lane takes an `analysis` value whose `decide` is null in the read view, where it offers
     no decision and no note about one; the decision rules (`decideApprove`, `decideDismiss`) are pure and tested.
     The requirements for them are in `event-timeline`, written by `timeline-overlay-decisions` (below).
+    Since `analysis-enqueue-api` the read carries a closed `state` per event and per clip (`never | stale | current
+    | analyzing | failed`, D-27); the lane's notes will read it instead of the entries and `analyzed`, with
+    Re-analyze and Analyze all (`analysis-web-controls`).
   - **Prepare enqueues the proxy job** (`proxy-job`): the timeline's Prepare state enqueues the D-21 `proxy` job for the event; a render does not wait for it. It calls `POST /api/v1/events/{event_id}/proxies` (`proxy-enqueue-endpoint`) and follows the job on the WebSocket, whose jobs carry `kind`.
   - **Trim handles (change `timeline-trim`, 2026-10-03): the same Timeline in Edit mode, on the draft.** Edit mode mounts
     the one `TimelineSection` after the metadata form, closed until opened, with `editing` set: its cuts are the draft's
@@ -1954,7 +1970,26 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     it and the next clip waited for it. Decoding dominates and is done twice: one decode for both passes, then
     hardware decode, are the follow-up experiments; the automatic sweep's cap should be counted in minutes of
     footage, not events.
-  - **Deliberately not here:** the REST enqueue and an analysis state on the read (`analysis-enqueue-api`), the web
+  - **Enqueue over REST and state** (2026-10-05, change `analysis-enqueue-api`). `POST
+    /api/v1/events/{event_id}/analysis`, optional body `{force}`, enqueues the event's job through `submit_analysis`
+    (the function `analyze --enqueue` calls) with the render and proxy enqueues' contract: **201** with the job,
+    **200 `fresh`** (`clip_count`, `failed_count`) when no clip needs analysis and `force` is false (or the folder
+    lists no clip), **409 `active_job`** while one is queued or running (a forced request first gives a queued
+    unforced job `force`, as the CLI does; a running one is left), 404 / 502 / 503. **Re-analyze is `force`**: the
+    request writes nothing but the row; the forced job overrides results and failure markers when it runs.
+    `POST /api/v1/analysis` is **Analyze all**: every event the events list shows, `never` or `stale`, gets an
+    unforced job; the answer counts `queued`, `fresh`, `active` and lists the events it could not read (one bad event
+    costs only itself). The read `GET …/analysis` gains a closed **analysis state**, `never | stale | current |
+    analyzing | failed`, for the event and for every clip the folder lists (`state`, `clips`), and `job` (the
+    active analysis job with its progress); `analyzed` keeps its value and is legacy. The state is read by `stat` and
+    JSON only (`analysis/state.py`, over `cache.inspect_entry`): per clip a result for the current size+mtime is
+    `current`, a marker for it `failed`, an entry or marker of another signal (or an unparseable one) `stale`, no
+    entry file `never`; an entry or clip that cannot be read is a 502, never a guessed state. An event needs analysis
+    when a clip is `never` or `stale` (a `failed` clip waits for a change or a Re-analyze); that one rule decides the
+    REST freshness and is the sweep's (`cache.entry_state` `missing` = `never` or `stale`). `analyze --enqueue`
+    keeps queuing every selected event (its jobs over fresh events analyze nothing). The read now needs the job store
+    (503 when it is down).
+  - **Deliberately not here:** the web
     controls (`analysis-web-controls`), the automatic sweep (`analysis-auto-sweep`), a threshold hash in the cache
     key, hardware decode.
   - **Addendum — the automatic sweep** (2026-10-05, change `analysis-auto-sweep`). The worker sweeps its project
