@@ -57,17 +57,21 @@ function clips(count: number): string {
   return count === 1 ? '1 clip' : `${count} clips`
 }
 
-/** What the status region says once the read after a seen end answers. */
+/**
+ * What the status region says once the read after a seen end answers: the clips the new read
+ * reports as failed, whatever the job's own end (a job whose every clip failed ends failed);
+ * else how the job ended.
+ */
 export function endWords(endedAs: JobStatus, analysis: Analysis | null): string {
   if (endedAs === 'canceled') {
     return 'Analysis canceled.'
-  }
-  if (endedAs === 'failed') {
-    return 'Analysis failed.'
   }
   const failed =
     analysis === null
       ? 0
       : Object.values(analysis.clips ?? {}).filter((clip) => clip.state === 'failed').length
-  return failed > 0 ? `Analysis failed for ${clips(failed)}.` : 'Analysis finished.'
+  if (failed > 0) {
+    return `Analysis failed for ${clips(failed)}.`
+  }
+  return endedAs === 'failed' ? 'Analysis failed.' : 'Analysis finished.'
 }
