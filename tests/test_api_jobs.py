@@ -23,6 +23,7 @@ from auto_reel_ng.event import DEFAULT_CLIP_ORDER
 from auto_reel_ng.persistence.engine import session_scope
 from auto_reel_ng.persistence.job_store import JobStore
 from auto_reel_ng.persistence.models import Job, JobKind, JobStatus
+from auto_reel_ng.scheduler import submit_analysis
 from auto_reel_ng.staleness.manifest import manifest_path
 
 pytestmark = pytest.mark.requires_db
@@ -976,6 +977,43 @@ def test_a_proxy_job_is_listed_and_on_the_socket_marked_and_is_never_the_latest_
     before = {job["id"]: job for job in render_only[0]}  # type: ignore[attr-defined]
     after = {job["id"]: job for job in jobs}  # type: ignore[attr-defined]
     assert after[str(render_id)] == before[str(render_id)]
+
+
+def test_an_analysis_job_is_marked_on_every_read_and_is_never_the_latest_job(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    """``analyze --enqueue``'s job (analysis-job) reads ``kind: analysis`` everywhere."""
+    event = "2024/2024-06-21 - A"
+    render_id = store.enqueue(str(project), event)
+    (submitted,) = submit_analysis(store, project, [project / event], force=False)
+    analysis_id = str(submitted.job_id)
+
+    detail = client.get(f"/api/v1/jobs/{analysis_id}")
+    jobs, events, snapshot = _render_facing_reads(client)
+
+    assert detail.status_code == 200
+    assert (detail.json()["kind"], detail.json()["event_dir"]) == ("analysis", event)
+    assert {job["id"]: job["kind"] for job in jobs} == {  # type: ignore[attr-defined]
+        str(render_id): "render",
+        analysis_id: "analysis",
+    }
+    assert {job["id"]: job["kind"] for job in snapshot["jobs"]} == {  # type: ignore[index]
+        str(render_id): "render",
+        analysis_id: "analysis",
+    }
+    assert events[event]["id"] == str(render_id)  # type: ignore[index]
+    assert events[event]["kind"] == "render"  # type: ignore[index]
+
+
+def test_an_event_with_only_an_analysis_job_has_no_latest_job(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    event = "2024/2024-06-21 - A"
+    submit_analysis(store, project, [project / event], force=True)
+
+    events = {row["event_id"]: row.get("latest_job") for row in client.get("/api/v1/events").json()}
+
+    assert events[event] is None
 
 
 def test_the_published_job_schema_has_kind(client: TestClient) -> None:
