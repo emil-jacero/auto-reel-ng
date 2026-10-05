@@ -388,6 +388,50 @@
     }
   }
 
+  /*
+   * A row far out of view is not drawn (edit-list-paint-cost): a 400-row list otherwise
+   * costs every Timeline zoom, scrub and play frame its paint and layerize. A row that has
+   * been drawn keeps the size it was drawn at (`auto`); one never drawn takes the measured
+   * height of a collapsed row in its layout (`--clip-row-h`, below), so the scroll height
+   * barely moves and scroll anchoring keeps what is in view still. Skipped rows stay in the
+   * page: focusable, read by assistive technology, found by find in page, measured by
+   * dnd-kit. Paint containment would cut what a row draws outside its box, so a row with
+   * focus (its ring), the drop line (drag.css) or the lifted row is drawn as before.
+   */
+  .clip-order > .clip-item:not(:focus-within, [data-drop-before], [data-dragging]) {
+    content-visibility: auto;
+    contain-intrinsic-size: auto var(--clip-row-h);
+  }
+
+  /*
+   * A collapsed row's content height per layout (`contain-intrinsic-size` sizes the content
+   * box: the row's 2 × --s-2 padding and 1px border come on top), measured at a 16px root:
+   * rows of 68px with the 5rem frame and two lines (a 58-64rem panel), 89px with the 8rem
+   * frame (from 64rem), 77px in the narrow two-line grid, 99px at phone width. Static: a
+   * custom property written at run time would restyle every row.
+   */
+  .clip-item {
+    --clip-row-h: 3.1875rem;
+  }
+
+  @container (width >= 64rem) {
+    .clip-item {
+      --clip-row-h: 4.5rem;
+    }
+  }
+
+  @container (width < 58rem) {
+    .clip-item {
+      --clip-row-h: 3.75rem;
+    }
+  }
+
+  @container (width < 30rem) {
+    .clip-item {
+      --clip-row-h: 5.125rem;
+    }
+  }
+
   /* The line after a chapter's last row is placed against the chapter (drag.css). */
   .edit-chapter {
     position: relative;
