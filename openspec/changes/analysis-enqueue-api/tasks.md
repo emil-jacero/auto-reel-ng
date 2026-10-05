@@ -109,8 +109,18 @@ Conventions for every task below:
   in **§6** phase 9 its status. Verify with `grep -n "analysis-enqueue-api\|/analysis" docs/high-level-design.md`
   showing each place and no D-number reused.
 
-- [ ] 5.2 Run the validation gates: black + isort, `mypy auto_reel_ng`, `pylint auto_reel_ng` (only the known cairo
+- [x] 5.2 Run the validation gates: black + isort, `mypy auto_reel_ng`, `pylint auto_reel_ng` (only the known cairo
   `no-member` noise), the full `pytest` (background, generous timeout, podman for `requires_db`), and `npx tsc
   --noEmit`, `npm test`, `npm run build` in the node:22 container. Verify: all pass; `git diff --stat` shows nothing
   under `render/`, `scheduler/`, `proxies/`, `staleness/` (no `RENDER_GRAPH_VERSION` change) and no Alembic revision;
   `openspec validate analysis-enqueue-api --strict` passes.
+
+## Gates recorded (2026-10-05)
+
+- black --check, isort --check-only: clean. `mypy auto_reel_ng`: no issues (140 files). `pylint auto_reel_ng`:
+  9.99/10, only the cairo `no-member` noise plus two messages in `render/` (`normalize.py` too-many-locals,
+  `orchestrator.py` too-many-lines) that are on `origin/main` unchanged; nothing in `api/` or `analysis/`.
+- Full `pytest`: 3818 passed, 0 failed, 0 skipped (coverage 94 %).
+- Web (node:22): `npx tsc --noEmit` clean, `npm test` 1093/1093, `npm run build` ok.
+- `git diff origin/main` touches nothing under `render/`, `scheduler/`, `proxies/`, `staleness/`, `cli/` or
+  `alembic/`; `openspec validate analysis-enqueue-api --strict` passes.
