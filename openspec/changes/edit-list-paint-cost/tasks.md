@@ -66,10 +66,19 @@ recorded per run.
   The earlier suites (group drag, marks, move marked, keyboard scenarios, rotate rows, save bar) give the same results
   on this build as on `main` in both browsers (their stale parts fail the same way on both); a fresh record of marks,
   rotate marked, a far rotate, Move down, the card dialog, Reset and Move marked to… is identical on both builds.
-- [ ] 2.4 Other repaint sources (D5), only those 1.1's breakdown shows: the sticky save bar (`contain: paint` or its own
+- [x] 2.4 Other repaint sources (D5), only those 1.1's breakdown shows: the sticky save bar (`contain: paint` or its own
   layer only if the trace shows a raster win), large layers, any row `<img>` without `loading="lazy" decoding="async"`.
   Test: a re-traced drag shows the named source gone from the per-frame paint list; the save-bar Playwright suite and
   the toast placement checks pass.
+  Status: 1.1's breakdown named one source left after 2.2: the layerize of the rows in view (every icon `<svg>` is a
+  paint chunk). The played list `<ol>` is now its own composited layer (`will-change: transform`; tiled, 1150 x 35,599
+  px on the 400-clip event, only tiles near the view rastered): a traced drag's layerize went 1.5 s -> 0.48-0.50 s
+  and BeginMainFrame p95 34 -> 18.5-19.3 ms; during a zoom the list layer's paint count stays 1 (the root layer took
+  every frame before). Not in the trace, so unchanged: the sticky save bar (hidden during a zoom; its suite gives the
+  same results as on `main`), the app header's backdrop filter, the sticky chapter header, thumbnails (every row
+  `<img>` already has `loading="lazy" decoding="async"`). The layer snaps the list to whole pixels: screenshots differ
+  from `main`'s only in sub-pixel glyph and thumbnail antialiasing (zoomed, nothing moves). A loading thumbnail's
+  shimmer (6 x 1.6 s) repaints its row until it ends, on `main` too.
 
 ## 3. The gate
 
