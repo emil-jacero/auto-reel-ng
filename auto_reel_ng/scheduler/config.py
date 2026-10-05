@@ -34,6 +34,11 @@ DEFAULT_CPU_SLOTS = 1
 #: on the research host and doubled the load on one disk.
 DEFAULT_PROXY_SLOTS = 1
 
+#: How many ``analysis`` jobs one worker runs at once (``analysis-job``): each holds one CPU
+#: token and decodes originals in software, and with the default single CPU slot a second one
+#: would only wait for that token.
+DEFAULT_ANALYSIS_SLOTS = 1
+
 
 def worker_identity() -> str:
     """A fresh, unique worker id: ``host:pid:nonce`` (D-S5).
@@ -53,6 +58,7 @@ class WorkerConfig:
     gpu_sessions_per_device: int
     cpu_slots: int
     proxy_slots: int = DEFAULT_PROXY_SLOTS
+    analysis_slots: int = DEFAULT_ANALYSIS_SLOTS
 
 
 def _resolve_float(
@@ -86,6 +92,7 @@ def resolve_worker_config(
     gpu_sessions_per_device: Optional[int] = None,
     cpu_slots: Optional[int] = None,
     proxy_slots: Optional[int] = None,
+    analysis_slots: Optional[int] = None,
 ) -> WorkerConfig:
     """Layer CLI-flag overrides over ``config.yaml`` ``worker.*`` over defaults (D-2).
 
@@ -101,6 +108,16 @@ def resolve_worker_config(
     )
     if resolved_proxy_slots < 1:
         raise ConfigError(f"worker.proxy_slots must be at least 1, got {resolved_proxy_slots}")
+    resolved_analysis_slots = _resolve_int(
+        analysis_slots,
+        worker_cfg.get("analysis_slots"),
+        DEFAULT_ANALYSIS_SLOTS,
+        key="analysis_slots",
+    )
+    if resolved_analysis_slots < 1:
+        raise ConfigError(
+            f"worker.analysis_slots must be at least 1, got {resolved_analysis_slots}"
+        )
     return WorkerConfig(
         poll_interval=_resolve_float(
             poll_interval,
@@ -118,6 +135,7 @@ def resolve_worker_config(
             cpu_slots, worker_cfg.get("cpu_slots"), DEFAULT_CPU_SLOTS, key="cpu_slots"
         ),
         proxy_slots=resolved_proxy_slots,
+        analysis_slots=resolved_analysis_slots,
     )
 
 
@@ -129,4 +147,5 @@ __all__ = [
     "DEFAULT_GPU_SESSIONS_PER_DEVICE",
     "DEFAULT_CPU_SLOTS",
     "DEFAULT_PROXY_SLOTS",
+    "DEFAULT_ANALYSIS_SLOTS",
 ]

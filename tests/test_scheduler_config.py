@@ -6,6 +6,7 @@ import pytest
 
 from auto_reel_ng.config.project import ConfigError, ProjectConfig
 from auto_reel_ng.scheduler.config import (
+    DEFAULT_ANALYSIS_SLOTS,
     DEFAULT_CPU_SLOTS,
     DEFAULT_GPU_SESSIONS_PER_DEVICE,
     DEFAULT_POLL_INTERVAL_S,
@@ -88,3 +89,24 @@ def test_proxy_slots_come_from_config_yaml() -> None:
 def test_a_bad_proxy_slots_fails_loud_naming_the_key(value: object) -> None:
     with pytest.raises(ConfigError, match=r"worker\.proxy_slots"):
         resolve_worker_config(ProjectConfig(worker={"proxy_slots": value}))
+
+
+# --------------------------------------------------------------------------- #
+# worker.analysis_slots (analysis-job)
+# --------------------------------------------------------------------------- #
+
+
+def test_analysis_slots_default_to_one() -> None:
+    assert DEFAULT_ANALYSIS_SLOTS == 1
+    assert resolve_worker_config(ProjectConfig()).analysis_slots == 1
+
+
+def test_analysis_slots_come_from_config_yaml() -> None:
+    config = resolve_worker_config(ProjectConfig(worker={"analysis_slots": 3}))
+    assert config.analysis_slots == 3
+
+
+@pytest.mark.parametrize("value", [0, -1, "two", 1.5, True])
+def test_a_bad_analysis_slots_fails_loud_naming_the_key(value: object) -> None:
+    with pytest.raises(ConfigError, match=r"worker\.analysis_slots"):
+        resolve_worker_config(ProjectConfig(worker={"analysis_slots": value}))

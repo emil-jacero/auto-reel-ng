@@ -49,6 +49,7 @@ from ..reel.legacy import ImportResult
 from ..render import RenderJob, find_output_collisions, output_relpath, render_batch
 from ..render.claims import claimed_movie, claimed_movie_message
 from ..scheduler import (
+    AnalysisJobHandler,
     CapacityPools,
     ProxyJobHandler,
     Worker,
@@ -708,7 +709,8 @@ def cmd_worker(args: argparse.Namespace) -> int:
         worker_config.poll_interval,
     )
 
-    # One event the worker's signal handler sets, so a running proxy job stops its ffmpeg too.
+    # One event the worker's signal handler sets, so a running proxy or analysis job stops its
+    # ffmpeg too.
     stop_event = threading.Event()
     proxy_handler = ProxyJobHandler(
         store=store,
@@ -717,6 +719,9 @@ def cmd_worker(args: argparse.Namespace) -> int:
         profile=profile,
         render_node=render_node,
         stop_event=stop_event,
+    )
+    analysis_handler = AnalysisJobHandler(
+        store=store, pools=pools, runtime=runtime, stop_event=stop_event
     )
     worker = Worker(
         store,
@@ -727,8 +732,12 @@ def cmd_worker(args: argparse.Namespace) -> int:
             job, runtime=runtime, profile=profile, render_node=render_node
         ),
         device_filter=render_node,
-        kind_handlers={JobKind.PROXY.value: proxy_handler},
+        kind_handlers={
+            JobKind.PROXY.value: proxy_handler,
+            JobKind.ANALYSIS.value: analysis_handler,
+        },
         proxy_slots=worker_config.proxy_slots,
+        analysis_slots=worker_config.analysis_slots,
         stop_event=stop_event,
     )
 

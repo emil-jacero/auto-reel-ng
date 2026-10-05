@@ -6,7 +6,9 @@ See ``openspec/changes/job-scheduler/design.md`` for the decisions (D-S1..D-S8).
 
 from __future__ import annotations
 
+from .analysis_job import AnalysisJobError, AnalysisJobHandler, submit_analysis
 from .config import (
+    DEFAULT_ANALYSIS_SLOTS,
     DEFAULT_CPU_SLOTS,
     DEFAULT_GPU_SESSIONS_PER_DEVICE,
     DEFAULT_POLL_INTERVAL_S,
@@ -28,6 +30,9 @@ from .worker import (
 )
 
 __all__ = [
+    "AnalysisJobError",
+    "AnalysisJobHandler",
+    "submit_analysis",
     "Worker",
     "BuildJob",
     "JobInterrupted",
@@ -46,4 +51,5 @@ __all__ = [
     "DEFAULT_GPU_SESSIONS_PER_DEVICE",
     "DEFAULT_CPU_SLOTS",
     "DEFAULT_PROXY_SLOTS",
+    "DEFAULT_ANALYSIS_SLOTS",
 ]
