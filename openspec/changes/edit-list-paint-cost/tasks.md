@@ -46,13 +46,26 @@ recorded per run.
   walks rows 1-33 in order; `window.find` of the 390th clip's name scrolls that row into view, drawn. `main` fails
   the skipped-rows check (0 of 400). `listPaint.test.ts` pins the rule, the four estimates, no script writing
   `--clip-row-h` and no `overflow-anchor: none`.
-- [ ] 2.3 Nothing clipped, drag still lands (D2, D3): fix every ring/indicator/overlay that paint containment cuts
+- [x] 2.3 Nothing clipped, drag still lands (D2, D3): fix every ring/indicator/overlay that paint containment cuts
   (inset ring, or drawn outside the contained `li`); make `ChapterDrag`'s `DndContext` measure while dragging if it
   does not already. Test: screenshots of a focused row, a drop indicator and a dragged row, light/dark, 1280/390,
   compared with `main`'s (whole, same look); Playwright drags the first clip of the 400-clip chapter to the last slot of
   the last chapter (auto-scroll over never-drawn rows) and asserts the draft order; keyboard-moves a clip 30 places down
   and asserts focus, ring in view and the announcement; the existing drag, marks/move-marked, keyboard reorder, rotate,
   card dialog and save-bar Playwright suites pass in Chrome and Firefox.
+  Status: a focused row, the drop target and the lifted row are left out of the rule (`:not(:focus-within,
+  [data-drop-before], [data-dragging])`); screenshots of the three, light/dark, 1280/390, equal `main`'s pixel for
+  pixel in Chrome and Firefox, and a scratch build without the exclusion cuts the ring's left edge and the line's upper
+  half (diffs of 94-2,496 px). Under a 20.25rem panel a row's tools already overflow the row (and the page below
+  340 px, on `main` too), so the rule applies only from 20.25rem; there the rows equal `main`'s. Where rows have
+  fractional heights (390: 99.09 px) a contained row snaps its content to whole pixels: glyph antialiasing differs,
+  nothing moves by a pixel. `ChapterDrag` already measures while dragging (dnd-kit's default `WhileDragging`): no
+  change. Drags in Chrome and Firefox: the first of 400 clips to the last slot of its chapter, the page wheeled over
+  378-388 never-drawn rows (it showed and got position 400), and into a new last chapter; a keyboard lift 30 places
+  down (position 35, handle focused with its ring in view, "moved to position 35 of 400"); Move down x30 keeps focus.
+  The earlier suites (group drag, marks, move marked, keyboard scenarios, rotate rows, save bar) give the same results
+  on this build as on `main` in both browsers (their stale parts fail the same way on both); a fresh record of marks,
+  rotate marked, a far rotate, Move down, the card dialog, Reset and Move marked to… is identical on both builds.
 - [ ] 2.4 Other repaint sources (D5), only those 1.1's breakdown shows: the sticky save bar (`contain: paint` or its own
   layer only if the trace shows a raster win), large layers, any row `<img>` without `loading="lazy" decoding="async"`.
   Test: a re-traced drag shows the named source gone from the per-frame paint list; the save-bar Playwright suite and
