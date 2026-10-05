@@ -56,6 +56,12 @@
       inline-size: 1rem;
       block-size: 1rem;
     }
+
+    /* The words shrink beside the glyph rather than wrapping under it. */
+    & > span {
+      flex: 1 1 0;
+      min-inline-size: 0;
+    }
   }
 
   .analyze-all-unreadable {

@@ -95,4 +95,8 @@ describe('endWords', () => {
     assert.equal(endWords('failed', null), 'Analysis failed.')
     assert.equal(endWords('canceled', null), 'Analysis canceled.')
   })
+
+  it('names the failed clips of a job that failed because every clip did', () => {
+    assert.equal(endWords('failed', answer({ a: { state: 'failed' } })), 'Analysis failed for 1 clip.')
+  })
 })
