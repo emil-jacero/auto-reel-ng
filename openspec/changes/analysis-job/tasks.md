@@ -21,4 +21,4 @@
 
 ## 5. Validation gates
 
-- [ ] 5.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`, `.venv/bin/python -m mypy auto_reel_ng`, `.venv/bin/python -m pylint auto_reel_ng` (only the known cairo `no-member` noise) and the full `.venv/bin/python -m pytest` with `TMPDIR` exported (podman-backed DB tests included); all pass, and `openspec validate analysis-job --strict` passes.
+- [x] 5.1 Run `.venv/bin/python -m black auto_reel_ng tests && .venv/bin/python -m isort auto_reel_ng tests`, `.venv/bin/python -m mypy auto_reel_ng`, `.venv/bin/python -m pylint auto_reel_ng` (only the known cairo `no-member` noise) and the full `.venv/bin/python -m pytest` with `TMPDIR` exported (podman-backed DB tests included); all pass, and `openspec validate analysis-job --strict` passes.
