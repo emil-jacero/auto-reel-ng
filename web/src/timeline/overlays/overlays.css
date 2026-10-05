@@ -159,8 +159,15 @@
   .sg-clip-note-text {
     position: sticky;
     inset-inline-start: var(--s-2);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-1);
     padding-inline: var(--s-2);
     white-space: nowrap;
+
+    & > svg {
+      flex: none;
+    }
   }
 
   /* --- the notes and the detail under the track --- */
@@ -170,8 +177,13 @@
     min-inline-size: 0;
   }
 
+  /* The control row: the event's analysis badge and, beside it, Re-analyze. */
   .sg-badge {
-    justify-self: start;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2) var(--s-3);
+    min-inline-size: 0;
   }
 
   .sg-note {

@@ -1,0 +1,42 @@
+@layer components {
+  /*
+   * The analysis badge (`AnalysisBadge.tsx`): the state's pill, then, while analyzing, a
+   * short bar and its percentage, and while failed, the failed clips' names. It wraps as a
+   * unit of its own on the page's facts line and in the Timeline's control row.
+   */
+  .analysis-badge {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-2);
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+
+  .analysis-meter {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    inline-size: 9rem;
+    max-inline-size: 100%;
+
+    & .job-bar {
+      flex: 1 1 auto;
+    }
+  }
+
+  .analysis-percent {
+    min-inline-size: 2.5em;
+    color: var(--fg);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .analysis-names,
+  .analysis-detail {
+    min-inline-size: 0;
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+  }
+}

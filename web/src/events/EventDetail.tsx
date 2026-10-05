@@ -2,6 +2,8 @@ import './detail.css'
 
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 
+import { AnalysisBadge, ReanalyzeAlert, ReanalyzeButton } from '../analysis/AnalysisBadge'
+import { useEventAnalysis } from '../analysis/useEventAnalysis'
 import { fetchEvent } from '../api/event'
 import type { Chapter, Clip, EventDetail as EventDetailData } from '../api/event'
 import type { Problem } from '../api/events'
@@ -119,6 +121,8 @@ function EventDetailBody({
   // The suggestions dismissed on this page visit: kept above Edit mode, whose Timeline is
   // mounted anew by every Refresh, Save and re-entry (`timeline/overlays`).
   const dismissals = useDismissals()
+  // The event's analysis: one read for the header's badge, Re-analyze and Edit mode's Timeline.
+  const analysis = useEventAnalysis(eventId)
   // The card selected on Edit mode's Timeline or chapter list: one selection, kept here.
   const cards = useCardSelection()
   // While a save is in flight, Refresh and Stop editing wait for its answer.
@@ -350,7 +354,14 @@ function EventDetailBody({
               aria-busy={loading || undefined}
               onClick={() => {
                 if (!loading && !saving) {
-                  requestLeave(editing ? leaveEditMode : () => load({ keepMovie: true }))
+                  requestLeave(() => {
+                    if (editing) {
+                      leaveEditMode()
+                    } else {
+                      load({ keepMovie: true })
+                    }
+                    analysis.reload()
+                  })
                 }
               }}
             >
@@ -394,6 +405,10 @@ function EventDetailBody({
                 {editing ? 'Stop editing' : 'Edit'}
               </button>
             )}
+            {/* Edit mode's is beside the Timeline's badge. */}
+            {state.status === 'ready' && !editing && (
+              <ReanalyzeButton reanalyze={analysis.reanalyze} />
+            )}
           </div>
         </div>
         {/* The event's facts (Edit mode's fields take the date and location's place). */}
@@ -407,6 +422,8 @@ function EventDetailBody({
           {state.status === 'ready' && (
             <Counts clips={state.event.chapters.flatMap((chapter) => chapter.clips)} />
           )}
+          {/* In both modes, so the state shows before any proxy or Timeline exists. */}
+          {state.status === 'ready' && <AnalysisBadge badge={analysis.badge} />}
           {state.status === 'ready' && (
             <span>
               Read{' '}
@@ -417,6 +434,7 @@ function EventDetailBody({
           )}
           <LoadStatus message={loading ? 'Reading event…' : updating ? 'Updating…' : ''} />
         </div>
+        {state.status === 'ready' && !editing && <ReanalyzeAlert reanalyze={analysis.reanalyze} />}
         {state.status === 'ready' && !editing && (
           <EventCover eventId={eventId} event={state.event} name={name} />
         )}
@@ -496,6 +514,7 @@ function EventDetailBody({
             event={state.event}
             liveEvent={liveOf(state)}
             dismissals={dismissals}
+            analysis={analysis}
             cards={cards}
             onProxiesFinished={reread}
             onSaved={leaveEditMode}

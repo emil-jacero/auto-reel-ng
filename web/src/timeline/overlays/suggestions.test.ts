@@ -8,18 +8,17 @@ import { addCut, buildWriteBody, cutChanges, cutsOf, isDirty, readCuts, removeCu
 import type { Baseline, Draft } from '../../edit/draft.ts'
 import {
   ANALYZED_CLEAN,
+  ANALYZE_ASIDE,
   DECISIONS_UNAVAILABLE,
-  ANALYZE_COMMAND,
-  NEVER_ANALYZED,
   alreadyCutWords,
   approvedWords,
   approval,
-  clipNotAnalyzed,
   cutsKey,
   dismissalKey,
   dismissedWords,
   dropGone,
   eventNote,
+  keptSelection,
   laneName,
   markSpan,
   decideApprove,
@@ -378,15 +377,14 @@ describe('the words', () => {
     assert.equal(laneName('C0012.MP4'), 'Analysis suggestions of C0012.MP4')
   })
 
-  it('tells the three kinds of "no suggestions" apart', () => {
-    assert.equal(eventNote(legacy({ analyzed: false, segments: {} })), NEVER_ANALYZED)
-    // The service says `analyzed` once the cache directory exists, and a render writes
-    // its manifest there: no entries is never analysed, whatever the flag says.
-    assert.equal(eventNote(legacy({ analyzed: true, segments: {} })), NEVER_ANALYZED)
-    // The lane shows the badge; the command is the Timeline help's.
-    assert.equal(NEVER_ANALYZED, 'Not analyzed')
-    assert.equal(ANALYZE_COMMAND, 'Not analyzed. Run `auto-reel analyze <root>`, then Refresh.')
+  it('says nothing was found only while the published state is current', () => {
     assert.equal(eventNote(legacy({ analyzed: true, segments: { 'a.mp4': [] } })), ANALYZED_CLEAN)
+    // An event with no clips is current too: nothing to suggest.
+    assert.equal(eventNote(legacy({ analyzed: false, segments: {} })), ANALYZED_CLEAN)
+    // The `analyzed` flag and missing entries decide nothing: the state does.
+    for (const state of ['never', 'stale', 'analyzing', 'failed'] as const) {
+      assert.equal(eventNote({ ...legacy({ analyzed: true, segments: { 'a.mp4': [] } }), state }), null)
+    }
     assert.equal(
       eventNote(
         legacy({
@@ -398,22 +396,17 @@ describe('the words', () => {
     )
   })
 
-  it('marks a clip with no entry "Not analyzed" only in an analysed event', () => {
-    const analysed = legacy({ analyzed: true, segments: { 'a.mp4': [], 'b.mp4': [] } })
-    assert.equal(clipNotAnalyzed(analysed, 'c.mp4'), true)
-    assert.equal(clipNotAnalyzed(analysed, 'a.mp4'), false) // analysed, nothing found
-    assert.equal(clipNotAnalyzed(legacy({ analyzed: false, segments: {} }), 'c.mp4'), false)
+  it('names the terminal command only in the help’s aside', () => {
+    assert.match(ANALYZE_ASIDE, /auto-reel analyze <root>/)
+    assert.match(ANALYZE_ASIDE, /^The same runs from a terminal/)
   })
 
-  it('does not mark a clip of a rendered but never analysed event', () => {
-    // analyzed: true with no entries (the cache holds only the render manifest).
-    assert.equal(clipNotAnalyzed(legacy({ analyzed: true, segments: {} }), 'a.mp4'), false)
-  })
-
-  it('does not take a clip named like an Object prototype member as analysed', () => {
-    const analysed = legacy({ analyzed: true, segments: { 'a.mp4': [] } })
-    assert.equal(clipNotAnalyzed(analysed, 'constructor'), true)
-    assert.equal(clipNotAnalyzed(analysed, 'toString'), true)
+  it('keeps the selected mark across a new read that lists it, and drops it otherwise', () => {
+    const id = dismissalKey('a.mp4', black)
+    assert.equal(keptSelection(id, new Set([id])), id)
+    assert.equal(keptSelection(id, new Set([dismissalKey('a.mp4', { ...black, end: 3.3 })])), null)
+    assert.equal(keptSelection(null, new Set([id])), null)
+    assert.equal(keptSelection(id, new Map([[id, 1]])), id)
   })
 
   it('says what a decision did, with the kind lower-cased in the sentence', () => {

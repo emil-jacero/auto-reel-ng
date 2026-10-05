@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 
+import { AnalysisBadge, ReanalyzeAlert, ReanalyzeButton } from '../../analysis/AnalysisBadge'
+import { clipNoteOf } from '../../analysis/badge'
+import type { AnalysisRead } from '../../analysis/badge'
+import type { AnalysisBinding } from '../../analysis/useEventAnalysis'
 import { Alert } from '../../ui/Alert'
-import { Pill } from '../../ui/Pill'
 import type { TrackClip } from '../layout'
 import { timeToPx } from '../model'
 import type { Layout } from '../model'
 import { onGrid, timedOf } from '../position'
 import type { Position } from '../position'
-import { useAnalysis } from './useAnalysis'
 import type { AnalysisControl, LaneSlot, LaneView, MarkModel } from './control'
 import { Legend, SuggestionDetail } from './SuggestionDetail'
 import { SuggestionLane } from './SuggestionLane'
@@ -16,13 +18,12 @@ import type { ClipMarks } from './SuggestionLane'
 import {
   READING_WORDS,
   UNREADABLE_TITLE,
-  clipNotAnalyzed,
   cutsKey,
   decideApprove,
   decideDismiss,
   dismissalKey,
-  NEVER_ANALYZED,
   eventNote,
+  keptSelection,
   markSpan,
   neighbour,
   placeMarks,
@@ -34,17 +35,19 @@ import {
 import type { Decision, Refusal, Suggestion } from './suggestions'
 
 /*
- * What the Timeline calls to carry the analysis lane (D-20, "Analysis overlays"): it reads
- * the analysis once (the Timeline mounts only when its track is shown), derives every
- * mark's state from the cuts it is given, stacks the marks at the current scale, and
- * returns the lane for `Track` and the notes and detail for under the track. Without a
- * `control` it is inert: no read, no lane, nothing to show.
+ * What the Timeline calls to carry the analysis lane (D-20, "Analysis overlays"): it shows
+ * the page's one analysis read (`analysis-web-controls`: the Timeline reads nothing itself,
+ * and a new read — a Refresh, the end of the event's analysis job — redraws the lane in
+ * place), derives every mark's state from the cuts it is given, stacks the marks at the
+ * current scale, and returns the lane for `Track` and the control row, notes and detail for
+ * under the track. Without a `control` it is inert: no lane, nothing to show.
  */
 
 /** A mark is at least this wide, in CSS px, whatever its span: what a finger hits. */
 const MIN_MARK_PX = 44
 
 const NO_GROUPS: readonly ClipMarks[] = []
+const NO_READ: AnalysisRead = { status: 'reading' }
 
 export type Suggestions = {
   lane: LaneSlot | undefined
@@ -68,7 +71,7 @@ export function useSuggestions(
   control: AnalysisControl | undefined,
   { clips, lay, pps, seekTo }: Context,
 ): Suggestions {
-  const read = useAnalysis(control === undefined ? null : control.eventId)
+  const read = control?.binding.read ?? NO_READ
   const detailId = useId()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<Refusal | null>(null)
@@ -97,7 +100,7 @@ export function useSuggestions(
       const found = [...(analysis.segments[clip.identity] ?? [])].sort(bySpan)
       return {
         clipIndex,
-        notAnalyzed: clipNotAnalyzed(analysis, clip.identity),
+        note: clipNoteOf(analysis, clip.identity),
         marks: found.map((segment) => {
           const id = dismissalKey(clip.identity, segment)
           return {
@@ -148,7 +151,7 @@ export function useSuggestions(
         }),
       }),
     )
-    const anyNote = base.some((group) => group.notAnalyzed)
+    const anyNote = base.some((group) => group.note !== null)
     return { groups: placed, rows: Math.max(stacked.count, anyNote ? 1 : 0) }
   }, [base, clips, lay, pps])
 
@@ -162,6 +165,22 @@ export function useSuggestions(
     return map
   }, [groups])
   const selected = selectedId === null ? undefined : byId.get(selectedId)
+
+  // A new read keeps the selected mark while it still lists it (by its dismissal key); else the
+  // detail closes, and focus that it held goes back to the lane.
+  useEffect(() => {
+    if (selectedId === null || keptSelection(selectedId, byId) !== null) {
+      return
+    }
+    setSelectedId(null)
+    setRefusal(null)
+    if (document.activeElement === null || document.activeElement === document.body) {
+      const first = refs.current.values().next()
+      if (first.done !== true) {
+        first.value.focus({ preventScroll: true })
+      }
+    }
+  }, [selectedId, byId])
 
   const tabStop = (clipIndex: number): string | null => {
     const marks = groups[clipIndex]?.marks ?? []
@@ -349,7 +368,7 @@ export function useSuggestions(
     lane,
     strip: (
       <Notes
-        read={read}
+        binding={control.binding}
         groups={groups}
         detail={
           selected === undefined ? null : (
@@ -376,23 +395,35 @@ export function useSuggestions(
 }
 
 function Notes({
-  read,
+  binding,
   groups,
   detail,
 }: {
-  read: ReturnType<typeof useAnalysis>
+  binding: AnalysisBinding
   groups: readonly ClipMarks[]
   detail: ReactNode
 }) {
+  const { read, badge, reanalyze } = binding
+  // The control row: the page's badge (the header's words) and Edit mode's Re-analyze.
+  const row = (
+    <div className="sg-badge">
+      <AnalysisBadge badge={badge} />
+      <ReanalyzeButton reanalyze={reanalyze} />
+    </div>
+  )
   if (read.status === 'failed') {
     const { cause, detail: why } = read.failure
     return (
-      <Alert
-        tone="warn"
-        role="note"
-        title={UNREADABLE_TITLE}
-        detail={why === null ? cause : `${cause} ${why}`}
-      />
+      <div className="sg-strip">
+        {row}
+        <ReanalyzeAlert reanalyze={reanalyze} />
+        <Alert
+          tone="warn"
+          role="note"
+          title={UNREADABLE_TITLE}
+          detail={why === null ? cause : `${cause} ${why}`}
+        />
+      </div>
     )
   }
   if (read.status !== 'ok') {
@@ -402,14 +433,9 @@ function Notes({
   const any = groups.some((group) => group.marks.length > 0)
   return (
     <div className="sg-strip">
-      {note === NEVER_ANALYZED && (
-        <div className="sg-badge">
-          <Pill tone="idle" icon="minus">
-            {NEVER_ANALYZED}
-          </Pill>
-        </div>
-      )}
-      {note !== null && note !== NEVER_ANALYZED && <p className="sg-note">{note}</p>}
+      {row}
+      <ReanalyzeAlert reanalyze={reanalyze} />
+      {note !== null && <p className="sg-note">{note}</p>}
       {any && <Legend />}
       {detail}
     </div>

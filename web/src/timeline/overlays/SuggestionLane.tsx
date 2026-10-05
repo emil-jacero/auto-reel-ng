@@ -6,7 +6,7 @@ import { Icon } from '../../ui/Icon'
 import type { IconName } from '../../ui/Icon'
 import { timeToPx } from '../model'
 import type { LaneView, MarkModel } from './control'
-import { CLIP_NOT_ANALYZED, STATE_GLYPH, kindWords, laneName, markName } from './suggestions'
+import { STATE_GLYPH, kindWords, laneName, markName } from './suggestions'
 
 /*
  * The analysis lane: for each clip in the window a group of marks, one button per
@@ -33,8 +33,11 @@ export function kindIcon(kind: string): IconName {
 export type ClipMarks = {
   clipIndex: number
   marks: readonly MarkModel[]
-  /** The event was analysed but this clip has no entry. */
-  notAnalyzed: boolean
+  /**
+   * The clip's own analysis state when it is not current (`clipNoteOf`: never, out of date,
+   * analyzing, failed), in words and a glyph; null for a current clip.
+   */
+  note: { words: string; icon: IconName } | null
 }
 
 export function SuggestionLane({
@@ -85,7 +88,7 @@ export function SuggestionLane({
     .map((index) => {
       const group = groups[index]
       const clip = clips[index]
-      if (group === undefined || clip === undefined || (group.marks.length === 0 && !group.notAnalyzed)) {
+      if (group === undefined || clip === undefined || (group.marks.length === 0 && group.note === null)) {
         return null
       }
       const inWindow = shown !== null && index >= shown[0] && index <= shown[1]
@@ -99,18 +102,21 @@ export function SuggestionLane({
           aria-label={laneName(clip.name)}
           data-edge-held={held?.(index) || undefined}
         >
-          {group.notAnalyzed && inWindow && clip.kept.outMs > clip.kept.inMs && (
+          {group.note !== null && inWindow && clip.kept.outMs > clip.kept.inMs && (
             <span
               className="sg-clip-note"
               data-after={shifted?.(index) || undefined}
-              title={CLIP_NOT_ANALYZED}
+              title={group.note.words}
               style={{
                 insetInlineStart: timeToPx(lay.startsMs[index], view.pps),
                 // The note spans the clip's block: its kept extent (`timeline-ripple-layout`).
                 inlineSize: Math.max(1, timeToPx(clip.kept.outMs - clip.kept.inMs, view.pps)),
               }}
             >
-              <span className="sg-clip-note-text">{CLIP_NOT_ANALYZED}</span>
+              <span className="sg-clip-note-text">
+                <Icon name={group.note.icon} size={16} />
+                {group.note.words}
+              </span>
             </span>
           )}
           {marks.map((mark) => {

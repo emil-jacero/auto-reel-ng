@@ -1,6 +1,8 @@
 import { useId, useMemo, useRef } from 'react'
 import type { RefObject } from 'react'
 
+import { failedClips } from '../analysis/badge'
+import type { AnalysisBinding } from '../analysis/useEventAnalysis'
 import type { EventDetail } from '../api/event'
 import { Alert } from '../ui/Alert'
 import { Dialog } from '../ui/Dialog'
@@ -20,7 +22,12 @@ import { cardPlacements, cardSpecs, cardsEnabled, cardsSource } from './cards'
 import type { CardsBinding } from './useCardSelection'
 import { analysisOf } from './overlays/control'
 import type { Dismissals } from './overlays/Dismissals'
-import { ANALYZE_COMMAND, DISMISSAL_NOTE } from './overlays/suggestions'
+import {
+  ANALYZE_ASIDE,
+  DISMISSAL_NOTE,
+  FAILED_CLIPS_HEADING,
+  REANALYZE_HELP,
+} from './overlays/suggestions'
 import { Timeline } from './Timeline'
 import type { EditBinding } from './editing'
 import { CARDS_FADES, NO_CLIPS } from './labels'
@@ -43,6 +50,7 @@ export function TimelineSection({
   eventId,
   event,
   dismissals,
+  analysis: page,
   onFinished,
   editing,
   cards,
@@ -52,6 +60,8 @@ export function TimelineSection({
   event: EventDetail
   /** The suggestions dismissed during this page visit (kept above the section). */
   dismissals: Dismissals
+  /** The page's one analysis read and Re-analyze; absent, the Timeline has no analysis lane. */
+  analysis?: AnalysisBinding
   /** Read the event again, quietly (a proxy job ended, or every proxy was already ready). */
   onFinished: () => void
   /** Edit mode's binding: the draft's cuts and the editor's edits. */
@@ -70,12 +80,13 @@ export function TimelineSection({
   const cuts = editing.cuts
   const clips = useMemo(() => trackClips(shown.clips, cuts), [shown, cuts])
   const prepare = usePrepare(eventId, onFinished)
-  // The analysis lane: the draft's cuts, as the Cuts panel lists them, and the editor's own
-  // add, lock and live region to decide with.
+  // The analysis lane: the page's one read, the draft's cuts, as the Cuts panel lists them,
+  // and the editor's own add, lock and live region to decide with.
   const analysis = useMemo(
-    () => analysisOf(eventId, editing, dismissals),
-    [eventId, editing, dismissals],
+    () => (page === undefined ? undefined : analysisOf(eventId, page, editing, dismissals)),
+    [eventId, page, editing, dismissals],
   )
+  const failed = page?.read.status === 'ok' ? failedClips(page.read.analysis) : []
   // Each chapter's resolved card, and whether the render draws them: the service's answer
   // (`title_cards`), under Edit mode's Title cards switch while that differs (`title-card-toggle`).
   const savedSpecs = useMemo(() => cardSpecs(event), [event])
@@ -187,7 +198,21 @@ export function TimelineSection({
       </header>
       <HelpPanel help={help}>
         <p>{CARDS_FADES}</p>
-        <p>{ANALYZE_COMMAND}</p>
+        <p>{REANALYZE_HELP}</p>
+        {failed.length > 0 && (
+          <>
+            <p>{FAILED_CLIPS_HEADING}</p>
+            <ul className="tl-failed-clips">
+              {failed.map(({ identity, detail }) => (
+                <li key={identity}>
+                  <code>{identity}</code>
+                  {detail !== null && `: ${detail}`}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        <p className="tl-aside">{ANALYZE_ASIDE}</p>
         <p>{DISMISSAL_NOTE}</p>
         <p>{SELECT_CUT_HINT}</p>
         <p id={cutHintId}>{CUT_FIELDS_HINT}</p>
