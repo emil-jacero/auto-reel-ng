@@ -79,7 +79,7 @@ sweep, and whether hardware decode or a `scale` prefilter deserves an experiment
 
 | source | wall s / min (A runs; B) | CPU s / min (user+sys, A runs) |
 |---|---|---|
-| H.264 1080p50 | 16.9, 16.4; 17.5 | 124, 124 |
+| H.264 1080p50 | 16.9, 16.2; 17.5 | 124, 124 |
 | H.264 4K50 | 54, 75; 57 | 342, 365 |
 | HEVC 4K50 | 100, 114; 87 | 347, 376 |
 
