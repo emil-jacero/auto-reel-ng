@@ -7,6 +7,7 @@ ffmpeg; the real store, worker and handler end to end is ``test_scheduler_analys
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -16,7 +17,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 import pytest
 from sqlalchemy.exc import OperationalError
@@ -126,6 +127,17 @@ class Project:
     @staticmethod
     def failed(event: Path, clip: str) -> None:
         write_failure(event, clip, clip_signal(event / clip), "moov atom not found")
+
+
+@pytest.fixture(autouse=True)
+def _sweep_logger_enabled() -> Iterator[None]:
+    """Re-enable the sweep's logger for ``caplog``: a test that runs Alembic's ``fileConfig``
+    earlier in the session disables every logger that existed then."""
+    sweep_logger = logging.getLogger("auto_reel_ng.scheduler.analysis_sweep")
+    was = sweep_logger.disabled
+    sweep_logger.disabled = False
+    yield
+    sweep_logger.disabled = was
 
 
 @pytest.fixture
