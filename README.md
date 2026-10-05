@@ -285,6 +285,23 @@ proxy's x264 threads did not help). Proxies land in the proxy cache (`$XDG_CACHE
 the compose stack the worker has `XDG_CACHE_HOME=/data/cache`, so they are in `./data/cache/auto-reel/proxies/`
 beside the thumbnails. Proxy jobs are not render inputs and never make an event stale.
 
+**Analysis jobs and the automatic sweep:** the worker also runs jobs of kind `analysis` (HLD D-27): the black/
+white/freeze detection of `auto-reel analyze` on an event's original clips, skipping clips whose sidecar entry is
+current, claimed after every render and proxy job and yielding to running ones (`worker.analysis_slots`, default
+**1**). `auto-reel analyze <root> --enqueue [--force]` queues them by hand. While `worker.auto_analyze` is on (the
+default) the worker also enqueues them **on its own**: when it starts and then every
+`worker.auto_analyze_interval` seconds (default **300**) it sweeps its project, reading only directory listings,
+`stat` and the small sidecar files (no ffprobe, no ffmpeg, no `reel.yaml`, nothing written), and enqueues an
+ordinary, unforced `analysis` job for each event with a clip that has no entry or whose entry is for an older
+version of the file (a new or re-copied clip). It is **quiet while the queue is busy**: nothing is enqueued while
+any job of the project is queued, or a render or proxy job is running. It is **capped**: at most
+`worker.auto_analyze_max_events` (default **2**) events per sweep, newest first, so the first sweep over a large
+archive trickles through while the worker is idle. A clip whose analysis failed is not retried until the file
+changes or you Re-analyze (`--force`), and an event whose last analysis job was **canceled or failed** is left
+alone until one of its clip files changes after that (its mtime or ctime), so cancelling an automatic job sticks.
+Expect background CPU use on an idle worker (about 2 CPU-minutes per minute of 1080p50 footage, D-27); turn it
+off with `worker: {auto_analyze: false}`.
+
 ### API service (`serve`)
 
 `auto-reel serve <root>` runs a FastAPI service (REST + a WebSocket) over the same
@@ -821,7 +838,11 @@ worker:                    # job-scheduler worker settings (all optional)
   gpu_sessions_per_device: 1   # concurrent GPU-encode sessions per render node
   cpu_slots: 1                 # concurrent CPU-encoded renders
   proxy_slots: 1               # concurrent proxy jobs (each holds one CPU token)
+  analysis_slots: 1            # concurrent analysis jobs (each holds one CPU token)
   poll_interval: 2.0           # seconds between empty claim polls
+  auto_analyze: true           # sweep the project for events whose analysis is due (false: never)
+  auto_analyze_interval: 300   # seconds between sweeps (> 0)
+  auto_analyze_max_events: 2   # at most this many events enqueued per sweep (>= 1)
 api:                       # API service ('serve') settings (all optional)
   host: 127.0.0.1              # bind host; widen only deliberately
   port: 8080                   # bind port
@@ -897,6 +918,11 @@ podman compose down             # stop; edits, movies and job history are kept
   shader cache, and `./data/tmp` a render's temporary segments (`TMPDIR`). A render empties its
   own directory when it finishes or is cancelled cleanly; a killed render leaves its
   `auto-reel-render-*` directory behind until a reset. The database is the `pgdata` volume. Postgres is not published on the host.
+- **Analysis runs by itself.** The worker sweeps `/data/library` for events whose black/white/freeze analysis
+  is due (`worker.auto_analyze`, on by default; see "Analysis jobs and the automatic sweep" above), two events at
+  a time whenever its queue is idle, and writes the results into each event's `.auto-reel/cache/` in the scratch
+  library. To turn it off, put `worker: {auto_analyze: false}` in `./data/library/config.yaml` and
+  `podman compose restart worker`; there is no `.env` setting for it.
 - **The fixture is never changed.** `auto-reel-media` is mounted read-only at
   `/media/auto-reel-media`. The `seed` service links its clips into `./data/library` (absolute
   symlinks, plus a real copy of each `reel.yaml`, which GUI saves write to) and never carries its

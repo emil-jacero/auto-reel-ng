@@ -233,6 +233,10 @@ clips as a job of kind `analysis`, lowest priority, cancellable, with per-clip f
 atomic sidecar writes; `auto-reel analyze --enqueue [--force]` queues it. Measured cost (experiment 008): about
 17 s of wall time and 2 CPU-minutes per minute of 1080p50 H.264, and 1 to 1.9 minutes of wall time and 6
 CPU-minutes per minute of 4K50, on the 8-core APU.
+Detections arrive **without a manual pass** (`analysis-auto-sweep`, D-27 addendum): an idle worker sweeps its
+project every `worker.auto_analyze_interval` seconds (default 300, on by default) with stat-only reads and enqueues
+an unforced `analysis` job for each event with a new or changed clip, two events per sweep, so "Not analyzed" clears
+by itself; scans and API reads still never analyze.
 
 > ⚠️ **Research:** §8.6 white/freeze thresholds ✅ **RESOLVED** (exp 005); §8.7 ML model choices.
 
@@ -321,6 +325,11 @@ and pushed over WebSocket.
 The job kinds are `render`, `proxy` (D-21) and `analysis` (`analysis-job`, **D-27**), claimed in that order: an
 `analysis` job only when no render or proxy job is queued and fewer than `worker.analysis_slots` (default 1) are in
 flight; it holds one CPU token, is outside the render in-flight bound, and yields to running renders and proxy jobs.
+An idle worker **enqueues analysis itself** (`analysis-auto-sweep`): a sweep thread beside the claim loop, on by
+default (`worker.auto_analyze`), runs at start and every `worker.auto_analyze_interval` seconds; it enqueues nothing
+while any job of the project is queued or a render or proxy job runs (the **quiet rule**), visits events newest
+first and stops at `worker.auto_analyze_max_events` (default 2) new jobs (the **cap**). It is the only job any
+component enqueues on its own; renders and proxy jobs are never auto-enqueued.
 
 **Multi-GPU scheduling (future, but design for it now).** The host may have more than one GPU. The
 eventual goal is to **target a specific GPU per job** — either auto-balanced across available devices or
@@ -836,6 +845,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    schema-version or `RENDER_GRAPH_VERSION` change, no migration. Its three follow-ups, from the user's choice of
    2026-10-05 (automatic analysis, a Re-analyze button and Analyze all): `analysis-enqueue-api`,
    `analysis-web-controls` and `analysis-auto-sweep`.
+   `analysis-auto-sweep` has landed (D-27 addendum): the worker's automatic, stat-only analysis sweep
+   (`worker.auto_analyze`, on by default; every 300 s; two events per sweep, newest first; quiet while the queue
+   is busy; back-off after a canceled or failed job); the handler and the sweep share one "needs analysis" rule;
+   no migration, API, schema or web change.
    `movie-chapter-list` is the first user of `movie-facts-read`: the movie player's chapter jump list and the
    movie's version in the facts, a `web/` change only (D-15).
    `proxy-enqueue-endpoint` has landed next: `POST /api/v1/events/{event_id}/proxies`, `kind` on the jobs shapes and the
@@ -1944,6 +1957,22 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Deliberately not here:** the REST enqueue and an analysis state on the read (`analysis-enqueue-api`), the web
     controls (`analysis-web-controls`), the automatic sweep (`analysis-auto-sweep`), a threshold hash in the cache
     key, hardware decode.
+  - **Addendum — the automatic sweep** (2026-10-05, change `analysis-auto-sweep`). The worker sweeps its project
+    on a thread beside its claim loop (`worker.auto_analyze`, default **on**; `auto_analyze_interval` **300 s**;
+    `auto_analyze_max_events` **2**), reading directory listings, `stat` and the sidecar files only, and enqueues
+    an unforced `analysis` job (through `submit_analysis`) per due event. *Shared selection:* an event is due iff
+    `pending_clips` (in `analysis/cache.py`) is non-empty: every listed clip whose `entry_state` is `missing` (no
+    current entry and no failure marker for the current signal); the handler decides each clip by the same
+    `entry_state`, so an event a job has just finished is never enqueued again. *Kind rank, not `priority`:*
+    automatic and manual analysis jobs are one kind and claim FIFO; the quiet rule (nothing while any job is
+    queued or a render/proxy runs) and the cap bound a user's Re-analyze to waiting behind at most two automatic
+    events, so no `submit(priority=)` was added. *Cap in events, not minutes:* D-27 suggested minutes of
+    footage, but a duration needs ffprobe, which the sweep must not run; because of the quiet rule the cap bounds
+    only what is queued ahead of a manual request, never total CPU. *Back-off:* an event whose latest `analysis`
+    job ended `canceled` or `failed` is skipped until one of its clip files has an `st_mtime` or `st_ctime` later
+    than that job's `finished_at` (ctime catches a copy that kept a camera file's mtime), so a cancel sticks and a
+    job-level fault does not loop; a newer job (a Re-analyze) replaces it. Failures of the sweep (database,
+    walk, an unreadable event) are logged and never stop the worker; it keeps no state, so restarts are safe.
 - **D-26 — An event has a poster frame** (2026-10-04, change `event-poster-engine`, the engine half of the last open v2
   item). A media server (Jellyfin, Plex, Kodi) that scans the output folder saw a bare `.mp4` and a black tile, and the
   operator could not choose the frame.
