@@ -422,8 +422,11 @@ class FfmpegRuntime:
         on_progress: Optional[ProgressCallback] = None,
         stall_timeout: Optional[float] = None,
         should_cancel: Optional[CancelCheck] = None,
-    ) -> None:
+    ) -> str:
         """Run ``ffmpeg <args>`` streaming ``-progress`` to compute a 0.0–1.0 fraction.
+
+        Returns the stderr text collected while the output was streamed (the detection
+        filters' log lines land there).
 
         The optional ``on_progress`` callback is invoked with a non-decreasing fraction
         derived from ``out_time`` / ``duration``. Its absence does not change behavior.
@@ -497,6 +500,7 @@ class FfmpegRuntime:
                 )
             if on_progress is not None and watch.last_fraction < 1.0:
                 on_progress(1.0)
+            return stderr
         finally:
             # Close a pipe only once its thread is done with it: closing one under a blocked
             # reader would wait on the reader (an abandoned child keeps it blocked).
