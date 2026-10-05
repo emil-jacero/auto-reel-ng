@@ -13,6 +13,8 @@ import { ClipHandles } from './TrimHandle'
 import { EdgeTool } from './EdgeHandles'
 import type { PressTargets, SnapSwitch } from './EdgeHandles'
 import { EDGE_KEYS } from './edgeTrim'
+import { edgeToolShown } from './zoomSettle'
+import type { EdgeKey } from './zoomSettle'
 import { shiftMs } from './dragStore'
 import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
@@ -391,6 +393,7 @@ export function Track({
   shifting = null,
   snapping,
   onEdgeKey,
+  zoomHold = null,
 }: {
   eventId: string
   clips: readonly TrackClip[]
@@ -432,6 +435,8 @@ export function Track({
   snapping: SnapSwitch
   /** `q`, `w` and `s` on the track in Edit mode (`clip-edge-trim`). */
   onEdgeKey: (key: 'q' | 'w' | 's') => void
+  /** A zoom in progress (design D6) and the edge tool it keeps, or null. */
+  zoomHold?: { kept: EdgeKey | null } | null
 }) {
   const base = useId()
   const canvas = useRef<HTMLDivElement>(null)
@@ -508,9 +513,14 @@ export function Track({
         )
         // Tab order per clip: Trim In, its cut handles, Trim Out. While a drag ripples the track, the
         // tools of the clips behind its edge are left out (a drag holds the one claim, and an invisible
-        // zone need not be moved on every frame); they come back with the released layout.
-        const tools = !after
-        if (tools) {
+        // zone need not be moved on every frame); they come back with the released layout. So while a
+        // zoom is in progress (design D6), but for the tool it keeps; they come back when it settles.
+        const shows = (side: 'start' | 'end') =>
+          edgeToolShown(
+            { identity: clip.identity, side },
+            { after, zooming: zoomHold !== null, kept: zoomHold?.kept ?? null },
+          )
+        if (shows('start')) {
           handleNodes.push(edge('start'))
         }
         // The cut handles of a clip whose edge is in the air step out until it is released.
@@ -546,7 +556,7 @@ export function Track({
             />,
           )
         }
-        if (tools) {
+        if (shows('end')) {
           handleNodes.push(edge('end'))
         }
       }

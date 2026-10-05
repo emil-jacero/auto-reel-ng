@@ -85,6 +85,8 @@ import { hasFrame, snapshotOf, useFrameReady } from './posterFrame'
 import { useTimelineVideo } from './useTimelineVideo'
 import { useVisibleRange } from './useVisibleRange'
 import { restoredZoom, zoomMemory } from './zoomMemory'
+import { createZoomSettle } from './zoomSettle'
+import type { EdgeKey } from './zoomSettle'
 import type { ZoomMemo } from './zoomMemory'
 import { ZoomSlider } from './ZoomSlider'
 
@@ -101,6 +103,27 @@ const EDGE_PX = 24
 /** The track's margin around the view during a slider drag, in views (else one view a side). */
 const LIVE_OVERSCAN = 0.25
 const LIVE_SETTLE_MS = 200
+
+/**
+ * The edge tool a zoom keeps (design D6): the one being dragged, else the one in the track that
+ * holds focus, else none.
+ */
+function heldEdge(
+  track: HTMLElement | null,
+  dragged: { identity: string; side: 'start' | 'end' } | null,
+): EdgeKey | null {
+  if (dragged !== null) {
+    return { identity: dragged.identity, side: dragged.side }
+  }
+  const active = document.activeElement
+  if (track === null || !(active instanceof HTMLElement) || !track.contains(active)) {
+    return null
+  }
+  const tool = active.closest<HTMLElement>('.tl-edge')
+  const identity = tool?.dataset.identity
+  const side = tool?.dataset.side
+  return identity !== undefined && (side === 'start' || side === 'end') ? { identity, side } : null
+}
 
 export function Timeline({
   eventId,
@@ -275,6 +298,16 @@ export function Timeline({
   const [live, setLive] = useState(false)
   const settle = useRef(0)
   useEffect(() => () => window.clearTimeout(settle.current), [])
+  // A zoom in progress (design D6): from its first input until it settles the track leaves the
+  // edge tools out, but for the one that holds focus (or is dragged) when it starts. Null: no zoom.
+  const [zoomHold, setZoomHold] = useState<{ kept: EdgeKey | null } | null>(null)
+  const [zoomSettle] = useState(() =>
+    createZoomSettle(
+      (zooming) => setZoomHold(zooming ? { kept: heldEdge(scroller.current, drag.getEdge()) } : null),
+      { set: (run, ms) => window.setTimeout(run, ms), clear: (id) => window.clearTimeout(id) },
+    ),
+  )
+  useEffect(() => () => zoomSettle.cancel(), [zoomSettle])
   // The zoom this event had in this tab, else Fit (`zoomMemory`, design D4).
   const [zoom, setZoom] = useState<ZoomMemo>(
     () => zoomMemory.read(eventId) ?? { pps: DEFAULT_PPS, fitted: true },
@@ -553,6 +586,7 @@ export function Timeline({
     const anchor = anchorFor(playheadX, view.width, pointerX)
     const next = zoomAt(view, to / from, anchor, lay.totalMs)
     pendingScroll.current = next.scrollLeft
+    zoomSettle.input()
     ppsRef.current = next.pps
     // The range the zoom will show, in the same render: one render per zoom, not two.
     expectRange(next.scrollLeft)
@@ -560,6 +594,9 @@ export function Timeline({
   }
   const zoomBy = (factor: number) => zoomTo(ppsRef.current * factor)
   const fitAll = () => {
+    if (Math.abs(ppsRef.current - fitRef.current) > 1e-9) {
+      zoomSettle.input()
+    }
     pendingScroll.current = 0
     if (scroller.current !== null) {
       scroller.current.scrollLeft = 0 // also when the scale does not change (the floor of 4 px/s)
@@ -840,6 +877,8 @@ export function Timeline({
             fitted={atFit}
             disabled={fit >= MAX_PPS - 1e-9}
             onZoom={onSlider}
+            onPress={zoomSettle.press}
+            onRelease={zoomSettle.release}
           />
           <button
             type="button"
@@ -932,6 +971,7 @@ export function Timeline({
         shifting={shifting}
         snapping={snapping}
         onEdgeKey={onEdgeKey}
+        zoomHold={zoomHold}
       />
 
       <CutFields
