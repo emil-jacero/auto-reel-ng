@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -25,7 +26,7 @@ from auto_reel_ng.analysis.cache import clip_signal, write_entry, write_failure
 from auto_reel_ng.config.project import ProjectConfig
 from auto_reel_ng.persistence.job_store import Submission
 from auto_reel_ng.persistence.models import JobKind, JobStatus
-from auto_reel_ng.scheduler.analysis_sweep import AnalysisSweep
+from auto_reel_ng.scheduler.analysis_sweep import AnalysisSweep, SweepReport, start_analysis_sweep
 
 ACTIVE = (JobStatus.QUEUED, JobStatus.RUNNING)
 
@@ -526,3 +527,70 @@ def test_one_info_line_names_what_a_sweep_enqueued(
     with caplog.at_level("INFO", logger="auto_reel_ng.scheduler.analysis_sweep"):
         _sweep(store, project).sweep_once()  # busy now: no INFO line
     assert not [r for r in caplog.records if r.levelname == "INFO"]
+
+
+# --------------------------------------------------------------------------- #
+# 2.4 the loop and its thread
+# --------------------------------------------------------------------------- #
+
+
+class CountingSweep(AnalysisSweep):
+    """A sweep that counts its runs instead of walking (and can raise on one)."""
+
+    def __init__(self, store: MemoryStore, project: Project, *, raise_on: int = 0) -> None:
+        super().__init__(store, project.root, ProjectConfig(), max_events=2)  # type: ignore[arg-type]
+        self.sweeps = 0
+        self.raise_on = raise_on
+
+    def sweep_once(self) -> SweepReport:
+        self.sweeps += 1
+        if self.sweeps == self.raise_on:
+            raise RuntimeError("an unforeseen bug")
+        return SweepReport()
+
+
+def test_run_sweeps_at_start_then_once_per_interval_until_stopped(
+    store: MemoryStore, project: Project
+) -> None:
+    sweep = CountingSweep(store, project)
+    waits: List[float] = []
+
+    def wait(seconds: float) -> bool:
+        waits.append(seconds)
+        assert sweep.sweeps == len(waits)  # a sweep came before every wait
+        return len(waits) == 3  # stopped during the third interval
+
+    sweep.run(threading.Event(), 300.0, wait=wait)
+    assert sweep.sweeps == 3 and waits == [300.0, 300.0, 300.0]
+
+
+def test_run_does_not_sweep_once_stopped(store: MemoryStore, project: Project) -> None:
+    sweep = CountingSweep(store, project)
+    stop = threading.Event()
+    stop.set()
+    sweep.run(stop, 300.0)
+    assert sweep.sweeps == 0
+
+
+def test_an_unexpected_error_in_a_sweep_does_not_end_the_loop(
+    store: MemoryStore, project: Project, caplog: pytest.LogCaptureFixture
+) -> None:
+    sweep = CountingSweep(store, project, raise_on=1)
+    calls = iter([False, True])
+    with caplog.at_level("ERROR", logger="auto_reel_ng.scheduler.analysis_sweep"):
+        sweep.run(threading.Event(), 1.0, wait=lambda _s: next(calls))
+    assert sweep.sweeps == 2 and "an unforeseen bug" in caplog.text
+
+
+def test_stopping_during_a_long_interval_is_prompt(store: MemoryStore, project: Project) -> None:
+    sweep = CountingSweep(store, project)
+    stop = threading.Event()
+    thread = start_analysis_sweep(sweep, stop, interval=300.0)
+    deadline = time.monotonic() + 5
+    while sweep.sweeps == 0 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    started = time.monotonic()
+    stop.set()
+    thread.join(timeout=5)
+    assert not thread.is_alive() and time.monotonic() - started < 1.0
+    assert sweep.sweeps == 1 and thread.daemon

@@ -50,11 +50,13 @@ from ..render import RenderJob, find_output_collisions, output_relpath, render_b
 from ..render.claims import claimed_movie, claimed_movie_message
 from ..scheduler import (
     AnalysisJobHandler,
+    AnalysisSweep,
     CapacityPools,
     ProxyJobHandler,
     Worker,
     default_build_job,
     resolve_worker_config,
+    start_analysis_sweep,
     worker_identity,
 )
 from ..staleness.fingerprint import Fingerprint, compute_fingerprint, engine_identity
@@ -748,7 +750,27 @@ def cmd_worker(args: argparse.Namespace) -> int:
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    worker.run()
+    # The automatic analysis sweep (analysis-auto-sweep) runs beside the claim loop and stops
+    # with it: same stop event, joined once the loop has returned.
+    sweep_thread: Optional[threading.Thread] = None
+    if worker_config.auto_analyze:
+        sweep = AnalysisSweep(
+            store, project_root, config, max_events=worker_config.auto_analyze_max_events
+        )
+        sweep_thread = start_analysis_sweep(
+            sweep, stop_event, interval=worker_config.auto_analyze_interval
+        )
+        logger.info(
+            "Automatic analysis sweep on: every %.0fs, at most %d event(s) per sweep",
+            worker_config.auto_analyze_interval,
+            worker_config.auto_analyze_max_events,
+        )
+    try:
+        worker.run()
+    finally:
+        stop_event.set()
+        if sweep_thread is not None:
+            sweep_thread.join()
     logger.info("Worker %s stopped cleanly", identity)
     return 0
 
