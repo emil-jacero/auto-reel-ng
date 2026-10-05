@@ -5,7 +5,7 @@
 
 ## 2. Pure model
 
-- [ ] 2.1 Add `web/src/analysis/badge.ts` (`badgeOf`, `clipNoteOf`, `ANALYSIS_STATE_WORDS: Record<AnalysisState, …>`, failed names capped at three + "and N more") and `countAnalysis`/`isAnalysis`/`newestAnalysisByEvent` in `jobs/kinds.ts`. Test: `badge.test.ts` for every state, a live queued and running job overriding the read, 0.995 shown as 99%, "Analyzing…" with no analyzing clips, a failed read and an unknown runtime state giving "Analysis state unknown", 1 vs N clip wording; `kinds.test.ts`: analysis jobs are never the newest render, `countRenders` ignores them, `countAnalysis` counts active ones only.
+- [x] 2.1 Add `web/src/analysis/badge.ts` (`badgeOf`, `clipNoteOf`, `ANALYSIS_STATE_WORDS: Record<AnalysisState, …>`, failed names capped at three + "and N more") and `countAnalysis`/`isAnalysis`/`newestAnalysisByEvent` in `jobs/kinds.ts`. Test: `badge.test.ts` for every state, a live queued and running job overriding the read, 0.995 shown as 99%, "Analyzing…" with no analyzing clips, a failed read and an unknown runtime state giving "Analysis state unknown", 1 vs N clip wording; `kinds.test.ts`: analysis jobs are never the newest render, `countRenders` ignores them, `countAnalysis` counts active ones only.
 
 ## 3. The page's one read and its refresh
 
