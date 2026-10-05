@@ -2349,7 +2349,7 @@
           "events"
         ],
         "summary": "Enqueue Analysis",
-        "description": "``POST /api/v1/events/{event_id}/analysis``: enqueue the event's analysis job.\n\nOptional body ``{\"force\": true}`` is Re-analyze: the job analyzes every clip again,\noverriding results and recorded failures when it runs (the request itself writes nothing\nbut the job row). 201 with the queued job; 200 ``fresh`` when no clip reads ``never`` or\n``stale`` and ``force`` is false, or when the folder lists no clip; 409 ``active_job`` with\nthe job's id while an analysis job is queued or running for the event, also when a\nconcurrent request inserted first (a forced request first gives a ``queued`` unforced job\n``force``); 404 for an id the events list does not show; 502 for an event folder, a clip or\na cache entry that cannot be read; 503 when the job store is unreachable. The event's\nrender and proxy jobs are independent of it. ``reel.yaml`` is never read.",
+        "description": "``POST /api/v1/events/{event_id}/analysis``: enqueue the event's analysis job.\n\nOptional body ``{\"force\": true}`` is Re-analyze: the job analyzes every clip again,\noverriding results and recorded failures when it runs (the request itself writes nothing\nbut the job row). 201 with the queued job; 200 ``fresh`` when no clip reads ``never`` or\n``stale`` and ``force`` is false, or when the folder lists no clip; 409 ``active_job`` with\nthe job's id and ``forced`` (whether that job carries ``force``) while an analysis job is\nqueued or running for the event, also when a concurrent request inserted first (a forced\nrequest first gives a ``queued`` unforced job ``force``; a ``running`` unforced job keeps\n``forced: false``); 404 for an id the events list does not show; 502 for an event folder, a clip or\na cache entry that cannot be read; 503 when the job store is unreachable. The event's\nrender and proxy jobs are independent of it. ``reel.yaml`` is never read.",
         "operationId": "enqueue_analysis_api_v1_events__event_id__analysis_post",
         "parameters": [
           {
@@ -5077,6 +5077,17 @@
                 "type": "null"
               }
             ]
+          },
+          "forced": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forced"
           },
           "claimed_by": {
             "anyOf": [

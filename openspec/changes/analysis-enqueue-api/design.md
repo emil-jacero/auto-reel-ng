@@ -84,10 +84,13 @@ layer cannot import `api/`. The job overlay needs the store, so it stays in
 `AnalysisEnqueueRequest{force: bool = False}`, optional (no body = `force: false`). Order: event (404, 502) →
 `active_job(kind=ANALYSIS)` (409 `active_job`; with `force`, a `queued` unforced job is first given `force` with
 `JobStore.force_queued`, as the gate's `analyze --enqueue --force` does, so a Re-analyze that meets the sweep's
-queued job is not lost; a `running` one is left) → states (502 without a kind when a clip or entry cannot be read) →
+queued job is not lost; a `running` one is left; the body's `forced` is `force_queued`'s answer for a forced
+request and the job's own `force` otherwise, so the client tells a Re-analyze that took effect from one lost behind
+a running unforced job, as the CLI's note does) → states (502 without a kind when a clip or entry cannot be read) →
 unless `force`, `needs_analysis` false → 200 `AnalysisFreshResult{event_id, status: "fresh", clip_count,
 failed_count}` → `submit_analysis(store, root, [event_dir], force=force)` → 201 `JobOut` or the race's 409 (the gate's function
-has already forced a queued job it met). 503 via
+has already forced a queued job it met; `forced` is the submission's for a forced request, else the winner's
+`force`). 503 via
 `job_store_unreachable`. The route writes only the job row: **Re-analyze does not delete failure markers in the
 request**; the forced job overrides them when it runs (the gate's behaviour) — a request that wrote the sidecar
 would race the worker and break "endpoints do lifecycle only". With `force` and no clips the answer is still 200

@@ -200,7 +200,9 @@ The service SHALL expose `POST /api/v1/events/{event_id}/analysis`, with an opti
   is `queued` or `running` for the event, found beforehand or at insertion (never a 201), whatever `force` says. A
   forced request that meets a `queued` job without `force` SHALL give that job `force` before answering, as
   `auto-reel analyze <root> --enqueue --force` does, so a Re-analyze is not lost behind a queued unforced job; a
-  `running` job is left as it is.
+  `running` job is left as it is. The body SHALL carry `forced`, whether the active job carries `force` after the
+  request (as the CLI's "already running without --force" note tells), so a Re-analyze that took effect and one
+  lost behind a `running` unforced job never answer alike.
 - **404** with the shared problem body naming the event in `event_id`, for an id the events list does not show.
 - **502** with the shared problem body: for an event folder that cannot be listed, naming `event_id` and the
   `unreadable_disk` failure kind; and, with no kind, for a clip or a cache entry that cannot be read. Nothing is
@@ -243,8 +245,8 @@ for event ids that contain `/`.
 
 #### Scenario: A repeated request is a conflict
 - **WHEN** the request is sent again, with or without `force`, while the first job is `queued` or `running`
-- **THEN** the response is 409 with `conflict` `active_job` whose `job_id` is the first job's id, and no new row is
-  inserted
+- **THEN** the response is 409 with `conflict` `active_job` whose `job_id` is the first job's id and `forced` false,
+  and no new row is inserted
 
 #### Scenario: An enqueue that loses a race is a conflict
 - **WHEN** two requests for `2024/Blandat` both pass the active-job check before either inserts
@@ -273,12 +275,12 @@ for event ids that contain `/`.
 
 #### Scenario: Re-analyze meets a queued unforced job
 - **WHEN** an unforced analysis job is `queued` for `2024/Blandat` and the request carries `{"force": true}`
-- **THEN** the response is 409 `active_job` naming that job, the job's `force` is now true, and one analysis row
-  exists
+- **THEN** the response is 409 `active_job` naming that job with `forced` true, the job's `force` is now true, and
+  one analysis row exists
 
 #### Scenario: Re-analyze meets a running unforced job
 - **WHEN** an unforced analysis job is `running` for `2024/Blandat` and the request carries `{"force": true}`
-- **THEN** the response is 409 `active_job` naming that job, and its `force` stays false
+- **THEN** the response is 409 `active_job` naming that job with `forced` false, and its `force` stays false
 
 #### Scenario: The schema publishes the analysis enqueue
 - **WHEN** the service's OpenAPI schema is generated

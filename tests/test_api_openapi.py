@@ -728,6 +728,8 @@ def test_the_enqueue_conflict_is_published_as_a_closed_enumeration() -> None:
     assert published["enum"] == ["active_job", "output_collision", "missing_clips"]
     assert _non_null(problem["claimed_by"]) == {"type": "array", "items": {"type": "string"}}
     assert _non_null(problem["missing"]) == {"type": "array", "items": {"type": "string"}}
+    # The analysis enqueue's active_job 409 says whether the active job carries force.
+    assert _non_null(problem["forced"]) == {"type": "boolean"}
 
 
 def test_the_thumbnail_failure_is_published_as_a_closed_enumeration() -> None:

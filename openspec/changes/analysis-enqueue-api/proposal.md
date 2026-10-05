@@ -69,7 +69,8 @@ None.
   generated `web/openapi.json` and `web/src/api/schema.d.ts`) and `auto_reel_ng/analysis` (the state function,
   `analysis/state.py`, over a new `inspect_entry` in `analysis/cache.py` that keeps the sidecar format private),
   plus a typed `AnalysisStateError` in `errors.py`. No `cli/` change. `web/src/jobs/kinds.test.ts` gains a guard
-  test only.
+  test only, and `web/src/api/analysis.ts` adds the read's new 503 to the problem statuses it mirrors (a contract
+  mirror, not a screen change).
 - **CLI vs API (Principle V):** the work is the gate's (`auto-reel analyze`, the `analysis` job); the endpoints
   are job lifecycle; they enqueue through the engine function the CLI's `--enqueue` uses (`submit_analysis`), and
   the selection is an engine function in `analysis/`, not code in `api/` (design D6).
