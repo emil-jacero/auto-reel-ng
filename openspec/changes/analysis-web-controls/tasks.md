@@ -9,7 +9,7 @@
 
 ## 3. The page's one read and its refresh
 
-- [ ] 3.1 Replace `timeline/overlays/useAnalysis.ts` with `web/src/analysis/useEventAnalysis.ts` (read on mount and `reload()`, previous answer kept while re-reading, abort on unmount) and `useAnalysisJob` in `jobs/useJob.ts`; reload once on an observed active → ended transition (with announcement) or a reconciled one (without), and once when the read says analyzing but the live store has no active job. Test: a pure transition helper (`analysis/refresh.ts`, `refresh.test.ts`) decides reload/announce for each transition and refuses a second reload for the same read; Playwright (task 5.1) counts `…/analysis` requests.
+- [x] 3.1 Replace `timeline/overlays/useAnalysis.ts` with `web/src/analysis/useEventAnalysis.ts` (read on mount and `reload()`, previous answer kept while re-reading, abort on unmount) and `useAnalysisJob` in `jobs/useJob.ts`; reload once on an observed active → ended transition (with announcement) or a reconciled one (without), and once when the read says analyzing but the live store has no active job. Test: a pure transition helper (`analysis/refresh.ts`, `refresh.test.ts`) decides reload/announce for each transition and refuses a second reload for the same read; Playwright (task 5.1) counts `…/analysis` requests.
 
 ## 4. Screens
 
