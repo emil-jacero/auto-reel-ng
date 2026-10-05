@@ -579,22 +579,10 @@ class SegmentOut(BaseModel):
     confidence: float
 
 
-class AnalysisOut(BaseModel):
-    """An event's cached analysis (D-A3 open question: raw sidecar segments, per clip).
-
-    ``analyzed`` distinguishes "never analyzed" (``False``, ``segments`` empty)
-    from "analyzed, found nothing" (``True``, ``segments`` empty) — the sidecar
-    cache is per-clip, so this is true when at least one clip has a cache entry.
-    """
-
-    analyzed: bool
-    segments: dict[str, List[SegmentOut]] = {}
-
-
 class JobOut(BaseModel):
     """One job's full detail, mirroring ``jobs show`` (task 3.2).
 
-    ``kind`` says what sort of work the job is (``render`` or ``proxy``), typed with the job
+    ``kind`` says what sort of work the job is (``render``, ``proxy`` or ``analysis``), typed with the job
     store's closed vocabulary so generated clients get an exhaustive union (D-8, §4.10).
     """
 
@@ -621,6 +609,95 @@ class JobOut(BaseModel):
     created_at: datetime
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+
+
+class AnalysisState(StrEnum):
+    """An event's or a clip's analysis state: a closed vocabulary the schema publishes (D-8).
+
+    ``never``: no result and no recorded failure for any version of the clip (of any clip of
+    the event). ``stale``: some clip has no result for the file as it is now while other
+    results exist, or a clip changed since it was analyzed or failed. ``current``: every clip
+    has a result for the file as it is now (also an event with no clips). ``analyzing``: an
+    analysis job for the event is queued or running. ``failed``: nothing needs analysis and at
+    least one clip's analysis failed for the file as it is now.
+    """
+
+    NEVER = "never"
+    STALE = "stale"
+    CURRENT = "current"
+    ANALYZING = "analyzing"
+    FAILED = "failed"
+
+
+class ClipAnalysisOut(BaseModel):
+    """One clip's analysis state; ``detail`` is the recorded failure's cause for ``failed``."""
+
+    state: AnalysisState
+    detail: Optional[str] = None
+
+
+class AnalysisOut(BaseModel):
+    """An event's cached analysis and its state (D-A3, ``analysis-enqueue-api``).
+
+    ``segments`` holds a clip's sidecar segments exactly when its cache entry is valid for the
+    clip as it is now (an empty list: analyzed, nothing found). ``state`` and ``clips`` say
+    where the event and each of its clips stand, read by ``stat`` and JSON only; ``job`` is the
+    event's queued or running analysis job, else null.
+
+    ``analyzed`` is **legacy**: it is true whenever the event's ``.auto-reel/cache/`` folder
+    exists, which a render manifest also creates, so it cannot tell "never analyzed" from
+    "rendered". Read ``state`` instead; the field keeps its value for older clients.
+    """
+
+    analyzed: bool = Field(description="Legacy: read `state` instead")
+    segments: dict[str, List[SegmentOut]] = {}
+    state: AnalysisState
+    clips: dict[str, ClipAnalysisOut]
+    job: Optional[JobOut] = None
+
+
+class AnalysisEnqueueRequest(BaseModel):
+    """The optional body of ``POST /api/v1/events/{event_id}/analysis``.
+
+    ``force`` is Re-analyze: the job analyzes every clip again, overriding results and recorded
+    failures when it runs.
+    """
+
+    force: bool = False
+
+
+class AnalysisFreshResult(BaseModel):
+    """The body of the analysis enqueue when no clip needs analysis and nothing was enqueued."""
+
+    event_id: str
+    #: A constant, declared without a default so the schema marks it required.
+    status: Literal["fresh"]
+    #: How many clip files the event folder lists; 0 for an event with none.
+    clip_count: int
+    #: How many of them read ``failed`` (recorded failures a non-forced job does not retry).
+    failed_count: int
+
+
+class AnalyzeAllUnreadable(BaseModel):
+    """An event ``POST /api/v1/analysis`` could not read, and so did not consider."""
+
+    event_id: str
+    detail: str
+    #: The events list's kind for the failure, null when it has none (a clip or an entry).
+    failure: Optional[EventFailure] = None
+
+
+class AnalyzeAllResult(BaseModel):
+    """The body of ``POST /api/v1/analysis`` (Analyze all): what happened to each event."""
+
+    #: Events whose analysis job this request queued.
+    queued: int
+    #: Events where no clip needs analysis.
+    fresh: int
+    #: Events that already had a queued or running analysis job.
+    active: int
+    #: Events whose folder, a clip or a cache entry could not be read, in the list's order.
+    unreadable: List[AnalyzeAllUnreadable]
 
 
 class EnqueueRequest(BaseModel):
@@ -788,7 +865,13 @@ __all__ = [
     "EditorialDocumentBody",
     "EditorialWriteResult",
     "SegmentOut",
+    "AnalysisState",
+    "ClipAnalysisOut",
     "AnalysisOut",
+    "AnalysisEnqueueRequest",
+    "AnalysisFreshResult",
+    "AnalyzeAllUnreadable",
+    "AnalyzeAllResult",
     "JobOut",
     "EnqueueRequest",
     "FreshResult",

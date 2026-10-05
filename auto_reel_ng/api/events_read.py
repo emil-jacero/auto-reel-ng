@@ -20,9 +20,8 @@ from dataclasses import dataclass
 from datetime import date as DateValue
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Dict, List, Mapping, Optional, Tuple
+from typing import List, Mapping, Optional, Tuple
 
-from ..analysis.cache import CACHE_SUBDIR, clip_signal, read_entry
 from ..cli.adoption import REEL_FILENAME, place_disk_clips
 from ..config.project import (
     ConfigError,
@@ -79,7 +78,6 @@ from .entity_tag import entity_tag
 from .movie_read import expected_output, movie_facts
 from .poster_read import poster_for
 from .schemas import (
-    AnalysisOut,
     ChapterOut,
     ClipOut,
     EventDetailOut,
@@ -92,7 +90,6 @@ from .schemas import (
     ProxyFilmstripOut,
     ProxyOut,
     ProxyState,
-    SegmentOut,
     StalenessOut,
 )
 from .settings import ApiSettings
@@ -754,43 +751,6 @@ def get_reel(settings: ApiSettings, event_id: str) -> ReelDocument:
         raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
 
 
-def get_analysis(settings: ApiSettings, event_id: str) -> AnalysisOut:
-    """``GET /api/v1/events/{event_id}/analysis``: cached sidecar segments only.
-
-    Never triggers analysis. ``analyzed`` is true when at least one clip in the
-    event has a valid cache entry for its current on-disk signal.
-
-    Answers only for an id the events list shows (:func:`listed_event_dir`, else
-    :class:`EventNotFoundError`), as the thumbnail and media reads do: a year folder,
-    an event's ``original/`` or chapter folder and a ``.reelignore``d event are
-    not events. An ``OSError`` from the walk, the scan or the signal stat is an
-    :class:`EventReadError` with the list's ``unreadable_disk`` kind; an unknown
-    layout raises its ``LayoutError``. ``reel.yaml`` is never read: analysis is a
-    fact of the sidecar cache and the clip files.
-    """
-    try:
-        event_dir = listed_event_dir(settings, event_id)
-        listing = scan_event(event_dir)
-
-        segments: Dict[str, List[SegmentOut]] = {}
-        analyzed = (event_dir / CACHE_SUBDIR).is_dir()
-        for identity in listing.identities:
-            clip_path = event_dir / identity
-            if not clip_path.exists():
-                continue
-            signal = clip_signal(clip_path)
-            cached = read_entry(event_dir, identity, signal)
-            if cached is not None:
-                analyzed = True
-                segments[identity] = [
-                    SegmentOut(start=s.start, end=s.end, kind=s.kind.value, confidence=s.confidence)
-                    for s in cached
-                ]
-    except OSError as exc:
-        raise EventReadError(event_id, str(exc), classify_event_failure(exc)) from exc
-    return AnalysisOut(analyzed=analyzed, segments=segments)
-
-
 def listed_clip(settings: ApiSettings, event_id: str, clip: str) -> Path:
     """``event_dir / clip`` for a clip discovery lists on disk in an event the list shows.
 
@@ -994,7 +954,6 @@ __all__ = [
     "list_events",
     "get_event",
     "get_reel",
-    "get_analysis",
     "OutputCollision",
     "enqueue_target",
     "output_collision",

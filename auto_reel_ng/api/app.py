@@ -25,6 +25,7 @@ from ..persistence.engine import make_engine, make_session_factory
 from ..persistence.job_store import JobStore
 from .preview_gate import PreviewGate
 from .problem import service_unavailable
+from .routes.analysis import router as analysis_router
 from .routes.events import router as events_router
 from .routes.jobs import router as jobs_router
 from .routes.media import router as media_router
@@ -126,6 +127,7 @@ def create_app(settings: ApiSettings, *, auth_checker: Optional[AuthChecker] = N
     # router's ``…/media`` and ``…/movie`` would otherwise be read as event ids.
     app.include_router(media_router)
     app.include_router(title_cards_router)
+    app.include_router(analysis_router)  # before the events router's greedy detail route
     app.include_router(events_router)
     app.include_router(jobs_router)
     app.include_router(ws_router)
