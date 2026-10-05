@@ -1,4 +1,4 @@
-"""The ``auto-reel`` subcommand implementations: render / scan / analyze / import.
+"""The ``auto-reel`` subcommand implementations: render / scan / import / jobs / serve.
 
 This module is almost entirely *wiring*: it consumes existing engine APIs unchanged
 and applies the three CLI decisions — layout selection + config layering, the
@@ -31,7 +31,6 @@ from ruamel.yaml import YAML
 
 from ..accel import AccelProfile, detect_capabilities, select_profile
 from ..accel.profiles.hardware import HardwareProfile
-from ..analysis import Segment, analyze_event
 from ..api.app import create_app
 from ..api.settings import resolve_api_settings
 from ..config import load_project_config, resolve_look_defaults
@@ -448,44 +447,6 @@ def _format_reasons(verdict: Verdict) -> str:
         )
         for reason in verdict.reasons
     )
-
-
-# --------------------------------------------------------------------------- #
-# analyze
-# --------------------------------------------------------------------------- #
-
-
-def cmd_analyze(args: argparse.Namespace) -> int:
-    """``analyze``: run detection over selected events; print + cache; never touch reel.yaml."""
-    ctx = project_context(args)
-    if not ctx.events:
-        print(f"No events found under {ctx.walk_root} (layout: {ctx.layout_name})")
-        return 0
-
-    runtime = FfmpegRuntime()
-    for ref in ctx.events:
-        results = analyze_event(ref.event_dir, runtime=runtime)
-        _print_analysis(ref.event_dir, results)
-    return 0
-
-
-def _print_analysis(event_dir: Path, results: Dict[str, List[Segment]]) -> None:
-    """Print detected segments per clip (suggestion-only; reel.yaml is untouched)."""
-    print(f"\n{event_dir.name}  [{event_dir}]")
-    if not results:
-        print("  (no clips)")
-        return
-    for identity in sorted(results):
-        segments = results[identity]
-        if not segments:
-            print(f"  {identity}: no segments")
-            continue
-        print(f"  {identity}: {len(segments)} segment(s)")
-        for seg in segments:
-            print(
-                f"    {seg.kind.value:6} {seg.start:.3f}-{seg.end:.3f}s "
-                f"(confidence {seg.confidence:.2f})"
-            )
 
 
 # --------------------------------------------------------------------------- #

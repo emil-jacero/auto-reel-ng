@@ -9,6 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 from auto_reel_ng.analysis import Segment, SegmentKind
+from auto_reel_ng.cli import analyze as analyze_cli
 from auto_reel_ng.cli import commands, context
 from auto_reel_ng.cli.adoption import persist, prepare_event
 from auto_reel_ng.cli.main import main
@@ -127,9 +128,9 @@ def test_analyze_prints_and_leaves_reel_untouched(
     persist(prepare_event(event, order=DEFAULT_CLIP_ORDER))
     before = (event / "reel.yaml").read_text(encoding="utf-8")
 
-    monkeypatch.setattr(commands, "FfmpegRuntime", lambda *a, **k: Mock())
+    monkeypatch.setattr(analyze_cli, "FfmpegRuntime", lambda *a, **k: Mock())
     monkeypatch.setattr(
-        commands,
+        analyze_cli,
         "analyze_event",
         lambda *a, **k: {"00400.mp4": [Segment(0.0, 1.0, SegmentKind.BLACK, 0.9)]},
     )

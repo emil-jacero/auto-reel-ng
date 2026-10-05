@@ -25,9 +25,9 @@ from typing import Optional, Sequence, Tuple
 from ..errors import EngineError
 from ..ingest import DEFAULT_LAYOUT
 from ..persistence.models import JobStatus
+from .analyze import cmd_analyze
 from .commands import (
     cmd_adopt_renders,
-    cmd_analyze,
     cmd_enqueue,
     cmd_import,
     cmd_jobs_cancel,
