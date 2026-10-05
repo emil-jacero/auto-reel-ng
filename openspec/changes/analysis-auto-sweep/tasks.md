@@ -1,7 +1,7 @@
 ## 1. Shared selection and config
 
 - [x] 1.1 The merged `analysis-job` handler decides inline which clips a non-forced job analyzes (no current entry, no failure marker for the current signal); lift that rule unchanged into `analysis/cache.py` as `entry_state(event_dir, identity, signal)` and `pending_clips(event_dir)` (design Decision 2) and make the handler call `entry_state`. Verify: a test in `tests/test_analysis_cache.py` covers never / stale (size or mtime changed) / new clip / current / failure-marked clip, and asserts no ffprobe/ffmpeg runtime call and no content hash (a runtime fake that raises if invoked); the gate's handler tests still pass.
-- [ ] 1.2 Add `auto_analyze` (bool, default true), `auto_analyze_interval` (> 0 s, default 300) and `auto_analyze_max_events` (int ≥ 1, default 2) to `WorkerConfig`/`resolve_worker_config` in `scheduler/config.py` with a fail-loud bool resolver (a bool is not accepted as a number and vice versa). Verify: `tests/test_scheduler_config.py` cases for defaults, layering, and each bad value naming its key (`"yes"`, `0`, `-1`, `1.5` for the cap, `True` for the interval).
+- [x] 1.2 Add `auto_analyze` (bool, default true), `auto_analyze_interval` (> 0 s, default 300) and `auto_analyze_max_events` (int ≥ 1, default 2) to `WorkerConfig`/`resolve_worker_config` in `scheduler/config.py` with a fail-loud bool resolver (a bool is not accepted as a number and vice versa). Verify: `tests/test_scheduler_config.py` cases for defaults, layering, and each bad value naming its key (`"yes"`, `0`, `-1`, `1.5` for the cap, `True` for the interval).
 
 ## 2. The sweep
 
