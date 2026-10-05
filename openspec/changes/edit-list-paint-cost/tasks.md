@@ -93,7 +93,7 @@ recorded per run.
   ms). Firefox 155, three launches: 0 % in all nine drags. Scrub / frame-step on the 400-clip event: Chrome 56.5 fps,
   p90 27.4 ms; Firefox 49.1 fps, p90 25.0 ms; on Grillning 56.6 / 50.5 fps, p90 27.9 / 23.5 ms. The gate is met; the
   requirement's 2 % stands unchanged.
-- [ ] 3.2 Close #140's gate: if 3.1 meets 2 %, tick `timeline-zoom-slider`'s tasks 3.1 and 5.2 in
+- [x] 3.2 Close #140's gate: if 3.1 meets 2 %, tick `timeline-zoom-slider`'s tasks 3.1 and 5.2 in
   `openspec/changes/archive/2026-10-05-timeline-zoom-slider/tasks.md`, each with a one-line status naming
   `edit-list-paint-cost` and the figures (the `event-timeline` zoom requirement has no frame figure, so its text is not
   changed). Test: `openspec validate edit-list-paint-cost --strict` passes; `grep -c '\- \[ \]'` on that archived file

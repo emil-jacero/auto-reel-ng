@@ -26,7 +26,7 @@ scratchpad only, in Chrome 154 (`localhost/playback-research:chrome`) and Firefo
 
 ## 3. web/ — The zoom controls
 
-- [ ] 3.1 `zoomTo(target, anchorX?)` replaces the body of `zoomBy` (requested scale kept in a ref updated at request time);
+- [x] 3.1 `zoomTo(target, anchorX?)` replaces the body of `zoomBy` (requested scale kept in a ref updated at request time);
   the **Zoom** range input between Zoom out and Zoom in, `aria-valuetext`, disabled when Fit ≥ 240, coalesced to one
   zoom per animation frame; −/+ keep 1.5x and move the slider; reaching position 0 sets Fit (`fitted: true`).
   Tests: Playwright — dragging the slider end to end keeps the playhead within 1 px of its view x and ends at
@@ -42,6 +42,9 @@ scratchpad only, in Chrome 154 (`localhost/playback-research:chrome`) and Firefo
   (injected CSS, not in this change) the same drag is 7.4-7.9 % (p95 30 ms): most of a zoom frame's cost is that
   page's paint and layerize, not the Timeline. Firefox (no throttle) 0 %. Scrub gates hold (Chrome 55.6 fps / step
   p90 25.3 ms; Firefox 47.6 fps / p90 33.5 ms).
+  Closed by `edit-list-paint-cost` (2026-10-05): with the Edit page's clip rows skipping drawing off screen and the list
+  one composited layer, the same drag at 4x measured a median 0.36 % (0-1.17 %, idle 0 %; `main` 50.0 % in the same
+  session), Firefox 0 %, scrub 56.5 / 49.1 fps and step p90 27.4 / 25.0 ms in Chrome / Firefox.
 - [x] 3.2 Keys and pointer (D3): `\` in the viewport key list and `onTrackKey` (Fit, and back to the zoom before it);
   `keys.ts` returns null for `\` and `=`; `TRACK_KEYS` names `\`; a non-passive `wheel` listener on `.tl-viewport` zooms
   on Ctrl/Meta (and pinch) about the pointer, `preventDefault` only then. Tests: `keys.test.ts`, `labels.test.ts`;
@@ -79,7 +82,8 @@ scratchpad only, in Chrome 154 (`localhost/playback-research:chrome`) and Firefo
   the per-tab session memory, MAX_PPS kept at 240 with the numbers from design.md, Fit's end gutter, the Timeline only in
   Edit mode — superseding "the read view keeps its button"); a §4.10 bullet and a §6 phase-8 note naming
   `timeline-zoom-slider`. Test: a `docs.test.ts` case asserting `timeline-zoom-slider` is named in D-20, §4.10 and §6.
-- [ ] 5.2 Gates: `npm test`, `npx tsc --noEmit` and `npm run build` in podman; the full Playwright run of 2.1, 3.1–3.3,
+- [x] 5.2 Gates: `npm test`, `npx tsc --noEmit` and `npm run build` in podman; the full Playwright run of 2.1, 3.1–3.3,
   4.1 and 4.2 in Chrome 154 and Firefox ≥ 155, light and dark, at 1280 and 390 px, screenshots looked at; no request
   other than reads during any zoom.
   Status (2026-10-05): all of it passes except 3.1's Chrome 4x slider-drag frame gate; this stays open with 3.1.
+  Closed by `edit-list-paint-cost` (2026-10-05): that gate now holds (Chrome 4x median 0.36 %, Firefox 0 %).
