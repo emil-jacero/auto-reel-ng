@@ -216,7 +216,9 @@ exist, and a job that runs the event again SHALL cost no ffmpeg process for thos
 ### Requirement: `auto-reel analyze` can queue analysis jobs
 `auto-reel analyze <root> --enqueue` SHALL queue one `analysis` job for each event it selects, through the job
 store's idempotent submit, instead of analyzing inline, and SHALL print, per event, whether a job was queued or an
-active analysis job already exists, with the job's id. With `--force` the queued jobs carry `force`. It SHALL run no
+active analysis job already exists, with the job's id. With `--force` the queued jobs carry `force`, and an active
+analysis job that is still `queued` without `force` SHALL be given `force`, so the request is not lost; an active job
+that is already `running` without `force` is left as it is, and the line for its event SHALL say so. It SHALL run no
 ffprobe or ffmpeg process and write no file. A database that cannot be reached SHALL be reported as `auto-reel
 enqueue` reports it, with the same exit code, and an event already having an active analysis job is not an error
 (exit 0). `auto-reel analyze <root> --force` without `--enqueue` SHALL analyze inline every clip of the selected
@@ -230,6 +232,17 @@ events, ignoring existing entries. Without either flag `auto-reel analyze` is un
 #### Scenario: Re-analyze from the CLI
 - **WHEN** `auto-reel analyze <root> --enqueue --force` queues an event and a worker claims it
 - **THEN** the job's `force` is true and every clip of the event is analyzed again
+
+#### Scenario: Re-analyze meets a queued unforced job
+- **WHEN** `auto-reel analyze <root> --enqueue` queues an event's job and, before a worker claims it,
+  `auto-reel analyze <root> --enqueue --force` runs for the same event
+- **THEN** the second run prints the same job id as already active, that job's `force` is now true, one `analysis`
+  row exists, and the worker that claims it analyzes every clip again, a clip with a failure marker included
+
+#### Scenario: Re-analyze meets a running unforced job
+- **WHEN** an event's unforced `analysis` job is `running` and `auto-reel analyze <root> --enqueue --force` runs
+- **THEN** the running job's `force` stays false, the line for the event names the job as active and says it is
+  already running without `--force`, and the command exits 0
 
 ## MODIFIED Requirements
 
@@ -295,3 +308,33 @@ is claimed after every render and proxy job").
 #### Scenario: A requeued analysis job is dispatched again
 - **WHEN** a worker restarts while an `analysis` job is `running`
 - **THEN** startup reconciliation requeues it, and the next claim dispatches it to the `analysis` handler again
+
+### Requirement: A queued render is claimed before any proxy job
+A worker SHALL claim a queued `render` job before any queued `proxy` job, whichever is older and whatever their
+`priority`, and SHALL claim a `proxy` job only while fewer than `worker.proxy_slots` proxy jobs are in flight. A
+`proxy` job, claimed or waiting, SHALL NOT use up the in-flight capacity that a queued render needs to be claimed:
+the claim loop's bound on in-flight jobs counts every job except `proxy` and `analysis` jobs, so a render that
+waits for the CPU token behind a proxy job does not keep a GPU-classified render from being claimed. Among jobs
+of one kind the order is unchanged (`priority` descending, then oldest first). A running proxy job is never
+interrupted for a render, but it starts no further clip while one runs ("A proxy job yields to running renders").
+
+#### Scenario: A newer render is claimed first
+- **WHEN** a `proxy` job was queued an hour ago and a `render` job was queued a minute ago
+- **THEN** the next claim is the `render` job, then the `proxy` job
+
+#### Scenario: A waiting proxy job does not block a render
+- **WHEN** a `proxy` job is running, a second `proxy` job is queued, and a `render` job is then queued
+- **THEN** the second proxy job stays `queued` and the `render` job is claimed
+
+#### Scenario: A CPU render behind a proxy job does not hold back a GPU render
+- **WHEN** a `proxy` job holds the only CPU token, a CPU-classified `render` job is claimed and waits for that
+  token, and a GPU-classified `render` job is then queued
+- **THEN** the GPU render is claimed and runs while the CPU render still waits
+
+#### Scenario: Order within a kind is unchanged
+- **WHEN** three `proxy` jobs are queued at the same priority
+- **THEN** they are claimed oldest first, one at a time
+
+#### Scenario: A running proxy job is not preempted
+- **WHEN** a `render` job is queued while a `proxy` job is running
+- **THEN** the proxy job's clip in flight is not interrupted and finishes

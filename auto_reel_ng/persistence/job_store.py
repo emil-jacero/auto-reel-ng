@@ -383,6 +383,25 @@ class JobStore:
             jobs = session.execute(_latest_by_project_stmt(project_root, kind)).scalars().all()
             return {job.event_dir: job for job in jobs}
 
+    def force_queued(self, job_id: uuid.UUID) -> bool:
+        """Set ``force`` on a ``queued`` job; report whether the job now carries ``force``.
+
+        For a forced submit that met an active job instead of creating one (analysis-job): a
+        ``queued`` row still has its whole run ahead, so the force takes effect. A ``running``
+        row has started under the flag it was claimed with and is left alone. The row is read
+        ``FOR UPDATE``, so a concurrent claim is waited for and the answer is the committed
+        state's. Returns ``False`` for a missing or terminal job, and for a ``running`` one
+        without ``force``.
+        """
+        with session_scope(self._session_factory) as session:
+            job = session.get(Job, job_id, with_for_update=True)
+            if job is None or job.status not in _ACTIVE_STATUSES:
+                return False
+            if job.status == JobStatus.QUEUED and not job.force:
+                job.force = True
+                session.flush()
+            return bool(job.force)
+
     def cancel_queued(self, job_id: uuid.UUID) -> Optional[Job]:
         """Move a ``queued`` job to ``canceled``, stamping ``finished_at``.
 

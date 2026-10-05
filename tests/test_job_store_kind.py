@@ -279,3 +279,32 @@ def test_claim_next_without_exclusions_still_claims_a_kind_it_has_never_heard_of
     claimed = job_store.claim_next("worker", exclude_kinds=["proxy"])
 
     assert claimed is not None and claimed.id == thumbnails
+
+
+# --------------------------------------------------------------------------- #
+# force_queued: a forced submit meeting an active job (analysis-job)
+# --------------------------------------------------------------------------- #
+
+
+def test_force_queued_forces_a_queued_job_and_leaves_a_running_one(job_store: JobStore) -> None:
+    running = job_store.enqueue(LIBRARY_A, GRILLNING, kind=JobKind.ANALYSIS)
+    queued = job_store.enqueue(LIBRARY_A, BLANDAT, kind=JobKind.ANALYSIS)
+    claimed = job_store.claim_next("w1")
+    assert claimed is not None and claimed.id == running  # oldest first within the kind
+
+    assert job_store.force_queued(queued) is True
+    assert job_store.force_queued(running) is False  # it started without force
+    assert job_store.force_queued(uuid.uuid4()) is False  # missing
+    job = job_store.get(queued)
+    assert job is not None and job.force is True and job.status == JobStatus.QUEUED
+    job = job_store.get(running)
+    assert job is not None and job.force is False and job.status == JobStatus.RUNNING
+
+
+def test_force_queued_is_false_for_a_terminal_job(job_store: JobStore) -> None:
+    job_id = job_store.enqueue(LIBRARY_A, GRILLNING, kind=JobKind.ANALYSIS)
+    job_store.cancel_queued(job_id)
+
+    assert job_store.force_queued(job_id) is False
+    job = job_store.get(job_id)
+    assert job is not None and job.force is False

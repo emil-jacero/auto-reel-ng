@@ -222,6 +222,51 @@ def test_analyze_enqueue_force_stores_force(
     assert [job.force for job in jobs] == [True]
 
 
+@pytest.mark.requires_db
+def test_analyze_enqueue_force_forces_a_queued_unforced_job(
+    tmp_path: Path,
+    analysis_store: JobStore,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Re-analyze meeting an unforced queued job is not lost: the queued job is forced."""
+    root = tmp_path / "proj"
+    _touch(root / "2024" / "2024-06-21 - Midsummer" / "00400.mp4")
+    monkeypatch.setattr(analyze_cli, "FfmpegRuntime", _never_run_ffmpeg)
+
+    assert main(["analyze", str(root), "--enqueue"]) == 0
+    capsys.readouterr()
+    assert main(["analyze", str(root), "--enqueue", "--force"]) == 0
+    out = capsys.readouterr().out
+
+    jobs = analysis_store.list_by_status(JobStatus.QUEUED, kind=JobKind.ANALYSIS)
+    assert [job.force for job in jobs] == [True]
+    assert f"active  2024/2024-06-21 - Midsummer  {jobs[0].id}\n" in out
+
+
+@pytest.mark.requires_db
+def test_analyze_enqueue_force_says_a_running_unforced_job_was_not_forced(
+    tmp_path: Path,
+    analysis_store: JobStore,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "proj"
+    _touch(root / "2024" / "2024-06-21 - Midsummer" / "00400.mp4")
+    monkeypatch.setattr(analyze_cli, "FfmpegRuntime", _never_run_ffmpeg)
+    assert main(["analyze", str(root), "--enqueue"]) == 0
+    claimed = analysis_store.claim_next("w1")
+    assert claimed is not None and claimed.kind == JobKind.ANALYSIS
+    capsys.readouterr()
+
+    assert main(["analyze", str(root), "--enqueue", "--force"]) == 0
+    out = capsys.readouterr().out
+
+    job = analysis_store.get(claimed.id)
+    assert job is not None and job.force is False
+    assert f"active  2024/2024-06-21 - Midsummer  {claimed.id}  (already running" in out
+
+
 def test_analyze_enqueue_reports_an_unreachable_database_as_enqueue_does(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
