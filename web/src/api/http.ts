@@ -41,7 +41,7 @@ export type Unanswered =
  * its percent-escapes).
  */
 export function unpublishedAnswer(
-  method: 'GET' | 'PUT',
+  method: 'GET' | 'PUT' | 'POST',
   url: string,
   response: Response,
 ): Extract<Unanswered, { kind: 'unpublished' }> {

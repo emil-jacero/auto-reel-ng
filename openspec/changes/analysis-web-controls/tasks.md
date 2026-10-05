@@ -1,7 +1,7 @@
 ## 1. Gate and client calls
 
 - [x] 1.1 Confirm the merged `analysis-enqueue-api` against design.md's gate table (routes, status codes, `AnalysisOut.state`/`clips`/`job`, `AnalyzeAllResult` fields, `JobKind` value `analysis`) by reading `web/src/api/schema.d.ts` and `auto_reel_ng/api/schemas.py` on `origin/main`; write the real names into the table and adjust the specs' words only where the published shape differs. Test: `npx tsc --noEmit` passes on the untouched web against the regenerated types.
-- [ ] 1.2 Add `enqueueAnalysis(eventId, {force})` and `analyzeAll()` to `web/src/api/analysis.ts` (one result kind per published answer; 503 is `database` only when the problem names the database; not abortable) and let `fetchAnalysis` accept the published 503. Test: `analysis.test.ts` (`node:test`, stubbed `fetch`) covers 201, 200 fresh, 409 `active_job` (job id), 404, 502, 503 database / other, unreachable and an unpublished status for the event call, and 200 counts, 502, 503, unreachable for Analyze all; the request bodies are `{"force":true}` and empty.
+- [x] 1.2 Add `enqueueAnalysis(eventId, {force})` and `analyzeAll()` to `web/src/api/analysis.ts` (one result kind per published answer; 503 is `database` only when the problem names the database; not abortable) and let `fetchAnalysis` accept the published 503. Test: `analysis.test.ts` (`node:test`, stubbed `fetch`) covers 201, 200 fresh, 409 `active_job` (job id), 404, 502, 503 database / other, unreachable and an unpublished status for the event call, and 200 counts, 502, 503, unreachable for Analyze all; the request bodies are `{"force":true}` and empty.
 
 ## 2. Pure model
 
