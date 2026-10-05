@@ -532,3 +532,67 @@ def test_an_event_with_an_active_job_is_not_read(
         (four / RUNNING_EVENT).chmod(0o755)
 
     assert body["active"] == 1 and body["unreadable"] == []
+
+
+# --------------------------------------------------------------------------- #
+# The kind, and per-kind independence
+# --------------------------------------------------------------------------- #
+
+
+def test_an_analysis_job_says_it_is_one_on_every_read_and_never_is_the_latest_job(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    render_id = str(store.enqueue(str(project), GRILLNING))
+    job_id = client.post(_url(GRILLNING)).json()["id"]
+    claimed = store.claim_next("worker-1", exclude_kinds={JobKind.RENDER})
+    assert claimed is not None and str(claimed.id) == job_id
+
+    detail = client.get(f"/api/v1/jobs/{job_id}").json()
+    listed = {job["id"]: job["kind"] for job in client.get("/api/v1/jobs").json()}
+    read = client.get(_url(GRILLNING)).json()
+    rows = {row["event_id"]: row for row in client.get("/api/v1/events").json()}
+
+    assert (detail["kind"], detail["event_dir"], detail["status"]) == (
+        "analysis",
+        GRILLNING,
+        "running",
+    )
+    assert listed[job_id] == "analysis" and listed[render_id] == "render"
+    assert read["job"]["kind"] == "analysis" and read["job"]["id"] == job_id
+    assert rows[GRILLNING]["latest_job"]["id"] == render_id
+    assert rows[GRILLNING]["latest_job"]["kind"] == "render"
+
+
+def test_an_active_analysis_job_blocks_neither_a_render_nor_proxies(
+    client: TestClient, store: JobStore, project: Path, tmp_path: Path
+) -> None:
+    cache = tmp_path / "pcache"
+    cache.mkdir()
+    (project / "config.yaml").write_text(f"proxies:\n  cache_dir: {cache}\n")
+    assert client.post(_url(GRILLNING)).status_code == 201
+
+    render = client.post("/api/v1/jobs", json={"event_id": GRILLNING})
+    proxies = client.post(_url(GRILLNING, "proxies"))
+
+    assert render.status_code == 201, render.text
+    assert proxies.status_code == 201, proxies.text
+    assert (render.json()["kind"], proxies.json()["kind"]) == ("render", "proxy")
+
+
+def test_cancel_a_queued_analysis_job_leaves_the_events_other_jobs(
+    client: TestClient, store: JobStore, project: Path
+) -> None:
+    render_id = store.enqueue(str(project), BLANDAT)
+    proxy_id = store.submit(str(project), BLANDAT, kind=JobKind.PROXY).job_id
+    job_id = client.post(_url(BLANDAT)).json()["id"]
+
+    response = client.post(f"/api/v1/jobs/{job_id}/cancel")
+
+    assert response.status_code == 200
+    assert (response.json()["outcome"], response.json()["status"]) == (
+        "canceled-queued",
+        "canceled",
+    )
+    for other in (render_id, proxy_id):
+        held = store.get(other)
+        assert held is not None and held.status is JobStatus.QUEUED and not held.cancel_requested

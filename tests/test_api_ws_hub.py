@@ -640,6 +640,46 @@ async def test_a_proxy_job_that_lived_and_ended_between_two_polls_is_pushed_once
         await hub.unsubscribe(queue)
 
 
+async def test_an_analysis_jobs_progress_and_end_arrive_as_deltas_in_order() -> None:
+    """``analysis-enqueue-api``: an analysis job is followed over the socket as a proxy job is."""
+    store = FakeStore()
+    job_id = uuid.uuid4()
+    store.jobs[job_id] = FakeJob(
+        id=job_id, status=JobStatus.QUEUED, kind="analysis", event_dir=BLANDAT
+    )
+    hub = JobsHub(store, project_root=PROJ, poll_interval=0.02)
+
+    queue = await hub.subscribe()
+    try:
+        snapshot = await _drain(queue)
+        assert [(j["id"], j["kind"]) for j in snapshot["jobs"]] == [(str(job_id), "analysis")]
+        store.jobs[job_id].status = JobStatus.RUNNING
+        store.jobs[job_id].progress = 0.4
+        running = await _drain(queue)
+        store.jobs[job_id] = FakeJob(
+            id=job_id,
+            status=JobStatus.DONE,
+            kind="analysis",
+            event_dir=BLANDAT,
+            progress=1.0,
+            finished_at=store.now,
+        )
+        done = await _drain(queue)
+
+        assert [
+            (d["type"], j["kind"], j["status"], j["progress"])
+            for d in (running, done)
+            for j in d["jobs"]
+        ] == [
+            ("delta", "analysis", "running", 0.4),
+            ("delta", "analysis", "done", 1.0),
+        ]
+        await _await_ticks(store, 5)
+        assert queue.empty()  # the terminal row went out exactly once
+    finally:
+        await hub.unsubscribe(queue)
+
+
 async def test_another_projects_proxy_job_is_never_sent() -> None:
     store = FakeStore()
     other_id = uuid.uuid4()

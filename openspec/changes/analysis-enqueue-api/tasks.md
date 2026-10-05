@@ -66,7 +66,7 @@ Conventions for every task below:
   `.reelignore`d folder is never counted; an unknown layout is 502 with no row; `submit` failing on the second event
   is 503 and the first row stays; no process is started; every inserted row is unforced.
 
-- [ ] 3.4 Pin the kind vocabulary and per-kind independence (design D5; code only where a test fails). Verify in
+- [x] 3.4 Pin the kind vocabulary and per-kind independence (design D5; code only where a test fails). Verify in
   `tests/test_api_analysis_enqueue.py` and `tests/test_api_ws_hub.py`: an analysis job reads `kind` `analysis` on
   the detail, the list, the analysis read and a WebSocket delta (with its progress and its terminal row once), and the
   event's `latest_job` stays its render; a running render does not make the analysis enqueue a 409, a queued analysis
