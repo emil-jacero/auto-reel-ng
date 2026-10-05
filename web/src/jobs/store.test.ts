@@ -163,3 +163,52 @@ describe('the silence watchdog', () => {
     assert.equal(store.getState().connection, 'live')
   })
 })
+
+describe('how an end was learned', () => {
+  const analysisJob = (id: string, status: string) => ({
+    id,
+    kind: 'analysis',
+    event_dir: '2024/e',
+    status,
+    progress: status === 'done' ? 1 : 0.3,
+    created_at: '2026-10-05T10:00:00Z',
+    started_at: null,
+    finished_at: null,
+    cancel_requested: false,
+    requeue_count: 0,
+    worker_id: null,
+    error: null,
+  })
+  const send = (socket: FakeSocket, type: string, jobs: unknown[]) =>
+    socket.emit('message', { data: JSON.stringify({ type, jobs }) })
+  const realFetch = globalThis.fetch
+
+  afterEach(() => {
+    globalThis.fetch = realFetch
+  })
+
+  it('marks an end read after a lost connection as reconciled, and a live delta’s as not', async () => {
+    const [first] = FakeSocket.all
+    send(first, 'snapshot', [analysisJob('rec-1', 'running'), analysisJob('live-1', 'running')])
+    send(first, 'delta', [analysisJob('live-1', 'done')])
+    assert.equal(store.getState().jobs.get('live-1')?.status, 'done')
+    assert.equal(store.wasReconciled('live-1'), false)
+
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify(analysisJob('rec-1', 'done')), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })) as typeof fetch
+    first.close()
+    mock.timers.tick(0)
+    const second = FakeSocket.all[FakeSocket.all.length - 1]
+    send(second, 'snapshot', [])
+    // The read of the job the snapshot lacks answers on a later turn.
+    for (let i = 0; i < 10 && store.getState().jobs.get('rec-1')?.status !== 'done'; i += 1) {
+      await new Promise((resolve) => setImmediate(resolve))
+    }
+    assert.equal(store.getState().jobs.get('rec-1')?.status, 'done')
+    assert.equal(store.wasReconciled('rec-1'), true)
+    assert.equal(store.wasReconciled('live-1'), false)
+  })
+})

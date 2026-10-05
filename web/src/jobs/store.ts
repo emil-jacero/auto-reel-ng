@@ -80,6 +80,8 @@ const requested = new Set<string>()
 const tracked = new Map<string, string>()
 /** Jobs whose end the operator was already told of. */
 const announced = new Set<string>()
+/** Jobs whose end the store learned only by reconciling (a read after a lost connection). */
+const reconciledEnds = new Set<string>()
 const samples = new Map<string, Sample>()
 
 /**
@@ -407,6 +409,12 @@ function absorb(incoming: readonly JobOut[], source: Source): void {
   if (merged === null) {
     return
   }
+  // Recorded before the commit, so a screen that sees the end already knows how it was learned.
+  for (const { job } of merged.endings) {
+    if (source === 'reconciled') {
+      reconciledEnds.add(job.id)
+    }
+  }
   commit(state.connection, merged.jobs, merged.changed)
   for (const { job, wasActive } of merged.endings) {
     onEnded(job, wasActive, source)
@@ -465,6 +473,15 @@ function forget(jobId: string): void {
   }
   state = { ...state, jobs, eta }
   notify()
+}
+
+/**
+ * Whether the store learned of the job's end only by reconciling: a job a screen or the last
+ * snapshot showed as active, read after the connection was lost. Such an end is shown, never
+ * announced as if it had been seen happen.
+ */
+export function wasReconciled(jobId: string): boolean {
+  return reconciledEnds.has(jobId)
 }
 
 /** Adopt a job an answer carried (an enqueue's 201). */

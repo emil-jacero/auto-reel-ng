@@ -2,7 +2,13 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react'
 
 import type { JobSummary } from '../api/events'
 import type { JobOut } from '../api/jobs'
-import { countRenders, newestProxyByEvent, newestRenderByEvent } from './kinds'
+import {
+  countAnalysis,
+  countRenders,
+  newestAnalysisByEvent,
+  newestProxyByEvent,
+  newestRenderByEvent,
+} from './kinds'
 import { choose } from './shownJob'
 import type { ShownJob } from './shownJob'
 import { getState, isActive, load, subscribe } from './store'
@@ -54,6 +60,28 @@ export function useProxyJob(eventId: string): ShownJob | null {
   return useMemo(() => (live === undefined ? null : { source: 'live', job: live }), [live])
 }
 
+// The same for analysis jobs, which the analysis badge and Re-analyze show.
+let indexedAnalysis: ReadonlyMap<string, JobOut> | null = null
+let newestAnalysisOf = new Map<string, JobOut>()
+
+function newestAnalysisJobOf(eventId: string): JobOut | null {
+  const { jobs } = getState()
+  if (jobs !== indexedAnalysis) {
+    indexedAnalysis = jobs
+    newestAnalysisOf = newestAnalysisByEvent(jobs.values())
+  }
+  return newestAnalysisOf.get(eventId) ?? null
+}
+
+/**
+ * The event's newest analysis job the store holds (live, or read once by `load`), or null.
+ * Like a proxy job, it has no read to fall back on here: the page's analysis read carries
+ * the active one, and `analysis/useEventAnalysis.ts` weighs the two.
+ */
+export function useAnalysisJob(eventId: string): JobOut | null {
+  return useSyncExternalStore(subscribe, () => newestAnalysisJobOf(eventId))
+}
+
 /**
  * The job to show for `eventId`: the store's newest render (`event_dir` is the event
  * id), or the read's `latest`. A screen never keeps showing the read's active job
@@ -93,10 +121,19 @@ export function useEventJob(
   return shown
 }
 
-/** The connection's state, and how many of the served project's renders run and wait. */
-export function useConnection(): { status: ConnectionStatus; rendering: number; queued: number } {
+/**
+ * The connection's state, how many of the served project's renders run and wait, and how many
+ * events have an analysis job queued or running.
+ */
+export function useConnection(): {
+  status: ConnectionStatus
+  rendering: number
+  queued: number
+  analyzing: number
+} {
   const state = useSyncExternalStore(subscribe, getState)
   return useMemo(() => {
-    return { status: state.connection, ...countRenders(state.jobs.values()) }
+    const jobs = [...state.jobs.values()]
+    return { status: state.connection, ...countRenders(jobs), analyzing: countAnalysis(jobs) }
   }, [state])
 }
