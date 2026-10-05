@@ -34,12 +34,18 @@ recorded per run.
   changes (`useMemo`/`useCallback` in `EventEditor.tsx`, or the state kept in `web/src/timeline/`); skip if 1.2 found 0.
   Test: the 1.2 run shows 0 clip-row commits in Chrome and Firefox; `npm test` and `npx tsc --noEmit` pass.
   Status: skipped as the task allows: 1.2 found 0 renders on `main`, so nothing needed making stable.
-- [ ] 2.2 Rows skip drawing off screen (D1): `content-visibility: auto; contain-intrinsic-size: auto var(--clip-row-h)`
+- [x] 2.2 Rows skip drawing off screen (D1): `content-visibility: auto; contain-intrinsic-size: auto var(--clip-row-h)`
   on each clip row (`li.clip-item` of `ClipOrderList.tsx`, incl. ignored and removed rows), `--clip-row-h` the measured
   median collapsed-row height per container-query layout, static CSS only; no `overflow-anchor: none` on the page.
   Test: Playwright on the 400-clip event at 1280 and 390 — scrolling top→bottom in half-view steps keeps the top row
   within 1 px of where each step put it, scroll height at the end within 5 % of on opening; Tab walks rows in order;
   find-in-page of the 390th clip's name scrolls it into view (web-app scenarios).
+  Status: the estimates are content-box heights (row less its 17 px of padding and border; a first try with the whole
+  row's 89 px grew the page 15 % and failed the 5 % check). Chrome 154 and Firefox 155, 1280 and 390: 396-400 of 400
+  rows skipped on opening, worst displacement 0.00 px over 78/87 half-view steps, scroll height +0.00 % / +0.10 %; Tab
+  walks rows 1-33 in order; `window.find` of the 390th clip's name scrolls that row into view, drawn. `main` fails
+  the skipped-rows check (0 of 400). `listPaint.test.ts` pins the rule, the four estimates, no script writing
+  `--clip-row-h` and no `overflow-anchor: none`.
 - [ ] 2.3 Nothing clipped, drag still lands (D2, D3): fix every ring/indicator/overlay that paint containment cuts
   (inset ring, or drawn outside the contained `li`); make `ChapterDrag`'s `DndContext` measure while dragging if it
   does not already. Test: screenshots of a focused row, a drop indicator and a dragged row, light/dark, 1280/390,
