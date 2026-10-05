@@ -33,10 +33,10 @@ from pathlib import Path
 from typing import Callable, Iterable, List, Optional
 
 from ..analysis.cache import (
+    EntryKind,
     cache_dir,
     clip_signal,
-    read_entry,
-    read_failure,
+    entry_state,
     write_entry,
     write_failure,
 )
@@ -219,11 +219,12 @@ class AnalysisJobHandler:  # pylint: disable=too-few-public-methods
             logger.error("job %s: %s: cannot stat: %s", job.id, clip.identity, exc)
             return f"cannot stat the clip: {exc.strerror or exc}"
         if not job.force:
-            if read_entry(event_dir, clip.identity, signal) is not None:
+            # The rule the automatic sweep uses too (``entry_state``), so they never disagree.
+            state = entry_state(event_dir, clip.identity, signal)
+            if state.kind is EntryKind.CURRENT:
                 return None
-            recorded = read_failure(event_dir, clip.identity, signal)
-            if recorded is not None:
-                return f"{recorded} (an earlier failure; Re-analyze to retry)"
+            if state.kind is EntryKind.FAILED:
+                return f"{state.failure} (an earlier failure; Re-analyze to retry)"
         try:
             segments = self._analyze(
                 clip.path,

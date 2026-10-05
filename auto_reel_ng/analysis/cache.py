@@ -28,6 +28,8 @@ import json
 import logging
 import os
 import secrets
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -215,6 +217,59 @@ def read_entry(
         return [_segment_from_dict(s) for s in raw_segments]  # type: ignore[attr-defined]
     except (KeyError, TypeError, ValueError):
         return None
+
+
+class EntryKind(Enum):
+    """What the sidecar holds for a clip at its current signal (the three entry states)."""
+
+    #: An entry for this signal: the clip's segments (possibly none) are known.
+    CURRENT = "current"
+    #: A failure marker for this signal: analyzing this content failed; not a result.
+    FAILED = "failed"
+    #: Anything else (no file, unreadable, another version or signal): it needs analysis.
+    MISSING = "missing"
+
+
+@dataclass(frozen=True)
+class EntryState:
+    """A clip's :class:`EntryKind` and, for ``FAILED``, the recorded one-line cause."""
+
+    kind: EntryKind
+    failure: Optional[str] = None
+
+
+def entry_state(event_dir: PathLike, identity: str, signal: Dict[str, object]) -> EntryState:
+    """The sidecar's state for ``identity`` at ``signal``: current, failed (with cause) or missing.
+
+    The one rule that decides whether a non-forced run analyzes a clip (``missing`` only),
+    shared by the ``analysis`` job and the worker's automatic sweep so they never disagree.
+    Reads one small JSON file; never runs ffmpeg or ffprobe and never reads the clip.
+    """
+    if read_entry(event_dir, identity, signal) is not None:
+        return EntryState(EntryKind.CURRENT)
+    failure = read_failure(event_dir, identity, signal)
+    if failure is not None:
+        return EntryState(EntryKind.FAILED, failure)
+    return EntryState(EntryKind.MISSING)
+
+
+def pending_clips(event_dir: PathLike) -> List[str]:
+    """The identities a non-forced analysis of ``event_dir`` would analyze, in listing order.
+
+    Every clip discovery lists (IGNORED included, as the job does) whose :func:`entry_state`
+    at its size+mtime signal is ``MISSING``. Metadata only: a directory listing, one ``stat``
+    and one small JSON read per clip; no ffprobe, no ffmpeg, no content hash, no write.
+
+    Raises:
+        OSError: the event folder cannot be listed or a clip cannot be statted.
+    """
+    event_path = Path(event_dir)
+    return [
+        identity
+        for identity in scan_event(event_path).identities
+        if entry_state(event_path, identity, clip_signal(event_path / identity)).kind
+        is EntryKind.MISSING
+    ]
 
 
 def analyze_event(
