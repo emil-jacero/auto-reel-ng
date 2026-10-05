@@ -127,3 +127,39 @@ describe('an analysis job and the render and proxy screens', () => {
     assert.equal(kinds.newestProxyByEvent([running]).has(EVENT), false)
   })
 })
+
+describe('the newest analysis job per event and the analysis count', () => {
+  it('is never the newest render, whichever is newer', () => {
+    const render = job('render', { status: 'done', created_at: '2026-10-02T09:00:00Z' })
+    const analysis = job('a', { kind: 'analysis', created_at: '2026-10-02T10:00:00Z' })
+    assert.equal(kinds.newestRenderByEvent([render, analysis]).get(EVENT)?.id, 'render')
+    assert.equal(kinds.newestRenderByEvent([render, analysis]).get(EVENT)?.status, 'done')
+    assert.equal(kinds.newestAnalysisByEvent([render, analysis]).get(EVENT)?.id, 'a')
+    assert.equal(kinds.isAnalysis(analysis), true)
+    assert.equal(kinds.isAnalysis(render), false)
+    assert.equal(kinds.isAnalysis(job('p', { kind: 'proxy' })), false)
+  })
+
+  it('picks the newer of two analysis jobs of an event', () => {
+    const older = job('old', { kind: 'analysis', status: 'done', created_at: '2026-10-02T09:00:00Z' })
+    const newer = job('new', { kind: 'analysis', status: 'queued', created_at: '2026-10-02T10:00:00Z' })
+    assert.equal(kinds.newestAnalysisByEvent([newer, older]).get(EVENT)?.id, 'new')
+  })
+
+  it('counts events with an active analysis job only, once each, and no render or proxy job', () => {
+    const jobs = [
+      job('r', { status: 'running' }),
+      job('a1', { kind: 'analysis', event_dir: 'e1', status: 'running' }),
+      ...Array.from({ length: 11 }, (_, i) =>
+        job(`q${i}`, { kind: 'analysis', event_dir: `q${i}`, status: 'queued' }),
+      ),
+      job('d', { kind: 'analysis', event_dir: 'e1', status: 'done' }),
+      job('f', { kind: 'analysis', event_dir: 'e2', status: 'failed' }),
+      job('p', { kind: 'proxy', status: 'running' }),
+    ]
+    assert.equal(kinds.countAnalysis(jobs), 12)
+    // The spec's scenario: 1 rendering, no queued render, 12 to analyze.
+    assert.deepEqual(kinds.countRenders(jobs), { rendering: 1, queued: 0 })
+    assert.equal(kinds.countAnalysis([job('p', { kind: 'proxy' })]), 0)
+  })
+})
