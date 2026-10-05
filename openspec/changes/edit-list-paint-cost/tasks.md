@@ -101,7 +101,7 @@ recorded per run.
 
 ## 4. Docs and gates
 
-- [ ] 4.1 HLD (`docs/high-level-design.md`): a D-20 note (Edit page paint cost: per-row `content-visibility` with a
+- [x] 4.1 HLD (`docs/high-level-design.md`): a D-20 note (Edit page paint cost: per-row `content-visibility` with a
   remembered intrinsic size, zero clip-row renders on zoom/scrub/play, the before/after figures and the idle floor), a
   §4.10 bullet and a §6 phase-9 note naming `edit-list-paint-cost`. Test: a `docs.test.ts` case asserting
   `edit-list-paint-cost` is named in D-20, §4.10 and §6.

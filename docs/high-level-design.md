@@ -438,6 +438,11 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   session; Fit never shows a scroll bar in the track's box; the toolbar is a grid of fixed slots, so seeking, a loading
   frame, playing and a card never move a control (Use as poster's reason is a tooltip, a description and a tip on press);
   the read view has no Timeline: it is Edit mode's only. No API, engine or `RENDER_GRAPH_VERSION` change.
+- **v2 Edit page cheap to repaint around the Timeline** (`edit-list-paint-cost`, D-20; web only): Edit mode's clip rows
+  skip drawing while far out of view (`content-visibility: auto` with a remembered, measured `contain-intrinsic-size`; a
+  focused row, the drop target and the lifted row are drawn whole), and each chapter's played list is one composited
+  layer. A Zoom-slider drag on a 400-clip event, Chrome at 4x CPU throttle, went from about 50 % of frames over 25 ms
+  to a median 0.36 %; zoom, scrub and play render no clip row. No API, engine or `RENDER_GRAPH_VERSION` change.
 - **v2 Title cards switch** (`title-card-toggle`, D-20, D-25): Edit mode's **Title cards: On / Off**
   (now the dialog's second tab, `web/src/edit/card/EventTab.tsx`; superseded UI, see `edit-mode-declutter`; pure model `decorators.ts`) edits the event's own `look.decorators` in the same
   draft (Off removes `title` and keeps the other names; with no list it writes `[]`; On puts `title` first). The state the
@@ -873,6 +878,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    seeks; and the Timeline only in Edit mode ("I only want it in edit mode"); no API, engine or `RENDER_GRAPH_VERSION` change.
    `clip-edge-trim` has landed (web only; D-20): Premiere-style Trim In / Trim Out edge tools on the Edit-mode Timeline edit
    a clip's leading and trailing cuts with a live ripple; no API, engine or `RENDER_GRAPH_VERSION` change.
+   `edit-list-paint-cost` follows it (web only; D-20) and closes its slider-drag frame gate: the Edit page's 400-row clip
+   list no longer repaints and re-layerizes on every Timeline zoom frame; no API, engine or `RENDER_GRAPH_VERSION` change.
 10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
     moved to v2, and dragging across chapters landed in v1 (D-13).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
@@ -1603,6 +1610,27 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     gate is to be measured again after it (injecting `content-visibility: auto` on the rows alone halved `Layerize` but
     measured 4.6 to 20.8 %). **Bundle:** JS 629.01 to 646.95 kB (203.87 to 209.54 gzip), CSS 88.10 to
     92.58 kB (16.80 to 17.62 gzip) against origin/main, as `vite build` reports them; no package added.
+  - **The Edit page around the Timeline is cheap to repaint (`edit-list-paint-cost`, 2026-10-05).** `timeline-zoom-slider`
+    left its slider-drag gate open: on the 400-clip event, Chrome at 4x CPU throttle, 30-34 % of frames took over 25 ms.
+    **Where the time went** (a traced 180-move drag): not the Timeline and not React (a counter build saw 0 renders of
+    any clip row, the editor, the poster, the save bar or the Timeline section during a zoom, a scrub across 20 clips and
+    5 s of play), but the page's paint and above all its layerize (`PaintArtifactCompositor::Update`: 9.8 s of the drag),
+    which re-runs over every paint chunk of the page on each zoom frame; the clip list holds most of them (the drag
+    with the list removed: 0.23 s). **Rows skip drawing off screen:** `content-visibility: auto` on each clip row with
+    `contain-intrinsic-size: auto var(--clip-row-h)`; `auto` keeps a drawn row's size, and `--clip-row-h` is the measured
+    content height of a collapsed row in each container-query layout (72 px from a 64rem panel, 51 px from 58rem, 60 px
+    in the two-line grid, 82 px under 30rem; the row's padding and border come on top), static CSS, so the scroll height
+    moved +0.00 % / +0.10 % after scrolling the whole list at 1280 / 390 and no step moved the row in view. Rows stay in
+    the DOM: Tab, find in page, dnd-kit (already measuring while dragging) and keyboard reorder work across never-drawn
+    rows. Paint containment would cut a ring or the drop line, so a row with focus, the drop target and the lifted row
+    are left out, and so is every row under a 20.25rem panel, where a row's tools already overflow it. **The list is one
+    layer:** the rows in view still cost a layerize per frame (each icon `<svg>` is a chunk); `will-change: transform` on
+    each chapter's played list took a traced drag's layerize from 1.5 s to 0.5 s, and the list is not repainted while the
+    Timeline zooms (its layer's paint count stays 1). It is tiled (1150 x 35,599 px on the 400-clip event, only tiles near
+    the view are rastered); the list's content snaps to whole pixels, so text and thumbnails differ from before only in
+    sub-pixel antialiasing. **Figures** (quiet host, same session, medians): Chrome 4x drag 50.0 % on `main` (48.2-59.3 %),
+    0.36 % with this change (0-1.17 % over 15 drags; idle 0 %), Firefox 0 % before and after; scrub 56.5 / 49.1 fps and
+    frame-step p90 27.4 / 25.0 ms on the 400-clip event in Chrome / Firefox. No package added.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
   1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every
