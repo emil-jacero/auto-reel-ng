@@ -35,7 +35,7 @@ Conventions for every task below:
 
 ## 3. api/ - the read, the two enqueues, the kind
 
-- [ ] 3.1 In a new `api/analysis_read.py` and `api/schemas.py` (design D4): `AnalysisState`, `ClipAnalysisOut`, and
+- [x] 3.1 In a new `api/analysis_read.py` and `api/schemas.py` (design D4): `AnalysisState`, `ClipAnalysisOut`, and
   `AnalysisOut` gaining required `state`, `clips` and nullable `job`; the read overlays `analyzing` from
   `active_job(kind=ANALYSIS)` (forced job: `failed` clips read `analyzing`, `current` stay); `analyzed` and
   `segments` keep their values (docstring marks `analyzed` legacy). `GET …/analysis` moves its body here, maps the

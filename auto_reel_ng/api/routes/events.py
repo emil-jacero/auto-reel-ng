@@ -52,7 +52,6 @@ from ..problem import (
     service_unavailable,
 )
 from ..schemas import (
-    AnalysisOut,
     EditorialDocumentBody,
     EditorialWriteResult,
     EnqueueConflict,
@@ -182,38 +181,6 @@ def get_events(request: Request) -> Union[List[EventRowOut], Response]:
         time.monotonic() - started,
     )
     return result
-
-
-@router.get(
-    "/events/{event_id:path}/analysis",
-    response_model=AnalysisOut,
-    responses={404: {"model": ProblemOut}, 502: {"model": ProblemOut}},
-)
-def get_analysis(event_id: str, request: Request) -> Union[AnalysisOut, Response]:
-    """``GET /api/v1/events/{event_id}/analysis`` (task 2.4): cached segments only.
-
-    Answers only for an id the events list shows, like the thumbnail and media
-    routes: 404 for any other directory (a year folder, an event's ``original/``, a
-    ``.reelignore``d event). 502 for an event folder that cannot be listed (with the
-    list's ``failure`` kind) and for a layout the service cannot resolve (with no
-    kind). The database is never touched.
-
-    Registered *before* the ``{event_id:path}`` detail route below: both patterns
-    are greedy over ``/``, and Starlette matches routes in registration order, so
-    the more specific ``/analysis`` suffix must be tried first or the detail route
-    would swallow it (``event_id`` ending in literal ``/analysis``).
-    """
-    settings = _settings(request)
-    try:
-        return events_read.get_analysis(settings, event_id)
-    except events_read.EventNotFoundError:
-        return not_found(
-            f"no event {event_id!r} under the configured project root", event_id=event_id
-        )
-    except events_read.EventReadError as exc:
-        return _event_read_failed(exc, event_id)
-    except LayoutError as exc:
-        return bad_gateway(str(exc), event_id=event_id)
 
 
 @router.get(
