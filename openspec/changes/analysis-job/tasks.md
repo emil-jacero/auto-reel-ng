@@ -10,7 +10,7 @@
 
 ## 3. cli/ and the published kind
 
-- [ ] 3.1 `auto-reel analyze --enqueue [--force]` and inline `--force` (`cli/main.py`, `cmd_analyze` calling `submit_analysis` / `analyze_event(force=…)`). Verify in `tests/test_cli_commands.py`: `--enqueue` twice prints queued then active with the same job id, one row, exit 0, and no ffmpeg/ffprobe call (runtime patched to fail if called) (`requires_db`); `--enqueue --force` stores `force=true`; an unreachable database gives `enqueue`'s message and exit code; inline `--force` re-runs detection on a warm cache; no flag behaves as before.
+- [x] 3.1 `auto-reel analyze --enqueue [--force]` and inline `--force` (`cli/main.py`, `cmd_analyze` calling `submit_analysis` / `analyze_event(force=…)`). Verify in `tests/test_cli_commands.py`: `--enqueue` twice prints queued then active with the same job id, one row, exit 0, and no ffmpeg/ffprobe call (runtime patched to fail if called) (`requires_db`); `--enqueue --force` stores `force=true`; an unreachable database gives `enqueue`'s message and exit code; inline `--force` re-runs detection on a warm cache; no flag behaves as before.
 - [ ] 3.2 Regenerate `web/openapi.json` and `web/src/api/schema.d.ts` (`JobKind` gains `analysis`; no hand-written web edit). Verify: `tests/test_api_openapi.py` drift check passes and its kind-enumeration assertion names `render`, `proxy`, `analysis`; a `requires_db` test in `tests/test_api_jobs.py` reads an `analysis` job through `GET /api/v1/jobs/{id}` and `GET /api/v1/jobs` with `kind: "analysis"` while the event's `latest_job` stays its render; `podman run --rm -v $WT/web:/app:Z -w /app docker.io/library/node:22 sh -c "npm ci && npx tsc --noEmit && npm test"` passes.
 
 ## 4. End to end, measurement, HLD

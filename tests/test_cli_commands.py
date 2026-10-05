@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from auto_reel_ng.analysis import Segment, SegmentKind
 from auto_reel_ng.cli import analyze as analyze_cli
@@ -14,6 +15,9 @@ from auto_reel_ng.cli import commands, context
 from auto_reel_ng.cli.adoption import persist, prepare_event
 from auto_reel_ng.cli.main import main
 from auto_reel_ng.event import DEFAULT_CLIP_ORDER
+from auto_reel_ng.persistence.engine import make_engine, make_session_factory
+from auto_reel_ng.persistence.job_store import JobStore
+from auto_reel_ng.persistence.models import Base, Job, JobKind, JobStatus
 from auto_reel_ng.reel import load_document
 
 
@@ -139,6 +143,101 @@ def test_analyze_prints_and_leaves_reel_untouched(
     out = capsys.readouterr().out
     assert "black" in out.lower()
     assert (event / "reel.yaml").read_text(encoding="utf-8") == before  # untouched
+
+
+def _never_run_ffmpeg(*_args: object, **_kwargs: object) -> object:
+    raise AssertionError("ffmpeg/ffprobe must not be touched")
+
+
+def test_analyze_force_reruns_detection_inline_on_a_warm_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "proj"
+    event = root / "2024" / "2024-06-21 - Midsummer"
+    _touch(event / "00400.mp4")
+    calls: list[bool] = []
+
+    def fake_analyze_event(*_a: object, force: bool = False, **_k: object) -> object:
+        calls.append(force)
+        return {"00400.mp4": []}
+
+    monkeypatch.setattr(analyze_cli, "FfmpegRuntime", lambda *a, **k: Mock())
+    monkeypatch.setattr(analyze_cli, "analyze_event", fake_analyze_event)
+
+    assert main(["analyze", str(root)]) == 0
+    assert main(["analyze", str(root), "--force"]) == 0
+
+    assert calls == [False, True]  # no flag behaves as before; --force ignores the cache
+
+
+@pytest.fixture
+def analysis_store(postgres_container: str, monkeypatch: pytest.MonkeyPatch) -> JobStore:
+    """A job store on the test container, with ``DATABASE_URL`` pointing the CLI at it."""
+    monkeypatch.setenv("DATABASE_URL", postgres_container)
+    engine = make_engine(postgres_container)
+    Base.metadata.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(Job.__table__.delete())
+    return JobStore(make_session_factory(engine))
+
+
+@pytest.mark.requires_db
+def test_analyze_enqueue_twice_queues_one_job_and_runs_nothing(
+    tmp_path: Path,
+    analysis_store: JobStore,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "proj"
+    event = root / "2024" / "2024-06-21 - Midsummer"
+    _touch(event / "00400.mp4")
+    before = sorted(p.relative_to(root) for p in root.rglob("*"))
+    monkeypatch.setattr(analyze_cli, "FfmpegRuntime", _never_run_ffmpeg)
+    monkeypatch.setattr(analyze_cli, "analyze_event", _never_run_ffmpeg)
+
+    assert main(["analyze", str(root), "--enqueue"]) == 0
+    first = capsys.readouterr().out
+    assert main(["analyze", str(root), "--enqueue"]) == 0
+    second = capsys.readouterr().out
+
+    jobs = analysis_store.list_by_status(JobStatus.QUEUED, kind=JobKind.ANALYSIS)
+    assert len(jobs) == 1 and jobs[0].force is False
+    assert jobs[0].event_dir == "2024/2024-06-21 - Midsummer"
+    assert f"queued  2024/2024-06-21 - Midsummer  {jobs[0].id}" in first
+    assert f"active  2024/2024-06-21 - Midsummer  {jobs[0].id}" in second
+    assert sorted(p.relative_to(root) for p in root.rglob("*")) == before  # no file written
+
+
+@pytest.mark.requires_db
+def test_analyze_enqueue_force_stores_force(
+    tmp_path: Path, analysis_store: JobStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "proj"
+    _touch(root / "2024" / "2024-06-21 - Midsummer" / "00400.mp4")
+    monkeypatch.setattr(analyze_cli, "FfmpegRuntime", _never_run_ffmpeg)
+
+    assert main(["analyze", str(root), "--enqueue", "--force"]) == 0
+
+    jobs = analysis_store.list_by_status(JobStatus.QUEUED, kind=JobKind.ANALYSIS)
+    assert [job.force for job in jobs] == [True]
+
+
+def test_analyze_enqueue_reports_an_unreachable_database_as_enqueue_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "proj"
+    _touch(root / "2024" / "2024-06-21 - Midsummer" / "00400.mp4")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://nobody:x@127.0.0.1:9/none")
+    monkeypatch.setattr(commands, "FfmpegRuntime", lambda *a, **k: Mock(version=(8, 0)))
+    monkeypatch.setattr(analyze_cli, "FfmpegRuntime", _never_run_ffmpeg)
+    outcomes = []
+    for argv in (["enqueue", str(root)], ["analyze", str(root), "--enqueue"]):
+        with pytest.raises(Exception) as excinfo:  # pylint: disable=broad-exception-caught
+            main(argv)
+        outcomes.append(type(excinfo.value))
+
+    assert outcomes[0] is outcomes[1]
+    assert issubclass(outcomes[1], OperationalError)
 
 
 # --------------------------------------------------------------------------- #

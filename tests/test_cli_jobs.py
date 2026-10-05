@@ -262,6 +262,41 @@ def test_worker_processes_the_queue_end_to_end(
     assert list(default_output_dir(root).rglob("*.mp4"))
 
 
+def test_reanalyze_from_the_cli_runs_on_the_worker(
+    tmp_path: Path, store: JobStore, runtime, make_clip, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``analyze --enqueue --force`` then ``worker``: every clip of the event is analyzed again."""
+    root = tmp_path / "proj"
+    (root / "2024" / "2024-06-21 - A").mkdir(parents=True)
+    for name in ("00400.mp4", "00401.mp4"):
+        make_clip(f"proj/2024/2024-06-21 - A/{name}", width=320, height=240, duration=1.0)
+    assert main(["analyze", str(root)]) == 0  # a warm cache
+    cache = root / "2024" / "2024-06-21 - A" / ".auto-reel" / "cache"
+    before = {p.name: p.stat().st_mtime_ns for p in cache.glob("*.json")}
+    assert len(before) == 2
+
+    assert main(["analyze", str(root), "--enqueue", "--force"]) == 0
+    job_id = store.list_by_status(JobStatus.QUEUED, kind=JobKind.ANALYSIS)[0].id
+
+    from auto_reel_ng.cli import commands
+
+    real_worker_cls = commands.Worker
+
+    class _OneShotWorker(real_worker_cls):  # type: ignore[misc]
+        def run(self, *, max_polls: int = 1) -> None:  # noqa: D102
+            super().run(max_polls=max_polls)
+
+    monkeypatch.setattr(commands, "Worker", _OneShotWorker)
+    assert main(["worker", str(root), "--device", "cpu"]) == 0
+
+    job = store.get(job_id)
+    assert job is not None and job.force is True
+    assert (job.status, job.progress) == (JobStatus.DONE, 1.0), job.error
+    after = {p.name: p.stat().st_mtime_ns for p in cache.glob("*.json")}
+    assert after.keys() == before.keys()
+    assert all(after[name] > before[name] for name in before)  # every entry rewritten
+
+
 # --------------------------------------------------------------------------- #
 # jobs list / show / cancel
 # --------------------------------------------------------------------------- #

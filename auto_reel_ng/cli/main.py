@@ -212,6 +212,16 @@ def build_parser() -> argparse.ArgumentParser:
         "analyze", help="detect black/white/freeze segments and cache the suggestions"
     )
     _add_common_args(analyze)
+    analyze.add_argument(
+        "--enqueue",
+        action="store_true",
+        help="queue one analysis job per event for the worker instead of analyzing here",
+    )
+    analyze.add_argument(
+        "--force",
+        action="store_true",
+        help="analyze every clip again, ignoring cached results (with --enqueue: on the jobs)",
+    )
     analyze.set_defaults(func=cmd_analyze)
 
     importer = subparsers.add_parser(
