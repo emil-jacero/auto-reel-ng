@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { analysisOf, decideControl } from './control.ts'
+import type { AnalysisBinding } from '../../analysis/useEventAnalysis.ts'
 import type { Dismissals } from './Dismissals.ts'
 
 /*
@@ -63,10 +64,11 @@ describe('decideControl', () => {
 
 describe('analysisOf', () => {
   const dismissals = {} as Dismissals
+  const page = { read: { status: 'reading' } } as unknown as AnalysisBinding
 
   it('gives the lane a decision and the draft’s cuts', () => {
     const { added, editing } = binding()
-    const control = analysisOf('ev', editing, dismissals)
+    const control = analysisOf('ev', page, editing, dismissals)
     assert.deepEqual(control.cutsOf('a.mp4'), [
       { key: 'k1', in: 1, out: 2, reason: null, removed: false },
     ])
@@ -76,8 +78,10 @@ describe('analysisOf', () => {
   })
 
   it('carries the event and the page’s dismissals', () => {
-    const control = analysisOf('ev-7', binding().editing, dismissals)
+    const control = analysisOf('ev-7', page, binding().editing, dismissals)
     assert.equal(control.eventId, 'ev-7')
     assert.equal(control.dismissals, dismissals)
+    // The page's one read: the Timeline reads nothing itself.
+    assert.equal(control.binding, page)
   })
 })

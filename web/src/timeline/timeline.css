@@ -30,6 +30,19 @@
     container: tl / inline-size;
   }
 
+  /* --- the help's analysis notes (`analysis-web-controls`) --- */
+  .tl-failed-clips {
+    margin: 0;
+    padding-inline-start: var(--s-4);
+    max-inline-size: 70ch;
+    overflow-wrap: anywhere;
+  }
+
+  /* The terminal command: an aside, set apart from what the page itself does. */
+  .tl-aside {
+    font-style: italic;
+  }
+
   /* --- Prepare --- */
   .tl-prepare {
     display: grid;

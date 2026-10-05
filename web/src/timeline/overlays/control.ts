@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 
+import type { AnalysisBinding } from '../../analysis/useEventAnalysis'
 import type { TrackClip } from '../layout'
 import type { EditBinding } from '../editing'
 import type { Layout } from '../model'
@@ -8,9 +9,10 @@ import type { Cut, Suggestion, SuggestionState } from './suggestions'
 
 /*
  * What the Timeline is given to show the analysis lane (D-20, "Analysis overlays"): the
- * clip's cuts as they are now, the page's dismissals, and how to decide. Absent, the
- * Timeline is the one without a lane. `TimelineSection` builds it from Edit mode's draft
- * (the Timeline is shown only in Edit mode).
+ * page's one analysis read and Re-analyze (`analysis-web-controls`: the Timeline reads
+ * nothing itself), the clip's cuts as they are now, the page's dismissals, and how to
+ * decide. Absent, the Timeline is the one without a lane. `TimelineSection` builds it from
+ * Edit mode's draft (the Timeline is shown only in Edit mode).
  */
 
 export type DecideControl = {
@@ -38,6 +40,8 @@ export function decideControl(
 
 export type AnalysisControl = {
   eventId: string
+  /** The page's one analysis read, its badge and Re-analyze (`useEventAnalysis`). */
+  binding: AnalysisBinding
   /** The clip's cuts as listed now, removed ones included (the Cuts panel's numbering). */
   cutsOf(identity: string): readonly Cut[]
   dismissals: Dismissals
@@ -51,11 +55,13 @@ export type AnalysisControl = {
  */
 export function analysisOf(
   eventId: string,
+  binding: AnalysisBinding,
   editing: Pick<EditBinding, 'onAdd' | 'locked' | 'announce' | 'listed'>,
   dismissals: Dismissals,
 ): AnalysisControl {
   return {
     eventId,
+    binding,
     cutsOf: (identity) => editing.listed(identity),
     dismissals,
     decide: decideControl(editing),

@@ -431,41 +431,39 @@ export function laneName(clipName: string): string {
 
 export const READING_WORDS = 'Reading the suggestions…'
 export const UNREADABLE_TITLE = 'Suggestions could not be read'
-/** The state of an event that was never analysed: the lane's badge (`help-text-declutter`). */
-export const NEVER_ANALYZED = 'Not analyzed'
-/** What to do about it, in the Timeline's help; the root is not known to the page, so the command has a placeholder. */
-export const ANALYZE_COMMAND = 'Not analyzed. Run `auto-reel analyze <root>`, then Refresh.'
 export const ANALYZED_CLEAN = 'Analyzed: nothing to suggest.'
-export const CLIP_NOT_ANALYZED = 'Not analyzed'
 export const DISMISSAL_NOTE = 'Dismissed suggestions come back when the page is reloaded.'
+/** What Re-analyze does, in the Timeline help (`analysis-web-controls`). */
+export const REANALYZE_HELP =
+  'Re-analyze finds the suggestions again from the clips. Cuts already approved stay in the ' +
+  'event’s cuts, nothing is saved, and dismissed suggestions come back.'
+/** The terminal command, only ever an aside in the Timeline help; the root is not known to the page. */
+export const ANALYZE_ASIDE = 'The same runs from a terminal: `auto-reel analyze <root>`, then Refresh.'
+/** The Timeline help's heading for the clips whose analysis failed. */
+export const FAILED_CLIPS_HEADING = 'Analysis failed for these clips:'
 
 /**
- * Whether any clip has a cache entry. The flag `analyzed` is not trusted for this: the
- * service sets it when the event's cache directory exists, and a render writes its manifest
- * there, so a rendered but never analysed event reads `analyzed: true` with no entries.
- */
-function hasEntries(analysis: Analysis): boolean {
-  return analysis.analyzed && Object.keys(analysis.segments).length > 0
-}
-
-/**
- * The event's note when the lane has nothing to draw for the whole event, else null:
- * never analysed (no clip has a cache entry, whatever the flag says), or analysed with nothing found anywhere.
+ * The event's note when the lane has nothing to draw: an analysis that is current, with
+ * nothing found in any clip. Every other state is the badge's (`analysis/badge.ts`), from the
+ * published `state`, never from the `analyzed` flag or from which clips have segments.
  */
 export function eventNote(analysis: Analysis): string | null {
-  if (!hasEntries(analysis)) {
-    return NEVER_ANALYZED
+  if (analysis.state !== 'current') {
+    return null
   }
   const found = Object.values(analysis.segments).some((segments) => segments.length > 0)
   return found ? null : ANALYZED_CLEAN
 }
 
 /**
- * Whether one clip's row says "Not analyzed": in an analysed event the clip has no entry
- * (its file changed since). A clip analysed with nothing found has an empty list, no note.
+ * The selected mark after a new read: kept while the read still lists it (its dismissal key
+ * is the clip, the span and the kind), else none, so its detail closes.
  */
-export function clipNotAnalyzed(analysis: Analysis, identity: string): boolean {
-  return hasEntries(analysis) && !Object.hasOwn(analysis.segments, identity)
+export function keptSelection(
+  selectedId: string | null,
+  listed: { has(id: string): boolean },
+): string | null {
+  return selectedId !== null && listed.has(selectedId) ? selectedId : null
 }
 
 /** `Approved black frames, 0:00 to 0:03.2, of C0012.MP4 as a cut; 1 cut added`. */

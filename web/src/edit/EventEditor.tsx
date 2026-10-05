@@ -51,6 +51,7 @@ import type { EventStyle } from './card/specs.ts'
 import type { EditBinding } from '../timeline/editing'
 import type { EdgeEdit } from '../timeline/edgeTrim.ts'
 import type { Dismissals } from '../timeline/overlays/Dismissals'
+import type { AnalysisBinding } from '../analysis/useEventAnalysis'
 import { Alert } from '../ui/Alert'
 import { Dialog } from '../ui/Dialog'
 import { Icon } from '../ui/Icon'
@@ -1058,6 +1059,7 @@ export function EventEditor({
   heading = 'Details',
   liveEvent = null,
   dismissals,
+  analysis,
   cards,
   onProxiesFinished,
   onSaved,
@@ -1074,6 +1076,8 @@ export function EventEditor({
   liveEvent?: EventDetail | null
   /** The suggestions dismissed on this page visit (`useDismissals`, kept by the page). */
   dismissals: Dismissals
+  /** The page's one analysis read and Re-analyze (`useEventAnalysis`); absent, the Timeline has no lane. */
+  analysis?: AnalysisBinding
   /** The page's one card selection (`useCardSelection`), shared with the Timeline's blocks. */
   cards: CardsBinding
   /** A proxy job the Timeline followed has ended: the page reads the event again. */
@@ -2723,6 +2727,7 @@ export function EventEditor({
               eventId={eventId}
               event={liveEvent ?? detail}
               dismissals={dismissals}
+              analysis={analysis}
               onFinished={onProxiesFinished ?? NOTHING}
               editing={editing}
               cards={cards}
