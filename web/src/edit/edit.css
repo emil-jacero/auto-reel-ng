@@ -396,13 +396,16 @@
    * barely moves and scroll anchoring keeps what is in view still. Skipped rows stay in the
    * page: focusable, read by assistive technology, found by find in page, measured by
    * dnd-kit. Paint containment would cut what a row draws outside its box, so a row with
-   * focus (its ring), the drop line (drag.css) or the lifted row is drawn as before. In a
+   * focus (its ring), the drop line (drag.css) or the lifted row is drawn as before, and so
+   * is a row dnd-kit moves or animates (an inline transform or transition): in Chrome 154 a
+   * skipped row's thumbnail and mark box stayed where the row was before a drop, unseen
+   * and taking the clicks meant for the row now there (with the list's own layer). In a
    * panel under 20.25rem (a window under about 355px) a row's tools are wider than the row
    * (they overflow it, and below 340px the page) and containment would cut them off: rows
    * there are drawn as before.
    */
   @container (width >= 20.25rem) {
-    .clip-order > .clip-item:not(:focus-within, [data-drop-before], [data-dragging]) {
+    .clip-order > .clip-item:not(:focus-within, [data-drop-before], [data-dragging], [style*='transform']) {
       content-visibility: auto;
       contain-intrinsic-size: auto var(--clip-row-h);
     }
@@ -880,6 +883,17 @@
     @container (width < 58rem) {
       .clip-item > .cuts-toggle {
         margin-block-start: 0.875rem;
+      }
+    }
+
+    /*
+     * That 14px makes a two-line row 91px, not 77px, in a 30-58rem panel (under 30rem the
+     * second line is already taller than the Cuts control): the never-drawn rows' estimate
+     * (`--clip-row-h`, above) follows, or the scroll height would grow 17 % on a tablet.
+     */
+    @container (30rem <= width < 58rem) {
+      .clip-item {
+        --clip-row-h: 4.625rem;
       }
     }
   }

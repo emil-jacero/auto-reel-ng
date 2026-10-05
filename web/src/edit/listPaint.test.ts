@@ -85,10 +85,10 @@ describe('the clip rows skip drawing off screen', () => {
     assert.deepEqual(rule.at, ['@layer screens', '@container (width >= 20.25rem)'])
   })
 
-  it('a focused row, a drop target and the lifted row are drawn whole (no paint containment)', () => {
+  it('a focused row, a drop target, the lifted row and a row dnd-kit moves are drawn whole', () => {
     const [rule] = skipping
     const excluded = /:not\(([^)]*\([^)]*\)[^)]*|[^)]*)\)/.exec(rule.selector)?.[1] ?? ''
-    for (const state of [':focus-within', '[data-drop-before]', '[data-dragging]']) {
+    for (const state of [':focus-within', '[data-drop-before]', '[data-dragging]', "[style*='transform']"]) {
       assert.ok(excluded.includes(state), `excludes ${state}`)
     }
   })
@@ -109,6 +109,25 @@ describe('the clip rows skip drawing off screen', () => {
     assert.deepEqual(estimate('@container (width >= 64rem)'), ['4.5rem'])
     assert.deepEqual(estimate('@container (width < 58rem)'), ['3.75rem'])
     assert.deepEqual(estimate('@container (width < 30rem)'), ['5.125rem'])
+  })
+
+  it('a coarse pointer’s taller two-line row (30-58rem) has its own estimate', () => {
+    const coarse = (selector: string, at: string, property: string) =>
+      all
+        .filter(
+          (rule) =>
+            rule.selector === selector &&
+            rule.at.includes('@media (pointer: coarse)') &&
+            rule.at.includes(at),
+        )
+        .map((rule) => declaration(rule.body, property))
+        .filter((value) => value !== null)
+    // 91 px rows at 600 and 768 px with a finger: the Cuts control's 14 px gap under the handle
+    // comes on top of the fine pointer's 77 px row.
+    const estimate = coarse('.clip-item', '@container (30rem <= width < 58rem)', '--clip-row-h')
+    assert.deepEqual(estimate, ['4.625rem'])
+    const [gap] = coarse('.clip-item > .cuts-toggle', '@container (width < 58rem)', 'margin-block-start')
+    assert.equal(parseFloat(estimate[0]!) - 3.75, parseFloat(gap ?? 'NaN'))
   })
 
   it('the estimate is static CSS: no script writes it', () => {

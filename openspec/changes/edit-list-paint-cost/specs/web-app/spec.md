@@ -16,7 +16,8 @@ scrolled through once SHALL differ from its height on opening by at most 5 %.
 Nothing a row draws outside its own box SHALL be cut off by the skipping: the row's focus ring, the drop indicator and
 the dragged row SHALL look as they did before, in the light and the dark scheme, at 1280 and at 390 px. Dragging a clip
 (with the pointer and by keyboard), marking clips and moving the marked ones, Move up and Move down, rotating a clip, the
-card dialog and the save bar SHALL work as before.
+card dialog and the save bar SHALL work as before; after a drop, every row SHALL be drawn and take clicks where it
+now is, never where it was.
 
 #### Scenario: Scrolling a 400-clip list moves nothing
 - **WHEN** Edit mode shows an event of 400 clips in one chapter at 1280 and at 390 px, and the page is scrolled from
@@ -42,3 +43,7 @@ card dialog and the save bar SHALL work as before.
 - **WHEN** a row has keyboard focus, a drag shows its drop indicator, or a clip is being dragged, in the light and the
   dark scheme at 1280 and at 390 px
 - **THEN** the focus ring, the indicator and the dragged row are drawn whole, as on the page before this change
+
+#### Scenario: A moved row takes its clicks where it is
+- **WHEN** two marked clips are dragged to the top of another chapter in Chrome, so that the rows below them move down
+- **THEN** a click on a moved row's mark box marks that row, and no other row's control takes the click
