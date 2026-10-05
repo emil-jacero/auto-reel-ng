@@ -26,7 +26,8 @@ re-render the editor; this is to be proven, not assumed.
   rotate, the card dialog and the save bar behave as today.
 
 **Non-Goals:**
-- Virtualising the list, touching the Timeline's own rendering, any engine/API change (proposal "Non-goals").
+- Virtualising the list, touching the Timeline's own rendering beyond D6's edge-tool omission, any engine/API change
+  (proposal "Non-goals").
 
 ## Decisions
 
@@ -136,6 +137,41 @@ Timeline zooms. This is the one large layer the page adds, on purpose: it is til
 rastered), and the trade is a memory cost for the gate. Side effect: the list's content snaps to whole pixels, so glyph
 and thumbnail antialiasing differ from `main`'s at sub-pixel level (nothing moves).
 
+### D6 — The edge tools are left out while a zoom is in progress (supervisor decision, 2026-10-05)
+
+**Why**: after merging `origin/main` with `clip-edge-trim` (#141), the #140 slider drag measured a 9.34 % median in
+Chrome 4x (tasks 3.1 status, `out/gate2.txt`), against 0.36 % before the merge. The cost is the edge tools, not the clip
+list: a scratch build that never renders them 0.32-3.05 %; tools only `display: none` (still rendered by React) 3.22-5.61
+%; CSS containment of the tools, no bracket, no cursor: 8-11 %. Each zoom re-renders the ~14 in-view tools (each tool's
+`x` changes, so `memo` cannot hold) and the scroll restore's forced layout moves them (`inset-inline-start: var(--x)`):
+React's per-zoom commit 4.9 -> 7.0 ms, forced style/layout 1.29 -> 1.65 s per traced drag. The 2 % requirement stays.
+
+**What**: `Track.tsx` already leaves out the tools behind a rippling drag (`d5f1e2f`: `const tools = !after`). The same
+switch gains a second condition, **zooming**: from a zoom's first input until it settles, no clip pushes its
+`edge('start')` / `edge('end')`, except the one tool that holds focus when the zoom starts (kept so focus and the
+screen reader's place survive; the existing "focused tool stays" rule already keeps a focused tool off the window).
+
+- **Settle rule** (pure, in a new `web/src/timeline/zoomSettle.ts`, unit-tested with `node:test` and fake time): a
+  zoom input starts or extends a zoom; the zoom settles on the slider's `pointerup` / `lostpointercapture`
+  immediately, or `SETTLE_MS = 150` after the last input of any other kind (Ctrl/Cmd+wheel, pinch, zoom buttons, `=`/`-`
+  including key repeat, a keyboard step of the slider). A slider press holds the zoom open however long the thumb
+  rests. Unmount or Edit mode leaving cancels the timer. 150 ms is about one key-repeat gap and a wheel burst's gap
+  (typically 16-50 ms), so a burst is one zoom and a pause brings the tools back without a visible lag.
+- **State**: one boolean `zooming` in Timeline state (`useState`, set on the first input only, so a burst costs one
+  extra render to remove the tools and one to bring them back, not one per input); it never leaves `web/src/timeline/`
+  (D4's zero clip-row renders hold).
+- **Focus**: the focused tool's key (clip index + side) is read from `document.activeElement` at the zoom's start; that
+  tool keeps rendering through the zoom at its new place, so the DOM node and focus persist. No `focus()` call is made.
+- **Cursor**: the trim cursor and bracket are CSS (`cursor`, `:hover`) on the tool's zone, and both browsers re-run hit
+  testing when an element is inserted under a still pointer, so they return without a pointer move; the Playwright
+  check proves it in Chrome and Firefox (no synthetic pointer events are dispatched to force it).
+- Edge drags, cut handles, cards and the playhead are untouched; an edge drag cannot start while zooming (there is no
+  tool to press, except a focused one, which keeps its keys). What a zoom input does during an edge drag is unchanged.
+
+**Alternatives rejected**: hiding with CSS only (`display: none`/`visibility`): still 3.22-5.61 % (React work and layout
+remain); memoising tools on relative positions: each tool's place is absolute in px and changes on every zoom;
+relaxing the gate: refused by the supervisor.
+
 ## Research & Decisions
 
 ### Why `content-visibility`, not virtualisation
@@ -154,6 +190,8 @@ Timeline.
 decides whether the requirement takes the achieved figure measured against the page's idle floor). The ADDED
 requirement then carries the agreed figure; nothing else in `event-timeline` changes.
 **Rationale**: the brief; a gate written to a number never measured would be a fabricated claim.
+**Update (2026-10-05)**: the first run stopped at 9.34 % after `clip-edge-trim` merged; the supervisor kept 2 % and chose
+D6. If the final build still misses 2 %, the best figure with the breakdown is reported and the change stops again.
 
 ## Failure behaviour
 
@@ -174,6 +212,8 @@ No state: reloading, re-entering Edit mode and Save/Refresh show the same page; 
   far move in the 400-clip fixture.
 - [Paint containment clips a ring or indicator] → D2 per-case check against `main`'s screenshots.
 - [dnd-kit stale rects during auto-scroll] → D3.
+- [Zoom-settle flicker: the tools vanish for a zoom and return ~150 ms after it] → accepted (they are invisible zones
+  plus a bracket only on hover); the cursor's return under a still pointer is checked in both browsers (D6).
 - [Shared host noise] → medians of ≥ 5 Chrome and ≥ 3 Firefox runs with the idle baseline in the same session, load
   average recorded per run.
 - Playwright and Node run only in podman (Chrome 154 `localhost/playback-research:chrome`, Firefox ≥ 155
