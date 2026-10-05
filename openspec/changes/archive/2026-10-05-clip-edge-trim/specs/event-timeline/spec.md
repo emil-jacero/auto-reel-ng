@@ -28,8 +28,8 @@ zooming in gives a narrow clip its tools.
 - **THEN** it is first the Trim Out tool of `s1710001.mp4`, then the Trim In tool of `s1710002.mp4`
 
 #### Scenario: No tools outside Edit mode or on a bare block
-- **WHEN** the Timeline is shown outside Edit mode, or a clip is drawn as a bare block at the lowest zoom of a
-  400-clip event
+- **WHEN** the operator is in the read view (which shows no Timeline), or a clip is drawn as a bare block at the lowest
+  zoom of a 400-clip event
 - **THEN** no edge tool, trim cursor or bracket exists for those clips
 
 ### Requirement: Dragging an edge trims the clip and ripples the track
