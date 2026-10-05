@@ -1,0 +1,125 @@
+INFO auto_reel_ng.accel.selftest: self-test amd.pad_fill ran but its output check failed: frame:0    pts:0       pts_time:0
+lavfi.signalstats.YMIN=0
+lavfi.signalstats.YLOW=0
+lavfi.signalstats.YAVG=0
+lavfi.signalstats.YHIGH=0
+lavfi.signalstats.YMAX=0
+lavfi.signalstats.UMIN=0
+lavfi.signalstats.ULOW=0
+lavfi.signalstats.UAVG=0
+lavfi.signalstats.UHIGH=0
+lavfi.signalstats.UMAX=0
+lavfi.signalstats.VMIN=0
+lavfi.signalstats.VLOW=0
+lavfi.signalstats.VAVG=0
+lavfi.signalstats.VHIGH=0
+lavfi.signalstats.VMAX=0
+lavfi.signalstats.SATMIN=181
+lavfi.signalstats.SATLOW=181
+lavfi.signalstats.SATAVG=181
+lavfi.signalstats.SATHIGH=181
+lavfi.signalstats.SATMAX=181
+lavfi.signalstats.HUEMED=45
+lavfi.signalstats.HUEAVG=45
+lavfi.signalstats.YDIF=0
+lavfi.signalstats.UDIF=0
+lavfi.signalstats.VDIF=0
+lavfi.signalstats.YBITDEPTH=0
+lavfi.signalstats.UBITDEPTH=0
+lavfi.signalstats.VBITDEPTH=0
+frame:1    pts:1       pts_time:0.04
+lavfi.signalstats.YMIN=0
+lavfi.signalstats.YLOW=0
+lavfi.signalstats.YAVG=0
+lavfi.signalstats.YHIGH=0
+lavfi.signalstats.YMAX=0
+lavfi.signalstats.UMIN=0
+lavfi.signalstats.ULOW=0
+lavfi.signalstats.UAVG=0
+lavfi.signalstats.UHIGH=0
+lavfi.signalstats.UMAX=0
+lavfi.signalstats.VMIN=0
+lavfi.signalstats.VLOW=0
+lavfi.signalstats.VAVG=0
+lavfi.signalstats.VHIGH=0
+lavfi.signalstats.VMAX=0
+lavfi.signalstats.SATMIN=181
+lavfi.signalstats.SATLOW=181
+lavfi.signalstats.SATAVG=181
+lavfi.signalstats.SATHIGH=181
+lavfi.signalstats.SATMAX=181
+lavfi.signalstats.HUEMED=45
+lavfi.signalstats.HUEAVG=45
+lavfi.signalstats.YDIF=0
+lavfi.signalstats.UDIF=0
+lavfi.signalstats.VDIF=0
+lavfi.signalstats.YBITDEPTH=0
+lavfi.signalstats.UBITDEPTH=0
+lavfi.signalstats.VBITDEPTH=0
+INFO auto_reel_ng.cli.commands: Starting worker mrFrame:1034580:744949e1 (profile=cpu render_node=None poll_interval=2.0s)
+INFO auto_reel_ng.cli.commands: Received signal 15; stopping worker
+INFO auto_reel_ng.cli.commands: Worker mrFrame:1034580:744949e1 stopped cleanly
+INFO auto_reel_ng.accel.selftest: self-test amd.pad_fill ran but its output check failed: frame:0    pts:0       pts_time:0
+lavfi.signalstats.YMIN=0
+lavfi.signalstats.YLOW=0
+lavfi.signalstats.YAVG=0
+lavfi.signalstats.YHIGH=0
+lavfi.signalstats.YMAX=0
+lavfi.signalstats.UMIN=0
+lavfi.signalstats.ULOW=0
+lavfi.signalstats.UAVG=0
+lavfi.signalstats.UHIGH=0
+lavfi.signalstats.UMAX=0
+lavfi.signalstats.VMIN=0
+lavfi.signalstats.VLOW=0
+lavfi.signalstats.VAVG=0
+lavfi.signalstats.VHIGH=0
+lavfi.signalstats.VMAX=0
+lavfi.signalstats.SATMIN=181
+lavfi.signalstats.SATLOW=181
+lavfi.signalstats.SATAVG=181
+lavfi.signalstats.SATHIGH=181
+lavfi.signalstats.SATMAX=181
+lavfi.signalstats.HUEMED=45
+lavfi.signalstats.HUEAVG=45
+lavfi.signalstats.YDIF=0
+lavfi.signalstats.UDIF=0
+lavfi.signalstats.VDIF=0
+lavfi.signalstats.YBITDEPTH=0
+lavfi.signalstats.UBITDEPTH=0
+lavfi.signalstats.VBITDEPTH=0
+frame:1    pts:1       pts_time:0.04
+lavfi.signalstats.YMIN=0
+lavfi.signalstats.YLOW=0
+lavfi.signalstats.YAVG=0
+lavfi.signalstats.YHIGH=0
+lavfi.signalstats.YMAX=0
+lavfi.signalstats.UMIN=0
+lavfi.signalstats.ULOW=0
+lavfi.signalstats.UAVG=0
+lavfi.signalstats.UHIGH=0
+lavfi.signalstats.UMAX=0
+lavfi.signalstats.VMIN=0
+lavfi.signalstats.VLOW=0
+lavfi.signalstats.VAVG=0
+lavfi.signalstats.VHIGH=0
+lavfi.signalstats.VMAX=0
+lavfi.signalstats.SATMIN=181
+lavfi.signalstats.SATLOW=181
+lavfi.signalstats.SATAVG=181
+lavfi.signalstats.SATHIGH=181
+lavfi.signalstats.SATMAX=181
+lavfi.signalstats.HUEMED=45
+lavfi.signalstats.HUEAVG=45
+lavfi.signalstats.YDIF=0
+lavfi.signalstats.UDIF=0
+lavfi.signalstats.VDIF=0
+lavfi.signalstats.YBITDEPTH=0
+lavfi.signalstats.UBITDEPTH=0
+lavfi.signalstats.VBITDEPTH=0
+INFO auto_reel_ng.cli.commands: Starting worker mrFrame:1052493:b6e21b83 (profile=amd render_node=/dev/dri/renderD128 poll_interval=2.0s)
+INFO auto_reel_ng.cli.build: Wrote /var/home/emil/dev/larnet/auto-reel-project/dev-analysis-job/lib-render/2024/2024-06-27 - render/reel.yaml
+INFO auto_reel_ng.render.orchestrator: Segment set not copy-uniform; re-encoding 4 copied segment(s)
+INFO auto_reel_ng.render.orchestrator: Segment set not copy-uniform; re-encoding 4 copied segment(s)
+INFO auto_reel_ng.cli.commands: Received signal 15; stopping worker
+INFO auto_reel_ng.cli.commands: Worker mrFrame:1052493:b6e21b83 stopped cleanly
