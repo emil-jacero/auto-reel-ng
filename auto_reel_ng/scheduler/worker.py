@@ -58,7 +58,7 @@ from ..render.claims import (
 from ..staleness.fingerprint import compute_fingerprint
 from ..staleness.gate import evaluate
 from ..thumbs.settings import resolve_thumbnail_position
-from .config import DEFAULT_PROXY_SLOTS
+from .config import DEFAULT_ANALYSIS_SLOTS, DEFAULT_PROXY_SLOTS
 from .pools import CapacityPools
 from .progress import ThrottledProgress
 
@@ -75,6 +75,10 @@ KindHandler = Callable[[Job], None]
 #: How many seconds a stopping worker waits for its handler threads to clean up (kill their
 #: ffmpeg, remove their build directories) before it returns and the process exits.
 HANDLER_STOP_GRACE_S = 10.0
+
+#: The kinds the claim loop's in-flight bound does not count: each is bounded by its own slots,
+#: so one waiting for the CPU token never uses up the capacity a queued render needs.
+_SLOTTED_KINDS = frozenset({JobKind.PROXY.value, JobKind.ANALYSIS.value})
 
 
 class JobInterrupted(Exception):
@@ -242,7 +246,7 @@ class _Running(NamedTuple):
     kind: str
 
 
-class Worker:
+class Worker:  # pylint: disable=too-many-instance-attributes
     """Polls the job store, rebuilds each claimed job's plan, and renders it.
 
     ``build_job``/``render`` are injectable seams (default: :func:`default_build_job`
@@ -255,7 +259,9 @@ class Worker:
 
     A ``render`` job is claimed before a job of any other kind, and a ``proxy`` job only
     while fewer than ``proxy_slots`` are in flight (``proxy-job``), so preparing proxies
-    never delays a render. ``stop_event`` is the event :meth:`stop` sets; a handler given the
+    never delays a render. An ``analysis`` job is claimed only when no render or proxy job
+    it may claim is queued, and only while fewer than ``analysis_slots`` are in flight
+    (``analysis-job``). ``stop_event`` is the event :meth:`stop` sets; a handler given the
     same event can end its work promptly when the worker stops.
     """
 
@@ -271,6 +277,7 @@ class Worker:
         device_filter: Optional[str] = None,
         kind_handlers: Optional[Mapping[str, KindHandler]] = None,
         proxy_slots: int = DEFAULT_PROXY_SLOTS,
+        analysis_slots: int = DEFAULT_ANALYSIS_SLOTS,
         stop_event: Optional[threading.Event] = None,
     ) -> None:
         handlers = dict(kind_handlers or {})
@@ -287,6 +294,9 @@ class Worker:
         if proxy_slots < 1:
             raise ValueError(f"proxy_slots must be at least 1, got {proxy_slots}")
         self._proxy_slots = proxy_slots
+        if analysis_slots < 1:
+            raise ValueError(f"analysis_slots must be at least 1, got {analysis_slots}")
+        self._analysis_slots = analysis_slots
         # Shared with the handlers that must stop their work when the worker stops.
         self._stopping = stop_event if stop_event is not None else threading.Event()
         self._lock = threading.Lock()
@@ -321,8 +331,8 @@ class Worker:
         Each claimed job is dispatched to its own thread immediately, so a job
         blocked on a busy capacity token never stalls the claim loop for other
         eligible jobs. Claiming itself is bounded to ``pools.total_capacity``
-        concurrently in-flight jobs other than ``proxy`` jobs, which ``proxy_slots``
-        bounds (D-S3): once that many are claimed-and-spawned,
+        concurrently in-flight jobs other than ``proxy`` and ``analysis`` jobs, which
+        ``proxy_slots`` and ``analysis_slots`` bound (D-S3): once that many are claimed-and-spawned,
         the loop stops claiming further work until one finishes, so a burst of
         queued jobs never spawns more waiting threads than there is eventual token
         capacity to run them. ``max_polls`` only counts polls that are *both* empty
@@ -336,10 +346,10 @@ class Worker:
         total_capacity = self._pools.total_capacity
         while not self._stopping.is_set():
             with self._lock:
-                # A proxy job is bounded by proxy_slots alone: one waiting for the CPU token
-                # must not use up the slot a GPU render needs (proxy-job).
+                # A proxy or analysis job is bounded by its own slots alone: one waiting for
+                # the CPU token must not use up the slot a GPU render needs.
                 at_capacity = (
-                    sum(1 for r in self._inflight.values() if r.kind != JobKind.PROXY)
+                    sum(1 for r in self._inflight.values() if r.kind not in _SLOTTED_KINDS)
                     >= total_capacity
                 )
             if not at_capacity:
@@ -374,13 +384,26 @@ class Worker:
         return True
 
     def _claim(self) -> Optional[Job]:
-        """Claim the next job: render first, and no ``proxy`` job while its slots are full."""
+        """Claim the next job: render first, then proxy and other kinds, then analysis.
+
+        Two steps, with the store's own order inside each: first every kind but ``analysis``
+        (and no ``proxy`` job while its slots are full); only when that finds nothing, and
+        fewer than ``analysis_slots`` analysis jobs are in flight, an ``analysis`` job.
+        """
         with self._lock:
-            proxies = sum(1 for running in self._inflight.values() if running.kind == JobKind.PROXY)
-        exclude = (JobKind.PROXY.value,) if proxies >= self._proxy_slots else ()
-        return self._store.claim_next(
-            self._worker_id, device_filter=self._device_filter, exclude_kinds=exclude
+            proxies = sum(1 for r in self._inflight.values() if r.kind == JobKind.PROXY)
+            analyses = sum(1 for r in self._inflight.values() if r.kind == JobKind.ANALYSIS)
+        exclude: tuple[str, ...] = (JobKind.PROXY.value,) if proxies >= self._proxy_slots else ()
+        job = self._store.claim_next(
+            self._worker_id,
+            device_filter=self._device_filter,
+            exclude_kinds=(*exclude, JobKind.ANALYSIS.value),
         )
+        if job is None and analyses < self._analysis_slots:
+            job = self._store.claim_next(
+                self._worker_id, device_filter=self._device_filter, exclude_kinds=exclude
+            )
+        return job
 
     def _spawn(self, job: Job) -> None:
         thread = threading.Thread(target=self._run_and_untrack, args=(job,), daemon=True)

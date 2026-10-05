@@ -241,3 +241,30 @@ def test_a_running_proxy_job_does_not_hold_the_events_output(
     render = job_store.get(render_id)
     assert render is not None and render.status == JobStatus.DONE, render and render.error
     assert renders == [1]
+
+
+def test_a_requeued_analysis_job_is_dispatched_again(job_store: JobStore) -> None:
+    job_id = job_store.enqueue(PROJECT_ROOT, MIDSOMMAR, kind=JobKind.ANALYSIS)
+    assert job_store.claim_next("dead-worker") is not None  # running when its worker died
+    seen: list[str] = []
+    worker = _worker(job_store, handlers={"analysis": lambda job: seen.append(job.kind)})
+
+    assert worker.reconcile() == [job_id]
+    assert worker.process_next() is True
+
+    assert seen == ["analysis"]
+    job = job_store.get(job_id)
+    assert job is not None and job.status == JobStatus.DONE and job.requeue_count == 1
+
+
+def test_an_analysis_job_on_a_worker_without_its_handler_fails_naming_the_kind(
+    job_store: JobStore,
+) -> None:
+    """An older worker build (no ``analysis`` handler) fails the job loud, as for any kind."""
+    job_id = job_store.enqueue(PROJECT_ROOT, MIDSOMMAR, kind=JobKind.ANALYSIS)
+    worker = _worker(job_store, pools=_NoTokenPools(gpu_caps={}, cpu_cap=1))
+
+    assert worker.process_next() is True
+
+    error = _failed_error(job_store, job_id)
+    assert "AssertionError" not in error and "analysis" in error
