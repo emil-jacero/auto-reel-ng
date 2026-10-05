@@ -20,9 +20,11 @@ included, as the analysis job walks them); `reel.yaml` is not read.
 An event SHALL need analysis when at least one of its clips reads `never` or `stale`; a clip that reads `failed`
 does not make the event need analysis until the clip changes or a forced job runs. The event's disk state SHALL be,
 by the first rule that holds: `current` when it has no clips or every clip is `current`; `never` when every clip is
-`never`; `stale` when any clip is `never` or `stale`; otherwise `failed`. This one rule SHALL decide which events the
-service's analysis enqueues treat as fresh, and SHALL be the engine function any other selection of events to
-analyze (the worker's automatic sweep) uses.
+`never`; `stale` when any clip is `never` or `stale`; otherwise `failed`. This rule SHALL decide which events the
+service's analysis enqueues treat as fresh, and SHALL select exactly the clips the cache's `missing` entry state
+selects for the `analysis` job and the worker's automatic sweep (a clip reads `never` or `stale` exactly when its
+entry state is `missing`); the one difference is an entry that exists but cannot be read, which is an error here
+rather than a state.
 
 #### Scenario: A clip analyzed as it is now is current
 - **WHEN** `2023/2023-06-23 - Midsommar - Dalarna/C0001.MP4` has an entry written for its current size and mtime
