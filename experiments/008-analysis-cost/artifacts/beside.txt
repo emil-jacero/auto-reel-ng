@@ -1,0 +1,7 @@
+# solo
+render render 40.98 done
+# render queued 3 s into a running 4-clip analysis job
+analysis render 60.38 done
+render render 35.16 done
+analysis 07:55:51.354 07:56:51.735
+render 07:55:57.369 07:56:32.531
