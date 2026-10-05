@@ -123,3 +123,13 @@ describe('the clip rows skip drawing off screen', () => {
     }
   })
 })
+
+describe('the played list is one composited layer', () => {
+  it('a chapter’s list of played clips has will-change: transform', () => {
+    const list = rules(editCss).filter((rule) => rule.selector === '.edit-chapter > ol.clip-order')
+    assert.deepEqual(
+      list.map((rule) => declaration(rule.body, 'will-change')),
+      ['transform'],
+    )
+  })
+})

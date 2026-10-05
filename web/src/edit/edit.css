@@ -409,6 +409,16 @@
   }
 
   /*
+   * The played list is its own composited layer (edit-list-paint-cost). Each Timeline zoom
+   * frame re-layerizes the page's paint chunks, and the rows in view hold many (every icon
+   * <svg> is one): as one layer they cost a fraction of that (a traced 180-move drag at 4x:
+   * 1.5 s of layerize to 0.4 s). Tiled: only the tiles near the view are rastered.
+   */
+  .edit-chapter > ol.clip-order {
+    will-change: transform;
+  }
+
+  /*
    * A collapsed row's content height per layout (`contain-intrinsic-size` sizes the content
    * box: the row's 2 × --s-2 padding and 1px border come on top), measured at a 16px root:
    * rows of 68px with the 5rem frame and two lines (a 58-64rem panel), 89px with the 8rem
