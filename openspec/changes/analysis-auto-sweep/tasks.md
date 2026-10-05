@@ -13,7 +13,7 @@
 ## 3. End to end
 
 - [x] 3.1 Real-store test (`requires_db`, `tests/test_scheduler_analysis_sweep_db.py`): a scratch project of tiny generated clips (lavfi `testsrc`, not auto-reel-media), Postgres from the session fixture, a real `Worker` with the real `analysis` handler: sweep → jobs claimed and `done` → a second sweep enqueues nothing; replace one clip → only that event is enqueued; restart (new `AnalysisSweep` + `Worker.reconcile`) with a queued swept job leaves exactly one active analysis job for the event; a queued render keeps the sweep quiet and is claimed before the analysis job. Run with `export TMPDIR=$AR/dev-analysis-auto-sweep-tmp`.
-- [ ] 3.2 Run the full gates: `.venv/bin/python -m pytest` (background, generous timeout), `black`/`isort` (100), `mypy auto_reel_ng`, `pylint auto_reel_ng` clean apart from the known cairo noise; then a live dogfood on `dev-analysis-auto-sweep` (DB `arel_analysis_auto_sweep`, `make_dev_library.py`): `auto-reel worker` with `auto_analyze_interval: 20` queues two events per sweep, analyzes them, and goes quiet; record the observed log lines in the PR body (SCRATCH).
+- [x] 3.2 Run the full gates: `.venv/bin/python -m pytest` (background, generous timeout), `black`/`isort` (100), `mypy auto_reel_ng`, `pylint auto_reel_ng` clean apart from the known cairo noise; then a live dogfood on `dev-analysis-auto-sweep` (DB `arel_analysis_auto_sweep`, `make_dev_library.py`): `auto-reel worker` with `auto_analyze_interval: 20` queues two events per sweep, analyzes them, and goes quiet; record the observed log lines in the PR body (SCRATCH).
 
 ## 4. Docs
 
