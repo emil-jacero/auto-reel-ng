@@ -93,6 +93,9 @@ Zooming SHALL NOT edit the draft, move focus or announce anything about the edge
   exist again
 
 #### Scenario: A focused edge tool keeps focus through a zoom
-- **WHEN** focus is on "Trim end of s1710001.mp4" and the operator presses `=` three times, then drags the Zoom slider
+- **WHEN** focus is on "Trim end of s1710001.mp4" and the operator presses `=` three times, then zooms with three
+  Ctrl+wheel steps
 - **THEN** during each zoom that one tool still exists and holds focus (no other edge tool exists), and after the zoom
   settles focus is still on it and every clip in view has its tools again
+- **WHEN** the operator then presses the Zoom slider
+- **THEN** focus moves to the slider, as a press on it always does, and no edge tool is kept during that drag
