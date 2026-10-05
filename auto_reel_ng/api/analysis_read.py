@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 from ..analysis.cache import CACHE_SUBDIR
 from ..analysis.state import (
@@ -109,4 +109,9 @@ def get_analysis(settings: ApiSettings, event_id: str, store: JobStore) -> Analy
     )
 
 
-__all__ = ["EventAnalysis", "get_analysis", "read_event_clips"]
+def failed_count(clips: Sequence[ClipAnalysis]) -> int:
+    """How many clips read ``failed``."""
+    return sum(1 for clip in clips if clip.state is ClipAnalysisState.FAILED)
+
+
+__all__ = ["EventAnalysis", "failed_count", "get_analysis", "read_event_clips"]
