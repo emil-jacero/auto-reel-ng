@@ -71,9 +71,10 @@ decision below that has no line in this breakdown is skipped.
   its real size. No rule in the edit page may set `overflow-anchor: none` on the page scroller; one is checked for.
 - As built: `contain-intrinsic-size` sizes the **content box**, so `--clip-row-h` is a row's height less its 17 px of
   padding and border (a first try with whole-row heights grew the page 15 %): 3.1875rem (58-64rem panel), 4.5rem (from
-  64rem, the 8rem frame), 3.75rem (under 58rem), 5.125rem (under 30rem). The rule sits in `@container (width >=
-  20.25rem)`: under it a row's tools already overflow the row (on `main` too, the page itself below 340 px), and
-  containment would cut the Move down button.
+  64rem, the 8rem frame), 3.75rem (under 58rem), 4.625rem (a coarse pointer, 30-58rem: the Cuts control sits 14 px
+  lower there, and with the fine estimate a tablet's page grew 17 %), 5.125rem (under 30rem). The rule sits in
+  `@container (width >= 20.25rem)`: under it a row's tools already overflow the row (on `main` too, the page itself
+  below 340 px), and containment would cut the Move down button.
 
 ### D2 — Paint containment must not clip what a row draws outside itself
 
@@ -89,6 +90,12 @@ screenshots are compared with `main`'s.
 As built: neither — the rule skips the rows that draw outside themselves, `:not(:focus-within, [data-drop-before],
 [data-dragging])`, so a focused row, the drop target and the lifted row are drawn exactly as before (pixel-equal
 screenshots), and the other rows have nothing outside their box. Toggling containment on one row costs nothing measurable.
+Review answer (2026-10-05): a row dnd-kit moves or animates (`[style*='transform']`: its inline `transform`, or the
+`transition: transform` it keeps after a drop) is left out too. With both this rule and the list's own layer, Chrome
+154 kept a moved, skipped row's thumbnail and mark box at the row's old place after a group drop: unseen, and taking
+the clicks meant for the row now there (`clip-group-select-drag`'s suite timed out marking it; without either rule it
+passes). During a drag every row of the list carries a transform, so all are drawn, as on `main`; after the drop none
+does, and skipping resumes (400 -> 0 rows with a transform, 371-378 of 400 skipped again).
 
 ### D3 — dnd-kit measures correct rects for rows that were skipped
 

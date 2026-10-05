@@ -46,6 +46,12 @@ recorded per run.
   walks rows 1-33 in order; `window.find` of the 390th clip's name scrolls that row into view, drawn. `main` fails
   the skipped-rows check (0 of 400). `listPaint.test.ts` pins the rule, the four estimates, no script writing
   `--clip-row-h` and no `overflow-anchor: none`.
+  Review answer (2026-10-05): with a coarse pointer a 30-58rem panel's two-line row is 91 px, not 77 px (the Cuts
+  control's 14 px gap under the handle), and the page grew 16.8 % at 768 px and 16.9 % at 600 px. That layout now has
+  its own estimate (`4.625rem` under `@media (pointer: coarse)`), pinned in `listPaint.test.ts` against the gap. On the
+  merged build, Chrome 154 at 1280/1024/768/600/390 px with a fine and with a coarse pointer (`has_touch`, `is_mobile`):
+  +0.00 % everywhere except 390 px (+0.09 %), worst displacement 0.00 px (50/50 checks); Firefox 155 at 1280/768/390
+  and 768 with touch: +0.00 % / +0.10 % (20/20).
 - [x] 2.3 Nothing clipped, drag still lands (D2, D3): fix every ring/indicator/overlay that paint containment cuts
   (inset ring, or drawn outside the contained `li`); make `ChapterDrag`'s `DndContext` measure while dragging if it
   does not already. Test: screenshots of a focused row, a drop indicator and a dragged row, light/dark, 1280/390,
@@ -53,6 +59,11 @@ recorded per run.
   the last chapter (auto-scroll over never-drawn rows) and asserts the draft order; keyboard-moves a clip 30 places down
   and asserts focus, ring in view and the announcement; the existing drag, marks/move-marked, keyboard reorder, rotate,
   card dialog and save-bar Playwright suites pass in Chrome and Firefox.
+  Review answer (2026-10-05): rerunning the suites on the merged build, `clip-group-select-drag`'s `t_group.py` timed
+  out in Chrome (also on the pre-merge build; `main` 55/59): after a group drop a moved, skipped row's thumbnail and mark
+  box stayed at its old place and took the next click. It needs both the row rule and the list layer; rows with an
+  inline transform or transition (`[style*='transform']`, dnd-kit's) are now left out too, and the suite gives 55/59 as
+  on `main` (twice). During a drag all 400 rows carry one and are drawn (as on `main`); after the drop 0 do.
   Status: a focused row, the drop target and the lifted row are left out of the rule (`:not(:focus-within,
   [data-drop-before], [data-dragging])`); screenshots of the three, light/dark, 1280/390, equal `main`'s pixel for
   pixel in Chrome and Firefox, and a scratch build without the exclusion cuts the ring's left edge and the line's upper
@@ -82,7 +93,7 @@ recorded per run.
 
 ## 3. The gate
 
-- [x] 3.1 Re-run 1.1's measurement on this branch (event-timeline requirement): Chrome 4x `slider` ×5 with `idle` ×5 in
+- [ ] 3.1 Re-run 1.1's measurement on this branch (event-timeline requirement): Chrome 4x `slider` ×5 with `idle` ×5 in
   the same session, Firefox ×3, scrub and frame-step gates in both browsers. Test: Chrome median ≤ 2 % frames over
   25 ms, Firefox median ≤ 2 %, scrub ≥ 30 fps median, frame-step p90 ≤ 60 ms. If Chrome stays above 2 %: record the
   best achieved with the breakdown in the PR body, leave this task open and stop for the supervisor's decision (the
@@ -91,13 +102,38 @@ recorded per run.
   five launches of three drags: 0-1.17 % of frames over 25 ms, launch medians 0 / 0.37 / 0.36 / 0.37 / 0 % -> median
   0.36 % (p95 19.0-22.1 ms); idle 0.00 % in all 15; `main` in the same session 48.2-59.3 %, median 50.0 % (p95 74-93
   ms). Firefox 155, three launches: 0 % in all nine drags. Scrub / frame-step on the 400-clip event: Chrome 56.5 fps,
-  p90 27.4 ms; Firefox 49.1 fps, p90 25.0 ms; on Grillning 56.6 / 50.5 fps, p90 27.9 / 23.5 ms. The gate is met; the
-  requirement's 2 % stands unchanged.
-- [x] 3.2 Close #140's gate: if 3.1 meets 2 %, tick `timeline-zoom-slider`'s tasks 3.1 and 5.2 in
+  p90 27.4 ms; Firefox 49.1 fps, p90 25.0 ms; on Grillning 56.6 / 50.5 fps, p90 27.9 / 23.5 ms. That met the gate
+  before `clip-edge-trim` merged.
+  Re-measured after merging `origin/main` with `clip-edge-trim` (review answer, quiet host, load 1.0-1.9, one session;
+  `out/gate2.txt`): Chrome 154 at 4x, five launches of three drags: 6.93-11.00 %, launch medians 9.50 / 9.34 / 8.91 /
+  9.40 / 8.68 % -> median 9.34 % (p95 26.7-32.4 ms); idle 0.00 % in all 15; `origin/main` in the same session
+  47.5-58.1 %, median 51.0 %. Firefox 155: launch medians 0 / 0 / 0 % (0-0.56 %). Scrub / frame-step on the 400-clip
+  event: Chrome 56.9 fps, p90 27.3 ms; Firefox 50.1 fps, p90 25.9 ms. **The Chrome gate is no longer met.** The cause
+  is `clip-edge-trim`'s edge tools, not the clip list: the pre-merge build in the same session 0.30-2.72 %; a scratch
+  build that never renders the edge tools 0.32-3.05 % (launch medians 1.44 / 0.58 %); with the tools only hidden
+  (`display: none`, still rendered by React) 3.22-5.61 %. A trace of one drag: layerize is not it (0.48 s merged,
+  1.32 s pre-merge); React's per-zoom commit grows from 4.9 to 7.0 ms and forced style and
+  layout from 1.29 to 1.65 s, almost all of it the scroll restore's forced layout with 14 more positioned tools that
+  every zoom moves (`inset-inline-start: var(--x)`) and re-renders (each tool's `x` changes, so `memo` does not hold).
+  CSS containment of the tools, no bracket, no cursor: no change (8-11 %). Open for the supervisor: the candidate fix
+  is in the Timeline (`clip-edge-trim`'s code, not this change's), e.g. leaving the edge tools out while a zoom is in
+  progress, as they already are behind a rippling drag.
+- [ ] 3.2 Close #140's gate: if 3.1 meets 2 %, tick `timeline-zoom-slider`'s tasks 3.1 and 5.2 in
   `openspec/changes/archive/2026-10-05-timeline-zoom-slider/tasks.md`, each with a one-line status naming
   `edit-list-paint-cost` and the figures (the `event-timeline` zoom requirement has no frame figure, so its text is not
   changed). Test: `openspec validate edit-list-paint-cost --strict` passes; `grep -c '\- \[ \]'` on that archived file
   is 0.
+  Status: reopened with 3.1 after the merge; the archived tasks 3.1 and 5.2 are unticked again, with the figures.
+- [x] 3.3 Close #141's gate (`clip-edge-trim` task 4.2): after merging `origin/main`, run its scripted Trim Out edge
+  drag (80 clips, the third clip in view, 180 moves, about 45 px per second; `edge_perf.py` in SCRATCH from its
+  `perf.py`) in Chrome 154 at 4x, five launches each with an idle run first, `origin/main` in the same session, and in
+  Firefox 155 ×3; record both gates in the HLD under D-20 and tick `clip-edge-trim`'s 4.2 with the figures if ≤ 2 %.
+  Test: the figures are in the HLD and the archived task; `openspec validate edit-list-paint-cost --strict` passes.
+  Status (quiet host, load 1.1-2.7; `out/gate2.txt`; an 80-clip event of the 6.02 s, 50 fps fixture clips): Chrome 4x
+  0 / 0 / 0 / 0.27 / 0 % -> median 0 % (p95 20.1-20.4 ms), idle 0 % in all five; `origin/main` in the same session
+  0.47 / 1.97 / 0.31 / 0.32 / 0.15 % -> median 0.32 % (idle 0-0.56 %); Firefox 0 % in all three. On a host this quiet
+  `main` also stays under 2 % (#141's 11.0 % median was at load 4-10), so the margin is the measure: a traced drag's
+  layerize went from 7.6 s to 0.19 s and BeginMainFrame from a median 14.4 ms (p95 25.6) to 1.7 ms (p95 14.0).
 
 ## 4. Docs and gates
 
@@ -114,3 +150,9 @@ recorded per run.
   (looked at), the regression record identical to `main`'s; no request but reads while zooming, scrubbing, playing or
   scrolling (the title-card preview POST is made on opening, as on `main`). Python untouched: black, isort, mypy clean,
   pylint 9.98, full pytest 3664 passed.
+  After the merge and the review answer: `npm test` 1080/1080, both `tsc` configs clean, `npm run build` JS 649.49 kB
+  (210.60 gzip, as `origin/main`), CSS 93.88 -> 94.42 kB (17.83 -> 17.95 gzip). Playwright on the final build, Chrome
+  154 and Firefox 155: scroll (fine and coarse) 25/25 and 13/13, far drags 13/13 each, shots light/dark 1280/390 8/8
+  each (looked at), group drag 55/59, marks 52/55, move marked 34/37 and rotate rows 4/4 in both, each as on
+  `origin/main` (their stale parts fail the same way there; the card dialog, rotate, save-bar and keyboard suites stop
+  at the same stale step on both builds). Full pytest 3664 passed (Python untouched).
