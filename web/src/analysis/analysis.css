@@ -40,3 +40,41 @@
     overflow-wrap: anywhere;
   }
 }
+
+@layer components {
+  /* Analyze all's answer on the event list's facts line. */
+  .analyze-all-line {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-2);
+    min-inline-size: 0;
+    color: var(--fg);
+
+    & > svg {
+      flex: none;
+      inline-size: 1rem;
+      block-size: 1rem;
+    }
+  }
+
+  .analyze-all-unreadable {
+    flex-basis: 100%;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+
+    & summary {
+      display: inline-flex;
+      align-items: center;
+      min-block-size: 2.75rem;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    & ul {
+      margin: 0;
+      padding-inline-start: var(--s-4);
+      color: var(--fg-muted);
+    }
+  }
+}

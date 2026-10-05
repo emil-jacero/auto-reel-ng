@@ -56,7 +56,7 @@ type Look = { words: string; icon: IconName; tone: Tone }
  */
 export const ANALYSIS_STATE_WORDS: Record<AnalysisState, Look> = {
   never: { words: 'Not analyzed', icon: 'minus', tone: 'idle' },
-  stale: { words: 'Analysis out of date', icon: 'clock', tone: 'info' },
+  stale: { words: 'Analysis out of date', icon: 'refresh', tone: 'info' },
   analyzing: { words: 'Analyzing…', icon: 'scan', tone: 'info' },
   failed: { words: 'Analysis failed', icon: 'alert-triangle', tone: 'warn' },
   current: { words: 'Analyzed', icon: 'check', tone: 'ok' },
