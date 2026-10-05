@@ -82,11 +82,17 @@ recorded per run.
 
 ## 3. The gate
 
-- [ ] 3.1 Re-run 1.1's measurement on this branch (event-timeline requirement): Chrome 4x `slider` ×5 with `idle` ×5 in
+- [x] 3.1 Re-run 1.1's measurement on this branch (event-timeline requirement): Chrome 4x `slider` ×5 with `idle` ×5 in
   the same session, Firefox ×3, scrub and frame-step gates in both browsers. Test: Chrome median ≤ 2 % frames over
   25 ms, Firefox median ≤ 2 %, scrub ≥ 30 fps median, frame-step p90 ≤ 60 ms. If Chrome stays above 2 %: record the
   best achieved with the breakdown in the PR body, leave this task open and stop for the supervisor's decision (the
   ADDED requirement's figure is then set to the agreed value, with the evidence, in this change's spec delta).
+  Status (quiet host, load 0.8-2.0, one session; `out/gate-after.txt`, `out/gate-main-quiet.txt`): Chrome 154 at 4x,
+  five launches of three drags: 0-1.17 % of frames over 25 ms, launch medians 0 / 0.37 / 0.36 / 0.37 / 0 % -> median
+  0.36 % (p95 19.0-22.1 ms); idle 0.00 % in all 15; `main` in the same session 48.2-59.3 %, median 50.0 % (p95 74-93
+  ms). Firefox 155, three launches: 0 % in all nine drags. Scrub / frame-step on the 400-clip event: Chrome 56.5 fps,
+  p90 27.4 ms; Firefox 49.1 fps, p90 25.0 ms; on Grillning 56.6 / 50.5 fps, p90 27.9 / 23.5 ms. The gate is met; the
+  requirement's 2 % stands unchanged.
 - [ ] 3.2 Close #140's gate: if 3.1 meets 2 %, tick `timeline-zoom-slider`'s tasks 3.1 and 5.2 in
   `openspec/changes/archive/2026-10-05-timeline-zoom-slider/tasks.md`, each with a one-line status naming
   `edit-list-paint-cost` and the figures (the `event-timeline` zoom requirement has no frame figure, so its text is not
