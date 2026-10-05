@@ -265,9 +265,10 @@ export interface paths {
          *     overriding results and recorded failures when it runs (the request itself writes nothing
          *     but the job row). 201 with the queued job; 200 ``fresh`` when no clip reads ``never`` or
          *     ``stale`` and ``force`` is false, or when the folder lists no clip; 409 ``active_job`` with
-         *     the job's id while an analysis job is queued or running for the event, also when a
-         *     concurrent request inserted first (a forced request first gives a ``queued`` unforced job
-         *     ``force``); 404 for an id the events list does not show; 502 for an event folder, a clip or
+         *     the job's id and ``forced`` (whether that job carries ``force``) while an analysis job is
+         *     queued or running for the event, also when a concurrent request inserted first (a forced
+         *     request first gives a ``queued`` unforced job ``force``; a ``running`` unforced job keeps
+         *     ``forced: false``); 404 for an id the events list does not show; 502 for an event folder, a clip or
          *     a cache entry that cannot be read; 503 when the job store is unreachable. The event's
          *     render and proxy jobs are independent of it. ``reel.yaml`` is never read.
          */
@@ -1424,6 +1425,8 @@ export interface components {
             /** Job Id */
             job_id?: string | null;
             conflict?: components["schemas"]["EnqueueConflict"] | null;
+            /** Forced */
+            forced?: boolean | null;
             /** Claimed By */
             claimed_by?: string[] | null;
             /** Missing */

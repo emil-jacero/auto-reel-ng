@@ -798,6 +798,9 @@ class ProblemOut(BaseModel):
     #: Which conflict an enqueue's 409 is, so a client picks its reaction from the
     #: published type, never from the detail text.
     conflict: Optional[EnqueueConflict] = None
+    #: On an analysis enqueue's ``active_job`` 409: whether the active job carries ``force``
+    #: (``false`` after a Re-analyze met a ``running`` unforced job: ask again once it ends).
+    forced: Optional[bool] = None
     #: On an ``output_collision``: the other events claiming the same output path, as
     #: sorted event ids (a collision can be three-way).
     claimed_by: Optional[List[str]] = None

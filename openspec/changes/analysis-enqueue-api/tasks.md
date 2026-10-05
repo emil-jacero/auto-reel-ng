@@ -84,7 +84,8 @@ Conventions for every task below:
   `GET …/analysis`; the drift test passes. In the container: `npx tsc --noEmit`, `npm test` and `npm run build` pass
   with no hand edit under `web/src` besides `schema.d.ts` and the tests (the required `state` and `clips` made
   `suggestions.test.ts`'s hand-built `AnalysisOut` fixtures fail `tsc -p tsconfig.test.json`; they go through a
-  `legacy()` helper now, no production web file is touched).
+  `legacy()` helper now; the review added the read's 503 to `api/analysis.ts`'s `PROBLEM_STATUSES`, the one
+  production web line, with its test).
 
 - [x] 4.2 Verify in real browsers (Playwright from the scratch directory only; Chrome via
   `localhost/playback-research:chrome`, Firefox >= 155 via `localhost/pcm-audio-research:pw163` after

@@ -20,7 +20,7 @@ from ...analysis.state import ClipAnalysis, clip_analysis_states, needs_analysis
 from ...errors import AnalysisStateError
 from ...ingest import LayoutError
 from ...persistence.job_store import JobStore
-from ...persistence.models import JobKind, JobStatus
+from ...persistence.models import JobKind
 from ...scheduler import submit_analysis
 from .. import analysis_read, events_read
 from ..problem import bad_gateway, conflict, not_found, service_unavailable
@@ -127,12 +127,18 @@ def _clip_states(event_dir: Path, event_id: str) -> Union[List[ClipAnalysis], JS
         return _state_unreadable(exc, event_id)
 
 
-def _analysis_job_active(job_id: object, event_id: str) -> JSONResponse:
-    """The 409 for an event that already has a queued or running analysis job."""
+def _analysis_job_active(job_id: object, event_id: str, *, forced: bool) -> JSONResponse:
+    """The 409 for an event that already has a queued or running analysis job.
+
+    ``forced`` is whether that job carries ``force``: a Re-analyze that met a ``queued`` job
+    forced it (``true``); one that met a ``running`` unforced job could not (``false``), so
+    the client knows to ask again once it ends, as the CLI's ``analyze --enqueue`` says.
+    """
     return conflict(
         f"an analysis job is already active for event {event_id!r}",
         job_id=str(job_id),
         conflict=EnqueueConflict.ACTIVE_JOB.value,
+        forced=forced,
     )
 
 
@@ -163,9 +169,10 @@ def enqueue_analysis(
     overriding results and recorded failures when it runs (the request itself writes nothing
     but the job row). 201 with the queued job; 200 ``fresh`` when no clip reads ``never`` or
     ``stale`` and ``force`` is false, or when the folder lists no clip; 409 ``active_job`` with
-    the job's id while an analysis job is queued or running for the event, also when a
-    concurrent request inserted first (a forced request first gives a ``queued`` unforced job
-    ``force``); 404 for an id the events list does not show; 502 for an event folder, a clip or
+    the job's id and ``forced`` (whether that job carries ``force``) while an analysis job is
+    queued or running for the event, also when a concurrent request inserted first (a forced
+    request first gives a ``queued`` unforced job ``force``; a ``running`` unforced job keeps
+    ``forced: false``); 404 for an id the events list does not show; 502 for an event folder, a clip or
     a cache entry that cannot be read; 503 when the job store is unreachable. The event's
     render and proxy jobs are independent of it. ``reel.yaml`` is never read.
     """
@@ -179,9 +186,9 @@ def enqueue_analysis(
     project_root = str(settings.project_root)
     active = store.active_job(project_root, event_id, kind=JobKind.ANALYSIS)
     if active is not None:
-        if force and active.status is JobStatus.QUEUED:
-            store.force_queued(active.id)  # Re-analyze is not lost behind a queued job
-        return _analysis_job_active(active.id, event_id)
+        # Re-analyze is not lost behind a queued job; a running unforced one reports false.
+        forced = store.force_queued(active.id) if force else bool(active.force)
+        return _analysis_job_active(active.id, event_id, forced=forced)
 
     clips = _clip_states(event_dir, event_id)
     if isinstance(clips, JSONResponse):
@@ -199,7 +206,11 @@ def enqueue_analysis(
     submission = submit_analysis(store, settings.project_root, [event_dir], force=force)[0]
     if not submission.created:
         # A concurrent request inserted after the pre-check: the insertion decides.
-        return _analysis_job_active(submission.job_id, event_id)
+        forced = submission.forced
+        if not force:  # an unforced submit forces nothing: report what the job carries
+            raced = store.get(submission.job_id)
+            forced = raced is not None and bool(raced.force)
+        return _analysis_job_active(submission.job_id, event_id, forced=forced)
     job = store.get(submission.job_id)
     assert job is not None  # nosec B101 - just inserted, must be readable
     return job_to_out(job)

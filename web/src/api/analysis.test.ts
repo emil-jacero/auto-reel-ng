@@ -99,6 +99,12 @@ describe('fetchAnalysis', () => {
     assert.deepEqual(await read(), { kind: 'problem', problem: problem(502) })
   })
 
+  it('reads the job store’s 503 problem body as a problem', async () => {
+    const down = { ...problem(503), check: 'database' }
+    serve(() => json(503, down))
+    assert.deepEqual(await read(), { kind: 'problem', problem: down })
+  })
+
   it('names the request when the answer is a status the route does not publish', async () => {
     serve(() => new Response('boom', { status: 500, statusText: 'Internal Server Error' }))
     const result = await read('2024/Sommar på Öland')

@@ -234,6 +234,7 @@ def test_a_repeated_request_is_a_conflict_naming_the_first_job(
         assert response.status_code == 409
         problem = response.json()
         assert problem["conflict"] == "active_job" and problem["job_id"] == first
+        assert problem["forced"] is False  # the active job carries no force
 
     assert [str(row.id) for row in _rows(store)] == [first]
 
@@ -246,8 +247,13 @@ def test_re_analyze_meets_a_queued_unforced_job_and_forces_it(
     response = client.post(_url(GRILLNING), json={"force": True})
 
     assert response.status_code == 409 and response.json()["job_id"] == first
+    assert response.json()["forced"] is True  # Re-analyze took effect
     (row,) = _rows(store)
     assert row.force is True and row.status is JobStatus.QUEUED
+
+    # An unforced repeat reports the force the job now carries.
+    again = client.post(_url(GRILLNING))
+    assert again.status_code == 409 and again.json()["forced"] is True
 
 
 def test_re_analyze_meets_a_running_unforced_job_and_leaves_it(
@@ -260,6 +266,7 @@ def test_re_analyze_meets_a_running_unforced_job_and_leaves_it(
     response = client.post(_url(GRILLNING), json={"force": True})
 
     assert response.status_code == 409 and response.json()["job_id"] == first
+    assert response.json()["forced"] is False  # the force is lost: ask again once it ends
     (row,) = _rows(store)
     assert row.force is False and row.status is JobStatus.RUNNING
 
@@ -277,7 +284,34 @@ def test_an_enqueue_that_loses_a_race_is_a_conflict(
     assert second.status_code == 409
     assert second.json()["conflict"] == "active_job"
     assert second.json()["job_id"] == first.json()["id"]
+    assert second.json()["forced"] is False
     assert len(_rows(store)) == 1
+
+
+def test_a_re_analyze_that_loses_a_race_forces_the_queued_winner(
+    client: TestClient, store: JobStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(client.app.state.job_store, "active_job", lambda *a, **k: None)
+
+    first = client.post(_url(BLANDAT))
+    second = client.post(_url(BLANDAT), json={"force": True})
+
+    assert first.status_code == 201
+    assert second.status_code == 409 and second.json()["forced"] is True
+    (row,) = _rows(store)
+    assert row.force is True and row.status is JobStatus.QUEUED
+
+
+def test_an_unforced_request_that_loses_a_race_reports_the_winners_force(
+    client: TestClient, store: JobStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(client.app.state.job_store, "active_job", lambda *a, **k: None)
+
+    first = client.post(_url(BLANDAT), json={"force": True})
+    second = client.post(_url(BLANDAT))
+
+    assert first.status_code == 201
+    assert second.status_code == 409 and second.json()["forced"] is True
 
 
 # --------------------------------------------------------------------------- #

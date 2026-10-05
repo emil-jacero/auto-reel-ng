@@ -16,12 +16,12 @@ export type Segment = components['schemas']['SegmentOut']
 /** How a read ended; expected failures are values, as in `fetchEvent`. */
 export type AnalysisResult =
   | { kind: 'ok'; analysis: Analysis }
-  // 404/502 in the published ProblemOut shape
+  // 404/502/503 in the published ProblemOut shape (503: the job store, `check` `database`)
   | { kind: 'problem'; problem: Problem }
   | Unanswered
 
 // The failure statuses the service declares for this read (see the schema).
-const PROBLEM_STATUSES = new Set([404, 502])
+const PROBLEM_STATUSES = new Set([404, 502, 503])
 
 /**
  * Read one event's analysis. Its id's segments are encoded one by one, matching the
