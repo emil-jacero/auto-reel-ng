@@ -220,3 +220,25 @@ describe('docs/high-level-design.md and clip-edge-trim', () => {
     assert.ok(text.includes('the start stops at 5.92 s'))
   })
 })
+
+/* The design document names the change in D-20, §4.10 and §6 (edit-list-paint-cost). */
+describe('docs/high-level-design.md and edit-list-paint-cost', () => {
+  const text = readFileSync(new URL('../../../docs/high-level-design.md', import.meta.url), 'utf8')
+
+  it('names edit-list-paint-cost in D-20, §4.10 and §6', () => {
+    const lines = text.split('\n')
+    const at = lines.flatMap((line, i) => (line.includes('edit-list-paint-cost') ? [i] : []))
+    const d20 = lines.findIndex((line) => line.startsWith('- **D-20'))
+    const d21 = lines.findIndex((line) => line.startsWith('- **D-21'))
+    assert.ok(d20 > 0 && d21 > d20)
+    assert.ok(at.some((i) => i > d20 && i < d21), 'D-20 names it')
+    const s410 = lines.findIndex((line) => line.startsWith('### 4.10 '))
+    const s411 = lines.findIndex((line) => line.startsWith('### 4.11 '))
+    assert.ok(s410 > 0 && s411 > s410)
+    assert.ok(at.some((i) => i > s410 && i < s411), '§4.10 names it')
+    const s6 = lines.findIndex((line) => line.startsWith('## 6. '))
+    const s7 = lines.findIndex((line) => line.startsWith('## 7. '))
+    assert.ok(s6 > 0 && s7 > s6)
+    assert.ok(at.some((i) => i > s6 && i < s7), '§6 names it')
+  })
+})
