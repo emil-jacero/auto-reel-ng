@@ -91,9 +91,9 @@ recorded per run.
   from `main`'s only in sub-pixel glyph and thumbnail antialiasing (zoomed, nothing moves). A loading thumbnail's
   shimmer (6 x 1.6 s) repaints its row until it ends, on `main` too.
 
-- [ ] 2.5 Edge tools out while zooming (design D6, supervisor decision 2026-10-05; `event-timeline` MODIFIED "In Edit
+- [x] 2.5 Edge tools out while zooming (design D6, supervisor decision 2026-10-05; `event-timeline` MODIFIED "In Edit
   mode a clip block's edges are Trim In and Trim Out tools"): a pure settle helper `web/src/timeline/zoomSettle.ts`
-  (zoom input starts/extends a zoom; slider `pointerup`/`lostpointercapture` settles at once; any other input settles
+  (zoom input starts/extends a zoom; slider release (`pointerup`/`pointercancel`) settles at once; any other input settles
   `SETTLE_MS = 150` after the last; cancel on unmount), a `zooming` flag in Timeline state set once per zoom, fed by the
   slider, Ctrl/Cmd+wheel and pinch, the zoom buttons and `=`/`-` (key repeat included); `Track.tsx` pushes no
   `edge('start'|'end')` while `zooming`, beside the existing rippling-drag rule, except the one tool focused at the
@@ -104,6 +104,21 @@ recorded per run.
   Ctrl+wheel burst and held `=`, `.timeline` holds 0 edge tools (1 with one focused, still `document.activeElement`);
   after settle the in-view count equals the count before the zoom; the trim cursor and bracket show under a pointer
   that did not move; the render counter of 1.2 still shows 0 clip-row renders. `npm test`, both `tsc` configs pass.
+  Status: `zoomSettle.ts` (`createZoomSettle`, `edgeToolShown`) with 11 `node:test` cases (bursts 40 ms apart, key
+  repeat, a press held 2 x 2 s, a press during a wheel zoom, press/release without a zoom, cancel, the kept tool); with
+  the held-press and zooming rules removed 3 of them fail. `Timeline` holds one `zoomHold` state (set on a zoom's start
+  and settle only), fed by `zoomTo` and Fit; the kept tool is the dragged edge, else the focused `.tl-edge`;
+  `ZoomSlider` reports press and release (window listeners) and zooms the pending position before the release. A
+  mouse press on the slider focuses it, so a slider drag keeps no tool (the spec scenario says so). `zoom_tools.py` on
+  the 80-clip event, Chrome 154 and Firefox 155: 21/21 each: per frame the tool count went 54 -> 0 and stayed 0 through
+  a slider drag with a 600 ms rest, 2 -> 0 for a Ctrl+wheel burst, 0 through held `=`/`-` and 100 ms after the last
+  key; after each settle every detailed block in the drawn window has both tools, and the same scale gives the same
+  count (10 -> 10); a focused Trim Out stays the only tool, the same node, focused, through `=` x3 and Ctrl+wheel;
+  the Trim In under a pointer that did not move is `:hover` with the image cursor and its bracket shown after settle
+  (`shots/zoomtools-*-hover.png`, looked at); a Ctrl+wheel during an edge drag keeps the dragged tool alone. On the
+  build before this task the same script gives 13/21 (tools re-rendered on every zoom frame, e.g. 54 -> 80 -> ... -> 2).
+  Render counter rebuilt from this tree: 0 renders of every list component on zoom/scrub/play, 13/13 in both browsers.
+  `npm test` 1091/1091, both `tsc` configs clean.
 
 ## 3. The gate
 

@@ -152,7 +152,7 @@ switch gains a second condition, **zooming**: from a zoom's first input until it
 screen reader's place survive; the existing "focused tool stays" rule already keeps a focused tool off the window).
 
 - **Settle rule** (pure, in a new `web/src/timeline/zoomSettle.ts`, unit-tested with `node:test` and fake time): a
-  zoom input starts or extends a zoom; the zoom settles on the slider's `pointerup` / `lostpointercapture`
+  zoom input starts or extends a zoom; the zoom settles on the slider's release (`pointerup` / `pointercancel` on `window`)
   immediately, or `SETTLE_MS = 150` after the last input of any other kind (Ctrl/Cmd+wheel, pinch, zoom buttons, `=`/`-`
   including key repeat, a keyboard step of the slider). A slider press holds the zoom open however long the thumb
   rests. Unmount or Edit mode leaving cancels the timer. 150 ms is about one key-repeat gap and a wheel burst's gap
@@ -160,8 +160,14 @@ screen reader's place survive; the existing "focused tool stays" rule already ke
 - **State**: one boolean `zooming` in Timeline state (`useState`, set on the first input only, so a burst costs one
   extra render to remove the tools and one to bring them back, not one per input); it never leaves `web/src/timeline/`
   (D4's zero clip-row renders hold).
-- **Focus**: the focused tool's key (clip index + side) is read from `document.activeElement` at the zoom's start; that
-  tool keeps rendering through the zoom at its new place, so the DOM node and focus persist. No `focus()` call is made.
+- **Focus**: the kept tool (clip identity + side) is read at the zoom's start: the edge being dragged if any (a press on
+  a tool focuses it, and the drag holds its pointer capture), else the `.tl-edge` holding `document.activeElement` in the
+  track; that tool keeps rendering through the zoom at its new place, so the DOM node and focus persist. No `focus()`
+  call is made. A press on the Zoom slider moves focus to the slider (native), so a slider drag keeps no tool.
+- **Slider release**: `ZoomSlider` listens for `pointerup`/`pointercancel` on `window` (capture) from its
+  `pointerdown`, so a release outside the input counts; the position still waiting for its animation frame is zoomed
+  to first, then the release settles (a release before that frame would otherwise settle, and the late zoom open a
+  second 150 ms zoom).
 - **Cursor**: the trim cursor and bracket are CSS (`cursor`, `:hover`) on the tool's zone, and both browsers re-run hit
   testing when an element is inserted under a still pointer, so they return without a pointer move; the Playwright
   check proves it in Chrome and Firefox (no synthetic pointer events are dispatched to force it).
