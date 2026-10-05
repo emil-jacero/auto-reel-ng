@@ -3,6 +3,13 @@ import './list.css'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { MouseEvent, RefObject } from 'react'
 
+import {
+  AnalyzeAllAlert,
+  AnalyzeAllButton,
+  AnalyzeAllLine,
+  AnalyzeAllStatus,
+  useAnalyzeAll,
+} from '../analysis/AnalyzeAll'
 import { fetchEvents } from '../api/events'
 import { posterUrl } from '../api/poster'
 import type { EventError, EventRow, EventSummary, Problem } from '../api/events'
@@ -319,6 +326,8 @@ export function EventList({ hidden }: { hidden: boolean }) {
   const version = useEventsVersion()
   // The events version the list was last read at (recorded when the read starts).
   const readVersion = useRef(currentEventsVersion())
+  // Analyze all: its answer stays until the next press or the next Refresh.
+  const analyzeAll = useAnalyzeAll()
 
   /**
    * Read the list. A plain read (first, Refresh) aborts any read and shows
@@ -409,6 +418,7 @@ export function EventList({ hidden }: { hidden: boolean }) {
           <div className="toolbar">
             {/* Mounted in every state: it only holds the choice, so a read never moves Refresh. */}
             <FilterControl onlyStale={onlyStale} setOnlyStale={setOnlyStale} allRef={allRef} />
+            <AnalyzeAllButton state={analyzeAll} />
             {/* Busy, not disabled, while reading: it keeps keyboard focus. */}
             <button
               type="button"
@@ -417,6 +427,7 @@ export function EventList({ hidden }: { hidden: boolean }) {
               aria-busy={loading || undefined}
               onClick={() => {
                 if (!loading) {
+                  analyzeAll.clear()
                   load()
                 }
               }}
@@ -438,7 +449,9 @@ export function EventList({ hidden }: { hidden: boolean }) {
               </time>
             </span>
           )}
+          <AnalyzeAllLine state={analyzeAll} />
           <LoadStatus message={loading ? 'Scanning events…' : updating ? 'Updating…' : ''} />
+          <AnalyzeAllStatus state={analyzeAll} />
           {/*
            * The read's result, mounted in every state and filled only while ready: an
            * operator's read empties it on the way (it passes through loading), so its
@@ -460,6 +473,8 @@ export function EventList({ hidden }: { hidden: boolean }) {
           <SkeletonRows rows={8} />
         </div>
       )}
+
+      <AnalyzeAllAlert state={analyzeAll} />
 
       {state.status === 'failed' && <Alert tone="err" title={state.cause} detail={state.detail} />}
 
