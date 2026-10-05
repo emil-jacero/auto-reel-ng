@@ -1041,7 +1041,7 @@ export interface components {
          *     reason instead of the database refusing it. This enum names what *this* build writes.
          * @enum {string}
          */
-        JobKind: "render" | "proxy";
+        JobKind: "render" | "proxy" | "analysis";
         /**
          * JobOut
          * @description One job's full detail, mirroring ``jobs show`` (task 3.2).

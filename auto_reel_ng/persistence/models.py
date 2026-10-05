@@ -46,6 +46,8 @@ class JobKind(enum.StrEnum):
     RENDER = "render"
     #: Prepare the preview copies (proxies) of an event's clips for the timeline and players.
     PROXY = "proxy"
+    #: Detect black/white/freeze spans in an event's original clips into its analysis sidecar.
+    ANALYSIS = "analysis"
 
 
 #: The statuses a job never leaves. Only a transition into one of them stamps

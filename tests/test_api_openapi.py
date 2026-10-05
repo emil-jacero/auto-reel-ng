@@ -347,7 +347,7 @@ def test_the_job_kind_is_the_closed_enumeration_in_both_job_models() -> None:
         assert "kind" in models[model]["required"], model
     published = models["JobKind"]
     assert published["type"] == "string"
-    assert published["enum"] == ["render", "proxy"] == [kind.value for kind in JobKind]
+    assert published["enum"] == ["render", "proxy", "analysis"] == [kind.value for kind in JobKind]
     assert "free-form" not in published.get("description", "")
 
 

@@ -4201,7 +4201,8 @@
         "type": "string",
         "enum": [
           "render",
-          "proxy"
+          "proxy",
+          "analysis"
         ],
         "title": "JobKind",
         "description": "What sort of work a job is: the closed set of kinds the service reports.\n\nAn event has at most one active job of each kind, and jobs of different kinds run\nindependently. The ``jobs.kind`` column is free text on purpose: the database accepts\nany value, so a row written by a newer build reaches a worker that fails it with a\nreason instead of the database refusing it. This enum names what *this* build writes."
