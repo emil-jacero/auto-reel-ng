@@ -41,12 +41,12 @@ from ..errors import (
 from ..event import scan_event
 from ..ffmpeg.runtime import FfmpegRuntime
 from ..persistence.job_store import JobStore
-from ..persistence.models import Job, JobKind, JobStatus
+from ..persistence.models import Job, JobKind
 from ..proxies import PreparedClip, ProxySettings, prepare_clip, proxy_key, resolve_proxy_settings
 from ..thumbs import one_line_cause
 from .pools import CapacityPools
 from .progress import ThrottledProgress
-from .worker import JobInterrupted
+from .turns import Hold, Turns
 
 logger = logging.getLogger(__name__)
 
@@ -67,20 +67,6 @@ LoadSettings = Callable[[Path], ProxySettings]
 
 class ProxyJobError(EngineError):
     """A ``proxy`` job ended with failed clips; the message counts and names them."""
-
-
-class _Hold:
-    """The job's CPU token and whether this job holds it now."""
-
-    def __init__(self, token: threading.BoundedSemaphore) -> None:
-        self.token = token
-        self.held = False
-
-    def release(self) -> None:
-        """Give the token back if held; safe to call twice."""
-        if self.held:
-            self.held = False
-            self.token.release()
 
 
 @dataclass(frozen=True)
@@ -125,6 +111,7 @@ class ProxyJobHandler:  # pylint: disable=too-few-public-methods,too-many-instan
         self._stop = stop_event if stop_event is not None else threading.Event()
         self._prepare = prepare
         self._load_settings = load_settings
+        self._turns = Turns(store, self._stop, label="proxy")
 
     def __call__(self, job: Job) -> None:
         """Prepare the job's event; return for ``done``, raise for ``failed`` or ``canceled``.
@@ -142,7 +129,7 @@ class ProxyJobHandler:  # pylint: disable=too-few-public-methods,too-many-instan
             project_root
         )  # before the token: a refusal waits for nothing
         work = self._plan(event_dir)
-        hold = _Hold(self._pools.cpu_token())
+        hold = Hold(self._pools.cpu_token())
         try:
             self._run(job, settings, work, hold)
         finally:
@@ -159,37 +146,17 @@ class ProxyJobHandler:  # pylint: disable=too-few-public-methods,too-many-instan
 
     def _stop_or_cancel(self, job: Job) -> None:
         """Raise the right interruption now if the worker is stopping or the job was canceled."""
-        if self._stop.is_set():
-            raise JobInterrupted(f"job {job.id}: the worker is stopping")
-        current = self._store.get(job.id)
-        if current is not None and current.cancel_requested:
-            raise RenderCancelledError(f"proxy job {job.id} was canceled")
+        self._turns.stop_or_cancel(job)
 
-    def _acquire(self, hold: _Hold, job: Job) -> None:
-        """Wait for the CPU token, still answering a cancel or a stop while waiting."""
-        while not hold.token.acquire(timeout=TOKEN_POLL_S):
-            self._stop_or_cancel(job)
-        hold.held = True
-        self._stop_or_cancel(job)
-
-    def _render_running(self) -> bool:
-        return bool(self._store.list_by_status(JobStatus.RUNNING, kind=JobKind.RENDER))
-
-    def _take_turn(self, job: Job, hold: _Hold) -> None:
-        """Hold the CPU token at a moment when no render is running.
-
-        While a render runs the token is given back and the job waits, so a render that is
-        itself waiting for the CPU token is never blocked by the job that yields to it.
-        """
-        while True:
-            if not hold.held:
-                self._acquire(hold, job)
-            if not self._render_running():
-                return
-            hold.release()
-            while self._render_running():
-                self._stop_or_cancel(job)
-                self._stop.wait(YIELD_POLL_S)
+    def _take_turn(self, job: Job, hold: Hold) -> None:
+        """Hold the CPU token at a moment when no render is running (``turns``)."""
+        self._turns.take_turn(
+            job,
+            hold,
+            yield_to=(JobKind.RENDER,),
+            token_poll_s=TOKEN_POLL_S,
+            yield_poll_s=YIELD_POLL_S,
+        )
 
     @staticmethod
     def _plan(event_dir: Path) -> List[_Work]:
@@ -214,7 +181,7 @@ class ProxyJobHandler:  # pylint: disable=too-few-public-methods,too-many-instan
             for members in groups.values()
         ]
 
-    def _run(self, job: Job, settings: ProxySettings, work: List[_Work], hold: _Hold) -> None:
+    def _run(self, job: Job, settings: ProxySettings, work: List[_Work], hold: Hold) -> None:
         progress = ThrottledProgress(self._store, job.id)
         should_cancel = self._cancel_check(job)
         total = sum(item.weight for item in work) or 1
