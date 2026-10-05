@@ -228,6 +228,12 @@ output is cached in a sidecar (e.g. `.auto-reel/cache/`), **not** in `reel.yaml`
 suggestion as a trim whose `reason` is its kind (`black`, `white`, `freeze`; D-20, "Analysis overlays"), by the
 Timeline on Edit mode's draft (`timeline-overlay-decisions`).
 
+Analysis is also a **job** (`analysis-job`, **D-27**): the worker runs the same two passes on an event's original
+clips as a job of kind `analysis`, lowest priority, cancellable, with per-clip failure markers in the sidecar and
+atomic sidecar writes; `auto-reel analyze --enqueue [--force]` queues it. Measured cost (experiment 008): about
+17 s of wall time and 2 CPU-minutes per minute of 1080p50 H.264, and 1 to 1.9 minutes of wall time and 6
+CPU-minutes per minute of 4K50, on the 8-core APU.
+
 > ⚠️ **Research:** §8.6 white/freeze thresholds ✅ **RESOLVED** (exp 005); §8.7 ML model choices.
 
 ### 4.6 `reel.yaml` — editorial source of truth
@@ -312,6 +318,9 @@ Before enqueuing a render the scheduler runs the **§4.13 staleness check** — 
 no job (unless the operator forces it).
 Job state (queued/running/done/failed, progress, logs) in Postgres; progress parsed from `ffmpeg -progress`
 and pushed over WebSocket.
+The job kinds are `render`, `proxy` (D-21) and `analysis` (`analysis-job`, **D-27**), claimed in that order: an
+`analysis` job only when no render or proxy job is queued and fewer than `worker.analysis_slots` (default 1) are in
+flight; it holds one CPU token, is outside the render in-flight bound, and yields to running renders and proxy jobs.
 
 **Multi-GPU scheduling (future, but design for it now).** The host may have more than one GPU. The
 eventual goal is to **target a specific GPU per job** — either auto-balanced across available devices or
@@ -491,6 +500,11 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   without it. The timeline opens only for an event whose clips are all `ready`.
   The proxy job has landed (`proxy-job`, D-21): the worker prepares one event's proxies and sprites as a `proxy` job,
   behind renders, so **the timeline opens only for prepared events and preparation is a `proxy` job**.
+  The analysis job has landed (`analysis-job`, D-27): the worker detects black/white/freeze spans in an event's
+  originals as an `analysis` job, after renders and proxy jobs, so "Not analyzed" can be fixed without the CLI once
+  `analysis-enqueue-api` (the REST enqueue and an analysis state), `analysis-web-controls` (Re-analyze and Analyze
+  all) and `analysis-auto-sweep` (the worker's automatic, capped sweep) follow; until then `auto-reel analyze
+  --enqueue` queues it.
   The timeline is built in the repo (**D-20**); its pure model has landed (`timeline-model`) and **the read-only
   Timeline has landed on the event page** (`timeline-view`): its own section, closed until opened, a Prepare state
   when a clip has no ready proxy, then one track (ruler, chapter band, clips laid out from the proxy facts, cuts as
@@ -816,6 +830,12 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `clip-preview-proxy` is the first change that plays a copy: the clip preview
    (D-16) plays the proxy when it is ready, a web-only change with no render, fingerprint, schema or job change.
    `proxy-job` has landed after them: the worker runs the `proxy` kind (D-21), render-first, with `worker.proxy_slots`.
+   `analysis-job` has landed (D-27): the worker runs the `analysis` kind on originals, claimed after renders and proxy
+   jobs, with `worker.analysis_slots`, a CPU token and the yield; signal-keyed failure markers and atomic sidecar
+   writes; `auto-reel analyze --enqueue [--force]`; the published job kinds gain `analysis`; no render, fingerprint,
+   schema-version or `RENDER_GRAPH_VERSION` change, no migration. Its three follow-ups, from the user's choice of
+   2026-10-05 (automatic analysis, a Re-analyze button and Analyze all): `analysis-enqueue-api`,
+   `analysis-web-controls` and `analysis-auto-sweep`.
    `movie-chapter-list` is the first user of `movie-facts-read`: the movie player's chapter jump list and the
    movie's version in the facts, a `web/` change only (D-15).
    `proxy-enqueue-endpoint` has landed next: `POST /api/v1/events/{event_id}/proxies`, `kind` on the jobs shapes and the
@@ -1877,6 +1897,53 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Deliberately not here:** the card style, per-card fields, background-on-video, durations, the preview
     endpoint, the GUI, a weight setting, italics, user-supplied fonts, web fonts in the browser (D-10; the GUI previews
     with the engine's PNG).
+- **D-27 — Analysis is a job** (2026-10-05, change `analysis-job`). The user asked what "Not analyzed" means and why
+  it could not be triggered from the web, and chose automatic analysis in the background, a Re-analyze button and
+  "Analyze all". The inline `auto-reel analyze` could not be a job: its passes were blocking (no cancel, no
+  progress), the first bad clip aborted the event, and the sidecar was written in place.
+  - **The kind.** The worker runs jobs of kind `analysis`, one event each: for every clip discovery lists (IGNORED
+    included; `reel.yaml` is never read or written) it runs the existing two passes (§4.5, experiment 005's
+    thresholds) on the **original** clip, never a proxy (the freeze threshold was calibrated on originals, and an
+    event without proxies must still be analyzable), skipping a clip whose sidecar entry matches its current
+    size+mtime signal. A job with `force` (what Re-analyze enqueues) analyzes every clip. It writes only the event's
+    `.auto-reel/cache/`; no render-only claim check applies, no fingerprint is recorded, staleness is untouched and
+    **`RENDER_GRAPH_VERSION` is not bumped** (analysis results are suggestions, never a render input). No migration:
+    `jobs.kind` is free text and the one-active index is per kind.
+  - **Priority and pool.** Claim order **render > proxy > analysis**: the worker first claims every kind but
+    `analysis` (the store's render-first order unchanged), and only when that finds nothing, and fewer than
+    **`worker.analysis_slots` (default 1)** analysis jobs are in flight, an `analysis` job. `claim_next` is not
+    changed. The claim loop's in-flight bound counts neither `proxy` nor `analysis`. The job holds **one CPU token**
+    while it analyzes a clip (software decode) and **yields** like the proxy job, to running renders **and proxy
+    jobs**, giving its token back while it waits (shared `scheduler/turns.py`): the Timeline's proxies are what the
+    user waits for. The clip in flight finishes.
+  - **Progress and cancel.** Both passes run through `run_with_progress` (pass 1 fills a clip's `0–0.5`, pass 2
+    `0.5–1`); the job's progress is weighted by clip size (a `stat`), never decreases, and is `1.0` only at `done`.
+    A cancel or a worker stop ends the running ffmpeg within about a second and leaves no entry or marker for that
+    clip; finished clips keep their entries, so a requeued job costs one `stat` per finished clip.
+  - **Failures.** A clip that cannot be statted, probed or decoded (or whose pass stalls for 600 s) does not stop
+    the others: it gets a **failure marker** in its sidecar entry (the same file, keyed by the clip's signal, a
+    one-line cause and no `segments`) and the job ends `failed` ("1 of 3 clips failed: c.mp4: …"). A job that is not
+    forced does not run ffmpeg for a clip whose marker matches its current signal (it reports the recorded cause
+    again), so nothing retries it in a loop; a forced job or a changed clip retries it, and a success replaces the
+    marker. A marker is not a result: every reader treats the clip as unanalyzed, and an older build reads it as
+    a cold entry. A fault of the cache directory itself ends the job at once.
+  - **Atomic sidecar writes**, for the job and inline `auto-reel analyze` alike: temporary file in the cache
+    directory, `fsync`, rename over the entry; a concurrent API read sees the old entry or the new one. A
+    temporary file left by a killed writer is never read.
+  - **CLI parity** (Principle V): `auto-reel analyze <root> --enqueue [--force]` queues one job per event through
+    `submit_analysis`, the function the REST enqueue (`analysis-enqueue-api`) will call; `--force` alone
+    re-analyzes inline. The published job kinds are `render | proxy | analysis`; `latest_job` stays the latest
+    render.
+  - **Measured (experiment 008, an 8-core AMD APU, a host shared with other test suites, load 9 to 28 on 16
+    threads):** per minute of footage, both passes, **1080p50 H.264 ~17 s of wall time and ~2 CPU-minutes; 4K50
+    H.264 ~55 to 75 s and ~6 CPU-minutes; 4K50 HEVC ~87 to 114 s and ~6 CPU-minutes**. The CPU figures repeat
+    within 7 %; the wall figures are inflated by the load. Beside a GPU render, only the clip in flight overlapped
+    it and the next clip waited for it. Decoding dominates and is done twice: one decode for both passes, then
+    hardware decode, are the follow-up experiments; the automatic sweep's cap should be counted in minutes of
+    footage, not events.
+  - **Deliberately not here:** the REST enqueue and an analysis state on the read (`analysis-enqueue-api`), the web
+    controls (`analysis-web-controls`), the automatic sweep (`analysis-auto-sweep`), a threshold hash in the cache
+    key, hardware decode.
 - **D-26 — An event has a poster frame** (2026-10-04, change `event-poster-engine`, the engine half of the last open v2
   item). A media server (Jellyfin, Plex, Kodi) that scans the output folder saw a bare `.mp4` and a black tile, and the
   operator could not choose the frame.
