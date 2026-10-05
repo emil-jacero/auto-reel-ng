@@ -30,9 +30,10 @@ recorded per run.
 
 ## 2. web/ — The clip list stops repainting
 
-- [ ] 2.1 Zero row renders (D4): make stable whatever 1.2 found reaching `ClipOrderList` / `ClipRow` on Timeline state
+- [x] 2.1 Zero row renders (D4): make stable whatever 1.2 found reaching `ClipOrderList` / `ClipRow` on Timeline state
   changes (`useMemo`/`useCallback` in `EventEditor.tsx`, or the state kept in `web/src/timeline/`); skip if 1.2 found 0.
   Test: the 1.2 run shows 0 clip-row commits in Chrome and Firefox; `npm test` and `npx tsc --noEmit` pass.
+  Status: skipped as the task allows: 1.2 found 0 renders on `main`, so nothing needed making stable.
 - [ ] 2.2 Rows skip drawing off screen (D1): `content-visibility: auto; contain-intrinsic-size: auto var(--clip-row-h)`
   on each clip row (`li.clip-item` of `ClipOrderList.tsx`, incl. ignored and removed rows), `--clip-row-h` the measured
   median collapsed-row height per container-query layout, static CSS only; no `overflow-anchor: none` on the page.
