@@ -126,6 +126,17 @@ describe('badgeOf: the live job ahead of the read', () => {
     assert.equal(badgeOf({ status: 'reading' }, running(0.1), true)?.words, 'Analyzing…')
   })
 
+  it('a live job over a read older than it: the re-read its start causes gives the count and rows', () => {
+    // The read taken before the job: the service overlaid nothing, so no count and the rows
+    // still say "Not analyzed" — why `startKey` reads once more when a trusted job starts.
+    const before = analysis('never', { 'a.mp4': { state: 'never' }, 'b.mp4': { state: 'never' } })
+    assert.equal(badgeOf(ok(before), running(0), true)?.words, 'Analyzing…')
+    assert.equal(clipNoteOf(before, 'a.mp4')?.words, 'Not analyzed')
+    const after = analysis('analyzing', { 'a.mp4': { state: 'analyzing' }, 'b.mp4': { state: 'analyzing' } })
+    assert.equal(badgeOf(ok(after), running(0.2), true)?.words, 'Analyzing 2 clips…')
+    assert.equal(clipNoteOf(after, 'a.mp4')?.words, 'Analyzing…')
+  })
+
   it('a failed read under a running job still shows the job', () => {
     const read: AnalysisRead = { status: 'failed', failure: { cause: 'x', detail: null }, rereading: false }
     assert.equal(badgeOf(read, running(0.3), true)?.state, 'analyzing')

@@ -35,6 +35,16 @@ export function onJobChange(before: Observed, after: Observed, reconciled: boole
 }
 
 /**
+ * Whether the read a job change causes also forgets the page's dismissals: any end of the
+ * event's analysis job this page saw active, live or reconciled, found the suggestions again,
+ * so Re-analyze brings dismissed ones back (the Timeline help's promise). A cancel analysed
+ * nothing to be trusted, so the dismissals stay.
+ */
+export function clearsDismissals(change: JobChange): boolean {
+  return change.reload && change.endedAs !== 'canceled'
+}
+
+/**
  * The key to record when the read is to be checked again, else null: the read says analyzing,
  * the connection is live and carries no active analysis job of the event, and no re-read was
  * made for this read's job yet (`checked`), so a service whose answer stays the same cannot
@@ -51,6 +61,28 @@ export function recheckKey(
   }
   const key = read.analysis.job?.id ?? ''
   return key === checked ? null : key
+}
+
+/**
+ * The job id to record when the read is to be taken once more because a job started: the
+ * event's newest analysis job is active and trusted (live, or the one this page queued), the
+ * read answered before it (it names no job, or another), and no re-read was made for this job
+ * yet (`checked`). The service then reports which clips the job analyzes, and how many, which
+ * a read older than the job cannot. One read per job start, never a timer.
+ */
+export function startKey(
+  read: AnalysisRead,
+  job: Observed,
+  trusted: boolean,
+  checked: string | null,
+): string | null {
+  if (job === null || !trusted || !active(job.status) || read.status !== 'ok') {
+    return null
+  }
+  if (read.analysis.job?.id === job.id || checked === job.id) {
+    return null
+  }
+  return job.id
 }
 
 function clips(count: number): string {

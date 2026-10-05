@@ -36,7 +36,9 @@ state the read reports, and its polite status region SHALL say "Analysis finishe
 failed clips, "Analysis failed for N clips." A job whose end the client learned only by reconciling after a
 lost connection SHALL be re-read without that announcement. When the read reports analyzing but the live
 connection carries no queued or running `analysis` job of the event, the page SHALL re-read once, never in a
-loop.
+loop. When a queued or running `analysis` job of the event that the badge follows starts after the read shown
+(the read names no job, or another), the page SHALL re-read once for that job, so each clip row and the badge's
+clip count say what the job analyzes.
 
 An `analysis` job SHALL NOT be shown as a render: it SHALL NOT be the job a render region, a list row or a
 render notification shows, SHALL NOT replace a render job as the newest, and SHALL NOT mark a shown render job as
@@ -66,6 +68,12 @@ ended.
 - **WHEN** the event's running `analysis` job ends done while its page is open
 - **THEN** the page makes one request to `…/analysis`, the badge shows the state it reports (no badge when
   current), and the status region says "Analysis finished."
+
+#### Scenario: The start of a job re-reads the analysis once
+
+- **WHEN** the operator presses Analyze on an event whose two clips read never, and its job is queued
+- **THEN** the page makes one request to `…/analysis`, each clip row reads "Analyzing…", and once the job runs
+  the badge reads "Analyzing 2 clips…"; no further request is made until the job ends
 
 #### Scenario: Failed clips are named
 

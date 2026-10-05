@@ -116,6 +116,12 @@ SHALL name it.
 - **THEN** the badge reads "Analyzing…" with the job's progress while it runs, and when it ends the lane shows
   the new suggestions without a Refresh, a reload or the Timeline being closed, with the same zoom and playhead
 
+#### Scenario: Re-analyze brings dismissed suggestions back
+
+- **WHEN** the operator dismisses the black suggestion 0:00–0:03 of `C0002.MP4`, presses Re-analyze, and the job
+  ends done finding the same span
+- **THEN** that suggestion reads pending again, with no reload of the page
+
 #### Scenario: Reopening reads again
 
 - **WHEN** the operator re-runs `auto-reel analyze` from a terminal and presses Refresh

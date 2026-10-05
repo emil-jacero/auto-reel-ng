@@ -187,6 +187,18 @@ describe('how an end was learned', () => {
     globalThis.fetch = realFetch
   })
 
+  it('bumps the events version for a render that ends done, never for an analysis job', async () => {
+    const changes = await import('../events/changes.ts')
+    const [first] = FakeSocket.all
+    send(first, 'snapshot', [analysisJob('an-1', 'running'), { ...analysisJob('re-1', 'running'), kind: 'render' }])
+    const before = changes.currentEventsVersion()
+    send(first, 'delta', [analysisJob('an-1', 'done')])
+    assert.equal(store.getState().jobs.get('an-1')?.status, 'done')
+    assert.equal(changes.currentEventsVersion(), before, 'an analysis end does not rescan the list')
+    send(first, 'delta', [{ ...analysisJob('re-1', 'done'), kind: 'render' }])
+    assert.equal(changes.currentEventsVersion(), before + 1, 'a render end does')
+  })
+
   it('marks an end read after a lost connection as reconciled, and a live delta’s as not', async () => {
     const [first] = FakeSocket.all
     send(first, 'snapshot', [analysisJob('rec-1', 'running'), analysisJob('live-1', 'running')])

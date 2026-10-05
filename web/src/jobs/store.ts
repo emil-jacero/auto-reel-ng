@@ -5,6 +5,7 @@ import { eventHref } from '../route'
 import { toast } from '../ui/toast'
 import { etaMs, nextSample } from './eta'
 import type { Sample } from './eta'
+import { isRender } from './kinds'
 import { ACTIVE, isActive } from './status'
 
 /*
@@ -422,13 +423,15 @@ function absorb(incoming: readonly JobOut[], source: Source): void {
 }
 
 /**
- * An ending the store learned of. Every `done` marks the events changed — live,
- * reconciled, or first seen already ended. A toast is raised only for a live end
+ * An ending the store learned of. Every `done` render marks the events changed — live,
+ * reconciled, or first seen already ended; the events list shows nothing an analysis or a
+ * proxy job changes (no analysis field; `latest_job` and staleness are render-only), so their
+ * ends never make it scan the library again. A toast is raised only for a live end
  * of an active version this tab followed, once: a reconciled end, or an ended row
  * with no active version before it, has nothing live to announce.
  */
 function onEnded(job: JobOut, wasActive: boolean, source: Source): void {
-  if (job.status === 'done') {
+  if (job.status === 'done' && isRender(job)) {
     markEventsChanged()
   }
   const name = tracked.get(job.id)

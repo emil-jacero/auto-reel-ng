@@ -524,7 +524,8 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   …/events/{event_id}/analysis` (`force` = Re-analyze), `POST /api/v1/analysis` (Analyze all) and the
   `never | stale | current | analyzing | failed` state with the active job on `GET …/analysis`.
   **v2 analysis from the web has landed** (`analysis-web-controls`, D-20): the event page makes one analysis read
-  (on opening, on Refresh and when the event's `analysis` job ends, live over the jobs WebSocket; never on a timer)
+  (on opening, on Refresh, and once when the event's `analysis` job starts and when it ends, live over the jobs
+  WebSocket; never on a timer; an end it saw also forgets the page's dismissals)
   and shows its published state as a badge on the header's facts line in both modes and in the Timeline's lane
   ("Not analyzed", "Analysis out of date", "Waiting to analyze" / "Analyzing… 42%", "Analysis failed for N clips";
   none when current), with per-clip notes; **Re-analyze** (`POST …/analysis {force: true}`; "Analyze" while never

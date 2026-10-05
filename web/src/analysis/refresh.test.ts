@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 
 import type { Analysis } from '../api/analysis'
 import type { AnalysisRead } from './badge.ts'
-import { endWords, onJobChange, recheckKey } from './refresh.ts'
+import { clearsDismissals, endWords, onJobChange, recheckKey, startKey } from './refresh.ts'
 
 /* When the page reads its analysis again by itself (`refresh.ts`, D3). */
 
@@ -74,6 +74,46 @@ describe('recheckKey', () => {
     assert.equal(recheckKey(read('analyzing', 'j1'), false, false, null), null)
     assert.equal(recheckKey(read('current', null), false, true, null), null)
     assert.equal(recheckKey({ status: 'reading' }, false, true, null), null)
+  })
+})
+
+describe('clearsDismissals', () => {
+  it('forgets the dismissals when a job seen active ends, live or reconciled', () => {
+    // A forced re-analysis of unchanged clips finds the very same spans: without this, every
+    // dismissal would survive `dropGone`, and Re-analyze would not bring them back.
+    assert.equal(clearsDismissals(onJobChange(job('a', 'running'), job('a', 'done'), false)), true)
+    assert.equal(clearsDismissals(onJobChange(job('a', 'running'), job('a', 'done'), true)), true)
+    assert.equal(clearsDismissals(onJobChange(job('a', 'running'), job('a', 'failed'), false)), true)
+  })
+
+  it('keeps them for a cancel, a start, progress, or a job first seen ended', () => {
+    assert.equal(clearsDismissals(onJobChange(job('a', 'running'), job('a', 'canceled'), false)), false)
+    assert.equal(clearsDismissals(onJobChange(null, job('a', 'queued'), false)), false)
+    assert.equal(clearsDismissals(onJobChange(job('a', 'queued'), job('a', 'running'), false)), false)
+    assert.equal(clearsDismissals(onJobChange(null, job('a', 'done'), false)), false)
+  })
+})
+
+describe('startKey', () => {
+  const before = read('never', null)
+
+  it('re-reads once when a trusted job starts after the shown read', () => {
+    assert.equal(startKey(before, job('j1', 'queued'), true, null), 'j1')
+    assert.equal(startKey(before, job('j1', 'running'), true, null), 'j1')
+    // A read naming an older job predates this one too.
+    assert.equal(startKey(read('stale', 'j0'), job('j1', 'running'), true, null), 'j1')
+    // Never twice for one job, whatever the read that answers says.
+    assert.equal(startKey(before, job('j1', 'running'), true, 'j1'), null)
+    // A newer job is read for once more.
+    assert.equal(startKey(before, job('j2', 'queued'), true, 'j1'), 'j2')
+  })
+
+  it('does not re-read when the read knows the job, it is not trusted or not active', () => {
+    assert.equal(startKey(read('analyzing', 'j1'), job('j1', 'running'), true, null), null)
+    assert.equal(startKey(before, job('j1', 'running'), false, null), null)
+    assert.equal(startKey(before, job('j1', 'done'), true, null), null)
+    assert.equal(startKey(before, null, true, null), null)
+    assert.equal(startKey({ status: 'reading' }, job('j1', 'running'), true, null), null)
   })
 })
 
