@@ -100,7 +100,7 @@ Conventions for every task below:
 
 ## 5. Docs and validation
 
-- [ ] 5.1 In `docs/high-level-design.md`: under the gate's analysis-job decision (its D-n; if it took none, add the
+- [x] 5.1 In `docs/high-level-design.md`: under the gate's analysis-job decision (its D-n; if it took none, add the
   next free number, never D-18/D-19/D-20/D-21 nor a reused one) an "Enqueue over REST and state" addendum (the two
   routes, 201 / 200 fresh / 409, the five-state vocabulary, the stat-only rule shared with `--enqueue`, force handled
   by the job); in **D-20** "Analysis overlays", that the lane's note will read `state` instead of `analyzed`
