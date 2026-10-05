@@ -170,7 +170,7 @@ class AnalysisSweep:
                 continue
             if not self._due(event_dir, latest.get(relative)):
                 continue
-            (submission,) = submit_analysis(self._store, self._root, [event_dir], force=False)
+            submission = submit_analysis(self._store, self._root, [event_dir], force=False)[0]
             if submission.created:
                 enqueued.append(submission.event_dir)
                 job_ids.append(submission.job_id)
