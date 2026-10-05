@@ -86,7 +86,7 @@ Conventions for every task below:
   `suggestions.test.ts`'s hand-built `AnalysisOut` fixtures fail `tsc -p tsconfig.test.json`; they go through a
   `legacy()` helper now, no production web file is touched).
 
-- [ ] 4.2 Verify in real browsers (Playwright from the scratch directory only; Chrome via
+- [x] 4.2 Verify in real browsers (Playwright from the scratch directory only; Chrome via
   `localhost/playback-research:chrome`, Firefox >= 155 via `localhost/pcm-audio-research:pw163` after
   `firefox --version` shows it; locators scoped to `main:not([hidden])`; `page.wait_for_timeout`; route only
   `**/api/v1/jobs` and `**/api/v1/jobs/**`). With a dev library from `scripts/make_dev_library.py` on this change's
