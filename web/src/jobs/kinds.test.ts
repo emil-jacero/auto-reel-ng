@@ -115,3 +115,15 @@ describe('a running proxy job and the render screens', () => {
     assert.equal(kinds.newestRenderByEvent(jobs).has(EVENT), false)
   })
 })
+
+describe('an analysis job and the render and proxy screens', () => {
+  it('is neither a render nor a proxy job, and the header does not count it', () => {
+    const running = job('a1', { kind: 'analysis' })
+    const queued = job('a2', { kind: 'analysis', status: 'queued' })
+    assert.equal(kinds.isRender(running), false)
+    assert.equal(kinds.isProxy(running), false)
+    assert.deepEqual(kinds.countRenders([running, queued, job('r')]), { rendering: 1, queued: 0 })
+    assert.equal(kinds.newestRenderByEvent([running]).has(EVENT), false)
+    assert.equal(kinds.newestProxyByEvent([running]).has(EVENT), false)
+  })
+})

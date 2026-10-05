@@ -2272,6 +2272,229 @@
         }
       }
     },
+    "/api/v1/events/{event_id}/analysis": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Analysis",
+        "description": "``GET /api/v1/events/{event_id}/analysis``: cached segments and the analysis state.\n\nAnswers only for an id the events list shows, like the thumbnail and media\nroutes: 404 for any other directory (a year folder, an event's ``original/``, a\n``.reelignore``d event). ``state`` and every clip's ``state`` are read by ``stat`` and\nJSON only, with ``analyzing`` from the event's queued or running analysis job (in\n``job``); nothing is started or written and ``reel.yaml`` is never read. ``analyzed`` is\nlegacy. 502 for an event folder that cannot be listed (with the list's ``failure``\nkind), and with no kind for a layout the service cannot resolve or a clip or cache entry\nthat cannot be read; 503 when the job store is unreachable.",
+        "operationId": "get_analysis_api_v1_events__event_id__analysis_get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Enqueue Analysis",
+        "description": "``POST /api/v1/events/{event_id}/analysis``: enqueue the event's analysis job.\n\nOptional body ``{\"force\": true}`` is Re-analyze: the job analyzes every clip again,\noverriding results and recorded failures when it runs (the request itself writes nothing\nbut the job row). 201 with the queued job; 200 ``fresh`` when no clip reads ``never`` or\n``stale`` and ``force`` is false, or when the folder lists no clip; 409 ``active_job`` with\nthe job's id while an analysis job is queued or running for the event, also when a\nconcurrent request inserted first (a forced request first gives a ``queued`` unforced job\n``force``); 404 for an id the events list does not show; 502 for an event folder, a clip or\na cache entry that cannot be read; 503 when the job store is unreachable. The event's\nrender and proxy jobs are independent of it. ``reel.yaml`` is never read.",
+        "operationId": "enqueue_analysis_api_v1_events__event_id__analysis_post",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AnalysisEnqueueRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "No clip needs analysis; nothing was enqueued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisFreshResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analysis": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Analyze All",
+        "description": "``POST /api/v1/analysis``: Analyze all.\n\nConsiders every event the events list shows, in its order: an event with a queued or\nrunning analysis job counts ``active``; one whose folder, a clip or a cache entry cannot\nbe read is listed in ``unreadable`` and the others are still considered; one where no clip\nreads ``never`` or ``stale`` counts ``fresh``; every other event gets an unforced analysis\njob and counts ``queued``. No body. A project walk that fails is a 502 with nothing\nenqueued; an unreachable job store a 503 (jobs inserted before it stay queued, and a repeat\ncounts them ``active``). Nothing is started or written but job rows; ``reel.yaml`` is never\nread.",
+        "operationId": "analyze_all_api_v1_analysis_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzeAllResult"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/events": {
       "get": {
         "tags": [
@@ -2325,69 +2548,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/events/{event_id}/analysis": {
-      "get": {
-        "tags": [
-          "events"
-        ],
-        "summary": "Get Analysis",
-        "description": "``GET /api/v1/events/{event_id}/analysis`` (task 2.4): cached segments only.\n\nAnswers only for an id the events list shows, like the thumbnail and media\nroutes: 404 for any other directory (a year folder, an event's ``original/``, a\n``.reelignore``d event). 502 for an event folder that cannot be listed (with the\nlist's ``failure`` kind) and for a layout the service cannot resolve (with no\nkind). The database is never touched.\n\nRegistered *before* the ``{event_id:path}`` detail route below: both patterns\nare greedy over ``/``, and Starlette matches routes in registration order, so\nthe more specific ``/analysis`` suffix must be tried first or the detail route\nwould swallow it (``event_id`` ending in literal ``/analysis``).",
-        "operationId": "get_analysis_api_v1_events__event_id__analysis_get",
-        "parameters": [
-          {
-            "name": "event_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Event Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AnalysisOut"
-                }
-              }
-            }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "502": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Bad Gateway"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -3301,11 +3461,54 @@
   },
   "components": {
     "schemas": {
+      "AnalysisEnqueueRequest": {
+        "properties": {
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "AnalysisEnqueueRequest",
+        "description": "The optional body of ``POST /api/v1/events/{event_id}/analysis``.\n\n``force`` is Re-analyze: the job analyzes every clip again, overriding results and recorded\nfailures when it runs."
+      },
+      "AnalysisFreshResult": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "status": {
+            "type": "string",
+            "const": "fresh",
+            "title": "Status"
+          },
+          "clip_count": {
+            "type": "integer",
+            "title": "Clip Count"
+          },
+          "failed_count": {
+            "type": "integer",
+            "title": "Failed Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "status",
+          "clip_count",
+          "failed_count"
+        ],
+        "title": "AnalysisFreshResult",
+        "description": "The body of the analysis enqueue when no clip needs analysis and nothing was enqueued."
+      },
       "AnalysisOut": {
         "properties": {
           "analyzed": {
             "type": "boolean",
-            "title": "Analyzed"
+            "title": "Analyzed",
+            "description": "Legacy: read `state` instead"
           },
           "segments": {
             "additionalProperties": {
@@ -3317,14 +3520,109 @@
             "type": "object",
             "title": "Segments",
             "default": {}
+          },
+          "state": {
+            "$ref": "#/components/schemas/AnalysisState"
+          },
+          "clips": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ClipAnalysisOut"
+            },
+            "type": "object",
+            "title": "Clips"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
         "required": [
-          "analyzed"
+          "analyzed",
+          "state",
+          "clips"
         ],
         "title": "AnalysisOut",
-        "description": "An event's cached analysis (D-A3 open question: raw sidecar segments, per clip).\n\n``analyzed`` distinguishes \"never analyzed\" (``False``, ``segments`` empty)\nfrom \"analyzed, found nothing\" (``True``, ``segments`` empty) — the sidecar\ncache is per-clip, so this is true when at least one clip has a cache entry."
+        "description": "An event's cached analysis and its state (D-A3, ``analysis-enqueue-api``).\n\n``segments`` holds a clip's sidecar segments exactly when its cache entry is valid for the\nclip as it is now (an empty list: analyzed, nothing found). ``state`` and ``clips`` say\nwhere the event and each of its clips stand, read by ``stat`` and JSON only; ``job`` is the\nevent's queued or running analysis job, else null.\n\n``analyzed`` is **legacy**: it is true whenever the event's ``.auto-reel/cache/`` folder\nexists, which a render manifest also creates, so it cannot tell \"never analyzed\" from\n\"rendered\". Read ``state`` instead; the field keeps its value for older clients."
+      },
+      "AnalysisState": {
+        "type": "string",
+        "enum": [
+          "never",
+          "stale",
+          "current",
+          "analyzing",
+          "failed"
+        ],
+        "title": "AnalysisState",
+        "description": "An event's or a clip's analysis state: a closed vocabulary the schema publishes (D-8).\n\n``never``: no result and no recorded failure for any version of the clip (of any clip of\nthe event). ``stale``: some clip has no result for the file as it is now while other\nresults exist, or a clip changed since it was analyzed or failed. ``current``: every clip\nhas a result for the file as it is now (also an event with no clips). ``analyzing``: an\nanalysis job for the event is queued or running. ``failed``: nothing needs analysis and at\nleast one clip's analysis failed for the file as it is now."
+      },
+      "AnalyzeAllResult": {
+        "properties": {
+          "queued": {
+            "type": "integer",
+            "title": "Queued"
+          },
+          "fresh": {
+            "type": "integer",
+            "title": "Fresh"
+          },
+          "active": {
+            "type": "integer",
+            "title": "Active"
+          },
+          "unreadable": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyzeAllUnreadable"
+            },
+            "type": "array",
+            "title": "Unreadable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "queued",
+          "fresh",
+          "active",
+          "unreadable"
+        ],
+        "title": "AnalyzeAllResult",
+        "description": "The body of ``POST /api/v1/analysis`` (Analyze all): what happened to each event."
+      },
+      "AnalyzeAllUnreadable": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EventFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "detail"
+        ],
+        "title": "AnalyzeAllUnreadable",
+        "description": "An event ``POST /api/v1/analysis`` could not read, and so did not consider."
       },
       "CancelOutcome": {
         "type": "string",
@@ -3541,6 +3839,30 @@
         ],
         "title": "ChapterOut",
         "description": "One chapter: its name (``\"\"`` is the default/root chapter), ordered clips and card.\n\n``card`` is the resolved title card, or ``null`` when it cannot be resolved (then\n``card_error`` says why: the event-wide style, or this chapter's own card)."
+      },
+      "ClipAnalysisOut": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/AnalysisState"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "ClipAnalysisOut",
+        "description": "One clip's analysis state; ``detail`` is the recorded failure's cause for ``failed``."
       },
       "ClipOut": {
         "properties": {
@@ -4333,7 +4655,7 @@
           "created_at"
         ],
         "title": "JobOut",
-        "description": "One job's full detail, mirroring ``jobs show`` (task 3.2).\n\n``kind`` says what sort of work the job is (``render`` or ``proxy``), typed with the job\nstore's closed vocabulary so generated clients get an exhaustive union (D-8, §4.10)."
+        "description": "One job's full detail, mirroring ``jobs show`` (task 3.2).\n\n``kind`` says what sort of work the job is (``render``, ``proxy`` or ``analysis``), typed with the job\nstore's closed vocabulary so generated clients get an exhaustive union (D-8, §4.10)."
       },
       "JobStatus": {
         "type": "string",
