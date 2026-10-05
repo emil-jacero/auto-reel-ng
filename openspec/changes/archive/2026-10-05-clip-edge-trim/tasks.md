@@ -53,10 +53,11 @@
   any geometry change in the Timeline triggers, and nearly all of that is the Edit page's 80-row clip list: with the
   list hidden the same drag measures 0.27–6.0 % (median 0.92 %). Open until `edit-list-paint-cost` lands and the drag is
   measured again (numbers in the HLD under D-20).
-  Closed by `edit-list-paint-cost` (2026-10-05, measured on its branch with this change merged; HLD D-20): the same
-  Trim Out drag in Chrome 154 at 4x, five launches, 0 / 0 / 0 / 0.27 / 0 % -> median 0 % (p95 about 20 ms), idle 0 %;
-  `origin/main` in the same session median 0.32 % (the host was quieter than the 4-10 load above); Firefox 155 0 %.
-  A traced drag's layerize went from 7.6 s to 0.19 s.
+  Closed by `edit-list-paint-cost` (2026-10-05, measured on its final branch, with this change merged and the edge
+  tools stepping aside while a zoom is in progress; HLD D-20): the same Trim Out drag in Chrome 154 at 4x, five
+  launches, 0 / 0 / 0.27 / 0 / 0 % -> median 0 % (p95 20.1-20.4 ms), idle 0 % in all five; `origin/main` in the same
+  session median 0.16 % (0-0.50 %; the host, load 1.2-1.8, was quieter than the 4-10 above); Firefox 155 0 % in all
+  three. A traced drag's layerize went from 7.6 s to 0.19 s.
 
 ## 5. Docs
 

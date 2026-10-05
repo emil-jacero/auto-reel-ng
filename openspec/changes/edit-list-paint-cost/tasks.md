@@ -122,7 +122,7 @@ recorded per run.
 
 ## 3. The gate
 
-- [ ] 3.1 Re-run 1.1's measurement on this branch (event-timeline requirement): Chrome 4x `slider` ×5 with `idle` ×5 in
+- [x] 3.1 Re-run 1.1's measurement on this branch (event-timeline requirement): Chrome 4x `slider` ×5 with `idle` ×5 in
   the same session, Firefox ×3, scrub and frame-step gates in both browsers. Test: Chrome median ≤ 2 % frames over
   25 ms, Firefox median ≤ 2 %, scrub ≥ 30 fps median, frame-step p90 ≤ 60 ms. If Chrome stays above 2 %: record the
   best achieved with the breakdown in the PR body, leave this task open and stop for the supervisor's decision (the
@@ -150,13 +150,20 @@ recorded per run.
   Supervisor decision (2026-10-05): the 2 % stays; that fix is task 2.5. Re-run this task on the final build after 2.5
   (Chrome 4x `slider` x5 with `idle`, Firefox x3, scrub and frame-step in both); if still above 2 %, record the best
   with the breakdown and stop again.
-- [ ] 3.2 Close #140's gate: if 3.1 meets 2 %, tick `timeline-zoom-slider`'s tasks 3.1 and 5.2 in
+  Final (after 2.5; quiet host, load 1.0-2.3, one session; `out/gate3.txt`): Chrome 154 at 4x, five launches of three
+  drags: 0.30-1.47 %, launch medians 0.33 / 0.61 / 0.37 / 0.58 / 0.87 % -> **median 0.58 %** (p95 19.1-22.1 ms); idle
+  0 % (0-0.55 %, launch medians all 0); `origin/main` in the same session 47.4-67.1 %, median 50.0 % (p95 73-78 ms).
+  Firefox 155, three launches: 0 % in all nine drags. Scrub / frame-step: 400-clip event Chrome 55.9 fps, p90 27.6 ms,
+  Firefox 48.6 fps, p90 25.9 ms; Grillning 55.3 / 49.5 fps, p90 26.3 / 23.4 ms. **The gate is met.**
+- [x] 3.2 Close #140's gate: if 3.1 meets 2 %, tick `timeline-zoom-slider`'s tasks 3.1 and 5.2 in
   `openspec/changes/archive/2026-10-05-timeline-zoom-slider/tasks.md`, each with a one-line status naming
   `edit-list-paint-cost` and the figures (the `event-timeline` zoom requirement has no frame figure, so its text is not
   changed). Test: `openspec validate edit-list-paint-cost --strict` passes; `grep -c '\- \[ \]'` on that archived file
   is 0.
   Status: reopened with 3.1 after the merge; the archived tasks 3.1 and 5.2 are unticked again, with the figures.
-- [ ] 3.3 Close #141's gate (`clip-edge-trim` task 4.2): after merging `origin/main`, run its scripted Trim Out edge
+  Final: 3.1 met (0.58 %); the archived 3.1 and 5.2 are ticked with a status line naming this change's task 2.5 and the
+  figures; `grep -c '\- \[ \]'` on that file is 0; the `event-timeline` zoom requirement text is unchanged.
+- [x] 3.3 Close #141's gate (`clip-edge-trim` task 4.2): after merging `origin/main`, run its scripted Trim Out edge
   drag (80 clips, the third clip in view, 180 moves, about 45 px per second; `edge_perf.py` in SCRATCH from its
   `perf.py`) in Chrome 154 at 4x, five launches each with an idle run first, `origin/main` in the same session, and in
   Firefox 155 ×3; record both gates in the HLD under D-20 and tick `clip-edge-trim`'s 4.2 with the figures if ≤ 2 %.
@@ -169,16 +176,23 @@ recorded per run.
   Reopened (2026-10-05): re-run on the final build after 2.5 (the edge drag must not regress). `clip-edge-trim` 4.2 is
   already ticked on this branch (commit 2696ccb) with the pre-2.5 figures: replace its status line with the final ones,
   or untick it if the final build misses 2 %.
+  Final (`out/gate3.txt`, load 1.2-1.8): Chrome 4x 0 / 0 / 0.27 / 0 / 0 % -> median 0 % (p95 20.1-20.4 ms), idle 0 % in
+  all five; `origin/main` 0.50 / 0.32 / 0.15 / 0.16 / 0 % -> median 0.16 %; Firefox 0 % in all three. `clip-edge-trim`
+  4.2's status line now carries these figures (still ticked).
 
 ## 4. Docs and gates
 
-- [ ] 4.1 HLD (`docs/high-level-design.md`): a D-20 note (Edit page paint cost: per-row `content-visibility` with a
+- [x] 4.1 HLD (`docs/high-level-design.md`): a D-20 note (Edit page paint cost: per-row `content-visibility` with a
   remembered intrinsic size, zero clip-row renders on zoom/scrub/play, the before/after figures and the idle floor), a
   §4.10 bullet and a §6 phase-9 note naming `edit-list-paint-cost`. Test: a `docs.test.ts` case asserting
   `edit-list-paint-cost` is named in D-20, §4.10 and §6.
   Reopened (2026-10-05): add to the D-20 note the edge tools' zoom-settle rule (D6, 150 ms, focused tool kept) and both
   final gate figures (#140 slider drag on 400 clips and #141 edge drag on 80 clips, Chrome 4x with idle, Firefox) from
   3.1/3.3; the `docs.test.ts` case also asserts the settle rule is named in D-20.
+  Status: D-20's note carries the settle rule (`zoomSettle`, 150 ms, the focused or dragged tool kept, a slider press
+  takes focus) and both final gates (slider 0.58 %, edge 0 %, idle 0 %, Firefox 0 %, scrub/step); §4.10 and §6 say
+  both gates are closed. A new `docs.test.ts` case asserts "zoom settles", "150 ms", `zoomSettle` and "holds focus" in
+  D-20 (none was there before the edit); `npm test` 1092/1092.
 - [ ] 4.2 Gates: `npm test`, `npx tsc --noEmit` and `npm run build` in podman; the full Playwright run of 2.2–2.4 and
   3.1 in Chrome 154 and Firefox ≥ 155, light and dark, 1280 and 390 px, screenshots looked at; no request other than
   reads during any zoom, scrub, play or scroll.
