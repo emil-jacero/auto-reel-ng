@@ -45,6 +45,7 @@ EXPECTED_PATHS = {
     "/api/v1/events",
     "/api/v1/events/{event_id}",
     "/api/v1/events/{event_id}/analysis",
+    "/api/v1/analysis",
     "/api/v1/events/{event_id}/reel",
     "/api/v1/events/{event_id}/thumbnail",
     "/api/v1/events/{event_id}/media",
@@ -72,6 +73,12 @@ EXPECTED_MODELS = {
     "MovieOut",
     "MovieChapterOut",
     "AnalysisOut",
+    "AnalysisState",
+    "ClipAnalysisOut",
+    "AnalysisEnqueueRequest",
+    "AnalysisFreshResult",
+    "AnalyzeAllResult",
+    "AnalyzeAllUnreadable",
     "EditorialWriteResult",
     "JobOut",
     "JobSummaryOut",
@@ -338,7 +345,7 @@ def test_the_latest_job_publishes_its_fields_as_the_job_detail_does() -> None:
 
 
 def test_the_job_kind_is_the_closed_enumeration_in_both_job_models() -> None:
-    """``kind`` is ``render`` | ``proxy``, required, defined identically on the detail and the
+    """``kind`` is ``render`` | ``proxy`` | ``analysis``, required, defined identically on the detail and the
     latest-job summary, so a generated client's exhaustive ``switch`` breaks when a kind is added.
     """
     models = build_openapi_schema()["components"]["schemas"]
@@ -422,13 +429,92 @@ def test_editorial_routes_declare_their_responses_and_etag() -> None:
 
 
 def test_the_analysis_route_publishes_its_problem_responses() -> None:
-    """A 404 and a 502 in the shared problem shape; no 503, the route never needs the database."""
+    """A 404, a 502 and (``analysis-enqueue-api``) a 503 in the shared problem shape.
+
+    The read needs the job store for ``analyzing``, so an unreachable store is a declared 503.
+    """
     operation = build_openapi_schema()["paths"]["/api/v1/events/{event_id}/analysis"]["get"]
     responses = operation["responses"]
-    assert set(responses) - {"422"} == {"200", "404", "502"}
-    for code in ("404", "502"):
+    assert set(responses) - {"422"} == {"200", "404", "502", "503"}
+    for code in ("404", "502", "503"):
         ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
         assert ref.endswith("/ProblemOut"), code
+
+
+def test_the_analysis_read_publishes_the_state_vocabulary() -> None:
+    """One ``AnalysisState`` enumeration for the event's and every clip's ``state``."""
+    schema = build_openapi_schema()
+    models = schema["components"]["schemas"]
+    operation = schema["paths"]["/api/v1/events/{event_id}/analysis"]["get"]
+    ok = operation["responses"]["200"]["content"]["application/json"]["schema"]
+    assert ok == {"$ref": "#/components/schemas/AnalysisOut"}
+    published = models["AnalysisState"]
+    assert published["type"] == "string"
+    assert published["enum"] == ["never", "stale", "current", "analyzing", "failed"]
+    out = models["AnalysisOut"]
+    assert {"analyzed", "state", "clips"} <= set(out["required"])
+    assert "job" not in out["required"]
+    state_ref = {"$ref": "#/components/schemas/AnalysisState"}
+    assert out["properties"]["state"] == state_ref
+    assert models["ClipAnalysisOut"]["properties"]["state"] == state_ref
+    assert out["properties"]["clips"]["additionalProperties"] == {
+        "$ref": "#/components/schemas/ClipAnalysisOut"
+    }
+    assert _non_null(out["properties"]["job"]) == {"$ref": "#/components/schemas/JobOut"}
+    assert "legacy" in out["properties"]["analyzed"]["description"].lower()
+
+
+def test_the_analysis_enqueue_publishes_its_body_and_responses() -> None:
+    schema = build_openapi_schema()
+    operation = schema["paths"]["/api/v1/events/{event_id}/analysis"]["post"]
+    body = operation["requestBody"]
+    assert body.get("required", False) is False
+    assert _non_null(body["content"]["application/json"]["schema"]) == {
+        "$ref": "#/components/schemas/AnalysisEnqueueRequest"
+    }
+    request = schema["components"]["schemas"]["AnalysisEnqueueRequest"]
+    assert request["properties"]["force"]["type"] == "boolean"
+    assert "required" not in request
+    responses = operation["responses"]
+    assert {code for code in responses if code != "422"} == {
+        "200",
+        "201",
+        "404",
+        "409",
+        "502",
+        "503",
+    }
+    assert responses["201"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/JobOut"
+    }
+    assert responses["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AnalysisFreshResult"
+    }
+    for code in ("404", "409", "502", "503"):
+        ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
+        assert ref.endswith("/ProblemOut"), code
+    fresh = schema["components"]["schemas"]["AnalysisFreshResult"]
+    assert sorted(fresh["required"]) == ["clip_count", "event_id", "failed_count", "status"]
+    assert fresh["properties"]["status"] == {"const": "fresh", "title": "Status", "type": "string"}
+
+
+def test_analyze_all_publishes_no_body_and_its_counts() -> None:
+    schema = build_openapi_schema()
+    operation = schema["paths"]["/api/v1/analysis"]["post"]
+    assert "requestBody" not in operation
+    responses = operation["responses"]
+    assert {code for code in responses if code != "422"} == {"200", "502", "503"}
+    assert responses["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AnalyzeAllResult"
+    }
+    for code in ("502", "503"):
+        ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
+        assert ref.endswith("/ProblemOut"), code
+    result = schema["components"]["schemas"]["AnalyzeAllResult"]
+    assert sorted(result["required"]) == ["active", "fresh", "queued", "unreadable"]
+    item = schema["components"]["schemas"]["AnalyzeAllUnreadable"]
+    assert sorted(item["required"]) == ["detail", "event_id"]
+    assert _non_null(item["properties"]["failure"]) == {"$ref": "#/components/schemas/EventFailure"}
 
 
 def test_the_thumbnail_route_publishes_its_parameters_and_responses() -> None:

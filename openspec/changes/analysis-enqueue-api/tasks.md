@@ -75,14 +75,16 @@ Conventions for every task below:
 
 ## 4. Generated artifacts and the web
 
-- [ ] 4.1 Regenerate `web/openapi.json` (`.venv/bin/python -m auto_reel_ng.api.openapi > web/openapi.json`) and
+- [x] 4.1 Regenerate `web/openapi.json` (`.venv/bin/python -m auto_reel_ng.api.openapi > web/openapi.json`) and
   `web/src/api/schema.d.ts` (`npm run generate:types` in the node:22 container), and add to
   `web/src/jobs/kinds.test.ts` that an `analysis` job is neither a render nor a proxy job and is not counted by
   `countRenders` (no change to `kinds.ts`). Verify in `tests/test_api_openapi.py`: `JobKind` is `render`, `proxy`,
   `analysis`; `AnalysisState` is the five values and both `state` fields reference it; `AnalysisOut` requires `state`
   and `clips`; both new routes declare the bodies and responses of their spec requirements; the 503 on
   `GET …/analysis`; the drift test passes. In the container: `npx tsc --noEmit`, `npm test` and `npm run build` pass
-  with no hand edit under `web/src` besides `schema.d.ts` and the test.
+  with no hand edit under `web/src` besides `schema.d.ts` and the tests (the required `state` and `clips` made
+  `suggestions.test.ts`'s hand-built `AnalysisOut` fixtures fail `tsc -p tsconfig.test.json`; they go through a
+  `legacy()` helper now, no production web file is touched).
 
 - [ ] 4.2 Verify in real browsers (Playwright from the scratch directory only; Chrome via
   `localhost/playback-research:chrome`, Firefox >= 155 via `localhost/pcm-audio-research:pw163` after

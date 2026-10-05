@@ -38,6 +38,13 @@ import {
 import type { Refusal, SuggestionKeyEvent } from './suggestions.ts'
 
 const black = { start: 0, end: 3.2, kind: 'black' }
+/** A read as these notes knew it: the state fields (analysis-enqueue-api) are not read here. */
+const legacy = (read: Pick<Analysis, 'analyzed' | 'segments'>): Analysis => ({
+  ...read,
+  state: 'current',
+  clips: {},
+  job: null,
+})
 const cut = (from: number, to: number, removed = false) => ({ in: from, out: to, removed })
 
 describe('suggestionState', () => {
@@ -372,37 +379,39 @@ describe('the words', () => {
   })
 
   it('tells the three kinds of "no suggestions" apart', () => {
-    assert.equal(eventNote({ analyzed: false, segments: {} }), NEVER_ANALYZED)
+    assert.equal(eventNote(legacy({ analyzed: false, segments: {} })), NEVER_ANALYZED)
     // The service says `analyzed` once the cache directory exists, and a render writes
     // its manifest there: no entries is never analysed, whatever the flag says.
-    assert.equal(eventNote({ analyzed: true, segments: {} }), NEVER_ANALYZED)
+    assert.equal(eventNote(legacy({ analyzed: true, segments: {} })), NEVER_ANALYZED)
     // The lane shows the badge; the command is the Timeline help's.
     assert.equal(NEVER_ANALYZED, 'Not analyzed')
     assert.equal(ANALYZE_COMMAND, 'Not analyzed. Run `auto-reel analyze <root>`, then Refresh.')
-    assert.equal(eventNote({ analyzed: true, segments: { 'a.mp4': [] } }), ANALYZED_CLEAN)
+    assert.equal(eventNote(legacy({ analyzed: true, segments: { 'a.mp4': [] } })), ANALYZED_CLEAN)
     assert.equal(
-      eventNote({
-        analyzed: true,
-        segments: { 'a.mp4': [{ start: 0, end: 1, kind: 'black', confidence: 1 }] },
-      }),
+      eventNote(
+        legacy({
+          analyzed: true,
+          segments: { 'a.mp4': [{ start: 0, end: 1, kind: 'black', confidence: 1 }] },
+        }),
+      ),
       null,
     )
   })
 
   it('marks a clip with no entry "Not analyzed" only in an analysed event', () => {
-    const analysed: Analysis = { analyzed: true, segments: { 'a.mp4': [], 'b.mp4': [] } }
+    const analysed = legacy({ analyzed: true, segments: { 'a.mp4': [], 'b.mp4': [] } })
     assert.equal(clipNotAnalyzed(analysed, 'c.mp4'), true)
     assert.equal(clipNotAnalyzed(analysed, 'a.mp4'), false) // analysed, nothing found
-    assert.equal(clipNotAnalyzed({ analyzed: false, segments: {} }, 'c.mp4'), false)
+    assert.equal(clipNotAnalyzed(legacy({ analyzed: false, segments: {} }), 'c.mp4'), false)
   })
 
   it('does not mark a clip of a rendered but never analysed event', () => {
     // analyzed: true with no entries (the cache holds only the render manifest).
-    assert.equal(clipNotAnalyzed({ analyzed: true, segments: {} }, 'a.mp4'), false)
+    assert.equal(clipNotAnalyzed(legacy({ analyzed: true, segments: {} }), 'a.mp4'), false)
   })
 
   it('does not take a clip named like an Object prototype member as analysed', () => {
-    const analysed: Analysis = { analyzed: true, segments: { 'a.mp4': [] } }
+    const analysed = legacy({ analyzed: true, segments: { 'a.mp4': [] } })
     assert.equal(clipNotAnalyzed(analysed, 'constructor'), true)
     assert.equal(clipNotAnalyzed(analysed, 'toString'), true)
   })

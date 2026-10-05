@@ -235,6 +235,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{event_id}/analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Analysis
+         * @description ``GET /api/v1/events/{event_id}/analysis``: cached segments and the analysis state.
+         *
+         *     Answers only for an id the events list shows, like the thumbnail and media
+         *     routes: 404 for any other directory (a year folder, an event's ``original/``, a
+         *     ``.reelignore``d event). ``state`` and every clip's ``state`` are read by ``stat`` and
+         *     JSON only, with ``analyzing`` from the event's queued or running analysis job (in
+         *     ``job``); nothing is started or written and ``reel.yaml`` is never read. ``analyzed`` is
+         *     legacy. 502 for an event folder that cannot be listed (with the list's ``failure``
+         *     kind), and with no kind for a layout the service cannot resolve or a clip or cache entry
+         *     that cannot be read; 503 when the job store is unreachable.
+         */
+        get: operations["get_analysis_api_v1_events__event_id__analysis_get"];
+        put?: never;
+        /**
+         * Enqueue Analysis
+         * @description ``POST /api/v1/events/{event_id}/analysis``: enqueue the event's analysis job.
+         *
+         *     Optional body ``{"force": true}`` is Re-analyze: the job analyzes every clip again,
+         *     overriding results and recorded failures when it runs (the request itself writes nothing
+         *     but the job row). 201 with the queued job; 200 ``fresh`` when no clip reads ``never`` or
+         *     ``stale`` and ``force`` is false, or when the folder lists no clip; 409 ``active_job`` with
+         *     the job's id while an analysis job is queued or running for the event, also when a
+         *     concurrent request inserted first (a forced request first gives a ``queued`` unforced job
+         *     ``force``); 404 for an id the events list does not show; 502 for an event folder, a clip or
+         *     a cache entry that cannot be read; 503 when the job store is unreachable. The event's
+         *     render and proxy jobs are independent of it. ``reel.yaml`` is never read.
+         */
+        post: operations["enqueue_analysis_api_v1_events__event_id__analysis_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Analyze All
+         * @description ``POST /api/v1/analysis``: Analyze all.
+         *
+         *     Considers every event the events list shows, in its order: an event with a queued or
+         *     running analysis job counts ``active``; one whose folder, a clip or a cache entry cannot
+         *     be read is listed in ``unreadable`` and the others are still considered; one where no clip
+         *     reads ``never`` or ``stale`` counts ``fresh``; every other event gets an unforced analysis
+         *     job and counts ``queued``. No body. A project walk that fails is a 502 with nothing
+         *     enqueued; an unreachable job store a 503 (jobs inserted before it stay queued, and a repeat
+         *     counts them ``active``). Nothing is started or written but job rows; ``reel.yaml`` is never
+         *     read.
+         */
+        post: operations["analyze_all_api_v1_analysis_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events": {
         parameters: {
             query?: never;
@@ -253,37 +325,6 @@ export interface paths {
          *     502. Neither is retried and neither degrades into a partial list.
          */
         get: operations["get_events_api_v1_events_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/events/{event_id}/analysis": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Analysis
-         * @description ``GET /api/v1/events/{event_id}/analysis`` (task 2.4): cached segments only.
-         *
-         *     Answers only for an id the events list shows, like the thumbnail and media
-         *     routes: 404 for any other directory (a year folder, an event's ``original/``, a
-         *     ``.reelignore``d event). 502 for an event folder that cannot be listed (with the
-         *     list's ``failure`` kind) and for a layout the service cannot resolve (with no
-         *     kind). The database is never touched.
-         *
-         *     Registered *before* the ``{event_id:path}`` detail route below: both patterns
-         *     are greedy over ``/``, and Starlette matches routes in registration order, so
-         *     the more specific ``/analysis`` suffix must be tried first or the detail route
-         *     would swallow it (``event_id`` ending in literal ``/analysis``).
-         */
-        get: operations["get_analysis_api_v1_events__event_id__analysis_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -565,15 +606,54 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
-         * AnalysisOut
-         * @description An event's cached analysis (D-A3 open question: raw sidecar segments, per clip).
+         * AnalysisEnqueueRequest
+         * @description The optional body of ``POST /api/v1/events/{event_id}/analysis``.
          *
-         *     ``analyzed`` distinguishes "never analyzed" (``False``, ``segments`` empty)
-         *     from "analyzed, found nothing" (``True``, ``segments`` empty) — the sidecar
-         *     cache is per-clip, so this is true when at least one clip has a cache entry.
+         *     ``force`` is Re-analyze: the job analyzes every clip again, overriding results and recorded
+         *     failures when it runs.
+         */
+        AnalysisEnqueueRequest: {
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+        };
+        /**
+         * AnalysisFreshResult
+         * @description The body of the analysis enqueue when no clip needs analysis and nothing was enqueued.
+         */
+        AnalysisFreshResult: {
+            /** Event Id */
+            event_id: string;
+            /**
+             * Status
+             * @constant
+             */
+            status: "fresh";
+            /** Clip Count */
+            clip_count: number;
+            /** Failed Count */
+            failed_count: number;
+        };
+        /**
+         * AnalysisOut
+         * @description An event's cached analysis and its state (D-A3, ``analysis-enqueue-api``).
+         *
+         *     ``segments`` holds a clip's sidecar segments exactly when its cache entry is valid for the
+         *     clip as it is now (an empty list: analyzed, nothing found). ``state`` and ``clips`` say
+         *     where the event and each of its clips stand, read by ``stat`` and JSON only; ``job`` is the
+         *     event's queued or running analysis job, else null.
+         *
+         *     ``analyzed`` is **legacy**: it is true whenever the event's ``.auto-reel/cache/`` folder
+         *     exists, which a render manifest also creates, so it cannot tell "never analyzed" from
+         *     "rendered". Read ``state`` instead; the field keeps its value for older clients.
          */
         AnalysisOut: {
-            /** Analyzed */
+            /**
+             * Analyzed
+             * @description Legacy: read `state` instead
+             */
             analyzed: boolean;
             /**
              * Segments
@@ -582,6 +662,50 @@ export interface components {
             segments: {
                 [key: string]: components["schemas"]["SegmentOut"][];
             };
+            state: components["schemas"]["AnalysisState"];
+            /** Clips */
+            clips: {
+                [key: string]: components["schemas"]["ClipAnalysisOut"];
+            };
+            job?: components["schemas"]["JobOut"] | null;
+        };
+        /**
+         * AnalysisState
+         * @description An event's or a clip's analysis state: a closed vocabulary the schema publishes (D-8).
+         *
+         *     ``never``: no result and no recorded failure for any version of the clip (of any clip of
+         *     the event). ``stale``: some clip has no result for the file as it is now while other
+         *     results exist, or a clip changed since it was analyzed or failed. ``current``: every clip
+         *     has a result for the file as it is now (also an event with no clips). ``analyzing``: an
+         *     analysis job for the event is queued or running. ``failed``: nothing needs analysis and at
+         *     least one clip's analysis failed for the file as it is now.
+         * @enum {string}
+         */
+        AnalysisState: "never" | "stale" | "current" | "analyzing" | "failed";
+        /**
+         * AnalyzeAllResult
+         * @description The body of ``POST /api/v1/analysis`` (Analyze all): what happened to each event.
+         */
+        AnalyzeAllResult: {
+            /** Queued */
+            queued: number;
+            /** Fresh */
+            fresh: number;
+            /** Active */
+            active: number;
+            /** Unreadable */
+            unreadable: components["schemas"]["AnalyzeAllUnreadable"][];
+        };
+        /**
+         * AnalyzeAllUnreadable
+         * @description An event ``POST /api/v1/analysis`` could not read, and so did not consider.
+         */
+        AnalyzeAllUnreadable: {
+            /** Event Id */
+            event_id: string;
+            /** Detail */
+            detail: string;
+            failure?: components["schemas"]["EventFailure"] | null;
         };
         /**
          * CancelOutcome
@@ -670,6 +794,15 @@ export interface components {
             card?: components["schemas"]["ResolvedCardOut"] | null;
             /** Card Error */
             card_error?: string | null;
+        };
+        /**
+         * ClipAnalysisOut
+         * @description One clip's analysis state; ``detail`` is the recorded failure's cause for ``failed``.
+         */
+        ClipAnalysisOut: {
+            state: components["schemas"]["AnalysisState"];
+            /** Detail */
+            detail?: string | null;
         };
         /**
          * ClipOut
@@ -1046,7 +1179,7 @@ export interface components {
          * JobOut
          * @description One job's full detail, mirroring ``jobs show`` (task 3.2).
          *
-         *     ``kind`` says what sort of work the job is (``render`` or ``proxy``), typed with the job
+         *     ``kind`` says what sort of work the job is (``render``, ``proxy`` or ``analysis``), typed with the job
          *     store's closed vocabulary so generated clients get an exhaustive union (D-8, §4.10).
          */
         JobOut: {
@@ -2668,44 +2801,6 @@ export interface operations {
             };
         };
     };
-    get_events_api_v1_events_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": (components["schemas"]["EventSummaryOut"] | components["schemas"]["EventErrorOut"])[];
-                };
-            };
-            /** @description Bad Gateway */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemOut"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemOut"];
-                };
-            };
-        };
-    };
     get_analysis_api_v1_events__event_id__analysis_get: {
         parameters: {
             query?: never;
@@ -2746,6 +2841,171 @@ export interface operations {
             };
             /** @description Bad Gateway */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+        };
+    };
+    enqueue_analysis_api_v1_events__event_id__analysis_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AnalysisEnqueueRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description No clip needs analysis; nothing was enqueued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisFreshResult"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+        };
+    };
+    analyze_all_api_v1_analysis_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyzeAllResult"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+        };
+    };
+    get_events_api_v1_events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": (components["schemas"]["EventSummaryOut"] | components["schemas"]["EventErrorOut"])[];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
