@@ -19,6 +19,7 @@ from auto_reel_ng.analysis.cache import (
     _entry_path,
     clip_signal,
     inspect_entry,
+    pending_clips,
     write_entry,
     write_failure,
 )
@@ -296,3 +297,21 @@ def test_inspect_entry_tells_every_kind_apart(event: Path) -> None:
     assert inspect_entry(event, "C0001.MP4", signal).kind is EntryFileKind.OTHER
     _entry_path(event, "C0001.MP4").write_text('{"version": 1, "signal": %s, "segments": 3}' % "{}")
     assert inspect_entry(event, "C0001.MP4", {}).kind is EntryFileKind.OTHER
+
+
+# The sweep's rule (analysis-auto-sweep) and this one agree
+
+
+def test_never_and_stale_are_exactly_the_clips_the_sweep_finds_pending(event: Path) -> None:
+    """``never``/``stale`` here is ``missing`` in ``cache.entry_state``: one selection rule."""
+    (event / "C0004.MP4").write_bytes(b"clip C0004.MP4")
+    _analyze(event, "C0001.MP4")  # current
+    _fail(event, "C0002.MP4")  # failed
+    _analyze(event, "chapter/C0003.MP4")
+    _replace(event / "chapter" / "C0003.MP4")  # stale
+    # C0004.MP4: never
+    clips = clip_analysis_states(event)
+    due = [c.identity for c in clips if c.state in (NEVER, STALE)]
+    assert due == pending_clips(event)
+    assert sorted(due) == ["C0004.MP4", "chapter/C0003.MP4"]
+    assert needs_analysis(clips) is bool(pending_clips(event))

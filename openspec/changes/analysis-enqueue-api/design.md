@@ -178,7 +178,10 @@ the job row. **Rationale**: Principle V ("endpoints do lifecycle"), no API/worke
   behavioural.
 - [`analysis-auto-sweep` writes its own selection in parallel] → the selection lives in `analysis/state.py`
   (`clip_analysis_states`, `needs_analysis`); the supervisor should land this before the sweep or have the sweep
-  call it (noted in the result).
+  call it (noted in the result). *Materialized:* the sweep landed first with its own `cache.entry_state` /
+  `pending_clips`. At landing this change keeps both (its `EntryKind` became `EntryFileKind` to avoid the clash),
+  states the agreement in the spec (`never`/`stale` exactly when `missing`; an unreadable entry is an error here)
+  and pins it with a test; folding the two into one function is a follow-up.
 - [Analyze all on the 13-year MOL library queues hundreds of rows] → each is one cheap row at the lowest claim
   rank; cancel is per job; the response's `queued` tells the user what happened.
 - [A clip that cannot be read makes `GET …/analysis` a 502] → intended (fail loud); the analyze-all route
