@@ -105,6 +105,12 @@ recorded per run.
   remembered intrinsic size, zero clip-row renders on zoom/scrub/play, the before/after figures and the idle floor), a
   §4.10 bullet and a §6 phase-9 note naming `edit-list-paint-cost`. Test: a `docs.test.ts` case asserting
   `edit-list-paint-cost` is named in D-20, §4.10 and §6.
-- [ ] 4.2 Gates: `npm test`, `npx tsc --noEmit` and `npm run build` in podman; the full Playwright run of 2.2–2.4 and
+- [x] 4.2 Gates: `npm test`, `npx tsc --noEmit` and `npm run build` in podman; the full Playwright run of 2.2–2.4 and
   3.1 in Chrome 154 and Firefox ≥ 155, light and dark, 1280 and 390 px, screenshots looked at; no request other than
   reads during any zoom, scrub, play or scroll.
+  Status: in podman node:22, `npm ci`, `npm test` 1028/1028, `tsc --noEmit` (app and test configs) clean, `npm run
+  build` (JS 631.59 kB unchanged, CSS 89.40 -> 89.85 kB, gzip 17.03 -> 17.13 kB). Playwright on the final build, Chrome
+  154 and Firefox 155: render count 13/13, scroll 13/13, drags 13/13, looks 16/16, light/dark 1280/390 shots 8/8
+  (looked at), the regression record identical to `main`'s; no request but reads while zooming, scrubbing, playing or
+  scrolling (the title-card preview POST is made on opening, as on `main`). Python untouched: black, isort, mypy clean,
+  pylint 9.98, full pytest 3664 passed.
