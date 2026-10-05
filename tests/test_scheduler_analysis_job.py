@@ -62,8 +62,15 @@ class MemoryStore:
             if row["event_dir"] == event_dir:
                 return Submission(job_id=row["id"], created=False)
         row = {"project_root": project_root, "event_dir": event_dir, "id": uuid.uuid4(), **kwargs}
+        row.setdefault("status", "queued")
         self.submitted.append(row)
         return Submission(job_id=row["id"], created=True)
+
+    def force_queued(self, job_id: uuid.UUID) -> bool:
+        (row,) = [row for row in self.submitted if row["id"] == job_id]
+        if row["status"] == "queued":
+            row["force"] = True
+        return bool(row["force"])
 
 
 class Harness:  # pylint: disable=too-many-instance-attributes
@@ -727,6 +734,27 @@ def test_submit_analysis_queues_one_analysis_job_per_event_idempotently(
         row["kind"] == JobKind.ANALYSIS and row["force"] is True for row in harness.store.submitted
     )
     assert harness.store.submitted[0]["project_root"] == str(harness.root)
+    assert [s.forced for s in first] == [True, True]
+    assert [s.forced for s in again] == [False]  # not asked to force: the answer is not forced
+
+
+def test_a_forced_submit_forces_a_queued_unforced_job_but_not_a_running_one(
+    harness: Harness,
+) -> None:
+    """Re-analyze meeting an unforced job (``--enqueue``, the auto-sweep) is not silently lost."""
+    other = harness.root / "2024" / "2024-07-01 - Other"
+    other.mkdir()
+    submit_analysis(
+        harness.store, harness.root, [harness.event, other], force=False  # type: ignore[arg-type]
+    )
+    harness.store.submitted[1]["status"] = "running"
+
+    forced = submit_analysis(
+        harness.store, harness.root, [harness.event, other], force=True  # type: ignore[arg-type]
+    )
+
+    assert [(s.created, s.forced) for s in forced] == [(False, True), (False, False)]
+    assert [row["force"] for row in harness.store.submitted] == [True, False]
 
 
 # --------------------------------------------------------------------------- #

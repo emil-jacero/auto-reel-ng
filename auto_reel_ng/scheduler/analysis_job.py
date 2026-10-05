@@ -80,6 +80,9 @@ class AnalysisSubmission:
     event_dir: str  # project-root-relative, posix
     job_id: uuid.UUID
     created: bool
+    #: Whether the job will run forced. A forced submit that meets a ``queued`` unforced job
+    #: forces it; one that meets a ``running`` unforced job cannot, and reports ``False``.
+    forced: bool
 
 
 def submit_analysis(
@@ -90,12 +93,21 @@ def submit_analysis(
     The one place an analysis job is enqueued (Principle V): the CLI's ``analyze --enqueue``
     and the API both call it. It runs no ffprobe or ffmpeg and writes no file. An event that
     already has an active analysis job reports that job with ``created=False``.
+
+    With ``force``, an active job that is still ``queued`` without ``force`` is forced, so a
+    Re-analyze that meets an unforced job (``analyze --enqueue``, the auto-sweep) is not lost;
+    a ``running`` unforced job cannot be, and its submission reports ``forced=False``.
     """
     submissions: List[AnalysisSubmission] = []
     for event_dir in event_dirs:
         relative = Path(event_dir).relative_to(project_root).as_posix()
         submission = store.submit(str(project_root), relative, kind=JobKind.ANALYSIS, force=force)
-        submissions.append(AnalysisSubmission(relative, submission.job_id, submission.created))
+        forced = force
+        if force and not submission.created:
+            forced = store.force_queued(submission.job_id)
+        submissions.append(
+            AnalysisSubmission(relative, submission.job_id, submission.created, forced)
+        )
     return submissions
 
 

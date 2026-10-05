@@ -51,7 +51,10 @@ def _enqueue(ctx: ProjectContext, *, force: bool) -> int:
     )
     for submission in submissions:
         verb = "queued" if submission.created else "active"
-        print(f"{verb}  {submission.event_dir}  {submission.job_id}")
+        note = ""
+        if force and not submission.forced:
+            note = "  (already running without --force; run again once it ends)"
+        print(f"{verb}  {submission.event_dir}  {submission.job_id}{note}")
     created = sum(1 for submission in submissions if submission.created)
     print(f"\n{created}/{len(submissions)} analysis job(s) newly queued")
     return 0
