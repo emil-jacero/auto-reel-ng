@@ -7,6 +7,7 @@ See ``openspec/changes/job-scheduler/design.md`` for the decisions (D-S1..D-S8).
 from __future__ import annotations
 
 from .analysis_job import AnalysisJobError, AnalysisJobHandler, submit_analysis
+from .analysis_sweep import AnalysisSweep, SweepReport, start_analysis_sweep
 from .config import (
     DEFAULT_ANALYSIS_SLOTS,
     DEFAULT_CPU_SLOTS,
@@ -33,6 +34,9 @@ __all__ = [
     "AnalysisJobError",
     "AnalysisJobHandler",
     "submit_analysis",
+    "AnalysisSweep",
+    "SweepReport",
+    "start_analysis_sweep",
     "Worker",
     "BuildJob",
     "JobInterrupted",

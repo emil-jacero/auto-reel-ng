@@ -33,6 +33,7 @@ sidecars carry everything across restarts.
 from __future__ import annotations
 
 import logging
+import threading
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -110,6 +111,24 @@ class AnalysisSweep:
         except SQLAlchemyError as exc:
             logger.error("analysis sweep: the job store failed; trying again later: %s", exc)
             return SweepReport(error=f"job store: {exc}")
+
+    def run(
+        self, stop_event: threading.Event, interval: float, *, wait: Optional[Wait] = None
+    ) -> None:
+        """Sweep now, then once every ``interval`` seconds, until ``stop_event`` is set.
+
+        The wait between sweeps is ``stop_event.wait`` (``wait`` stands in for it in tests), so
+        a worker stopping mid-interval ends this loop at once. An unforeseen error in a sweep is
+        logged and the loop goes on: the sweep must never be what stops a worker.
+        """
+        wait_for = wait if wait is not None else stop_event.wait
+        while not stop_event.is_set():
+            try:
+                self.sweep_once()
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.exception("analysis sweep: unexpected error; trying again later")
+            if wait_for(interval):
+                return
 
     # ------------------------------------------------------------------ reads
 
@@ -213,4 +232,26 @@ def _changed_since(event_dir: Path, job: Job) -> bool:
     return False
 
 
-__all__ = ["AnalysisSweep", "SweepReport", "BUSY_RUNNING_KINDS", "BACK_OFF_STATUSES", "Wait"]
+def start_analysis_sweep(
+    sweep: AnalysisSweep, stop_event: threading.Event, *, interval: float
+) -> threading.Thread:
+    """Run ``sweep`` on a daemon thread until ``stop_event`` is set; return the started thread.
+
+    The worker passes its own stop event, so stopping the worker stops the sweep, and joins
+    the thread after its claim loop returns.
+    """
+    thread = threading.Thread(
+        target=sweep.run, args=(stop_event, interval), name="analysis-sweep", daemon=True
+    )
+    thread.start()
+    return thread
+
+
+__all__ = [
+    "AnalysisSweep",
+    "SweepReport",
+    "BUSY_RUNNING_KINDS",
+    "BACK_OFF_STATUSES",
+    "Wait",
+    "start_analysis_sweep",
+]
