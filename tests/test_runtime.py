@@ -247,8 +247,17 @@ def test_large_stderr_does_not_deadlock(fake_runtime: FfmpegRuntime) -> None:
             ["flood"], duration=1.0, on_progress=fractions.append
         ),
     )
-    assert outcome == [("ok", None)]
+    assert len(outcome) == 1 and outcome[0][0] == "ok"
     assert fractions == [0.5, 1.0]
+    # The stderr collected while the output was streamed is returned (analysis-job: the
+    # detection parser reads it), whole.
+    assert outcome[0][1] == "x" * 1_000_000
+
+
+def test_a_quiet_run_returns_empty_stderr(fake_runtime: FfmpegRuntime) -> None:
+    """A run that writes nothing on stderr returns an empty string, not ``None``."""
+    outcome = _within(20, lambda: fake_runtime.run_with_progress(["quiet"], duration=1.0))
+    assert outcome == [("ok", "")]
 
 
 def test_failure_after_large_stderr_carries_its_tail(fake_runtime: FfmpegRuntime) -> None:
@@ -522,7 +531,7 @@ def test_a_steady_encode_is_never_stalled(bin_runtime: FfmpegRuntime) -> None:
     outcome = _progress(
         bin_runtime, "steady", duration=1.5, on_progress=fractions.append, stall_timeout=0.5
     )
-    assert outcome == ("ok", None)
+    assert outcome[0] == "ok" and isinstance(outcome[1], str)  # the collected stderr
     assert time.monotonic() - started >= 1.0
     assert fractions == sorted(fractions) and fractions[-1] == 1.0
 
@@ -533,7 +542,7 @@ def test_the_stall_clock_does_not_need_a_duration(bin_runtime: FfmpegRuntime) ->
     outcome = _progress(
         bin_runtime, "steady", duration=0, on_progress=fractions.append, stall_timeout=0.5
     )
-    assert outcome == ("ok", None)
+    assert outcome[0] == "ok" and isinstance(outcome[1], str)  # the collected stderr
     assert fractions == [1.0]  # only the final completion callback
 
 
@@ -567,7 +576,7 @@ def test_a_cancel_check_is_polled_about_once_a_second(bin_runtime: FfmpegRuntime
         return False
 
     outcome = _progress(bin_runtime, "steady-long", duration=3.0, should_cancel=check)
-    assert outcome == ("ok", None)
+    assert outcome[0] == "ok" and isinstance(outcome[1], str)  # the collected stderr
     assert 1 <= len(calls) <= 4
 
 
