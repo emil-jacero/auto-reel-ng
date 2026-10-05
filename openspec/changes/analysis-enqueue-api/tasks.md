@@ -47,7 +47,7 @@ Conventions for every task below:
   `OperationalError` → 503 `check` `database`; no process started; and every existing analysis-read test in
   `tests/test_api_events.py` passes without edits to its assertions.
 
-- [ ] 3.2 Add `POST /api/v1/events/{event_id:path}/analysis` in `routes/events.py` before the greedy detail route, with
+- [x] 3.2 Add `POST /api/v1/events/{event_id:path}/analysis` in `routes/events.py` before the greedy detail route, with
   `AnalysisEnqueueRequest` (optional body) and `AnalysisFreshResult` (design D2; check order 404/502 → 409 → 502 →
   200 → 201/409). Verify in `tests/test_api_analysis_enqueue.py` (`requires_db`, each test builds its own event):
   never → 201 `kind` `analysis`, `force` false, `fingerprint` null, one row, no file written, no process; all current
