@@ -193,7 +193,7 @@ recorded per run.
   takes focus) and both final gates (slider 0.58 %, edge 0 %, idle 0 %, Firefox 0 %, scrub/step); §4.10 and §6 say
   both gates are closed. A new `docs.test.ts` case asserts "zoom settles", "150 ms", `zoomSettle` and "holds focus" in
   D-20 (none was there before the edit); `npm test` 1092/1092.
-- [ ] 4.2 Gates: `npm test`, `npx tsc --noEmit` and `npm run build` in podman; the full Playwright run of 2.2–2.4 and
+- [x] 4.2 Gates: `npm test`, `npx tsc --noEmit` and `npm run build` in podman; the full Playwright run of 2.2–2.4 and
   3.1 in Chrome 154 and Firefox ≥ 155, light and dark, 1280 and 390 px, screenshots looked at; no request other than
   reads during any zoom, scrub, play or scroll.
   Status: in podman node:22, `npm ci`, `npm test` 1028/1028, `tsc --noEmit` (app and test configs) clean, `npm run
@@ -210,3 +210,10 @@ recorded per run.
   at the same stale step on both builds). Full pytest 3664 passed (Python untouched).
   Reopened (2026-10-05): repeat on the final build after 2.5 (`npm test`, both `tsc`, `npm run build`, the suites above
   plus 2.5's Playwright in Chrome 154 and Firefox 155, light/dark 1280/390 shots looked at).
+  Final (after 2.5): in podman node:22 `npm ci`, `npm test` 1092/1092, both `tsc` configs clean, `npm run build` JS
+  651.27 kB (211.15 gzip; `origin/main` 649.49 / 210.60), CSS 94.42 kB (17.95 gzip). Playwright, Chrome 154 and Firefox
+  155 each: shots light/dark 1280/390 8/8 (looked at), far drags 13/13, scroll 1280/390/768-coarse 15/15, render count
+  13/13 (0 list renders on zoom/scrub/play), `zoom_tools.py` 21/21; group drag 55/59, marks 52/55, move marked 34/37,
+  rotate rows 4/4, as on `origin/main` (the stale suites stop at the same step as before). No request but reads during
+  any zoom, scrub or play (the title-card preview POST on opening, as on `main`). Python untouched: black, isort, mypy
+  clean, pylint 9.98, full pytest 3664 passed.
