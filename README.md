@@ -298,7 +298,8 @@ any job of the project is queued, or a render or proxy job is running. It is **c
 `worker.auto_analyze_max_events` (default **2**) events per sweep, newest first, so the first sweep over a large
 archive trickles through while the worker is idle. A clip whose analysis failed is not retried until the file
 changes or you Re-analyze (`--force`), and an event whose last analysis job was **canceled or failed** is left
-alone until one of its clip files changes after that (its mtime or ctime), so cancelling an automatic job sticks.
+alone until one of its clip files changes after that job started (its mtime or ctime), so cancelling an automatic
+job sticks while a clip copied in during the job is still picked up.
 Expect background CPU use on an idle worker (about 2 CPU-minutes per minute of 1080p50 footage, D-27); turn it
 off with `worker: {auto_analyze: false}`.
 

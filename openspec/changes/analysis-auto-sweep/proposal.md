@@ -17,7 +17,7 @@ precedent; it is new machinery"). This change is that automatic part.
 - A clip whose analysis **failed** for its current signal (the gate's failure marker) does not count, so a bad clip
   is not retried in a loop; it is retried when the clip changes or on a Re-analyze (`force`). Likewise an event
   whose latest analysis job ended `canceled` or `failed` is left alone until one of its clip files changes after
-  that job ended, so a user's cancel is not undone five minutes later and a job-level fault (an unwritable cache
+  that job started, so a user's cancel is not undone five minutes later and a job-level fault (an unwritable cache
   directory) does not loop.
 - The sweep is **capped**: at most `worker.auto_analyze_max_events` (default 2) events are enqueued per sweep, newest
   event first, so the first sweep over a large archive (findings "Risks": the 13-year MOL library) trickles.
