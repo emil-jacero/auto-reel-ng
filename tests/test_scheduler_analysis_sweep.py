@@ -25,6 +25,8 @@ from sqlalchemy.exc import OperationalError
 from auto_reel_ng.analysis import cache as cache_module
 from auto_reel_ng.analysis.cache import clip_signal, write_entry, write_failure
 from auto_reel_ng.config.project import ProjectConfig
+from auto_reel_ng.event.discovery import IGNORE_MARKER
+from auto_reel_ng.ingest.layouts import year_event_layout
 from auto_reel_ng.persistence.job_store import Submission
 from auto_reel_ng.persistence.models import JobKind, JobStatus
 from auto_reel_ng.scheduler.analysis_sweep import AnalysisSweep, SweepReport, start_analysis_sweep
@@ -43,6 +45,7 @@ class Row:  # pylint: disable=too-many-instance-attributes
     force: bool = False
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
 
 
@@ -342,15 +345,27 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+_UNSET: Any = object()
+
+
 def _ended(
-    store: MemoryStore, project: Project, event: Path, status: JobStatus, *, at: datetime
+    store: MemoryStore,
+    project: Project,
+    event: Path,
+    status: JobStatus,
+    *,
+    at: datetime,
+    started: Optional[datetime] = _UNSET,
 ) -> Row:
+    """A finished analysis job of ``event``; it started at ``at`` unless ``started`` says so
+    (``None``: canceled while still queued, it never started)."""
     return store.add(
         project.root,
         event,
         JobKind.ANALYSIS,
         status,
         created_at=at - timedelta(seconds=30),
+        started_at=at if started is _UNSET else started,
         finished_at=at,
     )
 
@@ -388,6 +403,50 @@ def test_a_clip_copied_in_with_an_old_mtime_still_counts_through_ctime(
     time.sleep(0.02)
     shutil.copy2(camera, event / "b.mp4")  # keeps the 2001 mtime; its ctime is now
     assert (event / "b.mp4").stat().st_mtime < 1_000_000_001
+    assert _sweep(store, project).sweep_once().enqueued == (project.rel(event),)
+
+
+def test_a_clip_copied_in_while_a_failed_job_ran_makes_the_event_due(
+    store: MemoryStore, project: Project
+) -> None:
+    # The event holds a failure-marked clip, so every non-forced job of it ends FAILED; a clip
+    # that landed after the job listed the folder (between its start and its end) must count.
+    event = project.event("2024-01-01 - Trasig", "a.mp4", "broken.mp4")
+    project.analyzed(event, "a.mp4")
+    project.failed(event, "broken.mp4")
+    started = _now()
+    time.sleep(0.02)
+    (event / "new.mp4").write_bytes(b"copied in mid-job")
+    time.sleep(0.02)
+    _ended(store, project, event, JobStatus.FAILED, at=_now(), started=started)
+    assert cache_module.pending_clips(event) == ["new.mp4"]
+    assert _sweep(store, project).sweep_once().enqueued == (project.rel(event),)
+
+
+def test_a_failed_job_that_saw_every_clip_still_backs_off(
+    store: MemoryStore, project: Project
+) -> None:
+    # The no-loop half: the clip changed before the job started, so the job saw it.
+    event = project.event("2024-01-01 - Trasig", "a.mp4", "new.mp4")
+    project.analyzed(event, "a.mp4")
+    time.sleep(0.02)
+    started = _now()
+    _ended(store, project, event, JobStatus.FAILED, at=started + timedelta(seconds=5))
+    assert _sweep(store, project).sweep_once().enqueued == ()
+
+
+def test_a_job_canceled_while_queued_is_measured_from_its_finish(
+    store: MemoryStore, project: Project
+) -> None:
+    event = project.event("2024-01-01 - Party", "a.mp4")
+    _ended(
+        store, project, event, JobStatus.CANCELED, at=_now() + timedelta(seconds=1), started=None
+    )
+    assert _sweep(store, project).sweep_once().enqueued == ()
+    store.rows.clear()  # the same job, but it finished before the clip was written
+    _ended(
+        store, project, event, JobStatus.CANCELED, at=_now() - timedelta(seconds=1), started=None
+    )
     assert _sweep(store, project).sweep_once().enqueued == (project.rel(event),)
 
 
@@ -522,6 +581,92 @@ def test_a_clip_that_vanishes_mid_sweep_skips_its_event_with_a_warning(
         report = _sweep(store, project).sweep_once()
     assert report.enqueued == (project.rel(good),)
     assert "2024-02-01 - Flaky" in caplog.text
+
+
+def test_a_clip_name_that_is_not_utf8_skips_its_event_and_older_ones_still_go(
+    store: MemoryStore, project: Project, caplog: pytest.LogCaptureFixture
+) -> None:
+    older = project.event("2023-06-01 - Older", "a.mp4", year="2023")
+    latin1 = project.event("2024-02-01 - Latin1")
+    # A Latin-1 name from an old FAT copy: os.listdir hands it back surrogate-escaped.
+    with open(os.path.join(os.fsencode(latin1), b"F\xe4st.mp4"), "wb") as handle:
+        handle.write(b"x")
+    with caplog.at_level("WARNING", logger="auto_reel_ng.scheduler.analysis_sweep"):
+        report = _sweep(store, project).sweep_once()
+    assert report.enqueued == (project.rel(older),) and report.error is None
+    assert any(
+        record.levelname == "WARNING" and "2024-02-01 - Latin1" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+def test_a_sidecar_that_is_not_utf8_skips_its_event_and_older_ones_still_go(
+    store: MemoryStore, project: Project
+) -> None:
+    older = project.event("2024-01-01 - Older", "a.mp4")
+    garbled = project.event("2024-02-01 - Garbled", "a.mp4")
+    project.analyzed(garbled, "a.mp4")
+    sidecar = cache_module._entry_path(garbled, "a.mp4")  # pylint: disable=protected-access
+    sidecar.write_bytes(b"\xff\xfe{")
+    report = _sweep(store, project).sweep_once()
+    assert report.enqueued == (project.rel(older),) and report.error is None
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 folder")
+def test_an_event_that_stays_unreadable_is_warned_about_once(
+    store: MemoryStore, project: Project, caplog: pytest.LogCaptureFixture
+) -> None:
+    locked = project.event("2024-02-01 - Locked", "a.mp4")
+    locked.chmod(0)
+    sweep = _sweep(store, project)
+    try:
+        with caplog.at_level("DEBUG", logger="auto_reel_ng.scheduler.analysis_sweep"):
+            for _ in range(3):
+                sweep.sweep_once()
+            levels = [r.levelname for r in caplog.records if "Locked" in r.getMessage()]
+            assert levels == ["WARNING", "DEBUG", "DEBUG"]
+            locked.chmod(0o755)
+            sweep.sweep_once()  # readable again: enqueued, and a later fault warns again
+            store.rows.clear()
+            locked.chmod(0)
+            caplog.clear()
+            sweep.sweep_once()
+            assert [r.levelname for r in caplog.records if "Locked" in r.getMessage()] == [
+                "WARNING"
+            ]
+    finally:
+        locked.chmod(0o755)
+
+
+def test_the_walk_reports_an_ignored_event_on_the_first_sweep_only(
+    store: MemoryStore, project: Project, caplog: pytest.LogCaptureFixture
+) -> None:
+    project.event("2024-01-01 - Due", "a.mp4")
+    ignored = project.event("2024-02-01 - Ignored", "a.mp4")
+    (ignored / IGNORE_MARKER).write_text("")
+    walk_logger = logging.getLogger("auto_reel_ng.ingest.layouts")
+    was = walk_logger.disabled
+    walk_logger.disabled = False
+    sweep = _sweep(store, project)
+    try:
+        with caplog.at_level("INFO", logger="auto_reel_ng.ingest.layouts"):
+            for _ in range(3):
+                store.rows.clear()
+                sweep.sweep_once()
+    finally:
+        walk_logger.disabled = was
+    skips = [r for r in caplog.records if "Ignored" in r.getMessage()]
+    assert len(skips) == 1 and skips[0].name == "auto_reel_ng.ingest.layouts"
+    # Outside the sweep's walk the same line is logged every time (a CLI scan is unchanged).
+    caplog.clear()
+    walk_logger.disabled = False
+    try:
+        with caplog.at_level("INFO", logger="auto_reel_ng.ingest.layouts"):
+            for _ in range(2):
+                list(year_event_layout(project.root))
+    finally:
+        walk_logger.disabled = was
+    assert len([r for r in caplog.records if "Ignored" in r.getMessage()]) == 2
 
 
 def test_one_info_line_names_what_a_sweep_enqueued(

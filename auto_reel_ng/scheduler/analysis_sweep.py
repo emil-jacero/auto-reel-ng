@@ -20,14 +20,21 @@ A sweep is cheap and polite:
   first) and the sweep stops once it created ``max_events`` jobs, so the first sweep over a
   large archive trickles.
 - **Backs off** from an event whose latest ``analysis`` job ended ``canceled`` or ``failed``
-  until one of its clip files changes after that job finished (``st_mtime`` or ``st_ctime``,
-  so a copy that preserved an old mtime still counts): a user's cancel is not undone and a
-  job-level fault does not loop.
+  until one of its clip files changes after that job *started* (``st_mtime`` or ``st_ctime``,
+  so a copy that preserved an old mtime still counts; the start, not the finish, so a clip
+  copied in while the job ran, which it never listed, still counts): a user's cancel is not
+  undone and a job-level fault does not loop, since a later job starts after every change it
+  was enqueued for.
 - **Never stops the worker.** A database error or a failing layout walk ends that sweep with
-  an ERROR log; an event that cannot be listed or statted is skipped with a WARNING.
+  an ERROR log; an event that cannot be listed, statted or decoded (a clip name or sidecar that
+  is not valid UTF-8) is skipped with a WARNING.
+- **Quiet in a steady state.** A ``.reelignore`` skip or an alias the layout walk reports, and
+  an event that stays unreadable, is logged on its first sweep only (later ones at DEBUG or not
+  at all), so the worker log does not repeat them every interval.
 
-It keeps no state of its own: the store's one-active-job index, the job rows and the on-disk
-sidecars carry everything across restarts.
+It keeps no decision state of its own (only which repeated log lines it already printed): the
+store's one-active-job index, the job rows and the on-disk sidecars carry everything across
+restarts.
 """
 
 from __future__ import annotations
@@ -46,6 +53,7 @@ from ..config.project import ProjectConfig
 from ..errors import EngineError
 from ..event import scan_event
 from ..ingest import DEFAULT_LAYOUT, get_layout
+from ..ingest import layouts as layouts_module
 from ..persistence.job_store import JobStore
 from ..persistence.models import Job, JobKind, JobStatus
 from .analysis_job import submit_analysis
@@ -76,6 +84,29 @@ class SweepReport:
     error: Optional[str] = None
 
 
+class _OncePerThread(logging.Filter):
+    """Drop a record the armed thread already logged once with the same message.
+
+    Installed on the layout walk's logger only while the sweep walks, and it lets every other
+    thread's records through, so the walk's per-event INFO/WARNING lines (``.reelignore``,
+    aliases) appear on the first sweep and not again every interval.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.thread: Optional[int] = None
+        self._seen: set[tuple[int, str]] = set()
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.thread != self.thread:
+            return True
+        key = (record.levelno, record.getMessage())
+        if key in self._seen:
+            return False
+        self._seen.add(key)
+        return True
+
+
 class AnalysisSweep:
     """Enqueue ``analysis`` jobs for one project's events whose analysis is due."""
 
@@ -93,6 +124,9 @@ class AnalysisSweep:
         self._root = Path(project_root)
         self._config = config
         self._max_events = max_events
+        self._walk_filter = _OncePerThread()
+        #: Events already reported unreadable; reported again at DEBUG until they read again.
+        self._unreadable: set[Path] = set()
 
     def sweep_once(self) -> SweepReport:
         """One sweep over the project; never raises for a database or walk failure."""
@@ -148,12 +182,18 @@ class AnalysisSweep:
         gone (an unmounted share), unreadable, or the configured layout is unknown.
         """
         walk_root = self._root / self._config.input_dir if self._config.input_dir else self._root
+        walk_logger = logging.getLogger(layouts_module.__name__)
+        self._walk_filter.thread = threading.get_ident()
+        walk_logger.addFilter(self._walk_filter)
         try:
             layout = get_layout(self._config.layout or DEFAULT_LAYOUT)
             return [ref.event_dir for ref in layout(walk_root)][::-1]
         except (OSError, EngineError) as exc:
             logger.error("analysis sweep: cannot walk %s; trying again later: %s", walk_root, exc)
             return None
+        finally:
+            walk_logger.removeFilter(self._walk_filter)
+            self._walk_filter.thread = None
 
     # ------------------------------------------------------------------ enqueue
 
@@ -195,15 +235,23 @@ class AnalysisSweep:
         """Whether a non-forced ``analysis`` job of ``event_dir`` would analyze a clip, and the
         event's latest analysis job, if it was canceled or failed, does not hold it back."""
         try:
-            if not pending_clips(event_dir):
-                return False
-            if latest is None or latest.status not in BACK_OFF_STATUSES:
-                return True
-            if _changed_since(event_dir, latest):
-                return True
-        except OSError as exc:
-            logger.warning("analysis sweep: skipping %s: cannot read it: %s", event_dir, exc)
+            pending = pending_clips(event_dir)
+            changed = (
+                bool(pending)
+                and latest is not None
+                and latest.status in BACK_OFF_STATUSES
+                and _changed_since(event_dir, latest)
+            )
+        except (OSError, ValueError) as exc:  # ValueError: a name or sidecar that is not UTF-8
+            level = logging.DEBUG if event_dir in self._unreadable else logging.WARNING
+            self._unreadable.add(event_dir)
+            logger.log(level, "analysis sweep: skipping %s: cannot read it: %s", event_dir, exc)
             return False
+        self._unreadable.discard(event_dir)
+        if not pending:
+            return False
+        if latest is None or latest.status not in BACK_OFF_STATUSES or changed:
+            return True
         logger.debug(
             "analysis sweep: %s: its last analysis job %s ended %s and nothing changed since",
             event_dir,
@@ -214,17 +262,21 @@ class AnalysisSweep:
 
 
 def _changed_since(event_dir: Path, job: Job) -> bool:
-    """Whether a clip file of ``event_dir`` changed after ``job`` finished.
+    """Whether a clip file of ``event_dir`` changed after ``job`` started.
 
-    A clip's ``st_mtime`` or ``st_ctime`` later than the job's ``finished_at`` (its
-    ``created_at`` should a terminal row lack one) counts: an ingest tool that preserves a
-    camera file's old mtime still moves the copy's ctime.
+    A clip's ``st_mtime`` or ``st_ctime`` later than the job's ``started_at`` counts: an ingest
+    tool that preserves a camera file's old mtime still moves the copy's ctime. The start, not
+    the finish: the job listed the folder when it started, so a clip copied in while it ran was
+    never seen by it (and a non-forced job of an event holding a failure-marked clip always ends
+    ``failed``, so that clip would otherwise wait for a touch or a Re-analyze). This cannot
+    loop: a later job starts after every change it was enqueued for. A job canceled while still
+    queued never started; its ``finished_at`` (then ``created_at``) stands in.
 
     Raises:
         OSError: the folder cannot be listed or a clip cannot be statted.
     """
-    ended = job.finished_at if job.finished_at is not None else job.created_at
-    threshold = ended.timestamp()
+    since = job.started_at or job.finished_at or job.created_at
+    threshold = since.timestamp()
     for identity in scan_event(event_dir).identities:
         stat = (event_dir / identity).stat()
         if max(stat.st_mtime, stat.st_ctime) > threshold:

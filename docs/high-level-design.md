@@ -1970,9 +1970,11 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     footage, but a duration needs ffprobe, which the sweep must not run; because of the quiet rule the cap bounds
     only what is queued ahead of a manual request, never total CPU. *Back-off:* an event whose latest `analysis`
     job ended `canceled` or `failed` is skipped until one of its clip files has an `st_mtime` or `st_ctime` later
-    than that job's `finished_at` (ctime catches a copy that kept a camera file's mtime), so a cancel sticks and a
-    job-level fault does not loop; a newer job (a Re-analyze) replaces it. Failures of the sweep (database,
-    walk, an unreadable event) are logged and never stop the worker; it keeps no state, so restarts are safe.
+    than that job's `started_at` (ctime catches a copy that kept a camera file's mtime; the start, not the finish,
+    so a clip copied in while the job ran still counts; `finished_at` for a job canceled while queued), so a
+    cancel sticks and a job-level fault does not loop; a newer job (a Re-analyze) replaces it. Failures of the
+    sweep (database, walk, an unreadable event or a non-UTF-8 name) are logged and never stop the worker; it
+    keeps no decision state (only which repeated log lines it already printed), so restarts are safe.
 - **D-26 — An event has a poster frame** (2026-10-04, change `event-poster-engine`, the engine half of the last open v2
   item). A media server (Jellyfin, Plex, Kodi) that scans the output folder saw a bare `.mp4` and a black tile, and the
   operator could not choose the frame.

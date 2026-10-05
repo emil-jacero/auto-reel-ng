@@ -73,9 +73,11 @@ other job: renders and proxy jobs are claimed first by their kind.
 
 ### Requirement: The analysis sweep backs off after a canceled or failed analysis job
 A sweep SHALL NOT enqueue an event whose latest `analysis` job ended `canceled` or `failed`, unless a clip file of
-that event changed after the job ended (its `stat` modification time or status-change time is later than the job's
-finish time). A newer `analysis` job of the event, such as a Re-analyze, replaces that job as the one considered.
-This holds across worker restarts, since it is decided from job rows and file status only.
+that event changed after the job started (its `stat` modification time or status-change time is later than the
+job's start time, or its finish time for a job canceled before it started), so a clip copied in while the job ran,
+which the job never listed, still counts. A newer `analysis` job of the event, such as a Re-analyze, replaces that
+job as the one considered. This holds across worker restarts, since it is decided from job rows and file status
+only.
 
 #### Scenario: A user's cancel is respected
 - **WHEN** the user cancels an `analysis` job that the sweep enqueued, and nothing in the event changes afterwards
@@ -88,6 +90,11 @@ This holds across worker restarts, since it is decided from job rows and file st
 #### Scenario: A job-level failure does not loop
 - **WHEN** an event's latest `analysis` job ended `failed` before writing any entry, and nothing changed since
 - **THEN** no later sweep enqueues that event
+
+#### Scenario: A clip copied in while a failed job ran is still analyzed
+- **WHEN** an event holds a failure-marked clip, so its non-forced analysis job ends `failed`, and a new clip was
+  copied into the event after that job started and before it ended
+- **THEN** the next sweep enqueues the event
 
 ### Requirement: The analysis sweep is configured under `worker.*` and is on by default
 `worker.auto_analyze` (default `true`), `worker.auto_analyze_interval` (seconds, default `300`) and

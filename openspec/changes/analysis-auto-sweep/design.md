@@ -105,7 +105,10 @@ library would enqueue hundreds of events → cap per sweep).
    re-enqueue it, undoing the cancel), and a job that fails before any marker is written (e.g. the cache
    directory is not writable). Rule: the sweep reads `latest_by_project(project_root, kind="analysis")` once; an
    event whose latest analysis job is `canceled` or `failed` is skipped unless one of its clip files has a `stat`
-   `st_mtime` or `st_ctime` later than that job's `finished_at`. `st_ctime` is included because ingest tools
+   `st_mtime` or `st_ctime` later than that job's `started_at` (its `finished_at` when it was canceled while still
+   queued; the start, not the finish, because the job listed the folder when it started: a clip copied in while it
+   ran would otherwise never count, and an event with a failure-marked clip always ends `failed`; no loop, since a
+   later job starts after every change it was enqueued for — review fix). `st_ctime` is included because ingest tools
    (reel-ingest) may preserve a camera file's old mtime on copy; a copy, rename or replace always moves ctime. A
    Re-analyze (a new job) supersedes the back-off because it becomes the latest job. Stat-only, restart-safe (the
    state is the job row and the file).
@@ -135,7 +138,7 @@ library would enqueue hundreds of events → cap per sweep).
 - [User's force Re-analyze meets a queued non-force automatic job (unique index per kind)] → solved by the gate:
   `submit_analysis(force=True)` forces a `queued` unforced job (`force_queued`); a `running` one cannot be forced
   and the submission says so.
-- [Clock skew between DB `finished_at` and file times] → the DB and the files live on the same host in both the
+- [Clock skew between DB `started_at` and file times] → the DB and the files live on the same host in both the
   dev setup and the compose stack; a skew only delays or advances one retry, never loops.
 - [Analysis is on by default and uses CPU on an idle machine] → documented in README with the off switch; it yields
   to renders and only runs when nothing else is queued.
