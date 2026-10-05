@@ -40,7 +40,7 @@ import { cardJobs } from './cardRequests'
 import { positionOnTrack, stepFramesOnTrack, trackStart } from './play'
 import { useCardImages } from './useCardImages'
 import type { CardsBinding } from './useCardSelection'
-import { createDragStore, shiftMs } from './dragStore'
+import { createDragStore, held as dragHeld, shiftMs } from './dragStore'
 import { edgeAnnouncement, edgeEdit, snappingWords, toPlayheadRefusal, trimToPlayhead } from './edgeTrim'
 import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
@@ -251,7 +251,8 @@ export function Timeline({
   useEffect(() => setSelected(null), [epoch])
   useEffect(() => {
     if (selected !== null) {
-      // A cut that became part of a leading or a trailing cut has no handle: nor a selection.
+      // A cut that became part of a leading or a trailing cut has no handle, nor a selection,
+      // unless it is now the clip's edge cut, which its Trim In or Trim Out edits (`clip-edge-trim`).
       const clip = clips.find((c) => c.identity === selected.identity)
       const there = selectionStands(
         editing.listed(selected.identity),
@@ -658,6 +659,10 @@ export function Timeline({
     if (key === 's') {
       snapping.current = !snapping.current
       editing.announce(snappingWords(snapping.current))
+      return
+    }
+    // A press or a drag in progress holds the editor still until its release (one drag at a time).
+    if (dragHeld(drag)) {
       return
     }
     if (editing.locked) {

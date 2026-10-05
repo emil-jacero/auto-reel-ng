@@ -87,6 +87,11 @@ export type LaneView = {
   shown: [number, number] | null
   /** Whether the clip is behind a title card being dragged: its marks move. */
   shifted?: (clipIndex: number) => boolean
+  /**
+   * Whether the clip's own edge is in the air (`clip-edge-trim`): its block is drawn from the
+   * edge, its marks are not, so they wait hidden until the release draws them where they belong.
+   */
+  held?: (clipIndex: number) => boolean
 }
 
 /** The lane as `Track` draws it: a canvas row of `rows` mark rows, filled by `render`. */

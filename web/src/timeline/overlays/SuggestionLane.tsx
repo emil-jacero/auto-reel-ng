@@ -68,7 +68,7 @@ export function SuggestionLane({
   onFocus: (id: string) => void
   onBlur: (id: string) => void
 }) {
-  const { clips, lay, shown, shifted } = view
+  const { clips, lay, shown, shifted, held } = view
   const drawn = new Set<number>()
   if (shown !== null) {
     for (let index = shown[0]; index <= shown[1]; index += 1) {
@@ -92,7 +92,13 @@ export function SuggestionLane({
       const marks = inWindow ? group.marks : group.marks.filter((mark) => mark.id === keepId)
       const stop = tabStop(index)
       return (
-        <div key={clip.identity} className="sg-group" role="group" aria-label={laneName(clip.name)}>
+        <div
+          key={clip.identity}
+          className="sg-group"
+          role="group"
+          aria-label={laneName(clip.name)}
+          data-edge-held={held?.(index) || undefined}
+        >
           {group.notAnalyzed && inWindow && clip.kept.outMs > clip.kept.inMs && (
             <span
               className="sg-clip-note"
