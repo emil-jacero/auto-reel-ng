@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from auto_reel_ng.analysis import cache as cache_module
 from auto_reel_ng.analysis.cache import clip_signal, write_entry, write_failure
@@ -400,3 +401,128 @@ def test_a_backed_off_event_does_not_count_toward_the_cap(
     _ended(store, project, events[2], JobStatus.FAILED, at=_now() + timedelta(seconds=1))
     report = _sweep(store, project, max_events=2).sweep_once()
     assert report.enqueued == (project.rel(events[1]), project.rel(events[0]))
+
+
+# --------------------------------------------------------------------------- #
+# 2.3 failure isolation and logging
+# --------------------------------------------------------------------------- #
+
+
+class FailingStore(MemoryStore):
+    """A store whose ``fail_on`` call raises the driver's connection error."""
+
+    def __init__(self, fail_on: str) -> None:
+        super().__init__()
+        self.fail_on = fail_on
+
+    def _maybe_fail(self, name: str) -> None:
+        if name == self.fail_on:
+            raise OperationalError("SELECT 1", {}, Exception("connection refused"))
+
+    def list_by_status(self, status: JobStatus, **kwargs: Any) -> List[Row]:
+        self._maybe_fail(f"list_by_status:{status.value}")
+        return super().list_by_status(status, **kwargs)
+
+    def latest_by_project(self, project_root: str, **kwargs: Any) -> Dict[str, Row]:
+        self._maybe_fail("latest_by_project")
+        return super().latest_by_project(project_root, **kwargs)
+
+    def submit(self, project_root: str, event_dir: str, **kwargs: Any) -> Submission:
+        self._maybe_fail("submit")
+        return super().submit(project_root, event_dir, **kwargs)
+
+
+@pytest.mark.parametrize(
+    "fail_on", ["list_by_status:queued", "list_by_status:running", "latest_by_project", "submit"]
+)
+def test_a_store_error_ends_the_sweep_with_an_error_log_and_the_next_one_runs(
+    project: Project, caplog: pytest.LogCaptureFixture, fail_on: str
+) -> None:
+    project.event("2024-01-01 - Due", "a.mp4")
+    store = FailingStore(fail_on)
+    sweep = _sweep(store, project)
+    with caplog.at_level("ERROR", logger="auto_reel_ng.scheduler.analysis_sweep"):
+        report = sweep.sweep_once()
+    assert report.enqueued == () and report.error is not None
+    assert "connection refused" in caplog.text
+    store.fail_on = ""  # the store is back
+    assert sweep.sweep_once().enqueued == ("2024/2024-01-01 - Due",)
+
+
+def test_a_failing_walk_ends_the_sweep_with_an_error_naming_the_root(
+    store: MemoryStore, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    missing = Project(tmp_path / "proj")
+    missing.root.rmdir()  # the walk root vanished (an unmounted share)
+    with caplog.at_level("ERROR", logger="auto_reel_ng.scheduler.analysis_sweep"):
+        report = _sweep(store, missing).sweep_once()
+    assert report.enqueued == () and report.error is not None
+    assert str(missing.root) in caplog.text
+    assert not any(call.startswith("submit") for call in store.calls)
+
+
+def test_an_unknown_layout_ends_the_sweep_with_an_error(
+    store: MemoryStore, project: Project, caplog: pytest.LogCaptureFixture
+) -> None:
+    project.event("2024-01-01 - Due", "a.mp4")
+    with caplog.at_level("ERROR", logger="auto_reel_ng.scheduler.analysis_sweep"):
+        report = _sweep(store, project, config=ProjectConfig(layout="nope")).sweep_once()
+    assert report.error is not None and "nope" in caplog.text
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 folder")
+def test_an_unreadable_event_is_skipped_with_a_warning_and_the_others_still_go(
+    store: MemoryStore, project: Project, caplog: pytest.LogCaptureFixture
+) -> None:
+    good = project.event("2024-01-01 - Good", "a.mp4")
+    locked = project.event("2024-02-01 - Locked", "a.mp4")
+    locked.chmod(0)
+    try:
+        with caplog.at_level("WARNING", logger="auto_reel_ng.scheduler.analysis_sweep"):
+            report = _sweep(store, project).sweep_once()
+    finally:
+        locked.chmod(0o755)
+    assert report.enqueued == (project.rel(good),) and report.error is None
+    assert any(
+        record.levelname == "WARNING" and "2024-02-01 - Locked" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+def test_a_clip_that_vanishes_mid_sweep_skips_its_event_with_a_warning(
+    store: MemoryStore,
+    project: Project,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    good = project.event("2024-01-01 - Good", "a.mp4")
+    flaky = project.event("2024-02-01 - Flaky", "a.mp4")
+    real_signal = cache_module.clip_signal
+
+    def vanishing(path: Path, **kwargs: Any) -> Dict[str, object]:
+        if flaky in Path(path).parents:
+            raise FileNotFoundError(2, "No such file or directory", str(path))
+        return real_signal(path, **kwargs)
+
+    monkeypatch.setattr(cache_module, "clip_signal", vanishing)
+    with caplog.at_level("WARNING", logger="auto_reel_ng.scheduler.analysis_sweep"):
+        report = _sweep(store, project).sweep_once()
+    assert report.enqueued == (project.rel(good),)
+    assert "2024-02-01 - Flaky" in caplog.text
+
+
+def test_one_info_line_names_what_a_sweep_enqueued(
+    store: MemoryStore, project: Project, caplog: pytest.LogCaptureFixture
+) -> None:
+    project.event("2024-01-01 - A", "a.mp4")
+    project.event("2024-02-01 - B", "a.mp4")
+    with caplog.at_level("INFO", logger="auto_reel_ng.scheduler.analysis_sweep"):
+        report = _sweep(store, project).sweep_once()
+    infos = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
+    assert len(infos) == 1
+    assert all(event in infos[0] for event in report.enqueued)
+    assert all(str(job_id) in infos[0] for job_id in report.job_ids)
+    caplog.clear()
+    with caplog.at_level("INFO", logger="auto_reel_ng.scheduler.analysis_sweep"):
+        _sweep(store, project).sweep_once()  # busy now: no INFO line
+    assert not [r for r in caplog.records if r.levelname == "INFO"]

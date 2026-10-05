@@ -42,6 +42,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from ..analysis.cache import pending_clips
 from ..config.project import ProjectConfig
+from ..errors import EngineError
 from ..event import scan_event
 from ..ingest import DEFAULT_LAYOUT, get_layout
 from ..persistence.job_store import JobStore
@@ -103,6 +104,8 @@ class AnalysisSweep:
             active = {job.event_dir for job in running if job.kind == JobKind.ANALYSIS.value}
             latest = self._store.latest_by_project(project, kind=JobKind.ANALYSIS)
             events = self._walk()
+            if events is None:
+                return SweepReport(error="the layout walk failed")
             return self._enqueue_due(events, active, latest)
         except SQLAlchemyError as exc:
             logger.error("analysis sweep: the job store failed; trying again later: %s", exc)
@@ -119,11 +122,19 @@ class AnalysisSweep:
             return None
         return running
 
-    def _walk(self) -> List[Path]:
-        """The project's events, newest first (the reverse of the layout's walk order)."""
+    def _walk(self) -> Optional[List[Path]]:
+        """The project's events, newest first (the reverse of the layout's walk order).
+
+        ``None`` when the walk failed (logged at ERROR naming the walk root): the walk root is
+        gone (an unmounted share), unreadable, or the configured layout is unknown.
+        """
         walk_root = self._root / self._config.input_dir if self._config.input_dir else self._root
-        layout = get_layout(self._config.layout or DEFAULT_LAYOUT)
-        return [ref.event_dir for ref in layout(walk_root)][::-1]
+        try:
+            layout = get_layout(self._config.layout or DEFAULT_LAYOUT)
+            return [ref.event_dir for ref in layout(walk_root)][::-1]
+        except (OSError, EngineError) as exc:
+            logger.error("analysis sweep: cannot walk %s; trying again later: %s", walk_root, exc)
+            return None
 
     # ------------------------------------------------------------------ enqueue
 
