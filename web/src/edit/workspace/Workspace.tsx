@@ -1,6 +1,6 @@
 import './workspace.css'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { TimelinePanesContext } from '../../timeline/panes'
@@ -14,6 +14,11 @@ import type { TimelinePanes } from '../../timeline/panes'
  * inspector, bin) and the page scrolls. The Timeline puts its picture in the viewer and its cut
  * panel in the inspector (`TimelinePanesContext`): one tree, one state, one video.
  */
+
+/** Stacked, the top bar sticks while it takes at most this share of the window's height… */
+const TOP_MAX_SHARE = 0.4
+/** …and the window is at least this tall (rem), as the stacked page's save bar (`placeBar`). */
+const TOP_MIN_WINDOW_REM = 28
 
 export function Workspace({
   top,
@@ -32,12 +37,52 @@ export function Workspace({
 }) {
   const [viewerPane, setViewerPane] = useState<HTMLElement | null>(null)
   const [cutPane, setCutPane] = useState<HTMLElement | null>(null)
+  const topRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const root = document.documentElement
     root.dataset.workspace = ''
     return () => {
       delete root.dataset.workspace
+    }
+  }, [])
+
+  // The top bar's height as drawn (`--ws-top-measured` on <html>): what notifications keep clear of
+  // and, where the panes stack, what the page's scroll padding and the sticky headings clear.
+  // Stacked, the bar wraps (and holds a save's explanation in flow); taller than two fifths of
+  // the window, or in a window under 28rem tall, it rests at the page's top instead of sticking
+  // (`data-rests`), as the stacked page's save bar does.
+  useLayoutEffect(() => {
+    const top = topRef.current
+    if (top === null) {
+      return
+    }
+    const root = document.documentElement
+    const measure = () => {
+      const rem = parseFloat(getComputedStyle(root).fontSize)
+      const stacked = window.matchMedia('(width < 960px)').matches
+      const rests =
+        stacked &&
+        (root.clientHeight < TOP_MIN_WINDOW_REM * rem ||
+          top.offsetHeight > root.clientHeight * TOP_MAX_SHARE)
+      const rested = top.hasAttribute('data-rests')
+      top.toggleAttribute('data-rests', rests)
+      root.style.setProperty('--ws-top-measured', `${rests ? 0 : top.offsetHeight}px`)
+      // A bar that starts to rest leaves the window with the page: its focused control (Save,
+      // a save's answer) is brought back into view.
+      const focused = document.activeElement
+      if (rests && !rested && focused instanceof HTMLElement && top.contains(focused)) {
+        focused.scrollIntoView({ block: 'nearest' })
+      }
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(top)
+    window.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('resize', measure)
+      observer.disconnect()
+      root.style.removeProperty('--ws-top-measured')
     }
   }, [])
 
@@ -49,7 +94,9 @@ export function Workspace({
   return (
     <TimelinePanesContext value={panes}>
       <div className="ws">
-        <div className="ws-top">{top}</div>
+        <div ref={topRef} className="ws-top">
+          {top}
+        </div>
         <section className="ws-pane ws-bin" aria-label="Clips" data-ws-scroll>
           {bin}
         </section>
