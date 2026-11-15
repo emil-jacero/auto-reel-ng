@@ -62,8 +62,8 @@ import { groupWords } from './marks'
  *
  * In Edit mode's workspace the lists are the clip bin (`editor-workspace-layout` D3), in
  * compact rows (`compact`): handle, position and name on the first line; a small thumbnail,
- * the length the clip plays and its status on the second; the Cuts control and the row's
- * tools on the third. The size and the modified time are left out; every control stays.
+ * the length the clip plays and its status on the second; the row's tools and then the Cuts
+ * control on the third (their tab order). The size and the modified time are left out; every control stays.
  */
 
 /**
@@ -898,7 +898,8 @@ export const ClipOrderList = memo(function ClipOrderList({
     >
       <header className="panel-header">
         {/* Focused by script after Add chapter. */}
-        <h2 id={headingId} tabIndex={-1}>
+        {/* In the bin a long name ends in an ellipsis: its title shows it whole. */}
+        <h2 id={headingId} tabIndex={-1} title={compact ? heading : undefined}>
           {heading}
         </h2>
         {moved.size > 0 && (

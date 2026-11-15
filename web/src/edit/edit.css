@@ -901,8 +901,9 @@
   /*
    * The workspace's clip bin (`ClipOrderList` `compact`, editor-workspace-layout D3): the same
    * rows in three short lines in the 240 px bin. The handle, the position and the name; a 52 × 29
-   * thumbnail beside the length the clip plays, its status and a row's action; the Cuts control
-   * and the row's tools. A removed or an ignored row has no third line. From a 22rem bin (the
+   * thumbnail beside the length the clip plays, its status and a row's action; the row's tools
+   * and the Cuts control, in that order as they are in the tab order. A removed or an ignored
+   * row has no third line. From a 22rem bin (the
    * stacked workspace) two lines (below). After the page's row rules and more specific than
    * each, so they win whatever the panel's width. Their size and time are the read view's.
    */
@@ -917,7 +918,7 @@
       grid-template-areas:
         'handle pos file file'
         'thumb thumb facts facts'
-        'cuts cuts cuts moves';
+        'moves moves moves cuts';
       column-gap: var(--s-2);
       row-gap: var(--s-1);
       padding-block: var(--s-2);
@@ -975,13 +976,32 @@
     & .clip-item > .cuts-toggle {
       grid-area: cuts;
       align-self: center;
-      justify-self: start;
+      justify-self: end;
       margin: 0;
     }
 
     & .clip-item > .clip-tools {
       grid-area: moves;
+      justify-self: start;
       gap: var(--s-1);
+    }
+
+    /*
+     * A finger (components.css): the pairs keep the page's 28px apart, their touch areas
+     * reaching 12px outward. Line to line, a handle's or a 32px tool's area reaches 6px, the
+     * mark's 10px and a Cuts control's 9px: 16px between the lines keeps each apart. The
+     * collapsed rows' estimates grow by the same 12px a line.
+     */
+    @media (pointer: coarse) {
+      & .clip-item {
+        --clip-row-h: 7.8125rem;
+
+        row-gap: 1rem;
+      }
+
+      & .clip-item > .clip-tools {
+        gap: 1.75rem;
+      }
     }
 
     & .clip-order > .clip-item:not(:focus-within, [data-drop-before], [data-dragging], [style*='transform']) {
@@ -1001,8 +1021,14 @@
         'thumb thumb facts cuts';
     }
 
-    .edit-chapter[data-compact] .clip-item > .cuts-toggle {
+    .edit-chapter[data-compact] .clip-item > .clip-tools {
       justify-self: end;
+    }
+
+    @media (pointer: coarse) {
+      .edit-chapter[data-compact] .clip-item {
+        --clip-row-h: 4.8125rem;
+      }
     }
   }
 
