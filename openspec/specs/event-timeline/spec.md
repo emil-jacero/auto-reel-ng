@@ -225,7 +225,7 @@ nothing and send no request other than reads.
 
 ### Requirement: The playhead scrubs one video
 
-The Timeline SHALL hold exactly one `<video>`, created when the track opens, showing the proxy of the clip the playhead is in, at the playhead's time in that clip. The playhead SHALL be a slider over the whole timeline: it SHALL have the role `slider`, a name ("Playhead"), `aria-valuemin`, `aria-valuemax` and `aria-valuenow` in the timeline's seconds, and a value text that names the clip, the time in it and the time in the whole timeline, each said by its noun ("Harbour, clip 0:12.4 of 0:24.96; event 1:12 of 3:12", the times in the Cuts panel's time format, not padded). Dragging on the ruler SHALL move the playhead; so SHALL dragging on the track body with a mouse or a pen, and so SHALL dragging the playhead's own grip. With touch, the ruler SHALL scrub and a swipe on the track body SHALL scroll it. A press on the ruler or the track SHALL move the playhead there.
+The Timeline SHALL hold exactly one `<video>`, created when the track opens, showing the proxy of the clip the playhead is in, at the playhead's time in that clip. The playhead SHALL be a slider over the whole timeline: it SHALL have the role `slider`, a name ("Playhead"), `aria-valuemin`, `aria-valuemax` and `aria-valuenow` in the timeline's seconds, and a value text that names the clip, the time in it and the time in the whole timeline, each said by its noun ("Harbour, clip 0:12.4 of 0:24.96; event 1:12 of 3:12", the times in the Cuts panel's time format, not padded). Dragging on the ruler SHALL move the playhead; so SHALL dragging on the track body with a mouse or a pen, and so SHALL dragging the playhead's own grip. With touch, the ruler SHALL scrub and a swipe on the track body SHALL scroll it. A press on the ruler SHALL move the playhead there, and so SHALL a press on the track's empty lane. A single press on a clip's block (its body, not its edge tools or handles) SHALL select the clip and SHALL NOT move the playhead; a double press on it SHALL place the playhead there ("A clip is selected on the track or in the bin"). A press in a black card's span still puts the playhead in the card.
 
 Moving the playhead into another clip SHALL load that clip's proxy into the same `<video>` and seek it, so the picture is the clip's frame at that time; a short flash between two clips is accepted. While the pointer is moving, the Timeline SHALL keep at most one seek in flight and SHALL seek to the latest pointer position when it completes, so that a scrub across many clips never queues a seek per pointer move. The video SHALL be paused while scrubbing. The picture and the playhead SHALL end where the pointer ended.
 
@@ -263,6 +263,14 @@ A proxy whose playing fails SHALL be said by cause, as the clip preview says it:
 - **THEN** every sample of the readout, taken every 100 ms across the first clip's end, reads `Clip <time> of <length>
   · Event <time> of 55.02`, with the same width for each time and the same left edge for each pair, and the slider's
   value text says "clip" and "event" with the same numbers
+
+#### Scenario: A clip press does not move the playhead
+- **WHEN** the playhead is at 5.0 s and the operator presses once on the body of a clip's block elsewhere
+- **THEN** the clip is selected and the playhead is still at 5.0 s
+
+#### Scenario: A double press places the playhead
+- **WHEN** the operator presses twice on the body of a clip's block
+- **THEN** the clip is selected and the playhead is at the press
 
 ### Requirement: The playhead is operable by keyboard, a frame at a time
 
@@ -322,11 +330,11 @@ If the browser refuses to start playing without a gesture, or the proxy fails to
 
 ### Requirement: The Timeline is accessible, fits every width and respects the color scheme
 
-The Timeline SHALL expose its structure to assistive technology: the section is a region named "Timeline"; the chapter band is a list of chapters; the clips are groups named as the page names them, each with its length and the number of its cuts in its description; the playhead is a slider; each cut span has a text alternative ("Cut 2.0 to 4.0 s, black"). The state of a clip's proxy, of a cut's reason and of the Play button SHALL never be shown by color alone: it SHALL be words, a pattern or an icon with a name. Text and controls SHALL meet the contrast the rest of the page meets, in the light and in the dark scheme, which SHALL follow the page's scheme choice. Every width from 320 to 1280 px SHALL fit without a horizontal scroll bar on the page. With `prefers-reduced-motion: reduce` the Timeline SHALL not animate: no smooth scrolling, no transitions on the playhead or the zoom, and the progress of a job SHALL change without easing. Touch targets under a coarse pointer SHALL be 44 px.
+The Timeline SHALL expose its structure to assistive technology: the section is a region named "Timeline"; the chapter band is a list of chapters; each clip is a button named as the page names it (pressed while selected), with its length and the number of its cuts in its description, and its block's other content is not announced a second time; the title cards are buttons named as "A card block is a button with a name in words" says; the playhead is a slider; each cut span inside a clip's block keeps its text alternative ("Cut 2.0 to 4.0 s, black") and is exposed, so the block's picture is hidden from assistive technology but its cuts are not. The state of a clip's proxy, of a cut's reason and of the Play button SHALL never be shown by color alone: it SHALL be words, a pattern or an icon with a name. Text and controls SHALL meet the contrast the rest of the page meets, in the light and in the dark scheme, which SHALL follow the page's scheme choice. Every width from 320 to 1280 px SHALL fit without a horizontal scroll bar on the page. With `prefers-reduced-motion: reduce` the Timeline SHALL not animate: no smooth scrolling, no transitions on the playhead or the zoom, and the progress of a job SHALL change without easing. Touch targets under a coarse pointer SHALL be 44 px.
 
 #### Scenario: The structure reads in order
 - **WHEN** a screen reader walks the open Timeline of an event with two chapters and three clips
-- **THEN** it finds the region "Timeline", a list of two chapters, three named clips with their lengths, the slider "Playhead", and the Play button
+- **THEN** it finds the region "Timeline", a list of two chapters, three named clip buttons with their lengths, the slider "Playhead", and the Play button
 
 #### Scenario: A cut is told in words
 - **WHEN** a clip's cut with the reason black is hatched on the track
@@ -339,6 +347,10 @@ The Timeline SHALL expose its structure to assistive technology: the section is 
 #### Scenario: Touch
 - **WHEN** the page is used on a phone-sized window with a coarse pointer
 - **THEN** every Timeline button and the playhead's grip are at least 44 px high, and a swipe on the track scrolls it without moving the playhead
+
+#### Scenario: A clip is a button and its cuts are still told
+- **WHEN** a screen reader walks a clip with a cut from 2.0 to 4.0 s
+- **THEN** it finds one button with the clip's name, and the image "Cut 0:02 to 0:04" in the block, and the clip's name is not said twice
 
 ### Requirement: The timeline shows the event's analysis suggestions beside its clips
 
@@ -924,8 +936,8 @@ over the neighbouring track without moving it, so that a card is still pressed; 
 change. While a card's image is missing, the block SHALL show the card's title on black. The Timeline plays and shows
 the cards: "The Timeline plays the title cards as the movie will" and "The playhead can be put in a card" say how, and
 no note SHALL say that the Timeline does not play cards. A press in a black card's span or block SHALL do
-what activating the block does ("A selected title card opens its inspector in Edit mode": it selects the card and opens its
-dialog) and SHALL also put the playhead there.
+what activating the block does ("One selection in the workspace": it selects the card, whose
+editor is then docked in the inspector) and SHALL also put the playhead there.
 
 #### Scenario: A black card before the second chapter
 - **WHEN** an event with the chapters "" (opening card black, 3.0 s) and "Dag 2" (black, 4.0 s) has a 20 s clip in
@@ -979,7 +991,7 @@ dialog) and SHALL also put the playhead there.
 
 #### Scenario: A press in a black card's span
 - **WHEN** the operator presses inside a black card's block with the playhead at 5.0 s of a clip
-- **THEN** the card is selected, its dialog opens, and the playhead is in the card at the press, showing its image
+- **THEN** the card is selected, its editor shows in the inspector's Title card tab, and the playhead is in the card at the press, showing its image
 
 #### Scenario: A zoomed-out card stays pressable
 - **WHEN** a 3.0 s black card is drawn at 4 px per second (12 px wide)
@@ -989,45 +1001,6 @@ dialog) and SHALL also put the playhead there.
 - **WHEN** a black card's image has been fetched and the Timeline is in the dark scheme
 - **THEN** the block's background is that image, its title is written on a solid strip over it when it fits, its accessible name
   carries the title, and a light ring marks its edge
-
-### Requirement: A card is selected from the Timeline or the list, as one selection
-
-The page SHALL hold one card selection, shared by the Timeline's blocks and Edit mode's chapter header bars, kept above both so
-that a Refresh, a Save or leaving and re-entering Edit mode, which mount the Timeline again, do not end it. Pressing a block, or a chapter's Edit Titlecard button, SHALL select that card, and the block and the button SHALL both show it selected, in more than colour (the button as pressed, with `aria-pressed`). At most one
-thing SHALL be selected on the Timeline: selecting a card SHALL end the selection of a cut, and selecting a cut
-SHALL end the selection of a card. Pressing the selected card again SHALL leave it selected; Escape SHALL clear
-it, unless the card's dialog is open, where Escape closes the dialog and the card stays selected. The selection SHALL end when its chapter is deleted or no longer in the event after a read. A block and the button SHALL be buttons reached by Tab in document order, pressed by Enter or Space, with `aria-pressed`, named in words
-as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default chapter: "Title card for the opening,
-…"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", not enabled"). Pressing a block or the button SHALL also open that card's dialog (`web-app`, "A selected title card opens its inspector in Edit mode"); a selection SHALL be announced once through the polite status region, and the page SHALL have no inspector slot or other line naming the selected card.
-
-#### Scenario: One selection from either place
-- **WHEN** the operator presses the block of "Dag 2" on the Timeline in Edit mode
-- **THEN** the block is pressed, "Dag 2"'s Edit Titlecard button is shown pressed, and the card's dialog opens
-
-#### Scenario: Selecting a cut ends a card selection
-- **WHEN** a card is selected and the operator presses a cut's span
-- **THEN** the cut is selected and the card is not
-
-#### Scenario: Refresh keeps the selection
-- **WHEN** a card is selected, the operator presses Refresh, and the read still lists the chapter
-- **THEN** its Edit Titlecard button is shown pressed, and so is its block on the Timeline
-
-#### Scenario: A deleted chapter ends the selection
-- **WHEN** the selected card's chapter is deleted in the draft
-- **THEN** nothing is selected
-
-#### Scenario: Keyboard and names
-- **WHEN** a keyboard user tabs to the "Dag 2" block and presses Space
-- **THEN** it is selected, a screen reader says "Title card for Dag 2, 4.0 s, over video, pressed", and the polite
-  status says it once
-
-#### Scenario: Reading changes nothing
-- **WHEN** a card is selected and its dialog is closed without a change
-- **THEN** no request is made and the Save bar shows no unsaved change
-
-#### Scenario: A selected card shows no text panel
-- **WHEN** the operator selects the block of "Test" (7.0 s, over video) in Edit mode and closes its dialog without a change
-- **THEN** no visible text "Title card for Test, 7.0 s, over video" is in the page, outside the block's own name and the visually hidden status region, and the status region held that sentence once
 
 ### Requirement: A card block's end edge is dragged to set the card's length
 
@@ -1040,7 +1013,7 @@ fixed-width clock style ("Card 4.0 s") SHALL follow the pointer, and the rest of
 the snap to a whole second SHALL be given in words and by a line, not by colour alone. Releasing SHALL make one edit
 of the draft, the card's duration, and announce the result once, politely, through Edit mode's one live region ("Title
 card for Reception now 6.0 s. The movie is 2.0 s longer."). Escape, or the browser cancelling the pointer, SHALL end the
-drag with the card as it was and no edit. A drag that ends where it began SHALL make no edit. Pressing the handle SHALL also select that card, as pressing its block does, but SHALL NOT open the card's dialog (a modal opening under the pointer would end the drag); activating the block's body opens it.
+drag with the card as it was and no edit. A drag that ends where it began SHALL make no edit. Pressing the handle SHALL also select that card, as pressing its block does, and the inspector SHALL show its editor in the Title card tab; that panel is docked, so the drag and the track are not disturbed.
 
 #### Scenario: A drag sets the length
 - **WHEN** at 40 px per second the operator presses the end edge of the opening card (4.0 s, black) and moves the pointer 80 px right
@@ -1048,7 +1021,7 @@ drag with the card as it was and no edit. A drag that ends where it began SHALL 
 
 #### Scenario: Releasing makes one edit
 - **WHEN** the operator releases the pointer there
-- **THEN** the save bar counts one changed card, the live region says so once, the card's dialog, opened afterwards, holds 6.0 s in its Length field,
+- **THEN** the save bar counts one changed card, the live region says so once, the card's editor in the inspector holds 6.0 s in its Length field,
   and Save writes `card.duration: 6.0` for that chapter
 
 #### Scenario: Snapping to a whole second
@@ -1069,7 +1042,7 @@ drag with the card as it was and no edit. A drag that ends where it began SHALL 
 
 #### Scenario: A handle press selects the card
 - **WHEN** the operator presses a card's end edge in Edit mode
-- **THEN** the card is selected, no dialog opens, and the track has not moved
+- **THEN** the card is selected, no dialog opens, the inspector shows its Title card tab, and the track has not moved
 
 #### Scenario: Reset and Save are as for any edit
 - **WHEN** the operator changes a card's length and presses Reset
@@ -1809,3 +1782,66 @@ event style's length named "Title card for <chapter>, shown after save". After a
 #### Scenario: Nothing to build from
 - **WHEN** no chapter of the event has a resolved card and the operator adds a chapter "Morgon"
 - **THEN** a block named "Title card for Morgon, shown after save" of the event style's length is drawn
+
+### Requirement: One selection in the workspace
+
+The workspace SHALL hold one selection: nothing, a clip, a cut, a title card or a suggestion. Selecting one SHALL end
+any other, and Escape SHALL clear it. It SHALL survive a Refresh and a save while its target is still in the event, and
+end when its target is gone; a cut is named by its place in its clip's list, so a cut selection SHALL end when a new
+read numbers the cuts again. It SHALL be shown selected in more than colour.
+
+#### Scenario: Card ends clip
+- **WHEN** `s1710003.mp4` is selected and the operator presses the "Kvällen" card block
+- **THEN** the card is selected, the clip is no longer outlined, and the inspector shows the Title card tab
+
+#### Scenario: Cut selection ends with the read
+- **WHEN** the second cut of a clip is selected, the first is removed and the operator saves
+- **THEN** nothing is selected, and the cut that now stands second is not outlined
+
+#### Scenario: Target deleted
+- **WHEN** the selected card's chapter is deleted
+- **THEN** nothing is selected and the inspector shows the Event tab
+
+### Requirement: The selection is shown and announced once
+
+A selected clip or title card SHALL be shown as pressed (`aria-pressed`) wherever it is selected from; a cut and a suggestion by their own marks; none by colour alone.
+
+The selection SHALL be announced once, through the polite status region, when it changes to something, and the page SHALL have no visible line naming it besides the selected thing's own name. Pressing the selected thing again SHALL leave it selected. Reading a selection SHALL make no request and SHALL NOT mark the page changed.
+
+#### Scenario: Cut and suggestion shown
+- **WHEN** a cut or a suggestion is selected
+- **THEN** the cut is shown by its group and handles and the suggestion by its selected mark, neither by colour alone
+
+#### Scenario: Selection announced once
+- **WHEN** the operator selects the "Kvällen" card block, then a clip, a cut and a suggestion
+- **THEN** each selection is said once by the polite status and no visible line names the selection
+
+### Requirement: A card block is a button with a name in words
+
+A title card's block and its chapter's Edit Titlecard button SHALL both show a selected card, as pressed. A card block SHALL be a button reached by Tab in document order, pressed by Enter or Space, named in words as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default chapter: "Title card for the opening, …"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", not enabled").
+
+#### Scenario: Keyboard and names
+- **WHEN** a keyboard user tabs to the "Dag 2" block and presses Space
+- **THEN** it is selected, a screen reader says "Title card for Dag 2, 4.0 s, over video, pressed", and the polite status says it once
+
+#### Scenario: A card block's name
+- **WHEN** the "Dag 2" card, 4.0 s over video, is selected
+- **THEN** its block's name is "Title card for Dag 2, 4.0 s, over video" and it is pressed
+
+### Requirement: A clip is selected on the track or in the bin
+
+A press on a clip block's body (not its edge tools or handles) and a press on its bin row SHALL select the clip. The
+block SHALL be outlined with trim handles and the row highlighted; each SHALL be scrolled into view in its pane
+without moving keyboard focus there. A press on empty track SHALL select nothing.
+
+#### Scenario: Bin to track
+- **WHEN** the track shows 0–20 s and the operator presses the bin row of a clip drawn at 31 s
+- **THEN** the clip is selected, the track scrolls so the clip is in view, and focus stays on the bin row
+
+#### Scenario: Bin press again
+- **WHEN** a clip is selected, the track is scrolled away from it, and the operator presses its bin row again
+- **THEN** the track scrolls back to the clip
+
+#### Scenario: Empty track
+- **WHEN** the operator presses the track below the last lane
+- **THEN** nothing is selected and the inspector shows the Event tab

@@ -2507,7 +2507,7 @@ be reachable with the keyboard and SHALL name, to assistive technology, the chap
 
 - **Add chapter**, after the last chapter, SHALL ask for a name and add an empty chapter with that name at the
   end.
-- **Rename** SHALL be done in the title card dialog, in its Name field ("The title card dialog holds every
+- **Rename** SHALL be done in the title card editor, in its Name field ("The title card editor holds every
   name and every title-card setting"), by the one workflow for every chapter. A chapter's header bar SHALL show its name as plain text: not a
   button, with no pencil and no hover or focus change, and pressing it SHALL do nothing. There SHALL be no Rename
   button, no inline name field and no dialog of its own for a name. The event's own chapter (the default chapter,
@@ -2527,30 +2527,33 @@ be reachable with the keyboard and SHALL name, to assistive technology, the chap
 **The header bar.** Every chapter's header bar, the event's own chapter's too, SHALL hold, in this order, the chapter's name as plain
 text, the chapter's clip count and an **Edit Titlecard** button; the chapter's tools (Move up, Move down, Delete, offered by the rules above) stay in their own row under the bar, which is sticky and keeps one line. In the workspace's clip bin, Edit Titlecard SHALL show an icon only at every window width, keeping its name and offering its words as a tooltip. In the bin from 960 CSS pixels wide (the side pane; below that the panes stack and the bin keeps the tools row under the bar) the bar SHALL instead hold the tools itself, after the clip count, so that with a fine pointer a chapter takes one row above its clips: there Move up, Move down and Delete SHALL show an icon only, keep their names and reasons, and offer their names as tooltips, and the bar SHALL be at most 36 CSS pixels tall. With a coarse pointer the bar keeps the 44 CSS pixel targets and wraps onto a second line. The
 button SHALL show an icon and the words "Edit Titlecard", SHALL be named "Edit title card for <name>" (the event's own chapter: its
-heading) and SHALL open the title card dialog on the "This title card" tab ("A selected title card opens its inspector in Edit mode"). A
+heading) and SHALL select that card, showing its editor on the inspector's "This title card" tab ("The title card editor is docked in the inspector"). A
 chapter's section SHALL show nothing between its header bar and its clips but the tools row and the notes of this requirement and of "Edit mode says what
 a chapter's name means for clips added later": no card row, no "Main title card" line, no source line ("from the folder name"). A chapter added in the draft has no saved card, and its
-button SHALL be offered all the same and keeps the preview from the draft. While the Timeline draws a card built from the event's cards for it ("A chapter added while editing gets the event's card on the Timeline"), the dialog SHALL say that until Save its title card is drawn as the event's and that its own settings can be changed after Save; otherwise it SHALL say that its card is drawn after Save.
+button SHALL be offered all the same and keeps the preview from the draft. While the Timeline draws a card built from the event's cards for it ("A chapter added while editing gets the event's card on the Timeline"), the editor SHALL say that until Save its title card is drawn as the event's and that its own settings can be changed after Save; otherwise it SHALL say that its card is drawn after Save.
 
 Each chapter SHALL offer only the controls that apply to it. An event that lists one chapter, the event's own,
 offers Add chapter and none of the others. The only chapter left, a deleted one aside, SHALL NOT offer Delete,
 Move up or Move down, so that an event never saves without a chapter.
 
-**The Name field.** In the dialog the field SHALL be the first of "This title card" and SHALL be named "Name of chapter <name>"
-for a chapter and "Title of the event" for the event's own chapter, where <name> is the name the draft holds when the dialog opens. The
-header bar and the dialog's title name the chapter by its name alone.
+**Focus after the selection leaves the card.** When Escape clears the card selection from inside the editor, keyboard focus SHALL
+return to the control that selected the card (the chapter's Edit Titlecard button, or the card block on the Timeline), so that the focused field never
+unmounts onto the page body. Selecting something else leaves keyboard focus where the operator put it.
 
-- An accepted name SHALL be written to the draft as it is typed, so that the dialog's heading, its preview, the chapter's header
-  bar behind the dialog and the picker of Move marked to… follow it. A name equal to the chapter's current name, once the spaces
-  around it are removed, SHALL change nothing. A rename SHALL be announced once, when keyboard focus leaves the field or the dialog
-  closes, and not for each key; typing a name and typing the old one back announces nothing.
+**The Name field.** In the editor the field SHALL be the first of "This title card" and SHALL be named "Name of chapter <name>"
+for a chapter and "Title of the event" for the event's own chapter, where <name> is the name the draft holds when the editor opens. The
+header bar and the editor's title name the chapter by its name alone.
+
+- An accepted name SHALL be written to the draft as it is typed, so that the editor's heading, its preview, the chapter's header
+  bar behind the editor and the picker of Move marked to… follow it. A name equal to the chapter's current name, once the spaces
+  around it are removed, SHALL change nothing. A rename SHALL be announced once, when keyboard focus leaves the field or the selection leaves the card, and not for each key; typing a name and typing the old one back announces nothing.
 - A refused name SHALL be explained under the field in words, in a `role="alert"` that is remounted for each refusal, and the
-  field SHALL be marked invalid. The draft keeps the last accepted name, and the field keeps the typed text. Done, with a refused
-  name in the field, SHALL keep the dialog open and put keyboard focus in the field. Escape and Close SHALL close the dialog, return the
-  field's text to the draft's name, and announce that the name was not changed and why; they SHALL NOT keep a refused name.
+  field SHALL be marked invalid. The draft keeps the last accepted name, and the field keeps the typed text. Enter, with a refused
+  name in the field, SHALL keep the field invalid and announce the refusal. Escape, and the selection of anything else, SHALL return the
+  field's text to the draft's name and announce that the name was not changed and why; they SHALL NOT keep a refused name.
 - While the field holds a refused name, Ctrl+S SHALL save nothing and SHALL say "Not saved: the name is refused."
-- While a save or a move of marked clips is pending, the field and the dialog's other fields SHALL say that they are unavailable
-  and SHALL change nothing (the busy-control rule); the bar's Edit Titlecard button SHALL say so too and open nothing.
+- While a save or a move of marked clips is pending, the field and the editor's other fields SHALL say that they are unavailable
+  and SHALL change nothing (the busy-control rule); the bar's Edit Titlecard button SHALL say so too and select nothing.
 - Reset, a conflict and Overwrite SHALL treat a name as any other edit; Reset SHALL restore the chapters' names as read.
 
 **The event's own chapter's name is the event's title.** For the event's own chapter the Name field SHALL edit the draft's
@@ -2562,7 +2565,7 @@ undone by Reset as one edit.
 - Any text SHALL be kept as the title, with no rule of the page's. A blank title means that it inherits from the folder name, and
   the field SHALL say so in the words of the Details form ("Left empty: inherits from the folder name when saved"). The
   service's refusal of an unusable title stays at the Details form and is retired by editing the title in either place.
-- While the draft's title differs from the title read, the dialog SHALL say that saving changes the movie's file name, that if the
+- While the draft's title differs from the title read, the editor SHALL say that saving changes the movie's file name, that if the
   movie was already rendered the next render saves it under the new name, and that the movie under its old name stays on disk. It SHALL NOT name a
   file: the event page names them after the save, from the verdict.
 - The card's heading follows the name. A card that has its own title ("Card title (overrides the name)") keeps it.
@@ -2581,7 +2584,7 @@ loads:
   shows for the event's own chapter. So `ß`, `ss`, `SS` and `ẞ` are one name, as are `Kvällen` and `KVÄLLEN`.
 
 A refused name SHALL be explained at the name field, which keeps keyboard focus when the name was asked for
-with Done or in the Add chapter dialog, and nothing SHALL change. The
+with Enter or in the Add chapter dialog, and nothing SHALL change. The
 name saved is the accepted name without the spaces around it. A chapter's name SHALL be described to the
 operator as the words on its title card in the movie.
 
@@ -2623,7 +2626,7 @@ change nothing when pressed.
 #### Scenario: A lone chapter offers only Add chapter
 - **WHEN** Edit mode opens on `2024-06-27 - Grillning med grannar`, whose clips are all in its own chapter
 - **THEN** its one chapter offers no Move up, Move down or Delete, its header bar shows `Clips` as plain text with an Edit Titlecard
-  button (the dialog's Name field edits the event's title), and the page offers Add chapter after it
+  button (the editor's Name field edits the event's title), and the page offers Add chapter after it
 
 #### Scenario: A name already taken, or no name, is refused
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator adds a chapter named `kvällen`, then one named
@@ -2646,68 +2649,67 @@ change nothing when pressed.
 
 #### Scenario: Renaming a chapter
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator presses "Edit title card for Kvällen"
-- **THEN** a dialog opens on "This title card" with keyboard focus in the Name field, named "Name of chapter Kvällen" and holding
+- **THEN** the inspector shows the Title card tab on "This title card" with keyboard focus in the Name field, named "Name of chapter Kvällen" and holding
   `Kvällen`; the header bar behind it shows `Kvällen` as plain text with no pencil
-- **WHEN** the operator selects the name, types ` Kväll på stranden `, with spaces around it, and presses Done
-- **THEN** the dialog is closed, keyboard focus is on that chapter's Edit Titlecard button, the heading reads `Kväll på stranden`, the rename was announced once, and the save bar says that 1
+- **WHEN** the operator selects the name, types ` Kväll på stranden `, with spaces around it, and presses Enter
+- **THEN** the field holds the name, the card stays selected, the heading reads `Kväll på stranden`, the rename was announced once, and the save bar says that 1
   chapter was renamed. The chapter offers no Rename button and its name is not pressable.
 
 #### Scenario: Renaming with the keyboard only
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator tabs to "Edit title card for Kvällen", presses Enter, types `Kväll`
   in the Name field and presses Escape
-- **THEN** the chapter is named `Kväll` (an accepted name is already in the draft), the dialog is closed, keyboard focus is on the
-  Edit Titlecard button, and the next Tab reaches the chapter's Move up
+- **THEN** the chapter is named `Kväll` (an accepted name is already in the draft), nothing is selected, keyboard focus is on the chapter's Edit Titlecard button, and the next Tab reaches the chapter's Move up
 
 #### Scenario: Main and a chapter are edited alike
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens "Edit title card for Main" and then "Edit title card for Kvällen"
-- **THEN** each opens the same dialog on "This title card" with the Name field first; Main's is named "Title of the event" and holds
+- **THEN** each shows the same editor on "This title card" with the Name field first; Main's is named "Title of the event" and holds
   `Två kapitel`, Kvällen's "Name of chapter Kvällen"; neither header bar has a pencil, a card row, a "Main title card" line or a
   "from the folder name" line
 
 #### Scenario: Leaving the field keeps an accepted name
-- **WHEN** the operator opens the dialog of `Kvällen`, types `Kväll` in the Name field, and presses Tab
-- **THEN** the chapter is named `Kväll`, keyboard focus is on the control after the field and not back in it, the dialog stays open, and the rename is announced once
+- **WHEN** the operator selects the card of `Kvällen`, types `Kväll` in the Name field, and presses Tab
+- **THEN** the chapter is named `Kväll`, keyboard focus is on the control after the field and not back in it, the card stays selected, and the rename is announced once
 
 #### Scenario: Escape drops what was typed
-- **WHEN** the operator opens the dialog of `Kvällen`, types `main` in the Name field, and presses Escape
-- **THEN** the dialog is closed, keyboard focus is on the chapter's Edit Titlecard button, the chapter is named `Kvällen`, "Name not changed" with the reason is announced, and the page shows no unsaved changes
+- **WHEN** the operator selects the card of `Kvällen`, types `main` in the Name field, and presses Escape
+- **THEN** nothing is selected, keyboard focus is on the chapter's Edit Titlecard button, the chapter is named `Kvällen`, "Name not changed" with the reason is announced, and the page shows no unsaved changes
 
 #### Scenario: Pressing the title and changing nothing
-- **WHEN** the operator types `Kväll` in the Name field of `Kvällen` and then `Kvällen`, with spaces around it, and closes the dialog
+- **WHEN** the operator types `Kväll` in the Name field of `Kvällen` and then `Kvällen`, with spaces around it, and presses Escape
 - **THEN** the chapter is named `Kvällen`, nothing is announced or counted as an edit, and the page shows no unsaved changes
 
 #### Scenario: A refused rename keeps the field open
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator types `main` in the Name field of `Kvällen`
 - **THEN** the field stays as typed, is marked invalid and explains under it that `Main` is how the page names the event's own chapter; the
   refusal is announced, and the draft still holds `Kvällen`. Typing `Morgon` removes the refusal and the chapter is named `Morgon`.
-- **WHEN** the operator types `main` again and presses Done
-- **THEN** the dialog stays open and keyboard focus is in the field
+- **WHEN** the operator types `main` again and presses Enter
+- **THEN** the card stays selected, the field is still marked invalid, and the refusal is announced
 - **WHEN** the operator presses Escape
-- **THEN** the dialog closes, the chapter is named `Morgon`, the last name accepted, and "Name not changed" with the reason is announced
+- **THEN** nothing is selected, keyboard focus is on the chapter's Edit Titlecard button, the chapter is named `Morgon`, the last name accepted, and "Name not changed" with the reason is announced
 
 #### Scenario: A refused name is not lost when focus leaves
 - **WHEN** the operator types `main` in that field and presses Tab
 - **THEN** the field stays as typed with its refusal, keyboard focus is on the control after it, and the chapter is still named `Kvällen`
 
 #### Scenario: An empty name, and a name already taken
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, after adding a chapter `Morgon`, the operator opens its dialog, deletes the name,
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, after adding a chapter `Morgon`, the operator selects its card, deletes the name,
   and then types `KVÄLLEN`
 - **THEN** the first is refused because a chapter needs a name, and the second because a chapter called `Kvällen` exists, each in
   the words Add chapter's dialog uses for the same name
 
 #### Scenario: One field at a time
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, after adding a chapter `Morgon`, the operator renames `Kvällen` to `Kväll` in its dialog, presses Done, and opens "Edit title card for Morgon"
-- **THEN** only the dialog of `Morgon` is open, `Kvällen`'s header bar reads `Kväll`, and the save bar counts the one rename
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, after adding a chapter `Morgon`, the operator renames `Kvällen` to `Kväll` in its editor, and presses "Edit title card for Morgon"
+- **THEN** only the card of `Morgon` is selected, `Kvällen`'s header bar reads `Kväll`, and the save bar counts the one rename
 
 #### Scenario: A name typed and not kept holds Save
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator changes the title in the Details form, opens the dialog of `Kvällen`,
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator changes the title in the Details form, selects the card of `Kvällen`,
   types `main` and presses Ctrl+S
-- **THEN** nothing is saved and "Not saved: the name is refused." is announced. After the operator types `Kväll`, closes the dialog and presses
+- **THEN** nothing is saved and "Not saved: the name is refused." is announced. After the operator types `Kväll`, presses Escape and then
   Ctrl+S, one save is sent and carries both edits.
 
 #### Scenario: Reset closes the field
-- **WHEN** the operator renames `Kvällen` to `Kväll` in its dialog, closes it, and presses Reset
-- **THEN** the header bar reads `Kvällen`, the page shows no unsaved changes, and "Edit title card for Kvällen" opens a dialog whose Name field holds `Kvällen`
+- **WHEN** the operator renames `Kvällen` to `Kväll` in its editor, and presses Reset
+- **THEN** the header bar reads `Kvällen`, the page shows no unsaved changes, and "Edit title card for Kvällen" shows an editor whose Name field holds `Kvällen`
 
 #### Scenario: The event's own chapter keeps no name
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`
@@ -2717,12 +2719,12 @@ change nothing when pressed.
 #### Scenario: Renaming the main title card edits the event's title
 - **WHEN** Edit mode opens on `2024-06-27 - Grillning med grannar`, in which one chapter is listed, and the operator opens "Edit title
   card for Clips" and types `Grillkväll med grannarna` in the field named "Title of the event"
-- **THEN** the Details form's Title field holds the same, the dialog's preview shows it, the save bar says "Title" changed, and the
-  dialog says that saving changes the movie's file name and names no file. The chapter is still headed `Clips`.
-- **WHEN** the operator closes the dialog and types `Grillkväll` in the Details form's Title field and reopens the dialog
+- **THEN** the Details form's Title field holds the same, the editor's preview shows it, the save bar says "Title" changed, and the
+  editor says that saving changes the movie's file name and names no file. The chapter is still headed `Clips`.
+- **WHEN** the operator types `Grillkväll` in the Details form's Title field and selects the card again
 - **THEN** the Name field holds `Grillkväll`
 - **WHEN** the operator saves
-- **THEN** one `PUT` is sent whose metadata title is `Grillkväll` and whose chapters and clips are as read, and the dialog no longer says anything about
+- **THEN** one `PUT` is sent whose metadata title is `Grillkväll` and whose chapters and clips are as read, and the editor no longer says anything about
   the file name
 
 #### Scenario: Emptying the main title card
@@ -2778,7 +2780,7 @@ change nothing when pressed.
 #### Scenario: The last chapter stays
 - **WHEN** on `2024-06-27 - Grillning med grannar`, the operator adds a chapter `Kvällen vid grillen`, moves all
   four clips of `Main` to it, and deletes `Main`
-- **THEN** `Kvällen vid grillen` has a Name field in its dialog, but no Delete, Move up or Move down, and the save bar
+- **THEN** `Kvällen vid grillen` has a Name field in its editor, but no Delete, Move up or Move down, and the save bar
   says that 4 clips moved, 1 chapter was added and 1 chapter deleted
 
 #### Scenario: Chapter controls on a phone
@@ -5651,60 +5653,6 @@ NOT make the page scroll horizontally from 320 CSS pixels up.
 - **THEN** its value text reads `s1710002.mp4, clip 0:00.1 of 0:40; event 0:09.1 of 0:55.02`, in the Cuts panel's
   form, and the visible readout is not the slider's value
 
-### Requirement: A selected title card opens its inspector in Edit mode
-Activating a title card in Edit mode, from its block on the Timeline (a press, Enter or Space) or from the **Edit Titlecard** button in its chapter's header bar, SHALL open that card's inspector in a modal dialog, over the page wherever the operator has scrolled to, named "Title card
-for <chapter>" (the opening card: "Opening title card"). There SHALL be one card editor and one place for it, for the opening card and every chapter's alike: the inspector SHALL NOT
-also be rendered in the page below the Timeline's track. The app's existing dialog component (`ui/Dialog`, the native `<dialog>`
-with `showModal()`) SHALL be reused. The dialog SHALL hold the tabs, the Name and the card fields that "The title card dialog holds every name and every title-card setting" lists, and one live preview; the preview SHALL sit above the fields where the dialog is 600 CSS pixels
-wide or narrower and beside them where it is wider. Opening it SHALL NOT scroll the page, SHALL NOT move the track, the ruler,
-the playhead or the Timeline's video, and the page behind it SHALL NOT scroll while it is open. Focus SHALL move to the dialog's first
-field when it opens and SHALL return to the button or block that opened it when it closes, unless the operator has already moved it to
-a control outside the dialog. Escape and a Close button SHALL close it, as SHALL a "Done" button; none of them SHALL discard an
-edit. Edits SHALL go into the page's one draft, as every other Edit-mode change does: the dialog has no Save or Cancel of its
-own, and the save bar counts a changed card ("1 title card changed") while the dialog is open and after it is closed. The card's selection highlight, on its block and on its chapter's button, SHALL stay while the dialog is open and after it closes. Activating
-a card that is already selected SHALL open the dialog again. At 600 CSS pixels wide or narrower the dialog SHALL be a full-screen
-sheet. The dialog's Length field and the Timeline's length drag SHALL be two ways to edit the one draft `duration`. Every
-control SHALL have a visible label and an accessible name, work with the keyboard alone, and be at least 44 × 44 CSS pixels where
-the primary pointer is coarse. The dialog SHALL fit from 320 to 1280 CSS pixels wide without a horizontal page scroll, follow the
-colour scheme, and add no motion when the operator prefers reduced motion. In the read view nothing changes: selecting a card
-there opens no dialog and writes nothing.
-
-#### Scenario: Opening from a row far down the page
-- **WHEN** the page is scrolled to a chapter far below the Timeline and the operator presses that chapter's "Edit title card for <chapter>"
-- **THEN** the dialog opens named "Title card for <chapter>" on "This title card" with focus in its Name field, the page has not
-  scrolled, and the chapter's button and its block show as selected
-
-#### Scenario: Selecting a card opens it
-- **WHEN** the operator presses the title card block of the chapter `Reception` on the Timeline
-- **THEN** the dialog opens named "Title card for Reception", the block and the chapter's Edit Titlecard button show as selected, and the keyboard reaches
-  every field in reading order
-
-#### Scenario: Editing and finishing
-- **WHEN** the operator changes the title, sees the preview update, and presses Done
-- **THEN** the dialog is closed, focus is back on the button that opened it, the save bar shows the change
-  ("1 title card changed"), and Save writes `reel.yaml`
-
-#### Scenario: Escape closes and keeps the edit
-- **WHEN** the operator has typed a title and presses Escape
-- **THEN** the dialog closes, focus returns to the button or block that opened it, the draft holds the edit, and the card stays selected
-
-#### Scenario: Reopening the selected card
-- **WHEN** the dialog has been closed and the operator presses the still-selected card again
-- **THEN** the dialog opens again with the draft's values
-
-#### Scenario: A narrow window
-- **WHEN** the window is 390 CSS pixels wide, and again 320, and a card is open
-- **THEN** the dialog is a full-screen sheet with the preview above the fields, nothing scrolls horizontally, and the page behind
-  it does not scroll
-
-#### Scenario: Selecting never moves the track
-- **WHEN** a card is opened from its block and from its chapter's button, at 1280 and 390 px
-- **THEN** the track's bounding box is the same before and after each and no inspector is in the page below it
-
-#### Scenario: Switching and closing
-- **WHEN** the dialog is open and the operator closes it, then presses another card
-- **THEN** the other card's dialog opens, and the draft holds every edit made on both
-
 ### Requirement: A card's fields are overrides that follow the event style until set
 Each of the inspector's fields SHALL be a per-card override. An unset field SHALL show the value it inherits as a
 muted placeholder with the words "Event style" (the engine-resolved value the event detail reports), and a set field
@@ -5859,7 +5807,7 @@ field of the card it names, and SHALL keep the draft.
 
 ### Requirement: Edit mode edits the event's card style in one place
 
-The title card dialog's second tab, **All title cards in this event**, SHALL edit the event-wide title-card style, the `look.title_card` of
+The title card editor's second tab, **All title cards in this event**, SHALL edit the event-wide title-card style, the `look.title_card` of
 `reel.yaml`, and it is the only place that does: the page SHALL NOT hold a "Card style for this event" section or any other control for it. It SHALL offer these
 fields: font family, title size, subtitle size, text color, position (center, top or bottom), default length, and default background (Black or
 Video), each with a **Use project default** button. The font family SHALL be chosen from the families the service lists (`GET /api/v1/fonts`), each shown
@@ -5870,19 +5818,19 @@ because the page does not know it, and SHALL NOT show a value it does not have. 
 and operable with the keyboard, and have a label, and a tap area of at least 44 by 44 pixels while the
 primary pointer is coarse. The tab SHALL be disabled with Edit mode's other edit controls while a save is in flight.
 
-The dialog's one live preview, drawn by the service from the draft (not the saved) style and the card being edited, SHALL show an
+The editor's one live preview, drawn by the service from the draft (not the saved) style and the card being edited, SHALL show an
 event-style edit at once, under the same rules as the card preview: debounced, a stale request cancelled, the previous image kept while the next
-loads, and a failure told in words. When the service cannot resolve the saved event style (the event detail's `title_card_error`), the dialog SHALL open on this tab
-showing that error in words and the stored values as typed, so the operator can correct them.
+loads, and a failure told in words. When the service cannot resolve the saved event style (the event detail's `title_card_error`), the docked editor SHALL show this tab
+with that error in words and the stored values as typed, so the operator can correct them.
 
 #### Scenario: Setting a font and a colour for every card
-- **WHEN** on `2024-08-20 - Två kapitel - Tjörn` in Edit mode, the operator opens "Edit title card for Main", chooses the tab "All title cards in this event",
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn` in Edit mode, the operator selects the card of Main ("Edit title card for Main"), chooses the tab "All title cards in this event",
   picks the font `DM Serif Display` and sets the text color `#FFD700`
 - **THEN** the preview shows the opening card in that face and color before anything is saved, and the save
   bar says the card style changed
 
 #### Scenario: An unset field follows the project default
-- **WHEN** the event's `reel.yaml` sets no `look.title_card` and the operator opens the tab
+- **WHEN** the event's `reel.yaml` sets no `look.title_card` and the operator shows the tab
 - **THEN** each field shows the project default value as a placeholder and none shows as set
 
 #### Scenario: Use project default clears a field
@@ -5895,8 +5843,8 @@ showing that error in words and the stored values as typed, so the operator can 
   the save bar counts the change
 
 #### Scenario: A style the engine refuses is told and correctable
-- **WHEN** the event's `look.title_card.position` is hand-written as `middle` and the operator opens a title card dialog
-- **THEN** the dialog opens on "All title cards in this event" showing the service's refusal naming `position` and `middle` in the field, and
+- **WHEN** the event's `look.title_card.position` is hand-written as `middle` and the operator selects a title card
+- **THEN** the docked editor shows "All title cards in this event", with the service's refusal naming `position` and `middle` in the field, and
   choosing `center` clears the refusal
 
 #### Scenario: The control is usable at a narrow width
@@ -6262,20 +6210,20 @@ visible in both color schemes and in forced colors. Reading a screen SHALL NOT c
 
 ### Requirement: The title card dialog holds every name and every title-card setting
 
-The title card dialog ("A selected title card opens its inspector in Edit mode") SHALL be the one place in Edit mode for a chapter's
+The title card editor, docked in the inspector's Title card tab ("The title card editor is docked in the inspector"), SHALL be the one place in Edit mode for a chapter's
 name and for every title-card setting, the same for the event's own chapter and for every other chapter. The page SHALL hold no
-other control for a name, a card or the event's card style. The dialog SHALL have one live preview of the card being edited, drawn by the
+other control for a name, a card or the event's card style. The editor SHALL have one live preview of the card being edited, drawn by the
 service from the draft ("The preview is drawn by the service while the operator edits"), visible whichever tab is shown, and two tabs in a
 tab list named "Title card settings" (`role="tablist"`, each tab `role="tab"` with `aria-selected`, its panel `role="tabpanel"` named
 by the tab). Left and Right Arrow, Home and End SHALL move between the tabs, and Tab SHALL move from the tab list into the shown panel.
-Two tabs, not two stacked groups, keep the dialog the height of one tab and keep the preview in view while the operator edits either.
+Two tabs, not two stacked groups, keep the editor the height of one tab and keep the preview in view while the operator edits either.
 
-- **"This title card"** SHALL be shown when the dialog opens, except as the last bullet says. In this order it SHALL hold: the **Name**
+- **"This title card"** SHALL be shown when a card is selected, except as the last bullet says. In this order it SHALL hold: the **Name**
   ("Edit mode adds, renames, reorders and deletes chapters"); **Card title (overrides the name)** with a **Use the name** button, only for a card
   whose draft has its own `title`, and no control that adds one; the **Subtitle**; **Background**; **Font**; **Title size**;
   **Subtitle size**; **Text colour**; **Position**; and **Length**. Each field but the Name SHALL have **Use event style** ("A card's fields are
   overrides that follow the event style until set"). The card's heading follows the Name: a card with no title of its own draws the name
-  (the event's title for the opening card), and the preview, the dialog's name and the Timeline's blocks follow it as it is typed.
+  (the event's title for the opening card), and the preview, the editor's name and the Timeline's blocks follow it as it is typed.
   Use the name SHALL remove the card's own title from the draft; the key goes from `reel.yaml` on Save.
 - **Length** SHALL be a number field in seconds named "Length of the title card (seconds)", showing the card's length, else the event's default
   length as its placeholder with the words "Event style". It SHALL take whole tenths, from 0.5 to 60, and for a card over video no more than
@@ -6287,8 +6235,8 @@ Two tabs, not two stacked groups, keep the dialog the height of one tab and keep
   at once. Use event style SHALL remove the card's `duration`.
 - **"All title cards in this event"** SHALL hold the event-wide style fields of "Edit mode edits the event's card style in one place" and the
   Title cards On or Off switch of "Edit mode switches the event's title cards On or Off". Its edits SHALL change the preview of the card shown.
-- A tab that holds a problem the operator cannot see, a refusal by the service at one of its fields or a field the dialog refused, SHALL say so in its label ("All title
-  cards in this event, 1 problem"), and the dialog SHALL open on the first tab that holds one when the service's last answer named one.
+- A tab that holds a problem the operator cannot see, a refusal by the service at one of its fields or a field the editor refused, SHALL say so in its label ("All title
+  cards in this event, 1 problem"), and the editor SHALL show the first tab that holds one when a card is selected and the service's last answer named one.
 - Every field SHALL work with the keyboard alone, have a visible label, be at least 44 × 44 CSS pixels where the primary pointer is coarse, and fit 320 to
   1280 CSS pixels without a horizontal page scroll in both colour schemes.
 
@@ -6298,7 +6246,7 @@ turned on". Save SHALL send the same whole-document `PUT` under `If-Match` that 
 
 #### Scenario: Two tabs, the name first
 - **WHEN** the operator presses "Edit title card for Kvällen" on `2024-08-20 - Två kapitel - Tjörn`
-- **THEN** the dialog opens on the tab "This title card" whose first field is the Name, named "Name of chapter Kvällen" and holding `Kvällen`,
+- **THEN** the editor shows the tab "This title card" whose first field is the Name, named "Name of chapter Kvällen" and holding `Kvällen`,
   followed by Subtitle, Background, Font, Title size, Subtitle size, Text colour, Position and Length; the preview is shown above them at 390 px and beside
   them at 1280 px; and the tab "All title cards in this event" is one Arrow key away
 
@@ -6309,13 +6257,13 @@ turned on". Save SHALL send the same whole-document `PUT` under `If-Match` that 
   "1 chapter renamed" and "Card style changed"
 
 #### Scenario: A card with its own title
-- **WHEN** the chapter `Kvällen`'s card in `reel.yaml` has `title: Kväll på stranden` and the operator opens its dialog
-- **THEN** the dialog shows the Name (`Kvällen`) and then "Card title (overrides the name)" holding `Kväll på stranden` with "Use the name"
+- **WHEN** the chapter `Kvällen`'s card in `reel.yaml` has `title: Kväll på stranden` and the operator selects its card
+- **THEN** the editor shows the Name (`Kvällen`) and then "Card title (overrides the name)" holding `Kväll på stranden` with "Use the name"
 - **WHEN** the operator presses Use the name
 - **THEN** the field is gone, the preview draws `Kvällen`, and the next Save removes `title` from that card
 
 #### Scenario: A card with no title of its own offers none to add
-- **WHEN** the operator opens the dialog of a chapter whose card sets no `title`
+- **WHEN** the operator selects the card of a chapter whose card sets no `title`
 - **THEN** there is no "Card title" field and no control that would add one, and the card's heading is the Name
 
 #### Scenario: The same dialog for Main
@@ -6334,14 +6282,14 @@ turned on". Save SHALL send the same whole-document `PUT` under `If-Match` that 
 - **THEN** the field refuses it in words that name 3.4 s as the longest, and the draft is unchanged
 
 #### Scenario: The drag and the field are one edit
-- **WHEN** the operator drags a card's end edge to 6.0 s, releases, and opens the card's dialog
+- **WHEN** the operator drags a card's end edge to 6.0 s, releases, and looks at the card's editor
 - **THEN** the Length field holds 6.0
-- **WHEN** the operator types `7` and closes the dialog
+- **WHEN** the operator types `7`
 - **THEN** the card block on the Timeline is 7.0 s long and Save writes `card.duration: 7.0`
 
 #### Scenario: A problem in the other tab is shown on the tab
-- **WHEN** the service answers a Save with 400 naming `look.title_card.title_font_size` and the operator opens a dialog
-- **THEN** the dialog opens on "All title cards in this event", whose label says "1 problem", with the message at the field
+- **WHEN** the service answers a Save with 400 naming `look.title_card.title_font_size` and the operator selects a card
+- **THEN** the editor shows "All title cards in this event", whose label says "1 problem", with the message at the field
 
 #### Scenario: Nothing else on the page edits a name or a card
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`, in light and dark at 1280 and 390 px
@@ -6349,7 +6297,7 @@ turned on". Save SHALL send the same whole-document `PUT` under `If-Match` that 
   section; each chapter's section is its header bar and its clips
 
 #### Scenario: One save writes the keys that changed
-- **WHEN** the operator renames `Kvällen` to `Kväll`, edits the opening card's event title, sets the style's position to Top and turns the cards Off, in the dialogs, and saves
+- **WHEN** the operator renames `Kvällen` to `Kväll`, edits the opening card's event title, sets the style's position to Top and turns the cards Off, in the editors, and saves
 - **THEN** one `PUT` under `If-Match` is sent whose chapter is named `Kväll`, whose metadata title is the new title, whose `look.title_card.position` is `top`
   and whose `look.decorators` is `[]`, and no other key differs from `reel.yaml` as read
 
@@ -6749,17 +6697,17 @@ The viewer SHALL show the Timeline's picture with play, previous clip, next clip
 ### Requirement: The inspector holds the event's fields and the selected cut
 
 The inspector SHALL have an Event tab (Details form, Poster, and a button "All title cards in this event" that
-opens the title card dialog on that tab, with whether title cards are on in words) and a Cut tab (the selected
-cut's fields and the selected suggestion's decision). The tabs SHALL work by arrow keys. Choosing a cut or a
-suggestion on the track SHALL show the Cut tab and leave focus on the track.
+shows the Title card tab on its "All title cards in this event" tab, with whether title cards are on in words), a Clip tab (the selected
+clip's or cut's fields), a Title card tab (the docked card editor) and a Suggestion tab (the selected suggestion's decision), as "The inspector follows the selection" says. The tabs SHALL work by arrow keys. Choosing a cut or a
+suggestion on the track SHALL show its tab and leave focus on the track.
 
 #### Scenario: Selecting a cut
 - **WHEN** the operator presses a cut's handle on the track
-- **THEN** the inspector shows the Cut tab with that cut's start and end fields
+- **THEN** the inspector shows the Clip tab with that cut's start and end fields
 
 #### Scenario: The card style and the switch stay in the dialog
 - **WHEN** title cards are on and the operator presses "All title cards in this event" in the Event tab
-- **THEN** the Event tab said "Title cards are on for this event", and the dialog opens on its "All title cards in
+- **THEN** the Event tab said "Title cards are on for this event", and the inspector shows the Title card tab on its "All title cards in
   this event" tab, which holds the card style and the Title cards switch
 
 ### Requirement: The workspace follows the theme and fits narrower windows
@@ -6813,3 +6761,39 @@ focus SHALL NOT be left under one at any scroll position.
 - **WHEN** two error notifications are shown and the operator, in Edit mode in a window 390 × 844, presses Tab
   through every control of the workspace
 - **THEN** no notification covers any part of the control that has focus, at any step
+
+### Requirement: The inspector follows the selection
+
+The inspector SHALL show the tab for what is selected: Clip for a clip or a cut, Title card for a card, Suggestion for
+a suggestion, and Event when nothing is selected. The operator MAY still pick another tab by hand; the next selection
+SHALL pick the tab again. Each tab's controls SHALL edit the one draft, as every Edit-mode change does.
+
+#### Scenario: Clip selected
+- **WHEN** the operator presses the body of `s1710003.mp4`'s block on the track
+- **THEN** the inspector shows the Clip tab with `s1710003.mp4`, "Kvällen · clip 2 of 3", its Trim In/Out fields,
+  rotate buttons and its cuts
+
+#### Scenario: Nothing selected
+- **WHEN** the operator presses Escape with a clip selected
+- **THEN** nothing is selected and the inspector shows the Event tab with the Details form
+
+### Requirement: The Clip tab edits the selected clip
+
+The Clip tab SHALL show the clip's name, chapter and position, and its length in the movie, and SHALL offer Trim In
+and Trim Out as typed times, Rotate left and right, the clip's cuts with remove and "+ Cut at playhead", Use frame as
+poster. A typed trim SHALL be the same draft edit as the track's edge tools.
+
+#### Scenario: Typed Trim In
+- **WHEN** the operator types 0:01.50 into Trim In for `s1710001.mp4`
+- **THEN** the clip's leading cut is 0 to 1.5 s in the draft, the block shortens and the clips after it move left
+
+### Requirement: The title card editor is docked in the inspector
+
+Selecting a title card, on the track or from its chapter in the bin, SHALL show its editor in the inspector's Title
+card tab: the tabs "This title card" and "All title cards in this event", the fields, and one live preview above them.
+No modal dialog SHALL open. Edits SHALL go into the one draft; the top bar counts a changed card.
+
+#### Scenario: Card from the track
+- **WHEN** the operator presses the "Kvällen" card block
+- **THEN** the inspector shows "Title card for Kvällen" with its preview and fields, the track and the picture stay
+  visible, and no dialog is open
