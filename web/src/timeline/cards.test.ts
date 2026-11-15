@@ -583,6 +583,16 @@ describe('cardSelection', () => {
 })
 
 describe('cardSelection open and dismiss', () => {
+  it('open on a tab keeps the tab until the dialog closes', () => {
+    const opened = cardSelection.open(null, '', 'event')
+    assert.deepEqual(opened, { chapter: '', editing: true, tab: 'event' })
+    assert.equal(cardSelection.open(opened, '', 'event'), opened)
+    // Opened again without a tab, the dialog picks its own.
+    assert.deepEqual(cardSelection.open(opened, ''), { chapter: '', editing: true })
+    assert.deepEqual(cardSelection.dismiss(opened), { chapter: '', editing: false })
+    assert.deepEqual(cardSelection.open(cardSelection.select(null, ''), '', 'event'), opened)
+  })
+
   it('open selects and opens, and reopens a selected card', () => {
     const dag = cardSelection.select(null, 'Dag 2')
     const opened = cardSelection.open(dag, 'Dag 2')

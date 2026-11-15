@@ -75,6 +75,7 @@ export function CardInspectorPanel({
   backdrop,
   lengthRange,
   gate,
+  initialTab = null,
   onClose,
 }: {
   eventId: string
@@ -92,6 +93,8 @@ export function CardInspectorPanel({
   lengthRange: CardRange
   /** The Name field's gate: Done is held while it holds a refused name. */
   gate: RefObject<NameGate | null>
+  /** The tab the dialog was asked to open on; null: the first holding a named problem. */
+  initialTab?: TabId | null
   onClose: () => void
 }) {
   const { state: fonts } = useFonts()
@@ -136,13 +139,14 @@ export function CardInspectorPanel({
   const nameBinding = editing.name(saved)
   const off = editing.switchModel.answer !== null && !editing.switchModel.on
 
-  // The tabs. The service's last answer decides which opens; a hidden tab says if it holds a problem.
+  // The tabs. The tab asked for, else the service's last answer, decides which opens; a hidden
+  // tab says if it holds a problem.
   const tabsId = useId()
   const named: Problems = {
     card: view.refusal !== null ? 1 : 0,
     event: styleProblems(editing.styleModel),
   }
-  const [tab, setTab] = useState<TabId>(() => openingTab(named))
+  const [tab, setTab] = useState<TabId>(() => initialTab ?? openingTab(named))
   const [local, setLocal] = useState({ name: false, length: false })
   const problems: Problems = {
     card: named.card + (local.name ? 1 : 0) + (local.length ? 1 : 0),

@@ -169,8 +169,11 @@ export type TimelineParts = {
   viewer: ReactNode
   track: ReactNode
   cutPanel: ReactNode
-  /** A cut or a suggestion is selected: the inspector shows its Cut tab. */
-  cutSelected: boolean
+  /**
+   * The selected cut's or suggestion's key, null with neither: each new selection shows the
+   * inspector's Cut tab.
+   */
+  cutSelected: string | null
 }
 
 /**
@@ -183,7 +186,7 @@ export function Timeline(props: TimelineProps) {
   const cutSelected = parts.cutSelected
   const onCutSelected = panes?.onCutSelected
   useEffect(() => {
-    if (cutSelected) {
+    if (cutSelected !== null) {
       onCutSelected?.()
     }
   }, [cutSelected, onCutSelected])
@@ -1128,7 +1131,9 @@ export function useTimeline({
       {suggestions.detail}
     </div>
   )
-  return { viewer, track, cutPanel, cutSelected: selected !== null || suggestions.detail !== null }
+    const mark = suggestions.selectedKey
+  const cutSelected = selected !== null ? `cut:${selected.key}` : mark === null ? null : `mark:${mark}`
+  return { viewer, track, cutPanel, cutSelected }
 }
 
 /**

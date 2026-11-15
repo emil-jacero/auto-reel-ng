@@ -82,8 +82,97 @@
 
   .ws-insp {
     grid-area: insp;
+    /* The tabs stick to the pane's top; a panel heading sticks under them. */
+    --header-h: var(--panel-head-h);
+
     border-inline-start: 1px solid var(--border);
     background: var(--surface);
+    scroll-padding-block: calc(2 * var(--panel-head-h) + var(--s-2)) var(--s-2);
+  }
+
+  /* The inspector's Event and Cut tabs (`Workspace.tsx`), drawn as the card dialog's. */
+  .ws-insp-tabs {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 3;
+    display: flex;
+    gap: var(--s-4);
+    block-size: var(--panel-head-h);
+    padding-inline: var(--s-3);
+    border-block-end: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .ws-insp-tab {
+    min-inline-size: 2.75rem;
+    padding: 0 var(--s-1);
+    border: 0;
+    border-block-end: 3px solid transparent;
+    margin-block-end: -1px;
+    background: none;
+    color: var(--fg-muted);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--fg);
+    }
+
+    &[aria-selected='true'] {
+      border-block-end-color: var(--accent);
+      color: var(--fg);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: -2px;
+      border-radius: var(--r-sm);
+    }
+  }
+
+  .ws-insp-panel {
+    display: grid;
+    gap: var(--s-3);
+    padding: var(--s-3);
+
+    &[hidden] {
+      display: none;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: -2px;
+    }
+  }
+
+  /* The Cut tab with no cut or suggestion selected says how to select one. */
+  .ws-cut-empty {
+    margin: 0;
+    color: var(--fg-muted);
+  }
+
+  .ws-cut-slot:has(.tl-cut-panel:not(:empty)) ~ .ws-cut-empty {
+    display: none;
+  }
+
+  .ws-cut-slot:not(:has(.tl-cut-panel:not(:empty))) {
+    display: none;
+  }
+
+  /* The Event tab's way to the card dialog's event tab, and the switch's state in words. */
+  .ws-cards {
+    display: grid;
+    justify-items: start;
+    gap: var(--s-1);
+  }
+
+  .ws-cards-state {
+    margin: 0;
+  }
+
+  .ws-cards-where {
+    color: var(--fg-muted);
   }
 
   .ws-tl {
@@ -129,6 +218,12 @@
 
     .ws-insp {
       order: 3;
+      --header-h: var(--ws-top-measured, 3rem);
+    }
+
+    /* The page scrolls: the tabs stay in the flow, the panel headings stick under the top bar. */
+    .ws-insp-tabs {
+      position: static;
     }
 
     .ws-bin {
