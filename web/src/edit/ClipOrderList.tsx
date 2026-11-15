@@ -490,13 +490,14 @@ const ClipRow = memo(function ClipRow({
     },
     [setNodeRef],
   )
-  // Not on mount: a row that mounts already selected (a reorder into another chapter) stays put.
-  const seated = useRef(false)
+  // Only a change to selected scrolls: a row that mounts already selected (a reorder into another
+  // chapter, or a StrictMode remount) stays put.
+  const wasSelected = useRef(selected)
   useEffect(() => {
-    if (seated.current && selectable && selected) {
+    if (selectable && selected && !wasSelected.current) {
       rowRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
     }
-    seated.current = true
+    wasSelected.current = selected
   }, [selected, selectable])
   // The target of a clip dragged in from another chapter, or of a held group anywhere: a
   // line marks the gap above this row (drag.css). A clip within its own chapter makes the

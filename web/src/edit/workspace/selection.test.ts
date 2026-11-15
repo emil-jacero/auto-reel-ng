@@ -1,7 +1,20 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { inspectorTab, keptIn, keptSelection, NO_SELECTION, sameSelection } from './selection.ts'
+import {
+  clearState,
+  dismissState,
+  inspectorTab,
+  keepState,
+  keptIn,
+  keptSelection,
+  NO_SELECTION,
+  NOTHING,
+  openState,
+  sameSelection,
+  selectState,
+} from './selection.ts'
+import type { SelectionState } from './selection.ts'
 import type { Selection, World } from './selection.ts'
 
 const world: World = {
@@ -32,16 +45,6 @@ test('each kind shows its tab, and a cut shows the clip tab', () => {
     all.map(inspectorTab),
     ['event', 'clip', 'clip', 'card', 'suggestion'],
   )
-})
-
-test('a new selection replaces the old: the one value holds a single kind', () => {
-  let sel: Selection = { kind: 'clip', identity: 's1710003.mp4' }
-  sel = { kind: 'card', chapter: 'r1' }
-  assert.equal(sel.kind, 'card')
-  assert.equal(inspectorTab(sel), 'card')
-  sel = { kind: 'suggestion', id: 'x' }
-  assert.equal(inspectorTab(sel), 'suggestion')
-  assert.equal('chapter' in sel, false)
 })
 
 test('a selection whose target stands is kept as it is', () => {
@@ -85,4 +88,79 @@ test('keptIn judges only the kinds the part knows', () => {
     assert.deepEqual(keptIn(card, { chapters: new Set() }), NO_SELECTION)
     assert.deepEqual(keptIn(mark, { suggestions: new Set() }), NO_SELECTION)
     assert.equal(keptIn(mark, { chapters: new Set() }), mark)
+})
+
+const card = (chapter: string): Selection => ({ kind: 'card', chapter })
+const clip = (identity: string): Selection => ({ kind: 'clip', identity })
+
+test('selecting one thing ends the other, whatever the kinds', () => {
+  for (const from of all) {
+    for (const to of all) {
+      const was: SelectionState = { sel: from, dialog: null, again: 0 }
+      const now = selectState(was, to)
+      assert.deepEqual(now.sel, to)
+    }
+  }
+  let state = selectState(NOTHING, clip('s1710003.mp4'))
+  state = selectState(state, card('r1'))
+  assert.deepEqual(state.sel, card('r1'))
+  state = selectState(state, { kind: 'suggestion', id: 'x' })
+  assert.equal(inspectorTab(state.sel), 'suggestion')
+  assert.equal('chapter' in state.sel, false)
+})
+
+test('selecting the same target again changes nothing, except a clip counts the press', () => {
+  const dag = selectState(NOTHING, card('Dag 2'))
+  assert.equal(selectState(dag, card('Dag 2')), dag)
+  const mark = selectState(NOTHING, { kind: 'suggestion', id: 's' })
+  assert.equal(selectState(mark, { kind: 'suggestion', id: 's' }), mark)
+  const one = selectState(NOTHING, clip('a'))
+  const again = selectState(one, clip('a'))
+  assert.deepEqual(again.sel, one.sel)
+  assert.equal(again.again, one.again + 1)
+})
+
+test('open selects and opens the card, keeping the same state for the same request', () => {
+  const opened = openState(NOTHING, '', 'event')
+  assert.deepEqual(opened.sel, card(''))
+  assert.deepEqual(opened.dialog, { tab: 'event' })
+  assert.equal(openState(opened, '', 'event'), opened)
+  // Opened again without a tab, the dialog picks its own.
+  assert.deepEqual(openState(opened, '').dialog, { tab: null })
+  assert.deepEqual(openState(selectState(NOTHING, card('Dag 2')), 'Dag 2').dialog, { tab: null })
+  // Opening another card moves the selection.
+  assert.deepEqual(openState(opened, 'Dag 3').sel, card('Dag 3'))
+  // Opening replaces a selection of another kind.
+  assert.deepEqual(openState(selectState(NOTHING, clip('a')), 'Dag 2').sel, card('Dag 2'))
+})
+
+test('dismiss closes the dialog, keeps the selection, and is a no-op when closed', () => {
+  const opened = openState(NOTHING, 'Dag 2')
+  const closed = dismissState(opened)
+  assert.deepEqual(closed.sel, card('Dag 2'))
+  assert.equal(closed.dialog, null)
+  assert.equal(dismissState(closed), closed)
+  assert.equal(dismissState(NOTHING), NOTHING)
+  // Reopening a selected card opens it again.
+  assert.deepEqual(openState(closed, 'Dag 2').dialog, { tab: null })
+})
+
+test('selecting another thing closes the dialog; select never opens', () => {
+  const opened = openState(NOTHING, 'Dag 2')
+  assert.equal(selectState(opened, card('Dag 3')).dialog, null)
+  assert.equal(selectState(opened, { kind: 'cut', identity: 'a', key: 'r0' }).dialog, null)
+  assert.equal(selectState(NOTHING, card('Dag 3')).dialog, null)
+  assert.equal(selectState(opened, card('Dag 2')), opened)
+})
+
+test('clear and a vanished target end the selection and its dialog', () => {
+  const opened = openState(NOTHING, 'Dag 2')
+  assert.deepEqual(clearState(opened).sel, NO_SELECTION)
+  assert.equal(clearState(opened).dialog, null)
+  assert.equal(clearState(NOTHING), NOTHING)
+  assert.deepEqual(keepState(opened, { chapters: new Set(['']) }).sel, NO_SELECTION)
+  assert.equal(keepState(opened, { chapters: new Set(['Dag 2']) }), opened)
+  // A part that says nothing about the kind keeps it.
+  assert.equal(keepState(opened, { suggestions: new Set() }), opened)
+  assert.equal(keepState(NOTHING, { chapters: new Set() }), NOTHING)
 })

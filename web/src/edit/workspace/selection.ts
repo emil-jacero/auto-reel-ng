@@ -4,6 +4,7 @@
  * is ever selected. No DOM, no React.
  */
 
+import type { TabId } from '../card/tabs.ts'
 import type { ChapterKey, DraftCut } from '../draft'
 
 export type Selection =
@@ -96,4 +97,50 @@ export function keptIn(sel: Selection, part: Partial<World>): Selection {
     suggestions: new Set(),
     ...part,
   })
+}
+
+/**
+ * The selection with the card dialog that is open for it (a card's, never another kind's), and a
+ * count of the presses on the clip that was already selected: the track scrolls back to it.
+ */
+export type SelectionState = {
+  sel: Selection
+  dialog: { tab: TabId | null } | null
+  again: number
+}
+
+export const NOTHING: SelectionState = { sel: NO_SELECTION, dialog: null, again: 0 }
+
+/** Selects `next`, which ends whatever was selected (and the dialog); the same target changes nothing. */
+export function selectState(was: SelectionState, next: Selection): SelectionState {
+  if (!sameSelection(was.sel, next)) {
+    return { sel: next, dialog: null, again: was.again }
+  }
+  // Pressing the selected clip again asks to see it; any other kind is already shown.
+  return next.kind === 'clip' ? { ...was, again: was.again + 1 } : was
+}
+
+/** Nothing is selected. */
+export function clearState(was: SelectionState): SelectionState {
+  return was.sel.kind === 'none' && was.dialog === null ? was : { ...NOTHING, again: was.again }
+}
+
+/** The selection ends when its target is gone from `part` of the world. */
+export function keepState(was: SelectionState, part: Partial<World>): SelectionState {
+  return keptIn(was.sel, part) === was.sel ? was : clearState(was)
+}
+
+/** Selects the card and opens its dialog, also when it is selected; on `tab` if given. */
+export function openState(was: SelectionState, chapter: ChapterKey, tab?: TabId): SelectionState {
+  return was.sel.kind === 'card' &&
+    was.sel.chapter === chapter &&
+    was.dialog !== null &&
+    was.dialog.tab === (tab ?? null)
+    ? was
+    : { sel: { kind: 'card', chapter }, dialog: { tab: tab ?? null }, again: was.again }
+}
+
+/** Closes the dialog; what is selected stays. */
+export function dismissState(was: SelectionState): SelectionState {
+  return was.dialog === null ? was : { ...was, dialog: null }
 }

@@ -447,8 +447,8 @@ export function useTimeline({
       return
     }
     el.scrollLeft = Math.max(0, left - Math.max(0, (el.clientWidth - width) / 2))
-    // Only a change of the selection scrolls; a relayout does not.
-  }, [selectedClip])
+    // Only a press or a change of the selection scrolls; a relayout does not.
+  }, [selectedClip, selection.again])
   const fitRef = useRef(fit)
   fitRef.current = fit
 
