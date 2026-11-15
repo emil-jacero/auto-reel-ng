@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 
-import { shownTab } from './inspectorTabs.ts'
+import { pickStands, shownTab } from './inspectorTabs.ts'
 import type { InspectorTab, PickedTab } from './inspectorTabs.ts'
 import type { SelectionBinding } from './useSelection.ts'
 
@@ -12,6 +12,10 @@ export function useInspectorTab(
   selection: Pick<SelectionBinding, 'selection' | 'again'>,
 ): [InspectorTab, (tab: InspectorTab) => void] {
   const [picked, setPicked] = useState<PickedTab | null>(null)
+  // A pick ends as soon as the selection changes, so it cannot return when the selection does.
+  if (picked !== null && !pickStands(picked, selection.selection, selection.again)) {
+    setPicked(null)
+  }
   const now = useRef(selection)
   now.current = selection
   const pick = useCallback(

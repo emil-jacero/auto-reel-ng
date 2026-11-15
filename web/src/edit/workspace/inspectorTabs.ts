@@ -20,21 +20,24 @@ export const INSPECTOR_TAB_NAME: Record<InspectorTab, string> = {
 /** What a tab with nothing of its kind selected says. */
 export const INSPECTOR_TAB_EMPTY: Record<Exclude<InspectorTab, 'event'>, string> = {
   clip: 'Select a clip or a cut on the Timeline, or a clip in the bin: its fields show here.',
-  card: 'Select a title card on the Timeline, or a chapter’s Edit Titlecard in the bin: its editor shows here.',
+  card: 'Select a title card on the Timeline, or a chapter’s Edit Titlecard in the bin: its card shows here.',
   suggestion: 'Select a suggestion’s mark on the Timeline: its decision shows here.',
 }
 
 /** A tab the operator picked by hand, and the selection (and re-press count) it was picked over. */
 export type PickedTab = { tab: InspectorTab; sel: Selection; again: number }
 
+/** Whether a hand-picked tab still stands: only while the very selection it was made over stands. */
+export function pickStands(picked: PickedTab | null, sel: Selection, again: number): boolean {
+  return picked !== null && picked.again === again && sameSelection(picked.sel, sel)
+}
+
 /**
- * The tab shown: the operator's pick while the selection it was made over stands, else the one
- * the selection gives. Any new selection, or a press on the selected clip again, picks anew.
+ * The tab shown: the operator's pick while it stands, else the one the selection gives. A pick
+ * ends the moment the selection changes (the hook clears it then), so it never comes back later.
  */
 export function shownTab(picked: PickedTab | null, sel: Selection, again: number): InspectorTab {
-  return picked !== null && picked.again === again && sameSelection(picked.sel, sel)
-    ? picked.tab
-    : inspectorTab(sel)
+  return picked !== null && pickStands(picked, sel, again) ? picked.tab : inspectorTab(sel)
 }
 
 /** The tab a key moves to from `current`: Left and Right wrap, Home and End jump; null: not a tab key. */

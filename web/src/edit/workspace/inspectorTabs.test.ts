@@ -5,6 +5,7 @@ import {
   INSPECTOR_TABS,
   INSPECTOR_TAB_NAME,
   inspectorTabAfterKey,
+  pickStands,
   shownTab,
   titleCardsWords,
 } from './inspectorTabs.ts'
@@ -51,6 +52,27 @@ test('the next selection picks the tab again, and so does a press on the selecte
   assert.equal(shownTab(picked, { kind: 'card', chapter: 'Dag 2' }, 0), 'card')
   assert.equal(shownTab(picked, NO_SELECTION, 0), 'event')
   assert.equal(shownTab({ tab: 'card', sel: clip, again: 0 }, clip, 1), 'clip')
+})
+
+test('a pick ends with the selection change: it does not come back when the selection does', () => {
+  const other: Selection = { kind: 'clip', identity: 'b.mp4' }
+  const card: Selection = { kind: 'card', chapter: 'Dag 2' }
+  // The hook clears a pick that no longer stands, as modelled here.
+  const step = (picked: PickedTab | null, sel: Selection, again = 0): PickedTab | null =>
+    pickStands(picked, sel, again) ? picked : null
+  // clip A, pick Event, clip B, clip A: shows the clip
+  let p: PickedTab | null = { tab: 'event', sel: clip, again: 0 }
+  p = step(p, other)
+  assert.equal(shownTab(p, other, 0), 'clip')
+  p = step(p, clip)
+  assert.equal(shownTab(p, clip, 0), 'clip')
+  // none, pick Title card, clip, none: shows the Event tab
+  p = { tab: 'card', sel: NO_SELECTION, again: 0 }
+  p = step(p, clip)
+  p = step(p, NO_SELECTION)
+  assert.equal(shownTab(p, NO_SELECTION, 0), 'event')
+  p = step({ tab: 'event', sel: card, again: 0 }, card)
+  assert.equal(shownTab(p, card, 0), 'event')
 })
 
 test('the Event tab says whether title cards are on, and never guesses without an answer', () => {
