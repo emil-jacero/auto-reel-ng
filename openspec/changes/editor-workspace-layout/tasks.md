@@ -14,7 +14,7 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 1. Timeline split (web/src/timeline)
 
-- [ ] 1.1 Extract `useTimeline` from `Timeline.tsx` and render `TimelineViewer`, `TimelineTrack`, `TimelineCutPanel`
+- [x] 1.1 Extract `useTimeline` from `Timeline.tsx` and render `TimelineViewer`, `TimelineTrack`, `TimelineCutPanel`
   from it (design D2); one `<video>`. Verify `npm test`, `npm run check`, and that today's Edit page still works with
   the three parts stacked (no layout change yet).
 - [ ] 1.2 Add Previous / Next clip to the viewer's transport (playhead to the first kept frame of the drawn clip).

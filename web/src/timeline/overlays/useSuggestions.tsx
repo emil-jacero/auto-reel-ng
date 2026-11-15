@@ -51,8 +51,10 @@ const NO_READ: AnalysisRead = { status: 'reading' }
 
 export type Suggestions = {
   lane: LaneSlot | undefined
-  /** The notes and the selected mark's detail, drawn under the track. */
+  /** The notes (badge, Re-analyze, legend), drawn under the track. */
   strip: ReactNode
+  /** The selected mark's decision, drawn in the cut panel; null with no mark selected. */
+  detail: ReactNode
 }
 
 type Context = {
@@ -362,16 +364,14 @@ export function useSuggestions(
         }
 
   if (control === undefined) {
-    return { lane: undefined, strip: null }
+    return { lane: undefined, strip: null, detail: null }
   }
+  const ok = control.binding.read.status === 'ok'
   return {
     lane,
-    strip: (
-      <Notes
-        binding={control.binding}
-        groups={groups}
-        detail={
-          selected === undefined ? null : (
+    strip: <Notes binding={control.binding} groups={groups} />,
+    detail:
+      selected === undefined || !ok ? null : (
             <SuggestionDetail
               id={detailId}
               mark={selected}
@@ -387,21 +387,16 @@ export function useSuggestions(
               onDismiss={() => decideFromButton(dismiss)}
               onRestore={() => decideFromButton(dismiss)}
             />
-          )
-        }
-      />
-    ),
+          ),
   }
 }
 
 function Notes({
   binding,
   groups,
-  detail,
 }: {
   binding: AnalysisBinding
   groups: readonly ClipMarks[]
-  detail: ReactNode
 }) {
   const { read, badge, reanalyze } = binding
   // The control row: the page's badge (the header's words) and Edit mode's Re-analyze.
@@ -437,7 +432,6 @@ function Notes({
       <ReanalyzeAlert reanalyze={reanalyze} />
       {note !== null && <p className="sg-note">{note}</p>}
       {any && <Legend />}
-      {detail}
     </div>
   )
 }
