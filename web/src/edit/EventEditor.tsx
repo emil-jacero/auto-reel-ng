@@ -2756,7 +2756,7 @@ export function EventEditor({
           )}
           </>,
           bin: <>
-          {detail !== null && newClipsText !== null && (
+          {detail !== null && newClipsText !== null && !inWorkspace && (
             <div className="edit-hint">
               <Icon name="info" />
               <p>{adopted > 0 ? <strong>{newClipsText}</strong> : newClipsText}</p>
@@ -2790,6 +2790,7 @@ export function EventEditor({
                   hasIgnored,
                   hasMissing,
                   ownChapter: listed.some((chapter) => chapter.name === ''),
+                  hasNewClip: inWorkspace && newClips.size > 0,
                 }).map((line) => (
                   <p key={line}>{line}</p>
                 ))}

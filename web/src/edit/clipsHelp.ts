@@ -19,6 +19,9 @@ export const IGNORED_NOTE = 'Ignored clips are not played and cannot be moved.'
 export const MISSING_NOTE =
   'A missing clip is not on disk and stays in its chapter: restore the file, or remove it from reel.yaml.'
 
+export const NEW_CLIP_NOTE =
+  'A new clip joins reel.yaml once its chapter’s order, one of its cuts, or the list of chapters is saved.'
+
 export function clipsHelpLines(opts: {
   /** The event lists more than one chapter. */
   several: boolean
@@ -26,6 +29,8 @@ export function clipsHelpLines(opts: {
   hasMissing: boolean
   /** The event's own chapter is listed (its tools row used to carry OWN_CHAPTER_NOTE). */
   ownChapter: boolean
+  /** A new clip waits (the workspace drops the bin's own line for it). */
+  hasNewClip?: boolean
 }): string[] {
   const lines = [opts.several ? REORDER_SEVERAL : REORDER_ONE]
   if (opts.hasIgnored) {
@@ -37,6 +42,9 @@ export function clipsHelpLines(opts: {
   lines.push(MARK_HINT)
   if (opts.ownChapter && opts.several) {
     lines.push(OWN_CHAPTER_NOTE)
+  }
+  if (opts.hasNewClip) {
+    lines.push(NEW_CLIP_NOTE)
   }
   return lines
 }
@@ -50,7 +58,5 @@ export function newClipsLine(adopted: number, waiting: boolean, adoptedWords: st
   if (adopted > 0) {
     return `Saving adds ${adoptedWords} to reel.yaml.`
   }
-  return waiting
-    ? 'A new clip joins reel.yaml once its chapter’s order, one of its cuts, or the list of chapters is saved.'
-    : null
+  return waiting ? NEW_CLIP_NOTE : null
 }
