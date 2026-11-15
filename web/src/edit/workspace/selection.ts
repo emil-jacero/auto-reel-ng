@@ -130,14 +130,17 @@ export function keepState(was: SelectionState, part: Partial<World>): SelectionS
   return keptIn(was.sel, part) === was.sel ? was : clearState(was)
 }
 
-/** Selects the card and opens its dialog, also when it is selected; on `tab` if given. */
+/**
+ * Selects the card and opens its dialog, also when it is selected; on `tab` if given. Counts as a
+ * press (`again`): opening a card asks to see it, so a hand-picked inspector tab gives way.
+ */
 export function openState(was: SelectionState, chapter: ChapterKey, tab?: TabId): SelectionState {
   return was.sel.kind === 'card' &&
     was.sel.chapter === chapter &&
     was.dialog !== null &&
     was.dialog.tab === (tab ?? null)
     ? was
-    : { sel: { kind: 'card', chapter }, dialog: { tab: tab ?? null }, again: was.again }
+    : { sel: { kind: 'card', chapter }, dialog: { tab: tab ?? null }, again: was.again + 1 }
 }
 
 /** Closes the dialog; what is selected stays. */

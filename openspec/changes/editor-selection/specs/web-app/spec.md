@@ -8,7 +8,7 @@ SHALL pick the tab again. Each tab's controls SHALL edit the one draft, as every
 
 #### Scenario: Clip selected
 - **WHEN** the operator presses the body of `s1710003.mp4`'s block on the track
-- **THEN** the inspector shows the Clip tab with `s1710003.mp4`, "Kvällen · clip 1 of 2", its Trim In/Out fields,
+- **THEN** the inspector shows the Clip tab with `s1710003.mp4`, "Kvällen · clip 2 of 3", its Trim In/Out fields,
   rotate buttons and its cuts
 
 #### Scenario: Nothing selected

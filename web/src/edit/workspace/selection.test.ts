@@ -14,6 +14,7 @@ import {
   sameSelection,
   selectState,
 } from './selection.ts'
+import { shownTab } from './inspectorTabs.ts'
 import type { SelectionState } from './selection.ts'
 import type { Selection, World } from './selection.ts'
 
@@ -118,6 +119,15 @@ test('selecting the same target again changes nothing, except a clip counts the 
   const again = selectState(one, clip('a'))
   assert.deepEqual(again.sel, one.sel)
   assert.equal(again.again, one.again + 1)
+})
+
+test('opening an already selected card counts as a press, so the inspector shows the card', () => {
+  const sel = selectState(NOTHING, card('Dag 2'))
+  const opened = openState(sel, 'Dag 2')
+  assert.equal(opened.again, sel.again + 1)
+  const picked = { tab: 'event' as const, sel: sel.sel, again: sel.again }
+  assert.equal(shownTab(picked, sel.sel, sel.again), 'event')
+  assert.equal(shownTab(picked, opened.sel, opened.again), 'card')
 })
 
 test('open selects and opens the card, keeping the same state for the same request', () => {
