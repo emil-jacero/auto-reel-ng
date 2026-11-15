@@ -337,6 +337,8 @@ describe('afterRead: the playhead when the clips are read again (timeline-ripple
     // On a card in front of its clip, it goes to the clip's first kept frame: the card is another now.
     const card = { chapter: 0, name: '', ms: 500, lengthMs: 3000 }
     assert.deepEqual(afterRead(was, now, { clip: 1, ms: 0, card }), { clip: 0, ms: 0 })
+    // On the opening card, in front of the first clip, it stays: the start is still the start.
+    assert.equal(afterRead(was, now, { clip: 0, ms: 0, card }), null)
     // Its clip gone from the draft (a deleted chapter's, say): the start.
     assert.equal(afterRead(was, [clip('A', 10000), clip('C', 10000)], { clip: 1, ms: 0 }), 'start')
   })
