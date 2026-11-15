@@ -2262,8 +2262,29 @@ export function EventEditor({
     marksCache.current = result
     return result
   }, [listedKeys, orders, marks])
-  const markLineRef = useRef<HTMLDivElement>(null)
+  const markLineRef = useRef<HTMLDivElement | null>(null)
   const rotateHintId = useId()
+  // The bin's toolbar as drawn: it grows with the reason line or the Clips help, and the chapter
+  // headings and the scroll padding follow (`--bin-toolbar-measured` on its parent, workspace.css).
+  // A callback ref: the bin mounts its slots on its own schedule, not with `detail`.
+  const stopMeasuring = useRef<(() => void) | null>(null)
+  const placeMarkLine = useCallback((line: HTMLDivElement | null) => {
+    markLineRef.current = line
+    stopMeasuring.current?.()
+    stopMeasuring.current = null
+    const bin = line?.parentElement
+    if (!line || !bin || typeof ResizeObserver === 'undefined') {
+      return
+    }
+    const measure = () => bin.style.setProperty('--bin-toolbar-measured', `${line.offsetHeight}px`)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(line)
+    stopMeasuring.current = () => {
+      observer.disconnect()
+      bin.style.removeProperty('--bin-toolbar-measured')
+    }
+  }, [])
 
   // A mark or Clear marks: not while a save or a move of marked clips is pending, nor while a clip is
   // lifted (the group a drag lifted is the group it drops). Spoken once through the live region.
@@ -2380,6 +2401,7 @@ export function EventEditor({
   }, [listedKeys, moveTo])
   const moveReasonId = useId()
   const moveSelectId = useId()
+  const moveLabelId = useId()
   // The reason line shows only once Move is pressed while it cannot act; it goes when Move can.
   const [moveReasonShown, setMoveReasonShown] = useState(false)
   const moveWhy = moveReason(marks.size, moveTo !== '', listsLocked)
@@ -2744,7 +2766,7 @@ export function EventEditor({
           {detail !== null && (
             // How clips are marked, and, once any is, how many and Clear marks. Its slot keeps
             // its height and room either way, so the first mark moves no row.
-            <div ref={markLineRef} className="mark-line" tabIndex={-1}>
+            <div ref={placeMarkLine} className="mark-line" tabIndex={-1}>
               <div className="mark-head">
                 <HelpToggle help={clipsHelp} section="Clips" />
                 <span className="mark-line-slot">
@@ -2779,7 +2801,7 @@ export function EventEditor({
                     className="btn btn-secondary btn-compact"
                     aria-disabled={listsLocked || marks.size === 0 || undefined}
                     aria-describedby={marks.size === 0 ? rotateHintId : undefined}
-                    title={'Rotate marked left'}
+                    title="Rotate marked left"
                     onClick={() => onRotateMarked('left')}
                   >
                     <Icon name="rotate-ccw" />
@@ -2790,7 +2812,7 @@ export function EventEditor({
                     className="btn btn-secondary btn-compact"
                     aria-disabled={listsLocked || marks.size === 0 || undefined}
                     aria-describedby={marks.size === 0 ? rotateHintId : undefined}
-                    title={'Rotate marked right'}
+                    title="Rotate marked right"
                     onClick={() => onRotateMarked('right')}
                   >
                     <Icon name="rotate-cw" />
@@ -2801,8 +2823,8 @@ export function EventEditor({
                   </span>
                 </span>
                 {listedKeys.length > 1 && (
-                  <span className="mark-move" role="group" aria-label="Move marked clips">
-                    <label htmlFor={moveSelectId} className="mark-move-label">
+                  <span className="mark-move" role="group" aria-labelledby={moveLabelId}>
+                    <label id={moveLabelId} htmlFor={moveSelectId} className="mark-move-label">
                       Move marked to…
                     </label>
                     <select

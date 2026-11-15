@@ -58,11 +58,14 @@ markup changes:
   `title` is set to the same words for the tooltip, and the icon stays.
 - **Move group label.** The visible label "Move marked to…" becomes `.visually-hidden`. The group's `aria-labelledby`
   still points at it, and the picker keeps its own name.
+- **Help toggle.** In the bin it is icon-only so row 1 fits at 282 px: the word "Help" is visually hidden, the button
+  is 32 px square, and it gets `title="Help: Clips"` (its accessible name is unchanged).
 - **Picker width.** The picker gets `flex: 1 1 auto; min-inline-size: 0`, and Move keeps its words.
   - About 282 − 24 px of padding = 258 px for 2×32 px Rotate buttons, about 64 px for Move and 3 gaps of 8 px.
   - That leaves the picker about 106 px, enough for "Choose a chapter" truncated by the native select.
 - **Height and stickiness.** The line is `position: sticky; inset-block-start: 0` inside the bin pane, with the pane's
-  surface as background and z-index above the rows. Both rows are always present, so its height is constant.
+  surface as background and z-index above the rows. Both rows are always present, so its height is constant until the reason line or the Clips help opens; it then grows,
+  and `--bin-toolbar-measured` (a ResizeObserver on the line) moves the chapter headings and the scroll padding with it.
   - Content: 2 × 32 + 8 = 72 px, plus 16 px of padding = 88 px.
   - The bin's scroll padding grows by this height so focus-in-view clears it. `keepInView` already measures against
     `[data-ws-scroll]`, so only its padding value changes.

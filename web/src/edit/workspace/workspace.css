@@ -528,8 +528,11 @@
     /* The marks line as the bin's sticky toolbar (D2): two fixed rows, 88 px with a fine pointer.
        Chapter headings stick under it, and focus scrolled into view clears both. */
     --bin-toolbar-h: 5.5rem;
-    --header-h: var(--bin-toolbar-h);
-    scroll-padding-block: calc(var(--bin-toolbar-h) + var(--panel-head-h) + var(--s-2)) var(--s-2);
+    --header-h: var(--bin-toolbar-measured, var(--bin-toolbar-h));
+    scroll-padding-block: calc(
+        var(--bin-toolbar-measured, var(--bin-toolbar-h)) + var(--panel-head-h) + var(--s-2)
+      )
+      var(--s-2);
 
     & > .mark-line {
       --mark-control-h: 2rem;
@@ -540,6 +543,7 @@
       grid-template-columns: minmax(0, 1fr);
       box-sizing: border-box;
       min-block-size: var(--bin-toolbar-h);
+      block-size: max-content;
       padding-block: var(--s-2);
       border-block-end: 1px solid var(--border);
       background: var(--surface);
@@ -552,6 +556,7 @@
       min-inline-size: var(--mark-control-h);
       padding-inline: 0;
       justify-content: center;
+      position: relative;
     }
 
     & .mark-line .help-label,
@@ -565,10 +570,6 @@
       white-space: nowrap;
     }
 
-    & .mark-line .help-toggle {
-      position: relative;
-    }
-
     & .mark-line-slot {
       min-inline-size: 0;
       justify-content: flex-end;
@@ -576,7 +577,7 @@
 
     /* An open Clips help scrolls inside the toolbar rather than covering the bin. */
     & .mark-line > .help-panel {
-      max-block-size: 40vh;
+      max-block-size: 25vh;
       overflow: auto;
     }
 
