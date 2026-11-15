@@ -915,9 +915,24 @@ export const ClipOrderList = memo(function ClipOrderList({
         )}
         {/* The clips it plays; the removed and ignored lists count their own. One line. */}
         <span className="panel-meta">{plural(order.length, 'clip', 'clips')}</span>
-        <EditTitlecard id={tools.cardId} heading={heading} locked={locked} />
+        {compact && (
+          <ChapterTools
+            chapterKey={chapterKey}
+            heading={heading}
+            headingId={headingId}
+            placement="bar"
+            {...tools}
+          />
+        )}
+        <EditTitlecard id={tools.cardId} heading={heading} locked={locked} compact={compact} />
       </header>
-      <ChapterTools chapterKey={chapterKey} heading={heading} headingId={headingId} {...tools} />
+      <ChapterTools
+        chapterKey={chapterKey}
+        heading={heading}
+        headingId={headingId}
+        placement={compact ? 'notes' : 'row'}
+        {...tools}
+      />
       {/* The column names, in the rows' own cells (edit.css places them by class). */}
       {!empty && !compact && (
         <div className="clip-order-head" aria-hidden="true">
