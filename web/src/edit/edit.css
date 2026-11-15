@@ -1034,11 +1034,12 @@
 
   /*
    * A fine pointer, from 13.5rem (the 240 px bin less its border and a scrollbar; compact-bin-tools
-   * D4): two lines. Line 1 is the handle, the position, the name and Move up and down; line 2
-   * the thumbnail, the facts, Rotate left and right and the Cuts control. The tools' two pairs
-   * are placed one by one, so the name keeps the room a camera name needs. Tighter padding and
-   * 28 px controls keep the row to 70 px. Rotate comes before Move in the tab order and sits
-   * below it, a small step back, the cost of the room.
+   * D4): two lines, 68 px with --s-1 padding and 28 px controls. The status is its icon alone
+   * (its words stay for assistive technology and as a tooltip), so line 2 (the thumbnail, the
+   * length, the status, Rotate and Cuts) is one line. Line 1 is the handle, the position, the
+   * name and the tools: Move up and down, and from 17rem, where the name keeps room, Rotate
+   * too. Below that Rotate is on line 2, after Move in the tab order and below it on the page,
+   * so focus only runs down the row.
    */
   @media not (pointer: coarse) {
     @container (width >= 13.5rem) {
@@ -1068,6 +1069,24 @@
         justify-self: end;
       }
 
+      .edit-chapter[data-compact] .clip-item .clip-facts {
+        flex-wrap: nowrap;
+      }
+
+      .edit-chapter[data-compact] .clip-item .clip-status .pill {
+        padding-inline: 0.25rem;
+      }
+
+      .edit-chapter[data-compact] .clip-item .clip-status .pill > span {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        margin: -1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
       .edit-chapter[data-compact] .clip-item > .drag-handle,
       .edit-chapter[data-compact] .clip-item .clip-tools .btn-icon {
         min-block-size: 1.75rem;
@@ -1076,6 +1095,14 @@
 
       .edit-chapter[data-compact] .clip-item .clip-tools .btn-icon {
         inline-size: 1.75rem;
+      }
+    }
+
+    @container (width >= 17rem) {
+      .edit-chapter[data-compact] .clip-item {
+        grid-template-areas:
+          'handle pos file moves rotate'
+          'thumb thumb facts facts cuts';
       }
     }
   }
