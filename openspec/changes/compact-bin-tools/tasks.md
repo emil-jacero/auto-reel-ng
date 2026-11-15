@@ -87,3 +87,12 @@ never from the repo, with PUT/POST/DELETE intercepted. The layout targets are fi
     from 960 px the ignored clips are listed after the chapters)"; HLD D-28: one sentence to the same effect
 - [x] 4.6 Gates in podman: `npm test`, `npm run check`, `npm run build`, then
   `openspec validate compact-bin-tools --strict`.
+
+## 5. Round 3 (final review fixes)
+
+- [x] 5.1 Deleted chapter keeps its Undo from 960 px (hide only the live chapter's tools row); focus after a chapter
+  edit goes to the visible copy of the button (bar and row both exist).
+- [x] 5.2 A keyboard drop that changes nothing brings the row back clear of the sticky toolbar and heading.
+- [x] 5.3 Coarse pointer: the Move group wraps so the picker stays readable, the toolbar is not sticky, the scroll
+  padding reserves the tallest wrapped heading. Spec and design say so (D2); the spec scopes the bin clauses to
+  960 px and up, carves out the Clips help toggle's 32 px, fixes "before Cuts", and lists the new-clip note.

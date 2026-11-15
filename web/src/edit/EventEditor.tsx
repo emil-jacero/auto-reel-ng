@@ -1073,6 +1073,15 @@ function placeBar(bar: HTMLElement): void {
   }
 }
 
+/** The first of the matches that is on screen: each chapter's buttons exist twice (bar and row),
+ * and below 960 px the bar's copy is `display: none` and cannot take focus. */
+function firstShown(matches: NodeListOf<HTMLElement>): HTMLElement | null {
+  const list = Array.from(matches)
+  return (
+    list.find((el) => (el.checkVisibility ? el.checkVisibility() : true)) ?? list[0] ?? null
+  )
+}
+
 export function EventEditor({
   eventId,
   event,
@@ -2506,8 +2515,10 @@ export function EventEditor({
     const target =
       request.target === 'add'
         ? root.querySelector<HTMLElement>('.chapter-add-button')
-        : root.querySelector<HTMLElement>(
-            `[data-chapter-key="${request.key}"] .${request.target}`,
+        : firstShown(
+            root.querySelectorAll<HTMLElement>(
+              `[data-chapter-key="${request.key}"] .${request.target}`,
+            ),
           )
     target?.focus({ preventScroll: true })
     scrollAfter.current = target?.closest<HTMLElement>('.chapter-tools') ?? target

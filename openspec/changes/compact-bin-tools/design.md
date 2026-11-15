@@ -74,6 +74,15 @@ markup changes:
   - The bin's scroll padding grows by this height so focus-in-view clears it. `keepInView` already measures against
     `[data-ws-scroll]`, so only its padding value changes.
 
+- **Coarse pointer.** The no-wrap rule is for a fine pointer. With 44 px controls a second row of two Rotate
+  buttons, the picker and Move would squeeze the picker to its chevron (37 px at 240 px), so the Move group wraps to
+  its own row (the picker keeps at least 7rem; measured 215 px at a 240 px bin, 160 px at 259 px). That makes the
+  toolbar up to 216 px tall, too much to hold in a short pane, so with a coarse pointer it is not sticky (`--bin-stick-h: 0`)
+  and only the headings stick. The scroll padding reserves a 101 px heading (`--bin-head-reserve`: 75 px on two
+  lines, 101 px when the name wraps too).
+- **Help toggle size.** The Clips toggle is a 32 px icon square in the wide bin with a fine pointer (an
+  exception to the 44 px rule, stated in the spec); 44 px would break the 88 px limit.
+
 **Considered:** the one-row bar from the explore sketch, with the count, Rotate, picker, Move and Clear in one row.
 It does not fit: 258 px leaves the picker under 60 px. It also changes how the main spec reads the line's rows, and
 needs the count shown only as a number. Two fixed rows keep the spec's structure and still save about 150 px.
@@ -99,7 +108,7 @@ bar after the count, through a `placement: 'bar' | 'row'` prop. On the page they
   - Line 1: handle, position, name, Move up and down (28 px icons), and from `@container (width >= 17rem)`
     (a bin of about 281 px, 1280x720) Rotate left and right too.
   - Line 2: thumbnail, length, status, Cuts, and in a bin under about 17rem (272 px, so the 240 px minimum
-    to about 272 px) Rotate left and right after Cuts. The spec's two-line row wording says this.
+    to about 272 px) Rotate left and right before Cuts (the grid areas are `thumb facts rotate cuts`). The spec's two-line row wording says this. The switch is on the chapter's width, the bin less its 1 px border, so a bin of about 273 px.
   - The status is its icon alone on a fine pointer in the bin (its words stay as hidden text and a `title`), so
     line 2 is one line from 240 px. A fine pointer's rows are never taller than the limit.
   - `.clip-tools` is `display: contents`. In the bin Move comes before Rotate in the DOM, so tab order runs
@@ -117,6 +126,9 @@ bar after the count, through a `placement: 'bar' | 'row'` prop. On the page they
 - **Touch.** Under `pointer: coarse` the rows keep today's rules: three lines in the 240 px bin, two from 22rem, the
   16 px line gap and the 44 px touch rules. They are taller, and the height limits do not apply. A finger's tools
   (32 px, 28 px between pairs) would leave no name at 240 px.
+- **Below 960 px.** The stacked bin is not unchanged: the new-clip line is gone (D5), Move stands before Rotate, a
+  fine pointer's status is icon-only, and an ignored row is one line (its drag slot is `display: none`), since
+  `@container (width >= 13.5rem)` has no 960 px condition.
 - **Pass bar.** It counts the rows of clips a chapter plays. The ignored block is not a row (D6).
 - **Width check.** Line 1 must fit its controls at 240 px:
   - 28 handle + 20 position + name + Move (56 px) + gaps of 4 px, and Rotate (56 px) from 17rem: the name is about
@@ -129,7 +141,7 @@ bar after the count, through a `placement: 'bar' | 'row'` prop. On the page they
   of `newClipsLine`).
 - **Count.** The "Saving adds N new clips" count is already in the save summary (`EventEditor.tsx`, `adds N new clips
   to reel.yaml`), and so is in the top bar.
-- **Stacked page.** Keeps the line as it is.
+- **Stacked page.** The non-workspace page keeps the line as it is. The stacked workspace (below 960 px) drops it like the wide bin.
 
 ### D6. Ignored clips follow the chapters in the wide bin
 Decision 2b (the user, round 2): the pass bar counts played rows only. On Tjörn (4 played clips, 1 ignored in
@@ -178,7 +190,7 @@ smaller Timeline pane, which is out of scope.
 - **Icon-only tools rely on tooltips and names.** The user accepted icon-only buttons (explore, 2026-11-15). A new
   operator learns ↺/↻/✎/↑/↓/✕ from tooltips and the Clips help. Mitigation: the Help text names each icon.
 - **A sticky toolbar covers a row's top as it scrolls under.** Scroll padding (D2) keeps a focused row clear. A
-  dragged row auto-scrolls the pane, and dnd-kit's autoscroll threshold may need the toolbar height as an offset.
+  dragged row auto-scrolls the pane, and dnd-kit ignores the sticky toolbar. Resolved: a drop that changes nothing scrolls the row back into the padding box (task 5.2).
   Verify keyboard drag up past the toolbar.
 - **The `content-visibility` estimate.** A wrong `--clip-row-h` makes the scrollbar jump. Measure after the build and
   set it.

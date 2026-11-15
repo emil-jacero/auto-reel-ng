@@ -533,11 +533,13 @@
          whole played rows in the 1280x720 bin (D6). The stacked bin keeps 12 px. */
       gap: var(--s-2);
 
-      & .edit-chapter > .chapter-tools > .chapter-actions {
+      /* Only the live chapter's tools: a deleted chapter's row holds its Undo. */
+      & .edit-chapter:not([data-deleted]) > .chapter-tools > .chapter-actions {
         display: none;
       }
 
-      & .edit-chapter > .chapter-tools:not(:has(.chapter-notes, .chapter-refusal:not([hidden]))) {
+      & .edit-chapter:not([data-deleted])
+        > .chapter-tools:not(:has(.chapter-notes, .chapter-refusal:not([hidden]))) {
         display: none;
       }
 
@@ -586,9 +588,10 @@
       /* The marks line as the bin's sticky toolbar (D2): two fixed rows, 88 px with a fine pointer.
          Chapter headings stick under it, and focus scrolled into view clears both. */
       --bin-toolbar-h: 5.5rem;
-      --header-h: var(--bin-toolbar-measured, var(--bin-toolbar-h));
+      --bin-stick-h: var(--bin-toolbar-measured, var(--bin-toolbar-h));
+      --header-h: var(--bin-stick-h);
       scroll-padding-block: calc(
-          var(--bin-toolbar-measured, var(--bin-toolbar-h)) + var(--panel-head-h) + var(--s-2)
+          var(--bin-stick-h) + var(--bin-head-reserve, var(--panel-head-h)) + var(--s-2)
         )
         var(--s-2);
 
@@ -675,8 +678,15 @@
       }
 
       @media (pointer: coarse) {
+        /* A finger's controls make the toolbar tall (up to three 44 px rows in a 240 px bin), too
+           tall to hold in a short pane: it scrolls with the bin as before, and only the chapter
+           headings stick, at the top. */
+        --bin-stick-h: 0px;
         --bin-toolbar-h: 7rem;
-        /* The wrapped header's two lines (75 px), for the sticky offsets. */
+        /* The wrapped header, for the scroll padding only: 75 px on two lines, 101 px when the
+           name wraps too (a bin under about 290 px). The tallest, so a focused control never
+           ends under a heading; a wider bin keeps a little spare room. */
+        --bin-head-reserve: 6.3125rem;
         --panel-head-h: 4.6875rem;
         --bin-btn: 2.75rem;
 
@@ -692,6 +702,22 @@
 
         & > .mark-line {
           --mark-control-h: 2.75rem;
+          position: static;
+        }
+
+        /* Two 44 px Rotate buttons, the picker and Move do not fit one row of a 240 px bin
+           without squeezing the picker to its chevron: the Move group wraps to a row of its
+           own, as it does off the workspace, and the picker keeps room for a chapter name. */
+        & .mark-actions {
+          flex-wrap: wrap;
+        }
+
+        & .mark-move {
+          flex-wrap: wrap;
+
+          & select {
+            min-inline-size: 7rem;
+          }
         }
       }
     }
