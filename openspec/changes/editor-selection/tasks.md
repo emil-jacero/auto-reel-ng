@@ -14,7 +14,7 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 1. Model (web/src/edit/workspace)
 
-- [ ] 1.1 Add `selection.ts` (`Selection`, `keptSelection`, `inspectorTab`, design D1). Verify `selection.test.ts`:
+- [x] 1.1 Add `selection.ts` (`Selection`, `keptSelection`, `inspectorTab`, design D1). Verify `selection.test.ts`:
   each kind's tab, one ends the other, gone target → none, cut → clip tab.
 
 ## 2. Wiring
