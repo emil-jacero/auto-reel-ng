@@ -122,7 +122,7 @@ const CardHandleSlider = memo(function CardHandleSlider({
   ppsRef.current = pps
   const pointerSeen = useRef(false)
   const [focused, setFocused] = useState(false)
-  const subject = cardSubject(chapter)
+  const subject = cardSubject(handle.name)
 
   // The edge in the air, or null: only the dragged handle shows it.
   const live = useSyncExternalStore(drag.subscribe, () => {

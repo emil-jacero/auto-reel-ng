@@ -77,7 +77,7 @@ export function useTimelineVideo({
   eventId: string
   clips: readonly TrackClip[]
   playhead: Playhead
-  /** The black cards among the clips, and the chapters' saved names by index. */
+  /** The black cards among the clips, and the drawn chapters' names by index. */
   map: CardMap
   names: readonly string[]
   /**

@@ -15,8 +15,8 @@ import type { CardSpec, Placement } from './cards.ts'
  * The jobs for the cards that play, in play order. A card is sent as its resolved text,
  * background, length and font, so the image is the card the render draws; the opening card also
  * carries the (draft) event title, and the event's draft style goes along only when it differs
- * from the saved one (`style`). A card over the preview's text bounds gets no job: nothing is
- * sent, and its block and span show the title on black.
+ * from the saved one (`style`). A card over the preview's text bounds, or of a chapter added in
+ * this Edit session, gets no job: nothing is sent, and its block and span show the title on black.
  */
 export function cardJobs(
   specs: readonly CardSpec[],
@@ -30,7 +30,9 @@ export function cardJobs(
     }
     const spec = specs[place.chapter]
     const card = spec?.card
-    if (card == null) {
+    // A card of a chapter added in this Edit session (`draftCardSpecs`) has no saved name to
+    // ask with: its block shows its title on black until a save resolves it.
+    if (card == null || spec.unsaved !== undefined) {
       continue
     }
     const opening = spec.chapter === ''

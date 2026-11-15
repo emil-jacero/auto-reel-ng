@@ -46,8 +46,6 @@ export type EditBinding = {
   locked: boolean
   /** Edit mode's one live region. */
   announce(words: string): void
-  /** The draft's order or chapters differ from the saved ones, which the track shows. */
-  orderChanged: boolean
   /** The editor's clip previews: one open at a time, and the Timeline's video makes room for it. */
   previews: ClipPreviews
   /** Changes when Reset puts the draft back: a selection and a drag do not survive it. */

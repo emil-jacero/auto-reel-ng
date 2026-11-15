@@ -1,4 +1,4 @@
-import { cardDurationMs, cardWords } from './cards'
+import { cardDurationMs, cardWords, unsavedCardWords } from './cards'
 import type { CardSpec } from './cards'
 
 /*
@@ -9,18 +9,24 @@ import type { CardSpec } from './cards'
  * dialog (`edit/card/Inspector.tsx`).
  */
 
-/** The selected card in words, or null when nothing is selected. */
-export function inspectorWords(spec: CardSpec | undefined): string | null {
+/**
+ * The selected card in words, or null when nothing is selected. `name` is its chapter's name now
+ * (the draft's, after a rename or for a chapter added while editing); absent, its saved name.
+ */
+export function inspectorWords(spec: CardSpec | undefined, name: string = spec?.chapter ?? ''): string | null {
   if (spec === undefined) {
     return null
   }
-  const who = spec.chapter === '' ? 'the opening' : spec.chapter
+  if (spec.unsaved === 'placeholder') {
+    return unsavedCardWords(name)
+  }
+  const who = name === '' ? 'the opening' : name
   if (spec.card === null) {
     return `Title card for ${who} could not be resolved${spec.error === null ? '' : `: ${spec.error}`}`
   }
   try {
     const background = spec.card.background === 'video' ? 'video' : 'black'
-    return cardWords(spec.chapter, { durationMs: cardDurationMs(spec.card.duration), background })
+    return cardWords(name, { durationMs: cardDurationMs(spec.card.duration), background })
   } catch (error) {
     return `Title card for ${who} cannot be read: ${(error as Error).message}`
   }

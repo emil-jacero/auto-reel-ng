@@ -20,9 +20,9 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 2. Wiring (web/src/edit, web/src/timeline)
 
-- [ ] 2.1 Pass the draft's `chapters` and `orders` from `edit/EventEditor.tsx` through `TimelineSection` to `Timeline`;
+- [x] 2.1 Pass the draft's `chapters` and `orders` from `edit/EventEditor.tsx` through `TimelineSection` to `Timeline`;
   use `draftClips` in Edit mode; memoise on the three inputs. Verify with `npm test` and `npm run check`.
-- [ ] 2.2 Remove `ORDER_SAVED` and its `Alert` (`timeline/labels.ts`, `Timeline.tsx`) and the `orderChanged` note path.
+- [x] 2.2 Remove `ORDER_SAVED` and its `Alert` (`timeline/labels.ts`, `Timeline.tsx`) and the `orderChanged` note path.
   Verify `grep -rn ORDER_SAVED web/src` is empty and `npm run check` passes.
 
 ## 3. Browser verification (scratchpad only)

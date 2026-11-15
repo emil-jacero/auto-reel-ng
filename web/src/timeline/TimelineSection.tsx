@@ -4,6 +4,7 @@ import type { RefObject } from 'react'
 import { failedClips } from '../analysis/badge'
 import type { AnalysisBinding } from '../analysis/useEventAnalysis'
 import type { EventDetail } from '../api/event'
+import type { DraftChapter, Orders } from '../edit/draft'
 import { Alert } from '../ui/Alert'
 import { Dialog } from '../ui/Dialog'
 import { HelpPanel, HelpToggle, useSectionHelp } from '../ui/help/HelpToggle'
@@ -18,7 +19,7 @@ import type { CardRange } from './cardLength.ts'
 import type { Backdrop } from '../edit/card/Preview'
 import { CardInspector, inspectorWords } from './CardInspector'
 import { Prepare, usePrepare } from './Prepare'
-import { cardPlacements, cardSpecs, cardsEnabled, cardsSource } from './cards'
+import { cardPlacements, cardsEnabled, cardsSource, draftCardSpecs } from './cards'
 import type { CardsBinding } from './useCardSelection'
 import { analysisOf } from './overlays/control'
 import type { Dismissals } from './overlays/Dismissals'
@@ -31,7 +32,7 @@ import {
 import { Timeline } from './Timeline'
 import type { EditBinding } from './editing'
 import { CARDS_FADES, NO_CLIPS } from './labels'
-import { omittedWords, readiness, sectionState, shownClips, trackClips } from './layout'
+import { draftClips, omittedWords, readiness, sectionState, trackClips } from './layout'
 
 /*
  * Edit mode's Timeline section (`edit-mode-declutter`, `timeline-zoom-slider`): a heading and,
@@ -39,7 +40,9 @@ import { omittedWords, readiness, sectionState, shownClips, trackClips } from '.
  * Prepare state while any shown clip has no ready proxy, and the track once every one has. The
  * one thing it can start is the proxy job, by the Prepare button. The read view has no Timeline.
  *
- * It is the editor's draft: the draft's cuts, with a trim handle at each edge of a cut
+ * It is the editor's draft: the draft's chapters and order (`track-draft-order`: a reorder, a
+ * move or a chapter added, renamed or deleted is drawn at once, the clips' facts coming from the
+ * page's live read by identity), the draft's cuts, with a trim handle at each edge of a cut
  * (`timeline-trim`); the editor owns Save.
  */
 
@@ -53,6 +56,8 @@ export function TimelineSection({
   analysis: page,
   onFinished,
   editing,
+  chapters,
+  orders,
   cards,
   cardEditing,
 }: {
@@ -66,6 +71,10 @@ export function TimelineSection({
   onFinished: () => void
   /** Edit mode's binding: the draft's cuts and the editor's edits. */
   editing: EditBinding
+  /** The draft's chapters, in its order, with their names now and the deleted ones in place. */
+  chapters: readonly DraftChapter[]
+  /** The draft's clip order per chapter: what the track draws and Play plays. */
+  orders: Orders
   /** The page's one card selection (`useCardSelection`), shared with Edit mode's rows. */
   cards: CardsBinding
   /** Edit mode's cards (`title-card-inspector`): the draft's specs and the inspector's edits. */
@@ -74,8 +83,10 @@ export function TimelineSection({
   const headingId = useId()
   const cutHintId = useId()
   const help = useSectionHelp('timeline')
-  const shown = useMemo(() => shownClips(event), [event])
-  const chapterNames = useMemo(() => event.chapters.map((chapter) => chapter.name), [event])
+  // The draft's chapters and order, each clip's facts from the live read (D1). The draft's maps
+  // change only on an edit, so a zoom, a scrub or a list's drag in the air keeps this memo.
+  const shown = useMemo(() => draftClips(event, chapters, orders), [event, chapters, orders])
+  const chapterNames = shown.names
   // The cuts are the draft's: never "being read" and never "unreadable".
   const cuts = editing.cuts
   const clips = useMemo(() => trackClips(shown.clips, cuts), [shown, cuts])
@@ -89,8 +100,14 @@ export function TimelineSection({
   const failed = page?.read.status === 'ok' ? failedClips(page.read.analysis) : []
   // Each chapter's resolved card, and whether the render draws them: the service's answer
   // (`title_cards`), under Edit mode's Title cards switch while that differs (`title-card-toggle`).
-  const savedSpecs = useMemo(() => cardSpecs(event), [event])
-  const specs = cardEditing.specs
+  // One per drawn chapter, as the clips index them (D2): a renamed chapter keeps its card, an
+  // added one gets one built from the event's cards; `cardEditing.specs` stay by saved name.
+  const savedNamed = cardEditing.specs
+  const draftStyle = cardEditing.style
+  const specs = useMemo(
+    () => draftCardSpecs(savedNamed, chapters, draftStyle),
+    [savedNamed, chapters, draftStyle],
+  )
   const switched = cardEditing.titleCardsDraft ?? null
   const decorators = cardsEnabled(event.title_cards, switched)
   const source = cardsSource(event.title_cards, switched)
@@ -188,6 +205,10 @@ export function TimelineSection({
     }
     cards.dismiss()
   }
+  // The selected card in words, by its chapter's name now.
+  const selectedAt = cards.selected === null ? -1 : specs.findIndex((spec) => spec.chapter === cards.selected)
+  const selectedWords =
+    selectedAt === -1 ? null : inspectorWords(specs[selectedAt], chapterNames[selectedAt])
   const state = sectionState(shown.clips)
   const omitted = omittedWords(shown.omitted)
   return (
@@ -255,7 +276,7 @@ export function TimelineSection({
               saved={cards.editing}
               view={selectedView}
               editing={cardEditing}
-              spec={specs.find((spec) => spec.chapter === cards.editing)}
+              spec={savedNamed.find((spec) => spec.chapter === cards.editing)}
               backdrop={backdrop}
               lengthRange={lengthRange}
               gate={nameGate}
@@ -270,13 +291,7 @@ export function TimelineSection({
         </Dialog>
       )}
       {/* No visible read-out: the dialog is the card's editor; the status region announces a selection once. */}
-      <CardInspector
-        announced={inspectorWords(
-          cards.selected === null
-            ? undefined
-            : savedSpecs.find((spec) => spec.chapter === cards.selected),
-        )}
-      />
+      <CardInspector announced={selectedWords} />
     </section>
   )
 }

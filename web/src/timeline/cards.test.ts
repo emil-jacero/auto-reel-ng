@@ -7,6 +7,7 @@ import {
   cardBlockPx,
   cardBlocks,
   cardDurationMs,
+  cardHandles,
   cardsEnabled,
   cardsSource,
   cardSpecs,
@@ -484,6 +485,30 @@ describe('the draft’s chapters’ cards (track-draft-order)', () => {
     const [bare] = draftCardSpecs(none, [added('a1', 'Morgon')], null)
     assert.equal(bare.card, null)
     assert.equal(bare.error, 'Title card for Morgon, shown after save')
+  })
+
+  it('names each handle by the chapter’s name now, keeping the saved name or the id to edit by', () => {
+    const specs = draftCardSpecs(
+      saved,
+      [read('r0', ''), { ...read('r1', 'Kvällen'), name: 'Kväll vid havet' }, added('a1', 'Morgon')],
+      null,
+    )
+    const names = ['', 'Kväll vid havet', 'Morgon']
+    const clips = [clip(0, 10_000), clip(1, 10_000), clip(2, 10_000)]
+    const placements = cardPlacements(specs, clips, 'on')
+    const lay = layout(clips.map((c) => ({ durationMs: c.durationMs, fps: 25 })))
+    const blocks = cardBlocks(placements, trackLayout(lay, cardMap(placements, lay)))
+    const handles = cardHandles(placements, blocks, specs, names)
+    assert.deepEqual(
+      handles.map((handle) => [handle.chapter, handle.name]),
+      [
+        ['', ''],
+        ['Kvällen', 'Kväll vid havet'],
+        ['\u0000added:a1', 'Morgon'],
+      ],
+    )
+    // Without the draft's names (the saved order), a handle is named by its saved name.
+    assert.equal(cardHandles(placements, blocks, specs)[1].name, 'Kvällen')
   })
 })
 

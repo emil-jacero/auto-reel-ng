@@ -7,13 +7,10 @@ import {
   addCut,
   buildWriteBody,
   changedCuts,
-  chapterChanges,
   cutChanges,
   cutsOf,
   draftChapters,
   isDirty,
-  layoutChanged,
-  moveClip,
   ordersOf,
   readCuts,
   removeCut,
@@ -21,7 +18,6 @@ import {
   trimCut,
 } from './draft.ts'
 import type { Baseline, Draft } from './draft.ts'
-import { addChapter, deleteChapter, renameChapter } from './draft.ts'
 
 const A = 's1710001.mp4'
 const B = 's1710002.mp4'
@@ -197,61 +193,5 @@ describe('Undo over a trimmed cut', () => {
     const trimmed = trimCut(baseline, draft, A, 'r0', { in: 1, out: 3.5 })
     const removed = removeCut(baseline, trimmed, A, 'r0')
     assert.notEqual(checkRestore(cutsOf(baseline.cuts, removed.cuts, A), 'r0'), null)
-  })
-})
-
-describe('layoutChanged', () => {
-  const chapters = [
-    { key: 'r0', name: '', movable: [A, B], ignored: [] },
-    { key: 'r1', name: 'Kvällen', movable: [], ignored: [] },
-  ]
-  function two(): { baseline: Baseline; draft: Draft } {
-    const read = document({})
-    const baseline: Baseline = {
-      read,
-      chapters: draftChapters(chapters),
-      original: ordersOf(chapters),
-      cuts: readCuts(read),
-    }
-    return {
-      baseline,
-      draft: {
-        chapters: baseline.chapters,
-        orders: baseline.original,
-        removed: new Map(),
-        metadata: { title: '', date: '', location: '', description: '' },
-        cuts: new Map(),
-        rotations: new Map(),
-        cards: new Map(),
-      },
-    }
-  }
-
-  it('is false for a cut-only or a metadata-only draft', () => {
-    const { baseline, draft } = two()
-    assert.equal(layoutChanged(baseline, draft), false)
-    const cut = addCut(baseline, draft, A, { in: 1, out: 2 }, 'a1')
-    assert.equal(layoutChanged(baseline, cut), false)
-    const meta = { ...draft, metadata: { ...draft.metadata, title: 'Nytt' } }
-    assert.equal(layoutChanged(baseline, meta), false)
-  })
-
-  it('is true after a reorder, a move, and a chapter added, renamed or deleted', () => {
-    const { baseline, draft } = two()
-    const orders = new Map(draft.orders).set('r0', moveClip([A, B], 0, 1))
-    assert.equal(layoutChanged(baseline, { ...draft, orders }), true)
-    const moved = new Map(draft.orders).set('r0', [A]).set('r1', [B])
-    assert.equal(layoutChanged(baseline, { ...draft, orders: moved }), true)
-    assert.equal(layoutChanged(baseline, addChapter(draft, 'a1', 'Ny')), true)
-    assert.equal(layoutChanged(baseline, renameChapter(draft, 'r1', 'Natten')), true)
-    assert.equal(layoutChanged(baseline, deleteChapter(draft, 'r1')), true)
-    assert.equal(chapterChanges(baseline, deleteChapter(draft, 'r1').chapters).deleted, 1)
-  })
-
-  it('is false for a missing clip taken out of its chapter (it is not drawn)', () => {
-    const { baseline, draft } = two()
-    const orders = new Map(draft.orders).set('r0', [A])
-    const removed = new Map(draft.removed).set(B, 'r0')
-    assert.equal(layoutChanged(baseline, { ...draft, orders, removed }), false)
   })
 })

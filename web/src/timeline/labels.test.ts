@@ -203,12 +203,12 @@ describe('createPlayhead', () => {
 
 describe('title cards in the words', () => {
   it('says once what cannot be drawn, in the service’s words', () => {
-    const specs = [{ chapter: '' }, { chapter: 'Dag 2' }]
+    const names = ['', 'Dag 2']
     const unresolved: Placement[] = [
       { kind: 'unresolved', chapter: 0, error: 'look.title_card.font_family' },
       { kind: 'unresolved', chapter: 1, error: 'look.title_card.font_family' },
     ]
-    assert.deepEqual(cardsNotes(specs, unresolved, 'on'), [
+    assert.deepEqual(cardsNotes(names, unresolved, 'on'), [
       {
         title: 'A title card could not be resolved: look.title_card.font_family',
         detail: 'Not drawn for the opening, Dag 2.',
@@ -217,22 +217,22 @@ describe('title cards in the words', () => {
     const off: Placement[] = [
       { kind: 'off', chapter: 0, clip: 0, atMs: 0, background: 'black', durationMs: 1, keptMs: 1, widthMs: 1, clamped: false },
     ]
-    assert.deepEqual(cardsNotes(specs, off, 'off'), [
+    assert.deepEqual(cardsNotes(names, off, 'off'), [
       { title: 'Title cards are off for this event; the render draws none' },
     ])
-    assert.deepEqual(cardsNotes(specs, off, 'off', 'project'), [
+    assert.deepEqual(cardsNotes(names, off, 'off', 'project'), [
       { title: 'Title cards are off for this event; the render draws none', detail: 'Set by the project’s config.yaml.' },
     ])
-    assert.deepEqual(cardsNotes(specs, [], 'invalid', null, 'look.decorators is not a list'), [
+    assert.deepEqual(cardsNotes(names, [], 'invalid', null, 'look.decorators is not a list'), [
       { title: 'look.decorators is not a list', detail: 'No title card is drawn here.' },
     ])
-    assert.equal(cardsNotes(specs, [], 'invalid').length, 1)
-    for (const note of [...cardsNotes(specs, off, 'off', 'default'), ...cardsNotes(specs, [], 'invalid')]) {
+    assert.equal(cardsNotes(names, [], 'invalid').length, 1)
+    for (const note of [...cardsNotes(names, off, 'off', 'default'), ...cardsNotes(names, [], 'invalid')]) {
       assert.doesNotMatch(`${note.title} ${note.detail ?? ''}`, /unset|not counted|project default/)
     }
-    assert.deepEqual(cardsNotes(specs, [], 'on'), [])
+    assert.deepEqual(cardsNotes(names, [], 'on'), [])
     const bad: Placement[] = [{ kind: 'unreadable', chapter: 1, error: 'card duration must be positive' }]
-    assert.equal(cardsNotes(specs, bad, 'on')[0].detail, 'Dag 2: card duration must be positive')
+    assert.equal(cardsNotes(names, bad, 'on')[0].detail, 'Dag 2: card duration must be positive')
   })
 })
 

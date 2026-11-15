@@ -153,6 +153,8 @@ function useScrub(
 export type CardLaneModel = {
   blocks: readonly CardBlock[]
   specs: readonly CardSpec[]
+  /** The drawn chapters' names by index (the draft's): what the cards' words call them. */
+  names: readonly string[]
   /** Clip index → the length of the black card that opens it: its chapter band starts at the card. */
   leadMs: ReadonlyMap<number, number>
   /** The end-edge handles and the draft edit they write. */
@@ -672,6 +674,7 @@ export function Track({
           <CardLane
             blocks={cardLane.blocks}
             specs={cardLane.specs}
+            names={cardLane.names}
             pps={pps}
             window={{ from: windowFrom, to: windowTo }}
             selected={cardLane.selected}
