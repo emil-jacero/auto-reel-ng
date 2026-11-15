@@ -45,6 +45,9 @@ export function barContent(heading: string, clips: number): BarContent {
   }
 }
 
+/** A chapter's place among the listed chapters, for Move up / Move down; null when alone. */
+export type ChapterPlace = { first: boolean; last: boolean }
+
 /** What one `ChapterTools` instance renders for its placement; `null` when it renders nothing. */
 export type ChapterToolsParts = { buttons: boolean; notes: boolean; refusal: boolean }
 
@@ -57,7 +60,7 @@ export type ChapterToolsParts = { buttons: boolean; notes: boolean; refusal: boo
 export function chapterToolsParts(
   placement: 'bar' | 'row',
   notes: number,
-  place: unknown,
+  place: ChapterPlace | null,
   deleteRefusal: string | null | undefined,
 ): ChapterToolsParts | null {
   const offersDelete = deleteRefusal !== undefined

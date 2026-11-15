@@ -19,7 +19,7 @@ import type { ReelDocument, ReelReadResult, ReelSaveResult, ReelWriteBody } from
 import type { CutHandlers, CutPanels, PanelState } from '../cuts/CutsPanel'
 import { keptCuts, trimmedWords } from '../cuts/times'
 import { markEventsChanged } from '../events/changes'
-import { clipNames, fileName, folderName, plural } from '../events/common'
+import { fileName, folderName, namesIn, plural } from '../events/common'
 import { FAILURE_LABEL, UNANSWERED_CAUSE, notReachableHint } from '../events/labels'
 import { FAILURE_LOOK } from '../events/tones'
 import { eventName } from '../jobs/labels'
@@ -57,6 +57,7 @@ import { Dialog } from '../ui/Dialog'
 import { Icon } from '../ui/Icon'
 import { HelpPanel, HelpToggle, useSectionHelp } from '../ui/help/HelpToggle'
 import { clipsHelpLines, newClipsLine } from './clipsHelp.ts'
+import { ignoredGroups, useWideBin } from './wideBin.ts'
 import { Pill } from '../ui/Pill'
 import { SkeletonRows } from '../ui/Skeleton'
 import { keepToastsClearOf, toast } from '../ui/toast'
@@ -78,7 +79,7 @@ import {
 import { ChapterDrag } from './ChapterDrag'
 import { AddChapter, DeletedChapter } from './ChapterTools'
 import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './ChapterTools'
-import { ClipOrderList } from './ClipOrderList'
+import { ClipOrderList, IgnoredBin } from './ClipOrderList'
 import type {
   MarkHandler,
   MoveHandler,
@@ -913,12 +914,13 @@ function nameNow(
   if (chapter === undefined) {
     return identity
   }
-  return clipNames(chapter.name, [
-    ...(original.get(chapter.key) ?? []),
-    ...(draft.orders.get(chapter.key) ?? []),
-    ...(ignoredOf.get(chapter.key) ?? []),
-    ...(removedOf.get(chapter.key) ?? []),
-  ])(identity)
+  return namesIn(
+    chapter.name,
+    original.get(chapter.key) ?? [],
+    draft.orders.get(chapter.key) ?? [],
+    ignoredOf.get(chapter.key) ?? [],
+    removedOf.get(chapter.key) ?? [],
+  )(identity)
 }
 
 /** A chapter's heading in `draft` (`Main`, `Clips` or its name), for an announcement. */
@@ -1107,6 +1109,9 @@ export function EventEditor({
   workspace?: WorkspaceFrame
 }) {
   const inWorkspace = workspace !== undefined
+  // From 960 px the bin lists the ignored clips after the chapters (compact-bin-tools D6).
+  const wideBin = useWideBin()
+  const ignoredApart = inWorkspace && wideBin
   // Read once: the draft is never re-initialised from a newer detail.
   const [detail] = useState(event)
   const [state, dispatch] = useReducer(reduce, { status: 'loading' })
@@ -2938,11 +2943,31 @@ export function EventEditor({
                       onRestore={onRestore}
                       onAnnounce={announce}
                       compact={inWorkspace}
+                      ignoredApart={ignoredApart}
                     />
                   )
                 })}
               </ChapterDrag>
             </CardButtonContext.Provider>
+          )}
+
+          {detail !== null && ignoredApart && (
+            <IgnoredBin
+              eventId={eventId}
+              groups={ignoredGroups(ready.draft.chapters, ignoredOf, (name) =>
+                chapterHeading(name, hasNamedChapter),
+              )}
+              clips={clips}
+              nameOf={(group) =>
+                namesIn(
+                  group.name,
+                  ready.baseline.original.get(group.key) ?? [],
+                  ready.draft.orders.get(group.key) ?? [],
+                  group.identities,
+                  removedByChapter.get(group.key) ?? [],
+                )
+              }
+            />
           )}
 
           {detail !== null && <AddChapter locked={listsLocked} onAdd={onAddChapter} />}

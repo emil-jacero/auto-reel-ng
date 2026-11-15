@@ -3,6 +3,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import type { SortingStrategy } from '@dnd-kit/sortable'
 import { CSS as DndCss } from '@dnd-kit/utilities'
 import {
+  Fragment,
   memo,
   useCallback,
   useEffect,
@@ -20,7 +21,7 @@ import type { CutHandlers, CutPanels } from '../cuts/CutsPanel'
 import type { ClipTurns } from '../cuts/ReadCuts'
 import { keptCuts } from '../cuts/times'
 import { ClipThumb } from '../events/ClipThumb'
-import { ClipName, ClipStatusPills, clipNames, formatBytes, plural } from '../events/common'
+import { ClipName, ClipStatusPills, formatBytes, namesIn, plural } from '../events/common'
 import { formatInstant } from '../format'
 import { watchName } from '../preview/playback'
 import { RotateButtons } from '../rotate/RotateButtons'
@@ -37,6 +38,7 @@ import type { ChapterKey, Cuts, DraftCut, Rotations } from './draft'
 import { CHAPTER_DROP } from './dragSlots'
 import { emptyChapterWords } from './emptyChapter'
 import { groupWords } from './marks'
+import type { IgnoredGroup } from './wideBin.ts'
 
 /*
  * One chapter's clips. Three ways to move a clip within the chapter: drag its
@@ -58,7 +60,8 @@ import { groupWords } from './marks'
  * or anywhere in it while it plays none. Two lists follow the played clips,
  * neither numbered nor movable, since neither is played: the missing clips the
  * operator removed (Save leaves them out of reel.yaml, and each has an Undo
- * until then), then the ignored clips.
+ * until then), then the ignored clips. From 960 px in the bin the ignored clips are not listed
+ * here but together after the last chapter (`ignoredApart`, `IgnoredBin`; compact-bin-tools D6).
  *
  * In Edit mode's workspace the lists are the clip bin (`editor-workspace-layout` D3), in
  * compact rows (`compact`): handle, position and name on the first line; a small thumbnail,
@@ -558,7 +561,7 @@ const ClipRow = memo(function ClipRow({
 })
 
 /** An ignored clip: listed, dimmed, not numbered, no controls. */
-const IgnoredRow = memo(function IgnoredRow({
+export const IgnoredRow = memo(function IgnoredRow({
   eventId,
   clip,
   name,
@@ -728,6 +731,7 @@ export const ClipOrderList = memo(function ClipOrderList({
   onRestore,
   onAnnounce,
   compact = false,
+  ignoredApart = false,
 }: {
   /** The event, for its clips' thumbnail addresses. */
   eventId: string
@@ -784,6 +788,8 @@ export const ClipOrderList = memo(function ClipOrderList({
   onAnnounce: (message: string) => void
   /** Edit mode's workspace: the clip bin's compact rows. Absent, the stacked page's rows. */
   compact?: boolean
+  /** The ignored clips are listed apart, after the chapters (`IgnoredBin`): list none here. */
+  ignoredApart?: boolean
 }) {
   const headingId = useId()
   const removedId = useId()
@@ -814,7 +820,8 @@ export const ClipOrderList = memo(function ClipOrderList({
   // Plays nothing: an added chapter, or one every clip it played has left. With no
   // removed or ignored clip either, nothing is listed at all, so no column strip.
   const plays = order.length > 0
-  const empty = !plays && removed.length === 0 && ignored.length === 0
+  const listsIgnored = ignored.length > 0 && !ignoredApart
+  const empty = !plays && removed.length === 0 && !listsIgnored
   const originalPosition = useMemo(
     () => new Map(original.map((identity, at) => [identity, at + 1])),
     [original],
@@ -824,7 +831,7 @@ export const ClipOrderList = memo(function ClipOrderList({
   // within it or a removal renames none; a clip from another folder moved in, or a
   // name that is no longer its folder's, names them all by their paths.
   const nameOf = useMemo(
-    () => clipNames(chapterName, [...original, ...order, ...ignored, ...removed]),
+    () => namesIn(chapterName, original, order, ignored, removed),
     [chapterName, original, order, ignored, removed],
   )
 
@@ -1013,7 +1020,7 @@ export const ClipOrderList = memo(function ClipOrderList({
           </ul>
         </>
       )}
-      {ignored.length > 0 && (
+      {listsIgnored && (
         <>
           <p className="ignored-caption" id={ignoredId}>
             {plural(ignored.length, 'ignored clip', 'ignored clips')}, not played
@@ -1037,3 +1044,60 @@ export const ClipOrderList = memo(function ClipOrderList({
     </section>
   )
 })
+
+/**
+ * The bin's ignored clips from 960 px (compact-bin-tools D6): one block after the last
+ * chapter, each chapter's ignored clips together under a caption that names the chapter.
+ * The rows are the chapter's own `IgnoredRow`, named as that chapter names them.
+ */
+export function IgnoredBin({
+  eventId,
+  groups,
+  clips,
+  nameOf,
+}: {
+  eventId: string
+  groups: readonly IgnoredGroup[]
+  clips: ReadonlyMap<string, Clip>
+  /** How the group's chapter names its clips now. */
+  nameOf: (group: IgnoredGroup) => (identity: string) => string
+}) {
+  const headingId = useId()
+  const captionId = useId()
+  if (groups.length === 0) {
+    return null
+  }
+  return (
+    <section className="panel edit-chapter edit-ignored" data-compact aria-labelledby={headingId}>
+      <header className="panel-header">
+        <h2 id={headingId}>Ignored clips</h2>
+      </header>
+      {groups.map((group) => {
+        const name = nameOf(group)
+        const id = `${captionId}-${group.key}`
+        return (
+          <Fragment key={group.key}>
+            <p className="ignored-caption" id={id}>
+              {group.heading} · {plural(group.identities.length, 'ignored clip', 'ignored clips')}, not
+              played
+            </p>
+            <ul className="clip-order clip-ignored" aria-labelledby={id}>
+              {group.identities.map((identity) => {
+                const clip = clips.get(identity)
+                return clip === undefined ? null : (
+                  <IgnoredRow
+                    key={identity}
+                    eventId={eventId}
+                    clip={clip}
+                    name={name(identity)}
+                    compact
+                  />
+                )
+              })}
+            </ul>
+          </Fragment>
+        )
+      })}
+    </section>
+  )
+}

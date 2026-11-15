@@ -119,7 +119,7 @@ width (`clamp(240px, 22vw, 320px)`) and its compact tools take less height. Clip
 pointer, the marks line is two fixed sticky rows with icon-only Rotate and Help, the chapter's Move up, Move down and
 Delete sit in its header bar as named icon buttons, an ignored clip is one line, and the new-clip line is gone (the
 top bar's summary and the Clips help say it). On `Två kapitel - Tjörn`, with a fine pointer and nothing marked, the
-bin shows 3 whole clip rows at 1280×720 and 4 at 1440×900 (the ignored clip counts as a row). Touch sizes are as
+bin shows 3 whole clip rows at 1280×720 and 4 at 1440×900 (played rows; from 960 px the ignored clips are listed after the chapters, and a clip's status is its icon alone with a fine pointer). Touch sizes are as
 before.
 
 Slice 1 as built (2026-11-15) left out four features of its "Covers" list, none of them in the change's tasks:

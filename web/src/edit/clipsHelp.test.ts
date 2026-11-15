@@ -35,7 +35,11 @@ describe('the Clips help for a new clip', () => {
   it('adds the joins-reel.yaml sentence only while a new clip waits', () => {
     const plain = { several: false, hasIgnored: false, hasMissing: false, ownChapter: true }
     assert.ok(!clipsHelpLines(plain).includes(NEW_CLIP_NOTE))
-    assert.ok(clipsHelpLines({ ...plain, hasNewClip: true }).includes(NEW_CLIP_NOTE))
+    assert.deepEqual(clipsHelpLines({ ...plain, hasNewClip: true }), [REORDER_ONE, MARK_HINT, NEW_CLIP_NOTE])
+    assert.deepEqual(
+      clipsHelpLines({ several: true, hasIgnored: true, hasMissing: true, ownChapter: true, hasNewClip: true }),
+      [REORDER_SEVERAL, IGNORED_NOTE, MISSING_NOTE, MARK_HINT, OWN_CHAPTER_NOTE, NEW_CLIP_NOTE],
+    )
     assert.equal(NEW_CLIP_NOTE, newClipsLine(0, true, ''))
   })
 })

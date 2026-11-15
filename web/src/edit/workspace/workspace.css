@@ -450,12 +450,8 @@
     padding-block-end: var(--s-4);
     font-size: var(--text-sm);
 
-    & > :is(.edit-hint, .mark-line, .empty-state, .chapter-add) {
+    & > :is(.mark-line, .empty-state, .chapter-add) {
       padding-inline: var(--s-3);
-    }
-
-    & > .edit-hint {
-      padding-block-start: var(--s-3);
     }
 
     /* Flat sections, edge to edge: the pane is their frame. */
@@ -533,6 +529,9 @@
          padding), the 44 px of a finger otherwise (reset in the coarse block below). */
       --panel-head-h: 2.25rem;
       --bin-btn: 1.75rem;
+      /* 8 px between the pane's sections, not 12: with the ignored clips apart it keeps three
+         whole played rows in the 1280x720 bin (D6). The stacked bin keeps 12 px. */
+      gap: var(--s-2);
 
       & .edit-chapter > .chapter-tools > .chapter-actions {
         display: none;
@@ -677,21 +676,18 @@
 
       @media (pointer: coarse) {
         --bin-toolbar-h: 7rem;
+        /* The wrapped header's two lines (75 px), for the sticky offsets. */
+        --panel-head-h: 4.6875rem;
+        --bin-btn: 2.75rem;
 
-        @media (width >= 960px) {
-          /* The wrapped header's two lines (75 px), for the sticky offsets. */
-          --panel-head-h: 4.6875rem;
-          --bin-btn: 2.75rem;
+        /* Four 44 px buttons do not fit a 240 px bin beside the name: they wrap to a second line. */
+        & .edit-chapter > .panel-header {
+          flex-wrap: wrap;
+          padding-block: var(--s-1);
+        }
 
-          /* Four 44 px buttons do not fit a 240 px bin beside the name: they wrap to a second line. */
-          & .edit-chapter > .panel-header {
-            flex-wrap: wrap;
-            padding-block: var(--s-1);
-          }
-
-          & .edit-chapter > .panel-header > .chapter-actions {
-            margin-inline-start: auto;
-          }
+        & .edit-chapter > .panel-header > .chapter-actions {
+          margin-inline-start: auto;
         }
 
         & > .mark-line {

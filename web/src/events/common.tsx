@@ -12,7 +12,7 @@ import { CLIP_STATUS_LOOK, EXCLUDED_LOOK, VERDICT_LOOK } from './tones'
 
 /** Helpers both event screens share. */
 
-export { clipNames, fileName, folderName, plural } from './names'
+export { clipNames, fileName, folderName, namesIn, plural } from './names'
 
 /** The failure sentences both screens use, so the same cause reads the same. */
 export const DATABASE_CAUSE = "The service can't reach its database."
@@ -63,7 +63,7 @@ export function ClipStatusPills({
   hint = false,
 }: {
   clip: Pick<Clip, 'status' | 'excluded'>
-  /** Each pill's words also as its tooltip (the bin's rows show the icon alone when narrow). */
+  /** Each pill's words also as its tooltip (the bin's rows show the icon alone with a fine pointer, edit.css). */
   hint?: boolean
 }) {
   const look = CLIP_STATUS_LOOK[clip.status]

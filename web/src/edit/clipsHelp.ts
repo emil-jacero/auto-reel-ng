@@ -50,9 +50,10 @@ export function clipsHelpLines(opts: {
 }
 
 /**
- * What saving will add, as a line of its own while any new clip exists; the state stays visible.
- * `adopted` is the count that saving writes into reel.yaml, `waiting` whether a new clip waits
- * for one of the saves that writes it.
+ * The stacked page's line about new clips: what saving will add while a save adds any
+ * (`adopted` of them, as `adoptedWords`), else `NEW_CLIP_NOTE` while one waits for a save that
+ * writes it (`waiting`), else null. The workspace's bin shows no such line: the same note is in
+ * the Clips help (`clipsHelpLines`) and the top bar's summary says what saving adds.
  */
 export function newClipsLine(adopted: number, waiting: boolean, adoptedWords: string): string | null {
   if (adopted > 0) {
