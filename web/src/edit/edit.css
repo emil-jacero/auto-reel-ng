@@ -1098,6 +1098,30 @@
       }
     }
 
+    /*
+     * An ignored clip has no tools, no position and no handle: one line (the thumbnail, the
+     * name, the length and status) instead of two, under a caption that is one tight line.
+     * It is part of what the bin shows on screen at once (compact-bin-tools task 3.1).
+     */
+    @container (width >= 13.5rem) {
+      .edit-chapter[data-compact] .ignored-caption {
+        padding-block: var(--s-1);
+        line-height: 1.2;
+      }
+
+      .edit-chapter[data-compact] .clip-ignored .clip-item {
+        --clip-row-h: 1.8125rem;
+        min-block-size: 0;
+        grid-template-columns: var(--clip-thumb-w) minmax(0, 1fr) auto;
+        grid-template-areas: 'thumb file facts';
+        align-items: center;
+      }
+
+      .edit-chapter[data-compact] .clip-ignored .clip-item > .drag-slot {
+        display: none;
+      }
+    }
+
     @container (width >= 17rem) {
       .edit-chapter[data-compact] .clip-item {
         grid-template-areas:
