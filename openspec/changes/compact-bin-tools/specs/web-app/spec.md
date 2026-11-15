@@ -492,7 +492,7 @@ The bin SHALL be as wide as 22% of the window, at least 240 and at most 320 CSS 
 
 #### Scenario: A new clip in the bin
 - **WHEN** Edit mode opens on `2024-08-02 - Badutflykt - Varberg`, whose `reel.yaml` lists two of its three clips, and the operator moves `s1710001.mp4` below `s1710003.mp4`
-- **THEN** the bin shows no line about new clips, the new clip's row says New (with a fine pointer, as the row's icon with the words "New" kept as visually hidden text for assistive technology and as the icon's tooltip, and not as a visible word, "State is never shown by color alone"), the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says that saving adds 1 new clip to `reel.yaml`
+- **THEN** the bin shows no line about new clips, the new clip's row says "New, not yet in reel.yaml", its status label (with a fine pointer, as the row's icon with those words kept as visually hidden text for assistive technology and as the icon's tooltip, and not as visible words, "State is never shown by color alone"), the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says that saving adds 1 new clip to `reel.yaml`
 
 #### Scenario: Ignored clips in the bin
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window, and then in a 900 px wide window
@@ -509,12 +509,12 @@ words, paired with an icon, and never as a color alone. The same holds for warni
 each shows its words and an icon. Tones SHALL be consistent across screens: the same status has the same
 tone and icon on every page.
 
-One carve-out: in the rows of the workspace's clip bin, at every window width, with a fine pointer, a clip's
-status SHALL be shown as its icon alone. Its words SHALL stay in the row as visually hidden text, so the status
+One carve-out: in the rows of the workspace's clip bin (including the row of a missing clip the operator removed), at every window
+width, with a fine pointer, a clip's status SHALL be shown as its icon alone. Its words SHALL stay in the row as visually hidden text, so the status
 keeps its name for assistive technology, and SHALL be the icon's tooltip. Each clip status a bin row can show
 (Included, New, Missing, Ignored and Excluded) SHALL have its own icon there, distinct in shape from every other
 clip status's, so the status is never told by color alone. With a coarse pointer, and everywhere outside the
-workspace's clip bin (the event page's tables and its Edit mode without the workspace), a clip's status keeps its
+workspace's clip bin (the event page's tables), a clip's status keeps its
 words beside the icon.
 
 In both color schemes, text SHALL meet WCAG 2.1 AA contrast: at least 4.5:1 for normal-size text, and at
@@ -548,15 +548,15 @@ system palette, that loader SHALL stay visible, in the same color as the button'
 
 #### Scenario: A clip's status in the bin is its icon alone with a fine pointer
 - **WHEN** Edit mode opens on `2024-08-02 - Badutflykt - Varberg` in a 1280×720 window with a fine pointer, light and dark
-- **THEN** in the bin the new clip's row shows an icon for its status and no visible word "New", the row's text for assistive technology (the visually hidden words) reads "New" and the icon's tooltip is "New", and the icons of Included, New, Missing, Ignored and Excluded differ in shape, not only in color
+- **THEN** in the bin the new clip's row shows an icon for its status and no visible word of its label, the row's text for assistive technology (the visually hidden words) reads "New, not yet in reel.yaml" and the icon's tooltip is "New, not yet in reel.yaml", and the icons of Included, New, Missing, Ignored and Excluded differ in shape, not only in color
 
 #### Scenario: The bin's status is icon-only in a narrow window too
 - **WHEN** the same event is opened in a 900 px wide window with a fine pointer
-- **THEN** the bin's new clip's row shows the icon and no visible word "New", as in the wide window
+- **THEN** the bin's new clip's row shows the icon and no visible word of its label, as in the wide window
 
 #### Scenario: A clip's status keeps its words elsewhere
 - **WHEN** the same event is opened with a coarse pointer in a 1280×720 window, and the event page is viewed outside the workspace
-- **THEN** the new clip's row, and the event page's clip rows, show the word "New" beside its icon
+- **THEN** the new clip's row, and the event page's clip rows, show "New, not yet in reel.yaml" beside its icon
 
 ### Requirement: The event page reorders clips within a chapter
 
@@ -658,3 +658,120 @@ movable like any other.
 #### Scenario: In the wide bin ignored clips follow the chapters
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window
 - **THEN** `Main` lists only `s1710001.mp4`, `Kvällen` follows it directly, and after `Kvällen` and before Add chapter the bin lists, under "Ignored clips" and "Main · 1 ignored clip, not played", `s1710004.mp4` marked as ignored, with no handle and no move controls; in a 900 px wide window `Main` lists `s1710001.mp4` and then `s1710004.mp4`, and there is no "Ignored clips" heading
+
+### Requirement: Each explanation sits behind a Help toggle of its section
+
+The event page, in the read view and in Edit mode, SHALL keep instructional and explanatory text out of sight until asked for, and SHALL keep in sight every text that reports a state or needs an action. Each of these sections SHALL have **one** Help toggle in its header, a button named "Help" with an information icon: **Details** (Edit mode), **Poster** (Edit mode), **Timeline** (the read view and Edit mode), **Clips** (Edit mode: the row above the chapters, which holds the marks line) and the **Title cards** tab of the title card dialog. A section with no such text SHALL have no toggle.
+
+The toggle SHALL be a `button` with `aria-expanded` and `aria-controls` naming its panel, operable by Enter and Space, with a target at least 44 CSS pixels high and wide, and with a visible focus ring. Pressed, it SHALL show the panel under the header: a calm, muted block that is not an alert, holds the section's explanations as paragraphs, and moves nothing above it. The panel SHALL stay in the document when closed (`hidden`), so that a control it describes keeps its `aria-describedby`. Closed is the default. Each section's state SHALL be kept per section (not per event) in `localStorage`, read when the section mounts, written when the toggle is pressed, and every access SHALL be guarded: a browser that refuses storage, or throws, SHALL leave the toggle working for the page visit, closed at the start, and SHALL show no error. The Timeline's state SHALL be one state for both modes.
+
+Every text of these classes SHALL be in a panel and SHALL NOT be shown as a line of its own: the Details form's lead ("What reel.yaml says…", "Save writes these to reel.yaml…"), the Poster's "Pick the frame on the Timeline…", the Timeline's note that cards fade ("The Timeline fades a card…"), the note that dismissed suggestions return on reload, the cut fields' hint ("Enter takes a time; Escape puts the old one back"; the fields keep it as their `aria-describedby`), the Clips instructions ("Drag a clip by its handle…", "Mark clips with the box…", "The event's own chapter: …", "Ignored clips are not played and cannot be moved", "A missing clip is not on disk…"), the command that analyses an event (`auto-reel analyze <root>`, then Refresh), and the title cards tab's lead ("Every title card of this event follows these…"). The text SHALL be the same words as before. The classes that SHALL stay visible are: a refusal, an error or a warning; an unsaved or pending change and what saving will add ("Saving adds 2 new clips to reel.yaml"); a count ("2 clips marked", "1 ignored clip, not played"); the state words of a clip (in the workspace's clip bin with a fine pointer, as the status icon with its words kept as hidden text and tooltip, see "State is never shown by color alone"), a chapter, the poster and the render; a field's inherited-value hint; a reason an unavailable control gives (see "Edit mode moves the marked clips to a chapter"); the icon legend of the analysis lane; and the empty states of a chapter. Controls, fields, their names and what pressing them does SHALL NOT change.
+
+#### Scenario: A section's help is closed, opens and closes
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` with nothing stored
+- **THEN** the Details, Poster, Timeline and Clips sections each show a Help button with `aria-expanded="false"` and no explanation is visible
+- **WHEN** the operator presses the Clips Help button, by mouse and again by keyboard
+- **THEN** `aria-expanded` is `true` and "Drag a clip by its handle…" is visible under the header; pressing it again hides the panel, which stays in the document
+
+#### Scenario: The state persists across a reload
+- **WHEN** the operator opens the Timeline help, reloads the page, and then opens the same event in the read view
+- **THEN** the Timeline help is open in both, and the other sections' help is closed
+
+#### Scenario: Storage that throws
+- **WHEN** `localStorage` throws on every access
+- **THEN** every Help button works for the page visit, starts closed, and no error is shown
+
+#### Scenario: Action and state stay visible
+- **WHEN** an event with a missing clip, with an unsaved edit and with an event that needs a render is opened in Edit mode with every help closed
+- **THEN** the missing clip's status, the "Needs render" state with its reason, the save bar's unsaved changes and the marks count are visible, and the explanations are not
+
+#### Scenario: Fewer paragraphs of explanation
+- **WHEN** `2024-08-20 - Två kapitel - Tjörn` is opened in the read view and in Edit mode, in Chrome and in Firefox, light and dark, at 1280 and 390 px, with every help closed
+- **THEN** the number of visible paragraphs of instructional text is lower than before the change in each, the numbers are reported, and nothing overflows horizontally
+
+#### Scenario: A toggle is large enough to touch
+- **WHEN** any Help button is measured at 390 px
+- **THEN** it is at least 44 CSS pixels high and wide, and it has an accessible name that names its section
+
+### Requirement: Edit mode removes a missing clip from reel.yaml on request
+
+In Edit mode, every clip that `reel.yaml` lists but that is missing from disk SHALL offer a control that
+removes it from `reel.yaml`. The control SHALL say that it removes the clip, SHALL name the clip to assistive
+technology by the clip's name, as the event page's table names it, and SHALL be reachable with the keyboard.
+No other clip SHALL offer one: a clip that is on disk (included, NEW or ignored) is never removed this way,
+and nothing else in the client removes a clip from `reel.yaml`.
+
+Removing a clip SHALL:
+
+- take it out of its chapter's play order, so that the chapter's remaining clips are numbered, and their
+  positions announced, without it
+- list it under its chapter, after the clips the chapter plays, as removed from `reel.yaml` when the edits are
+  saved. The listing keeps the clip's name, as the event page's table names it, and its status in words (in the workspace's clip bin with a fine pointer, as the status icon with its words kept as hidden text and tooltip, see "State is never shown by color alone"), and
+  offers an **Undo** control that names the clip that way to assistive technology.
+- move keyboard focus to that Undo control, and announce that the clip will be removed from `reel.yaml` when
+  the edits are saved
+
+Undo SHALL return the clip to its chapter's play order, right after whichever of the clips that came before it
+when Edit mode opened comes last in the chapter's play order now, or first when none of them is still in the
+play order. With no other edit to the chapter, that is the position it had. So removals undone in any order,
+with no move between them, leave the chapter's order as read, and however the chapter was reordered meanwhile,
+each clip still in the play order that came before it when Edit mode opened comes before it again. Undo SHALL
+then move keyboard focus to the clip's remove control, and announce the clip's position out of the number of
+clips the chapter plays.
+
+A removal SHALL count as an unsaved change, like a move. The save bar says how many missing clips will be
+removed, Reset returns every removed clip to its place, and leaving with a removal unsaved asks first, as
+for any unsaved edit. While a save is in flight, the remove and Undo controls SHALL accept no presses.
+
+Saving SHALL write `reel.yaml` without each removed clip, as "Saving an edit writes only what the operator
+changed" states, and SHALL NOT create, change or delete any other file. After a successful save, the page
+SHALL show the event without the removed clips and SHALL no longer report them as missing.
+
+#### Scenario: Removing the missing clip of Sommarlov
+- **WHEN** in Edit mode on `2024-09-01 - Sommarlov`, the operator activates the control that removes
+  `borttagen.mp4` from `reel.yaml`
+- **THEN** the chapter plays `s1710002.mp4` and `s1710004.mp4`, numbered 1 and 2; `borttagen.mp4` is listed
+  under the chapter as removed when the edits are saved, still marked as missing, with an Undo control that
+  has keyboard focus; and the page says that 1 missing clip will be removed
+
+#### Scenario: Undo puts the clip back
+- **WHEN** after removing `borttagen.mp4`, the operator activates its Undo control
+- **THEN** `borttagen.mp4` is at position 3 again, keyboard focus is on its remove control, and the page
+  shows no unsaved changes
+
+#### Scenario: Undo after a move keeps the move
+- **WHEN** on `2024-09-01 - Sommarlov`, the operator removes `borttagen.mp4`, moves `s1710004.mp4` up, and
+  then undoes the removal
+- **THEN** the chapter lists `s1710004.mp4`, `s1710002.mp4` and `borttagen.mp4`, and the page says that 1 clip
+  moved, and no longer says that a missing clip will be removed
+
+#### Scenario: Removals undone in any order restore the chapter
+- **WHEN** in Edit mode on an event whose one chapter lists `s1710001.mp4` and then the missing `x.mp4` and
+  `y.mp4`, the operator removes `x.mp4`, then `y.mp4`, then undoes the removal of `x.mp4`, then of `y.mp4`
+- **THEN** the chapter lists `s1710001.mp4`, `x.mp4` and `y.mp4` as read, and the page shows no unsaved
+  changes
+
+#### Scenario: Reset puts every removed clip back
+- **WHEN** on `2024-09-01 - Sommarlov`, the operator removes `borttagen.mp4`, moves `s1710004.mp4` up, and
+  presses Reset
+- **THEN** the chapter lists `s1710002.mp4`, `s1710004.mp4` and `borttagen.mp4` as read, and the page shows
+  no unsaved changes
+
+#### Scenario: Saving takes the entry out of reel.yaml
+- **WHEN** the operator removes `borttagen.mp4` from `2024-09-01 - Sommarlov` and saves
+- **THEN** `reel.yaml` lists `s1710002.mp4` and `s1710004.mp4` only; the line for `borttagen.mp4`, with its
+  end-of-line comment, is the only line gone; and the page shows the event with no missing clip, needing a
+  render, and offers Render
+
+#### Scenario: The render succeeds once the entry is gone
+- **WHEN** after that save the operator presses Render on `2024-09-01 - Sommarlov` and a worker runs the job
+- **THEN** the job completes and the page shows the event as rendered and up to date
+
+#### Scenario: Only missing clips can be removed
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`, whose clips are included, NEW or ignored,
+  and none is missing
+- **THEN** no clip offers a control that removes it from `reel.yaml`
+
+#### Scenario: A pending removal is an unsaved edit
+- **WHEN** the operator removes `borttagen.mp4` on `2024-09-01 - Sommarlov` and presses the browser's Back
+- **THEN** the event page stays, with the removal, and asks "Discard unsaved changes?"
