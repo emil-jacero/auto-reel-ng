@@ -941,8 +941,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    `edit-list-paint-cost` follows them (web only; D-20): the Edit page's 400-row clip list no longer repaints and
    re-layerizes on every Timeline frame, and the edge tools step aside while a zoom is in progress, which closes both
    the edge drag's and the slider drag's gates; no API, engine or `RENDER_GRAPH_VERSION` change.
-10. **ML analysis** (parallel, behind existing interfaces); GUI v3 has no planned scope: the timeline editor
-    moved to v2, and dragging across chapters landed in v1 (D-13).
+10. **ML analysis** (parallel, behind existing interfaces). GUI v3 is the **editor workspace**
+    ([`editor-workspace.md`](editor-workspace.md), goal set 2026-11-14): Edit mode as an iMovie-like workspace
+    (clip bin, viewer, inspector, track-first timeline); not yet designed in OpenSpec.
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
     D-17): a local image and a test stack, nothing published; the published image waits for the D-1
     fdk-aac blocker (§4.12).
