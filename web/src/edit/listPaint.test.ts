@@ -109,12 +109,25 @@ describe('the clip rows skip drawing off screen', () => {
         .filter((rule) => rule.selector === selector && rule.at.join(' / ') === at.join(' / '))
         .map((rule) => declaration(rule.body, '--clip-row-h'))
         .filter((value) => value !== null)
-    // Rows of 118 px in the 240 px bin (three lines) and 82 px from a 22rem bin (two lines), less
-    // the 17 px of padding and border the content box leaves out.
+    // Rows of 118 px (three lines; a finger's under 22rem), 68 px for a fine pointer from 13.5rem
+    // (two lines, padding --s-1) and 78 px for a finger from 22rem, less the padding and border
+    // the content box leaves out.
     assert.deepEqual(estimate('& .clip-item', ['@layer screens', COMPACT]), ['6.3125rem'])
     assert.deepEqual(
-      estimate(`${COMPACT} .clip-item`, ['@layer screens', '@container (width >= 22rem)']),
-      ['4.0625rem'],
+      estimate(`${COMPACT} .clip-item`, [
+        '@layer screens',
+        '@media not (pointer: coarse)',
+        '@container (width >= 13.5rem)',
+      ]),
+      ['3.7031rem'],
+    )
+    assert.deepEqual(
+      estimate(`${COMPACT} .clip-item`, [
+        '@layer screens',
+        '@media (pointer: coarse)',
+        '@container (width >= 22rem)',
+      ]),
+      ['4.8125rem'],
     )
   })
 

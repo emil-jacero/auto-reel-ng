@@ -941,9 +941,10 @@
    * rows in three short lines in the 240 px bin. The handle, the position and the name; a 52 × 29
    * thumbnail beside the length the clip plays, its status and a row's action; the row's tools
    * and the Cuts control, in that order as they are in the tab order. A removed or an ignored
-   * row has no third line. From a 22rem bin (the
-   * stacked workspace) two lines (below). After the page's row rules and more specific than
-   * each, so they win whatever the panel's width. Their size and time are the read view's.
+   * row has no third line. This is a finger's bin under 22rem; a fine pointer has two lines
+   * from 13.5rem, so only a window below the workspace uses it (below). After the page's row
+   * rules and more specific than each, so they win whatever the panel's width. Their size and
+   * time are the read view's.
    */
   .edit-chapter[data-compact] {
     & .clip-item {
@@ -1048,24 +1049,122 @@
     }
   }
 
-  /* A wider bin (the stacked workspace): two lines, the tools after the name, the Cuts control
-     after the facts. */
-  @container (width >= 22rem) {
-    .edit-chapter[data-compact] .clip-item {
-      --clip-row-h: 4.0625rem;
-
-      grid-template-areas:
-        'handle pos file moves'
-        'thumb thumb facts cuts';
-    }
-
-    .edit-chapter[data-compact] .clip-item > .clip-tools {
-      justify-self: end;
-    }
-
-    @media (pointer: coarse) {
+  /*
+   * A finger keeps the tools together after the name, as before compact-bin-tools: from a 22rem
+   * bin (the stacked workspace) two lines. The 240 px workspace bin keeps the three lines above,
+   * where each tool is 32 px and the name keeps its width (D4).
+   */
+  @media (pointer: coarse) {
+    @container (width >= 22rem) {
       .edit-chapter[data-compact] .clip-item {
         --clip-row-h: 4.8125rem;
+
+        grid-template-areas:
+          'handle pos file moves'
+          'thumb thumb facts cuts';
+      }
+
+      .edit-chapter[data-compact] .clip-item > .clip-tools {
+        justify-self: end;
+      }
+    }
+  }
+
+  /*
+   * A fine pointer, from 13.5rem (the 240 px bin less its border and a scrollbar; compact-bin-tools
+   * D4): two lines, 68 px with --s-1 padding and 28 px controls. The status is its icon alone
+   * (its words stay for assistive technology and as a tooltip), so line 2 (the thumbnail, the
+   * length, the status, Rotate and Cuts) is one line. Line 1 is the handle, the position, the
+   * name and the tools: Move up and down, and from 17rem, where the name keeps room, Rotate
+   * too. Below that Rotate is on line 2, after Move in the tab order and below it on the page,
+   * so focus only runs down the row.
+   */
+  @media not (pointer: coarse) {
+    @container (width >= 13.5rem) {
+      .edit-chapter[data-compact] .clip-item {
+        --clip-row-h: 3.7031rem;
+        padding-block: var(--s-1);
+        row-gap: 0.125rem;
+        column-gap: var(--s-1);
+        padding-inline: var(--s-1);
+        grid-template-columns: 1.75rem 1.25rem minmax(0, 1fr) auto auto;
+        grid-template-areas:
+          'handle pos file moves moves'
+          'thumb thumb facts rotate cuts';
+      }
+
+      .edit-chapter[data-compact] .clip-item > .clip-tools {
+        display: contents;
+      }
+
+      .edit-chapter[data-compact] .clip-item .clip-rotate {
+        grid-area: rotate;
+        justify-self: end;
+      }
+
+      .edit-chapter[data-compact] .clip-item .clip-moves {
+        grid-area: moves;
+        justify-self: end;
+      }
+
+      .edit-chapter[data-compact] .clip-item .clip-facts {
+        flex-wrap: nowrap;
+      }
+
+      .edit-chapter[data-compact] .clip-item .clip-status .pill {
+        padding-inline: 0.25rem;
+      }
+
+      .edit-chapter[data-compact] .clip-item .clip-status .pill > span {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        margin: -1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
+      .edit-chapter[data-compact] .clip-item > .drag-handle,
+      .edit-chapter[data-compact] .clip-item .clip-tools .btn-icon {
+        min-block-size: 1.75rem;
+        block-size: 1.75rem;
+      }
+
+      .edit-chapter[data-compact] .clip-item .clip-tools .btn-icon {
+        inline-size: 1.75rem;
+      }
+    }
+
+    /*
+     * An ignored clip has no tools, no position and no handle: one line (the thumbnail, the
+     * name, the length and status) instead of two, under a caption that is one tight line.
+     * It is part of what the bin shows on screen at once (compact-bin-tools task 3.1).
+     */
+    @container (width >= 13.5rem) {
+      .edit-chapter[data-compact] .ignored-caption {
+        padding-block: var(--s-1);
+        line-height: 1.2;
+      }
+
+      .edit-chapter[data-compact] .clip-ignored .clip-item {
+        --clip-row-h: 1.8125rem;
+        min-block-size: 0;
+        grid-template-columns: var(--clip-thumb-w) minmax(0, 1fr) auto;
+        grid-template-areas: 'thumb file facts';
+        align-items: center;
+      }
+
+      .edit-chapter[data-compact] .clip-ignored .clip-item > .drag-slot {
+        display: none;
+      }
+    }
+
+    @container (width >= 17rem) {
+      .edit-chapter[data-compact] .clip-item {
+        grid-template-areas:
+          'handle pos file moves rotate'
+          'thumb thumb facts facts cuts';
       }
     }
   }

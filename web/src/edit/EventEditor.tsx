@@ -19,7 +19,7 @@ import type { ReelDocument, ReelReadResult, ReelSaveResult, ReelWriteBody } from
 import type { CutHandlers, CutPanels, PanelState } from '../cuts/CutsPanel'
 import { keptCuts, trimmedWords } from '../cuts/times'
 import { markEventsChanged } from '../events/changes'
-import { clipNames, fileName, folderName, plural } from '../events/common'
+import { fileName, folderName, namesIn, plural } from '../events/common'
 import { FAILURE_LABEL, UNANSWERED_CAUSE, notReachableHint } from '../events/labels'
 import { FAILURE_LOOK } from '../events/tones'
 import { eventName } from '../jobs/labels'
@@ -57,6 +57,7 @@ import { Dialog } from '../ui/Dialog'
 import { Icon } from '../ui/Icon'
 import { HelpPanel, HelpToggle, useSectionHelp } from '../ui/help/HelpToggle'
 import { clipsHelpLines, newClipsLine } from './clipsHelp.ts'
+import { ignoredGroups, useWideBin } from './wideBin.ts'
 import { Pill } from '../ui/Pill'
 import { SkeletonRows } from '../ui/Skeleton'
 import { keepToastsClearOf, toast } from '../ui/toast'
@@ -78,7 +79,7 @@ import {
 import { ChapterDrag } from './ChapterDrag'
 import { AddChapter, DeletedChapter } from './ChapterTools'
 import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './ChapterTools'
-import { ClipOrderList } from './ClipOrderList'
+import { ClipOrderList, IgnoredBin } from './ClipOrderList'
 import type {
   MarkHandler,
   MoveHandler,
@@ -913,12 +914,13 @@ function nameNow(
   if (chapter === undefined) {
     return identity
   }
-  return clipNames(chapter.name, [
-    ...(original.get(chapter.key) ?? []),
-    ...(draft.orders.get(chapter.key) ?? []),
-    ...(ignoredOf.get(chapter.key) ?? []),
-    ...(removedOf.get(chapter.key) ?? []),
-  ])(identity)
+  return namesIn(
+    chapter.name,
+    original.get(chapter.key) ?? [],
+    draft.orders.get(chapter.key) ?? [],
+    ignoredOf.get(chapter.key) ?? [],
+    removedOf.get(chapter.key) ?? [],
+  )(identity)
 }
 
 /** A chapter's heading in `draft` (`Main`, `Clips` or its name), for an announcement. */
@@ -1071,6 +1073,15 @@ function placeBar(bar: HTMLElement): void {
   }
 }
 
+/** The first of the matches that is on screen: each chapter's buttons exist twice (bar and row),
+ * and below 960 px the bar's copy is `display: none` and cannot take focus. */
+function firstShown(matches: NodeListOf<HTMLElement>): HTMLElement | null {
+  const list = Array.from(matches)
+  return (
+    list.find((el) => (el.checkVisibility ? el.checkVisibility() : true)) ?? list[0] ?? null
+  )
+}
+
 export function EventEditor({
   eventId,
   event,
@@ -1107,6 +1118,9 @@ export function EventEditor({
   workspace?: WorkspaceFrame
 }) {
   const inWorkspace = workspace !== undefined
+  // From 960 px the bin lists the ignored clips after the chapters (compact-bin-tools D6).
+  const wideBin = useWideBin()
+  const ignoredApart = inWorkspace && wideBin
   // Read once: the draft is never re-initialised from a newer detail.
   const [detail] = useState(event)
   const [state, dispatch] = useReducer(reduce, { status: 'loading' })
@@ -2277,8 +2291,29 @@ export function EventEditor({
     marksCache.current = result
     return result
   }, [listedKeys, orders, marks])
-  const markLineRef = useRef<HTMLDivElement>(null)
+  const markLineRef = useRef<HTMLDivElement | null>(null)
   const rotateHintId = useId()
+  // The bin's toolbar as drawn: it grows with the reason line or the Clips help, and the chapter
+  // headings and the scroll padding follow (`--bin-toolbar-measured` on its parent, workspace.css).
+  // A callback ref: the bin mounts its slots on its own schedule, not with `detail`.
+  const stopMeasuring = useRef<(() => void) | null>(null)
+  const placeMarkLine = useCallback((line: HTMLDivElement | null) => {
+    markLineRef.current = line
+    stopMeasuring.current?.()
+    stopMeasuring.current = null
+    const bin = line?.parentElement
+    if (!line || !bin || typeof ResizeObserver === 'undefined') {
+      return
+    }
+    const measure = () => bin.style.setProperty('--bin-toolbar-measured', `${line.offsetHeight}px`)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(line)
+    stopMeasuring.current = () => {
+      observer.disconnect()
+      bin.style.removeProperty('--bin-toolbar-measured')
+    }
+  }, [])
 
   // A mark or Clear marks: not while a save or a move of marked clips is pending, nor while a clip is
   // lifted (the group a drag lifted is the group it drops). Spoken once through the live region.
@@ -2399,6 +2434,7 @@ export function EventEditor({
   }, [listedKeys, moveTo])
   const moveReasonId = useId()
   const moveSelectId = useId()
+  const moveLabelId = useId()
   // The reason line shows only once Move is pressed while it cannot act; it goes when Move can.
   const [moveReasonShown, setMoveReasonShown] = useState(false)
   const moveWhy = moveReason(marks.size, moveTo !== '', listsLocked)
@@ -2498,8 +2534,10 @@ export function EventEditor({
     const target =
       request.target === 'add'
         ? root.querySelector<HTMLElement>('.chapter-add-button')
-        : root.querySelector<HTMLElement>(
-            `[data-chapter-key="${request.key}"] .${request.target}`,
+        : firstShown(
+            root.querySelectorAll<HTMLElement>(
+              `[data-chapter-key="${request.key}"] .${request.target}`,
+            ),
           )
     target?.focus({ preventScroll: true })
     scrollAfter.current = target?.closest<HTMLElement>('.chapter-tools') ?? target
@@ -2753,7 +2791,7 @@ export function EventEditor({
           )}
           </>,
           bin: <>
-          {detail !== null && newClipsText !== null && (
+          {detail !== null && newClipsText !== null && !inWorkspace && (
             <div className="edit-hint">
               <Icon name="info" />
               <p>{adopted > 0 ? <strong>{newClipsText}</strong> : newClipsText}</p>
@@ -2763,7 +2801,7 @@ export function EventEditor({
           {detail !== null && (
             // How clips are marked, and, once any is, how many and Clear marks. Its slot keeps
             // its height and room either way, so the first mark moves no row.
-            <div ref={markLineRef} className="mark-line" tabIndex={-1}>
+            <div ref={placeMarkLine} className="mark-line" tabIndex={-1}>
               <div className="mark-head">
                 <HelpToggle help={clipsHelp} section="Clips" />
                 <span className="mark-line-slot">
@@ -2787,6 +2825,7 @@ export function EventEditor({
                   hasIgnored,
                   hasMissing,
                   ownChapter: listed.some((chapter) => chapter.name === ''),
+                  hasNewClip: inWorkspace && newClips.size > 0,
                 }).map((line) => (
                   <p key={line}>{line}</p>
                 ))}
@@ -2798,28 +2837,32 @@ export function EventEditor({
                     className="btn btn-secondary btn-compact"
                     aria-disabled={listsLocked || marks.size === 0 || undefined}
                     aria-describedby={marks.size === 0 ? rotateHintId : undefined}
+                    title="Rotate marked left"
                     onClick={() => onRotateMarked('left')}
                   >
                     <Icon name="rotate-ccw" />
-                    Rotate marked left
+                    <span className="mark-words">Rotate marked left</span>
                   </button>
                   <button
                     type="button"
                     className="btn btn-secondary btn-compact"
                     aria-disabled={listsLocked || marks.size === 0 || undefined}
                     aria-describedby={marks.size === 0 ? rotateHintId : undefined}
+                    title="Rotate marked right"
                     onClick={() => onRotateMarked('right')}
                   >
                     <Icon name="rotate-cw" />
-                    Rotate marked right
+                    <span className="mark-words">Rotate marked right</span>
                   </button>
                   <span id={rotateHintId} className="visually-hidden">
                     Mark clips to rotate them together.
                   </span>
                 </span>
                 {listedKeys.length > 1 && (
-                  <span className="mark-move" role="group" aria-label="Move marked clips">
-                    <label htmlFor={moveSelectId}>Move marked to…</label>
+                  <span className="mark-move" role="group" aria-labelledby={moveLabelId}>
+                    <label id={moveLabelId} htmlFor={moveSelectId} className="mark-move-label">
+                      Move marked to…
+                    </label>
                     <select
                       id={moveSelectId}
                       className="field-input"
@@ -2937,11 +2980,31 @@ export function EventEditor({
                           : null
                       }
                       onSelectClip={selectClip}
+                      ignoredApart={ignoredApart}
                     />
                   )
                 })}
               </ChapterDrag>
             </CardButtonContext.Provider>
+          )}
+
+          {detail !== null && ignoredApart && (
+            <IgnoredBin
+              eventId={eventId}
+              groups={ignoredGroups(ready.draft.chapters, ignoredOf, (name) =>
+                chapterHeading(name, hasNamedChapter),
+              )}
+              clips={clips}
+              nameOf={(group) =>
+                namesIn(
+                  group.name,
+                  ready.baseline.original.get(group.key) ?? [],
+                  ready.draft.orders.get(group.key) ?? [],
+                  group.identities,
+                  removedByChapter.get(group.key) ?? [],
+                )
+              }
+            />
           )}
 
           {detail !== null && <AddChapter locked={listsLocked} onAdd={onAddChapter} />}

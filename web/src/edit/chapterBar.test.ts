@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { barButton, barContent, cardIdOf, editTitlecardName } from './chapterBar.ts'
+import {
+  barButton,
+  barContent,
+  cardIdOf,
+  chapterToolsParts,
+  editTitlecardName,
+} from './chapterBar.ts'
 
 test('the button is named for the chapter by its heading, Main and Clips included', () => {
   assert.equal(editTitlecardName('Kvällen'), 'Edit title card for Kvällen')
@@ -30,4 +36,43 @@ test('a chapter section is its name, its button and its clip count; nothing rena
     editsName: false,
   })
   assert.equal(barContent('Main', 1).count, '1 clip')
+})
+
+test('the bar holds the buttons alone and never the refusal, so its id exists once', () => {
+  const place = { first: true, last: false }
+  assert.deepEqual(chapterToolsParts('bar', 2, place, 'Not empty'), {
+    buttons: true,
+    notes: false,
+    refusal: false,
+  })
+  assert.deepEqual(chapterToolsParts('bar', 0, null, 'Not empty'), {
+    buttons: true,
+    notes: false,
+    refusal: false,
+  })
+})
+
+test('the row has the notes, the buttons and the refusal Delete is refused with', () => {
+  const place = { first: false, last: false }
+  assert.deepEqual(chapterToolsParts('row', 1, place, 'Not empty'), {
+    buttons: true,
+    notes: true,
+    refusal: true,
+  })
+  assert.deepEqual(chapterToolsParts('row', 0, place, null), {
+    buttons: true,
+    notes: false,
+    refusal: false,
+  })
+  assert.deepEqual(chapterToolsParts('row', 2, null, undefined), {
+    buttons: false,
+    notes: true,
+    refusal: false,
+  })
+})
+
+test('a lone chapter without notes renders no tools, in every placement', () => {
+  assert.equal(chapterToolsParts('bar', 0, null, undefined), null)
+  assert.equal(chapterToolsParts('row', 0, null, undefined), null)
+  assert.equal(chapterToolsParts('bar', 3, null, undefined), null)
 })

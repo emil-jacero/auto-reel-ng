@@ -7,7 +7,7 @@
 
   /* On <html>, so the notification region (outside `.ws`) places itself by the same pane widths. */
   html[data-workspace] {
-    --ws-bin-w: 240px;
+    --ws-bin-w: clamp(240px, 22vw, 320px);
     --ws-insp-w: 340px;
   }
 
@@ -502,12 +502,8 @@
     padding-block-end: var(--s-4);
     font-size: var(--text-sm);
 
-    & > :is(.edit-hint, .mark-line, .empty-state, .chapter-add) {
+    & > :is(.mark-line, .empty-state, .chapter-add) {
       padding-inline: var(--s-3);
-    }
-
-    & > .edit-hint {
-      padding-block-start: var(--s-3);
     }
 
     /* Flat sections, edge to edge: the pane is their frame. */
@@ -573,39 +569,208 @@
       white-space: nowrap;
     }
 
+    /* Below 960 px the page is stacked: the bin keeps the tools row under the bar. From 960 px
+       Move up, Move down and Delete are in the bar (`ChapterTools` `bar`), so the row's own
+       buttons are hidden, and the row itself unless it has a note or a refusal showing. */
+    & .edit-chapter > .panel-header > .chapter-actions {
+      display: none;
+    }
+
+    @media (width >= 960px) {
+      /* The chapter header bar: 36 px with a fine pointer (its 28 px icon buttons and 3 px
+         padding), the 44 px of a finger otherwise (reset in the coarse block below). */
+      --panel-head-h: 2.25rem;
+      --bin-btn: 1.75rem;
+      /* 8 px between the pane's sections, not 12: with the ignored clips apart it keeps three
+         whole played rows in the 1280x720 bin (D6). The stacked bin keeps 12 px. */
+      gap: var(--s-2);
+
+      /* Only the live chapter's tools: a deleted chapter's row holds its Undo. */
+      & .edit-chapter:not([data-deleted]) > .chapter-tools > .chapter-actions {
+        display: none;
+      }
+
+      & .edit-chapter:not([data-deleted])
+        > .chapter-tools:not(:has(.chapter-notes, .chapter-refusal:not([hidden]))) {
+        display: none;
+      }
+
+      & .edit-chapter > .panel-header {
+        /* 28 px buttons + 2 x 3 px + the 1 px border = 35 px, under the 36 px bar. */
+        padding-block: 0.1875rem;
+        /* The count, three 28 px actions and Edit Titlecard fit a 240 px bin with a three-digit count. */
+        column-gap: var(--s-1);
+
+        & > h2 {
+          flex: 0 1 auto;
+          /* The title and the buttons' names carry the whole name. */
+          min-inline-size: 0;
+        }
+
+        & > .chapter-actions {
+          display: flex;
+          flex: none;
+          flex-wrap: nowrap;
+          margin-inline-start: 0;
+          gap: var(--s-1);
+        }
+
+        & .chapter-order {
+          gap: var(--s-1);
+        }
+
+        & .btn {
+          position: relative;
+          flex: none;
+          inline-size: var(--bin-btn);
+          min-inline-size: var(--bin-btn);
+          block-size: var(--bin-btn);
+          min-block-size: var(--bin-btn);
+          padding: 0;
+          justify-content: center;
+        }
+      }
+    }
+
     & .chapter-tools {
       padding-inline: var(--s-3) var(--s-2);
     }
 
-    /* The marks line in one column, as the page's at phone width: the Move group on a row of its
-       own, label above, the picker filling the row beside Move. */
-    & .mark-line-slot {
-      min-inline-size: 0;
-      justify-content: flex-start;
-    }
+    @media (width >= 960px) {
+      /* The marks line as the bin's sticky toolbar (D2): two fixed rows, 88 px with a fine pointer.
+         Chapter headings stick under it, and focus scrolled into view clears both. */
+      --bin-toolbar-h: 5.5rem;
+      --bin-stick-h: var(--bin-toolbar-measured, var(--bin-toolbar-h));
+      --header-h: var(--bin-stick-h);
+      scroll-padding-block: calc(
+          var(--bin-stick-h) + var(--bin-head-reserve, var(--panel-head-h)) + var(--s-2)
+        )
+        var(--s-2);
 
-    & .mark-actions {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    & .mark-rotate {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    & .mark-move {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: var(--s-1) var(--mark-gap);
-
-      & label {
-        grid-column: 1 / -1;
+      & > .mark-line {
+        --mark-control-h: 2rem;
+        --mark-gap: var(--s-2);
+        position: sticky;
+        inset-block-start: 0;
+        z-index: 4;
+        grid-template-columns: minmax(0, 1fr);
+        box-sizing: border-box;
+        min-block-size: var(--bin-toolbar-h);
+        block-size: max-content;
+        padding-block: var(--s-2) calc(var(--s-2) - 1px);
+        border-block-end: 1px solid var(--border);
+        background: var(--surface);
+        align-content: start;
       }
 
-      & select {
-        inline-size: 100%;
+      & .mark-line .help-toggle {
+        block-size: var(--mark-control-h);
+        min-block-size: var(--mark-control-h);
+        min-inline-size: var(--mark-control-h);
+        padding-inline: 0;
+        justify-content: center;
+        position: relative;
+      }
+
+      & .mark-line .help-label,
+      & .mark-words,
+      & .mark-move-label {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
+      & .mark-line-slot {
         min-inline-size: 0;
+        justify-content: flex-end;
+      }
+
+      /* An open Clips help scrolls inside the toolbar rather than covering the bin. */
+      & .mark-line > .help-panel {
+        max-block-size: 25vh;
+        overflow: auto;
+      }
+
+      & .mark-actions {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: var(--mark-gap);
+      }
+
+      & .mark-rotate {
+        flex: none;
+        flex-wrap: nowrap;
+
+        & .btn {
+          position: relative;
+          min-inline-size: var(--mark-control-h);
+          inline-size: var(--mark-control-h);
+          padding-inline: 0;
+          justify-content: center;
+        }
+      }
+
+      & .mark-move {
+        flex: 1 1 auto;
+        flex-wrap: nowrap;
+        position: relative;
+
+        & select {
+          flex: 1 1 auto;
+          inline-size: auto;
+          min-inline-size: 0;
+        }
+
+        & .btn {
+          flex: none;
+        }
+      }
+
+      @media (pointer: coarse) {
+        /* A finger's controls make the toolbar tall (up to three 44 px rows in a 240 px bin), too
+           tall to hold in a short pane: it scrolls with the bin as before, and only the chapter
+           headings stick, at the top. */
+        --bin-stick-h: 0px;
+        --bin-toolbar-h: 7rem;
+        /* The wrapped header, for the scroll padding only: 75 px on two lines, 101 px when the
+           name wraps too (a bin under about 290 px). The tallest, so a focused control never
+           ends under a heading; a wider bin keeps a little spare room. */
+        --bin-head-reserve: 6.3125rem;
+        --panel-head-h: 4.6875rem;
+        --bin-btn: 2.75rem;
+
+        /* Four 44 px buttons do not fit a 240 px bin beside the name: they wrap to a second line. */
+        & .edit-chapter > .panel-header {
+          flex-wrap: wrap;
+          padding-block: var(--s-1);
+        }
+
+        & .edit-chapter > .panel-header > .chapter-actions {
+          margin-inline-start: auto;
+        }
+
+        & > .mark-line {
+          --mark-control-h: 2.75rem;
+          position: static;
+        }
+
+        /* Two 44 px Rotate buttons, the picker and Move do not fit one row of a 240 px bin
+           without squeezing the picker to its chevron: the Move group wraps to a row of its
+           own, as it does off the workspace, and the picker keeps room for a chapter name. */
+        & .mark-actions {
+          flex-wrap: wrap;
+        }
+
+        & .mark-move {
+          flex-wrap: wrap;
+
+          & select {
+            min-inline-size: 7rem;
+          }
+        }
       }
     }
   }

@@ -25,10 +25,13 @@ export const EditTitlecard = memo(function EditTitlecard({
   id,
   heading,
   locked,
+  compact = false,
 }: {
   id: string
   heading: string
   locked: boolean
+  /** The bin: icon-only, its words in the tooltip. */
+  compact?: boolean
 }) {
   const model = useContext(CardButtonContext)
   if (model === null) {
@@ -40,6 +43,7 @@ export const EditTitlecard = memo(function EditTitlecard({
       type="button"
       className="btn btn-secondary edit-titlecard"
       aria-label={editTitlecardName(heading)}
+      title={compact ? editTitlecardName(heading) : undefined}
       aria-pressed={pressed}
       aria-disabled={unavailable || undefined}
       onClick={() => {

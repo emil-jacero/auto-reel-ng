@@ -44,3 +44,30 @@ export function barContent(heading: string, clips: number): BarContent {
     editsName: false,
   }
 }
+
+/** A chapter's place among the listed chapters, for Move up / Move down; null when alone. */
+export type ChapterPlace = { first: boolean; last: boolean }
+
+/** What one `ChapterTools` instance renders for its placement; `null` when it renders nothing. */
+export type ChapterToolsParts = { buttons: boolean; notes: boolean; refusal: boolean }
+
+/**
+ * Which parts a placement shows. `bar` is the buttons alone (the bin's header bar, which
+ * never holds the refusal: the row carries the one `${headingId}-refusal` id). `row` is the
+ * notes, the buttons and Delete's refusal; nothing when it has none of them (an event with one
+ * chapter).
+ */
+export function chapterToolsParts(
+  placement: 'bar' | 'row',
+  notes: number,
+  place: ChapterPlace | null,
+  deleteRefusal: string | null | undefined,
+): ChapterToolsParts | null {
+  const offersDelete = deleteRefusal !== undefined
+  const buttons = place !== null || offersDelete
+  if (placement === 'bar') {
+    return buttons ? { buttons: true, notes: false, refusal: false } : null
+  }
+  const refusal = offersDelete && deleteRefusal !== null
+  return buttons || notes > 0 ? { buttons, notes: notes > 0, refusal } : null
+}

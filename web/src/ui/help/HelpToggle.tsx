@@ -32,10 +32,11 @@ export function HelpToggle({ help, section }: { help: SectionHelp; section: stri
       className="btn btn-ghost help-toggle"
       {...toggleAttributes(help.ids, help.open)}
       aria-label={`Help: ${section}`}
+      title={`Help: ${section}`}
       onClick={help.toggle}
     >
       <Icon name="info" />
-      {HELP_LABEL}
+      <span className="help-label">{HELP_LABEL}</span>
     </button>
   )
 }

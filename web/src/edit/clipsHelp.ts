@@ -19,6 +19,9 @@ export const IGNORED_NOTE = 'Ignored clips are not played and cannot be moved.'
 export const MISSING_NOTE =
   'A missing clip is not on disk and stays in its chapter: restore the file, or remove it from reel.yaml.'
 
+export const NEW_CLIP_NOTE =
+  'A new clip joins reel.yaml once its chapter’s order, one of its cuts, or the list of chapters is saved.'
+
 export function clipsHelpLines(opts: {
   /** The event lists more than one chapter. */
   several: boolean
@@ -26,6 +29,8 @@ export function clipsHelpLines(opts: {
   hasMissing: boolean
   /** The event's own chapter is listed (its tools row used to carry OWN_CHAPTER_NOTE). */
   ownChapter: boolean
+  /** A new clip waits (the workspace drops the bin's own line for it). */
+  hasNewClip?: boolean
 }): string[] {
   const lines = [opts.several ? REORDER_SEVERAL : REORDER_ONE]
   if (opts.hasIgnored) {
@@ -38,19 +43,21 @@ export function clipsHelpLines(opts: {
   if (opts.ownChapter && opts.several) {
     lines.push(OWN_CHAPTER_NOTE)
   }
+  if (opts.hasNewClip) {
+    lines.push(NEW_CLIP_NOTE)
+  }
   return lines
 }
 
 /**
- * What saving will add, as a line of its own while any new clip exists; the state stays visible.
- * `adopted` is the count that saving writes into reel.yaml, `waiting` whether a new clip waits
- * for one of the saves that writes it.
+ * The stacked page's line about new clips: what saving will add while a save adds any
+ * (`adopted` of them, as `adoptedWords`), else `NEW_CLIP_NOTE` while one waits for a save that
+ * writes it (`waiting`), else null. The workspace's bin shows no such line: the same note is in
+ * the Clips help (`clipsHelpLines`) and the top bar's summary says what saving adds.
  */
 export function newClipsLine(adopted: number, waiting: boolean, adoptedWords: string): string | null {
   if (adopted > 0) {
     return `Saving adds ${adoptedWords} to reel.yaml.`
   }
-  return waiting
-    ? 'A new clip joins reel.yaml once its chapter’s order, one of its cuts, or the list of chapters is saved.'
-    : null
+  return waiting ? NEW_CLIP_NOTE : null
 }

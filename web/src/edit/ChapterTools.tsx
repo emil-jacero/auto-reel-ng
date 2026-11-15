@@ -3,6 +3,8 @@ import './chapters.css'
 import { useDroppable } from '@dnd-kit/core'
 import { memo, useId } from 'react'
 
+import { chapterToolsParts } from './chapterBar'
+import type { ChapterPlace } from './chapterBar'
 import type { ChapterKey } from './draft'
 import { DELETED_DROP } from './dragSlots'
 import { Icon } from '../ui/Icon'
@@ -24,8 +26,7 @@ import { Icon } from '../ui/Icon'
 export type ChapterHandler = (key: ChapterKey) => void
 export type ChapterMoveHandler = (key: ChapterKey, delta: -1 | 1) => void
 
-/** A chapter's place among the listed chapters, for Move up / Move down; absent when alone. */
-export type ChapterPlace = { first: boolean; last: boolean }
+export type { ChapterPlace }
 
 /** What a chapter's tools row shows and does: decided by the editor, one object per chapter. */
 export type ChapterToolsModel = {
@@ -62,13 +63,19 @@ function Notes({ notes }: { notes: readonly string[] }) {
 }
 
 /**
- * One chapter's tools row; nothing when it has neither a note nor a control (an
- * event with one chapter, the event's own, shows none).
+ * One chapter's tools. `placement` says where its buttons are:
+ * - `row`: its own row under the heading, with the notes and Delete's refusal; nothing when it
+ *   has neither a note nor a control (an event with one chapter, the event's own, shows none).
+ *   The clip bin renders it too: below 960 px it is the whole of the tools; from 960 px its
+ *   buttons are hidden (CSS) and it keeps the notes and the refusal, if any.
+ * - `bar` (the clip bin, from 960 px): the buttons alone, icon-only with a `title`, for the
+ *   header bar, after the count. Delete's refusal is named by `aria-describedby`.
  */
 export const ChapterTools = memo(function ChapterTools({
   chapterKey,
   heading,
   headingId,
+  placement = 'row',
   notes,
   place,
   deleteRefusal,
@@ -80,74 +87,89 @@ export const ChapterTools = memo(function ChapterTools({
   chapterKey: ChapterKey
   /** The chapter's heading, as its controls name it. */
   heading: string
-  /** The heading's id: the row is a group named by it. */
+  /** The heading's id: the group is named by it, and the refusal's id derives from it. */
   headingId: string
+  placement?: 'bar' | 'row'
 }) {
-  const refusalId = useId()
+  const refusalId = `${headingId}-refusal`
   const offersDelete = deleteRefusal !== undefined
-  if (notes.length === 0 && place === null && !offersDelete) {
+  const inBar = placement === 'bar'
+  const parts = chapterToolsParts(placement, notes.length, place, deleteRefusal)
+  if (parts === null) {
     return null
+  }
+  const refusal = parts.refusal && (
+    <p className="chapter-refusal" id={refusalId} hidden={!refusalShown}>
+      {deleteRefusal}
+    </p>
+  )
+  const buttons = parts.buttons && (
+    <div
+      className="chapter-actions"
+      role={inBar ? 'group' : undefined}
+      aria-labelledby={inBar ? headingId : undefined}
+    >
+      {place !== null && (
+        <span className="chapter-order">
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon chapter-up"
+            aria-label={`Move chapter ${heading} up`}
+            title={inBar ? `Move chapter ${heading} up` : undefined}
+            aria-disabled={locked || place.first || undefined}
+            onClick={() => {
+              if (!locked && !place.first) {
+                onMoveChapter(chapterKey, -1)
+              }
+            }}
+          >
+            {UP}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon chapter-down"
+            aria-label={`Move chapter ${heading} down`}
+            title={inBar ? `Move chapter ${heading} down` : undefined}
+            aria-disabled={locked || place.last || undefined}
+            onClick={() => {
+              if (!locked && !place.last) {
+                onMoveChapter(chapterKey, 1)
+              }
+            }}
+          >
+            {DOWN}
+          </button>
+        </span>
+      )}
+      {offersDelete && (
+        <button
+          type="button"
+          className={`btn btn-ghost chapter-delete${inBar ? ' btn-icon' : ''}`}
+          aria-label={`Delete chapter ${heading}`}
+          title={inBar ? `Delete chapter ${heading}` : undefined}
+          aria-disabled={locked || deleteRefusal !== null || undefined}
+          aria-describedby={deleteRefusal !== null ? refusalId : undefined}
+          // A refused press shows and announces why (the editor), focus staying here.
+          onClick={() => {
+            if (!locked) {
+              onDelete(chapterKey)
+            }
+          }}
+        >
+          {DELETE}
+          {!inBar && 'Delete'}
+        </button>
+      )}
+    </div>
+  )
+  if (inBar) {
+    return buttons
   }
   return (
     <div className="chapter-tools" role="group" aria-labelledby={headingId}>
-      <Notes notes={notes} />
-      {(place !== null || offersDelete) && (
-        <div className="chapter-actions">
-          {place !== null && (
-            <span className="chapter-order">
-              <button
-                type="button"
-                className="btn btn-ghost btn-icon chapter-up"
-                aria-label={`Move chapter ${heading} up`}
-                aria-disabled={locked || place.first || undefined}
-                onClick={() => {
-                  if (!locked && !place.first) {
-                    onMoveChapter(chapterKey, -1)
-                  }
-                }}
-              >
-                {UP}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-icon chapter-down"
-                aria-label={`Move chapter ${heading} down`}
-                aria-disabled={locked || place.last || undefined}
-                onClick={() => {
-                  if (!locked && !place.last) {
-                    onMoveChapter(chapterKey, 1)
-                  }
-                }}
-              >
-                {DOWN}
-              </button>
-            </span>
-          )}
-          {offersDelete && (
-            <button
-              type="button"
-              className="btn btn-ghost chapter-delete"
-              aria-label={`Delete chapter ${heading}`}
-              aria-disabled={locked || deleteRefusal !== null || undefined}
-              aria-describedby={deleteRefusal !== null ? refusalId : undefined}
-              // A refused press shows and announces why (the editor), focus staying here.
-              onClick={() => {
-                if (!locked) {
-                  onDelete(chapterKey)
-                }
-              }}
-            >
-              {DELETE}
-              Delete
-            </button>
-          )}
-        </div>
-      )}
-      {offersDelete && deleteRefusal !== null && (
-        <p className="chapter-refusal" id={refusalId} hidden={!refusalShown}>
-          {deleteRefusal}
-        </p>
-      )}
+      {parts.notes && <Notes notes={notes} />}
+      {buttons}
+      {refusal}
     </div>
   )
 })

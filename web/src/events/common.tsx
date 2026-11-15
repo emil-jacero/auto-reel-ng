@@ -12,7 +12,7 @@ import { CLIP_STATUS_LOOK, EXCLUDED_LOOK, VERDICT_LOOK } from './tones'
 
 /** Helpers both event screens share. */
 
-export { clipNames, fileName, folderName, plural } from './names'
+export { clipNames, fileName, folderName, namesIn, plural } from './names'
 
 /** The failure sentences both screens use, so the same cause reads the same. */
 export const DATABASE_CAUSE = "The service can't reach its database."
@@ -58,18 +58,33 @@ export function formatBytes(bytes: number): string {
  * place of the quiet "Included"; an excluded missing clip says Missing and then
  * Excluded, since both are true. Words and an icon, never color alone.
  */
-export function ClipStatusPills({ clip }: { clip: Pick<Clip, 'status' | 'excluded'> }) {
+export function ClipStatusPills({
+  clip,
+  hint = false,
+}: {
+  clip: Pick<Clip, 'status' | 'excluded'>
+  /** Each pill's words also as its tooltip (the bin's rows show the icon alone with a fine pointer, edit.css). */
+  hint?: boolean
+}) {
   const look = CLIP_STATUS_LOOK[clip.status]
   const excluded = clip.excluded
   return (
     <span className="status-pills">
       {!(excluded && clip.status === 'active') && (
-        <Pill tone={look.tone} icon={look.icon}>
+        <Pill
+          tone={look.tone}
+          icon={look.icon}
+          title={hint ? CLIP_STATUS_LABEL[clip.status] : undefined}
+        >
           {CLIP_STATUS_LABEL[clip.status]}
         </Pill>
       )}
       {excluded && (
-        <Pill tone={EXCLUDED_LOOK.tone} icon={EXCLUDED_LOOK.icon}>
+        <Pill
+          tone={EXCLUDED_LOOK.tone}
+          icon={EXCLUDED_LOOK.icon}
+          title={hint ? EXCLUDED_LABEL : undefined}
+        >
           {EXCLUDED_LABEL}
         </Pill>
       )}

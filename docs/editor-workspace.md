@@ -36,7 +36,7 @@ working.
 | 1.1 | Edit opens a full-window workspace (bin · viewer · inspector · timeline); Done returns to the read view | new-web |
 | 1.2 | Workspace is dark by default (footage stands out); the read view keeps following the system theme | new-web |
 | 1.3 | No List view: the bin *is* today's chapter lists (keyboard reorder kept); narrow windows stack the panes | new-web |
-| 1.4 | Fixed panes: bin 240 px, inspector 340 px, timeline ~340 px tall, viewer takes the rest | new-web |
+| 1.4 | Fixed panes: bin `clamp(240px, 22vw, 320px)` (282 px at 1280, 317 px at 1440; `compact-bin-tools`), inspector 340 px, timeline ~340 px tall, viewer takes the rest | new-web |
 
 ### 2. Top bar
 
@@ -113,6 +113,14 @@ spec is merged. Proposed 2026-11-15 under `openspec/changes/`.
 | 3 | `track-drag-edit` | 3.4, 6.4, 6.8, keyboard moves | 2 | 1–2 days |
 | 4 | `editor-undo` | 2.2 | 1 | 1 day |
 | 5 | `clip-split` | 6.12 — starts with a decision gate (explore with the user) | 3 | open |
+
+Slice 1 was tightened after the build by `compact-bin-tools` (web only, 2026-11-15): the bin follows the window's
+width (`clamp(240px, 22vw, 320px)`) and its compact tools take less height. Clip rows are two lines with a fine
+pointer, the marks line is two fixed sticky rows with icon-only Rotate and Help, the chapter's Move up, Move down and
+Delete sit in its header bar as named icon buttons, an ignored clip is one line, and the new-clip line is gone (the
+top bar's summary and the Clips help say it). On `Två kapitel - Tjörn`, with a fine pointer and nothing marked, the
+bin shows 3 whole clip rows at 1280×720 and 4 at 1440×900 (played rows; from 960 px the ignored clips are listed after the chapters, and a clip's status is its icon alone with a fine pointer). Touch sizes are as
+before.
 
 Slice 1 as built (2026-11-15) left out four features of its "Covers" list, none of them in the change's tasks:
 1.2 (the workspace follows the operator's theme rather than defaulting to dark, as the explore session decided),

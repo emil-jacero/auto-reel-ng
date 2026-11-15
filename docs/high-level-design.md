@@ -1992,6 +1992,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     this event"; the card style and the Title cards switch stay in that editor (a dialog in slice 1, docked since
     slice 2, below). Below 960 px the panes stack (top,
     viewer, Timeline, inspector, bin) and the page scrolls.
+  - **The bin's width** (`compact-bin-tools`): `clamp(240px, 22vw, 320px)`, not a fixed 240 px (282 px at 1280, 317 px
+    at 1440), with two-line rows and a two-row sticky marks line, so Tjörn shows 3 whole rows at 1280×720 and 4 at
+    1440×900 (played rows: from 960 px the ignored clips are listed together after the chapters).
   - **No List view.** There is one layout, not a List/Workspace switch: the bin *is* the lists, so keyboard and
     screen-reader reordering need no second screen, and there is no second layout to keep in step.
   - **Not here (slice 1):** an inspector that follows the selection, a Clip tab, a docked card editor (built in

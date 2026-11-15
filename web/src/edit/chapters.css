@@ -85,6 +85,14 @@
     .chapter-actions {
       gap: var(--s-4);
     }
+
+    /*
+     * Add chapter's area grows 6 px up; the last row's mark area (a one-line ignored row's
+     * 44 px square reaches 14 px below it) would meet it 13 px away. 8 px more clears both.
+     */
+    .chapter-add {
+      margin-block-start: 0.5rem;
+    }
   }
 
   /* ------------------------------------------------------------ the dialogs */

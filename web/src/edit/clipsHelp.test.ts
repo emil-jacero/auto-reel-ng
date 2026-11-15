@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { OWN_CHAPTER_NOTE } from './chapterNames.ts'
-import { IGNORED_NOTE, MISSING_NOTE, REORDER_ONE, REORDER_SEVERAL, clipsHelpLines, newClipsLine } from './clipsHelp.ts'
+import { IGNORED_NOTE, MISSING_NOTE, NEW_CLIP_NOTE, REORDER_ONE, REORDER_SEVERAL, clipsHelpLines, newClipsLine } from './clipsHelp.ts'
 import { MARK_HINT } from './marks.ts'
 
 describe('the Clips help', () => {
@@ -28,6 +28,19 @@ describe('the Clips help', () => {
     assert.ok(clipsHelpLines({ ...plain, several: true }).includes(OWN_CHAPTER_NOTE))
     assert.ok(!clipsHelpLines(plain).includes(OWN_CHAPTER_NOTE))
     assert.ok(!clipsHelpLines({ ...plain, several: true, ownChapter: false }).includes(OWN_CHAPTER_NOTE))
+  })
+})
+
+describe('the Clips help for a new clip', () => {
+  it('adds the joins-reel.yaml sentence only while a new clip waits', () => {
+    const plain = { several: false, hasIgnored: false, hasMissing: false, ownChapter: true }
+    assert.ok(!clipsHelpLines(plain).includes(NEW_CLIP_NOTE))
+    assert.deepEqual(clipsHelpLines({ ...plain, hasNewClip: true }), [REORDER_ONE, MARK_HINT, NEW_CLIP_NOTE])
+    assert.deepEqual(
+      clipsHelpLines({ several: true, hasIgnored: true, hasMissing: true, ownChapter: true, hasNewClip: true }),
+      [REORDER_SEVERAL, IGNORED_NOTE, MISSING_NOTE, MARK_HINT, OWN_CHAPTER_NOTE, NEW_CLIP_NOTE],
+    )
+    assert.equal(NEW_CLIP_NOTE, newClipsLine(0, true, ''))
   })
 })
 
