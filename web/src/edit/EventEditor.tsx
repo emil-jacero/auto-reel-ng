@@ -60,6 +60,9 @@ import { clipsHelpLines, newClipsLine } from './clipsHelp.ts'
 import { Pill } from '../ui/Pill'
 import { SkeletonRows } from '../ui/Skeleton'
 import { keepToastsClearOf, toast } from '../ui/toast'
+import { TopBar } from './workspace/TopBar'
+import type { WorkspaceFrame } from './workspace/TopBar'
+import { Workspace } from './workspace/Workspace'
 import { NameDialog } from './ChapterDialogs'
 import {
   OWN_CHAPTER_HEADING,
@@ -1007,6 +1010,19 @@ function inWindow(element: HTMLElement): boolean {
  * chapter heading and of a held bar; the scroll itself honours that padding too.
  */
 function keepInView(element: HTMLElement, bar: HTMLElement | null): void {
+  // In the workspace a pane scrolls on its own: measured against the pane and its padding.
+  const pane = element.closest<HTMLElement>('[data-ws-scroll]')
+  if (pane !== null && getComputedStyle(pane).overflowY !== 'visible') {
+    const box = element.getBoundingClientRect()
+    const room = pane.getBoundingClientRect()
+    const style = getComputedStyle(pane)
+    const top = room.top + (parseFloat(style.scrollPaddingTop) || 0)
+    const bottom = room.bottom - (parseFloat(style.scrollPaddingBottom) || 0)
+    if (box.top < top || box.bottom > bottom) {
+      element.scrollIntoView({ block: 'nearest' })
+    }
+    return
+  }
   const root = document.documentElement
   const box = element.getBoundingClientRect()
   let top = 0
@@ -1063,6 +1079,7 @@ export function EventEditor({
   onProxiesFinished,
   onSaved,
   onReload,
+  workspace,
 }: {
   eventId: string
   event: EventDetail | null
@@ -1083,7 +1100,10 @@ export function EventEditor({
   onProxiesFinished?: () => void
   onSaved: () => void
   onReload: () => void
+  /** Edit mode's workspace (`editor-workspace-layout`): absent, the editor is stacked in the page. */
+  workspace?: WorkspaceFrame
 }) {
+  const inWorkspace = workspace !== undefined
   // Read once: the draft is never re-initialised from a newer detail.
   const [detail] = useState(event)
   const [state, dispatch] = useReducer(reduce, { status: 'loading' })
@@ -1253,7 +1273,8 @@ export function EventEditor({
   // below it once it rests (at the page's end, or for its height).
   useLayoutEffect(() => {
     const bar = barRef.current
-    if (!showBar || bar === null) {
+    // The workspace's bar is in its top bar: never held or resting, no toasts to keep clear.
+    if (!showBar || bar === null || inWorkspace) {
       return
     }
     const root = document.documentElement
@@ -1305,13 +1326,13 @@ export function EventEditor({
       release()
       root.style.removeProperty('scroll-padding-bottom')
     }
-  }, [showBar])
+  }, [showBar, inWorkspace])
 
   // Every commit can change what the bar says (an answer, the summary, a pressed
   // control), so its place is decided again before paint, and before the answer's
   // focus scroll below measures the page.
   useLayoutEffect(() => {
-    if (showBar && barRef.current !== null) {
+    if (showBar && barRef.current !== null && !inWorkspace) {
       placeBar(barRef.current)
     }
   })
@@ -2562,109 +2583,12 @@ export function EventEditor({
   const newClipsText = newClipsLine(adopted, newClips.size > 0, plural(adopted, 'new clip', 'new clips'))
   const clipCount = chapters.reduce((sum, chapter) => sum + chapter.movable.length, 0)
 
-  return (
-    <div
-      ref={editorRef}
-      className="event-editor"
-      // Keyboard focus that lands partly hidden comes into view whole: for a text area
-      // the browser scrolls only its caret into view. Focus from a pointer press is
-      // left alone (a text field matches :focus-visible even then), so a press never
-      // moves its control, or the caret, from under the pointer.
-      onPointerDownCapture={() => {
-        pointerPressed.current = true
-        window.setTimeout(() => {
-          pointerPressed.current = false
-        }, 0)
-      }}
-      onFocus={(event) => {
-        if (
-          !pointerPressed.current &&
-          event.target instanceof HTMLElement &&
-          event.target.matches(':focus-visible')
-        ) {
-          keepInView(event.target, barRef.current)
-        }
-      }}
-    >
-      {/* The one live region for the reel read, the button moves, removals and Undos; dnd-kit
-          speaks the drags. */}
-      <p role="status" className="visually-hidden">
-        {state.status === 'loading' || retrying ? 'Reading reel.yaml…' : announcement}
-      </p>
-
-      {state.status === 'loading' && (
-        <div className="panel" aria-hidden="true">
-          <div className="panel-header">
-            <span className="edit-reading">Reading reel.yaml…</span>
-          </div>
-          <SkeletonRows rows={4} />
-        </div>
-      )}
-
-      {state.status === 'failed' && (
-        <Alert
-          tone="err"
-          title={
-            <>
-              {state.cause}{' '}
-              {state.failure !== undefined && (
-                <Pill
-                  tone={FAILURE_LOOK[state.failure].tone}
-                  icon={FAILURE_LOOK[state.failure].icon}
-                >
-                  {FAILURE_LABEL[state.failure]}
-                </Pill>
-              )}
-            </>
-          }
-          detail={state.detail}
-          action={
-            <>
-              {/* Busy, not disabled, while it reads: it keeps keyboard focus. */}
-              <button
-                type="button"
-                className="btn btn-secondary"
-                aria-disabled={retrying || undefined}
-                aria-busy={retrying || undefined}
-                onClick={() => {
-                  if (retried.current === null && state.status === 'failed') {
-                    retried.current = failureWords(state)
-                    // Cleared, so the region says nothing stale once the answer comes.
-                    setAnnouncement('')
-                    readReel(true)
-                  }
-                }}
-              >
-                <Icon name="refresh" />
-                Try again
-              </button>
-              {state.notFound === true && (
-                <a className="btn btn-ghost" href={LIST_HREF}>
-                  <Icon name="chevron-left" />
-                  Back to the event list
-                </a>
-              )}
-            </>
-          }
-        />
-      )}
-
-      {state.status === 'changed' && (
-        <Alert
-          tone="warn"
-          title="This event changed on disk since the page was read."
-          detail={CHANGED_DETAIL}
-          action={
-            <button ref={readAgainRef} type="button" className="btn btn-primary" onClick={onReload}>
-              <Icon name="refresh" />
-              Read again
-            </button>
-          }
-        />
-      )}
-
-      {ready !== null && (
-        <>
+  // The editor's parts, placed by the layout: stacked in the page, or in the workspace's panes.
+  const parts =
+    ready === null
+      ? null
+      : {
+          details: <>
           <section className="panel edit-details" aria-labelledby={detailsId}>
             <header className="panel-header">
               {/* Focused by script after Try again reads the document. */}
@@ -2703,7 +2627,8 @@ export function EventEditor({
               />
             </div>
           </section>
-
+          </>,
+          poster: <>
           {detail !== null && (
             <PosterPanel
               eventId={eventId}
@@ -2716,7 +2641,8 @@ export function EventEditor({
               onUseDefault={onUseDefault}
             />
           )}
-
+          </>,
+          timeline: <>
           {editing !== null && cardEditing !== null && detail !== null && (
             // Open from the start; its chapters, order and cuts are the draft's, its clips' facts
             // and proxies the page's (the draft's maps keep their identity until an edit).
@@ -2733,7 +2659,8 @@ export function EventEditor({
               cardEditing={cardEditing}
             />
           )}
-
+          </>,
+          bin: <>
           {detail !== null && newClipsText !== null && (
             <div className="edit-hint">
               <Icon name="info" />
@@ -2918,12 +2845,14 @@ export function EventEditor({
           )}
 
           {detail !== null && <AddChapter locked={listsLocked} onAdd={onAddChapter} />}
-
+          </>,
+          saveBar: <>
           {/*
             In the page from the moment Edit mode is ready, `hidden` while there is nothing to
             say: the first edit then builds nothing. The summary is only worked out while shown.
           */}
           <SaveBar
+            variant={inWorkspace ? 'top' : 'page'}
             shown={showBar}
             barRef={barRef}
             alertRef={alertRef}
@@ -2972,7 +2901,206 @@ export function EventEditor({
             onReload={onReload}
             onOverwrite={() => setOverwriteAsked(true)}
           />
+          </>,
+        }
+
+  return (
+    <div
+      ref={editorRef}
+      className={workspace === undefined ? 'event-editor' : 'event-editor event-editor-ws'}
+      // Keyboard focus that lands partly hidden comes into view whole: for a text area
+      // the browser scrolls only its caret into view. Focus from a pointer press is
+      // left alone (a text field matches :focus-visible even then), so a press never
+      // moves its control, or the caret, from under the pointer.
+      onPointerDownCapture={() => {
+        pointerPressed.current = true
+        window.setTimeout(() => {
+          pointerPressed.current = false
+        }, 0)
+      }}
+      onFocus={(event) => {
+        if (
+          !pointerPressed.current &&
+          event.target instanceof HTMLElement &&
+          event.target.matches(':focus-visible')
+        ) {
+          keepInView(event.target, barRef.current)
+        }
+      }}
+    >
+      {/* The one live region for the reel read, the button moves, removals and Undos; dnd-kit
+          speaks the drags. */}
+      <p role="status" className="visually-hidden">
+        {state.status === 'loading' || retrying ? 'Reading reel.yaml…' : announcement}
+      </p>
+
+      {workspace === undefined ? (
+        <>
+      {state.status === 'loading' && (
+        <div className="panel" aria-hidden="true">
+          <div className="panel-header">
+            <span className="edit-reading">Reading reel.yaml…</span>
+          </div>
+          <SkeletonRows rows={4} />
+        </div>
+      )}
+
+      {state.status === 'failed' && (
+        <Alert
+          tone="err"
+          title={
+            <>
+              {state.cause}{' '}
+              {state.failure !== undefined && (
+                <Pill
+                  tone={FAILURE_LOOK[state.failure].tone}
+                  icon={FAILURE_LOOK[state.failure].icon}
+                >
+                  {FAILURE_LABEL[state.failure]}
+                </Pill>
+              )}
+            </>
+          }
+          detail={state.detail}
+          action={
+            <>
+              {/* Busy, not disabled, while it reads: it keeps keyboard focus. */}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                aria-disabled={retrying || undefined}
+                aria-busy={retrying || undefined}
+                onClick={() => {
+                  if (retried.current === null && state.status === 'failed') {
+                    retried.current = failureWords(state)
+                    // Cleared, so the region says nothing stale once the answer comes.
+                    setAnnouncement('')
+                    readReel(true)
+                  }
+                }}
+              >
+                <Icon name="refresh" />
+                Try again
+              </button>
+              {state.notFound === true && (
+                <a className="btn btn-ghost" href={LIST_HREF}>
+                  <Icon name="chevron-left" />
+                  Back to the event list
+                </a>
+              )}
+            </>
+          }
+        />
+      )}
+
+      {state.status === 'changed' && (
+        <Alert
+          tone="warn"
+          title="This event changed on disk since the page was read."
+          detail={CHANGED_DETAIL}
+          action={
+            <button ref={readAgainRef} type="button" className="btn btn-primary" onClick={onReload}>
+              <Icon name="refresh" />
+              Read again
+            </button>
+          }
+        />
+      )}
+          {parts !== null && (
+            <>
+              {parts.details}
+              {parts.poster}
+              {parts.timeline}
+              {parts.bin}
+              {parts.saveBar}
+            </>
+          )}
         </>
+      ) : (
+        <Workspace
+          top={<TopBar frame={workspace} saveBar={parts?.saveBar ?? null} />}
+          viewer={<>
+      {state.status === 'loading' && (
+        <div className="panel" aria-hidden="true">
+          <div className="panel-header">
+            <span className="edit-reading">Reading reel.yaml…</span>
+          </div>
+          <SkeletonRows rows={4} />
+        </div>
+      )}
+
+      {state.status === 'failed' && (
+        <Alert
+          tone="err"
+          title={
+            <>
+              {state.cause}{' '}
+              {state.failure !== undefined && (
+                <Pill
+                  tone={FAILURE_LOOK[state.failure].tone}
+                  icon={FAILURE_LOOK[state.failure].icon}
+                >
+                  {FAILURE_LABEL[state.failure]}
+                </Pill>
+              )}
+            </>
+          }
+          detail={state.detail}
+          action={
+            <>
+              {/* Busy, not disabled, while it reads: it keeps keyboard focus. */}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                aria-disabled={retrying || undefined}
+                aria-busy={retrying || undefined}
+                onClick={() => {
+                  if (retried.current === null && state.status === 'failed') {
+                    retried.current = failureWords(state)
+                    // Cleared, so the region says nothing stale once the answer comes.
+                    setAnnouncement('')
+                    readReel(true)
+                  }
+                }}
+              >
+                <Icon name="refresh" />
+                Try again
+              </button>
+              {state.notFound === true && (
+                <a className="btn btn-ghost" href={LIST_HREF}>
+                  <Icon name="chevron-left" />
+                  Back to the event list
+                </a>
+              )}
+            </>
+          }
+        />
+      )}
+
+      {state.status === 'changed' && (
+        <Alert
+          tone="warn"
+          title="This event changed on disk since the page was read."
+          detail={CHANGED_DETAIL}
+          action={
+            <button ref={readAgainRef} type="button" className="btn btn-primary" onClick={onReload}>
+              <Icon name="refresh" />
+              Read again
+            </button>
+          }
+        />
+      )}
+            </>}
+          bin={parts?.bin ?? null}
+          inspector={
+            <>
+              {parts?.details}
+              {parts?.poster}
+              {workspace.aside}
+            </>
+          }
+          timeline={parts?.timeline ?? null}
+        />
       )}
 
       {ready !== null && shownDialog !== null && shownDialog.kind === 'add' && (

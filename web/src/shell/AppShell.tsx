@@ -33,7 +33,7 @@ const THEME_OPTIONS: readonly { choice: ThemeChoice; label: string; icon: IconNa
 ]
 
 /** System, Light or Dark, as native radios: arrow keys move the choice. */
-function ThemeControl() {
+export function ThemeControl() {
   const [choice, choose] = useThemeChoice()
   const name = useId()
   return (

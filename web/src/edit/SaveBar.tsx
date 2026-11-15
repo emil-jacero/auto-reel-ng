@@ -67,6 +67,7 @@ export function SaveBar({
   onRetry,
   onReload,
   onOverwrite,
+  variant = 'page',
 }: {
   /** Whether there is anything to say; a bar that is not shown holds no room and is not read. */
   shown: boolean
@@ -84,6 +85,11 @@ export function SaveBar({
   onRetry: (operation: Operation) => void
   onReload: () => void
   onOverwrite: () => void
+  /**
+   * `page`: held at the window's bottom or resting after the editor. `top`: in the workspace's
+   * top bar (`editor-workspace-layout` D4), its alert a panel under the bar.
+   */
+  variant?: 'page' | 'top'
 }) {
   const alertId = useId()
   const summaryId = useId()
@@ -103,6 +109,7 @@ export function SaveBar({
     <div
       ref={barRef}
       className="save-bar"
+      data-variant={variant}
       hidden={!shown}
       role="region"
       aria-label={unsaved ? 'Unsaved changes' : title}

@@ -311,6 +311,60 @@ function EventDetailBody({
   // The Movie section sits between the header and the content, not inside the
   // content that a read replaces, so a Refresh keeps its player (Edit mode shows none).
   const movieEvent = editing ? undefined : movieOf(state)
+  // Edit mode is a workspace (`editor-workspace-layout`): it takes the page's place, header too.
+  if (editing && state.status === 'ready') {
+    return (
+      <main className="event-detail-ws">
+        <EventEditor
+          eventId={eventId}
+          event={state.event}
+          liveEvent={liveOf(state)}
+          dismissals={dismissals}
+          analysis={analysis}
+          cards={cards}
+          onProxiesFinished={reread}
+          onSaved={leaveEditMode}
+          onReload={leaveEditMode}
+          workspace={{
+            heading: (
+              <h1 ref={headingRef} tabIndex={-1}>
+                {name}
+              </h1>
+            ),
+            facts: factsOf(state.event),
+            held: saving,
+            onDone: () => requestLeave(leaveEditMode),
+            onBack: () =>
+              requestLeave(() => {
+                leaveEditMode()
+                window.location.hash = LIST_HREF
+              }),
+            aside: (
+              <>
+                {previewsUnavailable && (
+                  <Alert
+                    tone="warn"
+                    role="note"
+                    title={PREVIEWS_UNAVAILABLE.map((part, index) =>
+                      typeof part === 'string' ? part : <code key={index}>{part.code}</code>,
+                    )}
+                  />
+                )}
+                <RenderPanel
+                  eventId={eventId}
+                  event={state.event}
+                  verdict={verdictOf(state)}
+                  unread={state.verdictUnread}
+                  editing={editing}
+                  onFinished={reread}
+                />
+              </>
+            ),
+          }}
+        />
+      </main>
+    )
+  }
   return (
     <main className="page event-detail">
       <header className="page-header">
@@ -396,6 +450,8 @@ function EventDetailBody({
                     pending.current = false
                     editingRef.current = true
                     setEditing(true)
+                    // Edit leaves with the page: focus goes to the workspace's heading.
+                    focusHeading.current = true
                     if (wasReading) {
                       refreshVerdict()
                     }
