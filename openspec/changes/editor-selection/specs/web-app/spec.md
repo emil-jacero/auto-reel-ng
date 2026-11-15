@@ -90,6 +90,10 @@ Each chapter SHALL offer only the controls that apply to it. An event that lists
 offers Add chapter and none of the others. The only chapter left, a deleted one aside, SHALL NOT offer Delete,
 Move up or Move down, so that an event never saves without a chapter.
 
+**Focus after the selection leaves the card.** When Escape clears the card selection from inside the editor, keyboard focus SHALL
+return to the control that selected the card (the chapter's Edit Titlecard button, or the card block on the Timeline), so that the focused field never
+unmounts onto the page body. Selecting something else leaves keyboard focus where the operator put it.
+
 **The Name field.** In the editor the field SHALL be the first of "This title card" and SHALL be named "Name of chapter <name>"
 for a chapter and "Title of the event" for the event's own chapter, where <name> is the name the draft holds when the editor opens. The
 header bar and the editor's title name the chapter by its name alone.
@@ -99,7 +103,7 @@ header bar and the editor's title name the chapter by its name alone.
   around it are removed, SHALL change nothing. A rename SHALL be announced once, when keyboard focus leaves the field or the selection leaves the card, and not for each key; typing a name and typing the old one back announces nothing.
 - A refused name SHALL be explained under the field in words, in a `role="alert"` that is remounted for each refusal, and the
   field SHALL be marked invalid. The draft keeps the last accepted name, and the field keeps the typed text. Enter, with a refused
-  name in the field, SHALL put keyboard focus in the field. Escape, and the selection of anything else, SHALL return the
+  name in the field, SHALL keep the field invalid and announce the refusal. Escape, and the selection of anything else, SHALL return the
   field's text to the draft's name and announce that the name was not changed and why; they SHALL NOT keep a refused name.
 - While the field holds a refused name, Ctrl+S SHALL save nothing and SHALL say "Not saved: the name is refused."
 - While a save or a move of marked clips is pending, the field and the editor's other fields SHALL say that they are unavailable
@@ -202,7 +206,7 @@ change nothing when pressed.
 #### Scenario: Renaming with the keyboard only
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator tabs to "Edit title card for Kvällen", presses Enter, types `Kväll`
   in the Name field and presses Escape
-- **THEN** the chapter is named `Kväll` (an accepted name is already in the draft), nothing is selected, and the next Tab reaches the chapter's Move up
+- **THEN** the chapter is named `Kväll` (an accepted name is already in the draft), nothing is selected, keyboard focus is on the chapter's Edit Titlecard button, and the next Tab reaches the chapter's Move up
 
 #### Scenario: Main and a chapter are edited alike
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens "Edit title card for Main" and then "Edit title card for Kvällen"
@@ -216,7 +220,7 @@ change nothing when pressed.
 
 #### Scenario: Escape drops what was typed
 - **WHEN** the operator selects the card of `Kvällen`, types `main` in the Name field, and presses Escape
-- **THEN** nothing is selected, the chapter is named `Kvällen`, "Name not changed" with the reason is announced, and the page shows no unsaved changes
+- **THEN** nothing is selected, keyboard focus is on the chapter's Edit Titlecard button, the chapter is named `Kvällen`, "Name not changed" with the reason is announced, and the page shows no unsaved changes
 
 #### Scenario: Pressing the title and changing nothing
 - **WHEN** the operator types `Kväll` in the Name field of `Kvällen` and then `Kvällen`, with spaces around it, and presses Escape
@@ -227,9 +231,9 @@ change nothing when pressed.
 - **THEN** the field stays as typed, is marked invalid and explains under it that `Main` is how the page names the event's own chapter; the
   refusal is announced, and the draft still holds `Kvällen`. Typing `Morgon` removes the refusal and the chapter is named `Morgon`.
 - **WHEN** the operator types `main` again and presses Enter
-- **THEN** the card stays selected and keyboard focus is in the field
+- **THEN** the card stays selected, the field is still marked invalid, and the refusal is announced
 - **WHEN** the operator presses Escape
-- **THEN** nothing is selected, the chapter is named `Morgon`, the last name accepted, and "Name not changed" with the reason is announced
+- **THEN** nothing is selected, keyboard focus is on the chapter's Edit Titlecard button, the chapter is named `Morgon`, the last name accepted, and "Name not changed" with the reason is announced
 
 #### Scenario: A refused name is not lost when focus leaves
 - **WHEN** the operator types `main` in that field and presses Tab
