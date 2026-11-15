@@ -2779,20 +2779,22 @@ export function EventEditor({
                     className="btn btn-secondary btn-compact"
                     aria-disabled={listsLocked || marks.size === 0 || undefined}
                     aria-describedby={marks.size === 0 ? rotateHintId : undefined}
+                    title={'Rotate marked left'}
                     onClick={() => onRotateMarked('left')}
                   >
                     <Icon name="rotate-ccw" />
-                    Rotate marked left
+                    <span className="mark-words">Rotate marked left</span>
                   </button>
                   <button
                     type="button"
                     className="btn btn-secondary btn-compact"
                     aria-disabled={listsLocked || marks.size === 0 || undefined}
                     aria-describedby={marks.size === 0 ? rotateHintId : undefined}
+                    title={'Rotate marked right'}
                     onClick={() => onRotateMarked('right')}
                   >
                     <Icon name="rotate-cw" />
-                    Rotate marked right
+                    <span className="mark-words">Rotate marked right</span>
                   </button>
                   <span id={rotateHintId} className="visually-hidden">
                     Mark clips to rotate them together.
@@ -2800,7 +2802,9 @@ export function EventEditor({
                 </span>
                 {listedKeys.length > 1 && (
                   <span className="mark-move" role="group" aria-label="Move marked clips">
-                    <label htmlFor={moveSelectId}>Move marked to…</label>
+                    <label htmlFor={moveSelectId} className="mark-move-label">
+                      Move marked to…
+                    </label>
                     <select
                       id={moveSelectId}
                       className="field-input"
