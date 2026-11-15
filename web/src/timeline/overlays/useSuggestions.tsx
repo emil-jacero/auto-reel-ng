@@ -192,6 +192,22 @@ export function useSuggestions(
     }
   }, [selectedId, byId, read.status, keepSelection])
 
+  // The selection ending (Escape, a clear) while focus was in the detail, which then unmounts:
+  // focus goes back to the mark that was selected, else the lane.
+  const previousId = useRef<string | null>(null)
+  useEffect(() => {
+    const was = previousId.current
+    previousId.current = selectedId
+    if (was === null || selectedId !== null) {
+      return
+    }
+    const active = document.activeElement
+    if (active === null || active === document.body) {
+      const target = refs.current.get(was) ?? refs.current.values().next().value
+      target?.focus({ preventScroll: true })
+    }
+  }, [selectedId])
+
   const tabStop = (clipIndex: number): string | null => {
     const marks = groups[clipIndex]?.marks ?? []
     if (marks.length === 0) {
