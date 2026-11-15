@@ -72,7 +72,8 @@ never from the repo, with PUT/POST/DELETE intercepted. The layout targets are fi
   - HelpToggle's `title` is global: stated in D2, keep it or scope it to the bin
   - `common.tsx` docstring "when narrow" made accurate
   - decision 1a: bin status is icon-only with a fine pointer, words visually hidden and as the tooltip, icons
-    distinct per status; verify in Playwright that "New" is the row's accessible name and no word is visible
+    distinct per status; verify in Playwright that "New" is the row's hidden text and the icon's tooltip and no word is
+    visible, at 1280×720 and at 900 px (still icon-only), and that a coarse pointer shows the word
 - [ ] 4.4 Re-verify with a coarse pointer (`hasTouch`) that the 44 px areas and the Move-before-Rotate DOM order
   hold (design D4), and that 400-clip windowing still paints only rows near the view.
 - [ ] 4.5 Strict pass bar and docs:

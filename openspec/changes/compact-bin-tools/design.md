@@ -30,7 +30,7 @@ The viewer's picture is 16:9 and limited by height: about 590 px wide in a 700 p
 **Goals:**
 - At 1280×720 the bin shows at least 3 whole clip rows on `Två kapitel - Tjörn`. At 1440×900 it shows all 4.
 - Every control, name, description, reason and keyboard path stays. Only placement and visible words change.
-- The stacked page (below 960 px, and the metadata fix editor) is untouched.
+- The page below 960 px (its ignored clips stay under their chapters) and the metadata fix editor keep their layout; the bin's icon-only status (D6) applies at every width.
 
 **Non-Goals:**
 - The Timeline pane's height or chrome.
@@ -183,5 +183,7 @@ smaller Timeline pane, which is out of scope.
   rewrites.
 - **Status is icon-only in the bin rows (decision 1a).** The spec's "State is never shown by color alone" gets a
   carve-out for the bin's rows with a fine pointer: words stay as hidden text and a tooltip, and each status keeps its
-  own icon. The words stay visible on the stacked page and with a coarse pointer.
+  own icon (Included, New, Missing, Ignored, Excluded). The CSS has no window-width condition, so this holds at every
+  width, including the stacked workspace below 960 px, which still shows the bin. The words stay visible with a coarse
+  pointer and outside the workspace bin.
 - **Thin 1280×720 margin.** See D6.
