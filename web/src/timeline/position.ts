@@ -147,9 +147,11 @@ export function clampPosition(
  * Where the playhead goes when the page reads the clips again (a cut edited in a Cuts panel, an
  * approved suggestion, a trim, a refresh) or the draft draws them in another order
  * (`track-draft-order`): it follows its clip by identity, to the clip's first kept frame when it
- * was on the clip's card (the card in front of it may be another now); `start` when its clip is
- * gone; the last frame when its time is past a shortened clip; the nearest kept frame of its
- * clip when its time is no longer kept (`timeline-ripple-layout`); null when it stays.
+ * was on the clip's card (the card in front of it may be another now), except on the first
+ * clip's card, the track's opening, where it stays (Play from 0 plays the new order); `start`
+ * when its clip is gone; the last frame when its time is past a shortened clip; the nearest kept
+ * frame of its clip when its time is no longer kept (`timeline-ripple-layout`); null when it
+ * stays.
  */
 export function afterRead(
   was: readonly { identity: string }[],
@@ -167,6 +169,10 @@ export function afterRead(
   const now = clips[index]
   const moved = index !== at.clip
   if (at.card != null) {
+    // The opening card is the track's, not its clip's: a reorder leaves the start at the start.
+    if (moved && at.clip === 0 && clips.length > 0) {
+      return null
+    }
     return moved ? keptPosition(clips.map(timedOf), index, 0) : null
   }
   const here = moved ? { clip: index, ms: at.ms } : at
