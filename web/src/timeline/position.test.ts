@@ -6,6 +6,7 @@ import type { Ms } from './model.ts'
 import {
   afterRead,
   clampPosition,
+  clipStep,
   endPosition,
   firstKeptMs,
   hasKeptFrame,
@@ -341,5 +342,30 @@ describe('afterRead: the playhead when the clips are read again (timeline-ripple
     assert.equal(afterRead(was, now, { clip: 0, ms: 0, card }), null)
     // Its clip gone from the draft (a deleted chapter's, say): the start.
     assert.equal(afterRead(was, [clip('A', 10000), clip('C', 10000)], { clip: 1, ms: 0 }), 'start')
+  })
+})
+
+describe('clipStep', () => {
+  const card = { chapter: 1, name: 'Kvällen', ms: 400, lengthMs: 3000 }
+  it('Next clip goes to the first kept frame of the next drawn clip', () => {
+    assert.deepEqual(clipStep(clips, { clip: 0, ms: 1000 }, 1), { clip: 1, ms: 0 })
+    const trimmed = [A, { ...B, inMs: 200, outMs: 800 }, C]
+    assert.deepEqual(clipStep(trimmed, { clip: 0, ms: 0 }, 1), { clip: 1, ms: 200 })
+  })
+  it('Previous clip goes to the first kept frame of the clip before', () => {
+    assert.deepEqual(clipStep(clips, { clip: 2, ms: 440 }, -1), { clip: 1, ms: 0 })
+  })
+  it('passes over a clip that keeps no frame', () => {
+    const none = [A, { ...B, inMs: 0, outMs: 0 }, C]
+    assert.deepEqual(clipStep(none, { clip: 0, ms: 0 }, 1), { clip: 2, ms: 0 })
+    assert.deepEqual(clipStep(none, { clip: 2, ms: 0 }, -1), { clip: 0, ms: 0 })
+  })
+  it('from a title card, Next is the card\'s clip and Previous the one before it', () => {
+    assert.deepEqual(clipStep(clips, { clip: 1, ms: 0, card }, 1), { clip: 1, ms: 0 })
+    assert.deepEqual(clipStep(clips, { clip: 1, ms: 0, card }, -1), { clip: 0, ms: 0 })
+  })
+  it('is null past either end', () => {
+    assert.equal(clipStep(clips, { clip: 2, ms: 0 }, 1), null)
+    assert.equal(clipStep(clips, { clip: 0, ms: 400 }, -1), null)
   })
 })

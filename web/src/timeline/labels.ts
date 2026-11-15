@@ -280,6 +280,8 @@ export function playheadAnnouncement(
 }
 
 export const PLAY = 'Play'
+export const PREVIOUS_CLIP = 'Previous clip'
+export const NEXT_CLIP = 'Next clip'
 export const PAUSE = 'Pause'
 export const ZOOM_IN = 'Zoom in'
 export const ZOOM_OUT = 'Zoom out'

@@ -142,10 +142,16 @@
   }
 
   .tl-controls.tl-transport {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto auto minmax(0, 1fr);
     grid-template-areas:
-      'play readout'
-      'poster poster';
+      'play step readout'
+      'poster poster poster';
+  }
+
+  .tl-clip-step {
+    grid-area: step;
+    display: flex;
+    gap: var(--s-1);
   }
 
   .tl-controls.tl-tools {
@@ -157,8 +163,8 @@
 
   @container tl (min-width: 31rem) {
     .tl-controls.tl-transport {
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      grid-template-areas: 'play readout poster';
+      grid-template-columns: auto auto minmax(0, 1fr) auto;
+      grid-template-areas: 'play step readout poster';
     }
 
     .tl-controls.tl-tools {
