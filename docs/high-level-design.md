@@ -950,6 +950,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     **Slice 1 is built** (`editor-workspace-layout`, web only; D-28, D-20): Edit opens a full-window workspace (top
     bar with the save controls; clip bin, viewer, inspector with Event and Cut tabs, Timeline along the bottom; no
     List view), light and dark, stacked below 960 px; no API, engine or `RENDER_GRAPH_VERSION` change.
+    **Slice 2 is built** (`editor-selection`, web only; D-28, D-20): the workspace holds one selection (nothing, clip,
+    cut, title card or suggestion) and the inspector follows it with Clip, Title card, Suggestion and Event tabs; the
+    title-card editor is docked in the inspector, no modal dialog; no API, engine or `RENDER_GRAPH_VERSION` change.
+    "Ignore clip" moved to slice 3 (`track-drag-edit`), which builds the draft's ignore edit.
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
     D-17): a local image and a test stack, nothing published; the published image waits for the D-1
     fdk-aac blocker (§4.12).
@@ -1984,16 +1988,37 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     the keyboard sensor kept, rows off screen skipped as on the stacked page. The Timeline is split over one state
     (`useTimeline` → viewer, track, cut panel; one `<video>`): the viewer pane takes the picture and the transport
     (Previous / Next clip added), the bottom pane the track, the inspector's Cut tab the cut panel, by portals.
-    The inspector's Event tab holds Details, Poster and a button that opens the card dialog on "All title cards in
-    this event"; the card style and the Title cards switch stay in the dialog. Below 960 px the panes stack (top,
+    The inspector's Event tab holds Details, Poster and a button that opens the card editor on "All title cards in
+    this event"; the card style and the Title cards switch stay in that editor (a dialog in slice 1, docked since
+    slice 2, below). Below 960 px the panes stack (top,
     viewer, Timeline, inspector, bin) and the page scrolls.
   - **No List view.** There is one layout, not a List/Workspace switch: the bin *is* the lists, so keyboard and
     screen-reader reordering need no second screen, and there is no second layout to keep in step.
-  - **Not here:** an inspector that follows the selection, a Clip tab, a docked card editor (`editor-selection`),
-    dragging on the track (`track-drag-edit`), Undo (`editor-undo`). No API, engine or `RENDER_GRAPH_VERSION`
+  - **Not here (slice 1):** an inspector that follows the selection, a Clip tab, a docked card editor (built in
+    slice 2, below), dragging on the track (`track-drag-edit`), Undo (`editor-undo`). No API, engine or `RENDER_GRAPH_VERSION`
     change; no new dependency or token. Gates (task 4.1 of the change): the zoom-slider drag at Chrome 4x on 400
     clips 0.96 % of frames over 25 ms (gate 2 %; the stacked page 0.57 %), no sideways scroll 320–1440 px, the bundle
     +12.01 kB JS and +9.36 kB CSS.
+  - **One selection (change `editor-selection`, slice 2).** The workspace holds exactly one selection: nothing, a
+    clip, a cut, a title card or a suggestion (`web/src/edit/workspace/selection.ts`, held in `EventDetail` beside the
+    draft so Refresh, Save and a remount keep it). It replaces the Track's selected cut, the suggestions' selected id and
+    the card selection, which were three states that could disagree. Pressing a clip block or its bin row selects the
+    clip (a block's edges, cut handles and card handles keep their own presses; a double press moves the playhead);
+    selecting in the bin scrolls the track to the clip and the reverse, neither moving keyboard focus across panes.
+    Escape clears it (unless a field, an open dialog or a drag owns the key), and a press on empty track selects
+    nothing. It survives while its target exists; a clip, cut, card or suggestion that is gone (a removed clip, a
+    deleted chapter, a decided suggestion) falls back to nothing (`keptSelection`).
+  - **The inspector follows it.** The tab shown is the selection's: a clip or a cut gives Clip, a card Title card, a
+    suggestion Suggestion, nothing Event (`inspectorTab`). The operator may pick another tab by hand; the pick ends
+    the moment the selection changes. The Clip tab has the file, chapter and position, typed Trim In / Out, rotate,
+    the cuts with "Cut at playhead", and Use frame as poster, all editing the one draft.
+  - **The card editor is docked, not a dialog.** The title-card inspector (`edit/card/Inspector.tsx`) renders inside
+    the Title card tab, with its This title card / All title cards in this event tabs and the preview above the
+    fields (the inspector is 340 px). The modal wrapper and its focus-return and scroll-lock code are gone: a modal
+    over a workspace hid the picture and the track the card is about, and the fixed panes already keep the track
+    from moving. Escape in the editor returns focus to the control that selected the card.
+  - **Not here:** "Ignore clip" (moved 2026-11-15 to `track-drag-edit`, which builds the draft's ignore edit), dragging on
+    the track, Undo. No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
 - **D-27 — Analysis is a job** (2026-10-05, change `analysis-job`). The user asked what "Not analyzed" means and why
   it could not be triggered from the web, and chose automatic analysis in the background, a Re-analyze button and
   "Analyze all". The inline `auto-reel analyze` could not be a job: its passes were blocking (no cancel, no
