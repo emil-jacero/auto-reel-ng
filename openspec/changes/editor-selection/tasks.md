@@ -3,7 +3,7 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 0. Gate
 
-- [ ] 0.1 Dependency gate — `editor-workspace-layout` MUST be finished. From the repo root all three must succeed:
+- [x] 0.1 Dependency gate — `editor-workspace-layout` MUST be finished. From the repo root all three must succeed:
   `test ! -d openspec/changes/editor-workspace-layout`,
   `git ls-tree -d --name-only main openspec/changes/archive/ | grep -q -- '-editor-workspace-layout$'`,
   `grep -q "Requirement: Edit mode is a full-window workspace" openspec/specs/web-app/spec.md`.
