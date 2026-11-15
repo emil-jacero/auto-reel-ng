@@ -900,34 +900,37 @@ export function useTimeline({
   // Use as poster (Edit mode): why it cannot act now, in words, or null.
   const frame = useFrameReady(video.videoRef, held)
   const [posterFailed, setPosterFailed] = useState(false)
-  const posterWhy = (() => {
-    const result = posterFromPlayhead(clips, playhead.get(), {
-      locked: editing.locked,
-      held,
-      frame,
-    })
+  // The reason for the control of `only` (the inspector's: the clip it is about) or the transport's.
+  const posterWhyFor = (only: TrackClip | null): string | null => {
+    const at = playhead.get()
+    const result = posterFromPlayhead(clips, at, { locked: editing.locked, held, frame })
+    if (only !== null && !editing.locked && (at.card != null || clips[at.clip]?.identity !== only.identity)) {
+      return `Move the playhead into ${only.name} to use a frame as poster.`
+    }
     return 'why' in result ? result.why : null
-  })()
-  // Pressed while it cannot act: the reason in a tip under the button (no room taken in the
+  }
+  // Pressed while it cannot act: the reason in a tip under that button (no room taken in the
   // toolbar), said once in the live region; the tip goes on blur, Escape, or with the reason.
-  const [posterTip, setPosterTip] = useState<string | null>(null)
-  const reasonGone = posterWhy === null
+  // Each control (`suffix`) has its own tip.
+  const [posterTip, setPosterTip] = useState<{ suffix: string; why: string } | null>(null)
+  const reasonGone = posterWhyFor(null) === null
   useEffect(() => {
     if (reasonGone) {
       setPosterTip(null)
     }
   }, [reasonGone])
-  const usePoster = () => {
+  const usePoster = (suffix: string, only: TrackClip | null) => {
     const element = video.videoRef.current
+    const shownWhy = posterWhyFor(only)
     // What the button shows first (it looks unavailable: it does not act), then the video now.
     const result = posterFromPlayhead(clips, playhead.get(), {
       locked: editing.locked,
       held,
-      frame: posterWhy === null && hasFrame(element),
+      frame: frame && hasFrame(element),
     })
-    if ('why' in result) {
-      const why = posterWhy ?? result.why
-      setPosterTip(why)
+    if (shownWhy !== null || 'why' in result) {
+      const why = shownWhy ?? ('why' in result ? result.why : '')
+      setPosterTip({ suffix, why })
       setAnnouncement(why)
       return
     }
@@ -942,38 +945,43 @@ export function useTimeline({
       () => setPosterFailed(true),
     )
   }
-  // The Use as poster control: in the transport, and in the inspector's Clip tab (`suffix` keeps their ids apart).
-  const posterControl = (suffix: string, label: string) => (
-    <div className="tl-poster">
-      <button
-        type="button"
-        className="btn btn-secondary"
-        aria-disabled={posterWhy !== null || undefined}
-        aria-describedby={`${posterWhyId}${suffix}`}
-        title={posterWhy ?? undefined}
-        onClick={usePoster}
-        onBlur={() => setPosterTip(null)}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape' && posterTip !== null) {
-            event.preventDefault()
-            setPosterTip(null)
-          }
-        }}
-      >
-        <Icon name="film" />
-        {label}
-      </button>
-      {/* Always there: its words are the button's description while it cannot act. */}
-      <span id={`${posterWhyId}${suffix}`} className="visually-hidden">
-        {posterWhy ?? ''}
-      </span>
-      {posterTip !== null && (
-        <span className="tl-poster-tip" aria-hidden="true">
-          {posterTip}
+  // The Use as poster control: in the transport, and in the inspector's Clip tab for its clip
+  // (`suffix` keeps their ids and tips apart).
+  const posterControl = (suffix: string, label: string, only: TrackClip | null = null) => {
+    const why = posterWhyFor(only)
+    const tip = posterTip !== null && posterTip.suffix === suffix ? posterTip.why : null
+    return (
+      <div className="tl-poster">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          aria-disabled={why !== null || undefined}
+          aria-describedby={`${posterWhyId}${suffix}`}
+          title={why ?? undefined}
+          onClick={() => usePoster(suffix, only)}
+          onBlur={() => setPosterTip(null)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && tip !== null) {
+              event.preventDefault()
+              setPosterTip(null)
+            }
+          }}
+        >
+          <Icon name="film" />
+          {label}
+        </button>
+        {/* Always there: its words are the button's description while it cannot act. */}
+        <span id={`${posterWhyId}${suffix}`} className="visually-hidden">
+          {why ?? ''}
         </span>
-      )}
-    </div>
-  )
+        {tip !== null && (
+          <span className="tl-poster-tip" aria-hidden="true">
+            {tip}
+          </span>
+        )}
+      </div>
+    )
+  }
   const stage = (
     <div className="tl-stage" data-turned>
       {held ? (
@@ -1210,7 +1218,7 @@ export function useTimeline({
           selectedKey={selected?.identity === panelClipRow.identity ? selected.key : null}
           onSelectCut={select}
           onSelectClip={selectClip}
-          poster={posterControl('-clip', 'Use frame as poster')}
+          poster={posterControl('-clip', 'Use frame as poster', panelClipRow)}
         />
       )}
       <CutFields selected={selected} clips={clips} editing={editing} drag={drag} hintId={cutHintId} />

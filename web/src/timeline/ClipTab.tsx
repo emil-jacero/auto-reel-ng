@@ -15,6 +15,7 @@ import type { DraftCut } from '../edit/draft'
 import { RotateButtons } from '../rotate/RotateButtons'
 import { Icon } from '../ui/Icon'
 import { cutAtPlayhead } from './cutAtPlayhead'
+import { held as dragHeld } from './dragStore'
 import type { DragStore } from './dragStore'
 import { typedEdge, typedEdgeShown, trimLabel } from './edgeTyped'
 import type { Side } from './edgeTrim'
@@ -109,6 +110,10 @@ function TrimFields({
   const errorId = `${base}-error`
 
   const commit = (side: Side, byEnter: boolean) => {
+    // A press or a drag in progress holds the editor still until its release (as Q/W do).
+    if (dragHeld(drag)) {
+      return
+    }
     const text = typed[side]
     if (text === null) {
       return

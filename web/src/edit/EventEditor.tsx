@@ -2324,7 +2324,10 @@ export function EventEditor({
     },
     [clips, announce, nameOfClip],
   )
-  rotateRef.current = onRotate
+  // Handed over after the commit, never during a render.
+  useLayoutEffect(() => {
+    rotateRef.current = onRotate
+  }, [onRotate])
   // Rotate marked left / right: every marked clip on disk, each from its own turn, one edit.
   // The marks stay.
   const onRotateMarked = useCallback(

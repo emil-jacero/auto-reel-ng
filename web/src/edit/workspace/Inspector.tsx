@@ -95,7 +95,7 @@ export function Inspector({
       {panel(
         'card',
         <>
-          <div ref={cardSlot} className="ws-slot ws-card-slot" />
+          <div ref={cardSlot} className="ws-slot" />
           <p className="ws-empty">{INSPECTOR_TAB_EMPTY.card}</p>
         </>,
       )}

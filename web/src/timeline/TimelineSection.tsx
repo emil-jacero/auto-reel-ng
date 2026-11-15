@@ -203,6 +203,7 @@ export function TimelineSection({
         backdrop={backdrop}
         lengthRange={lengthRange}
         opened={cards.opened}
+        onHandled={cards.handled}
         asked={cards.again}
         onLeave={cards.leave}
       />

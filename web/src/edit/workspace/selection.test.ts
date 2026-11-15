@@ -3,6 +3,7 @@ import { test } from 'node:test'
 
 import {
   clearState,
+  consumeState,
   inspectorTab,
   keepState,
   keptIn,
@@ -162,4 +163,15 @@ test('clear and a vanished target end the selection and its request', () => {
   // A part that says nothing about the kind keeps it.
   assert.equal(keepState(opened, { suggestions: new Set() }), opened)
   assert.equal(keepState(NOTHING, { chapters: new Set() }), NOTHING)
+})
+
+test('a handled request ends and the selection stays, so a remount does not ask again', () => {
+  const asked = openState(NOTHING, 'Day one', 'card')
+  const done = consumeState(asked)
+  assert.deepEqual(done.sel, { kind: 'card', chapter: 'Day one' })
+  assert.equal(done.opened, null)
+  assert.equal(done.again, asked.again)
+  assert.equal(consumeState(done), done)
+  // Asking again (the button pressed once more) is a new request.
+  assert.notEqual(openState(done, 'Day one').opened, null)
 })

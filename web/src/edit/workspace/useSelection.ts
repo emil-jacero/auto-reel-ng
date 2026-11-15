@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { TabId } from '../card/tabs.ts'
-import { clearState, keepState, NOTHING, openState, selectState } from './selection.ts'
+import { clearState, consumeState, keepState, NOTHING, openState, selectState } from './selection.ts'
 import type { Selection, SelectionState, World } from './selection.ts'
 
 /*
@@ -32,6 +32,8 @@ export type SelectionBinding = {
   opened: { tab: TabId | null } | null
   /** Selects the card, asks for its editor on `tab` if given, and for focus in it, also when selected. */
   open(chapter: string, tab?: TabId): void
+  /** The editor has acted on `opened` (tab and focus): the request ends, the selection stays. */
+  handled(): void
   /**
    * Escape from inside the card editor: focus goes to the control that selected the card (the
    * Edit Titlecard button or the card block), then nothing is selected, so the focused field
@@ -67,6 +69,7 @@ export function useSelection(): SelectionBinding {
     [],
   )
   const select = useCallback((chapter: string) => set({ kind: 'card', chapter }), [set])
+  const handled = useCallback(() => setState(consumeState), [])
   const open = useCallback((chapter: string, tab?: TabId) => {
     const active = document.activeElement
     opener.current = active instanceof HTMLElement && active !== document.body ? active : null
@@ -114,7 +117,7 @@ export function useSelection(): SelectionBinding {
   }, [card, clear])
   const { opened } = state
   return useMemo(
-    () => ({ selection: state.sel, again: state.again, set, clear, keep, selected: card, select, opened, open, leave }),
-    [state.sel, state.again, set, clear, keep, card, select, opened, open, leave],
+    () => ({ selection: state.sel, again: state.again, set, clear, keep, selected: card, select, opened, open, handled, leave }),
+    [state.sel, state.again, set, clear, keep, card, select, opened, open, handled, leave],
   )
 }

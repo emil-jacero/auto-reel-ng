@@ -142,3 +142,11 @@ export function keepState(was: SelectionState, part: Partial<World>): SelectionS
 export function openState(was: SelectionState, chapter: ChapterKey, tab?: TabId): SelectionState {
   return { sel: { kind: 'card', chapter }, opened: { tab: tab ?? null }, again: was.again + 1 }
 }
+
+/**
+ * The request to see the selected card has been handled (its tab shown, focus moved): it ends, so
+ * a remount of the editor (a layout switch) does not take focus again. The selection stays.
+ */
+export function consumeState(was: SelectionState): SelectionState {
+  return was.opened === null ? was : { ...was, opened: null }
+}
