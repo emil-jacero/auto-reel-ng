@@ -35,6 +35,17 @@ export function clipNames(
   return own ? fileName : (identity) => identity
 }
 
+/**
+ * The chapter's `clipNames` from everything it lists: the clips it played when Edit mode
+ * opened, plays now, ignores and removed. One place for the rows and the save bar.
+ */
+export function namesIn(
+  chapter: string,
+  ...lists: readonly (readonly string[])[]
+): (identity: string) => string {
+  return clipNames(chapter, lists.flat())
+}
+
 export function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`
 }

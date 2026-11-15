@@ -4,6 +4,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { memo, useId } from 'react'
 
 import { chapterToolsParts } from './chapterBar'
+import type { ChapterPlace } from './chapterBar'
 import type { ChapterKey } from './draft'
 import { DELETED_DROP } from './dragSlots'
 import { Icon } from '../ui/Icon'
@@ -25,8 +26,7 @@ import { Icon } from '../ui/Icon'
 export type ChapterHandler = (key: ChapterKey) => void
 export type ChapterMoveHandler = (key: ChapterKey, delta: -1 | 1) => void
 
-/** A chapter's place among the listed chapters, for Move up / Move down; absent when alone. */
-export type ChapterPlace = { first: boolean; last: boolean }
+export type { ChapterPlace }
 
 /** What a chapter's tools row shows and does: decided by the editor, one object per chapter. */
 export type ChapterToolsModel = {
