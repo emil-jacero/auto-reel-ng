@@ -36,6 +36,8 @@ export function Workspace({
   inspector,
   timeline,
   viewer,
+  tab,
+  onTab,
 }: {
   top: ReactNode
   bin: ReactNode
@@ -44,6 +46,12 @@ export function Workspace({
   timeline: ReactNode
   /** What the viewer shows while the Timeline has no picture there (reading, a failure, Prepare). */
   viewer: ReactNode
+  /**
+   * The inspector's shown tab, held by the editor: what needs the operator's eye in the Event tab
+   * (a save's refusal at the Details fields) shows that tab first. `onTab` must be stable.
+   */
+  tab: InspectorTab
+  onTab: (tab: InspectorTab) => void
 }) {
   const [viewerPane, setViewerPane] = useState<HTMLElement | null>(null)
   const [cutPane, setCutPane] = useState<HTMLElement | null>(null)
@@ -135,18 +143,17 @@ export function Workspace({
 
   // The inspector's tabs: roving tabindex, arrow keys, Home and End (as the card dialog's).
   const tabsId = useId()
-  const [tab, setTab] = useState<InspectorTab>('event')
   const tabButtons = useRef(new Map<InspectorTab, HTMLButtonElement>())
   const onTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
     const next = inspectorTabAfterKey(tab, event.key)
     if (next !== null) {
       event.preventDefault()
-      setTab(next)
+      onTab(next)
       tabButtons.current.get(next)?.focus()
     }
   }
   // Only the tab changes: focus stays on the track control that selected.
-  const onCutSelected = useCallback(() => setTab('cut'), [])
+  const onCutSelected = useCallback(() => onTab('cut'), [onTab])
 
   const panes = useMemo<TimelinePanes>(
     () => ({ viewer: viewerPane, cut: cutPane, onCutSelected }),
@@ -185,7 +192,7 @@ export function Workspace({
                 aria-selected={tab === id}
                 aria-controls={`${tabsId}-panel-${id}`}
                 tabIndex={tab === id ? 0 : -1}
-                onClick={() => setTab(id)}
+                onClick={() => onTab(id)}
                 onKeyDown={onTabKey}
               >
                 {INSPECTOR_TAB_NAME[id]}
