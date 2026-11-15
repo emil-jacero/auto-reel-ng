@@ -21,7 +21,11 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 - [ ] 2.1 `ClipDrag` on the block body via `dragStore` (claim, 3 px slop, capture, Escape, live shift, slot line and
   words, design D2); release dispatches the lists' reducer actions (D3). Verify `dragStore.test.ts` and Playwright.
-- [ ] 2.2 Bin↔track include/ignore adapter. Verify with Playwright (New clip in, clip out to Ignored).
+- [ ] 2.2 Bin↔track include/ignore adapter, through 2.2a's edit. Verify with Playwright (New clip in, clip out to Ignored).
+- [ ] 2.2a The draft ignore/include edit: a draft field in `draft.ts`, `buildWriteBody`'s `ignore`, `isDirty`, Reset,
+  the top bar and save counts, one reducer action in `EventEditor.tsx` (design D5). Verify `draft` node tests and the
+  save body.
+- [ ] 2.2b "Ignore clip" button in the inspector's Clip tab (`timeline/ClipTab.tsx`). Verify with Playwright.
 - [ ] 2.3 Alt+Left/Right on a selected clip, announcements, inert while pending (D4). Verify `keys.test.ts` and Playwright.
 
 ## 3. Verification and docs

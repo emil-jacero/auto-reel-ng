@@ -22,8 +22,13 @@ release outside the track SHALL cancel with no edit.
 ### Requirement: Clips are included and ignored by dragging between bin and track
 
 Dragging a New or Ignored clip from the bin onto the video track SHALL include it at the drop place. Dragging a clip
-from the track onto the bin SHALL ignore it. Each SHALL be one draft edit, the same as the bin's own include and
-ignore actions.
+from the track onto the bin SHALL ignore it. Each SHALL be one draft edit, the draft ignore/include edit. Ignoring and including SHALL be draft edits of the clip's ignore state: counted by the top bar,
+undone by Reset, and written by Save in the document's `ignore`. The inspector's Clip tab SHALL offer "Ignore clip" for
+the selected clip, the same edit.
+
+#### Scenario: Ignore clip button
+- **WHEN** the operator selects `s1710001.mp4` and presses "Ignore clip" in the Clip tab
+- **THEN** it is no longer drawn, it is listed as Ignored, the top bar counts "1 clip ignored" and nothing is written
 
 #### Scenario: Include a new clip
 - **WHEN** the operator drags `s1710006.mp4` (New) from the bin to before `s1710004.mp4`

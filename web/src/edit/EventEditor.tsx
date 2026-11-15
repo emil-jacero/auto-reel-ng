@@ -32,7 +32,7 @@ import { LIST_HREF } from '../route'
 import { focusPageHeading } from '../shell/AppShell'
 import { TimelineSection } from '../timeline/TimelineSection'
 import { cardSpecs } from '../timeline/cards'
-import type { CardsBinding } from '../timeline/useCardSelection'
+import type { SelectionBinding } from './workspace/useSelection.ts'
 import { CardButtonContext } from './EditTitlecard'
 import type { CardButtonModel } from './EditTitlecard'
 import { cardIdOf } from './chapterBar.ts'
@@ -65,7 +65,7 @@ import { TopBar } from './workspace/TopBar'
 import type { WorkspaceFrame } from './workspace/TopBar'
 import { Workspace } from './workspace/Workspace'
 import { titleCardsWords } from './workspace/inspectorTabs.ts'
-import type { InspectorTab } from './workspace/inspectorTabs.ts'
+import { useInspectorTab } from './workspace/useInspectorTab.ts'
 import { TAB_NAME } from './card/tabs.ts'
 import { NameDialog } from './ChapterDialogs'
 import {
@@ -1108,8 +1108,8 @@ export function EventEditor({
   dismissals: Dismissals
   /** The page's one analysis read and Re-analyze (`useEventAnalysis`); absent, the Timeline has no lane. */
   analysis?: AnalysisBinding
-  /** The page's one card selection (`useCardSelection`), shared with the Timeline's blocks. */
-  cards: CardsBinding
+  /** The page's one selection (`useSelection`), shared with the Timeline's blocks. */
+  cards: SelectionBinding
   /** A proxy job the Timeline followed has ended: the page reads the event again. */
   onProxiesFinished?: () => void
   onSaved: () => void
@@ -1142,7 +1142,7 @@ export function EventEditor({
   const refusalRef = useRef<HTMLDivElement>(null)
   // The workspace inspector's shown tab, and a refusal at the Details fields waiting for its
   // Event tab to be drawn before it takes focus.
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('event')
+  const [inspectorTab, setInspectorTab] = useInspectorTab(cards)
   const refusalWaits = useRef(false)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const keepEditingRef = useRef<HTMLButtonElement>(null)
@@ -1373,7 +1373,7 @@ export function EventEditor({
       return
     }
     // In the workspace a refusal at the Details fields is in the inspector's Event tab, hidden
-    // while the Cut tab shows: the Event tab is shown first, and the refusal takes focus once it
+    // while another tab shows: the Event tab is shown first, and the refusal takes focus once it
     // is drawn (below).
     if (refusalRef.current?.closest('.ws-insp-panel[hidden]') != null) {
       refusalWaits.current = true
@@ -1754,6 +1754,10 @@ export function EventEditor({
   }, [announce, dropFrame])
   const resetCount = ready?.resets ?? 0
   const readLook = ready?.baseline.read.look
+  // The rotate action is made further down (it names the clip); the Timeline's binding calls it
+  // through this stable hand-over.
+  const rotateRef = useRef<RotateHandler>(() => undefined)
+  const rotateClip = useCallback<RotateHandler>((identity, way) => rotateRef.current(identity, way), [])
   const editing = useMemo<EditBinding | null>(() => {
     if (baseCuts === undefined || draftCuts === undefined || detail === null) {
       return null
@@ -1766,9 +1770,12 @@ export function EventEditor({
       onEdge,
       onPoster,
       onAdd: cutHandlers.onAdd,
+      onRemove: cutHandlers.onRemove,
+      onRotate: rotateClip,
       locked: listsLocked,
       announce,
       previews: cutPanels.panels.previews,
+      baseline: baseCuts,
       epoch: resetCount,
       look: readLook,
       onCardDuration,
@@ -1783,6 +1790,7 @@ export function EventEditor({
     onTrim,
     onEdge,
     onPoster,
+    rotateClip,
     cutHandlers,
     announce,
     cutPanels,
@@ -1856,15 +1864,22 @@ export function EventEditor({
     draftEventTitle,
     resolved,
   ])
-  const { retain: retainCard, open: openCard, selected: selectedCard } = cards
+  const { keep: keepSelection, open: openCard, selected: selectedCard } = cards
+  const selectedClip = cards.selection.kind === 'clip' ? cards.selection.identity : null
+  const selectClip = useCallback(
+    (identity: string) => cards.set({ kind: 'clip', identity }),
+    [cards.set],
+  )
   // The selection ends with its chapter: deleted in the draft, it is gone from the list.
   useEffect(() => {
     if (draftChapters !== undefined) {
-      retainCard(
-        draftChapters.flatMap((chapter) => (chapter.deleted ? [] : [cardIdOf(chapter)])),
-      )
+      keepSelection({
+        chapters: new Set(
+          draftChapters.flatMap((chapter) => (chapter.deleted ? [] : [cardIdOf(chapter)])),
+        ),
+      })
     }
-  }, [draftChapters, retainCard])
+  }, [draftChapters, keepSelection])
   // A refused save that names a card opens that card, so the message is at its field.
   const refusedCard = ready?.cardRefusal ?? null
   const refusedAnswer = ready?.answers ?? 0
@@ -2345,6 +2360,10 @@ export function EventEditor({
     },
     [clips, announce, nameOfClip],
   )
+  // Handed over after the commit, never during a render.
+  useLayoutEffect(() => {
+    rotateRef.current = onRotate
+  }, [onRotate])
   // Rotate marked left / right: every marked clip on disk, each from its own turn, one edit.
   // The marks stay.
   const onRotateMarked = useCallback(
@@ -2727,13 +2746,13 @@ export function EventEditor({
             />
           )}
           </>,
-          // The workspace's Event tab: the way to the card dialog's "All title cards in this
+          // The workspace's Event tab: the way to the docked card editor's "All title cards in this
           // event" tab (card style, Title cards On / Off), on the draft's first card (the
           // opening card, or the first chapter's in an event without root clips or with the
           // default chapter deleted), and the switch's state in words. Not a section and no
-          // control of its own: the dialog stays the one place.
+          // control of its own: the docked editor stays the one place.
           titleCards: <>
-          {/* The dialog is the Timeline section's: shown with it. */}
+          {/* The editor is the Timeline section's: shown with it. */}
           {editing !== null && cardEditing !== null && detail !== null && firstCard !== null && (
             <div className="ws-cards">
               <button
@@ -2954,6 +2973,13 @@ export function EventEditor({
                       onRestore={onRestore}
                       onAnnounce={announce}
                       compact={inWorkspace}
+                      selectedClip={
+                        selectedClip !== null &&
+                        (ready.draft.orders.get(chapter.key) ?? NONE_REMOVED).includes(selectedClip)
+                          ? selectedClip
+                          : null
+                      }
+                      onSelectClip={selectClip}
                       ignoredApart={ignoredApart}
                     />
                   )
@@ -3229,7 +3255,7 @@ export function EventEditor({
       )}
             </>}
           bin={parts?.bin ?? null}
-          inspector={
+          event={
             <>
               {parts?.details}
               {parts?.poster}

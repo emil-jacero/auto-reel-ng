@@ -5,8 +5,8 @@ import type { CardSpec } from './cards'
  * The selected card's announcement (`title-card-blocks`, `help-text-declutter`): selecting a card
  * block shows no text panel (the read view has no Timeline, `timeline-zoom-slider`). Its words go
  * once through a polite, visually hidden status region that is always there, so a selection is
- * announced when it changes; the block's own accessible name says the same. A card's editor is a
- * dialog (`edit/card/Inspector.tsx`).
+ * announced when it changes; the block's own accessible name says the same. A card's editor is docked
+ * in the inspector (`edit/card/Inspector.tsx`).
  */
 
 /**

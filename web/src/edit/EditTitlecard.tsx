@@ -5,15 +5,15 @@ import { EDIT_TITLECARD, barButton, editTitlecardName } from './chapterBar'
 
 /*
  * "Edit Titlecard" (`edit-mode-declutter`): the button in every chapter's header bar. It selects
- * the chapter's card, the selection the Timeline's blocks share, and opens the card dialog, the
- * one place for a name and a card. It writes nothing itself. Busy-control rule: while a save or
+ * the chapter's card, the selection the Timeline's blocks share, and shows its editor in the
+ * inspector, the one place for a name and a card. It writes nothing itself. Busy-control rule: while a save or
  * a move is pending it is `aria-disabled` and opens nothing.
  */
 
 export type CardButtonModel = {
   /** The selected card's id (`cardIdOf`) or null. */
   selected: string | null
-  /** Selects and opens the card's dialog. */
+  /** Selects the card and takes focus into its editor. */
   open(id: string): void
 }
 

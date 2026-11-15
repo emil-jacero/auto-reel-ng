@@ -19,6 +19,9 @@ import '../rotate/rotate.css'
 import { TimelinePanesContext } from './panes'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
+import { ClipHeader } from './ClipHeader'
+import { clipPlace, clipSelectedWords, cutSelectedWords } from './clipPanel'
+import { ClipTab } from './ClipTab'
 import { CutFields } from './CutFields'
 import type { Selected } from './CutFields'
 import { posterFromPlayhead, USE_AS_POSTER } from '../edit/poster.ts'
@@ -44,7 +47,7 @@ import type { CardMap, CardSpec, CardsSource, Decorators, Placement } from './ca
 import { cardJobs } from './cardRequests'
 import { positionOnTrack, stepFramesOnTrack, trackStart } from './play'
 import { useCardImages } from './useCardImages'
-import type { CardsBinding } from './useCardSelection'
+import type { SelectionBinding } from '../edit/workspace/useSelection.ts'
 import { createDragStore, held as dragHeld, shiftMs } from './dragStore'
 import { edgeAnnouncement, edgeEdit, snappingWords, toPlayheadRefusal, trimToPlayhead } from './edgeTrim'
 import type { DragStore } from './dragStore'
@@ -85,7 +88,7 @@ import {
   zoomAt,
 } from './model'
 import { createPlayhead } from './playhead'
-import { afterRead, clipStep, endPosition, globalMs, keptPosition, timedOf } from './position'
+import { afterRead, clipStep, endPosition, globalMs, hasKeptFrame, keptPosition, timedOf } from './position'
 import type { Position } from './position'
 import { hasFrame, snapshotOf, useFrameReady } from './posterFrame'
 import { useTimelineVideo } from './useTimelineVideo'
@@ -153,7 +156,7 @@ export type TimelineProps = {
     previewStyle?: { [key: string]: unknown }
     /** The detail's `title_cards_error`, said when there is no answer. */
     error: string | null
-    selection: CardsBinding
+    selection: SelectionBinding
   }
   /** The id of the Timeline help's paragraph that says what the cut fields take (Edit mode). */
   cutHintId: string
@@ -161,29 +164,39 @@ export type TimelineProps = {
 
 /**
  * The Timeline's three parts over one state (design D2 of `editor-workspace-layout`): the viewer
- * (the picture and the transport), the track (the tool row, the lanes and their notes) and the cut
- * panel (the selected cut's fields and the selected suggestion's decision). Each is its own
+ * (the picture and the transport), the track (the tool row, the lanes and their notes), the clip
+ * panel (the selected clip's header and cut's fields) and the suggestion panel (the selected
+ * suggestion's decision). Each is its own
  * `.timeline` box, so it can sit in a pane of its own; there is still one `<video>`.
  */
 export type TimelineParts = {
   viewer: ReactNode
   track: ReactNode
-  cutPanel: ReactNode
+  /** The selected clip's header and the selected cut's fields (the inspector's Clip tab). */
+  clipPanel: ReactNode
+  /** The selected suggestion's decision (the inspector's Suggestion tab). */
+  suggestionPanel: ReactNode
 }
 
 /**
- * The Timeline: in Edit mode's workspace the viewer and the cut panel go to their panes (portals:
+ * The Timeline: in Edit mode's workspace the viewer and the two panels go to their panes (portals:
  * still one tree and one state), the track stays here; without one, the three are stacked.
  */
 export function Timeline(props: TimelineProps) {
   const parts = useTimeline(props)
   const panes = useContext(TimelinePanesContext)
-  if (panes !== null && panes.viewer !== null && panes.cut !== null) {
+  if (
+    panes !== null &&
+    panes.viewer !== null &&
+    panes.clip !== null &&
+    panes.suggestion !== null
+  ) {
     return (
       <>
         {createPortal(parts.viewer, panes.viewer)}
         {parts.track}
-        {createPortal(parts.cutPanel, panes.cut)}
+        {createPortal(parts.clipPanel, panes.clip)}
+        {createPortal(parts.suggestionPanel, panes.suggestion)}
       </>
     )
   }
@@ -191,7 +204,8 @@ export function Timeline(props: TimelineProps) {
     <div className="tl-parts">
       {parts.viewer}
       {parts.track}
-      {parts.cutPanel}
+      {parts.clipPanel}
+      {parts.suggestionPanel}
     </div>
   )
 }
@@ -207,9 +221,6 @@ export function useTimeline({
   cutHintId,
 }: TimelineProps): TimelineParts {
   const posterWhyId = useId()
-  // Each press that selects a cut or a suggestion (the same one again, or another clip's cut with
-  // the same key) shows the workspace inspector's Cut tab.
-  const onCutSelected = useContext(TimelinePanesContext)?.onCutSelected
   const clipLay = useMemo(() => trackLayout(clips), [clips])
   const turns = editing.turns
   const decorators = cards.decorators
@@ -298,36 +309,84 @@ export function useTimeline({
   const longestCardMs = useMemo(() => Math.max(0, ...map.gaps.map((gap) => gap.lengthMs)), [map])
   // A trim in the air: the cuts' spans on the track step back while the live one is drawn.
   const trimming = useSyncExternalStore(drag.subscribe, () => drag.get() !== null)
-  const [selected, setSelected] = useState<Selected | null>(null)
-  const clearCard = selection.clear
+  // The selected cut, from the page's one selection: selecting a card or a mark ends it.
+  const selectedCut = selection.selection.kind === 'cut' ? selection.selection : null
+  const selected = useMemo<Selected | null>(
+    () => (selectedCut === null ? null : { identity: selectedCut.identity, key: selectedCut.key }),
+    [selectedCut],
+  )
+  const setSelection = selection.set
+  const keepSelection = selection.keep
   const select = useCallback(
-    (identity: string, key: string) => {
-      setSelected((was) => (was?.identity === identity && was.key === key ? was : { identity, key }))
-      clearCard()
-      onCutSelected?.()
-    },
-    [clearCard, onCutSelected],
+    (identity: string, key: string) => setSelection({ kind: 'cut', identity, key }),
+    [setSelection],
   )
+  // The selected clip, from the page's one selection: the block's press and the bin row's write it.
+  const selectedClip = selection.selection.kind === 'clip' ? selection.selection.identity : null
+  const selectClip = useCallback(
+    (identity: string) => setSelection({ kind: 'clip', identity }),
+    [setSelection],
+  )
+  const clearSelection = selection.clear
+  // A click on a clip's block: the cut whose span holds the press, else the clip (the cut's span
+  // selects its cut, as it did when the lane took the press).
+  const pressClipRef = useRef<(identity: string, x: number) => void>(() => undefined)
+  pressClipRef.current = (identity, x) => {
+    if (!Number.isNaN(x)) {
+      const pos = positionOf(x)
+      if (pos.card == null && clips[pos.clip].identity === identity) {
+        const cut = editing
+          .listed(identity)
+          .find((c) => !c.removed && Math.round(c.in * 1000) <= pos.ms && pos.ms < Math.round(c.out * 1000))
+        if (cut !== undefined) {
+          select(identity, cut.key)
+          return
+        }
+      }
+    }
+    selectClip(identity)
+  }
+  const pressClip = useCallback((identity: string, x: number) => pressClipRef.current(identity, x), [])
   const selectCard = selection.select
-  const openCard = selection.open
-  const pickCard = useCallback(
-    (chapter: string) => {
-      setSelected(null)
-      selectCard(chapter)
-    },
-    [selectCard],
-  )
-  // A block's body opens the card's dialog.
-  const pressCard = useCallback(
-    (chapter: string) => {
-      setSelected(null)
-      openCard(chapter)
-    },
-    [openCard],
-  )
-  // Reset, and a cut removed, end a selection.
+  const revealCard = selection.reveal
+  const pickCard = selectCard
+  // A block's body shows the card's editor in the inspector; focus stays on the block.
+  const pressCard = revealCard
+  // Reset ends a cut selection (the Timeline mounting anew, on a Refresh or a Save, does not).
   const epoch = editing.epoch
-  useEffect(() => setSelected(null), [epoch])
+  const seenEpoch = useRef(epoch)
+  useEffect(() => {
+    if (seenEpoch.current !== epoch) {
+      seenEpoch.current = epoch
+      if (selection.selection.kind === 'cut') {
+        selection.clear()
+      }
+    }
+  }, [epoch, selection])
+  // A new read numbers a clip's cuts again (`r0`, `r1`…), so a cut selection made on the old one
+  // would name another cut: it ends with the read, also when the Timeline mounts anew (a Save, a
+  // Refresh, leaving and re-entering Edit mode), where the cleanup does it.
+  const baseline = editing.baseline
+  const seenBaseline = useRef(baseline)
+  useEffect(() => {
+    if (seenBaseline.current !== baseline) {
+      seenBaseline.current = baseline
+      if (selection.selection.kind === 'cut') {
+        selection.clear()
+      }
+    }
+  }, [baseline, selection])
+  const latestSelection = useRef(selection)
+  latestSelection.current = selection
+  useEffect(
+    () => () => {
+      if (latestSelection.current.selection.kind === 'cut') {
+        latestSelection.current.clear()
+      }
+    },
+    [],
+  )
+  // A cut removed ends a selection (`keptSelection`).
   useEffect(() => {
     if (selected !== null) {
       // A cut that became part of a leading or a trailing cut has no handle, nor a selection,
@@ -339,11 +398,35 @@ export function useTimeline({
         clip?.kept ?? null,
         clip?.facts.durationMs ?? 0,
       )
-      if (!there) {
-        setSelected(null)
-      }
+      keepSelection({
+        cuts: new Map([[selected.identity, there ? [{ key: selected.key, removed: false }] : []]]),
+      })
     }
-  }, [editing, selected, clips])
+  }, [editing, selected, clips, keepSelection])
+
+  // A clip or cut selection ending (Escape, a clear) while focus was in the Clip tab, which then
+  // unmounts: focus goes back to the clip's block, so it never drops onto the page body.
+  const heldClip = selectedClip ?? selectedCut?.identity ?? null
+  const wasClip = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    const was = wasClip.current
+    wasClip.current = heldClip
+    if (was === null || heldClip !== null) {
+      return
+    }
+    const active = document.activeElement
+    if (active === null || active === document.body) {
+      const at = clips.findIndex((c) => c.identity === was)
+      document
+        .querySelector<HTMLElement>(`.tl-clip-press[data-index="${at}"]`)
+        ?.focus({ preventScroll: true })
+    }
+  }, [heldClip, clips])
+
+  // A clip that left the event ends its selection (`keptSelection`).
+  useEffect(() => {
+    keepSelection({ clips: new Set(clips.map((c) => c.identity)) })
+  }, [clips, keepSelection])
 
   const scroller = useRef<HTMLDivElement>(null)
   const grip = useRef<HTMLDivElement>(null)
@@ -401,6 +484,21 @@ export function useTimeline({
   // anchor on the second's real starting scale (design D2); a render brings it back in step.
   const ppsRef = useRef(pps)
   ppsRef.current = pps
+  // A clip selected out of view (from the bin) is scrolled to: the zoom stays, and so does focus.
+  useEffect(() => {
+    const el = scroller.current
+    const at = selectedClip === null ? -1 : clips.findIndex((c) => c.identity === selectedClip)
+    if (el === null || at < 0 || !hasKeptFrame(facts[at])) {
+      return
+    }
+    const left = timeToPx(lay.startsMs[at], ppsRef.current)
+    const width = timeToPx(extentMs(clips[at].kept), ppsRef.current)
+    if (left + width > el.scrollLeft && left < el.scrollLeft + el.clientWidth) {
+      return
+    }
+    el.scrollLeft = Math.max(0, left - Math.max(0, (el.clientWidth - width) / 2))
+    // Only a press or a change of the selection scrolls; a relayout does not.
+  }, [selectedClip, selection.again])
   const fitRef = useRef(fit)
   fitRef.current = fit
 
@@ -547,7 +645,7 @@ export function useTimeline({
         // A press in a black card's span selects the card, and the playhead goes there too.
         const chapter = cards.specs[inCard.chapter].chapter
         if (phase === 'tap') {
-          // The tap is on the scrub surface; the block is the opener the dialog returns focus to.
+          // The tap is on the scrub surface; the block is the opener Escape in the editor returns focus to.
           const block = Array.from(
             document.querySelectorAll<HTMLElement>('button.tl-card[data-card]'),
           ).find((b) => b.dataset.card === chapter)
@@ -556,6 +654,9 @@ export function useTimeline({
         } else {
           pickCard(chapter)
         }
+      } else {
+        // A press on the lane's bare ground, between or past the clips, selects nothing.
+        clearSelection()
       }
     }
     if (phase === 'tap') {
@@ -805,7 +906,7 @@ export function useTimeline({
     lay,
     pps,
     seekTo: video.seekTo,
-    onSelect: onCutSelected,
+    selection,
   })
   const cardLane = useMemo<CardLaneModel | undefined>(
     () =>
@@ -841,34 +942,37 @@ export function useTimeline({
   // Use as poster (Edit mode): why it cannot act now, in words, or null.
   const frame = useFrameReady(video.videoRef, held)
   const [posterFailed, setPosterFailed] = useState(false)
-  const posterWhy = (() => {
-    const result = posterFromPlayhead(clips, playhead.get(), {
-      locked: editing.locked,
-      held,
-      frame,
-    })
+  // The reason for the control of `only` (the inspector's: the clip it is about) or the transport's.
+  const posterWhyFor = (only: TrackClip | null): string | null => {
+    const at = playhead.get()
+    const result = posterFromPlayhead(clips, at, { locked: editing.locked, held, frame })
+    if (only !== null && !editing.locked && (at.card != null || clips[at.clip]?.identity !== only.identity)) {
+      return `Move the playhead into ${only.name} to use a frame as poster.`
+    }
     return 'why' in result ? result.why : null
-  })()
-  // Pressed while it cannot act: the reason in a tip under the button (no room taken in the
+  }
+  // Pressed while it cannot act: the reason in a tip under that button (no room taken in the
   // toolbar), said once in the live region; the tip goes on blur, Escape, or with the reason.
-  const [posterTip, setPosterTip] = useState<string | null>(null)
-  const reasonGone = posterWhy === null
+  // Each control (`suffix`) has its own tip.
+  const [posterTip, setPosterTip] = useState<{ suffix: string; why: string } | null>(null)
+  const reasonGone = posterWhyFor(null) === null
   useEffect(() => {
     if (reasonGone) {
       setPosterTip(null)
     }
   }, [reasonGone])
-  const usePoster = () => {
+  const usePoster = (suffix: string, only: TrackClip | null) => {
     const element = video.videoRef.current
+    const shownWhy = posterWhyFor(only)
     // What the button shows first (it looks unavailable: it does not act), then the video now.
     const result = posterFromPlayhead(clips, playhead.get(), {
       locked: editing.locked,
       held,
-      frame: posterWhy === null && hasFrame(element),
+      frame: frame && hasFrame(element),
     })
-    if ('why' in result) {
-      const why = posterWhy ?? result.why
-      setPosterTip(why)
+    if (shownWhy !== null || 'why' in result) {
+      const why = shownWhy ?? ('why' in result ? result.why : '')
+      setPosterTip({ suffix, why })
       setAnnouncement(why)
       return
     }
@@ -881,6 +985,43 @@ export function useTimeline({
     snapshotOf(element).then(
       (url) => editing.onPoster(result.pick, { url, turn }),
       () => setPosterFailed(true),
+    )
+  }
+  // The Use as poster control: in the transport, and in the inspector's Clip tab for its clip
+  // (`suffix` keeps their ids and tips apart).
+  const posterControl = (suffix: string, label: string, only: TrackClip | null = null) => {
+    const why = posterWhyFor(only)
+    const tip = posterTip !== null && posterTip.suffix === suffix ? posterTip.why : null
+    return (
+      <div className="tl-poster">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          aria-disabled={why !== null || undefined}
+          aria-describedby={`${posterWhyId}${suffix}`}
+          title={why ?? undefined}
+          onClick={() => usePoster(suffix, only)}
+          onBlur={() => setPosterTip(null)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && tip !== null) {
+              event.preventDefault()
+              setPosterTip(null)
+            }
+          }}
+        >
+          <Icon name="film" />
+          {label}
+        </button>
+        {/* Always there: its words are the button's description while it cannot act. */}
+        <span id={`${posterWhyId}${suffix}`} className="visually-hidden">
+          {why ?? ''}
+        </span>
+        {tip !== null && (
+          <span className="tl-poster-tip" aria-hidden="true">
+            {tip}
+          </span>
+        )}
+      </div>
     )
   }
   const stage = (
@@ -943,35 +1084,7 @@ export function useTimeline({
         </button>
       </div>
       <PlayheadReadout playhead={playhead} clips={clips} lay={lay} longestCardMs={longestCardMs} />
-      <div className="tl-poster">
-        <button
-          type="button"
-          className="btn btn-secondary"
-          aria-disabled={posterWhy !== null || undefined}
-          aria-describedby={posterWhyId}
-          title={posterWhy ?? undefined}
-          onClick={usePoster}
-          onBlur={() => setPosterTip(null)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape' && posterTip !== null) {
-              event.preventDefault()
-              setPosterTip(null)
-            }
-          }}
-        >
-          <Icon name="film" />
-          {USE_AS_POSTER}
-        </button>
-        {/* Always there: its words are the button's description while it cannot act. */}
-        <span id={posterWhyId} className="visually-hidden">
-          {posterWhy ?? ''}
-        </span>
-        {posterTip !== null && (
-          <span className="tl-poster-tip" aria-hidden="true">
-            {posterTip}
-          </span>
-        )}
-      </div>
+      {posterControl('', USE_AS_POSTER)}
     </div>
   )
   const viewer = (
@@ -1090,6 +1203,10 @@ export function useTimeline({
         drag={drag}
         selected={selected}
         onSelect={select}
+        selectedClip={selectedClip}
+        onSelectClip={selectClip}
+        onPressClip={pressClip}
+        onClearSelection={clearSelection}
         cardLane={cardLane}
         shifting={shifting}
         snapping={snapping}
@@ -1123,13 +1240,63 @@ export function useTimeline({
       )}
     </div>
   )
-  const cutPanel = (
+  // The clip the panel is about: the selected clip, or the selected cut's.
+  const panelClip = selectedClip ?? selected?.identity ?? null
+  const place = useMemo(
+    () => (panelClip === null ? null : clipPlace(clips, panelClip, chapterNames)),
+    [clips, panelClip, chapterNames],
+  )
+  const panelClipRow = panelClip === null ? undefined : clips.find((c) => c.identity === panelClip)
+  const clipPanel = (
     <div className="timeline tl-cut-panel">
+      {place !== null && <ClipHeader place={place} />}
+      {panelClipRow !== undefined && (
+        <ClipTab
+          clip={panelClipRow}
+          clips={clips}
+          editing={editing}
+          drag={drag}
+          playhead={playhead}
+          selectedKey={selected?.identity === panelClipRow.identity ? selected.key : null}
+          onSelectCut={select}
+          onSelectClip={selectClip}
+          poster={posterControl('-clip', 'Use frame as poster', panelClipRow)}
+        />
+      )}
       <CutFields selected={selected} clips={clips} editing={editing} drag={drag} hintId={cutHintId} />
-      {suggestions.detail}
     </div>
   )
-  return { viewer, track, cutPanel }
+  // The selection announced once through the status below, when it changes to something: a
+  // clip, a cut or a suggestion (the card's is the Timeline section's). A selection kept across a
+  // remount is not announced again.
+  const words = useMemo(() => {
+    if (selected !== null) {
+      const at = editing.listed(selected.identity).filter((c) => !c.removed)
+      const n = at.findIndex((c) => c.key === selected.key) + 1
+      const name = place?.name
+      return n > 0 && name !== undefined ? cutSelectedWords(n, name) : null
+    }
+    return selectedClip !== null && place !== null
+      ? clipSelectedWords(place)
+      : suggestions.words
+  }, [selected, selectedClip, place, editing, suggestions.words])
+  const selectionKey =
+    selected !== null
+      ? `cut:${selected.identity}:${selected.key}`
+      : selectedClip !== null
+        ? `clip:${selectedClip}`
+        : (suggestions.selectedKey ?? null)
+  const announcedKey = useRef(selectionKey)
+  useEffect(() => {
+    if (announcedKey.current !== selectionKey) {
+      announcedKey.current = selectionKey
+      if (words !== null) {
+        setAnnouncement(words)
+      }
+    }
+  }, [selectionKey, words])
+  const suggestionPanel = <div className="timeline tl-cut-panel">{suggestions.detail}</div>
+  return { viewer, track, clipPanel, suggestionPanel }
 }
 
 /**

@@ -1,6 +1,6 @@
 /*
- * The title-card inspector (`Inspector.tsx`), the body of the card editor dialog: fields on one
- * side and the live preview on the other above 600 px, the preview leading below that.
+ * The title-card inspector (`Inspector.tsx`), docked in the workspace inspector's Title card tab
+ * (about 340 px wide): one column, the live preview above the fields.
  */
 @layer screens {
   .ci {
@@ -42,72 +42,17 @@
     min-inline-size: 0;
   }
 
-  /* Narrow (the dialog is a full-screen sheet): the preview leads, a compact strip that stays in view
-     at the top of the scrolling fields, so an edit is seen as it is made. */
+  /* The one live preview leads the column, at the inspector's width. */
   .ci-preview {
     order: -1;
-    position: sticky;
-    inset-block-start: 0;
-    z-index: 3;
-    inline-size: min(100%, calc(26svh * 16 / 9));
-    margin-inline: auto;
-    padding-block: var(--s-1);
-    background: var(--surface-raised);
+    inline-size: 100%;
   }
 
-  /* Wider than a phone: the fields, then the preview beside them. */
-  @media (min-width: 601px) {
-    .ci-body {
-      grid-template-columns: minmax(0, 1fr) minmax(14rem, 22rem);
-    }
-
-    .ci-preview {
-      order: 0;
-      inline-size: 100%;
-      margin-inline: 0;
-      padding-block: 0;
-      background: none;
-      inset-block-start: 0;
-    }
-  }
-
-  /*
-   * The dialog (`ui/Dialog` with `.ci-dialog`): the head and the Done row stay, the card's fields scroll
-   * inside. At 600 px and below it is the whole viewport.
-   */
-  .ci-dialog {
-    inline-size: min(60rem, calc(100vw - 2 * var(--s-4)));
-    overscroll-behavior: contain;
-
-    &[open] {
-      display: grid;
-      grid-template-rows: auto minmax(0, 1fr) auto;
-    }
-
-    & .dialog-fields {
-      min-block-size: 0;
-      overflow: auto;
-      overflow-x: hidden;
-    }
-
-    @media (max-width: 600px) {
-      inset: 0;
-      margin: 0;
-      inline-size: 100vw;
-      max-inline-size: 100vw;
-      block-size: 100dvh;
-      max-block-size: 100dvh;
-      border: 0;
-      border-radius: 0;
-      padding: var(--s-4);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .ci-dialog[open],
-    .ci-dialog[open]::backdrop {
-      transition: none;
-    }
+  .ci-title {
+    margin: 0;
+    font-size: 1rem;
+    overflow-wrap: anywhere;
+    flex: 1 1 100%;
   }
 
   .ci-pair {
@@ -512,7 +457,7 @@
     color: var(--err-fg);
   }
 
-  /* A coarse pointer: every control of the dialog takes a 44 px tap. */
+  /* A coarse pointer: every control of the editor takes a 44 px tap. */
   @media (pointer: coarse) {
     .ci :is(.btn, .field-input, .ci-swatch) {
       min-block-size: 2.75rem;

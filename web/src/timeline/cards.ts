@@ -1,7 +1,6 @@
 import type { EventDetail } from '../api/event.ts'
 import { cardIdOf } from '../edit/chapterBar.ts'
 import type { EventStyle } from '../edit/card/specs.ts'
-import type { TabId } from '../edit/card/tabs.ts'
 import type { DraftChapter } from '../edit/draft.ts'
 import { cardLimits } from './cardLength.ts'
 import type { CardRange, Tenths } from './cardLength.ts'
@@ -685,38 +684,3 @@ export function cardWords(
 
 // --- the selection ---------------------------------------------------------------------
 
-/**
- * The selected card, by its chapter's saved name, and whether its dialog is open; none is null.
- * `tab`: the dialog was asked to open on that tab (the workspace's Title cards button opens the
- * opening card on "All title cards in this event"); absent, the dialog picks its own.
- */
-export type CardSelection = { chapter: string; editing: boolean; tab?: TabId } | null
-
-export const cardSelection = {
-  /** Selects without opening the dialog (a press on a duration handle); the dialog stays as it was. */
-  select(state: CardSelection, chapter: string): CardSelection {
-    return state?.chapter === chapter ? state : { chapter, editing: false }
-  },
-  /** Selects and opens the dialog, also when the card is already selected; on `tab` if given. */
-  open(state: CardSelection, chapter: string, tab?: TabId): CardSelection {
-    if (state?.chapter === chapter && state.editing && state.tab === tab) {
-      return state
-    }
-    return tab === undefined ? { chapter, editing: true } : { chapter, editing: true, tab }
-  },
-  /** Closes the dialog; the card stays selected. */
-  dismiss(state: CardSelection): CardSelection {
-    return state === null || !state.editing ? state : { chapter: state.chapter, editing: false }
-  },
-  clear(state: CardSelection): CardSelection {
-    return state === null ? state : null
-  },
-  /** Ends a selection (and its dialog) whose chapter is not among `names`. */
-  chapters(state: CardSelection, names: readonly string[]): CardSelection {
-    return state === null || names.includes(state.chapter) ? state : null
-  },
-  /** A cut is selected: the card is not. */
-  selectCut(state: CardSelection): CardSelection {
-    return state === null ? state : null
-  },
-}

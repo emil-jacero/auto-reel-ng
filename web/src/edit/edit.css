@@ -664,6 +664,44 @@
     overflow-wrap: anywhere;
   }
 
+  /* The bin's row name selects the clip (`editor-selection`): text, not a chip. */
+  .clip-select {
+    display: inline;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+  }
+
+  /* The selected clip's row: a filled ground and a thick bar at its start, so it reads without colour. */
+  .clip-item[data-selected] {
+    background: var(--surface-2);
+    box-shadow: inset 4px 0 0 var(--fg);
+  }
+
+  .clip-item[data-selected] .clip-name {
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .clip-item:focus {
+    outline: none;
+  }
+
+  .clip-item:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+
   .clip-size,
   .clip-mtime {
     font-variant-numeric: tabular-nums;

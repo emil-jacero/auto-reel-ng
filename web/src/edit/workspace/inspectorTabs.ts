@@ -1,20 +1,44 @@
 /*
- * The workspace inspector's two tabs (`editor-workspace-layout`), as pure rules: their names and
- * the arrow-key order. A new cut or suggestion selection on the Timeline shows Cut
- * (`TimelinePanes.onCutSelected`). No DOM, no React.
+ * The workspace inspector's four tabs (`editor-selection`), as pure rules: their names, the
+ * arrow-key order, and which one shows. The tab follows the selection (`inspectorTab`); the
+ * operator may pick another by hand, and the next selection picks the tab again. No DOM, no React.
  */
 
-export type InspectorTab = 'event' | 'cut'
+import { inspectorTab, sameSelection } from './selection.ts'
+import type { Selection } from './selection.ts'
+
+export type InspectorTab = ReturnType<typeof inspectorTab>
 
 export const INSPECTOR_LIST_NAME = 'Inspector'
-export const INSPECTOR_TABS: readonly InspectorTab[] = ['event', 'cut']
+export const INSPECTOR_TABS: readonly InspectorTab[] = ['clip', 'card', 'suggestion', 'event']
 export const INSPECTOR_TAB_NAME: Record<InspectorTab, string> = {
+  clip: 'Clip',
+  card: 'Title card',
+  suggestion: 'Suggestion',
   event: 'Event',
-  cut: 'Cut',
 }
-/** The Cut tab with nothing selected. */
-export const CUT_TAB_EMPTY =
-  'Select a cut by its handle or its span, or a suggestion’s mark, on the Timeline: its fields show here.'
+/** What a tab with nothing of its kind selected says. */
+export const INSPECTOR_TAB_EMPTY: Record<Exclude<InspectorTab, 'event'>, string> = {
+  clip: 'Select a clip or a cut on the Timeline, or a clip in the bin: its fields show here.',
+  card: 'Select a title card on the Timeline, or a chapter’s Edit Titlecard in the bin: its card shows here.',
+  suggestion: 'Select a suggestion’s mark on the Timeline: its decision shows here.',
+}
+
+/** A tab the operator picked by hand, and the selection (and re-press count) it was picked over. */
+export type PickedTab = { tab: InspectorTab; sel: Selection; again: number }
+
+/** Whether a hand-picked tab still stands: only while the very selection it was made over stands. */
+export function pickStands(picked: PickedTab | null, sel: Selection, again: number): boolean {
+  return picked !== null && picked.again === again && sameSelection(picked.sel, sel)
+}
+
+/**
+ * The tab shown: the operator's pick while it stands, else the one the selection gives. A pick
+ * ends the moment the selection changes (the hook clears it then), so it never comes back later.
+ */
+export function shownTab(picked: PickedTab | null, sel: Selection, again: number): InspectorTab {
+  return picked !== null && pickStands(picked, sel, again) ? picked.tab : inspectorTab(sel)
+}
 
 /** The tab a key moves to from `current`: Left and Right wrap, Home and End jump; null: not a tab key. */
 export function inspectorTabAfterKey(current: InspectorTab, key: string): InspectorTab | null {
@@ -33,7 +57,6 @@ export function inspectorTabAfterKey(current: InspectorTab, key: string): Inspec
       return null
   }
 }
-
 
 /**
  * Whether title cards are on, in words, for the Event tab: the service's answer as the draft has

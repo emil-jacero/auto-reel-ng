@@ -7,7 +7,6 @@ import { decideName } from '../inlineName.ts'
 import {
   anyTitle,
   cardTitleShown,
-  doneHeld,
   nameLabel,
   nameStep,
   notChangedWords,
@@ -79,11 +78,6 @@ test('a rename is announced once, from the settled name; the old name back says 
 test('leaving a refused name says it was not changed and why; nothing refused says nothing', () => {
   assert.equal(notChangedWords(null), null)
   assert.equal(notChangedWords('Enter a name.'), 'Name not changed. Enter a name.')
-})
-
-test('Done is held by a refusal only', () => {
-  assert.equal(doneHeld('Enter a name.'), true)
-  assert.equal(doneHeld(null), false)
 })
 
 test('the field is named for a chapter or for the event', () => {

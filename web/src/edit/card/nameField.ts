@@ -3,7 +3,7 @@ import { decideName } from '../inlineName.ts'
 import type { NameCheck } from '../inlineName.ts'
 
 /*
- * The dialog's Name field (`edit-mode-declutter`), as pure rules over the existing name rules:
+ * The editor's Name field (`edit-mode-declutter`), as pure rules over the existing name rules:
  * `chapterNames.checkName` decides what a chapter may be called and `inlineName.decideName`
  * whether typing changes anything; nothing is re-implemented here. The field writes every
  * accepted name to the draft as it is typed, holds a refused one in the field with the refusal
@@ -39,14 +39,9 @@ export function nameStep(
   }
 }
 
-/** Whether Done is held: a refused name is in the field. */
-export function doneHeld(refusal: string | null): boolean {
-  return refusal !== null
-}
-
 /**
- * What the live region says once when the field settles (focus leaves it, or the dialog
- * closes): a rename from the name the field opened or last settled with, or nothing when the
+ * What the live region says once when the field settles (Enter is pressed, focus leaves it, or the
+ * selection leaves the card): a rename from the name the field opened or last settled with, or nothing when the
  * name is the same (typing the old name back is no edit). `notes` follows a chapter's words.
  */
 export function settleWords(
@@ -68,7 +63,7 @@ export function settleWords(
     : `Title set to “${now.trim()}”.`
 }
 
-/** What is said when a refused name is left behind (Escape, Close): the draft keeps the last accepted one. */
+/** What is said when a refused name is left behind (Escape, another selection): the draft keeps the last accepted one. */
 export function notChangedWords(refusal: string | null): string | null {
   return refusal === null ? null : `Name not changed. ${refusal}`
 }

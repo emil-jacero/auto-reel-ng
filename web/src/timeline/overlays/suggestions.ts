@@ -414,6 +414,14 @@ export function segmentSpan(segment: Pick<Suggestion, 'start' | 'end'>): string 
   return spanWords({ in: segment.start, out: segment.end })
 }
 
+/** The polite status when a suggestion is selected: `Suggestion: Black frames in s1.mp4, 0:58.1 to 1:00, selected`. */
+export function suggestionSelectedWords(
+  segment: Pick<Suggestion, 'kind' | 'start' | 'end'>,
+  clipName: string,
+): string {
+  return `Suggestion: ${kindWords(segment.kind)} in ${clipName}, ${segmentSpan(segment)}, selected`
+}
+
 /** `1.9 s`, `1:02.5`. */
 export function segmentLength(segment: Pick<Suggestion, 'start' | 'end'>): string {
   return formatLength(segment.end - segment.start)

@@ -6,7 +6,7 @@ import type { CardRange } from '../../timeline/cardLength.ts'
 import { CARD_WORDS, FieldShell, hintOf } from './Fields'
 
 /*
- * The card dialog's Length field (`edit-mode-declutter`): the card's length in seconds, in whole
+ * The card editor's Length field (`edit-mode-declutter`): the card's length in seconds, in whole
  * tenths, with the limits of the Timeline's length drag (`parseCardLength` over `cardLimits`).
  * An accepted value goes into the draft as it is typed, as the drag's release does, so the two
  * are one edit of `duration`; a refused one is explained under the field, the text kept and the
@@ -33,7 +33,7 @@ export function LengthField({
   locked: boolean
   onSet: (seconds: number) => void
   onClear: () => void
-  /** The field holds a refused length (true) or not: the dialog's tab says so. */
+  /** The field holds a refused length (true) or not: the editor's tab says so. */
   onRefused: (refused: boolean) => void
 }) {
   const [text, setText] = useState(value === null ? '' : String(value))

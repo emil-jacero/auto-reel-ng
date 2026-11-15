@@ -15,10 +15,13 @@ event when nothing is selected. Slice 2 of the workspace (HLD §6 item 10, GUI v
 - **Bin and track share it**: selecting in one shows it in the other and scrolls it into view.
 - **The inspector follows it** with tabs Clip · Title card · Suggestion · Event (Cut fields live in the Clip tab):
   - Clip: name, chapter and position, length in the movie, Trim In/Out as typed fields, rotate, its cuts with "+ Cut at
-    playhead", Use frame as poster, Ignore clip.
+    playhead", Use frame as poster. ("Ignore clip" comes with `track-drag-edit`, which builds the draft ignore edit.)
   - Title card: the card editor **docked** in the inspector (tabs, fields, live preview) instead of a modal dialog.
   - Suggestion: kind, clip and range, preview, Approve as cut (A) / Dismiss (R).
-  - Event: Details, Poster, Title cards On/Off, chapter list with Add chapter, card style.
+  - Event: Details, Poster, and a button "All title cards in this event" (with whether title cards are on, in
+    words) that shows the docked editor's "All title cards in this event" tab, which holds the card style and the
+    Title cards switch. Deferred: the chapter list with Add chapter stays in the bin, where it is today; it does not
+    move into the Event tab.
 - A press on empty track selects nothing, so the inspector shows Event.
 
 ## Non-goals

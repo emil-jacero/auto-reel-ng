@@ -15,7 +15,6 @@ import {
   cardSpecs,
   cardMap,
   cardPlacements,
-  cardSelection,
   cardWords,
   clipTimeAt,
   draftCardSpecs,
@@ -560,71 +559,6 @@ describe('cardWords', () => {
       cardWords('Dag 2', { durationMs: 4000, background: 'black', off: true }),
       'Title card for Dag 2, 4.0 s, on black, not enabled',
     )
-  })
-})
-
-describe('cardSelection', () => {
-  it('ends with its chapter and keeps the same object otherwise', () => {
-    const dag = cardSelection.select(null, 'Dag 2')
-    assert.deepEqual(dag, { chapter: 'Dag 2', editing: false })
-    assert.equal(cardSelection.select(dag, 'Dag 2'), dag)
-    assert.equal(cardSelection.chapters(dag, ['', 'Dag 2']), dag)
-    assert.equal(cardSelection.chapters(dag, ['']), null)
-    assert.equal(cardSelection.chapters(null, ['']), null)
-  })
-
-  it('clear and selectCut end it, and are no-ops when nothing is selected', () => {
-    const dag = cardSelection.select(null, 'Dag 2')
-    assert.equal(cardSelection.clear(dag), null)
-    assert.equal(cardSelection.selectCut(dag), null)
-    assert.equal(cardSelection.clear(null), null)
-    assert.equal(cardSelection.selectCut(null), null)
-  })
-})
-
-describe('cardSelection open and dismiss', () => {
-  it('open on a tab keeps the tab until the dialog closes', () => {
-    const opened = cardSelection.open(null, '', 'event')
-    assert.deepEqual(opened, { chapter: '', editing: true, tab: 'event' })
-    assert.equal(cardSelection.open(opened, '', 'event'), opened)
-    // Opened again without a tab, the dialog picks its own.
-    assert.deepEqual(cardSelection.open(opened, ''), { chapter: '', editing: true })
-    assert.deepEqual(cardSelection.dismiss(opened), { chapter: '', editing: false })
-    assert.deepEqual(cardSelection.open(cardSelection.select(null, ''), '', 'event'), opened)
-  })
-
-  it('open selects and opens, and reopens a selected card', () => {
-    const dag = cardSelection.select(null, 'Dag 2')
-    const opened = cardSelection.open(dag, 'Dag 2')
-    assert.deepEqual(opened, { chapter: 'Dag 2', editing: true })
-    assert.equal(cardSelection.open(opened, 'Dag 2'), opened)
-    assert.deepEqual(cardSelection.open(null, 'Dag 2'), { chapter: 'Dag 2', editing: true })
-    const closed = cardSelection.dismiss(opened)
-    assert.deepEqual(closed, { chapter: 'Dag 2', editing: false })
-    assert.deepEqual(cardSelection.open(closed, 'Dag 2'), { chapter: 'Dag 2', editing: true })
-  })
-
-  it('dismiss keeps the selection and is a no-op when nothing is open', () => {
-    const opened = cardSelection.open(null, 'Dag 2')
-    assert.equal(cardSelection.dismiss(opened)?.chapter, 'Dag 2')
-    const closed = cardSelection.dismiss(opened)
-    assert.equal(cardSelection.dismiss(closed), closed)
-    assert.equal(cardSelection.dismiss(null), null)
-  })
-
-  it('select never opens, and selecting another card closes the dialog', () => {
-    const opened = cardSelection.open(null, 'Dag 2')
-    assert.equal(cardSelection.select(opened, 'Dag 2'), opened)
-    assert.deepEqual(cardSelection.select(opened, 'Dag 3'), { chapter: 'Dag 3', editing: false })
-    assert.equal(cardSelection.select(null, 'Dag 3')?.editing, false)
-  })
-
-  it('retain and selectCut and clear end the dialog with the selection', () => {
-    const opened = cardSelection.open(null, 'Dag 2')
-    assert.equal(cardSelection.chapters(opened, ['']), null)
-    assert.equal(cardSelection.chapters(opened, ['Dag 2']), opened)
-    assert.equal(cardSelection.selectCut(opened), null)
-    assert.equal(cardSelection.clear(opened), null)
   })
 })
 

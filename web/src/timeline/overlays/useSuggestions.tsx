@@ -5,6 +5,7 @@ import { AnalysisBadge, ReanalyzeAlert, ReanalyzeButton } from '../../analysis/A
 import { clipNoteOf } from '../../analysis/badge'
 import type { AnalysisRead } from '../../analysis/badge'
 import type { AnalysisBinding } from '../../analysis/useEventAnalysis'
+import type { SelectionBinding } from '../../edit/workspace/useSelection.ts'
 import { Alert } from '../../ui/Alert'
 import type { TrackClip } from '../layout'
 import { timeToPx } from '../model'
@@ -30,6 +31,7 @@ import {
   standingRefusal,
   stepOfKey,
   suggestionKey,
+  suggestionSelectedWords,
   suggestionState,
 } from './suggestions'
 import type { Decision, Refusal, Suggestion } from './suggestions'
@@ -53,10 +55,12 @@ export type Suggestions = {
   lane: LaneSlot | undefined
   /** The notes (badge, Re-analyze, legend), drawn under the track. */
   strip: ReactNode
-  /** The selected mark's decision, drawn in the cut panel; null with no mark selected. */
+  /** The selected mark's decision, drawn in the Suggestion tab; null with no mark selected. */
   detail: ReactNode
   /** The selected mark's id while its decision is drawn; null otherwise. */
   selectedKey: string | null
+  /** The selected mark in words, for the polite status; null with none. */
+  words: string | null
 }
 
 type Context = {
@@ -65,8 +69,8 @@ type Context = {
   pps: number
   /** Put the playhead at a position and show it, without playing. */
   seekTo: (pos: Position) => void
-  /** Called on each selection of a mark (the workspace inspector shows its Cut tab). */
-  onSelect?: () => void
+  /** The page's one selection: a mark is selected through it, and ended by it. */
+  selection: Pick<SelectionBinding, 'selection' | 'set' | 'keep'>
 }
 
 function bySpan(a: Suggestion, b: Suggestion): number {
@@ -75,11 +79,12 @@ function bySpan(a: Suggestion, b: Suggestion): number {
 
 export function useSuggestions(
   control: AnalysisControl | undefined,
-  { clips, lay, pps, seekTo, onSelect }: Context,
+  { clips, lay, pps, seekTo, selection }: Context,
 ): Suggestions {
   const read = control?.binding.read ?? NO_READ
   const detailId = useId()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selectedId = selection.selection.kind === 'suggestion' ? selection.selection.id : null
+  const { set: setSelection, keep: keepSelection } = selection
   const [refusal, setRefusal] = useState<Refusal | null>(null)
   const [roving, setRoving] = useState<ReadonlyMap<string, string>>(new Map())
   // The mark that has focus, or is about to: it is drawn wherever its clip is.
@@ -175,10 +180,10 @@ export function useSuggestions(
   // A new read keeps the selected mark while it still lists it (by its dismissal key); else the
   // detail closes, and focus that it held goes back to the lane.
   useEffect(() => {
-    if (selectedId === null || keptSelection(selectedId, byId) !== null) {
+    if (selectedId === null || read.status !== 'ok' || keptSelection(selectedId, byId) !== null) {
       return
     }
-    setSelectedId(null)
+    keepSelection({ suggestions: new Set(byId.keys()) })
     setRefusal(null)
     if (document.activeElement === null || document.activeElement === document.body) {
       const first = refs.current.values().next()
@@ -186,7 +191,23 @@ export function useSuggestions(
         first.value.focus({ preventScroll: true })
       }
     }
-  }, [selectedId, byId])
+  }, [selectedId, byId, read.status, keepSelection])
+
+  // The selection ending (Escape, a clear) while focus was in the detail, which then unmounts:
+  // focus goes back to the mark that was selected, else the lane.
+  const previousId = useRef<string | null>(null)
+  useEffect(() => {
+    const was = previousId.current
+    previousId.current = selectedId
+    if (was === null || selectedId !== null) {
+      return
+    }
+    const active = document.activeElement
+    if (active === null || active === document.body) {
+      const target = refs.current.get(was) ?? refs.current.values().next().value
+      target?.focus({ preventScroll: true })
+    }
+  }, [selectedId])
 
   const tabStop = (clipIndex: number): string | null => {
     const marks = groups[clipIndex]?.marks ?? []
@@ -217,9 +238,8 @@ export function useSuggestions(
   }, [])
 
   const select = (mark: MarkModel) => {
-    setSelectedId(mark.id)
+    setSelection({ kind: 'suggestion', id: mark.id })
     setRefusal(null)
-    onSelect?.()
     setRoving((was) => new Map(was).set(mark.identity, mark.id))
     const clip = clips[mark.clipIndex]
     // The frame the suggestion starts on, held to the clip's kept frames (a mark partly in a
@@ -369,12 +389,13 @@ export function useSuggestions(
         }
 
   if (control === undefined) {
-    return { lane: undefined, strip: null, detail: null, selectedKey: null }
+    return { lane: undefined, strip: null, detail: null, selectedKey: null, words: null }
   }
   const ok = control.binding.read.status === 'ok'
   return {
     lane,
     selectedKey: selected === undefined || !ok ? null : selected.id,
+    words: selected === undefined || !ok ? null : suggestionSelectedWords(selected.segment, nameOf(selected)),
     strip: <Notes binding={control.binding} groups={groups} />,
     detail:
       selected === undefined || !ok ? null : (

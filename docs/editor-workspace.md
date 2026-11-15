@@ -77,7 +77,7 @@ selection shows Event. This replaces the stacked Details / Poster panels and the
 | 5.2 | **Clip:** Trim In / Out as numeric fields, plus the Q / W to-playhead shortcuts | new-web (fields) / reuse (Q/W) |
 | 5.3 | **Clip:** Rotate left / right with the current angle | reuse |
 | 5.4 | **Clip:** cut list (range, reason pill, remove) and "+ Cut at playhead" | reuse / new-web |
-| 5.5 | **Clip:** Use frame as poster; Ignore clip | reuse |
+| 5.5 | **Clip:** Use frame as poster; ~~Ignore clip~~ (moved to `track-drag-edit`, which builds the draft ignore edit) | reuse |
 | 5.6 | **Title card:** docked card editor — live preview, Name, Background Black / Video, Font, Length, Position, "Use event style" per field | reuse (moves out of the dialog) |
 | 5.7 | **Title card:** link to the event-wide card style ("All title cards in this event") | reuse |
 | 5.8 | **Suggestion:** state pill, kind, clip and range, frame preview, Approve as cut (A) / Dismiss (R), event totals | reuse |
@@ -109,7 +109,7 @@ spec is merged. Proposed 2026-11-15 under `openspec/changes/`.
 |---|---|---|---|---|
 | 0 | `track-draft-order` ✅ built 2026-11-15 | the track draws the draft's order and chapters; cards of added chapters built in the browser | — | 1–2 days |
 | 1 | `editor-workspace-layout` ✅ built 2026-11-15 (HLD D-28) | 1.x, 2.1/2.3/2.4, 3.1–3.3, 4.x, inspector Event/Cut tabs, 6.1–6.3, 6.7, 6.9, 6.10 | 0 | 2–3 days |
-| 2 | `editor-selection` | one selection, 3.2, 5.x (Clip tab, docked card editor), 6.11 | 1 | 1–2 days |
+| 2 | `editor-selection` ✅ built 2026-11-15 (HLD D-28) | one selection, 3.2, 5.x (Clip tab, docked card editor), 6.11 | 1 | 1–2 days |
 | 3 | `track-drag-edit` | 3.4, 6.4, 6.8, keyboard moves | 2 | 1–2 days |
 | 4 | `editor-undo` | 2.2 | 1 | 1 day |
 | 5 | `clip-split` | 6.12 — starts with a decision gate (explore with the user) | 3 | open |
@@ -126,6 +126,9 @@ Slice 1 as built (2026-11-15) left out four features of its "Covers" list, none 
 1.2 (the workspace follows the operator's theme rather than defaulting to dark, as the explore session decided),
 4.2 (the proxy chip), 4.5's full screen (Use as poster is there) and 6.3's lane labels. They are open for a later
 slice.
+
+Slice 2 as built (2026-11-15) covers 3.2, 5.1–5.4, 5.6–5.9 and the poster of 5.5; "Ignore clip" (5.5) moved to slice 3. 6.11 as
+built: a press on empty track selects nothing (the inspector then shows Event) rather than selecting the event.
 
 Decisions from the explore session (2026-11-15): no List/Workspace switch (the bin replaces the lists); target
 1280×720, not critical; light and dark both, following the existing theme setting; an added chapter's card is built

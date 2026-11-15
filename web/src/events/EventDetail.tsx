@@ -21,7 +21,7 @@ import { missingClipsReason } from '../jobs/labels'
 import { RenderControl } from '../jobs/RenderControl'
 import { MoviePanel } from '../movie/MoviePanel'
 import { useDismissals } from '../timeline/overlays/Dismissals'
-import { useCardSelection } from '../timeline/useCardSelection'
+import { useSelection } from '../edit/workspace/useSelection.ts'
 import { LIST_HREF } from '../route'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
@@ -124,8 +124,8 @@ function EventDetailBody({
   // The event's analysis: one read for the header's badge, Re-analyze and Edit mode's Timeline.
   // An analysis job seen ending found the suggestions again: the dismissals are forgotten.
   const analysis = useEventAnalysis(eventId, { onAnalyzed: dismissals.clear })
-  // The card selected on Edit mode's Timeline or chapter list: one selection, kept here.
-  const cards = useCardSelection()
+  // What is selected on Edit mode's Timeline, bin or chapter list: one selection, kept here.
+  const cards = useSelection()
   // While a save is in flight, Refresh and Stop editing wait for its answer.
   const saving = useSaving()
   const shown = useRef(false)

@@ -16,11 +16,11 @@ import type { EventStyle } from './specs.ts'
 import { useFonts } from './useFonts.ts'
 
 /*
- * "All title cards in this event" (`edit-mode-declutter`): the dialog's second tab. It holds the
+ * "All title cards in this event" (`edit-mode-declutter`): the editor's second tab. It holds the
  * event-wide `look.title_card` that every card inherits from (once the page's "Card style for
  * this event", `title-card-event-style`) and the Title cards On / Off switch (once its own
  * section, `title-card-toggle`, D-25). It edits the editor's one draft, keeps no value of its
- * own, and the dialog's one preview shows the card being edited under it. An unset field says it
+ * own, and the editor's one preview shows the card being edited under it. An unset field says it
  * follows the project default and shows the value in force when the page read it; a field the
  * operator cleared although the saved style set it says "Project default" with no number,
  * because the page does not know it (Principle I). The engine decides what is valid; its

@@ -94,7 +94,7 @@
     scroll-padding-block: calc(2 * var(--panel-head-h) + var(--s-2)) var(--s-2);
   }
 
-  /* The inspector's Event and Cut tabs (`Workspace.tsx`), drawn as the card dialog's. */
+  /* The inspector's tabs (`Inspector.tsx`), drawn as the card dialog's. */
   .ws-insp-tabs {
     position: sticky;
     inset-block-start: 0;
@@ -150,21 +150,73 @@
     }
   }
 
-  /* The Cut tab with no cut or suggestion selected says how to select one. */
-  .ws-cut-empty {
+  /* A Clip or Suggestion tab with nothing of its kind selected says how to select one. */
+  .ws-empty {
     margin: 0;
     color: var(--fg-muted);
   }
 
-  .ws-cut-slot:has(.tl-cut-panel:not(:empty)) ~ .ws-cut-empty {
+  .ws-slot:has(.tl-cut-panel:not(:empty), .ci) ~ .ws-empty {
     display: none;
   }
 
-  .ws-cut-slot:not(:has(.tl-cut-panel:not(:empty))) {
+  .ws-slot:not(:has(.tl-cut-panel:not(:empty), .ci)) {
     display: none;
   }
 
-  /* The Event tab's way to the card dialog's event tab, and the switch's state in words. */
+  /* The Clip tab's header (`timeline/ClipHeader.tsx`): the clip, where it stands, how long it is. */
+  .tl-clip-head {
+    display: grid;
+    gap: var(--s-1);
+    min-inline-size: 0;
+
+    & > * {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .tl-clip-name {
+    font-size: 1rem;
+  }
+
+  .tl-clip-where,
+  .tl-clip-length {
+    color: var(--fg-muted);
+  }
+
+  /* The Clip tab's controls (`timeline/ClipTab.tsx`): trim fields and rotate, cuts, poster. */
+  .ct-tab {
+    display: grid;
+    gap: var(--s-3);
+    min-inline-size: 0;
+  }
+
+  /* The poster control carries the Timeline toolbar's `grid-area: poster`: in this grid that name
+     would add a column beside the trim fields and the cuts. */
+  .ct-tab > .tl-poster {
+    grid-area: auto;
+  }
+
+  .ct-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--s-2) var(--s-3);
+  }
+
+  .ct-cuts {
+    display: grid;
+    justify-items: start;
+    gap: var(--s-2);
+    min-inline-size: 0;
+
+    & > .cut-list {
+      justify-self: stretch;
+    }
+  }
+
+  /* The Event tab's way to the card editor's event tab, and the switch's state in words. */
   .ws-cards {
     display: grid;
     justify-items: start;

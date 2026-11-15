@@ -346,7 +346,7 @@ src/
 │   ├── ClipOrderList.tsx one chapter's clips: its sortable list, a drop target, buttons; Remove / Undo
 │   ├── ChapterTools.tsx  a chapter's tools row, a deleted chapter's placeholder, Add chapter
 │   ├── ChapterDialogs.tsx the name dialog (Add chapter) and Move clips
-│   ├── EditTitlecard.tsx the chapter header bar's Edit Titlecard button (selects the card, opens the dialog)
+│   ├── EditTitlecard.tsx the chapter header bar's Edit Titlecard button (selects the card and asks the docked editor to open)
 │   ├── inlineName.ts     the keep / unchanged / refused rule, the title line, the unkept-name test (pure, + inlineName.test.ts)
 │   ├── chapterBar.ts     the button's words and a chapter's card id (pure)
 │   ├── chapterNames.ts   chapter name rules and what a name means for later clips (pure)
@@ -751,6 +751,11 @@ visit only, are no edit and need no Save. `decideControl` (`overlays/control.ts`
 `locked`, `announce`); the decision rules (`decideApprove`, `decideDismiss` in `suggestions.ts`) are pure and tested under `npm test`. While a save or a
 Move clips is pending the decisions are unavailable and the detail says so.
 
+`src/edit/workspace/` holds the workspace's one selection (`editor-selection`): `selection.ts` is the pure model (nothing, clip,
+cut, card or suggestion; `keptSelection`, `inspectorTab`), `useSelection.ts` the setters and Escape, held in `EventDetail`;
+`Inspector.tsx` and `inspectorTabs.ts` are the Clip, Title card, Suggestion and Event tabs that follow it. The title-card
+inspector below is docked in the Title card tab, not a dialog.
+
 `src/edit/card/` is the title-card inspector (`title-card-inspector`): `model.ts` (the nine overrides,
 change detection, the preview request, which field a refusal names), `preview.ts` (the debounce, abort and
 retry state machine, with injected timers and client), `specs.ts` (the draft card as the blocks and rows
@@ -759,7 +764,7 @@ draft slice and the write are in `edit/draft.ts`. Pure parts are tested by `npm 
 
 `src/edit/cardStyle.ts` and `card/EventTab.tsx` are the event-wide card style (`title-card-event-style`):
 `cardStyle.ts` is the pure model (the seven `look.title_card` fields, `styleChanged`, `applyStyle` which gives the
-`look` a save writes, `overrides` / `overrideWords`, `effective`), `card/EventTab.tsx` the dialog's second tab,
+`look` a save writes, `overrides` / `overrideWords`, `effective`), `card/EventTab.tsx` the card editor's second tab,
 "All title cards in this event" (`edit-mode-declutter`). The style is `Draft.style` in `edit/draft.ts` beside the card drafts; the
 inspector's font and colour controls (`card/FontField.tsx`, `card/ColorField.tsx`) are shared with the panel.
 

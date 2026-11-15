@@ -1,5 +1,5 @@
-import { useId, useRef, useState, useSyncExternalStore } from 'react'
-import type { CSSProperties, KeyboardEvent, PointerEvent, RefObject } from 'react'
+import { memo, useCallback, useId, useRef, useState, useSyncExternalStore } from 'react'
+import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent, RefObject } from 'react'
 
 import type { ClipTurns } from '../cuts/ReadCuts'
 import type { Turn } from '../rotate/turn.ts'
@@ -163,7 +163,7 @@ export type CardLaneModel = {
   /** The selected card's chapter or null. */
   selected: string | null
   onSelect: (chapter: string) => void
-  /** Activating a block's body opens the card's dialog. */
+  /** Activating a block's body shows the card's editor in the inspector. */
   onOpen: (chapter: string) => void
   /** A press in a black card's block also puts the playhead there (the track time of the press). */
   onPlace: (chapter: string, trackMs: number) => void
@@ -277,7 +277,9 @@ type BlockProps = {
   index: number
   left: number
   pps: number
-  window: { from: number; to: number }
+  /** The track px the filmstrip window spans (primitives, so that a block can be memoized). */
+  windowFrom: number
+  windowTo: number
   turn: Turn
   noPicture: boolean
   onFilmFailed: (identity: string) => void
@@ -286,23 +288,32 @@ type BlockProps = {
 }
 
 /** A clip's block over its kept extent: its filmstrip, its interior cuts and its name. */
-function ClipBlock({ clip, eventId, index, left, pps, window, turn, noPicture, onFilmFailed, after, descId }: BlockProps & { clip: TrackClip }) {
+const ClipBlock = memo(function ClipBlock({
+  clip,
+  eventId,
+  index,
+  left,
+  pps,
+  windowFrom,
+  windowTo,
+  turn,
+  noPicture,
+  onFilmFailed,
+  after,
+  descId,
+}: BlockProps & { clip: TrackClip }) {
   const keptMs = extentMs(clip.kept)
   const widthPx = timeToPx(keptMs, pps)
   const detailed = widthPx >= MIN_DETAIL_PX
   return (
     <div
       className="tl-clip"
-      role="group"
-      tabIndex={-1}
-      aria-label={clip.name}
-      aria-describedby={descId}
       data-index={index}
       data-after={after || undefined}
       data-no-picture={noPicture || undefined}
       style={{ insetInlineStart: left, inlineSize: Math.max(1, widthPx) }}
     >
-      <span id={descId} className="visually-hidden">
+      <span id={descId} className="visually-hidden" aria-hidden="true">
         {clipDescription(clip.facts.durationMs, clip.cutCount, keptMs)}
       </span>
       {detailed && !noPicture && (
@@ -310,7 +321,7 @@ function ClipBlock({ clip, eventId, index, left, pps, window, turn, noPicture, o
           eventId={eventId}
           clip={clip}
           pps={pps}
-          window={{ from: window.from - left, to: window.to - left }}
+          window={{ from: windowFrom - left, to: windowTo - left }}
           turn={turn}
           onFail={onFilmFailed}
         />
@@ -345,7 +356,122 @@ function ClipBlock({ clip, eventId, index, left, pps, window, turn, noPicture, o
       )}
     </div>
   )
-}
+})
+
+/**
+ * A clip's control: a transparent button over its block, in the tools' layer so that Tab reaches
+ * it right before the clip's Trim In (clip, Trim In, cut handles, Trim Out). A press selects the
+ * clip and never moves the playhead; a double press places it (`editor-selection`, design D2).
+ * The edge zones and the cut handles come after it in the layer and so take their own presses.
+ */
+const ClipPress = memo(function ClipPress({
+  identity,
+  name,
+  index,
+  left,
+  widthPx,
+  descId,
+  selected,
+  after,
+  onSelect,
+  onPress,
+  onPlace,
+  onScrub,
+}: {
+  identity: string
+  name: string
+  index: number
+  left: number
+  widthPx: number
+  descId: string
+  selected: boolean
+  after: boolean
+  onSelect: (identity: string) => void
+  /** A click: selects the cut whose span holds the press, else the clip. */
+  onPress: (identity: string, clientX: number) => void
+  onPlace: (clientX: number) => void
+  /** A mouse or pen drag on the body scrubs the playhead, as on the bare lane. */
+  onScrub: (clientX: number, phase: ScrubPhase) => void
+}) {
+  const press = useRef<{ id: number; x: number; scrubbing: boolean } | null>(null)
+  // A drag that scrubbed ends in a click; that click selects nothing.
+  const dragged = useRef(false)
+  return (
+    <div
+      className="tl-clip-press"
+      role="button"
+      tabIndex={0}
+      aria-label={name}
+      aria-pressed={selected}
+      aria-describedby={descId}
+      data-index={index}
+      data-selected={selected || undefined}
+      data-after={after || undefined}
+      style={{ insetInlineStart: left, inlineSize: Math.max(1, widthPx) }}
+      onPointerDown={(event: PointerEvent<HTMLElement>) => {
+        if (event.button !== 0 || event.pointerType === 'touch') {
+          return
+        }
+        dragged.current = false
+        press.current = { id: event.pointerId, x: event.clientX, scrubbing: false }
+        event.currentTarget.setPointerCapture(event.pointerId)
+      }}
+      onPointerMove={(event: PointerEvent<HTMLElement>) => {
+        const p = press.current
+        if (p === null || p.id !== event.pointerId) {
+          return
+        }
+        if (!p.scrubbing) {
+          if (Math.abs(event.clientX - p.x) < TAP_PX) {
+            return
+          }
+          p.scrubbing = true
+          dragged.current = true
+          onScrub(p.x, 'start')
+        }
+        onScrub(event.clientX, 'move')
+      }}
+      onPointerUp={(event: PointerEvent<HTMLElement>) => {
+        const p = press.current
+        if (p === null || p.id !== event.pointerId) {
+          return
+        }
+        press.current = null
+        if (p.scrubbing) {
+          onScrub(event.clientX, 'end')
+        }
+      }}
+      onPointerCancel={(event: PointerEvent<HTMLElement>) => {
+        const p = press.current
+        press.current = null
+        if (p !== null && p.id === event.pointerId && p.scrubbing) {
+          onScrub(event.clientX, 'end')
+        }
+      }}
+      onClick={(event: MouseEvent<HTMLElement>) => {
+        if (dragged.current) {
+          dragged.current = false
+          return
+        }
+        // Enter and Space come through onKeyDown; a click with no pointer (detail 0) selects the clip.
+        onPress(identity, event.detail === 0 ? Number.NaN : event.clientX)
+      }}
+      onDoubleClick={(event: MouseEvent<HTMLElement>) => onPlace(event.clientX)}
+      onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
+        if (
+          event.target === event.currentTarget &&
+          (event.key === 'Enter' || event.key === ' ') &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.metaKey
+        ) {
+          event.preventDefault()
+          onSelect(identity)
+        }
+      }}
+    />
+  )
+})
 
 /**
  * The block of a clip whose edge is dragged (`clip-edge-trim`): drawn from the edge in the air,
@@ -391,6 +517,10 @@ export function Track({
   drag,
   selected,
   onSelect,
+  selectedClip,
+  onSelectClip,
+  onPressClip,
+  onClearSelection,
   cardLane,
   shifting = null,
   snapping,
@@ -429,6 +559,14 @@ export function Track({
   selected: { identity: string; key: string } | null
   /** A cut is selected: by its handle's focus or press. */
   onSelect: (identity: string, key: string) => void
+  /** The selected clip's identity, or null (the page's one selection). */
+  selectedClip: string | null
+  /** A press on a clip's block (or its Enter) selects it; it does not move the playhead. */
+  onSelectClip: (identity: string) => void
+  /** A click on a clip's block at track px `x` (NaN: none): a cut's span there, else the clip. */
+  onPressClip: (identity: string, x: number) => void
+  /** A press on empty track selects nothing. */
+  onClearSelection: () => void
   /** The title cards' lane; absent, the Timeline draws none. */
   cardLane?: CardLaneModel
   /** A black card's or a clip edge's drag in progress (`ShiftFrom`), or null. */
@@ -446,6 +584,30 @@ export function Track({
   const ruler = useScrub(canvas, onScrub, focusGrip, 'ruler')
   const lane = useScrub(canvas, onScrub, focusGrip, 'lane')
   const grab = useScrub(canvas, onScrub, focusGrip, 'ruler')
+  // A double press on a clip places the playhead there (a clip press alone does not).
+  const scrubNow = useRef(onScrub)
+  scrubNow.current = onScrub
+  const pressNow = useRef(onPressClip)
+  pressNow.current = onPressClip
+  const pressAt = useCallback((identity: string, clientX: number) => {
+    const box = canvas.current?.getBoundingClientRect()
+    pressNow.current(identity, clientX - (box?.left ?? 0))
+  }, [])
+  const scrubClip = useCallback((clientX: number, phase: ScrubPhase) => {
+    const box = canvas.current?.getBoundingClientRect()
+    if (phase === 'start') {
+      gripRef.current?.focus({ preventScroll: true })
+    }
+    scrubNow.current(clientX - (box?.left ?? 0), phase, 'ruler')
+  }, [gripRef])
+  const placeAt = useCallback(
+    (clientX: number) => {
+      const box = canvas.current?.getBoundingClientRect()
+      gripRef.current?.focus({ preventScroll: true })
+      scrubNow.current(clientX - (box?.left ?? 0), 'tap', 'ruler')
+    },
+    [gripRef],
+  )
   // Every cut handle and edge tool: one nearest-wins press test across them.
   const [targets] = useState<PressTargets>(() => new Map())
   const edgeDragged = shifting !== null && shifting.kind === 'edge' ? shifting.identity : null
@@ -483,6 +645,23 @@ export function Track({
       const detailed = widthPx >= MIN_DETAIL_PX
       const descId = `${base}-c${index}`
       const after = behind(shifting, lay.startsMs[index])
+      handleNodes.push(
+        <ClipPress
+          key={`${clip.identity}|press`}
+          identity={clip.identity}
+          name={clip.name}
+          index={index}
+          left={left}
+          widthPx={widthPx}
+          descId={descId}
+          selected={selectedClip === clip.identity}
+          after={after}
+          onSelect={onSelectClip}
+          onPress={pressAt}
+          onPlace={placeAt}
+          onScrub={scrubClip}
+        />,
+      )
       if (detailed || focusedEdge === clip.identity) {
         const listed = editing.listed(clip.identity)
         const edge = (side: 'start' | 'end') => (
@@ -505,6 +684,7 @@ export function Track({
             keysId={edgeKeysId}
             lockedId={lockedId}
             selectedKey={selected?.identity === clip.identity ? selected.key : null}
+            clipSelected={selectedClip === clip.identity}
             targets={targets}
             snapping={snapping}
             onSelect={onSelect}
@@ -567,7 +747,8 @@ export function Track({
         index,
         left,
         pps,
-        window: { from: windowFrom, to: windowTo },
+        windowFrom,
+        windowTo,
         turn: turns.get(clip.identity) ?? 0,
         noPicture: noPicture.has(clip.identity),
         onFilmFailed,
@@ -592,6 +773,18 @@ export function Track({
       // browser that makes only scrolling boxes focusable would otherwise drop the focus when Fit
       // leaves nothing to scroll, and the next zoom key would go nowhere.
       tabIndex={-1}
+      onPointerDown={(event: PointerEvent<HTMLElement>) => {
+        // A press on the track's empty ground (not a scrollbar) selects nothing.
+        const box = event.currentTarget
+        const rect = box.getBoundingClientRect()
+        if (event.clientX - rect.left >= box.clientWidth || event.clientY - rect.top >= box.clientHeight) {
+          return
+        }
+        const target = event.target as HTMLElement
+        if (target === box || target === canvas.current || target.classList.contains('tl-analysis')) {
+          onClearSelection()
+        }
+      }}
       onKeyDown={(event: KeyboardEvent) => {
         const key = trackZoomKey({
           key: event.key,
