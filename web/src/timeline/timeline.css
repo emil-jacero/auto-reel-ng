@@ -130,6 +130,43 @@
     }
   }
 
+  /*
+   * The Timeline in parts (`editor-workspace-layout` D2): the viewer's transport (Play, the
+   * readout, Use as poster) and the track's tool row (the movie's length, zoom). Stacked, the
+   * parts sit one under the other with the Timeline's own gap.
+   */
+  .tl-parts {
+    display: grid;
+    gap: var(--s-3);
+    min-inline-size: 0;
+  }
+
+  .tl-controls.tl-transport {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      'play readout'
+      'poster poster';
+  }
+
+  .tl-controls.tl-tools {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'zoom'
+      'stat';
+  }
+
+  @container tl (min-width: 31rem) {
+    .tl-controls.tl-transport {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-areas: 'play readout poster';
+    }
+
+    .tl-controls.tl-tools {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas: 'stat zoom';
+    }
+  }
+
   /* Play as wide as Pause: both words hold the same cell, the one not shown kept invisible. */
   .tl-play {
     grid-area: play;

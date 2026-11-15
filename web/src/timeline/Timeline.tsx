@@ -1,5 +1,6 @@
 import './timeline.css'
 
+import type { ReactNode } from 'react'
 import {
   useCallback,
   useEffect,
@@ -124,16 +125,8 @@ function heldEdge(
   return identity !== undefined && (side === 'start' || side === 'end') ? { identity, side } : null
 }
 
-export function Timeline({
-  eventId,
-  clips,
-  chapterNames,
-  prepare,
-  analysis,
-  editing,
-  cards,
-  cutHintId,
-}: {
+/** What the Timeline takes: the same for the stacked `Timeline` and for `useTimeline`. */
+export type TimelineProps = {
   eventId: string
   clips: readonly TrackClip[]
   /** The drawn chapters' names by index, as `clips[].chapter` and `cards.specs` count them. */
@@ -158,7 +151,44 @@ export function Timeline({
   }
   /** The id of the Timeline help's paragraph that says what the cut fields take (Edit mode). */
   cutHintId: string
-}) {
+}
+
+/**
+ * The Timeline's three parts over one state (design D2 of `editor-workspace-layout`): the viewer
+ * (the picture and the transport), the track (the tool row, the lanes and their notes) and the cut
+ * panel (the selected cut's fields and the selected suggestion's decision). Each is its own
+ * `.timeline` box, so it can sit in a pane of its own; there is still one `<video>`.
+ */
+export type TimelineParts = {
+  viewer: ReactNode
+  track: ReactNode
+  cutPanel: ReactNode
+  /** A cut or a suggestion is selected: the inspector shows its Cut tab. */
+  cutSelected: boolean
+}
+
+/** Today's stacked Timeline: the three parts one under the other. */
+export function Timeline(props: TimelineProps) {
+  const parts = useTimeline(props)
+  return (
+    <div className="tl-parts">
+      {parts.viewer}
+      {parts.track}
+      {parts.cutPanel}
+    </div>
+  )
+}
+
+export function useTimeline({
+  eventId,
+  clips,
+  chapterNames,
+  prepare,
+  analysis,
+  editing,
+  cards,
+  cutHintId,
+}: TimelineProps): TimelineParts {
   const posterWhyId = useId()
   const clipLay = useMemo(() => trackLayout(clips), [clips])
   const turns = editing.turns
@@ -815,50 +845,110 @@ export function Timeline({
       () => setPosterFailed(true),
     )
   }
-  return (
-    <div className="timeline" data-trimming={trimming || undefined} data-edge-side={edgeSide ?? undefined}>
-      <div className="tl-stage" data-turned>
-        {held ? (
-          <p className="tl-stage-held">{PREVIEW_OPEN}</p>
-        ) : (
-          <video
-            ref={video.videoRef}
-            className="tl-video"
-            preload="auto"
-            playsInline
-            aria-hidden="true"
-            tabIndex={-1}
-            {...video.handlers}
-          />
-        )}
-        {!held && (
-          <CardLayer
-            playhead={playhead}
-            placements={placements}
-            specs={specs}
-            pictures={pictures}
-            playing={video.playing}
-          />
-        )}
-      </div>
-
-      <div className="tl-controls">
+  const stage = (
+    <div className="tl-stage" data-turned>
+      {held ? (
+        <p className="tl-stage-held">{PREVIEW_OPEN}</p>
+      ) : (
+        <video
+          ref={video.videoRef}
+          className="tl-video"
+          preload="auto"
+          playsInline
+          aria-hidden="true"
+          tabIndex={-1}
+          {...video.handlers}
+        />
+      )}
+      {!held && (
+        <CardLayer
+          playhead={playhead}
+          placements={placements}
+          specs={specs}
+          pictures={pictures}
+          playing={video.playing}
+        />
+      )}
+    </div>
+  )
+  const transport = (
+    <div className="tl-controls tl-transport">
+      <button type="button" className="btn btn-primary tl-play" onClick={toggle}>
+        <Icon name={video.playing ? 'pause' : 'play'} />
+        <span className="tl-play-words">
+          <span data-off={video.playing || undefined} aria-hidden={video.playing || undefined}>
+            {PLAY}
+          </span>
+          <span data-off={!video.playing || undefined} aria-hidden={!video.playing || undefined}>
+            {PAUSE}
+          </span>
+        </span>
+      </button>
+      <PlayheadReadout playhead={playhead} clips={clips} lay={lay} longestCardMs={longestCardMs} />
+      <div className="tl-poster">
         <button
           type="button"
-          className="btn btn-primary tl-play"
-          onClick={toggle}
+          className="btn btn-secondary"
+          aria-disabled={posterWhy !== null || undefined}
+          aria-describedby={posterWhyId}
+          title={posterWhy ?? undefined}
+          onClick={usePoster}
+          onBlur={() => setPosterTip(null)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && posterTip !== null) {
+              event.preventDefault()
+              setPosterTip(null)
+            }
+          }}
         >
-          <Icon name={video.playing ? 'pause' : 'play'} />
-          <span className="tl-play-words">
-            <span data-off={video.playing || undefined} aria-hidden={video.playing || undefined}>
-              {PLAY}
-            </span>
-            <span data-off={!video.playing || undefined} aria-hidden={!video.playing || undefined}>
-              {PAUSE}
-            </span>
-          </span>
+          <Icon name="film" />
+          {USE_AS_POSTER}
         </button>
-        <PlayheadReadout playhead={playhead} clips={clips} lay={lay} longestCardMs={longestCardMs} />
+        {/* Always there: its words are the button's description while it cannot act. */}
+        <span id={posterWhyId} className="visually-hidden">
+          {posterWhy ?? ''}
+        </span>
+        {posterTip !== null && (
+          <span className="tl-poster-tip" aria-hidden="true">
+            {posterTip}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+  const viewer = (
+    <div className="timeline tl-viewer">
+      {stage}
+      {transport}
+      {posterFailed && (
+        <Alert
+          tone="warn"
+          role="alert"
+          title="The picture could not be copied."
+          detail="The poster is not changed."
+        />
+      )}
+      {note !== null && (
+        <Alert
+          tone={note.tone}
+          role="alert"
+          title={note.title}
+          detail={note.detail}
+          action={
+            'gone' in note && note.gone ? <PrepareButton control={prepare} primary={false} /> : undefined
+          }
+        />
+      )}
+      {note !== null && 'gone' in note && note.gone && <PrepareJob control={prepare} />}
+    </div>
+  )
+  const track = (
+    <div
+      className="timeline tl-track-part"
+      data-trimming={trimming || undefined}
+      data-edge-side={edgeSide ?? undefined}
+    >
+      <div className="tl-controls tl-tools">
         <MovieStat
           drag={drag}
           shifting={shifting}
@@ -917,44 +1007,7 @@ export function Timeline({
             {FIT}
           </button>
         </div>
-        <div className="tl-poster">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            aria-disabled={posterWhy !== null || undefined}
-            aria-describedby={posterWhyId}
-            title={posterWhy ?? undefined}
-            onClick={usePoster}
-            onBlur={() => setPosterTip(null)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape' && posterTip !== null) {
-                event.preventDefault()
-                setPosterTip(null)
-              }
-            }}
-          >
-            <Icon name="film" />
-            {USE_AS_POSTER}
-          </button>
-          {/* Always there: its words are the button's description while it cannot act. */}
-          <span id={posterWhyId} className="visually-hidden">
-            {posterWhy ?? ''}
-          </span>
-          {posterTip !== null && (
-            <span className="tl-poster-tip" aria-hidden="true">
-              {posterTip}
-            </span>
-          )}
-        </div>
       </div>
-      {posterFailed && (
-        <Alert
-          tone="warn"
-          role="alert"
-          title="The picture could not be copied."
-          detail="The poster is not changed."
-        />
-      )}
 
       <Track
         eventId={eventId}
@@ -986,14 +1039,6 @@ export function Timeline({
         zoomHold={zoomHold}
       />
 
-      <CutFields
-        selected={selected}
-        clips={clips}
-        editing={editing}
-        drag={drag}
-        hintId={cutHintId}
-      />
-
       {decorators === 'invalid' && <p className="tl-summary">{CARDS_UNKNOWN}</p>}
 
       {pictures.failures.map((failure) => (
@@ -1018,20 +1063,15 @@ export function Timeline({
       {noPicture.size > 0 && (
         <Alert tone="warn" role="note" title={FILM_FAILED} detail={FILM_FAILED_DETAIL} />
       )}
-      {note !== null && (
-        <Alert
-          tone={note.tone}
-          role="alert"
-          title={note.title}
-          detail={note.detail}
-          action={
-            'gone' in note && note.gone ? <PrepareButton control={prepare} primary={false} /> : undefined
-          }
-        />
-      )}
-      {note !== null && 'gone' in note && note.gone && <PrepareJob control={prepare} />}
     </div>
   )
+  const cutPanel = (
+    <div className="timeline tl-cut-panel">
+      <CutFields selected={selected} clips={clips} editing={editing} drag={drag} hintId={cutHintId} />
+      {suggestions.detail}
+    </div>
+  )
+  return { viewer, track, cutPanel, cutSelected: selected !== null || suggestions.detail !== null }
 }
 
 /**
