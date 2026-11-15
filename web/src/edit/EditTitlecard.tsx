@@ -43,7 +43,7 @@ export const EditTitlecard = memo(function EditTitlecard({
       type="button"
       className="btn btn-secondary edit-titlecard"
       aria-label={editTitlecardName(heading)}
-      title={compact ? EDIT_TITLECARD : undefined}
+      title={compact ? editTitlecardName(heading) : undefined}
       aria-pressed={pressed}
       aria-disabled={unavailable || undefined}
       onClick={() => {

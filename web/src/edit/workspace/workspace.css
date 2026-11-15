@@ -583,118 +583,120 @@
       padding-inline: var(--s-3) var(--s-2);
     }
 
-    /* The marks line as the bin's sticky toolbar (D2): two fixed rows, 88 px with a fine pointer.
-       Chapter headings stick under it, and focus scrolled into view clears both. */
-    --bin-toolbar-h: 5.5rem;
-    --header-h: var(--bin-toolbar-measured, var(--bin-toolbar-h));
-    scroll-padding-block: calc(
-        var(--bin-toolbar-measured, var(--bin-toolbar-h)) + var(--panel-head-h) + var(--s-2)
-      )
-      var(--s-2);
-
-    & > .mark-line {
-      --mark-control-h: 2rem;
-      --mark-gap: var(--s-2);
-      position: sticky;
-      inset-block-start: 0;
-      z-index: 4;
-      grid-template-columns: minmax(0, 1fr);
-      box-sizing: border-box;
-      min-block-size: var(--bin-toolbar-h);
-      block-size: max-content;
-      padding-block: var(--s-2);
-      border-block-end: 1px solid var(--border);
-      background: var(--surface);
-      align-content: start;
-    }
-
-    & .mark-line .help-toggle {
-      block-size: var(--mark-control-h);
-      min-block-size: var(--mark-control-h);
-      min-inline-size: var(--mark-control-h);
-      padding-inline: 0;
-      justify-content: center;
-      position: relative;
-    }
-
-    & .mark-line .help-label,
-    & .mark-words,
-    & .mark-move-label {
-      position: absolute;
-      inline-size: 1px;
-      block-size: 1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-      white-space: nowrap;
-    }
-
-    & .mark-line-slot {
-      min-inline-size: 0;
-      justify-content: flex-end;
-    }
-
-    /* An open Clips help scrolls inside the toolbar rather than covering the bin. */
-    & .mark-line > .help-panel {
-      max-block-size: 25vh;
-      overflow: auto;
-    }
-
-    & .mark-actions {
-      display: flex;
-      flex-wrap: nowrap;
-      gap: var(--mark-gap);
-    }
-
-    & .mark-rotate {
-      flex: none;
-      flex-wrap: nowrap;
-
-      & .btn {
-        position: relative;
-        min-inline-size: var(--mark-control-h);
-        inline-size: var(--mark-control-h);
-        padding-inline: 0;
-        justify-content: center;
-      }
-    }
-
-    & .mark-move {
-      flex: 1 1 auto;
-      flex-wrap: nowrap;
-      position: relative;
-
-      & select {
-        flex: 1 1 auto;
-        inline-size: auto;
-        min-inline-size: 0;
-      }
-
-      & .btn {
-        flex: none;
-      }
-    }
-
-    @media (pointer: coarse) {
-      --bin-toolbar-h: 7rem;
-
-      @media (width >= 960px) {
-        /* The wrapped header's two lines (75 px), for the sticky offsets. */
-        --panel-head-h: 4.6875rem;
-        --bin-btn: 2.75rem;
-
-        /* Four 44 px buttons do not fit a 240 px bin beside the name: they wrap to a second line. */
-        & .edit-chapter > .panel-header {
-          flex-wrap: wrap;
-          padding-block: var(--s-1);
-        }
-
-        & .edit-chapter > .panel-header > .chapter-actions {
-          margin-inline-start: auto;
-        }
-      }
+    @media (width >= 960px) {
+      /* The marks line as the bin's sticky toolbar (D2): two fixed rows, 88 px with a fine pointer.
+         Chapter headings stick under it, and focus scrolled into view clears both. */
+      --bin-toolbar-h: 5.5rem;
+      --header-h: var(--bin-toolbar-measured, var(--bin-toolbar-h));
+      scroll-padding-block: calc(
+          var(--bin-toolbar-measured, var(--bin-toolbar-h)) + var(--panel-head-h) + var(--s-2)
+        )
+        var(--s-2);
 
       & > .mark-line {
-        --mark-control-h: 2.75rem;
+        --mark-control-h: 2rem;
+        --mark-gap: var(--s-2);
+        position: sticky;
+        inset-block-start: 0;
+        z-index: 4;
+        grid-template-columns: minmax(0, 1fr);
+        box-sizing: border-box;
+        min-block-size: var(--bin-toolbar-h);
+        block-size: max-content;
+        padding-block: var(--s-2) calc(var(--s-2) - 1px);
+        border-block-end: 1px solid var(--border);
+        background: var(--surface);
+        align-content: start;
+      }
+
+      & .mark-line .help-toggle {
+        block-size: var(--mark-control-h);
+        min-block-size: var(--mark-control-h);
+        min-inline-size: var(--mark-control-h);
+        padding-inline: 0;
+        justify-content: center;
+        position: relative;
+      }
+
+      & .mark-line .help-label,
+      & .mark-words,
+      & .mark-move-label {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
+      & .mark-line-slot {
+        min-inline-size: 0;
+        justify-content: flex-end;
+      }
+
+      /* An open Clips help scrolls inside the toolbar rather than covering the bin. */
+      & .mark-line > .help-panel {
+        max-block-size: 25vh;
+        overflow: auto;
+      }
+
+      & .mark-actions {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: var(--mark-gap);
+      }
+
+      & .mark-rotate {
+        flex: none;
+        flex-wrap: nowrap;
+
+        & .btn {
+          position: relative;
+          min-inline-size: var(--mark-control-h);
+          inline-size: var(--mark-control-h);
+          padding-inline: 0;
+          justify-content: center;
+        }
+      }
+
+      & .mark-move {
+        flex: 1 1 auto;
+        flex-wrap: nowrap;
+        position: relative;
+
+        & select {
+          flex: 1 1 auto;
+          inline-size: auto;
+          min-inline-size: 0;
+        }
+
+        & .btn {
+          flex: none;
+        }
+      }
+
+      @media (pointer: coarse) {
+        --bin-toolbar-h: 7rem;
+
+        @media (width >= 960px) {
+          /* The wrapped header's two lines (75 px), for the sticky offsets. */
+          --panel-head-h: 4.6875rem;
+          --bin-btn: 2.75rem;
+
+          /* Four 44 px buttons do not fit a 240 px bin beside the name: they wrap to a second line. */
+          & .edit-chapter > .panel-header {
+            flex-wrap: wrap;
+            padding-block: var(--s-1);
+          }
+
+          & .edit-chapter > .panel-header > .chapter-actions {
+            margin-inline-start: auto;
+          }
+        }
+
+        & > .mark-line {
+          --mark-control-h: 2.75rem;
+        }
       }
     }
   }
