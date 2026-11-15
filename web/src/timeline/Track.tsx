@@ -277,7 +277,9 @@ type BlockProps = {
   index: number
   left: number
   pps: number
-  window: { from: number; to: number }
+  /** The track px the filmstrip window spans (primitives, so that a block can be memoized). */
+  windowFrom: number
+  windowTo: number
   turn: Turn
   noPicture: boolean
   onFilmFailed: (identity: string) => void
@@ -286,7 +288,20 @@ type BlockProps = {
 }
 
 /** A clip's block over its kept extent: its filmstrip, its interior cuts and its name. */
-function ClipBlock({ clip, eventId, index, left, pps, window, turn, noPicture, onFilmFailed, after, descId }: BlockProps & { clip: TrackClip }) {
+const ClipBlock = memo(function ClipBlock({
+  clip,
+  eventId,
+  index,
+  left,
+  pps,
+  windowFrom,
+  windowTo,
+  turn,
+  noPicture,
+  onFilmFailed,
+  after,
+  descId,
+}: BlockProps & { clip: TrackClip }) {
   const keptMs = extentMs(clip.kept)
   const widthPx = timeToPx(keptMs, pps)
   const detailed = widthPx >= MIN_DETAIL_PX
@@ -306,7 +321,7 @@ function ClipBlock({ clip, eventId, index, left, pps, window, turn, noPicture, o
           eventId={eventId}
           clip={clip}
           pps={pps}
-          window={{ from: window.from - left, to: window.to - left }}
+          window={{ from: windowFrom - left, to: windowTo - left }}
           turn={turn}
           onFail={onFilmFailed}
         />
@@ -341,7 +356,7 @@ function ClipBlock({ clip, eventId, index, left, pps, window, turn, noPicture, o
       )}
     </div>
   )
-}
+})
 
 /**
  * A clip's control: a transparent button over its block, in the tools' layer so that Tab reaches
@@ -732,7 +747,8 @@ export function Track({
         index,
         left,
         pps,
-        window: { from: windowFrom, to: windowTo },
+        windowFrom,
+        windowTo,
         turn: turns.get(clip.identity) ?? 0,
         noPicture: noPicture.has(clip.identity),
         onFilmFailed,
