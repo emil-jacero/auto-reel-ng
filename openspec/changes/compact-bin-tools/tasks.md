@@ -4,7 +4,7 @@ never from the repo, with PUT/POST/DELETE intercepted. The layout targets are fi
 
 ## 1. Bin width and rows (web/src/edit, web/src/edit/workspace)
 
-- [ ] 1.1 Bin width `clamp(240px, 22vw, 320px)` on `html[data-workspace]` (design D1). Verify with Playwright:
+- [x] 1.1 Bin width `clamp(240px, 22vw, 320px)` on `html[data-workspace]` (design D1). Verify with Playwright:
   - the bin is 282 px at 1280×720 and 317 px at 1440×900
   - the picture is no smaller than before at either size
   - no horizontal scroll from 960 to 1440 px
