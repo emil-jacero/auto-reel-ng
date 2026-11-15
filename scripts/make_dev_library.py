@@ -40,7 +40,7 @@ from auto_reel_ng.ffmpeg.runtime import FfmpegRuntime
 from auto_reel_ng.persistence.config import resolve_database_url
 from auto_reel_ng.persistence.engine import make_engine, make_session_factory, session_scope
 from auto_reel_ng.persistence.job_store import JobStore
-from auto_reel_ng.persistence.models import Job, JobStatus
+from auto_reel_ng.persistence.models import Job, JobKind, JobStatus
 from auto_reel_ng.reel.writer import round_trip_yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -119,9 +119,16 @@ def _cut_clips(samples: Path, clips_dir: Path) -> None:
 
 
 def _render_through_queue(library: Path, store: JobStore) -> None:
-    """Enqueue every stale event and run a worker until this project's queue drains."""
+    """Enqueue every stale event and run a worker until this project's renders drain.
+
+    The worker is given the library as its root: without one it takes the current directory,
+    and its automatic analysis sweep then enqueues the repository's own folders as events.
+    Only renders are waited for; analysis the sweep enqueues is left for the next worker.
+    """
     _auto_reel("enqueue", str(library))
-    worker = subprocess.Popen([str(Path(sys.executable).with_name("auto-reel")), "worker"])
+    worker = subprocess.Popen(
+        [str(Path(sys.executable).with_name("auto-reel")), "worker", str(library)]
+    )
     try:
         deadline = time.monotonic() + WORKER_TIMEOUT_S
         while time.monotonic() < deadline:
@@ -129,7 +136,7 @@ def _render_through_queue(library: Path, store: JobStore) -> None:
                 job
                 for status in (JobStatus.QUEUED, JobStatus.RUNNING)
                 for job in store.list_by_status(status)
-                if job.project_root == str(library)
+                if job.project_root == str(library) and job.kind == JobKind.RENDER
             ]
             if not active:
                 break
