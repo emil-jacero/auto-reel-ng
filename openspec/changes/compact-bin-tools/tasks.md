@@ -43,5 +43,5 @@ never from the repo, with PUT/POST/DELETE intercepted. The layout targets are fi
   - `docs/editor-workspace.md`: note the bin's width and the compact tools under slice 1, and update 1.4's "bin
     240 px"
   - HLD D-28: one line on the bin's width
-- [ ] 3.3 Gates in podman: `npm test`, `npm run check`, `npm run build`. Then run
+- [x] 3.3 Gates in podman: `npm test`, `npm run check`, `npm run build`. Then run
   `openspec validate compact-bin-tools --strict`.
