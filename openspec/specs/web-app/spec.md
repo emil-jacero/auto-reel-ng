@@ -581,6 +581,14 @@ words, paired with an icon, and never as a color alone. The same holds for warni
 each shows its words and an icon. Tones SHALL be consistent across screens: the same status has the same
 tone and icon on every page.
 
+One carve-out: in the rows of the workspace's clip bin (including the row of a missing clip the operator removed), at every window
+width, with a fine pointer, a clip's status SHALL be shown as its icon alone. Its words SHALL stay in the row as visually hidden text, so the status
+keeps its name for assistive technology, and SHALL be the icon's tooltip. Each clip status a bin row can show
+(Included, New, Missing, Ignored and Excluded) SHALL have its own icon there, distinct in shape from every other
+clip status's, so the status is never told by color alone. With a coarse pointer, and everywhere outside the
+workspace's clip bin (the event page's tables), a clip's status keeps its
+words beside the icon.
+
 In both color schemes, text SHALL meet WCAG 2.1 AA contrast: at least 4.5:1 for normal-size text, and at
 least 3:1 for large text and for the focus indicator against its background. This includes the words inside
 status labels and secondary ("muted") text. As in WCAG, the label of a control that is currently
@@ -609,6 +617,18 @@ system palette, that loader SHALL stay visible, in the same color as the button'
   `2024-06-27 - Grillning med grannar` while the service takes two seconds to answer
 - **THEN** during those seconds Render shows a loader in the same color as its label, in place of its icon,
   and the loader is not drawn in the button's background color
+
+#### Scenario: A clip's status in the bin is its icon alone with a fine pointer
+- **WHEN** Edit mode opens on `2024-08-02 - Badutflykt - Varberg` in a 1280×720 window with a fine pointer, light and dark
+- **THEN** in the bin the new clip's row shows an icon for its status and no visible word of its label, the row's text for assistive technology (the visually hidden words) reads "New, not yet in reel.yaml" and the icon's tooltip is "New, not yet in reel.yaml", and the icons of Included, New, Missing, Ignored and Excluded differ in shape, not only in color
+
+#### Scenario: The bin's status is icon-only in a narrow window too
+- **WHEN** the same event is opened in a 900 px wide window with a fine pointer
+- **THEN** the bin's new clip's row shows the icon and no visible word of its label, as in the wide window
+
+#### Scenario: A clip's status keeps its words elsewhere
+- **WHEN** the same event is opened with a coarse pointer in a 1280×720 window, and the event page is viewed outside the workspace
+- **THEN** the new clip's row, and the event page's clip rows, show "New, not yet in reel.yaml" beside its icon
 
 ### Requirement: The screens are operable by keyboard
 
@@ -779,7 +799,7 @@ by any path, SHALL move keyboard focus to the page's level-one heading.
 
 While in Edit mode, the editor's chapter lists and metadata fields SHALL take the place of the chapter tables,
 the facts and the description. Each chapter keeps its level-two heading, and each clip row keeps the facts the
-table shows: its position, the clip's name as the event page's table names it, its status in words, size and
+table shows: its position, the clip's name as the event page's table names it, its status in words (in the clip bin with a fine pointer, as its icon with the words hidden, "State is never shown by color alone"), size and
 modification time, with absent facts shown as absent. The event's verdict and latest job stay shown. Leaving
 Edit mode, by any path, SHALL read the event again and show the tables. Only the operator's own actions SHALL
 end Edit mode or change what it holds: a read of the event that the page would start by itself while Edit mode
@@ -807,7 +827,9 @@ Each such clip counted as moved SHALL show its position from when Edit mode open
 another chapter SHALL count as one moved clip, and SHALL show the chapter it came from instead.
 
 Clips the event ignores are not part of the play order. Each chapter SHALL list them after its other clips,
-marked as ignored, and they SHALL NOT be movable or counted in the chapter's positions. A missing clip SHALL
+marked as ignored, except in the workspace's clip bin from 960 CSS pixels wide, which lists every chapter's ignored
+clips after the last chapter, under a caption that names the chapter ("The clip bin holds the chapters' clip lists");
+there they still count as listed by that chapter. Either way they SHALL NOT be movable or counted in the chapter's positions. A missing clip SHALL
 stay listed and movable, and SHALL never be dropped from its chapter, except when the operator removes it
 with its own control (see "Edit mode removes a missing clip from reel.yaml on request"). A NEW clip SHALL be
 movable like any other.
@@ -845,7 +867,7 @@ movable like any other.
   `Main`, and `Morgon` plays no clip
 
 #### Scenario: An ignored clip is listed but cannot move
-- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a window narrower than 960 px
 - **THEN** `Main` lists `s1710001.mp4` and then `s1710004.mp4`, marked as ignored, and `s1710004.mp4` has no
   handle and no move controls
 
@@ -863,6 +885,10 @@ movable like any other.
   read
 - **THEN** the page shows the unparseable-document failure in words, with the service's detail, and offers
   no editing
+
+#### Scenario: In the wide bin ignored clips follow the chapters
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window
+- **THEN** `Main` lists only `s1710001.mp4`, `Kvällen` follows it directly, and after `Kvällen` and before Add chapter the bin lists, under "Ignored clips" and "Main · 1 ignored clip, not played", `s1710004.mp4` marked as ignored, with no handle and no move controls; in a 900 px wide window `Main` lists `s1710001.mp4` and then `s1710004.mp4`, and there is no "Ignored clips" heading
 
 ### Requirement: The event page edits the event's metadata
 
@@ -1708,7 +1734,7 @@ Removing a clip SHALL:
 - take it out of its chapter's play order, so that the chapter's remaining clips are numbered, and their
   positions announced, without it
 - list it under its chapter, after the clips the chapter plays, as removed from `reel.yaml` when the edits are
-  saved. The listing keeps the clip's name, as the event page's table names it, and its status in words, and
+  saved. The listing keeps the clip's name, as the event page's table names it, and its status in words (in the workspace's clip bin with a fine pointer, as the status icon with its words kept as hidden text and tooltip, see "State is never shown by color alone"), and
   offers an **Undo** control that names the clip that way to assistive technology.
 - move keyboard focus to that Undo control, and announce that the clip will be removed from `reel.yaml` when
   the edits are saved
@@ -2499,7 +2525,7 @@ be reachable with the keyboard and SHALL name, to assistive technology, the chap
   SHALL show and announce why the chapter cannot be deleted.
 
 **The header bar.** Every chapter's header bar, the event's own chapter's too, SHALL hold, in this order, the chapter's name as plain
-text, an **Edit Titlecard** button and the chapter's clip count; the chapter's tools (Move up, Move down, Delete, offered by the rules above) stay in their own row under the bar, which is sticky and keeps one line. The
+text, the chapter's clip count and an **Edit Titlecard** button; the chapter's tools (Move up, Move down, Delete, offered by the rules above) stay in their own row under the bar, which is sticky and keeps one line. In the workspace's clip bin, Edit Titlecard SHALL show an icon only at every window width, keeping its name and offering its words as a tooltip. In the bin from 960 CSS pixels wide (the side pane; below that the panes stack and the bin keeps the tools row under the bar) the bar SHALL instead hold the tools itself, after the clip count, so that with a fine pointer a chapter takes one row above its clips: there Move up, Move down and Delete SHALL show an icon only, keep their names and reasons, and offer their names as tooltips, and the bar SHALL be at most 36 CSS pixels tall. With a coarse pointer the bar keeps the 44 CSS pixel targets and wraps onto a second line. The
 button SHALL show an icon and the words "Edit Titlecard", SHALL be named "Edit title card for <name>" (the event's own chapter: its
 heading) and SHALL open the title card dialog on the "This title card" tab ("A selected title card opens its inspector in Edit mode"). A
 chapter's section SHALL show nothing between its header bar and its clips but the tools row and the notes of this requirement and of "Edit mode says what
@@ -2579,6 +2605,12 @@ move:
 
 While a save is in flight, every chapter control and Add chapter SHALL say that it is unavailable and SHALL
 change nothing when pressed.
+
+#### Scenario: A chapter's header in the bin is one row
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window with a fine pointer
+- **THEN**
+  - `Kvällen`'s header is one row holding, in this order, its name, its clip count, and icon buttons named "Edit title card for Kvällen", "Move chapter Kvällen up", "Move chapter Kvällen down" and "Delete chapter Kvällen", each offering its name as a tooltip
+  - no row of tools lies between that header and its first clip, and the header is at most 36 CSS pixels tall
 
 #### Scenario: A first chapter added to a one-chapter event
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, whose clips are all in its own chapter, the
@@ -2771,7 +2803,7 @@ change nothing when pressed.
 #### Scenario: A lone chapter whose only clip is ignored
 - **WHEN** Edit mode opens on `2024-10-06 - Bara ignorerad`, an event that lists one chapter, whose only clip
   `s1710004.mp4` is ignored
-- **THEN** the chapter lists the ignored clip under its heading and says "It plays no clip. A chapter without
+- **THEN** the chapter lists the ignored clip (under its heading below 960 px; from 960 px under "Ignored clips" directly after it, captioned with the chapter's name) and says "It plays no clip. A chapter without
   clips is left out of the movie." It does not mention dragging clips or Move marked to…
 
 #### Scenario: A second chapter brings the hint back
@@ -6170,7 +6202,7 @@ and with no drag at all. A clip's Move up and Move down still never take it into
 reorders clips within a chapter").
 
 On a coarse pointer the picker and Move SHALL each take a tap anywhere in an area at least 44 CSS pixels tall that does
-not overlap another control's. The group SHALL wrap in a window 320 CSS pixels wide, on its own row under the marks line's other controls, its label above the picker and the picker beside Move, without a horizontal page scroll, in both color schemes. The group SHALL keep its place and its
+not overlap another control's. The group SHALL wrap in a window 320 CSS pixels wide, on its own row under the marks line's other controls, its label above the picker and the picker beside Move, without a horizontal page scroll, in both color schemes. In the workspace's clip bin the group SHALL instead share the toolbar's second row with Rotate marked left and right, its label being the group's name and not shown ("The marks line is one aligned unit"). The group SHALL keep its place and its
 height whether or not a clip is marked, so that marking the first clip moves no row, and its focus ring SHALL be
 visible in both color schemes and in forced colors. Reading a screen SHALL NOT change what is chosen.
 
@@ -6334,7 +6366,8 @@ to… ("Edit mode marks clips to move together", "Edit mode moves the marked cli
 - **Consistent gaps.** The gap between two controls of a group, between two groups and between two rows SHALL each be one value, the same in every row and at every width.
 - **Rows.** The first row SHALL hold the Clips help's toggle and, at its end, the count and Clear marks; the second SHALL hold Rotate marked left and right, then the Move marked to… group (label, picker,
   Move) where it fits; the reason SHALL be shown only after Move is pressed while it is unavailable, as one muted line below the controls, starting at the toolbar's left edge, and SHALL go when the marks, the chosen chapter or the save state change the reason. The reason SHALL NOT float beside Move. Marking or unmarking a clip SHALL move no row of the toolbar other than that line.
-- **Narrow windows.** Where the toolbar does not fit a row, it SHALL wrap by whole groups: the Move group goes on a row of its own with the label above, the picker filling the
+- **In the workspace's clip bin from 960 CSS pixels wide.** The side pane is narrow (240 to 320 CSS pixels), so there, with a fine pointer, the toolbar SHALL keep exactly the two rows above and SHALL NOT wrap further. Rotate marked left and right SHALL show an icon only and offer their names as tooltips; the label "Move marked to…" SHALL name the group without being shown; the Clips help toggle SHALL show its icon alone, 32 CSS pixels square, with its name and its tooltip "Help: Clips"; the picker SHALL fill the second row between the Rotate buttons and Move. The toolbar SHALL be at most 88 CSS pixels tall, SHALL stay at the top of the bin while the bin scrolls, and keep its height whether or not a clip is marked. With a coarse pointer the 44 CSS pixel targets stand: the toolbar keeps the icon-only Rotate buttons, but the Move group wraps to a row of its own when the picker would be left under 7rem wide, so that the chosen chapter can always be read, and the toolbar scrolls with the bin rather than staying at its top.
+- **Narrow windows.** Outside the side-pane bin (the stacked workspace below 960 CSS pixels, and everywhere off the workspace), where the toolbar does not fit a row, it SHALL wrap by whole groups: the Move group goes on a row of its own with the label above, the picker filling the
   row beside Move; Rotate marked left and right share a row where they fit and otherwise take a row each at the same width. Every wrapped row SHALL keep the one height and the
   one axis, and nothing SHALL scroll horizontally at 320 CSS pixels.
 - The names, descriptions, `aria-disabled` states and reasons of the controls ("Edit mode moves the marked clips to a chapter") are unchanged.
@@ -6352,6 +6385,17 @@ to… ("Edit mode marks clips to move together", "Edit mode moves the marked cli
 - **WHEN** the operator marks a clip
 - **THEN** no row of the toolbar other than that line and no chapter below it moves, and the line says "Choose a chapter."
 
+#### Scenario: The bin's toolbar is two rows
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window with a fine pointer, and the operator marks `Kvällen/s1710002.mp4` and scrolls the bin down
+- **THEN**
+  - the toolbar's first row holds the Clips help toggle, "1 clip marked" and Clear marks, and its second row Rotate marked left, Rotate marked right, the chapter picker and Move
+  - Rotate marked left and right show icons and offer their names as tooltips, and the group around the picker is named "Move marked to…"
+  - the toolbar was at most 88 CSS pixels tall before and after the mark, no clip row moved when the clip was marked, and the toolbar stays at the bin's top as it scrolls
+
+#### Scenario: The bin's toolbar with a coarse pointer
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1024×768 window with a coarse pointer
+- **THEN** the chapter picker is wide enough to show "Choose a chapter" (the Move group is on its own row below the Rotate buttons), every toolbar control is at least 44 px high, and the toolbar scrolls away with the bin
+
 #### Scenario: The toolbar wraps in aligned rows
 - **WHEN** the window is 390 px wide and again 320 px, light and dark
 - **THEN** the Move group is on its own row with the label above and the picker beside Move, every row's controls share one height and one centre line (within 1 px), the
@@ -6361,9 +6405,9 @@ to… ("Edit mode marks clips to move together", "Edit mode moves the marked cli
 
 The event page, in the read view and in Edit mode, SHALL keep instructional and explanatory text out of sight until asked for, and SHALL keep in sight every text that reports a state or needs an action. Each of these sections SHALL have **one** Help toggle in its header, a button named "Help" with an information icon: **Details** (Edit mode), **Poster** (Edit mode), **Timeline** (the read view and Edit mode), **Clips** (Edit mode: the row above the chapters, which holds the marks line) and the **Title cards** tab of the title card dialog. A section with no such text SHALL have no toggle.
 
-The toggle SHALL be a `button` with `aria-expanded` and `aria-controls` naming its panel, operable by Enter and Space, with a target at least 44 CSS pixels high and wide, and with a visible focus ring. Pressed, it SHALL show the panel under the header: a calm, muted block that is not an alert, holds the section's explanations as paragraphs, and moves nothing above it. The panel SHALL stay in the document when closed (`hidden`), so that a control it describes keeps its `aria-describedby`. Closed is the default. Each section's state SHALL be kept per section (not per event) in `localStorage`, read when the section mounts, written when the toggle is pressed, and every access SHALL be guarded: a browser that refuses storage, or throws, SHALL leave the toggle working for the page visit, closed at the start, and SHALL show no error. The Timeline's state SHALL be one state for both modes.
+The toggle SHALL be a `button` with `aria-expanded` and `aria-controls` naming its panel, operable by Enter and Space, with a target at least 44 CSS pixels high and wide (the Clips toggle in the bin from 960 CSS pixels wide with a fine pointer is the one exception: a 32 CSS pixel square showing its icon alone, with the same name and the tooltip "Help: Clips"), and with a visible focus ring. Pressed, it SHALL show the panel under the header: a calm, muted block that is not an alert, holds the section's explanations as paragraphs, and moves nothing above it. The panel SHALL stay in the document when closed (`hidden`), so that a control it describes keeps its `aria-describedby`. Closed is the default. Each section's state SHALL be kept per section (not per event) in `localStorage`, read when the section mounts, written when the toggle is pressed, and every access SHALL be guarded: a browser that refuses storage, or throws, SHALL leave the toggle working for the page visit, closed at the start, and SHALL show no error. The Timeline's state SHALL be one state for both modes.
 
-Every text of these classes SHALL be in a panel and SHALL NOT be shown as a line of its own: the Details form's lead ("What reel.yaml says…", "Save writes these to reel.yaml…"), the Poster's "Pick the frame on the Timeline…", the Timeline's note that cards fade ("The Timeline fades a card…"), the note that dismissed suggestions return on reload, the cut fields' hint ("Enter takes a time; Escape puts the old one back"; the fields keep it as their `aria-describedby`), the Clips instructions ("Drag a clip by its handle…", "Mark clips with the box…", "The event's own chapter: …", "Ignored clips are not played and cannot be moved", "A missing clip is not on disk…"), the command that analyses an event (`auto-reel analyze <root>`, then Refresh), and the title cards tab's lead ("Every title card of this event follows these…"). The text SHALL be the same words as before. The classes that SHALL stay visible are: a refusal, an error or a warning; an unsaved or pending change and what saving will add ("Saving adds 2 new clips to reel.yaml"); a count ("2 clips marked", "1 ignored clip, not played"); the state words of a clip, a chapter, the poster and the render; a field's inherited-value hint; a reason an unavailable control gives (see "Edit mode moves the marked clips to a chapter"); the icon legend of the analysis lane; and the empty states of a chapter. Controls, fields, their names and what pressing them does SHALL NOT change.
+Every text of these classes SHALL be in a panel and SHALL NOT be shown as a line of its own: the Details form's lead ("What reel.yaml says…", "Save writes these to reel.yaml…"), the Poster's "Pick the frame on the Timeline…", the Timeline's note that cards fade ("The Timeline fades a card…"), the note that dismissed suggestions return on reload, the cut fields' hint ("Enter takes a time; Escape puts the old one back"; the fields keep it as their `aria-describedby`), the Clips instructions ("Drag a clip by its handle…", "Mark clips with the box…", "The event's own chapter: …", "Ignored clips are not played and cannot be moved", "A missing clip is not on disk…", "A new clip joins reel.yaml once its chapter’s order, one of its cuts, or the list of chapters is saved." while a new clip waits), the command that analyses an event (`auto-reel analyze <root>`, then Refresh), and the title cards tab's lead ("Every title card of this event follows these…"). The text SHALL be the same words as before. The classes that SHALL stay visible are: a refusal, an error or a warning; an unsaved or pending change and what saving will add ("Saving adds 2 new clips to reel.yaml"); a count ("2 clips marked", "1 ignored clip, not played"); the state words of a clip (in the workspace's clip bin with a fine pointer, as the status icon with its words kept as hidden text and tooltip, see "State is never shown by color alone"), a chapter, the poster and the render; a field's inherited-value hint; a reason an unavailable control gives (see "Edit mode moves the marked clips to a chapter"); the icon legend of the analysis lane; and the empty states of a chapter. Controls, fields, their names and what pressing them does SHALL NOT change.
 
 #### Scenario: A section's help is closed, opens and closes
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` with nothing stored
@@ -6670,11 +6714,25 @@ Ctrl+S / Cmd+S SHALL save as today.
 
 The bin SHALL list every chapter with its clips in compact rows (thumbnail, name, kept length, status) and SHALL keep
 every action the chapter lists have: reorder and move between chapters by pointer and by keyboard, marks and Move
-marked to…, Add/rename/delete chapter, and the New, Ignored and Missing clips with their actions.
+marked to…, Add/rename/delete chapter, the New and Missing clips with their actions, and the clips the event ignores.
+
+From 960 CSS pixels wide the bin SHALL be a side pane as wide as 22% of the window, at least 240 and at most 320 CSS pixels; below 960 the panes stack and it is as wide as the window. With a fine pointer, a row of a clip a chapter plays SHALL take two lines and be at most 70 CSS pixels tall: handle, position, name and the row's tools, then the thumbnail, the length it plays, its status and Cuts. In a bin narrower than about 17rem (272 CSS pixels) Rotate left and right go to the second line, before Cuts; from that width all of the row's tools are on the first line. In the bin, with a fine pointer, a clip's status is shown as its icon alone ("State is never shown by color alone"); with a coarse pointer it keeps its words. In a window from 960 CSS pixels wide, a chapter in the bin SHALL list only the clips it plays and the missing clips the operator removed. The bin SHALL list the clips the event ignores after the last chapter and before Add chapter, under the heading "Ignored clips": each chapter's ignored clips together, in the chapters' order and in the order the chapter lists them, under a caption that names the chapter and says how many it holds ("Main · 1 ignored clip, not played"), each named as that chapter names it, marked as ignored, with no position, handle or control. These clips still count as listed by their chapter. The bin SHALL show no such heading when the event ignores no clip. Below 960 CSS pixels each chapter lists its ignored clips after its other clips. The bin SHALL show no line of its own about new clips: the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says how many saving adds.
 
 #### Scenario: Keyboard reorder in the bin
 - **WHEN** the operator focuses `s1710002.mp4`'s drag handle, presses Space, ArrowUp, Space
 - **THEN** `s1710002.mp4` is first in its chapter, the move is announced, and the Timeline draws it first
+
+#### Scenario: Clip rows visible at the target window
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`, with a fine pointer and no clip marked
+- **THEN** in a 1280×720 window the bin shows, below its toolbar and without scrolling, at least 3 whole rows of the clips its chapters play, and in a 1440×900 window all 4 of them; the ignored `s1710004.mp4` is listed after them
+
+#### Scenario: A new clip in the bin
+- **WHEN** Edit mode opens on `2024-08-02 - Badutflykt - Varberg`, whose `reel.yaml` lists two of its three clips, and the operator moves `s1710001.mp4` below `s1710003.mp4`
+- **THEN** the bin shows no line about new clips, the new clip's row has the status "New, not yet in reel.yaml": with a fine pointer an icon whose tooltip and visually hidden text are those words, with no visible word ("State is never shown by color alone"), the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says that saving adds 1 new clip to `reel.yaml`
+
+#### Scenario: Ignored clips in the bin
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window, and then in a 900 px wide window
+- **THEN** the wide bin shows "Ignored clips" after `Kvällen`, with `Main · 1 ignored clip, not played` above `s1710004.mp4`, and `Main` lists only `s1710001.mp4`; the 900 px page lists `s1710004.mp4` under `Main` and has no such heading ("The event page reorders clips within a chapter")
 
 #### Scenario: 400 clips
 - **WHEN** the event has 400 clips
