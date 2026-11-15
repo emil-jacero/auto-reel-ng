@@ -1,7 +1,11 @@
 # Local development tasks. Run `task --list` for the overview.
 #
-#   task dev:serve                      # DB + API + worker + Vite (hot reload), Ctrl-C stops all
-#   task dev:serve DEVICE=cpu           # render on the CPU instead of the detected GPU
+#   task dev:serve                      # DB + API + Vite (hot reload), no worker; Ctrl-C stops all
+#   task dev:serve WORKER=1             # also a worker: renders, proxies and analysis run
+#   task dev:serve WORKER=1 DEVICE=cpu  # ... rendering on the CPU instead of the detected GPU
+#
+# Without a worker the dev library keeps the states make_dev_library.py built (a queued job
+# stays queued, no analysis sweep runs), so dev:reset is needed far less often.
 #   task dev:serve LIBRARY=/path/to/lib API_PORT=8101 WEB_PORT=5174
 #   task dev:stop                       # stop leftovers of a killed dev:serve, and the dev DB
 #   task dev:reset                      # rebuild the dev library (and its jobs) from the fixture
@@ -17,12 +21,13 @@ vars:
   API_PORT: '{{.API_PORT | default "8080"}}'
   WEB_PORT: '{{.WEB_PORT | default "5173"}}'
   DEVICE: '{{.DEVICE | default ""}}'
+  WORKER: '{{.WORKER | default "0"}}'
   DB_CONTAINER: auto-reel-ng-dev-db
   NODE_IMAGE: docker.io/library/node:22
 
 tasks:
   dev:serve:
-    desc: Start the dev DB, then the API, a worker and the Vite dev server together (open http://127.0.0.1:5173)
+    desc: Start the dev DB, then the API and the Vite dev server (WORKER=1 adds a worker); open http://127.0.0.1:5173
     preconditions:
       - sh: test -x .venv/bin/auto-reel
         msg: 'No venv: python3.14 -m venv .venv --system-site-packages && .venv/bin/pip install -e ".[dev]"'
@@ -35,7 +40,13 @@ tasks:
 
   dev:run:
     internal: true
-    deps: [dev:api, dev:worker, dev:web]
+    deps: [dev:api, dev:web, dev:serve:worker]
+
+  dev:serve:worker:
+    internal: true
+    cmds:
+      - |
+        {{if eq .WORKER "1"}}.venv/bin/auto-reel worker "{{.LIBRARY}}" {{if .DEVICE}}--device {{.DEVICE}}{{end}}{{else}}echo "No worker (WORKER=1 adds one): renders, proxies and analysis stay queued."{{end}}
 
   dev:db:
     desc: Create or start the dev Postgres container and migrate it to head
