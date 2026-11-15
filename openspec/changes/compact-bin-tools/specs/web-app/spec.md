@@ -492,7 +492,7 @@ The bin SHALL be as wide as 22% of the window, at least 240 and at most 320 CSS 
 
 #### Scenario: A new clip in the bin
 - **WHEN** Edit mode opens on `2024-08-02 - Badutflykt - Varberg`, whose `reel.yaml` lists two of its three clips, and the operator moves `s1710001.mp4` below `s1710003.mp4`
-- **THEN** the bin shows no line about new clips, the new clip's row says "New, not yet in reel.yaml", its status label (with a fine pointer, as the row's icon with those words kept as visually hidden text for assistive technology and as the icon's tooltip, and not as visible words, "State is never shown by color alone"), the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says that saving adds 1 new clip to `reel.yaml`
+- **THEN** the bin shows no line about new clips, the new clip's row has the status "New, not yet in reel.yaml": with a fine pointer an icon whose tooltip and visually hidden text are those words, with no visible word ("State is never shown by color alone"), the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says that saving adds 1 new clip to `reel.yaml`
 
 #### Scenario: Ignored clips in the bin
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window, and then in a 900 px wide window

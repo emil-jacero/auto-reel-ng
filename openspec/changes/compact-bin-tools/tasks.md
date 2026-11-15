@@ -57,9 +57,12 @@ never from the repo, with PUT/POST/DELETE intercepted. The layout targets are fi
   - `ClipOrderList.tsx`: export `IgnoredRow`, add `ignoredApart`, add `IgnoredBin` (h2 "Ignored clips", a caption per
     chapter that names it, `aria-labelledby` lists); update the file's header comment
   - `EventEditor.tsx`: `ignoredApart = inWorkspace && wide`; the block after `ChapterDrag` and before Add chapter
-  - `workspace.css`: bin gap 8 px from 960 px only; `.ignored-chapter` weight; `.edit-ignored` inherits the flat
-    chapter rules and is a container
-  - a test: with `ignoredApart` no `.clip-ignored` in a chapter, and `.edit-ignored` sits after the last chapter
+  - `workspace.css`: bin gap 8 px from 960 px only; `.edit-ignored` inherits its container from `.panel` and its flat
+    look from `.edit-chapter` (no rules of its own)
+  - `emptyChapter.ts`: `holdsNothing(played, removed, ignored)`, so a chapter whose only clip is ignored says "It plays
+    no clip." even when the bin lists that clip apart; with a short "N ignored clips, listed under Ignored clips" line
+    in such a chapter. Tested in `emptyChapter.test.ts` (no React render harness exists, so the placement itself is
+    checked in Playwright)
   Verify with Playwright (fine pointer, Tjörn, writes aborted): 1280×720 shows 3 whole played rows with at least 5 px
   to spare; 1440×900 shows 4; at 900 px `Main` lists `s1710004.mp4` after `s1710001.mp4` and there is no
   `.edit-ignored`; `Bara ignorerad` lists its clip directly below the chapter (not in the dev library, so not browser-checked); screenshots light and dark.
