@@ -8,7 +8,7 @@ never from the repo, with PUT/POST/DELETE intercepted. The layout targets are fi
   - the bin is 282 px at 1280×720 and 317 px at 1440×900
   - the picture is no smaller than before at either size
   - no horizontal scroll from 960 to 1440 px
-- [ ] 1.2 Two-line compact rows from the bin's width, with tighter padding, and `--clip-row-h` re-measured
+- [x] 1.2 Two-line compact rows from the bin's width, with tighter padding, and `--clip-row-h` re-measured
   (design D4). Coarse-pointer rows keep the 44 px rules. Verify with Playwright:
   - row height is at most 70 px with a fine pointer
   - no control overlaps another at 240 and 320 px wide

@@ -903,9 +903,8 @@
    * rows in three short lines in the 240 px bin. The handle, the position and the name; a 52 × 29
    * thumbnail beside the length the clip plays, its status and a row's action; the row's tools
    * and the Cuts control, in that order as they are in the tab order. A removed or an ignored
-   * row has no third line. From a 22rem bin (the
-   * stacked workspace) two lines (below). After the page's row rules and more specific than
-   * each, so they win whatever the panel's width. Their size and time are the read view's.
+   * row has no third line. From 13.5rem (the bin) two lines (below). After the page's row rules
+   * and more specific than each, so they win whatever the panel's width. Their size and time are the read view's.
    */
   .edit-chapter[data-compact] {
     & .clip-item {
@@ -1010,24 +1009,56 @@
     }
   }
 
-  /* A wider bin (the stacked workspace): two lines, the tools after the name, the Cuts control
-     after the facts. */
-  @container (width >= 22rem) {
+  /* From 13.5rem (the 240 px bin less its border and a scrollbar; compact-bin-tools D4): two lines, the tools after
+     the name, the Cuts control after the facts, with tighter padding. A fine pointer's row is at
+     most 70 px. */
+  @container (width >= 13.5rem) {
     .edit-chapter[data-compact] .clip-item {
-      --clip-row-h: 4.0625rem;
+      --clip-row-h: 3.7031rem;
+      padding-block: var(--s-1);
 
+      /* The tools (two pairs) span the two last columns, the Cuts control takes the last one under
+         them, so the facts keep one line beside the thumbnail. */
+      grid-template-columns: 1.75rem 1.25rem minmax(0, 1fr) auto auto;
       grid-template-areas:
-        'handle pos file moves'
-        'thumb thumb facts cuts';
+        'handle pos file moves moves'
+        'thumb thumb facts facts cuts';
     }
 
     .edit-chapter[data-compact] .clip-item > .clip-tools {
       justify-self: end;
     }
 
+    /* A fine pointer's 28 px handle and tools (not the page's 32 px) keep the row to 70 px. */
+    .edit-chapter[data-compact] .clip-item {
+      row-gap: 0.125rem;
+    }
+
+    .edit-chapter[data-compact] .clip-item > .drag-handle,
+    .edit-chapter[data-compact] .clip-item > .clip-tools .btn-icon {
+      min-block-size: 1.75rem;
+      block-size: 1.75rem;
+    }
+
+    .edit-chapter[data-compact] .clip-item > .clip-tools .btn-icon {
+      inline-size: 1.75rem;
+    }
+
     @media (pointer: coarse) {
       .edit-chapter[data-compact] .clip-item {
         --clip-row-h: 4.8125rem;
+        padding-block: var(--s-2);
+        row-gap: 1rem;
+      }
+
+      .edit-chapter[data-compact] .clip-item > .drag-handle,
+      .edit-chapter[data-compact] .clip-item > .clip-tools .btn-icon {
+        min-block-size: 2rem;
+        block-size: 2rem;
+      }
+
+      .edit-chapter[data-compact] .clip-item > .clip-tools .btn-icon {
+        inline-size: 2rem;
       }
     }
   }
