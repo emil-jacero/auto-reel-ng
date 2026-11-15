@@ -293,13 +293,12 @@ function ClipBlock({ clip, eventId, index, left, pps, window, turn, noPicture, o
   return (
     <div
       className="tl-clip"
-      aria-hidden="true"
       data-index={index}
       data-after={after || undefined}
       data-no-picture={noPicture || undefined}
       style={{ insetInlineStart: left, inlineSize: Math.max(1, widthPx) }}
     >
-      <span id={descId} className="visually-hidden">
+      <span id={descId} className="visually-hidden" aria-hidden="true">
         {clipDescription(clip.facts.durationMs, clip.cutCount, keptMs)}
       </span>
       {detailed && !noPicture && (
