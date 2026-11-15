@@ -7,7 +7,7 @@
 
   /* On <html>, so the notification region (outside `.ws`) places itself by the same pane widths. */
   html[data-workspace] {
-    --ws-bin-w: 240px;
+    --ws-bin-w: clamp(240px, 22vw, 320px);
     --ws-insp-w: 340px;
   }
 
