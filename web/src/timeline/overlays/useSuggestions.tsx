@@ -65,6 +65,8 @@ type Context = {
   pps: number
   /** Put the playhead at a position and show it, without playing. */
   seekTo: (pos: Position) => void
+  /** Called on each selection of a mark (the workspace inspector shows its Cut tab). */
+  onSelect?: () => void
 }
 
 function bySpan(a: Suggestion, b: Suggestion): number {
@@ -73,7 +75,7 @@ function bySpan(a: Suggestion, b: Suggestion): number {
 
 export function useSuggestions(
   control: AnalysisControl | undefined,
-  { clips, lay, pps, seekTo }: Context,
+  { clips, lay, pps, seekTo, onSelect }: Context,
 ): Suggestions {
   const read = control?.binding.read ?? NO_READ
   const detailId = useId()
@@ -217,6 +219,7 @@ export function useSuggestions(
   const select = (mark: MarkModel) => {
     setSelectedId(mark.id)
     setRefusal(null)
+    onSelect?.()
     setRoving((was) => new Map(was).set(mark.identity, mark.id))
     const clip = clips[mark.clipIndex]
     // The frame the suggestion starts on, held to the clip's kept frames (a mark partly in a

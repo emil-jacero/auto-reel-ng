@@ -169,11 +169,6 @@ export type TimelineParts = {
   viewer: ReactNode
   track: ReactNode
   cutPanel: ReactNode
-  /**
-   * The selected cut's or suggestion's key, null with neither: each new selection shows the
-   * inspector's Cut tab.
-   */
-  cutSelected: string | null
 }
 
 /**
@@ -183,13 +178,6 @@ export type TimelineParts = {
 export function Timeline(props: TimelineProps) {
   const parts = useTimeline(props)
   const panes = useContext(TimelinePanesContext)
-  const cutSelected = parts.cutSelected
-  const onCutSelected = panes?.onCutSelected
-  useEffect(() => {
-    if (cutSelected !== null) {
-      onCutSelected?.()
-    }
-  }, [cutSelected, onCutSelected])
   if (panes !== null && panes.viewer !== null && panes.cut !== null) {
     return (
       <>
@@ -219,6 +207,9 @@ export function useTimeline({
   cutHintId,
 }: TimelineProps): TimelineParts {
   const posterWhyId = useId()
+  // Each press that selects a cut or a suggestion (the same one again, or another clip's cut with
+  // the same key) shows the workspace inspector's Cut tab.
+  const onCutSelected = useContext(TimelinePanesContext)?.onCutSelected
   const clipLay = useMemo(() => trackLayout(clips), [clips])
   const turns = editing.turns
   const decorators = cards.decorators
@@ -313,8 +304,9 @@ export function useTimeline({
     (identity: string, key: string) => {
       setSelected((was) => (was?.identity === identity && was.key === key ? was : { identity, key }))
       clearCard()
+      onCutSelected?.()
     },
-    [clearCard],
+    [clearCard, onCutSelected],
   )
   const selectCard = selection.select
   const openCard = selection.open
@@ -808,7 +800,13 @@ export function useTimeline({
     [],
   )
 
-  const suggestions = useSuggestions(analysis, { clips, lay, pps, seekTo: video.seekTo })
+  const suggestions = useSuggestions(analysis, {
+    clips,
+    lay,
+    pps,
+    seekTo: video.seekTo,
+    onSelect: onCutSelected,
+  })
   const cardLane = useMemo<CardLaneModel | undefined>(
     () =>
       blocks.length === 0
@@ -1131,9 +1129,7 @@ export function useTimeline({
       {suggestions.detail}
     </div>
   )
-    const mark = suggestions.selectedKey
-  const cutSelected = selected !== null ? `cut:${selected.key}` : mark === null ? null : `mark:${mark}`
-  return { viewer, track, cutPanel, cutSelected }
+  return { viewer, track, cutPanel }
 }
 
 /**

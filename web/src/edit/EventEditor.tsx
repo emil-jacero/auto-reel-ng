@@ -64,6 +64,7 @@ import { TopBar } from './workspace/TopBar'
 import type { WorkspaceFrame } from './workspace/TopBar'
 import { Workspace } from './workspace/Workspace'
 import { titleCardsWords } from './workspace/inspectorTabs.ts'
+import type { InspectorTab } from './workspace/inspectorTabs.ts'
 import { TAB_NAME } from './card/tabs.ts'
 import { NameDialog } from './ChapterDialogs'
 import {
@@ -1125,6 +1126,10 @@ export function EventEditor({
   // A pointer press is under way: the focus it gives is not scrolled (onFocus below).
   const pointerPressed = useRef(false)
   const refusalRef = useRef<HTMLDivElement>(null)
+  // The workspace inspector's shown tab, and a refusal at the Details fields waiting for its
+  // Event tab to be drawn before it takes focus.
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('event')
+  const refusalWaits = useRef(false)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const keepEditingRef = useRef<HTMLButtonElement>(null)
   // What the failure's alert said when Try again was pressed (`failureWords`), until the
@@ -1353,6 +1358,14 @@ export function EventEditor({
     if (answers === 0) {
       return
     }
+    // In the workspace a refusal at the Details fields is in the inspector's Event tab, hidden
+    // while the Cut tab shows: the Event tab is shown first, and the refusal takes focus once it
+    // is drawn (below).
+    if (refusalRef.current?.closest('.ws-insp-panel[hidden]') != null) {
+      refusalWaits.current = true
+      setInspectorTab('event')
+      return
+    }
     // In the workspace a top bar that rests at the page's top (a short window, a large zoom)
     // leaves the window as the page scrolls: a save started by Ctrl+S from a pane further down
     // would leave its explanation out of sight. The explanation takes focus then, and comes
@@ -1376,6 +1389,17 @@ export function EventEditor({
       keepInView(focused, barRef.current)
     }
   }, [answers, inWorkspace])
+  useLayoutEffect(() => {
+    if (!refusalWaits.current || inspectorTab !== 'event') {
+      return
+    }
+    refusalWaits.current = false
+    const refusal = refusalRef.current
+    if (refusal !== null) {
+      refusal.focus()
+      keepInView(refusal, barRef.current)
+    }
+  }, [inspectorTab])
 
   // After Reset the heading has focus (the bar went with its buttons) but the page may have
   // shrunk and scrolled, or sit far from the heading at the top. The scroll waits for the
@@ -1988,6 +2012,13 @@ export function EventEditor({
       onNameRefused,
     ],
   )
+
+  // The draft's first card that the dialog can show: where the Event tab opens the dialog's
+  // event-wide tab.
+  const firstCard = useMemo(() => {
+    const first = draftChapters?.find((chapter) => !chapter.deleted)
+    return first === undefined ? null : cardIdOf(first)
+  }, [draftChapters])
 
   const cardEditing = useMemo<CardEditing | null>(() => {
     if (
@@ -2659,17 +2690,19 @@ export function EventEditor({
           )}
           </>,
           // The workspace's Event tab: the way to the card dialog's "All title cards in this
-          // event" tab (card style, Title cards On / Off), on the opening card, and the switch's
-          // state in words. Not a section and no control of its own: the dialog stays the one place.
+          // event" tab (card style, Title cards On / Off), on the draft's first card (the
+          // opening card, or the first chapter's in an event without root clips or with the
+          // default chapter deleted), and the switch's state in words. Not a section and no
+          // control of its own: the dialog stays the one place.
           titleCards: <>
           {/* The dialog is the Timeline section's: shown with it. */}
-          {editing !== null && cardEditing !== null && detail !== null && cardEditing.view('') !== null && (
+          {editing !== null && cardEditing !== null && detail !== null && firstCard !== null && (
             <div className="ws-cards">
               <button
                 type="button"
                 className="btn btn-secondary"
                 aria-describedby={`${titleCardsId}-state`}
-                onClick={() => cards.open('', 'event')}
+                onClick={() => cards.open(firstCard, 'event')}
               >
                 {TAB_NAME.event}
               </button>
@@ -3142,6 +3175,8 @@ export function EventEditor({
             </>
           }
           timeline={parts?.timeline ?? null}
+          tab={inspectorTab}
+          onTab={setInspectorTab}
         />
       )}
 
