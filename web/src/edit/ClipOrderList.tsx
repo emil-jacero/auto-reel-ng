@@ -915,6 +915,7 @@ export const ClipOrderList = memo(function ClipOrderList({
         )}
         {/* The clips it plays; the removed and ignored lists count their own. One line. */}
         <span className="panel-meta">{plural(order.length, 'clip', 'clips')}</span>
+        <EditTitlecard id={tools.cardId} heading={heading} locked={locked} compact={compact} />
         {compact && (
           <ChapterTools
             chapterKey={chapterKey}
@@ -924,7 +925,6 @@ export const ClipOrderList = memo(function ClipOrderList({
             {...tools}
           />
         )}
-        <EditTitlecard id={tools.cardId} heading={heading} locked={locked} compact={compact} />
       </header>
       <ChapterTools
         chapterKey={chapterKey}
