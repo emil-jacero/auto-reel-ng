@@ -37,4 +37,4 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 - [x] 4.1 Gates: paint-cost drag (Chrome 4x), Tab order per clip, light/dark, 1280×720 and 390 px.
 - [x] 4.2 HLD: amend the workspace D-n (one selection, docked card editor); tick slice 2 in `docs/editor-workspace.md`.
-- [ ] 4.3 Gates: `npm test`, `npm run check`, `npm run build` in podman; `openspec validate editor-selection --strict`.
+- [x] 4.3 Gates: `npm test`, `npm run check`, `npm run build` in podman; `openspec validate editor-selection --strict`.
