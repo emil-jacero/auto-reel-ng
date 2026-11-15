@@ -71,8 +71,9 @@ export function Workspace({
   // a window under 28rem tall, and it rests at the page's top instead of sticking (`data-rests`),
   // as the stacked page's save bar does. A sticking bar keeps to those two fifths: the
   // explanation gets the rest (`--ws-alert-max`) and scrolls within itself, so a save's answer
-  // never makes the bar rest and leave the window. Notifications keep clear of the bar and of
-  // the explanation's panel under it in the wide frame (`--ws-toast-top`).
+  // never makes the bar rest and leave the window. Wide, the explanation is a panel under the
+  // bar that ends above the Timeline (`--ws-alert-max` as well). Notifications keep clear of the
+  // bar and of the explanation's panel under it in the wide frame (`--ws-toast-top`).
   useLayoutEffect(() => {
     const top = topRef.current
     if (top === null) {
@@ -92,8 +93,19 @@ export function Workspace({
       const rests = stacked && (root.clientHeight < TOP_MIN_WINDOW_REM * rem || bar > share)
       const rested = top.hasAttribute('data-rests')
       top.toggleAttribute('data-rests', rests)
+      // Wide, the panel is capped at the Timeline's top (and at two fifths of the window), the
+      // same gap above the Timeline as under the bar: in a short window it scrolls in what is
+      // left above the Timeline rather than covering it.
+      const timeline =
+        !stacked && alert !== null ? top.parentElement?.querySelector('.ws-tl') : null
       if (stacked && !rests && alert !== null) {
         top.style.setProperty('--ws-alert-max', `${Math.max(share - bar - margin, 3 * rem)}px`)
+      } else if (alert !== null && timeline instanceof HTMLElement) {
+        const panelTop = alert.getBoundingClientRect().top
+        const gap = Math.max(panelTop - top.getBoundingClientRect().bottom, 0)
+        const room = timeline.getBoundingClientRect().top - gap - panelTop
+        const most = Math.max(Math.min(root.clientHeight * TOP_MAX_SHARE, room), 0)
+        top.style.setProperty('--ws-alert-max', `${Math.floor(most)}px`)
       } else {
         top.style.removeProperty('--ws-alert-max')
       }

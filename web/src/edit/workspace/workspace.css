@@ -335,13 +335,15 @@
       margin-inline-start: 0;
     }
 
-    /* A conflict's or a failure's explanation: a panel under the top bar, never over the Timeline. */
+    /* A conflict's or a failure's explanation: a panel under the top bar, never over the Timeline:
+       at most two fifths of the window and ending above the Timeline (`--ws-alert-max`,
+       `Workspace.tsx`). */
     & .save-bar-alert {
       position: absolute;
       inset-block-start: calc(100% + var(--s-2));
       inset-inline: var(--s-3);
       z-index: 7;
-      max-block-size: 40vh;
+      max-block-size: var(--ws-alert-max, 40vh);
       overflow: auto;
       border-radius: var(--r-lg);
       background: var(--surface-raised);

@@ -1975,8 +1975,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     (the unsaved summary, Reset, Save with Ctrl/Cmd+S, one primary action: Save / Reload latest / Back to the event
     list), Done and the theme switch (the same `auto-reel:theme`, every switch in step). Back and Done leave through
     the existing leave flow and unsaved guard. A conflict's or a failure's explanation is a panel under the bar: it
-    may cover the upper panes, not the Timeline (in a wide window about 400 px tall it still reaches the Timeline's
-    top, a known gap; the change's design D4). The bar's drawn height is measured (`--ws-top-measured`), so
+    may cover the upper panes, never the Timeline: it takes at most 40vh and ends above the Timeline's top,
+    scrolling within itself in a short window (`--ws-alert-max`; the change's design D4). The bar's drawn height is measured (`--ws-top-measured`), so
     notifications, sticky headings and the scroll padding clear it.
   - **The panes.** A grid of bin 240 px · viewer · inspector 340 px over a Timeline of `minmax(280px, 38vh)`, each
     pane scrolling on its own (`[data-ws-scroll]`, which focus-in-view, drops and Page Up/Down measure against).

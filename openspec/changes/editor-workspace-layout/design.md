@@ -49,11 +49,11 @@ measured estimates); from a 22rem bin (stacked) a row takes two lines.
 ### D4. The save bar becomes the top bar
 `SaveBar`'s states (one primary action: Save / Reload latest / Back to the event list) are kept; it renders in the top
 bar in its `top` variant, and the stacked page's held/resting placement is off in the workspace. In the wide frame
-the conflict and failure explanations open as a panel positioned under the bar (at most 40vh, scrolling within
-itself): it may cover the upper panes (bin, viewer, inspector) but not the Timeline. Measured 2026-11-15 at 1280 wide
-(conflict 79 px, failure 103 px tall, from 56 px): it ends above the Timeline at 720, 600 and 500 px tall; the 40vh cap
-does not follow the Timeline's top, so in a window about 400 px tall (Timeline from 120 px) it overlaps the Timeline by
-15–39 px, a known gap of short wide windows. Below 960 px the explanation is in the bar's flow under the save
+the conflict and failure explanations open as a panel positioned under the bar, scrolling within itself: it may
+cover the upper panes (bin, viewer, inspector) but never the Timeline. Its most height (`--ws-alert-max`, measured in
+`Workspace.tsx`) is the lesser of 40vh and the room above the Timeline's top, less the same gap as under the bar.
+Measured 2026-11-15 at 1280 wide (conflict 79 px, failure 103 px tall, from 56 px): whole at 720 px tall; at 400 px
+(Timeline from 120 px) both are 57 px and scroll, at 360 px 17 px, ending 7 px above the Timeline. Below 960 px the explanation is in the bar's flow under the save
 controls, and while the bar sticks it gets what is left of the bar's two fifths of the window (at least 3rem). In both, it follows Reset and Save in the DOM, so tab order matches the drawn order.
 
 ### D5. Theme
