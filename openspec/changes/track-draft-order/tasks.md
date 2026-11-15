@@ -3,11 +3,22 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 0. Gate
 
-- [ ] 0.1 Dependency gate: this change has **no** dependency change. Confirm the ground is clear before starting:
+- [x] 0.1 Dependency gate: this change has **no** dependency change. Confirm the ground is clear before starting:
   `openspec list --json` lists no other active change that touches `web/src/timeline/` or the `event-timeline` spec
   (if one does, STOP and ask which goes first), and `git status` on `main` is clean.
-- [ ] 0.2 Spec freshness: compare the REMOVED + ADDED pair in `specs/event-timeline/spec.md` with the current
+  Status (2026-11-15): the five other active changes (`editor-workspace-layout`, `editor-selection`, `track-drag-edit`,
+  `editor-undo`, `clip-split`) all depend on this one, so this goes first; `main` is clean.
+- [x] 0.2 Spec freshness: compare the REMOVED + ADDED pair in `specs/event-timeline/spec.md` with the current
   `openspec/specs/event-timeline/spec.md` requirement "The Timeline is shown only in Edit mode, open from the start"; carry over any text changed since 2026-11-15.
+  Status (2026-11-15): the main requirement is unchanged since the proposal, but the ADDED text had paraphrased it and
+  dropped obligations; restored word for word: the Timeline is the one on which the operator trims cuts, pressing Edit
+  opens it, the read view's "no line or region naming a selected title card" and "whatever the number of clips",
+  "it only reads" and the pointer to "The Timeline asks for the clips' proxies when they are missing", "the Timeline
+  follows" the proxy job's read, the cuts drawn as the draft lists them, "the cuts of every clip stay editable", Play
+  "so that a trim is heard and seen before it is saved", and "The cuts are never 'being read' and never
+  'unreadable'". To keep `--strict` under its 500-character limit, "The read view keeps everything else it shows" and
+  "The Edit-mode Timeline's cuts are the draft's" are their own requirements (the Play-skips-a-trim scenario moved to
+  the latter); the Migration names all six.
 
 ## 1. Pure model (web/src/timeline)
 
@@ -60,6 +71,8 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 4. Docs and validation
 
-- [ ] 4.1 Amend D-20 in `docs/high-level-design.md` (the Edit-mode Timeline draws the draft order; added chapters'
+- [x] 4.1 Amend D-20 in `docs/high-level-design.md` (the Edit-mode Timeline draws the draft order; added chapters'
   cards built in the browser) and the §6 item 10 note; tick `docs/editor-workspace.md` slice 0.
-- [ ] 4.2 Gates: `npm test`, `npm run check`, `npm run build` in podman; `openspec validate track-draft-order --strict`.
+- [x] 4.2 Gates: `npm test`, `npm run check`, `npm run build` in podman; `openspec validate track-draft-order --strict`.
+  Status (2026-11-15): `npm test` 1169/1169 (repository root mounted, `-w /repo/web`), `npm run check` clean, `npm run
+  build` JS 665.78 kB (gzip 215.85), CSS 95.71 kB; `openspec validate track-draft-order --strict` valid.

@@ -943,7 +943,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
    the edge drag's and the slider drag's gates; no API, engine or `RENDER_GRAPH_VERSION` change.
 10. **ML analysis** (parallel, behind existing interfaces). GUI v3 is the **editor workspace**
     ([`editor-workspace.md`](editor-workspace.md), goal set 2026-11-14): Edit mode as an iMovie-like workspace
-    (clip bin, viewer, inspector, track-first timeline); not yet designed in OpenSpec.
+    (clip bin, viewer, inspector, track-first timeline), proposed 2026-11-15 as six changes under `openspec/changes/`.
+    **Slice 0 is built** (`track-draft-order`, web only; D-20): the Edit-mode Timeline draws the draft's order and
+    chapters, cards of added chapters are built in the browser, and the saved-order note is gone; no API, engine or
+    `RENDER_GRAPH_VERSION` change.
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
     D-17): a local image and a test stack, nothing published; the published image waits for the D-1
     fdk-aac blocker (§4.12).
@@ -1412,7 +1415,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     (`liveTrims`), so a cut added, removed or restored in a Cuts panel is on the track at once and Play skips a trim before
     it is saved; its clips, chapters and proxies are the page's last read (a Prepare job that ends in Edit mode reads the
     event again, `withVerdict` keeps that read as `live`, and the draft is not touched) in the **saved order**, with a note
-    while the draft has moved or renamed anything (reorders stay list-based). Each cut of a clip drawn with its cuts gets
+    while the draft has moved or renamed anything (reorders stay list-based; **amended by `track-draft-order`**,
+    below: the track draws the draft's order and chapters, and the note is gone). Each cut of a clip drawn with its cuts gets
     **two handles that are sliders, not draggables** (`role="slider"`, `aria-valuenow/min/max` from the model's limits, a
     value text in the Cuts panel's time format; `@dnd-kit` stays for reordering only): drag by the distance moved, snapping
     within 8 px to the clip's ends, the other cuts' edges and the playhead (a line and words, "Snapped to cut 2 start"),
@@ -1722,6 +1726,25 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     p95 19-22 ms; idle 0 %; `origin/main` 50.0 %), Firefox 0 %; the **edge drag** on 80 clips 0 % in Chrome 4x
     (0-0.27 %, idle 0 %; `origin/main` 0.16 %), Firefox 0 %; scrub 55.9 / 48.6 fps and frame-step p90 27.6 / 25.9 ms in
     Chrome / Firefox. Both gates (≤ 2 %) are met. No package added.
+  - **The Edit-mode Timeline draws the draft (change `track-draft-order`, 2026-11-15; slice 0 of GUI v3, §6 item
+    10).** This amends `timeline-trim`'s saved-order rule, which was a scope cut ("Drawing the draft's order is a
+    larger change … left to a later one"), not a principle. `draftClips(live, chapters, orders)` (`timeline/layout.ts`)
+    lays out the draft's chapters in the draft's order and names, and in each its clips in the draft's order, at once
+    and before Save; each clip's facts are looked up by identity in the page's last read, so a clip that read no
+    longer has is not drawn (the draft and its lists keep it), a deleted chapter (listed with Undo) draws no band and no
+    card, and Reset draws the saved order again. The `ORDER_SAVED` note is gone. Cards follow the draft
+    (`timeline/cards.ts`): a renamed chapter keeps the card the service resolved for its saved name, titled with the
+    draft's name where the card's title is the chapter's; a chapter **added in this session gets a card built in the
+    browser** (user decision, 2026-11-15) from the opening chapter's resolved card, else the first resolved one, with
+    the draft's card style applied and the chapter's name as its title, placed as any card is (a black card shifts the
+    clips after it). With no resolved card it is a block of the event style's length, "Title card for <chapter>, shown
+    after save"; with no style either, no block is drawn and the lane's note says why. After a save the service's cards
+    replace it; no endpoint and no service resolution changed. Play, the readouts, the movie length and Use as poster
+    follow the drawn order; a playhead on the opening card stays there when the draft reorders. Reordering is still
+    list-based (dragging on the track is `track-drag-edit`). **Figures** (load 1.9-2.6, one session, against
+    `origin/main`): the 80-clip edge drag in Chrome 4x median 0.2 % of frames over 25 ms (`main` 0.39 %), Firefox
+    0.82 % on both; the 400-clip slider drag 1.05-1.73 % (`main` 1.05-2.76 %), Firefox 0 %; 400-clip windowing
+    unchanged; JS +1.79 kB (gzip +0.79 kB), CSS unchanged. No API, engine or `RENDER_GRAPH_VERSION` change.
 - **D-21 — The proxy contract** (2026-10-03, change `proxy-encode`; the v2 research calls it D-19). The timeline
   must scrub, step and trim inside a clip, which the originals cannot do (a random seek takes a median 78 to
   1457 ms, a held scrub shows 1 to 12 frames per second, and Firefox plays none of the Sony PCM audio). Every

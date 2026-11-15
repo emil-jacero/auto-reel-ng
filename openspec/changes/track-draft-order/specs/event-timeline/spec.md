@@ -2,17 +2,20 @@
 
 ### Requirement: The Timeline is shown only in Edit mode, open from the start
 **Reason**: Its rule that the Timeline draws the saved order (scenario "A reorder is not drawn") is reversed.
-**Migration**: Replaced, with every other obligation kept word for word, by the four requirements below ("…shown only in Edit mode
-and draws the draft", "The read view has no Timeline", "Showing the Timeline only reads…", "The Edit-mode
-Timeline draws the draft's order…").
+**Migration**: Replaced, with every other obligation kept word for word (checked against the main spec on
+2026-11-15), by the first six requirements below ("…shown
+only in Edit mode and draws the draft", "The read view has no Timeline", "The read view keeps everything else it
+shows", "Showing the Timeline only reads…", "The Edit-mode Timeline draws the draft's order and chapters", "The
+Edit-mode Timeline's cuts are the draft's").
 
 ## ADDED Requirements
 
 ### Requirement: The Timeline is shown only in Edit mode and draws the draft
 
 The event page SHALL show a section headed "Timeline" (a level-two heading) only in Edit mode, after the metadata form
-and the Poster panel and before the chapters' lists. It SHALL be open whenever Edit mode shows, including after a
-Refresh or a save, and SHALL have no button that opens or closes it.
+and the Poster panel and before the chapters' lists; it is the Timeline on which the operator trims cuts ("Edit mode's
+cuts are trim handles"). The section SHALL be open whenever Edit mode shows: pressing Edit opens Edit mode with the
+Timeline open, and a Refresh or a save keeps it open. It SHALL have no button that opens or closes it.
 
 #### Scenario: Edit opens the Timeline, leaving closes it
 - **WHEN** the operator presses Edit on `2024-06-27 - Grillning med grannar` and later leaves Edit mode
@@ -23,10 +26,9 @@ Refresh or a save, and SHALL have no button that opens or closes it.
 
 ### Requirement: The read view has no Timeline
 
-The read view SHALL show no Timeline section, heading, open/close button or card line, SHALL create no `<video>` for a
-Timeline and SHALL make no request for a proxy, filmstrip, the analysis or a proxy job on its behalf. It SHALL keep its
-chapters and clips, play controls, cut summaries, turns, Movie section and poster. While the page is loading or shows a
-failure it SHALL show no Timeline section.
+The read view SHALL show no Timeline: no section, no heading, no "Open timeline" or "Close timeline" button, no line
+or region naming a selected title card, and SHALL create no `<video>` for a Timeline and make no request for a proxy, a
+filmstrip, the analysis or a proxy job on its behalf, whatever the number of clips.
 
 #### Scenario: The read view has no Timeline
 - **WHEN** the operator opens the page of an event of 400 clips whose proxies are all ready
@@ -34,11 +36,25 @@ failure it SHALL show no Timeline section.
   `<video>` for a Timeline, and no request was made to a proxy, filmstrip, analysis or proxy-job address
 
 
+### Requirement: The read view keeps everything else it shows
+
+The read view SHALL keep everything else it shows: the event's chapters and clips with their play controls, cut
+summaries and turns, the Movie section and the poster. While the event page is loading, or shows a failure, it SHALL
+show no Timeline section.
+
+#### Scenario: Leaving Edit mode keeps the read view
+- **WHEN** the operator leaves Edit mode on `2024-06-27 - Grillning med grannar`
+- **THEN** the read view shows the event's chapters and clips with their play controls, cut summaries and turns, the
+  Movie section and the poster, and no Timeline section
+
+
 ### Requirement: Showing the Timeline only reads, and shows Prepare without proxies
 
 An open Timeline of an event whose proxies are not all ready SHALL show its Prepare state and nothing else. Showing
-the Timeline SHALL change no state the service holds; starting a proxy job is a separate, explicit control. A proxy
-job that ends while Edit mode is open SHALL read the event again, quietly, without touching the draft.
+the Timeline SHALL change no state the service holds: it only reads. Starting a proxy job is a separate, explicit
+control (see "The Timeline asks for the clips' proxies when they are missing"). A proxy job that ends while Edit mode
+is open SHALL read the event again, quietly, and the Timeline follows it; the editor's draft is not touched by that
+read.
 
 #### Scenario: Edit mode without proxies shows Prepare
 - **WHEN** the operator presses Edit on an event none of whose proxies is prepared
@@ -56,12 +72,12 @@ job that ends while Edit mode is open SHALL read the event again, quietly, witho
   the save bar and the Cuts panels are as they were
 
 
-### Requirement: The Edit-mode Timeline draws the draft's order, chapters and cuts
+### Requirement: The Edit-mode Timeline draws the draft's order and chapters
 
 The Timeline SHALL draw the draft's chapters in the draft's order and names, a deleted chapter drawing nothing, and in
 each chapter its clips in the draft's order, at once and before Save; Reset SHALL draw the saved order again. Each
 clip's facts SHALL be those of the last read; a clip that read no longer has SHALL NOT be drawn. No note about the
-order last saved SHALL be shown. Play SHALL follow the drawn order and skip the draft's cuts as they are now.
+order last saved SHALL be shown. Play on the Timeline SHALL follow the drawn order.
 
 #### Scenario: A reorder is drawn before Save
 - **WHEN** in Edit mode the operator moves `s1710002.mp4` above `s1710001.mp4` in its chapter's list
@@ -79,6 +95,13 @@ order last saved SHALL be shown. Play SHALL follow the drawn order and skip the 
 #### Scenario: A clip gone from disk mid-edit
 - **WHEN** in Edit mode a proxy job ends, the page reads the event again, and `s1710004.mp4` is no longer in the read
 - **THEN** the Timeline no longer draws `s1710004.mp4`, and the draft and its lists are as they were
+
+
+### Requirement: The Edit-mode Timeline's cuts are the draft's
+
+The Timeline SHALL draw its cuts as the draft lists them, and the cuts of every clip stay editable. Play on the
+Timeline SHALL skip the draft's cuts as they are now, so that a trim is heard and seen before it is saved. The cuts are
+never "being read" and never "unreadable": the draft holds them.
 
 #### Scenario: Play skips a trim that is not saved
 - **WHEN** in Edit mode the operator trims the cut of `s1710001.mp4` to 1.0 to 3.5 s and plays the Timeline from 0.5 s
