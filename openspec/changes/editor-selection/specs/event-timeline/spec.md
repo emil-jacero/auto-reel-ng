@@ -3,12 +3,17 @@
 ### Requirement: One selection in the workspace
 
 The workspace SHALL hold one selection: nothing, a clip, a cut, a title card or a suggestion. Selecting one SHALL end
-any other. Escape SHALL clear it. It SHALL survive a Refresh and a save while its target is still in the event, and
-end when its target is gone. The selected thing SHALL be shown selected in more than colour.
+any other, and Escape SHALL clear it. It SHALL survive a Refresh and a save while its target is still in the event, and
+end when its target is gone; a cut is named by its place in its clip's list, so a cut selection SHALL end when a new
+read numbers the cuts again. It SHALL be shown selected in more than colour.
 
 #### Scenario: Card ends clip
 - **WHEN** `s1710003.mp4` is selected and the operator presses the "Kvällen" card block
 - **THEN** the card is selected, the clip is no longer outlined, and the inspector shows the Title card tab
+
+#### Scenario: Cut selection ends with the read
+- **WHEN** the second cut of a clip is selected, the first is removed and the operator saves
+- **THEN** nothing is selected, and the cut that now stands second is not outlined
 
 #### Scenario: Target deleted
 - **WHEN** the selected card's chapter is deleted
