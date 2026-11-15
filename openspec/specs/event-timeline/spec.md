@@ -1691,16 +1691,15 @@ still hold on the same event.
 
 ### Requirement: The Timeline is shown only in Edit mode and draws the draft
 
-The event page SHALL show a section headed "Timeline" (a level-two heading) only in Edit mode, after the metadata form
-and the Poster panel and before the chapters' lists; it is the Timeline on which the operator trims cuts ("Edit mode's
-cuts are trim handles"). The section SHALL be open whenever Edit mode shows: pressing Edit opens Edit mode with the
-Timeline open, and a Refresh or a save keeps it open. It SHALL have no button that opens or closes it.
+The Timeline SHALL be shown only in Edit mode, as the workspace's bottom pane, with its picture and transport in the
+viewer pane. It SHALL be open whenever Edit mode shows, including after a Refresh or a save, and SHALL have no button
+that opens or closes it.
 
 #### Scenario: Edit opens the Timeline, leaving closes it
 - **WHEN** the operator presses Edit on `2024-06-27 - Grillning med grannar` and later leaves Edit mode
-- **THEN** Edit mode shows a Timeline section after the metadata form, open and showing its track, with no "Open
-  timeline" or "Close timeline" button; after leaving, the read view shows no Timeline section and its clip list,
-  Movie section and poster as before
+- **THEN** the workspace shows the Timeline along the bottom and its picture in the viewer, with no "Open timeline"
+  or "Close timeline" button; after leaving, the read view shows no Timeline section and its clip list, Movie section
+  and poster as before
 
 ### Requirement: The read view has no Timeline
 

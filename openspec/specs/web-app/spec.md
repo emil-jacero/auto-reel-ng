@@ -515,7 +515,8 @@ event as though it were current.
 
 ### Requirement: Every page shares one header and follows the operator's color scheme
 
-Every page SHALL show the same header. The header SHALL contain:
+Every page SHALL show the same header, except Edit mode's workspace, which hides it and shows its own top bar
+("Edit mode is a full-window workspace"); the top bar holds the same color-scheme control. The header SHALL contain:
 
 - the product's mark and name
 - a link to the event list, marked as the current page while the list is shown
@@ -568,6 +569,10 @@ The control SHALL still switch the scheme for the current page.
 - **WHEN** the event list is shown
 - **THEN** the header's Events link is marked as the current page, and it is not marked on the page of
   `2024-09-01 - Sommarlov`
+
+#### Scenario: The workspace hides the header and keeps the control
+- **WHEN** the operator presses Edit on `2024-09-01 - Sommarlov`
+- **THEN** the header is not shown, and the workspace's top bar offers System, Light and Dark
 
 ### Requirement: State is never shown by color alone
 
@@ -2027,77 +2032,6 @@ not focus buttons on click, SHALL NOT move focus.
 - **THEN** the notification is gone, the page has not scrolled, and focus is on Refresh, not on the document
   body
 
-### Requirement: Notifications never cover the save bar
-
-While the event page's save bar is shown, no notification SHALL overlap it, at any scroll position and at any
-window width:
-
-- While the bar is held at the bottom of the window, notifications SHALL sit above it.
-- When the page is scrolled far enough that the bar rests in the page below the content, notifications SHALL
-  sit either above the bar or in the room below it.
-
-While the bar moves from the bottom of the window to its resting place, notifications that sit above it MAY
-move with it. While the bar is held whenever the page is not scrolled to its resting place (see "Edit mode's
-save bar rests in the page when it would hide the editor"), and while no save bar is shown, a control that
-receives keyboard focus SHALL NOT be left under a notification at any scroll position, including while the bar
-moves, while one notification is shown, or two in a window at least 844 pixels tall. While the bar rests in the
-page because, held, it would hide the editor, the same SHALL hold for the controls just above the bar, such as
-the last clip row's: while notifications sit above a resting bar, the page SHALL keep as much room between the
-last chapter and the bar as the notifications take, so that they cover that room and no control. The room SHALL
-follow the notifications as they come and go, and the bar and the notifications SHALL follow any change of the
-page above the bar that moves the bar, such as content that grows or shrinks, without a scroll or a resize.
-The room SHALL NOT be kept while the notifications sit below the bar or no notification is shown.
-
-When a page is scrolled to its end, no notification SHALL cover any of the page's controls, with or without a
-save bar. With no save bar shown, notifications keep their place at the bottom of the window.
-
-#### Scenario: A notification above the held save bar
-- **WHEN** an error notification is shown, and the operator, in Edit mode on
-  `2024-06-27 - Grillning med grannar` with the page scrolled to its top, changes the title, in windows 1280
-  and 390 pixels wide
-- **THEN** the notification sits above the save bar, and covers neither Reset nor Save
-
-#### Scenario: The end of the page
-- **WHEN** in the same state, the operator scrolls step by step to the end of the page, or presses Tab until
-  Save has focus
-- **THEN** at no step does a notification overlap the save bar, and at the end Save is fully visible and
-  can be clicked, and no control of the page is covered by a notification
-
-#### Scenario: Tabbing through the last clips with two notifications
-- **WHEN** two error notifications are shown, and the operator, in Edit mode on
-  `2024-06-27 - Grillning med grannar` in a window 390 × 844 pixels, changes the title and then presses Tab
-  from Title through every clip row's controls to Save
-- **THEN** no notification covers any part of the control that has focus, at any step, and none overlaps the
-  save bar
-
-#### Scenario: A short page with a save bar
-- **WHEN** an error notification is shown and the operator changes the title in the metadata form of
-  `2024-02-30 - Omöjligt datum`, in windows 390 and 320 pixels wide
-- **THEN** at no scroll position does a notification overlap the save bar, and Save can be clicked
-
-#### Scenario: Tabbing to the last clip above a resting bar
-- **WHEN** in a window 320 × 568, and again in a window 320 × 256, an error notification is shown, and the
-  operator, in Edit mode on `2024-09-01 - Sommarlov`, moves its first clip down with the keyboard, saves, the
-  save is answered with a conflict (the save bar now rests after the last chapter), and the operator presses
-  Shift+Tab from Save through every control of the bar and every clip row's controls
-- **THEN** every control that receives focus is fully visible and no part of it is covered by the
-  notification, and at no step does the notification overlap the save bar
-
-#### Scenario: The room follows the notification
-- **WHEN** in the same state, with the page scrolled a little short of its end so that the notification sits
-  above the bar, the operator dismisses it and scrolls to the end of the page
-- **THEN** the room between the last chapter and the save bar is gone, and Save is fully visible and can be
-  clicked
-- **WHEN** a second error notification then arrives
-- **THEN** the last clip row's controls are not covered, and, scrolled a little short of the end again so that
-  the notification sits above the bar, the room is back
-
-#### Scenario: Content above the bar changes without a scroll or a resize
-- **WHEN** an error notification is shown above a resting save bar, and a change in the page above the bar
-  (a chapter being added before it, or a clip list growing by one row) moves the bar down the page without
-  the window being scrolled or resized
-- **THEN** the notification is still directly above the bar, does not overlap it, and covers no control
-
 ### Requirement: A confirmation dialog states its consequence
 
 Every dialog that asks the operator to confirm an action SHALL have a title that asks the question and a
@@ -2266,25 +2200,26 @@ error text.
 
 ### Requirement: Edit mode's save bar stays compact and fits the window
 
-While Edit mode shows its save bar, the bar SHALL fit the window at every width from 320 CSS pixels up.
-Nothing the bar shows SHALL make the page scroll horizontally, including a failed save's explanation and
-its choices, and every word of it SHALL stay inside the window.
+Edit mode's save controls SHALL be in the workspace's top bar ("The workspace's top bar holds the event and the
+save controls"), and the top bar SHALL fit the window at every width from 320 CSS pixels up. Nothing the top bar
+shows SHALL make the page scroll horizontally, including a failed save's explanation and its choices, and every
+word of it SHALL stay inside the window.
 
-The bar SHALL present exactly one primary action at a time: the way on from its current state.
+The top bar SHALL present exactly one primary action at a time: the way on from its current state.
 
 - **Reload latest** while a conflict holds Save back
 - **Back to the event list** when the event no longer exists
 - **Save** in every other state
 
-Every other control in the bar SHALL be presented as secondary. A control that the state holds back SHALL
+Every other control in the top bar SHALL be presented as secondary. A control that the state holds back SHALL
 stay in its place, SHALL say that it is unavailable, and SHALL keep keyboard focus when it has it. Save
 after a conflict, or after the event is found gone, is one such control.
 
-In a window 390 × 844 CSS pixels, with the bar held at the window's bottom edge, the bar SHALL take at most
-a third of the window's height. This includes the times it shows a conflict. A failure to save SHALL show
-the service's detail in full, and the bar SHALL then take at most two fifths of the window's height.
+A conflict's, a vanished event's and a failed save's explanation SHALL open as a panel directly under the top bar,
+never over the Timeline, and SHALL take at most two fifths of the window's height, scrolling within itself when it
+needs more. A failure to save SHALL show the service's detail in full.
 
-The bar SHALL NOT show the browser's own error text. When a save gets no answer at all, the bar SHALL say
+The top bar SHALL NOT show the browser's own error text. When a save gets no answer at all, it SHALL say
 that the service is not reachable and offer Retry, without the text the browser gave for the failed request.
 An error in the page itself SHALL be shown as a failed save with Retry, and SHALL NOT be reported as an
 unreachable service.
@@ -2292,9 +2227,9 @@ unreachable service.
 #### Scenario: A conflict at phone width
 - **WHEN** in a window 390 × 844, the operator is editing the location of
   `2024-06-27 - Grillning med grannar`, its `reel.yaml` title is changed by hand, and the operator saves
-- **THEN** the save bar says that the event changed since it was read and offers "Reload latest" and
-  "Overwrite with mine", with "Reload latest" as its one primary action. Save is held back, presented as
-  secondary, and still has keyboard focus. The bar takes at most a third of the window's height, and the
+- **THEN** the panel under the top bar says that the event changed since it was read and offers "Reload latest"
+  and "Overwrite with mine", with "Reload latest" as the one primary action. Save is held back, presented as
+  secondary, and still has keyboard focus. The panel takes at most two fifths of the window's height, and the
   page does not scroll horizontally.
 
 #### Scenario: A conflict in the narrowest window
@@ -2305,26 +2240,24 @@ unreachable service.
 #### Scenario: No answer at phone width
 - **WHEN** in a window 390 × 844, the operator saves a reorder of `2024-08-02 - Badutflykt - Varberg` and the
   request gets no answer
-- **THEN** the save bar says that the service is not reachable, offers Retry, keeps the reorder and shows no
-  browser error text such as "Failed to fetch". Save is its one primary action, and the bar takes at most a
-  third of the window's height.
+- **THEN** the top bar says that the service is not reachable, offers Retry, keeps the reorder and shows no
+  browser error text such as "Failed to fetch". Save is the one primary action.
 
 #### Scenario: A failed write at phone width
 - **WHEN** in a window 390 × 844, the operator saves a reorder of `2024-09-01 - Sommarlov` while its folder
   cannot be written
-- **THEN** the save bar says that `reel.yaml` could not be saved, shows the service's whole detail with the
-  path it names, and offers Retry. Save is its one primary action, the bar takes at most two fifths of the
-  window's height, and the page does not scroll horizontally.
+- **THEN** the panel under the top bar says that `reel.yaml` could not be saved, shows the service's whole detail
+  with the path it names, and offers Retry. Save is the one primary action, the panel takes at most two fifths of
+  the window's height, and the page does not scroll horizontally.
 
 ### Requirement: Edit mode keeps keyboard focus in view and never drops it
 
 After the operator drops, moves, removes or restores a clip in Edit mode, from the keyboard or with a
 pointer, the control that holds keyboard focus SHALL be fully visible together with its whole row. No part
-of either SHALL be covered by the page header, the chapter's heading or the save bar. This SHALL also hold
-for the edit that first brings the save bar in. The one exception is a drop into another chapter (see "Edit
-mode drags clips between chapters"): then the moved clip's handle and its row's first line (its handle,
-name and Cuts control) SHALL be fully visible and not covered, and a row taller than the room between the
-chapter's heading and the save bar SHALL be scrolled so that its first line is.
+of either SHALL be covered by the bin's chapter heading or cut off by the edge of the bin; the bin scrolls,
+the rest of the workspace does not. The one exception is a drop into another chapter (see "Edit mode drags
+clips between chapters"): then the moved clip's handle and its row's first line SHALL be fully visible and
+not covered.
 
 Suppose Edit mode's read of the editorial document failed and the operator presses **Try again**. Then:
 
@@ -2337,32 +2270,33 @@ Suppose Edit mode's read of the editorial document failed and the operator press
 
 Focus SHALL never fall to the page's body.
 
-When a save is answered, the control that then holds keyboard focus SHALL be fully inside the window. This
-SHALL hold when the answer makes the save bar taller than the room below the editor's top, such as a
-conflict in a short window scrolled to its top.
+When a save is answered, the control that then holds keyboard focus SHALL be fully inside the window.
 
 #### Scenario: The first keyboard drop keeps the dropped clip in view
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, with no other edit and in a window
-  1280 × 900, the operator focuses the handle of its first clip, `s1710001.mp4`, lifts the clip, moves it
-  down one place and drops it
-- **THEN** the save bar appears, keyboard focus is on that handle, and the handle and its whole row are fully
-  visible above the save bar
+  1280 × 720, the operator focuses the handle of its first clip, `s1710001.mp4`, in the bin, lifts the clip,
+  moves it down one place and drops it
+- **THEN** the top bar says "Unsaved", keyboard focus is on that handle, and the handle and its whole row are
+  fully visible in the bin
 
 #### Scenario: The first drop at phone width
 - **WHEN** the operator does the same in a window 390 × 844 with the third clip, `s1710003.mp4`
-- **THEN** its handle and its whole row are fully visible above the save bar
+- **THEN** its handle and its whole row are fully visible in the bin
 
 #### Scenario: A tall row dropped into another chapter
-- **WHEN** in a window 390 × 600 on `2024-08-20 - Två kapitel - Tjörn`, the operator adds four cuts in the
-  Cuts panel of `Kvällen/s1710002.mp4`, so that its row is taller than the room left, and drags the clip
-  into `Main` after `s1710001.mp4`
-- **THEN** keyboard focus is on its handle in `Main`, and its handle, name and Cuts control are fully visible
-  below the chapter's heading and above the save bar
+- **WHEN** in a window 1280 × 720 on `2024-08-20 - Två kapitel - Tjörn`, the operator drags
+  `Kvällen/s1710002.mp4` in the bin into `Main` after `s1710001.mp4`
+- **THEN** keyboard focus is on its handle in `Main`, and its row's first line is fully visible below the
+  chapter's heading in the bin
 
 #### Scenario: A conflict in a short window scrolled to its top
-- **WHEN** in a window 320 × 568 scrolled to its top, the operator has changed the location of
+- **WHEN** in a window 320 × 568, the operator has changed the location of
   `2024-06-27 - Grillning med grannar`, presses Save, and the save is answered with a conflict
-- **THEN** Save keeps keyboard focus and is fully inside the window, and so is the rest of the save bar
+- **THEN** Save keeps keyboard focus and is fully inside the window, and so is the explanation's panel
+
+#### Scenario: A drop far down a long bin
+- **WHEN** the operator moves the last clip of a 400-clip chapter up one place by keyboard
+- **THEN** its handle and its whole row are fully visible in the bin, and the page has not scrolled
 
 #### Scenario: Try again keeps focus while the document is still unreadable
 - **WHEN** the `reel.yaml` of `2024-06-27 - Grillning med grannar` became unparseable after its page was read,
@@ -2374,56 +2308,6 @@ conflict in a short window scrolled to its top.
 - **WHEN** after that, the file is repaired and the operator presses Enter on Try again
 - **THEN** the event's fields and clip lists are shown, and keyboard focus is on the heading of the event's
   fields
-
-### Requirement: Edit mode lines up with the event page and fits a phone
-
-Entering Edit mode SHALL NOT move each clip's thumbnail, name, status, size or modification time sideways from
-where the event page's table showed them. This SHALL hold wherever a chapter's panel is wide enough for both
-the table and Edit mode's one-line rows. Only two things SHALL move: the position number makes room for the
-drag handle, and the move controls take room from the end of the file column. The control that leaves Edit
-mode SHALL be presented like the control that entered it, and never as an unavailable control.
-
-In a window 320 CSS pixels wide or wider, no state of Edit mode SHALL make the page scroll horizontally.
-
-- **A chapter's heading** SHALL stay within its panel. What the chapter holds (moved, missing, removed and
-  ignored clips) SHALL NOT make the heading wrap or widen. It SHALL name the chapter, say how many clips
-  moved, and say how many clips the chapter plays.
-- **The lists of removed clips and of ignored clips** SHALL each say how many clips they hold.
-- **A missing clip's row** SHALL keep, in a window 390 pixels wide, the two-line layout of the other rows:
-  - the first line holds its name and its move controls
-  - its placeholder box sits beside its status, its absent size and time, and its remove control
-
-In both color schemes, each metadata field's edge SHALL have a contrast of at least 3:1 against the surface
-around it, so that an empty field is visible.
-
-#### Scenario: Entering Edit mode moves no column
-- **WHEN** the operator opens `2024-06-27 - Grillning med grannar` in a window 1280 pixels wide and enters
-  Edit mode
-- **THEN** each clip's thumbnail, file name, status, size and modification time start within one pixel of
-  where the table showed them, and the Stop editing control has the same button style that Edit had
-
-#### Scenario: A chapter with a removal and a move in the narrowest window
-- **WHEN** in a window 320 pixels wide, in Edit mode on `2024-09-01 - Sommarlov`, the operator removes
-  `borttagen.mp4` and moves `s1710004.mp4` up
-- **THEN** the page does not scroll horizontally. The chapter's heading is one line that reads "Clips",
-  "1 clip moved" and "2 clips". The list below the chapter says "1 clip removed from reel.yaml when you
-  save".
-
-#### Scenario: A chapter with an ignored clip
-- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a window 390 pixels wide
-- **THEN** the heading of `Main` reads "Main" and "1 clip", its ignored list says "1 ignored clip, not
-  played" and lists `s1710004.mp4`, and the page does not scroll horizontally
-
-#### Scenario: A missing clip's row at phone width
-- **WHEN** Edit mode opens on `2024-09-01 - Sommarlov` in a window 390 pixels wide
-- **THEN** the row of `borttagen.mp4` shows its name and move controls on its first line, and its placeholder
-  box beside "Missing from disk", the absent size and time, and its remove control. The row is at most 8
-  pixels taller than the row of `s1710002.mp4`.
-
-#### Scenario: Empty fields are visible in both schemes
-- **WHEN** Edit mode opens on `2024-06-27 - Grillning med grannar`, in the light and in the dark scheme
-- **THEN** the edges of the empty Location and Description fields measure at least 3:1 against the panel
-  around them
 
 ### Requirement: Edit mode names clips and the saved event as the other screens do
 
@@ -2589,108 +2473,6 @@ A job that a screen knows from its events read (`latest_job`) carries the job's 
 #### Scenario: A job without a cancel request offers Cancel
 - **WHEN** the same page is opened for a running job whose `cancel_requested` is false
 - **THEN** the page shows no "Cancelling…" and offers Cancel
-
-### Requirement: Edit mode's save bar rests in the page when it would hide the editor
-
-Edit mode's save bar SHALL be held at the window's bottom edge only while both of these hold:
-
-- it takes two fifths of the window's height or less;
-- the window is at least 28rem tall (448 pixels at the default text size), so that a held bar, the sticky header
-  and a chapter heading leave room for a whole clip row.
-
-Otherwise it SHALL NOT be held there. It SHALL rest in the page after the editor's last chapter, and scroll with
-the page. It SHALL be held again as soon as both hold again. Which of the two it is depends only on the bar's
-height and the window's, never on where keyboard focus is.
-The bar SHALL follow each change of its own height and of the window's, in both directions. Such changes
-include:
-
-- a save's answer
-- an edit that changes what the bar says
-- a window resized or zoomed
-
-While the bar rests, it SHALL NOT cover any part of the editor. When the page then scrolls a focused control
-into view, it SHALL leave no room for the bar at the window's bottom.
-
-The control that holds keyboard focus SHALL NOT leave the window because the bar starts to rest:
-
-- When a save's answer makes the bar rest, the control that then holds keyboard focus SHALL be scrolled fully
-  into the window. When that control is in the bar, such as Save, the page scrolls to the bar.
-- When a resized or zoomed window makes the bar rest while one of the bar's controls holds keyboard focus,
-  that control SHALL be scrolled fully into the window.
-- While the bar rests and one of its controls holds keyboard focus and is fully inside the window, every
-  further resize or zoom of the window SHALL leave that control fully inside the window, step by step. A
-  resize after the operator scrolled that control out of the window, a resize event that changes neither the
-  window's width nor its height (a phone's URL bar fires them), a change of what the bar says, and a change of
-  the bar's own height SHALL NOT scroll the page.
-
-When keyboard focus moves to a control of the editor that is partly hidden, outside the window or under the
-sticky header, a chapter heading or a held bar, such as the description field, whose caret alone the browser
-would bring into view, that control SHALL be scrolled fully into view. Focus given by a pointer press SHALL NOT
-scroll the page, so the press, and a text field's caret, land where the operator pressed.
-
-No notification SHALL overlap the bar while it is held or while it rests.
-
-Everything else about the bar is unchanged: what it says, its one primary action, its compact layout, and the
-share of a 390 × 844 window it may take while it is held.
-
-#### Scenario: A conflict at 400 % zoom
-- **WHEN** in a window 320 × 256 (a 1280 × 1024 screen at 400 % zoom), using only the keyboard, the operator
-  enters Edit mode on `2024-09-01 - Sommarlov`, moves its first clip down, and saves, and the save is
-  answered with a conflict
-- **THEN** the save bar rests after the last chapter, Save keeps keyboard focus, and Save is fully inside the
-  window
-- **AND** as the operator presses Shift+Tab from Save through every control of the bar, every clip row's
-  controls and the fields, and then Tab back to Save, every control that receives focus is fully visible.
-  None is covered by the save bar.
-
-#### Scenario: A failed write at 400 % zoom
-- **WHEN** the same save in the same window is answered with a failure to write `reel.yaml`
-- **THEN** the save bar rests after the last chapter with the failure's whole detail, and every focus stop
-  of the same walk is fully visible
-
-#### Scenario: The first edit at 400 % zoom
-- **WHEN** in a window 320 × 256, the operator enters Edit mode on `2024-09-01 - Sommarlov` and moves its
-  first clip down with the keyboard
-- **THEN** the save bar, which says only that there are unsaved changes, rests after the last chapter, and the
-  moved clip's focused control and its whole row are fully visible
-
-#### Scenario: A conflict in a short phone window
-- **WHEN** in a window 320 × 568, the operator moves the first clip of `2024-09-01 - Sommarlov` down, and the
-  save bar is held at the window's bottom, and then saves, and the save is answered with a conflict
-- **THEN** the save bar rests after the last chapter, Save keeps keyboard focus, and Save and the rest of the
-  bar are fully inside the window
-
-#### Scenario: Phone and desktop windows keep the held bar
-- **WHEN** the same conflict, or the same failure to write, is answered in a window 390 × 844 or
-  1280 × 900
-- **THEN** the save bar stays held at the window's bottom edge, as before this change
-
-#### Scenario: A taller window holds the bar again
-- **WHEN** after the conflict at 320 × 256, the window becomes 390 × 844, and then 320 × 256 again
-- **THEN** the save bar is held at the window's bottom edge while the window is 390 × 844, and rests after the
-  last chapter again at 320 × 256
-- **AND** at each size, Save keeps keyboard focus and is fully inside the window
-
-#### Scenario: Zooming in after a failed save
-- **WHEN** in a window 1280 × 1024 or 1920 × 968, using only the keyboard, the operator moves the first clip of
-  `2024-09-01 - Sommarlov` down and saves, the save is answered with a conflict or with a failure to write
-  `reel.yaml`, and the operator then zooms in one browser step at a time, through 110, 125, 150, 175, 200,
-  250 and 300 % to 400 %
-- **THEN** after every step Save keeps keyboard focus and is fully inside the window, and at 400 % the save bar
-  rests after the last chapter
-
-#### Scenario: The first edit in a short, wide window
-- **WHEN** in a window 480 × 242 (a 1920 × 1080 screen at 400 % zoom), the operator enters Edit mode on
-  `2024-09-01 - Sommarlov` and moves its first clip down with the keyboard, or lifts it with the keyboard and
-  drops it one place down
-- **THEN** the save bar, which says only that there are unsaved changes and takes less than two fifths of the
-  window, rests after the last chapter, and the moved clip's focused control and its whole row are fully
-  visible
-
-#### Scenario: A notification and a resting bar
-- **WHEN** an error notification is shown, and the operator answers a conflict on `2024-09-01 - Sommarlov`
-  in a window 320 × 568 or 320 × 256, and then scrolls the page from its top to its end
-- **THEN** at no scroll position does the notification overlap the save bar
 
 ### Requirement: Edit mode adds, renames, reorders and deletes chapters
 
@@ -4715,22 +4497,18 @@ A refusal SHALL NOT create, show or announce a job, and SHALL NOT change the eve
 
 ### Requirement: Edit mode's save bar is in the page before the first edit
 
-Once Edit mode has read the editorial document, its save bar SHALL already be part of the page, hidden for as
-long as there is nothing to save and no vanished event to explain. The first edit SHALL show it. It SHALL NOT
-have to build it.
+Once Edit mode has read the editorial document, the top bar's save controls (the unsaved summary, Reset and Save)
+SHALL already be part of the page, hidden for as long as there is nothing to save and no vanished event to
+explain. The first edit SHALL show them. It SHALL NOT have to build them.
 
-While the bar is hidden:
+While they are hidden:
 
-- it SHALL take no room in the page and draw nothing
-- neither the keyboard nor assistive technology SHALL reach it: Tab SHALL NOT stop on its Reset or Save, and
-  the page SHALL NOT list a region named "Unsaved changes"
-- it SHALL NOT affect where notifications sit, which stay at the bottom of the window as on a page with no
-  save bar, and the page SHALL NOT reserve room at its bottom for it
+- they SHALL draw nothing, and the top bar SHALL NOT change its height when they show
+- neither the keyboard nor assistive technology SHALL reach them: Tab SHALL NOT stop on Reset or Save, and the
+  page SHALL NOT list a region named "Unsaved changes"
 
-It SHALL be hidden again whenever nothing is left to save, as before: when every edit is undone, and after
-Reset. Showing it SHALL change nothing else about it: what it says, where it is held or rests ("Edit mode's
-save bar rests in the page when it would hide the editor"), and that no notification overlaps it ("Notifications
-never cover the save bar").
+They SHALL be hidden again whenever nothing is left to save: when every edit is undone, and after Reset.
+Showing them SHALL change nothing else about them.
 
 The first edit SHALL cost no more than the next one. In a chapter that plays 400 clips, in a Chromium window
 1280 × 900, the time from pressing Move down on a clip to the next painted frame, for the first edit made in
@@ -4738,22 +4516,20 @@ Edit mode, SHALL be at most 50 ms longer than the same press on another clip as 
 is the median of five runs, each in a fresh Edit mode.
 
 #### Scenario: No save bar before the first edit
-- **WHEN** in a window 1280 × 900, the operator opens Edit mode on `2024-06-27 - Grillning med grannar`, makes
-  no edit, and presses Tab from the Title field through every control of the page
-- **THEN** no stop is on a Reset or Save, the page lists no region named "Unsaved changes", and an error
-  notification shown at that time sits at the bottom of the window, not raised for a bar
+- **WHEN** in a window 1280 × 720, the operator opens Edit mode on `2024-06-27 - Grillning med grannar`, makes
+  no edit, and presses Tab through every control of the workspace
+- **THEN** no stop is on a Reset or Save, and the page lists no region named "Unsaved changes"
 
 #### Scenario: The first edit shows the bar
 - **WHEN** the operator then changes the title
-- **THEN** the save bar is held at the window's bottom edge with the title "Unsaved changes", Reset and Save
-  (which is its one primary action), and its summary names the changed title
-- **AND** an error notification shown then sits above the bar and covers neither Reset nor Save
+- **THEN** the top bar shows "Unsaved", Reset and Save (which is its one primary action), and its summary names
+  the changed title, and no pane has moved
 
 #### Scenario: An undone edit hides the bar again
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, the operator moves `s1710001.mp4` down one
   place, and then moves it up one place
-- **THEN** the save bar was shown after the first move and is hidden after the second, and the page shows no
-  unsaved changes
+- **THEN** the save controls were shown after the first move and are hidden after the second, and the page shows
+  no unsaved changes
 
 #### Scenario: The first edit in a 400-clip chapter
 - **WHEN** in a window 1280 × 900, Edit mode is open on an event whose one chapter plays 400 clips, the
@@ -4763,30 +4539,25 @@ is the median of five runs, each in a fresh Edit mode.
 
 ### Requirement: Reset leaves keyboard focus on a heading that can be seen
 
-Reset removes the save bar, with the control that was pressed, so keyboard focus SHALL move at once to the
-page's heading, never to the page's body. When that heading is not fully visible below the page header, the
-page SHALL then scroll the least distance that brings it fully into view, and keyboard focus SHALL stay on it.
-When the heading is already fully visible, the page SHALL NOT scroll. This SHALL hold whichever way Reset was
-pressed, whether the bar was held or resting, and at every window width from 320 CSS pixels up. The scroll
-SHALL be instant: it SHALL NOT animate, with or without a reduced-motion preference.
+Reset removes the save controls, with the control that was pressed, so keyboard focus SHALL move at once to the
+workspace's level-one heading, the event's title in the top bar, never to the page's body. The top bar does not
+scroll, so the heading is always in view and nothing SHALL scroll for it. Where the panes are stacked and the page
+scrolls, the page SHALL scroll the least distance, instantly, that brings the heading fully into view.
 
 #### Scenario: Reset from the bottom of a long page
-- **WHEN** in windows 1280 × 900 and 390 × 844, in Edit mode on an event whose one chapter plays 400 clips, the
-  operator moves its last clip up one place, with the page scrolled to the clip, and presses Reset from the
-  keyboard
-- **THEN** keyboard focus is on the page's heading, the heading is fully visible below the page header, and
-  the clip is back in its place
+- **WHEN** in a window 1280 × 720, in Edit mode on an event whose one chapter plays 400 clips, the operator moves
+  its last clip up one place, with the bin scrolled to the clip, and presses Reset from the keyboard
+- **THEN** keyboard focus is on the top bar's heading, and the clip is back in its place
 
 #### Scenario: Reset with the heading already in view
-- **WHEN** in a window 1280 × 900 with the page scrolled to its top, the operator changes the title of
-  `2024-06-27 - Grillning med grannar` and presses Reset
-- **THEN** keyboard focus is on the page's heading, and the page's scroll position is the same as before the
-  press
+- **WHEN** in a window 1280 × 720, the operator changes the title of `2024-06-27 - Grillning med grannar` and
+  presses Reset
+- **THEN** keyboard focus is on the top bar's heading, and nothing in the workspace has scrolled
 
 #### Scenario: Reset with the bar resting
-- **WHEN** in a window 320 × 256, the operator changes the title of `2024-06-27 - Grillning med grannar`,
-  scrolls to the save bar resting after the last chapter, and presses Reset
-- **THEN** keyboard focus is on the page's heading, and the heading is fully visible below the page header
+- **WHEN** in a window 320 × 568, where the panes are stacked, the operator changes the title of
+  `2024-06-27 - Grillning med grannar`, scrolls the page to the bin, and presses Reset
+- **THEN** keyboard focus is on the heading, and the heading is fully visible
 
 ### Requirement: Edit mode saves with Ctrl+S or Cmd+S
 
@@ -6622,47 +6393,46 @@ Every text of these classes SHALL be in a panel and SHALL NOT be shown as a line
 
 ### Requirement: Edit mode's clip list draws only the rows near the view, without moving the page
 
-Edit mode SHALL let the browser skip drawing the clip rows that are far out of view (CSS `content-visibility: auto`
+The bin SHALL let the browser skip drawing the clip rows that are far out of view (CSS `content-visibility: auto`
 on each row), giving every row not yet drawn a block size close to a drawn row's and every row once drawn the size it
-was drawn at, so that the page's scroll height and the place of what is in view do not change as rows come into view.
-In a clip list narrower than 20.25rem, where a row's own controls are wider than the row, rows SHALL be drawn as
-before (not skipped), so that no control is cut off. Every row SHALL stay in the page while skipped: focusable by Tab, read by assistive technology, found by the browser's
-find in page, a drop target for a drag, and reachable by keyboard reorder.
+was drawn at, so that the bin's scroll height and the place of what is in view do not change as rows come into view.
+The bin's compact rows fit its width, so they SHALL be skipped at every width the bin has. Every row SHALL stay in the
+page while skipped: focusable by Tab, read by assistive technology, found by the browser's find in page, a drop target
+for a drag, and reachable by keyboard reorder.
 
-Rows coming into view SHALL NOT move the page: while the operator scrolls the list, the row at the top of the view SHALL
-keep its place to within 1 px apart from the scroll itself. The page's scroll height after the whole list has been
+Rows coming into view SHALL NOT move the bin: while the operator scrolls it, the row at the top of the view SHALL
+keep its place to within 1 px apart from the scroll itself. The bin's scroll height after the whole list has been
 scrolled through once SHALL differ from its height on opening by at most 5 %.
 
 Nothing a row draws outside its own box SHALL be cut off by the skipping: the row's focus ring, the drop indicator and
-the dragged row SHALL look as they did before, in the light and the dark scheme, at 1280 and at 390 px. Dragging a clip
-(with the pointer and by keyboard), marking clips and moving the marked ones, Move up and Move down, rotating a clip, the
-card dialog and the save bar SHALL work as before; after a drop, every row SHALL be drawn and take clicks where it
-now is, never where it was.
+the dragged row SHALL look as they did before, in the light and the dark scheme. Dragging a clip (with the pointer and
+by keyboard), marking clips and moving the marked ones, rotating a clip and the card dialog SHALL work as before; after
+a drop, every row SHALL be drawn and take clicks where it now is, never where it was.
 
 #### Scenario: Scrolling a 400-clip list moves nothing
-- **WHEN** Edit mode shows an event of 400 clips in one chapter at 1280 and at 390 px, and the page is scrolled from
-  the top to the bottom in steps of half a view, waiting two frames after each step
-- **THEN** after each step the top row in view is where the step put it to within 1 px, and the scroll height at the
-  end differs from the scroll height on opening by at most 5 %
+- **WHEN** the bin shows an event of 400 clips in one chapter at 1280 × 720, and the bin is scrolled from the top to
+  the bottom in steps of half a view, waiting two frames after each step
+- **THEN** after each step the top row in view is where the step put it to within 1 px, the scroll height at the
+  end differs from the scroll height on opening by at most 5 %, and the rest of the workspace has not moved
 
 #### Scenario: A drag to the end of a long list lands where it was shown
-- **WHEN** the operator drags the first clip of a 400-clip chapter to the last slot of the last chapter, the page
+- **WHEN** the operator drags the first clip of a 400-clip chapter to the last slot of the last chapter, the bin
   scrolling on its own across rows that were never drawn
 - **THEN** the clip is dropped in the slot the drop indicator showed, and the draft's order says so
 
 #### Scenario: Keyboard reorder far down the list
-- **WHEN** the operator moves a clip down the list by keyboard past rows that were never drawn
+- **WHEN** the operator moves a clip down the bin by keyboard past rows that were never drawn
 - **THEN** the moved row keeps keyboard focus, is in view with its focus ring whole, and the announcement names its new
   place
 
-#### Scenario: A skipped row is still found
-- **WHEN** the operator tabs through the list, or searches the page for the name of the 390th clip
-- **THEN** each row is reached in order and the 390th clip's row is scrolled into view and shown
-
 #### Scenario: Nothing is cut off
 - **WHEN** a row has keyboard focus, a drag shows its drop indicator, or a clip is being dragged, in the light and the
-  dark scheme at 1280 and at 390 px
-- **THEN** the focus ring, the indicator and the dragged row are drawn whole, as on the page before this change
+  dark scheme
+- **THEN** the focus ring, the indicator and the dragged row are drawn whole
+
+#### Scenario: A skipped row is still found
+- **WHEN** the operator tabs through the bin, or searches the page for the name of the 390th clip
+- **THEN** each row is reached in order and the 390th clip's row is scrolled into view and shown
 
 #### Scenario: A moved row takes its clicks where it is
 - **WHEN** two marked clips are dragged to the top of another chapter in Chrome, so that the rows below them move down
@@ -6863,3 +6633,125 @@ CSS pixels, in light and dark schemes.
 
 - **WHEN** the operator presses Analyze all twice before the first answer arrives
 - **THEN** exactly one `POST /api/v1/analysis` is sent
+
+### Requirement: Edit mode is a full-window workspace
+
+Pressing Edit SHALL replace the event page with a workspace that fills the window: no app header, no page width
+limit. It SHALL have a top bar and four panes: the clip bin (left), the viewer (centre), the inspector (right) and the
+Timeline (along the bottom). Done SHALL leave it through the same flow as leaving Edit mode today, unsaved guard
+included, and the event page SHALL show again with the app header.
+
+#### Scenario: Edit opens the workspace
+- **WHEN** the operator presses Edit on `2024-08-20 - Två kapitel - Tjörn` in a 1440×900 window
+- **THEN** the app header is gone, the top bar, bin, viewer, inspector and Timeline are all visible, and the page
+  does not scroll
+
+#### Scenario: Done with unsaved edits
+- **WHEN** the operator has moved a clip and presses Done
+- **THEN** the same unsaved-edits question as today is asked, and choosing to stay keeps the workspace and the draft
+
+### Requirement: The workspace's top bar holds the event and the save controls
+
+The top bar SHALL show a control back to the event list (which leaves Edit mode as Done does), the event's title with
+its date and location, the unsaved summary in the save bar's words, Reset, Save and Done, and the theme switch. It
+SHALL present one primary action as the save bar does today (Save, Reload latest or Back to the event list), and
+Ctrl+S / Cmd+S SHALL save as today.
+
+#### Scenario: The summary follows the draft
+- **WHEN** the operator adds a cut and moves a clip
+- **THEN** the top bar says "Unsaved" with "1 cut added · 1 clip moved", and Save is the primary action
+
+#### Scenario: A conflict
+- **WHEN** a save answers 412
+- **THEN** the top bar's primary action is Reload latest, and the explanation opens under the top bar without covering
+  the Timeline
+
+### Requirement: The clip bin holds the chapters' clip lists
+
+The bin SHALL list every chapter with its clips in compact rows (thumbnail, name, kept length, status) and SHALL keep
+every action the chapter lists have: reorder and move between chapters by pointer and by keyboard, marks and Move
+marked to…, Add/rename/delete chapter, and the New, Ignored and Missing clips with their actions.
+
+#### Scenario: Keyboard reorder in the bin
+- **WHEN** the operator focuses `s1710002.mp4`'s drag handle, presses Space, ArrowUp, Space
+- **THEN** `s1710002.mp4` is first in its chapter, the move is announced, and the Timeline draws it first
+
+#### Scenario: 400 clips
+- **WHEN** the event has 400 clips
+- **THEN** the bin scrolls on its own, the rest of the workspace does not move, and the drag-smoothness gate holds
+
+### Requirement: The viewer holds the picture and the transport
+
+The viewer SHALL show the Timeline's picture with play, previous clip, next clip, the time readout and Use as poster.
+
+#### Scenario: Next clip
+- **WHEN** the playhead is in `s1710002.mp4` and the operator presses Next clip
+- **THEN** the playhead moves to the first kept frame of the next drawn clip
+
+### Requirement: The inspector holds the event's fields and the selected cut
+
+The inspector SHALL have an Event tab (Details form, Poster, and a button "All title cards in this event" that
+opens the title card dialog on that tab, with whether title cards are on in words) and a Cut tab (the selected
+cut's fields and the selected suggestion's decision). The tabs SHALL work by arrow keys. Choosing a cut or a
+suggestion on the track SHALL show the Cut tab and leave focus on the track.
+
+#### Scenario: Selecting a cut
+- **WHEN** the operator presses a cut's handle on the track
+- **THEN** the inspector shows the Cut tab with that cut's start and end fields
+
+#### Scenario: The card style and the switch stay in the dialog
+- **WHEN** title cards are on and the operator presses "All title cards in this event" in the Event tab
+- **THEN** the Event tab said "Title cards are on for this event", and the dialog opens on its "All title cards in
+  this event" tab, which holds the card style and the Title cards switch
+
+### Requirement: The workspace follows the theme and fits narrower windows
+
+The workspace SHALL follow the operator's light or dark theme and its switch SHALL change the same setting as the app
+header's. At 1280×720 the page SHALL NOT scroll; the panes scroll within themselves. Below 960 CSS pixels wide the
+panes SHALL stack in one column (viewer, Timeline, inspector, bin) with no horizontal page scroll.
+
+#### Scenario: Theme switch
+- **WHEN** the operator switches to light in the top bar and leaves Edit mode
+- **THEN** the event page is light, and `auto-reel:theme` holds `light`
+
+#### Scenario: Phone width
+- **WHEN** the window is 390 CSS pixels wide
+- **THEN** the panes are stacked, every control is reachable, and the page does not scroll sideways
+
+### Requirement: The bin's chapter headings and lists say what they hold
+
+A chapter's heading SHALL stay one line within the bin, naming the chapter and saying how many clips moved and how
+many clips it plays. The lists of removed and of ignored clips SHALL each say how many clips they hold. No state of
+the bin SHALL make it scroll sideways.
+
+#### Scenario: A chapter with a removal and a move
+- **WHEN** in Edit mode on `2024-09-01 - Sommarlov`, the operator removes `borttagen.mp4` and moves `s1710004.mp4` up
+- **THEN** the chapter's heading is one line that reads "Clips", "1 clip moved" and "2 clips", and the list below
+  says "1 clip removed from reel.yaml when you save"
+
+### Requirement: An empty field in the inspector can be seen
+
+In both color schemes, each Details field's edge SHALL have a contrast of at least 3:1 against the inspector around
+it, so that an empty field is visible.
+
+#### Scenario: Empty fields are visible in both schemes
+- **WHEN** Edit mode opens on `2024-06-27 - Grillning med grannar`, in the light and in the dark scheme
+- **THEN** the edges of the empty Location and Description fields measure at least 3:1 against the inspector
+
+### Requirement: Notifications never cover the workspace's top bar or a focused control
+
+In the workspace, notifications SHALL sit at the top of the viewer pane, under the top bar, over the picture, and
+SHALL NOT overlap the top bar, the transport, the bin, the inspector or the Timeline. Where the panes are stacked,
+and outside Edit mode, notifications SHALL sit at the bottom of the window, and a control that receives keyboard
+focus SHALL NOT be left under one at any scroll position.
+
+#### Scenario: A notification in the workspace
+- **WHEN** an error notification is shown and the operator, in Edit mode on `2024-06-27 - Grillning med grannar`
+  in a window 1280 × 720, changes the title
+- **THEN** the notification sits over the top of the picture and covers neither Reset, Save nor Done, nor any
+  control of the bin, the inspector or the Timeline
+
+#### Scenario: Tabbing with two notifications at phone width
+- **WHEN** two error notifications are shown and the operator, in Edit mode in a window 390 × 844, presses Tab
+  through every control of the workspace
+- **THEN** no notification covers any part of the control that has focus, at any step
