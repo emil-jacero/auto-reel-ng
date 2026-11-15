@@ -16,3 +16,12 @@ export function emptyChapterWords(alone: boolean, wholly: boolean): string {
   const lead = wholly ? 'No clips.' : 'It plays no clip.'
   return alone ? `${lead} ${LEFT_OUT}` : `${lead} ${MOVE_IN} ${LEFT_OUT}`
 }
+
+/**
+ * Whether a chapter holds nothing at all ("No clips."), as opposed to playing no clip. An
+ * ignored clip counts even when the wide bin lists it apart (`ignoredApart`), so the words
+ * do not depend on where the page lists it.
+ */
+export function holdsNothing(played: number, removed: number, ignored: number): boolean {
+  return played === 0 && removed === 0 && ignored === 0
+}

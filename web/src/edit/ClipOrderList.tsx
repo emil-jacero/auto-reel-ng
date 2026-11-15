@@ -36,7 +36,7 @@ import { lengthWords } from './clipLength'
 import { cutsOf, keptOriginal, movedSet } from './draft'
 import type { ChapterKey, Cuts, DraftCut, Rotations } from './draft'
 import { CHAPTER_DROP } from './dragSlots'
-import { emptyChapterWords } from './emptyChapter'
+import { emptyChapterWords, holdsNothing } from './emptyChapter'
 import { groupWords } from './marks'
 import type { IgnoredGroup } from './wideBin.ts'
 
@@ -822,6 +822,9 @@ export const ClipOrderList = memo(function ClipOrderList({
   const plays = order.length > 0
   const listsIgnored = ignored.length > 0 && !ignoredApart
   const empty = !plays && removed.length === 0 && !listsIgnored
+  // The words follow what the chapter holds, not where the page lists the ignored clips.
+  const holdsNone = holdsNothing(order.length, removed.length, ignored.length)
+  const ignoredBelow = ignoredApart && !plays && ignored.length > 0
   const originalPosition = useMemo(
     () => new Map(original.map((identity, at) => [identity, at + 1])),
     [original],
@@ -957,7 +960,7 @@ export const ClipOrderList = memo(function ClipOrderList({
         sectionRef={sectionRef}
         plays={plays}
         // Move marked to… needs a second chapter (the tools row has a place only then).
-        words={emptyChapterWords(tools.place === null, empty)}
+        words={emptyChapterWords(tools.place === null, holdsNone)}
       />
       {plays && (
         <SortableContext id={chapterKey} items={items} strategy={strategy}>
@@ -1019,6 +1022,11 @@ export const ClipOrderList = memo(function ClipOrderList({
             })}
           </ul>
         </>
+      )}
+      {ignoredBelow && (
+        <p className="ignored-caption">
+          {plural(ignored.length, 'ignored clip', 'ignored clips')}, listed under Ignored clips
+        </p>
       )}
       {listsIgnored && (
         <>
