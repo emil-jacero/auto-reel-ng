@@ -399,8 +399,9 @@ export function Timeline({
     }
   }, [pps, syncRange])
 
-  // The clips the page read again: the playhead stays only where it still means the same clip,
-  // and on a kept frame of it (a new leading or trailing cut moves it to the nearest one).
+  // The clips the page read again, or the draft drew in another order: the playhead follows its
+  // clip by identity, on a kept frame of it (a new leading or trailing cut moves it to the
+  // nearest one); with its clip gone it goes to the start.
   const previous = useRef(clips)
   useEffect(() => {
     const was = previous.current

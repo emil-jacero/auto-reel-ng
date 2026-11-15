@@ -145,8 +145,10 @@ export function clampPosition(
 
 /**
  * Where the playhead goes when the page reads the clips again (a cut edited in a Cuts panel, an
- * approved suggestion, a trim, a refresh): `start` when its clip is gone or is another clip
- * now; the last frame when its time is past a shortened clip; the nearest kept frame of its
+ * approved suggestion, a trim, a refresh) or the draft draws them in another order
+ * (`track-draft-order`): it follows its clip by identity, to the clip's first kept frame when it
+ * was on the clip's card (the card in front of it may be another now); `start` when its clip is
+ * gone; the last frame when its time is past a shortened clip; the nearest kept frame of its
  * clip when its time is no longer kept (`timeline-ripple-layout`); null when it stays.
  */
 export function afterRead(
@@ -154,19 +156,26 @@ export function afterRead(
   clips: readonly { identity: string; facts: Timed; kept?: Extent }[],
   at: Position,
 ): Position | 'start' | null {
-  const now = clips[at.clip]
-  if (now === undefined || was[at.clip]?.identity !== now.identity) {
+  const identity = was[at.clip]?.identity
+  const index =
+    clips[at.clip] !== undefined && clips[at.clip].identity === identity
+      ? at.clip
+      : clips.findIndex((clip) => clip.identity === identity)
+  if (identity === undefined || index === -1) {
     return 'start'
   }
+  const now = clips[index]
+  const moved = index !== at.clip
   if (at.card != null) {
-    return null
+    return moved ? keptPosition(clips.map(timedOf), index, 0) : null
   }
+  const here = moved ? { clip: index, ms: at.ms } : at
   const timed = timedOf(now)
-  if (at.ms > now.facts.durationMs) {
-    return { clip: at.clip, ms: onGrid(timed, now.facts.durationMs) }
+  if (here.ms > now.facts.durationMs) {
+    return { clip: index, ms: onGrid(timed, now.facts.durationMs) }
   }
-  const held = clampPosition(clips, at)
-  return samePosition(held, at) ? null : held
+  const held = clampPosition(clips, here)
+  return !moved && samePosition(held, at) ? null : held
 }
 
 /** A clip's timing with its kept extent, from a track clip (`facts` and `kept`). */

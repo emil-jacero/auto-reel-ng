@@ -277,6 +277,7 @@ export function TimelineSection({
               view={selectedView}
               editing={cardEditing}
               spec={savedNamed.find((spec) => spec.chapter === cards.editing)}
+              unsaved={specs.find((spec) => spec.chapter === cards.editing)?.unsaved}
               backdrop={backdrop}
               lengthRange={lengthRange}
               gate={nameGate}

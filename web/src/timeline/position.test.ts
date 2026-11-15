@@ -323,4 +323,21 @@ describe('afterRead: the playhead when the clips are read again (timeline-ripple
     assert.equal(afterRead([clip('A', 10000)], [], { clip: 0, ms: 0 }), 'start')
     assert.deepEqual(afterRead([clip('A', 10000)], [clip('A', 5000)], { clip: 0, ms: 9000 }), { clip: 0, ms: 4960 })
   })
+
+  it('follows its clip by identity when the draft draws another order (track-draft-order)', () => {
+    const was = [clip('A', 10000), clip('B', 10000), clip('C', 10000)]
+    // A dragged to the end: the playhead in B stays in B, one place earlier.
+    const now = [clip('B', 10000), clip('C', 10000), clip('A', 10000)]
+    assert.deepEqual(afterRead(was, now, { clip: 1, ms: 4000 }), { clip: 0, ms: 4000 })
+    // A clip that stays where it was keeps the playhead as it is.
+    assert.equal(afterRead(was, [clip('B', 10000), clip('A', 10000), clip('C', 10000)], { clip: 2, ms: 1000 }), null)
+    // Moved onto a cut, it lands on the clip's nearest kept frame.
+    const cut = [clip('B', 10000), clip('A', 10000, [{ in: 0, out: 2 }]), clip('C', 10000)]
+    assert.deepEqual(afterRead(was, cut, { clip: 0, ms: 1000 }), { clip: 1, ms: 2000 })
+    // On a card in front of its clip, it goes to the clip's first kept frame: the card is another now.
+    const card = { chapter: 0, name: '', ms: 500, lengthMs: 3000 }
+    assert.deepEqual(afterRead(was, now, { clip: 1, ms: 0, card }), { clip: 0, ms: 0 })
+    // Its clip gone from the draft (a deleted chapter's, say): the start.
+    assert.equal(afterRead(was, [clip('A', 10000), clip('C', 10000)], { clip: 1, ms: 0 }), 'start')
+  })
 })
