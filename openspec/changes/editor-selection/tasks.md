@@ -26,7 +26,7 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 3. Inspector (web/src/edit)
 
-- [ ] 3.1 `Inspector.tsx` with Clip · Title card · Suggestion · Event tabs following the selection. Verify Playwright, and that each kind's selection (clip, cut,
+- [x] 3.1 `Inspector.tsx` with Clip · Title card · Suggestion · Event tabs following the selection. Verify Playwright, and that each kind's selection (clip, cut,
   title card, suggestion) is announced once through the polite status (today only the card's is).
 - [ ] 3.2 Clip tab: typed Trim In/Out through the edge-edit action, rotate, cuts list, "+ Cut at playhead", poster,
   ignore. Verify `edgeEdit.test.ts` case for typed trims and Playwright.

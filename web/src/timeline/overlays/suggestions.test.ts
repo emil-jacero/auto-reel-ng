@@ -32,6 +32,7 @@ import {
   standingRefusal,
   stepOfKey,
   suggestionKey,
+  suggestionSelectedWords,
   suggestionState,
 } from './suggestions.ts'
 import type { Refusal, SuggestionKeyEvent } from './suggestions.ts'
@@ -670,5 +671,14 @@ describe('marks on a rippled track (timeline-ripple-layout)', () => {
 
   it('a clip with no edge cut maps as before', () => {
     assert.deepEqual(markSpan({ start: 1, end: 3 }, 5000, { inMs: 0, outMs: 6000 }), { startMs: 6000, endMs: 8000 })
+  })
+})
+
+describe('suggestionSelectedWords', () => {
+  it('names the kind, the clip and the span', () => {
+    assert.equal(
+      suggestionSelectedWords({ kind: 'black', start: 58.1, end: 60 }, 's1.mp4'),
+      'Suggestion: Black frames in s1.mp4, 0:58.1 to 1:00, selected',
+    )
   })
 })

@@ -94,7 +94,7 @@
     scroll-padding-block: calc(2 * var(--panel-head-h) + var(--s-2)) var(--s-2);
   }
 
-  /* The inspector's Event and Cut tabs (`Workspace.tsx`), drawn as the card dialog's. */
+  /* The inspector's tabs (`Inspector.tsx`), drawn as the card dialog's. */
   .ws-insp-tabs {
     position: sticky;
     inset-block-start: 0;
@@ -150,18 +150,51 @@
     }
   }
 
-  /* The Cut tab with no cut or suggestion selected says how to select one. */
-  .ws-cut-empty {
+  /* A Clip or Suggestion tab with nothing of its kind selected says how to select one. */
+  .ws-empty {
     margin: 0;
     color: var(--fg-muted);
   }
 
-  .ws-cut-slot:has(.tl-cut-panel:not(:empty)) ~ .ws-cut-empty {
+  .ws-slot:has(.tl-cut-panel:not(:empty)) ~ .ws-empty {
     display: none;
   }
 
-  .ws-cut-slot:not(:has(.tl-cut-panel:not(:empty))) {
+  .ws-slot:not(:has(.tl-cut-panel:not(:empty))) {
     display: none;
+  }
+
+  /* The Clip tab's header (`timeline/ClipHeader.tsx`): the clip, where it stands, how long it is. */
+  .tl-clip-head {
+    display: grid;
+    gap: var(--s-1);
+    min-inline-size: 0;
+
+    & > * {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .tl-clip-name {
+    font-size: 1rem;
+  }
+
+  .tl-clip-where,
+  .tl-clip-length {
+    color: var(--fg-muted);
+  }
+
+  /* The Title card tab: the selected card, and the way to its editor. */
+  .ws-card-tab {
+    display: grid;
+    justify-items: start;
+    gap: var(--s-2);
+
+    & > h3,
+    & > p {
+      margin: 0;
+    }
   }
 
   /* The Event tab's way to the card dialog's event tab, and the switch's state in words. */

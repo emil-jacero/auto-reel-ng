@@ -31,6 +31,7 @@ import {
   standingRefusal,
   stepOfKey,
   suggestionKey,
+  suggestionSelectedWords,
   suggestionState,
 } from './suggestions'
 import type { Decision, Refusal, Suggestion } from './suggestions'
@@ -54,10 +55,12 @@ export type Suggestions = {
   lane: LaneSlot | undefined
   /** The notes (badge, Re-analyze, legend), drawn under the track. */
   strip: ReactNode
-  /** The selected mark's decision, drawn in the cut panel; null with no mark selected. */
+  /** The selected mark's decision, drawn in the Suggestion tab; null with no mark selected. */
   detail: ReactNode
   /** The selected mark's id while its decision is drawn; null otherwise. */
   selectedKey: string | null
+  /** The selected mark in words, for the polite status; null with none. */
+  words: string | null
 }
 
 type Context = {
@@ -66,8 +69,6 @@ type Context = {
   pps: number
   /** Put the playhead at a position and show it, without playing. */
   seekTo: (pos: Position) => void
-  /** Called on each selection of a mark (the workspace inspector shows its Cut tab). */
-  onSelect?: () => void
   /** The page's one selection: a mark is selected through it, and ended by it. */
   selection: Pick<SelectionBinding, 'selection' | 'set' | 'keep'>
 }
@@ -78,7 +79,7 @@ function bySpan(a: Suggestion, b: Suggestion): number {
 
 export function useSuggestions(
   control: AnalysisControl | undefined,
-  { clips, lay, pps, seekTo, onSelect, selection }: Context,
+  { clips, lay, pps, seekTo, selection }: Context,
 ): Suggestions {
   const read = control?.binding.read ?? NO_READ
   const detailId = useId()
@@ -239,7 +240,6 @@ export function useSuggestions(
   const select = (mark: MarkModel) => {
     setSelection({ kind: 'suggestion', id: mark.id })
     setRefusal(null)
-    onSelect?.()
     setRoving((was) => new Map(was).set(mark.identity, mark.id))
     const clip = clips[mark.clipIndex]
     // The frame the suggestion starts on, held to the clip's kept frames (a mark partly in a
@@ -389,12 +389,13 @@ export function useSuggestions(
         }
 
   if (control === undefined) {
-    return { lane: undefined, strip: null, detail: null, selectedKey: null }
+    return { lane: undefined, strip: null, detail: null, selectedKey: null, words: null }
   }
   const ok = control.binding.read.status === 'ok'
   return {
     lane,
     selectedKey: selected === undefined || !ok ? null : selected.id,
+    words: selected === undefined || !ok ? null : suggestionSelectedWords(selected.segment, nameOf(selected)),
     strip: <Notes binding={control.binding} groups={groups} />,
     detail:
       selected === undefined || !ok ? null : (

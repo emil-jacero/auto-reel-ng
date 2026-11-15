@@ -64,7 +64,9 @@ import { TopBar } from './workspace/TopBar'
 import type { WorkspaceFrame } from './workspace/TopBar'
 import { Workspace } from './workspace/Workspace'
 import { titleCardsWords } from './workspace/inspectorTabs.ts'
-import type { InspectorTab } from './workspace/inspectorTabs.ts'
+import { CardTab, CardTabEmpty } from './workspace/Inspector'
+import { useInspectorTab } from './workspace/useInspectorTab.ts'
+import { inspectorName } from './card/Inspector'
 import { TAB_NAME } from './card/tabs.ts'
 import { NameDialog } from './ChapterDialogs'
 import {
@@ -1128,7 +1130,7 @@ export function EventEditor({
   const refusalRef = useRef<HTMLDivElement>(null)
   // The workspace inspector's shown tab, and a refusal at the Details fields waiting for its
   // Event tab to be drawn before it takes focus.
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('event')
+  const [inspectorTab, setInspectorTab] = useInspectorTab(cards)
   const refusalWaits = useRef(false)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const keepEditingRef = useRef<HTMLButtonElement>(null)
@@ -1359,7 +1361,7 @@ export function EventEditor({
       return
     }
     // In the workspace a refusal at the Details fields is in the inspector's Event tab, hidden
-    // while the Cut tab shows: the Event tab is shown first, and the refusal takes focus once it
+    // while another tab shows: the Event tab is shown first, and the refusal takes focus once it
     // is drawn (below).
     if (refusalRef.current?.closest('.ws-insp-panel[hidden]') != null) {
       refusalWaits.current = true
@@ -2722,6 +2724,22 @@ export function EventEditor({
             </div>
           )}
           </>,
+          // The Title card tab: the selected card, and the way to its editor (the dialog, until
+          // the editor docks here).
+          cardTab: <>
+          {(() => {
+            const view =
+              cards.selected !== null && cardEditing !== null ? cardEditing.view(cards.selected) : null
+            return view === null || cards.selected === null ? (
+              <CardTabEmpty />
+            ) : (
+              <CardTab
+                name={inspectorName(view.opening, view.name)}
+                onEdit={() => cards.selected !== null && cards.open(cards.selected)}
+              />
+            )
+          })()}
+          </>,
           timeline: <>
           {editing !== null && cardEditing !== null && detail !== null && (
             // Open from the start; its chapters, order and cuts are the draft's, its clips' facts
@@ -3180,7 +3198,7 @@ export function EventEditor({
       )}
             </>}
           bin={parts?.bin ?? null}
-          inspector={
+          event={
             <>
               {parts?.details}
               {parts?.poster}
@@ -3188,6 +3206,7 @@ export function EventEditor({
               {workspace.aside}
             </>
           }
+          card={parts?.cardTab ?? null}
           timeline={parts?.timeline ?? null}
           tab={inspectorTab}
           onTab={setInspectorTab}

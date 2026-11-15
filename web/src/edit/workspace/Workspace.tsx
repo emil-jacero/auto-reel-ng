@@ -1,17 +1,11 @@
 import './workspace.css'
 
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent, ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { TimelinePanesContext } from '../../timeline/panes'
 import type { TimelinePanes } from '../../timeline/panes'
-import {
-  CUT_TAB_EMPTY,
-  INSPECTOR_LIST_NAME,
-  INSPECTOR_TABS,
-  INSPECTOR_TAB_NAME,
-  inspectorTabAfterKey,
-} from './inspectorTabs.ts'
+import { Inspector } from './Inspector.tsx'
 import type { InspectorTab } from './inspectorTabs.ts'
 
 /*
@@ -19,10 +13,9 @@ import type { InspectorTab } from './inspectorTabs.ts'
  * width, the app header hidden (`data-workspace` on <html>), a top bar and four panes: the clip
  * bin (left), the viewer (centre), the inspector (right) and the Timeline (bottom). Each pane
  * scrolls on its own; below 960 CSS px the panes stack in one column (viewer, Timeline,
- * inspector, bin) and the page scrolls. The Timeline puts its picture in the viewer and its cut
- * panel in the inspector's Cut tab (`TimelinePanesContext`): one tree, one state, one video. The
- * inspector's tabs are Event (the editor's event content) and Cut; a new cut or suggestion
- * selection shows Cut without moving focus from the track.
+ * inspector, bin) and the page scrolls. The Timeline puts its picture in the viewer and its clip
+ * and suggestion panels in the inspector's tabs (`TimelinePanesContext`): one tree, one state, one
+ * video. The inspector (`Inspector.tsx`) follows the page's selection without moving focus.
  */
 
 /** Stacked, the top bar sticks while it takes at most this share of the window's height… */
@@ -33,7 +26,8 @@ const TOP_MIN_WINDOW_REM = 28
 export function Workspace({
   top,
   bin,
-  inspector,
+  event,
+  card,
   timeline,
   viewer,
   tab,
@@ -41,20 +35,23 @@ export function Workspace({
 }: {
   top: ReactNode
   bin: ReactNode
-  /** The inspector's Event tab; the Cut tab holds the Timeline's cut panel. */
-  inspector: ReactNode
+  /** The inspector's Event tab. */
+  event: ReactNode
+  /** The inspector's Title card tab; Clip and Suggestion hold the Timeline's panels. */
+  card: ReactNode
   timeline: ReactNode
   /** What the viewer shows while the Timeline has no picture there (reading, a failure, Prepare). */
   viewer: ReactNode
   /**
-   * The inspector's shown tab, held by the editor: what needs the operator's eye in the Event tab
-   * (a save's refusal at the Details fields) shows that tab first. `onTab` must be stable.
+   * The inspector's shown tab, held by the editor (`useInspectorTab`): what needs the operator's
+   * eye in the Event tab (a save's refusal at the Details fields) shows that tab first.
    */
   tab: InspectorTab
   onTab: (tab: InspectorTab) => void
 }) {
   const [viewerPane, setViewerPane] = useState<HTMLElement | null>(null)
-  const [cutPane, setCutPane] = useState<HTMLElement | null>(null)
+  const [clipPane, setClipPane] = useState<HTMLElement | null>(null)
+  const [suggestionPane, setSuggestionPane] = useState<HTMLElement | null>(null)
   const topRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -153,23 +150,9 @@ export function Workspace({
     }
   }, [])
 
-  // The inspector's tabs: roving tabindex, arrow keys, Home and End (as the card dialog's).
-  const tabsId = useId()
-  const tabButtons = useRef(new Map<InspectorTab, HTMLButtonElement>())
-  const onTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
-    const next = inspectorTabAfterKey(tab, event.key)
-    if (next !== null) {
-      event.preventDefault()
-      onTab(next)
-      tabButtons.current.get(next)?.focus()
-    }
-  }
-  // Only the tab changes: focus stays on the track control that selected.
-  const onCutSelected = useCallback(() => onTab('cut'), [onTab])
-
   const panes = useMemo<TimelinePanes>(
-    () => ({ viewer: viewerPane, cut: cutPane, onCutSelected }),
-    [viewerPane, cutPane, onCutSelected],
+    () => ({ viewer: viewerPane, clip: clipPane, suggestion: suggestionPane }),
+    [viewerPane, clipPane, suggestionPane],
   )
 
   return (
@@ -186,52 +169,14 @@ export function Workspace({
           <div ref={setViewerPane} className="ws-view-slot" />
         </section>
         <section className="ws-pane ws-insp" aria-label="Inspector" data-ws-scroll>
-          <div className="ws-insp-tabs" role="tablist" aria-label={INSPECTOR_LIST_NAME}>
-            {INSPECTOR_TABS.map((id) => (
-              <button
-                key={id}
-                ref={(node) => {
-                  if (node === null) {
-                    tabButtons.current.delete(id)
-                  } else {
-                    tabButtons.current.set(id, node)
-                  }
-                }}
-                type="button"
-                role="tab"
-                id={`${tabsId}-tab-${id}`}
-                className="ws-insp-tab"
-                aria-selected={tab === id}
-                aria-controls={`${tabsId}-panel-${id}`}
-                tabIndex={tab === id ? 0 : -1}
-                onClick={() => onTab(id)}
-                onKeyDown={onTabKey}
-              >
-                {INSPECTOR_TAB_NAME[id]}
-              </button>
-            ))}
-          </div>
-          <div
-            role="tabpanel"
-            id={`${tabsId}-panel-event`}
-            aria-labelledby={`${tabsId}-tab-event`}
-            className="ws-insp-panel"
-            hidden={tab !== 'event'}
-          >
-            {inspector}
-          </div>
-          {/* Mounted while hidden: the Timeline's cut panel is portalled into it. */}
-          <div
-            role="tabpanel"
-            id={`${tabsId}-panel-cut`}
-            aria-labelledby={`${tabsId}-tab-cut`}
-            className="ws-insp-panel"
-            hidden={tab !== 'cut'}
-            tabIndex={0}
-          >
-            <div ref={setCutPane} className="ws-cut-slot" />
-            <p className="ws-cut-empty">{CUT_TAB_EMPTY}</p>
-          </div>
+          <Inspector
+            tab={tab}
+            onTab={onTab}
+            event={event}
+            card={card}
+            clipSlot={setClipPane}
+            suggestionSlot={setSuggestionPane}
+          />
         </section>
         <section className="ws-pane ws-tl" aria-label="Timeline" data-ws-scroll>
           {timeline}

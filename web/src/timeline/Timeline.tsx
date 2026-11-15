@@ -19,6 +19,8 @@ import '../rotate/rotate.css'
 import { TimelinePanesContext } from './panes'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
+import { ClipHeader } from './ClipHeader'
+import { clipPlace, clipSelectedWords, cutSelectedWords } from './clipPanel'
 import { CutFields } from './CutFields'
 import type { Selected } from './CutFields'
 import { posterFromPlayhead, USE_AS_POSTER } from '../edit/poster.ts'
@@ -161,29 +163,39 @@ export type TimelineProps = {
 
 /**
  * The Timeline's three parts over one state (design D2 of `editor-workspace-layout`): the viewer
- * (the picture and the transport), the track (the tool row, the lanes and their notes) and the cut
- * panel (the selected cut's fields and the selected suggestion's decision). Each is its own
+ * (the picture and the transport), the track (the tool row, the lanes and their notes), the clip
+ * panel (the selected clip's header and cut's fields) and the suggestion panel (the selected
+ * suggestion's decision). Each is its own
  * `.timeline` box, so it can sit in a pane of its own; there is still one `<video>`.
  */
 export type TimelineParts = {
   viewer: ReactNode
   track: ReactNode
-  cutPanel: ReactNode
+  /** The selected clip's header and the selected cut's fields (the inspector's Clip tab). */
+  clipPanel: ReactNode
+  /** The selected suggestion's decision (the inspector's Suggestion tab). */
+  suggestionPanel: ReactNode
 }
 
 /**
- * The Timeline: in Edit mode's workspace the viewer and the cut panel go to their panes (portals:
+ * The Timeline: in Edit mode's workspace the viewer and the two panels go to their panes (portals:
  * still one tree and one state), the track stays here; without one, the three are stacked.
  */
 export function Timeline(props: TimelineProps) {
   const parts = useTimeline(props)
   const panes = useContext(TimelinePanesContext)
-  if (panes !== null && panes.viewer !== null && panes.cut !== null) {
+  if (
+    panes !== null &&
+    panes.viewer !== null &&
+    panes.clip !== null &&
+    panes.suggestion !== null
+  ) {
     return (
       <>
         {createPortal(parts.viewer, panes.viewer)}
         {parts.track}
-        {createPortal(parts.cutPanel, panes.cut)}
+        {createPortal(parts.clipPanel, panes.clip)}
+        {createPortal(parts.suggestionPanel, panes.suggestion)}
       </>
     )
   }
@@ -191,7 +203,8 @@ export function Timeline(props: TimelineProps) {
     <div className="tl-parts">
       {parts.viewer}
       {parts.track}
-      {parts.cutPanel}
+      {parts.clipPanel}
+      {parts.suggestionPanel}
     </div>
   )
 }
@@ -207,9 +220,6 @@ export function useTimeline({
   cutHintId,
 }: TimelineProps): TimelineParts {
   const posterWhyId = useId()
-  // Each press that selects a cut or a suggestion (the same one again, or another clip's cut with
-  // the same key) shows the workspace inspector's Cut tab.
-  const onCutSelected = useContext(TimelinePanesContext)?.onCutSelected
   const clipLay = useMemo(() => trackLayout(clips), [clips])
   const turns = editing.turns
   const decorators = cards.decorators
@@ -307,11 +317,8 @@ export function useTimeline({
   const setSelection = selection.set
   const keepSelection = selection.keep
   const select = useCallback(
-    (identity: string, key: string) => {
-      setSelection({ kind: 'cut', identity, key })
-      onCutSelected?.()
-    },
-    [setSelection, onCutSelected],
+    (identity: string, key: string) => setSelection({ kind: 'cut', identity, key }),
+    [setSelection],
   )
   // The selected clip, from the page's one selection: the block's press and the bin row's write it.
   const selectedClip = selection.selection.kind === 'clip' ? selection.selection.identity : null
@@ -856,7 +863,6 @@ export function useTimeline({
     lay,
     pps,
     seekTo: video.seekTo,
-    onSelect: onCutSelected,
     selection,
   })
   const cardLane = useMemo<CardLaneModel | undefined>(
@@ -1179,13 +1185,49 @@ export function useTimeline({
       )}
     </div>
   )
-  const cutPanel = (
+  // The clip the panel is about: the selected clip, or the selected cut's.
+  const panelClip = selectedClip ?? selected?.identity ?? null
+  const place = useMemo(
+    () => (panelClip === null ? null : clipPlace(clips, panelClip, chapterNames)),
+    [clips, panelClip, chapterNames],
+  )
+  const clipPanel = (
     <div className="timeline tl-cut-panel">
+      {place !== null && <ClipHeader place={place} />}
       <CutFields selected={selected} clips={clips} editing={editing} drag={drag} hintId={cutHintId} />
-      {suggestions.detail}
     </div>
   )
-  return { viewer, track, cutPanel }
+  // The selection announced once through the status below, when it changes to something: a
+  // clip, a cut or a suggestion (the card's is the Timeline section's). A selection kept across a
+  // remount is not announced again.
+  const words = useMemo(() => {
+    if (selected !== null) {
+      const at = editing.listed(selected.identity).filter((c) => !c.removed)
+      const n = at.findIndex((c) => c.key === selected.key) + 1
+      const name = place?.name
+      return n > 0 && name !== undefined ? cutSelectedWords(n, name) : null
+    }
+    return selectedClip !== null && place !== null
+      ? clipSelectedWords(place)
+      : suggestions.words
+  }, [selected, selectedClip, place, editing, suggestions.words])
+  const selectionKey =
+    selected !== null
+      ? `cut:${selected.identity}:${selected.key}`
+      : selectedClip !== null
+        ? `clip:${selectedClip}`
+        : (suggestions.selectedKey ?? null)
+  const announcedKey = useRef(selectionKey)
+  useEffect(() => {
+    if (announcedKey.current !== selectionKey) {
+      announcedKey.current = selectionKey
+      if (words !== null) {
+        setAnnouncement(words)
+      }
+    }
+  }, [selectionKey, words])
+  const suggestionPanel = <div className="timeline tl-cut-panel">{suggestions.detail}</div>
+  return { viewer, track, clipPanel, suggestionPanel }
 }
 
 /**
