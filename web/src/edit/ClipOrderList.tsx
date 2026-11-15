@@ -85,7 +85,7 @@ function ClipFacts({
       <span className="clip-facts">
         <span className="clip-length">{length}</span>
         <span className="clip-status">
-          <ClipStatusPills clip={clip} />
+          <ClipStatusPills clip={clip} hint />
         </span>
         {action !== undefined && <span className="clip-action">{action}</span>}
       </span>
@@ -464,6 +464,16 @@ const ClipRow = memo(function ClipRow({
     isOver &&
     active !== null &&
     (grouped || active.data.current?.sortable?.containerId !== data.sortable.containerId)
+  const moveButtons = (
+    <MoveButtons
+      identity={clip.identity}
+      name={name}
+      index={position - 1}
+      total={total}
+      locked={locked}
+      onStep={onStep}
+    />
+  )
   return (
     <li
       ref={setNodeRef}
@@ -506,18 +516,14 @@ const ClipRow = memo(function ClipRow({
         length={length}
       />
       <span className="clip-tools">
+        {/* Move first in the bin: its second line holds Rotate, so the tab order runs down the
+            rows, not up and down. */}
+        {compact && moveButtons}
         {/* A clip on disk turns, excluded or not: its picture is what the render will turn. */}
         {(status === 'active' || status === 'new') && (
           <RotateButtons identity={identity} name={name} locked={locked} onRotate={onRotate} />
         )}
-        <MoveButtons
-          identity={clip.identity}
-          name={name}
-          index={position - 1}
-          total={total}
-          locked={locked}
-          onStep={onStep}
-        />
+        {!compact && moveButtons}
       </span>
       {cuttable && (
         <CutsToggle

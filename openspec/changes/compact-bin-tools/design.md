@@ -88,23 +88,24 @@ bar after the count, through a `placement: 'bar' | 'row'` prop. On the page they
 - **Breakpoint.** For a fine pointer the two-line grid moves from `@container (width >= 22rem)` to
   `@container (width >= 13.5rem)`, measured on the chapter container: the 240 px bin less its border and a
   scrollbar leaves 239 px, a 216 px content box, so 15rem would never apply.
-  - Line 1: handle, position, name, Move up and down (↑ ↓ as 28 px icons).
-  - Line 2: thumbnail, length, status, Rotate left and right, Cuts.
-  - The tools' two pairs sit on different lines (`.clip-tools` is `display: contents`). Four tools on line 1 left
-    the name 31 px (`s1…`) at 240 px, so the Rotate pair moves down. Tab order keeps Rotate before Move; the
-    visual order differs by a step, accepted for the room.
+  - Line 1: handle, position, name, Move up and down (28 px icons), and from `@container (width >= 17rem)`
+    (a bin of about 281 px, 1280x720) Rotate left and right too.
+  - Line 2: thumbnail, length, status, Cuts, and below 17rem Rotate.
+  - The status is its icon alone on a fine pointer in the bin (its words stay as hidden text and a `title`), so
+    line 2 is one line from 240 px. A fine pointer's rows are never taller than the limit.
+  - `.clip-tools` is `display: contents`. In the bin Move comes before Rotate in the DOM, so tab order runs
+    down the row (handle, name area, Move, Rotate, Cuts) with no step back.
 - **Row height.**
   - `padding-block` goes from `--s-2` to `--s-1`; the column gap and inline padding to `--s-1`.
   - `--clip-row-h` becomes `3.7031rem`, measured once built, so `content-visibility` estimates stay right.
-  - Target: at most 70 px per row with a fine pointer. Measured: 68 px from a bin of about 316 px. In the 240-282 px
-    bin line 2 (thumbnail, length, status, Rotate, Cuts) does not fit one line, so the status wraps under the length
-    and the row is 85 px, against 118 px before. Accepted: the name stays readable.
+  - Target: at most 70 px per row with a fine pointer. Measured: 68 px at 240, 282 and 320 px bins, one estimate
+    for every width.
 - **Touch.** Under `pointer: coarse` the rows keep today's rules: three lines in the 240 px bin, two from 22rem, the
   16 px line gap and the 44 px touch rules. They are taller, and the height limits do not apply. A finger's tools
   (32 px, 28 px between pairs) would leave no name at 240 px.
 - **Width check.** Line 1 must fit its controls at 240 px:
-  - 28 handle + 20 position + name + 2×28 moves/Rotate column + Cuts + gaps of 4 px: the name column is 75 px at
-    239 px (`s1710001.…`, the eighth character apart), and the full 78 px of `s1710001.mp4` from about 280 px.
+  - 28 handle + 20 position + name + Move (56 px) + gaps of 4 px, and Rotate (56 px) from 17rem: the name is about
+    100 px at 239 px (ellipsized) and keeps room for `s1710001.mp4` with Rotate from about 281 px.
     Longer names ellipsize as today.
 
 ### D5. No new-clip line in the bin
