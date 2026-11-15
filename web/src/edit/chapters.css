@@ -15,10 +15,6 @@
     border-bottom: 1px solid var(--border);
   }
 
-  .chapter-tools[hidden] {
-    display: none;
-  }
-
   .chapter-notes {
     display: grid;
     flex: 1 1 16rem;

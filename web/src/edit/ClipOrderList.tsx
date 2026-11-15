@@ -930,7 +930,7 @@ export const ClipOrderList = memo(function ClipOrderList({
         chapterKey={chapterKey}
         heading={heading}
         headingId={headingId}
-        placement={compact ? 'notes' : 'row'}
+        placement="row"
         {...tools}
       />
       {/* The column names, in the rows' own cells (edit.css places them by class). */}
