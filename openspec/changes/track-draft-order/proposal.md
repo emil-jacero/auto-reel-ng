@@ -44,6 +44,8 @@ stands alone and already improves today's Edit mode.
 
 - `event-timeline`: REMOVED + ADDED (the repo's pattern when a scenario is reversed) "The Timeline is shown only in Edit mode, open from the start" → "…and draws the draft" (draws the draft's order
   and chapters, no saved-order note); ADDED the rules for cards of renamed and added chapters on the track.
+- `web-app`: MODIFIED "Edit mode adds, renames, reorders and deletes chapters" — an added chapter's card dialog says its
+  card is drawn as the event's until Save when the Timeline draws a built card (only that sentence changes).
 
 ## Impact
 

@@ -120,7 +120,8 @@ SHALL NOT be drawn.
 
 #### Scenario: Title cards off
 - **WHEN** the draft's Title cards switch is Off and the operator adds a chapter
-- **THEN** no card is drawn for any chapter
+- **THEN** no card adds time, and each chapter's card, the added one's included, is drawn only in the off look
+  ("not enabled")
 
 ### Requirement: A chapter added while editing gets the event's card on the Timeline
 
