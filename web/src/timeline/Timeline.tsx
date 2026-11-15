@@ -320,6 +320,25 @@ export function useTimeline({
     [setSelection],
   )
   const clearSelection = selection.clear
+  // A click on a clip's block: the cut whose span holds the press, else the clip (the cut's span
+  // selects its cut, as it did when the lane took the press).
+  const pressClipRef = useRef<(identity: string, x: number) => void>(() => undefined)
+  pressClipRef.current = (identity, x) => {
+    if (!Number.isNaN(x)) {
+      const pos = positionOf(x)
+      if (pos.card == null && clips[pos.clip].identity === identity) {
+        const cut = editing
+          .listed(identity)
+          .find((c) => !c.removed && Math.round(c.in * 1000) <= pos.ms && pos.ms < Math.round(c.out * 1000))
+        if (cut !== undefined) {
+          select(identity, cut.key)
+          return
+        }
+      }
+    }
+    selectClip(identity)
+  }
+  const pressClip = useCallback((identity: string, x: number) => pressClipRef.current(identity, x), [])
   const selectCard = selection.select
   const openCard = selection.open
   const pickCard = selectCard
@@ -1125,6 +1144,7 @@ export function useTimeline({
         onSelect={select}
         selectedClip={selectedClip}
         onSelectClip={selectClip}
+        onPressClip={pressClip}
         onClearSelection={clearSelection}
         cardLane={cardLane}
         shifting={shifting}

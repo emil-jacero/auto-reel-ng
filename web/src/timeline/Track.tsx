@@ -360,7 +360,9 @@ const ClipPress = memo(function ClipPress({
   selected,
   after,
   onSelect,
+  onPress,
   onPlace,
+  onScrub,
 }: {
   identity: string
   name: string
@@ -371,8 +373,15 @@ const ClipPress = memo(function ClipPress({
   selected: boolean
   after: boolean
   onSelect: (identity: string) => void
+  /** A click: selects the cut whose span holds the press, else the clip. */
+  onPress: (identity: string, clientX: number) => void
   onPlace: (clientX: number) => void
+  /** A mouse or pen drag on the body scrubs the playhead, as on the bare lane. */
+  onScrub: (clientX: number, phase: ScrubPhase) => void
 }) {
+  const press = useRef<{ id: number; x: number; scrubbing: boolean } | null>(null)
+  // A drag that scrubbed ends in a click; that click selects nothing.
+  const dragged = useRef(false)
   return (
     <div
       className="tl-clip-press"
@@ -385,7 +394,54 @@ const ClipPress = memo(function ClipPress({
       data-selected={selected || undefined}
       data-after={after || undefined}
       style={{ insetInlineStart: left, inlineSize: Math.max(1, widthPx) }}
-      onClick={() => onSelect(identity)}
+      onPointerDown={(event: PointerEvent<HTMLElement>) => {
+        if (event.button !== 0 || event.pointerType === 'touch') {
+          return
+        }
+        dragged.current = false
+        press.current = { id: event.pointerId, x: event.clientX, scrubbing: false }
+        event.currentTarget.setPointerCapture(event.pointerId)
+      }}
+      onPointerMove={(event: PointerEvent<HTMLElement>) => {
+        const p = press.current
+        if (p === null || p.id !== event.pointerId) {
+          return
+        }
+        if (!p.scrubbing) {
+          if (Math.abs(event.clientX - p.x) < TAP_PX) {
+            return
+          }
+          p.scrubbing = true
+          dragged.current = true
+          onScrub(p.x, 'start')
+        }
+        onScrub(event.clientX, 'move')
+      }}
+      onPointerUp={(event: PointerEvent<HTMLElement>) => {
+        const p = press.current
+        if (p === null || p.id !== event.pointerId) {
+          return
+        }
+        press.current = null
+        if (p.scrubbing) {
+          onScrub(event.clientX, 'end')
+        }
+      }}
+      onPointerCancel={(event: PointerEvent<HTMLElement>) => {
+        const p = press.current
+        press.current = null
+        if (p !== null && p.id === event.pointerId && p.scrubbing) {
+          onScrub(event.clientX, 'end')
+        }
+      }}
+      onClick={(event: MouseEvent<HTMLElement>) => {
+        if (dragged.current) {
+          dragged.current = false
+          return
+        }
+        // Enter and Space come through onKeyDown; a click with no pointer (detail 0) selects the clip.
+        onPress(identity, event.detail === 0 ? Number.NaN : event.clientX)
+      }}
       onDoubleClick={(event: MouseEvent<HTMLElement>) => onPlace(event.clientX)}
       onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
         if (
@@ -449,6 +505,7 @@ export function Track({
   onSelect,
   selectedClip,
   onSelectClip,
+  onPressClip,
   onClearSelection,
   cardLane,
   shifting = null,
@@ -492,6 +549,8 @@ export function Track({
   selectedClip: string | null
   /** A press on a clip's block (or its Enter) selects it; it does not move the playhead. */
   onSelectClip: (identity: string) => void
+  /** A click on a clip's block at track px `x` (NaN: none): a cut's span there, else the clip. */
+  onPressClip: (identity: string, x: number) => void
   /** A press on empty track selects nothing. */
   onClearSelection: () => void
   /** The title cards' lane; absent, the Timeline draws none. */
@@ -514,6 +573,19 @@ export function Track({
   // A double press on a clip places the playhead there (a clip press alone does not).
   const scrubNow = useRef(onScrub)
   scrubNow.current = onScrub
+  const pressNow = useRef(onPressClip)
+  pressNow.current = onPressClip
+  const pressAt = useCallback((identity: string, clientX: number) => {
+    const box = canvas.current?.getBoundingClientRect()
+    pressNow.current(identity, clientX - (box?.left ?? 0))
+  }, [])
+  const scrubClip = useCallback((clientX: number, phase: ScrubPhase) => {
+    const box = canvas.current?.getBoundingClientRect()
+    if (phase === 'start') {
+      gripRef.current?.focus({ preventScroll: true })
+    }
+    scrubNow.current(clientX - (box?.left ?? 0), phase, 'ruler')
+  }, [gripRef])
   const placeAt = useCallback(
     (clientX: number) => {
       const box = canvas.current?.getBoundingClientRect()
@@ -571,7 +643,9 @@ export function Track({
           selected={selectedClip === clip.identity}
           after={after}
           onSelect={onSelectClip}
+          onPress={pressAt}
           onPlace={placeAt}
+          onScrub={scrubClip}
         />,
       )
       if (detailed || focusedEdge === clip.identity) {
