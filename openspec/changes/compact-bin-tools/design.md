@@ -59,14 +59,18 @@ markup changes:
 - **Move group label.** The visible label "Move marked to…" becomes `.visually-hidden`. The group's `aria-labelledby`
   still points at it, and the picker keeps its own name.
 - **Help toggle.** In the bin it is icon-only so row 1 fits at 282 px: the word "Help" is visually hidden, the button
-  is 32 px square, and it gets `title="Help: Clips"` (its accessible name is unchanged).
+  is 32 px square, and it gets `title="Help: Clips"` (its accessible name is unchanged). The toggle is one shared
+  component, so its title is global: the stacked page's toggle shows the same tooltip. It is harmless there, and
+  the spec asks only for the bin's tooltip.
 - **Picker width.** The picker gets `flex: 1 1 auto; min-inline-size: 0`, and Move keeps its words.
   - About 282 − 24 px of padding = 258 px for 2×32 px Rotate buttons, about 64 px for Move and 3 gaps of 8 px.
   - That leaves the picker about 106 px, enough for "Choose a chapter" truncated by the native select.
 - **Height and stickiness.** The line is `position: sticky; inset-block-start: 0` inside the bin pane, with the pane's
   surface as background and z-index above the rows. Both rows are always present, so its height is constant until the reason line or the Clips help opens; it then grows,
   and `--bin-toolbar-measured` (a ResizeObserver on the line) moves the chapter headings and the scroll padding with it.
-  - Content: 2 × 32 + 8 = 72 px, plus 16 px of padding = 88 px.
+  - Content: 2 × 32 + 8 = 72 px, plus 16 px of padding = 88 px. The border counts: the built line measured
+    89 px with its 1 px border, so the spec's "at most 88" is met in code by taking 1 px off the padding
+    (task 4.1), not by reading 88 without the border.
   - The bin's scroll padding grows by this height so focus-in-view clears it. `keepInView` already measures against
     `[data-ws-scroll]`, so only its padding value changes.
 
@@ -91,13 +95,17 @@ bar after the count, through a `placement: 'bar' | 'row'` prop. On the page they
 - **Breakpoint.** For a fine pointer the two-line grid moves from `@container (width >= 22rem)` to
   `@container (width >= 13.5rem)`, measured on the chapter container: the 240 px bin less its border and a
   scrollbar leaves 239 px, a 216 px content box, so 15rem would never apply.
+  - A row has four tools (Move up, Move down, Rotate left, Rotate right), not two.
   - Line 1: handle, position, name, Move up and down (28 px icons), and from `@container (width >= 17rem)`
     (a bin of about 281 px, 1280x720) Rotate left and right too.
-  - Line 2: thumbnail, length, status, Cuts, and below 17rem Rotate.
+  - Line 2: thumbnail, length, status, Cuts, and in a bin under about 17rem (272 px, so the 240 px minimum
+    to about 272 px) Rotate left and right after Cuts. The spec's two-line row wording says this.
   - The status is its icon alone on a fine pointer in the bin (its words stay as hidden text and a `title`), so
     line 2 is one line from 240 px. A fine pointer's rows are never taller than the limit.
   - `.clip-tools` is `display: contents`. In the bin Move comes before Rotate in the DOM, so tab order runs
-    down the row (handle, name area, Move, Rotate, Cuts) with no step back.
+    down the row (handle, name area, Move, Rotate, Cuts) with no step back. This DOM order also applies with a
+    coarse pointer, where the 44 px areas stay (task 4.4 re-verifies them); the coarse layout has no `display:
+    contents` tools, so the order only changes the tab sequence, not the picture.
 - **Row height.**
   - `padding-block` goes from `--s-2` to `--s-1`; the column gap and inline padding to `--s-1`.
   - `--clip-row-h` becomes `3.7031rem`, measured once built, so `content-visibility` estimates stay right.
@@ -106,6 +114,7 @@ bar after the count, through a `placement: 'bar' | 'row'` prop. On the page they
 - **Touch.** Under `pointer: coarse` the rows keep today's rules: three lines in the 240 px bin, two from 22rem, the
   16 px line gap and the 44 px touch rules. They are taller, and the height limits do not apply. A finger's tools
   (32 px, 28 px between pairs) would leave no name at 240 px.
+- **Pass bar.** It counts the rows of clips a chapter plays. The ignored block is not a row (D6).
 - **Width check.** Line 1 must fit its controls at 240 px:
   - 28 handle + 20 position + name + Move (56 px) + gaps of 4 px, and Rotate (56 px) from 17rem: the name is about
     100 px at 239 px (ellipsized) and keeps room for `s1710001.mp4` with Rotate from about 281 px.
@@ -119,15 +128,47 @@ bar after the count, through a `placement: 'bar' | 'row'` prop. On the page they
   to reel.yaml`), and so is in the top bar.
 - **Stacked page.** Keeps the line as it is.
 
+### D6. Ignored clips follow the chapters in the wide bin
+Decision 2b (the user, round 2): the pass bar counts played rows only. On Tjörn (4 played clips, 1 ignored in
+`Main`) the ignored block (caption 23.4 px + row 41.3 px = 64.7 px, about 106 px in the first measure) sits between
+`Main`'s first clip and `Kvällen`, and costs rows.
+
+- **Move, not collapse.** From 960 px the ignored clips leave their chapters and go into one block, always open,
+  after the last chapter and before Add chapter, under an h2 "Ignored clips". Each chapter's ignored clips have a
+  caption that names the chapter ("Main · 1 ignored clip, not played"). A pure helper, `ignoredGroups`, builds the
+  groups (deleted chapters skipped, empty groups left out, names from the same inputs as the chapter's list, since
+  Tjörn's ignored root `s1710004.mp4` and Kvällen's played `s1710004.mp4` share a visible name).
+- **Why not a closed fold** per chapter: measured at 1280×720 it leaves 2 whole rows (shortfall -24.8 px; with a 4 px
+  gap -8.8 px; only with a gap of 4 px and a 2 px row trim +3.2 px). A closed list also hides the clip that the
+  delete refusal "Main still lists 1 ignored clip" points to, and needs a new control with normative words, state
+  and target size.
+- **Row budget** for 3 played rows at 1280×720 with the block moved out: 12 gap + 1 + 36 (Main header) + 68.3 +
+  1 + 12 gap + 1 + 36 + 2 × 68.3 = 303.9 px against 303 px usable (137 to 440). The move alone gives +0.2 px, which is
+  a knife edge.
+- **Gap 12 → 8 px from 960 px.** The bin's grid gap drops, which gives about +8 px at 1280×720 (3 whole rows, the third
+  ends at about 431.8 of 440) and about +59 px at 1440×900 (4 whole). A gap of 4 px (+16 px) is the documented
+  fallback. The stacked layout keeps 12 px.
+- **One DOM copy.** `compact` is true at every width in the workspace, and the stacked workspace still shows the bin
+  (below 960 px), so the block's place follows `useWideBin()` (`matchMedia('(width >= 960px)')`, the pattern of
+  `ChapterDrag.tsx`), not `compact`. Below 960 px each chapter lists its ignored clips as before.
+- **Removed (missing) clips stay in their chapters.** Undo has to take focus under its chapter.
+- **Counting.** The ignored clips still count as listed by their chapter, so "Main stays while it lists an ignored
+  clip" and the delete refusal keep their words.
+- **Risk.** The margin at 1280×720 is thin (about 8 px). The Playwright gate asks for at least 5 px to spare.
+  A real 1280×720 browser window is shorter than the viewport the bar is defined on; that holds for every option.
+
 ## Research & Decisions
 
 ### Row budget at the target window
 **Context**: The user's bar was "at least 4 clip rows at 1280×720".
 **Explored**: Pane heights from the grid (`'tl' minmax(280px, 38vh)`, top bar 49 px), the compact row's
 `--clip-row-h`, and screenshots from the `editor-workspace-layout` runs (`critic-dark-1440.png`).
-**Decision**: The bar is 3 whole rows at 1280×720 on the two-chapter Tjörn event, and all 4 at 1440×900.
-**Rationale**: 391 − 88 (toolbar) − 36 (Main header) − 70 (row) − 36 (Kvällen header) = 161 px, which holds 2 more
-whole rows, so 3 in all. Four rows need a smaller Timeline pane, which is out of scope.
+**Decision**: The bar is 3 whole rows of played clips at 1280×720 on the two-chapter Tjörn event, and all 4 at
+1440×900. The ignored clip is not a row of the bar.
+**Rationale**: The first estimate, 391 − 88 − 36 − 70 − 36 = 161 px (2 more rows), left out the ignored block under
+`Main` (about 65 px: a caption and a row) and the grid gaps. Round 1 measured 2 whole played rows at 1280×720 and 3
+at 1440×900 with the block in place. D6 moves it out and trims the gap, giving 3 and 4. Four rows at 1280×720 need a
+smaller Timeline pane, which is out of scope.
 
 ## Risks / Trade-offs
 
@@ -140,3 +181,7 @@ whole rows, so 3 in all. Four rows need a smaller Timeline pane, which is out of
   set it.
 - **Spec length.** The MODIFIED requirements are long already. The edits add one sentence or bullet each and no
   rewrites.
+- **Status is icon-only in the bin rows (decision 1a).** The spec's "State is never shown by color alone" gets a
+  carve-out for the bin's rows with a fine pointer: words stay as hidden text and a tooltip, and each status keeps its
+  own icon. The words stay visible on the stacked page and with a coarse pointer.
+- **Thin 1280×720 margin.** See D6.

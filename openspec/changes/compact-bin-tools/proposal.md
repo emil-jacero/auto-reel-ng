@@ -37,6 +37,7 @@ today's layout.
   - Row 1: Help, the count and Clear marks.
   - Row 2: Rotate marked left and right, then the chapter picker and Move.
   - Rotate becomes icon-only, and the "Move marked to…" label names the group without being shown.
+  - The toolbar is at most 88 px including its 1 px border.
   - Names, descriptions and `aria-disabled` reasons stay, and the icon buttons offer their names as tooltips.
   - Marking the first clip still moves no row.
   - The explore sketch of a single row does not fit a 282 px bin: the picker would get under 60 px (design D2).
@@ -50,11 +51,17 @@ today's layout.
   starts only at a 22rem (352 px) container and the bin never reaches it.
   - The two-line form (handle, position, name and the row's tools; then thumbnail, length, status and Cuts) applies
     from the bin's own width.
-  - Rows get tighter padding, for about 75 px each with a fine pointer.
+  - Below about 17rem (272 px) Rotate goes to the second line, after Cuts.
+  - A clip's status in a row is its icon alone with a fine pointer (decision 1a; words kept as hidden text and a
+    tooltip, icons distinct per status).
+  - Rows get tighter padding, for about 68 px each with a fine pointer.
   - Touch keeps today's taller rows.
-- **Pass bar (fine pointer, nothing marked):**
-  - at 1280×720 the bin shows at least 3 whole clip rows without scrolling
-  - at 1440×900 it shows at least 5
+- **Ignored clips follow the chapters in the wide bin** (decision 2b). From 960 px they are listed in one block
+  after the last chapter, under "Ignored clips", each chapter's with a caption naming the chapter, and the bin's grid
+  gap is 8 px instead of 12. Below 960 px they stay in their chapters.
+- **Pass bar (fine pointer, nothing marked), counting the clip rows a chapter plays:**
+  - at 1280×720 the bin shows at least 3 whole played rows without scrolling
+  - at 1440×900 it shows all 4
   - Four rows at 1280×720 do not fit while the Timeline pane keeps its 280 px minimum: 391 px of pane less one bar
     and two chapter headers leaves room for about 3.5 rows.
 
@@ -78,7 +85,10 @@ today's layout.
   - MODIFIED "Edit mode moves the marked clips to a chapter": its group's place and wrap rules in the workspace.
   - MODIFIED "Edit mode adds, renames, reorders and deletes chapters": the header bar holds the tools as icon buttons
     in the workspace.
-  - MODIFIED "The clip bin holds the chapters' clip lists": the bin's width, two-line rows and the rows-visible bar.
+  - MODIFIED "The clip bin holds the chapters' clip lists": the bin's width, two-line rows, the ignored block and the
+    rows-visible bar.
+  - MODIFIED "State is never shown by color alone": the bin's rows show status as an icon alone with a fine pointer.
+  - MODIFIED "The event page reorders clips within a chapter": the wide bin lists ignored clips after the chapters.
 
 ## Impact
 
@@ -90,4 +100,4 @@ today's layout.
 - **Schemas:** no `reel.yaml` or `config.yaml` change, no Alembic migration, no rescan.
 - **Dependencies:** none new.
 - **Order:** lands before `editor-selection`, which also touches bin rows and the inspector.
-- **Size:** about one short session (Principle VIII): CSS, two component variants and four requirement edits.
+- **Size:** about one short session (Principle VIII): CSS, a few component variants and six requirement edits.

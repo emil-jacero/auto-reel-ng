@@ -305,7 +305,7 @@ change nothing when pressed.
 #### Scenario: A lone chapter whose only clip is ignored
 - **WHEN** Edit mode opens on `2024-10-06 - Bara ignorerad`, an event that lists one chapter, whose only clip
   `s1710004.mp4` is ignored
-- **THEN** the chapter lists the ignored clip under its heading and says "It plays no clip. A chapter without
+- **THEN** the chapter lists the ignored clip (under its heading below 960 px; from 960 px under "Ignored clips" directly after it, captioned with the chapter's name) and says "It plays no clip. A chapter without
   clips is left out of the movie." It does not mention dragging clips or Move marked to…
 
 #### Scenario: A second chapter brings the hint back
@@ -478,9 +478,9 @@ to… ("Edit mode marks clips to move together", "Edit mode moves the marked cli
 
 The bin SHALL list every chapter with its clips in compact rows (thumbnail, name, kept length, status) and SHALL keep
 every action the chapter lists have: reorder and move between chapters by pointer and by keyboard, marks and Move
-marked to…, Add/rename/delete chapter, and the New, Ignored and Missing clips with their actions.
+marked to…, Add/rename/delete chapter, the New and Missing clips with their actions, and the clips the event ignores.
 
-The bin SHALL be as wide as 22% of the window, at least 240 and at most 320 CSS pixels. With a fine pointer, a row of a clip a chapter plays SHALL take two lines (handle, position, name and the row's tools; then the thumbnail, the length it plays, its status and Cuts) and be at most 70 CSS pixels tall. The bin SHALL show no line of its own about new clips: the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says how many saving adds.
+The bin SHALL be as wide as 22% of the window, at least 240 and at most 320 CSS pixels. With a fine pointer, a row of a clip a chapter plays SHALL take two lines and be at most 70 CSS pixels tall: handle, position, name and the row's tools, then the thumbnail, the length it plays, its status and Cuts. In a bin narrower than about 17rem (272 CSS pixels) Rotate left and right go to the second line, after Cuts; from that width all of the row's tools are on the first line. In the bin a clip's status is shown as its icon alone ("State is never shown by color alone"). From 960 CSS pixels wide, a chapter in the bin SHALL list only the clips it plays and the missing clips the operator removed. The bin SHALL list the clips the event ignores after the last chapter and before Add chapter, under the heading "Ignored clips": each chapter's ignored clips together, in the chapters' order and in the order the chapter lists them, under a caption that names the chapter and says how many it holds ("Main · 1 ignored clip, not played"), each named as that chapter names it, marked as ignored, with no position, handle or control. These clips still count as listed by their chapter. The bin SHALL show no such heading when the event ignores no clip. Below 960 CSS pixels each chapter lists its ignored clips after its other clips. The bin SHALL show no line of its own about new clips: the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says how many saving adds.
 
 #### Scenario: Keyboard reorder in the bin
 - **WHEN** the operator focuses `s1710002.mp4`'s drag handle, presses Space, ArrowUp, Space
@@ -488,12 +488,167 @@ The bin SHALL be as wide as 22% of the window, at least 240 and at most 320 CSS 
 
 #### Scenario: Clip rows visible at the target window
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`, with a fine pointer and no clip marked
-- **THEN** in a 1280×720 window the bin shows at least 3 whole clip rows without scrolling, and in a 1440×900 window all 4 of its clips
+- **THEN** in a 1280×720 window the bin shows, below its toolbar and without scrolling, at least 3 whole rows of the clips its chapters play, and in a 1440×900 window all 4 of them; the ignored `s1710004.mp4` is listed after them
 
 #### Scenario: A new clip in the bin
 - **WHEN** Edit mode opens on `2024-08-02 - Badutflykt - Varberg`, whose `reel.yaml` lists two of its three clips, and the operator moves `s1710001.mp4` below `s1710003.mp4`
-- **THEN** the bin shows no line about new clips, the new clip's row says New, the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says that saving adds 1 new clip to `reel.yaml`
+- **THEN** the bin shows no line about new clips, the new clip's row says New (as the row's icon with the words "New" kept as its accessible name and tooltip, and not as a visible word, "State is never shown by color alone"), the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says that saving adds 1 new clip to `reel.yaml`
+
+#### Scenario: Ignored clips in the bin
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window, and then in a 900 px wide window
+- **THEN** the wide bin shows "Ignored clips" after `Kvällen`, with `Main · 1 ignored clip, not played` above `s1710004.mp4`, and `Main` lists only `s1710001.mp4`; the 900 px page lists `s1710004.mp4` under `Main` and has no such heading ("The event page reorders clips within a chapter")
 
 #### Scenario: 400 clips
 - **WHEN** the event has 400 clips
 - **THEN** the bin scrolls on its own, the rest of the workspace does not move, and the drag-smoothness gate holds
+
+### Requirement: State is never shown by color alone
+
+Every render verdict, job status, clip status and event failure kind a screen shows SHALL be shown as its
+words, paired with an icon, and never as a color alone. The same holds for warnings and failure messages:
+each shows its words and an icon. Tones SHALL be consistent across screens: the same status has the same
+tone and icon on every page.
+
+One carve-out: in the rows of the workspace's clip bin, with a fine pointer, a clip's status SHALL be shown as its
+icon alone. Its words SHALL stay in the row as visually hidden text, so the status keeps its name for assistive
+technology, and SHALL be the icon's tooltip. Each status SHALL have its own icon there, distinct from every other
+status's, so the status is never told by color alone. With a coarse pointer, and on the stacked page, a clip's
+status keeps its words beside the icon.
+
+In both color schemes, text SHALL meet WCAG 2.1 AA contrast: at least 4.5:1 for normal-size text, and at
+least 3:1 for large text and for the focus indicator against its background. This includes the words inside
+status labels and secondary ("muted") text. As in WCAG, the label of a control that is currently
+unavailable (such as Refresh while it reads) is exempt.
+
+A busy button SHALL show a loader before its label, in place of its icon, drawn in the button's own text
+color. In the operating system's forced-colors mode, where the browser replaces the page's colors with the
+system palette, that loader SHALL stay visible, in the same color as the button's label.
+
+#### Scenario: Verdicts read in grayscale
+- **WHEN** the event list for the dev library is viewed with all color removed
+- **THEN** `2024-06-27 - Grillning med grannar` still reads "Needs render" with its reasons, and
+  `2023-06-23 - Midsommar - Dalarna` still reads "Up to date"
+
+#### Scenario: Status labels meet contrast in both schemes
+- **WHEN** the contrast of every status label's text on its own background, and of the scan time's muted
+  text on the page background, is measured in the light and in the dark scheme
+- **THEN** every ratio is at least 4.5:1
+
+#### Scenario: A failed job is marked by words and icon
+- **WHEN** the list shows `2024-10-05 - Trasig`, whose latest job failed
+- **THEN** its job status reads "Failed" beside an icon, and not only in a red color
+
+#### Scenario: A busy button's loader survives forced colors
+- **WHEN** the operator's system uses forced colors, and the operator presses Render on
+  `2024-06-27 - Grillning med grannar` while the service takes two seconds to answer
+- **THEN** during those seconds Render shows a loader in the same color as its label, in place of its icon,
+  and the loader is not drawn in the button's background color
+
+#### Scenario: A clip's status in the bin is its icon alone with a fine pointer
+- **WHEN** Edit mode opens on `2024-08-02 - Badutflykt - Varberg` in a 1280×720 window with a fine pointer, light and dark
+- **THEN** in the bin the new clip's row shows an icon for its status and no visible word "New", the row's accessible name and the icon's tooltip say "New", and the icons of New, Missing and a played clip's status differ in shape, not only in color
+
+#### Scenario: A clip's status keeps its words elsewhere
+- **WHEN** the same event is opened in a 900 px wide window, and again with a coarse pointer in a 1280×720 window
+- **THEN** the new clip's row shows the word "New" beside its icon
+
+### Requirement: The event page reorders clips within a chapter
+
+An event's page SHALL offer an **Edit** mode on the page itself. Entering or leaving it SHALL NOT change the
+page's address. Entering Edit mode SHALL read the event's editorial document from the service. When that read
+fails, the page SHALL say why, using the same words it uses for a failed event read, and SHALL offer no
+editing. Entering Edit mode SHALL keep keyboard focus on the control that entered it, and leaving Edit mode,
+by any path, SHALL move keyboard focus to the page's level-one heading.
+
+While in Edit mode, the editor's chapter lists and metadata fields SHALL take the place of the chapter tables,
+the facts and the description. Each chapter keeps its level-two heading, and each clip row keeps the facts the
+table shows: its position, the clip's name as the event page's table names it, its status in words, size and
+modification time, with absent facts shown as absent. The event's verdict and latest job stay shown. Leaving
+Edit mode, by any path, SHALL read the event again and show the tables. Only the operator's own actions SHALL
+end Edit mode or change what it holds: a read of the event that the page would start by itself while Edit mode
+is open SHALL NOT discard the edits.
+
+In Edit mode, each chapter SHALL list its clips in the order the page shows them. The operator SHALL be able
+to move a clip to any other position **within its own chapter** in each of three ways:
+
+- by dragging the clip's handle with a mouse, pen or touch. A drag SHALL start only from the handle, and a
+  tap or click on the handle SHALL NOT start one. A scroll gesture that starts anywhere else on the page
+  SHALL scroll it.
+- from the keyboard, on the clip's handle: one key lifts the clip, the arrow keys move it, one key drops it,
+  and Escape cancels, leaving the order as it was
+- with a **Move up** and a **Move down** control on every movable row. After such a move, keyboard focus SHALL
+  stay on the moved clip's row.
+
+Every keyboard or control move, and every drop or cancel, SHALL be announced to assistive technology with the
+clip's name, as the event page's table names it, and its position out of the number of clips the chapter plays
+(its ignored clips, and the missing clips the operator removed, are not counted). Move up and Move down SHALL
+NOT take a clip into another chapter. A clip changes chapter only when it is dragged into another chapter (see
+"Edit mode drags clips between chapters") or moved with Move marked to… (see "Edit mode moves the marked clips to a chapter"). A missing clip's drag SHALL stop at its own chapter's edge. Among the clips
+a chapter held when Edit mode opened and still holds, the page SHALL count as moved the fewest clips whose
+moves explain the new order, so that moving one clip from position 1 to position 5 moves one clip, not five.
+Each such clip counted as moved SHALL show its position from when Edit mode opened. A clip moved in from
+another chapter SHALL count as one moved clip, and SHALL show the chapter it came from instead.
+
+Clips the event ignores are not part of the play order. Each chapter SHALL list them after its other clips,
+marked as ignored, except in the workspace's clip bin from 960 CSS pixels wide, which lists every chapter's ignored
+clips after the last chapter, under a caption that names the chapter ("The clip bin holds the chapters' clip lists");
+there they still count as listed by that chapter. Either way they SHALL NOT be movable or counted in the chapter's positions. A missing clip SHALL
+stay listed and movable, and SHALL never be dropped from its chapter, except when the operator removes it
+with its own control (see "Edit mode removes a missing clip from reel.yaml on request"). A NEW clip SHALL be
+movable like any other.
+
+#### Scenario: Dragging a clip to the front
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, the operator drags `s1710004.mp4` above
+  `s1710001.mp4`
+- **THEN** the chapter lists `s1710004.mp4`, `s1710001.mp4`, `s1710002.mp4`, `s1710003.mp4`, and
+  `s1710004.mp4` shows that it was at position 4
+
+#### Scenario: Reordering from the keyboard
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator focuses the handle of `Kvällen/s1710002.mp4`,
+  lifts it, presses Down once, and drops it
+- **THEN** `Kvällen` lists `s1710003.mp4`, `s1710002.mp4`, `s1710004.mp4`, and a screen reader hears that
+  `s1710002.mp4` moved to position 2 of 3
+
+#### Scenario: Escape cancels a keyboard move
+- **WHEN** on `2024-06-27 - Grillning med grannar`, the operator lifts `s1710001.mp4` from the keyboard, moves
+  it two places, and presses Escape
+- **THEN** the clip is back at position 1, the order is unchanged, and the cancel is announced
+
+#### Scenario: The move controls keep focus on the moved clip
+- **WHEN** on `2024-09-01 - Sommarlov`, the operator activates **Move down** on `s1710002.mp4`
+- **THEN** `s1710002.mp4` is at position 2, keyboard focus is still on its row, and its move is announced
+
+#### Scenario: A clip cannot leave its chapter
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator activates **Move up** on `Kvällen/s1710002.mp4`,
+  the first clip of `Kvällen`
+- **THEN** the control says that it is unavailable, nothing moves, and `Main` is unchanged: only a drag or Move marked to… takes a clip into another chapter
+
+#### Scenario: A missing clip cannot leave its chapter
+- **WHEN** on `2024-09-01 - Sommarlov`, after adding a chapter `Morgon`, the operator drags `borttagen.mp4`
+  downward toward `Morgon`, past the bottom of `Main`, and releases it
+- **THEN** the dragged clip stopped at the bottom edge of `Main`, `borttagen.mp4` is still at position 3 of
+  `Main`, and `Morgon` plays no clip
+
+#### Scenario: An ignored clip is listed but cannot move
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a window narrower than 960 px
+- **THEN** `Main` lists `s1710001.mp4` and then `s1710004.mp4`, marked as ignored, and `s1710004.mp4` has no
+  handle and no move controls
+
+#### Scenario: A missing clip keeps its place
+- **WHEN** Edit mode opens on `2024-09-01 - Sommarlov`, whose `reel.yaml` lists the missing `borttagen.mp4`
+  last
+- **THEN** `borttagen.mp4` is listed at position 3, marked as missing, and can be moved like the others
+
+#### Scenario: A large chapter is fully editable
+- **WHEN** an event holds 400 clips in one chapter
+- **THEN** all 400 are listed in Edit mode, and any of them can be moved to any position in the chapter
+
+#### Scenario: The editorial document cannot be read
+- **WHEN** the operator enters Edit mode on an event whose `reel.yaml` became unparseable after the page was
+  read
+- **THEN** the page shows the unparseable-document failure in words, with the service's detail, and offers
+  no editing
+
+#### Scenario: In the wide bin ignored clips follow the chapters
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window
+- **THEN** `Main` lists only `s1710001.mp4`, `Kvällen` follows it directly, and after `Kvällen` and before Add chapter the bin lists, under "Ignored clips" and "Main · 1 ignored clip, not played", `s1710004.mp4` marked as ignored, with no handle and no move controls; in a 900 px wide window `Main` lists `s1710001.mp4` and then `s1710004.mp4`, and there is no "Ignored clips" heading
