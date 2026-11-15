@@ -38,7 +38,7 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 3. Browser verification (scratchpad only)
 
-- [ ] 3.1 Playwright in Chrome and Firefox against a dev service with its own DB, port and library copy: every
+- [x] 3.1 Playwright in Chrome and Firefox against a dev service with its own DB, port and library copy: every
   scenario of the delta (reorder drawn, Reset, deleted chapter, added chapter's black card shifts clips, rename keeps
   card, Play order), light and dark at 1280 and 390; screenshots looked at.
   Status (2026-11-15; Chrome stable via Playwright 1.49 `channel=chrome` and Firefox 1.49, port 8101, DB
@@ -54,10 +54,9 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
   Morgon, shown after save"; `s1710004` removed from disk mid-edit is not drawn after the proxy job's re-read while
   the lists keep the draft; Play skips an unsaved 1.0-3.5 s cut. Found and fixed: a playhead on the opening card
   followed the first clip after a reorder, so Play started mid-track (`afterRead`, test in `position.test.ts`).
-  **Open (spec conflict):** scenario "Title cards off" says no card is drawn; the build draws every card in the off
-  look (dashed, "not enabled", no time added: movie 24.08 s = footage), as the main spec's card-lane requirement
-  ("When title cards are not enabled, every chapter with footage SHALL have its block drawn in an off look") demands.
-  The delta scenario needs rewording (e.g. "no card adds time; each is drawn in the off look") or a decision.
+  Spec conflict resolved in the delta: "Title cards off" now reads "no card adds time, and each chapter's card, the
+  added one's included, is drawn only in the off look", which the build already does (movie 24.08 s = footage), as the
+  main spec's card-lane off-look requirement demands. The added-chapter dialog note got a `web-app` MODIFIED delta.
 - [x] 3.2 Gates: the 80-clip drag measurement of `edit-list-paint-cost` (Chrome 4x) still passes; 400-clip windowing
   unchanged; bundle size before/after recorded.
   Status (2026-11-15, load 1.9-2.6, one session, this branch on :8101 and `origin/main` 46c0f351 on :8102, same DB and
