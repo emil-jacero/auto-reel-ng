@@ -480,7 +480,7 @@ The bin SHALL list every chapter with its clips in compact rows (thumbnail, name
 every action the chapter lists have: reorder and move between chapters by pointer and by keyboard, marks and Move
 marked to…, Add/rename/delete chapter, the New and Missing clips with their actions, and the clips the event ignores.
 
-The bin SHALL be as wide as 22% of the window, at least 240 and at most 320 CSS pixels. With a fine pointer, a row of a clip a chapter plays SHALL take two lines and be at most 70 CSS pixels tall: handle, position, name and the row's tools, then the thumbnail, the length it plays, its status and Cuts. In a bin narrower than about 17rem (272 CSS pixels) Rotate left and right go to the second line, after Cuts; from that width all of the row's tools are on the first line. In the bin a clip's status is shown as its icon alone ("State is never shown by color alone"). From 960 CSS pixels wide, a chapter in the bin SHALL list only the clips it plays and the missing clips the operator removed. The bin SHALL list the clips the event ignores after the last chapter and before Add chapter, under the heading "Ignored clips": each chapter's ignored clips together, in the chapters' order and in the order the chapter lists them, under a caption that names the chapter and says how many it holds ("Main · 1 ignored clip, not played"), each named as that chapter names it, marked as ignored, with no position, handle or control. These clips still count as listed by their chapter. The bin SHALL show no such heading when the event ignores no clip. Below 960 CSS pixels each chapter lists its ignored clips after its other clips. The bin SHALL show no line of its own about new clips: the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says how many saving adds.
+The bin SHALL be as wide as 22% of the window, at least 240 and at most 320 CSS pixels. With a fine pointer, a row of a clip a chapter plays SHALL take two lines and be at most 70 CSS pixels tall: handle, position, name and the row's tools, then the thumbnail, the length it plays, its status and Cuts. In a bin narrower than about 17rem (272 CSS pixels) Rotate left and right go to the second line, after Cuts; from that width all of the row's tools are on the first line. In the bin, with a fine pointer, a clip's status is shown as its icon alone ("State is never shown by color alone"); with a coarse pointer it keeps its words. In a window from 960 CSS pixels wide, a chapter in the bin SHALL list only the clips it plays and the missing clips the operator removed. The bin SHALL list the clips the event ignores after the last chapter and before Add chapter, under the heading "Ignored clips": each chapter's ignored clips together, in the chapters' order and in the order the chapter lists them, under a caption that names the chapter and says how many it holds ("Main · 1 ignored clip, not played"), each named as that chapter names it, marked as ignored, with no position, handle or control. These clips still count as listed by their chapter. The bin SHALL show no such heading when the event ignores no clip. Below 960 CSS pixels each chapter lists its ignored clips after its other clips. The bin SHALL show no line of its own about new clips: the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says how many saving adds.
 
 #### Scenario: Keyboard reorder in the bin
 - **WHEN** the operator focuses `s1710002.mp4`'s drag handle, presses Space, ArrowUp, Space
@@ -492,7 +492,7 @@ The bin SHALL be as wide as 22% of the window, at least 240 and at most 320 CSS 
 
 #### Scenario: A new clip in the bin
 - **WHEN** Edit mode opens on `2024-08-02 - Badutflykt - Varberg`, whose `reel.yaml` lists two of its three clips, and the operator moves `s1710001.mp4` below `s1710003.mp4`
-- **THEN** the bin shows no line about new clips, the new clip's row says New (as the row's icon with the words "New" kept as its accessible name and tooltip, and not as a visible word, "State is never shown by color alone"), the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says that saving adds 1 new clip to `reel.yaml`
+- **THEN** the bin shows no line about new clips, the new clip's row says New (with a fine pointer, as the row's icon with the words "New" kept as visually hidden text for assistive technology and as the icon's tooltip, and not as a visible word, "State is never shown by color alone"), the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says that saving adds 1 new clip to `reel.yaml`
 
 #### Scenario: Ignored clips in the bin
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window, and then in a 900 px wide window
@@ -509,11 +509,13 @@ words, paired with an icon, and never as a color alone. The same holds for warni
 each shows its words and an icon. Tones SHALL be consistent across screens: the same status has the same
 tone and icon on every page.
 
-One carve-out: in the rows of the workspace's clip bin, with a fine pointer, a clip's status SHALL be shown as its
-icon alone. Its words SHALL stay in the row as visually hidden text, so the status keeps its name for assistive
-technology, and SHALL be the icon's tooltip. Each status SHALL have its own icon there, distinct from every other
-status's, so the status is never told by color alone. With a coarse pointer, and on the stacked page, a clip's
-status keeps its words beside the icon.
+One carve-out: in the rows of the workspace's clip bin, at every window width, with a fine pointer, a clip's
+status SHALL be shown as its icon alone. Its words SHALL stay in the row as visually hidden text, so the status
+keeps its name for assistive technology, and SHALL be the icon's tooltip. Each clip status a bin row can show
+(Included, New, Missing, Ignored and Excluded) SHALL have its own icon there, distinct in shape from every other
+clip status's, so the status is never told by color alone. With a coarse pointer, and everywhere outside the
+workspace's clip bin (the event page's tables and its Edit mode without the workspace), a clip's status keeps its
+words beside the icon.
 
 In both color schemes, text SHALL meet WCAG 2.1 AA contrast: at least 4.5:1 for normal-size text, and at
 least 3:1 for large text and for the focus indicator against its background. This includes the words inside
@@ -546,11 +548,15 @@ system palette, that loader SHALL stay visible, in the same color as the button'
 
 #### Scenario: A clip's status in the bin is its icon alone with a fine pointer
 - **WHEN** Edit mode opens on `2024-08-02 - Badutflykt - Varberg` in a 1280×720 window with a fine pointer, light and dark
-- **THEN** in the bin the new clip's row shows an icon for its status and no visible word "New", the row's accessible name and the icon's tooltip say "New", and the icons of New, Missing and a played clip's status differ in shape, not only in color
+- **THEN** in the bin the new clip's row shows an icon for its status and no visible word "New", the row's text for assistive technology (the visually hidden words) reads "New" and the icon's tooltip is "New", and the icons of Included, New, Missing, Ignored and Excluded differ in shape, not only in color
+
+#### Scenario: The bin's status is icon-only in a narrow window too
+- **WHEN** the same event is opened in a 900 px wide window with a fine pointer
+- **THEN** the bin's new clip's row shows the icon and no visible word "New", as in the wide window
 
 #### Scenario: A clip's status keeps its words elsewhere
-- **WHEN** the same event is opened in a 900 px wide window, and again with a coarse pointer in a 1280×720 window
-- **THEN** the new clip's row shows the word "New" beside its icon
+- **WHEN** the same event is opened with a coarse pointer in a 1280×720 window, and the event page is viewed outside the workspace
+- **THEN** the new clip's row, and the event page's clip rows, show the word "New" beside its icon
 
 ### Requirement: The event page reorders clips within a chapter
 
@@ -562,7 +568,7 @@ by any path, SHALL move keyboard focus to the page's level-one heading.
 
 While in Edit mode, the editor's chapter lists and metadata fields SHALL take the place of the chapter tables,
 the facts and the description. Each chapter keeps its level-two heading, and each clip row keeps the facts the
-table shows: its position, the clip's name as the event page's table names it, its status in words, size and
+table shows: its position, the clip's name as the event page's table names it, its status in words (in the clip bin with a fine pointer, as its icon with the words hidden, "State is never shown by color alone"), size and
 modification time, with absent facts shown as absent. The event's verdict and latest job stay shown. Leaving
 Edit mode, by any path, SHALL read the event again and show the tables. Only the operator's own actions SHALL
 end Edit mode or change what it holds: a read of the event that the page would start by itself while Edit mode
