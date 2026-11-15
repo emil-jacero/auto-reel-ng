@@ -8,6 +8,7 @@
   .ws {
     /* No app header above the panes: a sticky panel heading sticks to its pane's top. */
     --header-h: 0px;
+    /* The top bar's least height; as drawn, `--ws-top-measured` on <html> (`Workspace.tsx`). */
     --ws-top-h: 3rem;
     --ws-bin-w: 240px;
     --ws-insp-w: 340px;
@@ -90,14 +91,16 @@
     border-block-start: 1px solid var(--border);
   }
 
-  /* Narrower windows: one column, the page scrolls, the top bar stays (design D1). */
+  /* Narrower windows: one column, the page scrolls (design D1). The top bar sticks while it is
+     short enough (`data-rests` otherwise): the page's scroll padding and the panes' sticky
+     headings clear its drawn height. */
   @media (width < 960px) {
     html[data-workspace] {
-      --header-h: var(--ws-top-h, 3rem);
+      --header-h: var(--ws-top-measured, 3rem);
     }
 
     .ws {
-      --header-h: 3rem;
+      --header-h: var(--ws-top-measured, 3rem);
 
       display: flex;
       flex-direction: column;
@@ -105,7 +108,7 @@
       min-block-size: 100dvh;
     }
 
-    .ws-top {
+    .ws-top:not([data-rests]) {
       position: sticky;
       inset-block-start: 0;
     }
@@ -136,7 +139,7 @@
   /* Notifications sit over the top of the picture, clear of the top bar and every pane's controls. */
   @media (width >= 960px) {
     html[data-workspace] .toast-region {
-      inset-block-start: calc(var(--ws-top-h, 3rem) + var(--s-3));
+      inset-block-start: calc(var(--ws-top-measured, 3rem) + var(--s-3));
       inset-block-end: auto;
       inset-inline: calc(240px + var(--s-3)) calc(340px + var(--s-3));
       inline-size: auto;
@@ -247,9 +250,53 @@
     flex: none;
   }
 
+  /* Stacked: the event and Done on the first line; the save controls and the theme switch under
+     them. A save's explanation is in the bar's flow, so the bar's drawn height holds it. */
   @media (width < 960px) {
+    .ws-topbar {
+      display: grid;
+      grid-template:
+        'back title done' auto
+        'save save theme' auto / auto minmax(0, 1fr) auto;
+      padding-block: var(--s-2);
+    }
+
+    .ws-back {
+      grid-area: back;
+    }
+
     .ws-title {
-      flex: 1 1 10rem;
+      grid-area: title;
+      flex-wrap: wrap;
+      column-gap: var(--s-2);
+      row-gap: 0;
+    }
+
+    .ws-topbar > .theme-control {
+      grid-area: theme;
+      align-self: start;
+      justify-self: end;
+    }
+
+    .ws-save {
+      grid-area: save;
+    }
+
+    .ws-done {
+      grid-area: done;
+    }
+
+    /* Under the status and its buttons, as the panel is under the bar in the wide frame. */
+    .save-bar[data-variant='top'] .save-bar-card {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .save-bar[data-variant='top'] .save-bar-alert {
+      position: static;
+      order: 1;
+      margin-block-start: var(--s-2);
+      box-shadow: none;
     }
 
     .save-bar[data-variant='top'] .save-bar-row {
