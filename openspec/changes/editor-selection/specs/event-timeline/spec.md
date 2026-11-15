@@ -16,13 +16,17 @@ end when its target is gone. The selected thing SHALL be shown selected in more 
 
 ### Requirement: The selection is shown and announced once
 
-The selected thing SHALL be shown as a block, a row or a button as pressed (`aria-pressed`), not by colour alone.
+A selected clip or title card SHALL be shown as pressed (`aria-pressed`) wherever it is selected from; a cut and a suggestion by their own marks; none by colour alone.
 
 The selection SHALL be announced once, through the polite status region, when it changes to something, and the page SHALL have no visible line naming it besides the selected thing's own name. Pressing the selected thing again SHALL leave it selected. Reading a selection SHALL make no request and SHALL NOT mark the page changed.
 
+#### Scenario: Cut and suggestion shown
+- **WHEN** a cut or a suggestion is selected
+- **THEN** the cut is shown by its group and handles and the suggestion by its selected mark, neither by colour alone
+
 #### Scenario: Selection announced once
-- **WHEN** the operator selects the "Kvällen" card block
-- **THEN** the polite status says so once and no visible line names the selection (the other kinds follow with the inspector, task 3.1)
+- **WHEN** the operator selects the "Kvällen" card block, then a clip, a cut and a suggestion
+- **THEN** each selection is said once by the polite status and no visible line names the selection
 
 ### Requirement: A card block is a button with a name in words
 
@@ -286,4 +290,4 @@ The Timeline SHALL expose its structure to assistive technology: the section is 
 
 ### Requirement: A card is selected from the Timeline or the list, as one selection
 **Reason**: The card selection is now part of the workspace's one selection.
-**Migration**: "One selection in the workspace", which now holds the one-selection rule, the pressed state, the card block's accessible name and the once-only announcement.
+**Migration**: "One selection in the workspace" now holds the one-selection rule; "The selection is shown and announced once" holds the pressed state and the once-only announcement; "A card block is a button with a name in words" holds the card block's accessible name and keyboard behaviour.

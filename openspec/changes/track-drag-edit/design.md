@@ -30,6 +30,12 @@ save body are unchanged.
 Alt+Left/Right on a selected clip computes `applyDrop` with the neighbouring slot; announcements through Edit mode's
 live region.
 
+### D5. The draft ignore/include edit
+A draft field holds the clips the operator ignores or includes (the set difference against the read `ignore`);
+`buildWriteBody` writes `ignore` from it, and `isDirty`, Reset and the top bar's and save bar's counts include it. The
+bin↔track drags and the Clip tab's "Ignore clip" button dispatch the one new reducer action, so each is one draft
+edit. `editor-selection` leaves the button out for want of this edit.
+
 ## Research & Decisions
 
 ### dnd-kit on the track
@@ -46,9 +52,3 @@ from the model, which the repo's handles already drive.
 
 ## Failure behaviour
 Display and draft only; Save writes the order as the lists do.
-
-### D5. The draft ignore/include edit
-A draft field holds the clips the operator ignores or includes (the set difference against the read `ignore`);
-`buildWriteBody` writes `ignore` from it, and `isDirty`, Reset and the top bar's and save bar's counts include it. The
-bin↔track drags and the Clip tab's "Ignore clip" button dispatch the one new reducer action, so each is one draft
-edit. `editor-selection` leaves the button out for want of this edit.
