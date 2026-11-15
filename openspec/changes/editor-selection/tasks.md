@@ -8,7 +8,7 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
   `git ls-tree -d --name-only main openspec/changes/archive/ | grep -q -- '-editor-workspace-layout$'`,
   `grep -q "Requirement: Edit mode is a full-window workspace" openspec/specs/web-app/spec.md`.
   If any fails, STOP: do not start this change; report which check failed.
-- [ ] 0.2 Spec freshness: confirm both REMOVED headers still exist verbatim in the main specs; sweep `web-app` and
+- [x] 0.2 Spec freshness: confirm both REMOVED headers still exist verbatim in the main specs; sweep `web-app` and
   `event-timeline` for card requirements that mention the dialog (focus return, Escape closes the dialog, full-screen
   sheet) and add REMOVED/MODIFIED blocks for them here before 1.1.
 
