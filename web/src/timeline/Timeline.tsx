@@ -85,7 +85,7 @@ import {
   zoomAt,
 } from './model'
 import { createPlayhead } from './playhead'
-import { afterRead, clipStep, endPosition, globalMs, keptPosition, timedOf } from './position'
+import { afterRead, clipStep, endPosition, globalMs, hasKeptFrame, keptPosition, timedOf } from './position'
 import type { Position } from './position'
 import { hasFrame, snapshotOf, useFrameReady } from './posterFrame'
 import { useTimelineVideo } from './useTimelineVideo'
@@ -313,6 +313,13 @@ export function useTimeline({
     },
     [setSelection, onCutSelected],
   )
+  // The selected clip, from the page's one selection: the block's press and the bin row's write it.
+  const selectedClip = selection.selection.kind === 'clip' ? selection.selection.identity : null
+  const selectClip = useCallback(
+    (identity: string) => setSelection({ kind: 'clip', identity }),
+    [setSelection],
+  )
+  const clearSelection = selection.clear
   const selectCard = selection.select
   const openCard = selection.open
   const pickCard = selectCard
@@ -346,6 +353,11 @@ export function useTimeline({
       })
     }
   }, [editing, selected, clips, keepSelection])
+
+  // A clip that left the event ends its selection (`keptSelection`).
+  useEffect(() => {
+    keepSelection({ clips: new Set(clips.map((c) => c.identity)) })
+  }, [clips, keepSelection])
 
   const scroller = useRef<HTMLDivElement>(null)
   const grip = useRef<HTMLDivElement>(null)
@@ -403,6 +415,21 @@ export function useTimeline({
   // anchor on the second's real starting scale (design D2); a render brings it back in step.
   const ppsRef = useRef(pps)
   ppsRef.current = pps
+  // A clip selected out of view (from the bin) is scrolled to: the zoom stays, and so does focus.
+  useEffect(() => {
+    const el = scroller.current
+    const at = selectedClip === null ? -1 : clips.findIndex((c) => c.identity === selectedClip)
+    if (el === null || at < 0 || !hasKeptFrame(facts[at])) {
+      return
+    }
+    const left = timeToPx(lay.startsMs[at], ppsRef.current)
+    const width = timeToPx(extentMs(clips[at].kept), ppsRef.current)
+    if (left + width > el.scrollLeft && left < el.scrollLeft + el.clientWidth) {
+      return
+    }
+    el.scrollLeft = Math.max(0, left - Math.max(0, (el.clientWidth - width) / 2))
+    // Only a change of the selection scrolls; a relayout does not.
+  }, [selectedClip])
   const fitRef = useRef(fit)
   fitRef.current = fit
 
@@ -558,6 +585,9 @@ export function useTimeline({
         } else {
           pickCard(chapter)
         }
+      } else {
+        // A press on the lane's bare ground, between or past the clips, selects nothing.
+        clearSelection()
       }
     }
     if (phase === 'tap') {
@@ -1093,6 +1123,9 @@ export function useTimeline({
         drag={drag}
         selected={selected}
         onSelect={select}
+        selectedClip={selectedClip}
+        onSelectClip={selectClip}
+        onClearSelection={clearSelection}
         cardLane={cardLane}
         shifting={shifting}
         snapping={snapping}

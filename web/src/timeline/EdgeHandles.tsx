@@ -110,6 +110,7 @@ export const EdgeTool = memo(function EdgeTool({
   keysId,
   lockedId,
   selectedKey,
+  clipSelected,
   targets,
   snapping,
   onSelect,
@@ -140,6 +141,8 @@ export const EdgeTool = memo(function EdgeTool({
   lockedId: string
   /** The selected cut's key, when it is this clip's. */
   selectedKey: string | null
+  /** The clip is the workspace's selected one: its tools show their brackets. */
+  clipSelected: boolean
   targets: PressTargets
   snapping: SnapSwitch
   onSelect: (identity: string, key: string) => void
@@ -436,6 +439,7 @@ export const EdgeTool = memo(function EdgeTool({
       data-limit={own?.limit ?? undefined}
       data-snapped={(own !== null && own.snappedTo !== null) || undefined}
       data-selected={(edgeCut !== null && selectedKey === edgeCut.cut.key) || undefined}
+      data-clip-selected={clipSelected || undefined}
       data-after={after || undefined}
       style={{ '--x': `${x}px`, '--zone': `${zone}px` } as CSSProperties}
       onPointerDownCapture={() => {

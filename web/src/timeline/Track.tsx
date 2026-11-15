@@ -1,5 +1,5 @@
-import { useId, useRef, useState, useSyncExternalStore } from 'react'
-import type { CSSProperties, KeyboardEvent, PointerEvent, RefObject } from 'react'
+import { memo, useCallback, useId, useRef, useState, useSyncExternalStore } from 'react'
+import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent, RefObject } from 'react'
 
 import type { ClipTurns } from '../cuts/ReadCuts'
 import type { Turn } from '../rotate/turn.ts'
@@ -293,10 +293,7 @@ function ClipBlock({ clip, eventId, index, left, pps, window, turn, noPicture, o
   return (
     <div
       className="tl-clip"
-      role="group"
-      tabIndex={-1}
-      aria-label={clip.name}
-      aria-describedby={descId}
+      aria-hidden="true"
       data-index={index}
       data-after={after || undefined}
       data-no-picture={noPicture || undefined}
@@ -348,6 +345,65 @@ function ClipBlock({ clip, eventId, index, left, pps, window, turn, noPicture, o
 }
 
 /**
+ * A clip's control: a transparent button over its block, in the tools' layer so that Tab reaches
+ * it right before the clip's Trim In (clip, Trim In, cut handles, Trim Out). A press selects the
+ * clip and never moves the playhead; a double press places it (`editor-selection`, design D2).
+ * The edge zones and the cut handles come after it in the layer and so take their own presses.
+ */
+const ClipPress = memo(function ClipPress({
+  identity,
+  name,
+  index,
+  left,
+  widthPx,
+  descId,
+  selected,
+  after,
+  onSelect,
+  onPlace,
+}: {
+  identity: string
+  name: string
+  index: number
+  left: number
+  widthPx: number
+  descId: string
+  selected: boolean
+  after: boolean
+  onSelect: (identity: string) => void
+  onPlace: (clientX: number) => void
+}) {
+  return (
+    <div
+      className="tl-clip-press"
+      role="button"
+      tabIndex={0}
+      aria-label={name}
+      aria-pressed={selected}
+      aria-describedby={descId}
+      data-index={index}
+      data-selected={selected || undefined}
+      data-after={after || undefined}
+      style={{ insetInlineStart: left, inlineSize: Math.max(1, widthPx) }}
+      onClick={() => onSelect(identity)}
+      onDoubleClick={(event: MouseEvent<HTMLElement>) => onPlace(event.clientX)}
+      onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
+        if (
+          event.target === event.currentTarget &&
+          (event.key === 'Enter' || event.key === ' ') &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.metaKey
+        ) {
+          event.preventDefault()
+          onSelect(identity)
+        }
+      }}
+    />
+  )
+})
+
+/**
  * The block of a clip whose edge is dragged (`clip-edge-trim`): drawn from the edge in the air,
  * its left side where it was, as wide as its new kept extent, its tiles and cuts from the new in-point.
  */
@@ -391,6 +447,9 @@ export function Track({
   drag,
   selected,
   onSelect,
+  selectedClip,
+  onSelectClip,
+  onClearSelection,
   cardLane,
   shifting = null,
   snapping,
@@ -429,6 +488,12 @@ export function Track({
   selected: { identity: string; key: string } | null
   /** A cut is selected: by its handle's focus or press. */
   onSelect: (identity: string, key: string) => void
+  /** The selected clip's identity, or null (the page's one selection). */
+  selectedClip: string | null
+  /** A press on a clip's block (or its Enter) selects it; it does not move the playhead. */
+  onSelectClip: (identity: string) => void
+  /** A press on empty track selects nothing. */
+  onClearSelection: () => void
   /** The title cards' lane; absent, the Timeline draws none. */
   cardLane?: CardLaneModel
   /** A black card's or a clip edge's drag in progress (`ShiftFrom`), or null. */
@@ -446,6 +511,17 @@ export function Track({
   const ruler = useScrub(canvas, onScrub, focusGrip, 'ruler')
   const lane = useScrub(canvas, onScrub, focusGrip, 'lane')
   const grab = useScrub(canvas, onScrub, focusGrip, 'ruler')
+  // A double press on a clip places the playhead there (a clip press alone does not).
+  const scrubNow = useRef(onScrub)
+  scrubNow.current = onScrub
+  const placeAt = useCallback(
+    (clientX: number) => {
+      const box = canvas.current?.getBoundingClientRect()
+      gripRef.current?.focus({ preventScroll: true })
+      scrubNow.current(clientX - (box?.left ?? 0), 'tap', 'ruler')
+    },
+    [gripRef],
+  )
   // Every cut handle and edge tool: one nearest-wins press test across them.
   const [targets] = useState<PressTargets>(() => new Map())
   const edgeDragged = shifting !== null && shifting.kind === 'edge' ? shifting.identity : null
@@ -483,6 +559,21 @@ export function Track({
       const detailed = widthPx >= MIN_DETAIL_PX
       const descId = `${base}-c${index}`
       const after = behind(shifting, lay.startsMs[index])
+      handleNodes.push(
+        <ClipPress
+          key={`${clip.identity}|press`}
+          identity={clip.identity}
+          name={clip.name}
+          index={index}
+          left={left}
+          widthPx={widthPx}
+          descId={descId}
+          selected={selectedClip === clip.identity}
+          after={after}
+          onSelect={onSelectClip}
+          onPlace={placeAt}
+        />,
+      )
       if (detailed || focusedEdge === clip.identity) {
         const listed = editing.listed(clip.identity)
         const edge = (side: 'start' | 'end') => (
@@ -505,6 +596,7 @@ export function Track({
             keysId={edgeKeysId}
             lockedId={lockedId}
             selectedKey={selected?.identity === clip.identity ? selected.key : null}
+            clipSelected={selectedClip === clip.identity}
             targets={targets}
             snapping={snapping}
             onSelect={onSelect}
@@ -592,6 +684,18 @@ export function Track({
       // browser that makes only scrolling boxes focusable would otherwise drop the focus when Fit
       // leaves nothing to scroll, and the next zoom key would go nowhere.
       tabIndex={-1}
+      onPointerDown={(event: PointerEvent<HTMLElement>) => {
+        // A press on the track's empty ground (not a scrollbar) selects nothing.
+        const box = event.currentTarget
+        const rect = box.getBoundingClientRect()
+        if (event.clientX - rect.left >= box.clientWidth || event.clientY - rect.top >= box.clientHeight) {
+          return
+        }
+        const target = event.target as HTMLElement
+        if (target === box || target === canvas.current || target.classList.contains('tl-analysis')) {
+          onClearSelection()
+        }
+      }}
       onKeyDown={(event: KeyboardEvent) => {
         const key = trackZoomKey({
           key: event.key,

@@ -1843,6 +1843,11 @@ export function EventEditor({
     resolved,
   ])
   const { keep: keepSelection, open: openCard, selected: selectedCard } = cards
+  const selectedClip = cards.selection.kind === 'clip' ? cards.selection.identity : null
+  const selectClip = useCallback(
+    (identity: string) => cards.set({ kind: 'clip', identity }),
+    [cards.set],
+  )
   // The selection ends with its chapter: deleted in the draft, it is gone from the list.
   useEffect(() => {
     if (draftChapters !== undefined) {
@@ -2913,6 +2918,13 @@ export function EventEditor({
                       onRestore={onRestore}
                       onAnnounce={announce}
                       compact={inWorkspace}
+                      selectedClip={
+                        selectedClip !== null &&
+                        (ready.draft.orders.get(chapter.key) ?? NONE_REMOVED).includes(selectedClip)
+                          ? selectedClip
+                          : null
+                      }
+                      onSelectClip={selectClip}
                     />
                   )
                 })}

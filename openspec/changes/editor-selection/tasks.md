@@ -21,7 +21,7 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 - [x] 2.1 Hold the selection in `EventDetail`; replace `Track`'s cut selection, `useSuggestions`' `selectedId` and the
   card selection with it. Verify `npm test`, `npm run check`, and the existing cut/suggestion/card Playwright checks.
-- [ ] 2.2 Clip press on the block body and on the bin row (design D2, D4); outline, highlight, scroll into view.
+- [x] 2.2 Clip press on the block body and on the bin row (design D2, D4); outline, highlight, scroll into view.
   Verify with Playwright (press, Escape, empty track, bin→track scroll, focus stays).
 
 ## 3. Inspector (web/src/edit)

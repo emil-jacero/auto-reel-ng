@@ -173,6 +173,8 @@ const RowBody = memo(function RowBody({
   onMark,
   turn = 0,
   length = null,
+  selected = null,
+  onSelect,
 }: {
   eventId: string
   clip: Clip
@@ -197,6 +199,9 @@ const RowBody = memo(function RowBody({
   turn?: Turn
   /** A compact row (the bin): the length the clip plays, in words (`lengthWords`). */
   length?: string | null
+  /** Whether the clip is the workspace's selected one; null: it cannot be selected (no button). */
+  selected?: boolean | null
+  onSelect?: (identity: string) => void
 }) {
   const thumb = <ClipThumb eventId={eventId} clip={clip} name={name} turn={turn} />
   return (
@@ -221,7 +226,18 @@ const RowBody = memo(function RowBody({
       )}
       <span className="clip-file">
         <span className="clip-name">
-          <ClipName name={name} />
+          {selected !== null && onSelect !== undefined ? (
+            <button
+              type="button"
+              className="clip-select"
+              aria-pressed={selected}
+              onClick={() => onSelect(clip.identity)}
+            >
+              <ClipName name={name} />
+            </button>
+          ) : (
+            <ClipName name={name} />
+          )}
         </span>
         {badge}
         {/* Moved in from another chapter: where from, cut short when long (chapters.css). */}
@@ -258,6 +274,7 @@ const NO_CUTS: readonly DraftCut[] = []
 const NO_SHIFT: SortingStrategy = () => null
 
 // Constant elements: React skips them on the re-render every row gets per drag step.
+const NO_SELECT = () => {}
 const GRIP = <Icon name="grip-vertical" />
 const UP = <Icon name="arrow-up" />
 const DOWN = <Icon name="arrow-down" />
@@ -335,6 +352,8 @@ const ClipRow = memo(function ClipRow({
   onStep,
   onRemove,
   compact,
+  selected,
+  onSelectClip,
 }: {
   eventId: string
   clip: Clip
@@ -364,6 +383,9 @@ const ClipRow = memo(function ClipRow({
   onRemove: (identity: string) => void
   /** A compact row (the bin). */
   compact: boolean
+  /** The clip is the workspace's selected one (bin rows only). */
+  selected: boolean
+  onSelectClip: (identity: string) => void
 }) {
   // The marked clips a held group stands for, or null: then no row makes room (a line shows
   // at every gap) and the held rows are dimmed.
@@ -457,6 +479,22 @@ const ClipRow = memo(function ClipRow({
   // Mounted on its first showing, and then only hidden: what was typed stays.
   const mounted = cuttable && (open || panels.get(identity) !== undefined)
   const panelId = `cuts-${useId()}`
+  // The bin's rows select their clip (`editor-selection`): a press on the row, or its name. The
+  // row is scrolled into view when it becomes the selected one, with no move of focus.
+  const selectable = compact && cuttable
+  const rowRef = useRef<HTMLLIElement | null>(null)
+  const rowNode = useCallback(
+    (node: HTMLLIElement | null) => {
+      rowRef.current = node
+      setNodeRef(node)
+    },
+    [setNodeRef],
+  )
+  useEffect(() => {
+    if (selected) {
+      rowRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+  }, [selected])
   // The target of a clip dragged in from another chapter, or of a held group anywhere: a
   // line marks the gap above this row (drag.css). A clip within its own chapter makes the
   // rows make room instead.
@@ -466,8 +504,21 @@ const ClipRow = memo(function ClipRow({
     (grouped || active.data.current?.sortable?.containerId !== data.sortable.containerId)
   return (
     <li
-      ref={setNodeRef}
+      ref={rowNode}
       className="clip-item"
+      tabIndex={selectable ? -1 : undefined}
+      data-selected={selected || undefined}
+      onClick={
+        selectable
+          ? (event) => {
+              // A control, the cuts panel or a mark takes its own press.
+              const target = event.target as HTMLElement
+              if (target.closest('button, input, a, label, select, textarea, [id^="cuts-"]') === null) {
+                onSelectClip(identity)
+              }
+            }
+          : undefined
+      }
       data-identity={clip.identity}
       data-status={clip.status}
       data-excluded={clip.excluded || undefined}
@@ -504,6 +555,8 @@ const ClipRow = memo(function ClipRow({
         onMark={onMark}
         turn={turn}
         length={length}
+        selected={selectable ? selected : null}
+        onSelect={onSelectClip}
       />
       <span className="clip-tools">
         {/* A clip on disk turns, excluded or not: its picture is what the render will turn. */}
@@ -722,6 +775,8 @@ export const ClipOrderList = memo(function ClipOrderList({
   onRestore,
   onAnnounce,
   compact = false,
+  selectedClip = null,
+  onSelectClip = NO_SELECT,
 }: {
   /** The event, for its clips' thumbnail addresses. */
   eventId: string
@@ -778,6 +833,10 @@ export const ClipOrderList = memo(function ClipOrderList({
   onAnnounce: (message: string) => void
   /** Edit mode's workspace: the clip bin's compact rows. Absent, the stacked page's rows. */
   compact?: boolean
+  /** The selected clip's identity if this chapter plays it, else null (the bin's highlighted row). */
+  selectedClip?: string | null
+  /** A press on a bin row selects its clip. */
+  onSelectClip?: (identity: string) => void
 }) {
   const headingId = useId()
   const removedId = useId()
@@ -963,6 +1022,8 @@ export const ClipOrderList = memo(function ClipOrderList({
                   onStep={onStep}
                   onRemove={onRemoveRow}
                   compact={compact}
+                  selected={selectedClip === identity}
+                  onSelectClip={onSelectClip}
                 />
               )
             })}
