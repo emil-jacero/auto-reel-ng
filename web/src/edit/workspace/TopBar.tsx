@@ -46,21 +46,25 @@ export function TopBar({ frame, saveBar }: { frame: WorkspaceFrame; saveBar: Rea
         {frame.heading}
         {frame.facts !== null && <span className="ws-facts">{frame.facts}</span>}
       </div>
-      <div className="ws-save">{saveBar}</div>
-      <button
-        type="button"
-        className="btn btn-secondary ws-done"
-        aria-disabled={frame.held || undefined}
-        onClick={() => {
-          if (!frame.held) {
-            frame.onDone()
-          }
-        }}
-      >
-        <Icon name="check" />
-        Done
-      </button>
-      <ThemeControl />
+      {/* The save controls, Done and the theme switch: one line in the wide frame, wrapping
+          in this order where the panes stack, so focus takes them as they are drawn. */}
+      <div className="ws-actions">
+        <div className="ws-save">{saveBar}</div>
+        <button
+          type="button"
+          className="btn btn-secondary ws-done"
+          aria-disabled={frame.held || undefined}
+          onClick={() => {
+            if (!frame.held) {
+              frame.onDone()
+            }
+          }}
+        >
+          <Icon name="check" />
+          Done
+        </button>
+        <ThemeControl />
+      </div>
     </div>
   )
 }

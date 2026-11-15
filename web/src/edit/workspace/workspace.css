@@ -136,10 +136,11 @@
     }
   }
 
-  /* Notifications sit over the top of the picture, clear of the top bar and every pane's controls. */
+  /* Notifications sit over the top of the picture, clear of the top bar (a save's explanation
+     under it included) and every pane's controls. */
   @media (width >= 960px) {
     html[data-workspace] .toast-region {
-      inset-block-start: calc(var(--ws-top-measured, 3rem) + var(--s-3));
+      inset-block-start: calc(var(--ws-toast-top, 3rem) + var(--s-3));
       inset-block-end: auto;
       inset-inline: calc(240px + var(--s-3)) calc(340px + var(--s-3));
       inline-size: auto;
@@ -246,19 +247,37 @@
     }
   }
 
+  /* One line with the event in the wide frame. */
+  .ws-actions {
+    display: contents;
+  }
+
   .ws-done {
     flex: none;
   }
 
-  /* Stacked: the event and Done on the first line; the save controls and the theme switch under
-     them. A save's explanation is in the bar's flow, so the bar's drawn height holds it. */
+  /* Stacked: the event on the first line; the save controls, Done and the theme switch under it,
+     wrapping in the page's order, the order focus takes them. A save's explanation is in the
+     bar's flow, under the save controls (after them in the page too), so the bar's drawn height
+     holds it; it keeps the sticking bar to two fifths of the window (`--ws-alert-max`,
+     `Workspace.tsx`). */
   @media (width < 960px) {
     .ws-topbar {
       display: grid;
       grid-template:
-        'back title done' auto
-        'save save theme' auto / auto minmax(0, 1fr) auto;
+        'back title' auto
+        'actions actions' auto / auto minmax(0, 1fr);
       padding-block: var(--s-2);
+    }
+
+    .ws-actions {
+      grid-area: actions;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: flex-end;
+      gap: var(--s-2) var(--s-3);
+      min-inline-size: 0;
     }
 
     .ws-back {
@@ -272,29 +291,13 @@
       row-gap: 0;
     }
 
-    .ws-topbar > .theme-control {
-      grid-area: theme;
-      align-self: start;
-      justify-self: end;
-    }
-
     .ws-save {
-      grid-area: save;
-    }
-
-    .ws-done {
-      grid-area: done;
-    }
-
-    /* Under the status and its buttons, as the panel is under the bar in the wide frame. */
-    .save-bar[data-variant='top'] .save-bar-card {
-      display: flex;
-      flex-direction: column;
+      flex: 1 1 auto;
     }
 
     .save-bar[data-variant='top'] .save-bar-alert {
       position: static;
-      order: 1;
+      max-block-size: var(--ws-alert-max, 40vh);
       margin-block-start: var(--s-2);
       box-shadow: none;
     }
