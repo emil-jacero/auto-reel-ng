@@ -107,7 +107,7 @@ spec is merged. Proposed 2026-11-15 under `openspec/changes/`.
 
 | # | Change | Covers | Depends on | Size |
 |---|---|---|---|---|
-| 0 | `track-draft-order` | the track draws the draft's order and chapters; cards of added chapters built in the browser | — | 1–2 days |
+| 0 | `track-draft-order` ✅ built 2026-11-15 | the track draws the draft's order and chapters; cards of added chapters built in the browser | — | 1–2 days |
 | 1 | `editor-workspace-layout` | 1.x, 2.1/2.3/2.4, 3.1–3.3, 4.x, inspector Event/Cut tabs, 6.1–6.3, 6.7, 6.9, 6.10 | 0 | 2–3 days |
 | 2 | `editor-selection` | one selection, 3.2, 5.x (Clip tab, docked card editor), 6.11 | 1 | 1–2 days |
 | 3 | `track-drag-edit` | 3.4, 6.4, 6.8, keyboard moves | 2 | 1–2 days |
