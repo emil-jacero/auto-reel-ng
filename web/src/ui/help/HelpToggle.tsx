@@ -35,7 +35,7 @@ export function HelpToggle({ help, section }: { help: SectionHelp; section: stri
       onClick={help.toggle}
     >
       <Icon name="info" />
-      {HELP_LABEL}
+      <span className="help-label">{HELP_LABEL}</span>
     </button>
   )
 }

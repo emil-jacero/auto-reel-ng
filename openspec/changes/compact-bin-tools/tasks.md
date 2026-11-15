@@ -17,7 +17,7 @@ never from the repo, with PUT/POST/DELETE intercepted. The layout targets are fi
 
 ## 2. Toolbar and chapter header (web/src/edit)
 
-- [ ] 2.1 Marks line in the bin (design D2):
+- [x] 2.1 Marks line in the bin (design D2):
   - two fixed rows, sticky at the bin's top
   - Rotate buttons icon-only, with their names in hidden text and `title` tooltips
   - the "Move marked to…" label visually hidden, the picker filling the row
