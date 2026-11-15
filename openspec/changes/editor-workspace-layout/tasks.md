@@ -37,8 +37,27 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 4. Verification and docs
 
-- [ ] 4.1 Gates: `edit-list-paint-cost` drag in Chrome 4x, 400-clip bin windowing, no horizontal scroll 320–1440 px,
+- [x] 4.1 Gates: `edit-list-paint-cost` drag in Chrome 4x, 400-clip bin windowing, no horizontal scroll 320–1440 px,
   bundle size before/after.
+  Status (2026-11-15, load 1.1-2.4; production builds of this branch and `origin/main` 7538e62c served by `vite
+  preview` against the same API and library; Playwright 1.49 Chromium, scripts in SCRATCH: rAF frame deltas during
+  the input, % over 25 ms; a 400-clip event served by `page.route` from Grillning's four clips, as no fixture has 400):
+  zoom-slider drag Fit -> 159 px/s on 400 clips at 1280x800, Chrome 4x (`Emulation.setCPUThrottlingRate`, a busy loop
+  3.6-4x slower), five launches of three drags: launch medians 0 / 0.32 / 0.28 / 0 / 0.84 % -> median 0.28 % (p95
+  16.8 ms), idle 0 % in all five; `origin/main` (the stacked page) 0 / 0.53 / 0 / 0.28 / 0 % -> median 0 %. The gate
+  (<= 2 %) holds. Not a gate before, for the record: a pointer drag of a bin row down the 400 clips with auto-scroll at
+  4x 41-44 % (`origin/main`'s page 65-73 %; during a dnd-kit drag every row carries a transform and is drawn on both).
+  Windowing, 400 clips: in the 1280/1440 bin 13-14 of 400 rows drawn on opening, 14-16 after scrolling to the end in
+  half-view steps (none farther than 1,500 px from the pane), every step's scroll position kept (0 px drift over
+  185-211 steps), scroll height +0.2 %; at 390 (the page scrolls) 0 drawn on opening, 25 at the end, +0.3 %
+  (`origin/main` +0.09 %). A wheel scroll through the bin: 0 % at 1x on both builds; at 4x 22-40 % (frames of 33 ms)
+  against `origin/main`'s 26-59 % (idle 0 % on both). Sideways overflow, Edit mode on Grillning (the 400-clip event)
+  and Tjörn, both inspector tabs, at 320/360/390/768/959/960/1024/1280/1440 and a sweep 320-1460 in 8 px steps: page
+  and every pane 0 px, no element past its pane, after two fixes: the readout's time pairs scrolled the page 10-50 px
+  under a 28rem Timeline (now a row of their own; `origin/main`'s page has 17 px at 320), and in the 340 px inspector
+  the poster area's window-width two columns put Use default 91 px outside the pane (one column there). Bundle (`vite
+  build`, `origin/main` -> this branch): JS 665.78 kB (gzip 215.85) -> 677.79 kB (gzip 219.04), +12.01 kB (+3.19
+  gzip); CSS 95.71 kB (gzip 18.14) -> 105.07 kB (gzip 19.91), +9.36 kB (+1.77 gzip); index.html 1.48 kB unchanged.
 - [ ] 4.2 HLD: new D-n "Edit mode is a workspace" (frame, panes, no List view) and §6 item 10 note; tick slice 1 in
   `docs/editor-workspace.md`.
 - [ ] 4.3 Gates: `npm test`, `npm run check`, `npm run build` in podman; `openspec validate editor-workspace-layout --strict`.
