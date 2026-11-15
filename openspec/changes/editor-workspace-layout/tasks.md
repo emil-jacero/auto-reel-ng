@@ -42,11 +42,20 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
   Status (2026-11-15, load 1.1-2.4; production builds of this branch and `origin/main` 7538e62c served by `vite
   preview` against the same API and library; Playwright 1.49 Chromium, scripts in SCRATCH: rAF frame deltas during
   the input, % over 25 ms; a 400-clip event served by `page.route` from Grillning's four clips, as no fixture has 400):
-  zoom-slider drag Fit -> 159 px/s on 400 clips at 1280x800, Chrome 4x (`Emulation.setCPUThrottlingRate`, a busy loop
-  3.6-4x slower), five launches of three drags: launch medians 0 / 0.32 / 0.28 / 0 / 0.84 % -> median 0.28 % (p95
-  16.8 ms), idle 0 % in all five; `origin/main` (the stacked page) 0 / 0.53 / 0 / 0.28 / 0 % -> median 0 %. The gate
-  (<= 2 %) holds. Not a gate before, for the record: a pointer drag of a bin row down the 400 clips with auto-scroll at
-  4x 41-44 % (`origin/main`'s page 65-73 %; during a dnd-kit drag every row carries a transform and is drawn on both).
+  the zoom-slider drag as the main event-timeline spec words it: 1280x900, the slider's left end to its right end and
+  back in 180 pointer moves (Fit -> 240 px/s, the 579,612 px track, -> Fit), 400 clips, 4x CPU throttle
+  (`Emulation.setCPUThrottlingRate`, a busy loop 3.1-4x slower), six launches per build of three drags each, builds
+  interleaved, load 1.8-15 falling: branch launch medians 0.41 / 0.79 / 1.13 / 0.76 / 1.30 / 1.52 % -> median 0.96 %
+  (all 18 drags: median 0.78 %, worst 2.43 %, p95 16.8 ms); `origin/main` (the stacked page) 0.56 / 1.33 / 0.56 / 0.73 /
+  0.56 / 0.57 % -> median 0.57 % (18 drags: 0.57 %, worst 2.05 %); idle 0 % in every launch of both. Chrome's figure is
+  within the gate's 2 %, about 0.4 points above `origin/main`'s. An earlier batch of five launches each while other
+  jobs pushed the load to 4-31 (busy loop up to 169 ms at 4x) is not a valid sample of either build: branch 3.48 % /
+  `origin/main` 1.10 % medians, single launches up to 26.6 % / 30.2 %. Not measured here, so not claimed: the gate's
+  Firefox 155 runs and Chrome 154 itself (Playwright 1.49 ships Chromium 131 and Firefox 132). A first run of this
+  status used a weaker drag (120 moves, one way to 85 %, Fit -> 159 px/s, 1280x800; median 0.28 %, `origin/main` 0 %),
+  replaced by the above. Not a gate before, for the record: a pointer drag of a bin row down the 400 clips with
+  auto-scroll at 4x 41-44 % (`origin/main`'s page 65-73 %; during a dnd-kit drag every row carries a transform and is
+  drawn on both).
   Windowing, 400 clips: in the 1280/1440 bin 13-14 of 400 rows drawn on opening, 14-16 after scrolling to the end in
   half-view steps (none farther than 1,500 px from the pane), every step's scroll position kept (0 px drift over
   185-211 steps), scroll height +0.2 %; at 390 (the page scrolls) 0 drawn on opening, 25 at the end, +0.3 %
