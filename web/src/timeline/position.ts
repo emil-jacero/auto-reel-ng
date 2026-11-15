@@ -303,3 +303,18 @@ export function endPosition(clips: readonly Timed[]): Position {
 export function seekSeconds(ms: Ms, fps: number): number {
   return (ms + 250 / fps) / 1000
 }
+
+/**
+ * Previous / Next clip (`editor-workspace-layout`): the first kept frame of the drawn clip before
+ * or after the playhead's, passing over clips that keep no frame. In a title card, the card's clip
+ * is the next one and the clip before it the previous one. Null when there is no such clip.
+ */
+export function clipStep(clips: readonly Timed[], at: Position, dir: 1 | -1): Position | null {
+  let i = at.card != null && dir === 1 ? at.clip : at.clip + dir
+  for (; i >= 0 && i < clips.length; i += dir) {
+    if (hasKeptFrame(clips[i])) {
+      return { clip: i, ms: firstKeptMs(clips[i]) }
+    }
+  }
+  return null
+}

@@ -56,6 +56,8 @@ import {
   PAUSE,
   PREVIEW_OPEN,
   PLAY,
+  PREVIOUS_CLIP,
+  NEXT_CLIP,
   ZOOM_IN,
   ZOOM_OUT,
   movieStat,
@@ -79,7 +81,7 @@ import {
   zoomAt,
 } from './model'
 import { createPlayhead } from './playhead'
-import { afterRead, endPosition, globalMs, keptPosition, timedOf } from './position'
+import { afterRead, clipStep, endPosition, globalMs, keptPosition, timedOf } from './position'
 import type { Position } from './position'
 import { hasFrame, snapshotOf, useFrameReady } from './posterFrame'
 import { useTimelineVideo } from './useTimelineVideo'
@@ -573,6 +575,17 @@ export function useTimeline({
     announce(pos)
   }
 
+  /** Previous / Next clip: the playhead to the first kept frame of the drawn clip (null: none). */
+  const toClip = (dir: 1 | -1) => {
+    const pos = clipStep(facts, playhead.get(), dir)
+    if (pos === null) {
+      return
+    }
+    takePage()
+    video.seekTo(pos)
+    announce(pos)
+  }
+
   const onKey = (action: KeyAction) => {
     if (action.kind !== 'toggle') {
       takePage()
@@ -884,6 +897,26 @@ export function useTimeline({
           </span>
         </span>
       </button>
+      <div className="tl-clip-step" role="group" aria-label="Clips">
+        <button
+          type="button"
+          className="btn btn-secondary btn-icon"
+          aria-label={PREVIOUS_CLIP}
+          title={PREVIOUS_CLIP}
+          onClick={() => toClip(-1)}
+        >
+          <Icon name="skip-back" />
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary btn-icon"
+          aria-label={NEXT_CLIP}
+          title={NEXT_CLIP}
+          onClick={() => toClip(1)}
+        >
+          <Icon name="skip-forward" />
+        </button>
+      </div>
       <PlayheadReadout playhead={playhead} clips={clips} lay={lay} longestCardMs={longestCardMs} />
       <div className="tl-poster">
         <button
