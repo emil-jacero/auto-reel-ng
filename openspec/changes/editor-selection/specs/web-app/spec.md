@@ -79,7 +79,7 @@ be reachable with the keyboard and SHALL name, to assistive technology, the chap
   SHALL show and announce why the chapter cannot be deleted.
 
 **The header bar.** Every chapter's header bar, the event's own chapter's too, SHALL hold, in this order, the chapter's name as plain
-text, an **Edit Titlecard** button and the chapter's clip count; the chapter's tools (Move up, Move down, Delete, offered by the rules above) stay in their own row under the bar, which is sticky and keeps one line. The
+text, the chapter's clip count and an **Edit Titlecard** button; the chapter's tools (Move up, Move down, Delete, offered by the rules above) stay in their own row under the bar, which is sticky and keeps one line. In the workspace's clip bin, Edit Titlecard SHALL show an icon only at every window width, keeping its name and offering its words as a tooltip. In the bin from 960 CSS pixels wide (the side pane; below that the panes stack and the bin keeps the tools row under the bar) the bar SHALL instead hold the tools itself, after the clip count, so that with a fine pointer a chapter takes one row above its clips: there Move up, Move down and Delete SHALL show an icon only, keep their names and reasons, and offer their names as tooltips, and the bar SHALL be at most 36 CSS pixels tall. With a coarse pointer the bar keeps the 44 CSS pixel targets and wraps onto a second line. The
 button SHALL show an icon and the words "Edit Titlecard", SHALL be named "Edit title card for <name>" (the event's own chapter: its
 heading) and SHALL select that card, showing its editor on the inspector's "This title card" tab ("The title card editor is docked in the inspector"). A
 chapter's section SHALL show nothing between its header bar and its clips but the tools row and the notes of this requirement and of "Edit mode says what
@@ -162,6 +162,12 @@ move:
 
 While a save is in flight, every chapter control and Add chapter SHALL say that it is unavailable and SHALL
 change nothing when pressed.
+
+#### Scenario: A chapter's header in the bin is one row
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window with a fine pointer
+- **THEN**
+  - `Kvällen`'s header is one row holding, in this order, its name, its clip count, and icon buttons named "Edit title card for Kvällen", "Move chapter Kvällen up", "Move chapter Kvällen down" and "Delete chapter Kvällen", each offering its name as a tooltip
+  - no row of tools lies between that header and its first clip, and the header is at most 36 CSS pixels tall
 
 #### Scenario: A first chapter added to a one-chapter event
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, whose clips are all in its own chapter, the
@@ -353,7 +359,7 @@ change nothing when pressed.
 #### Scenario: A lone chapter whose only clip is ignored
 - **WHEN** Edit mode opens on `2024-10-06 - Bara ignorerad`, an event that lists one chapter, whose only clip
   `s1710004.mp4` is ignored
-- **THEN** the chapter lists the ignored clip under its heading and says "It plays no clip. A chapter without
+- **THEN** the chapter lists the ignored clip (under its heading below 960 px; from 960 px under "Ignored clips" directly after it, captioned with the chapter's name) and says "It plays no clip. A chapter without
   clips is left out of the movie." It does not mention dragging clips or Move marked to…
 
 #### Scenario: A second chapter brings the hint back
