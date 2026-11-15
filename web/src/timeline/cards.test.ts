@@ -15,15 +15,19 @@ import {
   cardSelection,
   cardWords,
   clipTimeAt,
+  draftCardSpecs,
   movieWithCards,
+  synthCard,
   trackLayout,
   trackX,
+  unsavedCardWords,
   visibleBlocks,
 } from './cards.ts'
 import type { CardClip, CardSpec, Placement } from './cards.ts'
 import { ModelError, keptExtent, layout } from './model.ts'
 import { globalMs } from './position.ts'
 import type { Skip } from '../preview/playback.ts'
+import type { DraftChapter } from '../edit/draft.ts'
 
 /*
  * The title cards' pure layer (`cards.ts`), run by `npm test`, against the scenarios of
@@ -372,6 +376,114 @@ describe('cards at a trimmed clip (timeline-ripple-layout)', () => {
   it('a chapter whose clips keep nothing has no card', () => {
     const placements = cardPlacements([spec('', 3)], [clip(0, 5050, [{ from: 0, to: 5000 }])], 'on')
     assert.deepEqual(placements, [{ kind: 'no-footage', chapter: 0 }])
+  })
+})
+
+describe('the draft’s chapters’ cards (track-draft-order)', () => {
+  const titled = (chapter: string, seconds: number, background: string, title: string): CardSpec => ({
+    chapter,
+    card: { ...card(seconds, background)!, title },
+    error: null,
+  })
+  const read = (key: string, name: string): DraftChapter => ({ key, readName: name, name, deleted: false })
+  const added = (key: string, name: string): DraftChapter => ({ key, readName: null, name, deleted: false })
+  const saved = [titled('', 3, 'black', 'Grillning'), titled('Kvällen', 4, 'video', 'Kvällen')]
+
+  it('keeps a renamed chapter’s card, its length and background, titled with the new name', () => {
+    const specs = draftCardSpecs(saved, [read('r0', ''), { ...read('r1', 'Kvällen'), name: 'Kväll vid havet' }], null)
+    assert.equal(specs[1].chapter, 'Kvällen')
+    assert.deepEqual(specs[1].card, { ...saved[1].card!, title: 'Kväll vid havet' })
+    assert.equal(specs[1].unsaved, undefined)
+    // The opening keeps its own title, and a card titled otherwise keeps its title.
+    assert.equal(specs[0], saved[0])
+    const own = [saved[0], titled('Kvällen', 4, 'video', 'Solnedgång')]
+    const kept = draftCardSpecs(own, [read('r0', ''), { ...read('r1', 'Kvällen'), name: 'Kväll' }], null)
+    assert.equal(kept[1], own[1])
+  })
+
+  it('leaves out a deleted chapter’s card and follows the draft’s order', () => {
+    const specs = draftCardSpecs(
+      saved,
+      [{ ...read('r1', 'Kvällen'), deleted: true }, read('r0', '')],
+      null,
+    )
+    assert.deepEqual(
+      specs.map((spec) => spec.chapter),
+      [''],
+    )
+  })
+
+  it('builds an added chapter’s card from the opening card under the draft’s style', () => {
+    const specs = draftCardSpecs(saved, [read('r0', ''), added('a1', 'Morgon'), read('r1', 'Kvällen')], null)
+    assert.deepEqual(specs[1], {
+      chapter: '\u0000added:a1',
+      card: { ...saved[0].card!, title: 'Morgon', subtitle: '', defaultSubtitle: '' },
+      error: null,
+      unsaved: 'built',
+    })
+    const styled = draftCardSpecs(saved, [added('a1', 'Morgon')], { duration: 2.5, font_family: 'DejaVu Sans' })
+    assert.equal(styled[0].card?.duration, 2.5)
+    assert.equal(styled[0].card?.background, 'black')
+    assert.equal(styled[0].card?.fontFamily, 'DejaVu Sans')
+  })
+
+  it('builds from the first resolved card when the opening has none', () => {
+    const specs = draftCardSpecs(
+      [{ chapter: '', card: null, error: 'x' }, saved[1]],
+      [added('a1', 'Morgon')],
+      null,
+    )
+    assert.equal(specs[0].card?.background, 'video')
+    assert.equal(specs[0].card?.duration, 4)
+    assert.equal(synthCard(saved[1].card!, { background: 'black' }, 'M').background, 'black')
+  })
+
+  it('an added black card shifts the clips after it by its length', () => {
+    // Main: one 10 s clip; Morgon (added): one 10 s clip; the event's cards are black, 3.0 s.
+    const black = [titled('', 3, 'black', 'Grillning')]
+    const specs = draftCardSpecs(black, [read('r0', ''), added('a1', 'Morgon')], null)
+    const clips = [clip(0, 10_000), clip(1, 10_000)]
+    const placements = cardPlacements(specs, clips, 'on')
+    assert.deepEqual(
+      placements.map((place) => place.kind),
+      ['anchored', 'anchored'],
+    )
+    const lay = layout(clips.map((c) => ({ durationMs: c.durationMs, fps: 25 })))
+    const track = trackLayout(lay, cardMap(placements, lay))
+    assert.deepEqual(track.startsMs, [3_000, 16_000])
+    const blocks = cardBlocks(placements, track)
+    assert.deepEqual(
+      blocks.map((block) => [block.startMs, block.widthMs]),
+      [
+        [0, 3_000],
+        [13_000, 3_000],
+      ],
+    )
+  })
+
+  it('with title cards off, no card is anchored and none adds time', () => {
+    const specs = draftCardSpecs(saved, [read('r0', ''), added('a1', 'Morgon')], null)
+    const clips = [clip(0, 10_000), clip(1, 10_000)]
+    const placements = cardPlacements(specs, clips, 'off')
+    assert.ok(placements.every((place) => place.kind !== 'anchored'))
+    const lay = layout(clips.map((c) => ({ durationMs: c.durationMs, fps: 25 })))
+    assert.equal(cardMap(placements, lay).totalMs, 0)
+    assert.deepEqual(cardPlacements(specs, clips, 'invalid'), [])
+  })
+
+  it('with no resolved card, an added chapter is a placeholder of the event style’s length', () => {
+    const none: CardSpec[] = [{ chapter: '', card: null, error: 'look.title_card.font_family' }]
+    const [, morgon] = draftCardSpecs(none, [read('r0', ''), added('a1', 'Morgon')], {
+      duration: 3,
+      background: 'black',
+    })
+    assert.equal(morgon.unsaved, 'placeholder')
+    assert.equal(morgon.card?.duration, 3)
+    assert.equal(unsavedCardWords('Morgon'), 'Title card for Morgon, shown after save')
+    // Without the style’s length either, nothing is guessed: the card is not resolved, and says so.
+    const [bare] = draftCardSpecs(none, [added('a1', 'Morgon')], null)
+    assert.equal(bare.card, null)
+    assert.equal(bare.error, 'Title card for Morgon, shown after save')
   })
 })
 
