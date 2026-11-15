@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { inspectorTab, keptSelection, NO_SELECTION } from './selection.ts'
+import { inspectorTab, keptIn, keptSelection, NO_SELECTION, sameSelection } from './selection.ts'
 import type { Selection, World } from './selection.ts'
 
 const world: World = {
@@ -68,4 +68,21 @@ test('a suggestion the read no longer lists ends the selection', () => {
 
 test('nothing stays nothing', () => {
   assert.equal(keptSelection(NO_SELECTION, world), NO_SELECTION)
+})
+
+test('sameSelection compares by kind and target', () => {
+    assert.equal(sameSelection(NO_SELECTION, { kind: 'none' }), true)
+    assert.equal(sameSelection({ kind: 'cut', identity: 'a', key: '1' }, { kind: 'cut', identity: 'a', key: '1' }), true)
+    assert.equal(sameSelection({ kind: 'cut', identity: 'a', key: '1' }, { kind: 'cut', identity: 'a', key: '2' }), false)
+    assert.equal(sameSelection({ kind: 'card', chapter: 'x' }, { kind: 'suggestion', id: 'x' }), false)
+})
+
+test('keptIn judges only the kinds the part knows', () => {
+    const card = { kind: 'card', chapter: 'Dag' } as const
+    const mark = { kind: 'suggestion', id: 's' } as const
+    assert.equal(keptIn(card, { suggestions: new Set() }), card)
+    assert.equal(keptIn(card, { chapters: new Set(['Dag']) }), card)
+    assert.deepEqual(keptIn(card, { chapters: new Set() }), NO_SELECTION)
+    assert.deepEqual(keptIn(mark, { suggestions: new Set() }), NO_SELECTION)
+    assert.equal(keptIn(mark, { chapters: new Set() }), mark)
 })

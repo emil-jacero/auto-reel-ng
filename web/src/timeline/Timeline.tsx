@@ -44,7 +44,7 @@ import type { CardMap, CardSpec, CardsSource, Decorators, Placement } from './ca
 import { cardJobs } from './cardRequests'
 import { positionOnTrack, stepFramesOnTrack, trackStart } from './play'
 import { useCardImages } from './useCardImages'
-import type { CardsBinding } from './useCardSelection'
+import type { SelectionBinding } from '../edit/workspace/useSelection.ts'
 import { createDragStore, held as dragHeld, shiftMs } from './dragStore'
 import { edgeAnnouncement, edgeEdit, snappingWords, toPlayheadRefusal, trimToPlayhead } from './edgeTrim'
 import type { DragStore } from './dragStore'
@@ -153,7 +153,7 @@ export type TimelineProps = {
     previewStyle?: { [key: string]: unknown }
     /** The detail's `title_cards_error`, said when there is no answer. */
     error: string | null
-    selection: CardsBinding
+    selection: SelectionBinding
   }
   /** The id of the Timeline help's paragraph that says what the cut fields take (Edit mode). */
   cutHintId: string
@@ -298,36 +298,38 @@ export function useTimeline({
   const longestCardMs = useMemo(() => Math.max(0, ...map.gaps.map((gap) => gap.lengthMs)), [map])
   // A trim in the air: the cuts' spans on the track step back while the live one is drawn.
   const trimming = useSyncExternalStore(drag.subscribe, () => drag.get() !== null)
-  const [selected, setSelected] = useState<Selected | null>(null)
-  const clearCard = selection.clear
+  // The selected cut, from the page's one selection: selecting a card or a mark ends it.
+  const selectedCut = selection.selection.kind === 'cut' ? selection.selection : null
+  const selected = useMemo<Selected | null>(
+    () => (selectedCut === null ? null : { identity: selectedCut.identity, key: selectedCut.key }),
+    [selectedCut],
+  )
+  const setSelection = selection.set
+  const keepSelection = selection.keep
   const select = useCallback(
     (identity: string, key: string) => {
-      setSelected((was) => (was?.identity === identity && was.key === key ? was : { identity, key }))
-      clearCard()
+      setSelection({ kind: 'cut', identity, key })
       onCutSelected?.()
     },
-    [clearCard, onCutSelected],
+    [setSelection, onCutSelected],
   )
   const selectCard = selection.select
   const openCard = selection.open
-  const pickCard = useCallback(
-    (chapter: string) => {
-      setSelected(null)
-      selectCard(chapter)
-    },
-    [selectCard],
-  )
+  const pickCard = selectCard
   // A block's body opens the card's dialog.
-  const pressCard = useCallback(
-    (chapter: string) => {
-      setSelected(null)
-      openCard(chapter)
-    },
-    [openCard],
-  )
-  // Reset, and a cut removed, end a selection.
+  const pressCard = openCard
+  // Reset ends a cut selection (the Timeline mounting anew, on a Refresh or a Save, does not).
   const epoch = editing.epoch
-  useEffect(() => setSelected(null), [epoch])
+  const seenEpoch = useRef(epoch)
+  useEffect(() => {
+    if (seenEpoch.current !== epoch) {
+      seenEpoch.current = epoch
+      if (selection.selection.kind === 'cut') {
+        selection.clear()
+      }
+    }
+  }, [epoch, selection])
+  // A cut removed ends a selection (`keptSelection`).
   useEffect(() => {
     if (selected !== null) {
       // A cut that became part of a leading or a trailing cut has no handle, nor a selection,
@@ -339,11 +341,11 @@ export function useTimeline({
         clip?.kept ?? null,
         clip?.facts.durationMs ?? 0,
       )
-      if (!there) {
-        setSelected(null)
-      }
+      keepSelection({
+        cuts: new Map([[selected.identity, there ? [{ key: selected.key, removed: false }] : []]]),
+      })
     }
-  }, [editing, selected, clips])
+  }, [editing, selected, clips, keepSelection])
 
   const scroller = useRef<HTMLDivElement>(null)
   const grip = useRef<HTMLDivElement>(null)
@@ -806,6 +808,7 @@ export function useTimeline({
     pps,
     seekTo: video.seekTo,
     onSelect: onCutSelected,
+    selection,
   })
   const cardLane = useMemo<CardLaneModel | undefined>(
     () =>

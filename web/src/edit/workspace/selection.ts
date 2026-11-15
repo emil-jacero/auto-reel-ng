@@ -59,3 +59,41 @@ export function inspectorTab(sel: Selection): 'clip' | 'card' | 'suggestion' | '
       return 'event'
   }
 }
+
+/** Whether two selections name the same target (a setter keeps the old object when they do). */
+export function sameSelection(a: Selection, b: Selection): boolean {
+  switch (a.kind) {
+    case 'none':
+      return b.kind === 'none'
+    case 'clip':
+      return b.kind === 'clip' && b.identity === a.identity
+    case 'cut':
+      return b.kind === 'cut' && b.identity === a.identity && b.key === a.key
+    case 'card':
+      return b.kind === 'card' && b.chapter === a.chapter
+    case 'suggestion':
+      return b.kind === 'suggestion' && b.id === a.id
+  }
+}
+
+/**
+ * `keptSelection` for a caller that knows only part of the world (the draft's chapters, or the
+ * drawn marks): a selection of a kind the part says nothing about is kept as it is.
+ */
+export function keptIn(sel: Selection, part: Partial<World>): Selection {
+  const knows =
+    (sel.kind === 'clip' && part.clips !== undefined) ||
+    (sel.kind === 'cut' && part.cuts !== undefined) ||
+    (sel.kind === 'card' && part.chapters !== undefined) ||
+    (sel.kind === 'suggestion' && part.suggestions !== undefined)
+  if (!knows) {
+    return sel
+  }
+  return keptSelection(sel, {
+    clips: new Set(),
+    cuts: new Map(),
+    chapters: new Set(),
+    suggestions: new Set(),
+    ...part,
+  })
+}

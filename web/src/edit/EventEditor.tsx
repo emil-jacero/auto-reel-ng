@@ -32,7 +32,7 @@ import { LIST_HREF } from '../route'
 import { focusPageHeading } from '../shell/AppShell'
 import { TimelineSection } from '../timeline/TimelineSection'
 import { cardSpecs } from '../timeline/cards'
-import type { CardsBinding } from '../timeline/useCardSelection'
+import type { SelectionBinding } from './workspace/useSelection.ts'
 import { CardButtonContext } from './EditTitlecard'
 import type { CardButtonModel } from './EditTitlecard'
 import { cardIdOf } from './chapterBar.ts'
@@ -1097,8 +1097,8 @@ export function EventEditor({
   dismissals: Dismissals
   /** The page's one analysis read and Re-analyze (`useEventAnalysis`); absent, the Timeline has no lane. */
   analysis?: AnalysisBinding
-  /** The page's one card selection (`useCardSelection`), shared with the Timeline's blocks. */
-  cards: CardsBinding
+  /** The page's one selection (`useSelection`), shared with the Timeline's blocks. */
+  cards: SelectionBinding
   /** A proxy job the Timeline followed has ended: the page reads the event again. */
   onProxiesFinished?: () => void
   onSaved: () => void
@@ -1842,15 +1842,17 @@ export function EventEditor({
     draftEventTitle,
     resolved,
   ])
-  const { retain: retainCard, open: openCard, selected: selectedCard } = cards
+  const { keep: keepSelection, open: openCard, selected: selectedCard } = cards
   // The selection ends with its chapter: deleted in the draft, it is gone from the list.
   useEffect(() => {
     if (draftChapters !== undefined) {
-      retainCard(
-        draftChapters.flatMap((chapter) => (chapter.deleted ? [] : [cardIdOf(chapter)])),
-      )
+      keepSelection({
+        chapters: new Set(
+          draftChapters.flatMap((chapter) => (chapter.deleted ? [] : [cardIdOf(chapter)])),
+        ),
+      })
     }
-  }, [draftChapters, retainCard])
+  }, [draftChapters, keepSelection])
   // A refused save that names a card opens that card, so the message is at its field.
   const refusedCard = ready?.cardRefusal ?? null
   const refusedAnswer = ready?.answers ?? 0

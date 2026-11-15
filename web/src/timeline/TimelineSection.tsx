@@ -20,7 +20,7 @@ import type { Backdrop } from '../edit/card/Preview'
 import { CardInspector, inspectorWords } from './CardInspector'
 import { Prepare, usePrepare } from './Prepare'
 import { cardPlacements, cardsEnabled, cardsSource, draftCardSpecs } from './cards'
-import type { CardsBinding } from './useCardSelection'
+import type { SelectionBinding } from '../edit/workspace/useSelection.ts'
 import { analysisOf } from './overlays/control'
 import type { Dismissals } from './overlays/Dismissals'
 import {
@@ -75,8 +75,8 @@ export function TimelineSection({
   chapters: readonly DraftChapter[]
   /** The draft's clip order per chapter: what the track draws and Play plays. */
   orders: Orders
-  /** The page's one card selection (`useCardSelection`), shared with Edit mode's rows. */
-  cards: CardsBinding
+  /** The page's one selection (`useSelection`), shared with Edit mode's rows. */
+  cards: SelectionBinding
   /** Edit mode's cards (`title-card-inspector`): the draft's specs and the inspector's edits. */
   cardEditing: CardEditing
 }) {
