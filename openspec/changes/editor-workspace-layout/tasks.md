@@ -32,7 +32,8 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 - [x] 3.1 Bin: compact row variant of `ClipOrderList` inside `ChapterDrag`, windowed (design D3). Verify keyboard
   reorder, cross-chapter move, marks, Add chapter, New/Ignored/Missing with Playwright.
-- [x] 3.2 Inspector with Event and Cut tabs (Details, Poster, Title cards switch, card style; `TimelineCutPanel`);
+- [x] 3.2 Inspector with Event and Cut tabs (Details, Poster, a button to the card dialog's "All title cards in this event" tab for the switch and card
+  style; `TimelineCutPanel`);
   selecting a cut or suggestion shows Cut. Verify with Playwright.
 
 ## 4. Verification and docs

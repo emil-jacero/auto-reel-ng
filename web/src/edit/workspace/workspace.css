@@ -5,13 +5,17 @@
     display: none;
   }
 
+  /* On <html>, so the notification region (outside `.ws`) places itself by the same pane widths. */
+  html[data-workspace] {
+    --ws-bin-w: 240px;
+    --ws-insp-w: 340px;
+  }
+
   .ws {
     /* No app header above the panes: a sticky panel heading sticks to its pane's top. */
     --header-h: 0px;
     /* The top bar's least height; as drawn, `--ws-top-measured` on <html> (`Workspace.tsx`). */
     --ws-top-h: 3rem;
-    --ws-bin-w: 240px;
-    --ws-insp-w: 340px;
 
     display: grid;
     grid-template:
@@ -244,7 +248,7 @@
     html[data-workspace] .toast-region {
       inset-block-start: calc(var(--ws-toast-top, 3rem) + var(--s-3));
       inset-block-end: auto;
-      inset-inline: calc(240px + var(--s-3)) calc(340px + var(--s-3));
+      inset-inline: calc(var(--ws-bin-w) + var(--s-3)) calc(var(--ws-insp-w) + var(--s-3));
       inline-size: auto;
       max-inline-size: 24rem;
       margin-inline: auto;

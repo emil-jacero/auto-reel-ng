@@ -25,7 +25,7 @@ grid-template: "top top top" auto
 The top row is at least 3rem and as tall as the bar is drawn: `Workspace` measures it (`--ws-top-measured` on
 `<html>`) so notifications, sticky panel headings and the scroll padding clear it. Each pane scrolls on its own and is
 marked `[data-ws-scroll]`; focus-in-view, drops and Page Up/Down measure against the closest such pane, falling back
-to the page. Below 960 px wide: one column in the order top, view, tl, insp, bin, and the page scrolls; the top bar
+to the page. Below 960 px wide: one column drawn in the order top, view, tl, insp, bin (CSS `order`; the DOM and so Tab order stay top, bin, view, insp, tl, the wide frame's reading order, and each pane is a labelled region), and the page scrolls; the top bar
 takes two lines (the event; the save controls, Done and the theme switch, wrapping in page order) and sticks, unless
 it would take more than two fifths of the window (or the window is under 28rem), when it rests at the page's top.
 
