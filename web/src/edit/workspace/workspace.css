@@ -192,6 +192,12 @@
     min-inline-size: 0;
   }
 
+  /* The poster control carries the Timeline toolbar's `grid-area: poster`: in this grid that name
+     would add a column beside the trim fields and the cuts. */
+  .ct-tab > .tl-poster {
+    grid-area: auto;
+  }
+
   .ct-row {
     display: flex;
     flex-wrap: wrap;
