@@ -85,7 +85,7 @@ context: |
   it into the following smaller steps: [list 2-3 logical, tiny steps]. Should we start with step 1?"
 
   ## Technology Standards
-  - Python >= 3.13 (host runs 3.14), hatchling, package `auto_reel_ng/`. No Taskfile.
+  - Python >= 3.13 (host runs 3.14), hatchling, package `auto_reel_ng/`. `Taskfile.yml` holds only dev conveniences (`task dev:serve`); every gate stays a plain command.
   - The venv MUST be created with `--system-site-packages` (pycairo/PyGObject and pytest come from
     rpm on this immutable host) and pytest run as `.venv/bin/python -m pytest`.
   - ffmpeg/ffprobe as subprocesses, `-progress` parsed; >= 7.1 asserted. Default binary is

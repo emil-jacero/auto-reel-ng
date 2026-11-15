@@ -1,0 +1,98 @@
+# Local development tasks. Run `task --list` for the overview.
+#
+#   task dev:serve                      # DB + API + worker + Vite (hot reload), Ctrl-C stops all
+#   task dev:serve DEVICE=cpu           # render on the CPU instead of the detected GPU
+#   task dev:serve LIBRARY=/path/to/lib API_PORT=8101 WEB_PORT=5174
+#   task dev:stop                       # stop leftovers of a killed dev:serve, and the dev DB
+#   task dev:reset                      # rebuild the dev library (and its jobs) from the fixture
+#
+# Node runs only in podman (web/README.md). The venv must exist first:
+#   python3.14 -m venv .venv --system-site-packages && .venv/bin/pip install -e ".[dev]"
+version: '3'
+
+vars:
+  DEV_DIR: '{{.DEV_DIR | default "../auto-reel-dev"}}'
+  LIBRARY: '{{.LIBRARY | default (print .DEV_DIR "/library")}}'
+  API_HOST: 127.0.0.1
+  API_PORT: '{{.API_PORT | default "8080"}}'
+  WEB_PORT: '{{.WEB_PORT | default "5173"}}'
+  DEVICE: '{{.DEVICE | default ""}}'
+  DB_CONTAINER: auto-reel-ng-dev-db
+  NODE_IMAGE: docker.io/library/node:22
+
+tasks:
+  dev:serve:
+    desc: Start the dev DB, then the API, a worker and the Vite dev server together (open http://127.0.0.1:5173)
+    preconditions:
+      - sh: test -x .venv/bin/auto-reel
+        msg: 'No venv: python3.14 -m venv .venv --system-site-packages && .venv/bin/pip install -e ".[dev]"'
+      - sh: test -d "{{.LIBRARY}}"
+        msg: 'No library at {{.LIBRARY}}: .venv/bin/python scripts/make_dev_library.py ../auto-reel-dev'
+    cmds:
+      - task: dev:db
+      - task: dev:web:install
+      - task: dev:run
+
+  dev:run:
+    internal: true
+    deps: [dev:api, dev:worker, dev:web]
+
+  dev:db:
+    desc: Create or start the dev Postgres container and migrate it to head
+    cmds:
+      - |
+        podman container exists {{.DB_CONTAINER}} || podman run -d --name {{.DB_CONTAINER}} \
+          -e POSTGRES_USER=auto_reel_ng -e POSTGRES_PASSWORD=auto_reel_ng -e POSTGRES_DB=auto_reel_ng \
+          -v auto-reel-ng-dev-db:/var/lib/postgresql/data -p 127.0.0.1:5432:5432 \
+          docker.io/library/postgres:16-alpine
+      - podman start {{.DB_CONTAINER}} >/dev/null
+      - |
+        for i in $(seq 30); do
+          podman exec {{.DB_CONTAINER}} pg_isready -q -U auto_reel_ng && exit 0
+          sleep 1
+        done
+        echo "Postgres in {{.DB_CONTAINER}} did not become ready in 30 s" >&2; exit 1
+      - .venv/bin/python -m alembic upgrade head
+
+  dev:web:install:
+    desc: Install web dependencies in podman when web/node_modules is missing
+    status:
+      - test -d web/node_modules
+    cmds:
+      - podman run --rm -v "$PWD/web:/app:Z" -w /app {{.NODE_IMAGE}} npm ci
+
+  dev:api:
+    desc: Run the API service against the library
+    cmds:
+      - .venv/bin/auto-reel serve "{{.LIBRARY}}" --host {{.API_HOST}} --port {{.API_PORT}}
+
+  dev:worker:
+    desc: Run a render worker against the library (DEVICE=cpu to skip the GPU)
+    cmds:
+      - .venv/bin/auto-reel worker "{{.LIBRARY}}" {{if .DEVICE}}--device {{.DEVICE}}{{end}}
+
+  dev:web:
+    desc: Run the Vite dev server in podman, proxying /api to the API service
+    cmds:
+      - |
+        podman run --rm --init --replace --name auto-reel-ng-vite --network host \
+          -e AUTO_REEL_API=http://{{.API_HOST}}:{{.API_PORT}} \
+          -v "$PWD/web:/app:Z" -w /app {{.NODE_IMAGE}} \
+          node_modules/.bin/vite --host 127.0.0.1 --port {{.WEB_PORT}} --strictPort
+
+  dev:stop:
+    desc: Stop what a killed dev:serve left running (API, worker, Vite) and the dev DB container (its data is kept)
+    cmds:
+      - pkill -INT -f "auto-reel (serve|worker) {{.LIBRARY}}( |$)" || true
+      - podman stop --ignore -t 5 auto-reel-ng-vite >/dev/null
+      - podman stop --ignore -t 10 {{.DB_CONTAINER}} >/dev/null
+      - echo "Stopped. The DB volume is kept; dev:serve starts it again."
+
+  dev:reset:
+    desc: Rebuild the dev library from the shared fixture (wipes {{.DEV_DIR}} and that library's jobs)
+    preconditions:
+      - sh: '! pgrep -f "auto-reel (serve|worker) {{.LIBRARY}}( |$)" >/dev/null'
+        msg: 'dev:serve is running against {{.LIBRARY}}: stop it first (Ctrl-C, or task dev:stop)'
+    cmds:
+      - task: dev:db
+      - .venv/bin/python scripts/make_dev_library.py "{{.DEV_DIR}}"
