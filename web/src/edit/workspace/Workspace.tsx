@@ -27,7 +27,6 @@ export function Workspace({
   top,
   bin,
   event,
-  card,
   timeline,
   viewer,
   tab,
@@ -37,8 +36,6 @@ export function Workspace({
   bin: ReactNode
   /** The inspector's Event tab. */
   event: ReactNode
-  /** The inspector's Title card tab; Clip and Suggestion hold the Timeline's panels. */
-  card: ReactNode
   timeline: ReactNode
   /** What the viewer shows while the Timeline has no picture there (reading, a failure, Prepare). */
   viewer: ReactNode
@@ -52,6 +49,7 @@ export function Workspace({
   const [viewerPane, setViewerPane] = useState<HTMLElement | null>(null)
   const [clipPane, setClipPane] = useState<HTMLElement | null>(null)
   const [suggestionPane, setSuggestionPane] = useState<HTMLElement | null>(null)
+  const [cardPane, setCardPane] = useState<HTMLElement | null>(null)
   const topRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -151,8 +149,8 @@ export function Workspace({
   }, [])
 
   const panes = useMemo<TimelinePanes>(
-    () => ({ viewer: viewerPane, clip: clipPane, suggestion: suggestionPane }),
-    [viewerPane, clipPane, suggestionPane],
+    () => ({ viewer: viewerPane, clip: clipPane, suggestion: suggestionPane, card: cardPane }),
+    [viewerPane, clipPane, suggestionPane, cardPane],
   )
 
   return (
@@ -173,9 +171,9 @@ export function Workspace({
             tab={tab}
             onTab={onTab}
             event={event}
-            card={card}
             clipSlot={setClipPane}
             suggestionSlot={setSuggestionPane}
+            cardSlot={setCardPane}
           />
         </section>
         <section className="ws-pane ws-tl" aria-label="Timeline" data-ws-scroll>

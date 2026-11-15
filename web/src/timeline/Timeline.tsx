@@ -350,7 +350,7 @@ export function useTimeline({
   const selectCard = selection.select
   const openCard = selection.open
   const pickCard = selectCard
-  // A block's body opens the card's dialog.
+  // A block's body shows the card's editor in the inspector.
   const pressCard = openCard
   // Reset ends a cut selection (the Timeline mounting anew, on a Refresh or a Save, does not).
   const epoch = editing.epoch
@@ -603,7 +603,7 @@ export function useTimeline({
         // A press in a black card's span selects the card, and the playhead goes there too.
         const chapter = cards.specs[inCard.chapter].chapter
         if (phase === 'tap') {
-          // The tap is on the scrub surface; the block is the opener the dialog returns focus to.
+          // The tap is on the scrub surface; the block is the opener Escape in the editor returns focus to.
           const block = Array.from(
             document.querySelectorAll<HTMLElement>('button.tl-card[data-card]'),
           ).find((b) => b.dataset.card === chapter)

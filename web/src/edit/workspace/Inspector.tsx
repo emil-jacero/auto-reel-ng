@@ -13,28 +13,27 @@ import type { InspectorTab } from './inspectorTabs.ts'
 /*
  * The workspace inspector (`editor-selection`): the tabs Clip, Title card, Suggestion and Event.
  * The tab shown follows the selection (`shownTab`), and the operator may pick another by hand.
- * Event holds the editor's event content; Clip and Suggestion are slots the Timeline portals its
- * panels into (`TimelinePanesContext`), mounted while hidden so the portals have somewhere to
- * go; Title card holds the selected card's editor.
+ * Event holds the editor's event content; Clip, Title card and Suggestion are slots the Timeline
+ * portals its panels and the card editor into (`TimelinePanesContext`), mounted while hidden so
+ * the portals have somewhere to go.
  */
 
 export function Inspector({
   tab,
   onTab,
   event,
-  card,
   clipSlot,
   suggestionSlot,
+  cardSlot,
 }: {
   tab: InspectorTab
   onTab: (tab: InspectorTab) => void
   /** The Event tab. */
   event: ReactNode
-  /** The Title card tab. */
-  card: ReactNode
-  /** Where the Timeline's clip panel goes (the Clip tab), and its suggestion panel. */
+  /** Where the Timeline's clip panel goes (the Clip tab), its suggestion panel and the card editor. */
   clipSlot: (node: HTMLElement | null) => void
   suggestionSlot: (node: HTMLElement | null) => void
+  cardSlot: (node: HTMLElement | null) => void
 }) {
   // Roving tabindex, arrow keys, Home and End (as the card editor's tabs).
   const tabsId = useId()
@@ -93,7 +92,13 @@ export function Inspector({
           <p className="ws-empty">{INSPECTOR_TAB_EMPTY.clip}</p>
         </>,
       )}
-      {panel('card', card)}
+      {panel(
+        'card',
+        <>
+          <div ref={cardSlot} className="ws-slot ws-card-slot" />
+          <p className="ws-empty">{INSPECTOR_TAB_EMPTY.card}</p>
+        </>,
+      )}
       {panel(
         'suggestion',
         <>
@@ -104,24 +109,4 @@ export function Inspector({
       {panel('event', event)}
     </>
   )
-}
-
-/**
- * The Title card tab with a card selected: its name and the way to its editor (the card editor
- * is still a dialog; `editor-selection` task 3.3 docks it here).
- */
-export function CardTab({ name, onEdit }: { name: string; onEdit: () => void }) {
-  return (
-    <div className="ws-card-tab">
-      <h3>{name}</h3>
-      <button type="button" className="btn btn-secondary" onClick={onEdit}>
-        Edit title card
-      </button>
-    </div>
-  )
-}
-
-/** The Title card tab with no card selected. */
-export function CardTabEmpty() {
-  return <p className="ws-empty">{INSPECTOR_TAB_EMPTY.card}</p>
 }

@@ -156,11 +156,11 @@
     color: var(--fg-muted);
   }
 
-  .ws-slot:has(.tl-cut-panel:not(:empty)) ~ .ws-empty {
+  .ws-slot:has(.tl-cut-panel:not(:empty), .ci) ~ .ws-empty {
     display: none;
   }
 
-  .ws-slot:not(:has(.tl-cut-panel:not(:empty))) {
+  .ws-slot:not(:has(.tl-cut-panel:not(:empty), .ci)) {
     display: none;
   }
 
@@ -210,19 +210,7 @@
     }
   }
 
-  /* The Title card tab: the selected card, and the way to its editor. */
-  .ws-card-tab {
-    display: grid;
-    justify-items: start;
-    gap: var(--s-2);
-
-    & > h3,
-    & > p {
-      margin: 0;
-    }
-  }
-
-  /* The Event tab's way to the card dialog's event tab, and the switch's state in words. */
+  /* The Event tab's way to the card editor's event tab, and the switch's state in words. */
   .ws-cards {
     display: grid;
     justify-items: start;

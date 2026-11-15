@@ -11,6 +11,8 @@ export type TimelinePanes = {
   viewer: HTMLElement | null
   clip: HTMLElement | null
   suggestion: HTMLElement | null
+  /** The inspector's Title card tab: where the docked card editor goes. */
+  card: HTMLElement | null
 }
 
 export const TimelinePanesContext = createContext<TimelinePanes | null>(null)

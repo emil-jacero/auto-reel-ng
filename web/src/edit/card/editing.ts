@@ -27,19 +27,19 @@ export type CardView = {
   folderTitle: string | null
   /** The service's refusal of the last save for this card, and the field it names. */
   refusal: { field: CardField | null; message: string } | null
-  /** A chapter added in this Edit mode: the dialog says how its card is drawn until Save (`addedCardNote`). */
+  /** A chapter added in this Edit mode: the editor says how its card is drawn until Save (`addedCardNote`). */
   added: boolean
 }
 
 /**
- * The dialog's Name field for one card (`edit-mode-declutter`): a chapter's name, or for the
+ * The editor's Name field for one card (`edit-mode-declutter`): a chapter's name, or for the
  * event's own chapter the event's title. The rules are the editor's (`checkName`,
  * `decideName`); the field writes each accepted name to the draft as it is typed.
  */
 export type NameBinding = {
   /** The event's own chapter: the field edits the title the Details form edits. */
   event: boolean
-  /** The field's accessible name, from the name the draft held when the dialog opened. */
+  /** The field's accessible name, from the name the draft held when the editor opened. */
   label: string
   /** The name (the title) in the draft now. */
   value: string
@@ -79,7 +79,7 @@ export type CardEditing = {
   locked: boolean
   /** The Name field of the card of the chapter saved as `saved`. */
   name(saved: string): NameBinding | null
-  /** The card's length in seconds, from the dialog's Length field (the drag's edit). */
+  /** The card's length in seconds, from the editor's Length field (the drag's edit). */
   setLength(saved: string, seconds: number): void
   /** The event-wide style and the Title cards switch of the second tab. */
   styleModel: CardStyleModel

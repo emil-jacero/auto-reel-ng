@@ -1,7 +1,7 @@
 import './card.css'
 
-import { useId, useRef, useState } from 'react'
-import type { KeyboardEvent, RefObject } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 
 import type { Font } from '../../api/fonts.ts'
 import type { CardRange } from '../../timeline/cardLength.ts'
@@ -17,7 +17,6 @@ import { EventTab, styleProblems } from './EventTab'
 import { Choice, NumberField, TextField } from './Fields'
 import { LengthField } from './LengthField'
 import { NameField } from './NameField'
-import type { NameGate } from './NameField'
 import { TAB_LIST_NAME, TAB_ORDER, openingTab, tabAfterKey, tabLabel } from './tabs.ts'
 import type { Problems, TabId } from './tabs.ts'
 import { cardTitleShown } from './nameField.ts'
@@ -40,14 +39,15 @@ import { effectiveBackground, styleWords } from './specs.ts'
 import { overrideWords } from '../cardStyle.ts'
 
 /*
- * The title-card inspector (`title-card-inspector`), Edit mode's one card editor. It is the
- * body of the modal dialog (`card-editor-dialog`) that a chapter's Edit Titlecard button or a
- * Timeline block opens; the dialog (`ui/Dialog`) carries the title, Escape and the Done button.
+ * The title-card inspector (`title-card-inspector`), Edit mode's one card editor. It is docked in
+ * the workspace inspector's Title card tab (`editor-selection`, design D3) for as long as a card
+ * is selected, by a chapter's Edit Titlecard button, a Timeline block or a handle press; Escape
+ * inside it leaves the card (`onLeave`: focus back to what selected it, then no selection).
  * Two tabs (`edit-mode-declutter`): "This title card" (the Name first, then the card's own
  * fields and Length) and "All title cards in this event" (the event style and the Title cards
  * switch). Every card field is a per-card override: unset, it shows what the event style gives;
  * set, it offers Use event style. The preview is the service's own drawing of the draft
- * (`Preview.tsx`), outside the panels so that it stays in view on either tab. All edits go into
+ * (`Preview.tsx`), above the fields and outside the panels, so that it stays in view on either tab. All edits go into
  * the editor's one draft; the inspector keeps no value of its own.
  */
 
@@ -74,9 +74,9 @@ export function CardInspectorPanel({
   unsaved,
   backdrop,
   lengthRange,
-  gate,
-  initialTab = null,
-  onClose,
+  opened,
+  asked,
+  onLeave,
 }: {
   eventId: string
   /** The card's chapter as saved: what the selection is keyed by. */
@@ -91,11 +91,15 @@ export function CardInspectorPanel({
   backdrop: Backdrop | null
   /** The limits of the card's length: the Timeline's drag has the same. */
   lengthRange: CardRange
-  /** The Name field's gate: Done is held while it holds a refused name. */
-  gate: RefObject<NameGate | null>
-  /** The tab the dialog was asked to open on; null: the first holding a named problem. */
-  initialTab?: TabId | null
-  onClose: () => void
+  /**
+   * How the card was asked for (`useSelection.opened`): on `tab` if given, else the first tab
+   * holding a named problem, and focus goes into its first field. Null: selected without asking.
+   */
+  opened: { tab: TabId | null } | null
+  /** Counts the requests (`useSelection.again`): each asks again, also for the same card. */
+  asked: number
+  /** Escape: focus goes back to what selected the card and the selection ends. */
+  onLeave: () => void
 }) {
   const { state: fonts } = useFonts()
   const list: readonly Font[] = fonts.status === 'ok' ? fonts.fonts : []
@@ -146,11 +150,47 @@ export function CardInspectorPanel({
     card: view.refusal !== null ? 1 : 0,
     event: styleProblems(editing.styleModel),
   }
-  const [tab, setTab] = useState<TabId>(() => initialTab ?? openingTab(named))
+  const [tab, setTab] = useState<TabId>(() => opened?.tab ?? openingTab(named))
   const [local, setLocal] = useState({ name: false, length: false })
   const problems: Problems = {
     card: named.card + (local.name ? 1 : 0) + (local.length ? 1 : 0),
     event: named.event,
+  }
+  // Each request to see the card: its tab, and then focus in the tab's first field.
+  const root = useRef<HTMLDivElement>(null)
+  const [focusAsk, setFocusAsk] = useState(0)
+  const seen = useRef(asked)
+  const latestNamed = useRef(named)
+  latestNamed.current = named
+  useEffect(() => {
+    const first = seen.current === asked
+    seen.current = asked
+    if (opened === null) {
+      return
+    }
+    if (!first || opened.tab !== null) {
+      setTab(opened.tab ?? openingTab(latestNamed.current))
+    }
+    setFocusAsk((count) => count + 1)
+  }, [asked, opened])
+  useEffect(() => {
+    if (focusAsk === 0) {
+      return
+    }
+    const fields = 'input, textarea, select'
+    const shown = `.ci-panels [role="tabpanel"]:not([hidden]) :is(${fields})`
+    // The tab with no field of its own: the tab itself takes focus, never the page body.
+    const target =
+      root.current?.querySelector<HTMLElement>(shown) ??
+      root.current?.querySelector<HTMLElement>(`.ci-tab[aria-selected='true']`)
+    target?.focus()
+  }, [focusAsk])
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // A control that took the key (a list closing) keeps it; a field's Escape leaves the card.
+    if (event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing) {
+      event.preventDefault()
+      onLeave()
+    }
   }
   const tabButtons = useRef(new Map<TabId, HTMLButtonElement>())
   const onTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -168,8 +208,9 @@ export function CardInspectorPanel({
   const lengthNow = card.duration
 
   return (
-    <div className="ci">
+    <div className="ci" ref={root} onKeyDown={onKeyDown}>
       <header className="ci-head">
+        <h3 className="ci-title">{name}</h3>
         <p className="ci-overrides" hidden={tab !== 'card'}>{overrideWords(card)}</p>
         <div className="ci-head-actions">
           <button
@@ -186,7 +227,7 @@ export function CardInspectorPanel({
           >
             Undo changes to this card
           </button>
-          <button type="button" className="btn btn-ghost btn-compact" onClick={onClose}>
+          <button type="button" className="btn btn-ghost btn-compact" onClick={onLeave}>
             <Icon name="x" />
             Close
           </button>
@@ -253,7 +294,6 @@ export function CardInspectorPanel({
                 <NameField
                   binding={nameBinding}
                   locked={locked}
-                  gate={gate}
                   announce={editing.announce}
                   onRefused={(on) => setLocal((was) => (was.name === on ? was : { ...was, name: on }))}
                 />

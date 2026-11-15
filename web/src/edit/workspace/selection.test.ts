@@ -3,7 +3,6 @@ import { test } from 'node:test'
 
 import {
   clearState,
-  dismissState,
   inspectorTab,
   keepState,
   keptIn,
@@ -97,7 +96,7 @@ const clip = (identity: string): Selection => ({ kind: 'clip', identity })
 test('selecting one thing ends the other, whatever the kinds', () => {
   for (const from of all) {
     for (const to of all) {
-      const was: SelectionState = { sel: from, dialog: null, again: 0 }
+      const was: SelectionState = { sel: from, opened: null, again: 0 }
       const now = selectState(was, to)
       assert.deepEqual(now.sel, to)
     }
@@ -133,40 +132,30 @@ test('opening an already selected card counts as a press, so the inspector shows
 test('open selects and opens the card, keeping the same state for the same request', () => {
   const opened = openState(NOTHING, '', 'event')
   assert.deepEqual(opened.sel, card(''))
-  assert.deepEqual(opened.dialog, { tab: 'event' })
-  assert.equal(openState(opened, '', 'event'), opened)
-  // Opened again without a tab, the dialog picks its own.
-  assert.deepEqual(openState(opened, '').dialog, { tab: null })
-  assert.deepEqual(openState(selectState(NOTHING, card('Dag 2')), 'Dag 2').dialog, { tab: null })
+  assert.deepEqual(opened.opened, { tab: 'event' })
+  // Every request is a new one: the editor takes focus again.
+  assert.equal(openState(opened, '', 'event').again, opened.again + 1)
+  // Opened again without a tab, the editor picks its own.
+  assert.deepEqual(openState(opened, '').opened, { tab: null })
+  assert.deepEqual(openState(selectState(NOTHING, card('Dag 2')), 'Dag 2').opened, { tab: null })
   // Opening another card moves the selection.
   assert.deepEqual(openState(opened, 'Dag 3').sel, card('Dag 3'))
   // Opening replaces a selection of another kind.
   assert.deepEqual(openState(selectState(NOTHING, clip('a')), 'Dag 2').sel, card('Dag 2'))
 })
 
-test('dismiss closes the dialog, keeps the selection, and is a no-op when closed', () => {
+test('selecting another thing ends the request; select never opens', () => {
   const opened = openState(NOTHING, 'Dag 2')
-  const closed = dismissState(opened)
-  assert.deepEqual(closed.sel, card('Dag 2'))
-  assert.equal(closed.dialog, null)
-  assert.equal(dismissState(closed), closed)
-  assert.equal(dismissState(NOTHING), NOTHING)
-  // Reopening a selected card opens it again.
-  assert.deepEqual(openState(closed, 'Dag 2').dialog, { tab: null })
-})
-
-test('selecting another thing closes the dialog; select never opens', () => {
-  const opened = openState(NOTHING, 'Dag 2')
-  assert.equal(selectState(opened, card('Dag 3')).dialog, null)
-  assert.equal(selectState(opened, { kind: 'cut', identity: 'a', key: 'r0' }).dialog, null)
-  assert.equal(selectState(NOTHING, card('Dag 3')).dialog, null)
+  assert.equal(selectState(opened, card('Dag 3')).opened, null)
+  assert.equal(selectState(opened, { kind: 'cut', identity: 'a', key: 'r0' }).opened, null)
+  assert.equal(selectState(NOTHING, card('Dag 3')).opened, null)
   assert.equal(selectState(opened, card('Dag 2')), opened)
 })
 
-test('clear and a vanished target end the selection and its dialog', () => {
+test('clear and a vanished target end the selection and its request', () => {
   const opened = openState(NOTHING, 'Dag 2')
   assert.deepEqual(clearState(opened).sel, NO_SELECTION)
-  assert.equal(clearState(opened).dialog, null)
+  assert.equal(clearState(opened).opened, null)
   assert.equal(clearState(NOTHING), NOTHING)
   assert.deepEqual(keepState(opened, { chapters: new Set(['']) }).sel, NO_SELECTION)
   assert.equal(keepState(opened, { chapters: new Set(['Dag 2']) }), opened)

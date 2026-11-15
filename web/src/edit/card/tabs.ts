@@ -1,7 +1,7 @@
 /*
- * The card dialog's two tabs (`edit-mode-declutter`), as pure rules: their names, the arrow-key
+ * The card editor's two tabs (`edit-mode-declutter`), as pure rules: their names, the arrow-key
  * order, the label of a tab that holds a problem the operator
- * cannot see, and the tab the dialog opens on. No DOM, no React.
+ * cannot see, and the tab the editor opens on. No DOM, no React.
  */
 
 export type TabId = 'card' | 'event'
@@ -30,7 +30,7 @@ export function tabAfterKey(current: TabId, key: string): TabId | null {
   }
 }
 
-/** How many problems each tab holds (the service's refusals and the fields the dialog refused). */
+/** How many problems each tab holds (the service's refusals and the fields the editor refused). */
 export type Problems = Record<TabId, number>
 
 /** A tab's label: its name, and the count when it holds a problem. */
@@ -40,7 +40,7 @@ export function tabLabel(tab: TabId, problems: Problems): string {
 }
 
 /**
- * The tab the dialog opens on: the first that holds a problem the service's last answer named,
+ * The tab the editor opens on: the first that holds a problem the service's last answer named,
  * else "This title card". Nothing is remembered between openings.
  */
 export function openingTab(named: Problems): TabId {

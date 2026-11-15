@@ -163,7 +163,7 @@ export type CardLaneModel = {
   /** The selected card's chapter or null. */
   selected: string | null
   onSelect: (chapter: string) => void
-  /** Activating a block's body opens the card's dialog. */
+  /** Activating a block's body shows the card's editor in the inspector. */
   onOpen: (chapter: string) => void
   /** A press in a black card's block also puts the playhead there (the track time of the press). */
   onPlace: (chapter: string, trackMs: number) => void

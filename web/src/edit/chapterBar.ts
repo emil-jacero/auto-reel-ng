@@ -2,7 +2,7 @@
  * The chapter header bar's Edit Titlecard button (`edit-mode-declutter`), as pure words and
  * state: the same for the event's own chapter and every other, a draft-added one included.
  * The button is the page-level handle of the chapter's card: it shares the card selection with
- * the Timeline's blocks and opens the card dialog. No DOM, no React.
+ * the Timeline's blocks and shows its editor in the inspector. No DOM, no React.
  */
 
 /** The button's visible words. */

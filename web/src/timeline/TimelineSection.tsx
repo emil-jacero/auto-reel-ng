@@ -1,19 +1,16 @@
-import { useId, useMemo, useRef } from 'react'
-import type { RefObject } from 'react'
+import { useContext, useId, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 
 import { failedClips } from '../analysis/badge'
 import type { AnalysisBinding } from '../analysis/useEventAnalysis'
 import type { EventDetail } from '../api/event'
 import type { DraftChapter, Orders } from '../edit/draft'
 import { Alert } from '../ui/Alert'
-import { Dialog } from '../ui/Dialog'
 import { HelpPanel, HelpToggle, useSectionHelp } from '../ui/help/HelpToggle'
 import { CUT_FIELDS_HINT, SELECT_CUT_HINT } from '../cuts/times'
-import { CardInspectorPanel, inspectorName } from '../edit/card/Inspector'
+import { CardInspectorPanel } from '../edit/card/Inspector'
 import type { CardEditing } from '../edit/card/editing.ts'
 import { backdropOf, effectiveBackground } from '../edit/card/specs.ts'
-import type { NameGate } from '../edit/card/NameField'
-import { doneHeld } from '../edit/card/nameField.ts'
 import { cardLimits, secondsToTenths } from './cardLength.ts'
 import type { CardRange } from './cardLength.ts'
 import type { Backdrop } from '../edit/card/Preview'
@@ -29,6 +26,7 @@ import {
   FAILED_CLIPS_HEADING,
   REANALYZE_HELP,
 } from './overlays/suggestions'
+import { TimelinePanesContext } from './panes'
 import { Timeline } from './Timeline'
 import type { EditBinding } from './editing'
 import { CARDS_FADES, NO_CLIPS } from './labels'
@@ -46,7 +44,7 @@ import { draftClips, omittedWords, readiness, sectionState, trackClips } from '.
  * (`timeline-trim`); the editor owns Save.
  */
 
-/** The Length field's range while no card is open (unused: the dialog is closed). */
+/** The Length field's range while no card is selected (unused: the editor is not shown). */
 const NO_RANGE: CardRange = { adjustable: false, reason: '' }
 
 export function TimelineSection({
@@ -123,26 +121,12 @@ export function TimelineSection({
     }),
     [specs, decorators, source, cardsError, cards, cardEditing.previewStyle],
   )
-  // The card whose dialog is open, in Edit mode: the card as the draft has it, and the clip a
-  // video card is laid over (the Timeline's own anchor when the clips are ready, else the
-  // chapter's first shown clip).
-  const selectedView = cards.editing !== null ? cardEditing.view(cards.editing) : null
-  // The dialog's first field, for the focus it opens on: in the tab it opens on.
-  const dialogBody = useRef<HTMLDivElement>(null)
-  const firstField = useMemo<RefObject<HTMLElement | null>>(
-    () => ({
-      get current() {
-        const body = dialogBody.current
-        const fields = 'input, textarea, select'
-        const shown = `[role="tabpanel"]:not([hidden]) :is(${fields})`
-        return (
-          body?.querySelector<HTMLElement>(shown) ?? body?.querySelector<HTMLElement>(fields) ?? null
-        )
-      },
-    }),
-    [],
-  )
-  // Where the dialog's card sits among the clips, when the Timeline knows them (not in Prepare).
+  // The selected card's editor, docked in the inspector's Title card tab: the card as the draft
+  // has it, and the clip a video card is laid over (the Timeline's own anchor when the clips are
+  // ready, else the chapter's first shown clip).
+  const panes = useContext(TimelinePanesContext)
+  const selectedView = cards.selected !== null ? cardEditing.view(cards.selected) : null
+  // Where the selected card sits among the clips, when the Timeline knows them (not in Prepare).
   const placements = useMemo(
     () =>
       clips === null
@@ -160,10 +144,10 @@ export function TimelineSection({
     [specs, clips, decorators],
   )
   const backdrop = useMemo<Backdrop | null>(() => {
-    if (cards.editing === null || selectedView === null) {
+    if (cards.selected === null || selectedView === null) {
       return null
     }
-    const chapter = specs.findIndex((spec) => spec.chapter === cards.editing)
+    const chapter = specs.findIndex((spec) => spec.chapter === cards.selected)
     const found = chapter === -1 ? null : backdropOf(chapter, shown.clips, placements)
     const clip =
       found === null
@@ -172,13 +156,13 @@ export function TimelineSection({
     return clip === undefined || found === null
       ? null
       : { clip, name: found.name, turn: editing.turns.get(found.identity) ?? 0 }
-  }, [cards.editing, selectedView, specs, placements, shown, event, editing.turns])
-  // The limits of the dialog's Length field: the drag's own, from the card's placement.
+  }, [cards.selected, selectedView, specs, placements, shown, event, editing.turns])
+  // The limits of the editor's Length field: the drag's own, from the card's placement.
   const lengthRange = useMemo<CardRange>(() => {
-    if (cards.editing === null || selectedView === null) {
+    if (cards.selected === null || selectedView === null) {
       return NO_RANGE
     }
-    const chapter = specs.findIndex((spec) => spec.chapter === cards.editing)
+    const chapter = specs.findIndex((spec) => spec.chapter === cards.selected)
     const spec = chapter === -1 ? undefined : specs[chapter]
     const seconds = selectedView.card.duration ?? spec?.card?.duration ?? cardEditing.style?.duration ?? 4
     const currentTenths = secondsToTenths(seconds)
@@ -200,20 +184,29 @@ export function TimelineSection({
       }
     }
     return cardLimits({ background: 'black', currentTenths, keptMs: null })
-  }, [cards.editing, selectedView, specs, placements, cardEditing.style])
-  // The Name field's gate: Done is held while it holds a refused name.
-  const nameGate = useRef<NameGate | null>(null)
-  const onDone = () => {
-    if (doneHeld(nameGate.current?.refusal() ?? null)) {
-      nameGate.current?.focus()
-      return
-    }
-    cards.dismiss()
-  }
+  }, [cards.selected, selectedView, specs, placements, cardEditing.style])
   // The selected card in words, by its chapter's name now.
   const selectedAt = cards.selected === null ? -1 : specs.findIndex((spec) => spec.chapter === cards.selected)
   const selectedWords =
     selectedAt === -1 ? null : inspectorWords(specs[selectedAt], chapterNames[selectedAt])
+  const editor =
+    selectedView !== null && cards.selected !== null ? (
+      <CardInspectorPanel
+        // A card of its own for each chapter: the name field settles and its refusal ends here.
+        key={cards.selected}
+        eventId={eventId}
+        saved={cards.selected}
+        view={selectedView}
+        editing={cardEditing}
+        spec={savedNamed.find((spec) => spec.chapter === cards.selected)}
+        unsaved={specs.find((spec) => spec.chapter === cards.selected)?.unsaved}
+        backdrop={backdrop}
+        lengthRange={lengthRange}
+        opened={cards.opened}
+        asked={cards.again}
+        onLeave={cards.leave}
+      />
+    ) : null
   const state = sectionState(shown.clips)
   const omitted = omittedWords(shown.omitted)
   return (
@@ -266,38 +259,9 @@ export function TimelineSection({
           {prepare.announcement}
         </p>
       </div>
-      {/* Edit mode's one card editor: a modal over the page, so the operator never scrolls back to it. */}
-      {selectedView !== null && cards.editing !== null && (
-        <Dialog
-          open
-          className="ci-dialog"
-          title={inspectorName(selectedView.opening, selectedView.name)}
-          onClose={cards.dismiss}
-          initialFocus={firstField}
-        >
-          <div className="dialog-fields" ref={dialogBody}>
-            <CardInspectorPanel
-              eventId={eventId}
-              saved={cards.editing}
-              view={selectedView}
-              editing={cardEditing}
-              spec={savedNamed.find((spec) => spec.chapter === cards.editing)}
-              unsaved={specs.find((spec) => spec.chapter === cards.editing)?.unsaved}
-              backdrop={backdrop}
-              lengthRange={lengthRange}
-              gate={nameGate}
-              initialTab={cards.tab}
-              onClose={cards.dismiss}
-            />
-          </div>
-          <div className="dialog-actions">
-            <button type="button" className="btn btn-primary" onClick={onDone}>
-              Done
-            </button>
-          </div>
-        </Dialog>
-      )}
-      {/* No visible read-out: the dialog is the card's editor; the status region announces a selection once. */}
+      {/* Edit mode's one card editor, docked in the inspector (the section itself without one). */}
+      {editor !== null && (panes?.card != null ? createPortal(editor, panes.card) : editor)}
+      {/* No visible read-out: the card's editor is the inspector's; the status region announces a selection once. */}
       <CardInspector announced={selectedWords} />
     </section>
   )

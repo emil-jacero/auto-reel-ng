@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import type { RefObject } from 'react'
 
 import { Icon } from '../../ui/Icon'
 import { FILE_NAME_NOTE, UNTITLED } from '../inlineName.ts'
@@ -7,30 +6,26 @@ import type { NameBinding } from './editing.ts'
 import { nameStep, notChangedWords } from './nameField.ts'
 
 /*
- * The dialog's Name field (`edit-mode-declutter`), the one place a chapter is renamed and the
+ * The editor's Name field (`edit-mode-declutter`), the one place a chapter is renamed and the
  * event's title is edited alike. Every accepted name is written to the draft as it is typed, so
  * the heading, the preview, the chapter's header bar and the picker of Move marked to… follow it.
- * A refused name stays in the field, explained in a remounted `role="alert"`, and holds Done and
- * Ctrl+S; the draft keeps the last accepted name. The rename is announced once, when focus
- * leaves the field or the dialog closes; closing with a refused name says it was not changed.
+ * A refused name stays in the field, explained in a remounted `role="alert"`, and holds
+ * Ctrl+S; the draft keeps the last accepted name. The rename is announced once, when Enter is
+ * pressed, focus leaves the field or the selection leaves the card; leaving with a refused name
+ * says it was not changed. Enter with a refused name says the refusal again.
  * The rules are the editor's (`nameField.ts` over `checkName` and `decideName`).
  */
-
-/** What the dialog asks of the field: is a refusal in it, and put focus in it. */
-export type NameGate = { refusal(): string | null; focus(): void }
 
 export function NameField({
   binding,
   locked,
-  gate,
   announce,
   onRefused,
 }: {
   binding: NameBinding
   locked: boolean
-  gate: RefObject<NameGate | null>
   announce: (words: string) => void
-  /** The field holds a refused name (true) or not: the dialog's tab says so. */
+  /** The field holds a refused name (true) or not: the editor's tab says so. */
   onRefused: (refused: boolean) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -55,13 +50,8 @@ export function NameField({
   }
 
   useEffect(() => {
-    gate.current = {
-      refusal: () => latest.current.refusal,
-      focus: () => inputRef.current?.focus(),
-    }
     return () => {
       const { binding: now, refusal: left, announce: say } = latest.current
-      gate.current = null
       if (settledWith.current !== now.value) {
         now.settled(settledWith.current)
         settledWith.current = now.value
@@ -72,7 +62,7 @@ export function NameField({
         now.refused(false)
       }
     }
-  }, [gate])
+  }, [])
 
   function onChange(next: string): void {
     setTyped(next)
@@ -121,6 +111,18 @@ export function NameField({
         onChange={(event) => {
           if (!locked) {
             onChange(event.currentTarget.value)
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' || event.nativeEvent.isComposing) {
+            return
+          }
+          event.preventDefault()
+          if (latest.current.refusal !== null) {
+            // The field stays invalid; the refusal is said again.
+            setRefusals((count) => count + 1)
+          } else {
+            settle()
           }
         }}
         onBlur={() => {

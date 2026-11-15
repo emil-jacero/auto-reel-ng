@@ -64,9 +64,7 @@ import { TopBar } from './workspace/TopBar'
 import type { WorkspaceFrame } from './workspace/TopBar'
 import { Workspace } from './workspace/Workspace'
 import { titleCardsWords } from './workspace/inspectorTabs.ts'
-import { CardTab, CardTabEmpty } from './workspace/Inspector'
 import { useInspectorTab } from './workspace/useInspectorTab.ts'
-import { inspectorName } from './card/Inspector'
 import { TAB_NAME } from './card/tabs.ts'
 import { NameDialog } from './ChapterDialogs'
 import {
@@ -2706,13 +2704,13 @@ export function EventEditor({
             />
           )}
           </>,
-          // The workspace's Event tab: the way to the card dialog's "All title cards in this
+          // The workspace's Event tab: the way to the docked card editor's "All title cards in this
           // event" tab (card style, Title cards On / Off), on the draft's first card (the
           // opening card, or the first chapter's in an event without root clips or with the
           // default chapter deleted), and the switch's state in words. Not a section and no
-          // control of its own: the dialog stays the one place.
+          // control of its own: the docked editor stays the one place.
           titleCards: <>
-          {/* The dialog is the Timeline section's: shown with it. */}
+          {/* The editor is the Timeline section's: shown with it. */}
           {editing !== null && cardEditing !== null && detail !== null && firstCard !== null && (
             <div className="ws-cards">
               <button
@@ -2731,22 +2729,6 @@ export function EventEditor({
               </p>
             </div>
           )}
-          </>,
-          // The Title card tab: the selected card, and the way to its editor (the dialog, until
-          // the editor docks here).
-          cardTab: <>
-          {(() => {
-            const view =
-              cards.selected !== null && cardEditing !== null ? cardEditing.view(cards.selected) : null
-            return view === null || cards.selected === null ? (
-              <CardTabEmpty />
-            ) : (
-              <CardTab
-                name={inspectorName(view.opening, view.name)}
-                onEdit={() => cards.selected !== null && cards.open(cards.selected)}
-              />
-            )
-          })()}
           </>,
           timeline: <>
           {editing !== null && cardEditing !== null && detail !== null && (
@@ -3214,7 +3196,6 @@ export function EventEditor({
               {workspace.aside}
             </>
           }
-          card={parts?.cardTab ?? null}
           timeline={parts?.timeline ?? null}
           tab={inspectorTab}
           onTab={setInspectorTab}

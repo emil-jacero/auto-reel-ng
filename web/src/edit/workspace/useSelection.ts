@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { TabId } from '../card/tabs.ts'
-import { clearState, dismissState, keepState, NOTHING, openState, selectState } from './selection.ts'
+import { clearState, keepState, NOTHING, openState, selectState } from './selection.ts'
 import type { Selection, SelectionState, World } from './selection.ts'
 
 /*
@@ -10,7 +10,8 @@ import type { Selection, SelectionState, World } from './selection.ts'
  * Timeline section anew, do not end it. Not stored, not in the URL. The Timeline's cut presses,
  * the suggestion marks and the card blocks and rows all read and write it through `set`.
  *
- * The card dialog (still the card editor until it docks) is open only for the selected card.
+ * The card editor is docked in the inspector (design D3): it shows whenever a card is selected.
+ * `open` also asks it to take focus; `leave` is Escape from inside it.
  */
 
 export type SelectionBinding = {
@@ -25,16 +26,18 @@ export type SelectionBinding = {
   keep(part: Partial<World>): void
   /** The selected card's chapter (its saved name; `""` is the opening), or null. */
   selected: string | null
-  /** The chapter whose card dialog is open (Edit mode), or null. Always the selected one. */
-  editing: string | null
-  /** Selects the card without opening: a press on a duration handle. */
+  /** Selects the card without asking for focus: a press on a duration handle. */
   select(chapter: string): void
-  /** The tab the open dialog was asked to start on, or null: the dialog picks its own. */
-  tab: TabId | null
-  /** Selects and opens the dialog, also when the card is already selected; on `tab` if given. */
+  /** Set when the selected card was asked for (`open`): the editor takes focus. Null: it was not. */
+  opened: { tab: TabId | null } | null
+  /** Selects the card, asks for its editor on `tab` if given, and for focus in it, also when selected. */
   open(chapter: string, tab?: TabId): void
-  /** Closes the dialog; the card stays selected. */
-  dismiss(): void
+  /**
+   * Escape from inside the card editor: focus goes to the control that selected the card (the
+   * Edit Titlecard button or the card block), then nothing is selected, so the focused field
+   * never unmounts onto the page body.
+   */
+  leave(): void
 }
 
 /** Whether Escape on `target` belongs to something else: a field, or a dialog that is open. */
@@ -52,18 +55,23 @@ export function escapeIsElsewhere(target: EventTarget | null, dialogOpen: boolea
 
 export function useSelection(): SelectionBinding {
   const [state, setState] = useState<SelectionState>(NOTHING)
-  const set = useCallback((next: Selection) => setState((was) => selectState(was, next)), [])
+  // The control that asked for the card's editor, to give focus back to.
+  const opener = useRef<HTMLElement | null>(null)
+  const set = useCallback((next: Selection) => {
+    opener.current = null
+    setState((was) => selectState(was, next))
+  }, [])
   const clear = useCallback(() => setState(clearState), [])
   const keep = useCallback(
     (part: Partial<World>) => setState((was) => keepState(was, part)),
     [],
   )
   const select = useCallback((chapter: string) => set({ kind: 'card', chapter }), [set])
-  const open = useCallback(
-    (chapter: string, tab?: TabId) => setState((was) => openState(was, chapter, tab)),
-    [],
-  )
-  const dismiss = useCallback(() => setState(dismissState), [])
+  const open = useCallback((chapter: string, tab?: TabId) => {
+    const active = document.activeElement
+    opener.current = active instanceof HTMLElement && active !== document.body ? active : null
+    setState((was) => openState(was, chapter, tab))
+  }, [])
 
   // Escape clears the selection, unless a field, an open dialog, a drag or a control that took
   // the key itself (`defaultPrevented`, or stopped) has it.
@@ -91,10 +99,22 @@ export function useSelection(): SelectionBinding {
   }, [selecting, clear])
 
   const card = state.sel.kind === 'card' ? state.sel.chapter : null
-  const editing = state.dialog !== null ? card : null
-  const tab = editing !== null ? (state.dialog?.tab ?? null) : null
+  const leave = useCallback(() => {
+    const kept = opener.current
+    const block =
+      card === null
+        ? undefined
+        : Array.from(document.querySelectorAll<HTMLElement>('button.tl-card[data-card]')).find(
+            (candidate) => candidate.dataset.card === card,
+          )
+    const target = kept !== null && kept.isConnected ? kept : block
+    target?.focus({ preventScroll: true })
+    opener.current = null
+    clear()
+  }, [card, clear])
+  const { opened } = state
   return useMemo(
-    () => ({ selection: state.sel, again: state.again, set, clear, keep, selected: card, editing, tab, select, open, dismiss }),
-    [state.sel, state.again, set, clear, keep, card, editing, tab, select, open, dismiss],
+    () => ({ selection: state.sel, again: state.again, set, clear, keep, selected: card, select, opened, open, leave }),
+    [state.sel, state.again, set, clear, keep, card, select, opened, open, leave],
   )
 }

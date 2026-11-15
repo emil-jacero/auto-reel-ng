@@ -100,23 +100,25 @@ export function keptIn(sel: Selection, part: Partial<World>): Selection {
 }
 
 /**
- * The selection with the card dialog that is open for it (a card's, never another kind's), and a
+ * The selection with the request that showed its card (`opened`: the Edit Titlecard button, a card
+ * block or the Event tab's button asked to see the editor, on `tab` if given, with focus in its
+ * first field; a card is also selected by a duration handle, which asks nothing), and a
  * count (`again`) of the requests to see the target again: a press on the clip that was already
  * selected (the track scrolls back to it) or the opening of a card (a hand-picked inspector tab
  * gives way).
  */
 export type SelectionState = {
   sel: Selection
-  dialog: { tab: TabId | null } | null
+  opened: { tab: TabId | null } | null
   again: number
 }
 
-export const NOTHING: SelectionState = { sel: NO_SELECTION, dialog: null, again: 0 }
+export const NOTHING: SelectionState = { sel: NO_SELECTION, opened: null, again: 0 }
 
-/** Selects `next`, which ends whatever was selected (and the dialog); the same target changes nothing. */
+/** Selects `next`, which ends whatever was selected (and its request); the same target changes nothing. */
 export function selectState(was: SelectionState, next: Selection): SelectionState {
   if (!sameSelection(was.sel, next)) {
-    return { sel: next, dialog: null, again: was.again }
+    return { sel: next, opened: null, again: was.again }
   }
   // Pressing the selected clip again asks to see it; any other kind is already shown.
   return next.kind === 'clip' ? { ...was, again: was.again + 1 } : was
@@ -124,7 +126,7 @@ export function selectState(was: SelectionState, next: Selection): SelectionStat
 
 /** Nothing is selected. */
 export function clearState(was: SelectionState): SelectionState {
-  return was.sel.kind === 'none' && was.dialog === null ? was : { ...NOTHING, again: was.again }
+  return was.sel.kind === 'none' && was.opened === null ? was : { ...NOTHING, again: was.again }
 }
 
 /** The selection ends when its target is gone from `part` of the world. */
@@ -133,19 +135,10 @@ export function keepState(was: SelectionState, part: Partial<World>): SelectionS
 }
 
 /**
- * Selects the card and opens its dialog, also when it is selected; on `tab` if given. Counts as a
- * press (`again`): opening a card asks to see it, so a hand-picked inspector tab gives way.
+ * Selects the card and asks to see its editor, also when it is selected; on `tab` if given. Every
+ * request counts as a press (`again`): opening a card asks to see it, so a hand-picked inspector
+ * tab gives way and focus goes into the editor again.
  */
 export function openState(was: SelectionState, chapter: ChapterKey, tab?: TabId): SelectionState {
-  return was.sel.kind === 'card' &&
-    was.sel.chapter === chapter &&
-    was.dialog !== null &&
-    was.dialog.tab === (tab ?? null)
-    ? was
-    : { sel: { kind: 'card', chapter }, dialog: { tab: tab ?? null }, again: was.again + 1 }
-}
-
-/** Closes the dialog; what is selected stays. */
-export function dismissState(was: SelectionState): SelectionState {
-  return was.dialog === null ? was : { ...was, dialog: null }
+  return { sel: { kind: 'card', chapter }, opened: { tab: tab ?? null }, again: was.again + 1 }
 }
