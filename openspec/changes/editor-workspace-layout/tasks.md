@@ -69,4 +69,4 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
   gzip); CSS 95.71 kB (gzip 18.14) -> 105.07 kB (gzip 19.91), +9.36 kB (+1.77 gzip); index.html 1.48 kB unchanged.
 - [x] 4.2 HLD: new D-n "Edit mode is a workspace" (frame, panes, no List view) and §6 item 10 note; tick slice 1 in
   `docs/editor-workspace.md`.
-- [ ] 4.3 Gates: `npm test`, `npm run check`, `npm run build` in podman; `openspec validate editor-workspace-layout --strict`.
+- [x] 4.3 Gates: `npm test`, `npm run check`, `npm run build` in podman; `openspec validate editor-workspace-layout --strict`.
