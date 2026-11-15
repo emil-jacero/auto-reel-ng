@@ -101,7 +101,9 @@ export function keptIn(sel: Selection, part: Partial<World>): Selection {
 
 /**
  * The selection with the card dialog that is open for it (a card's, never another kind's), and a
- * count of the presses on the clip that was already selected: the track scrolls back to it.
+ * count (`again`) of the requests to see the target again: a press on the clip that was already
+ * selected (the track scrolls back to it) or the opening of a card (a hand-picked inspector tab
+ * gives way).
  */
 export type SelectionState = {
   sel: Selection

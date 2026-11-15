@@ -2,7 +2,7 @@ import type { ClipCuts, ClipTurns } from '../cuts/ReadCuts'
 import type { CutKey, DraftCut } from '../edit/draft'
 import type { ClipPreviews } from '../preview/previews'
 import type { PosterPick } from '../edit/poster.ts'
-import type { Turn } from '../rotate/turn.ts'
+import type { Turn, Way } from '../rotate/turn.ts'
 import type { EdgeEdit } from './edgeTrim.ts'
 
 /*
@@ -42,6 +42,10 @@ export type EditBinding = {
    * kind). The editor ignores it while a save or a move of marked clips is pending.
    */
   onAdd(identity: string, span: { in: number; out: number }, reason?: string): void
+  /** Remove a cut from a clip's draft, as the Cuts panel's Remove does (a cut read from the file stays listed, removed). */
+  onRemove(identity: string, key: CutKey): void
+  /** Rotate a clip left or right: one draft edit of its turn, as the rotate buttons make it. */
+  onRotate(identity: string, way: Way): void
   /** A save is in flight, or a move of marked clips is pending: the handles and fields change nothing. */
   locked: boolean
   /** Edit mode's one live region. */

@@ -1742,6 +1742,10 @@ export function EventEditor({
   }, [announce, dropFrame])
   const resetCount = ready?.resets ?? 0
   const readLook = ready?.baseline.read.look
+  // The rotate action is made further down (it names the clip); the Timeline's binding calls it
+  // through this stable hand-over.
+  const rotateRef = useRef<RotateHandler>(() => undefined)
+  const rotateClip = useCallback<RotateHandler>((identity, way) => rotateRef.current(identity, way), [])
   const editing = useMemo<EditBinding | null>(() => {
     if (baseCuts === undefined || draftCuts === undefined || detail === null) {
       return null
@@ -1754,6 +1758,8 @@ export function EventEditor({
       onEdge,
       onPoster,
       onAdd: cutHandlers.onAdd,
+      onRemove: cutHandlers.onRemove,
+      onRotate: rotateClip,
       locked: listsLocked,
       announce,
       previews: cutPanels.panels.previews,
@@ -1771,6 +1777,7 @@ export function EventEditor({
     onTrim,
     onEdge,
     onPoster,
+    rotateClip,
     cutHandlers,
     announce,
     cutPanels,
@@ -2319,6 +2326,7 @@ export function EventEditor({
     },
     [clips, announce, nameOfClip],
   )
+  rotateRef.current = onRotate
   // Rotate marked left / right: every marked clip on disk, each from its own turn, one edit.
   // The marks stay.
   const onRotateMarked = useCallback(

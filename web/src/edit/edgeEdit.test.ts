@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 
 import type { ReelDocument } from '../api/reel.ts'
 import { edgeAt, edgeEdit } from '../timeline/edgeTrim.ts'
+import { typedEdge } from '../timeline/edgeTyped.ts'
 import type { Side } from '../timeline/edgeTrim.ts'
 import type { ClipFacts } from '../timeline/model.ts'
 import {
@@ -135,5 +136,44 @@ describe('applyEdgeEdit', () => {
         [5.5, 6.02, 'manual'],
       ],
     )
+  })
+})
+
+describe('typed Trim In and Trim Out', () => {
+  const typedRelease = (baseline: Baseline, draft: Draft, side: Side, text: string, key = 'a1') => {
+    const listed = cutsOf(baseline.cuts, draft.cuts, A)
+    const result = typedEdge(listed, side, text, A, F)
+    assert.equal(result.kind, 'edit')
+    return result.kind === 'edit' ? applyEdgeEdit(baseline, draft, A, result.edit, key) : draft
+  }
+
+  it('0:01.50 in Trim In gives a leading cut 0–1.5 s, identical to the edge tool’s edit', () => {
+    const { baseline, draft } = setup(INTERIOR)
+    const typed = typedRelease(baseline, draft, 'start', '0:01.50')
+    const dragged = release(baseline, draft, 'start', 1500)
+    assert.deepEqual(typed, dragged)
+    const listed = cutsOf(baseline.cuts, typed.cuts, A)
+    assert.deepEqual(listed[0], { key: 'a1', in: 0, out: 1.5, reason: 'manual', removed: false })
+  })
+
+  it('a typed Trim Out is the edge tool’s edit too', () => {
+    const { baseline, draft } = setup(INTERIOR)
+    assert.deepEqual(typedRelease(baseline, draft, 'end', '5.5'), release(baseline, draft, 'end', 5500))
+  })
+
+  it('typing the place the edge already has changes nothing', () => {
+    const { baseline, draft } = setup(INTERIOR)
+    const listed = cutsOf(baseline.cuts, draft.cuts, A)
+    assert.deepEqual(typedEdge(listed, 'start', '0:00', A, F), { kind: 'same' })
+    assert.deepEqual(typedEdge(listed, 'end', '0:06.02', A, F), { kind: 'same' })
+  })
+
+  it('unreadable and out-of-range text is refused with words', () => {
+    const { baseline, draft } = setup(INTERIOR)
+    const listed = cutsOf(baseline.cuts, draft.cuts, A)
+    for (const text of ['', 'abc', '1.2345', '9:00']) {
+      const result = typedEdge(listed, 'start', text, A, F)
+      assert.equal(result.kind, 'refused', text)
+    }
   })
 })

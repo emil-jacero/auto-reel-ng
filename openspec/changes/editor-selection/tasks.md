@@ -28,8 +28,8 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 - [x] 3.1 `Inspector.tsx` with Clip · Title card · Suggestion · Event tabs following the selection. Verify Playwright, and that each kind's selection (clip, cut,
   title card, suggestion) is announced once through the polite status (today only the card's is).
-- [ ] 3.2 Clip tab: typed Trim In/Out through the edge-edit action, rotate, cuts list, "+ Cut at playhead", poster,
-  ignore. Verify `edgeEdit.test.ts` case for typed trims and Playwright.
+- [x] 3.2 Clip tab: typed Trim In/Out through the edge-edit action, rotate, cuts list, "+ Cut at playhead", poster
+  (Ignore clip moved to track-drag-edit). Verify `edgeEdit.test.ts` case for typed trims and Playwright.
 - [ ] 3.3 Dock the card editor (design D3): remove the `Dialog` wrapper, preview above fields. Verify Playwright: no
   dialog opens, edits counted in the top bar, both tabs work.
 

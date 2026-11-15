@@ -21,6 +21,7 @@ import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
 import { ClipHeader } from './ClipHeader'
 import { clipPlace, clipSelectedWords, cutSelectedWords } from './clipPanel'
+import { ClipTab } from './ClipTab'
 import { CutFields } from './CutFields'
 import type { Selected } from './CutFields'
 import { posterFromPlayhead, USE_AS_POSTER } from '../edit/poster.ts'
@@ -941,6 +942,38 @@ export function useTimeline({
       () => setPosterFailed(true),
     )
   }
+  // The Use as poster control: in the transport, and in the inspector's Clip tab (`suffix` keeps their ids apart).
+  const posterControl = (suffix: string, label: string) => (
+    <div className="tl-poster">
+      <button
+        type="button"
+        className="btn btn-secondary"
+        aria-disabled={posterWhy !== null || undefined}
+        aria-describedby={`${posterWhyId}${suffix}`}
+        title={posterWhy ?? undefined}
+        onClick={usePoster}
+        onBlur={() => setPosterTip(null)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && posterTip !== null) {
+            event.preventDefault()
+            setPosterTip(null)
+          }
+        }}
+      >
+        <Icon name="film" />
+        {label}
+      </button>
+      {/* Always there: its words are the button's description while it cannot act. */}
+      <span id={`${posterWhyId}${suffix}`} className="visually-hidden">
+        {posterWhy ?? ''}
+      </span>
+      {posterTip !== null && (
+        <span className="tl-poster-tip" aria-hidden="true">
+          {posterTip}
+        </span>
+      )}
+    </div>
+  )
   const stage = (
     <div className="tl-stage" data-turned>
       {held ? (
@@ -1001,35 +1034,7 @@ export function useTimeline({
         </button>
       </div>
       <PlayheadReadout playhead={playhead} clips={clips} lay={lay} longestCardMs={longestCardMs} />
-      <div className="tl-poster">
-        <button
-          type="button"
-          className="btn btn-secondary"
-          aria-disabled={posterWhy !== null || undefined}
-          aria-describedby={posterWhyId}
-          title={posterWhy ?? undefined}
-          onClick={usePoster}
-          onBlur={() => setPosterTip(null)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape' && posterTip !== null) {
-              event.preventDefault()
-              setPosterTip(null)
-            }
-          }}
-        >
-          <Icon name="film" />
-          {USE_AS_POSTER}
-        </button>
-        {/* Always there: its words are the button's description while it cannot act. */}
-        <span id={posterWhyId} className="visually-hidden">
-          {posterWhy ?? ''}
-        </span>
-        {posterTip !== null && (
-          <span className="tl-poster-tip" aria-hidden="true">
-            {posterTip}
-          </span>
-        )}
-      </div>
+      {posterControl('', USE_AS_POSTER)}
     </div>
   )
   const viewer = (
@@ -1191,9 +1196,23 @@ export function useTimeline({
     () => (panelClip === null ? null : clipPlace(clips, panelClip, chapterNames)),
     [clips, panelClip, chapterNames],
   )
+  const panelClipRow = panelClip === null ? undefined : clips.find((c) => c.identity === panelClip)
   const clipPanel = (
     <div className="timeline tl-cut-panel">
       {place !== null && <ClipHeader place={place} />}
+      {panelClipRow !== undefined && (
+        <ClipTab
+          clip={panelClipRow}
+          clips={clips}
+          editing={editing}
+          drag={drag}
+          playhead={playhead}
+          selectedKey={selected?.identity === panelClipRow.identity ? selected.key : null}
+          onSelectCut={select}
+          onSelectClip={selectClip}
+          poster={posterControl('-clip', 'Use frame as poster')}
+        />
+      )}
       <CutFields selected={selected} clips={clips} editing={editing} drag={drag} hintId={cutHintId} />
     </div>
   )

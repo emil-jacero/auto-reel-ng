@@ -185,6 +185,31 @@
     color: var(--fg-muted);
   }
 
+  /* The Clip tab's controls (`timeline/ClipTab.tsx`): trim fields and rotate, cuts, poster. */
+  .ct-tab {
+    display: grid;
+    gap: var(--s-3);
+    min-inline-size: 0;
+  }
+
+  .ct-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--s-2) var(--s-3);
+  }
+
+  .ct-cuts {
+    display: grid;
+    justify-items: start;
+    gap: var(--s-2);
+    min-inline-size: 0;
+
+    & > .cut-list {
+      justify-self: stretch;
+    }
+  }
+
   /* The Title card tab: the selected card, and the way to its editor. */
   .ws-card-tab {
     display: grid;
