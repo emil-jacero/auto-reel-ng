@@ -127,12 +127,17 @@ export function TimelineSection({
   // video card is laid over (the Timeline's own anchor when the clips are ready, else the
   // chapter's first shown clip).
   const selectedView = cards.editing !== null ? cardEditing.view(cards.editing) : null
-  // The dialog's first field, for the focus it opens on.
+  // The dialog's first field, for the focus it opens on: in the tab it opens on.
   const dialogBody = useRef<HTMLDivElement>(null)
   const firstField = useMemo<RefObject<HTMLElement | null>>(
     () => ({
       get current() {
-        return dialogBody.current?.querySelector<HTMLElement>('input, textarea, select') ?? null
+        const body = dialogBody.current
+        const fields = 'input, textarea, select'
+        const shown = `[role="tabpanel"]:not([hidden]) :is(${fields})`
+        return (
+          body?.querySelector<HTMLElement>(shown) ?? body?.querySelector<HTMLElement>(fields) ?? null
+        )
       },
     }),
     [],
@@ -281,6 +286,7 @@ export function TimelineSection({
               backdrop={backdrop}
               lengthRange={lengthRange}
               gate={nameGate}
+              initialTab={cards.tab}
               onClose={cards.dismiss}
             />
           </div>

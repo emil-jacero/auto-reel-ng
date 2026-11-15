@@ -55,6 +55,8 @@ export type Suggestions = {
   strip: ReactNode
   /** The selected mark's decision, drawn in the cut panel; null with no mark selected. */
   detail: ReactNode
+  /** The selected mark's id while its decision is drawn; null otherwise. */
+  selectedKey: string | null
 }
 
 type Context = {
@@ -364,11 +366,12 @@ export function useSuggestions(
         }
 
   if (control === undefined) {
-    return { lane: undefined, strip: null, detail: null }
+    return { lane: undefined, strip: null, detail: null, selectedKey: null }
   }
   const ok = control.binding.read.status === 'ok'
   return {
     lane,
+    selectedKey: selected === undefined || !ok ? null : selected.id,
     strip: <Notes binding={control.binding} groups={groups} />,
     detail:
       selected === undefined || !ok ? null : (
