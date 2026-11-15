@@ -3,6 +3,7 @@ import './chapters.css'
 import { useDroppable } from '@dnd-kit/core'
 import { memo, useId } from 'react'
 
+import { chapterToolsParts } from './chapterBar'
 import type { ChapterKey } from './draft'
 import { DELETED_DROP } from './dragSlots'
 import { Icon } from '../ui/Icon'
@@ -63,13 +64,12 @@ function Notes({ notes }: { notes: readonly string[] }) {
 
 /**
  * One chapter's tools. `placement` says where its buttons are:
- * - `row` (the stacked page): its own row under the heading, with the notes and Delete's
- *   refusal; nothing when it has neither a note nor a control (an event with one chapter,
- *   the event's own, shows none).
- * - `bar` (the clip bin): the buttons alone, icon-only with a `title`, for the header bar,
- *   after the count. Delete's refusal is named by `aria-describedby`.
- * - `notes` (the clip bin): the lines under the bar, the notes and the refusal; nothing
- *   when neither applies.
+ * - `row`: its own row under the heading, with the notes and Delete's refusal; nothing when it
+ *   has neither a note nor a control (an event with one chapter, the event's own, shows none).
+ *   The clip bin renders it too: below 960 px it is the whole of the tools; from 960 px its
+ *   buttons are hidden (CSS) and it keeps the notes and the refusal, if any.
+ * - `bar` (the clip bin, from 960 px): the buttons alone, icon-only with a `title`, for the
+ *   header bar, after the count. Delete's refusal is named by `aria-describedby`.
  */
 export const ChapterTools = memo(function ChapterTools({
   chapterKey,
@@ -89,32 +89,21 @@ export const ChapterTools = memo(function ChapterTools({
   heading: string
   /** The heading's id: the group is named by it, and the refusal's id derives from it. */
   headingId: string
-  placement?: 'bar' | 'row' | 'notes'
+  placement?: 'bar' | 'row'
 }) {
   const refusalId = `${headingId}-refusal`
   const offersDelete = deleteRefusal !== undefined
   const inBar = placement === 'bar'
-  const hasButtons = place !== null || offersDelete
-  const refusal = offersDelete && deleteRefusal !== null && (
+  const parts = chapterToolsParts(placement, notes.length, place, deleteRefusal)
+  if (parts === null) {
+    return null
+  }
+  const refusal = parts.refusal && (
     <p className="chapter-refusal" id={refusalId} hidden={!refusalShown}>
       {deleteRefusal}
     </p>
   )
-  if (placement === 'notes') {
-    // The refusal stays in the DOM while hidden (the Delete button names it); the row itself
-    // hides with it, so it costs no height until a line shows.
-    const lines = notes.length > 0 || (refusal && refusalShown)
-    return notes.length === 0 && !refusal ? null : (
-      <div className="chapter-tools" role="group" aria-labelledby={headingId} hidden={!lines}>
-        <Notes notes={notes} />
-        {refusal}
-      </div>
-    )
-  }
-  if (!hasButtons && (inBar || notes.length === 0)) {
-    return null
-  }
-  const buttons = hasButtons && (
+  const buttons = parts.buttons && (
     <div
       className="chapter-actions"
       role={inBar ? 'group' : undefined}
@@ -126,7 +115,7 @@ export const ChapterTools = memo(function ChapterTools({
             type="button"
             className="btn btn-ghost btn-icon chapter-up"
             aria-label={`Move chapter ${heading} up`}
-            title={inBar ? 'Move up' : undefined}
+            title={inBar ? `Move chapter ${heading} up` : undefined}
             aria-disabled={locked || place.first || undefined}
             onClick={() => {
               if (!locked && !place.first) {
@@ -140,7 +129,7 @@ export const ChapterTools = memo(function ChapterTools({
             type="button"
             className="btn btn-ghost btn-icon chapter-down"
             aria-label={`Move chapter ${heading} down`}
-            title={inBar ? 'Move down' : undefined}
+            title={inBar ? `Move chapter ${heading} down` : undefined}
             aria-disabled={locked || place.last || undefined}
             onClick={() => {
               if (!locked && !place.last) {
@@ -157,7 +146,7 @@ export const ChapterTools = memo(function ChapterTools({
           type="button"
           className={`btn btn-ghost chapter-delete${inBar ? ' btn-icon' : ''}`}
           aria-label={`Delete chapter ${heading}`}
-          title={inBar ? 'Delete' : undefined}
+          title={inBar ? `Delete chapter ${heading}` : undefined}
           aria-disabled={locked || deleteRefusal !== null || undefined}
           aria-describedby={deleteRefusal !== null ? refusalId : undefined}
           // A refused press shows and announces why (the editor), focus staying here.
@@ -178,7 +167,7 @@ export const ChapterTools = memo(function ChapterTools({
   }
   return (
     <div className="chapter-tools" role="group" aria-labelledby={headingId}>
-      <Notes notes={notes} />
+      {parts.notes && <Notes notes={notes} />}
       {buttons}
       {refusal}
     </div>

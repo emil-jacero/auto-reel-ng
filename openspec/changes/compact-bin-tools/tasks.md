@@ -24,7 +24,7 @@ never from the repo, with PUT/POST/DELETE intercepted. The layout targets are fi
   - the bin's scroll padding includes the toolbar height
   Verify with Playwright: the toolbar is at most 88 px tall; no row moves on the first mark; the toolbar stays sticky
   while the bin scrolls; a row reached by keyboard reorder is not hidden under the toolbar.
-- [x] 2.2 `ChapterTools` `placement: 'bar'` in the bin (design D3):
+- [ ] 2.2 `ChapterTools` `placement: 'bar'` in the bin (design D3):
   - Move up, Move down and Delete go into the header bar after the count, as icon buttons with names and tooltips
   - Edit Titlecard becomes icon-only in the bin
   - notes and Delete's refusal stay as lines under the bar
