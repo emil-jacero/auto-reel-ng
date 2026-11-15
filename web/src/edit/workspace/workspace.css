@@ -444,6 +444,11 @@
    sideways. */
 @layer screens {
   .ws-bin {
+    /* The chapter header bar: 36 px with a fine pointer (its 28 px icon buttons and 4 px
+       padding), the 44 px of a finger otherwise (reset in the coarse block below). */
+    --panel-head-h: 2.25rem;
+    --bin-btn: 1.75rem;
+
     display: grid;
     align-content: start;
     gap: var(--s-3);
@@ -474,10 +479,13 @@
     & .edit-chapter > .panel-header {
       flex-wrap: nowrap;
       gap: var(--s-1) var(--s-2);
+      /* 28 px buttons + 2 x 3 px + the 1 px border = 35 px, under the 36 px bar. */
+      padding-block: 0.1875rem;
       padding-inline: var(--s-3) var(--s-2);
 
       & > h2 {
-        flex: none;
+        flex: 0 1 auto;
+        min-inline-size: 3rem;
         max-inline-size: 50%;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -503,12 +511,27 @@
       }
     }
 
-    /* Edit Titlecard as its icon (its name is the same): a 44 px square. */
-    & .edit-titlecard {
+    /* The header's buttons as icons (their names are the same, their words in a title): Move up,
+       Move down and Delete after the count, then Edit Titlecard. Square, 28 px with a fine pointer. */
+    & .edit-chapter > .panel-header > .chapter-actions {
+      flex: none;
+      flex-wrap: nowrap;
+      margin-inline-start: 0;
+      gap: var(--s-1);
+    }
+
+    & .edit-chapter > .panel-header .chapter-order {
+      gap: var(--s-1);
+    }
+
+    & .edit-chapter > .panel-header .btn {
       position: relative;
       flex: none;
-      min-inline-size: 2.75rem;
-      padding-inline: 0;
+      inline-size: var(--bin-btn);
+      min-inline-size: var(--bin-btn);
+      block-size: var(--bin-btn);
+      min-block-size: var(--bin-btn);
+      padding: 0;
       justify-content: center;
     }
 
@@ -617,7 +640,20 @@
     }
 
     @media (pointer: coarse) {
+      /* The wrapped header's two lines (75 px), for the sticky offsets. */
+      --panel-head-h: 4.6875rem;
+      --bin-btn: 2.75rem;
       --bin-toolbar-h: 7rem;
+
+      /* Four 44 px buttons do not fit a 240 px bin beside the name: they wrap to a second line. */
+      & .edit-chapter > .panel-header {
+        flex-wrap: wrap;
+        padding-block: var(--s-1);
+      }
+
+      & .edit-chapter > .panel-header > .chapter-actions {
+        margin-inline-start: auto;
+      }
 
       & > .mark-line {
         --mark-control-h: 2.75rem;

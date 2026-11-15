@@ -62,13 +62,20 @@ function Notes({ notes }: { notes: readonly string[] }) {
 }
 
 /**
- * One chapter's tools row; nothing when it has neither a note nor a control (an
- * event with one chapter, the event's own, shows none).
+ * One chapter's tools. `placement` says where its buttons are:
+ * - `row` (the stacked page): its own row under the heading, with the notes and Delete's
+ *   refusal; nothing when it has neither a note nor a control (an event with one chapter,
+ *   the event's own, shows none).
+ * - `bar` (the clip bin): the buttons alone, icon-only with a `title`, for the header bar,
+ *   after the count. Delete's refusal is named by `aria-describedby`.
+ * - `notes` (the clip bin): the lines under the bar, the notes and the refusal; nothing
+ *   when neither applies.
  */
 export const ChapterTools = memo(function ChapterTools({
   chapterKey,
   heading,
   headingId,
+  placement = 'row',
   notes,
   place,
   deleteRefusal,
@@ -80,74 +87,100 @@ export const ChapterTools = memo(function ChapterTools({
   chapterKey: ChapterKey
   /** The chapter's heading, as its controls name it. */
   heading: string
-  /** The heading's id: the row is a group named by it. */
+  /** The heading's id: the group is named by it, and the refusal's id derives from it. */
   headingId: string
+  placement?: 'bar' | 'row' | 'notes'
 }) {
-  const refusalId = useId()
+  const refusalId = `${headingId}-refusal`
   const offersDelete = deleteRefusal !== undefined
-  if (notes.length === 0 && place === null && !offersDelete) {
+  const inBar = placement === 'bar'
+  const hasButtons = place !== null || offersDelete
+  const refusal = offersDelete && deleteRefusal !== null && (
+    <p className="chapter-refusal" id={refusalId} hidden={!refusalShown}>
+      {deleteRefusal}
+    </p>
+  )
+  if (placement === 'notes') {
+    // The refusal stays in the DOM while hidden (the Delete button names it); the row itself
+    // hides with it, so it costs no height until a line shows.
+    const lines = notes.length > 0 || (refusal && refusalShown)
+    return notes.length === 0 && !refusal ? null : (
+      <div className="chapter-tools" role="group" aria-labelledby={headingId} hidden={!lines}>
+        <Notes notes={notes} />
+        {refusal}
+      </div>
+    )
+  }
+  if (!hasButtons && (inBar || notes.length === 0)) {
     return null
+  }
+  const buttons = hasButtons && (
+    <div
+      className="chapter-actions"
+      role={inBar ? 'group' : undefined}
+      aria-labelledby={inBar ? headingId : undefined}
+    >
+      {place !== null && (
+        <span className="chapter-order">
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon chapter-up"
+            aria-label={`Move chapter ${heading} up`}
+            title={inBar ? 'Move up' : undefined}
+            aria-disabled={locked || place.first || undefined}
+            onClick={() => {
+              if (!locked && !place.first) {
+                onMoveChapter(chapterKey, -1)
+              }
+            }}
+          >
+            {UP}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon chapter-down"
+            aria-label={`Move chapter ${heading} down`}
+            title={inBar ? 'Move down' : undefined}
+            aria-disabled={locked || place.last || undefined}
+            onClick={() => {
+              if (!locked && !place.last) {
+                onMoveChapter(chapterKey, 1)
+              }
+            }}
+          >
+            {DOWN}
+          </button>
+        </span>
+      )}
+      {offersDelete && (
+        <button
+          type="button"
+          className={`btn btn-ghost chapter-delete${inBar ? ' btn-icon' : ''}`}
+          aria-label={`Delete chapter ${heading}`}
+          title={inBar ? 'Delete' : undefined}
+          aria-disabled={locked || deleteRefusal !== null || undefined}
+          aria-describedby={deleteRefusal !== null ? refusalId : undefined}
+          // A refused press shows and announces why (the editor), focus staying here.
+          onClick={() => {
+            if (!locked) {
+              onDelete(chapterKey)
+            }
+          }}
+        >
+          {DELETE}
+          {!inBar && 'Delete'}
+        </button>
+      )}
+    </div>
+  )
+  if (inBar) {
+    return buttons
   }
   return (
     <div className="chapter-tools" role="group" aria-labelledby={headingId}>
       <Notes notes={notes} />
-      {(place !== null || offersDelete) && (
-        <div className="chapter-actions">
-          {place !== null && (
-            <span className="chapter-order">
-              <button
-                type="button"
-                className="btn btn-ghost btn-icon chapter-up"
-                aria-label={`Move chapter ${heading} up`}
-                aria-disabled={locked || place.first || undefined}
-                onClick={() => {
-                  if (!locked && !place.first) {
-                    onMoveChapter(chapterKey, -1)
-                  }
-                }}
-              >
-                {UP}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-icon chapter-down"
-                aria-label={`Move chapter ${heading} down`}
-                aria-disabled={locked || place.last || undefined}
-                onClick={() => {
-                  if (!locked && !place.last) {
-                    onMoveChapter(chapterKey, 1)
-                  }
-                }}
-              >
-                {DOWN}
-              </button>
-            </span>
-          )}
-          {offersDelete && (
-            <button
-              type="button"
-              className="btn btn-ghost chapter-delete"
-              aria-label={`Delete chapter ${heading}`}
-              aria-disabled={locked || deleteRefusal !== null || undefined}
-              aria-describedby={deleteRefusal !== null ? refusalId : undefined}
-              // A refused press shows and announces why (the editor), focus staying here.
-              onClick={() => {
-                if (!locked) {
-                  onDelete(chapterKey)
-                }
-              }}
-            >
-              {DELETE}
-              Delete
-            </button>
-          )}
-        </div>
-      )}
-      {offersDelete && deleteRefusal !== null && (
-        <p className="chapter-refusal" id={refusalId} hidden={!refusalShown}>
-          {deleteRefusal}
-        </p>
-      )}
+      {buttons}
+      {refusal}
     </div>
   )
 })
