@@ -947,6 +947,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     **Slice 0 is built** (`track-draft-order`, web only; D-20): the Edit-mode Timeline draws the draft's order and
     chapters, cards of added chapters are built in the browser, and the saved-order note is gone; no API, engine or
     `RENDER_GRAPH_VERSION` change.
+    **Slice 1 is built** (`editor-workspace-layout`, web only; D-28, D-20): Edit opens a full-window workspace (top
+    bar with the save controls; clip bin, viewer, inspector with Event and Cut tabs, Timeline along the bottom; no
+    List view), light and dark, stacked below 960 px; no API, engine or `RENDER_GRAPH_VERSION` change.
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
     D-17): a local image and a test stack, nothing published; the published image waits for the D-1
     fdk-aac blocker (§4.12).
@@ -1963,6 +1966,34 @@ Rough dependency order; each becomes one or more OpenSpec changes:
   - **Deliberately not here:** the card style, per-card fields, background-on-video, durations, the preview
     endpoint, the GUI, a weight setting, italics, user-supplied fonts, web fonts in the browser (D-10; the GUI previews
     with the engine's PNG).
+- **D-28 — Edit mode is a workspace** (2026-11-15, change `editor-workspace-layout`, slice 1 of GUI v3; web only,
+  D-20). The user asked for Edit to "resemble something like the simple iMovie" (`editor-workspace.md`): the stacked
+  Edit page never had the picture, the track and the clip lists on screen together. (§4.10, §6 item 10)
+  - **The frame.** Edit stays `#/event/<id>` with Edit mode on; `EventDetail` renders a full-window `Workspace`
+    (`web/src/edit/workspace/`) in place of the page body, and `data-workspace` on `<html>` hides the app header.
+    The top bar holds Back to Events, the event's title with its date and location, the save bar in its `top` form
+    (the unsaved summary, Reset, Save with Ctrl/Cmd+S, one primary action: Save / Reload latest / Back to the event
+    list), Done and the theme switch (the same `auto-reel:theme`, every switch in step). Back and Done leave through
+    the existing leave flow and unsaved guard. A conflict's or a failure's explanation is a panel under the bar: it
+    may cover the upper panes, not the Timeline (in a wide window about 400 px tall it still reaches the Timeline's
+    top, a known gap; the change's design D4). The bar's drawn height is measured (`--ws-top-measured`), so
+    notifications, sticky headings and the scroll padding clear it.
+  - **The panes.** A grid of bin 240 px · viewer · inspector 340 px over a Timeline of `minmax(280px, 38vh)`, each
+    pane scrolling on its own (`[data-ws-scroll]`, which focus-in-view, drops and Page Up/Down measure against).
+    The bin is the chapter lists (`ChapterDrag` / `ClipOrderList`) in a compact row variant, every list action and
+    the keyboard sensor kept, rows off screen skipped as on the stacked page. The Timeline is split over one state
+    (`useTimeline` → viewer, track, cut panel; one `<video>`): the viewer pane takes the picture and the transport
+    (Previous / Next clip added), the bottom pane the track, the inspector's Cut tab the cut panel, by portals.
+    The inspector's Event tab holds Details, Poster and a button that opens the card dialog on "All title cards in
+    this event"; the card style and the Title cards switch stay in the dialog. Below 960 px the panes stack (top,
+    viewer, Timeline, inspector, bin) and the page scrolls.
+  - **No List view.** There is one layout, not a List/Workspace switch: the bin *is* the lists, so keyboard and
+    screen-reader reordering need no second screen, and there is no second layout to keep in step.
+  - **Not here:** an inspector that follows the selection, a Clip tab, a docked card editor (`editor-selection`),
+    dragging on the track (`track-drag-edit`), Undo (`editor-undo`). No API, engine or `RENDER_GRAPH_VERSION`
+    change; no new dependency or token. Gates (task 4.1 of the change): the zoom-slider drag at Chrome 4x on 400
+    clips 0.96 % of frames over 25 ms (gate 2 %; the stacked page 0.57 %), no sideways scroll 320–1440 px, the bundle
+    +12.01 kB JS and +9.36 kB CSS.
 - **D-27 — Analysis is a job** (2026-10-05, change `analysis-job`). The user asked what "Not analyzed" means and why
   it could not be triggered from the web, and chose automatic analysis in the background, a Re-analyze button and
   "Analyze all". The inline `auto-reel analyze` could not be a job: its passes were blocking (no cancel, no
