@@ -2850,6 +2850,7 @@ export function EventEditor({
                       onRemove={onRemove}
                       onRestore={onRestore}
                       onAnnounce={announce}
+                      compact={inWorkspace}
                     />
                   )
                 })}

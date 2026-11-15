@@ -27,10 +27,11 @@ import { RotateButtons } from '../rotate/RotateButtons'
 import type { RotateHandler } from '../rotate/RotateButtons'
 import type { Turn } from '../rotate/turn.ts'
 import { Icon } from '../ui/Icon'
-import { useGroupHeld, useReducedMotion } from './ChapterDrag'
+import { intoViewSettled, useGroupHeld, useReducedMotion } from './ChapterDrag'
 import { ChapterTools } from './ChapterTools'
 import { EditTitlecard } from './EditTitlecard'
 import type { ChapterToolsModel } from './ChapterTools'
+import { lengthWords } from './clipLength'
 import { cutsOf, keptOriginal, movedSet } from './draft'
 import type { ChapterKey, Cuts, DraftCut, Rotations } from './draft'
 import { CHAPTER_DROP } from './dragSlots'
@@ -58,13 +59,38 @@ import { groupWords } from './marks'
  * neither numbered nor movable, since neither is played: the missing clips the
  * operator removed (Save leaves them out of reel.yaml, and each has an Undo
  * until then), then the ignored clips.
+ *
+ * In Edit mode's workspace the lists are the clip bin (`editor-workspace-layout` D3), in
+ * compact rows (`compact`): handle, position and name on the first line; a small thumbnail,
+ * the length the clip plays and its status on the second; the Cuts control and the row's
+ * tools on the third. The size and the modified time are left out; every control stays.
  */
 
 /**
  * Size and time as the read view shows them; absent (a missing clip) shows as
  * absent. Then the row's action, beside the status that explains it.
  */
-function ClipFacts({ clip, action }: { clip: Clip; action?: ReactNode }) {
+function ClipFacts({
+  clip,
+  action,
+  length = null,
+}: {
+  clip: Clip
+  action?: ReactNode
+  /** A compact row (the bin): the length it plays, shown instead of the size and the time. */
+  length?: string | null
+}) {
+  if (length !== null) {
+    return (
+      <span className="clip-facts">
+        <span className="clip-length">{length}</span>
+        <span className="clip-status">
+          <ClipStatusPills clip={clip} />
+        </span>
+        {action !== undefined && <span className="clip-action">{action}</span>}
+      </span>
+    )
+  }
   return (
     <span className="clip-facts">
       <span className="clip-status">
@@ -146,6 +172,7 @@ const RowBody = memo(function RowBody({
   locked = false,
   onMark,
   turn = 0,
+  length = null,
 }: {
   eventId: string
   clip: Clip
@@ -168,6 +195,8 @@ const RowBody = memo(function RowBody({
   onMark?: MarkHandler
   /** The clip's turn in the draft: its frame is shown turned by it. */
   turn?: Turn
+  /** A compact row (the bin): the length the clip plays, in words (`lengthWords`). */
+  length?: string | null
 }) {
   const thumb = <ClipThumb eventId={eventId} clip={clip} name={name} turn={turn} />
   return (
@@ -216,12 +245,14 @@ const RowBody = memo(function RowBody({
           </span>
         )}
       </span>
-      <ClipFacts clip={clip} action={action} />
+      <ClipFacts clip={clip} action={action} length={length} />
     </>
   )
 })
 
 type Step = (identity: string, from: number, to: number) => void
+
+const NO_CUTS: readonly DraftCut[] = []
 
 /** Sortable's strategy while a group is held: no row shifts. */
 const NO_SHIFT: SortingStrategy = () => null
@@ -303,6 +334,7 @@ const ClipRow = memo(function ClipRow({
   onRotate,
   onStep,
   onRemove,
+  compact,
 }: {
   eventId: string
   clip: Clip
@@ -330,6 +362,8 @@ const ClipRow = memo(function ClipRow({
   onRotate: RotateHandler
   onStep: Step
   onRemove: (identity: string) => void
+  /** A compact row (the bin). */
+  compact: boolean
 }) {
   // The marked clips a held group stands for, or null: then no row makes room (a line shows
   // at every gap) and the held rows are dimmed.
@@ -383,6 +417,11 @@ const ClipRow = memo(function ClipRow({
   const { excluded } = clip
   const cuttable = !excluded && (status === 'active' || status === 'new')
   const kept = keptCuts(cuts).length
+  // An excluded clip plays nothing of its cuts: its whole length, as for a clip with none.
+  const length = useMemo(
+    () => (compact ? lengthWords(clip.duration, excluded ? NO_CUTS : cuts) : null),
+    [compact, clip.duration, excluded, cuts],
+  )
   const badge = useMemo(
     () =>
       status !== 'missing' || excluded || kept === 0 ? null : (
@@ -464,6 +503,7 @@ const ClipRow = memo(function ClipRow({
         locked={locked}
         onMark={onMark}
         turn={turn}
+        length={length}
       />
       <span className="clip-tools">
         {/* A clip on disk turns, excluded or not: its picture is what the render will turn. */}
@@ -516,16 +556,25 @@ const IgnoredRow = memo(function IgnoredRow({
   eventId,
   clip,
   name,
+  compact,
 }: {
   eventId: string
   clip: Clip
   name: string
+  compact: boolean
 }) {
   return (
     <li className="clip-item" data-status={clip.status}>
       <span className="drag-slot" />
-      <RowBody eventId={eventId} clip={clip} name={name} position={null} was={null} />
-      <span className="clip-moves" />
+      <RowBody
+        eventId={eventId}
+        clip={clip}
+        name={name}
+        position={null}
+        was={null}
+        length={compact ? lengthWords(clip.duration, NO_CUTS) : null}
+      />
+      {!compact && <span className="clip-moves" />}
     </li>
   )
 })
@@ -540,12 +589,14 @@ const RemovedRow = memo(function RemovedRow({
   name,
   locked,
   onUndo,
+  compact,
 }: {
   eventId: string
   clip: Clip
   name: string
   locked: boolean
   onUndo: (identity: string) => void
+  compact: boolean
 }) {
   const { identity } = clip
   const undo = useMemo(
@@ -577,8 +628,9 @@ const RemovedRow = memo(function RemovedRow({
         position={null}
         was={null}
         action={undo}
+        length={compact ? lengthWords(clip.duration, NO_CUTS) : null}
       />
-      <span className="clip-moves" />
+      {!compact && <span className="clip-moves" />}
     </li>
   )
 })
@@ -669,6 +721,7 @@ export const ClipOrderList = memo(function ClipOrderList({
   onRemove,
   onRestore,
   onAnnounce,
+  compact = false,
 }: {
   /** The event, for its clips' thumbnail addresses. */
   eventId: string
@@ -723,6 +776,8 @@ export const ClipOrderList = memo(function ClipOrderList({
    * the drags).
    */
   onAnnounce: (message: string) => void
+  /** Edit mode's workspace: the clip bin's compact rows. Absent, the stacked page's rows. */
+  compact?: boolean
 }) {
   const headingId = useId()
   const removedId = useId()
@@ -828,7 +883,9 @@ export const ClipOrderList = memo(function ClipOrderList({
   useEffect(() => {
     const row = scrollAfter.current
     scrollAfter.current = null
-    row?.scrollIntoView({ block: 'nearest' })
+    if (row !== null) {
+      intoViewSettled(row, (it) => it.scrollIntoView({ block: 'nearest' }))
+    }
   }, [order, removed])
 
   return (
@@ -836,6 +893,7 @@ export const ClipOrderList = memo(function ClipOrderList({
       ref={sectionRef}
       className="panel edit-chapter"
       data-chapter-key={chapterKey}
+      data-compact={compact || undefined}
       aria-labelledby={headingId}
     >
       <header className="panel-header">
@@ -854,7 +912,7 @@ export const ClipOrderList = memo(function ClipOrderList({
       </header>
       <ChapterTools chapterKey={chapterKey} heading={heading} headingId={headingId} {...tools} />
       {/* The column names, in the rows' own cells (edit.css places them by class). */}
-      {!empty && (
+      {!empty && !compact && (
         <div className="clip-order-head" aria-hidden="true">
           <span className="clip-pos">#</span>
           <span className="clip-file">File</span>
@@ -903,6 +961,7 @@ export const ClipOrderList = memo(function ClipOrderList({
                   onRotate={onRotate}
                   onStep={onStep}
                   onRemove={onRemoveRow}
+                  compact={compact}
                 />
               )
             })}
@@ -925,6 +984,7 @@ export const ClipOrderList = memo(function ClipOrderList({
                   name={nameOf(identity)}
                   locked={locked}
                   onUndo={onUndoRow}
+                  compact={compact}
                 />
               )
             })}
@@ -940,7 +1000,13 @@ export const ClipOrderList = memo(function ClipOrderList({
             {ignored.map((identity) => {
               const clip = clips.get(identity)
               return clip === undefined ? null : (
-                <IgnoredRow key={identity} eventId={eventId} clip={clip} name={nameOf(identity)} />
+                <IgnoredRow
+                  key={identity}
+                  eventId={eventId}
+                  clip={clip}
+                  name={nameOf(identity)}
+                  compact={compact}
+                />
               )
             })}
           </ul>
