@@ -2722,7 +2722,7 @@ button SHALL show an icon and the words "Edit Titlecard", SHALL be named "Edit t
 heading) and SHALL open the title card dialog on the "This title card" tab ("A selected title card opens its inspector in Edit mode"). A
 chapter's section SHALL show nothing between its header bar and its clips but the tools row and the notes of this requirement and of "Edit mode says what
 a chapter's name means for clips added later": no card row, no "Main title card" line, no source line ("from the folder name"). A chapter added in the draft has no saved card, and its
-button SHALL be offered all the same: the dialog says that its card is drawn after Save and keeps the preview from the draft.
+button SHALL be offered all the same and keeps the preview from the draft. While the Timeline draws a card built from the event's cards for it ("A chapter added while editing gets the event's card on the Timeline"), the dialog SHALL say that until Save its title card is drawn as the event's and that its own settings can be changed after Save; otherwise it SHALL say that its card is drawn after Save.
 
 Each chapter SHALL offer only the controls that apply to it. An event that lists one chapter, the event's own,
 offers Add chapter and none of the others. The only chapter left, a deleted one aside, SHALL NOT offer Delete,
