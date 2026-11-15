@@ -77,7 +77,7 @@ selection shows Event. This replaces the stacked Details / Poster panels and the
 | 5.2 | **Clip:** Trim In / Out as numeric fields, plus the Q / W to-playhead shortcuts | new-web (fields) / reuse (Q/W) |
 | 5.3 | **Clip:** Rotate left / right with the current angle | reuse |
 | 5.4 | **Clip:** cut list (range, reason pill, remove) and "+ Cut at playhead" | reuse / new-web |
-| 5.5 | **Clip:** Use frame as poster; Ignore clip | reuse |
+| 5.5 | **Clip:** Use frame as poster; ~~Ignore clip~~ (moved to `track-drag-edit`, which builds the draft ignore edit) | reuse |
 | 5.6 | **Title card:** docked card editor — live preview, Name, Background Black / Video, Font, Length, Position, "Use event style" per field | reuse (moves out of the dialog) |
 | 5.7 | **Title card:** link to the event-wide card style ("All title cards in this event") | reuse |
 | 5.8 | **Suggestion:** state pill, kind, clip and range, frame preview, Approve as cut (A) / Dismiss (R), event totals | reuse |

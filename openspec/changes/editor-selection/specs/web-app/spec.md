@@ -19,7 +19,7 @@ SHALL pick the tab again. Each tab's controls SHALL edit the one draft, as every
 
 The Clip tab SHALL show the clip's name, chapter and position, and its length in the movie, and SHALL offer Trim In
 and Trim Out as typed times, Rotate left and right, the clip's cuts with remove and "+ Cut at playhead", Use frame as
-poster and Ignore clip. A typed trim SHALL be the same draft edit as the track's edge tools.
+poster. A typed trim SHALL be the same draft edit as the track's edge tools.
 
 #### Scenario: Typed Trim In
 - **WHEN** the operator types 0:01.50 into Trim In for `s1710001.mp4`

@@ -14,9 +14,12 @@ the lists).
 - **Move between chapters on the track**: dropping into another chapter's span, or onto its band, moves the clip into
   that chapter at the drop place.
 - **Bin ↔ track**: dragging a New or Ignored clip from the bin onto the video track includes it at the drop place;
-  dragging a clip from the track onto the bin ignores it.
+  dragging a clip from the track onto the bin ignores it (through the new draft ignore edit).
 - **Keyboard alternative** (WCAG 2.5.7): with a clip selected, Alt+Left / Alt+Right moves it one place (across a
   chapter boundary into the neighbour chapter), announced politely.
+- **A draft ignore/include edit** (none exists yet: the draft sends `ignore` back as read): ignoring and including a
+  clip become draft edits counted by the top bar, Reset and Save, which the track↔bin drags use, and an
+  "Ignore clip" button in the inspector's Clip tab (moved here from `editor-selection`).
 - Snapping of the drop place to clip boundaries; the drop slot is drawn as a line with words ("Before s1710003.mp4").
 - Inert while a save or a Move marked… is pending, as the other track tools.
 
@@ -42,7 +45,8 @@ the lists).
 
 - Web only: new `timeline/reorder.ts` (pure, `node:test`), `timeline/ClipDrag.tsx`, `timeline/dragStore.ts` (a clip
   drag sharing the one-drag claim), `timeline/Track.tsx`, `edit/EventEditor.tsx` (the same reorder/move reducer
-  actions the lists use), bin drag source/target.
+  actions the lists use, and a new ignore/include action), `edit/draft.ts` (the draft's ignore field, `buildWriteBody`'s
+  `ignore`, `isDirty`, Reset and the save counts), the Clip tab's "Ignore clip" button, bin drag source/target.
 - No API, engine, schema, fingerprint or `RENDER_GRAPH_VERSION` change; CLI untouched; no new dependency (the track
   drag is built in the repo like the trim handles, D-20).
 - Depends on `editor-selection` (and through it on `track-draft-order`). `clip-split` depends on this change.
