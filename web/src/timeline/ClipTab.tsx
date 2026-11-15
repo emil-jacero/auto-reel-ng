@@ -1,4 +1,4 @@
-import { useId, useRef, useState, useSyncExternalStore } from 'react'
+import { useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 
 import { CutList } from '../cuts/CutsPanel'
@@ -230,10 +230,29 @@ function ClipCuts({
     editing.onAdd(clip.identity, made.span)
     editing.announce(addedWords(made.span, clip.name, [...keptCuts(listed), made.span]))
   }
-  const remove = (cut: DraftCut, number: number) => {
+  // The pressed Remove leaves with its cut (a read cut shows "Removed when you save", an added
+  // one is dropped): focus goes to the next cut's control, else + Cut at playhead, before a paint.
+  const section = useRef<HTMLElement>(null)
+  const pressed = useRef<{ button: HTMLElement; row: number } | null>(null)
+  useLayoutEffect(() => {
+    const was = pressed.current
+    if (was === null || was.button.isConnected) {
+      return
+    }
+    pressed.current = null
+    const rows = Array.from(section.current?.querySelectorAll<HTMLElement>('li') ?? [])
+    const next = rows
+      .slice(was.row)
+      .map((row) => row.querySelector<HTMLElement>('button'))
+      .find((button) => button !== null)
+    const target = next ?? section.current?.querySelector<HTMLElement>('button.ct-add')
+    target?.focus({ preventScroll: true })
+  })
+  const remove = (cut: DraftCut, number: number, button: HTMLElement) => {
     if (locked) {
       return
     }
+    pressed.current = { button, row: number - 1 }
     editing.onRemove(clip.identity, cut.key)
     // The removed cut was the selection: the clip it belongs to is, so the tab stays.
     if (selectedKey === cut.key) {
@@ -250,7 +269,7 @@ function ClipCuts({
     )
   }
   return (
-    <section className="ct-cuts" aria-label={`Cuts of ${clip.name}`}>
+    <section ref={section} className="ct-cuts" aria-label={`Cuts of ${clip.name}`}>
       {listed.length === 0 ? (
         <p className="cuts-none">No cuts: the whole clip plays.</p>
       ) : (
@@ -277,7 +296,7 @@ function ClipCuts({
                   className="btn btn-ghost btn-compact cut-remove"
                   aria-label={`Remove cut ${number} of ${clip.name}, ${spanWords(cut)}`}
                   aria-disabled={locked || undefined}
-                  onClick={() => remove(cut, number)}
+                  onClick={(event) => remove(cut, number, event.currentTarget)}
                 >
                   Remove
                 </button>
@@ -288,7 +307,7 @@ function ClipCuts({
       )}
       <button
         type="button"
-        className="btn btn-secondary"
+        className="btn btn-secondary ct-add"
         aria-disabled={locked || undefined}
         aria-describedby={refusal === null ? undefined : errorId}
         onClick={add}

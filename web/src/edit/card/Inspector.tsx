@@ -96,7 +96,7 @@ export function CardInspectorPanel({
    * How the card was asked for (`useSelection.opened`): on `tab` if given, else the first tab
    * holding a named problem, and focus goes into its first field. Null: selected without asking.
    */
-  opened: { tab: TabId | null } | null
+  opened: { tab: TabId | null; focus: boolean } | null
   /** The request was acted on (tab, focus): it ends, so a remount does not take focus again. */
   onHandled: () => void
   /** Counts the requests (`useSelection.again`): each asks again, also for the same card. */
@@ -174,7 +174,9 @@ export function CardInspectorPanel({
     if (!first || opened.tab !== null) {
       setTab(opened.tab ?? openingTab(latestNamed.current))
     }
-    setFocusAsk((count) => count + 1)
+    if (opened.focus) {
+      setFocusAsk((count) => count + 1)
+    }
     onHandled()
   }, [asked, opened, onHandled])
   useEffect(() => {

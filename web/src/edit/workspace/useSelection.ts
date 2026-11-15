@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { flushSync } from 'react-dom'
+
 import type { TabId } from '../card/tabs.ts'
 import { clearState, consumeState, keepState, NOTHING, openState, selectState } from './selection.ts'
 import type { Selection, SelectionState, World } from './selection.ts'
@@ -29,9 +31,11 @@ export type SelectionBinding = {
   /** Selects the card without asking for focus: a press on a duration handle. */
   select(chapter: string): void
   /** Set when the selected card was asked for (`open`): the editor takes focus. Null: it was not. */
-  opened: { tab: TabId | null } | null
+  opened: { tab: TabId | null; focus: boolean } | null
   /** Selects the card, asks for its editor on `tab` if given, and for focus in it, also when selected. */
   open(chapter: string, tab?: TabId): void
+  /** Selects the card and shows its editor (the Title card tab) but leaves focus where it is: a press on its block. */
+  reveal(chapter: string): void
   /** The editor has acted on `opened` (tab and focus): the request ends, the selection stays. */
   handled(): void
   /**
@@ -70,6 +74,10 @@ export function useSelection(): SelectionBinding {
   )
   const select = useCallback((chapter: string) => set({ kind: 'card', chapter }), [set])
   const handled = useCallback(() => setState(consumeState), [])
+  const reveal = useCallback((chapter: string) => {
+    opener.current = null
+    setState((was) => openState(was, chapter, undefined, false))
+  }, [])
   const open = useCallback((chapter: string, tab?: TabId) => {
     const active = document.activeElement
     opener.current = active instanceof HTMLElement && active !== document.body ? active : null
@@ -110,14 +118,18 @@ export function useSelection(): SelectionBinding {
         : Array.from(document.querySelectorAll<HTMLElement>('button.tl-card[data-card]')).find(
             (candidate) => candidate.dataset.card === card,
           )
-    const target = kept !== null && kept.isConnected ? kept : block
-    target?.focus({ preventScroll: true })
     opener.current = null
-    clear()
+    // Nothing is selected first, so the Event tab (which hides the opener while the Title card
+    // tab shows) is visible again when focus moves: the focused field never unmounts onto the body.
+    flushSync(clear)
+    const shown = (element: HTMLElement | null | undefined) =>
+      element !== null && element !== undefined && element.isConnected && element.closest('[hidden]') === null
+    const target = shown(kept) ? kept : block
+    target?.focus({ preventScroll: true })
   }, [card, clear])
   const { opened } = state
   return useMemo(
-    () => ({ selection: state.sel, again: state.again, set, clear, keep, selected: card, select, opened, open, handled, leave }),
-    [state.sel, state.again, set, clear, keep, card, select, opened, open, handled, leave],
+    () => ({ selection: state.sel, again: state.again, set, clear, keep, selected: card, select, opened, open, reveal, handled, leave }),
+    [state.sel, state.again, set, clear, keep, card, select, opened, open, reveal, handled, leave],
   )
 }

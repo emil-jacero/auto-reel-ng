@@ -348,10 +348,10 @@ export function useTimeline({
   }
   const pressClip = useCallback((identity: string, x: number) => pressClipRef.current(identity, x), [])
   const selectCard = selection.select
-  const openCard = selection.open
+  const revealCard = selection.reveal
   const pickCard = selectCard
-  // A block's body shows the card's editor in the inspector.
-  const pressCard = openCard
+  // A block's body shows the card's editor in the inspector; focus stays on the block.
+  const pressCard = revealCard
   // Reset ends a cut selection (the Timeline mounting anew, on a Refresh or a Save, does not).
   const epoch = editing.epoch
   const seenEpoch = useRef(epoch)
@@ -363,6 +363,29 @@ export function useTimeline({
       }
     }
   }, [epoch, selection])
+  // A new read numbers a clip's cuts again (`r0`, `r1`…), so a cut selection made on the old one
+  // would name another cut: it ends with the read, also when the Timeline mounts anew (a Save, a
+  // Refresh, leaving and re-entering Edit mode), where the cleanup does it.
+  const baseline = editing.baseline
+  const seenBaseline = useRef(baseline)
+  useEffect(() => {
+    if (seenBaseline.current !== baseline) {
+      seenBaseline.current = baseline
+      if (selection.selection.kind === 'cut') {
+        selection.clear()
+      }
+    }
+  }, [baseline, selection])
+  const latestSelection = useRef(selection)
+  latestSelection.current = selection
+  useEffect(
+    () => () => {
+      if (latestSelection.current.selection.kind === 'cut') {
+        latestSelection.current.clear()
+      }
+    },
+    [],
+  )
   // A cut removed ends a selection (`keptSelection`).
   useEffect(() => {
     if (selected !== null) {
@@ -380,6 +403,25 @@ export function useTimeline({
       })
     }
   }, [editing, selected, clips, keepSelection])
+
+  // A clip or cut selection ending (Escape, a clear) while focus was in the Clip tab, which then
+  // unmounts: focus goes back to the clip's block, so it never drops onto the page body.
+  const heldClip = selectedClip ?? selectedCut?.identity ?? null
+  const wasClip = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    const was = wasClip.current
+    wasClip.current = heldClip
+    if (was === null || heldClip !== null) {
+      return
+    }
+    const active = document.activeElement
+    if (active === null || active === document.body) {
+      const at = clips.findIndex((c) => c.identity === was)
+      document
+        .querySelector<HTMLElement>(`.tl-clip-press[data-index="${at}"]`)
+        ?.focus({ preventScroll: true })
+    }
+  }, [heldClip, clips])
 
   // A clip that left the event ends its selection (`keptSelection`).
   useEffect(() => {

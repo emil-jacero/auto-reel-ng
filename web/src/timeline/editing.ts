@@ -1,5 +1,5 @@
 import type { ClipCuts, ClipTurns } from '../cuts/ReadCuts'
-import type { CutKey, DraftCut } from '../edit/draft'
+import type { CutKey, Cuts, DraftCut } from '../edit/draft'
 import type { ClipPreviews } from '../preview/previews'
 import type { PosterPick } from '../edit/poster.ts'
 import type { Turn, Way } from '../rotate/turn.ts'
@@ -52,6 +52,8 @@ export type EditBinding = {
   announce(words: string): void
   /** The editor's clip previews: one open at a time, and the Timeline's video makes room for it. */
   previews: ClipPreviews
+  /** The cuts as read: replaced by a new read, which numbers a clip's cuts again (a cut selection ends). */
+  baseline: Cuts
   /** Changes when Reset puts the draft back: a selection and a drag do not survive it. */
   epoch: number
   /**

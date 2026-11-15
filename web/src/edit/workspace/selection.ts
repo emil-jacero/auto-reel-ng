@@ -109,7 +109,7 @@ export function keptIn(sel: Selection, part: Partial<World>): Selection {
  */
 export type SelectionState = {
   sel: Selection
-  opened: { tab: TabId | null } | null
+  opened: { tab: TabId | null; focus: boolean } | null
   again: number
 }
 
@@ -137,10 +137,16 @@ export function keepState(was: SelectionState, part: Partial<World>): SelectionS
 /**
  * Selects the card and asks to see its editor, also when it is selected; on `tab` if given. Every
  * request counts as a press (`again`): opening a card asks to see it, so a hand-picked inspector
- * tab gives way and focus goes into the editor again.
+ * tab gives way and focus goes into the editor again. `focus` false shows the editor and leaves
+ * focus where it is: a press on the card's block on the track.
  */
-export function openState(was: SelectionState, chapter: ChapterKey, tab?: TabId): SelectionState {
-  return { sel: { kind: 'card', chapter }, opened: { tab: tab ?? null }, again: was.again + 1 }
+export function openState(
+  was: SelectionState,
+  chapter: ChapterKey,
+  tab?: TabId,
+  focus = true,
+): SelectionState {
+  return { sel: { kind: 'card', chapter }, opened: { tab: tab ?? null, focus }, again: was.again + 1 }
 }
 
 /**

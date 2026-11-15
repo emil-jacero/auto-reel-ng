@@ -496,7 +496,7 @@ const ClipRow = memo(function ClipRow({
   const wasSelected = useRef(selected)
   useEffect(() => {
     if (selectable && selected && !wasSelected.current) {
-      rowRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      scrollInPane(rowRef.current)
     }
     wasSelected.current = selected
   }, [selected, selectable])
@@ -1082,3 +1082,27 @@ export const ClipOrderList = memo(function ClipOrderList({
     </section>
   )
 })
+
+/**
+ * Brings `row` into view inside its own scrolling pane (the bin, wide). When the panes stack the
+ * page is the scroller, and a press on the track must not carry the page down to the bin: nothing
+ * scrolls then.
+ */
+function scrollInPane(row: HTMLElement | null): void {
+  for (let pane = row?.parentElement ?? null; pane !== null; pane = pane.parentElement) {
+    if (pane === document.body || pane === document.documentElement) {
+      return
+    }
+    const { overflowY } = getComputedStyle(pane)
+    if ((overflowY === 'auto' || overflowY === 'scroll') && pane.scrollHeight > pane.clientHeight) {
+      const box = pane.getBoundingClientRect()
+      const at = row!.getBoundingClientRect()
+      if (at.top < box.top) {
+        pane.scrollTop += at.top - box.top
+      } else if (at.bottom > box.bottom) {
+        pane.scrollTop += at.bottom - box.bottom
+      }
+      return
+    }
+  }
+}

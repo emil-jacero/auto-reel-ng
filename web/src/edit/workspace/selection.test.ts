@@ -130,15 +130,22 @@ test('opening an already selected card counts as a press, so the inspector shows
   assert.equal(shownTab(picked, opened.sel, opened.again), 'card')
 })
 
+test('a request that asks for no focus still counts as a press and shows the card', () => {
+  const shown = openState(NOTHING, 'Dag 2', undefined, false)
+  assert.deepEqual(shown.opened, { tab: null, focus: false })
+  assert.equal(shown.again, 1)
+  assert.deepEqual(shown.sel, card('Dag 2'))
+})
+
 test('open selects and opens the card, keeping the same state for the same request', () => {
   const opened = openState(NOTHING, '', 'event')
   assert.deepEqual(opened.sel, card(''))
-  assert.deepEqual(opened.opened, { tab: 'event' })
+  assert.deepEqual(opened.opened, { tab: 'event', focus: true })
   // Every request is a new one: the editor takes focus again.
   assert.equal(openState(opened, '', 'event').again, opened.again + 1)
   // Opened again without a tab, the editor picks its own.
-  assert.deepEqual(openState(opened, '').opened, { tab: null })
-  assert.deepEqual(openState(selectState(NOTHING, card('Dag 2')), 'Dag 2').opened, { tab: null })
+  assert.deepEqual(openState(opened, '').opened, { tab: null, focus: true })
+  assert.deepEqual(openState(selectState(NOTHING, card('Dag 2')), 'Dag 2').opened, { tab: null, focus: true })
   // Opening another card moves the selection.
   assert.deepEqual(openState(opened, 'Dag 3').sel, card('Dag 3'))
   // Opening replaces a selection of another kind.

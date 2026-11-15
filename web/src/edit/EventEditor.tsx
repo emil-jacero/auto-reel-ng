@@ -1761,6 +1761,7 @@ export function EventEditor({
       locked: listsLocked,
       announce,
       previews: cutPanels.panels.previews,
+      baseline: baseCuts,
       epoch: resetCount,
       look: readLook,
       onCardDuration,
