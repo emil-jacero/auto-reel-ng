@@ -20,6 +20,10 @@ import {
 } from './layout.ts'
 import type { FilmGeometry, ShownClip } from './layout.ts'
 import { timeToPx } from './model.ts'
+import { cardMap } from './cards.ts'
+import { trackStart } from './play.ts'
+import { timedOf } from './position.ts'
+import { posterFromPlayhead } from '../edit/poster.ts'
 import type { DraftChapter, Orders } from '../edit/draft.ts'
 
 /*
@@ -148,6 +152,21 @@ describe('draftClips (track-draft-order)', () => {
     assert.deepEqual(drawn.clips, shown.clips)
     assert.deepEqual(drawn.omitted, shown.omitted)
     assert.deepEqual(drawn.names, ['', 'Kvällen'])
+  })
+
+  it('plays, measures and takes a poster in the drawn order', () => {
+    const orders: Orders = new Map([...savedOrders, ['r0', ['s1710002.mp4', 's1710001.mp4', 's1710003.mp4']]])
+    const drawn = trackClips(draftClips(live, saved, orders).clips, null)
+    const asRead = trackClips(draftClips(live, saved, savedOrders).clips, null)
+    assert.ok(drawn !== null && asRead !== null)
+    // Play from 0 starts at the clip the draft puts first.
+    const lay = trackLayout(drawn)
+    const start = trackStart(cardMap([], lay), lay, drawn.map(timedOf), ['', 'Kvällen'])
+    assert.equal(drawn[start.clip].identity, 's1710002.mp4')
+    // The movie's length is the same clips' however ordered; the poster is the clip under the playhead.
+    assert.equal(movieMs(drawn, null), movieMs(asRead, null))
+    const pick = posterFromPlayhead(drawn, { clip: 1, ms: 2000 }, { locked: false, held: false, frame: true })
+    assert.deepEqual(pick, { pick: { clip: 's1710001.mp4', at: 2 } })
   })
 
   it('draws a reorder at once', () => {

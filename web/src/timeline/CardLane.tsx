@@ -2,7 +2,7 @@ import { memo, useSyncExternalStore } from 'react'
 import type { CSSProperties, KeyboardEvent } from 'react'
 
 import { Icon } from '../ui/Icon'
-import { cardBlockPx, cardSeconds, cardWords, visibleBlocks } from './cards'
+import { cardBlockPx, cardSeconds, cardWords, unsavedCardWords, visibleBlocks } from './cards'
 import type { DragStore } from './dragStore'
 import type { CardBlock, CardSpec } from './cards'
 import type { CardPictures } from './useCardImages'
@@ -14,8 +14,9 @@ import { timeToPx } from './model'
  * a lane of its own directly above the clips. Every block is a real button with a name in
  * words, and its look is told by shape and word as well as colour: a black card is a solid
  * block of its own span; a video card is an outlined block over the footage it sits on, with
- * an edge marker down to the clip; the off look is dashed with the words "not enabled". Only the
- * blocks in the track's window are drawn.
+ * an edge marker down to the clip; the off look is dashed with the words "not enabled". A chapter
+ * added while editing with nothing to build its card from is a placeholder named "Title card for
+ * <chapter>, shown after save" (`track-draft-order`). Only the blocks in the track's window are drawn.
  */
 
 /** A block narrower than this is drawn without its words. */
@@ -25,6 +26,7 @@ const META_PX = 120
 export function CardLane({
   blocks,
   specs,
+  names,
   pps,
   window,
   selected,
@@ -37,6 +39,8 @@ export function CardLane({
 }: {
   blocks: readonly CardBlock[]
   specs: readonly CardSpec[]
+  /** The drawn chapters' names by index (the draft's): what the words call each card's chapter. */
+  names: readonly string[]
   pps: number
   /** The track's window in px: what meets it is drawn. */
   window: { from: number; to: number }
@@ -64,6 +68,8 @@ export function CardLane({
           key={block.chapter}
           block={block}
           name={spec.chapter}
+          label={names[block.chapter] ?? spec.chapter}
+          placeholder={spec.unsaved === 'placeholder'}
           title={spec.card?.title ?? null}
           image={pictures.get(spec.chapter)?.url ?? null}
           pps={pps}
@@ -83,6 +89,8 @@ export function CardLane({
 const CardBlockButton = memo(function CardBlockButton({
   block,
   name,
+  label,
+  placeholder,
   title: cardTitle,
   image,
   pps,
@@ -94,7 +102,12 @@ const CardBlockButton = memo(function CardBlockButton({
   onClear,
 }: {
   block: CardBlock
+  /** The card's chapter as the selection knows it (saved name, or an added chapter's id). */
   name: string
+  /** The chapter's name now, for the words. */
+  label: string
+  /** An added chapter's card with nothing to build it from: named as shown after save. */
+  placeholder: boolean
   title: string | null
   /** The card's image (an object URL), or null while it is missing. */
   image: string | null
@@ -121,13 +134,15 @@ const CardBlockButton = memo(function CardBlockButton({
         : live.tenths * 100
   const durationMs = live === null ? block.durationMs : live.tenths * 100
   const widthPx = cardBlockPx(timeToPx(widthMs, pps))
-  const words = cardWords(name, {
-    durationMs,
-    widthMs,
-    background: block.background,
-    off: block.off,
-  })
-  const title = cardTitle === '' ? null : cardTitle
+  const words = placeholder
+    ? unsavedCardWords(label)
+    : cardWords(label, {
+        durationMs,
+        widthMs,
+        background: block.background,
+        off: block.off,
+      })
+  const title = cardTitle === '' || placeholder ? null : cardTitle
   return (
     <button
       type="button"
@@ -167,7 +182,7 @@ const CardBlockButton = memo(function CardBlockButton({
       {widthPx >= TITLE_PX && (
         <span className="tl-card-text" aria-hidden="true">
           {on && <Icon name="check" size={16} />}
-          <span className="tl-card-title">{title ?? (name === '' ? 'Opening' : name)}</span>
+          <span className="tl-card-title">{title ?? (label === '' ? 'Opening' : label)}</span>
           {widthPx >= META_PX && (
             <span className="tl-card-meta">
               {cardSeconds(widthMs)} · {block.background === 'video' ? 'Video' : 'Black'}

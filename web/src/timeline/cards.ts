@@ -550,8 +550,10 @@ export function visibleBlocks(
 export type CardHandle = {
   /** The block's index in `cardBlocks`' list. */
   index: number
-  /** The chapter's saved name. */
+  /** The chapter's saved name (an added chapter's selection id, `cardIdOf`). */
   chapter: string
+  /** What the words call the chapter: its name now. */
+  name: string
   background: Background
   /** The card's length now. */
   tenths: Tenths
@@ -571,11 +573,15 @@ export function cardWidthMs(handle: Pick<CardHandle, 'background' | 'keptMs'>, t
   return handle.background === 'black' ? tenths * 100 : Math.min(tenths * 100, handle.keptMs)
 }
 
-/** One handle per drawn block (`cardBlocks`), with the limits its card has. */
+/**
+ * One handle per drawn block (`cardBlocks`), with the limits its card has. `names` are the drawn
+ * chapters' names by index (the draft's in Edit mode); absent, the specs' saved names.
+ */
 export function cardHandles(
   placements: readonly Placement[],
   blocks: readonly CardBlock[],
   specs: readonly CardSpec[],
+  names?: readonly string[],
 ): CardHandle[] {
   const handles: CardHandle[] = []
   let at = 0
@@ -588,6 +594,7 @@ export function cardHandles(
     handles.push({
       index: at,
       chapter: specs[place.chapter].chapter,
+      name: names?.[place.chapter] ?? specs[place.chapter].chapter,
       background: place.background,
       tenths,
       range: cardLimits({ background: place.background, currentTenths: tenths, keptMs: place.keptMs }),

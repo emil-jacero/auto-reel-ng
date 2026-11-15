@@ -188,11 +188,12 @@ export const CARDS_BY_PROJECT = 'Set by the project’s config.yaml.'
 export const CARDS_NO_ANSWER = 'The service did not say whether the render draws title cards, so none are drawn here'
 
 /**
- * The notes under the track about the title cards it cannot draw, each said once. `decorators`
- * and `source` are the service's answer (`title_cards`); `error` is its `title_cards_error`.
+ * The notes under the track about the title cards it cannot draw, each said once. `names` are the
+ * drawn chapters' names by index, as the placements count them; `decorators` and `source` are the
+ * service's answer (`title_cards`); `error` is its `title_cards_error`.
  */
 export function cardsNotes(
-  specs: readonly { chapter: string }[],
+  names: readonly string[],
   placements: readonly Placement[],
   decorators: Decorators,
   source: CardsSource | null = null,
@@ -214,7 +215,7 @@ export function cardsNotes(
   const unresolved = new Map<string, string[]>()
   const unreadable: string[] = []
   for (const place of placements) {
-    const name = specs[place.chapter]?.chapter ?? ''
+    const name = names[place.chapter] ?? ''
     const who = name === '' ? 'the opening' : name
     if (place.kind === 'unresolved') {
       unresolved.set(place.error, [...(unresolved.get(place.error) ?? []), who])
@@ -359,10 +360,6 @@ export function playbackNote(name: string, probe: ProxyProbe, mediaWords: string
 }
 
 // --- Edit mode (`timeline-trim`) -----------------------------------------------------------
-
-/** Said while the draft's order or chapters differ from the saved ones: the track draws the saved. */
-export const ORDER_SAVED =
-  'The Timeline shows the order last saved. Reordering and moving clips stay in the lists below; the track follows them once they are saved. Cuts can be trimmed here all the same.'
 
 /** In the Timeline's picture while a clip preview holds the page's one video. */
 export const PREVIEW_OPEN =

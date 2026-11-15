@@ -276,27 +276,6 @@ export function isStructural(changes: ChapterChanges): boolean {
 }
 
 /**
- * Whether the draft's order or chapters differ from the saved ones: a clip moved or
- * reordered, a chapter added, renamed, deleted or moved. A missing clip taken out of its
- * chapter is not (it is not drawn anywhere). The Timeline draws the saved order, so this
- * is when it says so.
- */
-export function layoutChanged(baseline: Baseline, draft: Draft): boolean {
-  if (isStructural(chapterChanges(baseline, draft.chapters))) {
-    return true
-  }
-  const gone = new Set(draft.removed.keys())
-  const keys = new Set([...baseline.original.keys(), ...draft.orders.keys()])
-  return [...keys].some(
-    (key) =>
-      !sameOrder(
-        (baseline.original.get(key) ?? []).filter((identity) => !gone.has(identity)),
-        draft.orders.get(key) ?? [],
-      ),
-  )
-}
-
-/**
  * What a save writes from the view rather than from the document: the chapters
  * it writes in the order shown, each under its current name, from its order now
  * (missing and NEW clips in place, ignored and removed ones left out). Every

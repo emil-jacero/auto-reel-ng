@@ -98,7 +98,6 @@ import {
   groupOf,
   isDirty,
   keptOriginal,
-  layoutChanged,
   listedChapters,
   liveTrims,
   metadataDraftOf,
@@ -1573,7 +1572,6 @@ export function EventEditor({
   // What the Timeline gets of the draft (`timeline/editing.ts`); null for the needs-attention form.
   const baseCuts = ready?.baseline.cuts
   const draftCuts = ready?.draft.cuts
-  const orderChanged = ready !== null && layoutChanged(ready.baseline, ready.draft)
   // The clips' turns as saved, and as the draft has them: what every picture shows (`rotate/`).
   const readClips = ready?.baseline.read.clips
   const baseTurns = useMemo<ClipTurns>(
@@ -1695,7 +1693,6 @@ export function EventEditor({
       onAdd: cutHandlers.onAdd,
       locked: listsLocked,
       announce,
-      orderChanged,
       previews: cutPanels.panels.previews,
       epoch: resetCount,
       look: readLook,
@@ -1713,7 +1710,6 @@ export function EventEditor({
     onPoster,
     cutHandlers,
     announce,
-    orderChanged,
     cutPanels,
     resetCount,
     onCardDuration,
@@ -2722,7 +2718,8 @@ export function EventEditor({
           )}
 
           {editing !== null && cardEditing !== null && detail !== null && (
-            // Open from the start; its cuts are the draft's, its clips and proxies the page's.
+            // Open from the start; its chapters, order and cuts are the draft's, its clips' facts
+            // and proxies the page's (the draft's maps keep their identity until an edit).
             <TimelineSection
               eventId={eventId}
               event={liveEvent ?? detail}
@@ -2730,6 +2727,8 @@ export function EventEditor({
               analysis={analysis}
               onFinished={onProxiesFinished ?? NOTHING}
               editing={editing}
+              chapters={ready.draft.chapters}
+              orders={ready.draft.orders}
               cards={cards}
               cardEditing={cardEditing}
             />

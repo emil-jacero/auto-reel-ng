@@ -52,7 +52,6 @@ import {
   FILM_FAILED,
   FILM_FAILED_DETAIL,
   FIT,
-  ORDER_SAVED,
   PAUSE,
   PREVIEW_OPEN,
   PLAY,
@@ -137,14 +136,16 @@ export function Timeline({
 }: {
   eventId: string
   clips: readonly TrackClip[]
+  /** The drawn chapters' names by index, as `clips[].chapter` and `cards.specs` count them. */
   chapterNames: readonly string[]
   prepare: PrepareControl
   /** The analysis lane (`overlays/`): absent, the Timeline has none and reads no analysis. */
   analysis?: AnalysisControl
   /** Edit mode's binding: the draft's cuts and turns, the trim handles, the poster. */
   editing: EditBinding
-  /** The title cards: the event's resolved cards, the decorator, the page's one selection. */
+  /** The title cards: the drawn chapters' cards, the decorator, the page's one selection. */
   cards: {
+    /** One per drawn chapter, by the index `clips[].chapter` uses (`draftCardSpecs`). */
     specs: readonly CardSpec[]
     /** The service's answer (`title_cards`), the draft's switch laid over it; `invalid` is no answer. */
     decorators: Decorators
@@ -194,7 +195,10 @@ export function Timeline({
   const map = useMemo(() => cardMap(placements, clipLay), [placements, clipLay])
   const lay = useMemo(() => withCards(clipLay, map), [clipLay, map])
   const blocks = useMemo(() => cardBlocks(placements, lay), [placements, lay])
-  const handles = useMemo(() => cardHandles(placements, blocks, specs), [placements, blocks, specs])
+  const handles = useMemo(
+    () => cardHandles(placements, blocks, specs, chapterNames),
+    [placements, blocks, specs, chapterNames],
+  )
   // A clip edge in the air (`clip-edge-trim`): its clip, or null. Its block is drawn live by the
   // track; what follows it moves by the change of its width, as behind a black card.
   const edgeIdentity = useSyncExternalStore(drag.subscribe, () => drag.getEdge()?.identity ?? null)
@@ -216,7 +220,8 @@ export function Timeline({
           baseTenths: handle.tenths,
         } satisfies ShiftFrom)
   }, [edgeIdentity, clips, lay, dragChapter, handles, blocks])
-  const names = useMemo(() => specs.map((spec) => spec.chapter), [specs])
+  // The chapters' names now, by index: what a card's place on the playhead is called.
+  const names = chapterNames
   const leadMs = useMemo(() => new Map(map.gaps.map((gap) => [gap.clip, gap.lengthMs])), [map])
   const selection = cards.selection
   // Each clip's timing with its kept extent: the playhead's rules land on kept frames only.
@@ -740,6 +745,7 @@ export function Timeline({
         : {
             blocks,
             specs,
+            names: chapterNames,
             leadMs,
             shifting,
             handles,
@@ -751,9 +757,14 @@ export function Timeline({
             pictures,
             onClear: selection.clear,
           },
-    [specs, blocks, leadMs, shifting, handles, editing, selection.selected, selection.clear, pickCard, pressCard, pictures],
+    [specs, chapterNames, blocks, leadMs, shifting, handles, editing, selection.selected, selection.clear, pickCard, pressCard, pictures],
   )
-  const cardNotes = cardsNotes(cards.specs, placements, decorators, cards.source, cards.error)
+  const cardNotes = cardsNotes(chapterNames, placements, decorators, cards.source, cards.error)
+  // A card's chapter (saved name, or an added chapter's id) as the words call it: its name now.
+  const nameOfCard = (chapter: string): string => {
+    const at = specs.findIndex((spec) => spec.chapter === chapter)
+    return at === -1 ? chapter : (chapterNames[at] ?? chapter)
+  }
 
   const atFit = pps <= fit + 1e-9
   const atMax = pps >= MAX_PPS - 1e-9
@@ -982,8 +993,6 @@ export function Timeline({
         hintId={cutHintId}
       />
 
-      {editing.orderChanged && <Alert tone="info" role="note" title={ORDER_SAVED} />}
-
       {decorators === 'invalid' && <p className="tl-summary">{CARDS_UNKNOWN}</p>}
 
       {pictures.failures.map((failure) => (
@@ -991,7 +1000,7 @@ export function Timeline({
           key={failure.chapter}
           tone="warn"
           role="note"
-          title={`The title card for ${cardSubject(failure.chapter)} could not be drawn here.`}
+          title={`The title card for ${cardSubject(nameOfCard(failure.chapter))} could not be drawn here.`}
           detail={`${failure.message} Its title is shown on black.`}
         />
       ))}

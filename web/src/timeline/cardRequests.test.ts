@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { cardJobs, drawnOf } from './cardRequests.ts'
-import { cardPlacements } from './cards.ts'
+import { cardPlacements, draftCardSpecs } from './cards.ts'
 import type { CardSpec } from './cards.ts'
 
 const spec = (chapter: string, title: string, background = 'black', subtitle = ''): CardSpec => ({
@@ -47,6 +47,27 @@ describe('the Timeline’s card requests', () => {
     assert.deepEqual(cardJobs(long, cardPlacements(long, clips, 'on')), [])
     const lost: CardSpec[] = [{ chapter: '', card: null, error: 'no font' }]
     assert.deepEqual(cardJobs(lost, cardPlacements(lost, clips, 'on')), [])
+  })
+})
+
+describe('the card requests of the draft’s chapters (track-draft-order)', () => {
+  it('asks nothing for a chapter added while editing: it has no saved name to ask with', () => {
+    const saved = [spec('', 'Midsommar'), spec('Dag 2', 'Dag 2')]
+    const specs = draftCardSpecs(
+      saved,
+      [
+        { key: 'r0', readName: '', name: '', deleted: false },
+        { key: 'a1', readName: null, name: 'Morgon', deleted: false },
+        { key: 'r1', readName: 'Dag 2', name: 'Dag två', deleted: false },
+      ],
+      null,
+    )
+    const jobs = cardJobs(specs, cardPlacements(specs, clips, 'on'))
+    // The renamed chapter is asked by its saved name, with the title the rename gave it.
+    assert.deepEqual(jobs.map((job) => [job.chapter, job.request.card.title]), [
+      ['', 'Midsommar'],
+      ['Dag 2', 'Dag två'],
+    ])
   })
 })
 

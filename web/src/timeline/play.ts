@@ -58,7 +58,7 @@ export function stagesOf(map: CardMap, lay: Layout): Stage[] {
 /**
  * The position at a track time (cards counted): a card's elapsed time, or a clip's time on its
  * frame grid. A boundary is the later stage's start, before zero the first instant and past the
- * end the last frame. `names` are the chapters' saved names, by index.
+ * end the last frame. `names` are the drawn chapters' names, by index.
  */
 export function positionOnTrack(
   map: CardMap,
