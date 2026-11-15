@@ -30,7 +30,7 @@ never from the repo, with PUT/POST/DELETE intercepted. The layout targets are fi
   - notes and Delete's refusal stay as lines under the bar
   Verify with Playwright: the header is at most 36 px tall; the buttons are named "Move chapter Kvällen up" and so
   on; after Move up, focus stays on the button; Delete's refusal shows; the stacked page is unchanged.
-- [ ] 2.3 Drop the bin's new-clip line in the workspace, and add the "joins `reel.yaml` once…" sentence to the
+- [x] 2.3 Drop the bin's new-clip line in the workspace, and add the "joins `reel.yaml` once…" sentence to the
   Clips help while a new clip waits (design D5). Update `clipsHelp.test.ts`. Verify on `Badutflykt - Varberg` with
   Playwright: the top bar summary says "adds 1 new clip", and the line is gone.
 
