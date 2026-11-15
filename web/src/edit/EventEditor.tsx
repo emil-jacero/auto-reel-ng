@@ -1350,16 +1350,29 @@ export function EventEditor({
     if (answers === 0) {
       return
     }
+    // In the workspace a top bar that rests at the page's top (a short window, a large zoom)
+    // leaves the window as the page scrolls: a save started by Ctrl+S from a pane further down
+    // would leave its explanation out of sight. The explanation takes focus then, and comes
+    // into view with it.
+    const topBar = inWorkspace ? (barRef.current?.closest<HTMLElement>('.ws-top') ?? null) : null
+    const before = document.activeElement
+    const alert = alertRef.current
+    const unseen =
+      topBar !== null &&
+      topBar.hasAttribute('data-rests') &&
+      !(before instanceof HTMLElement && topBar.contains(before)) &&
+      alert !== null &&
+      !inWindow(alert)
     if (refusalRef.current !== null) {
       refusalRef.current.focus()
-    } else if (document.activeElement === null || document.activeElement === document.body) {
-      alertRef.current?.focus()
+    } else if (before === null || before === document.body || unseen) {
+      alert?.focus()
     }
     const focused = document.activeElement
     if (focused instanceof HTMLElement && focused !== document.body) {
       keepInView(focused, barRef.current)
     }
-  }, [answers])
+  }, [answers, inWorkspace])
 
   // After Reset the heading has focus (the bar went with its buttons) but the page may have
   // shrunk and scrolled, or sit far from the heading at the top. The scroll waits for the

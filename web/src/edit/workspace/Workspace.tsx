@@ -47,11 +47,14 @@ export function Workspace({
     }
   }, [])
 
-  // The top bar's height as drawn (`--ws-top-measured` on <html>): what notifications keep clear of
-  // and, where the panes stack, what the page's scroll padding and the sticky headings clear.
-  // Stacked, the bar wraps (and holds a save's explanation in flow); taller than two fifths of
-  // the window, or in a window under 28rem tall, it rests at the page's top instead of sticking
-  // (`data-rests`), as the stacked page's save bar does.
+  // The top bar's height as drawn (`--ws-top-measured` on <html>): where the panes stack, what
+  // the page's scroll padding and the sticky headings clear. Stacked, the bar wraps and holds a
+  // save's explanation in its flow; the bar without it taller than two fifths of the window, or
+  // a window under 28rem tall, and it rests at the page's top instead of sticking (`data-rests`),
+  // as the stacked page's save bar does. A sticking bar keeps to those two fifths: the
+  // explanation gets the rest (`--ws-alert-max`) and scrolls within itself, so a save's answer
+  // never makes the bar rest and leave the window. Notifications keep clear of the bar and of
+  // the explanation's panel under it in the wide frame (`--ws-toast-top`).
   useLayoutEffect(() => {
     const top = topRef.current
     if (top === null) {
@@ -61,13 +64,25 @@ export function Workspace({
     const measure = () => {
       const rem = parseFloat(getComputedStyle(root).fontSize)
       const stacked = window.matchMedia('(width < 960px)').matches
-      const rests =
-        stacked &&
-        (root.clientHeight < TOP_MIN_WINDOW_REM * rem ||
-          top.offsetHeight > root.clientHeight * TOP_MAX_SHARE)
+      const alert = top.querySelector<HTMLElement>('.save-bar-alert')
+      // The explanation's share of the bar: none in the wide frame, where it is a panel.
+      const margin =
+        stacked && alert !== null ? parseFloat(getComputedStyle(alert).marginBlockStart) || 0 : 0
+      const alertRoom = stacked && alert !== null ? alert.offsetHeight + margin : 0
+      const bar = top.offsetHeight - alertRoom
+      const share = root.clientHeight * TOP_MAX_SHARE
+      const rests = stacked && (root.clientHeight < TOP_MIN_WINDOW_REM * rem || bar > share)
       const rested = top.hasAttribute('data-rests')
       top.toggleAttribute('data-rests', rests)
+      if (stacked && !rests && alert !== null) {
+        top.style.setProperty('--ws-alert-max', `${Math.max(share - bar - margin, 3 * rem)}px`)
+      } else {
+        top.style.removeProperty('--ws-alert-max')
+      }
       root.style.setProperty('--ws-top-measured', `${rests ? 0 : top.offsetHeight}px`)
+      const panel = !stacked && alert !== null ? alert.getBoundingClientRect().bottom : null
+      const clear = panel === null ? top.offsetHeight : panel - top.getBoundingClientRect().top
+      root.style.setProperty('--ws-toast-top', `${Math.ceil(clear)}px`)
       // A bar that starts to rest leaves the window with the page: its focused control (Save,
       // a save's answer) is brought back into view.
       const focused = document.activeElement
@@ -75,14 +90,36 @@ export function Workspace({
         focused.scrollIntoView({ block: 'nearest' })
       }
     }
-    measure()
     const observer = new ResizeObserver(measure)
     observer.observe(top)
+    // The wide frame's panel takes no room in the bar: its coming, going and size are followed
+    // on their own.
+    let watched: HTMLElement | null = null
+    const watch = () => {
+      const alert = top.querySelector<HTMLElement>('.save-bar-alert')
+      if (alert !== watched) {
+        if (watched !== null) {
+          observer.unobserve(watched)
+        }
+        if (alert !== null) {
+          observer.observe(alert)
+        }
+        watched = alert
+        measure()
+      }
+    }
+    measure()
+    watch()
+    const mutations = new MutationObserver(watch)
+    mutations.observe(top, { childList: true, subtree: true })
     window.addEventListener('resize', measure)
     return () => {
       window.removeEventListener('resize', measure)
+      mutations.disconnect()
       observer.disconnect()
+      top.style.removeProperty('--ws-alert-max')
       root.style.removeProperty('--ws-top-measured')
+      root.style.removeProperty('--ws-toast-top')
     }
   }, [])
 

@@ -105,6 +105,28 @@ export function SaveBar({
   // With no edits the bar stays only for a vanished event's alert: it says so, not "unsaved".
   const unsaved = edited || unfinished
   const title = locked ? 'Saving…' : unsaved ? 'Unsaved changes' : 'This event no longer exists'
+  // Keyed by kind: another kind of failure is a new alert, never reused buttons. Over the
+  // status in the page; in the top bar after Reset and Save, as it is drawn (a panel under the
+  // bar, or under the save controls where the panes stack), so focus takes it in that order.
+  const alertView = problem !== null && (
+    <div
+      key={problem.kind}
+      ref={alertRef}
+      id={alertId}
+      className="save-bar-alert"
+      tabIndex={-1}
+    >
+      <SaveProblemAlert
+        problem={problem}
+        pressed={pressed}
+        blocked={unsendable}
+        describedBy={describedBy}
+        onReload={onReload}
+        onOverwrite={onOverwrite}
+        onRetry={onRetry}
+      />
+    </div>
+  )
   return (
     <div
       ref={barRef}
@@ -115,26 +137,7 @@ export function SaveBar({
       aria-label={unsaved ? 'Unsaved changes' : title}
     >
       <div className="save-bar-card">
-        {/* Keyed by kind: another kind of failure is a new alert, never reused buttons. */}
-        {problem !== null && (
-          <div
-            key={problem.kind}
-            ref={alertRef}
-            id={alertId}
-            className="save-bar-alert"
-            tabIndex={-1}
-          >
-            <SaveProblemAlert
-              problem={problem}
-              pressed={pressed}
-              blocked={unsendable}
-              describedBy={describedBy}
-              onReload={onReload}
-              onOverwrite={onOverwrite}
-              onRetry={onRetry}
-            />
-          </div>
-        )}
+        {variant === 'page' && alertView}
         <div className="save-bar-row">
           <div className="save-bar-text">
             <p className="save-bar-title">
@@ -179,6 +182,7 @@ export function SaveBar({
             </button>
           </div>
         </div>
+        {variant === 'top' && alertView}
       </div>
     </div>
   )
