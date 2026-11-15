@@ -141,10 +141,30 @@ export function withDurations(
 /** A resolved card, as `CardSpec.card` holds it. */
 export type ResolvedCard = NonNullable<CardSpec['card']>
 
-/** The words of a chapter added while editing whose card has nothing to be built from. */
-export function unsavedCardWords(chapterName: string): string {
-  return `Title card for ${chapterName}, shown after save`
+/**
+ * The words of a chapter added while editing whose card is a placeholder (no resolved card to
+ * build it from); the off look adds `, not enabled`, as `cardWords` does.
+ */
+export function unsavedCardWords(chapterName: string, off = false): string {
+  return `Title card for ${chapterName}, shown after save${off ? ', not enabled' : ''}`
 }
+
+/**
+ * What the card dialog of a chapter added in this Edit session says about its card: drawn as the
+ * event's card until a save (`built`), else drawn only after the save (a placeholder, or nothing
+ * to build it from). Its own settings are not held before the save (`setCard`).
+ */
+export function addedCardNote(unsaved: CardSpec['unsaved']): { title: string; detail?: string } {
+  return unsaved === 'built'
+    ? {
+        title: 'Until Save, its title card is drawn as the event’s.',
+        detail: 'Its own settings can be changed after Save.',
+      }
+    : { title: 'Its title card is drawn after Save.' }
+}
+
+/** Why an added chapter's card is not drawn: no resolved card and no event style to build it from. */
+export const NOTHING_TO_BUILD = 'no card of the event and no event style to build it from until a save'
 
 /**
  * The card of a chapter added in this Edit session, which the service has not resolved: `base`
@@ -175,7 +195,8 @@ export function synthCard(base: ResolvedCard, style: EventStyle | null, name: st
  * - A chapter added in this session gets `synthCard` of the opening card, else the first
  *   resolved one (`unsaved: 'built'`); with none, a placeholder of the event style's length and
  *   background (`unsaved: 'placeholder'`, `unsavedCardWords`); with no style either, it is
- *   unresolved. Its `chapter` is its selection id (`cardIdOf`), as it has no saved name.
+ *   unresolved (`NOTHING_TO_BUILD`). Its `chapter` is its selection id (`cardIdOf`), as it has
+ *   no saved name.
  */
 export function draftCardSpecs(
   specs: readonly CardSpec[],
@@ -224,7 +245,7 @@ export function draftCardSpecs(
         unsaved: 'placeholder',
       })
     } else {
-      out.push({ chapter: id, card: null, error: unsavedCardWords(chapter.name) })
+      out.push({ chapter: id, card: null, error: NOTHING_TO_BUILD })
     }
   }
   return out
@@ -575,7 +596,9 @@ export function cardWidthMs(handle: Pick<CardHandle, 'background' | 'keptMs'>, t
 
 /**
  * One handle per drawn block (`cardBlocks`), with the limits its card has. `names` are the drawn
- * chapters' names by index (the draft's in Edit mode); absent, the specs' saved names.
+ * chapters' names by index (the draft's in Edit mode); absent, the specs' saved names. A card of
+ * a chapter added in this Edit session (`unsaved`) has no handle: the draft holds no card edit of
+ * such a chapter (`setCard`), so its length is the event's until a save resolves it.
  */
 export function cardHandles(
   placements: readonly Placement[],
@@ -590,6 +613,10 @@ export function cardHandles(
       continue
     }
     const block = blocks[at]
+    if (specs[place.chapter].unsaved !== undefined) {
+      at += 1
+      continue
+    }
     const tenths = Math.round(place.durationMs / 100)
     handles.push({
       index: at,

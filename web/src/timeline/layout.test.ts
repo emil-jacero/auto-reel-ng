@@ -21,6 +21,7 @@ import {
 import type { FilmGeometry, ShownClip } from './layout.ts'
 import { timeToPx } from './model.ts'
 import { cardMap } from './cards.ts'
+import { nextClip } from './follow.ts'
 import { trackStart } from './play.ts'
 import { timedOf } from './position.ts'
 import { posterFromPlayhead } from '../edit/poster.ts'
@@ -154,17 +155,27 @@ describe('draftClips (track-draft-order)', () => {
     assert.deepEqual(drawn.names, ['', 'Kvällen'])
   })
 
-  it('plays, measures and takes a poster in the drawn order', () => {
+  it('plays from 0 clip after clip in the drawn order, and takes the poster of the clip shown', () => {
+    // The track clips handed to the Timeline's video (`useTimelineVideo`); its hook itself and
+    // the browser's playback are checked in the browser (task 3.1).
     const orders: Orders = new Map([...savedOrders, ['r0', ['s1710002.mp4', 's1710001.mp4', 's1710003.mp4']]])
     const drawn = trackClips(draftClips(live, saved, orders).clips, null)
-    const asRead = trackClips(draftClips(live, saved, savedOrders).clips, null)
-    assert.ok(drawn !== null && asRead !== null)
-    // Play from 0 starts at the clip the draft puts first.
+    assert.ok(drawn !== null)
     const lay = trackLayout(drawn)
     const start = trackStart(cardMap([], lay), lay, drawn.map(timedOf), ['', 'Kvällen'])
-    assert.equal(drawn[start.clip].identity, 's1710002.mp4')
-    // The movie's length is the same clips' however ordered; the poster is the clip under the playhead.
-    assert.equal(movieMs(drawn, null), movieMs(asRead, null))
+    // Each clip's end hands over to the one after it, as the hook's follow does (`nextClip`).
+    const playable = drawn.map((c) => ({ durationMs: c.facts.durationMs, spans: c.spans }))
+    const played = [drawn[start.clip].identity]
+    for (let at = nextClip(playable, start.clip); at !== null; at = nextClip(playable, at.clip)) {
+      played.push(drawn[at.clip].identity)
+    }
+    assert.deepEqual(played, [
+      's1710002.mp4',
+      's1710001.mp4',
+      's1710003.mp4',
+      'Kvällen/s1710004.mp4',
+      'Kvällen/s1710005.mp4',
+    ])
     const pick = posterFromPlayhead(drawn, { clip: 1, ms: 2000 }, { locked: false, held: false, frame: true })
     assert.deepEqual(pick, { pick: { clip: 's1710001.mp4', at: 2 } })
   })

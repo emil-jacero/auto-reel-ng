@@ -135,7 +135,7 @@ const CardBlockButton = memo(function CardBlockButton({
   const durationMs = live === null ? block.durationMs : live.tenths * 100
   const widthPx = cardBlockPx(timeToPx(widthMs, pps))
   const words = placeholder
-    ? unsavedCardWords(label)
+    ? unsavedCardWords(label, block.off)
     : cardWords(label, {
         durationMs,
         widthMs,

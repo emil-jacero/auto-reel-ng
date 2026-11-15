@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 
 import {
+  NOTHING_TO_BUILD,
+  addedCardNote,
   bandStartMs,
   cardBlockPx,
   cardBlocks,
@@ -481,10 +483,20 @@ describe('the draft’s chapters’ cards (track-draft-order)', () => {
     assert.equal(morgon.unsaved, 'placeholder')
     assert.equal(morgon.card?.duration, 3)
     assert.equal(unsavedCardWords('Morgon'), 'Title card for Morgon, shown after save')
-    // Without the style’s length either, nothing is guessed: the card is not resolved, and says so.
+    // The off look says so, as every off block does.
+    assert.equal(unsavedCardWords('Morgon', true), 'Title card for Morgon, shown after save, not enabled')
+    // Without the style’s length either, nothing is guessed: the card is not resolved, and says
+    // why in words of its own (the note names the chapter), not the placeholder's.
     const [bare] = draftCardSpecs(none, [added('a1', 'Morgon')], null)
     assert.equal(bare.card, null)
-    assert.equal(bare.error, 'Title card for Morgon, shown after save')
+    assert.equal(bare.error, NOTHING_TO_BUILD)
+    assert.ok(!NOTHING_TO_BUILD.includes('Title card for'))
+  })
+
+  it('the dialog of an added chapter says how its card is drawn until Save', () => {
+    assert.equal(addedCardNote('built').title, 'Until Save, its title card is drawn as the event’s.')
+    assert.equal(addedCardNote('placeholder').title, 'Its title card is drawn after Save.')
+    assert.equal(addedCardNote(undefined).title, 'Its title card is drawn after Save.')
   })
 
   it('names each handle by the chapter’s name now, keeping the saved name or the id to edit by', () => {
@@ -500,15 +512,33 @@ describe('the draft’s chapters’ cards (track-draft-order)', () => {
     const blocks = cardBlocks(placements, trackLayout(lay, cardMap(placements, lay)))
     const handles = cardHandles(placements, blocks, specs, names)
     assert.deepEqual(
-      handles.map((handle) => [handle.chapter, handle.name]),
+      handles.map((handle) => [handle.chapter, handle.name, handle.index]),
       [
-        ['', ''],
-        ['Kvällen', 'Kväll vid havet'],
-        ['\u0000added:a1', 'Morgon'],
+        ['', '', 0],
+        ['Kvällen', 'Kväll vid havet', 1],
       ],
     )
     // Without the draft's names (the saved order), a handle is named by its saved name.
     assert.equal(cardHandles(placements, blocks, specs)[1].name, 'Kvällen')
+  })
+
+  it('offers no handle on an added chapter’s card, whose length the draft cannot hold', () => {
+    // Morgon (added) before Kvällen: Kvällen's handle keeps the index of its own block.
+    const specs = draftCardSpecs(saved, [read('r0', ''), added('a1', 'Morgon'), read('r1', 'Kvällen')], null)
+    const clips = [clip(0, 10_000), clip(1, 10_000), clip(2, 10_000)]
+    for (const decorators of ['on', 'off'] as const) {
+      const placements = cardPlacements(specs, clips, decorators)
+      const lay = layout(clips.map((c) => ({ durationMs: c.durationMs, fps: 25 })))
+      const blocks = cardBlocks(placements, trackLayout(lay, cardMap(placements, lay)))
+      assert.equal(blocks.length, 3)
+      assert.deepEqual(
+        cardHandles(placements, blocks, specs).map((handle) => [handle.chapter, handle.index]),
+        [
+          ['', 0],
+          ['Kvällen', 2],
+        ],
+      )
+    }
   })
 })
 

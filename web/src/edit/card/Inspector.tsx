@@ -5,6 +5,7 @@ import type { KeyboardEvent, RefObject } from 'react'
 
 import type { Font } from '../../api/fonts.ts'
 import type { CardRange } from '../../timeline/cardLength.ts'
+import { addedCardNote } from '../../timeline/cards.ts'
 import type { CardSpec } from '../../timeline/cards.ts'
 import { Alert } from '../../ui/Alert'
 import { Icon } from '../../ui/Icon'
@@ -70,6 +71,7 @@ export function CardInspectorPanel({
   view,
   editing,
   spec,
+  unsaved,
   backdrop,
   lengthRange,
   gate,
@@ -82,6 +84,8 @@ export function CardInspectorPanel({
   editing: CardEditing
   /** The card as the draft would have it drawn, for the error it may carry. */
   spec: CardSpec | undefined
+  /** How the Timeline draws the card of a chapter added in this Edit session (`draftCardSpecs`). */
+  unsaved: CardSpec['unsaved']
   /** The clip a video card sits over, or null when there is none to show. */
   backdrop: Backdrop | null
   /** The limits of the card's length: the Timeline's drag has the same. */
@@ -194,9 +198,7 @@ export function CardInspectorPanel({
       {view.refusal !== null && view.refusal.field === null && (
         <Alert tone="err" title="The service refused this card." detail={view.refusal.message} />
       )}
-      {view.added && (
-        <Alert tone="info" role="note" title="Its title card is drawn after Save." />
-      )}
+      {view.added && <Alert tone="info" role="note" {...addedCardNote(unsaved)} />}
       {off && (
         <Alert
           tone="info"

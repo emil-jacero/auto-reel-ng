@@ -27,7 +27,7 @@ export type CardView = {
   folderTitle: string | null
   /** The service's refusal of the last save for this card, and the field it names. */
   refusal: { field: CardField | null; message: string } | null
-  /** A chapter added in this Edit mode: its card is drawn after Save, and the dialog says so. */
+  /** A chapter added in this Edit mode: the dialog says how its card is drawn until Save (`addedCardNote`). */
   added: boolean
 }
 
