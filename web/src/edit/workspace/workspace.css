@@ -175,6 +175,13 @@
     color: var(--fg-muted);
   }
 
+  /* The poster area's two columns follow the window's width (poster.css): in the inspector's
+     340px they would leave the actions a column of no width, Use default sticking out of the
+     pane. One column here: the cover, then its state and actions. */
+  .ws-insp .poster-area {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .ws-tl {
     grid-area: tl;
     border-block-start: 1px solid var(--border);

@@ -141,11 +141,22 @@
     min-inline-size: 0;
   }
 
+  /* Narrow (a phone): the readout takes a row of its own under Play and the clip steps, so its
+     unbreakable time pairs never reach past the Timeline and scroll the page sideways. */
   .tl-controls.tl-transport {
     grid-template-columns: auto auto minmax(0, 1fr);
     grid-template-areas:
-      'play step readout'
+      'play step .'
+      'readout readout readout'
       'poster poster poster';
+  }
+
+  @container tl (min-width: 28rem) {
+    .tl-controls.tl-transport {
+      grid-template-areas:
+        'play step readout'
+        'poster poster poster';
+    }
   }
 
   .tl-clip-step {
