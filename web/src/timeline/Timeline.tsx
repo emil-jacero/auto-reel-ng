@@ -3,6 +3,7 @@ import './timeline.css'
 import type { ReactNode } from 'react'
 import {
   useCallback,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -12,7 +13,10 @@ import {
   useSyncExternalStore,
 } from 'react'
 
+import { createPortal } from 'react-dom'
+
 import '../rotate/rotate.css'
+import { TimelinePanesContext } from './panes'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
 import { CutFields } from './CutFields'
@@ -169,9 +173,29 @@ export type TimelineParts = {
   cutSelected: boolean
 }
 
-/** Today's stacked Timeline: the three parts one under the other. */
+/**
+ * The Timeline: in Edit mode's workspace the viewer and the cut panel go to their panes (portals:
+ * still one tree and one state), the track stays here; without one, the three are stacked.
+ */
 export function Timeline(props: TimelineProps) {
   const parts = useTimeline(props)
+  const panes = useContext(TimelinePanesContext)
+  const cutSelected = parts.cutSelected
+  const onCutSelected = panes?.onCutSelected
+  useEffect(() => {
+    if (cutSelected) {
+      onCutSelected?.()
+    }
+  }, [cutSelected, onCutSelected])
+  if (panes !== null && panes.viewer !== null && panes.cut !== null) {
+    return (
+      <>
+        {createPortal(parts.viewer, panes.viewer)}
+        {parts.track}
+        {createPortal(parts.cutPanel, panes.cut)}
+      </>
+    )
+  }
   return (
     <div className="tl-parts">
       {parts.viewer}

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 /*
  * The operator's color scheme: System (follow the operating system), Light or
@@ -41,6 +41,9 @@ export function readThemeChoice(): ThemeChoice {
   }
 }
 
+/** Told to every theme control on the page when the choice changes. */
+const THEME_EVENT = 'auto-reel:theme-choice'
+
 /** Apply a choice to the page, then store it (System removes the stored key). */
 export function applyThemeChoice(choice: ThemeChoice): void {
   const root = document.documentElement
@@ -59,6 +62,8 @@ export function applyThemeChoice(choice: ThemeChoice): void {
   } catch {
     // Storage refused: the choice still holds for this page.
   }
+  // Every control on the page follows (the app header's and the workspace's top bar's).
+  window.dispatchEvent(new CustomEvent<ThemeChoice>(THEME_EVENT, { detail: choice }))
 }
 
 /** The current choice, and a setter that applies and stores it. */
@@ -67,6 +72,15 @@ export function useThemeChoice(): [ThemeChoice, (choice: ThemeChoice) => void] {
   const choose = useCallback((next: ThemeChoice) => {
     applyThemeChoice(next)
     setChoice(next)
+  }, [])
+  useEffect(() => {
+    const follow = (event: Event) => {
+      if (event instanceof CustomEvent) {
+        setChoice(event.detail as ThemeChoice)
+      }
+    }
+    window.addEventListener(THEME_EVENT, follow)
+    return () => window.removeEventListener(THEME_EVENT, follow)
   }, [])
   return [choice, choose]
 }

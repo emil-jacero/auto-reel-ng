@@ -1,0 +1,282 @@
+/* Edit mode's workspace (`Workspace.tsx`, `editor-workspace-layout` D1). Tokens only. */
+@layer screens {
+  /* The workspace has its own top bar: the app header steps aside while it is shown. */
+  html[data-workspace] .app-header {
+    display: none;
+  }
+
+  .ws {
+    /* No app header above the panes: a sticky panel heading sticks to its pane's top. */
+    --header-h: 0px;
+    --ws-top-h: 3rem;
+    --ws-bin-w: 240px;
+    --ws-insp-w: 340px;
+
+    display: grid;
+    grid-template:
+      'top top top' auto
+      'bin view insp' minmax(0, 1fr)
+      'tl tl tl' minmax(280px, 38vh) / var(--ws-bin-w) minmax(0, 1fr) var(--ws-insp-w);
+    block-size: 100dvh;
+    background: var(--bg);
+    color: var(--fg);
+  }
+
+  .ws-top {
+    grid-area: top;
+    position: relative;
+    z-index: 6;
+    min-block-size: var(--ws-top-h);
+    border-block-end: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .ws-pane {
+    /* The containing block of what a pane positions (a visually hidden text, a tip): none of it
+       reaches past the pane and scrolls the page. */
+    position: relative;
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    /* Focus scrolled into view keeps clear of the pane's sticky heading. */
+    scroll-padding-block: calc(var(--panel-head-h) + var(--s-2)) var(--s-2);
+  }
+
+  .ws-bin {
+    grid-area: bin;
+    border-inline-end: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .ws-view {
+    grid-area: view;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    padding: var(--s-3);
+  }
+
+  /* The viewer's own words (reading, a failure, Prepare) give way to the Timeline's picture. */
+  .ws-view-empty {
+    grid-area: 1 / 1;
+    align-self: center;
+    justify-self: center;
+    max-inline-size: 36rem;
+    color: var(--fg-muted);
+  }
+
+  .ws-view:has(.tl-viewer) .ws-view-empty {
+    display: none;
+  }
+
+  .ws-view-slot {
+    grid-area: 1 / 1;
+    display: grid;
+    min-block-size: 0;
+
+    &:empty {
+      display: none;
+    }
+  }
+
+  .ws-insp {
+    grid-area: insp;
+    border-inline-start: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .ws-tl {
+    grid-area: tl;
+    border-block-start: 1px solid var(--border);
+  }
+
+  /* Narrower windows: one column, the page scrolls, the top bar stays (design D1). */
+  @media (width < 960px) {
+    html[data-workspace] {
+      --header-h: var(--ws-top-h, 3rem);
+    }
+
+    .ws {
+      --header-h: 3rem;
+
+      display: flex;
+      flex-direction: column;
+      block-size: auto;
+      min-block-size: 100dvh;
+    }
+
+    .ws-top {
+      position: sticky;
+      inset-block-start: 0;
+    }
+
+    .ws-pane {
+      overflow: visible;
+      border: 0;
+      border-block-start: 1px solid var(--border);
+    }
+
+    .ws-view {
+      order: 1;
+    }
+
+    .ws-tl {
+      order: 2;
+    }
+
+    .ws-insp {
+      order: 3;
+    }
+
+    .ws-bin {
+      order: 4;
+    }
+  }
+
+  /* Notifications sit over the top of the picture, clear of the top bar and every pane's controls. */
+  @media (width >= 960px) {
+    html[data-workspace] .toast-region {
+      inset-block-start: calc(var(--ws-top-h, 3rem) + var(--s-3));
+      inset-block-end: auto;
+      inset-inline: calc(240px + var(--s-3)) calc(340px + var(--s-3));
+      inline-size: auto;
+      max-inline-size: 24rem;
+      margin-inline: auto;
+    }
+  }
+}
+
+/* The top bar (`TopBar.tsx`) and the save bar in its top form (`SaveBar` variant `top`, D4). */
+@layer screens {
+  .ws-topbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2) var(--s-3);
+    min-block-size: var(--ws-top-h, 3rem);
+    padding: var(--s-1) var(--s-3);
+  }
+
+  .ws-title {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: baseline;
+    gap: var(--s-2);
+    min-inline-size: 0;
+
+    & h1 {
+      overflow: hidden;
+      font-size: var(--text-md, 1rem);
+      font-weight: 600;
+      line-height: var(--lh-tight);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .ws-facts {
+    overflow: hidden;
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The save controls take the room between the title and Done. */
+  .ws-save {
+    display: flex;
+    flex: 1 1 14rem;
+    justify-content: flex-end;
+    min-inline-size: 0;
+  }
+
+  .save-bar[data-variant='top'] {
+    position: static;
+    flex: 1 1 auto;
+    padding: 0;
+    pointer-events: auto;
+
+    & .save-bar-card {
+      display: block;
+      padding: 0;
+      border: 0;
+      background: none;
+      box-shadow: none;
+    }
+
+    & .save-bar-row {
+      flex-wrap: nowrap;
+      justify-content: flex-end;
+    }
+
+    & .save-bar-text {
+      display: flex;
+      flex: 0 1 auto;
+      align-items: baseline;
+      gap: var(--s-2);
+      overflow: hidden;
+    }
+
+    & .save-bar-summary {
+      overflow: hidden;
+      padding: 0;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    & .save-bar-actions {
+      flex-wrap: nowrap;
+      margin-inline-start: 0;
+    }
+
+    /* A conflict's or a failure's explanation: a panel under the top bar, never over the Timeline. */
+    & .save-bar-alert {
+      position: absolute;
+      inset-block-start: calc(100% + var(--s-2));
+      inset-inline: var(--s-3);
+      z-index: 7;
+      max-block-size: 40vh;
+      overflow: auto;
+      border-radius: var(--r-lg);
+      background: var(--surface-raised);
+      box-shadow: var(--shadow-lg);
+    }
+  }
+
+  .ws-done {
+    flex: none;
+  }
+
+  @media (width < 960px) {
+    .ws-title {
+      flex: 1 1 10rem;
+    }
+
+    .save-bar[data-variant='top'] .save-bar-row {
+      flex-wrap: wrap;
+    }
+
+    .save-bar[data-variant='top'] .save-bar-text {
+      flex: 1 1 8rem;
+    }
+  }
+}
+
+/* The viewer: the picture as large as the pane allows at 16:9, the transport under it. */
+@layer screens {
+  @media (width >= 960px) {
+    .ws-view .tl-viewer {
+      grid-template-rows: minmax(0, 1fr) auto;
+      align-content: stretch;
+      block-size: 100%;
+    }
+
+    .ws-view .tl-stage {
+      justify-self: center;
+      inline-size: auto;
+      max-inline-size: 100%;
+      block-size: 100%;
+      min-block-size: 0;
+    }
+  }
+}

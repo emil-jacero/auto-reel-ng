@@ -22,7 +22,7 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 2. Workspace frame (web/src/edit/workspace, web/src/events)
 
-- [ ] 2.1 Add `Workspace` (grid, panes, CSS for light and dark, stacking below 960 px) and render it from
+- [x] 2.1 Add `Workspace` (grid, panes, CSS for light and dark, stacking below 960 px) and render it from
   `EventDetail` in Edit mode with the app header hidden (design D1). Verify `npm run check` and a Playwright
   screenshot at 1440×900, 1280×720 and 390 px, both themes.
 - [ ] 2.2 Top bar: move `SaveBar` states into it (design D4), title/date/location, back control, theme switch.
