@@ -108,11 +108,16 @@ spec is merged. Proposed 2026-11-15 under `openspec/changes/`.
 | # | Change | Covers | Depends on | Size |
 |---|---|---|---|---|
 | 0 | `track-draft-order` ✅ built 2026-11-15 | the track draws the draft's order and chapters; cards of added chapters built in the browser | — | 1–2 days |
-| 1 | `editor-workspace-layout` | 1.x, 2.1/2.3/2.4, 3.1–3.3, 4.x, inspector Event/Cut tabs, 6.1–6.3, 6.7, 6.9, 6.10 | 0 | 2–3 days |
+| 1 | `editor-workspace-layout` ✅ built 2026-11-15 (HLD D-28) | 1.x, 2.1/2.3/2.4, 3.1–3.3, 4.x, inspector Event/Cut tabs, 6.1–6.3, 6.7, 6.9, 6.10 | 0 | 2–3 days |
 | 2 | `editor-selection` | one selection, 3.2, 5.x (Clip tab, docked card editor), 6.11 | 1 | 1–2 days |
 | 3 | `track-drag-edit` | 3.4, 6.4, 6.8, keyboard moves | 2 | 1–2 days |
 | 4 | `editor-undo` | 2.2 | 1 | 1 day |
 | 5 | `clip-split` | 6.12 — starts with a decision gate (explore with the user) | 3 | open |
+
+Slice 1 as built (2026-11-15) left out four features of its "Covers" list, none of them in the change's tasks:
+1.2 (the workspace follows the operator's theme rather than defaulting to dark, as the explore session decided),
+4.2 (the proxy chip), 4.5's full screen (Use as poster is there) and 6.3's lane labels. They are open for a later
+slice.
 
 Decisions from the explore session (2026-11-15): no List/Workspace switch (the bin replaces the lists); target
 1280×720, not critical; light and dark both, following the existing theme setting; an added chapter's card is built

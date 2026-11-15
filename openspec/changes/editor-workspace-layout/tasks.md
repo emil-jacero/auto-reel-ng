@@ -67,6 +67,6 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
   the poster area's window-width two columns put Use default 91 px outside the pane (one column there). Bundle (`vite
   build`, `origin/main` -> this branch): JS 665.78 kB (gzip 215.85) -> 677.79 kB (gzip 219.04), +12.01 kB (+3.19
   gzip); CSS 95.71 kB (gzip 18.14) -> 105.07 kB (gzip 19.91), +9.36 kB (+1.77 gzip); index.html 1.48 kB unchanged.
-- [ ] 4.2 HLD: new D-n "Edit mode is a workspace" (frame, panes, no List view) and §6 item 10 note; tick slice 1 in
+- [x] 4.2 HLD: new D-n "Edit mode is a workspace" (frame, panes, no List view) and §6 item 10 note; tick slice 1 in
   `docs/editor-workspace.md`.
 - [ ] 4.3 Gates: `npm test`, `npm run check`, `npm run build` in podman; `openspec validate editor-workspace-layout --strict`.

@@ -17,7 +17,8 @@ edit means scrolling. This change is slice 1 of the workspace (HLD §6 item 10, 
     drag and keyboard reorder, moves between chapters, marks and Move marked to…, Add chapter, and the New,
     Ignored and Missing clips.
   - Viewer: the Timeline's picture and transport (play, previous / next clip, time readout, Use as poster).
-  - Inspector: tabs picked by hand — **Event** (Details form, Poster, Title cards On/Off, card style) and **Cut**
+  - Inspector: tabs picked by hand — **Event** (Details form, Poster, and a button that opens the card dialog on
+    "All title cards in this event", where the card style and Title cards On/Off stay) and **Cut**
     (the selected cut's fields and the selected suggestion's decision, as today below the track).
   - Timeline: tool row (Trim In/Out, Snap, zoom, Fit, movie stats) and the lanes, as today.
 - **Light and dark** both, following the operator's theme.
