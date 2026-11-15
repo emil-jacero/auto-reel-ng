@@ -3,12 +3,12 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 0. Gate
 
-- [ ] 0.1 Dependency gate — `track-draft-order` MUST be finished. From the repo root all three must succeed:
+- [x] 0.1 Dependency gate — `track-draft-order` MUST be finished. From the repo root all three must succeed:
   `test ! -d openspec/changes/track-draft-order` (not active),
   `git ls-tree -d --name-only main openspec/changes/archive/ | grep -q -- '-track-draft-order$'` (archived on `main`),
   `grep -q "Requirement: The Edit-mode Timeline draws the draft" openspec/specs/event-timeline/spec.md` (spec merged).
   If any fails, STOP: do not start this change; report which check failed and that `track-draft-order` comes first.
-- [ ] 0.2 Spec freshness: re-read the main `web-app` and `event-timeline` specs; confirm the MODIFIED/REMOVED headers
+- [x] 0.2 Spec freshness: re-read the main `web-app` and `event-timeline` specs; confirm the MODIFIED/REMOVED headers
   above still exist verbatim, and list every other `web-app` requirement that assumes the stacked page (sticky
   panels, focus scrolled into view, save bar at the bottom). Add REMOVED/MODIFIED blocks for them here before 1.1.
 
