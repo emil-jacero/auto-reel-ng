@@ -785,6 +785,11 @@ export function ChapterDrag({
           refused.current = identity
         }
       }
+      // A drop that changed nothing leaves the row where the keyboard drag scrolled it, which
+      // may be under the bin's sticky toolbar and heading: bring it back as a cancel does.
+      if (dropped.current === null) {
+        cancelled.current = identity
+      }
     },
     [dropOf, onDropGroup, onDropInto, onReorder, releasedOver],
   )
