@@ -36,10 +36,10 @@ never from the repo, with PUT/POST/DELETE intercepted. The layout targets are fi
 
 ## 3. Verification and docs
 
-- [ ] 3.1 Pass bar with Playwright on `Två kapitel - Tjörn`, fine pointer, nothing marked, both themes:
+- [x] 3.1 Pass bar with Playwright on `Två kapitel - Tjörn`, fine pointer, nothing marked, both themes:
   - at least 3 whole clip rows visible at 1280×720, all 4 at 1440×900
   - screenshots at 1280×720, 1440×900 and 390 px
-- [ ] 3.2 Docs:
+- [x] 3.2 Docs:
   - `docs/editor-workspace.md`: note the bin's width and the compact tools under slice 1, and update 1.4's "bin
     240 px"
   - HLD D-28: one line on the bin's width
