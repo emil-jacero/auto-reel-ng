@@ -598,7 +598,7 @@
     }
 
     &[data-selected]::after {
-      content: '\2713';
+      content: '\2713' / '';
       position: absolute;
       inset-block-start: 3px;
       inset-inline-end: 3px;

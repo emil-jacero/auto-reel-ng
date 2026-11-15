@@ -490,8 +490,9 @@ const ClipRow = memo(function ClipRow({
     },
     [setNodeRef],
   )
-  // Only a change to selected scrolls: a row that mounts already selected (a reorder into another
-  // chapter, or a StrictMode remount) stays put.
+  // Only a change to selected (or to selectable while selected is not new) scrolls: a row that
+  // mounts already selected (a reorder into another chapter, or a StrictMode remount) stays put,
+  // and so does one that becomes selectable while already selected.
   const wasSelected = useRef(selected)
   useEffect(() => {
     if (selectable && selected && !wasSelected.current) {

@@ -473,8 +473,8 @@ primary pointer is coarse. The tab SHALL be disabled with Edit mode's other edit
 
 The editor's one live preview, drawn by the service from the draft (not the saved) style and the card being edited, SHALL show an
 event-style edit at once, under the same rules as the card preview: debounced, a stale request cancelled, the previous image kept while the next
-loads, and a failure told in words. When the service cannot resolve the saved event style (the event detail's `title_card_error`), the docked editor shows this tab
-showing that error in words and the stored values as typed, so the operator can correct them.
+loads, and a failure told in words. When the service cannot resolve the saved event style (the event detail's `title_card_error`), the docked editor SHALL show this tab
+with that error in words and the stored values as typed, so the operator can correct them.
 
 #### Scenario: Setting a font and a colour for every card
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn` in Edit mode, the operator selects the card of Main ("Edit title card for Main"), chooses the tab "All title cards in this event",
@@ -497,7 +497,7 @@ showing that error in words and the stored values as typed, so the operator can 
 
 #### Scenario: A style the engine refuses is told and correctable
 - **WHEN** the event's `look.title_card.position` is hand-written as `middle` and the operator selects a title card
-- **THEN** the docked editor shows "All title cards in this event" showing the service's refusal naming `position` and `middle` in the field, and
+- **THEN** the docked editor shows "All title cards in this event", with the service's refusal naming `position` and `middle` in the field, and
   choosing `center` clears the refusal
 
 #### Scenario: The control is usable at a narrow width

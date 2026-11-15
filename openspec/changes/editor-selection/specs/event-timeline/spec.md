@@ -10,10 +10,6 @@ end when its target is gone. The selected thing SHALL be shown selected in more 
 - **WHEN** `s1710003.mp4` is selected and the operator presses the "Kvällen" card block
 - **THEN** the card is selected, the clip is no longer outlined, and the inspector shows the Title card tab
 
-#### Scenario: Keyboard and names
-- **WHEN** a keyboard user tabs to the "Dag 2" block and presses Space
-- **THEN** it is selected, a screen reader says "Title card for Dag 2, 4.0 s, over video, pressed", and the polite status says it once
-
 #### Scenario: Target deleted
 - **WHEN** the selected card's chapter is deleted
 - **THEN** nothing is selected and the inspector shows the Event tab
@@ -25,12 +21,16 @@ The selected thing SHALL be shown as a block, a row or a button as pressed (`ari
 The selection SHALL be announced once, through the polite status region, when it changes to something, and the page SHALL have no visible line naming it besides the selected thing's own name. Pressing the selected thing again SHALL leave it selected. Reading a selection SHALL make no request and SHALL NOT mark the page changed.
 
 #### Scenario: Selection announced once
-- **WHEN** the operator selects a clip
-- **THEN** the polite status says so once and no visible line names the selection
+- **WHEN** the operator selects the "Kvällen" card block
+- **THEN** the polite status says so once and no visible line names the selection (the other kinds follow with the inspector, task 3.1)
 
 ### Requirement: A card block is a button with a name in words
 
 A title card's block and its chapter's Edit Titlecard button SHALL both show a selected card, as pressed. A card block SHALL be a button reached by Tab in document order, pressed by Enter or Space, named in words as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default chapter: "Title card for the opening, …"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", not enabled").
+
+#### Scenario: Keyboard and names
+- **WHEN** a keyboard user tabs to the "Dag 2" block and presses Space
+- **THEN** it is selected, a screen reader says "Title card for Dag 2, 4.0 s, over video, pressed", and the polite status says it once
 
 #### Scenario: A card block's name
 - **WHEN** the "Dag 2" card, 4.0 s over video, is selected
@@ -260,7 +260,7 @@ A proxy whose playing fails SHALL be said by cause, as the clip preview says it:
 
 ### Requirement: The Timeline is accessible, fits every width and respects the color scheme
 
-The Timeline SHALL expose its structure to assistive technology: the section is a region named "Timeline"; the chapter band is a list of chapters; each clip is a button named as the page names it (pressed while selected), with its length and the number of its cuts in its description, and its block's other content is not announced a second time; the title cards are buttons named as "One selection in the workspace" says; the playhead is a slider; each cut span inside a clip's block keeps its text alternative ("Cut 2.0 to 4.0 s, black") and is exposed, so the block's picture is hidden from assistive technology but its cuts are not. The state of a clip's proxy, of a cut's reason and of the Play button SHALL never be shown by color alone: it SHALL be words, a pattern or an icon with a name. Text and controls SHALL meet the contrast the rest of the page meets, in the light and in the dark scheme, which SHALL follow the page's scheme choice. Every width from 320 to 1280 px SHALL fit without a horizontal scroll bar on the page. With `prefers-reduced-motion: reduce` the Timeline SHALL not animate: no smooth scrolling, no transitions on the playhead or the zoom, and the progress of a job SHALL change without easing. Touch targets under a coarse pointer SHALL be 44 px.
+The Timeline SHALL expose its structure to assistive technology: the section is a region named "Timeline"; the chapter band is a list of chapters; each clip is a button named as the page names it (pressed while selected), with its length and the number of its cuts in its description, and its block's other content is not announced a second time; the title cards are buttons named as "A card block is a button with a name in words" says; the playhead is a slider; each cut span inside a clip's block keeps its text alternative ("Cut 2.0 to 4.0 s, black") and is exposed, so the block's picture is hidden from assistive technology but its cuts are not. The state of a clip's proxy, of a cut's reason and of the Play button SHALL never be shown by color alone: it SHALL be words, a pattern or an icon with a name. Text and controls SHALL meet the contrast the rest of the page meets, in the light and in the dark scheme, which SHALL follow the page's scheme choice. Every width from 320 to 1280 px SHALL fit without a horizontal scroll bar on the page. With `prefers-reduced-motion: reduce` the Timeline SHALL not animate: no smooth scrolling, no transitions on the playhead or the zoom, and the progress of a job SHALL change without easing. Touch targets under a coarse pointer SHALL be 44 px.
 
 #### Scenario: The structure reads in order
 - **WHEN** a screen reader walks the open Timeline of an event with two chapters and three clips
