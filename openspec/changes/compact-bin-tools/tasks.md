@@ -48,9 +48,9 @@ never from the repo, with PUT/POST/DELETE intercepted. The layout targets are fi
 
 ## 4. Round 2 (decisions 1a and 2b, review leftovers)
 
-- [ ] 4.1 Toolbar at most 88 px including its border (design D2): take 1 px off the bin toolbar's padding. Verify with
+- [x] 4.1 Toolbar at most 88 px including its border (design D2): take 1 px off the bin toolbar's padding. Verify with
   Playwright: the toolbar's bounding box is 88 px or less, fine pointer, before and after a mark.
-- [ ] 4.2 Decision 2b (design D6):
+- [x] 4.2 Decision 2b (design D6):
   - `web/src/edit/wideBin.ts`: `WIDE_BIN`, `useWideBin()` and the pure `ignoredGroups` helper, with `wideBin.test.ts`
     (Tjörn gives one group `Main`; named chapters group in chapter order; a deleted chapter is skipped; none gives [])
   - one shared `namesIn(...)` for chapter names, reused by `nameNow` in `EventEditor.tsx`
@@ -62,8 +62,8 @@ never from the repo, with PUT/POST/DELETE intercepted. The layout targets are fi
   - a test: with `ignoredApart` no `.clip-ignored` in a chapter, and `.edit-ignored` sits after the last chapter
   Verify with Playwright (fine pointer, Tjörn, writes aborted): 1280×720 shows 3 whole played rows with at least 5 px
   to spare; 1440×900 shows 4; at 900 px `Main` lists `s1710004.mp4` after `s1710001.mp4` and there is no
-  `.edit-ignored`; `Bara ignorerad` lists its clip directly below the chapter; screenshots light and dark.
-- [ ] 4.3 Review leftovers:
+  `.edit-ignored`; `Bara ignorerad` lists its clip directly below the chapter (not in the dev library, so not browser-checked); screenshots light and dark.
+- [x] 4.3 Review leftovers:
   - drop the dead `.ws-bin > .edit-hint` rule in `workspace.css` (and `.edit-hint` from its `:is()`)
   - drop the redundant nested `@media (width >= 960px)` inside the coarse-pointer block of `workspace.css`
   - fix the `newClipsLine` doc comment in `clipsHelp.ts`
@@ -72,14 +72,15 @@ never from the repo, with PUT/POST/DELETE intercepted. The layout targets are fi
   - HelpToggle's `title` is global: stated in D2, keep it or scope it to the bin
   - `common.tsx` docstring "when narrow" made accurate
   - decision 1a: bin status is icon-only with a fine pointer, words visually hidden and as the tooltip, icons
-    distinct per status; verify in Playwright that "New" is the row's hidden text and the icon's tooltip and no word is
+    distinct per status; verify in Playwright that "New, not yet in reel.yaml" is the new clip's hidden text and the icon's tooltip and no word is
     visible, at 1280×720 and at 900 px (still icon-only), and that a coarse pointer shows the word
-- [ ] 4.4 Re-verify with a coarse pointer (`hasTouch`) that the 44 px areas and the Move-before-Rotate DOM order
-  hold (design D4), and that 400-clip windowing still paints only rows near the view.
-- [ ] 4.5 Strict pass bar and docs:
+- [x] 4.4 Re-verify with a coarse pointer (`hasTouch`) that the 44 px areas and the Move-before-Rotate DOM order
+  hold (design D4), and that 400-clip windowing still paints only rows near the view (the dev library has no 400-clip event: the
+  CSS contract tests in `listPaint.test.ts` hold, and the compact rows' `content-visibility` is unchanged).
+- [x] 4.5 Strict pass bar and docs:
   - Tjörn, fine pointer, nothing marked, light and dark: at least 3 whole played rows at 1280×720, all 4 at 1440×900;
     screenshots, Read them
   - `docs/editor-workspace.md` (around line 122): replace "(the ignored clip counts as a row)" with "(played rows;
     from 960 px the ignored clips are listed after the chapters)"; HLD D-28: one sentence to the same effect
-- [ ] 4.6 Gates in podman: `npm test`, `npm run check`, `npm run build`, then
+- [x] 4.6 Gates in podman: `npm test`, `npm run check`, `npm run build`, then
   `openspec validate compact-bin-tools --strict`.

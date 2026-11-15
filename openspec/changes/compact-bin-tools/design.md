@@ -104,8 +104,11 @@ bar after the count, through a `placement: 'bar' | 'row'` prop. On the page they
     line 2 is one line from 240 px. A fine pointer's rows are never taller than the limit.
   - `.clip-tools` is `display: contents`. In the bin Move comes before Rotate in the DOM, so tab order runs
     down the row (handle, name area, Move, Rotate, Cuts) with no step back. This DOM order also applies with a
-    coarse pointer, where the 44 px areas stay (task 4.4 re-verifies them); the coarse layout has no `display:
-    contents` tools, so the order only changes the tab sequence, not the picture.
+    coarse pointer. Verified with `hasTouch` at 1280x720 and 390 px: the tools are Move up, Move down, Rotate left,
+    Rotate right, then Cuts, in the tab order and on the row (the coarse layout has no `display: contents` tools, so
+    the order is the picture too: Move now stands before Rotate, as with a fine pointer). The touch rules stand:
+    32 px tools with 28 px between the pairs, no overlap between tools, and the thumbnail's Watch and Mark overlap as
+    they did, by design (the mark's layer covers the thumbnail).
 - **Row height.**
   - `padding-block` goes from `--s-2` to `--s-1`; the column gap and inline padding to `--s-1`.
   - `--clip-row-h` becomes `3.7031rem`, measured once built, so `content-visibility` estimates stay right.
