@@ -11,10 +11,10 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 1. Pure model (web/src/timeline)
 
-- [ ] 1.1 Add `draftClips(live, chapters, orders)` to `timeline/layout.ts` (design D1). Verify with
+- [x] 1.1 Add `draftClips(live, chapters, orders)` to `timeline/layout.ts` (design D1). Verify with
   `layout.test.ts` cases: reorder, cross-chapter move, deleted chapter, added chapter, identity without facts counted
   as missing, ignored skipped, names follow the draft.
-- [ ] 1.2 Add the card mapping to `timeline/cards.ts`: resolved card by `readName`, `synthCard` for added chapters,
+- [x] 1.2 Add the card mapping to `timeline/cards.ts`: resolved card by `readName`, `synthCard` for added chapters,
   placeholder when nothing resolved (design D2). Verify with `cards.test.ts` (rename keeps duration/background, black
   added card shifts later clips, title cards off draws none, no resolved card → placeholder words).
 

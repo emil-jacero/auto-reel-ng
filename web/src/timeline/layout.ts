@@ -5,6 +5,7 @@ import { chapterHeading } from '../events/labels.ts'
 import { clipNames, plural } from '../events/names.ts'
 import { copyHasSound, copyLengthMs } from '../preview/source.ts'
 import type { Skip } from '../preview/playback.ts'
+import type { DraftChapter, Orders } from '../edit/draft.ts'
 import {
   clipFacts,
   cutSpans,
@@ -123,7 +124,7 @@ export type ShownClip = {
   identity: string
   /** As the page names it (`clipNames`). */
   name: string
-  /** Index into the event's chapters. */
+  /** Index into the event's chapters (`draftClips`: into the drawn chapters). */
   chapter: number
   health: ProxyHealth
   ready: ReadyProxy | null
@@ -167,6 +168,69 @@ export function shownClips(event: Pick<EventDetail, 'chapters'>): {
     }
   })
   return { clips, omitted }
+}
+
+/**
+ * The clips Edit mode's Timeline plays (`track-draft-order`, D1): the draft's chapters in the
+ * draft's order and names, a deleted one drawing nothing, and in each its clips in the draft's
+ * order, with each clip's facts from the page's live read, looked up by identity. `shownClips`'
+ * rules hold (an ignored clip has no place, a missing or excluded one is counted apart); a clip
+ * the draft lists but the live read no longer has is not drawn and counts as missing, never
+ * invented (Principle I). `chapter` is the index among the drawn chapters, which `names` lists
+ * (an empty one included), so `chapterBands` and the cards index the same list.
+ */
+export function draftClips(
+  live: Pick<EventDetail, 'chapters'>,
+  chapters: readonly DraftChapter[],
+  orders: Orders,
+): { clips: ShownClip[]; omitted: Omitted; names: string[] } {
+  const facts = new Map<string, Clip>()
+  for (const chapter of live.chapters) {
+    for (const clip of chapter.clips) {
+      facts.set(clip.identity, clip)
+    }
+  }
+  const clips: ShownClip[] = []
+  const omitted: Omitted = { missing: 0, excluded: 0 }
+  const names: string[] = []
+  for (const chapter of chapters) {
+    if (chapter.deleted) {
+      continue
+    }
+    const index = names.length
+    names.push(chapter.name)
+    const order = orders.get(chapter.key) ?? []
+    // Named as its list names them: by the name now, from the clips it lists now and the ones
+    // the live read gives the chapter it was read as (`ClipOrderList`'s rule).
+    const read =
+      chapter.readName === null
+        ? undefined
+        : live.chapters.find((candidate) => candidate.name === chapter.readName)
+    const nameOf = clipNames(chapter.name, [
+      ...order,
+      ...(read?.clips.map((clip) => clip.identity) ?? []),
+    ])
+    for (const identity of order) {
+      const clip = facts.get(identity)
+      if (clip === undefined) {
+        omitted.missing += 1
+      } else if (clip.status === 'ignored') {
+        continue
+      } else if (clip.excluded) {
+        omitted.excluded += 1
+      } else if (clip.status === 'missing') {
+        omitted.missing += 1
+      } else {
+        clips.push({
+          identity,
+          name: nameOf(identity),
+          chapter: index,
+          ...readProxy(clip.proxy),
+        })
+      }
+    }
+  }
+  return { clips, omitted, names }
 }
 
 export type Readiness = Record<ProxyHealth, number> & {

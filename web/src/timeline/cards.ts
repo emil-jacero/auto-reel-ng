@@ -1,4 +1,7 @@
 import type { EventDetail } from '../api/event.ts'
+import { cardIdOf } from '../edit/chapterBar.ts'
+import type { EventStyle } from '../edit/card/specs.ts'
+import type { DraftChapter } from '../edit/draft.ts'
 import { cardLimits } from './cardLength.ts'
 import type { CardRange, Tenths } from './cardLength.ts'
 import { emptyExtent, interiorSpans, keptExtent, ModelError } from './model.ts'
@@ -32,6 +35,12 @@ export type CardSpec = {
     fontFamily: string
   } | null
   error: string | null
+  /**
+   * A card of a chapter added in this Edit session, which the service has not resolved
+   * (`draftCardSpecs`): built in the browser from the event's cards, or a placeholder of the
+   * event style's length while there is none to build from. Absent for a resolved card.
+   */
+  unsaved?: 'built' | 'placeholder'
 }
 
 /** The clips a chapter's cards anchor on: the shown clips in play order. */
@@ -125,6 +134,100 @@ export function withDurations(
     return { ...spec, card: { ...spec.card, duration: value } }
   })
   return changed ? next : specs
+}
+
+// --- the draft's chapters (`track-draft-order`, D2) ------------------------------------
+
+/** A resolved card, as `CardSpec.card` holds it. */
+export type ResolvedCard = NonNullable<CardSpec['card']>
+
+/** The words of a chapter added while editing whose card has nothing to be built from. */
+export function unsavedCardWords(chapterName: string): string {
+  return `Title card for ${chapterName}, shown after save`
+}
+
+/**
+ * The card of a chapter added in this Edit session, which the service has not resolved: `base`
+ * (an existing resolved card of the event) under the draft's event style, titled with the
+ * chapter's name. The chapter has no override yet; a chapter card's default subtitle is empty.
+ * A field the style does not know keeps the base's value, so the length and the background, which
+ * place the card, are always resolved values.
+ */
+export function synthCard(base: ResolvedCard, style: EventStyle | null, name: string): ResolvedCard {
+  return {
+    duration: style?.duration ?? base.duration,
+    background: style?.background ?? base.background,
+    title: name,
+    subtitle: '',
+    defaultSubtitle: '',
+    fontFamily: style?.font_family ?? base.fontFamily,
+  }
+}
+
+/**
+ * The cards of the drawn chapters, in the draft's order (the chapters `draftClips` draws, a
+ * deleted one left out), so `cardPlacements` indexes them as the clips do. `specs` are the
+ * event's cards by saved name (`cardSpecs`, with the draft's card edits laid over them); `style`
+ * is the draft's event style (`draftEventStyle`), null when the page knows none.
+ *
+ * - A chapter read from the event keeps the card of the name it was read with (a rename keeps
+ *   its card); a title that is the saved name follows the rename.
+ * - A chapter added in this session gets `synthCard` of the opening card, else the first
+ *   resolved one (`unsaved: 'built'`); with none, a placeholder of the event style's length and
+ *   background (`unsaved: 'placeholder'`, `unsavedCardWords`); with no style either, it is
+ *   unresolved. Its `chapter` is its selection id (`cardIdOf`), as it has no saved name.
+ */
+export function draftCardSpecs(
+  specs: readonly CardSpec[],
+  chapters: readonly DraftChapter[],
+  style: EventStyle | null,
+): CardSpec[] {
+  const base =
+    specs.find((spec) => spec.chapter === '' && spec.card !== null)?.card ??
+    specs.find((spec) => spec.card !== null)?.card ??
+    null
+  const out: CardSpec[] = []
+  for (const chapter of chapters) {
+    if (chapter.deleted) {
+      continue
+    }
+    const { readName } = chapter
+    if (readName !== null) {
+      const spec = specs.find((candidate) => candidate.chapter === readName) ?? {
+        chapter: readName,
+        card: null,
+        error: null,
+      }
+      const renamed = readName !== '' && chapter.name !== readName
+      out.push(
+        renamed && spec.card !== null && spec.card.title === readName
+          ? { ...spec, card: { ...spec.card, title: chapter.name } }
+          : spec,
+      )
+      continue
+    }
+    const id = cardIdOf(chapter)
+    if (base !== null) {
+      out.push({ chapter: id, card: synthCard(base, style, chapter.name), error: null, unsaved: 'built' })
+    } else if (style?.duration !== undefined && style.background !== undefined) {
+      out.push({
+        chapter: id,
+        card: {
+          duration: style.duration,
+          background: style.background,
+          title: chapter.name,
+          subtitle: '',
+          defaultSubtitle: '',
+          fontFamily: style.font_family ?? '',
+        },
+        error: null,
+        unsaved: 'placeholder',
+      })
+    } else {
+      out.push({ chapter: id, card: null, error: unsavedCardWords(chapter.name) })
+    }
+  }
+  return out
 }
 
 /** A card's length in whole milliseconds, or a `ModelError` naming it. */

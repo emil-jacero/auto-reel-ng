@@ -5,6 +5,7 @@ import type { Chapter, Clip } from '../api/event.ts'
 import {
   chapterBands,
   cutLabel,
+  draftClips,
   drawnCuts,
   filmTiles,
   footageMs,
@@ -19,6 +20,7 @@ import {
 } from './layout.ts'
 import type { FilmGeometry, ShownClip } from './layout.ts'
 import { timeToPx } from './model.ts'
+import type { DraftChapter, Orders } from '../edit/draft.ts'
 
 /*
  * The timeline's pure layer (`layout.ts`), run by `npm test`: which clips it shows, when
@@ -112,6 +114,159 @@ describe('shownClips', () => {
     assert.equal(clips.length, 0)
     assert.equal(omitted.missing, 2)
     assert.equal(sectionState(clips), 'none')
+  })
+})
+
+describe('draftClips (track-draft-order)', () => {
+  // The live read: "Main" (the event's own) with three clips, "Kvällen" with two, and one ignored.
+  const live = {
+    chapters: [
+      chapter('', [clip('s1710001.mp4'), clip('s1710002.mp4'), clip('s1710003.mp4')]),
+      chapter('Kvällen', [
+        clip('Kvällen/s1710004.mp4'),
+        clip('Kvällen/s1710005.mp4'),
+        clip('Kvällen/skip.mp4', { status: 'ignored' }),
+      ]),
+    ],
+  }
+  const read = (key: string, name: string): DraftChapter => ({
+    key,
+    readName: name,
+    name,
+    deleted: false,
+  })
+  const saved: DraftChapter[] = [read('r0', ''), read('r1', 'Kvällen')]
+  const savedOrders: Orders = new Map([
+    ['r0', ['s1710001.mp4', 's1710002.mp4', 's1710003.mp4']],
+    ['r1', ['Kvällen/s1710004.mp4', 'Kvällen/s1710005.mp4']],
+  ])
+  const ids = (clips: readonly ShownClip[]) => clips.map((c) => `${c.chapter}:${c.identity}`)
+
+  it('is the saved order when the draft is as read, as shownClips draws it', () => {
+    const drawn = draftClips(live, saved, savedOrders)
+    const shown = shownClips(live)
+    assert.deepEqual(drawn.clips, shown.clips)
+    assert.deepEqual(drawn.omitted, shown.omitted)
+    assert.deepEqual(drawn.names, ['', 'Kvällen'])
+  })
+
+  it('draws a reorder at once', () => {
+    const orders: Orders = new Map([...savedOrders, ['r0', ['s1710002.mp4', 's1710001.mp4', 's1710003.mp4']]])
+    assert.deepEqual(ids(draftClips(live, saved, orders).clips).slice(0, 3), [
+      '0:s1710002.mp4',
+      '0:s1710001.mp4',
+      '0:s1710003.mp4',
+    ])
+  })
+
+  it('draws a cross-chapter move in the chapter it moved to, with its facts', () => {
+    const orders: Orders = new Map([
+      ['r0', ['s1710001.mp4', 's1710002.mp4', 's1710003.mp4', 'Kvällen/s1710004.mp4']],
+      ['r1', ['Kvällen/s1710005.mp4']],
+    ])
+    const { clips } = draftClips(live, saved, orders)
+    assert.deepEqual(ids(clips), [
+      '0:s1710001.mp4',
+      '0:s1710002.mp4',
+      '0:s1710003.mp4',
+      '0:Kvällen/s1710004.mp4',
+      '1:Kvällen/s1710005.mp4',
+    ])
+    assert.equal(clips[3].health, 'ready')
+    // Main names it by its path now: it is not of Main's folder.
+    assert.equal(clips[3].name, 'Kvällen/s1710004.mp4')
+    assert.equal(clips[4].name, 's1710005.mp4')
+  })
+
+  it('draws nothing of a deleted chapter, and indexes the drawn chapters', () => {
+    const chapters: DraftChapter[] = [{ ...saved[1], deleted: true }, saved[0]]
+    const orders: Orders = new Map([
+      ['r0', ['s1710001.mp4', 'Kvällen/s1710004.mp4', 'Kvällen/s1710005.mp4']],
+      ['r1', []],
+    ])
+    const drawn = draftClips(live, chapters, orders)
+    assert.deepEqual(drawn.names, [''])
+    assert.deepEqual(ids(drawn.clips), ['0:s1710001.mp4', '0:Kvällen/s1710004.mp4', '0:Kvällen/s1710005.mp4'])
+    assert.deepEqual(
+      chapterBands(drawn.names, drawn.clips).map((band) => band.heading),
+      ['Clips'],
+    )
+  })
+
+  it('draws an added chapter where the draft lists it, an empty one too', () => {
+    const chapters: DraftChapter[] = [
+      saved[0],
+      { key: 'a1', readName: null, name: 'Morgon', deleted: false },
+      { key: 'a2', readName: null, name: 'Tom', deleted: false },
+      saved[1],
+    ]
+    const orders: Orders = new Map([
+      ['r0', ['s1710001.mp4', 's1710002.mp4', 's1710003.mp4']],
+      ['a1', ['Kvällen/s1710004.mp4']],
+      ['a2', []],
+      ['r1', ['Kvällen/s1710005.mp4']],
+    ])
+    const drawn = draftClips(live, chapters, orders)
+    assert.deepEqual(drawn.names, ['', 'Morgon', 'Tom', 'Kvällen'])
+    assert.deepEqual(ids(drawn.clips).slice(3), ['1:Kvällen/s1710004.mp4', '3:Kvällen/s1710005.mp4'])
+    assert.deepEqual(
+      chapterBands(drawn.names, drawn.clips).map((band) => band.heading),
+      ['Main', 'Morgon', 'Kvällen'],
+    )
+  })
+
+  it('names the bands by the draft’s names', () => {
+    const chapters: DraftChapter[] = [saved[0], { ...saved[1], name: 'Kväll vid havet' }]
+    const drawn = draftClips(live, chapters, savedOrders)
+    assert.deepEqual(drawn.names, ['', 'Kväll vid havet'])
+    assert.deepEqual(
+      chapterBands(drawn.names, drawn.clips).map((band) => band.heading),
+      ['Main', 'Kväll vid havet'],
+    )
+    // The name is no longer the folder's: the chapter names its clips by their paths, as its list does.
+    assert.equal(drawn.clips[3].name, 'Kvällen/s1710004.mp4')
+  })
+
+  it('counts an identity the live read no longer has as missing and does not draw it', () => {
+    const gone = {
+      chapters: [live.chapters[0], chapter('Kvällen', [clip('Kvällen/s1710005.mp4')])],
+    }
+    const drawn = draftClips(gone, saved, savedOrders)
+    assert.ok(!drawn.clips.some((c) => c.identity === 'Kvällen/s1710004.mp4'))
+    assert.deepEqual(drawn.omitted, { missing: 1, excluded: 0 })
+  })
+
+  it('skips an ignored clip and counts missing and excluded ones as shownClips does', () => {
+    const odd = {
+      chapters: [
+        chapter('', [
+          clip('a.mp4', { status: 'ignored' }),
+          clip('b.mp4', { status: 'missing' }),
+          clip('c.mp4', { excluded: true, status: 'missing' }),
+          clip('d.mp4'),
+        ]),
+      ],
+    }
+    const drawn = draftClips(odd, [read('r0', '')], new Map([['r0', ['a.mp4', 'b.mp4', 'c.mp4', 'd.mp4']]]))
+    assert.deepEqual(ids(drawn.clips), ['0:d.mp4'])
+    assert.deepEqual(drawn.omitted, { missing: 1, excluded: 1 })
+  })
+
+  it('takes the facts of the live read: a proxy that finished mid-edit is ready in its draft place', () => {
+    const before = {
+      chapters: [chapter('', [clip('x.mp4', { proxy: { state: 'absent' } }), clip('y.mp4')])],
+    }
+    const after = { chapters: [chapter('', [clip('x.mp4'), clip('y.mp4')])] }
+    const chapters = [read('r0', '')]
+    const orders: Orders = new Map([['r0', ['y.mp4', 'x.mp4']]])
+    assert.deepEqual(
+      draftClips(before, chapters, orders).clips.map((c) => c.health),
+      ['ready', 'absent'],
+    )
+    assert.deepEqual(
+      draftClips(after, chapters, orders).clips.map((c) => `${c.identity}:${c.health}`),
+      ['y.mp4:ready', 'x.mp4:ready'],
+    )
   })
 })
 
