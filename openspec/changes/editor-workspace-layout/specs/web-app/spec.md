@@ -56,13 +56,19 @@ The viewer SHALL show the Timeline's picture with play, previous clip, next clip
 
 ### Requirement: The inspector holds the event's fields and the selected cut
 
-The inspector SHALL have an Event tab (Details form, Poster, Title cards On/Off, card style) and a Cut tab (the
-selected cut's fields and the selected suggestion's decision). Choosing a cut or a suggestion on the track SHALL show
-the Cut tab.
+The inspector SHALL have an Event tab (Details form, Poster, and a button "All title cards in this event" that
+opens the title card dialog on that tab, with whether title cards are on in words) and a Cut tab (the selected
+cut's fields and the selected suggestion's decision). The tabs SHALL work by arrow keys. Choosing a cut or a
+suggestion on the track SHALL show the Cut tab and leave focus on the track.
 
 #### Scenario: Selecting a cut
 - **WHEN** the operator presses a cut's handle on the track
 - **THEN** the inspector shows the Cut tab with that cut's start and end fields
+
+#### Scenario: The card style and the switch stay in the dialog
+- **WHEN** title cards are on and the operator presses "All title cards in this event" in the Event tab
+- **THEN** the Event tab said "Title cards are on for this event", and the dialog opens on its "All title cards in
+  this event" tab, which holds the card style and the Title cards switch
 
 ### Requirement: The workspace follows the theme and fits narrower windows
 
