@@ -10,9 +10,31 @@ end when its target is gone. The selected thing SHALL be shown selected in more 
 - **WHEN** `s1710003.mp4` is selected and the operator presses the "Kvällen" card block
 - **THEN** the card is selected, the clip is no longer outlined, and the inspector shows the Title card tab
 
+#### Scenario: Keyboard and names
+- **WHEN** a keyboard user tabs to the "Dag 2" block and presses Space
+- **THEN** it is selected, a screen reader says "Title card for Dag 2, 4.0 s, over video, pressed", and the polite status says it once
+
 #### Scenario: Target deleted
 - **WHEN** the selected card's chapter is deleted
 - **THEN** nothing is selected and the inspector shows the Event tab
+
+### Requirement: The selection is shown and announced once
+
+The selected thing SHALL be shown as a block, a row or a button as pressed (`aria-pressed`), not by colour alone.
+
+The selection SHALL be announced once, through the polite status region, when it changes to something, and the page SHALL have no visible line naming it besides the selected thing's own name. Pressing the selected thing again SHALL leave it selected. Reading a selection SHALL make no request and SHALL NOT mark the page changed.
+
+#### Scenario: Selection announced once
+- **WHEN** the operator selects a clip
+- **THEN** the polite status says so once and no visible line names the selection
+
+### Requirement: A card block is a button with a name in words
+
+A title card's block and its chapter's Edit Titlecard button SHALL both show a selected card, as pressed. A card block SHALL be a button reached by Tab in document order, pressed by Enter or Space, named in words as "Title card for <chapter>, 4.0 s, over video" (or "on black"; the default chapter: "Title card for the opening, …"; a clamped video card: "…, 3.0 s of 7.0 s, over video"; the off look adds ", not enabled").
+
+#### Scenario: A card block's name
+- **WHEN** the "Dag 2" card, 4.0 s over video, is selected
+- **THEN** its block's name is "Title card for Dag 2, 4.0 s, over video" and it is pressed
 
 ### Requirement: A clip is selected on the track or in the bin
 
@@ -23,6 +45,10 @@ without moving keyboard focus there. A press on empty track SHALL select nothing
 #### Scenario: Bin to track
 - **WHEN** the track shows 0–20 s and the operator presses the bin row of a clip drawn at 31 s
 - **THEN** the clip is selected, the track scrolls so the clip is in view, and focus stays on the bin row
+
+#### Scenario: Bin press again
+- **WHEN** a clip is selected, the track is scrolled away from it, and the operator presses its bin row again
+- **THEN** the track scrolls back to the clip
 
 #### Scenario: Empty track
 - **WHEN** the operator presses the track below the last lane
@@ -183,8 +209,81 @@ drag with the card as it was and no edit. A drag that ends where it began SHALL 
 - **WHEN** the operator changes a card's length and presses Reset
 - **THEN** the card is back at its saved length, and the save bar shows no change
 
+### Requirement: The playhead scrubs one video
+
+The Timeline SHALL hold exactly one `<video>`, created when the track opens, showing the proxy of the clip the playhead is in, at the playhead's time in that clip. The playhead SHALL be a slider over the whole timeline: it SHALL have the role `slider`, a name ("Playhead"), `aria-valuemin`, `aria-valuemax` and `aria-valuenow` in the timeline's seconds, and a value text that names the clip, the time in it and the time in the whole timeline, each said by its noun ("Harbour, clip 0:12.4 of 0:24.96; event 1:12 of 3:12", the times in the Cuts panel's time format, not padded). Dragging on the ruler SHALL move the playhead; so SHALL dragging on the track body with a mouse or a pen, and so SHALL dragging the playhead's own grip. With touch, the ruler SHALL scrub and a swipe on the track body SHALL scroll it. A press on the ruler SHALL move the playhead there, and so SHALL a press on the track's empty lane. A single press on a clip's block (its body, not its edge tools or handles) SHALL select the clip and SHALL NOT move the playhead; a double press on it SHALL place the playhead there ("A clip is selected on the track or in the bin"). A press in a black card's span still puts the playhead in the card.
+
+Moving the playhead into another clip SHALL load that clip's proxy into the same `<video>` and seek it, so the picture is the clip's frame at that time; a short flash between two clips is accepted. While the pointer is moving, the Timeline SHALL keep at most one seek in flight and SHALL seek to the latest pointer position when it completes, so that a scrub across many clips never queues a seek per pointer move. The video SHALL be paused while scrubbing. The picture and the playhead SHALL end where the pointer ended.
+
+Below the video the Timeline SHALL show the clip's name, the playhead's time in the clip and in the whole timeline, each pair labelled in words ("Clip 0:00.96 of 0:39.84 · Event 1:02.40 of 2:29.76"), in words readable by assistive technology. The readout SHALL be written, kept to a constant width, with the clip's name cut by an ellipsis, as "Running times are written to a fixed width and say what they are" requires, so that it does not change width as the clip plays or as the playhead passes from one clip into another. The end of a scrub, a key step and a click SHALL be announced once through a polite status region ("Playhead at Harbour, 0:12.40"); the movement of a drag SHALL NOT be announced per update.
+
+A proxy whose playing fails SHALL be said by cause, as the clip preview says it: asking once for the file's first byte tells a proxy that is gone (404, "prepare proxies again") from one the service cannot read, from a file the browser cannot decode, from no answer at all. The Timeline SHALL keep the track and the playhead and offer the Prepare state's button for a gone proxy.
+
+#### Scenario: A scrub shows the right frame
+- **WHEN** the operator drags the playhead on the ruler to 16.00 s of the second clip's span
+- **THEN** the single video shows that clip's proxy, `currentTime` is that time within the clip, and the slider's value text names the clip and the time
+
+#### Scenario: The grip is dragged
+- **WHEN** the operator presses on the playhead's grip and drags it along the ruler
+- **THEN** the playhead follows the pointer exactly as when the drag starts on the ruler
+
+#### Scenario: A scrub across a boundary
+- **WHEN** the operator drags the playhead from the first clip into the third clip within one second
+- **THEN** the video ends on the third clip's proxy at the playhead's time, and the page never held more than one video for the Timeline nor more than one seek in flight
+
+#### Scenario: The speed of a scrub
+- **WHEN** a scripted drag sweeps the playhead across one clip of each of the event's proxies in Chrome 154 and in Firefox 155 or newer
+- **THEN** the median number of distinct frames presented per second is at least 30 in each
+
+#### Scenario: The clips shrink under the playhead
+- **WHEN** the page reads the event again, quietly, and the clip the playhead is on is no longer shown (it is missing, excluded or ignored now)
+- **THEN** the Timeline stays on the page with the clips that remain, the playhead goes to the start, and nothing is blank or thrown
+
+#### Scenario: The proxy is gone
+- **WHEN** a proxy file is removed from the cache after the page read the event, and the playhead moves into that clip
+- **THEN** the Timeline says that this clip's proxy is no longer there and offers "Prepare proxies", while the track and the other clips keep working
+
+#### Scenario: The readout says what each number is and holds still
+- **WHEN** the Timeline of an event whose clips are 9.00 s, 40.00 s and 6.02 s is played from the start, in Chrome 154
+  and in Firefox 155 or newer, light and dark, at 1280 and at 390 pixels wide
+- **THEN** every sample of the readout, taken every 100 ms across the first clip's end, reads `Clip <time> of <length>
+  · Event <time> of 55.02`, with the same width for each time and the same left edge for each pair, and the slider's
+  value text says "clip" and "event" with the same numbers
+
+#### Scenario: A clip press does not move the playhead
+- **WHEN** the playhead is at 5.0 s and the operator presses once on the body of a clip's block elsewhere
+- **THEN** the clip is selected and the playhead is still at 5.0 s
+
+#### Scenario: A double press places the playhead
+- **WHEN** the operator presses twice on the body of a clip's block
+- **THEN** the clip is selected and the playhead is at the press
+
+### Requirement: The Timeline is accessible, fits every width and respects the color scheme
+
+The Timeline SHALL expose its structure to assistive technology: the section is a region named "Timeline"; the chapter band is a list of chapters; each clip is a button named as the page names it (pressed while selected), with its length and the number of its cuts in its description, and its block's other content is not announced a second time; the title cards are buttons named as "One selection in the workspace" says; the playhead is a slider; each cut span inside a clip's block keeps its text alternative ("Cut 2.0 to 4.0 s, black") and is exposed, so the block's picture is hidden from assistive technology but its cuts are not. The state of a clip's proxy, of a cut's reason and of the Play button SHALL never be shown by color alone: it SHALL be words, a pattern or an icon with a name. Text and controls SHALL meet the contrast the rest of the page meets, in the light and in the dark scheme, which SHALL follow the page's scheme choice. Every width from 320 to 1280 px SHALL fit without a horizontal scroll bar on the page. With `prefers-reduced-motion: reduce` the Timeline SHALL not animate: no smooth scrolling, no transitions on the playhead or the zoom, and the progress of a job SHALL change without easing. Touch targets under a coarse pointer SHALL be 44 px.
+
+#### Scenario: The structure reads in order
+- **WHEN** a screen reader walks the open Timeline of an event with two chapters and three clips
+- **THEN** it finds the region "Timeline", a list of two chapters, three named clip buttons with their lengths, the slider "Playhead", and the Play button
+
+#### Scenario: A cut is told in words
+- **WHEN** a clip's cut with the reason black is hatched on the track
+- **THEN** its text alternative says the cut's start, end and reason, and the span is also distinguished by its pattern, not by its color
+
+#### Scenario: Dark scheme and reduced motion
+- **WHEN** the operator's scheme is dark and the system asks for reduced motion
+- **THEN** the Timeline is drawn with the dark tokens, the filmstrip and cuts stay legible, and zooming, scrolling and the playhead move without animation
+
+#### Scenario: Touch
+- **WHEN** the page is used on a phone-sized window with a coarse pointer
+- **THEN** every Timeline button and the playhead's grip are at least 44 px high, and a swipe on the track scrolls it without moving the playhead
+
+#### Scenario: A clip is a button and its cuts are still told
+- **WHEN** a screen reader walks a clip with a cut from 2.0 to 4.0 s
+- **THEN** it finds one button with the clip's name, and the image "Cut 0:02 to 0:04" in the block, and the clip's name is not said twice
+
 ## REMOVED Requirements
 
 ### Requirement: A card is selected from the Timeline or the list, as one selection
 **Reason**: The card selection is now part of the workspace's one selection.
-**Migration**: "One selection in the workspace".
+**Migration**: "One selection in the workspace", which now holds the one-selection rule, the pressed state, the card block's accessible name and the once-only announcement.

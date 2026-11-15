@@ -458,6 +458,52 @@ turned on". Save SHALL send the same whole-document `PUT` under `If-Match` that 
 - **THEN** one `PUT` under `If-Match` is sent whose chapter is named `Kväll`, whose metadata title is the new title, whose `look.title_card.position` is `top`
   and whose `look.decorators` is `[]`, and no other key differs from `reel.yaml` as read
 
+### Requirement: Edit mode edits the event's card style in one place
+
+The title card editor's second tab, **All title cards in this event**, SHALL edit the event-wide title-card style, the `look.title_card` of
+`reel.yaml`, and it is the only place that does: the page SHALL NOT hold a "Card style for this event" section or any other control for it. It SHALL offer these
+fields: font family, title size, subtitle size, text color, position (center, top or bottom), default length, and default background (Black or
+Video), each with a **Use project default** button. The font family SHALL be chosen from the families the service lists (`GET /api/v1/fonts`), each shown
+in its own face or with the service's preview image, never typed. A field the style leaves unset SHALL say that
+it follows the project default, with the value in force when the page read it as a placeholder; when the
+operator clears a value that the saved style set, the field SHALL say "Project default" without a number,
+because the page does not know it, and SHALL NOT show a value it does not have. Every field SHALL be reachable
+and operable with the keyboard, and have a label, and a tap area of at least 44 by 44 pixels while the
+primary pointer is coarse. The tab SHALL be disabled with Edit mode's other edit controls while a save is in flight.
+
+The editor's one live preview, drawn by the service from the draft (not the saved) style and the card being edited, SHALL show an
+event-style edit at once, under the same rules as the card preview: debounced, a stale request cancelled, the previous image kept while the next
+loads, and a failure told in words. When the service cannot resolve the saved event style (the event detail's `title_card_error`), the docked editor shows this tab
+showing that error in words and the stored values as typed, so the operator can correct them.
+
+#### Scenario: Setting a font and a colour for every card
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn` in Edit mode, the operator selects the card of Main ("Edit title card for Main"), chooses the tab "All title cards in this event",
+  picks the font `DM Serif Display` and sets the text color `#FFD700`
+- **THEN** the preview shows the opening card in that face and color before anything is saved, and the save
+  bar says the card style changed
+
+#### Scenario: An unset field follows the project default
+- **WHEN** the event's `reel.yaml` sets no `look.title_card` and the operator shows the tab
+- **THEN** each field shows the project default value as a placeholder and none shows as set
+
+#### Scenario: Use project default clears a field
+- **WHEN** the saved style sets a title size of 80 and the operator presses Use project default on it
+- **THEN** the field says "Project default" and the save bar counts the change
+
+#### Scenario: A cleared value does not invent a default
+- **WHEN** the saved style sets a title size of 80 and the operator clears the field
+- **THEN** the field says "Project default" with no number, the preview shows the card without the size, and
+  the save bar counts the change
+
+#### Scenario: A style the engine refuses is told and correctable
+- **WHEN** the event's `look.title_card.position` is hand-written as `middle` and the operator selects a title card
+- **THEN** the docked editor shows "All title cards in this event" showing the service's refusal naming `position` and `middle` in the field, and
+  choosing `center` clears the refusal
+
+#### Scenario: The control is usable at a narrow width
+- **WHEN** the window is 320 pixels wide and the operator opens the tab
+- **THEN** every field is fully visible without horizontal page scroll
+
 ## REMOVED Requirements
 
 ### Requirement: A selected title card opens its inspector in Edit mode
