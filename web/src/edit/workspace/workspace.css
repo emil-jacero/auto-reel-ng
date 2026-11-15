@@ -330,3 +330,123 @@
     }
   }
 }
+
+/* The clip bin (`ClipOrderList` `compact`, D3): the chapter lists in the pane's width. The rows'
+   own layout is edit.css's (`.edit-chapter[data-compact]`). Nothing here scrolls the pane
+   sideways. */
+@layer screens {
+  .ws-bin {
+    display: grid;
+    align-content: start;
+    gap: var(--s-3);
+    padding-block-end: var(--s-4);
+    font-size: var(--text-sm);
+
+    & > :is(.edit-hint, .mark-line, .empty-state, .chapter-add) {
+      padding-inline: var(--s-3);
+    }
+
+    & > .edit-hint {
+      padding-block-start: var(--s-3);
+    }
+
+    /* Flat sections, edge to edge: the pane is their frame. */
+    & .edit-chapter {
+      border-inline: 0;
+      border-radius: 0;
+    }
+
+    & .edit-chapter > .clip-order:last-child > .clip-item:last-child {
+      border-radius: 0;
+    }
+
+    /* The heading keeps one line in the bin's width: the name takes up to half of it (then an
+       ellipsis), the moved count gives way (an ellipsis; its words stay in the page), and the
+       clip count and Edit Titlecard never shrink. */
+    & .edit-chapter > .panel-header {
+      flex-wrap: nowrap;
+      gap: var(--s-1) var(--s-2);
+      padding-inline: var(--s-3) var(--s-2);
+
+      & > h2 {
+        flex: none;
+        max-inline-size: 50%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        overflow-wrap: normal;
+      }
+
+      & > .badge {
+        display: block;
+        flex: 0 1 auto;
+        min-inline-size: 0;
+        overflow: hidden;
+        font-size: var(--text-xs);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      & > .panel-meta {
+        flex: none;
+        margin-inline-start: auto;
+        font-size: var(--text-xs);
+        white-space: nowrap;
+      }
+    }
+
+    /* Edit Titlecard as its icon (its name is the same): a 44 px square. */
+    & .edit-titlecard {
+      position: relative;
+      flex: none;
+      min-inline-size: 2.75rem;
+      padding-inline: 0;
+      justify-content: center;
+    }
+
+    & .edit-titlecard-words {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    & .chapter-tools {
+      padding-inline: var(--s-3) var(--s-2);
+    }
+
+    /* The marks line in one column, as the page's at phone width: the Move group on a row of its
+       own, label above, the picker filling the row beside Move. */
+    & .mark-line-slot {
+      min-inline-size: 0;
+      justify-content: flex-start;
+    }
+
+    & .mark-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    & .mark-rotate {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    & .mark-move {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--s-1) var(--mark-gap);
+
+      & label {
+        grid-column: 1 / -1;
+      }
+
+      & select {
+        inline-size: 100%;
+        min-inline-size: 0;
+      }
+    }
+  }
+}

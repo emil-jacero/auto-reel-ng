@@ -72,25 +72,50 @@ function sourceFiles(dir: URL): URL[] {
 describe('the clip rows skip drawing off screen', () => {
   const all = rules(editCss)
   const skipping = all.filter((rule) => declaration(rule.body, 'content-visibility') === 'auto')
+  const COMPACT = '.edit-chapter[data-compact]'
+  const page = skipping.filter((rule) => !rule.at.includes(COMPACT))
+  const bin = skipping.filter((rule) => rule.at.includes(COMPACT))
 
   it('each row of a clip list has content-visibility: auto with a remembered size', () => {
-    assert.equal(skipping.length, 1, 'one rule')
-    const [rule] = skipping
-    assert.match(rule.selector, /^\.clip-order > \.clip-item:not\(/)
-    assert.equal(declaration(rule.body, 'contain-intrinsic-size'), 'auto var(--clip-row-h)')
+    assert.equal(page.length, 1, 'one rule for the page')
+    assert.equal(bin.length, 1, 'one rule for the workspace bin')
+    assert.match(page[0].selector, /^\.clip-order > \.clip-item:not\(/)
+    assert.match(bin[0].selector, /^& \.clip-order > \.clip-item:not\(/)
+    for (const rule of skipping) {
+      assert.equal(declaration(rule.body, 'contain-intrinsic-size'), 'auto var(--clip-row-h)')
+    }
   })
 
   it('rows are drawn as before in a panel too narrow for their tools (under 20.25rem)', () => {
-    const [rule] = skipping
-    assert.deepEqual(rule.at, ['@layer screens', '@container (width >= 20.25rem)'])
+    assert.deepEqual(page[0].at, ['@layer screens', '@container (width >= 20.25rem)'])
+  })
+
+  it('the bin’s compact rows fit its width, so they are skipped at every width', () => {
+    assert.deepEqual(bin[0].at, ['@layer screens', COMPACT])
   })
 
   it('a focused row, a drop target, the lifted row and a row dnd-kit moves are drawn whole', () => {
-    const [rule] = skipping
-    const excluded = /:not\(([^)]*\([^)]*\)[^)]*|[^)]*)\)/.exec(rule.selector)?.[1] ?? ''
-    for (const state of [':focus-within', '[data-drop-before]', '[data-dragging]', "[style*='transform']"]) {
-      assert.ok(excluded.includes(state), `excludes ${state}`)
+    for (const rule of skipping) {
+      const excluded = /:not\(([^)]*\([^)]*\)[^)]*|[^)]*)\)/.exec(rule.selector)?.[1] ?? ''
+      for (const state of [':focus-within', '[data-drop-before]', '[data-dragging]', "[style*='transform']"]) {
+        assert.ok(excluded.includes(state), `excludes ${state}`)
+      }
     }
+  })
+
+  it('the bin’s estimate is the measured collapsed compact row in each of its layouts', () => {
+    const estimate = (selector: string, at: string[]) =>
+      all
+        .filter((rule) => rule.selector === selector && rule.at.join(' / ') === at.join(' / '))
+        .map((rule) => declaration(rule.body, '--clip-row-h'))
+        .filter((value) => value !== null)
+    // Rows of 118 px in the 240 px bin (three lines) and 82 px from a 22rem bin (two lines), less
+    // the 17 px of padding and border the content box leaves out.
+    assert.deepEqual(estimate('& .clip-item', ['@layer screens', COMPACT]), ['6.3125rem'])
+    assert.deepEqual(
+      estimate(`${COMPACT} .clip-item`, ['@layer screens', '@container (width >= 22rem)']),
+      ['4.0625rem'],
+    )
   })
 
   it('the estimate is the measured collapsed-row height in each container-query layout', () => {

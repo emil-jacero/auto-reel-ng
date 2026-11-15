@@ -898,6 +898,114 @@
     }
   }
 
+  /*
+   * The workspace's clip bin (`ClipOrderList` `compact`, editor-workspace-layout D3): the same
+   * rows in three short lines in the 240 px bin. The handle, the position and the name; a 52 × 29
+   * thumbnail beside the length the clip plays, its status and a row's action; the Cuts control
+   * and the row's tools. A removed or an ignored row has no third line. From a 22rem bin (the
+   * stacked workspace) two lines (below). After the page's row rules and more specific than
+   * each, so they win whatever the panel's width. Their size and time are the read view's.
+   */
+  .edit-chapter[data-compact] {
+    & .clip-item {
+      --clip-thumb-w: 3.25rem;
+      /* A collapsed three-line row's content height (a two-line one, removed or ignored, is
+         shorter: drawn once, it keeps its own size). On the row, over the page's estimates. */
+      --clip-row-h: 6.3125rem;
+
+      grid-template-columns: 1.75rem 1.25rem minmax(0, 1fr) auto;
+      grid-template-areas:
+        'handle pos file file'
+        'thumb thumb facts facts'
+        'cuts cuts cuts moves';
+      column-gap: var(--s-2);
+      row-gap: var(--s-1);
+      padding-block: var(--s-2);
+      padding-inline: var(--s-1) var(--s-2);
+    }
+
+    & .clip-item > .drag-handle {
+      inline-size: 1.75rem;
+    }
+
+    & .clip-item > :is(.clip-pos, .clip-file),
+    & .clip-item > .clip-tools,
+    & .clip-item .clip-status {
+      padding-inline: 0;
+    }
+
+    & .clip-item > :is(.clip-thumb, .clip-thumb-watch, .clip-mark) {
+      inline-size: var(--clip-thumb-w);
+      justify-self: end;
+    }
+
+    /* One line for the name: a camera name is short; a long one ends in an ellipsis, and its
+       full words are the handle's and the Watch button's names. */
+    & .clip-item > .clip-file {
+      flex-wrap: nowrap;
+    }
+
+    & .clip-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }
+
+    & .clip-file > .badge {
+      flex: none;
+    }
+
+    & .clip-facts {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--s-1) var(--s-2);
+      grid-area: facts;
+      min-inline-size: 0;
+      font-size: var(--text-sm);
+    }
+
+    & .clip-length {
+      color: var(--fg-muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    & .clip-item > .cuts-toggle {
+      grid-area: cuts;
+      align-self: center;
+      justify-self: start;
+      margin: 0;
+    }
+
+    & .clip-item > .clip-tools {
+      grid-area: moves;
+      gap: var(--s-1);
+    }
+
+    & .clip-order > .clip-item:not(:focus-within, [data-drop-before], [data-dragging], [style*='transform']) {
+      content-visibility: auto;
+      contain-intrinsic-size: auto var(--clip-row-h);
+    }
+  }
+
+  /* A wider bin (the stacked workspace): two lines, the tools after the name, the Cuts control
+     after the facts. */
+  @container (width >= 22rem) {
+    .edit-chapter[data-compact] .clip-item {
+      --clip-row-h: 4.0625rem;
+
+      grid-template-areas:
+        'handle pos file moves'
+        'thumb thumb facts cuts';
+    }
+
+    .edit-chapter[data-compact] .clip-item > .cuts-toggle {
+      justify-self: end;
+    }
+  }
+
   /* A reassurance beside a failure's action ("Your edits are kept."). */
   .alert-note {
     color: var(--fg-muted);

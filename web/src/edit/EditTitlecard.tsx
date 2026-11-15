@@ -49,7 +49,8 @@ export const EditTitlecard = memo(function EditTitlecard({
       }}
     >
       {PENCIL}
-      {EDIT_TITLECARD}
+      {/* The bin's compact header shows the icon alone (workspace.css); the name says it all. */}
+      <span className="edit-titlecard-words">{EDIT_TITLECARD}</span>
     </button>
   )
 })

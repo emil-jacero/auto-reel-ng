@@ -152,10 +152,48 @@ const GRIP = <Icon name="grip-vertical" />
 const INTO = <Icon name="arrow-right" />
 
 /**
+ * Where `element` scrolls: the closest workspace pane that scrolls on its own
+ * (`[data-ws-scroll]`, Edit mode's workspace), or else the page. `top` and `bottom` are the
+ * edges of its scroll-padding box in the window: below the page header and a chapter's sticky
+ * heading, above a held save bar.
+ */
+type ScrollRoom = {
+  /** The pane, or null for the page. */
+  pane: HTMLElement | null
+  top: number
+  bottom: number
+  /** The scrolling element: the pane, or the document's. */
+  scroller: Element
+}
+
+function scrollRoomOf(element: Element): ScrollRoom {
+  const pane = element.closest<HTMLElement>('[data-ws-scroll]')
+  if (pane !== null && getComputedStyle(pane).overflowY !== 'visible') {
+    const box = pane.getBoundingClientRect()
+    const style = getComputedStyle(pane)
+    return {
+      pane,
+      top: box.top + pane.clientTop + (parseFloat(style.scrollPaddingTop) || 0),
+      bottom:
+        box.top + pane.clientTop + pane.clientHeight - (parseFloat(style.scrollPaddingBottom) || 0),
+      scroller: pane,
+    }
+  }
+  const root = document.documentElement
+  const style = getComputedStyle(root)
+  return {
+    pane: null,
+    top: parseFloat(style.scrollPaddingTop) || 0,
+    bottom: root.clientHeight - (parseFloat(style.scrollPaddingBottom) || 0),
+    scroller: document.scrollingElement ?? root,
+  }
+}
+
+/**
  * Bring a row's first line (its handle, name and Cuts control) the least distance inside
- * the page's scroll-padding box: below the page header and the chapter's sticky heading,
- * above a held save bar. Its top comes first when the line is taller than the box. The
- * row itself may be taller than the window (an open Cuts panel), so not the whole `li`.
+ * its scroll-padding box (`scrollRoomOf`: the bin's in the workspace, the page's otherwise).
+ * Its top comes first when the line is taller than the box. The row itself may be taller
+ * than the room (an open Cuts panel), so not the whole `li`.
  */
 function firstLineIntoView(row: HTMLElement): void {
   const parts = [
@@ -168,33 +206,49 @@ function firstLineIntoView(row: HTMLElement): void {
   }
   const top = Math.min(...parts.map((box) => box.top))
   const bottom = Math.max(...parts.map((box) => box.bottom))
-  const root = document.documentElement
-  const style = getComputedStyle(root)
-  const from = parseFloat(style.scrollPaddingTop) || 0
-  const to = root.clientHeight - (parseFloat(style.scrollPaddingBottom) || 0)
-  const by = top < from || bottom - top > to - from ? top - from : bottom > to ? bottom - to : 0
+  const room = scrollRoomOf(row)
+  const by =
+    top < room.top || bottom - top > room.bottom - room.top
+      ? top - room.top
+      : bottom > room.bottom
+        ? bottom - room.bottom
+        : 0
   if (by !== 0) {
-    window.scrollBy({ top: by, behavior: 'instant' })
+    room.scroller.scrollBy({ top: by, behavior: 'instant' })
   }
 }
 
 /**
- * Bring a row back into view after a cancelled drag: the whole row when it fits between the
- * page's scroll padding, else its first line (`firstLineIntoView`).
+ * Bring a row back into view after a cancelled drag: the whole row when it fits in its scroll
+ * padding box (`scrollRoomOf`), else its first line (`firstLineIntoView`).
  */
 function rowIntoView(row: HTMLElement): void {
-  const root = document.documentElement
-  const style = getComputedStyle(root)
-  const room =
-    root.clientHeight -
-    (parseFloat(style.scrollPaddingTop) || 0) -
-    (parseFloat(style.scrollPaddingBottom) || 0)
-  if (row.getBoundingClientRect().height <= room) {
+  const room = scrollRoomOf(row)
+  if (row.getBoundingClientRect().height <= room.bottom - room.top) {
     row.scrollIntoView({ block: 'nearest' })
   } else {
     firstLineIntoView(row)
   }
 }
+
+/**
+ * Bring a row into view by `bring`, then once more after the next frame is drawn: rows that the
+ * scroll brings into view are drawn only in that frame (content-visibility, edit.css), and one
+ * taller than its estimate (a pill that wraps) pushes the rows after it down. The row the scroll
+ * anchored on is the one that grew, so nothing else makes up for it.
+ */
+export function intoViewSettled(row: HTMLElement, bring: (row: HTMLElement) => void): void {
+  bring(row)
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      if (row.isConnected) {
+        bring(row)
+      }
+    }),
+  )
+}
+
+const wholeRow = (row: HTMLElement) => row.scrollIntoView({ block: 'nearest' })
 
 /** The copy that follows the pointer: the clip's name and, over another chapter, where it goes. */
 function DragPreview({
@@ -519,13 +573,18 @@ export function ChapterDrag({
         return undefined
       }
       slot.current = next
-      if (page !== 0 && (y < 0 || y + height > window.innerHeight)) {
+      // The bin in the workspace, the page otherwise: what the target must be inside.
+      const node = droppableContainers.get(active)?.node.current ?? null
+      const room = node === null ? null : scrollRoomOf(node)
+      const edges =
+        room?.pane == null ? { top: 0, bottom: window.innerHeight } : room.pane.getBoundingClientRect()
+      if (page !== 0 && (y < edges.top || y + height > edges.bottom)) {
         // The sensor scrolls only for the arrows: bring the target to the copy instead. The
-        // browser clamps a scroll at either end of the document: the copy then moves the
-        // part that was not scrolled, so it still lands on the line. Returning the
+        // browser clamps a scroll at either end of the bin or the document: the copy then
+        // moves the part that was not scrolled, so it still lands on the line. Returning the
         // coordinates (the copy may not move) is what re-runs the collision detection, which
         // reads `slot.current`; otherwise a drop right after the key sees the old target.
-        const scroller = document.scrollingElement ?? document.documentElement
+        const scroller = room?.scroller ?? document.scrollingElement ?? document.documentElement
         const { applied, left } = clampScroll(
           y - currentCoordinates.y,
           scroller.scrollTop,
@@ -750,7 +809,7 @@ export function ChapterDrag({
       (item) => item.dataset.identity === identity,
     )
     if (row !== undefined) {
-      rowIntoView(row)
+      intoViewSettled(row, rowIntoView)
     }
   }, [lifted, rootRef])
 
@@ -791,11 +850,7 @@ export function ChapterDrag({
     if (after === null) {
       return
     }
-    if (after.across) {
-      firstLineIntoView(after.row)
-    } else {
-      after.row.scrollIntoView({ block: 'nearest' })
-    }
+    intoViewSettled(after.row, after.across ? firstLineIntoView : wholeRow)
   }, [orders])
 
   return (
