@@ -114,6 +114,9 @@ import {
   moveGroup,
   moveMarkedToEnd,
   movedSet,
+  ignoreChanges,
+  ignoreClip,
+  includeClip,
   ordersOf,
   originOf,
   readCardOf,
@@ -275,6 +278,9 @@ type Action =
   | { type: 'move'; chapter: ChapterKey; from: number; to: number }
   | { type: 'remove'; chapter: ChapterKey; identity: string }
   | { type: 'restore'; identity: string }
+  // Ignore a clip (out of `chapter`'s order) or include one (into it, at `at`): one draft edit (`track-drag-edit` D5).
+  | { type: 'ignore'; chapter: ChapterKey; identity: string; include: false }
+  | { type: 'ignore'; chapter: ChapterKey; identity: string; include: true; at: number }
   | { type: 'chapter-add'; key: ChapterKey; name: string }
   | { type: 'chapter-rename'; key: ChapterKey; name: string }
   | { type: 'chapter-move'; key: ChapterKey; delta: -1 | 1 }
@@ -454,6 +460,13 @@ function reduce(state: State, action: Action): State {
       removed.delete(action.identity)
       return afterEdit({ ...state, draft: { ...draft, orders, removed } })
     }
+    case 'ignore':
+      return withDraft(
+        state,
+        action.include
+          ? includeClip(state.baseline, state.draft, action.chapter, action.identity, action.at)
+          : ignoreClip(state.baseline, state.draft, action.chapter, action.identity),
+      )
     case 'chapter-add':
       // The key the caller took from the counter, so it can focus the new chapter.
       if (action.key !== `a${state.added + 1}`) {
@@ -836,6 +849,7 @@ function summarize(
   titleCards: boolean | null,
   poster: boolean,
   adopted: number,
+  ignores: { ignored: number; included: number } = { ignored: 0, included: 0 },
 ): string {
   // An incomplete date reads as '' but is not a date left empty: it is named as such.
   const fields = dateIncomplete ? changed.filter((field) => field !== 'date') : changed
@@ -852,6 +866,8 @@ function summarize(
     chapters.reordered && 'chapter order changed',
     moved > 0 && `${plural(moved, 'clip', 'clips')} moved`,
     removed > 0 && `${plural(removed, 'missing clip', 'missing clips')} removed`,
+    ignores.ignored > 0 && `${plural(ignores.ignored, 'clip', 'clips')} ignored`,
+    ignores.included > 0 && `${plural(ignores.included, 'clip', 'clips')} included`,
     cuts.added > 0 && `${plural(cuts.added, 'cut', 'cuts')} added`,
     cuts.removed > 0 && `${plural(cuts.removed, 'cut', 'cuts')} removed`,
     cuts.trimmed > 0 && `${plural(cuts.trimmed, 'cut', 'cuts')} trimmed`,
@@ -1256,7 +1272,9 @@ export function EventEditor({
     // clip moved out, moves nothing by itself; a clip moved in counts once, where it is.
     for (const [key, order] of ready.draft.orders) {
       const original = ready.baseline.original.get(key) ?? []
-      movedCount += movedSet(keptOriginal(original, order), order, ready.lastMoved).size
+      // A clip included here is counted as included, not as moved.
+      const played = order.filter((identity) => ready.draft.ignoreEdits?.get(identity) !== 'include')
+      movedCount += movedSet(keptOriginal(original, played), played, ready.lastMoved).size
     }
   }
   const adopted = ready === null ? 0 : adoptedNewCount(ready.baseline, ready.draft, newClips)
@@ -3047,6 +3065,7 @@ export function EventEditor({
                     ready.draft.decorators === undefined ? null : titleCardsNow(ready.draft.decorators, false),
                     posterIsChanged(ready.baseline, ready.draft),
                     adopted,
+                    ignoreChanges(ready.draft),
                   )
                 : ''
             }
