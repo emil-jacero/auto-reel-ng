@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { playheadKey, trackZoomKey } from './keys.ts'
-import type { ZoomKeyPress } from './keys.ts'
+import { clipMoveKey, playheadKey, stepSlot, trackZoomKey } from './keys.ts'
+import type { MoveKeyPress, ZoomKeyPress } from './keys.ts'
+import { applyDrop } from './reorder.ts'
+import type { DrawnChapter, DropSlot } from './reorder.ts'
 
 describe('playheadKey', () => {
   it('steps a frame with Left and Right, a second with Shift, five seconds with Page', () => {
@@ -76,5 +78,87 @@ describe('the edge tools\' letters (clip-edge-trim)', () => {
       assert.equal(playheadKey(key, false), null)
       assert.equal(playheadKey(key, true), null)
     }
+  })
+})
+
+describe('clipMoveKey (track-drag-edit, D4)', () => {
+  const alt = (key: string, extra: Partial<MoveKeyPress> = {}): MoveKeyPress => ({
+    key,
+    altKey: true,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    altGraph: false,
+    ...extra,
+  })
+
+  it('takes Alt+Left and Alt+Right as one place back and forward', () => {
+    assert.equal(clipMoveKey(alt('ArrowLeft')), -1)
+    assert.equal(clipMoveKey(alt('ArrowRight')), 1)
+  })
+
+  it('leaves the playhead\'s arrows (no Alt) and other keys alone', () => {
+    assert.equal(clipMoveKey(alt('ArrowLeft', { altKey: false })), null)
+    assert.equal(clipMoveKey(alt('ArrowRight', { altKey: false, shiftKey: true })), null)
+    for (const key of ['ArrowUp', 'ArrowDown', 'Home', 'a', 'Enter']) {
+      assert.equal(clipMoveKey(alt(key)), null)
+    }
+  })
+
+  it('ignores Alt chords with Ctrl, Cmd, Shift or AltGr', () => {
+    for (const extra of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altGraph: true }]) {
+      assert.equal(clipMoveKey(alt('ArrowLeft', extra)), null)
+      assert.equal(clipMoveKey(alt('ArrowRight', extra)), null)
+    }
+  })
+})
+
+describe('stepSlot (track-drag-edit, D4)', () => {
+  const lay: DrawnChapter[] = [
+    { key: 'a', name: 'Main', identities: ['m1.mp4', 'm2.mp4', 'm3.mp4'] },
+    { key: 'b', name: 'Kvällen', identities: ['k1.mp4', 'k2.mp4'] },
+  ]
+  const orders = new Map([
+    ['a', ['m1.mp4', 'm2.mp4', 'm3.mp4']],
+    ['b', ['k1.mp4', 'k2.mp4']],
+  ])
+  const apply = (identity: string, chapter: string, way: -1 | 1) => {
+    const step = stepSlot(lay, identity, way)
+    assert.equal(step?.kind, 'slot')
+    return applyDrop(orders, { identity, chapter }, (step as { slot: DropSlot }).slot)
+  }
+
+  it('swaps with the neighbour inside a chapter', () => {
+    assert.deepEqual(apply('m2.mp4', 'a', 1).get('a'), ['m1.mp4', 'm3.mp4', 'm2.mp4'])
+    assert.deepEqual(apply('m2.mp4', 'a', -1).get('a'), ['m2.mp4', 'm1.mp4', 'm3.mp4'])
+  })
+
+  it('crosses into the next chapter\'s start from a last clip, and back from a first', () => {
+    const forward = apply('m3.mp4', 'a', 1)
+    assert.deepEqual(forward.get('a'), ['m1.mp4', 'm2.mp4'])
+    assert.deepEqual(forward.get('b'), ['m3.mp4', 'k1.mp4', 'k2.mp4'])
+    const back = apply('k1.mp4', 'b', -1)
+    assert.deepEqual(back.get('a'), ['m1.mp4', 'm2.mp4', 'm3.mp4', 'k1.mp4'])
+    assert.deepEqual(back.get('b'), ['k2.mp4'])
+  })
+
+  it('names the slot', () => {
+    const step = stepSlot(lay, 'm3.mp4', 1)
+    assert.equal(step?.kind === 'slot' && step.slot.words, 'Before k1.mp4')
+    const end = stepSlot(lay, 'k1.mp4', -1)
+    assert.equal(end?.kind === 'slot' && end.slot.words, 'At the end of Main')
+  })
+
+  it('goes into an empty neighbour chapter', () => {
+    const withEmpty: DrawnChapter[] = [...lay, { key: 'c', identities: [] }]
+    const step = stepSlot(withEmpty, 'k2.mp4', 1)
+    assert.equal(step?.kind === 'slot' && step.slot.chapter, 'c')
+    assert.equal(step?.kind === 'slot' && step.slot.beforeIdentity, null)
+  })
+
+  it('says so at the first and the last clip, and is null for an undrawn clip', () => {
+    assert.deepEqual(stepSlot(lay, 'm1.mp4', -1), { kind: 'edge', words: 'm1.mp4 is already the first clip.' })
+    assert.deepEqual(stepSlot(lay, 'k2.mp4', 1), { kind: 'edge', words: 'k2.mp4 is already the last clip.' })
+    assert.equal(stepSlot(lay, 'zz.mp4', 1), null)
   })
 })

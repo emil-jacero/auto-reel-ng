@@ -26,7 +26,7 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
   the top bar and save counts, one reducer action in `EventEditor.tsx` (design D5). Verify `draft` node tests and the
   save body.
 - [x] 2.2b "Ignore clip" button in the inspector's Clip tab (`timeline/ClipTab.tsx`). Verify with Playwright.
-- [ ] 2.3 Alt+Left/Right on a selected clip, announcements, inert while pending (D4). Verify `keys.test.ts` and Playwright.
+- [x] 2.3 Alt+Left/Right on a selected clip, announcements, inert while pending (D4). Verify `keys.test.ts` and Playwright.
 
 ## 3. Verification and docs
 

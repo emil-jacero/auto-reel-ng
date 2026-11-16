@@ -23,7 +23,7 @@ import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
 import { bandStartMs } from './cards'
 import type { CardBlock, CardHandle, CardSpec } from './cards'
-import { trackZoomKey } from './keys'
+import { clipMoveKey, stepSlot, trackZoomKey } from './keys'
 import type { KeyAction } from './keys'
 import { clipDescription } from './labels'
 import { cutLabel, drawnCuts } from './layout'
@@ -817,6 +817,30 @@ export function Track({
           event.preventDefault()
           onTrackKey(key)
           return
+        }
+        // Alt+Left and Right move the selected clip one place (`track-drag-edit`, D4); handled (and
+        // the browser's history keys held back) only when a drawn clip is selected, never in a field.
+        const way = clipMoveKey({
+          key: event.key,
+          altKey: event.altKey,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          shiftKey: event.shiftKey,
+          altGraph: event.getModifierState('AltGraph'),
+        })
+        if (way !== null && selectedClip !== null && !inField(event.target)) {
+          const step = stepSlot(reorder.chapters, selectedClip, way)
+          if (step !== null) {
+            event.preventDefault()
+            if (editing.locked) {
+              editing.announce(MOVE_LOCKED)
+            } else if (step.kind === 'edge') {
+              editing.announce(step.words)
+            } else {
+              reorder.onDrop(selectedClip, step.slot)
+            }
+            return
+          }
         }
         if (event.ctrlKey || event.altKey || event.metaKey) {
           return
