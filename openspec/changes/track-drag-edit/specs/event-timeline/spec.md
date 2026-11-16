@@ -5,7 +5,7 @@
 In Edit mode a press with a mouse or a pen on a clip block's body that moves more than 3 px SHALL start a drag: the block follows the
 pointer, the other clips make room live, and a line with words shows the drop place. Release SHALL make one draft edit
 (reorder, or move into another chapter when the place is in another chapter's span or on its band). Escape or a
-release outside the track SHALL cancel with no edit, and Escape during a drag SHALL only cancel the drag: the clip stays selected. With touch, a swipe on a clip block SHALL still scroll the track and start no drag; a finger reorders through the bin or the Alt keys ("A selected clip is moved by keyboard"), not by dragging on the track.
+release outside the track SHALL cancel with no edit, and Escape SHALL only cancel the drag. Touch SHALL NOT start it.
 
 #### Scenario: Drag to reorder
 - **WHEN** the operator drags `s1710002.mp4` left until the line says "Before s1710001.mp4" and releases
@@ -14,6 +14,10 @@ release outside the track SHALL cancel with no edit, and Escape during a drag SH
 #### Scenario: Drop on a chapter band
 - **WHEN** the operator drags `s1710003.mp4` onto the band "Main" and releases
 - **THEN** `s1710003.mp4` is the last clip of "Main" in the draft
+
+#### Scenario: Touch does not drag
+- **WHEN** with touch the operator swipes on a clip block
+- **THEN** the track scrolls and no drag starts; a finger reorders through the bin or the Alt keys
 
 #### Scenario: Escape
 - **WHEN** during a drag the operator presses Escape
