@@ -19,7 +19,7 @@ drop at its own place is no edit.
 
 ### D2. Built in the repo, not dnd-kit
 The track drag uses `dragStore` (one-drag claim shared with trim, edge and card drags) and pointer capture, with a
-3 px slop so a press still selects (`editor-selection` D2). `@dnd-kit` stays in the bin; the bin→track and track→bin
+3 px slop so a press still selects. **Pointer types**: the drag starts for a mouse or a pen only; with touch a swipe on a block still scrolls the track (`clip-edge-trim`'s swipe rule is unchanged), and a finger reorders through the bin or the Alt keys. Escape cancels the drag only and keeps the clip selected. A press on a cut or card span inside a block selects that and is not a reorder; a reorder drag neither moves the playhead nor changes play. (`editor-selection` D2.) `@dnd-kit` stays in the bin; the bin→track and track→bin
 drags hand over through a small adapter that reads the pointer's pane.
 
 ### D3. Same reducer actions as the lists

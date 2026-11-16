@@ -2,10 +2,10 @@
 
 ### Requirement: A clip is reordered by dragging it on the track
 
-In Edit mode a press on a clip block's body that moves more than 3 px SHALL start a drag: the block follows the
+In Edit mode a press with a mouse or a pen on a clip block's body that moves more than 3 px SHALL start a drag: the block follows the
 pointer, the other clips make room live, and a line with words shows the drop place. Release SHALL make one draft edit
 (reorder, or move into another chapter when the place is in another chapter's span or on its band). Escape or a
-release outside the track SHALL cancel with no edit.
+release outside the track SHALL cancel with no edit, and Escape during a drag SHALL only cancel the drag: the clip stays selected. With touch, a swipe on a clip block SHALL still scroll the track and start no drag; a finger reorders through the bin or the Alt keys ("A selected clip is moved by keyboard"), not by dragging on the track.
 
 #### Scenario: Drag to reorder
 - **WHEN** the operator drags `s1710002.mp4` left until the line says "Before s1710001.mp4" and releases
@@ -56,7 +56,7 @@ why.
 
 ### Requirement: The playhead scrubs one video
 
-The Timeline SHALL hold exactly one `<video>`, created when the track opens, showing the proxy of the clip the playhead is in, at the playhead's time in that clip. The playhead SHALL be a slider over the whole timeline: it SHALL have the role `slider`, a name ("Playhead"), `aria-valuemin`, `aria-valuemax` and `aria-valuenow` in the timeline's seconds, and a value text that names the clip, the time in it and the time in the whole timeline, each said by its noun ("Harbour, clip 0:12.4 of 0:24.96; event 1:12 of 3:12", the times in the Cuts panel's time format, not padded). Dragging on the ruler SHALL move the playhead; so SHALL dragging on the track's empty lane or a black card's span with a mouse or a pen, and so SHALL dragging the playhead's own grip. With touch, the ruler SHALL scrub and a swipe on the track body SHALL scroll it. A press on the ruler SHALL move the playhead there, and so SHALL a press on the track's empty lane. A single press on a clip's block (its body, not its edge tools or handles) SHALL select the clip and SHALL NOT move the playhead, and in Edit mode a press on it that moves more than 3 px SHALL start a reorder drag, not a scrub ("A clip is reordered by dragging it on the track"); a double press on it SHALL place the playhead there ("A clip is selected on the track or in the bin"). A press in a black card's span still puts the playhead in the card.
+The Timeline SHALL hold exactly one `<video>`, created when the track opens, showing the proxy of the clip the playhead is in, at the playhead's time in that clip. The playhead SHALL be a slider over the whole timeline: it SHALL have the role `slider`, a name ("Playhead"), `aria-valuemin`, `aria-valuemax` and `aria-valuenow` in the timeline's seconds, and a value text that names the clip, the time in it and the time in the whole timeline, each said by its noun ("Harbour, clip 0:12.4 of 0:24.96; event 1:12 of 3:12", the times in the Cuts panel's time format, not padded). Dragging on the ruler SHALL move the playhead; so SHALL dragging on the track's empty lane or a black card's span with a mouse or a pen, and so SHALL dragging the playhead's own grip. With touch, the ruler SHALL scrub and a swipe on the track body, clip blocks included, SHALL scroll it. A press on the ruler SHALL move the playhead there, and so SHALL a press on the track's empty lane. A single press on a clip's block (its body, not its edge tools or handles) SHALL select the clip and SHALL NOT move the playhead, and in Edit mode a press with a mouse or a pen on it that moves more than 3 px SHALL start a reorder drag, not a scrub ("A clip is reordered by dragging it on the track"), and a reorder drag SHALL NOT move the playhead nor pause or resume play; a press on a cut's span or a video card's span inside the block selects that cut or card on press, and is not dragged (only the rest of the block's body starts a reorder); a double press on it SHALL place the playhead there ("A clip is selected on the track or in the bin"). A press in a black card's span still puts the playhead in the card.
 
 Moving the playhead into another clip SHALL load that clip's proxy into the same `<video>` and seek it, so the picture is the clip's frame at that time; a short flash between two clips is accepted. While the pointer is moving, the Timeline SHALL keep at most one seek in flight and SHALL seek to the latest pointer position when it completes, so that a scrub across many clips never queues a seek per pointer move. The video SHALL be paused while scrubbing. The picture and the playhead SHALL end where the pointer ended.
 
@@ -99,6 +99,10 @@ A proxy whose playing fails SHALL be said by cause, as the clip preview says it:
 - **WHEN** the playhead is at 5.0 s and the operator presses once on the body of a clip's block elsewhere
 - **THEN** the clip is selected and the playhead is still at 5.0 s
 
+#### Scenario: A finger swipe on a clip scrolls
+- **WHEN** with touch the operator swipes 40 px sideways starting on a clip block's body
+- **THEN** the track scrolls, no reorder drag starts and the playhead has not moved
+
 #### Scenario: A clip drag does not scrub
 - **WHEN** in Edit mode the operator presses on the body of a clip's block and moves 20 px sideways
 - **THEN** a reorder drag starts and the playhead has not moved
@@ -111,9 +115,7 @@ A proxy whose playing fails SHALL be said by cause, as the clip preview says it:
 
 A press on a clip block's body (not its edge tools or handles) and a press on its bin row SHALL select the clip. The
 block SHALL be outlined with trim handles and the row highlighted; each SHALL be scrolled into view in its pane
-without moving keyboard focus there. A press on empty track SHALL select nothing. A press on a clip block's body that moves more than 3 px SHALL start a reorder drag instead ("A clip is reordered by dragging it on the track"), and the dragged clip SHALL be the selected one when the drag ends, whether or not it made an edit.
-
-
+without moving keyboard focus there. A press on empty track SHALL select nothing. A press with a mouse or a pen on a clip block's body that moves more than 3 px SHALL start a reorder drag instead ("A clip is reordered by dragging it on the track"), and the dragged clip SHALL be the selected one when the drag ends, whether or not it made an edit; Escape during that drag cancels only the drag and keeps the selection.
 
 #### Scenario: Bin to track
 - **WHEN** the track shows 0–20 s and the operator presses the bin row of a clip drawn at 31 s
@@ -127,6 +129,6 @@ without moving keyboard focus there. A press on empty track SHALL select nothing
 - **WHEN** the operator presses the track below the last lane
 - **THEN** nothing is selected and the inspector shows the Event tab
 
-#### Scenario: A press that moves is a drag
+#### Scenario: A press that moves 3 px or less only selects
 - **WHEN** the operator presses a clip block's body and moves 2 px, then releases
 - **THEN** the clip is selected and nothing was dragged

@@ -10,7 +10,7 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
   Also confirm `track-draft-order` is archived the same way (this change needs the draft order drawn).
   If any fails, STOP: do not start this change; report which check failed.
 - [x] 0.2 Spec freshness: re-read `timeline` and `event-timeline`; confirm no requirement still says the order is
-  edited only in the lists; add MODIFIED blocks here if one does.
+  edited only in the lists; add MODIFIED blocks here if one does (also `web-app`'s reorder and save requirements).
 
 ## 1. Model (web/src/timeline)
 
