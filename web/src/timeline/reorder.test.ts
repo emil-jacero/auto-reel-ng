@@ -109,17 +109,17 @@ describe('dropSlot', () => {
     // From the first chapter's perspective the tie also keeps the earliest boundary.
     const slot = dropSlot(lay(withEmpty), withEmpty, 3000, 's1710001.mp4')
     assert.equal(slot.chapter, 'r0')
-    const solo: DrawnChapter[] = [{ key: 'a', identities: [] }, { key: 'b', identities: ['x.mp4'] }]
+    const solo: DrawnChapter[] = [{ key: 'a', identities: [] }, { key: 'b', identities: ['y.mp4', 'x.mp4'] }]
     const s = dropSlot(lay(solo), solo, 0, 'x.mp4')
     assert.equal(s.chapter, 'a')
     assert.equal(s.index, 0)
     const next = applyDrop(
-      new Map([['a', []], ['b', ['x.mp4']]]),
+      new Map([['a', []], ['b', ['y.mp4', 'x.mp4']]]),
       { identity: 'x.mp4', chapter: 'b' },
       s,
     )
     assert.deepEqual(next.get('a'), ['x.mp4'])
-    assert.deepEqual(next.get('b'), [])
+    assert.deepEqual(next.get('b'), ['y.mp4'])
     void o
   })
 
