@@ -15,7 +15,7 @@ function lay(chapters: readonly DrawnChapter[], len = 1000) {
 
 const chapters: DrawnChapter[] = [
   { key: 'r0', name: 'Main', identities: ['s1710001.mp4', 's1710002.mp4', 's1710003.mp4'] },
-  { key: 'r1', name: 'Kvällen', identities: ['s1710004.mp4', 's1710005.mp4'] },
+  { key: 'r1', name: 'Kvällen', identities: ['s1710005.mp4', 's1710004.mp4'] },
 ]
 const orders: Orders = new Map(chapters.map((c) => [c.key, c.identities]))
 
@@ -46,7 +46,7 @@ describe('dropSlot', () => {
   })
 
   it('goes across chapters to the end of Main', () => {
-    const slot = dropSlot(lay(chapters), chapters, 3000, 's1710004.mp4')
+    const slot = dropSlot(lay(chapters), chapters, 2900, 's1710004.mp4')
     assert.equal(slot.chapter, 'r0')
     assert.equal(slot.index, 3)
     assert.equal(slot.beforeIdentity, null)
@@ -84,7 +84,7 @@ describe('dropSlot', () => {
     const slot = dropSlot(lay(chapters), chapters, 3900, 's1710001.mp4')
     assert.equal(slot.chapter, 'r1')
     assert.equal(slot.index, 1)
-    assert.equal(slot.beforeIdentity, 's1710005.mp4')
+    assert.equal(slot.beforeIdentity, 's1710004.mp4')
   })
 
   it('drops after the last clip of the last chapter and beyond the track', () => {
@@ -105,9 +105,9 @@ describe('dropSlot', () => {
     ]
     const o: Orders = new Map(withEmpty.map((c) => [c.key, c.identities]))
     // The boundary at 3000 is the end of Main, Empty's, and Kvällen's start: Main wins.
-    assert.equal(dropSlot(lay(withEmpty), withEmpty, 3000, 's1710004.mp4').chapter, 'r0')
+    assert.equal(dropSlot(lay(withEmpty), withEmpty, 2900, 's1710004.mp4').chapter, 'r0')
     // From the first chapter's perspective the tie also keeps the earliest boundary.
-    const slot = dropSlot(lay(withEmpty), withEmpty, 3000, 's1710005.mp4')
+    const slot = dropSlot(lay(withEmpty), withEmpty, 3000, 's1710001.mp4')
     assert.equal(slot.chapter, 'r0')
     const solo: DrawnChapter[] = [{ key: 'a', identities: [] }, { key: 'b', identities: ['x.mp4'] }]
     const s = dropSlot(lay(solo), solo, 0, 'x.mp4')
@@ -142,13 +142,13 @@ describe('dropSlot', () => {
     ]
     const l = lay(big, 2000)
     const bigOrders: Orders = new Map(big.map((c) => [c.key, c.identities]))
-    const slot = dropSlot(l, big, 399 * 2000 + 1200, 'c000.mp4')
+    const slot = dropSlot(l, big, 399 * 2000 + 600, 'c000.mp4')
     assert.equal(slot.chapter, 'b')
     assert.equal(slot.beforeIdentity, 'c399.mp4')
     const next = applyDrop(bigOrders, { identity: 'c000.mp4', chapter: 'a' }, slot)
     assert.equal(next.get('a')?.length, 249)
     assert.equal(next.get('b')?.length, 151)
-    assert.equal(next.get('b')?.[148], 'c000.mp4')
+    assert.equal(next.get('b')?.[149], 'c000.mp4')
     const all = [...(next.get('a') ?? []), ...(next.get('b') ?? [])]
     assert.equal(new Set(all).size, 400)
   })
