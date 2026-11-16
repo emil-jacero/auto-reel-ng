@@ -54,6 +54,7 @@ import type { DragStore } from './dragStore'
 import type { ChapterKey } from '../edit/draft'
 import { chapterHeading } from '../events/labels.ts'
 import type { ReorderModel } from './ClipDrag'
+import { spanHit } from './clipDrag'
 import { dropSlot } from './reorder'
 import type { DrawnChapter } from './reorder'
 import type { EditBinding } from './editing'
@@ -370,6 +371,12 @@ export function useTimeline({
     }
     selectClip(identity)
   }
+  const spanAtRef = useRef<(identity: string, x: number) => boolean>(() => false)
+  spanAtRef.current = (identity, x) => {
+    const pos = positionOf(x)
+    return spanHit(pos, clips[pos.clip]?.identity, identity, editing.listed(identity)) !== null
+  }
+  const spanAt = useCallback((identity: string, x: number) => spanAtRef.current(identity, x), [])
   const pressClip = useCallback((identity: string, x: number) => pressClipRef.current(identity, x), [])
   const selectCard = selection.select
   const revealCard = selection.reveal
@@ -1230,6 +1237,7 @@ export function useTimeline({
         selectedClip={selectedClip}
         onSelectClip={selectClip}
         onPressClip={pressClip}
+        onSpanAt={spanAt}
         onClearSelection={clearSelection}
         cardLane={cardLane}
         shifting={shifting}

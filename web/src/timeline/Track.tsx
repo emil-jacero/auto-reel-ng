@@ -418,6 +418,7 @@ const ClipPress = memo(function ClipPress({
       onPointerMove={grab.onMove}
       onPointerUp={grab.onUp}
       onPointerCancel={grab.onCancel}
+      onLostPointerCapture={grab.onLostCapture}
       onClick={(event: MouseEvent<HTMLElement>) => {
         // A drag that moved a clip (or tried to) ends in a click; that click selects nothing.
         if (grab.consumeDragged()) {
@@ -490,6 +491,7 @@ export function Track({
   selectedClip,
   onSelectClip,
   onPressClip,
+  onSpanAt,
   onClearSelection,
   cardLane,
   shifting = null,
@@ -536,6 +538,8 @@ export function Track({
   onSelectClip: (identity: string) => void
   /** A click on a clip's block at track px `x` (NaN: none): a cut's span there, else the clip. */
   onPressClip: (identity: string, x: number) => void
+  /** Whether a press at this track px on the clip lands on a cut's or a card's span. */
+  onSpanAt: (identity: string, x: number) => boolean
   /** A press on empty track selects nothing. */
   onClearSelection: () => void
   /** The title cards' lane; absent, the Timeline draws none. */
@@ -560,6 +564,8 @@ export function Track({
   // A double press on a clip places the playhead there (a clip press alone does not).
   const scrubNow = useRef(onScrub)
   scrubNow.current = onScrub
+  const spanNow = useRef(onSpanAt)
+  spanNow.current = onSpanAt
   const pressNow = useRef(onPressClip)
   pressNow.current = onPressClip
   const pressAt = useCallback((identity: string, clientX: number) => {
@@ -583,6 +589,10 @@ export function Track({
     locked: editing.locked,
     announce: editing.announce,
     onSelectClip,
+    onSpan: (identity, clientX) => {
+      const box = canvas.current?.getBoundingClientRect()
+      return spanNow.current(identity, clientX - (box?.left ?? 0))
+    },
   })
   const clipDragging = useSyncExternalStore(drag.subscribe, () => drag.getClip() !== null)
   // Every cut handle and edge tool: one nearest-wins press test across them.

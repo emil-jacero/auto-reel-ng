@@ -17,6 +17,27 @@ export const MOVE_LOCKED = 'Moving clips waits for the save or the move of marke
 /** What the tip says while the pointer is outside the track: a release there cancels. */
 export const MOVE_CANCEL = 'Release outside the track cancels the move'
 
+/**
+ * What a press on a clip's block lands on: a cut's span or a card's span (each selects its own
+ * and is not dragged), or null for the rest of the body (which reorders). `at` is the playhead
+ * position under the press, `cuts` the clip's cuts in seconds.
+ */
+export function spanHit(
+  at: { clip: number; ms: Ms; card?: unknown | null },
+  clipIdentity: string | undefined,
+  identity: string,
+  cuts: readonly { removed?: boolean; in: number; out: number }[],
+): 'cut' | 'card' | null {
+  if (at.card != null) {
+    return 'card'
+  }
+  if (clipIdentity !== identity) {
+    return null
+  }
+  const cut = cuts.find((c) => !c.removed && Math.round(c.in * 1000) <= at.ms && at.ms < Math.round(c.out * 1000))
+  return cut === undefined ? null : 'cut'
+}
+
 /** Whether a press has moved far enough to be a drag. */
 export function pastSlop(dx: number, dy: number): boolean {
   return Math.hypot(dx, dy) >= CLIP_SLOP_PX
@@ -54,7 +75,9 @@ export function flatMove(
 /**
  * Which way the block at drawn index `at` shifts while the dragged clip goes from `from` to
  * `to`: -1 (left, by the dragged block's width) for the clips it passes going right, +1 for
- * those it passes going left, 0 for the rest and for the dragged one itself.
+ * those it passes going left, 0 for the rest and for the dragged one itself. Only clip blocks
+ * shift: a move across a chapter join into the end of the earlier chapter has `from === to` and
+ * the card between the chapters stays put in the preview (accepted gap; the drop is right).
  */
 export function shiftOf(from: number, to: number, at: number): -1 | 0 | 1 {
   if (at === from) {

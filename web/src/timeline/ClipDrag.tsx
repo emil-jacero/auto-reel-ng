@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react'
-import type { PointerEvent, RefObject } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useLayoutEffect,
+  useRef,
+  useSyncExternalStore,
+} from "react";
+import type { PointerEvent, RefObject } from "react";
 
 import {
   MOVE_CANCEL,
@@ -12,13 +19,13 @@ import {
   pastSlop,
   shiftOf,
   slotLineMs,
-} from './clipDrag'
-import type { Box } from './clipDrag'
-import type { DragStore } from './dragStore'
-import { extentMs, pxToTime, timeToPx } from './model'
-import type { Layout, Ms } from './model'
-import type { DrawnChapter, DropSlot } from './reorder'
-import type { TrackClip } from './layout'
+} from "./clipDrag";
+import type { Box } from "./clipDrag";
+import type { DragStore } from "./dragStore";
+import { extentMs, pxToTime, timeToPx } from "./model";
+import type { Layout, Ms } from "./model";
+import type { DrawnChapter, DropSlot } from "./reorder";
+import type { TrackClip } from "./layout";
 
 /*
  * A clip's block dragged on the track (`track-drag-edit`, design D2). The press claims the one
@@ -32,48 +39,57 @@ import type { TrackClip } from './layout'
 /** What the Timeline gives the track to reorder with. */
 export type ReorderModel = {
   /** The drawn chapters, in order, with the clips each plays (as `clips[].chapter` counts them). */
-  chapters: readonly DrawnChapter[]
+  chapters: readonly DrawnChapter[];
   /** The slot nearest a dragged block whose centre is at this track time (throws on an inconsistent lay). */
-  slotAt(identity: string, trackMs: Ms): DropSlot
+  slotAt(identity: string, trackMs: Ms): DropSlot;
   /** A release: one draft edit (nothing when the slot is the clip's own place). */
-  onDrop(identity: string, slot: DropSlot): void
-}
+  onDrop(identity: string, slot: DropSlot): void;
+};
 
 type Context = {
-  clips: readonly TrackClip[]
-  lay: Layout
-  pps: number
-  reorder: ReorderModel
-  locked: boolean
-  announce: (words: string) => void
-  onSelectClip: (identity: string) => void
-}
+  clips: readonly TrackClip[];
+  lay: Layout;
+  pps: number;
+  reorder: ReorderModel;
+  locked: boolean;
+  announce: (words: string) => void;
+  onSelectClip: (identity: string) => void;
+  /** Whether a press at this client x lands on a cut's or a card's span (selected, not dragged). */
+  onSpan: (identity: string, clientX: number) => boolean;
+};
 
 type Press = {
-  id: number
-  token: object
-  identity: string
-  index: number
-  x: number
-  y: number
-  started: boolean
-  refused: boolean
+  id: number;
+  token: object;
+  identity: string;
+  index: number;
+  x: number;
+  y: number;
+  started: boolean;
+  refused: boolean;
   /** The slot a release would use, null when it would drop nothing. */
-  slot: DropSlot | null
-  off: (() => void) | null
-}
+  slot: DropSlot | null;
+  off: (() => void) | null;
+};
 
 /** The chapter bands' boxes (client px) by the drawn chapter's index. */
 function bandBoxes(canvas: HTMLElement): { chapter: number; box: Box }[] {
-  const boxes: { chapter: number; box: Box }[] = []
-  for (const node of canvas.querySelectorAll<HTMLElement>('.tl-chapter[data-chapter]')) {
-    const rect = node.getBoundingClientRect()
+  const boxes: { chapter: number; box: Box }[] = [];
+  for (const node of canvas.querySelectorAll<HTMLElement>(
+    ".tl-chapter[data-chapter]",
+  )) {
+    const rect = node.getBoundingClientRect();
     boxes.push({
       chapter: Number(node.dataset.chapter),
-      box: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
-    })
+      box: {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+      },
+    });
   }
-  return boxes
+  return boxes;
 }
 
 /**
@@ -86,168 +102,211 @@ export function useClipDrag(
   viewport: RefObject<HTMLDivElement | null>,
   context: Context,
 ) {
-  const now = useRef(context)
-  now.current = context
-  const press = useRef<Press | null>(null)
+  const now = useRef(context);
+  now.current = context;
+  const press = useRef<Press | null>(null);
   // A drag ends in a click on the block; that click selects nothing.
-  const dragged = useRef(false)
+  const dragged = useRef(false);
 
   const end = useCallback(
     (event: { currentTarget: HTMLElement; pointerId: number } | null) => {
-      const p = press.current
-      press.current = null
+      const p = press.current;
+      press.current = null;
       if (p === null) {
-        return
+        return;
       }
-      p.off?.()
-      drag.setClip(null)
-      drag.unclaim(p.token)
-      if (event !== null && event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId)
+      p.off?.();
+      drag.setClip(null);
+      drag.unclaim(p.token);
+      if (
+        event !== null &&
+        event.currentTarget.hasPointerCapture?.(event.pointerId)
+      ) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
       }
     },
     [drag],
-  )
+  );
 
   const update = useCallback(
     (p: Press, event: PointerEvent<HTMLElement>) => {
-      const c = now.current
-      const clip = c.clips[p.index]
-      const el = canvas.current
-      const box = viewport.current?.getBoundingClientRect()
+      const c = now.current;
+      const clip = c.clips[p.index];
+      const el = canvas.current;
+      const box = viewport.current?.getBoundingClientRect();
       if (clip === undefined || el === null || box === undefined) {
-        return
+        return;
       }
-      const widthMs = extentMs(clip.kept)
-      const dxPx = event.clientX - p.x
-      const base = { identity: p.identity, dxPx, from: p.index, widthMs }
+      const widthMs = extentMs(clip.kept);
+      const dxPx = event.clientX - p.x;
+      const base = { identity: p.identity, dxPx, from: p.index, widthMs };
       const outside = !inBox(
         { left: box.left, right: box.right, top: box.top, bottom: box.bottom },
         event.clientX,
         event.clientY,
-      )
+      );
       if (outside) {
-        p.slot = null
-        drag.setClip({ ...base, to: p.index, lineMs: null, words: MOVE_CANCEL })
-        return
+        p.slot = null;
+        drag.setClip({
+          ...base,
+          to: p.index,
+          lineMs: null,
+          words: MOVE_CANCEL,
+        });
+        return;
       }
-      let slot: DropSlot | null = null
-      const band = bandBoxes(el).find((b) => inBox(b.box, event.clientX, event.clientY))
+      let slot: DropSlot | null = null;
+      const band = bandBoxes(el).find((b) =>
+        inBox(b.box, event.clientX, event.clientY),
+      );
       if (band !== undefined) {
-        slot = bandSlot(c.reorder.chapters, band.chapter, p.identity)
+        slot = bandSlot(c.reorder.chapters, band.chapter, p.identity);
       }
       if (slot === null) {
-        const centre = c.lay.startsMs[p.index] + widthMs / 2 + pxToTime(dxPx, c.pps)
+        const centre =
+          c.lay.startsMs[p.index] + widthMs / 2 + pxToTime(dxPx, c.pps);
         try {
-          slot = c.reorder.slotAt(p.identity, centre)
+          slot = c.reorder.slotAt(p.identity, centre);
         } catch {
-          slot = null
+          slot = null;
         }
       }
       if (slot === null) {
-        p.slot = null
-        drag.setClip({ ...base, to: p.index, lineMs: null, words: '' })
-        return
+        p.slot = null;
+        drag.setClip({ ...base, to: p.index, lineMs: null, words: "" });
+        return;
       }
-      const own = isOwnPlace(c.reorder.chapters, slot, p.identity)
-      p.slot = own ? null : slot
-      const starts = c.lay.startsMs.slice(0, c.clips.length)
-      const extents = c.clips.map((k) => extentMs(k.kept))
+      const own = isOwnPlace(c.reorder.chapters, slot, p.identity);
+      p.slot = own ? null : slot;
+      const starts = c.lay.startsMs.slice(0, c.clips.length);
+      const extents = c.clips.map((k) => extentMs(k.kept));
       drag.setClip({
         ...base,
         to: flatMove(c.reorder.chapters, slot, p.identity).to,
-        lineMs: slotLineMs(starts, extents, c.reorder.chapters, slot, p.identity),
+        lineMs: slotLineMs(
+          starts,
+          extents,
+          c.reorder.chapters,
+          slot,
+          p.identity,
+        ),
         words: dropWords(own, slot),
-      })
+      });
     },
     [drag, canvas, viewport],
-  )
+  );
 
-  useEffect(() => () => end(null), [end])
+  useEffect(() => () => end(null), [end]);
 
-  return {
-    /** Whether the click that follows a drag is to be ignored; reads and clears. */
-    consumeDragged(): boolean {
-      const was = dragged.current
-      dragged.current = false
-      return was
-    },
-    onDown(event: PointerEvent<HTMLElement>, identity: string, index: number) {
-      if (event.button !== 0 || event.pointerType === 'touch') {
-        return
-      }
-      dragged.current = false
-      end(null)
-      const token = {}
-      if (!drag.claim(token)) {
-        return
-      }
-      event.currentTarget.setPointerCapture(event.pointerId)
-      press.current = {
-        id: event.pointerId,
-        token,
-        identity,
-        index,
-        x: event.clientX,
-        y: event.clientY,
-        started: false,
-        refused: false,
-        slot: null,
-        off: null,
-      }
-    },
-    onMove(event: PointerEvent<HTMLElement>) {
-      const p = press.current
-      if (p === null || p.id !== event.pointerId) {
-        return
-      }
-      if (!p.started) {
-        if (!pastSlop(event.clientX - p.x, event.clientY - p.y)) {
-          return
+  return useMemo(
+    () => ({
+      /** Whether the click that follows a drag is to be ignored; reads and clears. */
+      consumeDragged(): boolean {
+        const was = dragged.current;
+        dragged.current = false;
+        return was;
+      },
+      onDown(
+        event: PointerEvent<HTMLElement>,
+        identity: string,
+        index: number,
+      ) {
+        if (event.button !== 0 || event.pointerType === "touch") {
+          return;
         }
-        dragged.current = true
-        if (now.current.locked) {
-          if (!p.refused) {
-            p.refused = true
-            now.current.announce(MOVE_LOCKED)
-          }
-          return
+        dragged.current = false;
+        end(null);
+        // A press on a cut's or a card's span selects that and is not dragged.
+        if (now.current.onSpan(identity, event.clientX)) {
+          return;
         }
-        p.started = true
-        now.current.onSelectClip(p.identity)
-        const target = event.currentTarget
+        const token = {};
+        if (!drag.claim(token)) {
+          return;
+        }
+        const target = event.currentTarget;
+        target.setPointerCapture(event.pointerId);
         const cancel = (key: KeyboardEvent) => {
-          if (key.key === 'Escape') {
-            key.preventDefault()
-            key.stopPropagation()
-            end({ currentTarget: target, pointerId: p.id })
+          if (key.key === "Escape") {
+            key.preventDefault();
+            key.stopPropagation();
+            end({ currentTarget: target, pointerId: event.pointerId });
           }
+        };
+        // A scroll of the track mid-drag would move the slots under a still pointer (and may unmount
+        // the captured block): it cancels.
+        const scroller = viewport.current;
+        const scrolled = () =>
+          end({ currentTarget: target, pointerId: event.pointerId });
+        window.addEventListener("keydown", cancel, true);
+        scroller?.addEventListener("scroll", scrolled);
+        press.current = {
+          id: event.pointerId,
+          token,
+          identity,
+          index,
+          x: event.clientX,
+          y: event.clientY,
+          started: false,
+          refused: false,
+          slot: null,
+          off: () => {
+            window.removeEventListener("keydown", cancel, true);
+            scroller?.removeEventListener("scroll", scrolled);
+          },
+        };
+      },
+      onMove(event: PointerEvent<HTMLElement>) {
+        const p = press.current;
+        if (p === null || p.id !== event.pointerId) {
+          return;
         }
-        window.addEventListener('keydown', cancel, true)
-        p.off = () => window.removeEventListener('keydown', cancel, true)
-      }
-      update(p, event)
-    },
-    onUp(event: PointerEvent<HTMLElement>) {
-      const p = press.current
-      if (p === null || p.id !== event.pointerId) {
-        return
-      }
-      const slot = p.started ? p.slot : null
-      const identity = p.identity
-      end(event)
-      if (slot !== null) {
-        now.current.reorder.onDrop(identity, slot)
-      }
-    },
-    onCancel(event: PointerEvent<HTMLElement>) {
-      const p = press.current
-      if (p === null || p.id !== event.pointerId) {
-        return
-      }
-      end(event)
-    },
-  }
+        if (!p.started) {
+          if (!pastSlop(event.clientX - p.x, event.clientY - p.y)) {
+            return;
+          }
+          dragged.current = true;
+          if (now.current.locked) {
+            if (!p.refused) {
+              p.refused = true;
+              now.current.announce(MOVE_LOCKED);
+            }
+            return;
+          }
+          p.started = true;
+          now.current.onSelectClip(p.identity);
+        }
+        update(p, event);
+      },
+      onUp(event: PointerEvent<HTMLElement>) {
+        const p = press.current;
+        if (p === null || p.id !== event.pointerId) {
+          return;
+        }
+        const slot = p.started ? p.slot : null;
+        const identity = p.identity;
+        end(event);
+        if (slot !== null) {
+          now.current.reorder.onDrop(identity, slot);
+        }
+      },
+      onCancel(event: PointerEvent<HTMLElement>) {
+        const p = press.current;
+        if (p === null || p.id !== event.pointerId) {
+          return;
+        }
+        end(event);
+      },
+      onLostCapture(event: PointerEvent<HTMLElement>) {
+        const p = press.current;
+        if (p === null || p.id !== event.pointerId) {
+          return;
+        }
+        end(null);
+      },
+    }),
+    [end, update, drag, viewport],
+  );
 }
 
 /**
@@ -259,68 +318,85 @@ export function ClipDragLayer({
   canvas,
   pps,
 }: {
-  drag: DragStore
-  canvas: RefObject<HTMLDivElement | null>
-  pps: number
+  drag: DragStore;
+  canvas: RefObject<HTMLDivElement | null>;
+  pps: number;
 }) {
-  const lineMs = useSyncExternalStore(drag.subscribe, () => drag.getClip()?.lineMs ?? null)
-  const words = useSyncExternalStore(drag.subscribe, () => drag.getClip()?.words ?? '')
-  const active = useSyncExternalStore(drag.subscribe, () => drag.getClip() !== null)
+  const lineMs = useSyncExternalStore(
+    drag.subscribe,
+    () => drag.getClip()?.lineMs ?? null,
+  );
+  const words = useSyncExternalStore(
+    drag.subscribe,
+    () => drag.getClip()?.words ?? "",
+  );
+  const active = useSyncExternalStore(
+    drag.subscribe,
+    () => drag.getClip() !== null,
+  );
   useLayoutEffect(() => {
-    const el = canvas.current
+    const el = canvas.current;
     if (!active || el === null) {
-      return undefined
+      return undefined;
     }
-    const moved = new Set<HTMLElement>()
-    const lifted = new Set<HTMLElement>()
+    const moved = new Set<HTMLElement>();
+    const lifted = new Set<HTMLElement>();
     const apply = () => {
-      const d = drag.getClip()
+      const d = drag.getClip();
       if (d === null) {
-        return
+        return;
       }
-      const width = timeToPx(d.widthMs, pps)
-      for (const node of el.querySelectorAll<HTMLElement>('.tl-clip[data-index], .tl-clip-press[data-index]')) {
-        const at = Number(node.dataset.index)
-        const by = at === d.from ? d.dxPx : shiftOf(d.from, d.to, at) * width
-        const value = by === 0 ? '' : `${by}px 0`
+      const width = timeToPx(d.widthMs, pps);
+      for (const node of el.querySelectorAll<HTMLElement>(
+        ".tl-clip[data-index], .tl-clip-press[data-index]",
+      )) {
+        const at = Number(node.dataset.index);
+        const by = at === d.from ? d.dxPx : shiftOf(d.from, d.to, at) * width;
+        const value = by === 0 ? "" : `${by}px 0`;
         if (node.style.translate !== value) {
-          node.style.translate = value
-          moved.add(node)
+          node.style.translate = value;
+          moved.add(node);
         }
         if (at === d.from && node.dataset.lifted === undefined) {
-          node.dataset.lifted = 'true'
-          lifted.add(node)
+          node.dataset.lifted = "true";
+          lifted.add(node);
         }
       }
-    }
-    apply()
-    const off = drag.subscribe(apply)
+    };
+    apply();
+    const off = drag.subscribe(apply);
     return () => {
-      off()
+      off();
       for (const node of moved) {
-        node.style.translate = ''
+        node.style.translate = "";
       }
       for (const node of lifted) {
-        delete node.dataset.lifted
+        delete node.dataset.lifted;
       }
-    }
-  }, [active, drag, canvas, pps])
+    };
+  }, [active, drag, canvas, pps]);
   if (!active) {
-    return null
+    return null;
   }
   return (
     <>
       {lineMs !== null && (
-        <div className="tl-drop-line" aria-hidden="true" style={{ insetInlineStart: timeToPx(lineMs, pps) }} />
+        <div
+          className="tl-drop-line"
+          aria-hidden="true"
+          style={{ insetInlineStart: timeToPx(lineMs, pps) }}
+        />
       )}
-      {words !== '' && (
+      {words !== "" && (
         <div
           className="tl-drop-words"
-          style={{ insetInlineStart: lineMs === null ? 0 : timeToPx(lineMs, pps) }}
+          style={{
+            insetInlineStart: lineMs === null ? 0 : timeToPx(lineMs, pps),
+          }}
         >
           {words}
         </div>
       )}
     </>
-  )
+  );
 }

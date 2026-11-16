@@ -11,9 +11,8 @@ import {
   pastSlop,
   shiftOf,
   slotLineMs,
+  spanHit,
 } from './clipDrag.ts'
-import { createDragStore, held } from './dragStore.ts'
-import type { ClipDragging } from './dragStore.ts'
 import type { DrawnChapter } from './reorder.ts'
 
 const chapters: DrawnChapter[] = [
@@ -80,42 +79,16 @@ describe('the clip drag model', () => {
   })
 })
 
-describe('the drag store with a clip in the air', () => {
-  const clip: ClipDragging = {
-    identity: 'b',
-    dxPx: -40,
-    from: 1,
-    to: 0,
-    widthMs: 1000,
-    lineMs: 0,
-    words: 'Before a',
-  }
-
-  it('holds it under the one claim and tells readers only when it moved', () => {
-    const store = createDragStore()
-    let calls = 0
-    store.subscribe(() => {
-      calls += 1
-    })
-    store.setClip(clip)
-    store.setClip({ ...clip })
-    assert.equal(calls, 1)
-    store.setClip({ ...clip, dxPx: -41 })
-    assert.equal(calls, 2)
-    assert.equal(store.getClip()?.dxPx, -41)
-    assert.equal(held(store), true)
-    store.setClip(null)
-    assert.equal(store.getClip(), null)
-    assert.equal(held(store), false)
+describe('the span hit test', () => {
+  const cuts = [{ in: 1, out: 2 }, { in: 3, out: 4, removed: true }]
+  it('tells a cut span, a card span and the rest of the body apart', () => {
+    assert.equal(spanHit({ clip: 0, ms: 1500 }, 'a', 'a', cuts), 'cut')
+    assert.equal(spanHit({ clip: 0, ms: 2000 }, 'a', 'a', cuts), null)
+    assert.equal(spanHit({ clip: 0, ms: 3500 }, 'a', 'a', cuts), null)
+    assert.equal(spanHit({ clip: 0, ms: 1500 }, 'b', 'a', cuts), null)
+    assert.equal(spanHit({ clip: 0, ms: 0, card: {} }, 'a', 'a', cuts), 'card')
   })
-
-  it('refuses a second press while the clip holds the claim', () => {
-    const store = createDragStore()
-    const a = {}
-    assert.equal(store.claim(a), true)
-    assert.equal(store.claim({}), false)
-    assert.equal(held(store), true)
-    store.unclaim(a)
-    assert.equal(held(store), false)
+  it('moves a clip across a chapter join with no clip to shift', () => {
+    assert.deepEqual([0, 1, 2, 3, 4].map((i) => shiftOf(3, 3, i)), [0, 0, 0, 0, 0])
   })
 })

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { createDragStore, held, shiftMs } from './dragStore.ts'
-import type { Dragging, EdgeDragging } from './dragStore.ts'
+import type { ClipDragging, Dragging, EdgeDragging } from './dragStore.ts'
 
 const drag: Dragging = { identity: 'a.mp4', key: 'r0', edge: 'out', ms: 3500, snappedTo: null, words: '' }
 
@@ -159,5 +159,55 @@ describe('the drag store and a clip edge (clip-edge-trim)', () => {
     assert.equal(shiftMs(store, { kind: 'edge', identity: 'b.mp4' }), 0)
     store.setCard({ chapter: 'Beach', tenths: 35, snapped: false, words: '' })
     assert.equal(shiftMs(store, { kind: 'card', chapter: 'Beach', baseTenths: 30 }), 500)
+  })
+})
+
+describe('the drag store with a clip in the air', () => {
+  const clip: ClipDragging = {
+    identity: 'b',
+    dxPx: -40,
+    from: 1,
+    to: 0,
+    widthMs: 1000,
+    lineMs: 0,
+    words: 'Before a',
+  }
+
+  it('holds it under the one claim and tells readers only when it moved', () => {
+    const store = createDragStore()
+    let calls = 0
+    store.subscribe(() => {
+      calls += 1
+    })
+    store.setClip(clip)
+    store.setClip({ ...clip })
+    assert.equal(calls, 1)
+    store.setClip({ ...clip, dxPx: -41 })
+    assert.equal(calls, 2)
+    assert.equal(store.getClip()?.dxPx, -41)
+    assert.equal(held(store), true)
+    store.setClip(null)
+    assert.equal(store.getClip(), null)
+    assert.equal(held(store), false)
+  })
+
+  it('refuses a second press while the clip holds the claim', () => {
+    const store = createDragStore()
+    const a = {}
+    assert.equal(store.claim(a), true)
+    assert.equal(store.claim({}), false)
+    assert.equal(held(store), true)
+    store.unclaim(a)
+    assert.equal(held(store), false)
+  })
+
+  it('does not hold the store for a clip set on an unclaimed store once cleared', () => {
+    const store = createDragStore()
+    store.setClip(clip)
+    store.setClip(null)
+    const a = {}
+    assert.equal(store.claim(a), true)
+    store.unclaim(a)
+    assert.equal(held(store), false)
   })
 })
