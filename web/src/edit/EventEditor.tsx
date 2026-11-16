@@ -84,6 +84,7 @@ import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './Ch
 import { ClipOrderList, IgnoredBin } from './ClipOrderList'
 import type {
   MarkHandler,
+  IncludeHandler,
   MoveHandler,
   Origins,
   RemoveHandler,
@@ -1751,6 +1752,28 @@ export function EventEditor({
     [announce],
   )
 
+  // An ignored clip included without a drag: at the end of its chapter's play order, the same
+  // draft edit as the track drop, with the same guard.
+  const onIncludeClip = useCallback<IncludeHandler>(
+    (chapter, identity) => {
+      const current = latest.current
+      if (!idle(current)) {
+        announce(MOVE_LOCKED)
+        return
+      }
+      const at = current.draft.orders.get(chapter)?.length
+      if (
+        at === undefined ||
+        includeClip(current.baseline, current.draft, chapter, identity, at) === current.draft
+      ) {
+        return
+      }
+      dispatch({ type: 'ignore', chapter, identity, include: true, at })
+      announce(`Included ${identity.slice(identity.lastIndexOf('/') + 1)}. Not saved.`)
+    },
+    [announce],
+  )
+
   // The Track hands over where a release at a point lands on it; a track drag asks whether a
   // point is over the bin (the workspace's bin pane).
   const trackAt = useRef<TrackBridge['current']>(null)
@@ -3137,6 +3160,7 @@ export function EventEditor({
                       onMove={onMove}
                       onRemove={onRemove}
                       onRestore={onRestore}
+                      onInclude={onIncludeClip}
                       onAnnounce={announce}
                       compact={inWorkspace}
                       selectedClip={
@@ -3157,6 +3181,8 @@ export function EventEditor({
                       chapterHeading(name, hasNamedChapter),
                     )}
                     clips={clips}
+                    locked={listsLocked}
+                    onInclude={onIncludeClip}
                     nameOf={(group) =>
                       namesIn(
                         group.name,

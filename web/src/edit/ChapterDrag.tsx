@@ -303,6 +303,10 @@ function DragPreview({
   )
 }
 
+/** Spoken when a marked group is released over the video track. */
+const GROUP_ON_TRACK =
+  'A group of clips cannot be dropped on the video track. Nothing moved. Move it in the bin.'
+
 export function ChapterDrag({
   orders,
   listed,
@@ -744,6 +748,11 @@ export function ChapterDrag({
         return place === null ? undefined : `${name(active.id)} is over ${place}.`
       },
       onDragEnd: ({ active, over }) => {
+        // A group released over the track goes nowhere: groups move in the bin.
+        if (group() !== null && onTrack()) {
+          released.current = null
+          return GROUP_ON_TRACK
+        }
         // Dropped on the track: the editor says what it did (include or move).
         if (!current.current.model.chapterOf.has(String(active.id)) || onTrack()) {
           released.current = null
@@ -832,6 +841,14 @@ export function ChapterDrag({
       // A pointer released over the video track is the track's drop (an include or a move there).
       const at = pointer.current
       if (lift.current?.pointer === true && at !== null) {
+        if (lift.current.group !== null && current.current.overTrack(at.x, at.y)) {
+          // Multi-clip dragging stays in the bin: a group is not part-dropped on the track.
+          released.current = null
+          slot.current = null
+          cancelled.current = identity
+          setLifted(null)
+          return
+        }
         const handled = current.current.onDropOutside(identity, at.x, at.y)
         if (handled) {
           released.current = null
