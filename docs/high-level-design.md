@@ -954,6 +954,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     cut, title card or suggestion) and the inspector follows it with Clip, Title card, Suggestion and Event tabs; the
     title-card editor is docked in the inspector, no modal dialog; no API, engine or `RENDER_GRAPH_VERSION` change.
     "Ignore clip" moved to slice 3 (`track-drag-edit`), which builds the draft's ignore edit.
+    **Slice 3 is built** (`track-drag-edit`, web only; D-20, D-28): a clip block on the track drags to reorder it or
+    move it to another chapter; bin<->track include/ignore; Alt+Left/Right; Clip tab Ignore clip; no API, engine or
+    `RENDER_GRAPH_VERSION` change.
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
     D-17): a local image and a test stack, nothing published; the published image waits for the D-1
     fdk-aac blocker (§4.12).
@@ -1318,8 +1321,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     actions. `@dnd-kit` stays in the bin and the lists, and a small adapter joins bin and track: a clip dropped
     from the bin onto the track is included, a clip dragged off the track to the bin's Ignored part is ignored
     (the draft's ignore/include edit, saved as `ignore`). Alt+Left / Alt+Right moves the selected clip one place,
-    across chapters, and the inspector's Clip tab has an Ignore clip button. D-8's dependency list is still unchanged. D-8's dependency list is unchanged. Evidence (`research/v2/timeline-library.md`): none
-    of nine libraries models source-clip cuts, the three run in a browser exposed no keyboard path, and the
+    across chapters, and the inspector's Clip tab has an Ignore clip button. D-8's dependency list is still
+    unchanged. Evidence (`research/v2/timeline-library.md`): none of nine libraries models source-clip cuts, the three run in a browser exposed no keyboard path, and the
     nearest, `@xzdarcy/react-timeline-editor`, costs +68.5 KB gz; the in-repo prototype is +5.6 KB gz JS and held
     60 fps drag and scrub up to 400 clips at 4x CPU throttle, with 22 of 22 functional checks in Chrome 154,
     Firefox and WebKit. The pointer maths a library saves is about 110 lines; the keyboard and touch layer is
