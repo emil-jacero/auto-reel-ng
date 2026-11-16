@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { failedClips } from '../analysis/badge'
 import type { AnalysisBinding } from '../analysis/useEventAnalysis'
 import type { EventDetail } from '../api/event'
+import { listedChapters } from '../edit/draft'
 import type { DraftChapter, Orders } from '../edit/draft'
 import { Alert } from '../ui/Alert'
 import { HelpPanel, HelpToggle, useSectionHelp } from '../ui/help/HelpToggle'
@@ -85,6 +86,8 @@ export function TimelineSection({
   // change only on an edit, so a zoom, a scrub or a list's drag in the air keeps this memo.
   const shown = useMemo(() => draftClips(event, chapters, orders), [event, chapters, orders])
   const chapterNames = shown.names
+  // The drawn chapters' keys, by the same index as the names (`draftClips` skips the deleted ones).
+  const chapterKeys = useMemo(() => listedChapters(chapters).map((chapter) => chapter.key), [chapters])
   // The cuts are the draft's: never "being read" and never "unreadable".
   const cuts = editing.cuts
   const clips = useMemo(() => trackClips(shown.clips, cuts), [shown, cuts])
@@ -248,6 +251,7 @@ export function TimelineSection({
             eventId={eventId}
             clips={clips}
             chapterNames={chapterNames}
+            chapterKeys={chapterKeys}
             prepare={prepare}
             analysis={analysis}
             editing={editing}

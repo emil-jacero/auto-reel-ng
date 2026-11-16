@@ -49,6 +49,7 @@ import { draftEventStyle, previewStyle, readStyle, styleRefusalOf } from './card
 import type { StyleField, StyleRefusal, StyleValue } from './cardStyle.ts'
 import type { EventStyle } from './card/specs.ts'
 import type { EditBinding } from '../timeline/editing'
+import { applyDrop } from '../timeline/reorder'
 import type { EdgeEdit } from '../timeline/edgeTrim.ts'
 import type { Dismissals } from '../timeline/overlays/Dismissals'
 import type { AnalysisBinding } from '../analysis/useEventAnalysis'
@@ -1662,6 +1663,47 @@ export function EventEditor({
     [announce],
   )
 
+  // A clip block dropped on the track (`track-drag-edit`): the lists' own reducer action, so the top
+  // bar says "1 clip moved"; the same guard as a trim, and nothing when the slot is its own place.
+  const onMoveClip = useCallback<EditBinding['onMove']>(
+    (identity, slot, drawn) => {
+      const current = latest.current
+      if (!idle(current)) {
+        return
+      }
+      const orders = current.draft.orders
+      let chapter: ChapterKey | undefined
+      for (const [key, order] of orders) {
+        if (order.includes(identity)) {
+          chapter = key
+        }
+      }
+      if (chapter === undefined) {
+        return
+      }
+      const next = applyDrop(orders, { identity, chapter }, slot, drawn)
+      if (next === orders) {
+        return
+      }
+      if (chapter === slot.chapter) {
+        const from = orders.get(chapter)?.indexOf(identity) ?? -1
+        const to = next.get(chapter)?.indexOf(identity) ?? -1
+        if (from < 0 || to < 0) {
+          return
+        }
+        dispatch({ type: 'move', chapter, from, to })
+      } else {
+        const at = next.get(slot.chapter)?.indexOf(identity) ?? -1
+        if (at < 0) {
+          return
+        }
+        dispatch({ type: 'clip-drop', from: chapter, to: slot.chapter, identity, at })
+      }
+      announce(`Moved ${identity.slice(identity.lastIndexOf('/') + 1)}. ${slot.words}.`)
+    },
+    [announce],
+  )
+
   // What the Timeline gets of the draft (`timeline/editing.ts`); null for the needs-attention form.
   const baseCuts = ready?.baseline.cuts
   const draftCuts = ready?.draft.cuts
@@ -1786,6 +1828,7 @@ export function EventEditor({
       listed: (identity) => cutsOf(baseCuts, draftCuts, identity),
       onTrim,
       onEdge,
+      onMove: onMoveClip,
       onPoster,
       onAdd: cutHandlers.onAdd,
       onRemove: cutHandlers.onRemove,
@@ -1807,6 +1850,7 @@ export function EventEditor({
     listsLocked,
     onTrim,
     onEdge,
+    onMoveClip,
     onPoster,
     rotateClip,
     cutHandlers,

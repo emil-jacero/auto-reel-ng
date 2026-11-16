@@ -19,7 +19,7 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 2. Drag (web/src/timeline, web/src/edit)
 
-- [ ] 2.1 `ClipDrag` on the block body via `dragStore` (claim, 3 px slop, capture, Escape, live shift, slot line and
+- [x] 2.1 `ClipDrag` on the block body via `dragStore` (claim, 3 px slop, capture, Escape, live shift, slot line and
   words, design D2); release dispatches the lists' reducer actions (D3). Verify `dragStore.test.ts` and Playwright.
 - [ ] 2.2 Bin↔track include/ignore adapter, through 2.2a's edit. Verify with Playwright (New clip in, clip out to Ignored).
 - [x] 2.2a The draft ignore/include edit: a draft field in `draft.ts`, `buildWriteBody`'s `ignore`, `isDirty`, Reset,

@@ -51,8 +51,27 @@ export type EdgeDragging = Pick<
   notes: readonly string[]
 }
 
+/**
+ * A clip's block in the air (`track-drag-edit`): how far the pointer moved it (`dxPx`), its index
+ * in the drawn order now (`from`) and where the drop would put it (`to`, an index in the order
+ * once it has left its place), its width (what the clips it passes shift by), the drop line's
+ * track time (null: none) and the words for the slot.
+ */
+export type ClipDragging = {
+  identity: string
+  dxPx: number
+  from: number
+  to: number
+  widthMs: Ms
+  lineMs: Ms | null
+  words: string
+}
+
 export type DragStore = {
   get(): Dragging | null
+  /** The clip block being dragged: the same claim as a trim, a card and an edge. */
+  getClip(): ClipDragging | null
+  setClip(next: ClipDragging | null): void
   /** The card edge being dragged: the same claim as a trim, so one drag at a time holds across both. */
   getCard(): CardDragging | null
   setCard(next: CardDragging | null): void
@@ -113,6 +132,21 @@ function sameEdge(a: EdgeDragging | null, b: EdgeDragging | null): boolean {
   )
 }
 
+function sameClip(a: ClipDragging | null, b: ClipDragging | null): boolean {
+  if (a === null || b === null) {
+    return a === b
+  }
+  return (
+    a.identity === b.identity &&
+    a.dxPx === b.dxPx &&
+    a.from === b.from &&
+    a.to === b.to &&
+    a.widthMs === b.widthMs &&
+    a.lineMs === b.lineMs &&
+    a.words === b.words
+  )
+}
+
 /**
  * How far everything after a drag's edge is moved now (ms on the track): a black card's change
  * of length, or a clip edge's change of its block's width; 0 when the drag is not `shift`'s.
@@ -137,7 +171,12 @@ export function shiftMs(
  * its press on): the keys that edit the draft (`Q`, `W`) wait for its release.
  */
 export function held(store: DragStore): boolean {
-  if (store.get() !== null || store.getCard() !== null || store.getEdge() !== null) {
+  if (
+    store.get() !== null ||
+    store.getCard() !== null ||
+    store.getEdge() !== null ||
+    store.getClip() !== null
+  ) {
     return true
   }
   const probe = {}
@@ -152,6 +191,7 @@ export function createDragStore(): DragStore {
   let at: Dragging | null = null
   let card: CardDragging | null = null
   let edge: EdgeDragging | null = null
+  let clip: ClipDragging | null = null
   let owner: object | null = null
   const listeners = new Set<() => void>()
   return {
@@ -162,6 +202,16 @@ export function createDragStore(): DragStore {
         return
       }
       card = next === null ? null : { ...next }
+      for (const listener of [...listeners]) {
+        listener()
+      }
+    },
+    getClip: () => clip,
+    setClip(next) {
+      if (sameClip(clip, next)) {
+        return
+      }
+      clip = next === null ? null : { ...next }
       for (const listener of [...listeners]) {
         listener()
       }

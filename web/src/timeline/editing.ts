@@ -4,6 +4,7 @@ import type { ClipPreviews } from '../preview/previews'
 import type { PosterPick } from '../edit/poster.ts'
 import type { Turn, Way } from '../rotate/turn.ts'
 import type { EdgeEdit } from './edgeTrim.ts'
+import type { DropSlot } from './reorder.ts'
 
 /*
  * What Edit mode gives the Timeline (`timeline-trim`): the draft's cuts to draw and play,
@@ -46,6 +47,12 @@ export type EditBinding = {
   onRemove(identity: string, key: CutKey): void
   /** Rotate a clip left or right: one draft edit of its turn, as the rotate buttons make it. */
   onRotate(identity: string, way: Way): void
+  /**
+   * A clip dragged on the track and dropped at `slot` (`track-drag-edit`): the lists' own reorder
+   * or move to another chapter, one draft edit ("1 clip moved"). `drawn` is the identities the
+   * track draws (the other clips of the order keep their places). Ignored while locked.
+   */
+  onMove(identity: string, slot: DropSlot, drawn: ReadonlySet<string>): void
   /** A save is in flight, or a move of marked clips is pending: the handles and fields change nothing. */
   locked: boolean
   /** Edit mode's one live region. */
