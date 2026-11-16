@@ -30,8 +30,8 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 3. Verification and docs
 
-- [ ] 3.1 Gates: drag smoothness on an 80-clip event in Chrome 4x (as `clip-edge-trim` measured), Firefox, 400-clip
+- [x] 3.1 Gates: drag smoothness on an 80-clip event in Chrome 4x (as `clip-edge-trim` measured), Firefox, 400-clip
   windowing, light/dark, 1280×720.
 - [x] 3.2 HLD: amend D-20 (reorder on the track built in the repo; dnd-kit stays in the bin); tick slice 3 in
   `docs/editor-workspace.md`.
-- [ ] 3.3 Gates: `npm test`, `npm run check`, `npm run build` in podman; `openspec validate track-drag-edit --strict`.
+- [x] 3.3 Gates: `npm test`, `npm run check`, `npm run build` in podman; `openspec validate track-drag-edit --strict`.
