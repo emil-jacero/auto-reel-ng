@@ -1311,8 +1311,14 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     `movie-chapter-list`) decides whether the detail's chapter times may be relied on; the timeline's chapter
     band calls it rather than a second check.
   - **No timeline library.** The timeline lives in `web/src/timeline/`, on React and plain CSS, generalising
-    D-16's cut bar. `@dnd-kit` stays for reordering only (it has no value semantics and re-renders every
-    consumer per move). D-8's dependency list is unchanged. Evidence (`research/v2/timeline-library.md`): none
+    D-16's cut bar. `@dnd-kit` stays for reordering in the bin and the lists only (it has no value semantics and
+    re-renders every consumer per move). **Amended 2026-11-16 (`track-drag-edit`): reorder on the track is built
+    in the repo too**, on `dragStore` (only the dragged block and the slot line read the live position, as the trim
+    handles do) with a pure `reorder.ts` (`dropSlot`, `applyDrop`); a release dispatches the lists' own reducer
+    actions. `@dnd-kit` stays in the bin and the lists, and a small adapter joins bin and track: a clip dropped
+    from the bin onto the track is included, a clip dragged off the track to the bin's Ignored part is ignored
+    (the draft's ignore/include edit, saved as `ignore`). Alt+Left / Alt+Right moves the selected clip one place,
+    across chapters, and the inspector's Clip tab has an Ignore clip button. D-8's dependency list is still unchanged. D-8's dependency list is unchanged. Evidence (`research/v2/timeline-library.md`): none
     of nine libraries models source-clip cuts, the three run in a browser exposed no keyboard path, and the
     nearest, `@xzdarcy/react-timeline-editor`, costs +68.5 KB gz; the in-repo prototype is +5.6 KB gz JS and held
     60 fps drag and scrub up to 400 clips at 4x CPU throttle, with 22 of 22 functional checks in Chrome 154,
