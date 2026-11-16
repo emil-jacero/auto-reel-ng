@@ -3,13 +3,13 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 0. Gate
 
-- [ ] 0.1 Dependency gate — `editor-selection` MUST be finished. From the repo root all three must succeed:
+- [x] 0.1 Dependency gate — `editor-selection` MUST be finished. From the repo root all three must succeed:
   `test ! -d openspec/changes/editor-selection`,
   `git ls-tree -d --name-only main openspec/changes/archive/ | grep -q -- '-editor-selection$'`,
   `grep -q "Requirement: One selection in the workspace" openspec/specs/event-timeline/spec.md`.
   Also confirm `track-draft-order` is archived the same way (this change needs the draft order drawn).
   If any fails, STOP: do not start this change; report which check failed.
-- [ ] 0.2 Spec freshness: re-read `timeline` and `event-timeline`; confirm no requirement still says the order is
+- [x] 0.2 Spec freshness: re-read `timeline` and `event-timeline`; confirm no requirement still says the order is
   edited only in the lists; add MODIFIED blocks here if one does.
 
 ## 1. Model (web/src/timeline)
