@@ -61,6 +61,29 @@ export function dropSlot(
   trackMs: Ms,
   dragged: string,
 ): DropSlot {
+  checkLay(lay, chapters, trackMs)
+  const own = chapters.find((chapter) => chapter.identities.includes(dragged))
+  if (own === undefined) {
+    throw new ModelError(`${dragged} is in no drawn chapter`)
+  }
+  return nearestSlot(lay, map, chapters, trackMs, dragged, own)
+}
+
+/**
+ * The slot for a clip that is not drawn (an ignored one dragged in from the bin) released at
+ * `trackMs`: the nearest boundary, none being its own place. Throws as `dropSlot` does.
+ */
+export function includeSlot(
+  lay: Layout,
+  map: CardMap,
+  chapters: readonly DrawnChapter[],
+  trackMs: Ms,
+): DropSlot {
+  checkLay(lay, chapters, trackMs)
+  return nearestSlot(lay, map, chapters, trackMs, null, undefined)
+}
+
+function checkLay(lay: Layout, chapters: readonly DrawnChapter[], trackMs: Ms): void {
   if (typeof trackMs !== 'number' || !Number.isFinite(trackMs)) {
     throw new ModelError(`trackMs must be a finite number, got ${String(trackMs)}`)
   }
@@ -68,11 +91,17 @@ export function dropSlot(
   if (total !== lay.startsMs.length) {
     throw new ModelError(`the lay has ${lay.startsMs.length} clips, the chapters ${total}`)
   }
-  const own = chapters.find((chapter) => chapter.identities.includes(dragged))
-  if (own === undefined) {
-    throw new ModelError(`${dragged} is in no drawn chapter`)
-  }
-  const ownAt = own.identities.indexOf(dragged)
+}
+
+function nearestSlot(
+  lay: Layout,
+  map: CardMap,
+  chapters: readonly DrawnChapter[],
+  trackMs: Ms,
+  dragged: string | null,
+  own: DrawnChapter | undefined,
+): DropSlot {
+  const ownAt = own === undefined || dragged === null ? -1 : own.identities.indexOf(dragged)
 
   const candidates: Candidate[] = []
   let flat = 0
@@ -97,7 +126,7 @@ export function dropSlot(
   }
 
   const isOwn = (c: Candidate) =>
-    c.chapter === own && (c.position === ownAt || c.position === ownAt + 1)
+    own !== undefined && c.chapter === own && (c.position === ownAt || c.position === ownAt + 1)
   const nearest = Math.min(...candidates.map((c) => Math.abs(c.ms - trackMs)))
   const ties = candidates.filter((c) => Math.abs(c.ms - trackMs) === nearest)
   // Two times can tie (just before and just after the centre): the own place's, else the earlier.
@@ -118,6 +147,33 @@ export function dropSlot(
     beforeIdentity,
     words: slotWords(beforeIdentity, best.chapter.name ?? best.chapter.key),
   }
+}
+
+/**
+ * Where an ignored clip dropped at `slot` goes in chapter `slot.chapter`'s full order (which
+ * holds clips that are not drawn): directly before `slot.beforeIdentity`, or at a chapter's end
+ * after its last drawn clip (`drawn`, else the order's end). The index `includeClip` takes.
+ */
+export function includeIndex(
+  orders: Orders,
+  slot: Pick<DropSlot, 'chapter' | 'beforeIdentity'>,
+  drawn?: ReadonlySet<string>,
+): number | null {
+  const base = orders.get(slot.chapter)
+  if (base === undefined) {
+    return null
+  }
+  const at = slot.beforeIdentity === null ? -1 : base.indexOf(slot.beforeIdentity)
+  if (at !== -1) {
+    return at
+  }
+  let lastDrawn = -1
+  base.forEach((identity, i) => {
+    if (drawn === undefined || drawn.has(identity)) {
+      lastDrawn = i
+    }
+  })
+  return lastDrawn + 1
 }
 
 /**

@@ -48,8 +48,9 @@ import { draftSpec } from './card/specs.ts'
 import { draftEventStyle, previewStyle, readStyle, styleRefusalOf } from './cardStyle.ts'
 import type { StyleField, StyleRefusal, StyleValue } from './cardStyle.ts'
 import type { EventStyle } from './card/specs.ts'
-import type { EditBinding } from '../timeline/editing'
-import { applyDrop } from '../timeline/reorder'
+import type { EditBinding, TrackBridge } from '../timeline/editing'
+import { applyDrop, includeIndex } from '../timeline/reorder'
+import { MOVE_LOCKED } from '../timeline/clipDrag'
 import type { EdgeEdit } from '../timeline/edgeTrim.ts'
 import type { Dismissals } from '../timeline/overlays/Dismissals'
 import type { AnalysisBinding } from '../analysis/useEventAnalysis'
@@ -117,6 +118,7 @@ import {
   movedSet,
   ignoreChanges,
   ignoreClip,
+  ignoredLists,
   includeClip,
   ordersOf,
   originOf,
@@ -144,6 +146,7 @@ import {
   setCardLength,
   trimCut,
   turnOf,
+  withIgnoreStatus,
 } from './draft'
 import type {
   Baseline,
@@ -925,9 +928,10 @@ function nameNow(
   ignoredOf: ReadonlyMap<ChapterKey, readonly string[]>,
   removedOf: ReadonlyMap<ChapterKey, readonly string[]>,
 ): string {
-  const chapter = draft.chapters.find((listed) =>
-    (draft.orders.get(listed.key) ?? []).includes(identity),
-  )
+  const chapter =
+    draft.chapters.find((listed) => (draft.orders.get(listed.key) ?? []).includes(identity)) ??
+    // An ignored clip is named by the chapter that lists it among its ignored clips.
+    draft.chapters.find((listed) => (ignoredOf.get(listed.key) ?? []).includes(identity))
   if (chapter === undefined) {
     return identity
   }
@@ -1178,23 +1182,40 @@ export function EventEditor({
   const scrollAfter = useRef<HTMLElement | null>(null)
 
   const chapters = useMemo(() => editableChapters(detail), [detail])
+  // The page's clips as the draft has them: a clip ignored here is `ignored`, a clip included
+  // here is played (`track-drag-edit`); the same read while the draft has no ignore edit.
+  const ignoreEdits = state.status === 'ready' ? state.draft.ignoreEdits : undefined
+  const detailNow = useMemo(
+    () => (detail === null ? null : withIgnoreStatus(detail, ignoreEdits)),
+    [detail, ignoreEdits],
+  )
   const clips = useMemo(
     () =>
       new Map<string, Clip>(
-        (detail?.chapters ?? []).flatMap((chapter) =>
+        (detailNow?.chapters ?? []).flatMap((chapter) =>
           chapter.clips.map((clip): [string, Clip] => [clip.identity, clip]),
         ),
       ),
-    [detail],
+    [detailNow],
   )
   const newClips = useMemo(
     () => new Set([...clips.values()].filter((c) => c.status === 'new').map((c) => c.identity)),
     [clips],
   )
   const folders = useMemo(() => diskFolders(clips.values()), [clips])
-  const ignoredOf = useMemo(
+  const readIgnored = useMemo(
     () => new Map(chapters.map((chapter) => [chapter.key, chapter.ignored])),
     [chapters],
+  )
+  const ignoredBaseline = state.status === 'ready' ? state.baseline : null
+  const ignoredDraft = state.status === 'ready' ? state.draft : null
+  const ignoredOf = useMemo(
+    () =>
+      ignoredBaseline === null || ignoredDraft === null
+        ? readIgnored
+        : ignoredLists(ignoredBaseline, ignoredDraft, readIgnored),
+    // The lists change with an ignore edit and with a deleted chapter, not with every edit.
+    [readIgnored, ignoredBaseline, ignoredDraft?.ignoreEdits, ignoredDraft?.chapters],
   )
   const resolved = useMemo<Resolved | null>(
     () =>
@@ -1704,6 +1725,78 @@ export function EventEditor({
     [announce],
   )
 
+  // A clip ignored (`track-drag-edit` D5): out of its chapter's order into the ignored clips, one
+  // draft edit, as the bin's drop and the Clip tab's button make it. The same guard as a trim.
+  const onIgnoreClip = useCallback(
+    (identity: string) => {
+      const current = latest.current
+      if (!idle(current)) {
+        return
+      }
+      let chapter: ChapterKey | undefined
+      for (const [key, order] of current.draft.orders) {
+        if (order.includes(identity)) {
+          chapter = key
+        }
+      }
+      if (
+        chapter === undefined ||
+        ignoreClip(current.baseline, current.draft, chapter, identity) === current.draft
+      ) {
+        return
+      }
+      dispatch({ type: 'ignore', chapter, identity, include: false })
+      announce(`Ignored ${identity.slice(identity.lastIndexOf('/') + 1)}. Not saved.`)
+    },
+    [announce],
+  )
+
+  // The Track hands over where a release at a point lands on it; a track drag asks whether a
+  // point is over the bin (the workspace's bin pane).
+  const trackAt = useRef<TrackBridge['current']>(null)
+  const overBin = useCallback((x: number, y: number) => {
+    const box = document.querySelector('.ws-bin')?.getBoundingClientRect()
+    return box !== undefined && x >= box.left && x < box.right && y >= box.top && y < box.bottom
+  }, [])
+  const overTrack = useCallback((x: number, y: number) => trackAt.current?.(x, y, '') != null, [])
+  // A clip of the bin released at a client point (`ChapterDrag`): over the track it is included
+  // when ignored, else moved to the slot; false when the point is not over the track. The bin's
+  // own drop then does not run.
+  const onDropOnTrack = useCallback(
+    (identity: string, x: number, y: number): boolean => {
+      const target = trackAt.current?.(x, y, identity) ?? null
+      if (target === null) {
+        return false
+      }
+      const current = latest.current
+      if (!idle(current)) {
+        announce(MOVE_LOCKED)
+        return true
+      }
+      const { slot } = target
+      if (slot === null) {
+        return true
+      }
+      const { baseline, draft } = current
+      const name = identity.slice(identity.lastIndexOf('/') + 1)
+      if ([...draft.orders.values()].some((order) => order.includes(identity))) {
+        // Played already (a NEW clip, say): a move, which a missing clip never makes.
+        if (onDisk(clips.get(identity))) {
+          onMoveClip(identity, slot, target.drawn)
+        }
+        return true
+      }
+      const at = includeIndex(draft.orders, slot, target.drawn)
+      if (at === null || includeClip(baseline, draft, slot.chapter, identity, at) === draft) {
+        return true
+      }
+      dispatch({ type: 'ignore', chapter: slot.chapter, identity, include: true, at })
+      announce(`Included ${name}. ${slot.words}. Not saved.`)
+      return true
+    },
+    [announce, clips, onMoveClip],
+  )
+
   // What the Timeline gets of the draft (`timeline/editing.ts`); null for the needs-attention form.
   const baseCuts = ready?.baseline.cuts
   const draftCuts = ready?.draft.cuts
@@ -1732,6 +1825,10 @@ export function EventEditor({
   // edit of the card's `duration` in the draft (`title-card-inspector`), keyed there by the
   // chapter's saved name and here by its key; the same guard as a trim.
   const liveDetail = liveEvent ?? detail
+  const liveNow = useMemo(
+    () => (liveDetail === null ? null : withIgnoreStatus(liveDetail, ignoreEdits)),
+    [liveDetail, ignoreEdits],
+  )
   const savedSpecs = useMemo(() => (liveDetail === null ? [] : cardSpecs(liveDetail)), [liveDetail])
   const savedSpecsRef = useRef(savedSpecs)
   savedSpecsRef.current = savedSpecs
@@ -1829,6 +1926,9 @@ export function EventEditor({
       onTrim,
       onEdge,
       onMove: onMoveClip,
+      onIgnore: onIgnoreClip,
+      overBin,
+      trackAt,
       onPoster,
       onAdd: cutHandlers.onAdd,
       onRemove: cutHandlers.onRemove,
@@ -1851,6 +1951,8 @@ export function EventEditor({
     onTrim,
     onEdge,
     onMoveClip,
+    onIgnoreClip,
+    overBin,
     onPoster,
     rotateClip,
     cutHandlers,
@@ -2798,7 +2900,7 @@ export function EventEditor({
           {detail !== null && (
             <PosterPanel
               eventId={eventId}
-              event={liveEvent ?? detail}
+              event={liveNow ?? detail}
               read={ready.baseline.read}
               draft={ready.draft.poster}
               orders={ready.draft.orders}
@@ -2840,7 +2942,7 @@ export function EventEditor({
             // and proxies the page's (the draft's maps keep their identity until an edit).
             <TimelineSection
               eventId={eventId}
-              event={liveEvent ?? detail}
+              event={liveNow ?? detail}
               dismissals={dismissals}
               analysis={analysis}
               onFinished={onProxiesFinished ?? NOTHING}
@@ -2989,6 +3091,8 @@ export function EventEditor({
                 marked={marks}
                 onDropGroup={onDropGroup}
                 onLift={onLift}
+                overTrack={overTrack}
+                onDropOutside={onDropOnTrack}
                 rootRef={editorRef}
               >
                 {ready.draft.chapters.map((chapter) => {
@@ -3046,27 +3150,26 @@ export function EventEditor({
                     />
                   )
                 })}
+                {detail !== null && ignoredApart && (
+                  <IgnoredBin
+                    eventId={eventId}
+                    groups={ignoredGroups(ready.draft.chapters, ignoredOf, (name) =>
+                      chapterHeading(name, hasNamedChapter),
+                    )}
+                    clips={clips}
+                    nameOf={(group) =>
+                      namesIn(
+                        group.name,
+                        ready.baseline.original.get(group.key) ?? [],
+                        ready.draft.orders.get(group.key) ?? [],
+                        group.identities,
+                        removedByChapter.get(group.key) ?? [],
+                      )
+                    }
+                  />
+                )}
               </ChapterDrag>
             </CardButtonContext.Provider>
-          )}
-
-          {detail !== null && ignoredApart && (
-            <IgnoredBin
-              eventId={eventId}
-              groups={ignoredGroups(ready.draft.chapters, ignoredOf, (name) =>
-                chapterHeading(name, hasNamedChapter),
-              )}
-              clips={clips}
-              nameOf={(group) =>
-                namesIn(
-                  group.name,
-                  ready.baseline.original.get(group.key) ?? [],
-                  ready.draft.orders.get(group.key) ?? [],
-                  group.identities,
-                  removedByChapter.get(group.key) ?? [],
-                )
-              }
-            />
           )}
 
           {detail !== null && <AddChapter locked={listsLocked} onAdd={onAddChapter} />}

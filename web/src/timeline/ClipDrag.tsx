@@ -10,6 +10,7 @@ import type { PointerEvent, RefObject } from "react";
 
 import {
   MOVE_CANCEL,
+  IGNORE_WORDS,
   MOVE_LOCKED,
   bandSlot,
   dropWords,
@@ -44,6 +45,14 @@ export type ReorderModel = {
   slotAt(identity: string, trackMs: Ms): DropSlot;
   /** A release: one draft edit (nothing when the slot is the clip's own place). */
   onDrop(identity: string, slot: DropSlot): void;
+  /** The nearest slot for a clip the track does not draw, at this track time. */
+  slotNear(trackMs: Ms): DropSlot;
+  /** The identities the track draws. */
+  drawn: ReadonlySet<string>;
+  /** Whether a client point is over the clip bin: a release there ignores the clip. */
+  overBin(x: number, y: number): boolean;
+  /** A release over the bin: one draft edit that ignores the clip. */
+  onIgnore(identity: string): void;
 };
 
 type Context = {
@@ -69,6 +78,8 @@ type Press = {
   refused: boolean;
   /** The slot a release would use, null when it would drop nothing. */
   slot: DropSlot | null;
+  /** A release now would ignore the clip: the pointer is over the bin. */
+  ignore: boolean;
   off: (() => void) | null;
 };
 
@@ -147,14 +158,16 @@ export function useClipDrag(
       );
       if (outside) {
         p.slot = null;
+        p.ignore = c.reorder.overBin(event.clientX, event.clientY);
         drag.setClip({
           ...base,
           to: p.index,
           lineMs: null,
-          words: MOVE_CANCEL,
+          words: p.ignore ? IGNORE_WORDS : MOVE_CANCEL,
         });
         return;
       }
+      p.ignore = false;
       let slot: DropSlot | null = null;
       const band = bandBoxes(el).find((b) =>
         inBox(b.box, event.clientX, event.clientY),
@@ -250,6 +263,7 @@ export function useClipDrag(
           started: false,
           refused: false,
           slot: null,
+          ignore: false,
           off: () => {
             window.removeEventListener("keydown", cancel, true);
             scroller?.removeEventListener("scroll", scrolled);
@@ -284,9 +298,12 @@ export function useClipDrag(
           return;
         }
         const slot = p.started ? p.slot : null;
+        const ignore = p.started && p.ignore;
         const identity = p.identity;
         end(event);
-        if (slot !== null) {
+        if (ignore) {
+          now.current.reorder.onIgnore(identity);
+        } else if (slot !== null) {
           now.current.reorder.onDrop(identity, slot);
         }
       },

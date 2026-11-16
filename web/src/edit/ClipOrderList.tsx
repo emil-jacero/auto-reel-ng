@@ -1,4 +1,4 @@
-import { useDroppable } from '@dnd-kit/core'
+import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { SortingStrategy } from '@dnd-kit/sortable'
 import { CSS as DndCss } from '@dnd-kit/utilities'
@@ -13,7 +13,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { ReactNode, RefObject } from 'react'
+import type { PointerEventHandler, ReactNode, RefObject } from 'react'
 
 import type { Clip } from '../api/event'
 import { CutsPanel, CutsToggle } from '../cuts/CutsPanel'
@@ -630,9 +630,28 @@ export const IgnoredRow = memo(function IgnoredRow({
   name: string
   compact: boolean
 }) {
+  // An ignored clip is dragged onto the video track to include it (`track-drag-edit`): the
+  // pointer only, the bin has no slot for it; dropped elsewhere it stays ignored.
+  const { listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
+    id: clip.identity,
+  })
   return (
-    <li className="clip-item" data-status={clip.status}>
-      <span className="drag-slot" />
+    <li
+      ref={setNodeRef}
+      className="clip-item"
+      data-status={clip.status}
+      data-identity={clip.identity}
+      data-dragging={isDragging || undefined}
+    >
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        className="btn btn-ghost btn-icon drag-handle"
+        aria-label={`Drag ${name} onto the video track to include it`}
+        onPointerDown={listeners?.onPointerDown as PointerEventHandler<HTMLButtonElement> | undefined}
+      >
+        {GRIP}
+      </button>
       <RowBody
         eventId={eventId}
         clip={clip}

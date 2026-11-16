@@ -55,7 +55,7 @@ import type { ChapterKey } from '../edit/draft'
 import { chapterHeading } from '../events/labels.ts'
 import type { ReorderModel } from './ClipDrag'
 import { spanHit } from './clipDrag'
-import { dropSlot } from './reorder'
+import { dropSlot, includeSlot } from './reorder'
 import type { DrawnChapter } from './reorder'
 import type { EditBinding } from './editing'
 import { selectionStands } from './handles'
@@ -311,6 +311,10 @@ export function useTimeline({
       chapters,
       slotAt: (identity, trackMs) => dropSlot(clipLay, map, chapters, trackMs, identity),
       onDrop: (identity, slot) => editing.onMove(identity, slot, drawn),
+      slotNear: (trackMs) => includeSlot(clipLay, map, chapters, trackMs),
+      drawn,
+      overBin: editing.overBin,
+      onIgnore: editing.onIgnore,
     }
   }, [chapterNames, chapterKeys, clips, clipLay, map, editing])
   const draftCuts = editing.cuts

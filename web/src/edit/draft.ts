@@ -555,6 +555,73 @@ export function includeClip(
   return { ...draft, orders, ignoreEdits: edits }
 }
 
+/**
+ * Each chapter's ignored clips as the draft has them: `read` (the page's lists) less the clips
+ * included here, then the clips ignored here, each under the listed chapter it was played in when
+ * Edit mode opened (`baseline.original`), else the first listed chapter. The same lists when the
+ * draft has no ignore edit.
+ */
+export function ignoredLists(
+  baseline: Baseline,
+  draft: Draft,
+  read: ReadonlyMap<ChapterKey, readonly string[]>,
+): ReadonlyMap<ChapterKey, readonly string[]> {
+  const edits = draft.ignoreEdits
+  if (edits === undefined || edits.size === 0) {
+    return read
+  }
+  const lists = new Map<ChapterKey, string[]>()
+  for (const [key, identities] of read) {
+    lists.set(
+      key,
+      identities.filter((identity) => edits.get(identity) !== 'include'),
+    )
+  }
+  const listed = draft.chapters.filter((chapter) => !chapter.deleted).map((chapter) => chapter.key)
+  for (const [identity, edit] of edits) {
+    if (edit !== 'ignore') {
+      continue
+    }
+    let home: ChapterKey | undefined
+    for (const [key, order] of baseline.original) {
+      if (listed.includes(key) && order.includes(identity)) {
+        home = key
+        break
+      }
+    }
+    const key = home ?? listed[0]
+    const list = key === undefined ? undefined : lists.get(key)
+    if (list !== undefined) {
+      list.push(identity)
+    }
+  }
+  return lists
+}
+
+/**
+ * `detail` with the clips the draft ignores or includes shown as such: a clip ignored here is
+ * `ignored`, a clip read as ignored and included here is `active` (the page's own read had it
+ * ignored, so its row and the track would otherwise skip it). The same detail when nothing
+ * is edited.
+ */
+export function withIgnoreStatus(detail: EventDetail, edits: IgnoreEdits | undefined): EventDetail {
+  if (edits === undefined || edits.size === 0) {
+    return detail
+  }
+  return {
+    ...detail,
+    chapters: detail.chapters.map((chapter) => ({
+      ...chapter,
+      clips: chapter.clips.map((clip) => {
+        const edit = edits.get(clip.identity)
+        return edit === undefined
+          ? clip
+          : { ...clip, status: edit === 'ignore' ? ('ignored' as const) : ('active' as const) }
+      }),
+    })),
+  }
+}
+
 function isListedChapter(draft: Draft, key: ChapterKey): boolean {
   return draft.chapters.some((chapter) => chapter.key === key && !chapter.deleted)
 }

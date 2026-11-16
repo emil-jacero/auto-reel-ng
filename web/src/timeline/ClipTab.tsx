@@ -14,6 +14,7 @@ import {
 import type { DraftCut } from '../edit/draft'
 import { RotateButtons } from '../rotate/RotateButtons'
 import { Icon } from '../ui/Icon'
+import { MOVE_LOCKED } from './clipDrag'
 import { cutAtPlayhead } from './cutAtPlayhead'
 import { held as dragHeld } from './dragStore'
 import type { DragStore } from './dragStore'
@@ -26,7 +27,7 @@ import type { Playhead } from './playhead'
 /*
  * What the inspector's Clip tab edits of the selected clip (`editor-selection`), below its header:
  * Trim In and Trim Out as typed times, Rotate left and right, the clip's cuts with Remove and
- * "+ Cut at playhead", and Use frame as poster. Every control makes the one draft edit the
+ * "+ Cut at playhead", Use frame as poster and Ignore clip (`track-drag-edit`). Every control makes the one draft edit the
  * track's own tools make (`EditBinding`): a typed trim is the edge tools' `onEdge`, a rotate the
  * rotate buttons' action, a cut the Cuts panel's add and remove, the poster the Timeline's.
  */
@@ -77,6 +78,21 @@ export function ClipTab({
         onSelectClip={onSelectClip}
       />
       {poster}
+      <button
+        type="button"
+        className="btn btn-secondary ct-ignore"
+        aria-disabled={editing.locked || undefined}
+        onClick={() => {
+          if (editing.locked) {
+            editing.announce(MOVE_LOCKED)
+            return
+          }
+          editing.onIgnore(clip.identity)
+        }}
+      >
+        <Icon name="eye-off" />
+        Ignore clip
+      </button>
     </div>
   )
 }

@@ -198,6 +198,11 @@
     grid-area: auto;
   }
 
+  /* Ignore clip sits at the tab's end, by its own content width. */
+  .ct-ignore {
+    justify-self: start;
+  }
+
   .ct-row {
     display: flex;
     flex-wrap: wrap;

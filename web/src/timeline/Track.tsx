@@ -1,4 +1,4 @@
-import { memo, useCallback, useId, useRef, useState, useSyncExternalStore } from 'react'
+import { memo, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent, RefObject } from 'react'
 
 import type { ClipTurns } from '../cuts/ReadCuts'
@@ -17,7 +17,7 @@ import { edgeToolShown } from './zoomSettle'
 import type { EdgeKey } from './zoomSettle'
 import { ClipDragLayer, useClipDrag } from './ClipDrag'
 import type { ReorderModel } from './ClipDrag'
-import { MOVE_LOCKED } from './clipDrag'
+import { MOVE_LOCKED, inBox } from './clipDrag'
 import { shiftMs } from './dragStore'
 import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
@@ -33,6 +33,7 @@ import {
   edgeCut,
   extentMs,
   interiorSpans,
+  pxToTime,
   tickLabelFits,
   timeToPx,
   visibleClips,
@@ -594,6 +595,35 @@ export function Track({
       return spanNow.current(identity, clientX - (box?.left ?? 0))
     },
   })
+  // The bin's drag asks where a release would land on this track (`track-drag-edit`): the nearest
+  // boundary to the pointer, when the pointer is over the track's viewport.
+  const reorderNow = useRef(reorder)
+  reorderNow.current = reorder
+  const ppsNow = useRef(pps)
+  ppsNow.current = pps
+  const trackAt = editing.trackAt
+  useEffect(() => {
+    trackAt.current = (x, y, identity) => {
+      const view = scrollerRef.current?.getBoundingClientRect()
+      const box = canvas.current?.getBoundingClientRect()
+      if (view === undefined || box === undefined || !inBox(view, x, y)) {
+        return null
+      }
+      const model = reorderNow.current
+      let slot = null
+      try {
+        const ms = pxToTime(x - box.left, ppsNow.current)
+        // A clip the track draws has its own place among the boundaries; any other has none.
+        slot = model.drawn.has(identity) ? model.slotAt(identity, ms) : model.slotNear(ms)
+      } catch {
+        slot = null
+      }
+      return { slot, drawn: model.drawn }
+    }
+    return () => {
+      trackAt.current = null
+    }
+  }, [trackAt, scrollerRef])
   const clipDragging = useSyncExternalStore(drag.subscribe, () => drag.getClip() !== null)
   // Every cut handle and edge tool: one nearest-wins press test across them.
   const [targets] = useState<PressTargets>(() => new Map())

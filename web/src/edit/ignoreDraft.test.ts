@@ -7,12 +7,14 @@ import {
   draftChapters,
   ignoreChanges,
   ignoreClip,
+  ignoredLists,
   ignoredNow,
   includeClip,
   isDirty,
   ordersOf,
   readCuts,
   setCardLength,
+  withIgnoreStatus,
 } from './draft.ts'
 import type { Baseline, Draft } from './draft.ts'
 
@@ -122,5 +124,59 @@ describe('an untouched draft', () => {
     assert.equal(buildWriteBody(baseline, draft).ignore, baseline.read.ignore)
     assert.equal(isDirty(baseline, draft), false)
     assert.equal(isDirty(baseline, setCardLength(baseline, draft, 'r1', 2, 3)), true)
+  })
+})
+
+describe('what the lists and the track show of an ignore edit', () => {
+  const read = new Map([
+    ['r0', [OLD]],
+    ['r1', []],
+  ])
+
+  it('lists a clip ignored here under the chapter it was played in', () => {
+    const { baseline, draft } = setup()
+    const lists = ignoredLists(baseline, ignoreClip(baseline, draft, 'r1', B1), read)
+    assert.deepEqual(lists.get('r0'), [OLD])
+    assert.deepEqual(lists.get('r1'), [B1])
+  })
+
+  it('stops listing a clip included here', () => {
+    const { baseline, draft } = setup()
+    const lists = ignoredLists(baseline, includeClip(baseline, draft, 'r0', OLD, 0), read)
+    assert.deepEqual(lists.get('r0'), [])
+  })
+
+  it('is the page lists when nothing is edited', () => {
+    const { baseline, draft } = setup()
+    assert.equal(ignoredLists(baseline, draft, read), read)
+  })
+
+  it('shows the status of an edited clip and leaves the others', () => {
+    const { baseline, draft } = setup()
+    const detail = {
+      chapters: [
+        {
+          name: '',
+          clips: [
+            { identity: A1, status: 'active' },
+            { identity: OLD, status: 'ignored' },
+          ],
+        },
+      ],
+    } as unknown as Parameters<typeof withIgnoreStatus>[0]
+    assert.equal(withIgnoreStatus(detail, undefined), detail)
+    const ignored = withIgnoreStatus(detail, ignoreClip(baseline, draft, 'r0', A1).ignoreEdits)
+    assert.deepEqual(
+      ignored.chapters[0].clips.map((clip) => clip.status),
+      ['ignored', 'ignored'],
+    )
+    const included = withIgnoreStatus(
+      detail,
+      includeClip(baseline, draft, 'r0', OLD, 0).ignoreEdits,
+    )
+    assert.deepEqual(
+      included.chapters[0].clips.map((clip) => clip.status),
+      ['active', 'active'],
+    )
   })
 })

@@ -22,6 +22,18 @@ export type TrimNote = { name: string; spoken: boolean; snap?: string | null }
 /** The frame a chosen poster was taken from: an object URL and the clip's editorial turn. */
 export type PosterSnapshot = { url: string; turn: Turn }
 
+/**
+ * Where the clip `identity` released at a client point would land on the track (`track-drag-edit`): the
+ * nearest boundary to the point and the identities the track draws, or null when the point is
+ * not over the track. `slot` is null when the track draws no clip to drop among.
+ */
+export type TrackPoint = { slot: DropSlot | null; drawn: ReadonlySet<string> }
+
+/** The Track hands this over while it is mounted; the bin's drag asks it where a release lands. */
+export type TrackBridge = {
+  current: ((x: number, y: number, identity: string) => TrackPoint | null) | null
+}
+
 export type EditBinding = {
   /** The draft's cuts, the removed ones left out: what the track draws and Play skips. */
   cuts: ClipCuts
@@ -53,6 +65,15 @@ export type EditBinding = {
    * track draws (the other clips of the order keep their places). Ignored while locked.
    */
   onMove(identity: string, slot: DropSlot, drawn: ReadonlySet<string>): void
+  /**
+   * The clip ignored (`track-drag-edit` D5): one draft edit, out of its chapter's order into the
+   * ignored clips, as dragging it onto the bin makes it. Ignored while locked.
+   */
+  onIgnore(identity: string): void
+  /** Whether a client point is over the clip bin (a track drag released there ignores the clip). */
+  overBin(x: number, y: number): boolean
+  /** Where the bin's drag lands on the track (the Track keeps it current while mounted). */
+  trackAt: TrackBridge
   /** A save is in flight, or a move of marked clips is pending: the handles and fields change nothing. */
   locked: boolean
   /** Edit mode's one live region. */

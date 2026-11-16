@@ -14,6 +14,9 @@ export const CLIP_SLOP_PX = 3
 /** What a track tool says while a save or a "Move marked…" is pending. */
 export const MOVE_LOCKED = 'Moving clips waits for the save or the move of marked clips to finish.'
 
+/** What the tip says while the pointer is over the bin: a release there ignores the clip. */
+export const IGNORE_WORDS = 'Release on the bin to ignore the clip'
+
 /** What the tip says while the pointer is outside the track: a release there cancels. */
 export const MOVE_CANCEL = 'Release outside the track cancels the move'
 

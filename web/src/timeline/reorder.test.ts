@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 
 import type { Orders } from '../edit/draft.ts'
 import { layout } from './model.ts'
-import { applyDrop, dropSlot } from './reorder.ts'
+import { applyDrop, dropSlot, includeIndex, includeSlot } from './reorder.ts'
 import type { DrawnChapter } from './reorder.ts'
 import { cardMap } from './cards.ts'
 import type { CardMap, Placement } from './cards.ts'
@@ -275,5 +275,48 @@ describe('applyDrop', () => {
       { chapter: 'r1', beforeIdentity: 's1710004.mp4' },
     )
     assert.equal(JSON.stringify([...orders]), before)
+  })
+})
+
+describe('includeSlot', () => {
+  it('snaps an outside clip to the nearest boundary, with no own place', () => {
+    // Boundaries at 0, 1000, 2000, 3000 (end of Main = start of Kvällen), 4000, 5000.
+    const slot = includeSlot(lay(chapters), NONE, chapters, 1100)
+    assert.deepEqual(slot, {
+      chapter: 'r0',
+      index: 1,
+      beforeIdentity: 's1710002.mp4',
+      words: 'Before s1710002.mp4',
+    })
+  })
+
+  it('takes the end of the last chapter beyond the track', () => {
+    const slot = includeSlot(lay(chapters), NONE, chapters, 99999)
+    assert.equal(slot.chapter, 'r1')
+    assert.equal(slot.index, 2)
+    assert.equal(slot.beforeIdentity, null)
+  })
+
+  it('refuses a mismatched lay', () => {
+    assert.throws(() => includeSlot(layout([{ durationMs: 1000, fps: 25 }]), NONE, chapters, 0))
+  })
+})
+
+describe('includeIndex', () => {
+  it('places before the clip the slot names, among clips not drawn too', () => {
+    const full: Orders = new Map([['r0', ['a', 'hidden', 'b']]])
+    assert.equal(includeIndex(full, { chapter: 'r0', beforeIdentity: 'b' }), 2)
+    assert.equal(includeIndex(full, { chapter: 'r0', beforeIdentity: 'a' }), 0)
+  })
+
+  it('places at a chapter end after its last drawn clip', () => {
+    const full: Orders = new Map([['r0', ['a', 'b', 'hidden']]])
+    const drawn = new Set(['a', 'b'])
+    assert.equal(includeIndex(full, { chapter: 'r0', beforeIdentity: null }, drawn), 2)
+    assert.equal(includeIndex(full, { chapter: 'r0', beforeIdentity: null }), 3)
+  })
+
+  it('has no index for a chapter without an order', () => {
+    assert.equal(includeIndex(new Map(), { chapter: 'r9', beforeIdentity: null }), null)
   })
 })
