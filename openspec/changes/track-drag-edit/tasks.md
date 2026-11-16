@@ -14,7 +14,7 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 1. Model (web/src/timeline)
 
-- [ ] 1.1 Add `reorder.ts` (`dropSlot`, `applyDrop`, design D1). Verify `reorder.test.ts` with every scenario of the
+- [x] 1.1 Add `reorder.ts` (`dropSlot`, `applyDrop`, design D1). Verify `reorder.test.ts` with every scenario of the
   `timeline` delta plus cards between chapters and a 400-clip lay.
 
 ## 2. Drag (web/src/timeline, web/src/edit)
