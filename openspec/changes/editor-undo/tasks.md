@@ -13,7 +13,7 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 1. Model (web/src/edit)
 
-- [ ] 1.1 Add `history.ts` (`record`, `undo`, `redo`, `cleared`, coalescing, 200-step cap; design D1). Verify
+- [x] 1.1 Add `history.ts` (`record`, `undo`, `redo`, `cleared`, coalescing, 200-step cap; design D1). Verify
   `history.test.ts`: undo/redo, new edit clears future, coalescing by key and time, cap, cleared.
 
 ## 2. Wiring
