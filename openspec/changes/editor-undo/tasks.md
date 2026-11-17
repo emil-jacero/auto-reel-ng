@@ -27,5 +27,5 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 - [ ] 3.1 Playwright: every scenario of the delta, plus trim release, approve suggestion, card field, chapter rename,
   rotate and poster each undo in one step; light/dark.
-- [ ] 3.2 HLD: amend the workspace D-n (history wraps the reducer; Save clears); tick slice 4 in `docs/editor-workspace.md`.
+- [x] 3.2 HLD: amend the workspace D-n (history wraps the reducer; Save clears); tick slice 4 in `docs/editor-workspace.md`.
 - [ ] 3.3 Gates: `npm test`, `npm run check`, `npm run build` in podman; `openspec validate editor-undo --strict`.

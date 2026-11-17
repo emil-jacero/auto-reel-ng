@@ -763,6 +763,11 @@ one dragged off the track to the bin's Ignored part is ignored (`@dnd-kit` stays
 adapter; the draft's ignore/include edit is `Draft.ignoreEdits` (`ignoreClip` / `includeClip` in `edit/draft.ts`), saved as `ignore`). Alt+Left / Alt+Right moves the selected clip one place,
 across chapters, and the Clip tab's **Ignore clip** button ignores it. All are inert while a save or a Move clips is pending.
 
+Undo (`editor-undo`): `edit/history.ts` is the pure history around the draft reducer (`record`, `undo`, `redo`, `cleared`; 200 steps, typing in one
+field coalesces into one step within a second, each step carries a label for the buttons' tooltips). Every draft edit is a step, selection is not,
+Reset is a step, and Save clears it. `edit/undoShortcut.ts` is the pure key rule (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y; not with Alt or in an IME composition);
+`EventEditor.tsx` listens and dispatches. Both are tested by `npm test`.
+
 `src/edit/card/` is the title-card inspector (`title-card-inspector`): `model.ts` (the nine overrides,
 change detection, the preview request, which field a refusal names), `preview.ts` (the debounce, abort and
 retry state machine, with injected timers and client), `specs.ts` (the draft card as the blocks and rows
