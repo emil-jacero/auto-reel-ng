@@ -35,6 +35,11 @@ test('Alt, a composition, no modifier or another key is no chord', () => {
 
 test('inputs, text areas, selects and editable content keep the browser undo', () => {
   assert.equal(isTextTarget({ tagName: 'INPUT' }), true)
+  assert.equal(isTextTarget({ tagName: 'INPUT', type: 'text' }), true)
+  assert.equal(isTextTarget({ tagName: 'INPUT', type: 'number' }), true)
+  for (const type of ['radio', 'checkbox', 'color', 'range', 'button', 'file']) {
+    assert.equal(isTextTarget({ tagName: 'INPUT', type }), false, type)
+  }
   assert.equal(isTextTarget({ tagName: 'textarea' }), true)
   assert.equal(isTextTarget({ tagName: 'SELECT' }), true)
   assert.equal(isTextTarget({ tagName: 'DIV', isContentEditable: true }), true)

@@ -344,7 +344,7 @@ type Action =
   | { type: 'rotate'; identities: readonly string[]; way: Way }
   | { type: 'name-unsent'; unsent: boolean }
   // A title card's length from the Timeline (`title-card-duration-drag`); `resolved` is the one read.
-  | { type: 'card-length'; key: ChapterKey; seconds: number; resolved: number }
+  | { type: 'card-length'; key: ChapterKey; seconds: number; resolved: number; typed?: boolean }
   | { type: 'card-field'; key: ChapterKey; field: CardField; value: CardDraft[CardField] }
   | { type: 'card-reset'; key: ChapterKey }
   | { type: 'style-field'; field: StyleField; value: StyleValue | null }
@@ -366,6 +366,9 @@ type Action =
  * An edit that brings the draft back to what was read retires the last save's
  * failure: there is nothing left to save. A vanished event stays said.
  */
+/** The key of a poster pick in the kept snapshot frames. */
+const frameKey = (pick: PosterPick): string => `${pick.clip}@${pick.at}`
+
 function afterEdit(next: Ready): Ready {
   const dirty = isDirty(next.baseline, next.draft) || unfinished(next)
   if (dirty || (next.problem === null && next.refusal === null)) {
@@ -487,7 +490,12 @@ function describeEdit(action: Action, before: Ready): { label: string; key: stri
         key: null,
       }
     case 'card-length':
-      return { label: 'title card length', key: `card:${action.key}:duration` }
+      // Typed in the inspector: successive keystrokes fold into one step. A handle drag or arrow
+      // press is its own step each time (`typed` unset).
+      return {
+        label: 'title card length',
+        key: action.typed === true ? `card:${action.key}:duration` : null,
+      }
     case 'card-field':
       return { label: `title card ${action.field}`, key: `card:${action.key}:${action.field}` }
     case 'card-reset':
@@ -2058,30 +2066,38 @@ export function EventEditor({
   )
   // Use as poster: the frame the Timeline's video showed, kept as an object URL until the draft
   // no longer needs it (another frame, Use default, Reset, a re-read, leaving).
-  const [posterFrame, setPosterFrame] = useState<
-    { url: string; turn: Turn; pick: PosterPick } | null
-  >(null)
-  const dropFrame = useCallback(() => {
-    setPosterFrame((was) => {
-      if (was !== null) {
-        URL.revokeObjectURL(was.url)
+  // Frames are kept by pick for as long as the history can reach the pick (Undo and Redo bring a
+  // pick back), and let go on a re-read or leaving.
+  const [frames, setFrames] = useState<Map<string, { url: string; turn: Turn }>>(() => new Map())
+  const framesRef = useRef(frames)
+  framesRef.current = frames
+  const dropFrames = useCallback(() => {
+    setFrames((was) => {
+      if (was.size === 0) {
+        return was
       }
-      return null
+      for (const held of was.values()) {
+        URL.revokeObjectURL(held.url)
+      }
+      return new Map()
     })
   }, [])
-  const frameRef = useRef(posterFrame)
-  frameRef.current = posterFrame
   useEffect(
     () => () => {
-      if (frameRef.current !== null) {
-        URL.revokeObjectURL(frameRef.current.url)
+      for (const held of framesRef.current.values()) {
+        URL.revokeObjectURL(held.url)
       }
     },
     [],
   )
   const posterBaseline = ready?.baseline
-  const posterResets = ready?.resets
-  useEffect(() => dropFrame(), [posterBaseline, posterResets, dropFrame])
+  useEffect(() => dropFrames(), [posterBaseline, dropFrames])
+  const draftPoster = ready === null ? undefined : ready.draft.poster
+  const posterFrame = useMemo(() => {
+    const pick = draftPoster === undefined || draftPoster === null ? null : draftPoster
+    const held = pick === null ? undefined : frames.get(frameKey(pick))
+    return pick === null || held === undefined ? null : { ...held, pick }
+  }, [frames, draftPoster])
   const onPoster = useCallback<EditBinding['onPoster']>(
     (pick, snapshot) => {
       const current = latest.current
@@ -2089,11 +2105,15 @@ export function EventEditor({
         URL.revokeObjectURL(snapshot.url)
         return
       }
-      setPosterFrame((was) => {
-        if (was !== null) {
-          URL.revokeObjectURL(was.url)
+      setFrames((was) => {
+        const next = new Map(was)
+        const key = frameKey(pick)
+        const old = was.get(key)
+        if (old !== undefined) {
+          URL.revokeObjectURL(old.url)
         }
-        return { ...snapshot, pick }
+        next.set(key, { url: snapshot.url, turn: snapshot.turn })
+        return next
       })
       dispatch({ type: 'poster', pick })
       announce(chosenWords(fileName(pick.clip), pick.at))
@@ -2105,10 +2125,9 @@ export function EventEditor({
     if (current === null || current.pressed !== null || moving.current) {
       return
     }
-    dropFrame()
     dispatch({ type: 'poster', pick: null })
     announce('Poster set to the default frame, the first clip. Not saved.')
-  }, [announce, dropFrame])
+  }, [announce])
   const resetCount = ready?.resets ?? 0
   const readLook = ready?.baseline.read.look
   // The rotate action is made further down (it names the clip); the Timeline's binding calls it
@@ -2478,7 +2497,13 @@ export function EventEditor({
         if (resolvedLength === undefined) {
           dispatch({ type: 'card-field', key: chapter.key, field: 'duration', value: seconds })
         } else {
-          dispatch({ type: 'card-length', key: chapter.key, seconds, resolved: resolvedLength })
+          dispatch({
+            type: 'card-length',
+            key: chapter.key,
+            seconds,
+            resolved: resolvedLength,
+            typed: true,
+          })
         }
       },
       styleModel,
@@ -3060,6 +3085,17 @@ export function EventEditor({
       }
       dispatch({ type: chord })
       announce(stepWords(chord, label))
+      // The step may remove the element that has focus (an added chapter's heading): once the
+      // draft has re-rendered, a focus left on <body> goes to the details heading.
+      const held = document.activeElement
+      if (held !== null && held !== document.body) {
+        requestAnimationFrame(() => {
+          const now = document.activeElement
+          if (now === null || now === document.body) {
+            detailsHeadingRef.current?.focus()
+          }
+        })
+      }
     },
     [announce],
   )
@@ -3098,13 +3134,16 @@ export function EventEditor({
       onHistory(action)
     }
   })
+  // Only in the workspace, where the Undo and Redo buttons show what the keys do.
+  const undoListening = listening && inWorkspace
   useEffect(() => {
-    if (!listening) {
+    if (!undoListening) {
       return undefined
     }
     const keydown = (event: KeyboardEvent) => onUndoKey.current(event)
-    const down = () => {
-      pointerHeld.current = true
+    // Primary-button presses only: a right-click's release goes to the context menu, not the page.
+    const down = (event: PointerEvent) => {
+      pointerHeld.current = event.button === 0
     }
     const up = () => {
       pointerHeld.current = false
@@ -3113,14 +3152,20 @@ export function EventEditor({
     document.addEventListener('pointerdown', down, true)
     document.addEventListener('pointerup', up, true)
     document.addEventListener('pointercancel', up, true)
+    document.addEventListener('lostpointercapture', up, true)
+    document.addEventListener('contextmenu', up, true)
+    window.addEventListener('blur', up)
     return () => {
       document.removeEventListener('keydown', keydown)
       document.removeEventListener('pointerdown', down, true)
       document.removeEventListener('pointerup', up, true)
       document.removeEventListener('pointercancel', up, true)
+      document.removeEventListener('lostpointercapture', up, true)
+      document.removeEventListener('contextmenu', up, true)
+      window.removeEventListener('blur', up)
       pointerHeld.current = false
     }
-  }, [listening])
+  }, [undoListening])
 
   const retrying = state.status === 'failed' && state.retrying === true
   const hasIgnored = chapters.some((chapter) => chapter.ignored.length > 0)

@@ -27,16 +27,34 @@ export function undoChord(event: {
 
 /** Whether a key press aimed at `target` belongs to the browser's own undo (a text field). */
 export function isTextTarget(
-  target: { tagName?: string; isContentEditable?: boolean } | null,
+  target: { tagName?: string; type?: string; isContentEditable?: boolean } | null,
 ): boolean {
   if (target === null) {
     return false
   }
   const tag = target.tagName?.toUpperCase()
-  return (
-    tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable === true
-  )
+  if (tag === 'INPUT') {
+    // A checkbox, radio, colour, range or button has no native text undo: the draft's applies.
+    return target.type === undefined || TEXT_INPUTS.has(target.type.toLowerCase())
+  }
+  return tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable === true
 }
+
+const TEXT_INPUTS = new Set([
+  '',
+  'text',
+  'search',
+  'url',
+  'tel',
+  'email',
+  'password',
+  'number',
+  'date',
+  'time',
+  'datetime-local',
+  'month',
+  'week',
+])
 
 /** What an Undo or Redo press does: nothing, say there is nothing to do, or do it. */
 export type UndoKeyAction = 'ignore' | 'nothing' | 'undo' | 'redo'
