@@ -417,6 +417,13 @@
     display: contents;
   }
 
+  /* Undo and Redo, before the save controls. */
+  .ws-history {
+    display: flex;
+    flex: none;
+    gap: var(--s-1);
+  }
+
   .ws-done {
     flex: none;
   }

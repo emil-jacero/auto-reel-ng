@@ -18,9 +18,9 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 2. Wiring
 
-- [ ] 2.1 Wrap the editor's reducer; give every action a label and field actions a coalesce key; Save and Reload
+- [x] 2.1 Wrap the editor's reducer; give every action a label and field actions a coalesce key; Save and Reload
   latest clear, Reset records (D2). Verify `npm test` and `npm run check`.
-- [ ] 2.2 Top-bar Undo/Redo with step names, keys at the workspace frame with the text-field and drag exceptions (D3),
+- [x] 2.2 Top-bar Undo/Redo with step names, keys at the workspace frame with the text-field and drag exceptions (D3),
   announcements. Verify with Playwright.
 
 ## 3. Verification and docs
