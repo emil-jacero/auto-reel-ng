@@ -83,7 +83,7 @@ export function TopBar({
               }}
             >
               <Icon name="rotate-ccw" />
-              Undo
+              <span className="ws-history-label">Undo</span>
             </button>
             <button
               type="button"
@@ -98,7 +98,7 @@ export function TopBar({
               }}
             >
               <Icon name="rotate-cw" />
-              Redo
+              <span className="ws-history-label">Redo</span>
             </button>
           </div>
         )}
