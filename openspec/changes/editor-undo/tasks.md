@@ -3,12 +3,12 @@ the scratchpad, never from the repo, with PUT/POST/DELETE intercepted except the
 
 ## 0. Gate
 
-- [ ] 0.1 Dependency gate — `editor-workspace-layout` MUST be finished. From the repo root all three must succeed:
+- [x] 0.1 Dependency gate — `editor-workspace-layout` MUST be finished. From the repo root all three must succeed:
   `test ! -d openspec/changes/editor-workspace-layout`,
   `git ls-tree -d --name-only main openspec/changes/archive/ | grep -q -- '-editor-workspace-layout$'`,
   `grep -q "Requirement: The workspace's top bar holds the event and the save controls" openspec/specs/web-app/spec.md`.
   If any fails, STOP: do not start this change; report which check failed.
-- [ ] 0.2 Note which of `editor-selection` and `track-drag-edit` are archived; their actions get labels in 2.1 and
+- [x] 0.2 Note which of `editor-selection` and `track-drag-edit` are archived; their actions get labels in 2.1 and
   their scenarios are added to 3.1. Neither is required.
 
 ## 1. Model (web/src/edit)
