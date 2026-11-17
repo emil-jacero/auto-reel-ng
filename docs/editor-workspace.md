@@ -87,7 +87,7 @@ selection shows Event. This replaces the stacked Details / Poster panels and the
 
 | # | Feature | Tag |
 |---|---|---|
-| 6.1 | Tool row: Play, Split, Trim In (Q), Trim Out (W), Snap (S), Suggestions toggle with pending count, Zoom − / slider / +, Fit (`\`) | reuse, except Split |
+| 6.1 | Tool row: Play, ~~Split~~ (dropped, see 6.12), Trim In (Q), Trim Out (W), Snap (S), Suggestions toggle with pending count, Zoom − / slider / +, Fit (`\`) | reuse, except Split |
 | 6.2 | Movie stats in the tool row: length, chapters, clips, cuts and time removed | reuse |
 | 6.3 | Labelled lanes: ruler · Chapters · Titles · Video · Analysis | new-web |
 | 6.4 | **Chapter bands** over their clips; drop a clip on a band to move it to that chapter | new-web |
@@ -98,7 +98,7 @@ selection shows Event. This replaces the stacked Details / Poster panels and the
 | 6.9 | **Analysis lane:** dismissed ×, approved-as-cut ✓ spanning the cut, pending ?; the selected suggestion ringed | reuse |
 | 6.10 | Playhead across all lanes; overview scroll bar under the track; gesture hints | reuse / new-web |
 | 6.11 | Click on empty track selects the event (inspector shows Event) | new-web |
-| 6.12 | **Split at playhead** — shown dashed in the mock as planned | model |
+| 6.12 | ~~**Split at playhead**~~ — **dropped 2026-11-17** (`clip-split` task 0.3); "cut a span" covers it | dropped |
 
 ## Changes (OpenSpec, in order)
 
@@ -112,7 +112,7 @@ spec is merged. Proposed 2026-11-15 under `openspec/changes/`.
 | 2 | `editor-selection` ✅ built 2026-11-15 (HLD D-28) | one selection, 3.2, 5.x (Clip tab, docked card editor), 6.11 | 1 | 1–2 days |
 | 3 | `track-drag-edit` ✅ built 2026-11-16 (HLD D-20) | 3.4, 6.4, 6.8, keyboard moves | 2 | 1–2 days |
 | 4 | `editor-undo` | 2.2 | 1 | 1 day |
-| 5 | `clip-split` | 6.12 — starts with a decision gate (explore with the user) | 3 | open |
+| 5 | `clip-split` ❌ dropped 2026-11-17 | 6.12 — decision gate chose option C (no Split) | 3 | — |
 
 Slice 1 was tightened after the build by `compact-bin-tools` (web only, 2026-11-15): the bin follows the window's
 width (`clamp(240px, 22vw, 320px)`) and its compact tools take less height. Clip rows are two lines with a fine
@@ -136,4 +136,9 @@ in the browser from the event's resolved cards.
 
 ## Open questions
 
-- Is Split worth a `reel.yaml` change, or is "cut a span" (already possible) enough? (`clip-split` task 0.3)
+- ~~Is Split worth a `reel.yaml` change, or is "cut a span" (already possible) enough?~~ Answered 2026-11-17
+  (`clip-split` task 0.3): not worth it; Split is dropped. `reel.yaml` cannot hold a split point today: a
+  zero-length cut fails to load (`reel/schema.py _parse_trims` requires `out > in`), a one-frame cut would
+  remove a frame from the render, and the writer drops unknown clip keys. A boundary inside a clip (option A)
+  would need a new `splits:` key yet change nothing in the render; one clip used twice (option B) would touch the
+  schema, the write API, the fingerprint and the web draft. "Cut a span" already removes the middle of a clip.
