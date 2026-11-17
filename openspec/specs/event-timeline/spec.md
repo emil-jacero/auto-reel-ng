@@ -225,7 +225,7 @@ nothing and send no request other than reads.
 
 ### Requirement: The playhead scrubs one video
 
-The Timeline SHALL hold exactly one `<video>`, created when the track opens, showing the proxy of the clip the playhead is in, at the playhead's time in that clip. The playhead SHALL be a slider over the whole timeline: it SHALL have the role `slider`, a name ("Playhead"), `aria-valuemin`, `aria-valuemax` and `aria-valuenow` in the timeline's seconds, and a value text that names the clip, the time in it and the time in the whole timeline, each said by its noun ("Harbour, clip 0:12.4 of 0:24.96; event 1:12 of 3:12", the times in the Cuts panel's time format, not padded). Dragging on the ruler SHALL move the playhead; so SHALL dragging on the track body with a mouse or a pen, and so SHALL dragging the playhead's own grip. With touch, the ruler SHALL scrub and a swipe on the track body SHALL scroll it. A press on the ruler SHALL move the playhead there, and so SHALL a press on the track's empty lane. A single press on a clip's block (its body, not its edge tools or handles) SHALL select the clip and SHALL NOT move the playhead; a double press on it SHALL place the playhead there ("A clip is selected on the track or in the bin"). A press in a black card's span still puts the playhead in the card.
+The Timeline SHALL hold exactly one `<video>`, created when the track opens, showing the proxy of the clip the playhead is in, at the playhead's time in that clip. The playhead SHALL be a slider over the whole timeline: it SHALL have the role `slider`, a name ("Playhead"), `aria-valuemin`, `aria-valuemax` and `aria-valuenow` in the timeline's seconds, and a value text that names the clip, the time in it and the time in the whole timeline, each said by its noun ("Harbour, clip 0:12.4 of 0:24.96; event 1:12 of 3:12", the times in the Cuts panel's time format, not padded). Dragging on the ruler SHALL move the playhead; so SHALL dragging on the track's empty lane or a black card's span with a mouse or a pen, and so SHALL dragging the playhead's own grip. With touch, the ruler SHALL scrub and a swipe on the track body, clip blocks included, SHALL scroll it. A press on the ruler SHALL move the playhead there, and so SHALL a press on the track's empty lane. A single press on a clip's block (its body, not its edge tools or handles) SHALL select the clip and SHALL NOT move the playhead, and in Edit mode a press with a mouse or a pen on it that moves more than 3 px SHALL start a reorder drag, not a scrub ("A clip is reordered by dragging it on the track"), and a reorder drag SHALL NOT move the playhead nor pause or resume play; a press on a cut's span or a video card's span inside the block selects that cut or card on press, and is not dragged (only the rest of the block's body starts a reorder); a double press on it SHALL place the playhead there ("A clip is selected on the track or in the bin"). A press in a black card's span still puts the playhead in the card.
 
 Moving the playhead into another clip SHALL load that clip's proxy into the same `<video>` and seek it, so the picture is the clip's frame at that time; a short flash between two clips is accepted. While the pointer is moving, the Timeline SHALL keep at most one seek in flight and SHALL seek to the latest pointer position when it completes, so that a scrub across many clips never queues a seek per pointer move. The video SHALL be paused while scrubbing. The picture and the playhead SHALL end where the pointer ended.
 
@@ -267,6 +267,14 @@ A proxy whose playing fails SHALL be said by cause, as the clip preview says it:
 #### Scenario: A clip press does not move the playhead
 - **WHEN** the playhead is at 5.0 s and the operator presses once on the body of a clip's block elsewhere
 - **THEN** the clip is selected and the playhead is still at 5.0 s
+
+#### Scenario: A finger swipe on a clip scrolls
+- **WHEN** with touch the operator swipes 40 px sideways starting on a clip block's body
+- **THEN** the track scrolls, no reorder drag starts and the playhead has not moved
+
+#### Scenario: A clip drag does not scrub
+- **WHEN** in Edit mode the operator presses on the body of a clip's block and moves 20 px sideways
+- **THEN** a reorder drag starts and the playhead has not moved
 
 #### Scenario: A double press places the playhead
 - **WHEN** the operator presses twice on the body of a clip's block
@@ -1832,7 +1840,7 @@ A title card's block and its chapter's Edit Titlecard button SHALL both show a s
 
 A press on a clip block's body (not its edge tools or handles) and a press on its bin row SHALL select the clip. The
 block SHALL be outlined with trim handles and the row highlighted; each SHALL be scrolled into view in its pane
-without moving keyboard focus there. A press on empty track SHALL select nothing.
+without moving keyboard focus there. A press on empty track SHALL select nothing. A press with a mouse or a pen on a clip block's body that moves more than 3 px SHALL start a reorder drag instead ("A clip is reordered by dragging it on the track"), and the dragged clip SHALL be the selected one when the drag ends, whether or not it made an edit; Escape during that drag cancels only the drag and keeps the selection.
 
 #### Scenario: Bin to track
 - **WHEN** the track shows 0–20 s and the operator presses the bin row of a clip drawn at 31 s
@@ -1845,3 +1853,63 @@ without moving keyboard focus there. A press on empty track SHALL select nothing
 #### Scenario: Empty track
 - **WHEN** the operator presses the track below the last lane
 - **THEN** nothing is selected and the inspector shows the Event tab
+
+#### Scenario: A press that moves 3 px or less only selects
+- **WHEN** the operator presses a clip block's body and moves 2 px, then releases
+- **THEN** the clip is selected and nothing was dragged
+
+### Requirement: A clip is reordered by dragging it on the track
+
+In Edit mode a press with a mouse or a pen on a clip block's body that moves more than 3 px SHALL start a drag: the block follows the
+pointer, the other clips make room live, and a line with words shows the drop place. Release SHALL make one draft edit
+(reorder, or move into another chapter when the place is in another chapter's span or on its band). Escape or a
+release outside the track SHALL cancel with no edit, and Escape SHALL only cancel the drag. Touch SHALL NOT start it.
+
+#### Scenario: Drag to reorder
+- **WHEN** the operator drags `s1710002.mp4` left until the line says "Before s1710001.mp4" and releases
+- **THEN** the track and the bin show `s1710002.mp4` first, the top bar says "1 clip moved", nothing is written
+
+#### Scenario: Drop on a chapter band
+- **WHEN** the operator drags `s1710003.mp4` onto the band "Main" and releases
+- **THEN** `s1710003.mp4` is the last clip of "Main" in the draft
+
+#### Scenario: Touch does not drag
+- **WHEN** with touch the operator swipes on a clip block
+- **THEN** the track scrolls and no drag starts; a finger reorders through the bin or the Alt keys
+
+#### Scenario: Escape
+- **WHEN** during a drag the operator presses Escape
+- **THEN** every clip returns to its place and the draft is unchanged
+
+### Requirement: Clips are included and ignored by dragging between bin and track
+
+Dragging a New or Ignored clip from the bin onto the video track SHALL include it at the drop place. Dragging a clip
+from the track onto the bin SHALL ignore it. Each SHALL be one draft edit, the draft ignore/include edit. Ignoring and including SHALL be draft edits of the clip's ignore state: counted by the top bar,
+undone by Reset, and written by Save in the document's `ignore`. The inspector's Clip tab SHALL offer "Ignore clip" for
+the selected clip, the same edit.
+
+#### Scenario: Ignore clip button
+- **WHEN** the operator selects `s1710001.mp4` and presses "Ignore clip" in the Clip tab
+- **THEN** it is no longer drawn, it is listed as Ignored, the top bar counts "1 clip ignored" and nothing is written
+
+#### Scenario: Include a new clip
+- **WHEN** the operator drags `s1710006.mp4` (New) from the bin to before `s1710004.mp4`
+- **THEN** it is drawn there, listed in that chapter in the bin, and the top bar counts it
+
+#### Scenario: Ignore by dragging off
+- **WHEN** the operator drags `s1710001.mp4` from the track onto the bin
+- **THEN** it is no longer drawn and is listed as Ignored
+
+### Requirement: A selected clip is moved by keyboard, and moving is inert while a save is pending
+
+With a clip selected, Alt+Left and Alt+Right SHALL move it one place, into the neighbouring chapter at a chapter's
+edge, announced politely. While a save or a Move marked… is pending, dragging and the keys SHALL do nothing and say
+why.
+
+#### Scenario: Alt+Right at a chapter's end
+- **WHEN** the last clip of "Main" is selected and the operator presses Alt+Right
+- **THEN** it becomes the first clip of "Kvällen" and the move is announced
+
+#### Scenario: During a save
+- **WHEN** a save is pending and the operator drags a clip
+- **THEN** nothing moves and the words say that moving waits for the save

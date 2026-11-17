@@ -829,7 +829,7 @@ another chapter SHALL count as one moved clip, and SHALL show the chapter it cam
 Clips the event ignores are not part of the play order. Each chapter SHALL list them after its other clips,
 marked as ignored, except in the workspace's clip bin from 960 CSS pixels wide, which lists every chapter's ignored
 clips after the last chapter, under a caption that names the chapter ("The clip bin holds the chapters' clip lists");
-there they still count as listed by that chapter. Either way they SHALL NOT be movable or counted in the chapter's positions. A missing clip SHALL
+there they still count as listed by that chapter. Either way they SHALL NOT be moved within a list or counted in the chapter's positions; the one thing that moves an ignored clip is including it, by dragging it from the bin to the video track, or by the row's Include button, which includes it at the end of its chapter ("Clips are included and ignored by dragging between bin and track"). A missing clip SHALL
 stay listed and movable, and SHALL never be dropped from its chapter, except when the operator removes it
 with its own control (see "Edit mode removes a missing clip from reel.yaml on request"). A NEW clip SHALL be
 movable like any other.
@@ -869,7 +869,8 @@ movable like any other.
 #### Scenario: An ignored clip is listed but cannot move
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a window narrower than 960 px
 - **THEN** `Main` lists `s1710001.mp4` and then `s1710004.mp4`, marked as ignored, and `s1710004.mp4` has no
-  handle and no move controls
+  move controls in the list, only a grip to drag it onto the video track and an Include button that
+  includes it at the end of `Main`
 
 #### Scenario: A missing clip keeps its place
 - **WHEN** Edit mode opens on `2024-09-01 - Sommarlov`, whose `reel.yaml` lists the missing `borttagen.mp4`
@@ -888,7 +889,7 @@ movable like any other.
 
 #### Scenario: In the wide bin ignored clips follow the chapters
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window
-- **THEN** `Main` lists only `s1710001.mp4`, `Kvällen` follows it directly, and after `Kvällen` and before Add chapter the bin lists, under "Ignored clips" and "Main · 1 ignored clip, not played", `s1710004.mp4` marked as ignored, with no handle and no move controls; in a 900 px wide window `Main` lists `s1710001.mp4` and then `s1710004.mp4`, and there is no "Ignored clips" heading
+- **THEN** `Main` lists only `s1710001.mp4`, `Kvällen` follows it directly, and after `Kvällen` and before Add chapter the bin lists, under "Ignored clips" and "Main · 1 ignored clip, not played", `s1710004.mp4` marked as ignored, with no move controls, only the grip and the Include button; in a 900 px wide window `Main` lists `s1710001.mp4` and then `s1710004.mp4`, and there is no "Ignored clips" heading
 
 ### Requirement: The event page edits the event's metadata
 
@@ -940,6 +941,7 @@ read, the page SHALL keep visible:
 
 - which metadata fields changed
 - how many clips moved, counted as the reorder requirement counts them
+- how many clips were ignored and how many included
 - how many missing clips will be removed from `reel.yaml`
 - how many chapters were added, renamed and deleted, and whether the chapters' order changed
 - how many cuts were added and how many removed
@@ -947,7 +949,7 @@ read, the page SHALL keep visible:
 - a **Reset** control, which restores what was read
 - a **Save** control
 
-An edit that is undone SHALL leave no change to save: a clip moved and moved back, within its chapter or to
+An edit that is undone SHALL leave no change to save: a clip ignored and included again (or the reverse), a clip moved and moved back, within its chapter or to
 another chapter and back, a removal undone, a chapter renamed back or moved back, a deleted chapter restored,
 a chapter added and deleted again, a cut added and removed again, a removed cut restored, or a removed cut
 added again with the same times and reason. The cut counts SHALL count only the clips whose saved cuts would
@@ -968,8 +970,9 @@ applied:
   set, its entry is left out of the per-clip properties rather than written empty.
 - **A chapter that plays a NEW clip whose cuts changed** is written as a chapter whose order changed, because
   `reel.yaml` can hold a clip's cuts only while a chapter lists the clip.
-- **Everything else** is written exactly as read: every other chapter, every other per-clip property, the
-  ignored clips and the look.
+- **A clip the operator ignored or included** (the draft's ignore/include edit) is added to or removed from the
+  document's `ignore`; the other ignored clips stay as read.
+- **Everything else** is written exactly as read: every other chapter, every other per-clip property and the look.
 
 Two kinds of save SHALL instead write every chapter the page lists, in the order the chapters are shown and
 under its current name. Each chapter's clips are written in the order shown, without its ignored and removed
@@ -1121,6 +1124,14 @@ Edit mode SHALL say so and offer to read the event again, and SHALL NOT offer to
 - **WHEN** on `2024-06-27 - Grillning med grannar`, the operator adds a cut to `s1710001.mp4` and removes it
   again
 - **THEN** the page shows no unsaved changes, and offers no Save
+
+#### Scenario: An ignored clip is saved
+- **WHEN** in Edit mode the operator ignores `s1710001.mp4` and saves
+- **THEN** the written `ignore` lists it, and nothing else in the document changed
+
+#### Scenario: A marked group is not dropped on the video track
+- **WHEN** two or more clips are marked and the operator drags one of them from the bin and releases it over the video track
+- **THEN** nothing moves, the marks stay, and the live region says a group cannot be dropped on the video track
 
 ### Requirement: A failed save keeps the operator's edits and says why
 
