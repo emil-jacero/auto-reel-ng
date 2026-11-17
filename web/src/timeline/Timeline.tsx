@@ -51,6 +51,12 @@ import type { SelectionBinding } from '../edit/workspace/useSelection.ts'
 import { createDragStore, held as dragHeld, shiftMs } from './dragStore'
 import { edgeAnnouncement, edgeEdit, snappingWords, toPlayheadRefusal, trimToPlayhead } from './edgeTrim'
 import type { DragStore } from './dragStore'
+import type { ChapterKey } from '../edit/draft'
+import { chapterHeading } from '../events/labels.ts'
+import type { ReorderModel } from './ClipDrag'
+import { spanHit } from './clipDrag'
+import { dropSlot, includeSlot } from './reorder'
+import type { DrawnChapter } from './reorder'
 import type { EditBinding } from './editing'
 import { selectionStands } from './handles'
 import type { KeyAction } from './keys'
@@ -140,6 +146,8 @@ export type TimelineProps = {
   clips: readonly TrackClip[]
   /** The drawn chapters' names by index, as `clips[].chapter` and `cards.specs` count them. */
   chapterNames: readonly string[]
+  /** The drawn chapters' keys in the draft, by the same index. */
+  chapterKeys: readonly ChapterKey[]
   prepare: PrepareControl
   /** The analysis lane (`overlays/`): absent, the Timeline has none and reads no analysis. */
   analysis?: AnalysisControl
@@ -214,6 +222,7 @@ export function useTimeline({
   eventId,
   clips,
   chapterNames,
+  chapterKeys,
   prepare,
   analysis,
   editing,
@@ -288,6 +297,26 @@ export function useTimeline({
   // Each clip's timing with its kept extent: the playhead's rules land on kept frames only.
   const facts = useMemo(() => clips.map(timedOf), [clips])
   const bands = useMemo(() => chapterBands(chapterNames, clips), [chapterNames, clips])
+  // What a clip block dragged on the track drops against (`track-drag-edit`): the drawn chapters
+  // with their clips, the nearest slot, and the lists' own edit on release.
+  const reorder = useMemo<ReorderModel>(() => {
+    const named = chapterNames.some((name) => name !== '')
+    const chapters: DrawnChapter[] = chapterKeys.map((key, at) => ({
+      key,
+      name: chapterHeading(chapterNames[at] ?? '', named),
+      identities: clips.filter((clip) => clip.chapter === at).map((clip) => clip.identity),
+    }))
+    const drawn = new Set(clips.map((clip) => clip.identity))
+    return {
+      chapters,
+      slotAt: (identity, trackMs) => dropSlot(clipLay, map, chapters, trackMs, identity),
+      onDrop: (identity, slot) => editing.onMove(identity, slot, drawn),
+      slotNear: (trackMs) => includeSlot(clipLay, map, chapters, trackMs),
+      drawn,
+      overBin: editing.overBin,
+      onIgnore: editing.onIgnore,
+    }
+  }, [chapterNames, chapterKeys, clips, clipLay, map, editing])
   const draftCuts = editing.cuts
   const movie = useMemo(() => movieMs(clips, draftCuts), [clips, draftCuts])
   // The footage the movie line counts against: full durations, which edge cuts do not shorten.
@@ -346,6 +375,12 @@ export function useTimeline({
     }
     selectClip(identity)
   }
+  const spanAtRef = useRef<(identity: string, x: number) => boolean>(() => false)
+  spanAtRef.current = (identity, x) => {
+    const pos = positionOf(x)
+    return spanHit(pos, clips[pos.clip]?.identity, identity, editing.listed(identity)) !== null
+  }
+  const spanAt = useCallback((identity: string, x: number) => spanAtRef.current(identity, x), [])
   const pressClip = useCallback((identity: string, x: number) => pressClipRef.current(identity, x), [])
   const selectCard = selection.select
   const revealCard = selection.reveal
@@ -1206,12 +1241,14 @@ export function useTimeline({
         selectedClip={selectedClip}
         onSelectClip={selectClip}
         onPressClip={pressClip}
+        onSpanAt={spanAt}
         onClearSelection={clearSelection}
         cardLane={cardLane}
         shifting={shifting}
         snapping={snapping}
         onEdgeKey={onEdgeKey}
         zoomHold={zoomHold}
+        reorder={reorder}
       />
 
       {decorators === 'invalid' && <p className="tl-summary">{CARDS_UNKNOWN}</p>}

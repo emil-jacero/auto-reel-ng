@@ -39,6 +39,7 @@ the lists).
 
 - `timeline`: ADDED the pure model of a track drop: the drop slot for a pointer place, the resulting order and
   chapter, and snapping.
+- `web-app`: MODIFIED the reorder requirement (an ignored clip can be included by dragging) and the save requirement (Save writes `ignore` from the draft's ignore/include edit).
 - `event-timeline`: ADDED reorder and chapter move by dragging, bin↔track include/ignore, keyboard moves, inert rules.
 
 ## Impact

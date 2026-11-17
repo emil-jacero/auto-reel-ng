@@ -303,6 +303,10 @@ function DragPreview({
   )
 }
 
+/** Spoken when a marked group is released over the video track. */
+const GROUP_ON_TRACK =
+  'A group of clips cannot be dropped on the video track. Nothing moved. Move it in the bin.'
+
 export function ChapterDrag({
   orders,
   listed,
@@ -315,6 +319,8 @@ export function ChapterDrag({
   marked,
   onDropGroup,
   onLift,
+  overTrack,
+  onDropOutside,
   rootRef,
   children,
 }: {
@@ -340,6 +346,14 @@ export function ChapterDrag({
   onDropGroup: (dragged: string, to: ChapterKey, gap: number) => boolean
   /** Whether a clip is lifted now (a keyboard or pointer drag not yet dropped or cancelled). */
   onLift: (lifted: boolean) => void
+  /** Whether a client point is over the video track (`track-drag-edit`): a pointer drop there is not the bin's. */
+  overTrack: (x: number, y: number) => boolean
+  /**
+   * A clip released by a pointer at a client point: over the track the editor includes it (an
+   * ignored clip) or moves it to the slot there, and this returns true; false when the point is
+   * not over the track, and the bin's own drop follows.
+   */
+  onDropOutside: (identity: string, x: number, y: number) => boolean
   /** The editor's root, where the moved row is found after a drop. */
   rootRef: RefObject<HTMLElement | null>
   children: ReactNode
@@ -364,10 +378,48 @@ export function ChapterDrag({
 
   // What the dnd-kit callbacks below read: they stay the same functions, so neither the
   // sensors nor the context's accessibility change while a clip is lifted.
-  const current = useRef({ model, staysHome, nameOf, headingOf, locked, marked, listed })
-  useLayoutEffect(() => {
-    current.current = { model, staysHome, nameOf, headingOf, locked, marked, listed }
+  const current = useRef({
+    model,
+    staysHome,
+    nameOf,
+    headingOf,
+    locked,
+    marked,
+    listed,
+    overTrack,
+    onDropOutside,
   })
+  useLayoutEffect(() => {
+    current.current = {
+      model,
+      staysHome,
+      nameOf,
+      headingOf,
+      locked,
+      marked,
+      listed,
+      overTrack,
+      onDropOutside,
+    }
+  })
+  // Where a pointer drag's pointer is, for a release over the video track (not the bin's).
+  const pointer = useRef<{ x: number; y: number } | null>(null)
+  const heldByPointer = lifted?.pointer === true
+  useEffect(() => {
+    if (!heldByPointer) {
+      return undefined
+    }
+    const move = (event: PointerEvent) => {
+      pointer.current = { x: event.clientX, y: event.clientY }
+    }
+    window.addEventListener('pointermove', move, true)
+    return () => window.removeEventListener('pointermove', move, true)
+  }, [heldByPointer])
+  /** Whether the pointer is over the video track now. */
+  const onTrack = useCallback(() => {
+    const at = pointer.current
+    return at !== null && current.current.overTrack(at.x, at.y)
+  }, [])
   // The lifted clip; the slot the keyboard last stepped to (null: none yet, at the lift).
   const lift = useRef<Lift | null>(null)
   const slot = useRef<Slot | null>(null)
@@ -487,6 +539,10 @@ export function ChapterDrag({
     ({ active, droppableRects, pointerCoordinates }) => {
       const identity = String(active.id)
       const { model: now, staysHome: home } = current.current
+      // An ignored clip (in no order) is dropped on the track only; the bin has no slot for it.
+      if (!now.chapterOf.has(identity)) {
+        return []
+      }
       if (pointerCoordinates === null) {
         // Before the first key the clip is over itself, as `closestCenter` gives.
         return [{ id: slot.current === null ? active.id : overIdOf(now, identity, slot.current) }]
@@ -654,6 +710,9 @@ export function ChapterDrag({
     }
     return {
       onDragStart: ({ active }) => {
+        if (!current.current.model.chapterOf.has(String(active.id))) {
+          return `Picked up ${name(active.id)}, an ignored clip. Drop it on the video track to include it.`
+        }
         const count = group()
         if (count !== null) {
           return groupWords.lift(count)
@@ -668,6 +727,9 @@ export function ChapterDrag({
         return `Picked up ${name(active.id)}, position ${position} of ${order.length}.${stays}`
       },
       onDragOver: ({ active, over }) => {
+        if (!current.current.model.chapterOf.has(String(active.id))) {
+          return undefined
+        }
         // dnd-kit's live region keeps only the last words of a batch: the clip over its own
         // place right after the lift would replace "Picked up …" before it is heard.
         const first = lifting.current
@@ -686,6 +748,16 @@ export function ChapterDrag({
         return place === null ? undefined : `${name(active.id)} is over ${place}.`
       },
       onDragEnd: ({ active, over }) => {
+        // A group released over the track goes nowhere: groups move in the bin.
+        if (group() !== null && onTrack()) {
+          released.current = null
+          return GROUP_ON_TRACK
+        }
+        // Dropped on the track: the editor says what it did (include or move).
+        if (!current.current.model.chapterOf.has(String(active.id)) || onTrack()) {
+          released.current = null
+          return undefined
+        }
         const overId = released.current ?? (over === null ? null : String(over.id))
         released.current = null
         const drop = dropOf(String(active.id), overId)
@@ -704,6 +776,9 @@ export function ChapterDrag({
         return `${name(active.id)} moved to ${words(active.id, overId)}.`
       },
       onDragCancel: ({ active }) => {
+        if (!current.current.model.chapterOf.has(String(active.id))) {
+          return `Move cancelled. ${name(active.id)} is still ignored.`
+        }
         const count = group()
         if (count !== null) {
           return groupWords.cancel(count)
@@ -713,7 +788,7 @@ export function ChapterDrag({
         return `Move cancelled. ${name(active.id)} is back at ${back}.`
       },
     }
-  }, [dropOf, groupTargetOf, homeOf, liftOf, targetOf])
+  }, [dropOf, groupTargetOf, homeOf, liftOf, onTrack, targetOf])
 
   const several = listed.length > 1
   // Marks cannot change while a clip is lifted (the editor refuses them), so these
@@ -740,6 +815,10 @@ export function ChapterDrag({
       // effect above: the gaps must already be in the model it reads.
       current.current = { ...current.current, model: dragModel(before.orders, shown, true) }
     }
+    pointer.current =
+      activatorEvent instanceof PointerEvent || activatorEvent instanceof MouseEvent
+        ? { x: activatorEvent.clientX, y: activatorEvent.clientY }
+        : null
     const next = {
       identity,
       name: current.current.nameOf(identity),
@@ -759,6 +838,26 @@ export function ChapterDrag({
   const onDragEnd = useCallback(
     ({ active, over }: DragEndEvent) => {
       const identity = String(active.id)
+      // A pointer released over the video track is the track's drop (an include or a move there).
+      const at = pointer.current
+      if (lift.current?.pointer === true && at !== null) {
+        if (lift.current.group !== null && current.current.overTrack(at.x, at.y)) {
+          // Multi-clip dragging stays in the bin: a group is not part-dropped on the track.
+          released.current = null
+          slot.current = null
+          cancelled.current = identity
+          setLifted(null)
+          return
+        }
+        const handled = current.current.onDropOutside(identity, at.x, at.y)
+        if (handled) {
+          released.current = null
+          slot.current = null
+          cancelled.current = identity
+          setLifted(null)
+          return
+        }
+      }
       const overId = releasedOver(identity, over?.id ?? null)
       released.current = overId
       const drop = dropOf(identity, overId)

@@ -1,4 +1,4 @@
-import { memo, useCallback, useId, useRef, useState, useSyncExternalStore } from 'react'
+import { memo, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent, RefObject } from 'react'
 
 import type { ClipTurns } from '../cuts/ReadCuts'
@@ -15,12 +15,15 @@ import type { PressTargets, SnapSwitch } from './EdgeHandles'
 import { EDGE_KEYS } from './edgeTrim'
 import { edgeToolShown } from './zoomSettle'
 import type { EdgeKey } from './zoomSettle'
+import { ClipDragLayer, useClipDrag } from './ClipDrag'
+import type { ReorderModel } from './ClipDrag'
+import { MOVE_LOCKED, inBox } from './clipDrag'
 import { shiftMs } from './dragStore'
 import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
 import { bandStartMs } from './cards'
 import type { CardBlock, CardHandle, CardSpec } from './cards'
-import { trackZoomKey } from './keys'
+import { clipMoveKey, stepSlot, trackZoomKey } from './keys'
 import type { KeyAction } from './keys'
 import { clipDescription } from './labels'
 import { cutLabel, drawnCuts } from './layout'
@@ -30,6 +33,7 @@ import {
   edgeCut,
   extentMs,
   interiorSpans,
+  pxToTime,
   tickLabelFits,
   timeToPx,
   visibleClips,
@@ -241,6 +245,7 @@ function Ticks({
 
 /** A chapter's band; the one of a dragged black card follows its edge by itself. */
 function ChapterBand({
+  chapter,
   heading,
   left,
   right,
@@ -250,6 +255,7 @@ function ChapterBand({
   drag,
   shifting,
 }: {
+  chapter: number
   heading: string
   left: number
   right: number
@@ -263,6 +269,7 @@ function ChapterBand({
   return (
     <li
       className="tl-chapter"
+      data-chapter={chapter}
       data-after={after || undefined}
       style={{ insetInlineStart: left, inlineSize: right - left + timeToPx(delta, pps) }}
     >
@@ -371,12 +378,13 @@ const ClipPress = memo(function ClipPress({
   left,
   widthPx,
   descId,
+  lockedId,
   selected,
   after,
+  grab,
   onSelect,
   onPress,
   onPlace,
-  onScrub,
 }: {
   identity: string
   name: string
@@ -384,18 +392,17 @@ const ClipPress = memo(function ClipPress({
   left: number
   widthPx: number
   descId: string
+  /** The words that moving waits for the save, while it does (else null). */
+  lockedId: string | null
   selected: boolean
   after: boolean
+  /** The block's drag (`ClipDrag`): a mouse or pen drag past the slop reorders the clip. */
+  grab: ReturnType<typeof useClipDrag>
   onSelect: (identity: string) => void
   /** A click: selects the cut whose span holds the press, else the clip. */
   onPress: (identity: string, clientX: number) => void
   onPlace: (clientX: number) => void
-  /** A mouse or pen drag on the body scrubs the playhead, as on the bare lane. */
-  onScrub: (clientX: number, phase: ScrubPhase) => void
 }) {
-  const press = useRef<{ id: number; x: number; scrubbing: boolean } | null>(null)
-  // A drag that scrubbed ends in a click; that click selects nothing.
-  const dragged = useRef(false)
   return (
     <div
       className="tl-clip-press"
@@ -403,54 +410,19 @@ const ClipPress = memo(function ClipPress({
       tabIndex={0}
       aria-label={name}
       aria-pressed={selected}
-      aria-describedby={descId}
+      aria-describedby={lockedId === null ? descId : `${descId} ${lockedId}`}
       data-index={index}
       data-selected={selected || undefined}
       data-after={after || undefined}
       style={{ insetInlineStart: left, inlineSize: Math.max(1, widthPx) }}
-      onPointerDown={(event: PointerEvent<HTMLElement>) => {
-        if (event.button !== 0 || event.pointerType === 'touch') {
-          return
-        }
-        dragged.current = false
-        press.current = { id: event.pointerId, x: event.clientX, scrubbing: false }
-        event.currentTarget.setPointerCapture(event.pointerId)
-      }}
-      onPointerMove={(event: PointerEvent<HTMLElement>) => {
-        const p = press.current
-        if (p === null || p.id !== event.pointerId) {
-          return
-        }
-        if (!p.scrubbing) {
-          if (Math.abs(event.clientX - p.x) < TAP_PX) {
-            return
-          }
-          p.scrubbing = true
-          dragged.current = true
-          onScrub(p.x, 'start')
-        }
-        onScrub(event.clientX, 'move')
-      }}
-      onPointerUp={(event: PointerEvent<HTMLElement>) => {
-        const p = press.current
-        if (p === null || p.id !== event.pointerId) {
-          return
-        }
-        press.current = null
-        if (p.scrubbing) {
-          onScrub(event.clientX, 'end')
-        }
-      }}
-      onPointerCancel={(event: PointerEvent<HTMLElement>) => {
-        const p = press.current
-        press.current = null
-        if (p !== null && p.id === event.pointerId && p.scrubbing) {
-          onScrub(event.clientX, 'end')
-        }
-      }}
+      onPointerDown={(event: PointerEvent<HTMLElement>) => grab.onDown(event, identity, index)}
+      onPointerMove={grab.onMove}
+      onPointerUp={grab.onUp}
+      onPointerCancel={grab.onCancel}
+      onLostPointerCapture={grab.onLostCapture}
       onClick={(event: MouseEvent<HTMLElement>) => {
-        if (dragged.current) {
-          dragged.current = false
+        // A drag that moved a clip (or tried to) ends in a click; that click selects nothing.
+        if (grab.consumeDragged()) {
           return
         }
         // Enter and Space come through onKeyDown; a click with no pointer (detail 0) selects the clip.
@@ -520,12 +492,14 @@ export function Track({
   selectedClip,
   onSelectClip,
   onPressClip,
+  onSpanAt,
   onClearSelection,
   cardLane,
   shifting = null,
   snapping,
   onEdgeKey,
   zoomHold = null,
+  reorder,
 }: {
   eventId: string
   clips: readonly TrackClip[]
@@ -565,6 +539,8 @@ export function Track({
   onSelectClip: (identity: string) => void
   /** A click on a clip's block at track px `x` (NaN: none): a cut's span there, else the clip. */
   onPressClip: (identity: string, x: number) => void
+  /** Whether a press at this track px on the clip lands on a cut's or a card's span. */
+  onSpanAt: (identity: string, x: number) => boolean
   /** A press on empty track selects nothing. */
   onClearSelection: () => void
   /** The title cards' lane; absent, the Timeline draws none. */
@@ -577,6 +553,8 @@ export function Track({
   onEdgeKey: (key: 'q' | 'w' | 's') => void
   /** A zoom in progress (design D6) and the edge tool it keeps, or null. */
   zoomHold?: { kept: EdgeKey | null } | null
+  /** The drop model of a clip block dragged on the track (`track-drag-edit`). */
+  reorder: ReorderModel
 }) {
   const base = useId()
   const canvas = useRef<HTMLDivElement>(null)
@@ -587,19 +565,14 @@ export function Track({
   // A double press on a clip places the playhead there (a clip press alone does not).
   const scrubNow = useRef(onScrub)
   scrubNow.current = onScrub
+  const spanNow = useRef(onSpanAt)
+  spanNow.current = onSpanAt
   const pressNow = useRef(onPressClip)
   pressNow.current = onPressClip
   const pressAt = useCallback((identity: string, clientX: number) => {
     const box = canvas.current?.getBoundingClientRect()
     pressNow.current(identity, clientX - (box?.left ?? 0))
   }, [])
-  const scrubClip = useCallback((clientX: number, phase: ScrubPhase) => {
-    const box = canvas.current?.getBoundingClientRect()
-    if (phase === 'start') {
-      gripRef.current?.focus({ preventScroll: true })
-    }
-    scrubNow.current(clientX - (box?.left ?? 0), phase, 'ruler')
-  }, [gripRef])
   const placeAt = useCallback(
     (clientX: number) => {
       const box = canvas.current?.getBoundingClientRect()
@@ -608,6 +581,50 @@ export function Track({
     },
     [gripRef],
   )
+  // A mouse or pen drag on a clip's block reorders it (`ClipDrag`); a press alone still selects.
+  const clipGrab = useClipDrag(drag, canvas, scrollerRef, {
+    clips,
+    lay,
+    pps,
+    reorder,
+    locked: editing.locked,
+    announce: editing.announce,
+    onSelectClip,
+    onSpan: (identity, clientX) => {
+      const box = canvas.current?.getBoundingClientRect()
+      return spanNow.current(identity, clientX - (box?.left ?? 0))
+    },
+  })
+  // The bin's drag asks where a release would land on this track (`track-drag-edit`): the nearest
+  // boundary to the pointer, when the pointer is over the track's viewport.
+  const reorderNow = useRef(reorder)
+  reorderNow.current = reorder
+  const ppsNow = useRef(pps)
+  ppsNow.current = pps
+  const trackAt = editing.trackAt
+  useEffect(() => {
+    trackAt.current = (x, y, identity) => {
+      const view = scrollerRef.current?.getBoundingClientRect()
+      const box = canvas.current?.getBoundingClientRect()
+      if (view === undefined || box === undefined || !inBox(view, x, y)) {
+        return null
+      }
+      const model = reorderNow.current
+      let slot = null
+      try {
+        const ms = pxToTime(x - box.left, ppsNow.current)
+        // A clip the track draws has its own place among the boundaries; any other has none.
+        slot = model.drawn.has(identity) ? model.slotAt(identity, ms) : model.slotNear(ms)
+      } catch {
+        slot = null
+      }
+      return { slot, drawn: model.drawn }
+    }
+    return () => {
+      trackAt.current = null
+    }
+  }, [trackAt, scrollerRef])
+  const clipDragging = useSyncExternalStore(drag.subscribe, () => drag.getClip() !== null)
   // Every cut handle and edge tool: one nearest-wins press test across them.
   const [targets] = useState<PressTargets>(() => new Map())
   const edgeDragged = shifting !== null && shifting.kind === 'edge' ? shifting.identity : null
@@ -628,6 +645,7 @@ export function Track({
   const keysId = `${base}-trim-keys`
   const edgeKeysId = `${base}-edge-keys`
   const lockedId = `${base}-edge-locked`
+  const moveLockedId = `${base}-move-locked`
   if (shown !== null) {
     for (let index = shown[0]; index <= shown[1]; index += 1) {
       const clip = clips[index]
@@ -655,11 +673,12 @@ export function Track({
           widthPx={widthPx}
           descId={descId}
           selected={selectedClip === clip.identity}
+          lockedId={editing.locked ? moveLockedId : null}
           after={after}
+          grab={clipGrab}
           onSelect={onSelectClip}
           onPress={pressAt}
           onPlace={placeAt}
-          onScrub={scrubClip}
         />,
       )
       if (detailed || focusedEdge === clip.identity) {
@@ -769,6 +788,7 @@ export function Track({
     <div
       className="tl-viewport"
       ref={scrollerRef}
+      data-clip-drag={clipDragging || undefined}
       // Focusable by script and by a press, not by Tab (the playhead is the track's tab stop): a
       // browser that makes only scrolling boxes focusable would otherwise drop the focus when Fit
       // leaves nothing to scroll, and the next zoom key would go nowhere.
@@ -797,6 +817,30 @@ export function Track({
           event.preventDefault()
           onTrackKey(key)
           return
+        }
+        // Alt+Left and Right move the selected clip one place (`track-drag-edit`, D4); handled (and
+        // the browser's history keys held back) only when a drawn clip is selected, never in a field.
+        const way = clipMoveKey({
+          key: event.key,
+          altKey: event.altKey,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          shiftKey: event.shiftKey,
+          altGraph: event.getModifierState('AltGraph'),
+        })
+        if (way !== null && selectedClip !== null && !inField(event.target)) {
+          const step = stepSlot(reorder.chapters, selectedClip, way)
+          if (step !== null) {
+            event.preventDefault()
+            if (editing.locked) {
+              editing.announce(MOVE_LOCKED)
+            } else if (step.kind === 'edge') {
+              editing.announce(step.words)
+            } else {
+              reorder.onDrop(selectedClip, step.slot)
+            }
+            return
+          }
         }
         if (event.ctrlKey || event.altKey || event.metaKey) {
           return
@@ -846,6 +890,7 @@ export function Track({
             return (
               <ChapterBand
                 key={band.first}
+                chapter={band.chapter}
                 heading={band.heading}
                 left={left}
                 right={right}
@@ -894,6 +939,7 @@ export function Track({
             })}
           </div>
         )}
+        <ClipDragLayer drag={drag} canvas={canvas} pps={pps} />
         <PlayheadSlider
           playhead={playhead}
           clips={clips}
@@ -914,9 +960,14 @@ export function Track({
               {EDGE_KEYS}
             </span>
             {editing.locked && (
-              <span id={lockedId} className="visually-hidden">
-                {EDGE_LOCKED}
-              </span>
+              <>
+                <span id={lockedId} className="visually-hidden">
+                  {EDGE_LOCKED}
+                </span>
+                <span id={moveLockedId} className="visually-hidden">
+                  {MOVE_LOCKED}
+                </span>
+              </>
             )}
             <span id={`${base}-card-keys`} className="visually-hidden">
               {CARD_KEYS}

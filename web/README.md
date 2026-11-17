@@ -756,6 +756,13 @@ cut, card or suggestion; `keptSelection`, `inspectorTab`), `useSelection.ts` the
 `Inspector.tsx` and `inspectorTabs.ts` are the Clip, Title card, Suggestion and Event tabs that follow it. The title-card
 inspector below is docked in the Title card tab, not a dialog.
 
+Track drag edit (`track-drag-edit`): in Edit mode a clip block on the Timeline's track is dragged to reorder it, or to another chapter
+(`timeline/ClipDrag.tsx` on `dragStore`, with the pure `reorder.ts` and `clipDrag.ts`; a line shows where it lands). A release dispatches
+the lists' own reducer actions, so Save, Reset and the counts are unchanged. A clip dragged from the bin onto the track is included, and
+one dragged off the track to the bin's Ignored part is ignored (`@dnd-kit` stays in the bin and lists, joined to the track by a small
+adapter; the draft's ignore/include edit is `Draft.ignoreEdits` (`ignoreClip` / `includeClip` in `edit/draft.ts`), saved as `ignore`). Alt+Left / Alt+Right moves the selected clip one place,
+across chapters, and the Clip tab's **Ignore clip** button ignores it. All are inert while a save or a Move clips is pending.
+
 `src/edit/card/` is the title-card inspector (`title-card-inspector`): `model.ts` (the nine overrides,
 change detection, the preview request, which field a refusal names), `preview.ts` (the debounce, abort and
 retry state machine, with injected timers and client), `specs.ts` (the draft card as the blocks and rows

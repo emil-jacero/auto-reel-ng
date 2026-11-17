@@ -1,4 +1,4 @@
-import { useDroppable } from '@dnd-kit/core'
+import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { SortingStrategy } from '@dnd-kit/sortable'
 import { CSS as DndCss } from '@dnd-kit/utilities'
@@ -13,7 +13,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { ReactNode, RefObject } from 'react'
+import type { PointerEventHandler, ReactNode, RefObject } from 'react'
 
 import type { Clip } from '../api/event'
 import { CutsPanel, CutsToggle } from '../cuts/CutsPanel'
@@ -618,27 +618,73 @@ const ClipRow = memo(function ClipRow({
   )
 })
 
-/** An ignored clip: listed, dimmed, not numbered, no controls. */
+/** Includes an ignored clip at the end of its chapter's play order (the non-drag way). */
+export type IncludeHandler = (chapter: ChapterKey, identity: string) => void
+
+/**
+ * An ignored clip: listed, dimmed, not numbered; its grip drags it onto the video track and
+ * its Include button is the non-drag way (`track-drag-edit`).
+ */
 export const IgnoredRow = memo(function IgnoredRow({
   eventId,
   clip,
   name,
   compact,
+  chapter,
+  locked,
+  onInclude,
 }: {
   eventId: string
   clip: Clip
   name: string
   compact: boolean
+  chapter: ChapterKey
+  locked: boolean
+  onInclude: IncludeHandler
 }) {
+  // An ignored clip is dragged onto the video track to include it (`track-drag-edit`): the
+  // pointer only, the bin has no slot for it; dropped elsewhere it stays ignored.
+  const { listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
+    id: clip.identity,
+  })
   return (
-    <li className="clip-item" data-status={clip.status}>
-      <span className="drag-slot" />
+    <li
+      ref={setNodeRef}
+      className="clip-item"
+      data-status={clip.status}
+      data-identity={clip.identity}
+      data-dragging={isDragging || undefined}
+    >
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        className="btn btn-ghost btn-icon drag-handle"
+        aria-label={`Drag ${name} onto the video track to include it`}
+        onPointerDown={listeners?.onPointerDown as PointerEventHandler<HTMLButtonElement> | undefined}
+      >
+        {GRIP}
+      </button>
       <RowBody
         eventId={eventId}
         clip={clip}
         name={name}
         position={null}
         was={null}
+        action={
+          <button
+            type="button"
+            className="btn btn-secondary btn-compact clip-undo"
+            aria-label={`Include ${name}`}
+            aria-disabled={locked || undefined}
+            onClick={() => {
+              if (!locked) {
+                onInclude(chapter, clip.identity)
+              }
+            }}
+          >
+            Include
+          </button>
+        }
         length={compact ? lengthWords(clip.duration, NO_CUTS) : null}
       />
       {!compact && <span className="clip-moves" />}
@@ -787,6 +833,7 @@ export const ClipOrderList = memo(function ClipOrderList({
   onMove,
   onRemove,
   onRestore,
+  onInclude,
   onAnnounce,
   compact = false,
   selectedClip = null,
@@ -841,6 +888,7 @@ export const ClipOrderList = memo(function ClipOrderList({
   onMove: MoveHandler
   onRemove: RemoveHandler
   onRestore: RestoreHandler
+  onInclude: IncludeHandler
   /**
    * Speak button moves, removals and Undos through the editor's live region (dnd-kit speaks
    * the drags).
@@ -1109,6 +1157,9 @@ export const ClipOrderList = memo(function ClipOrderList({
                   clip={clip}
                   name={nameOf(identity)}
                   compact={compact}
+                  chapter={chapterKey}
+                  locked={locked}
+                  onInclude={onInclude}
                 />
               )
             })}
@@ -1153,9 +1204,13 @@ export function IgnoredBin({
   groups,
   clips,
   nameOf,
+  locked,
+  onInclude,
 }: {
   eventId: string
   groups: readonly IgnoredGroup[]
+  locked: boolean
+  onInclude: IncludeHandler
   clips: ReadonlyMap<string, Clip>
   /** How the group's chapter names its clips now. */
   nameOf: (group: IgnoredGroup) => (identity: string) => string
@@ -1189,6 +1244,9 @@ export function IgnoredBin({
                     clip={clip}
                     name={name(identity)}
                     compact
+                    chapter={group.key}
+                    locked={locked}
+                    onInclude={onInclude}
                   />
                 )
               })}

@@ -127,7 +127,16 @@ export type Draft = {
    * draft writes no `poster` and the service keeps the one it holds.
    */
   poster?: PosterDraft
+  /**
+   * The clips the operator ignores or includes, as the set difference against the read `ignore`
+   * (`ignoreClip`, `includeClip`): `'ignore'` for a clip read as played, `'include'` for a clip
+   * read as ignored. Absent or empty is as read; a clip put back as it was read has no entry.
+   */
+  ignoreEdits?: IgnoreEdits
 }
+
+/** Identity → what the operator did to its place in `ignore`. */
+export type IgnoreEdits = ReadonlyMap<string, 'ignore' | 'include'>
 
 /** What Edit mode read: never changes during the session. */
 export type Baseline = {
@@ -382,7 +391,7 @@ export function buildWriteBody(baseline: Baseline, draft: Draft): ReelWriteBody 
     look: applyDecorators(applyStyle(read.look, draft.style), draft.decorators),
     chapters,
     clips: withCuts(baseline, draft),
-    ignore: read.ignore,
+    ignore: ignoredNow(baseline, draft),
     ...posterBody(read, draft.poster),
   }
 }
@@ -396,7 +405,7 @@ export function buildWriteBody(baseline: Baseline, draft: Draft): ReelWriteBody 
  */
 function withCuts(baseline: Baseline, draft: Draft): ReelWriteBody['clips'] {
   const clips = Object.fromEntries(
-    Object.entries(baseline.read.clips).filter(([identity]) => !draft.removed.has(identity)),
+    Object.entries(baseline.read.clips).filter(([identity]) => !leftOut(draft, identity)),
   )
   const cut = changedCuts(baseline, draft)
   const turned = changedRotations(baseline, draft)
@@ -451,8 +460,170 @@ export function isDirty(baseline: Baseline, draft: Draft): boolean {
     changedCards(baseline, draft).size > 0 ||
     styleIsChanged(baseline, draft) ||
     decoratorsChanged(draft) ||
-    posterIsChanged(baseline, draft)
+    posterIsChanged(baseline, draft) ||
+    ignoreChanges(draft).total > 0
   )
+}
+
+// --- ignoring and including a clip -----------------------------------------------------------
+
+/** A clip the properties of which a save leaves out: a missing one removed, or one ignored here. */
+function leftOut(draft: Draft, identity: string): boolean {
+  return draft.removed.has(identity) || draft.ignoreEdits?.get(identity) === 'ignore'
+}
+
+/** The `ignore` a save writes: as read, less the clips included, then the clips ignored here. */
+export function ignoredNow(baseline: Baseline, draft: Draft): string[] {
+  const edits = draft.ignoreEdits
+  if (edits === undefined || edits.size === 0) {
+    return baseline.read.ignore
+  }
+  const kept = baseline.read.ignore.filter((identity) => edits.get(identity) !== 'include')
+  return [...kept, ...[...edits].filter(([, edit]) => edit === 'ignore').map(([identity]) => identity)]
+}
+
+/** Whether `identity` is ignored in the draft: as read, or ignored here and not included again. */
+export function isIgnoredNow(baseline: Baseline, draft: Draft, identity: string): boolean {
+  const edit = draft.ignoreEdits?.get(identity)
+  return edit === undefined ? baseline.read.ignore.includes(identity) : edit === 'ignore'
+}
+
+/** The clips ignored and the clips included here, as the top bar and the save bar count them. */
+export function ignoreChanges(draft: Draft): { ignored: number; included: number; total: number } {
+  let ignored = 0
+  let included = 0
+  for (const edit of draft.ignoreEdits?.values() ?? []) {
+    if (edit === 'ignore') {
+      ignored += 1
+    } else {
+      included += 1
+    }
+  }
+  return { ignored, included, total: ignored + included }
+}
+
+/**
+ * `draft` with `identity` ignored: taken out of chapter `chapter`'s order, which it must be in.
+ * A clip read as ignored and included here is put back as read, and its entry goes; any other
+ * is a new entry. One draft edit, so Reset and the counts follow from the fields.
+ */
+export function ignoreClip(
+  baseline: Baseline,
+  draft: Draft,
+  chapter: ChapterKey,
+  identity: string,
+): Draft {
+  const orders = removeClip(draft.orders, chapter, identity)
+  if (orders === null || !isListedChapter(draft, chapter)) {
+    return draft
+  }
+  const edits = new Map(draft.ignoreEdits)
+  if (edits.get(identity) === 'include') {
+    edits.delete(identity)
+  } else if (!baseline.read.ignore.includes(identity)) {
+    edits.set(identity, 'ignore')
+  }
+  return { ...draft, orders, ignoreEdits: edits }
+}
+
+/**
+ * `draft` with the ignored clip `identity` included: put at index `at` of chapter `chapter`
+ * (clamped to its length), which must be one a save keeps. A clip that is not ignored now is
+ * refused (`draft` unchanged): it is moved, not included. A clip ignored here and included again
+ * has its entry dropped; one read as ignored gets an `'include'` entry.
+ */
+export function includeClip(
+  baseline: Baseline,
+  draft: Draft,
+  chapter: ChapterKey,
+  identity: string,
+  at: number,
+): Draft {
+  const order = draft.orders.get(chapter)
+  if (order === undefined || !isListedChapter(draft, chapter) || !isIgnoredNow(baseline, draft, identity)) {
+    return draft
+  }
+  const index = Math.min(Math.max(at, 0), order.length)
+  const orders = new Map(draft.orders)
+  orders.set(chapter, [...order.slice(0, index), identity, ...order.slice(index)])
+  const edits = new Map(draft.ignoreEdits)
+  if (edits.get(identity) === 'ignore') {
+    edits.delete(identity)
+  } else {
+    edits.set(identity, 'include')
+  }
+  return { ...draft, orders, ignoreEdits: edits }
+}
+
+/**
+ * Each chapter's ignored clips as the draft has them: `read` (the page's lists) less the clips
+ * included here, then the clips ignored here, each under the listed chapter it was played in when
+ * Edit mode opened (`baseline.original`), else the first listed chapter. The same lists when the
+ * draft has no ignore edit.
+ */
+export function ignoredLists(
+  baseline: Baseline,
+  draft: Draft,
+  read: ReadonlyMap<ChapterKey, readonly string[]>,
+): ReadonlyMap<ChapterKey, readonly string[]> {
+  const edits = draft.ignoreEdits
+  if (edits === undefined || edits.size === 0) {
+    return read
+  }
+  const lists = new Map<ChapterKey, string[]>()
+  for (const [key, identities] of read) {
+    lists.set(
+      key,
+      identities.filter((identity) => edits.get(identity) !== 'include'),
+    )
+  }
+  const listed = draft.chapters.filter((chapter) => !chapter.deleted).map((chapter) => chapter.key)
+  for (const [identity, edit] of edits) {
+    if (edit !== 'ignore') {
+      continue
+    }
+    let home: ChapterKey | undefined
+    for (const [key, order] of baseline.original) {
+      if (listed.includes(key) && order.includes(identity)) {
+        home = key
+        break
+      }
+    }
+    const key = home ?? listed[0]
+    const list = key === undefined ? undefined : lists.get(key)
+    if (list !== undefined) {
+      list.push(identity)
+    }
+  }
+  return lists
+}
+
+/**
+ * `detail` with the clips the draft ignores or includes shown as such: a clip ignored here is
+ * `ignored`, a clip read as ignored and included here is `active` (the page's own read had it
+ * ignored, so its row and the track would otherwise skip it). The same detail when nothing
+ * is edited.
+ */
+export function withIgnoreStatus(detail: EventDetail, edits: IgnoreEdits | undefined): EventDetail {
+  if (edits === undefined || edits.size === 0) {
+    return detail
+  }
+  return {
+    ...detail,
+    chapters: detail.chapters.map((chapter) => ({
+      ...chapter,
+      clips: chapter.clips.map((clip) => {
+        const edit = edits.get(clip.identity)
+        return edit === undefined
+          ? clip
+          : { ...clip, status: edit === 'ignore' ? ('ignored' as const) : ('active' as const) }
+      }),
+    })),
+  }
+}
+
+function isListedChapter(draft: Draft, key: ChapterKey): boolean {
+  return draft.chapters.some((chapter) => chapter.key === key && !chapter.deleted)
 }
 
 // --- the poster ------------------------------------------------------------------------
@@ -879,7 +1050,7 @@ export function trimCut(
 export function changedCuts(baseline: Baseline, draft: Draft): ReadonlySet<string> {
   const changed = new Set<string>()
   for (const [identity, cuts] of draft.cuts) {
-    if (draft.removed.has(identity)) {
+    if (leftOut(draft, identity)) {
       continue
     }
     if (!sameTrims(savedTrims(cuts), savedTrims(baseline.cuts.get(identity) ?? NO_CUTS))) {
@@ -1373,7 +1544,7 @@ export function rotateGroup(
 export function changedRotations(baseline: Baseline, draft: Draft): ReadonlySet<string> {
   const changed = new Set<string>()
   for (const [identity, turn] of draft.rotations) {
-    if (!draft.removed.has(identity) && turn !== savedTurn(baseline.read, identity)) {
+    if (!leftOut(draft, identity) && turn !== savedTurn(baseline.read, identity)) {
       changed.add(identity)
     }
   }
