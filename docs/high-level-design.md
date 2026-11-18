@@ -2029,6 +2029,11 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     fields (the inspector is 340 px). The modal wrapper and its focus-return and scroll-lock code are gone: a modal
     over a workspace hid the picture and the track the card is about, and the fixed panes already keep the track
     from moving. Escape in the editor returns focus to the control that selected the card.
+  - **Undo (change `editor-undo`, slice 4).** The draft history wraps the editor reducer (`web/src/edit/history.ts`,
+    pure): every draft edit, including track drags, ignore/include and Alt+arrow moves, is one undoable step; typing
+    in one field coalesces into one step, and 200 steps are kept. Selection is not a draft edit and is not in the
+    history. Save clears the history (the saved state is the new baseline), and Reset is itself a step that Undo takes
+    back. Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y (`undoShortcut.ts`) and the top bar's Undo / Redo buttons drive it.
   - **Not here:** "Ignore clip" (moved 2026-11-15 to `track-drag-edit`, which builds the draft's ignore edit), dragging on
     the track, Undo. No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
 - **D-27 — Analysis is a job** (2026-10-05, change `analysis-job`). The user asked what "Not analyzed" means and why

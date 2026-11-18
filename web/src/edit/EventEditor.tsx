@@ -180,6 +180,16 @@ import { PosterPanel } from './PosterPanel'
 import { POSTER_CHANGED, chosenWords } from './poster.ts'
 import type { PosterPick } from './poster.ts'
 import { SaveBar } from './SaveBar'
+import { canRedo, canUndo, cleared, record, redo, redoLabel, undo, undoLabel } from './history'
+import type { History } from './history'
+import {
+  buttonName,
+  isTextTarget,
+  nothingWords,
+  stepWords,
+  undoChord,
+  undoKeyAction,
+} from './undoShortcut'
 import type { Operation, Pressed, SaveProblem } from './SaveBar'
 import { holdWords, isSaveChord, LIFTED_WORDS, saveHold, saveKeyAction } from './saveShortcut'
 import {
@@ -224,6 +234,19 @@ type ReadFailure = {
   notFound?: boolean
 }
 
+/**
+ * What travels with the draft through the history: the counters that name added chapters and cuts,
+ * so that an undone add and the next one never share a key. Not transient state (a save in flight,
+ * problems, marks, typed text), which belongs to no step.
+ */
+type Step = { draft: Draft; nextCut: number; added: number }
+
+const stepOf = (ready: Ready): Step => ({
+  draft: ready.draft,
+  nextCut: ready.nextCut,
+  added: ready.added,
+})
+
 type Ready = {
   status: 'ready'
   /** What Edit mode read: the document, its chapters and their orders. */
@@ -254,6 +277,11 @@ type Ready = {
   nextCut: number
   /** Bumped by Reset, which remounts the fields (a partial date has no value to reset). */
   resets: number
+  /**
+   * The undo history (`editor-undo`): the draft and its counters at each step. Beside the
+   * draft, which stays what the editor reads; Undo and Redo put a step back into both.
+   */
+  history: History<Step>
   /** Non-null while a save is in flight: the editor is locked. */
   pressed: Pressed | null
   problem: SaveProblem | null
@@ -316,7 +344,7 @@ type Action =
   | { type: 'rotate'; identities: readonly string[]; way: Way }
   | { type: 'name-unsent'; unsent: boolean }
   // A title card's length from the Timeline (`title-card-duration-drag`); `resolved` is the one read.
-  | { type: 'card-length'; key: ChapterKey; seconds: number; resolved: number }
+  | { type: 'card-length'; key: ChapterKey; seconds: number; resolved: number; typed?: boolean }
   | { type: 'card-field'; key: ChapterKey; field: CardField; value: CardDraft[CardField] }
   | { type: 'card-reset'; key: ChapterKey }
   | { type: 'style-field'; field: StyleField; value: StyleValue | null }
@@ -327,6 +355,10 @@ type Action =
   // The event's poster (`poster.ts`): a chosen frame, or `null` for the default frame.
   | { type: 'poster'; pick: PosterPick | null }
   | { type: 'reset' }
+  | { type: 'undo' }
+  | { type: 'redo' }
+  // Focus left a field: the next edit to it is a new step (`history.ts`, coalescing).
+  | { type: 'break' }
   | { type: 'save-start'; pressed: Pressed }
   | { type: 'save-failed'; problem: SaveProblem | null; refusal: string | null }
 
@@ -334,6 +366,9 @@ type Action =
  * An edit that brings the draft back to what was read retires the last save's
  * failure: there is nothing left to save. A vanished event stays said.
  */
+/** The key of a poster pick in the kept snapshot frames. */
+const frameKey = (pick: PosterPick): string => `${pick.clip}@${pick.at}`
+
 function afterEdit(next: Ready): Ready {
   const dirty = isDirty(next.baseline, next.draft) || unfinished(next)
   if (dirty || (next.problem === null && next.refusal === null)) {
@@ -387,7 +422,150 @@ function isListed(draft: Draft, key: ChapterKey): boolean {
   return draft.chapters.some((chapter) => chapter.key === key && !chapter.deleted)
 }
 
+/** The file name of a clip identity, for a step's label. */
+const clipName = (identity: string): string => identity.slice(identity.lastIndexOf('/') + 1)
+
+/**
+ * The step an edit makes, as Undo and Redo name it ("move of s1710002.mp4"), and the key that
+ * folds typing in one field into one step (null: every edit its own step). `before` is the state
+ * the action acts on.
+ */
+function describeEdit(action: Action, before: Ready): { label: string; key: string | null } {
+  switch (action.type) {
+    case 'move':
+      return {
+        label: `move of ${clipName(before.draft.orders.get(action.chapter)?.[action.from] ?? '')}`,
+        key: null,
+      }
+    case 'clip-drop':
+      return { label: `move of ${clipName(action.identity)}`, key: null }
+    case 'marked-move':
+    case 'group-drop':
+      return { label: 'move of marked clips', key: null }
+    case 'remove':
+      return { label: `removal of ${clipName(action.identity)}`, key: null }
+    case 'restore':
+      return { label: `restore of ${clipName(action.identity)}`, key: null }
+    case 'ignore':
+      return {
+        label: `${action.include ? 'include' : 'ignore'} of ${clipName(action.identity)}`,
+        key: null,
+      }
+    case 'chapter-add':
+      return { label: `chapter “${action.name}” added`, key: null }
+    case 'chapter-rename':
+      return { label: 'chapter rename', key: `chapter-name:${action.key}` }
+    case 'chapter-move':
+      return { label: 'chapter move', key: null }
+    case 'chapter-delete':
+      return { label: 'chapter delete', key: null }
+    case 'chapter-restore':
+      return { label: 'chapter restore', key: null }
+    case 'field':
+      return { label: FIELD_LABEL[action.field].toLowerCase(), key: `field:${action.field}` }
+    case 'cut-add':
+      return { label: 'cut added', key: null }
+    case 'cut-remove':
+      return { label: 'cut removed', key: null }
+    case 'cut-restore':
+      return { label: 'cut restored', key: null }
+    case 'cut-trim':
+      return { label: 'cut trim', key: null }
+    case 'cut-edge':
+      return {
+        label:
+          action.edit.kind === 'add'
+            ? 'cut added'
+            : action.edit.kind === 'remove'
+              ? 'cut removed'
+              : 'cut trim',
+        key: null,
+      }
+    case 'rotate':
+      return {
+        label:
+          action.identities.length === 1
+            ? `rotation of ${clipName(action.identities[0])}`
+            : `rotation of ${action.identities.length} clips`,
+        key: null,
+      }
+    case 'card-length':
+      // Typed in the inspector: successive keystrokes fold into one step. A handle drag or arrow
+      // press is its own step each time (`typed` unset).
+      return {
+        label: 'title card length',
+        key: action.typed === true ? `card:${action.key}:duration` : null,
+      }
+    case 'card-field':
+      return { label: `title card ${action.field}`, key: `card:${action.key}:${action.field}` }
+    case 'card-reset':
+      return { label: 'title card reset', key: null }
+    case 'style-field':
+      return { label: `card style ${action.field}`, key: `style:${action.field}` }
+    case 'style-reset':
+      return { label: 'card style reset', key: null }
+    case 'title-cards':
+      return { label: action.on ? 'title cards on' : 'title cards off', key: null }
+    case 'title-cards-reset':
+      return { label: 'title cards reset', key: null }
+    case 'poster':
+      return { label: action.pick === null ? 'poster reset' : 'poster', key: null }
+    case 'reset':
+      return { label: 'Reset', key: null }
+    default:
+      return { label: 'edit', key: null }
+  }
+}
+
+/**
+ * The reducer with the undo history around it (`editor-undo` D1): an action that changes the
+ * draft is recorded as a step; Undo and Redo move along the steps and put the draft and its
+ * counters back. A read starts a new history (`step`'s 'read'), so a Save or a Reload latest,
+ * which both end in a re-read, clears it.
+ */
 function reduce(state: State, action: Action): State {
+  if (action.type === 'undo' || action.type === 'redo') {
+    if (state.status !== 'ready' || state.pressed !== null) {
+      return state
+    }
+    const history = action.type === 'undo' ? undo(state.history) : redo(state.history)
+    if (history === state.history) {
+      return state
+    }
+    const { draft, nextCut, added } = history.present
+    return afterEdit({
+      ...state,
+      draft,
+      nextCut,
+      added,
+      history,
+      lastMoved: null,
+      // A date typed in part is replaced by the restored one.
+      dateIncomplete:
+        draft.metadata.date !== state.draft.metadata.date ? false : state.dateIncomplete,
+    })
+  }
+  if (action.type === 'break') {
+    return state.status === 'ready' && state.history.key !== undefined
+      ? { ...state, history: { ...state.history, key: undefined, at: undefined } }
+      : state
+  }
+  const next = step(state, action)
+  if (state.status !== 'ready' || next.status !== 'ready' || next.draft === state.draft) {
+    return next
+  }
+  // A Reset with nothing edited is no step (typed text alone is not in the draft).
+  if (action.type === 'reset' && !isDirty(state.baseline, state.draft)) {
+    return { ...next, history: { ...state.history, present: stepOf(next) } }
+  }
+  const { label, key } = describeEdit(action, state)
+  return {
+    ...next,
+    history: record(state.history, stepOf(next), label, key ?? undefined),
+  }
+}
+
+function step(state: State, action: Action): State {
   switch (action.type) {
     case 'reading':
       return { status: 'loading' }
@@ -405,10 +583,12 @@ function reduce(state: State, action: Action): State {
         original: ordersOf(action.chapters),
         cuts: readCuts(action.document),
       }
+      const draft = initialDraft(baseline)
       return {
         status: 'ready',
         baseline,
-        draft: initialDraft(baseline),
+        draft,
+        history: cleared({ draft, nextCut: 0, added: 0 }),
         etag: action.etag,
         lastMoved: null,
         added: 0,
@@ -659,6 +839,11 @@ function reduce(state: State, action: Action): State {
         problem: null,
         refusal: null,
       }
+    case 'undo':
+    case 'redo':
+    case 'break':
+      // Handled around this reducer (`reduce`).
+      return state
     case 'save-start':
       // The problem stays until the answer replaces it: a pressed Retry keeps its place.
       return { ...state, pressed: action.pressed }
@@ -1881,30 +2066,38 @@ export function EventEditor({
   )
   // Use as poster: the frame the Timeline's video showed, kept as an object URL until the draft
   // no longer needs it (another frame, Use default, Reset, a re-read, leaving).
-  const [posterFrame, setPosterFrame] = useState<
-    { url: string; turn: Turn; pick: PosterPick } | null
-  >(null)
-  const dropFrame = useCallback(() => {
-    setPosterFrame((was) => {
-      if (was !== null) {
-        URL.revokeObjectURL(was.url)
+  // Frames are kept by pick for as long as the history can reach the pick (Undo and Redo bring a
+  // pick back), and let go on a re-read or leaving.
+  const [frames, setFrames] = useState<Map<string, { url: string; turn: Turn }>>(() => new Map())
+  const framesRef = useRef(frames)
+  framesRef.current = frames
+  const dropFrames = useCallback(() => {
+    setFrames((was) => {
+      if (was.size === 0) {
+        return was
       }
-      return null
+      for (const held of was.values()) {
+        URL.revokeObjectURL(held.url)
+      }
+      return new Map()
     })
   }, [])
-  const frameRef = useRef(posterFrame)
-  frameRef.current = posterFrame
   useEffect(
     () => () => {
-      if (frameRef.current !== null) {
-        URL.revokeObjectURL(frameRef.current.url)
+      for (const held of framesRef.current.values()) {
+        URL.revokeObjectURL(held.url)
       }
     },
     [],
   )
   const posterBaseline = ready?.baseline
-  const posterResets = ready?.resets
-  useEffect(() => dropFrame(), [posterBaseline, posterResets, dropFrame])
+  useEffect(() => dropFrames(), [posterBaseline, dropFrames])
+  const draftPoster = ready === null ? undefined : ready.draft.poster
+  const posterFrame = useMemo(() => {
+    const pick = draftPoster === undefined || draftPoster === null ? null : draftPoster
+    const held = pick === null ? undefined : frames.get(frameKey(pick))
+    return pick === null || held === undefined ? null : { ...held, pick }
+  }, [frames, draftPoster])
   const onPoster = useCallback<EditBinding['onPoster']>(
     (pick, snapshot) => {
       const current = latest.current
@@ -1912,11 +2105,15 @@ export function EventEditor({
         URL.revokeObjectURL(snapshot.url)
         return
       }
-      setPosterFrame((was) => {
-        if (was !== null) {
-          URL.revokeObjectURL(was.url)
+      setFrames((was) => {
+        const next = new Map(was)
+        const key = frameKey(pick)
+        const old = was.get(key)
+        if (old !== undefined) {
+          URL.revokeObjectURL(old.url)
         }
-        return { ...snapshot, pick }
+        next.set(key, { url: snapshot.url, turn: snapshot.turn })
+        return next
       })
       dispatch({ type: 'poster', pick })
       announce(chosenWords(fileName(pick.clip), pick.at))
@@ -1928,10 +2125,9 @@ export function EventEditor({
     if (current === null || current.pressed !== null || moving.current) {
       return
     }
-    dropFrame()
     dispatch({ type: 'poster', pick: null })
     announce('Poster set to the default frame, the first clip. Not saved.')
-  }, [announce, dropFrame])
+  }, [announce])
   const resetCount = ready?.resets ?? 0
   const readLook = ready?.baseline.read.look
   // The rotate action is made further down (it names the clip); the Timeline's binding calls it
@@ -2301,7 +2497,13 @@ export function EventEditor({
         if (resolvedLength === undefined) {
           dispatch({ type: 'card-field', key: chapter.key, field: 'duration', value: seconds })
         } else {
-          dispatch({ type: 'card-length', key: chapter.key, seconds, resolved: resolvedLength })
+          dispatch({
+            type: 'card-length',
+            key: chapter.key,
+            seconds,
+            resolved: resolvedLength,
+            typed: true,
+          })
         }
       },
       styleModel,
@@ -2868,6 +3070,103 @@ export function EventEditor({
     return () => document.removeEventListener('keydown', listener)
   }, [listening])
 
+  // Undo and Redo (`editor-undo`): the buttons in the workspace's top bar and Ctrl/Cmd+Z,
+  // Ctrl/Cmd+Shift+Z and Ctrl+Y. Never while a save is in flight, a clip is lifted or a move of
+  // marked clips is pending (the draft shown is not the draft held).
+  const onHistory = useCallback(
+    (chord: 'undo' | 'redo') => {
+      const current = latest.current
+      if (current === null || current.pressed !== null || moving.current || lifted.current) {
+        return
+      }
+      const label = chord === 'undo' ? undoLabel(current.history) : redoLabel(current.history)
+      if (label === undefined) {
+        return
+      }
+      dispatch({ type: chord })
+      announce(stepWords(chord, label))
+      // The step may remove the element that has focus (an added chapter's heading): once the
+      // draft has re-rendered, a focus left on <body> goes to the details heading.
+      const held = document.activeElement
+      if (held !== null && held !== document.body) {
+        requestAnimationFrame(() => {
+          const now = document.activeElement
+          if (now === null || now === document.body) {
+            detailsHeadingRef.current?.focus()
+          }
+        })
+      }
+    },
+    [announce],
+  )
+  // A pointer press that has not ended is a drag in progress (a track or handle drag, a list
+  // drag): the keys wait for its release, which is the one step it records.
+  const pointerHeld = useRef(false)
+  const onUndoKey = useRef<(event: KeyboardEvent) => void>(() => undefined)
+  useLayoutEffect(() => {
+    onUndoKey.current = (event) => {
+      const current = latest.current
+      const chord = undoChord(event)
+      if (current === null || chord === null) {
+        return
+      }
+      const action = undoKeyAction({
+        chord,
+        repeat: event.repeat,
+        inTextField: isTextTarget(event.target instanceof HTMLElement ? event.target : null),
+        pointerHeld: pointerHeld.current,
+        lifted: lifted.current,
+        saving: current.pressed !== null || saving.current,
+        moving: moving.current,
+        dialogOpen: document.querySelector('dialog[open]') !== null,
+        canUndo: canUndo(current.history),
+        canRedo: canRedo(current.history),
+      })
+      if (action === 'ignore') {
+        return
+      }
+      // The browser's own Undo would act on the page, not the draft.
+      event.preventDefault()
+      if (action === 'nothing') {
+        announce(nothingWords(chord))
+        return
+      }
+      onHistory(action)
+    }
+  })
+  // Only in the workspace, where the Undo and Redo buttons show what the keys do.
+  const undoListening = listening && inWorkspace
+  useEffect(() => {
+    if (!undoListening) {
+      return undefined
+    }
+    const keydown = (event: KeyboardEvent) => onUndoKey.current(event)
+    // Primary-button presses only: a right-click's release goes to the context menu, not the page.
+    const down = (event: PointerEvent) => {
+      pointerHeld.current = event.button === 0
+    }
+    const up = () => {
+      pointerHeld.current = false
+    }
+    document.addEventListener('keydown', keydown)
+    document.addEventListener('pointerdown', down, true)
+    document.addEventListener('pointerup', up, true)
+    document.addEventListener('pointercancel', up, true)
+    document.addEventListener('lostpointercapture', up, true)
+    document.addEventListener('contextmenu', up, true)
+    window.addEventListener('blur', up)
+    return () => {
+      document.removeEventListener('keydown', keydown)
+      document.removeEventListener('pointerdown', down, true)
+      document.removeEventListener('pointerup', up, true)
+      document.removeEventListener('pointercancel', up, true)
+      document.removeEventListener('lostpointercapture', up, true)
+      document.removeEventListener('contextmenu', up, true)
+      window.removeEventListener('blur', up)
+      pointerHeld.current = false
+    }
+  }, [undoListening])
+
   const retrying = state.status === 'failed' && state.retrying === true
   const hasIgnored = chapters.some((chapter) => chapter.ignored.length > 0)
   const hasMissing = [...clips.values()].some((clip) => clip.status === 'missing')
@@ -3273,6 +3572,8 @@ export function EventEditor({
           pointerPressed.current = false
         }, 0)
       }}
+      // Leaving a field ends the typing run its edits were folded into (`history.ts`).
+      onBlur={() => dispatch({ type: 'break' })}
       onFocus={(event) => {
         if (
           !pointerPressed.current &&
@@ -3373,7 +3674,24 @@ export function EventEditor({
         </>
       ) : (
         <Workspace
-          top={<TopBar frame={workspace} saveBar={parts?.saveBar ?? null} />}
+          top={
+            <TopBar
+              frame={workspace}
+              saveBar={parts?.saveBar ?? null}
+              history={
+                ready === null
+                  ? null
+                  : {
+                      undo: buttonName('Undo', undoLabel(ready.history)),
+                      redo: buttonName('Redo', redoLabel(ready.history)),
+                      canUndo: canUndo(ready.history) && ready.pressed === null,
+                      canRedo: canRedo(ready.history) && ready.pressed === null,
+                      onUndo: () => onHistory('undo'),
+                      onRedo: () => onHistory('redo'),
+                    }
+              }
+            />
+          }
           viewer={<>
       {state.status === 'loading' && (
         <div className="panel" aria-hidden="true">

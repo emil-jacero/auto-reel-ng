@@ -111,7 +111,7 @@ spec is merged. Proposed 2026-11-15 under `openspec/changes/`.
 | 1 | `editor-workspace-layout` ✅ built 2026-11-15 (HLD D-28) | 1.x, 2.1/2.3/2.4, 3.1–3.3, 4.x, inspector Event/Cut tabs, 6.1–6.3, 6.7, 6.9, 6.10 | 0 | 2–3 days |
 | 2 | `editor-selection` ✅ built 2026-11-15 (HLD D-28) | one selection, 3.2, 5.x (Clip tab, docked card editor), 6.11 | 1 | 1–2 days |
 | 3 | `track-drag-edit` ✅ built 2026-11-16 (HLD D-20) | 3.4, 6.4, 6.8, keyboard moves | 2 | 1–2 days |
-| 4 | `editor-undo` | 2.2 | 1 | 1 day |
+| 4 | `editor-undo` ✅ built 2026-11-17 (HLD D-28) | 2.2 | 1 | 1 day |
 | 5 | `clip-split` | 6.12 — starts with a decision gate (explore with the user) | 3 | open |
 
 Slice 1 was tightened after the build by `compact-bin-tools` (web only, 2026-11-15): the bin follows the window's

@@ -349,7 +349,8 @@
     white-space: nowrap;
   }
 
-  /* The save controls take the room between the title and Done. */
+  /* The save controls take the room between the title and Done; where the bar cannot hold them
+     at this width (the summary and both buttons), they wrap to a line of their own. */
   .ws-save {
     display: flex;
     flex: 1 1 14rem;
@@ -415,6 +416,28 @@
   /* One line with the event in the wide frame. */
   .ws-actions {
     display: contents;
+  }
+
+  /* Undo and Redo, before the save controls. */
+  .ws-history {
+    display: flex;
+    flex: none;
+    gap: var(--s-1);
+  }
+
+  /* In the one-line frame's narrower half the buttons are the icons alone (the accessible names
+     stay): the words would squeeze the save bar's summary onto two lines. */
+  @media (960px <= width < 1280px) {
+    .ws-history-label {
+      display: none;
+    }
+  }
+
+  /* ... and, narrower still, the date and place wait for a wider window (the Event tab has them). */
+  @media (960px <= width < 1100px) {
+    .ws-facts {
+      display: none;
+    }
   }
 
   .ws-done {

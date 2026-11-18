@@ -6,7 +6,7 @@ import { Icon } from '../../ui/Icon'
 /*
  * The workspace's top bar (`editor-workspace-layout`, design D4): back to the event list, the
  * event's title with its date and location, the save bar's states (`SaveBar` in its top form),
- * Done and the theme switch. Back and Done leave Edit mode through the page's leave flow, the
+ * Done and the theme switch. Undo and Redo (`editor-undo`) come before the save controls. Back and Done leave Edit mode through the page's leave flow, the
  * unsaved guard included; both wait while a save is in flight (busy-control rule: aria-disabled,
  * never `disabled`, so focus stays).
  */
@@ -26,7 +26,25 @@ export type WorkspaceFrame = {
   aside: ReactNode
 }
 
-export function TopBar({ frame, saveBar }: { frame: WorkspaceFrame; saveBar: ReactNode }) {
+/** The undo history as the top bar shows it (`editor-undo`): the buttons' names name the steps. */
+export type HistoryControls = {
+  undo: string
+  redo: string
+  canUndo: boolean
+  canRedo: boolean
+  onUndo(): void
+  onRedo(): void
+}
+
+export function TopBar({
+  frame,
+  saveBar,
+  history,
+}: {
+  frame: WorkspaceFrame
+  saveBar: ReactNode
+  history: HistoryControls | null
+}) {
   return (
     <div className="ws-topbar">
       <button
@@ -49,6 +67,41 @@ export function TopBar({ frame, saveBar }: { frame: WorkspaceFrame; saveBar: Rea
       {/* The save controls, Done and the theme switch: one line in the wide frame, wrapping
           in this order where the panes stack, so focus takes them as they are drawn. */}
       <div className="ws-actions">
+        {history !== null && (
+          <div className="ws-history">
+            {/* Busy-control rule: aria-disabled, so focus stays when the last step is undone. */}
+            <button
+              type="button"
+              className="btn btn-ghost"
+              aria-label={history.undo}
+              title={history.undo}
+              aria-disabled={!history.canUndo || undefined}
+              onClick={() => {
+                if (history.canUndo) {
+                  history.onUndo()
+                }
+              }}
+            >
+              <Icon name="rotate-ccw" />
+              <span className="ws-history-label">Undo</span>
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              aria-label={history.redo}
+              title={history.redo}
+              aria-disabled={!history.canRedo || undefined}
+              onClick={() => {
+                if (history.canRedo) {
+                  history.onRedo()
+                }
+              }}
+            >
+              <Icon name="rotate-cw" />
+              <span className="ws-history-label">Redo</span>
+            </button>
+          </div>
+        )}
         <div className="ws-save">{saveBar}</div>
         <button
           type="button"
