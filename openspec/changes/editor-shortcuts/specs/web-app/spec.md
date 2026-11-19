@@ -44,7 +44,7 @@ A workspace shortcut SHALL NOT act, and SHALL leave the key to the browser, in a
 ### Requirement: Space presses a control reached by keyboard and plays after a click
 
 When focus is on a button, a checkbox, a radio button, a switch or a clip block, Space SHALL act on that control if the
-operator last moved focus by keyboard. It SHALL be Play or Pause, and SHALL NOT also act on the control, if the
+operator last pressed Tab (Arrow keys do not count: a click on a control, then an arrow, then Space is still Play). It SHALL be Play or Pause, and SHALL NOT also act on the control, if the
 operator last pressed a pointer. Enter SHALL act on the control in both cases. A held Space SHALL NOT repeat Play or
 Pause.
 
@@ -63,7 +63,7 @@ Pause.
 ### Requirement: The workspace lists its keyboard shortcuts
 
 The top bar SHALL hold a "Keyboard shortcuts" button at its right, and `?` SHALL open the list wherever a workspace
-shortcut acts. The list SHALL name, in words, every key the workspace answers (grouped Playback, Zoom, Editing and
+shortcut acts. The list SHALL name, in words, every key the workspace layer answers, and the keys of the playhead, the track and the clip handles that share its keys (grouped Playback, Zoom, Editing and
 Mouse) and SHALL be built from the keys the workspace handles. It SHALL NOT be modal. Escape, the button or a click
 outside SHALL close it, and Escape SHALL then leave the selection as it is.
 
