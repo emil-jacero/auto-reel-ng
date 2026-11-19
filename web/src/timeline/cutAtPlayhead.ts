@@ -1,5 +1,8 @@
-import { checkCut, refusalWords } from '../cuts/times.ts'
+import { addedWords, checkCut, keptCuts, refusalWords } from '../cuts/times.ts'
 import type { ListedCut } from '../cuts/times.ts'
+import type { EditBinding } from './editing.ts'
+import type { TrackClip } from './layout.ts'
+import type { Playhead } from './playhead.ts'
 
 /*
  * "+ Cut at playhead" in the inspector's Clip tab (`editor-selection`): a new cut that starts at
@@ -31,4 +34,42 @@ export function cutAtPlayhead(
   return checked.ok
     ? { ok: true, span: { in: checked.in, out: checked.out } }
     : { ok: false, words: refusalWords(checked.refusal) }
+}
+
+/** What `addCutAtPlayhead` reads: the clip, the track's clips, the editor and the playhead's store. */
+export type CutAtPlayheadDeps = {
+  clip: TrackClip
+  clips: readonly TrackClip[]
+  editing: Pick<EditBinding, 'listed' | 'onAdd' | 'announce'>
+  playhead: Pick<Playhead, 'get'>
+}
+
+/** The cut "+ Cut at playhead" would make in `clip` now, or why it cannot. */
+export function cutAtClipPlayhead({ clip, clips, editing, playhead }: CutAtPlayheadDeps) {
+  const at = playhead.get()
+  const inClip = at.card == null && clips[at.clip]?.identity === clip.identity
+  return cutAtPlayhead(
+    editing.listed(clip.identity),
+    inClip ? at.ms : null,
+    clip.name,
+    clip.facts.durationMs / 1000,
+  )
+}
+
+/**
+ * The one edit behind the Clip tab's "+ Cut at playhead" and the clip menu's Cut at playhead
+ * (`clip-context-menu`, D2): the cut is added to the draft and announced, or refused in words
+ * (announced as well) and nothing changes. Returns the refusal, or null when the cut was made.
+ */
+export function addCutAtPlayhead(deps: CutAtPlayheadDeps): string | null {
+  const { clip, editing } = deps
+  const made = cutAtClipPlayhead(deps)
+  if (!made.ok) {
+    editing.announce(made.words)
+    return made.words
+  }
+  const listed = editing.listed(clip.identity)
+  editing.onAdd(clip.identity, made.span)
+  editing.announce(addedWords(made.span, clip.name, [...keptCuts(listed), made.span]))
+  return null
 }

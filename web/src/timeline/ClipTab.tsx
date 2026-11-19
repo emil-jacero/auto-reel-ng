@@ -4,9 +4,7 @@ import type { KeyboardEvent, ReactNode } from 'react'
 import { CutList } from '../cuts/CutsPanel'
 import {
   UNAVAILABLE,
-  addedWords,
   formatTime,
-  keptCuts,
   removedAddedWords,
   removedReadWords,
   spanWords,
@@ -15,7 +13,7 @@ import type { DraftCut } from '../edit/draft'
 import { RotateButtons } from '../rotate/RotateButtons'
 import { Icon } from '../ui/Icon'
 import { MOVE_LOCKED } from './clipDrag'
-import { cutAtPlayhead } from './cutAtPlayhead'
+import { addCutAtPlayhead } from './cutAtPlayhead'
 import { held as dragHeld } from './dragStore'
 import type { DragStore } from './dragStore'
 import { typedEdge, typedEdgeShown, trimLabel } from './edgeTyped'
@@ -234,17 +232,7 @@ function ClipCuts({
     if (locked) {
       return
     }
-    const at = playhead.get()
-    const inClip = at.card == null && clips[at.clip]?.identity === clip.identity
-    const made = cutAtPlayhead(listed, inClip ? at.ms : null, clip.name, clip.facts.durationMs / 1000)
-    if (!made.ok) {
-      setRefusal(made.words)
-      editing.announce(made.words)
-      return
-    }
-    setRefusal(null)
-    editing.onAdd(clip.identity, made.span)
-    editing.announce(addedWords(made.span, clip.name, [...keptCuts(listed), made.span]))
+    setRefusal(addCutAtPlayhead({ clip, clips, editing, playhead }))
   }
   // The pressed Remove leaves with its cut (a read cut shows "Removed when you save", an added
   // one is dropped): focus goes to the next cut's control, else + Cut at playhead, before a paint.
