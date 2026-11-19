@@ -99,6 +99,8 @@ type Press = {
   ignore: boolean;
   /** A drag of several selected clips: the clips in drawn order, once the drag starts. */
   members: readonly string[] | null;
+  /** The drawn indices of `members`, computed once when the group drag starts (so frames dedupe). */
+  held: ReadonlySet<number> | null;
   /** The slot a release of the group would use, null when it would drop nothing. */
   groupAt: GroupSlot | null;
   /** The pointer is over the track at the group's own place: a release says so. */
@@ -174,12 +176,16 @@ export function useClipDrag(
     ) => {
       const members = p.members ?? [];
       const group = new Set(members);
-      const held = new Set<number>();
-      c.clips.forEach((k, at) => {
-        if (group.has(k.identity)) {
-          held.add(at);
-        }
-      });
+      if (p.held === null) {
+        const indices = new Set<number>();
+        c.clips.forEach((k, at) => {
+          if (group.has(k.identity)) {
+            indices.add(at);
+          }
+        });
+        p.held = indices;
+      }
+      const held = p.held;
       const base = {
         identity: p.identity,
         dxPx: 0,
@@ -382,6 +388,7 @@ export function useClipDrag(
           slot: null,
           ignore: false,
           members: null,
+          held: null,
           groupAt: null,
           groupOwn: false,
           off: () => {

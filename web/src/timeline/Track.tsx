@@ -458,12 +458,12 @@ const ClipPress = memo(function ClipPress({
         if (event.key === ' ' && blockYieldsSpace(lastInput(), shortcutsEnabled(), pointerHeld())) {
           return
         }
-        // Enter takes Ctrl, Cmd and Shift (the set's presses); Space only selects the clip alone.
+        // Enter takes Ctrl, Cmd and Shift (the set's presses); Space (with or without Shift) only selects the clip alone.
         if (
           event.target === event.currentTarget &&
           !event.altKey &&
           (event.key === 'Enter' ||
-            (event.key === ' ' && !event.ctrlKey && !event.metaKey && !event.shiftKey))
+            (event.key === ' ' && !event.ctrlKey && !event.metaKey))
         ) {
           event.preventDefault()
           onKeyPress(identity, event.key === 'Enter' ? pressOf(event) : 'alone')

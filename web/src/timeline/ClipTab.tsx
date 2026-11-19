@@ -130,8 +130,8 @@ export function ClipGroupTab({
   clips: readonly TrackClip[]
   chapters: readonly DrawnChapter[]
   editing: EditBinding
-  /** Ignore clips was pressed: the clips are no longer on the track, so nothing stays selected. */
-  onIgnored: () => void
+  /** Ignore clips ignored these clips: they are no longer on the track, so nothing stays selected. */
+  onIgnored: (identities: readonly string[]) => void
 }) {
   const busyId = useId()
   const locked = editing.locked
@@ -179,8 +179,9 @@ export function ClipGroupTab({
             editing.announce(busy)
             return
           }
-          editing.onIgnoreMany(identities)
-          onIgnored()
+          if (editing.onIgnoreMany(identities)) {
+            onIgnored(identities)
+          }
         }}
       >
         <Icon name="eye-off" />

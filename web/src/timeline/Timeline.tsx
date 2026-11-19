@@ -499,6 +499,9 @@ export function useTimeline({
   // unmounts: focus goes back to the clip's block, so it never drops onto the page body.
   const heldClip = lastSelected ?? selectedCut?.identity ?? null
   const wasClip = useRef<string | null>(null)
+  // Where focus goes when Ignore clips empties the selection: the clip that stays next to the
+  // ones ignored (`focusAfterMany`), or the track (`null`). Absent when nothing was ignored.
+  const ignoredFocus = useRef<{ next: string | null } | null>(null)
   useLayoutEffect(() => {
     const was = wasClip.current
     wasClip.current = heldClip
@@ -506,7 +509,16 @@ export function useTimeline({
       return
     }
     const active = document.activeElement
+    const after = ignoredFocus.current
+    ignoredFocus.current = null
     if (active === null || active === document.body) {
+      if (after !== null) {
+        const stays = Array.from(
+          document.querySelectorAll<HTMLElement>('.tl-clip-press[data-identity]'),
+        ).find((block) => block.dataset.identity === after.next)
+        ;(stays ?? scroller.current)?.focus({ preventScroll: true })
+        return
+      }
       const at = clips.findIndex((c) => c.identity === was)
       document
         .querySelector<HTMLElement>(`.tl-clip-press[data-index="${at}"]`)
@@ -1701,13 +1713,23 @@ export function useTimeline({
     () => (selectedSet.size > 1 ? clips.filter((c) => selectedSet.has(c.identity)) : []),
     [clips, selectedSet],
   )
+  // Ignore clips ignored the group: the selection ends, and focus moves to a clip that stays.
+  const ignoredGroup = (identities: readonly string[]) => {
+    ignoredFocus.current = {
+      next: focusAfterMany(
+        clips.map((c) => c.identity),
+        identities,
+      ),
+    }
+    selection.clear()
+  }
   const clipPanel = groupClips.length > 1 ? (
     <div className="timeline tl-cut-panel">
       <ClipGroupTab
         clips={groupClips}
         chapters={reorder.chapters}
         editing={editing}
-        onIgnored={selection.clear}
+        onIgnored={ignoredGroup}
       />
     </div>
   ) : (

@@ -222,10 +222,19 @@ test('a toggle press adds a clip to one, to a set, and starts a set from another
   }
 })
 
+test('a toggle-out leaves `last` on a clip still selected', () => {
+  // The last clip is taken out: `last` falls to the last one remaining, never the one just dropped.
+  const out = pressClip(set(['a', 'b', 'c'], 'c', 'c'), 'c', 'toggle', order)
+  assert.deepEqual(out, set(['a', 'b'], 'c', 'b'))
+  assert.equal(lastClip(out), 'b')
+  // Another clip is taken out: `last` stays.
+  assert.equal(lastClip(pressClip(set(['a', 'b', 'c'], 'c', 'c'), 'a', 'toggle', order)), 'c')
+})
+
 test('a toggle press takes a selected clip out, and normalises to one clip, then to none', () => {
   assert.deepEqual(
     pressClip(set(['a', 'b', 'c'], 'c', 'c'), 'b', 'toggle', order),
-    set(['a', 'c'], 'b', 'b'),
+    set(['a', 'c'], 'b', 'c'),
   )
   assert.deepEqual(pressClip(set(['a', 'c'], 'c', 'c'), 'a', 'toggle', order), clip('c'))
   assert.deepEqual(pressClip(clip('a'), 'a', 'toggle', order), NO_SELECTION)

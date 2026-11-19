@@ -83,6 +83,9 @@ export function movedWords(count: number, chapter: string): string {
 /** What a press that changes nothing says. */
 export const NOTHING_MOVED = 'Nothing moved.'
 
+/** What an Ignore that ignores nothing says (every clip missing from disk or not played). */
+export const NOTHING_IGNORED = 'Nothing ignored.'
+
 /** Why Move is unavailable, in words; null when it is available. */
 export type MoveReason = 'busy' | 'no-marks' | 'no-chapter'
 
