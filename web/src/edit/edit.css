@@ -382,6 +382,8 @@
     padding-block: var(--s-2);
     border-bottom: 1px solid var(--border);
     background: var(--surface);
+    /* The selection's ground (`.clip-sel`) sits behind the row's content, above its background. */
+    isolation: isolate;
 
     &:hover {
       background: var(--surface-hover);
@@ -681,13 +683,25 @@
     }
   }
 
-  /* The selected clip's row: a filled ground and a thick bar at its start, so it reads without colour. */
-  .clip-item[data-selected] {
-    background: var(--surface-2);
-    box-shadow: inset 4px 0 0 var(--fg);
+  /*
+   * The selected clip's row: a filled ground and a thick bar at its start, so it reads without
+   * colour. The state sits on the ground (a leaf) and on the name, never on the row: a row's
+   * style is costly to recalculate, and a Shift range over 400 rows would recalculate every one
+   * (`clip-multi-select`, 100 ms gate).
+   */
+  .clip-sel {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+
+    &[data-on] {
+      background: var(--surface-2);
+      box-shadow: inset 4px 0 0 var(--fg);
+    }
   }
 
-  .clip-item[data-selected] .clip-name {
+  .clip-name[data-selected] {
     font-weight: 700;
     text-decoration: underline;
     text-underline-offset: 3px;

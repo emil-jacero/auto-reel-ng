@@ -26,7 +26,10 @@ export type MenuItemView = {
   icon: IconName
   /** Items of one group sit together; a separator goes between groups. */
   group: number
-  /** Why the item cannot act now (shown under it, and described by), or null. */
+  /**
+   * Why the item cannot act now (shown under it, and described by), or null. A reason equal to the
+   * menu's `note` is not repeated under the item: the item is described by the note.
+   */
   why: string | null
 }
 
@@ -50,6 +53,7 @@ export function Menu({ title, note, items, at, onChoose, onClose }: MenuProps) {
   const root = useRef<HTMLDivElement>(null)
   const base = useId()
   const titleId = `${base}-title`
+  const noteId = `${base}-note`
   // The latest props, so the listeners below are installed once, for the menu's life.
   const now = useRef({ items, onChoose, onClose })
   now.current = { items, onChoose, onClose }
@@ -165,6 +169,9 @@ export function Menu({ title, note, items, at, onChoose, onClose }: MenuProps) {
       rows.push(<div key={`sep-${index}`} role="separator" className="menu-separator" />)
     }
     const whyId = `${base}-why-${index}`
+    // An item whose reason is the menu's note (the lock) is described by the note: the line is
+    // said once, not again under every item.
+    const shared = note !== null && item.why === note
     rows.push(
       <div
         key={index}
@@ -173,7 +180,7 @@ export function Menu({ title, note, items, at, onChoose, onClose }: MenuProps) {
         className="menu-item"
         aria-label={item.label}
         aria-disabled={item.why !== null || undefined}
-        aria-describedby={item.why === null ? undefined : whyId}
+        aria-describedby={item.why === null ? undefined : shared ? noteId : whyId}
         onClick={() => now.current.onChoose(index)}
         onPointerMove={(event) => {
           // Hover focuses the item, but not a move the layout made under a still pointer.
@@ -184,7 +191,7 @@ export function Menu({ title, note, items, at, onChoose, onClose }: MenuProps) {
       >
         <Icon name={item.icon} />
         <span className="menu-label">{item.label}</span>
-        {item.why !== null && (
+        {item.why !== null && !shared && (
           <span id={whyId} className="menu-why">
             {item.why}
           </span>
@@ -211,7 +218,11 @@ export function Menu({ title, note, items, at, onChoose, onClose }: MenuProps) {
       <p id={titleId} className="menu-title">
         {title}
       </p>
-      {note !== null && <p className="menu-note">{note}</p>}
+      {note !== null && (
+        <p id={noteId} className="menu-note">
+          {note}
+        </p>
+      )}
       <div role="menu" aria-labelledby={titleId} className="menu-items">
         {rows}
       </div>

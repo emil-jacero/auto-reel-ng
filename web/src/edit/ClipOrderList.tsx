@@ -231,7 +231,7 @@ const RowBody = memo(function RowBody({
         <MarkBox identity={clip.identity} name={name} on={marked} locked={locked} onMark={onMark} />
       )}
       <span className="clip-file">
-        <span className="clip-name">
+        <span className="clip-name" data-selected={selected || undefined}>
           {selected !== null && onSelect !== undefined ? (
             <button
               type="button"
@@ -363,6 +363,7 @@ const ClipRow = memo(function ClipRow({
   onRemove,
   compact,
   selected,
+  lead,
   onSelectClip,
 }: {
   eventId: string
@@ -395,6 +396,8 @@ const ClipRow = memo(function ClipRow({
   compact: boolean
   /** The clip is the workspace's selected one (bin rows only). */
   selected: boolean
+  /** The clip is the one pressed last: the only selected row that scrolls into view. */
+  lead: boolean
   onSelectClip: SelectHandler
 }) {
   // The marked clips a held group stands for, or null: then no row makes room (a line shows
@@ -502,14 +505,17 @@ const ClipRow = memo(function ClipRow({
   )
   // Only a change to selected (or to selectable while selected is not new) scrolls: a row that
   // mounts already selected (a reorder into another chapter, or a StrictMode remount) stays put,
-  // and so does one that becomes selectable while already selected.
-  const wasSelected = useRef(selected)
+  // and so does one that becomes selectable while already selected. Of a set of clips only the
+  // one pressed last scrolls (`clip-multi-select` D3): a Shift range over 400 rows would
+  // otherwise measure the pane 400 times in one commit.
+  const scrolls = selected && lead
+  const wasScrolling = useRef(scrolls)
   useEffect(() => {
-    if (selectable && selected && !wasSelected.current) {
+    if (selectable && scrolls && !wasScrolling.current) {
       scrollInPane(rowRef.current)
     }
-    wasSelected.current = selected
-  }, [selected, selectable])
+    wasScrolling.current = scrolls
+  }, [scrolls, selectable])
   // The target of a clip dragged in from another chapter, or of a held group anywhere: a
   // line marks the gap above this row (drag.css). A clip within its own chapter makes the
   // rows make room instead.
@@ -532,7 +538,6 @@ const ClipRow = memo(function ClipRow({
       ref={rowNode}
       className="clip-item"
       tabIndex={selectable ? -1 : undefined}
-      data-selected={selected || undefined}
       onClick={
         selectable
           ? (event) => {
@@ -559,6 +564,8 @@ const ClipRow = memo(function ClipRow({
       data-drop-before={dropBefore || undefined}
       style={{ transform: DndCss.Translate.toString(transform), transition }}
     >
+      {/* The selected row's ground, a leaf: the row itself carries no selection state (edit.css). */}
+      {selectable && <span className="clip-sel" aria-hidden="true" data-on={selected || undefined} />}
       <button
         type="button"
         ref={setActivatorNodeRef}
@@ -849,6 +856,7 @@ export const ClipOrderList = memo(function ClipOrderList({
   onAnnounce,
   compact = false,
   selectedClips = NONE_SELECTED,
+  leadClip = null,
   onSelectClip = NO_SELECT,
   ignoredApart = false,
 }: {
@@ -910,6 +918,8 @@ export const ClipOrderList = memo(function ClipOrderList({
   compact?: boolean
   /** The selected clips this chapter plays (the bin's highlighted rows); a stable set while they are the same. */
   selectedClips?: ReadonlySet<string>
+  /** The clip pressed last, when this chapter plays it (else null): its row scrolls into view. */
+  leadClip?: string | null
   /** A press on a bin row: selects its clip, adds or takes it out, or ranges (`pressOf`). */
   onSelectClip?: SelectHandler
   /** The ignored clips are listed apart, after the chapters (`IgnoredBin`): list none here. */
@@ -1119,6 +1129,7 @@ export const ClipOrderList = memo(function ClipOrderList({
                   onRemove={onRemoveRow}
                   compact={compact}
                   selected={selectedClips.has(identity)}
+                  lead={leadClip === identity}
                   onSelectClip={onSelectClip}
                 />
               )

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { GROUP_BUSY, chosenOf, groupHeading, groupNames, moveChoices, moveWhy } from './moveTo.ts'
+import { chosenOf, groupBusy, groupHeading, groupNames, moveChoices, moveWhy } from './moveTo.ts'
 
 const chapters = [
   { key: 'c0', name: 'Main' },
@@ -42,7 +42,12 @@ describe('moveWhy', () => {
   it('says why, a save first', () => {
     assert.equal(moveWhy(false, false), 'Choose a chapter.')
     assert.equal(moveWhy(true, true), 'Unavailable while saving.')
-    assert.equal(moveWhy(false, true), GROUP_BUSY)
+    assert.equal(moveWhy(false, true), groupBusy(false))
+  })
+  it('says the clips move, not a save, while only Move to… is pending', () => {
+    assert.equal(moveWhy(true, true, true), 'Unavailable while the clips move.')
+    assert.equal(groupBusy(true), 'Unavailable while the clips move.')
+    assert.equal(moveWhy(false, false, true), 'Choose a chapter.')
   })
   it('is null when Move can act', () => {
     assert.equal(moveWhy(true, false), null)

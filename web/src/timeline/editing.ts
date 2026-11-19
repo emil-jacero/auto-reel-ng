@@ -102,6 +102,11 @@ export type EditBinding = {
   trackAt: TrackBridge
   /** A save is in flight, or a move of marked clips is pending: the handles and fields change nothing. */
   locked: boolean
+  /**
+   * Only the move of the selected clips (Move to…) is pending, no save: the words of an
+   * unavailable control say the clips are moving, not that the page is saving.
+   */
+  moving: boolean
   /** Edit mode's one live region. */
   announce(words: string): void
   /** The editor's clip previews: one open at a time, and the Timeline's video makes room for it. */

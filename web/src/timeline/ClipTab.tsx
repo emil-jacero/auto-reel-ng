@@ -22,7 +22,7 @@ import type { Side } from './edgeTrim'
 import type { EditBinding } from './editing'
 import type { TrackClip } from './layout'
 import { MoveTo } from './MoveTo'
-import { GROUP_BUSY, groupHeading, groupNames } from './moveTo'
+import { groupBusy, groupHeading, groupNames } from './moveTo'
 import type { Playhead } from './playhead'
 import type { DrawnChapter } from './reorder'
 
@@ -81,6 +81,7 @@ export function ClipTab({
         chapters={chapters}
         own={chapters.find((chapter) => chapter.identities.includes(clip.identity))?.key ?? null}
         locked={editing.locked}
+        moving={editing.moving}
         announce={editing.announce}
         onMove={(to) => onMoveToEnd(clip.identity, to)}
       />
@@ -134,6 +135,7 @@ export function ClipGroupTab({
 }) {
   const busyId = useId()
   const locked = editing.locked
+  const busy = groupBusy(editing.moving)
   const identities = clips.map((clip) => clip.identity)
   const { shown, more } = groupNames(clips.map((clip) => clip.name))
   const rotate = (_identity: string, way: Way) => editing.onRotateMany(identities, way)
@@ -162,6 +164,7 @@ export function ClipGroupTab({
         chapters={chapters}
         own={null}
         locked={locked}
+        moving={editing.moving}
         announce={editing.announce}
         onMove={(to) => editing.onMoveSelection(identities, to)}
       />
@@ -170,10 +173,10 @@ export function ClipGroupTab({
         className="btn btn-secondary ct-ignore"
         aria-disabled={locked || undefined}
         aria-describedby={locked ? busyId : undefined}
-        title={locked ? GROUP_BUSY : undefined}
+        title={locked ? busy : undefined}
         onClick={() => {
           if (locked) {
-            editing.announce(GROUP_BUSY)
+            editing.announce(busy)
             return
           }
           editing.onIgnoreMany(identities)
@@ -184,7 +187,7 @@ export function ClipGroupTab({
         Ignore clips
       </button>
       <p id={busyId} className={locked ? 'tl-fields-locked' : 'visually-hidden'}>
-        {locked ? GROUP_BUSY : ''}
+        {locked ? busy : ''}
       </p>
     </div>
   )

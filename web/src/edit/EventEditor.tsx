@@ -3,6 +3,7 @@ import './edit.css'
 import {
   startTransition,
   useCallback,
+  useDeferredValue,
   useEffect,
   useId,
   useLayoutEffect,
@@ -33,7 +34,7 @@ import { focusPageHeading } from '../shell/AppShell'
 import { TimelineSection } from '../timeline/TimelineSection'
 import { cardSpecs } from '../timeline/cards'
 import type { SelectionBinding } from './workspace/useSelection.ts'
-import { pressClip, selectedClips } from './workspace/selection.ts'
+import { lastClip, pressClip, selectedClips } from './workspace/selection.ts'
 import type { Press } from './workspace/selection.ts'
 import { CardButtonContext } from './EditTitlecard'
 import type { CardButtonModel } from './EditTitlecard'
@@ -167,6 +168,7 @@ import type {
 import {
   CLEARED_WORDS,
   MOVE_REASON_WORDS,
+  MOVING_WORDS,
   NOTHING_MOVED,
   NO_MARKS,
   afterMove,
@@ -1490,7 +1492,12 @@ export function EventEditor({
   const locked = ready !== null && ready.pressed !== null
   // A Move marked to… applied in a transition (`onMoveMarked`): until it lands, the page shows
   // the order from before it, so no control that acts on what is shown may act yet.
-  const [movePending, setMovePending] = useState(false)
+  // Which move is pending: Move marked to… (the bin's) or Move to… of the selected clips (the Clip
+  // tab's and the menu's). Either locks the lists; only the one pressed shows busy, and the words
+  // of an unavailable control name a save or a move, never the other set.
+  const [markedPending, setMarkedPending] = useState(false)
+  const [selectionPending, setSelectionPending] = useState(false)
+  const movePending = markedPending || selectionPending
   // The chapter chosen in the Move marked to… picker; '' for none.
   const [moveTo, setMoveTo] = useState<ChapterKey | ''>('')
   const listsLocked = locked || movePending
@@ -2062,10 +2069,10 @@ export function EventEditor({
         return
       }
       moving.current = true
-      setMovePending(true)
+      setSelectionPending(true)
       startTransition(() => {
         dispatch(action)
-        setMovePending(false)
+        setSelectionPending(false)
       })
       announce(movedWords(moved.length, headingIn(current.draft, to)))
     },
@@ -2292,6 +2299,7 @@ export function EventEditor({
       onRemove: cutHandlers.onRemove,
       onRotate: rotateClip,
       locked: listsLocked,
+      moving: selectionPending && !locked,
       announce,
       previews: cutPanels.panels.previews,
       baseline: baseCuts,
@@ -2306,6 +2314,8 @@ export function EventEditor({
     draftTurns,
     detail,
     listsLocked,
+    selectionPending,
+    locked,
     onTrim,
     onEdge,
     onMoveClip,
@@ -2392,8 +2402,12 @@ export function EventEditor({
   ])
   const { keep: keepSelection, open: openCard, selected: selectedCard } = cards
   // The bin's rows read the clips the selection holds, a stable set per chapter while they are
-  // the same, so a press redraws only the chapters whose rows change.
-  const selectedSet = useMemo(() => new Set(selectedClips(cards.selection)), [cards.selection])
+  // the same, so a press redraws only the chapters whose rows change. They follow the selection in
+  // a low-priority render (`useDeferredValue`): the track and the inspector paint first, and a
+  // Shift range over 400 rows redraws the bin after that, in slices, not in the press's frame
+  // (`clip-multi-select`, the 100 ms gate).
+  const binSelection = useDeferredValue(cards.selection)
+  const selectedSet = useMemo(() => new Set(selectedClips(binSelection)), [binSelection])
   const selectedCache = useRef(new Map<string, ReadonlySet<string>>())
   const selectedIn = (chapter: ChapterKey, order: readonly string[]): ReadonlySet<string> => {
     const next = selectedSet.size === 0 ? [] : order.filter((identity) => selectedSet.has(identity))
@@ -2409,6 +2423,11 @@ export function EventEditor({
     selectedCache.current.set(chapter, made)
     return made
   }
+  // The clip pressed last, for the chapter that plays it only: the other chapters' rows get null,
+  // so a press redraws no more of them than the set does.
+  const leadId = lastClip(binSelection)
+  const leadIn = (order: readonly string[]): string | null =>
+    leadId !== null && order.includes(leadId) ? leadId : null
   // A press on a bin row (its click or its name): a Shift press ranges over the rows' page order,
   // the clips the bin lets be selected (on disk, not excluded) of every chapter that is listed.
   const binPress = useRef<(identity: string, press: Press) => void>(() => undefined)
@@ -2986,10 +3005,10 @@ export function EventEditor({
       return
     }
     moving.current = true
-    setMovePending(true)
+    setMarkedPending(true)
     startTransition(() => {
       dispatch({ type: 'marked-move', to: moveTo })
-      setMovePending(false)
+      setMarkedPending(false)
     })
     announce(movedWords(moved.length, headingIn(current.draft, moveTo)))
   }, [announce, listedKeys, moveTo])
@@ -3010,7 +3029,12 @@ export function EventEditor({
       setMoveReasonShown(false)
     }
   }, [moveWhy])
-  const moveWhyWords = moveWhy === null ? '' : MOVE_REASON_WORDS[moveWhy]
+  const moveWhyWords =
+    moveWhy === null
+      ? ''
+      : moveWhy === 'busy' && selectionPending && !locked
+        ? MOVING_WORDS
+        : MOVE_REASON_WORDS[moveWhy]
   const onMovePressed = () => {
     if (moveWhy !== null) {
       setMoveReasonShown(true)
@@ -3551,7 +3575,7 @@ export function EventEditor({
                       type="button"
                       className="btn btn-secondary btn-compact"
                       aria-disabled={listsLocked || moveWhy !== null || undefined}
-                      aria-busy={movePending || undefined}
+                      aria-busy={markedPending || undefined}
                       aria-describedby={moveReasonId}
                       title={moveWhy === null ? undefined : moveWhyWords}
                       onClick={onMovePressed}
@@ -3644,6 +3668,7 @@ export function EventEditor({
                         chapter.key,
                         ready.draft.orders.get(chapter.key) ?? NONE_REMOVED,
                       )}
+                      leadClip={leadIn(ready.draft.orders.get(chapter.key) ?? NONE_REMOVED)}
                       onSelectClip={selectClip}
                       ignoredApart={ignoredApart}
                     />
