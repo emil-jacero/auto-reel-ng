@@ -104,7 +104,7 @@ also close when the window is resized, when the track or a pane scrolls, and whe
 ### Requirement: The clip menu fits the window and is large enough to touch
 
 A menu opened by pointer SHALL open at the pointer. A menu opened by a key SHALL open under the clip's block, or above
-it when there is more room there. It SHALL lie wholly inside the window, 8 px from its edges, at any width from
+it when it does not fit under and there is more room above. It SHALL lie wholly inside the window, 8 px from its edges, at any width from
 320 px, and scroll within itself when it is taller. Each item SHALL be at least 24 px tall, and 44 px under a coarse
 pointer, and the menu SHALL follow the light or dark theme.
 
