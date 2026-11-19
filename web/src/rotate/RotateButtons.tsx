@@ -22,11 +22,14 @@ export const RotateButtons = memo(function RotateButtons({
   name,
   locked,
   onRotate,
+  describedBy,
 }: {
   identity: string
   name: string
   locked: boolean
   onRotate: RotateHandler
+  /** The id of the text that says why they are unavailable (`clip-multi-select`'s group tab). */
+  describedBy?: string
 }) {
   return (
     <span className="clip-rotate">
@@ -35,6 +38,7 @@ export const RotateButtons = memo(function RotateButtons({
         className="btn btn-ghost btn-icon rotate-left"
         aria-label={`Rotate ${name} left`}
         aria-disabled={locked || undefined}
+        aria-describedby={locked ? describedBy : undefined}
         onClick={() => {
           if (!locked) {
             onRotate(identity, 'left')
@@ -48,6 +52,7 @@ export const RotateButtons = memo(function RotateButtons({
         className="btn btn-ghost btn-icon rotate-right"
         aria-label={`Rotate ${name} right`}
         aria-disabled={locked || undefined}
+        aria-describedby={locked ? describedBy : undefined}
         onClick={() => {
           if (!locked) {
             onRotate(identity, 'right')

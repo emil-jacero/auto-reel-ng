@@ -1,5 +1,5 @@
 import type { ClipCuts, ClipTurns } from '../cuts/ReadCuts'
-import type { CutKey, Cuts, DraftCut } from '../edit/draft'
+import type { ChapterKey, CutKey, Cuts, DraftCut } from '../edit/draft'
 import type { ClipPreviews } from '../preview/previews'
 import type { PosterPick } from '../edit/poster.ts'
 import type { Turn, Way } from '../rotate/turn.ts'
@@ -84,6 +84,18 @@ export type EditBinding = {
   ): void
   /** Several selected clips released over the bin: one draft edit that ignores them all. Ignored while locked. */
   onIgnoreMany(identities: readonly string[]): void
+  /**
+   * Rotate every one of `identities` that is on disk and in a chapter a quarter `way`, each from
+   * its own turn: one draft edit ("3 clips rotated right."), as Rotate marked makes it. Ignored
+   * while locked.
+   */
+  onRotateMany(identities: readonly string[], way: Way): void
+  /**
+   * Move to… for several selected clips (`clip-multi-select` D5): the clips on disk that a chapter
+   * plays go, in play order, to the end of `to`; one draft edit, applied in a transition, so the
+   * move is pending (`locked`) until it lands. "Nothing moved." when they already are last.
+   */
+  onMoveSelection(identities: readonly string[], to: ChapterKey): void
   /** Whether a client point is over the clip bin (a track drag released there ignores the clip). */
   overBin(x: number, y: number): boolean
   /** Where the bin's drag lands on the track (the Track keeps it current while mounted). */

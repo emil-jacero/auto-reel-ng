@@ -43,7 +43,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 - [x] 2.2 The group drag (design D4): `groupSlot` with its unit test in `clipDrag.test.ts`, held blocks, the line and
   tip, release on the track or the bin. Verify in Playwright with the scenarios of "Dragging one of several selected
   clips moves them all", including the unselected-clip drag.
-- [ ] 2.3 The Clip tab (design D5): `ClipGroupTab` and the shared Move to… for one and for several clips. Verify in
+- [x] 2.3 The Clip tab (design D5): `ClipGroupTab` and the shared Move to… for one and for several clips. Verify in
   Playwright with the scenarios of "The Clip tab acts on several selected clips" and "The Clip tab edits the selected
   clip". Take screenshots of the group tab in light and dark at 1440 and 390 px, and look at them for clipping.
 - [ ] 2.4 The menu (design D7): `targets` in `clipMenu.ts` with its unit tests, `menuSelects` for a set, the

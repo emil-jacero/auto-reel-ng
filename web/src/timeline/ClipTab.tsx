@@ -9,8 +9,9 @@ import {
   removedReadWords,
   spanWords,
 } from '../cuts/times'
-import type { DraftCut } from '../edit/draft'
+import type { ChapterKey, DraftCut } from '../edit/draft'
 import { RotateButtons } from '../rotate/RotateButtons'
+import type { Way } from '../rotate/turn'
 import { Icon } from '../ui/Icon'
 import { MOVE_LOCKED } from './clipDrag'
 import { addCutAtPlayhead } from './cutAtPlayhead'
@@ -20,7 +21,10 @@ import { typedEdge, typedEdgeShown, trimLabel } from './edgeTyped'
 import type { Side } from './edgeTrim'
 import type { EditBinding } from './editing'
 import type { TrackClip } from './layout'
+import { MoveTo } from './MoveTo'
+import { GROUP_BUSY, groupHeading, groupNames } from './moveTo'
 import type { Playhead } from './playhead'
+import type { DrawnChapter } from './reorder'
 
 /*
  * What the inspector's Clip tab edits of the selected clip (`editor-selection`), below its header:
@@ -42,6 +46,8 @@ export function ClipTab({
   onSelectCut,
   onSelectClip,
   poster,
+  chapters,
+  onMoveToEnd,
 }: {
   clip: TrackClip
   clips: readonly TrackClip[]
@@ -54,6 +60,10 @@ export function ClipTab({
   onSelectClip: (identity: string) => void
   /** The Timeline's Use as poster control. */
   poster: ReactNode
+  /** The chapters the track draws: Move to… lists all but the clip's own. */
+  chapters: readonly DrawnChapter[]
+  /** Move to…: the clip at the end of a chapter, the edit a drop on the chapter's band makes. */
+  onMoveToEnd: (identity: string, chapter: ChapterKey) => void
 }) {
   return (
     <div className="ct-tab">
@@ -66,6 +76,14 @@ export function ClipTab({
           onRotate={editing.onRotate}
         />
       </div>
+      <MoveTo
+        selectLabel={`Chapter to move ${clip.name} to`}
+        chapters={chapters}
+        own={chapters.find((chapter) => chapter.identities.includes(clip.identity))?.key ?? null}
+        locked={editing.locked}
+        announce={editing.announce}
+        onMove={(to) => onMoveToEnd(clip.identity, to)}
+      />
       <ClipCuts
         clip={clip}
         clips={clips}
@@ -91,6 +109,83 @@ export function ClipTab({
         <Icon name="eye-off" />
         Ignore clip
       </button>
+    </div>
+  )
+}
+
+/*
+ * The Clip tab of two or more selected clips (`clip-multi-select` D5): how many and which, then
+ * what acts on all of them: Rotate left and right (each clip from its own turn), Move to… (the
+ * clips at the end of a chapter, in play order) and Ignore clips. Each is one draft edit and one
+ * Undo step; `editing` ignores a clip that is not on disk or that no chapter plays.
+ */
+export function ClipGroupTab({
+  clips,
+  chapters,
+  editing,
+  onIgnored,
+}: {
+  /** The selected clips the track draws, in track order. */
+  clips: readonly TrackClip[]
+  chapters: readonly DrawnChapter[]
+  editing: EditBinding
+  /** Ignore clips was pressed: the clips are no longer on the track, so nothing stays selected. */
+  onIgnored: () => void
+}) {
+  const busyId = useId()
+  const locked = editing.locked
+  const identities = clips.map((clip) => clip.identity)
+  const { shown, more } = groupNames(clips.map((clip) => clip.name))
+  const rotate = (_identity: string, way: Way) => editing.onRotateMany(identities, way)
+  return (
+    <div className="ct-tab ct-group">
+      <header className="tl-clip-head">
+        <h3 className="tl-clip-name">{groupHeading(clips.length)}</h3>
+        <ul className="ct-names" aria-label="Selected clips">
+          {shown.map((name, at) => (
+            <li key={identities[at]}>{name}</li>
+          ))}
+        </ul>
+        {more !== null && <p className="tl-clip-where">{more}</p>}
+      </header>
+      <div className="ct-row">
+        <RotateButtons
+          identity=""
+          name={`${clips.length} clips`}
+          locked={locked}
+          onRotate={rotate}
+          describedBy={busyId}
+        />
+      </div>
+      <MoveTo
+        selectLabel="Chapter to move the selected clips to"
+        chapters={chapters}
+        own={null}
+        locked={locked}
+        announce={editing.announce}
+        onMove={(to) => editing.onMoveSelection(identities, to)}
+      />
+      <button
+        type="button"
+        className="btn btn-secondary ct-ignore"
+        aria-disabled={locked || undefined}
+        aria-describedby={locked ? busyId : undefined}
+        title={locked ? GROUP_BUSY : undefined}
+        onClick={() => {
+          if (locked) {
+            editing.announce(GROUP_BUSY)
+            return
+          }
+          editing.onIgnoreMany(identities)
+          onIgnored()
+        }}
+      >
+        <Icon name="eye-off" />
+        Ignore clips
+      </button>
+      <p id={busyId} className={locked ? 'tl-fields-locked' : 'visually-hidden'}>
+        {locked ? GROUP_BUSY : ''}
+      </p>
     </div>
   )
 }

@@ -31,7 +31,7 @@ import { clipMenu, focusAfter, menuSelects } from './clipMenu'
 import type { ClipAction } from './clipMenu'
 import { clipPlace, clipSelectedWords, cutSelectedWords } from './clipPanel'
 import { addCutAtPlayhead, cutAtClipPlayhead } from './cutAtPlayhead'
-import { ClipTab } from './ClipTab'
+import { ClipGroupTab, ClipTab } from './ClipTab'
 import { CutFields } from './CutFields'
 import type { Selected } from './CutFields'
 import { posterFromPlayhead, USE_AS_POSTER } from '../edit/poster.ts'
@@ -1341,6 +1341,24 @@ export function useTimeline({
             .filter((chapter) => !chapter.identities.includes(menuClip.identity))
             .map((chapter) => ({ key: chapter.key, name: chapter.name ?? '' })),
         })
+  // Move to… for one clip (the menu's and the Clip tab's): the clip at the end of the chapter, the
+  // edit a drop on that chapter's band makes.
+  const moveToEnd = (identity: string, chapter: string) => {
+    const slot = bandSlot(
+      reorder.chapters,
+      reorder.chapters.findIndex((c) => c.key === chapter),
+      identity,
+    )
+    // Not reached: both offer only the chapters `reorder.chapters` lists, so a slot exists.
+    if (slot === null) {
+      return
+    }
+    reorder.onDrop(identity, slot)
+    // Selected again, so the track scrolls to the clip at its new place.
+    if (selectedClip === identity) {
+      selectClip(identity)
+    }
+  }
   // Choosing an item: one that cannot act says why and keeps the menu; otherwise it makes the
   // edit the Clip tab's control makes (D2) and the menu closes, focus going where D5 says.
   const chooseMenuItem = (index: number) => {
@@ -1374,23 +1392,9 @@ export function useTimeline({
           return
         }
         break
-      case 'move': {
-        const slot = bandSlot(
-          reorder.chapters,
-          reorder.chapters.findIndex((chapter) => chapter.key === action.chapter),
-          identity,
-        )
-        // Not reached: the menu offers only the chapters `reorder.chapters` lists, so a slot exists.
-        if (slot === null) {
-          return
-        }
-        reorder.onDrop(identity, slot)
-        // Selected again, so the track scrolls to the clip at its new place.
-        if (selectedClip === identity) {
-          selectClip(identity)
-        }
+      case 'move':
+        moveToEnd(identity, action.chapter)
         break
-      }
       case 'ignore': {
         const next = focusAfter(
           clips.map((c) => c.identity),
@@ -1653,7 +1657,21 @@ export function useTimeline({
     [clips, panelClip, chapterNames],
   )
   const panelClipRow = panelClip === null ? undefined : clips.find((c) => c.identity === panelClip)
-  const clipPanel = (
+  // Two or more selected clips, as the track draws them: the group tab (`clip-multi-select` D5).
+  const groupClips = useMemo(
+    () => (selectedSet.size > 1 ? clips.filter((c) => selectedSet.has(c.identity)) : []),
+    [clips, selectedSet],
+  )
+  const clipPanel = groupClips.length > 1 ? (
+    <div className="timeline tl-cut-panel">
+      <ClipGroupTab
+        clips={groupClips}
+        chapters={reorder.chapters}
+        editing={editing}
+        onIgnored={selection.clear}
+      />
+    </div>
+  ) : (
     <div className="timeline tl-cut-panel">
       {place !== null && <ClipHeader place={place} />}
       {panelClipRow !== undefined && (
@@ -1667,6 +1685,8 @@ export function useTimeline({
           onSelectCut={select}
           onSelectClip={selectClip}
           poster={posterControl('-clip', 'Use frame as poster', panelClipRow)}
+          chapters={reorder.chapters}
+          onMoveToEnd={moveToEnd}
         />
       )}
       <CutFields selected={selected} clips={clips} editing={editing} drag={drag} hintId={cutHintId} />
