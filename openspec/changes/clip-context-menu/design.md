@@ -110,7 +110,8 @@ export function focusAfter(drawn: readonly string[], identity: string): string |
     (`position: fixed; inset: auto; margin: 0`).
 - **Dismiss**, its own, since a manual popover has none:
   - a capture-phase `pointerdown` outside the menu closes it, and the press goes on to its target;
-  - so do a capture-phase `scroll` from outside the menu, a window `resize` or `blur`, and its clip leaving `clips`;
+  - so do a capture-phase `scroll` from outside the menu (ignored for the menu's first 250 ms, since opening selects
+    the clip, which scrolls it into view a frame or two later: that scroll is the opening's own), a window `resize` or `blur`, and its clip leaving `clips`;
   - a `contextmenu` inside the menu is `preventDefault`ed and does nothing else.
 - **Focus.**
   - On open, focus goes to the first item. Unavailable items stay focusable, as in the WAI-ARIA menu pattern.
