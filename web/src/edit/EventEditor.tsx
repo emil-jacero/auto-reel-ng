@@ -83,6 +83,8 @@ import {
 } from './chapterNames'
 import { ChapterDrag } from './ChapterDrag'
 import { AddChapter, DeletedChapter } from './ChapterTools'
+import { ChapterList } from './ChapterList'
+import type { ChapterRowModel } from './ChapterList'
 import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './ChapterTools'
 import { ClipOrderList, IgnoredBin } from './ClipOrderList'
 import { selectionLabel, selectionStep } from './selectionEdit.ts'
@@ -3124,16 +3126,23 @@ export function EventEditor({
       return
     }
     focusAfter.current = null
+    // The Chapters list's control first: it is the chapter's home (the bin keeps its own copies
+    // until they are taken out), then any other.
+    const inList = (selector: string) =>
+      firstShown(root.querySelectorAll<HTMLElement>(`.edit-chapters ${selector}`))
     const target =
       request.target === 'add'
-        ? root.querySelector<HTMLElement>('.chapter-add-button')
-        : firstShown(
+        ? (inList('.chapter-add-button') ??
+          root.querySelector<HTMLElement>('.chapter-add-button'))
+        : (inList(`[data-chapter-key="${request.key}"] .${request.target}`) ??
+          firstShown(
             root.querySelectorAll<HTMLElement>(
               `[data-chapter-key="${request.key}"] .${request.target}`,
             ),
-          )
+          ))
     target?.focus({ preventScroll: true })
-    scrollAfter.current = target?.closest<HTMLElement>('.chapter-tools') ?? target
+    scrollAfter.current =
+      target?.closest<HTMLElement>('.chapter-row, .chapter-tools') ?? target
   })
 
   // The new chapter's heading takes focus here, after the dialog's cleanup; then the
@@ -3143,9 +3152,14 @@ export function EventEditor({
     const root = editorRef.current
     if (request !== null && request.target === 'heading' && root !== null) {
       focusAfter.current = null
+      // Its row in the Chapters list (focusable, `tabIndex=-1`), else its heading in the bin.
+      const row = root.querySelector<HTMLElement>(
+        `.edit-chapters .chapter-row[data-chapter-key="${request.key}"]`,
+      )
       const section = root.querySelector<HTMLElement>(`[data-chapter-key="${request.key}"]`)
-      section?.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true })
-      scrollAfter.current = section
+      const target = row ?? section?.querySelector<HTMLElement>('h2')
+      target?.focus({ preventScroll: true })
+      scrollAfter.current = row ?? section
     }
     const element = scrollAfter.current
     scrollAfter.current = null
@@ -3421,6 +3435,30 @@ export function EventEditor({
               />
             </div>
           </section>
+          </>,
+          // The Chapters list (the Event tab, after Details): built from the draft, so it is there
+          // with no track and in Prepare.
+          chapters: <>
+          {detail !== null && (
+            <CardButtonContext.Provider value={cardButtons}>
+              <ChapterList
+                rows={ready.draft.chapters.map(
+                  (chapter): ChapterRowModel => ({
+                    chapter,
+                    heading: chapterHeading(chapter.name, hasNamedChapter),
+                    played: (ready.draft.orders.get(chapter.key) ?? NONE_REMOVED).length,
+                    removed: (removedByChapter.get(chapter.key) ?? NONE_REMOVED).length,
+                    ignored: (ignoredOf.get(chapter.key) ?? NONE_REMOVED).length,
+                  }),
+                )}
+                tools={tools}
+                notes={notes}
+                locked={listsLocked}
+                onAdd={onAddChapter}
+                onUndo={onUndoDelete}
+              />
+            </CardButtonContext.Provider>
+          )}
           </>,
           poster: <>
           {detail !== null && (
@@ -3868,6 +3906,7 @@ export function EventEditor({
           {parts !== null && (
             <>
               {parts.details}
+              {parts.chapters}
               {parts.poster}
               {parts.timeline}
               {parts.bin}
@@ -3971,6 +4010,7 @@ export function EventEditor({
           event={
             <>
               {parts?.details}
+              {parts?.chapters}
               {parts?.poster}
               {parts?.titleCards}
               {workspace.aside}

@@ -136,3 +136,168 @@
     }
   }
 }
+
+@layer screens {
+  /*
+   * The Chapters list (`ChapterList.tsx`) of the inspector's Event tab. Like the Details form,
+   * its heading scrolls with it. A row is one line with a fine pointer, at most 36 px tall: the
+   * name (cut short, its title shows it whole), the count, then four 32 px icon buttons. With a
+   * coarse pointer the row wraps onto a second line and keeps the 44 px areas the buttons grow
+   * (components.css). The notes, Delete's refusal and the hint sit under the line.
+   */
+  .edit-chapters > .panel-header {
+    position: static;
+  }
+
+  .edit-chapters .panel-body {
+    display: grid;
+    gap: var(--s-3);
+    padding: var(--s-3);
+  }
+
+  .chapter-list {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .chapter-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    align-items: center;
+    column-gap: var(--s-2);
+    min-block-size: 2.25rem;
+    padding-block: var(--s-1);
+    border-bottom: 1px solid var(--border);
+
+    &:last-child {
+      border-bottom: 0;
+    }
+
+    /* Focused by script after Add chapter, as a heading is: no ring. */
+    &:focus {
+      outline: none;
+    }
+
+    /* Plain text. */
+    & > .chapter-row-name {
+      min-inline-size: 0;
+      overflow: hidden;
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    & > .chapter-row-count {
+      color: var(--fg-muted);
+      font-size: var(--text-sm);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    /* The buttons stay in the line: icon-only (the name and its tooltip say what each does). */
+    & > .chapter-actions {
+      flex-wrap: nowrap;
+      margin-inline-start: 0;
+      gap: var(--s-1);
+    }
+
+    & .chapter-order {
+      gap: var(--s-1);
+    }
+
+    & .edit-titlecard {
+      position: relative;
+      inline-size: 2rem;
+      min-inline-size: 2rem;
+      block-size: 2rem;
+      min-block-size: 2rem;
+      padding: 0;
+      justify-content: center;
+    }
+
+    & .edit-titlecard-words {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    /* The row's second copy of the tools keeps the notes and the refusal; its buttons are the line's. */
+    & > .chapter-tools {
+      grid-column: 1 / -1;
+      padding: 0 0 var(--s-1);
+      border-bottom: 0;
+
+      & > .chapter-actions {
+        display: none;
+      }
+
+      &:not(:has(.chapter-notes, .chapter-refusal:not([hidden]))) {
+        display: none;
+      }
+    }
+
+    & > .chapter-row-hint {
+      grid-column: 1 / -1;
+      margin: 0;
+      padding-block-end: var(--s-1);
+      color: var(--fg-muted);
+      font-size: var(--text-sm);
+    }
+  }
+
+  /* A deleted chapter's placeholder, flat inside the list: struck name, its badge, then Undo. */
+  .chapter-list .edit-chapter[data-deleted] {
+    border: 0;
+    border-radius: 0;
+    background: none;
+
+    & > .panel-header {
+      position: static;
+      min-block-size: 2.25rem;
+      padding: var(--s-1) 0;
+      border-bottom: 0;
+      background: none;
+
+      & > h2 {
+        min-inline-size: 0;
+        font-size: inherit;
+      }
+    }
+
+    & > .chapter-tools {
+      padding: 0 0 var(--s-1);
+      border-bottom: 0;
+    }
+  }
+
+  @media (pointer: coarse) {
+    /* The line wraps: the name (and count) first, the buttons on a second line when they do not fit. */
+    .chapter-row {
+      display: flex;
+      flex-wrap: wrap;
+      row-gap: var(--s-2);
+      column-gap: var(--s-4);
+      padding-block: var(--s-2);
+
+      & > .chapter-row-name {
+        flex: 1 1 8rem;
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }
+
+      & > .chapter-actions {
+        gap: var(--s-4);
+      }
+
+      & > .chapter-tools,
+      & > .chapter-row-hint {
+        flex: 1 1 100%;
+      }
+    }
+  }
+}

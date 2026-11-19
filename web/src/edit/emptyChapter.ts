@@ -25,3 +25,16 @@ export function emptyChapterWords(alone: boolean, wholly: boolean): string {
 export function holdsNothing(played: number, removed: number, ignored: number): boolean {
   return played === 0 && removed === 0 && ignored === 0
 }
+
+/**
+ * What a chapter's row in the Chapters list says about having no clips: null while it plays
+ * one. `alone`: no other chapter is listed (`emptyChapterWords`).
+ */
+export function chapterRowHint(
+  played: number,
+  removed: number,
+  ignored: number,
+  alone: boolean,
+): string | null {
+  return played > 0 ? null : emptyChapterWords(alone, holdsNothing(played, removed, ignored))
+}
