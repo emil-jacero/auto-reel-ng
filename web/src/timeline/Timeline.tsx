@@ -17,6 +17,8 @@ import { createPortal } from 'react-dom'
 
 import '../rotate/rotate.css'
 import { TimelinePanesContext } from './panes'
+import { focusFacts, workspaceCommand } from '../edit/workspace/shortcuts.ts'
+import { lastInput, pointerHeld } from '../edit/workspace/modality.ts'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
 import { ClipHeader } from './ClipHeader'
@@ -54,7 +56,8 @@ import type { DragStore } from './dragStore'
 import type { ChapterKey } from '../edit/draft'
 import { chapterHeading } from '../events/labels.ts'
 import type { ReorderModel } from './ClipDrag'
-import { spanHit } from './clipDrag'
+import { MOVE_LOCKED, spanHit } from './clipDrag'
+import { stepSlot } from './keys'
 import { dropSlot, includeSlot } from './reorder'
 import type { DrawnChapter } from './reorder'
 import type { EditBinding } from './editing'
@@ -895,6 +898,29 @@ export function useTimeline({
     }
   }, [])
 
+  /**
+   * Alt+Left and Right (`track-drag-edit`, D4): the selected clip one place earlier or later, or
+   * the words for why not. False when no drawn clip is selected or it has nowhere to go (the key
+   * is then left to the browser).
+   */
+  const moveSelected = (way: -1 | 1): boolean => {
+    if (selectedClip === null) {
+      return false
+    }
+    const step = stepSlot(reorder.chapters, selectedClip, way)
+    if (step === null) {
+      return false
+    }
+    if (editing.locked) {
+      editing.announce(MOVE_LOCKED)
+    } else if (step.kind === 'edge') {
+      editing.announce(step.words)
+    } else {
+      reorder.onDrop(selectedClip, step.slot)
+    }
+    return true
+  }
+
   /** `Q`/`W`: trim the start or end of the clip under the playhead to it; `S`: snapping off/on. */
   const onEdgeKey = (key: 'q' | 'w' | 's') => {
     if (key === 's') {
@@ -935,6 +961,74 @@ export function useTimeline({
       setNoPicture((held) => (held.has(identity) ? held : new Set(held).add(identity))),
     [],
   )
+
+  // The workspace's keys (`editor-shortcuts`, D3): in Edit mode's workspace the playhead's, the
+  // track's and the edge tools' keys work wherever focus is. One document listener in the bubble
+  // phase, so a focused element's own handler runs first and its `preventDefault` shows.
+  const inWorkspace = useContext(TimelinePanesContext) !== null
+  const keys = useRef({ onKey, onTrackKey, onEdgeKey, moveSelected })
+  keys.current = { onKey, onTrackKey, onEdgeKey, moveSelected }
+  useEffect(() => {
+    if (!inWorkspace) {
+      return undefined
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null
+      const command = workspaceCommand(
+        {
+          key: event.key,
+          shiftKey: event.shiftKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          metaKey: event.metaKey,
+          altGraph: event.getModifierState('AltGraph'),
+          repeat: event.repeat,
+          isComposing: event.isComposing,
+          defaultPrevented: event.defaultPrevented,
+        },
+        focusFacts(target, {
+          enabled: true,
+          dialogOpen: document.querySelector('dialog[open]') !== null,
+          dragging: dragHeld(drag),
+          pointerHeld: pointerHeld(),
+          modality: lastInput(),
+        }),
+      )
+      if (command === null) {
+        return
+      }
+      const now = keys.current
+      switch (command.kind) {
+        case 'hold':
+          event.preventDefault()
+          return
+        case 'move':
+          // With nothing to move the key stays the browser's (Back, with the unsaved guard).
+          if (now.moveSelected(command.way)) {
+            event.preventDefault()
+          }
+          return
+        case 'help':
+          event.preventDefault()
+          document.getElementById('ws-keys')?.togglePopover?.()
+          return
+        case 'playhead':
+          event.preventDefault()
+          now.onKey(command.action)
+          return
+        case 'zoom':
+          event.preventDefault()
+          now.onTrackKey(command.key)
+          return
+        case 'edge':
+          event.preventDefault()
+          now.onEdgeKey(command.key)
+          return
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [inWorkspace, drag])
 
   const suggestions = useSuggestions(analysis, {
     clips,
@@ -1232,6 +1326,7 @@ export function useTimeline({
         onFilmFailed={onFilmFailed}
         onKey={onKey}
         onTrackKey={onTrackKey}
+        onMoveSelected={moveSelected}
         onScrub={scrubAt}
         lane={suggestions.lane}
         editing={editing}

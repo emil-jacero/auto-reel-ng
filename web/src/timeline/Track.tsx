@@ -23,7 +23,8 @@ import type { DragStore } from './dragStore'
 import type { EditBinding } from './editing'
 import { bandStartMs } from './cards'
 import type { CardBlock, CardHandle, CardSpec } from './cards'
-import { clipMoveKey, stepSlot, trackZoomKey } from './keys'
+import { clipMoveKey, trackZoomKey } from './keys'
+import { lastInput } from '../edit/workspace/modality.ts'
 import type { KeyAction } from './keys'
 import { clipDescription } from './labels'
 import { cutLabel, drawnCuts } from './layout'
@@ -430,6 +431,10 @@ const ClipPress = memo(function ClipPress({
       }}
       onDoubleClick={(event: MouseEvent<HTMLElement>) => onPlace(event.clientX)}
       onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
+        // After a pointer press Space is Play (the workspace's listener); Enter still selects.
+        if (event.key === ' ' && lastInput() === 'pointer') {
+          return
+        }
         if (
           event.target === event.currentTarget &&
           (event.key === 'Enter' || event.key === ' ') &&
@@ -483,6 +488,7 @@ export function Track({
   onFilmFailed,
   onKey,
   onTrackKey,
+  onMoveSelected,
   onScrub,
   lane: analysisLane,
   editing,
@@ -523,6 +529,8 @@ export function Track({
   onKey: (action: KeyAction) => void
   /** `+`, `=`, `-`, `0` and `\\` while the track has focus. */
   onTrackKey: (key: string) => void
+  /** Alt+Left and Right: move the selected clip one place; false when there is nothing to move. */
+  onMoveSelected: (way: -1 | 1) => boolean
   /** The analysis lane, a row of the canvas under the clips (`overlays/`). */
   lane?: LaneSlot
   onScrub: (x: number, phase: ScrubPhase, surface: ScrubSurface) => void
@@ -828,19 +836,9 @@ export function Track({
           shiftKey: event.shiftKey,
           altGraph: event.getModifierState('AltGraph'),
         })
-        if (way !== null && selectedClip !== null && !inField(event.target)) {
-          const step = stepSlot(reorder.chapters, selectedClip, way)
-          if (step !== null) {
-            event.preventDefault()
-            if (editing.locked) {
-              editing.announce(MOVE_LOCKED)
-            } else if (step.kind === 'edge') {
-              editing.announce(step.words)
-            } else {
-              reorder.onDrop(selectedClip, step.slot)
-            }
-            return
-          }
+        if (way !== null && selectedClip !== null && !inField(event.target) && onMoveSelected(way)) {
+          event.preventDefault()
+          return
         }
         if (event.ctrlKey || event.altKey || event.metaKey) {
           return
