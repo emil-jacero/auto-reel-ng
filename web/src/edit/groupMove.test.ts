@@ -270,3 +270,31 @@ describe('moveMarkedToEnd', () => {
     assert.equal(isDirty(baseline, back), true)
   })
 })
+
+describe('a shipped set (clip-multi-select D2)', () => {
+  const lists = ['r0', 'r1']
+
+  it('does not move a clip that a chapter no longer plays: missing, ignored or unknown', () => {
+    const { draft } = setup(WORKED)
+    // a3 was ignored or removed after the set was taken: it is in no chapter's order.
+    const gone = { ...draft, orders: new Map(draft.orders).set('r0', [A1, A2, A4]) }
+    const shipped = new Set([A2, A3, 'unknown.mp4', B1])
+    const result = moveMarkedToEnd(gone, lists, shipped, 'r1')
+    assert.deepEqual(listed(result.draft), { r0: [A1, A4], r1: [B2, A2, B1] })
+    assert.deepEqual(result.moved, [A2, B1])
+    assert.ok(![...result.draft.orders.values()].flat().includes(A3))
+  })
+
+  it('drops a set of nothing but stale clips as a no-op', () => {
+    const { draft } = setup(WORKED)
+    assert.equal(moveMarkedToEnd(draft, lists, new Set(['gone', 'also-gone']), 'r1').draft, draft)
+    assert.deepEqual(groupOf(draft.orders, lists, new Set(['gone'])), [])
+  })
+
+  it('drops the set at a gap by its page order, whatever order it was shipped in', () => {
+    const { draft } = setup(WORKED)
+    const group = groupOf(draft.orders, lists, new Set([B1, A4, 'gone', A2]))
+    assert.deepEqual(group, [A2, A4, B1])
+    assert.deepEqual(listed(moveGroup(draft, group, 'r1', 1)), { r0: [A1, A3], r1: [A2, A4, B1, B2] })
+  })
+})

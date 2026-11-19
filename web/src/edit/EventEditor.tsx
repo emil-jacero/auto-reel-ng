@@ -82,6 +82,8 @@ import { ChapterDrag } from './ChapterDrag'
 import { AddChapter, DeletedChapter } from './ChapterTools'
 import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './ChapterTools'
 import { ClipOrderList, IgnoredBin } from './ClipOrderList'
+import { selectionLabel, selectionStep } from './selectionEdit.ts'
+import type { SelectionEdit } from './selectionEdit.ts'
 import type {
   MarkHandler,
   IncludeHandler,
@@ -322,6 +324,8 @@ type Action =
   | { type: 'marked-move'; to: ChapterKey }
   | { type: 'clip-drop'; from: ChapterKey; to: ChapterKey; identity: string; at: number }
   | { type: 'group-drop'; dragged: string; to: ChapterKey; gap: number }
+  // A set of clips, shipped in the action (`clip-multi-select` D2); the marks stay as they are.
+  | SelectionEdit
   | { type: 'mark'; identity: string; on: boolean }
   | { type: 'marks-clear' }
   | { type: 'field'; field: MetadataField; value: string }
@@ -442,6 +446,10 @@ function describeEdit(action: Action, before: Ready): { label: string; key: stri
     case 'marked-move':
     case 'group-drop':
       return { label: 'move of marked clips', key: null }
+    case 'selection-move':
+    case 'selection-drop':
+    case 'ignore-many':
+      return { label: selectionLabel(action, before), key: null }
     case 'remove':
       return { label: `removal of ${clipName(action.identity)}`, key: null }
     case 'restore':
@@ -709,6 +717,12 @@ function step(state: State, action: Action): State {
       return draft === state.draft
         ? state
         : afterEdit({ ...state, draft, lastMoved: action.dragged, marked: afterMove(state.marked, group) })
+    }
+    case 'selection-move':
+    case 'selection-drop':
+    case 'ignore-many': {
+      const next = selectionStep(state, action)
+      return next === state ? state : afterEdit(next)
     }
     case 'mark': {
       const marked = toggleMark(state.marked, action.identity, action.on)
