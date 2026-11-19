@@ -193,8 +193,14 @@ would surprise.
 - [Ctrl+click on macOS is a right-click] → Cmd is the toggle there. The shortcuts list says "Ctrl+click or Cmd+click".
 - [`clip-context-menu`'s text may change before it is archived] → Task 0.2 copies its archived requirements into this
   change's MODIFIED blocks again before any code is written.
-- [Shift+click across 400 clips re-renders every block] → `aria-pressed` reads a `Set`, and blocks are memoised by
-  pressed state. The 100 ms gate (task 3.1) checks it.
+- [Shift+click across 400 clips re-renders every block and every bin row] → `aria-pressed` reads a `Set`, and blocks
+  are memoised by pressed state. Measured in task 3.1, the bin rows were the cost, not the blocks:
+  - a row's own style is costly to recalculate (about 80 µs), so a selection state on the `li` costs 30 ms for 400
+    rows: the state sits on leaves (the ground `.clip-sel`, the name), never on the row;
+  - only the row of `lastClip` scrolls into view, not every newly selected row;
+  - the bin follows the selection in a deferred render (`useDeferredValue`), after the track and the inspector paint.
+
+  The 100 ms gate (task 3.1) checks it.
 
 ## Failure behaviour
 

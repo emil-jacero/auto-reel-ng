@@ -38,6 +38,9 @@ the end of the chosen chapter, in play order; while it is applied it is the pend
   it changes nothing
 - **WHEN** a save is pending
 - **THEN** Rotate left, Rotate right, Move and Ignore clips say "Unavailable while saving." and change nothing
+- **WHEN** only the Clip tab's Move of several clips is pending
+- **THEN** Rotate left, Rotate right, Move and Ignore clips say "Unavailable while the clips move." and change
+  nothing, the bin's Move marked to… says the same instead of "Unavailable while saving." and does not show as busy
 
 #### Scenario: The selection is its own set of clips
 - **WHEN** `s1710002.mp4` is marked in the bin, `s1710001.mp4` and `s1710003.mp4` are selected, and the operator

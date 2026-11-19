@@ -52,7 +52,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 3. Verification and record
 
-- [ ] 3.1 Run Playwright in Chromium and Firefox over every scenario of both deltas (`event-timeline`, `web-app`). Also
+- [x] 3.1 Run Playwright in Chromium and Firefox over every scenario of both deltas (`event-timeline`, `web-app`). Also
   check that:
   - the Undo and Redo labels of a group edit read "ignore of 2 clips" and "move of 2 clips" (the reducer's wiring is
     not importable under Node), and the dispatchers pass `onDisk` so a missing clip in a set is neither moved nor
