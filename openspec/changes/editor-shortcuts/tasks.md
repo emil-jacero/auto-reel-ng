@@ -13,7 +13,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 1. Rules (web/src/edit/workspace)
 
-- [ ] 1.1 Add `shortcuts.ts` (design D1). It holds:
+- [x] 1.1 Add `shortcuts.ts` (design D1). It holds:
   - the `SHORTCUTS` table (groups Playback, Zoom, Editing, Mouse, in words);
   - `workspaceCommand`, which reuses `playheadKey`, `trackZoomKey`, `clipMoveKey` and `isTextTarget`;
   - `focusFacts` over element-like objects.
