@@ -63,7 +63,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - the gates hold, in Chromium: Shift+click over 400 clips paints within 100 ms (median of five), and a 50-clip group
     drop is within 150 ms of a one-clip drop.
   - Result (Chromium and Firefox, every scenario of both deltas pass; gates in Chromium 1280x900 on a production build of 56fe7cdd): Shift+click over 400 clips median 68.1 ms (gate 100 ms); a 50-clip group drop is 29.9 ms slower than a one-clip drop (314 vs 284.1 ms; gate 150 ms), all 50 clips landing in play order.
-- [ ] 3.2 Record the change:
+- [x] 3.2 Record the change:
   - HLD D-28 "One selection": a selection may hold several clips (Ctrl/Cmd, Shift, Enter keys), group edits ship their
     clips, the group drag shows a line, and the marks stay until `plain-clip-bin`.
   - §6 item 10: this change is built.
