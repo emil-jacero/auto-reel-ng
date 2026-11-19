@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { TimelinePanesContext } from '../../timeline/panes'
 import type { TimelinePanes } from '../../timeline/panes'
 import { Inspector } from './Inspector.tsx'
+import { useModalityTracking } from './modality.ts'
 import type { InspectorTab } from './inspectorTabs.ts'
 
 /*
@@ -51,6 +52,8 @@ export function Workspace({
   const [suggestionPane, setSuggestionPane] = useState<HTMLElement | null>(null)
   const [cardPane, setCardPane] = useState<HTMLElement | null>(null)
   const topRef = useRef<HTMLDivElement>(null)
+  // The last input (Tab or a pointer press) for Space on a focused control (`editor-shortcuts`).
+  useModalityTracking()
 
   useEffect(() => {
     const root = document.documentElement
