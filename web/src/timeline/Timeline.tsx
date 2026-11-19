@@ -94,6 +94,7 @@ import {
   sliderToPps,
   timeToPx,
   wheelFactor,
+  wheelPointerX,
   zoomAt,
 } from './model'
 import { createPlayhead } from './playhead'
@@ -854,9 +855,13 @@ export function useTimeline({
     }
   }
 
-  // Ctrl+wheel (Cmd+wheel; a trackpad pinch arrives as a Ctrl+wheel) zooms about the pointer, at
-  // most once per animation frame. A listener of our own, not passive, so the page does not zoom
-  // instead; a wheel without Ctrl or Cmd is left to the browser.
+  // Ctrl+wheel (Cmd+wheel; a trackpad pinch arrives as a Ctrl+wheel) zooms at most once per
+  // animation frame, over the Timeline's own part (the tool row, the lanes and the track): about
+  // the pointer when it is over the track, else about the playhead or the view's centre. A listener
+  // of our own, not passive, so the page does not zoom instead; a wheel without Ctrl or Cmd is left
+  // to the browser, and so is a wheel over the viewer, the bin and the inspector (portaled out of
+  // the part). The part is held in state through a callback ref, so a remount re-attaches it.
+  const [part, setPart] = useState<HTMLDivElement | null>(null)
   const wheelZoom = useRef({ zoomTo, forget: () => undefined as void })
   wheelZoom.current = {
     zoomTo,
@@ -865,20 +870,34 @@ export function useTimeline({
     },
   }
   useEffect(() => {
-    const el = scroller.current
-    if (el === null) {
+    if (part === null) {
       return undefined
     }
     let factor = 1
-    let pointerX = 0
+    let pointerX: number | undefined
     let frame = 0
     const onWheel = (event: WheelEvent) => {
       if (!event.ctrlKey && !event.metaKey) {
         return
       }
       event.preventDefault()
-      factor *= wheelFactor(event.deltaY, event.deltaMode, Math.max(1, el.clientHeight))
-      pointerX = event.clientX - el.getBoundingClientRect().left - el.clientLeft
+      const el = scroller.current
+      factor *= wheelFactor(event.deltaY, event.deltaMode, Math.max(1, el?.clientHeight ?? 1))
+      if (el === null) {
+        pointerX = undefined
+      } else {
+        const rect = el.getBoundingClientRect()
+        pointerX = wheelPointerX(
+          {
+            left: rect.left + el.clientLeft,
+            top: rect.top + el.clientTop,
+            width: el.clientWidth,
+            height: el.clientHeight,
+          },
+          event.clientX,
+          event.clientY,
+        )
+      }
       if (frame === 0) {
         frame = requestAnimationFrame(() => {
           frame = 0
@@ -889,14 +908,14 @@ export function useTimeline({
         })
       }
     }
-    el.addEventListener('wheel', onWheel, { passive: false })
+    part.addEventListener('wheel', onWheel, { passive: false })
     return () => {
-      el.removeEventListener('wheel', onWheel)
+      part.removeEventListener('wheel', onWheel)
       if (frame !== 0) {
         cancelAnimationFrame(frame)
       }
     }
-  }, [])
+  }, [part])
 
   /**
    * Alt+Left and Right (`track-drag-edit`, D4): the selected clip one place earlier or later, or
@@ -1244,6 +1263,7 @@ export function useTimeline({
   )
   const track = (
     <div
+      ref={setPart}
       className="timeline tl-track-part"
       data-trimming={trimming || undefined}
       data-edge-side={edgeSide ?? undefined}

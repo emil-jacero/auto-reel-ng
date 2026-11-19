@@ -391,6 +391,23 @@ export function wheelFactor(deltaY: number, deltaMode: number, viewHeight: numbe
 }
 
 /**
+ * Where a Ctrl+wheel over the Timeline's part zooms about (design D6): the pointer's x inside the
+ * scroller's content box when the pointer is within that box, else `undefined`, which makes the
+ * zoom keep the playhead (or the view's centre) like the buttons do.
+ */
+export function wheelPointerX(
+  box: { left: number; top: number; width: number; height: number },
+  clientX: number,
+  clientY: number,
+): number | undefined {
+  finite('clientX', clientX)
+  finite('clientY', clientY)
+  const x = clientX - box.left
+  const y = clientY - box.top
+  return x >= 0 && x <= box.width && y >= 0 && y <= box.height ? x : undefined
+}
+
+/**
  * The scale that shows `totalMs` in a view `viewWidth` wide with `gutter` px kept free at the end
  * (the playhead's grip reaches that far past the last moment), and the canvas width that holds it:
  * the track's pixels rounded up plus the gutter, never wider than the view at Fit. One pixel is

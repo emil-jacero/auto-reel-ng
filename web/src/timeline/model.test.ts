@@ -38,6 +38,7 @@ import {
   SLIDER_STEPS,
   sliderToPps,
   wheelFactor,
+  wheelPointerX,
   ZOOM_STEP,
 } from './model.ts'
 import type { ClipFacts, KeptFacts, Layout, Ms, View } from './model.ts'
@@ -673,6 +674,27 @@ describe('anchorFor', () => {
     const before = (view.scrollLeft + x) / view.pps
     const zoomed = zoomAt(view, 3, x, 600000)
     assert.ok(Math.abs((zoomed.scrollLeft + x) / zoomed.pps - before) < 1e-9)
+  })
+})
+
+describe('wheelPointerX', () => {
+  const box = { left: 100, top: 400, width: 800, height: 120 }
+
+  it('gives the pointer x inside the scroller box', () => {
+    assert.equal(wheelPointerX(box, 350, 450), 250)
+    assert.equal(wheelPointerX(box, 100, 400), 0)
+    assert.equal(wheelPointerX(box, 900, 520), 800)
+  })
+
+  it('gives undefined elsewhere in the part (tool row, lanes)', () => {
+    assert.equal(wheelPointerX(box, 350, 390), undefined)
+    assert.equal(wheelPointerX(box, 350, 521), undefined)
+    assert.equal(wheelPointerX(box, 99, 450), undefined)
+    assert.equal(wheelPointerX(box, 901, 450), undefined)
+  })
+
+  it('refuses a non-finite coordinate', () => {
+    assert.throws(() => wheelPointerX(box, Number.NaN, 450))
   })
 })
 
