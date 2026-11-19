@@ -7,7 +7,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 0. Gate
 
-- [ ] 0.1 Dependency gate: `editor-shortcuts` MUST be archived, and all of these must succeed from the repo root:
+- [x] 0.1 Dependency gate: `editor-shortcuts` MUST be archived, and all of these must succeed from the repo root:
   - `ls -d openspec/changes/archive/*-editor-shortcuts`
   - `grep -q "Requirement: The workspace lists its keyboard shortcuts" openspec/specs/web-app/spec.md`
   - `test -f web/src/edit/workspace/shortcuts.ts && test -f web/src/edit/workspace/modality.ts`
