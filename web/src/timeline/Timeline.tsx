@@ -1247,6 +1247,15 @@ export function useTimeline({
       return
     }
     const identity = menu.open.identity
+    const invoker = menu.open.invoker
+    // Where focus goes back to once the press, scroll or resize closed it: the invoker, else the block.
+    const focusInvoker = () => {
+      if (invoker.isConnected) {
+        invoker.focus({ preventScroll: true })
+      } else {
+        focusBlock(identity)
+      }
+    }
     setMenu(null)
     switch (why) {
       case 'escape':
@@ -1258,7 +1267,7 @@ export function useTimeline({
         // The press goes on to its target first; focus comes back only if it was left nowhere.
         window.setTimeout(() => {
           if (el === null || mayReturnFocus<Node>(document.activeElement, el, document.body)) {
-            focusBlock(identity)
+            focusInvoker()
           }
         }, 0)
         return
@@ -1267,7 +1276,7 @@ export function useTimeline({
       case 'gone':
         menuFocus.current = () => {
           if (el === null || mayReturnFocus<Node>(document.activeElement, el, document.body)) {
-            focusBlock(identity)
+            focusInvoker()
           }
         }
         return
