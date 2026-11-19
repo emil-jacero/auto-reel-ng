@@ -46,7 +46,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - over the track, the moment under the pointer stays;
   - over the tool row, the playhead keeps its place;
   - over the viewer, the wheel event is not `defaultPrevented` and the zoom is unchanged.
-- [ ] 2.3 Add the top bar's "Keyboard shortcuts" button and the `#ws-keys` popover drawn from `SHORTCUTS`, plus `?`
+- [x] 2.3 Add the top bar's "Keyboard shortcuts" button and the `#ws-keys` popover drawn from `SHORTCUTS`, plus `?`
   and the single-key switch with its storage (design D4, D5). `useSelection`'s Escape yields while the list is open.
 
   Add a paragraph to `web/README.md` beside the editor-undo one. Verify in Playwright:

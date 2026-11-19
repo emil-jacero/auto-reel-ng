@@ -768,6 +768,12 @@ field coalesces into one step within a second, each step carries a label for the
 Reset is a step, and Save clears it. `edit/undoShortcut.ts` is the pure key rule (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y; not with Alt or in an IME composition);
 `EventEditor.tsx` listens and dispatches. Both are tested by `npm test`.
 
+Shortcuts (`editor-shortcuts`): `edit/workspace/shortcuts.ts` holds the `SHORTCUTS` table, the pure rules (`workspaceCommand`, `focusFacts`) and the
+list's rows; `modality.ts` records whether the last input was Tab or a pointer press (Space on a focused button, checkbox or clip block acts on it
+after Tab and plays after a click); `shortcutSwitch.ts` is the single-key switch (`auto-reel:shortcuts=off` in `localStorage`, WCAG 2.1.4).
+`useTimeline` listens on `document` (workspace only) and dispatches; `KeysList.tsx` is the Keyboard shortcuts popover (`#ws-keys`, drawn from the
+table, opened by the top bar's button or `?`; `useSelection`'s Escape yields while it is open). All pure parts are tested by `npm test`.
+
 `src/edit/card/` is the title-card inspector (`title-card-inspector`): `model.ts` (the nine overrides,
 change detection, the preview request, which field a refusal names), `preview.ts` (the debounce, abort and
 retry state machine, with injected timers and client), `specs.ts` (the draft card as the blocks and rows
