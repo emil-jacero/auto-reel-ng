@@ -24,7 +24,9 @@ import type { EditBinding } from './editing'
 import { bandStartMs } from './cards'
 import type { CardBlock, CardHandle, CardSpec } from './cards'
 import { clipMoveKey, trackZoomKey } from './keys'
-import { lastInput } from '../edit/workspace/modality.ts'
+import { lastInput, pointerHeld } from '../edit/workspace/modality.ts'
+import { blockYieldsSpace } from '../edit/workspace/shortcuts.ts'
+import { shortcutsEnabled } from '../edit/workspace/shortcutSwitch.ts'
 import type { KeyAction } from './keys'
 import { clipDescription } from './labels'
 import { cutLabel, drawnCuts } from './layout'
@@ -431,8 +433,9 @@ const ClipPress = memo(function ClipPress({
       }}
       onDoubleClick={(event: MouseEvent<HTMLElement>) => onPlace(event.clientX)}
       onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
-        // After a pointer press Space is Play (the workspace's listener); Enter still selects.
-        if (event.key === ' ' && lastInput() === 'pointer') {
+        // After a pointer press Space is Play (the workspace's listener) when it will take the
+        // key: with the switch off or a pointer held it does not, so the block selects as before.
+        if (event.key === ' ' && blockYieldsSpace(lastInput(), shortcutsEnabled(), pointerHeld())) {
           return
         }
         if (

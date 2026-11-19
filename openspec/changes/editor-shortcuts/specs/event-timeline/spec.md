@@ -20,7 +20,7 @@ the slider SHALL be disabled.
 A zoom from the buttons, the keys or the slider SHALL keep the playhead where it was in the track's view when the
 playhead is in view, and the moment at the centre of the view otherwise. Turning the wheel with Ctrl held (Cmd on
 macOS), and a trackpad pinch, over the track SHALL zoom about the pointer, keeping the moment under the pointer where it
-is, and SHALL NOT zoom the page. Over the rest of the Timeline's own part of the page (its tool row and its lanes) it
+is, and SHALL NOT zoom the page. Over the lanes inside the track's scroller the pointer anchors the zoom too. Over the rest of the Timeline's own part of the page (its tool row and the strip of suggestion notes outside the scroller) it
 SHALL zoom as the buttons do, about the playhead or the view's centre, and SHALL NOT zoom the page either. Elsewhere
 (in Edit mode: the viewer, the bin, the inspector, the top bar) a Ctrl+wheel SHALL be left to the browser. A wheel
 turned without Ctrl or Cmd SHALL scroll as before. The scale SHALL be kept per

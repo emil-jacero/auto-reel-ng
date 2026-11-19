@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { focusFacts, SHORTCUT_GROUPS, SHORTCUTS, workspaceCommand } from './shortcuts.ts'
+import { blockYieldsSpace, focusFacts, SHORTCUT_GROUPS, SHORTCUTS, workspaceCommand } from './shortcuts.ts'
 import type { Command, ElementLike, Env, FocusFacts, Press, PressSpec } from './shortcuts.ts'
 
 const press = (over: PressSpec): Press => ({
@@ -339,6 +339,8 @@ test('focusFacts: Space controls are buttons, checkboxes, radios, summaries and 
   assert.equal(focusFacts(el('SUMMARY'), env()).spaceControl, true)
   assert.equal(focusFacts(el('INPUT', { type: 'checkbox' }), env()).spaceControl, true)
   assert.equal(focusFacts(el('INPUT', { type: 'radio' }), env()).spaceControl, true)
+  assert.equal(focusFacts(el('INPUT', { type: 'color' }), env()).spaceControl, true)
+  assert.equal(focusFacts(el('INPUT', { type: 'file' }), env()).spaceControl, true)
   assert.equal(focusFacts(el('INPUT', { type: 'checkbox' }), env()).spaceControl, true)
   for (const role of ['button', 'checkbox', 'radio', 'switch', 'option', 'menuitem', 'tab']) {
     assert.equal(focusFacts(el('DIV', { role }), env()).spaceControl, true, role)
@@ -372,4 +374,11 @@ test('focusFacts through workspaceCommand: Rotate after Tab keeps Space, after a
   })
   // a trim drag holds everything still
   assert.equal(workspaceCommand(space, focusFacts(null, env({ pointerHeld: true }))), null)
+})
+
+test('a clip block yields Space only when the workspace listener will take it', () => {
+  assert.equal(blockYieldsSpace('pointer', true, false), true)
+  assert.equal(blockYieldsSpace('pointer', false, false), false, 'switch off: the block selects')
+  assert.equal(blockYieldsSpace('pointer', true, true), false, 'pointer held')
+  assert.equal(blockYieldsSpace('keyboard', true, false), false)
 })

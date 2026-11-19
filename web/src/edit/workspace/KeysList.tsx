@@ -75,8 +75,8 @@ export function KeysList() {
         />
         <label htmlFor={switchId}>Single-key shortcuts</label>
         <p id={hintId} className="ws-keys-hint">
-          Off, Space, the arrows, Q, W, S, the zoom keys and ? act only when the playhead, the
-          track or a handle has focus. Ctrl and Cmd shortcuts stay.
+          Off, Space and the arrows act only on the playhead, and Q, W, S and the zoom keys only on
+          the track; ? does not open this list (use the button). Ctrl and Cmd shortcuts stay.
         </p>
       </div>
       {SHORTCUT_GROUPS.map((group) => (

@@ -179,7 +179,16 @@ const SPACE_ROLES = new Set([
   'tab',
 ])
 
-const SPACE_INPUTS = new Set(['checkbox', 'radio', 'button', 'submit', 'reset', 'image'])
+const SPACE_INPUTS = new Set(['checkbox', 'radio', 'button', 'submit', 'reset', 'image', 'color', 'file'])
+
+/**
+ * Whether a focused clip block hands Space to the workspace's listener: only after a pointer
+ * press, with the switch on and no pointer held (otherwise the listener takes nothing and the
+ * block selects as before).
+ */
+export function blockYieldsSpace(modality: Modality, enabled: boolean, held: boolean): boolean {
+  return modality === 'pointer' && enabled && !held
+}
 
 /** The facts `workspaceCommand` needs, read from the focused `target` (null: the page itself). */
 export function focusFacts(target: ElementLike | null, env: Env): FocusFacts {
