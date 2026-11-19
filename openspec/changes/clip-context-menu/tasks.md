@@ -98,9 +98,9 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   event**; neither did `Input.synthesizeTapGesture` with `duration: 1200`, nor a non-mobile touch context. So the
   menu does not open from a long press under this emulation, and the scenario "A long press" is **not verified**:
   the delegated `onContextMenu` handler is exercised only by the mouse and keyboard openers. The held touch starts
-  no drag, and a touch swipe scrolls the track without dragging (checked in
-  Chromium only). Firefox has no touch emulation (neither hold nor swipe). Chromium's
-  bundled build cannot decode the H.264 proxy, so "Use frame as poster" was checked there with VP9 proxies.
+  no drag, and a touch swipe scrolls the track without dragging (checked in Chromium only). Firefox has no touch
+  emulation (neither hold nor swipe). Chromium's bundled build cannot decode the H.264 proxy, so "Use frame as
+  poster" was checked there with VP9 proxies.
 - [ ] 3.2 Record the change:
   - HLD: add a D-28 "Clip menu" bullet: one menu owned by the Timeline, a manual popover and why, the items as
     existing edits, Cut and poster at the playhead, the track only until `plain-clip-bin`, and the touch rule. Add
