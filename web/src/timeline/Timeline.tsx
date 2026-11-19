@@ -64,7 +64,9 @@ import type { DragStore } from './dragStore'
 import type { ChapterKey } from '../edit/draft'
 import { chapterHeading } from '../events/labels.ts'
 import type { ReorderModel } from './ClipDrag'
-import { MOVE_LOCKED, bandSlot, spanHit } from './clipDrag'
+import { MOVE_LOCKED, MOVE_ONE_WORDS, bandSlot, spanHit } from './clipDrag'
+import { lastClip, pressClip, selectedClips, selectionWords } from '../edit/workspace/selection.ts'
+import type { Press } from '../edit/workspace/selection.ts'
 import { stepSlot } from './keys'
 import { dropSlot, includeSlot } from './reorder'
 import type { DrawnChapter } from './reorder'
@@ -384,11 +386,27 @@ export function useTimeline({
     (identity: string) => setSelection({ kind: 'clip', identity }),
     [setSelection],
   )
+  // Every clip the selection holds, read once per selection (a `Set` for each block's test).
+  const selectedSet = useMemo<ReadonlySet<string>>(
+    () => new Set(selectedClips(selection.selection)),
+    [selection.selection],
+  )
+  // The clip pressed last: the track scrolls to it.
+  const lastSelected = lastClip(selection.selection)
+  // The order a Shift press ranges over: the clips the track draws a block for, in drawn order.
+  const drawnOrder = useMemo(
+    () => clips.filter((_, at) => hasKeptFrame(facts[at])).map((c) => c.identity),
+    [clips, facts],
+  )
   const clearSelection = selection.clear
   // A click on a clip's block: the cut whose span holds the press, else the clip (the cut's span
   // selects its cut, as it did when the lane took the press).
-  const pressClipRef = useRef<(identity: string, x: number) => void>(() => undefined)
-  pressClipRef.current = (identity, x) => {
+  const pressClipRef = useRef<(identity: string, x: number, press: Press) => void>(() => undefined)
+  pressClipRef.current = (identity, x, press) => {
+    if (press !== 'alone') {
+      setSelection(pressClip(selection.selection, identity, press, drawnOrder))
+      return
+    }
     if (!Number.isNaN(x)) {
       const pos = positionOf(x)
       if (pos.card == null && clips[pos.clip].identity === identity) {
@@ -409,7 +427,15 @@ export function useTimeline({
     return spanHit(pos, clips[pos.clip]?.identity, identity, editing.listed(identity)) !== null
   }
   const spanAt = useCallback((identity: string, x: number) => spanAtRef.current(identity, x), [])
-  const pressClip = useCallback((identity: string, x: number) => pressClipRef.current(identity, x), [])
+  const onPressClip = useCallback(
+    (identity: string, x: number, press: Press) => pressClipRef.current(identity, x, press),
+    [],
+  )
+  // Enter on a block: the clip alone, added or taken out (Ctrl/Cmd), or the range (Shift).
+  const onPressClipKey = useCallback(
+    (identity: string, press: Press) => pressClipRef.current(identity, Number.NaN, press),
+    [],
+  )
   const selectCard = selection.select
   const revealCard = selection.reveal
   const pickCard = selectCard
@@ -469,7 +495,7 @@ export function useTimeline({
 
   // A clip or cut selection ending (Escape, a clear) while focus was in the Clip tab, which then
   // unmounts: focus goes back to the clip's block, so it never drops onto the page body.
-  const heldClip = selectedClip ?? selectedCut?.identity ?? null
+  const heldClip = lastSelected ?? selectedCut?.identity ?? null
   const wasClip = useRef<string | null>(null)
   useLayoutEffect(() => {
     const was = wasClip.current
@@ -550,7 +576,7 @@ export function useTimeline({
   // A clip selected out of view (from the bin) is scrolled to: the zoom stays, and so does focus.
   useEffect(() => {
     const el = scroller.current
-    const at = selectedClip === null ? -1 : clips.findIndex((c) => c.identity === selectedClip)
+    const at = lastSelected === null ? -1 : clips.findIndex((c) => c.identity === lastSelected)
     if (el === null || at < 0 || !hasKeptFrame(facts[at])) {
       return
     }
@@ -561,7 +587,7 @@ export function useTimeline({
     }
     el.scrollLeft = Math.max(0, left - Math.max(0, (el.clientWidth - width) / 2))
     // Only a press or a change of the selection scrolls; a relayout does not.
-  }, [selectedClip, selection.again])
+  }, [lastSelected, selection.again])
   const fitRef = useRef(fit)
   fitRef.current = fit
 
@@ -947,6 +973,11 @@ export function useTimeline({
    * is then left to the browser).
    */
   const moveSelected = (way: -1 | 1): boolean => {
+    // Several clips: "one place left" is undefined for them, so nothing moves and the words say why.
+    if (selectedSet.size > 1) {
+      editing.announce(MOVE_ONE_WORDS)
+      return true
+    }
     if (selectedClip === null) {
       return false
     }
@@ -1551,9 +1582,10 @@ export function useTimeline({
         drag={drag}
         selected={selected}
         onSelect={select}
-        selectedClip={selectedClip}
+        selectedClips={selectedSet}
         onSelectClip={selectClip}
-        onPressClip={pressClip}
+        onPressClip={onPressClip}
+        onPressClipKey={onPressClipKey}
         onSpanAt={spanAt}
         onClearSelection={clearSelection}
         cardLane={cardLane}
@@ -1657,16 +1689,28 @@ export function useTimeline({
       ? `cut:${selected.identity}:${selected.key}`
       : selectedClip !== null
         ? `clip:${selectedClip}`
-        : (suggestions.selectedKey ?? null)
+        : selectedSet.size > 1
+          ? `clips:${[...selectedSet].join('|')}`
+          : (suggestions.selectedKey ?? null)
   const announcedKey = useRef(selectionKey)
+  // The selection before this one, for the words of a change to a set (design D6): "3 clips
+  // selected.", "s1710003.mp4 added. 3 clips selected.".
+  const sel = selection.selection
+  const wasSel = useRef(sel)
+  const nameOf = (identity: string) => clips.find((c) => c.identity === identity)?.name ?? identity
+  const nameNow = useRef(nameOf)
+  nameNow.current = nameOf
   useEffect(() => {
+    const was = wasSel.current
+    wasSel.current = sel
     if (announcedKey.current !== selectionKey) {
       announcedKey.current = selectionKey
-      if (words !== null) {
-        setAnnouncement(words)
+      const said = selectionWords(was, sel, nameNow.current) ?? words
+      if (said !== null) {
+        setAnnouncement(said)
       }
     }
-  }, [selectionKey, words])
+  }, [selectionKey, words, sel])
   const suggestionPanel = <div className="timeline tl-cut-panel">{suggestions.detail}</div>
   return { viewer, track, clipPanel, suggestionPanel }
 }

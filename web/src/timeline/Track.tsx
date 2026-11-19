@@ -29,6 +29,8 @@ import { blockYieldsSpace } from '../edit/workspace/shortcuts.ts'
 import { shortcutsEnabled } from '../edit/workspace/shortcutSwitch.ts'
 import type { KeyAction } from './keys'
 import { menuOpenKey } from './clipMenu'
+import { pressOf } from '../edit/workspace/selection.ts'
+import type { Press } from '../edit/workspace/selection.ts'
 import { contextAnchor, visiblePart } from '../ui/menu'
 import type { Box } from '../ui/menu'
 import { clipDescription } from './labels'
@@ -392,7 +394,7 @@ const ClipPress = memo(function ClipPress({
   selected,
   after,
   grab,
-  onSelect,
+  onKeyPress,
   onPress,
   onPlace,
   onMenu,
@@ -409,9 +411,10 @@ const ClipPress = memo(function ClipPress({
   after: boolean
   /** The block's drag (`ClipDrag`): a mouse or pen drag past the slop reorders the clip. */
   grab: ReturnType<typeof useClipDrag>
-  onSelect: (identity: string) => void
-  /** A click: selects the cut whose span holds the press, else the clip. */
-  onPress: (identity: string, clientX: number) => void
+  /** Enter or Space: Enter with Ctrl, Cmd or Shift adds to the set or ranges (`pressOf`). */
+  onKeyPress: (identity: string, press: Press) => void
+  /** A click: selects the cut whose span holds the press, else the clip (a modifier: the set). */
+  onPress: (identity: string, clientX: number, press: Press) => void
   onPlace: (clientX: number) => void
   /** Shift+F10 or the Menu key on the block: the clip's menu, under the block. */
   onMenu: (identity: string, block: HTMLElement) => void
@@ -441,7 +444,7 @@ const ClipPress = memo(function ClipPress({
           return
         }
         // Enter and Space come through onKeyDown; a click with no pointer (detail 0) selects the clip.
-        onPress(identity, event.detail === 0 ? Number.NaN : event.clientX)
+        onPress(identity, event.detail === 0 ? Number.NaN : event.clientX, pressOf(event))
       }}
       onDoubleClick={(event: MouseEvent<HTMLElement>) => onPlace(event.clientX)}
       onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
@@ -455,15 +458,15 @@ const ClipPress = memo(function ClipPress({
         if (event.key === ' ' && blockYieldsSpace(lastInput(), shortcutsEnabled(), pointerHeld())) {
           return
         }
+        // Enter takes Ctrl, Cmd and Shift (the set's presses); Space only selects the clip alone.
         if (
           event.target === event.currentTarget &&
-          (event.key === 'Enter' || event.key === ' ') &&
-          !event.ctrlKey &&
           !event.altKey &&
-          !event.metaKey
+          (event.key === 'Enter' ||
+            (event.key === ' ' && !event.ctrlKey && !event.metaKey && !event.shiftKey))
         ) {
           event.preventDefault()
-          onSelect(identity)
+          onKeyPress(identity, event.key === 'Enter' ? pressOf(event) : 'alone')
         }
       }}
     />
@@ -515,9 +518,10 @@ export function Track({
   drag,
   selected,
   onSelect,
-  selectedClip,
+  selectedClips,
   onSelectClip,
   onPressClip,
+  onPressClipKey,
   onSpanAt,
   onClearSelection,
   cardLane,
@@ -562,12 +566,14 @@ export function Track({
   selected: { identity: string; key: string } | null
   /** A cut is selected: by its handle's focus or press. */
   onSelect: (identity: string, key: string) => void
-  /** The selected clip's identity, or null (the page's one selection). */
-  selectedClip: string | null
+  /** The selected clips' identities (the page's one selection): none, one or a set. */
+  selectedClips: ReadonlySet<string>
   /** A press on a clip's block (or its Enter) selects it; it does not move the playhead. */
   onSelectClip: (identity: string) => void
-  /** A click on a clip's block at track px `x` (NaN: none): a cut's span there, else the clip. */
-  onPressClip: (identity: string, x: number) => void
+  /** A click on a clip's block at track px `x` (NaN: none): a cut's span there, else the clip; a modifier press edits the set. */
+  onPressClip: (identity: string, x: number, press: Press) => void
+  /** Enter on a block: `alone`, `toggle` (Ctrl/Cmd) or `range` (Shift). */
+  onPressClipKey: (identity: string, press: Press) => void
   /** Whether a press at this track px on the clip lands on a cut's or a card's span. */
   onSpanAt: (identity: string, x: number) => boolean
   /** A press on empty track selects nothing. */
@@ -600,9 +606,9 @@ export function Track({
   spanNow.current = onSpanAt
   const pressNow = useRef(onPressClip)
   pressNow.current = onPressClip
-  const pressAt = useCallback((identity: string, clientX: number) => {
+  const pressAt = useCallback((identity: string, clientX: number, press: Press) => {
     const box = canvas.current?.getBoundingClientRect()
-    pressNow.current(identity, clientX - (box?.left ?? 0))
+    pressNow.current(identity, clientX - (box?.left ?? 0), press)
   }, [])
   const placeAt = useCallback(
     (clientX: number) => {
@@ -714,11 +720,11 @@ export function Track({
           left={left}
           widthPx={widthPx}
           descId={descId}
-          selected={selectedClip === clip.identity}
+          selected={selectedClips.has(clip.identity)}
           lockedId={editing.locked ? moveLockedId : null}
           after={after}
           grab={clipGrab}
-          onSelect={onSelectClip}
+          onKeyPress={onPressClipKey}
           onPress={pressAt}
           onPlace={placeAt}
           onMenu={openMenuAtBlock}
@@ -746,7 +752,7 @@ export function Track({
             keysId={edgeKeysId}
             lockedId={lockedId}
             selectedKey={selected?.identity === clip.identity ? selected.key : null}
-            clipSelected={selectedClip === clip.identity}
+            clipSelected={selectedClips.has(clip.identity)}
             targets={targets}
             snapping={snapping}
             onSelect={onSelect}
@@ -901,7 +907,7 @@ export function Track({
           shiftKey: event.shiftKey,
           altGraph: event.getModifierState('AltGraph'),
         })
-        if (way !== null && selectedClip !== null && !inField(event.target) && onMoveSelected(way)) {
+        if (way !== null && selectedClips.size > 0 && !inField(event.target) && onMoveSelected(way)) {
           event.preventDefault()
           return
         }

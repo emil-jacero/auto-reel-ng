@@ -33,6 +33,8 @@ import { focusPageHeading } from '../shell/AppShell'
 import { TimelineSection } from '../timeline/TimelineSection'
 import { cardSpecs } from '../timeline/cards'
 import type { SelectionBinding } from './workspace/useSelection.ts'
+import { pressClip, selectedClips } from './workspace/selection.ts'
+import type { Press } from './workspace/selection.ts'
 import { CardButtonContext } from './EditTitlecard'
 import type { CardButtonModel } from './EditTitlecard'
 import { cardIdOf } from './chapterBar.ts'
@@ -1092,6 +1094,7 @@ const NOTHING = () => undefined
 
 // A chapter with no removed clip: one constant, so its list keeps its memoised props.
 const NONE_REMOVED: readonly string[] = []
+const NO_CLIPS: ReadonlySet<string> = new Set()
 
 /** The chapter's heading, as the read view names it. */
 function chapterHeading(name: string, hasNamedChapter: boolean): string {
@@ -2262,11 +2265,46 @@ export function EventEditor({
     resolved,
   ])
   const { keep: keepSelection, open: openCard, selected: selectedCard } = cards
-  const selectedClip = cards.selection.kind === 'clip' ? cards.selection.identity : null
-  const selectClip = useCallback(
-    (identity: string) => cards.set({ kind: 'clip', identity }),
-    [cards.set],
-  )
+  // The bin's rows read the clips the selection holds, a stable set per chapter while they are
+  // the same, so a press redraws only the chapters whose rows change.
+  const selectedSet = useMemo(() => new Set(selectedClips(cards.selection)), [cards.selection])
+  const selectedCache = useRef(new Map<string, ReadonlySet<string>>())
+  const selectedIn = (chapter: ChapterKey, order: readonly string[]): ReadonlySet<string> => {
+    const next = selectedSet.size === 0 ? [] : order.filter((identity) => selectedSet.has(identity))
+    if (next.length === 0) {
+      selectedCache.current.delete(chapter)
+      return NO_CLIPS
+    }
+    const was = selectedCache.current.get(chapter)
+    if (was !== undefined && was.size === next.length && next.every((identity) => was.has(identity))) {
+      return was
+    }
+    const made: ReadonlySet<string> = new Set(next)
+    selectedCache.current.set(chapter, made)
+    return made
+  }
+  // A press on a bin row (its click or its name): a Shift press ranges over the rows' page order,
+  // the clips the bin lets be selected (on disk, not excluded) of every chapter that is listed.
+  const binPress = useRef<(identity: string, press: Press) => void>(() => undefined)
+  binPress.current = (identity, press) => {
+    const order =
+      ready === null
+        ? []
+        : ready.draft.chapters.flatMap((chapter) =>
+            chapter.deleted
+              ? []
+              : (ready.draft.orders.get(chapter.key) ?? NONE_REMOVED).filter((candidate) => {
+                  const clip = clips.get(candidate)
+                  return (
+                    clip !== undefined &&
+                    !clip.excluded &&
+                    (clip.status === 'active' || clip.status === 'new')
+                  )
+                }),
+          )
+    cards.set(pressClip(cards.selection, identity, press, order))
+  }
+  const selectClip = useCallback((identity: string, press: Press) => binPress.current(identity, press), [])
   // The selection ends with its chapter: deleted in the draft, it is gone from the list.
   useEffect(() => {
     if (draftChapters !== undefined) {
@@ -3476,12 +3514,10 @@ export function EventEditor({
                       onInclude={onIncludeClip}
                       onAnnounce={announce}
                       compact={inWorkspace}
-                      selectedClip={
-                        selectedClip !== null &&
-                        (ready.draft.orders.get(chapter.key) ?? NONE_REMOVED).includes(selectedClip)
-                          ? selectedClip
-                          : null
-                      }
+                      selectedClips={selectedIn(
+                        chapter.key,
+                        ready.draft.orders.get(chapter.key) ?? NONE_REMOVED,
+                      )}
                       onSelectClip={selectClip}
                       ignoredApart={ignoredApart}
                     />

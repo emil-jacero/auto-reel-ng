@@ -14,6 +14,10 @@ export const CLIP_SLOP_PX = 3
 /** What a track tool says while a save or a "Move marked…" is pending. */
 export const MOVE_LOCKED = 'Moving clips waits for the save or the move of marked clips to finish.'
 
+/** What Alt+Left and Alt+Right say while several clips are selected: they move nothing (design D6). */
+export const MOVE_ONE_WORDS =
+  'Alt and an arrow move one clip. Move to\u2026 in the Clip tab moves the selected clips.'
+
 /** What the tip says while the pointer is over the bin: a release there ignores the clip. */
 export const IGNORE_WORDS = 'Release on the bin to ignore the clip'
 

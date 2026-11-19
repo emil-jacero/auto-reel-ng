@@ -177,6 +177,18 @@ export function pressClip(
   }
 }
 
+/**
+ * The press a click or an Enter key is (design D3): Ctrl or Cmd toggles, Shift ranges, else the
+ * clip alone. Ctrl and Cmd win over Shift. On macOS Ctrl+click is a right-click, which opens the
+ * menu before any click, so Cmd is the toggle there.
+ */
+export function pressOf(keys: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }): Press {
+  if (keys.ctrlKey || keys.metaKey) {
+    return 'toggle'
+  }
+  return keys.shiftKey ? 'range' : 'alone'
+}
+
 /** The clips the selection holds: none, one, or the set. A cut is not a clip selection. */
 export function selectedClips(sel: Selection): readonly string[] {
   switch (sel.kind) {
