@@ -82,7 +82,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 3. Verification and record
 
-- [ ] 3.1 Run Playwright in Chromium and Firefox over every scenario of both deltas (`web-app`, `event-timeline`).
+- [x] 3.1 Run Playwright in Chromium and Firefox over every scenario of both deltas (`web-app`, `event-timeline`).
   Also check that:
   - on this Linux host, a real right-click (press, then release) leaves the menu open in both browsers (design,
     "Popover: manual, auto, or a dialog");
@@ -91,6 +91,15 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - at 390×844 with a coarse pointer, every item's box is at least 44 px tall and the page does not scroll sideways;
   - in Chromium with touch emulation, a held touch on `s1710002.mp4` (CDP `Input.dispatchTouchEvent`) opens its menu
     and starts no drag. If the emulation sends no `contextmenu`, write that down here rather than fake the event.
+
+  Result (Playwright 1.49.0 Chromium and Firefox, 2026-11-19): every scenario of both deltas passes in both
+  browsers, except the long press. In Chromium, a held touch on `s1710002.mp4` (`Input.dispatchTouchEvent`
+  `touchStart`, 1200 ms, `touchEnd`) sent `pointerdown` and `pointerup` with type touch and **no `contextmenu`
+  event**; neither did `Input.synthesizeTapGesture` with `duration: 1200`, nor a non-mobile touch context. So the
+  menu does not open from a long press under this emulation, and the scenario "A long press" is **not verified**:
+  the delegated `onContextMenu` handler is exercised only by the mouse and keyboard openers. The held touch starts
+  no drag, and a touch swipe scrolls the track without dragging. Firefox has no touch-hold emulation. Chromium's
+  bundled build cannot decode the H.264 proxy, so "Use frame as poster" was checked there with VP9 proxies.
 - [ ] 3.2 Record the change:
   - HLD: add a D-28 "Clip menu" bullet: one menu owned by the Timeline, a manual popover and why, the items as
     existing edits, Cut and poster at the playhead, the track only until `plain-clip-bin`, and the touch rule. Add
