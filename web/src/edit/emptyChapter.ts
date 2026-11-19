@@ -1,14 +1,14 @@
 /*
- * What a chapter that plays no clip says in Edit mode (ClipOrderList.tsx). Kept apart, with
- * no imports, so it can be tested without React.
+ * What a chapter that plays no clip says in Edit mode (its row in the Chapters list,
+ * ChapterList.tsx). Kept apart, with no imports, so it can be tested without React.
  */
 
 const LEFT_OUT = 'A chapter without clips is left out of the movie.'
-const MOVE_IN = 'Drag clips here, or move them here with Move marked to….'
+const MOVE_IN = 'Move clips into it with Move to… (the Clip tab’s, or a clip’s menu).'
 
 /**
- * `alone`: the event lists no other chapter, so no chapter has a clip to drag here and the
- * page offers no Move marked to… (it needs a second chapter). `wholly`: nothing is
+ * `alone`: the event lists no other chapter, so no chapter has a clip to move into this one
+ * and the page offers no Move to… (it needs a second chapter). `wholly`: nothing is
  * listed in the chapter at all, no removed or ignored clip either ("No clips."), else it
  * only "plays no clip".
  */
