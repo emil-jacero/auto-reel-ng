@@ -12,7 +12,7 @@ import type { DrawnChapter, DropSlot } from './reorder.ts'
 export const CLIP_SLOP_PX = 3
 
 /** What a track tool says while a save or a "Move marked…" is pending. */
-export const MOVE_LOCKED = 'Moving clips waits for the save or the move of marked clips to finish.'
+export const MOVE_LOCKED = 'Moving clips waits for the save or the move of several clips to finish.'
 
 /** What Alt+Left and Alt+Right say while several clips are selected: they move nothing (design D6). */
 export const MOVE_ONE_WORDS =
