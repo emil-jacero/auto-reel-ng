@@ -3,11 +3,16 @@ import { describe, it } from 'node:test'
 
 import {
   CLIP_SLOP_PX,
+  IGNORE_GROUP_WORDS,
   MOVE_ONE_WORDS,
   bandSlot,
   dropWords,
   flatMove,
+  groupBandSlot,
+  groupCount,
+  groupSlot,
   inBox,
+  isGroupOwnPlace,
   isOwnPlace,
   pastSlop,
   shiftOf,
@@ -100,5 +105,95 @@ describe('MOVE_ONE_WORDS', () => {
       MOVE_ONE_WORDS,
       'Alt and an arrow move one clip. Move to\u2026 in the Clip tab moves the selected clips.',
     )
+  })
+})
+
+describe('the group slot (clip-multi-select D4)', () => {
+  // Main: a b c, Kvällen: d e; each clip 1 s long, end to end.
+  const named: DrawnChapter[] = [
+    { key: 'r0', name: 'Main', identities: ['a', 'b', 'c'] },
+    { key: 'r1', name: 'Kvällen', identities: ['d', 'e'] },
+  ]
+  const group = (...ids: string[]) => new Set(ids)
+
+  it('counts the clips of the group the track draws', () => {
+    assert.equal(groupCount(named, group('b', 'd', 'zz')), 2)
+  })
+
+  it('goes before the clip nearest the pointer that is not in the group', () => {
+    // d and e dragged to 100 ms: the line stands before a.
+    const slot = groupSlot(named, group('d', 'e'), starts, extents, 100)
+    assert.deepEqual(slot, {
+      chapter: 'r0',
+      beforeIdentity: 'a',
+      place: 'Before a',
+      words: '2 clips \u00b7 Before a',
+      lineMs: 0,
+    })
+  })
+
+  it('offers no boundary before a held clip: the line goes to the next clip outside the group', () => {
+    // b and c held, the pointer at 2.4 s: c's start (2000) is not offered, so the nearest is the
+    // end of Main (3000), which is also where d starts; the pointer is before it, so it is Main's end.
+    const slot = groupSlot(named, group('b', 'c'), starts, extents, 2400)
+    assert.equal(slot?.chapter, 'r0')
+    assert.equal(slot?.beforeIdentity, null)
+    assert.equal(slot?.words, '2 clips \u00b7 End of Main')
+    assert.equal(slot?.lineMs, 3000)
+    // With b held alone, c's start is offered and the pointer at 2.4 s is nearest to it.
+    assert.equal(groupSlot(named, group('b'), starts, extents, 2100)?.beforeIdentity, 'c')
+  })
+
+  it('takes the earlier boundary of a shared time before it and the later at or after it', () => {
+    // Main ends at 3000 where d starts.
+    const before = groupSlot(named, group('a'), starts, extents, 2900)
+    assert.equal(before?.chapter, 'r0')
+    assert.equal(before?.beforeIdentity, null)
+    assert.equal(before?.words, '1 clips \u00b7 End of Main')
+    const after = groupSlot(named, group('a'), starts, extents, 3000)
+    assert.equal(after?.chapter, 'r1')
+    assert.equal(after?.beforeIdentity, 'd')
+    assert.equal(after?.words, '1 clips \u00b7 Before d')
+  })
+
+  it('ends at the last chapter when the pointer is past it', () => {
+    const slot = groupSlot(named, group('a', 'b'), starts, extents, 99_000)
+    assert.equal(slot?.chapter, 'r1')
+    assert.equal(slot?.beforeIdentity, null)
+    assert.equal(slot?.place, 'End of Kvällen')
+    assert.equal(slot?.lineMs, 5000)
+  })
+
+  it('names a chapter by its key when it has no name', () => {
+    const slot = groupSlot([{ key: 'r0', identities: ['a', 'b'] }], group('a'), [0, 1000], [1000, 1000], 9000)
+    assert.equal(slot?.place, 'End of r0')
+  })
+
+  it('draws no slot over no chapter', () => {
+    assert.equal(groupSlot([], group('a'), [], [], 0), null)
+  })
+
+  it('drops on a chapter band at that chapter end', () => {
+    const slot = groupBandSlot(named, group('d'), starts, extents, 0)
+    assert.equal(slot?.chapter, 'r0')
+    assert.equal(slot?.beforeIdentity, null)
+    assert.equal(slot?.words, '1 clips \u00b7 End of Main')
+    assert.equal(slot?.lineMs, 3000)
+    assert.equal(groupBandSlot(named, group('d'), starts, extents, 5), null)
+  })
+
+  it('knows a drop that leaves the order as it is', () => {
+    // b and c, the end of Main: where they are. Before d, they join Kvällen.
+    assert.equal(isGroupOwnPlace(named, group('b', 'c'), { chapter: 'r0', beforeIdentity: null }), true)
+    assert.equal(isGroupOwnPlace(named, group('b', 'c'), { chapter: 'r1', beforeIdentity: 'd' }), false)
+    assert.equal(isGroupOwnPlace(named, group('a', 'c'), { chapter: 'r0', beforeIdentity: 'b' }), false)
+    assert.equal(isGroupOwnPlace(named, group('a', 'b'), { chapter: 'r0', beforeIdentity: 'c' }), true)
+    assert.equal(isGroupOwnPlace(named, group('d', 'e'), { chapter: 'r1', beforeIdentity: null }), true)
+    // A run that is not contiguous gathers before the clip: a and c before b is a change.
+    assert.equal(isGroupOwnPlace(named, group('a', 'c'), { chapter: 'r0', beforeIdentity: null }), false)
+  })
+
+  it('says what a release over the bin does', () => {
+    assert.equal(IGNORE_GROUP_WORDS, 'Release on the bin to ignore the clips')
   })
 })

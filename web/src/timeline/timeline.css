@@ -634,6 +634,13 @@
       0 2px 8px color-mix(in srgb, var(--fg) 35%, transparent);
   }
 
+  /* A group of selected clips in the air: its blocks stay in place, dimmed (`ClipDrag.tsx`). */
+  .tl-clip[data-held],
+  .tl-clip-press[data-held] {
+    opacity: 0.45;
+    cursor: grabbing;
+  }
+
   .tl-viewport[data-clip-drag] {
     cursor: grabbing;
     user-select: none;
