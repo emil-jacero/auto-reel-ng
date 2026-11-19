@@ -5,7 +5,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 0. Gate
 
-- [ ] 0.1 Dependency gate: `editor-undo` MUST be archived, and both of these must succeed from the repo root:
+- [x] 0.1 Dependency gate: `editor-undo` MUST be archived, and both of these must succeed from the repo root:
   - `ls -d openspec/changes/archive/*-editor-undo`
   - `grep -q "Requirement: Edit mode undoes and redoes draft edits" openspec/specs/web-app/spec.md`
 
