@@ -76,6 +76,28 @@ export function escapeIsElsewhere(
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || element.isContentEditable === true
 }
 
+/** Whether `element` is on the page and not inside a hidden tab. */
+function isShown(element: HTMLElement): boolean {
+  return element.isConnected && element.closest('[hidden]') === null
+}
+
+/**
+ * Where Escape from the card editor puts focus: the first of `candidates`, in order, that is
+ * shown (`kept`: the control that selected the card; then the card's Edit Titlecard button, its
+ * block, and the Chapters heading), or null.
+ */
+export function returnTarget<T>(
+  candidates: readonly (T | null | undefined)[],
+  shown: (element: T) => boolean,
+): T | null {
+  for (const candidate of candidates) {
+    if (candidate !== null && candidate !== undefined && shown(candidate)) {
+      return candidate
+    }
+  }
+  return null
+}
+
 export function useSelection(): SelectionBinding {
   const [state, setState] = useState<SelectionState>(NOTHING)
   // The control that asked for the card's editor, to give focus back to.
@@ -129,20 +151,23 @@ export function useSelection(): SelectionBinding {
   const card = state.sel.kind === 'card' ? state.sel.chapter : null
   const leave = useCallback(() => {
     const kept = opener.current
-    const block =
+    const byCard = (selector: string) =>
       card === null
         ? undefined
-        : Array.from(document.querySelectorAll<HTMLElement>('button.tl-card[data-card]')).find(
+        : Array.from(document.querySelectorAll<HTMLElement>(selector)).find(
             (candidate) => candidate.dataset.card === card,
           )
+    // The card's own Edit Titlecard button (its chapter's row), and the card block: where the
+    // opener is gone but the chapter is not (the row was drawn anew).
+    const button = byCard('.edit-chapters button.edit-titlecard[data-card]')
+    const block = byCard('button.tl-card[data-card]')
     opener.current = null
     // Nothing is selected first, so the Event tab (which hides the opener while the Title card
     // tab shows) is visible again when focus moves: the focused field never unmounts onto the body.
     flushSync(clear)
-    const shown = (element: HTMLElement | null | undefined) =>
-      element !== null && element !== undefined && element.isConnected && element.closest('[hidden]') === null
-    const target = shown(kept) ? kept : block
-    target?.focus({ preventScroll: true })
+    // Last, the Chapters heading: the chapter was deleted meanwhile, so no button or block is left.
+    const heading = document.querySelector<HTMLElement>('.edit-chapters > .panel-header > h2')
+    returnTarget([kept, button, block, heading], isShown)?.focus({ preventScroll: true })
   }, [card, clear])
   const { opened } = state
   return useMemo(
