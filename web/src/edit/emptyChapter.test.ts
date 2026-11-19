@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { chapterRowHint, emptyChapterWords, holdsNothing } from './emptyChapter.ts'
+import { chapterRowHint, emptyAreaWords, emptyChapterWords, holdsNothing } from './emptyChapter.ts'
 
 const LEFT_OUT = 'A chapter without clips is left out of the movie.'
 const MOVE_IN = 'Move clips into it with Move to… (the Clip tab’s, or a clip’s menu).'
@@ -27,6 +27,21 @@ test('a lone chapter points at nothing that is not there', () => {
     for (const wholly of [true, false]) {
       assert.doesNotMatch(emptyChapterWords(alone, wholly), /Drag|Move marked/)
     }
+  }
+})
+
+test('the bin’s drop area says clips can be dragged into it, the row does not', () => {
+  const DRAG_IN = 'Drag clips here, or move them here with Move to….'
+  assert.equal(emptyAreaWords(false, true), `No clips. ${DRAG_IN} ${LEFT_OUT}`)
+  assert.equal(emptyAreaWords(false, false), `It plays no clip. ${DRAG_IN} ${LEFT_OUT}`)
+  for (const wholly of [true, false]) {
+    assert.match(emptyAreaWords(false, wholly), /Drag clips here/)
+    assert.doesNotMatch(emptyAreaWords(false, wholly), /Move marked/)
+    assert.doesNotMatch(emptyChapterWords(false, wholly), /Drag/)
+    assert.match(emptyChapterWords(false, wholly), /Move to…/)
+    // Alone, neither points at anything that is not there.
+    assert.doesNotMatch(emptyAreaWords(true, wholly), /Drag|Move/)
+    assert.doesNotMatch(emptyChapterWords(true, wholly), /Drag|Move/)
   }
 })
 
