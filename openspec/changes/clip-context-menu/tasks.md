@@ -25,7 +25,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - `menuSelects` is false for the clip and for a cut of it, and true for nothing, another clip, a card or a
     suggestion;
   - `focusAfter` gives the next clip, the previous one at the end, and null for a lone clip.
-- [ ] 1.2 Add `web/src/ui/menu.ts` (design D3): `menuKey` and `placeMenu`. Verify with `menu.test.ts`, which must
+- [x] 1.2 Add `web/src/ui/menu.ts` (design D3): `menuKey` and `placeMenu`. Verify with `menu.test.ts`, which must
   check:
   - Up on the first item wraps to the last, Down on the last wraps to the first, and Home and End go to the ends;
   - Enter and Space choose, and Escape, Tab and Shift+Tab close;
