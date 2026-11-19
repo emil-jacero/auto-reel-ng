@@ -12,7 +12,7 @@ export const REORDER_SEVERAL =
 
 export const REORDER_ONE =
   'Drag a clip by its handle, or use its arrows. To split the event into chapters, use Add ' +
-  'chapter below the chapters; clips can then be dragged between them.'
+  'chapter in the Event tab’s Chapters list; clips can then be dragged between them.'
 
 export const IGNORED_NOTE = 'Ignored clips are not played and cannot be moved.'
 

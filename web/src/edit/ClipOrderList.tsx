@@ -29,9 +29,6 @@ import type { RotateHandler } from '../rotate/RotateButtons'
 import type { Turn } from '../rotate/turn.ts'
 import { Icon } from '../ui/Icon'
 import { intoViewSettled, useGroupHeld, useReducedMotion } from './ChapterDrag'
-import { ChapterTools } from './ChapterTools'
-import { EditTitlecard } from './EditTitlecard'
-import type { ChapterToolsModel } from './ChapterTools'
 import { lengthWords } from './clipLength'
 import { cutsOf, keptOriginal, movedSet } from './draft'
 import type { ChapterKey, Cuts, DraftCut, Rotations } from './draft'
@@ -49,8 +46,8 @@ import type { Press } from './workspace/selection.ts'
  * chapter (`ChapterDrag.tsx`, the one drag-and-drop context, around every
  * chapter); so can the marks line's Move marked to… (`EventEditor.tsx`). Its
  * row then says where it came from. Move up and Move down never leave the
- * chapter. The chapter's tools row (`ChapterTools.tsx`) sits between its header
- * and its column strip.
+ * chapter. Its header is plain: the name and the counts. The chapter's own tools are in the
+ * Event tab's Chapters list (`ChapterList.tsx`).
  *
  * A clip on disk that the chapter plays also has a Cuts control after its move
  * buttons, which shows its cuts panel under the row (`cuts/CutsPanel.tsx`), and a mark in
@@ -837,7 +834,7 @@ export const ClipOrderList = memo(function ClipOrderList({
   origins,
   lastMoved,
   locked,
-  tools,
+  alone,
   cuts,
   baseCuts,
   typed,
@@ -881,8 +878,8 @@ export const ClipOrderList = memo(function ClipOrderList({
   origins: Origins
   lastMoved: string | null
   locked: boolean
-  /** Its tools row (`ChapterTools`): what it shows and does. */
-  tools: ChapterToolsModel
+  /** The event lists no other chapter (the empty chapter's words follow it). */
+  alone: boolean
   /**
    * The draft's changed cuts and the read ones, never the draft itself: neither
    * changes on a metadata edit, so typing in a field re-renders no list.
@@ -1047,9 +1044,8 @@ export const ClipOrderList = memo(function ClipOrderList({
       aria-labelledby={headingId}
     >
       <header className="panel-header">
-        {/* Focused by script after Add chapter. */}
         {/* In the bin a long name ends in an ellipsis: its title shows it whole. */}
-        <h2 id={headingId} tabIndex={-1} title={compact ? heading : undefined}>
+        <h2 id={headingId} title={compact ? heading : undefined}>
           {heading}
         </h2>
         {moved.size > 0 && (
@@ -1059,24 +1055,7 @@ export const ClipOrderList = memo(function ClipOrderList({
         )}
         {/* The clips it plays; the removed and ignored lists count their own. One line. */}
         <span className="panel-meta">{plural(order.length, 'clip', 'clips')}</span>
-        <EditTitlecard id={tools.cardId} heading={heading} locked={locked} compact={compact} />
-        {compact && (
-          <ChapterTools
-            chapterKey={chapterKey}
-            heading={heading}
-            headingId={headingId}
-            placement="bar"
-            {...tools}
-          />
-        )}
       </header>
-      <ChapterTools
-        chapterKey={chapterKey}
-        heading={heading}
-        headingId={headingId}
-        placement="row"
-        {...tools}
-      />
       {/* The column names, in the rows' own cells (edit.css places them by class). */}
       {!empty && !compact && (
         <div className="clip-order-head" aria-hidden="true">
@@ -1093,8 +1072,7 @@ export const ClipOrderList = memo(function ClipOrderList({
         chapterKey={chapterKey}
         sectionRef={sectionRef}
         plays={plays}
-        // Move marked to… needs a second chapter (the tools row has a place only then).
-        words={emptyChapterWords(tools.place === null, holdsNone)}
+        words={emptyChapterWords(alone, holdsNone)}
       />
       {plays && (
         <SortableContext id={chapterKey} items={items} strategy={strategy}>
