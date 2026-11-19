@@ -33,7 +33,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 2. Wiring (web/src/timeline, web/src/edit/workspace)
 
-- [ ] 2.1 Add the document listener in `useTimeline`, active only in the workspace (design D3).
+- [x] 2.1 Add the document listener in `useTimeline`, active only in the workspace (design D3).
   - Lift the Alt+arrow code out of `Track.tsx` into `moveSelected(way)`, shared by the track and the listener.
   - The clip block gives up Space after a pointer press.
 

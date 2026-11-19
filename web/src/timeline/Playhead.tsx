@@ -71,6 +71,10 @@ export function PlayheadSlider({
           const action = playheadKey(event.key, event.shiftKey)
           if (action !== null) {
             event.preventDefault()
+            // A held Space does not flap between Play and Pause.
+            if (action.kind === 'toggle' && event.repeat) {
+              return
+            }
             onKey(action)
           }
         }}
