@@ -735,6 +735,109 @@
   }
 
   /*
+   * A menu (`ui/Menu.tsx`, `clip-context-menu`): a manual popover in the top layer, placed in
+   * script (`placeMenu`) with `position: fixed`, so the user agent's centring is dropped. It
+   * takes the toasts' surface, border and shadow. The title names what it is about; each item is
+   * an icon, its label and, when it cannot act, its reason in words under the label.
+   */
+  .menu {
+    position: fixed;
+    inset: auto;
+    inset-inline-start: 0;
+    inset-block-start: 0;
+    z-index: 40;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    inline-size: max-content;
+    min-inline-size: 12rem;
+    max-inline-size: min(24rem, calc(100vw - 16px));
+    margin: 0;
+    padding: var(--s-1);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--surface-raised);
+    color: var(--fg);
+    box-shadow: var(--shadow-lg);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .menu-title {
+    margin: 0;
+    padding: var(--s-1) var(--s-3);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .menu-note {
+    margin: 0;
+    padding: 0 var(--s-3) var(--s-2);
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+  }
+
+  .menu-items {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding-block-start: var(--s-1);
+    border-block-start: 1px solid var(--border);
+  }
+
+  .menu-separator {
+    margin-block: var(--s-1);
+    border-block-start: 1px solid var(--border);
+  }
+
+  .menu-item {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: var(--s-3);
+    align-items: center;
+    min-block-size: 1.75rem;
+    padding: var(--s-1) var(--s-3);
+    border-radius: var(--r-md);
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
+
+    & > svg {
+      grid-row: 1;
+      color: var(--fg-muted);
+    }
+
+    &:focus {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: -2px;
+      background: var(--accent-soft);
+    }
+
+    &[aria-disabled='true'] .menu-label {
+      color: var(--fg-muted);
+    }
+  }
+
+  .menu-label {
+    grid-column: 2;
+    overflow-wrap: anywhere;
+  }
+
+  .menu-why {
+    grid-column: 2;
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+  }
+
+  @media (pointer: coarse) {
+    .menu-item {
+      min-block-size: 2.75rem;
+    }
+  }
+
+  /*
    * Toasts (`ui/ToastRegion.tsx`): bottom right, full width below 30rem. With a
    * bar registered (`keepToastsClearOf`) the region sets its own live
    * `--toast-offset`, above the bar or below it; with none it sits at the bottom edge.
