@@ -425,7 +425,7 @@ within its chapter SHALL do this:
 - **from the keyboard**, on the clip's handle:
   - Down at a chapter's last position SHALL take the clip to the first position of the next listed chapter.
   - Up at a chapter's first position SHALL take it to after the last clip of the chapter before.
-  - A deleted chapter's placeholder SHALL be passed over.
+  - A deleted chapter, which the bin does not list, SHALL be passed over.
   - Page Down SHALL take the clip to the first position of the next listed chapter, and Page Up to the first
     position of the chapter before, wherever the clip is held. A chapter the clip does not play is entered at
     its first gap, before its first clip, and an empty one at its area. At the last chapter (Page Down) or the
@@ -492,8 +492,7 @@ and those SHALL NOT be taken into another chapter by a drag either:
   chapter is listed, its lift SHALL say that it stays in its chapter.
 - an ignored clip, and a missing clip the operator removed: neither has a handle
 
-A release over a deleted chapter's placeholder SHALL move nothing and SHALL be announced as a drop that
-changed nothing. While a save is in flight, or while a move of marked clips is being applied, no clip SHALL be
+The bin does not list a deleted chapter, so no drop SHALL move a clip into one. While a save is in flight, or while a move of marked clips is being applied, no clip SHALL be
 lifted, and a drop SHALL move nothing. Move marked to…, and Move up and Move down, SHALL work as they
 did before.
 
@@ -618,9 +617,9 @@ reduced motion, no clip SHALL slide into place, and the dragged copy SHALL NOT s
   from the keyboard and presses Down
 - **THEN** "Kvällen/s1710004.mp4 is over “Morgon”, position 1 of 1" is announced: the deleted `Kvällen` was
   passed over
-- **WHEN** the operator presses Escape, then drags `Kvällen/s1710004.mp4` with the mouse and releases it over
-  the deleted `Kvällen`
-- **THEN** no chapter changed, and the drop is announced as one that changed nothing
+- **WHEN** the operator presses Escape
+- **THEN** no chapter changed, and the bin lists no heading for the deleted `Kvällen`, so there is nothing to drop
+  a clip on
 
 #### Scenario: A missing clip stays in its chapter
 - **WHEN** on `2024-09-01 - Sommarlov`, after adding a chapter `Morgon`, the operator lifts `borttagen.mp4`
