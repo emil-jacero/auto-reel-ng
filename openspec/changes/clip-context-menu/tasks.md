@@ -73,7 +73,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - during a save (with the PUT held), Enter on Rotate right announces `MENU_LOCKED` and turns nothing;
   - after Ignore clip chosen by keyboard, focus is on the block of `s1710003.mp4`;
   - after Move to Main, focus is on the block of `s1710003.mp4`, now in Main.
-- [ ] 2.3 Add the two `SHORTCUTS` rows (design D6). Add a paragraph to `web/README.md` beside the `editor-shortcuts`
+- [x] 2.3 Add the two `SHORTCUTS` rows (design D6). Add a paragraph to `web/README.md` beside the `editor-shortcuts`
   one. Verify that `shortcuts.test.ts` still passes, then in Playwright check that:
   - the Keyboard shortcuts list shows both rows;
   - with the playhead in `s1710002.mp4` and its menu opened by a right-click, pressing W, Right, then Space on Rotate
