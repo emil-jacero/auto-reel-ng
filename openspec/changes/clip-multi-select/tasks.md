@@ -34,7 +34,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 2. Wiring (web/src/timeline, web/src/edit)
 
-- [ ] 2.1 Presses (design D3): modifier presses and Enter keys on track blocks, and modifier clicks on today's bin rows.
+- [x] 2.1 Presses (design D3): modifier presses and Enter keys on track blocks, and modifier clicks on today's bin rows.
   `aria-pressed` follows the set, and Alt+arrows with a set say why (design D6).
   Verify with `npm test` and `npm run check`, then in Playwright:
   - the scenarios of "A clip is selected on the track or in the bin";

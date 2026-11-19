@@ -13,6 +13,7 @@ import {
   NOTHING,
   openState,
   pressClip,
+  pressOf,
   sameSelection,
   selectedClips,
   selectionWords,
@@ -376,4 +377,15 @@ test('a change to one clip, to another kind, or to nothing new keeps today\'s wo
   // The same clips with another anchor say nothing.
   assert.equal(selectionWords(two, set(['a', 'c'], 'a', 'a'), nameOf), null)
   assert.equal(selectionWords(two, two, nameOf), null)
+})
+
+test('pressOf: Ctrl or Cmd toggles, Shift ranges, nothing is alone', () => {
+  const keys = { ctrlKey: false, metaKey: false, shiftKey: false }
+  assert.equal(pressOf(keys), 'alone')
+  assert.equal(pressOf({ ...keys, ctrlKey: true }), 'toggle')
+  assert.equal(pressOf({ ...keys, metaKey: true }), 'toggle')
+  assert.equal(pressOf({ ...keys, shiftKey: true }), 'range')
+  // Ctrl or Cmd wins when both are held.
+  assert.equal(pressOf({ ctrlKey: true, metaKey: false, shiftKey: true }), 'toggle')
+  assert.equal(pressOf({ ctrlKey: false, metaKey: true, shiftKey: true }), 'toggle')
 })

@@ -39,6 +39,8 @@ import { CHAPTER_DROP } from './dragSlots'
 import { emptyChapterWords, holdsNothing } from './emptyChapter'
 import { groupWords } from './marks'
 import type { IgnoredGroup } from './wideBin.ts'
+import { pressOf } from './workspace/selection.ts'
+import type { Press } from './workspace/selection.ts'
 
 /*
  * One chapter's clips. Three ways to move a clip within the chapter: drag its
@@ -204,7 +206,8 @@ const RowBody = memo(function RowBody({
   length?: string | null
   /** Whether the clip is the workspace's selected one; null: it cannot be selected (no button). */
   selected?: boolean | null
-  onSelect?: (identity: string) => void
+  /** The press on the name: Ctrl/Cmd adds or takes out, Shift ranges (`pressOf`). */
+  onSelect?: (identity: string, press: Press) => void
 }) {
   const thumb = <ClipThumb eventId={eventId} clip={clip} name={name} turn={turn} />
   return (
@@ -234,7 +237,7 @@ const RowBody = memo(function RowBody({
               type="button"
               className="clip-select"
               aria-pressed={selected}
-              onClick={() => onSelect(clip.identity)}
+              onClick={(event) => onSelect(clip.identity, pressOf(event))}
             >
               <ClipName name={name} />
             </button>
@@ -278,6 +281,10 @@ const NO_SHIFT: SortingStrategy = () => null
 
 // Constant elements: React skips them on the re-render every row gets per drag step.
 const NO_SELECT = () => {}
+const NONE_SELECTED: ReadonlySet<string> = new Set()
+
+/** A press on a bin row's clip: alone, added or taken out, or a range. */
+export type SelectHandler = (identity: string, press: Press) => void
 const GRIP = <Icon name="grip-vertical" />
 const UP = <Icon name="arrow-up" />
 const DOWN = <Icon name="arrow-down" />
@@ -388,7 +395,7 @@ const ClipRow = memo(function ClipRow({
   compact: boolean
   /** The clip is the workspace's selected one (bin rows only). */
   selected: boolean
-  onSelectClip: (identity: string) => void
+  onSelectClip: SelectHandler
 }) {
   // The marked clips a held group stands for, or null: then no row makes room (a line shows
   // at every gap) and the held rows are dimmed.
@@ -532,7 +539,12 @@ const ClipRow = memo(function ClipRow({
               // A control, the cuts panel or a mark takes its own press.
               const target = event.target as HTMLElement
               if (target.closest('button, input, a, label, select, textarea, [id^="cuts-"]') === null) {
-                onSelectClip(identity)
+                const press = pressOf(event)
+                if (press === 'range') {
+                  // Shift+click would otherwise leave the browser's text selection behind.
+                  window.getSelection()?.removeAllRanges()
+                }
+                onSelectClip(identity, press)
               }
             }
           : undefined
@@ -836,7 +848,7 @@ export const ClipOrderList = memo(function ClipOrderList({
   onInclude,
   onAnnounce,
   compact = false,
-  selectedClip = null,
+  selectedClips = NONE_SELECTED,
   onSelectClip = NO_SELECT,
   ignoredApart = false,
 }: {
@@ -896,10 +908,10 @@ export const ClipOrderList = memo(function ClipOrderList({
   onAnnounce: (message: string) => void
   /** Edit mode's workspace: the clip bin's compact rows. Absent, the stacked page's rows. */
   compact?: boolean
-  /** The selected clip's identity if this chapter plays it, else null (the bin's highlighted row). */
-  selectedClip?: string | null
-  /** A press on a bin row selects its clip. */
-  onSelectClip?: (identity: string) => void
+  /** The selected clips this chapter plays (the bin's highlighted rows); a stable set while they are the same. */
+  selectedClips?: ReadonlySet<string>
+  /** A press on a bin row: selects its clip, adds or takes it out, or ranges (`pressOf`). */
+  onSelectClip?: SelectHandler
   /** The ignored clips are listed apart, after the chapters (`IgnoredBin`): list none here. */
   ignoredApart?: boolean
 }) {
@@ -1106,7 +1118,7 @@ export const ClipOrderList = memo(function ClipOrderList({
                   onStep={onStep}
                   onRemove={onRemoveRow}
                   compact={compact}
-                  selected={selectedClip === identity}
+                  selected={selectedClips.has(identity)}
                   onSelectClip={onSelectClip}
                 />
               )

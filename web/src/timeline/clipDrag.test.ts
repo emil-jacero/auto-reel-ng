@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 
 import {
   CLIP_SLOP_PX,
+  MOVE_ONE_WORDS,
   bandSlot,
   dropWords,
   flatMove,
@@ -90,5 +91,14 @@ describe('the span hit test', () => {
   })
   it('moves a clip across a chapter join with no clip to shift', () => {
     assert.deepEqual([0, 1, 2, 3, 4].map((i) => shiftOf(3, 3, i)), [0, 0, 0, 0, 0])
+  })
+})
+
+describe('MOVE_ONE_WORDS', () => {
+  it('says Alt and an arrow move one clip and where several move', () => {
+    assert.equal(
+      MOVE_ONE_WORDS,
+      'Alt and an arrow move one clip. Move to\u2026 in the Clip tab moves the selected clips.',
+    )
   })
 })
