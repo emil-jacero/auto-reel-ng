@@ -16,7 +16,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 1. Rules (pure modules)
 
-- [ ] 1.1 Add `web/src/timeline/clipMenu.ts` (design D2): `clipMenu`, `MENU_LOCKED`, `menuSelects` and `focusAfter`.
+- [x] 1.1 Add `web/src/timeline/clipMenu.ts` (design D2): `clipMenu`, `MENU_LOCKED`, `menuSelects` and `focusAfter`.
   Verify with `clipMenu.test.ts`, which must check:
   - the items' order, groups and labels;
   - Move to: one item per other chapter, in the chapters' order, and none when one chapter is drawn;
