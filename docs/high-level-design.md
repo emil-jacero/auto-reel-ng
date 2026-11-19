@@ -961,6 +961,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     S, Alt+Left/Right) answer wherever focus is in the workspace, not only on the playhead grip or the track; a
     "Keyboard shortcuts" list in the top bar (also `?`) and a switch that turns the single-key layer off; Ctrl+wheel
     zooms over the whole Timeline part; no API, engine or `RENDER_GRAPH_VERSION` change. `clip-split` was dropped.
+    **Slice 7 is built** (`clip-context-menu`, web only; D-28): a right-click (or Shift+F10 / the Menu key) on a clip
+    block on the track opens a menu of that clip's edits (Rotate, Cut at playhead, Use frame as poster, Move to a
+    chapter, Ignore clip), each the same guarded, undoable draft edit as its Clip tab control; no API, engine or
+    `RENDER_GRAPH_VERSION` change.
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
     D-17): a local image and a test stack, nothing published; the published image waits for the D-1
     fdk-aac blocker (§4.12).
@@ -2056,6 +2060,29 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     (tool row, lanes, track), about the pointer on the track and about the playhead elsewhere; over the viewer, the bin
     and the inspector the browser keeps it. J/K/L were not added. No API, engine or `RENDER_GRAPH_VERSION` change; no
     new dependency.
+  - **Clip menu (change `clip-context-menu`, slice 7).** `compact-bin-tools` had listed a context menu as a non-goal
+    ("the tools stay direct buttons"); with the clip selection built, it comes now, and every tool stays a direct
+    button, the menu being a second route to it. One menu, owned by `useTimeline` (`openClipMenu`), because its items
+    need `editing`, the playhead, `usePoster`, `reorder` and the selection, which live there; it renders in a portal
+    into `document.body`, so the track's keys never see it and no pane clips it. It is a `popover="manual"`, not
+    `auto`: on Linux and macOS `contextmenu` fires on the button's press, and an `auto` popover's light dismiss
+    would hide the menu on the release; the menu therefore does its own dismiss (an outside press, scroll, resize,
+    blur, its clip leaving the track). It is an ARIA menu (`ui/Menu.tsx`; pure keys and placement in `ui/menu.ts`) and
+    keeps every key but Ctrl/Cmd chords, so no workspace shortcut acts behind it.
+  - **The items are existing edits.** Pure rules in `timeline/clipMenu.ts`: Rotate left/right, Cut at playhead (the
+    Clip tab's `addCutAtPlayhead`, lifted out and shared), Use frame as poster, Move to each other chapter (the
+    end-of-chapter `clip-drop`) and Ignore clip. Each has the Clip tab's announcement and is one Undo step; no new
+    reducer action. Cut and poster act **at the playhead**, never at the pointer: a right-click does not move the
+    playhead, and with the playhead in another clip they are unavailable with the Clip tab's reason in words. While a
+    save is pending every item is unavailable under one lock note. Unavailable items stay listed, and choosing one
+    says why and leaves the menu open. Focus goes back to the clip's block (the next clip's after Ignore).
+  - **The track only, until `plain-clip-bin`.** The menu opens on a clip block (body, edge tools, cut handles) and not on
+    today's bin rows, which `plain-clip-bin` replaces and will wire to the same `openClipMenu` with the items an
+    ignored or missing clip needs. A right-button press never starts a drag, and a right-click during a drag cancels it
+    and opens no menu. **Touch rule:** the browser's `contextmenu` only (a long press where the browser sends one), no
+    timer of our own; iOS Safari sends none, so the Clip tab stays the way to every item. Under a coarse pointer each
+    item is at least 44 px tall. The Keyboard shortcuts list gains two rows. No API, engine or `RENDER_GRAPH_VERSION`
+    change; no new dependency.
   - **Not here:** "Ignore clip" (moved 2026-11-15 to `track-drag-edit`, which builds the draft's ignore edit), dragging on
     the track, Undo. No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
 - **D-27 — Analysis is a job** (2026-10-05, change `analysis-job`). The user asked what "Not analyzed" means and why

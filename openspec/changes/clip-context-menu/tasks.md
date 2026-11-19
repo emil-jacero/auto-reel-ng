@@ -101,13 +101,13 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   no drag, and a touch swipe scrolls the track without dragging (checked in Chromium only). Firefox has no touch
   emulation (neither hold nor swipe). Chromium's bundled build cannot decode the H.264 proxy, so "Use frame as
   poster" was checked there with VP9 proxies.
-- [ ] 3.2 Record the change:
+- [x] 3.2 Record the change:
   - HLD: add a D-28 "Clip menu" bullet: one menu owned by the Timeline, a manual popover and why, the items as
     existing edits, Cut and poster at the playhead, the track only until `plain-clip-bin`, and the touch rule. Add
     "Slice 7 is built" to §6 item 10.
   - `docs/editor-workspace.md`: add row 7, `clip-context-menu`, and note that it reverses the context-menu half of
     `compact-bin-tools`' non-goal.
-- [ ] 3.3 Gates:
+- [x] 3.3 Gates:
   - `npm test`, `npm run check` and `npm run build` in podman;
   - `openspec validate clip-context-menu --strict`.
 
