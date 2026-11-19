@@ -38,3 +38,14 @@ test('Escape from the card editor returns focus to the opener, then the button, 
   heading.on = false
   assert.equal(returnTarget([opener, button, block, heading], shown), null)
 })
+
+test('Escape from a block-selected card (no opener) returns focus to the block, not the row button', () => {
+  const shown = (element: { on: boolean }) => element.on
+  const button = { on: true }
+  const block = { on: true }
+  const heading = { on: true }
+  // As `leave` orders them when `reveal` recorded no opener.
+  assert.equal(returnTarget([block, button, heading], shown), block)
+  // In Prepare there is no block: the row's button is next.
+  assert.equal(returnTarget([undefined, button, heading], shown), button)
+})

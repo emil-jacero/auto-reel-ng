@@ -183,12 +183,15 @@ export const DeletedChapter = memo(function DeletedChapter({
   notes,
   locked,
   onUndo,
+  headingLevel: Heading = 'h2',
 }: {
   chapterKey: ChapterKey
   heading: string
   notes: readonly string[]
   locked: boolean
   onUndo: ChapterHandler
+  /** The struck name's heading: one level below the section it is listed in. */
+  headingLevel?: 'h2' | 'h3'
 }) {
   const headingId = useId()
   return (
@@ -199,9 +202,9 @@ export const DeletedChapter = memo(function DeletedChapter({
       aria-labelledby={headingId}
     >
       <header className="panel-header">
-        <h2 id={headingId}>
+        <Heading id={headingId}>
           <s>{heading}</s>
-        </h2>
+        </Heading>
         <span className="badge" data-tone="warn">
           {DELETE}
           Deleted when you save

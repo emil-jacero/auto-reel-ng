@@ -33,7 +33,7 @@ import { lengthWords } from './clipLength'
 import { cutsOf, keptOriginal, movedSet } from './draft'
 import type { ChapterKey, Cuts, DraftCut, Rotations } from './draft'
 import { CHAPTER_DROP } from './dragSlots'
-import { emptyChapterWords, holdsNothing } from './emptyChapter'
+import { emptyAreaWords, holdsNothing } from './emptyChapter'
 import { groupWords } from './marks'
 import type { IgnoredGroup } from './wideBin.ts'
 import { pressOf } from './workspace/selection.ts'
@@ -1072,7 +1072,7 @@ export const ClipOrderList = memo(function ClipOrderList({
         chapterKey={chapterKey}
         sectionRef={sectionRef}
         plays={plays}
-        words={emptyChapterWords(alone, holdsNone)}
+        words={emptyAreaWords(alone, holdsNone)}
       />
       {plays && (
         <SortableContext id={chapterKey} items={items} strategy={strategy}>

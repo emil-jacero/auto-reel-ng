@@ -84,7 +84,8 @@ function isShown(element: HTMLElement): boolean {
 /**
  * Where Escape from the card editor puts focus: the first of `candidates`, in order, that is
  * shown (`kept`: the control that selected the card; then the card's Edit Titlecard button, its
- * block, and the Chapters heading), or null.
+ * block, and the Chapters heading; a card selected from its block has no `kept`, so `leave` puts
+ * the block before the button), or null.
  */
 export function returnTarget<T>(
   candidates: readonly (T | null | undefined)[],
@@ -167,7 +168,10 @@ export function useSelection(): SelectionBinding {
     flushSync(clear)
     // Last, the Chapters heading: the chapter was deleted meanwhile, so no button or block is left.
     const heading = document.querySelector<HTMLElement>('.edit-chapters > .panel-header > h2')
-    returnTarget([kept, button, block, heading], isShown)?.focus({ preventScroll: true })
+    // No opener recorded: the card was selected from its Timeline block (`reveal`), so the block
+    // comes before the row's button, which the Event tab shows again.
+    const candidates = kept === null ? [block, button, heading] : [kept, button, block, heading]
+    returnTarget(candidates, isShown)?.focus({ preventScroll: true })
   }, [card, clear])
   const { opened } = state
   return useMemo(

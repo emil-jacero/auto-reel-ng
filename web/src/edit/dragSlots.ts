@@ -12,16 +12,14 @@ import type { ChapterKey, Orders } from './draft'
  *
  * dnd-kit names a target by a droppable's id: a played clip's row is its identity,
  * a listed chapter is `/chapter/<key>` (the gap after its last clip, or the area of
- * a chapter that plays none) and a deleted chapter's placeholder is `/deleted/<key>`.
- * An identity is a path relative to the event folder, never starting with `/`, so
- * neither prefix can name a clip.
+ * a chapter that plays none). A deleted chapter has no droppable. An identity is a path
+ * relative to the event folder, never starting with `/`, so the prefix cannot name a clip.
  *
  * While a **group** of marked clips is held (`DragModel.gaps`), the clip's own chapter offers
  * gaps too: no row makes room for a set, so every chapter shows a line, the own one as another.
  */
 
 export const CHAPTER_DROP = '/chapter/'
-export const DELETED_DROP = '/deleted/'
 
 /** Where a drop puts the clip: an index into a listed chapter's play order. */
 export type Slot = { chapter: ChapterKey; index: number }
@@ -165,9 +163,9 @@ export function overIdOf(model: DragModel, identity: string, slot: Slot): string
     : `${CHAPTER_DROP}${slot.chapter}`
 }
 
-/** The slot an `over` id stands for; null for none or a deleted placeholder. */
+/** The slot an `over` id stands for; null for none or an unlisted chapter. */
 export function slotOf(model: DragModel, identity: string, overId: string | null): Slot | null {
-  if (overId === null || overId.startsWith(DELETED_DROP)) {
+  if (overId === null) {
     return null
   }
   if (overId.startsWith(CHAPTER_DROP)) {
@@ -188,7 +186,7 @@ function distance(span: Span, y: number): number {
 }
 
 /**
- * The droppable a pointer at height `y` targets, or null (a deleted chapter's placeholder).
+ * The droppable a pointer at height `y` targets, or null (the clip is not in a chapter).
  *
  * The chapter is the listed one whose span holds `y`, else the nearest (a pointer in the
  * gap between two panels); a clip that stays home always gets its own. In its own chapter
@@ -205,12 +203,8 @@ export function pointerTarget(
   staysHome: boolean,
   y: number,
   chapterSpan: (key: ChapterKey) => Span | undefined,
-  deletedSpans: readonly Span[],
   rowSpan: (identity: string) => Span | undefined,
 ): string | null {
-  if (deletedSpans.some((span) => distance(span, y) === 0)) {
-    return null
-  }
   const own = model.chapterOf.get(identity)
   if (own === undefined) {
     return null

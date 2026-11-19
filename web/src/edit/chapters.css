@@ -1,8 +1,8 @@
 /*
- * Edit mode's chapter controls (`ChapterTools.tsx`, `ChapterDialogs.tsx`): each
- * chapter's tools row, the deleted placeholder, Add chapter, the "from …" badge, the Edit
- * Titlecard button and the name dialog (an empty chapter's area is drag.css's). No new colour:
- * every text is `--fg-muted` or stronger.
+ * Edit mode's chapter controls (`ChapterTools.tsx`, `ChapterDialogs.tsx`), in the inspector's
+ * Chapters list: each chapter's tools, the deleted placeholder, Add chapter, the "from …" badge,
+ * the Edit Titlecard button and the name dialog (an empty chapter's area is drag.css's). No new
+ * colour: every text is `--fg-muted` or stronger.
  */
 @layer screens {
   /* Under the sticky one-line header, not in it; scrolls with the chapter. */
@@ -49,13 +49,8 @@
     background: var(--surface);
   }
 
-  .edit-chapter[data-deleted] h2 {
+  .edit-chapter[data-deleted] :is(h2, h3) {
     color: var(--fg-muted);
-  }
-
-  /* Focused by script after Add chapter, as the page h1 is: no ring. */
-  .edit-chapter > .panel-header > h2:focus {
-    outline: none;
   }
 
   .chapter-add {
@@ -75,12 +70,9 @@
 
   @media (pointer: coarse) {
     /*
-     * 16 px both ways. Each 32 px button's area grows 6 px up and down, and the
-     * up/down pair's (`.btn-icon + .btn-icon`, components.css) meet at their
-     * shared edge and grow 12 px outward, so the pair's areas reach 12 px into
-     * the gap beside them; a text button's grows none sideways. The 4 px left
-     * over leaves no edge for pixel rounding to hand to the neighbour (a 12 px
-     * gap made the areas touch, and a tap on a button's edge reached Move up).
+     * 16 px both ways, for the text buttons (Undo): each 32 px button's area grows 6 px up and
+     * down, and a text button's grows none sideways. The Chapters list's rows have 44 px
+     * buttons instead (below), whose areas grow nothing.
      */
     .chapter-actions {
       gap: var(--s-4);
@@ -111,9 +103,8 @@
 
 @layer screens {
   /*
-   * Edit Titlecard (`EditTitlecard.tsx`): the chapter header bar's one button, after the name and
-   * the clip count (which takes the free space), so its right edge is the same on every chapter.
-   * Icon and words; always a 44 px target. The name wraps rather than pushing the button out of the bar.
+   * Edit Titlecard (`EditTitlecard.tsx`): a chapter row's button in the Chapters list (its row
+   * sizes it, below). Icon and words.
    */
   .edit-chapter > .panel-header {
     flex-wrap: wrap;
@@ -167,8 +158,9 @@
     grid-template-columns: minmax(0, 1fr) auto auto auto;
     align-items: center;
     column-gap: var(--s-2);
+    /* 32 px buttons in a 36 px row: the 1px border-bottom and the content share the 36 px. */
     min-block-size: 2.25rem;
-    padding-block: var(--s-1);
+    padding-block: 0;
     border-bottom: 1px solid var(--border);
 
     &:last-child {
@@ -263,8 +255,9 @@
       border-bottom: 0;
       background: none;
 
-      & > h2 {
+      & > :is(h2, h3) {
         min-inline-size: 0;
+        overflow-wrap: anywhere;
         font-size: inherit;
       }
     }
@@ -292,6 +285,24 @@
 
       & > .chapter-actions {
         gap: var(--s-4);
+      }
+
+      /*
+       * The buttons are 44 px squares, as the bin's were: their tap areas (components.css)
+       * then grow nothing, so the 16 px gaps (between the line's parts and between Delete and
+       * the up/down pair) leave no area touching another, and the pair's own 2 px gap shows
+       * as it does elsewhere.
+       */
+      & .btn,
+      & .edit-titlecard {
+        inline-size: 2.75rem;
+        min-inline-size: 2.75rem;
+        block-size: 2.75rem;
+        min-block-size: 2.75rem;
+      }
+
+      & .chapter-order {
+        gap: 0.125rem;
       }
 
       & > .chapter-tools,

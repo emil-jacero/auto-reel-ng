@@ -175,7 +175,7 @@ describe('a held group (gaps)', () => {
       [R2, { top: 500, bottom: 560 }],
     ])
     const at = (y: number, model = gaps) =>
-      pointerTarget(model, TWO, false, y, (key) => chapters.get(key), [], (row) => rows.get(row))
+      pointerTarget(model, TWO, false, y, (key) => chapters.get(key), (row) => rows.get(row))
     // The first row whose centre lies below the pointer: the gap before it.
     assert.equal(at(310), TWO)
     assert.equal(at(330), THREE)

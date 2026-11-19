@@ -120,6 +120,7 @@ export const ChapterList = memo(function ChapterList({
                   notes={notes.get(chapter.key) ?? NO_NOTES}
                   locked={locked}
                   onUndo={onUndo}
+                  headingLevel="h3"
                 />
               </li>
             ) : (

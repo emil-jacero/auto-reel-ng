@@ -42,7 +42,6 @@ import { groupOf, groupPlace } from './draft'
 import type { ChapterKey, Orders } from './draft'
 import {
   CHAPTER_DROP,
-  DELETED_DROP,
   clampScroll,
   dragModel,
   overIdOf,
@@ -51,7 +50,7 @@ import {
   stepChapter,
   stepSlot,
 } from './dragSlots'
-import type { Slot, Span } from './dragSlots'
+import type { Slot } from './dragSlots'
 import { GROUP_INSTRUCTIONS, groupWords } from './marks'
 
 /*
@@ -67,8 +66,8 @@ import { GROUP_INSTRUCTIONS, groupWords } from './marks'
  * of the clip follows the pointer, above every panel (`DragOverlay`, in <body>),
  * naming the chapter and the position. A drop there is one edit (`onDropInto`,
  * the editor's `clip-drop`); a drop within the chapter is a reorder (`onReorder`).
- * A missing clip never leaves its chapter, and a deleted chapter's placeholder
- * takes nothing. Every drag is spoken through dnd-kit's live region.
+ * A missing clip never leaves its chapter, and a deleted chapter has nothing to drop on.
+ * Every drag is spoken through dnd-kit's live region.
  *
  * Lifting one of two or more marked clips lifts the whole marked group (draft.ts
  * `groupOf`): dnd-kit has one active draggable, so the group is the lifted clip standing for
@@ -451,7 +450,7 @@ export function ChapterDrag({
     return { own, order, position: order.indexOf(identity) + 1 }
   }, [])
 
-  /** A target in another chapter, or null (none, a deleted placeholder, the own chapter). */
+  /** A target in another chapter, or null (none, an unlisted chapter, the own chapter). */
   const targetOf = useCallback(
     (overId: UniqueIdentifier | null): Target | null => {
       const identity = lift.current?.identity
@@ -473,8 +472,8 @@ export function ChapterDrag({
   )
 
   /**
-   * Where the held group would start if released over `overId`, or null (none, a deleted
-   * placeholder). Its chapter's name is left out when the group sits in that chapter alone.
+   * Where the held group would start if released over `overId`, or null (none, an unlisted
+   * chapter). Its chapter's name is left out when the group sits in that chapter alone.
    */
   const groupTargetOf = useCallback(
     (overId: UniqueIdentifier | null): GroupTarget | null => {
@@ -547,19 +546,12 @@ export function ChapterDrag({
         // Before the first key the clip is over itself, as `closestCenter` gives.
         return [{ id: slot.current === null ? active.id : overIdOf(now, identity, slot.current) }]
       }
-      const deleted: Span[] = []
-      for (const [id, rect] of droppableRects) {
-        if (String(id).startsWith(DELETED_DROP)) {
-          deleted.push(rect)
-        }
-      }
       const target = pointerTarget(
         now,
         identity,
         home(identity),
         pointerCoordinates.y,
         (key) => droppableRects.get(`${CHAPTER_DROP}${key}`),
-        deleted,
         (row) => droppableRects.get(row),
       )
       return target === null ? [] : [{ id: target }]
