@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { menuKey, placeMenu } from './menu.ts'
+import { contextAnchor, menuKey, placeMenu, visiblePart } from './menu.ts'
 import type { MenuPress } from './menu.ts'
 
 const press = (key: string, mods: Partial<MenuPress> = {}): MenuPress => ({
@@ -152,5 +152,31 @@ describe('placeMenu at a box', () => {
   it('clamps a box that starts out of view, and one near the right edge', () => {
     assert.equal(placeMenu(box(-300, 100, 500), size, view).left, 8)
     assert.equal(placeMenu(box(1200, 100), size, view).left, 1280 - 8 - 200)
+  })
+})
+
+describe('visiblePart', () => {
+  it('is the block cut to the scroller', () => {
+    const block = { left: -300, top: 10, right: 200, bottom: 50 }
+    const view = { left: 0, top: 0, right: 600, bottom: 100 }
+    assert.deepEqual(visiblePart(block, view), { left: 0, top: 10, right: 200, bottom: 50 })
+  })
+
+  it('is the block itself when none of it shows', () => {
+    const block = { left: -300, top: 10, right: -100, bottom: 50 }
+    assert.deepEqual(visiblePart(block, { left: 0, top: 0, right: 600, bottom: 100 }), block)
+  })
+})
+
+describe('contextAnchor', () => {
+  const target = { left: 100, top: 20, right: 300, bottom: 60 }
+  const block = { left: 100, top: 20, right: 300, bottom: 60 }
+
+  it('opens at the pointer when it is on the target', () => {
+    assert.deepEqual(contextAnchor({ x: 150, y: 30 }, target, block), { x: 150, y: 30 })
+  })
+
+  it('opens under the block when the point is off the target', () => {
+    assert.deepEqual(contextAnchor({ x: 0, y: 0 }, target, block), { box: block })
   })
 })

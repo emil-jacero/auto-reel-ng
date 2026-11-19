@@ -164,6 +164,7 @@ export function ClipHandles({
   return (
     <div
       className="tl-trims"
+      data-identity={identity}
       data-index={index}
       data-after={shifted || undefined}
       onPointerDownCapture={() => {

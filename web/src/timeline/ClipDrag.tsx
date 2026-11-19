@@ -251,7 +251,22 @@ export function useClipDrag(
         const scroller = viewport.current;
         const scrolled = () =>
           end({ currentTarget: target, pointerId: event.pointerId });
+        // A context-menu request while the press is held (`clip-context-menu`, D4) runs before
+        // React's root listener. An unstarted press ends quietly and the request goes on to open
+        // the menu (a Ctrl+click on macOS presses button 0 first); a started drag is cancelled as
+        // Escape does, and the event is prevented: neither our menu nor the browser's opens.
+        const menu = (request: Event) => {
+          const p = press.current;
+          if (p === null || p.token !== token) {
+            return;
+          }
+          if (p.started) {
+            request.preventDefault();
+          }
+          end({ currentTarget: target, pointerId: event.pointerId });
+        };
         window.addEventListener("keydown", cancel, true);
+        window.addEventListener("contextmenu", menu, true);
         scroller?.addEventListener("scroll", scrolled);
         press.current = {
           id: event.pointerId,
@@ -266,6 +281,7 @@ export function useClipDrag(
           ignore: false,
           off: () => {
             window.removeEventListener("keydown", cancel, true);
+            window.removeEventListener("contextmenu", menu, true);
             scroller?.removeEventListener("scroll", scrolled);
           },
         };

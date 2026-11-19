@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import type { Selection } from '../edit/workspace/selection.ts'
-import { clipMenu, focusAfter, MENU_LOCKED, menuSelects } from './clipMenu.ts'
+import { clipMenu, focusAfter, MENU_LOCKED, menuOpenKey, menuSelects } from './clipMenu.ts'
 import type { ClipMenuFacts } from './clipMenu.ts'
 
 const facts: ClipMenuFacts = { locked: false, cutWhy: null, posterWhy: null, others: [] }
@@ -112,5 +112,27 @@ describe('focusAfter', () => {
     assert.equal(focusAfter(['a'], 'a'), null)
     assert.equal(focusAfter(['a', 'b'], 'x'), null)
     assert.equal(focusAfter([], 'a'), null)
+  })
+})
+
+describe('menuOpenKey', () => {
+  const press = (key: string, mods: Partial<Parameters<typeof menuOpenKey>[0]> = {}) => ({
+    key,
+    shiftKey: false,
+    ctrlKey: false,
+    altKey: false,
+    metaKey: false,
+    ...mods,
+  })
+  it('is the Menu key and Shift+F10', () => {
+    assert.equal(menuOpenKey(press('ContextMenu')), true)
+    assert.equal(menuOpenKey(press('F10', { shiftKey: true })), true)
+  })
+  it('is not F10 alone, nor Shift+F10 with Ctrl, Alt or Cmd, nor another key', () => {
+    assert.equal(menuOpenKey(press('F10')), false)
+    for (const mod of ['ctrlKey', 'altKey', 'metaKey'] as const) {
+      assert.equal(menuOpenKey(press('F10', { shiftKey: true, [mod]: true })), false)
+    }
+    assert.equal(menuOpenKey(press('Enter', { shiftKey: true })), false)
   })
 })

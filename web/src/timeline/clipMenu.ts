@@ -77,3 +77,14 @@ export function focusAfter(drawn: readonly string[], identity: string): string |
   if (at < 0) return null
   return drawn[at + 1] ?? drawn[at - 1] ?? null
 }
+
+/** What `menuOpenKey` reads of a keydown. */
+export type OpenPress = { key: string; shiftKey: boolean; ctrlKey: boolean; altKey: boolean; metaKey: boolean }
+
+/** Whether a keydown on a clip's block asks for its menu: Shift+F10 (alone) or the Menu key. */
+export function menuOpenKey(press: OpenPress): boolean {
+  if (press.key === 'ContextMenu') {
+    return true
+  }
+  return press.key === 'F10' && press.shiftKey && !press.ctrlKey && !press.altKey && !press.metaKey
+}
