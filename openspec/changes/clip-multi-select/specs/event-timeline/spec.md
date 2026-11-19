@@ -53,7 +53,7 @@ than colour.
 A selection of two or more clips SHALL be announced once as the count ("3 clips selected."). Adding a clip to it or
 taking one out SHALL be announced with the clip's name and the new count ("s1710003.mp4 added. 3 clips selected.",
 "s1710003.mp4 taken out. 2 clips selected."). The clip pressed last is the selection's **last clip**; the anchor of
-a Shift press is the clip pressed last without Shift.
+a Shift press is the clip pressed last without Shift (a selection of one clip is its own anchor).
 
 #### Scenario: Card ends clip
 - **WHEN** `s1710003.mp4` is selected and the operator presses the "Kvällen" card block

@@ -274,9 +274,10 @@ describe('moveMarkedToEnd', () => {
 describe('a shipped set (clip-multi-select D2)', () => {
   const lists = ['r0', 'r1']
 
-  it('does not move a clip that a chapter no longer plays: missing, ignored or unknown', () => {
+  it('does not move a clip that no listed chapter plays: ignored, removed or unknown', () => {
     const { draft } = setup(WORKED)
-    // a3 was ignored or removed after the set was taken: it is in no chapter's order.
+    // a3 was ignored or removed after the set was taken: it is in no chapter's order. (A missing
+    // clip stays in its order; `selectionStep` leaves it out by `onDisk`, see selectionEdit.test.ts.)
     const gone = { ...draft, orders: new Map(draft.orders).set('r0', [A1, A2, A4]) }
     const shipped = new Set([A2, A3, 'unknown.mp4', B1])
     const result = moveMarkedToEnd(gone, lists, shipped, 'r1')

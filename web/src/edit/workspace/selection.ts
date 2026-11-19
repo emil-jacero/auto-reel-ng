@@ -204,20 +204,22 @@ export function lastClip(sel: Selection): string | null {
 /**
  * What the selection's polite status says for the change from `was` to `now` (design D6), or null
  * when it says nothing new: a change to a set is the count ("3 clips selected."), and a set that
- * gains or loses exactly one clip names it first ("s1710003.mp4 added. 3 clips selected."). A
- * change to one clip or to another kind keeps today's words, which are none.
+ * gains or loses exactly one clip names it first ("s1710003.mp4 added. 3 clips selected."). A set
+ * of two that loses one, which is then the clip alone, still names it ("s1710003.mp4 taken out. 1
+ * clip selected."). Any other change to one clip or to another kind keeps today's words, which
+ * are none.
  */
 export function selectionWords(
   was: Selection,
   now: Selection,
   nameOf: (identity: string) => string,
 ): string | null {
-  if (now.kind !== 'clips') {
+  const before = selectedClips(was)
+  const after = selectedClips(now)
+  if (after.length < 1 || (now.kind !== 'clips' && !(was.kind === 'clips' && before.length === 2))) {
     return null
   }
-  const before = selectedClips(was)
-  const after = now.identities
-  const count = `${after.length} clips selected.`
+  const count = after.length === 1 ? '1 clip selected.' : `${after.length} clips selected.`
   if (before.length === after.length && before.every((identity) => after.includes(identity))) {
     return null
   }
@@ -229,7 +231,7 @@ export function selectionWords(
     const out = before.find((identity) => !after.includes(identity))
     return out === undefined ? count : `${nameOf(out)} taken out. ${count}`
   }
-  return count
+  return now.kind === 'clips' ? count : null
 }
 
 /**
