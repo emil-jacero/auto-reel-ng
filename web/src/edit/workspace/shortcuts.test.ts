@@ -272,6 +272,18 @@ test('the table has the four groups, each used, and words on every row', () => {
   assert.ok(SHORTCUTS.some((row) => row.scope === 'chord'))
 })
 
+test('the clip menu has its two rows, neither a workspace row', () => {
+  const keyed = SHORTCUTS.find((row) => row.keys[0]?.join('+') === 'Shift+F10')
+  assert.equal(keyed?.group, 'Editing')
+  assert.deepEqual(keyed?.keys, [['Shift', 'F10'], ['Menu']])
+  assert.equal(keyed?.words, 'On a clip: open its menu')
+  assert.equal(keyed?.scope, 'focused')
+  const mouse = SHORTCUTS.find((row) => row.keys[0]?.[0] === 'Right-click a clip')
+  assert.equal(mouse?.group, 'Mouse')
+  assert.equal(mouse?.words, 'Open its menu')
+  assert.equal(mouse?.scope, 'mouse')
+})
+
 // --- focusFacts --------------------------------------------------------------------------------
 
 const el = (tagName: string, over: Partial<ElementLike> & { role?: string; inPreview?: boolean } = {}): ElementLike => {

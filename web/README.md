@@ -774,6 +774,12 @@ after Tab and plays after a click); `shortcutSwitch.ts` is the single-key switch
 `useTimeline` listens on `document` (workspace only) and dispatches; `KeysList.tsx` is the Keyboard shortcuts popover (`#ws-keys`, drawn from the
 table, opened by the top bar's button or `?`; `useSelection`'s Escape yields while it is open). All pure parts are tested by `npm test`.
 
+Clip menu (`clip-context-menu`): a right-click on a clip's block, an edge tool or a cut's handle on the track, or Shift+F10 / the Menu key on a
+focused block, opens one menu (`ui/Menu.tsx`, owned by `useTimeline`; pure rules in `timeline/clipMenu.ts` and `ui/menu.ts`) of the clip's existing
+edits: Rotate left/right, Cut at playhead, Use frame as poster, Move to another chapter, Ignore clip. Items that cannot act say why, and all wait
+while a save is pending. The menu stops every key but Ctrl/Cmd chords, so the workspace's keys (W, the arrows, Space) never reach the track while
+it is open; Ctrl/Cmd+Z passes and closes it if the clip leaves the track. Both ways in are rows of the Keyboard shortcuts list.
+
 `src/edit/card/` is the title-card inspector (`title-card-inspector`): `model.ts` (the nine overrides,
 change detection, the preview request, which field a refusal names), `preview.ts` (the debounce, abort and
 retry state machine, with injected timers and client), `specs.ts` (the draft card as the blocks and rows
