@@ -167,7 +167,7 @@ export function Menu({ title, note, items, at, onChoose, onClose }: MenuProps) {
     const whyId = `${base}-why-${index}`
     rows.push(
       <div
-        key={item.label}
+        key={index}
         role="menuitem"
         tabIndex={-1}
         className="menu-item"
