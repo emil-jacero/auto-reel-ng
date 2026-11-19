@@ -103,8 +103,8 @@ export function focusAfter(drawn: readonly string[], identity: string): string |
 - **Placement** (`placeMenu(anchor: Point | Box, size, view) → { left, top, maxHeight }`):
   - At a point, the menu's corner is at the point. It flips left or up where it would come within 8 px of the
     window's edge, and is clamped to 8 px.
-  - At a box, it goes under the box, start-aligned with a 4 px gap, or above when there is more room there, and is
-    clamped the same way.
+  - At a box, it goes under the box, start-aligned with a 4 px gap, or above it when it does not fit under and there is
+    more room above, and is clamped the same way.
   - The box is the block's rect intersected with the track scroller's, since a long block can start out of view.
   - It is placed in a layout effect after `showPopover()`, before the first paint
     (`position: fixed; inset: auto; margin: 0`).
