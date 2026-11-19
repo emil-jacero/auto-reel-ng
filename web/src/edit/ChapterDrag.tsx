@@ -247,6 +247,36 @@ export function intoViewSettled(row: HTMLElement, bring: (row: HTMLElement) => v
   )
 }
 
+/**
+ * `intoViewSettled` for a cancelled drag: bring the row back on every frame until its place in
+ * the window has held for a few frames (at most a second). A cancel moves the row in steps (the
+ * copy's transform is released, rows between the lifted place and the row's own come to their
+ * real height), and after the second frame the row can still be far outside the window, as with
+ * a long chapter of which the drag was cancelled from the other end.
+ */
+const STILL_FRAMES = 8
+const MAX_FRAMES = 60
+
+function intoViewSteady(row: HTMLElement, bring: (row: HTMLElement) => void): void {
+  let still = 0
+  let last = Number.NaN
+  let frames = 0
+  const step = (): void => {
+    if (!row.isConnected) {
+      return
+    }
+    bring(row)
+    const top = row.getBoundingClientRect().top
+    still = top === last ? still + 1 : 0
+    last = top
+    frames += 1
+    if (still < STILL_FRAMES && frames < MAX_FRAMES) {
+      requestAnimationFrame(step)
+    }
+  }
+  step()
+}
+
 const wholeRow = (row: HTMLElement) => row.scrollIntoView({ block: 'nearest' })
 
 /** The copy that follows the pointer: the clip's name and, over another chapter, where it goes. */
@@ -905,7 +935,7 @@ export function ChapterDrag({
       (item) => item.dataset.identity === identity,
     )
     if (row !== undefined) {
-      intoViewSettled(row, rowIntoView)
+      intoViewSteady(row, rowIntoView)
     }
   }, [lifted, rootRef])
 

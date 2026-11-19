@@ -7,6 +7,7 @@ import { decideName } from '../inlineName.ts'
 import {
   anyTitle,
   cardTitleShown,
+  draftChange,
   nameLabel,
   nameStep,
   notChangedWords,
@@ -83,6 +84,14 @@ test('leaving a refused name says it was not changed and why; nothing refused sa
 test('the field is named for a chapter or for the event', () => {
   assert.equal(nameLabel(false, 'Kvällen'), 'Name of chapter Kvällen')
   assert.equal(nameLabel(true, 'Main'), 'Title of the event')
+})
+
+test('a name the field did not write shows in the field; one it wrote does not', () => {
+  assert.equal(draftChange('Kväll', 'Kväll', null), 'none')
+  assert.equal(draftChange('Kvällen', 'Kväll', 'Kväll'), 'own')
+  // Undo changes to this card, or the Details form's Title, moved the name.
+  assert.equal(draftChange('Kväll', 'Kvällen', 'Kväll'), 'external')
+  assert.equal(draftChange('Grill', 'Grillkväll', null), 'external')
 })
 
 test('the card title is shown only for a card that has one; clearing it hides it', () => {
