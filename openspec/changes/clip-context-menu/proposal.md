@@ -50,7 +50,7 @@ four follow-ups agreed on 2026-11-18: shortcuts, a clip context menu, a plain cl
 - **Touch.** A long press opens the menu where the browser reports it as a context-menu request. Under a coarse
   pointer each item is at least 44 px tall.
 - **Keyboard shortcuts list** (`editor-shortcuts`) gains two rows from its table:
-  - "Shift+F10 or Menu key on a clip: Open its menu" (Editing)
+  - "Shift+F10 or Menu: On a clip: open its menu" (Editing)
   - "Right-click a clip: Open its menu" (Mouse)
 - **One reusable menu.** The Timeline owns one clip menu and one way to open it. `plain-clip-bin` will open the same
   menu from its rows. The menu acts on the one clip it was opened on.

@@ -157,8 +157,11 @@ export function focusAfter(drawn: readonly string[], identity: string): string |
 - **Modality.** A right-click sets `pointer`, and Tab out of the menu sets `keyboard`. After the menu closes, Space
   on the block follows `editor-shortcuts`' rule unchanged.
 - **`SHORTCUTS` gains two rows:**
-  - `{ group: 'Editing', keys: 'Shift+F10 or Menu key on a clip', words: 'Open its menu', scope: 'focused' }`
-  - `{ group: 'Mouse', keys: 'Right-click a clip', words: 'Open its menu', scope: 'mouse' }`
+  - `{ group: 'Editing', keys: [['Shift', 'F10'], ['Menu']], words: 'On a clip: open its menu', scope: 'focused' }`
+  - `{ group: 'Mouse', keys: [['Right-click a clip']], words: 'Open its menu', scope: 'mouse' }`
+
+  `keys` is the table's `string[][]` (each inner array one chord, shown as caps). The Editing row puts its context in
+  `words`, as in "On a suggestion: approve it"; the Mouse row keeps the gesture in `keys`, as in "Double-click the track".
 
   Neither is a `workspace` row, so the layer's row↔command test is unchanged.
 
