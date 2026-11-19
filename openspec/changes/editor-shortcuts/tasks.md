@@ -24,7 +24,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - arrows on a range or `role=slider` give `null`;
   - AltGr characters;
   - every `workspace` row maps to a command, and every command has a row.
-- [ ] 1.2 Add `modality.ts` (design D2): `nextModality`, `lastInput()`, `pointerHeld()`, and the install hook used by
+- [x] 1.2 Add `modality.ts` (design D2): `nextModality`, `lastInput()`, `pointerHeld()`, and the install hook used by
   `Workspace.tsx`. Verify with `modality.test.ts`, which must check that:
   - Tab gives `keyboard` and a pointer press gives `pointer`;
   - an arrow keeps the last input;
