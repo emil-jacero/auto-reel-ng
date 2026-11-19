@@ -4,7 +4,7 @@ import { Icon } from '../ui/Icon'
 import { EDIT_TITLECARD, barButton, editTitlecardName } from './chapterBar'
 
 /*
- * "Edit Titlecard" (`edit-mode-declutter`): the button in every chapter's header bar. It selects
+ * "Edit Titlecard" (`edit-mode-declutter`): the button in every chapter's row of the Event tab's Chapters list. It selects
  * the chapter's card, the selection the Timeline's blocks share, and shows its editor in the
  * inspector, the one place for a name and a card. It writes nothing itself. Busy-control rule: while a save or
  * a move is pending it is `aria-disabled` and opens nothing.
@@ -30,7 +30,7 @@ export const EditTitlecard = memo(function EditTitlecard({
   id: string
   heading: string
   locked: boolean
-  /** The bin: icon-only, its words in the tooltip. */
+  /** The Chapters list's row: icon-only, its words in the tooltip. */
   compact?: boolean
 }) {
   const model = useContext(CardButtonContext)
@@ -42,6 +42,7 @@ export const EditTitlecard = memo(function EditTitlecard({
     <button
       type="button"
       className="btn btn-secondary edit-titlecard"
+      data-card={id}
       aria-label={editTitlecardName(heading)}
       title={compact ? editTitlecardName(heading) : undefined}
       aria-pressed={pressed}
@@ -53,7 +54,7 @@ export const EditTitlecard = memo(function EditTitlecard({
       }}
     >
       {PENCIL}
-      {/* The bin's compact header shows the icon alone (workspace.css); the name says it all. */}
+      {/* A row shows the icon alone (chapters.css); the name says it all. */}
       <span className="edit-titlecard-words">{EDIT_TITLECARD}</span>
     </button>
   )
