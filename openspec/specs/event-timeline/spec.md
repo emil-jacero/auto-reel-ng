@@ -148,8 +148,9 @@ A clip shorter than one second has one tile.
 ### Requirement: The track zooms, and draws only what is in view
 
 The Timeline SHALL offer **Zoom out**, a **Zoom** slider, **Zoom in** and **Fit** in its zoom group, and, while the
-track has keyboard focus, the keys `+` or `=` (zoom in), `-` (zoom out), `0` (fit) and `\` (fit, and pressed again at
-Fit, back to the zoom before it). **Fit** SHALL show the whole timeline in the track's width; zooming out SHALL stop at
+track has keyboard focus (and in Edit mode's workspace wherever a workspace shortcut acts, as "The workspace answers the
+Timeline's keys wherever focus is" in `web-app` says), the keys `+` or `=` (zoom in), `-` (zoom out), `0` (fit) and `\`
+(fit, and pressed again at Fit, back to the zoom before it). **Fit** SHALL show the whole timeline in the track's width; zooming out SHALL stop at
 Fit, or at 4 px per second when the whole event is longer than the track is wide at that scale. Zooming in SHALL stop
 at 240 px per second. Zoom in and Zoom out SHALL change the scale by a factor of 1.5.
 
@@ -164,7 +165,10 @@ the slider SHALL be disabled.
 A zoom from the buttons, the keys or the slider SHALL keep the playhead where it was in the track's view when the
 playhead is in view, and the moment at the centre of the view otherwise. Turning the wheel with Ctrl held (Cmd on
 macOS), and a trackpad pinch, over the track SHALL zoom about the pointer, keeping the moment under the pointer where it
-is, and SHALL NOT zoom the page; a wheel turned without Ctrl or Cmd SHALL scroll as before. The scale SHALL be kept per
+is, and SHALL NOT zoom the page. Over the lanes inside the track's scroller the pointer anchors the zoom too. Over the rest of the Timeline's own part of the page (its tool row and the strip of suggestion notes outside the scroller) it
+SHALL zoom as the buttons do, about the playhead or the view's centre, and SHALL NOT zoom the page either. Elsewhere
+(in Edit mode: the viewer, the bin, the inspector, the top bar) a Ctrl+wheel SHALL be left to the browser. A wheel
+turned without Ctrl or Cmd SHALL scroll as before. The scale SHALL be kept per
 event for the browser tab's session: a Refresh, a Save, and leaving and re-entering Edit mode SHALL show the event at
 the scale it had (re-bounded to the current Fit and maximum), and a new tab SHALL open at Fit.
 
@@ -205,6 +209,16 @@ nothing and send no request other than reads.
 - **WHEN** the operator holds Ctrl and turns the wheel up with the pointer over 0:30 on the track
 - **THEN** the track zooms in, 0:30 stays under the pointer, and the browser's page zoom is unchanged
 
+#### Scenario: Ctrl and the wheel over the tool row
+- **WHEN** the playhead is in view and the operator holds Ctrl and turns the wheel up with the pointer over the
+  Timeline's tool row
+- **THEN** the track zooms in, the playhead keeps its horizontal place in the view, and the browser's page zoom is
+  unchanged
+
+#### Scenario: Ctrl and the wheel over the viewer
+- **WHEN** the operator holds Ctrl and turns the wheel with the pointer over the viewer
+- **THEN** the Timeline's zoom is unchanged and the wheel is left to the browser
+
 #### Scenario: The zoom is kept for the session
 - **WHEN** the operator zooms an event's Timeline to 60 px per second and presses Save, and then opens the same event in
   a new tab
@@ -221,7 +235,6 @@ nothing and send no request other than reads.
 #### Scenario: A phone-width window
 - **WHEN** the Timeline is shown 320 px wide
 - **THEN** the page has no horizontal scroll bar, the track scrolls inside its box, and its toolbar wraps without
-  cutting off a control
 
 ### Requirement: The playhead scrubs one video
 
@@ -282,7 +295,7 @@ A proxy whose playing fails SHALL be said by cause, as the clip preview says it:
 
 ### Requirement: The playhead is operable by keyboard, a frame at a time
 
-The playhead, when it has keyboard focus, SHALL answer: Left and Right, one frame of the clip it is in (its frame rate comes from the proxy's facts; for a variable-frame-rate clip, the nominal frame interval, with no claim of frame accuracy); Shift with either, one second; Page Up and Page Down, five seconds; Home and End, the start and the end of the timeline; Space, Play or Pause. A step across a clip boundary SHALL land on the first frame of the next clip or the last frame of the previous one, and SHALL NOT skip a frame. A key SHALL be handled only when the playhead has focus, so typing in the page's fields is not intercepted. Every control of the Timeline (the toolbar buttons, the playhead, the track) SHALL be reachable by Tab in the order they appear, with a visible focus ring, and SHALL be at least 24 px high, and 44 px under a coarse pointer.
+The playhead, when it has keyboard focus, SHALL answer: Left and Right, one frame of the clip it is in (its frame rate comes from the proxy's facts; for a variable-frame-rate clip, the nominal frame interval, with no claim of frame accuracy); Shift with either, one second; Page Up and Page Down, five seconds; Home and End, the start and the end of the timeline; Space, Play or Pause. A step across a clip boundary SHALL land on the first frame of the next clip or the last frame of the previous one, and SHALL NOT skip a frame. A key SHALL be handled when the playhead has focus; in Edit mode's workspace Space, Left, Right and Shift with either SHALL also be handled wherever a workspace shortcut acts ("The workspace answers the Timeline's keys wherever focus is", `web-app`), and Up, Down, Page Up, Page Down, Home and End only on the playhead. No key SHALL be taken while focus is in one of the page's fields, so typing is not intercepted. Every control of the Timeline (the toolbar buttons, the playhead, the track) SHALL be reachable by Tab in the order they appear, with a visible focus ring, and SHALL be at least 24 px high, and 44 px under a coarse pointer.
 
 From a key press to the new frame being presented, the 90th percentile over a run of single-frame steps SHALL be at most 60 ms in Chrome 154 and in Firefox 155 or newer, on the event's proxies.
 
@@ -301,6 +314,10 @@ From a key press to the new frame being presented, the 90th percentile over a ru
 #### Scenario: Keys inside a field are left alone
 - **WHEN** keyboard focus is in the page's search or title field and the operator presses the arrow keys
 - **THEN** the playhead does not move
+
+#### Scenario: Space after a click on a clip plays
+- **WHEN** Edit mode's workspace is open, the operator clicks a clip block on the track and presses Space
+- **THEN** the Timeline plays from the playhead
 
 ### Requirement: Play follows the playhead through the clips, skipping cuts
 
