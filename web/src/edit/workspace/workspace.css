@@ -481,13 +481,19 @@
 
     & dl {
       display: grid;
-      grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+      /* One fixed key column, so the words line up from group to group and a long key list wraps
+         (between alternatives) instead of starving the words. */
+      grid-template-columns: 9.5rem minmax(0, 1fr);
       gap: var(--s-1) var(--s-3);
       font-size: var(--text-sm);
     }
 
     & dt {
       overflow-wrap: anywhere;
+    }
+
+    /* A chord never breaks inside; a mouse row's words may. */
+    & .ws-keys-chord:not(.ws-keys-mouse) {
       white-space: nowrap;
     }
 

@@ -1,8 +1,8 @@
-import { Fragment, useId } from 'react'
+import { Fragment, useId } from "react";
 
-import { SHORTCUT_GROUPS, SHORTCUTS } from './shortcuts.ts'
-import type { Shortcut } from './shortcuts.ts'
-import { setShortcutsEnabled, useShortcutsEnabled } from './shortcutSwitch.ts'
+import { SHORTCUT_GROUPS, SHORTCUTS } from "./shortcuts.ts";
+import type { Shortcut } from "./shortcuts.ts";
+import { setShortcutsEnabled, useShortcutsEnabled } from "./shortcutSwitch.ts";
 
 /*
  * The Keyboard shortcuts list (`editor-shortcuts`, D4): a non-modal native popover (`#ws-keys`)
@@ -11,31 +11,31 @@ import { setShortcutsEnabled, useShortcutsEnabled } from './shortcutSwitch.ts'
  * toggles it (`useTimeline`). It holds the single-key switch (D5).
  */
 
-export const KEYS_LIST_ID = 'ws-keys'
+export const KEYS_LIST_ID = "ws-keys";
 
 /** One alternative of a row: key caps joined by `+`. A mouse row is words, not caps. */
 function Chord({ parts, mouse }: { parts: readonly string[]; mouse: boolean }) {
   if (mouse) {
     // `Ctrl+wheel over the Timeline`: the first part a cap when a chord follows, the rest words.
-    const [first, ...rest] = parts
+    const [first, ...rest] = parts;
     return rest.length === 0 ? (
       <>{first}</>
     ) : (
       <>
-        <kbd>{first}</kbd>+{rest.join(' ')}
+        <kbd>{first}</kbd>+{rest.join(" ")}
       </>
-    )
+    );
   }
   return (
     <>
       {parts.map((part, index) => (
         <Fragment key={part}>
-          {index > 0 && '+'}
+          {index > 0 && "+"}
           <kbd>{part}</kbd>
         </Fragment>
       ))}
     </>
-  )
+  );
 }
 
 function Row({ row }: { row: Shortcut }) {
@@ -43,24 +43,40 @@ function Row({ row }: { row: Shortcut }) {
     <>
       <dt>
         {row.keys.map((chord, index) => (
-          <Fragment key={chord.join('+')}>
-            {index > 0 && <span className="ws-keys-or"> or </span>}
-            <Chord parts={chord} mouse={row.scope === 'mouse'} />
-          </Fragment>
+          // Each alternative is one unbreakable unit with its trailing `or`, so a long list wraps
+          // between alternatives and no line starts with `or`.
+          <span
+            key={chord.join("+")}
+            className={
+              row.scope === "mouse"
+                ? "ws-keys-chord ws-keys-mouse"
+                : "ws-keys-chord"
+            }
+          >
+            <Chord parts={chord} mouse={row.scope === "mouse"} />
+            {index < row.keys.length - 1 && (
+              <span className="ws-keys-or"> or</span>
+            )}{" "}
+          </span>
         ))}
       </dt>
       <dd>{row.words}</dd>
     </>
-  )
+  );
 }
 
 export function KeysList() {
-  const heading = useId()
-  const on = useShortcutsEnabled()
-  const switchId = useId()
-  const hintId = useId()
+  const heading = useId();
+  const on = useShortcutsEnabled();
+  const switchId = useId();
+  const hintId = useId();
   return (
-    <section id={KEYS_LIST_ID} className="ws-keys" popover="auto" aria-labelledby={heading}>
+    <section
+      id={KEYS_LIST_ID}
+      className="ws-keys"
+      popover="auto"
+      aria-labelledby={heading}
+    >
       <h2 id={heading} className="ws-keys-title">
         Keyboard shortcuts
       </h2>
@@ -75,8 +91,9 @@ export function KeysList() {
         />
         <label htmlFor={switchId}>Single-key shortcuts</label>
         <p id={hintId} className="ws-keys-hint">
-          Off, Space and the arrows act only on the playhead, and Q, W, S and the zoom keys only on
-          the track; ? does not open this list (use the button). Ctrl and Cmd shortcuts stay.
+          Off, Space and the arrows act only on the playhead, and Q, W, S and
+          the zoom keys only on the track; ? does not open this list (use the
+          button). Ctrl and Cmd shortcuts stay.
         </p>
       </div>
       {SHORTCUT_GROUPS.map((group) => (
@@ -84,11 +101,14 @@ export function KeysList() {
           <h3>{group}</h3>
           <dl>
             {SHORTCUTS.filter((row) => row.group === group).map((row) => (
-              <Row key={row.keys.map((chord) => chord.join('+')).join('|')} row={row} />
+              <Row
+                key={row.keys.map((chord) => chord.join("+")).join("|")}
+                row={row}
+              />
             ))}
           </dl>
         </Fragment>
       ))}
     </section>
-  )
+  );
 }
