@@ -16,6 +16,7 @@ export function MoveTo({
   chapters,
   own,
   locked,
+  moving,
   announce,
   onMove,
 }: {
@@ -25,6 +26,8 @@ export function MoveTo({
   own: ChapterKey | null
   /** A save or a move of several clips is pending. */
   locked: boolean
+  /** Only a move of several clips is pending (no save): the reason says so. */
+  moving: boolean
   announce(words: string): void
   onMove(to: ChapterKey): void
 }) {
@@ -34,7 +37,7 @@ export function MoveTo({
   const [shown, setShown] = useState(false)
   const choices = moveChoices(chapters, own)
   const chosen = chosenOf(choices, value)
-  const why = moveWhy(chosen !== '', locked)
+  const why = moveWhy(chosen !== '', locked, moving)
   useEffect(() => {
     if (why === null) {
       setShown(false)

@@ -1,6 +1,6 @@
 import './thumbs.css'
 
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import type { Clip } from '../api/event'
@@ -36,9 +36,10 @@ import { SERVICE_CAUSE, useThumbReporter } from './thumbHealth'
  * (`rotate`): the frame is shown turned by it inside the same box (`rotate/rotate.css`); the
  * overlay, the box and the "No preview" placeholder are never turned. `overlay` is laid inside the box, over
  * the image or the "No preview" placeholder (the read view's play control); a missing
- * clip has no box to lay it in and ignores it.
+ * clip has no box to lay it in and ignores it. Memoised: a row redrawn for its selection (a Shift
+ * range redraws hundreds) leaves its thumbnail as it is.
  */
-export function ClipThumb({
+export const ClipThumb = memo(function ClipThumb({
   eventId,
   clip,
   name = fileName(clip.identity),
@@ -67,7 +68,7 @@ export function ClipThumb({
       turn={turn}
     />
   )
-}
+})
 
 type ThumbState = 'loading' | 'loaded' | 'failed'
 

@@ -1,5 +1,5 @@
 import type { ChapterKey } from '../edit/draft.ts'
-import { MOVE_REASON_WORDS, moveReason } from '../edit/marks.ts'
+import { MOVE_REASON_WORDS, MOVING_WORDS, moveReason } from '../edit/marks.ts'
 import type { MoveReason } from '../edit/marks.ts'
 
 /*
@@ -27,14 +27,22 @@ export function chosenOf(choices: readonly MoveChoice[], value: string): Chapter
   return choices.some((choice) => choice.key === value) ? value : ''
 }
 
-/** Why Move cannot act, in words (a save or move first, then no chapter); null when it can. */
-export function moveWhy(chosen: boolean, busy: boolean): string | null {
+/**
+ * Why Move cannot act, in words (a save or move first, then no chapter); null when it can.
+ * `moving`: only a Move to… is pending, so the words say the clips move, not that a save runs.
+ */
+export function moveWhy(chosen: boolean, busy: boolean, moving = false): string | null {
   const reason: MoveReason | null = moveReason(1, chosen, busy)
-  return reason === null ? null : MOVE_REASON_WORDS[reason]
+  if (reason === null) {
+    return null
+  }
+  return reason === 'busy' && moving ? MOVING_WORDS : MOVE_REASON_WORDS[reason]
 }
 
 /** What a group tab's Rotate and Ignore say while a save or a move is pending. */
-export const GROUP_BUSY = MOVE_REASON_WORDS.busy
+export function groupBusy(moving: boolean): string {
+  return moving ? MOVING_WORDS : MOVE_REASON_WORDS.busy
+}
 
 /** "3 clips selected". */
 export function groupHeading(count: number): string {

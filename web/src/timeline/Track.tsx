@@ -79,8 +79,8 @@ const CUT_TEXT_PX = 72
 /** A touch that moves less than this and ends within `TAP_MS` is a tap. */
 const TAP_PX = 8
 const TAP_MS = 600
-/** What the edge tools say while a save or a move of marked clips is pending. */
-const EDGE_LOCKED = 'Trimming is unavailable while the save runs or marked clips are moved.'
+/** What the edge tools say while a save or a move of several clips is pending. */
+const EDGE_LOCKED = 'Trimming waits for the save or the move of several clips to finish.'
 
 /** Whether a key's target takes text: the track's letters never reach a field. */
 function inField(target: EventTarget | null): boolean {

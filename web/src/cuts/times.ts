@@ -518,7 +518,7 @@ export const SELECT_CUT_HINT = 'Select a cut by its handle or its span to type i
 /** What the group's time fields take; the fields describe themselves by it, in the Timeline's help. */
 export const CUT_FIELDS_HINT = `${TIME_FORMS}. Enter takes a time; Escape puts the old one back.`
 
-/** The group while a save or a move of marked clips is pending. */
+/** The group while a save or a move of several clips is pending. */
 export const UNAVAILABLE = 'Trimming is unavailable while a save or a move is pending.'
 
 /** Said when Enter is pressed on a handle and the playhead is in another clip. */

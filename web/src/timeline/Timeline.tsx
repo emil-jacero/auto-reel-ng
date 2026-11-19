@@ -141,8 +141,8 @@ function menuIcon(action: ClipAction): IconName {
   }
 }
 
-/** What `Q` and `W` say while a save or a move of marked clips is pending. */
-const EDGE_UNAVAILABLE = 'Nothing trimmed: trimming is unavailable while the save runs or marked clips are moved.'
+/** What `Q` and `W` say while a save or a move of several clips is pending. */
+const EDGE_UNAVAILABLE = 'Nothing trimmed: trimming waits for the save or the move of several clips to finish.'
 /** The playhead is brought back into view when it comes this close to the scroller's edge. */
 const EDGE_PX = 24
 /** The track's margin around the view during a slider drag, in views (else one view a side). */

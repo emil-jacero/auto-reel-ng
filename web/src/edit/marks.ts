@@ -92,6 +92,12 @@ export const MOVE_REASON_WORDS: Record<MoveReason, string> = {
   'no-chapter': 'Choose a chapter.',
 }
 
+/**
+ * What a control says while only the move of the selected clips (Move to…) is pending and nothing
+ * is saving: the clips are moving, so it is not "saving" (`clip-multi-select` D6).
+ */
+export const MOVING_WORDS = 'Unavailable while the clips move.'
+
 /** The first reason Move cannot act (a save first, then marks, then chapter); null when it can. */
 export function moveReason(marks: number, chosen: boolean, busy = false): MoveReason | null {
   if (busy) {
