@@ -19,7 +19,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 1. Rules (web/src/edit/workspace, web/src/edit)
 
-- [ ] 1.1 Widen the selection (design D1): the `clips` kind, `pressClip`, `selectedClips`, `lastClip`,
+- [x] 1.1 Widen the selection (design D1): the `clips` kind, `pressClip`, `selectedClips`, `lastClip`,
   `selectionWords`, and `keptSelection` / `inspectorTab` for a set.
   Verify with `selection.test.ts`. It must check:
   - each press (`alone`, `toggle`, `range`) from each kind;
