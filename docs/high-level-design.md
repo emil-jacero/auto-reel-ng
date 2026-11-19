@@ -2067,10 +2067,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     into `document.body`, so the track's keys never see it and no pane clips it. It is a `popover="manual"`, not
     `auto`: on Linux and macOS `contextmenu` fires on the button's press, and an `auto` popover's light dismiss
     would hide the menu on the release; the menu therefore does its own dismiss (an outside press, scroll, resize,
-    blur, its clip leaving the track). It is an ARIA menu (`ui/Menu.tsx`; pure keys and placement in `ui/menu.ts`) and
-    keeps every key but Ctrl/Cmd chords, so no workspace shortcut acts behind it.
-  - **The items are existing edits.** Pure rules in `timeline/clipMenu.ts`: Rotate left/right, Cut at playhead (the
-    Clip tab's `addCutAtPlayhead`, lifted out and shared), Use frame as poster, Move to each other chapter (the
+    blur, its clip leaving the track). It is an ARIA menu (`web/src/ui/Menu.tsx`; pure keys and placement in
+    `web/src/ui/menu.ts`) and keeps every key but Ctrl/Cmd chords, so no workspace shortcut acts behind it.
+  - **The items are existing edits.** Pure rules in `web/src/timeline/clipMenu.ts`: Rotate left/right, Cut at playhead
+    (the Clip tab's `addCutAtPlayhead`, lifted out and shared), Use frame as poster, Move to each other chapter (the
     end-of-chapter `clip-drop`) and Ignore clip. Each has the Clip tab's announcement and is one Undo step; no new
     reducer action. Cut and poster act **at the playhead**, never at the pointer: a right-click does not move the
     playhead, and with the playhead in another clip they are unavailable with the Clip tab's reason in words. While a
@@ -2083,8 +2083,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     timer of our own; iOS Safari sends none, so the Clip tab stays the way to every item. Under a coarse pointer each
     item is at least 44 px tall. The Keyboard shortcuts list gains two rows. No API, engine or `RENDER_GRAPH_VERSION`
     change; no new dependency.
-  - **Not here:** "Ignore clip" (moved 2026-11-15 to `track-drag-edit`, which builds the draft's ignore edit), dragging on
-    the track, Undo. No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
+  - **Not here (slice 2):** "Ignore clip" (moved 2026-11-15 to `track-drag-edit`, which builds the draft's ignore
+    edit), dragging on the track, Undo. No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
 - **D-27 — Analysis is a job** (2026-10-05, change `analysis-job`). The user asked what "Not analyzed" means and why
   it could not be triggered from the web, and chose automatic analysis in the background, a Re-analyze button and
   "Analyze all". The inline `auto-reel analyze` could not be a job: its passes were blocking (no cancel, no
