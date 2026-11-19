@@ -40,9 +40,9 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - every chapter edit is one Undo step, with the labels it had;
   - the inspector at 390 px with a coarse pointer has no horizontal scroll, and its 44 × 44 targets do not overlap;
   - screenshots of the Event tab in light and dark at 1440, 1100 and 390 px show no clipping.
-- [ ] 3.2 Record the change:
+- [x] 3.2 Record the change:
   - HLD D-28: the Event tab holds the Chapters list, and the bin holds no chapter tool, because the track may be
     absent and an empty chapter has no band. §6 item 10: this change is built.
   - `docs/editor-workspace.md`: add a row for `chapters-in-inspector`.
-- [ ] 3.3 Gates: `npm test`, `npm run check` and `npm run build` in podman; `openspec validate chapters-in-inspector
+- [x] 3.3 Gates: `npm test`, `npm run check` and `npm run build` in podman; `openspec validate chapters-in-inspector
   --strict`.
