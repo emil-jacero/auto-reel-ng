@@ -19,6 +19,7 @@ import '../rotate/rotate.css'
 import { TimelinePanesContext } from './panes'
 import { focusFacts, workspaceCommand } from '../edit/workspace/shortcuts.ts'
 import { lastInput, pointerHeld } from '../edit/workspace/modality.ts'
+import { shortcutsEnabled } from '../edit/workspace/shortcutSwitch.ts'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
 import { ClipHeader } from './ClipHeader'
@@ -1006,7 +1007,7 @@ export function useTimeline({
           defaultPrevented: event.defaultPrevented,
         },
         focusFacts(target, {
-          enabled: true,
+          enabled: shortcutsEnabled(),
           dialogOpen: document.querySelector('dialog[open]') !== null,
           dragging: dragHeld(drag),
           pointerHeld: pointerHeld(),

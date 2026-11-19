@@ -46,9 +46,26 @@ export type SelectionBinding = {
   leave(): void
 }
 
-/** Whether Escape on `target` belongs to something else: a field, or a dialog that is open. */
-export function escapeIsElsewhere(target: EventTarget | null, dialogOpen: boolean): boolean {
-  if (dialogOpen) {
+/** Whether the Keyboard shortcuts list (`#ws-keys`, a popover) is open: Escape then closes only it. */
+function keysListOpen(): boolean {
+  try {
+    return document.querySelector('#ws-keys:popover-open') !== null
+  } catch {
+    // A browser without `:popover-open` has no popover to close.
+    return false
+  }
+}
+
+/**
+ * Whether Escape on `target` belongs to something else: a field, a dialog that is open, or the
+ * Keyboard shortcuts list (`popoverOpen`, which Escape closes natively).
+ */
+export function escapeIsElsewhere(
+  target: EventTarget | null,
+  dialogOpen: boolean,
+  popoverOpen = false,
+): boolean {
+  if (dialogOpen || popoverOpen) {
     return true
   }
   const element = target as HTMLElement | null
@@ -84,7 +101,7 @@ export function useSelection(): SelectionBinding {
     setState((was) => openState(was, chapter, tab))
   }, [])
 
-  // Escape clears the selection, unless a field, an open dialog, a drag or a control that took
+  // Escape clears the selection, unless a field, an open dialog or shortcuts list, a drag or a control that took
   // the key itself (`defaultPrevented`, or stopped) has it.
   const selecting = state.sel.kind !== 'none'
   useEffect(() => {
@@ -99,7 +116,7 @@ export function useSelection(): SelectionBinding {
         event.altKey ||
         event.metaKey ||
         event.isComposing ||
-        escapeIsElsewhere(event.target, document.querySelector('dialog[open]') !== null)
+        escapeIsElsewhere(event.target, document.querySelector('dialog[open]') !== null, keysListOpen())
       ) {
         return
       }

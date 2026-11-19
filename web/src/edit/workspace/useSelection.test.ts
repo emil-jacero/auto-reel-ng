@@ -14,3 +14,9 @@ test('Escape on a button or the page clears the selection', () => {
   assert.equal(escapeIsElsewhere({ tagName: 'BUTTON' } as unknown as EventTarget, false), false)
   assert.equal(escapeIsElsewhere(null, false), false)
 })
+
+test('Escape belongs to the open Keyboard shortcuts list', () => {
+  assert.equal(escapeIsElsewhere({ tagName: 'BUTTON' } as unknown as EventTarget, false, true), true)
+  assert.equal(escapeIsElsewhere(null, false, true), true)
+  assert.equal(escapeIsElsewhere(null, false, false), false)
+})

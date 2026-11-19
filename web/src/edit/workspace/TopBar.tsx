@@ -2,11 +2,12 @@ import type { ReactNode } from 'react'
 
 import { ThemeControl } from '../../shell/AppShell'
 import { Icon } from '../../ui/Icon'
+import { KEYS_LIST_ID, KeysList } from './KeysList'
 
 /*
  * The workspace's top bar (`editor-workspace-layout`, design D4): back to the event list, the
  * event's title with its date and location, the save bar's states (`SaveBar` in its top form),
- * Done and the theme switch. Undo and Redo (`editor-undo`) come before the save controls. Back and Done leave Edit mode through the page's leave flow, the
+ * the Keyboard shortcuts button (`editor-shortcuts`), Done and the theme switch. Undo and Redo (`editor-undo`) come before the save controls. Back and Done leave Edit mode through the page's leave flow, the
  * unsaved guard included; both wait while a save is in flight (busy-control rule: aria-disabled,
  * never `disabled`, so focus stays).
  */
@@ -116,6 +117,17 @@ export function TopBar({
           <Icon name="check" />
           Done
         </button>
+        {/* The Keyboard shortcuts list (`editor-shortcuts`, D4): a native popover on this button. */}
+        <button
+          type="button"
+          className="btn btn-ghost ws-keys-button"
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts"
+          popoverTarget={KEYS_LIST_ID}
+        >
+          <Icon name="keyboard" />
+        </button>
+        <KeysList />
         <ThemeControl />
       </div>
     </div>
