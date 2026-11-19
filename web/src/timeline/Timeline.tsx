@@ -27,10 +27,10 @@ import { Menu } from '../ui/Menu'
 import type { MenuClose } from '../ui/Menu'
 import { mayReturnFocus } from '../ui/returnFocus'
 import { ClipHeader } from './ClipHeader'
-import { clipMenu, menuSelects } from './clipMenu'
+import { clipMenu, focusAfter, menuSelects } from './clipMenu'
 import type { ClipAction } from './clipMenu'
 import { clipPlace, clipSelectedWords, cutSelectedWords } from './clipPanel'
-import { cutAtPlayhead } from './cutAtPlayhead'
+import { addCutAtPlayhead, cutAtClipPlayhead } from './cutAtPlayhead'
 import { ClipTab } from './ClipTab'
 import { CutFields } from './CutFields'
 import type { Selected } from './CutFields'
@@ -64,7 +64,7 @@ import type { DragStore } from './dragStore'
 import type { ChapterKey } from '../edit/draft'
 import { chapterHeading } from '../events/labels.ts'
 import type { ReorderModel } from './ClipDrag'
-import { MOVE_LOCKED, spanHit } from './clipDrag'
+import { MOVE_LOCKED, bandSlot, spanHit } from './clipDrag'
 import { stepSlot } from './keys'
 import { dropSlot, includeSlot } from './reorder'
 import type { DrawnChapter } from './reorder'
@@ -1133,7 +1133,8 @@ export function useTimeline({
       setPosterTip(null)
     }
   }, [reasonGone])
-  const usePoster = (suffix: string, only: TrackClip | null) => {
+  // Whether it went ahead (true) or said why it cannot (false).
+  const usePoster = (suffix: string, only: TrackClip | null): boolean => {
     const element = video.videoRef.current
     const shownWhy = posterWhyFor(only)
     // What the button shows first (it looks unavailable: it does not act), then the video now.
@@ -1146,11 +1147,11 @@ export function useTimeline({
       const why = shownWhy ?? ('why' in result ? result.why : '')
       setPosterTip({ suffix, why })
       setAnnouncement(why)
-      return
+      return false
     }
     setPosterTip(null)
     if (element === null) {
-      return
+      return false
     }
     setPosterFailed(false)
     const turn = turns.get(result.pick.clip) ?? 0
@@ -1158,6 +1159,7 @@ export function useTimeline({
       (url) => editing.onPoster(result.pick, { url, turn }),
       () => setPosterFailed(true),
     )
+    return true
   }
   // The Use as poster control: in the transport, and in the inspector's Clip tab for its clip
   // (`suffix` keeps their ids and tips apart).
@@ -1217,18 +1219,13 @@ export function useTimeline({
       scroller.current?.querySelectorAll<HTMLElement>('.tl-clip-press[data-identity]') ?? [],
     ).find((block) => block.dataset.identity === identity) ?? null
   /** The clip's block, else the track: focus never falls to the page's body. */
-  const focusBlock = (identity: string) => {
-    ;(blockOf(identity) ?? scroller.current)?.focus({ preventScroll: true })
+  const focusBlock = (identity: string | null) => {
+    ;(identity === null ? scroller.current : (blockOf(identity) ?? scroller.current))?.focus({
+      preventScroll: true,
+    })
   }
   const cutWhyFor = (clip: TrackClip): string | null => {
-    const at = playhead.get()
-    const inClip = at.card == null && clips[at.clip]?.identity === clip.identity
-    const made = cutAtPlayhead(
-      editing.listed(clip.identity),
-      inClip ? at.ms : null,
-      clip.name,
-      clip.facts.durationMs / 1000,
-    )
+    const made = cutAtClipPlayhead({ clip, clips, editing, playhead })
     return made.ok ? null : made.words
   }
   const openClipMenu = (open: ClipMenuOpen) => {
@@ -1242,7 +1239,13 @@ export function useTimeline({
     menuCount.current += 1
     setMenu({ id: menuCount.current, open, cutWhy: cutWhyFor(clip), posterWhy: posterWhyFor(clip) })
   }
-  const closeMenu = (why: MenuClose | 'choice' | 'gone', el: HTMLElement | null) => {
+  // `focusOn`: where a choice sends focus (D5): the clip's block by default, another clip's block,
+  // or (null) the track.
+  const closeMenu = (
+    why: MenuClose | 'choice' | 'gone',
+    el: HTMLElement | null,
+    focusOn?: string | null,
+  ) => {
     if (menu === null) {
       return
     }
@@ -1261,7 +1264,7 @@ export function useTimeline({
       case 'escape':
       case 'tab':
       case 'choice':
-        menuFocus.current = () => focusBlock(identity)
+        menuFocus.current = () => focusBlock(focusOn === undefined ? identity : focusOn)
         return
       case 'outside':
         // The press goes on to its target first; focus comes back only if it was left nowhere.
@@ -1304,15 +1307,64 @@ export function useTimeline({
             .filter((chapter) => !chapter.identities.includes(menuClip.identity))
             .map((chapter) => ({ key: chapter.key, name: chapter.name ?? '' })),
         })
-  // Choosing an item that cannot act says why and keeps the menu; the edits come with 2.2.
+  // Choosing an item: one that cannot act says why and keeps the menu; otherwise it makes the
+  // edit the Clip tab's control makes (D2) and the menu closes, focus going where D5 says.
   const chooseMenuItem = (index: number) => {
     const item = menuView?.items[index]
-    if (item === undefined) {
+    if (item === undefined || menuClip === undefined) {
       return
     }
     if (item.why !== null) {
       setAnnouncement(item.why)
       return
+    }
+    const clip = menuClip
+    const identity = clip.identity
+    // The playhead's reasons are taken again now: Play may have moved it since the menu opened.
+    const refused = (cutWhy: string | null, posterWhy: string | null) =>
+      setMenu((was) => (was === null ? was : { ...was, cutWhy, posterWhy }))
+    const action = item.action
+    switch (action.kind) {
+      case 'rotate':
+        editing.onRotate(identity, action.way)
+        break
+      case 'cut':
+        if (addCutAtPlayhead({ clip, clips, editing, playhead }) !== null) {
+          refused(cutWhyFor(clip), posterWhyFor(clip))
+          return
+        }
+        break
+      case 'poster':
+        if (!usePoster('-menu', clip)) {
+          refused(cutWhyFor(clip), posterWhyFor(clip))
+          return
+        }
+        break
+      case 'move': {
+        const slot = bandSlot(
+          reorder.chapters,
+          reorder.chapters.findIndex((chapter) => chapter.key === action.chapter),
+          identity,
+        )
+        if (slot === null) {
+          return
+        }
+        reorder.onDrop(identity, slot)
+        // Selected again, so the track scrolls to the clip at its new place.
+        if (selectedClip === identity) {
+          selectClip(identity)
+        }
+        break
+      }
+      case 'ignore': {
+        const next = focusAfter(
+          clips.map((c) => c.identity),
+          identity,
+        )
+        editing.onIgnore(identity)
+        closeMenu('choice', null, next)
+        return
+      }
     }
     closeMenu('choice', null)
   }

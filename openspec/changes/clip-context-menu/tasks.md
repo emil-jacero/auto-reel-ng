@@ -58,7 +58,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - A right-button press moved 20 px drags nothing.
   - A right-click during a drag puts every clip back and opens no menu.
   - A right-click during a Trim In drag opens no menu.
-- [ ] 2.2 Wire the items to their edits (design D2, D5). Lift "+ Cut at playhead" out of `ClipCuts` into
+- [x] 2.2 Wire the items to their edits (design D2, D5). Lift "+ Cut at playhead" out of `ClipCuts` into
   `addCutAtPlayhead`, which the Clip tab and the menu share.
 
   Verify with `npm test` and `npm run check`, then in Playwright run every scenario of these `web-app` requirements:
