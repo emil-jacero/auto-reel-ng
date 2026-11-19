@@ -149,8 +149,8 @@ poster.".
 
 An item that cannot act SHALL stay listed, shown as unavailable in more than colour and to assistive technology, with
 its reason in words under it, as the Clip tab words it. While a save or a move of several clips (Move marked… or Move
-to…) is pending, every item SHALL be unavailable under one line that says so. Choosing an unavailable item SHALL say its reason once through the polite
-status, change nothing, and keep the menu open.
+to…) is pending, every item SHALL be unavailable under one line that says so. Choosing an unavailable item SHALL say
+its reason once through the polite status, change nothing, and keep the menu open.
 
 #### Scenario: The playhead is in another clip
 - **WHEN** the playhead is in `s1710001.mp4` and the operator opens the menu of `s1710002.mp4`
