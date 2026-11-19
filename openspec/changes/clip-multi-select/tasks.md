@@ -5,12 +5,12 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 0. Gate
 
-- [ ] 0.1 Dependency gate: `clip-context-menu` MUST be archived, and both of these must succeed from the repo root:
+- [x] 0.1 Dependency gate: `clip-context-menu` MUST be archived, and both of these must succeed from the repo root:
   - `ls -d openspec/changes/archive/*-clip-context-menu`
   - `grep -q "Requirement: Edit mode offers a clip's edits in a menu" openspec/specs/web-app/spec.md`
 
   If either fails, STOP and report which check failed.
-- [ ] 0.2 Re-base the deltas on what was archived. Copy the archived texts of:
+- [x] 0.2 Re-base the deltas on what was archived. Copy the archived texts of:
   - "Edit mode offers a clip's edits in a menu" and "An unavailable item in the clip menu says why" (`web-app`);
   - "A clip block opens the clip's menu" and "A clip is selected on the track or in the bin" (`event-timeline`).
 

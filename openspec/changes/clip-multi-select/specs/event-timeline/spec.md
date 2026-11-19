@@ -206,5 +206,5 @@ the browser's menu SHALL stay.
 
 #### Scenario: The keys are listed
 - **WHEN** the operator opens the Keyboard shortcuts list
-- **THEN** it reads "Shift+F10 or Menu key on a clip: Open its menu" under Editing and "Right-click a clip: Open its
+- **THEN** it reads "Shift+F10 or Menu: On a clip: open its menu" under Editing and "Right-click a clip: Open its
   menu" under Mouse
