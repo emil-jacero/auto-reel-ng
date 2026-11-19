@@ -347,6 +347,12 @@ export const SHORTCUTS: readonly Shortcut[] = [
   },
   {
     group: 'Editing',
+    keys: [['Ctrl', 'Enter'], ['Shift', 'Enter']],
+    words: 'On a clip: the same from the keyboard',
+    scope: 'focused',
+  },
+  {
+    group: 'Editing',
     keys: [['?']],
     words: 'Show or hide this list',
     scope: 'workspace',
@@ -389,6 +395,18 @@ export const SHORTCUTS: readonly Shortcut[] = [
     group: 'Mouse',
     keys: [['Double-click the track']],
     words: 'Place the playhead',
+    scope: 'mouse',
+  },
+  {
+    group: 'Mouse',
+    keys: [['Ctrl', 'click'], ['Cmd', 'click a clip']],
+    words: 'Add it to the selection, or take it out',
+    scope: 'mouse',
+  },
+  {
+    group: 'Mouse',
+    keys: [['Shift', 'click a clip']],
+    words: 'Select the clips from the last one pressed',
     scope: 'mouse',
   },
   {

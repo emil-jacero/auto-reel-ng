@@ -27,7 +27,7 @@ import { Menu } from '../ui/Menu'
 import type { MenuClose } from '../ui/Menu'
 import { mayReturnFocus } from '../ui/returnFocus'
 import { ClipHeader } from './ClipHeader'
-import { clipMenu, focusAfter, menuSelects } from './clipMenu'
+import { clipMenu, focusAfter, focusAfterMany, menuSelects, targets } from './clipMenu'
 import type { ClipAction } from './clipMenu'
 import { clipPlace, clipSelectedWords, cutSelectedWords } from './clipPanel'
 import { addCutAtPlayhead, cutAtClipPlayhead } from './cutAtPlayhead'
@@ -1330,6 +1330,16 @@ export function useTimeline({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menuClipGone])
   const menuClip = menu === null ? undefined : clips.find((c) => c.identity === menu.open.identity)
+  // The clips the menu acts on: the selected clips when it was opened on one of two or more, else
+  // the clip alone (`clip-multi-select` D7).
+  const menuTargets =
+    menu === null || menuClip === undefined
+      ? []
+      : targets(
+          selection.selection,
+          menuClip.identity,
+          clips.map((c) => c.identity),
+        )
   const menuView =
     menu === null || menuClip === undefined
       ? null
@@ -1337,9 +1347,11 @@ export function useTimeline({
           locked: editing.locked,
           cutWhy: menu.cutWhy,
           posterWhy: menu.posterWhy,
+          // Several clips may be gathered at the end of any chapter, their own included.
           others: reorder.chapters
-            .filter((chapter) => !chapter.identities.includes(menuClip.identity))
+            .filter((chapter) => menuTargets.length > 1 || !chapter.identities.includes(menuClip.identity))
             .map((chapter) => ({ key: chapter.key, name: chapter.name ?? '' })),
+          targets: menuTargets,
         })
   // Move to… for one clip (the menu's and the Clip tab's): the clip at the end of the chapter, the
   // edit a drop on that chapter's band makes.
@@ -1376,6 +1388,33 @@ export function useTimeline({
     const refused = (cutWhy: string | null, posterWhy: string | null) =>
       setMenu((was) => (was === null ? was : { ...was, cutWhy, posterWhy }))
     const action = item.action
+    // Two or more selected clips: each item makes the edit the group tab makes (D7).
+    if (menuTargets.length > 1) {
+      switch (action.kind) {
+        case 'rotate':
+          editing.onRotateMany(menuTargets, action.way)
+          break
+        case 'move':
+          editing.onMoveSelection(menuTargets, action.chapter)
+          break
+        case 'ignore': {
+          const next = focusAfterMany(
+            clips.map((c) => c.identity),
+            menuTargets,
+          )
+          editing.onIgnoreMany(menuTargets)
+          selection.clear()
+          closeMenu('choice', null, next)
+          return
+        }
+        // Not reached: Cut and Poster are unavailable for several clips, so `item.why` stopped them.
+        case 'cut':
+        case 'poster':
+          return
+      }
+      closeMenu('choice', null)
+      return
+    }
     switch (action.kind) {
       case 'rotate':
         editing.onRotate(identity, action.way)
@@ -1630,7 +1669,7 @@ export function useTimeline({
         createPortal(
           <Menu
             key={menu.id}
-            title={menuClip.name}
+            title={menuView.title ?? menuClip.name}
             note={menuView.note}
             items={menuView.items.map((item) => ({
               label: item.label,

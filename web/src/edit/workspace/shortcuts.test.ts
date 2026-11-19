@@ -285,6 +285,24 @@ test('the clip menu has its two rows, neither a workspace row', () => {
   assert.equal(mouse?.scope, 'mouse')
 })
 
+test('the selection has its three rows: two clicks in Mouse and the Enter keys in Editing', () => {
+  const toggle = SHORTCUTS.find((row) => row.keys[0]?.join('+') === 'Ctrl+click')
+  assert.deepEqual(toggle?.keys, [['Ctrl', 'click'], ['Cmd', 'click a clip']])
+  assert.equal(toggle?.group, 'Mouse')
+  assert.equal(toggle?.words, 'Add it to the selection, or take it out')
+  assert.equal(toggle?.scope, 'mouse')
+  const range = SHORTCUTS.find((row) => row.keys[0]?.join('+') === 'Shift+click a clip')
+  assert.deepEqual(range?.keys, [['Shift', 'click a clip']])
+  assert.equal(range?.group, 'Mouse')
+  assert.equal(range?.words, 'Select the clips from the last one pressed')
+  assert.equal(range?.scope, 'mouse')
+  const keys = SHORTCUTS.find((row) => row.keys[0]?.join('+') === 'Ctrl+Enter')
+  assert.deepEqual(keys?.keys, [['Ctrl', 'Enter'], ['Shift', 'Enter']])
+  assert.equal(keys?.group, 'Editing')
+  assert.equal(keys?.words, 'On a clip: the same from the keyboard')
+  assert.equal(keys?.scope, 'focused')
+})
+
 // --- focusFacts --------------------------------------------------------------------------------
 
 const el = (tagName: string, over: Partial<ElementLike> & { role?: string; inPreview?: boolean } = {}): ElementLike => {
