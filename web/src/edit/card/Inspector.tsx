@@ -298,6 +298,7 @@ export function CardInspectorPanel({
             <div ref={nameInput} className="ci-name-host">
               {nameBinding !== null && (
                 <NameField
+                  key={saved}
                   binding={nameBinding}
                   locked={locked}
                   announce={editing.announce}

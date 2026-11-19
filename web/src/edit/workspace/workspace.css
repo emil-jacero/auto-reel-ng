@@ -310,8 +310,14 @@
       inset-block-start: 0;
     }
 
+    /*
+     * The page scrolls, and sideways not at all: a finger's touch areas reach 12px outward (a
+     * button on a row's right edge), and a row that is lifted or moved by a drag is drawn in full
+     * (its content-visibility is off), so they would widen the page. Clipped at the pane's own
+     * edges, which are the window's; a clip is no scroll container, so the headings still stick.
+     */
     .ws-pane {
-      overflow: visible;
+      overflow: clip visible;
       border: 0;
       border-block-start: 1px solid var(--border);
     }

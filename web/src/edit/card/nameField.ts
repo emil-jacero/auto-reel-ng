@@ -68,6 +68,22 @@ export function notChangedWords(refusal: string | null): string | null {
   return refusal === null ? null : `Name not changed. ${refusal}`
 }
 
+/**
+ * What a change of the name in the draft means to the field: `none` (it did not change), `own`
+ * (the field wrote it as typed) or `external` (Undo changes to this card, the Details form's
+ * Title: the field shows it).
+ */
+export function draftChange(
+  seen: string,
+  now: string,
+  written: string | null,
+): 'none' | 'own' | 'external' {
+  if (seen === now) {
+    return 'none'
+  }
+  return written === now ? 'own' : 'external'
+}
+
 /** The Name field's accessible name. */
 export function nameLabel(opening: boolean, name: string): string {
   return opening ? 'Title of the event' : `Name of chapter ${name}`

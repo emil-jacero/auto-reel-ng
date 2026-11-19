@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { Icon } from '../../ui/Icon'
 import { FILE_NAME_NOTE, UNTITLED } from '../inlineName.ts'
 import type { NameBinding } from './editing.ts'
-import { nameStep, notChangedWords } from './nameField.ts'
+import { draftChange, nameStep, notChangedWords } from './nameField.ts'
 
 /*
  * The editor's Name field (`edit-mode-declutter`), the one place a chapter is renamed and the
@@ -29,6 +29,8 @@ export function NameField({
   onRefused: (refused: boolean) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  // The accessible name is the chapter's name when the editor opened: typing does not rename it.
+  const [label] = useState(binding.label)
   const errorId = useId()
   const notesId = useId()
   const [typed, setTyped] = useState(binding.value)
@@ -40,6 +42,29 @@ export function NameField({
   useEffect(() => onRefused(refusal !== null), [refusal, onRefused])
   // The name the field was opened with or last settled with: a rename is said once from it.
   const settledWith = useRef(binding.value)
+
+  // The name the draft holds, as this field last saw or wrote it: a change it did not write
+  // (Undo changes to this card, the Details form's Title) is shown in the field as well.
+  const seen = useRef(binding.value)
+  const written = useRef<string | null>(null)
+  useEffect(() => {
+    const change = draftChange(seen.current, binding.value, written.current)
+    seen.current = binding.value
+    if (change === 'none') {
+      return
+    }
+    const own = change === 'own'
+    written.current = null
+    if (own) {
+      return
+    }
+    setTyped(binding.value)
+    settledWith.current = binding.value
+    if (latest.current.refusal !== null) {
+      setRefusal(null)
+      binding.refused(false)
+    }
+  }, [binding])
 
   function settle(): void {
     const { binding: now } = latest.current
@@ -78,6 +103,7 @@ export function NameField({
       binding.refused(false)
     }
     if (step.kind === 'write') {
+      written.current = step.name
       binding.write(step.name)
     }
   }
@@ -101,7 +127,7 @@ export function NameField({
         className="field-input ci-text"
         autoComplete="off"
         spellCheck
-        aria-label={binding.label}
+        aria-label={label}
         aria-invalid={refusal !== null || undefined}
         aria-describedby={describedBy === '' ? undefined : describedBy}
         aria-disabled={locked || undefined}
