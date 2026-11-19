@@ -26,7 +26,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - the normalisation to `clip` and `none`;
   - a range across a chapter's edge, and a range whose anchor left the order;
   - the words of design D6.
-- [ ] 1.2 Add `selection-move`, `selection-drop` and `ignore-many`, with their `describeEdit` labels (design D2).
+- [x] 1.2 Add `selection-move`, `selection-drop` and `ignore-many`, with their `describeEdit` labels (design D2).
   Verify with `groupMove.test.ts` and a reducer test, which must check that:
   - a missing or ignored identity in the set is not moved;
   - one `ignore-many` is one Undo step;
