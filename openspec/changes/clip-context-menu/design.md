@@ -141,7 +141,8 @@ export function focusAfter(drawn: readonly string[], identity: string): string |
 ### D5. Focus after a choice
 - **Rotate, Cut, Poster:** the clip's block.
 - **Move to:** the clip's block at its new place. The selection is set again, which scrolls the track to the clip (as
-  in "Bin press again"). If the block is not drawn at that commit, focus goes to the track.
+  in "Bin press again"), but only while the clip itself is selected: a selected cut of the clip stays selected and
+  the track does not follow. If the block is not drawn at that commit, focus goes to the track.
 - **Ignore:** `focusAfter(drawn, identity)`, taken before the edit, else the track.
 - **Timing.** Focus moves in a layout effect after the commit, never onto a node that is about to unmount ("Edit mode
   keeps keyboard focus in view and never drops it").

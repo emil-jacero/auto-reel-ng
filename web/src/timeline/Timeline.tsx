@@ -1150,6 +1150,7 @@ export function useTimeline({
       return false
     }
     setPosterTip(null)
+    // Not reached with no video: `hasFrame(null)` is false, so the refusal above has said why.
     if (element === null) {
       return false
     }
@@ -1346,6 +1347,7 @@ export function useTimeline({
           reorder.chapters.findIndex((chapter) => chapter.key === action.chapter),
           identity,
         )
+        // Not reached: the menu offers only the chapters `reorder.chapters` lists, so a slot exists.
         if (slot === null) {
           return
         }
