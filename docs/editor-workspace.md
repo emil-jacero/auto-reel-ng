@@ -114,6 +114,7 @@ spec is merged. Proposed 2026-11-15 under `openspec/changes/`.
 | 4 | `editor-undo` ✅ built 2026-11-17 (HLD D-28) | 2.2 | 1 | 1 day |
 | 5 | ~~`clip-split`~~ dropped 2026-11-18 (its change was removed on `main`; "cut a span" covers it) | 6.12 | 3 | — |
 | 6 | `editor-shortcuts` ✅ built 2026-11-19 (HLD D-28) | the Timeline's keys answer anywhere in the workspace, Keyboard shortcuts list and single-key switch, Ctrl+wheel over the whole Timeline | 4 | 1–2 days |
+| 7 | `clip-context-menu` ✅ built 2026-11-19 (HLD D-28) | a right-click or Shift+F10 on a clip block opens a menu of its edits (Rotate, Cut at playhead, poster, Move to, Ignore); reverses the context-menu half of `compact-bin-tools`' non-goal (every tool stays a direct button); the track only until `plain-clip-bin` | 6 | 1 day |
 
 Slice 1 was tightened after the build by `compact-bin-tools` (web only, 2026-11-15): the bin follows the window's
 width (`clamp(240px, 22vw, 320px)`) and its compact tools take less height. Clip rows are two lines with a fine
