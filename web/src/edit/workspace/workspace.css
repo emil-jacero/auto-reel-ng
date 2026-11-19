@@ -203,6 +203,46 @@
     justify-self: start;
   }
 
+  /* Move to… (`timeline/MoveTo.tsx`): the label, the chapter picker and Move on a wrapping row; the
+     picker shrinks before the row overflows the inspector. */
+  .ct-move {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+    min-inline-size: 0;
+  }
+
+  .ct-move-label {
+    font-weight: 600;
+  }
+
+  .ct-move-select {
+    flex: 1 1 8rem;
+    inline-size: auto;
+    min-inline-size: 0;
+  }
+
+  .ct-move-why {
+    flex-basis: 100%;
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
+  /* The group tab's names: one line each, long file names wrap rather than widen the tab. */
+  .ct-names {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--s-1);
+
+    & li {
+      overflow-wrap: anywhere;
+    }
+  }
+
   .ct-row {
     display: flex;
     flex-wrap: wrap;

@@ -2017,6 +2017,61 @@ export function EventEditor({
     [announce, clips],
   )
 
+  // Rotate left / right of the selected clips (`clip-multi-select` D5): every clip on disk that a
+  // chapter plays, each from its own turn, one edit and one Undo step; the clips come in the call,
+  // not from the marks, so the marks are untouched.
+  const onRotateMany = useCallback<EditBinding['onRotateMany']>(
+    (identities, way) => {
+      const current = latest.current
+      if (!idle(current) || lifted.current) {
+        return
+      }
+      const keys = listedChapters(current.draft.chapters).map((chapter) => chapter.key)
+      const group = groupOf(current.draft.orders, keys, new Set(identities)).filter((identity) =>
+        onDisk(clips.get(identity)),
+      )
+      if (rotateGroup(current.baseline, current.draft, group, way, () => true) === current.draft) {
+        return
+      }
+      dispatch({ type: 'rotate', identities: group, way })
+      announce(groupTurnAnnouncement(group.length, way))
+    },
+    [announce, clips],
+  )
+
+  // Move to… of the selected clips (`clip-multi-select` D5): at the end of `to`, in play order, as
+  // Move marked to… does it, applied in a transition so the move is pending (`movePending`, which
+  // locks every control that acts on the lists) until it lands.
+  const onMoveSelection = useCallback<EditBinding['onMoveSelection']>(
+    (identities, to) => {
+      const current = latest.current
+      if (!idle(current) || lifted.current) {
+        return
+      }
+      const keys = listedChapters(current.draft.chapters).map((chapter) => chapter.key)
+      const action: SelectionEdit = {
+        type: 'selection-move',
+        identities,
+        to,
+        onDisk: (identity) => onDisk(clips.get(identity)),
+      }
+      const wanted = new Set(identities.filter(action.onDisk))
+      const { moved } = moveMarkedToEnd(current.draft, keys, wanted, to)
+      if (moved.length === 0) {
+        announce(NOTHING_MOVED)
+        return
+      }
+      moving.current = true
+      setMovePending(true)
+      startTransition(() => {
+        dispatch(action)
+        setMovePending(false)
+      })
+      announce(movedWords(moved.length, headingIn(current.draft, to)))
+    },
+    [announce, clips],
+  )
+
   // An ignored clip included without a drag: at the end of its chapter's play order, the same
   // draft edit as the track drop, with the same guard.
   const onIncludeClip = useCallback<IncludeHandler>(
@@ -2228,6 +2283,8 @@ export function EventEditor({
       onIgnore: onIgnoreClip,
       onMoveMany,
       onIgnoreMany,
+      onRotateMany,
+      onMoveSelection,
       overBin,
       trackAt,
       onPoster,
@@ -2255,6 +2312,8 @@ export function EventEditor({
     onIgnoreClip,
     onMoveMany,
     onIgnoreMany,
+    onRotateMany,
+    onMoveSelection,
     overBin,
     onPoster,
     rotateClip,
