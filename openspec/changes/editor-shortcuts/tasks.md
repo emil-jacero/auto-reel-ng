@@ -41,7 +41,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - Space after a click on a clip, on the picture, and on Rotate plays (and Rotate turns the clip once);
   - Space on Rotate reached by Tab turns the clip;
   - typing a space in Title only types.
-- [ ] 2.2 Move the Ctrl+wheel listener to `.tl-track-part` through a callback ref, with the pointer or playhead anchor
+- [x] 2.2 Move the Ctrl+wheel listener to `.tl-track-part` through a callback ref, with the pointer or playhead anchor
   (design D6). Verify in Playwright:
   - over the track, the moment under the pointer stays;
   - over the tool row, the playhead keeps its place;
