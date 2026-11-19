@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { emptyChapterWords, holdsNothing } from './emptyChapter.ts'
+import { chapterRowHint, emptyChapterWords, holdsNothing } from './emptyChapter.ts'
 
 const LEFT_OUT = 'A chapter without clips is left out of the movie.'
 const MOVE_IN = 'Move clips into it with Move to… (the Clip tab’s, or a clip’s menu).'
@@ -35,4 +35,18 @@ test('an ignored clip listed apart still makes the chapter "play no clip"', () =
   assert.equal(holdsNothing(0, 0, 1), false)
   assert.equal(holdsNothing(0, 1, 0), false)
   assert.equal(holdsNothing(1, 0, 0), false)
+})
+
+test('a row says nothing while its chapter plays a clip', () => {
+  assert.equal(chapterRowHint(1, 0, 0, false), null)
+  assert.equal(chapterRowHint(3, 2, 1, true), null)
+})
+
+test('a row of a chapter that plays none says it, as the words do', () => {
+  assert.equal(chapterRowHint(0, 0, 0, false), emptyChapterWords(false, true))
+  assert.equal(chapterRowHint(0, 1, 0, false), emptyChapterWords(false, false))
+  assert.equal(chapterRowHint(0, 0, 2, true), emptyChapterWords(true, false))
+  assert.match(chapterRowHint(0, 0, 0, true) ?? '', /left out of the movie/)
+  assert.doesNotMatch(chapterRowHint(0, 0, 0, true) ?? '', /Move to/)
+  assert.match(chapterRowHint(0, 0, 0, false) ?? '', /Move to…/)
 })
