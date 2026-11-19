@@ -18,9 +18,9 @@ import type { EdgeKey } from './zoomSettle'
 import { ClipDragLayer, useClipDrag } from './ClipDrag'
 import type { ReorderModel } from './ClipDrag'
 import { MOVE_LOCKED, inBox } from './clipDrag'
-import { shiftMs } from './dragStore'
+import { held, shiftMs } from './dragStore'
 import type { DragStore } from './dragStore'
-import type { EditBinding } from './editing'
+import type { ClipMenuOpen, EditBinding } from './editing'
 import { bandStartMs } from './cards'
 import type { CardBlock, CardHandle, CardSpec } from './cards'
 import { clipMoveKey, trackZoomKey } from './keys'
@@ -28,6 +28,9 @@ import { lastInput, pointerHeld } from '../edit/workspace/modality.ts'
 import { blockYieldsSpace } from '../edit/workspace/shortcuts.ts'
 import { shortcutsEnabled } from '../edit/workspace/shortcutSwitch.ts'
 import type { KeyAction } from './keys'
+import { menuOpenKey } from './clipMenu'
+import { contextAnchor, visiblePart } from '../ui/menu'
+import type { Box } from '../ui/menu'
 import { clipDescription } from './labels'
 import { cutLabel, drawnCuts } from './layout'
 import type { ChapterBand, TrackClip } from './layout'
@@ -84,6 +87,10 @@ function inField(target: EventTarget | null): boolean {
     (target.isContentEditable || target.matches('input, textarea, select, [contenteditable="true"]'))
   )
 }
+
+/** A box (client px) as the `DOMRectReadOnly` a menu request carries. */
+const rectOf = (box: Box): DOMRectReadOnly =>
+  new DOMRect(box.left, box.top, box.right - box.left, box.bottom - box.top)
 
 /** No black cards: no band starts before its first clip. */
 const NO_LEAD: ReadonlyMap<number, number> = new Map()
@@ -388,6 +395,7 @@ const ClipPress = memo(function ClipPress({
   onSelect,
   onPress,
   onPlace,
+  onMenu,
 }: {
   identity: string
   name: string
@@ -405,6 +413,8 @@ const ClipPress = memo(function ClipPress({
   /** A click: selects the cut whose span holds the press, else the clip. */
   onPress: (identity: string, clientX: number) => void
   onPlace: (clientX: number) => void
+  /** Shift+F10 or the Menu key on the block: the clip's menu, under the block. */
+  onMenu: (identity: string, block: HTMLElement) => void
 }) {
   return (
     <div
@@ -413,6 +423,8 @@ const ClipPress = memo(function ClipPress({
       tabIndex={0}
       aria-label={name}
       aria-pressed={selected}
+      aria-keyshortcuts="Shift+F10 ContextMenu"
+      data-identity={identity}
       aria-describedby={lockedId === null ? descId : `${descId} ${lockedId}`}
       data-index={index}
       data-selected={selected || undefined}
@@ -433,6 +445,11 @@ const ClipPress = memo(function ClipPress({
       }}
       onDoubleClick={(event: MouseEvent<HTMLElement>) => onPlace(event.clientX)}
       onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
+        if (event.target === event.currentTarget && menuOpenKey(event)) {
+          event.preventDefault()
+          onMenu(identity, event.currentTarget)
+          return
+        }
         // After a pointer press Space is Play (the workspace's listener) when it will take the
         // key: with the switch off or a pointer held it does not, so the block selects as before.
         if (event.key === ' ' && blockYieldsSpace(lastInput(), shortcutsEnabled(), pointerHeld())) {
@@ -509,6 +526,7 @@ export function Track({
   onEdgeKey,
   zoomHold = null,
   reorder,
+  onOpenMenu,
 }: {
   eventId: string
   clips: readonly TrackClip[]
@@ -566,6 +584,8 @@ export function Track({
   zoomHold?: { kept: EdgeKey | null } | null
   /** The drop model of a clip block dragged on the track (`track-drag-edit`). */
   reorder: ReorderModel
+  /** A request for a clip's menu (`clip-context-menu`): the Timeline's one `openClipMenu`. */
+  onOpenMenu: (open: ClipMenuOpen) => void
 }) {
   const base = useId()
   const canvas = useRef<HTMLDivElement>(null)
@@ -591,6 +611,17 @@ export function Track({
       scrubNow.current(clientX - (box?.left ?? 0), 'tap', 'ruler')
     },
     [gripRef],
+  )
+  // The clip's menu from a key on its block: under the part of the block that shows.
+  const openMenuNow = useRef(onOpenMenu)
+  openMenuNow.current = onOpenMenu
+  const openMenuAtBlock = useCallback(
+    (identity: string, block: HTMLElement) => {
+      const own = block.getBoundingClientRect()
+      const shown = visiblePart(own, scrollerRef.current?.getBoundingClientRect() ?? own)
+      openMenuNow.current({ identity, at: { box: rectOf(shown) }, invoker: block })
+    },
+    [scrollerRef],
   )
   // A mouse or pen drag on a clip's block reorders it (`ClipDrag`); a press alone still selects.
   const clipGrab = useClipDrag(drag, canvas, scrollerRef, {
@@ -690,6 +721,7 @@ export function Track({
           onSelect={onSelectClip}
           onPress={pressAt}
           onPlace={placeAt}
+          onMenu={openMenuAtBlock}
         />,
       )
       if (detailed || focusedEdge === clip.identity) {
@@ -804,6 +836,36 @@ export function Track({
       // browser that makes only scrolling boxes focusable would otherwise drop the focus when Fit
       // leaves nothing to scroll, and the next zoom key would go nowhere.
       tabIndex={-1}
+      onContextMenu={(event: MouseEvent<HTMLElement>) => {
+        // One listener for every clip's block, edge tools and cut handles (`data-identity`); the
+        // ruler, the cards, the suggestions and the empty ground have none, so the browser's own
+        // menu shows there.
+        const owner = (event.target as HTMLElement).closest<HTMLElement>('[data-identity]')
+        const identity = owner?.dataset.identity
+        if (owner === null || identity === undefined || !event.currentTarget.contains(owner)) {
+          return
+        }
+        // A drag is on (a clip drag cancelled itself first and prevented this event): no menu, and
+        // not the browser's either.
+        if (event.defaultPrevented || held(drag)) {
+          event.preventDefault()
+          return
+        }
+        event.preventDefault()
+        const block = Array.from(
+          event.currentTarget.querySelectorAll<HTMLElement>('.tl-clip-press[data-identity]'),
+        ).find((candidate) => candidate.dataset.identity === identity)
+        if (block === undefined) {
+          return
+        }
+        const target = (event.target as HTMLElement).getBoundingClientRect()
+        const shown = visiblePart(
+          block.getBoundingClientRect(),
+          event.currentTarget.getBoundingClientRect(),
+        )
+        const at = contextAnchor({ x: event.clientX, y: event.clientY }, target, shown)
+        onOpenMenu({ identity, at: 'box' in at ? { box: rectOf(at.box) } : at, invoker: block })
+      }}
       onPointerDown={(event: PointerEvent<HTMLElement>) => {
         // A press on the track's empty ground (not a scrollbar) selects nothing.
         const box = event.currentTarget

@@ -116,3 +116,25 @@ export function placeMenu(anchor: Point | Box, size: Size, view: Size): MenuPlac
     maxHeight,
   }
 }
+
+/**
+ * The part of `box` that shows in `within` (the track's scroller): a long block can start out of
+ * view, and the menu opened by a key goes under what is seen. `box` itself when nothing of it shows.
+ */
+export function visiblePart(box: Box, within: Box): Box {
+  const left = Math.max(box.left, within.left)
+  const right = Math.min(box.right, within.right)
+  const top = Math.max(box.top, within.top)
+  const bottom = Math.min(box.bottom, within.bottom)
+  return left < right && top < bottom ? { left, top, right, bottom } : box
+}
+
+/**
+ * Where a `contextmenu` event opens the menu: at its point when the point is on `target` (the
+ * pointer), else under the block (a key-made request carries no point on its target).
+ */
+export function contextAnchor(point: Point, target: Box, block: Box): Point | { box: Box } {
+  const on =
+    point.x >= target.left && point.x <= target.right && point.y >= target.top && point.y <= target.bottom
+  return on ? point : { box: block }
+}

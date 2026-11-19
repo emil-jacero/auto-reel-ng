@@ -37,7 +37,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 2. The menu and its wiring (web/src/ui, web/src/timeline)
 
-- [ ] 2.1 Build the menu and its openers. The items may do nothing until 2.2.
+- [x] 2.1 Build the menu and its openers. The items may do nothing until 2.2.
   - `ui/Menu.tsx` and the `.menu` styles (design D3, D7). `.menu` gets `max-width: calc(100vw - 16px)`, since
     `placeMenu` caps the height only; check it in the 390x844 coarse-pointer run.
   - The Timeline's one `openClipMenu` (D1).

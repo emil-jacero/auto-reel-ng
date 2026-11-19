@@ -22,8 +22,15 @@ import { lastInput, pointerHeld } from '../edit/workspace/modality.ts'
 import { shortcutsEnabled } from '../edit/workspace/shortcutSwitch.ts'
 import { Alert } from '../ui/Alert'
 import { Icon } from '../ui/Icon'
+import type { IconName } from '../ui/Icon'
+import { Menu } from '../ui/Menu'
+import type { MenuClose } from '../ui/Menu'
+import { mayReturnFocus } from '../ui/returnFocus'
 import { ClipHeader } from './ClipHeader'
+import { clipMenu, menuSelects } from './clipMenu'
+import type { ClipAction } from './clipMenu'
 import { clipPlace, clipSelectedWords, cutSelectedWords } from './clipPanel'
+import { cutAtPlayhead } from './cutAtPlayhead'
 import { ClipTab } from './ClipTab'
 import { CutFields } from './CutFields'
 import type { Selected } from './CutFields'
@@ -61,7 +68,7 @@ import { MOVE_LOCKED, spanHit } from './clipDrag'
 import { stepSlot } from './keys'
 import { dropSlot, includeSlot } from './reorder'
 import type { DrawnChapter } from './reorder'
-import type { EditBinding } from './editing'
+import type { ClipMenuOpen, EditBinding } from './editing'
 import { selectionStands } from './handles'
 import type { KeyAction } from './keys'
 import {
@@ -115,6 +122,22 @@ import { ZoomSlider } from './ZoomSlider'
  * nothing itself: its edits go to the editor's draft. The pieces that move often are small and read the playhead's store
  * themselves, so a scrub or a playing video re-renders them and not the whole track.
  */
+
+/** The icon of a menu item. */
+function menuIcon(action: ClipAction): IconName {
+  switch (action.kind) {
+    case 'rotate':
+      return action.way === 'left' ? 'rotate-ccw' : 'rotate-cw'
+    case 'cut':
+      return 'scissors'
+    case 'poster':
+      return 'film'
+    case 'move':
+      return 'arrow-right'
+    case 'ignore':
+      return 'eye-off'
+  }
+}
 
 /** What `Q` and `W` say while a save or a move of marked clips is pending. */
 const EDGE_UNAVAILABLE = 'Nothing trimmed: trimming is unavailable while the save runs or marked clips are moved.'
@@ -1173,6 +1196,117 @@ export function useTimeline({
       </div>
     )
   }
+  // The clip's menu (`clip-context-menu`, D1): one, owned here, opened by the track (and, later, the
+  // bin's rows). Its playhead reasons are taken when it opens; the lock follows `editing.locked`.
+  const [menu, setMenu] = useState<{
+    id: number
+    open: ClipMenuOpen
+    cutWhy: string | null
+    posterWhy: string | null
+  } | null>(null)
+  const menuCount = useRef(0)
+  // Where focus goes once the menu is gone (a layout effect: never onto a node about to unmount).
+  const menuFocus = useRef<(() => void) | null>(null)
+  useLayoutEffect(() => {
+    const run = menuFocus.current
+    menuFocus.current = null
+    run?.()
+  }, [menu])
+  const blockOf = (identity: string): HTMLElement | null =>
+    Array.from(
+      scroller.current?.querySelectorAll<HTMLElement>('.tl-clip-press[data-identity]') ?? [],
+    ).find((block) => block.dataset.identity === identity) ?? null
+  /** The clip's block, else the track: focus never falls to the page's body. */
+  const focusBlock = (identity: string) => {
+    ;(blockOf(identity) ?? scroller.current)?.focus({ preventScroll: true })
+  }
+  const cutWhyFor = (clip: TrackClip): string | null => {
+    const at = playhead.get()
+    const inClip = at.card == null && clips[at.clip]?.identity === clip.identity
+    const made = cutAtPlayhead(
+      editing.listed(clip.identity),
+      inClip ? at.ms : null,
+      clip.name,
+      clip.facts.durationMs / 1000,
+    )
+    return made.ok ? null : made.words
+  }
+  const openClipMenu = (open: ClipMenuOpen) => {
+    const clip = clips.find((c) => c.identity === open.identity)
+    if (clip === undefined) {
+      return
+    }
+    if (menuSelects(selection.selection, open.identity)) {
+      selectClip(open.identity)
+    }
+    menuCount.current += 1
+    setMenu({ id: menuCount.current, open, cutWhy: cutWhyFor(clip), posterWhy: posterWhyFor(clip) })
+  }
+  const closeMenu = (why: MenuClose | 'choice' | 'gone', el: HTMLElement | null) => {
+    if (menu === null) {
+      return
+    }
+    const identity = menu.open.identity
+    setMenu(null)
+    switch (why) {
+      case 'escape':
+      case 'tab':
+      case 'choice':
+        menuFocus.current = () => focusBlock(identity)
+        return
+      case 'outside':
+        // The press goes on to its target first; focus comes back only if it was left nowhere.
+        window.setTimeout(() => {
+          if (el === null || mayReturnFocus<Node>(document.activeElement, el, document.body)) {
+            focusBlock(identity)
+          }
+        }, 0)
+        return
+      case 'scroll':
+      case 'resize':
+      case 'gone':
+        menuFocus.current = () => {
+          if (el === null || mayReturnFocus<Node>(document.activeElement, el, document.body)) {
+            focusBlock(identity)
+          }
+        }
+        return
+      case 'blur':
+        return
+    }
+  }
+  // Its clip leaving the track (Undo, a Reset) closes it.
+  const menuClipGone = menu !== null && !clips.some((c) => c.identity === menu.open.identity)
+  useEffect(() => {
+    if (menuClipGone) {
+      closeMenu('gone', null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuClipGone])
+  const menuClip = menu === null ? undefined : clips.find((c) => c.identity === menu.open.identity)
+  const menuView =
+    menu === null || menuClip === undefined
+      ? null
+      : clipMenu({
+          locked: editing.locked,
+          cutWhy: menu.cutWhy,
+          posterWhy: menu.posterWhy,
+          others: reorder.chapters
+            .filter((chapter) => !chapter.identities.includes(menuClip.identity))
+            .map((chapter) => ({ key: chapter.key, name: chapter.name ?? '' })),
+        })
+  // Choosing an item that cannot act says why and keeps the menu; the edits come with 2.2.
+  const chooseMenuItem = (index: number) => {
+    const item = menuView?.items[index]
+    if (item === undefined) {
+      return
+    }
+    if (item.why !== null) {
+      setAnnouncement(item.why)
+      return
+    }
+    closeMenu('choice', null)
+  }
   const stage = (
     <div className="tl-stage" data-turned>
       {held ? (
@@ -1365,6 +1499,7 @@ export function useTimeline({
         onEdgeKey={onEdgeKey}
         zoomHold={zoomHold}
         reorder={reorder}
+        onOpenMenu={openClipMenu}
       />
 
       {decorators === 'invalid' && <p className="tl-summary">{CARDS_UNKNOWN}</p>}
@@ -1387,6 +1522,27 @@ export function useTimeline({
       <p className="visually-hidden" role="status">
         {announcement}
       </p>
+
+      {menu !== null &&
+        menuView !== null &&
+        menuClip !== undefined &&
+        createPortal(
+          <Menu
+            key={menu.id}
+            title={menuClip.name}
+            note={menuView.note}
+            items={menuView.items.map((item) => ({
+              label: item.label,
+              icon: menuIcon(item.action),
+              group: item.group,
+              why: item.why,
+            }))}
+            at={'box' in menu.open.at ? { box: menu.open.at.box } : menu.open.at}
+            onChoose={chooseMenuItem}
+            onClose={closeMenu}
+          />,
+          document.body,
+        )}
 
       {noPicture.size > 0 && (
         <Alert tone="warn" role="note" title={FILM_FAILED} detail={FILM_FAILED_DETAIL} />

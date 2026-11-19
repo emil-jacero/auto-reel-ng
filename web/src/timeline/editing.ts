@@ -100,3 +100,14 @@ export type EditBinding = {
   /** The document's `look` as read: the title decorator decides whether the render draws cards. */
   look: unknown
 }
+
+/**
+ * A request for a clip's menu (`clip-context-menu`, D1): which clip, where the menu goes (the
+ * pointer, or the block's visible part) and the element focus goes back to. The Timeline owns the
+ * one menu; the track opens it, and the bin's rows will.
+ */
+export type ClipMenuOpen = {
+  identity: string
+  at: { x: number; y: number } | { box: DOMRectReadOnly }
+  invoker: HTMLElement
+}
