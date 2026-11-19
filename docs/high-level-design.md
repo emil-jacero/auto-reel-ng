@@ -965,6 +965,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     block on the track opens a menu of that clip's edits (Rotate, Cut at playhead, Use frame as poster, Move to a
     chapter, Ignore clip), each the same guarded, undoable draft edit as its Clip tab control; no API, engine or
     `RENDER_GRAPH_VERSION` change.
+    **Slice 8 is built** (`clip-multi-select`, web only; D-28): the selection may hold several clips (Ctrl/Cmd+click,
+    Shift+click, Ctrl/Shift+Enter) on the track and in today's bin; the Clip tab, the clip menu and the group drag act
+    on all of them, each as one Undo step; no API, engine or `RENDER_GRAPH_VERSION` change.
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
     D-17): a local image and a test stack, nothing published; the published image waits for the D-1
     fdk-aac blocker (§4.12).
@@ -2083,6 +2086,33 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     timer of our own; iOS Safari sends none, so the Clip tab stays the way to every item. Under a coarse pointer each
     item is at least 44 px tall. The Keyboard shortcuts list gains two rows. No API, engine or `RENDER_GRAPH_VERSION`
     change; no new dependency.
+  - **One selection (change `clip-multi-select`, slice 8).** The selection (`edit/workspace/selection.ts`) may now hold
+    several clips: a `clips` kind of two or more, in press order, with one clip staying `clip` so every single-clip
+    reader is unchanged. Ctrl or Cmd+click toggles a clip, Shift+click selects the run from the last clip pressed, and
+    Enter, Ctrl/Cmd+Enter and Shift+Enter do the same from the keyboard, on the track's blocks and on today's bin rows.
+    Cmd is the toggle on macOS, where Ctrl+click opens the clip menu. Escape clears a set. Alt+arrows still move one
+    clip, and with a set they say so and point to Move to…, since "one place left" is undefined for clips that are not
+    contiguous.
+  - **Group edits ship their clips.** `selection-move`, `selection-drop` and `ignore-many` carry the identities (and
+    `onDisk`, built by the dispatcher) in the action rather than reading `state.marked`, and reuse `moveMarkedToEnd`
+    and `moveGroup`. A clip that is missing from disk or that no listed chapter plays is left out, not moved or
+    ignored. Each is one Undo step ("move of 2 clips", "ignore of 2 clips"). A move of several clips is dispatched in
+    `startTransition`, so the existing `movePending` lock covers it: the trim handles, the clip menu and both Move
+    controls wait for it. The Clip tab shows `ClipGroupTab` for a set (names, Rotate, one shared Move to…, Ignore
+    clips), and the clip menu acts on the set when it opens on one of its clips (`targets`; Cut and poster say "Select
+    one clip to …").
+  - **The group drag shows a line, not room.** A drag of a selected block carries the whole set: the held blocks are
+    dimmed, the tip names the count and the slot ("3 clips · Before s1710001.mp4"), and no block shifts, because a run
+    of clips that are not contiguous has no single width to open and collapsing them would move the drop targets under
+    the pointer. The bin's group drag was specified this way for the same reason, and the 150 ms gate is reused. The
+    release lands the run where `moveGroup` puts it, over the bin ignores it, and Escape or a right-click cancels. A
+    drag of an unselected block is today's one-clip drag. Measured in Chromium on a production build: Shift+click over
+    400 clips paints in 68 ms (gate 100 ms) and a 50-clip drop costs 30 ms more than a one-clip drop (gate 150 ms).
+  - **The marks stay until `plain-clip-bin`.** The checkbox marks, Move marked to…, Rotate marked and the bin's group
+    drag are untouched, and the two sets share no state: a drop only unmarks a clip it moved, as before. Touch has no
+    Ctrl or Shift, so the marks remain the way to move several clips by touch until the plain list replaces them, which
+    will build its keyboard on this selection. The lock words name no marks, so they stay true then. The Keyboard
+    shortcuts list gains three rows. No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
   - **Not here (slice 2):** "Ignore clip" (moved 2026-11-15 to `track-drag-edit`, which builds the draft's ignore
     edit), dragging on the track, Undo. No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
 - **D-27 — Analysis is a job** (2026-10-05, change `analysis-job`). The user asked what "Not analyzed" means and why
