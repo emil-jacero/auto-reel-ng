@@ -68,5 +68,5 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
     clips, the group drag shows a line, and the marks stay until `plain-clip-bin`.
   - §6 item 10: this change is built.
   - `docs/editor-workspace.md`: add a row for `clip-multi-select`.
-- [ ] 3.3 Gates: `npm test`, `npm run check` and `npm run build` in podman; `openspec validate clip-multi-select
+- [x] 3.3 Gates: `npm test`, `npm run check` and `npm run build` in podman; `openspec validate clip-multi-select
   --strict`.
