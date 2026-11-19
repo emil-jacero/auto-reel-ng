@@ -1,7 +1,7 @@
 /*
- * The workspace's one selection (`editor-selection`, design D1), as pure rules: nothing, a clip,
- * a cut, a title card or a suggestion. Setting a new one replaces the old, so at most one thing
- * is ever selected. No DOM, no React.
+ * The workspace's one selection (`editor-selection`, design D1), as pure rules: nothing, one clip
+ * or a set of clips, a cut, a title card or a suggestion. Setting a new one replaces the old, so at
+ * most one thing (or one set of clips) is ever selected. No DOM, no React.
  */
 
 import type { TabId } from '../card/tabs.ts'
@@ -9,7 +9,15 @@ import type { ChapterKey, DraftCut } from '../draft'
 
 export type Selection =
   | { kind: 'none' }
+  /** One clip: every single-clip reader is unchanged. */
   | { kind: 'clip'; identity: string }
+  /**
+   * Two or more clips, in press order (a range in `order`). `anchor` is the clip a Shift press
+   * ranges from (the clip pressed last without Shift), `last` the clip pressed last. Never fewer
+   * than two identities: `pressClip` and `keptSelection` normalise a set of one to `clip` and an
+   * empty one to `none`.
+   */
+  | { kind: 'clips'; identities: readonly string[]; anchor: string; last: string }
   | { kind: 'cut'; identity: string; key: string }
   | { kind: 'card'; chapter: ChapterKey }
   | { kind: 'suggestion'; id: string }
@@ -35,6 +43,13 @@ export function keptSelection(sel: Selection, world: World): Selection {
       return sel
     case 'clip':
       return world.clips.has(sel.identity) ? sel : NO_SELECTION
+    case 'clips': {
+      const kept = sel.identities.filter((identity) => world.clips.has(identity))
+      if (kept.length === sel.identities.length) {
+        return sel
+      }
+      return clipsOf(kept, sel.anchor, world.clips.has(sel.last) ? sel.last : (kept[kept.length - 1] ?? sel.last))
+    }
     case 'cut': {
       const cut = world.cuts.get(sel.identity)?.find((c) => c.key === sel.key)
       return cut !== undefined && !cut.removed ? sel : NO_SELECTION
@@ -50,6 +65,7 @@ export function keptSelection(sel: Selection, world: World): Selection {
 export function inspectorTab(sel: Selection): 'clip' | 'card' | 'suggestion' | 'event' {
   switch (sel.kind) {
     case 'clip':
+    case 'clips':
     case 'cut':
       return 'clip'
     case 'card':
@@ -68,6 +84,14 @@ export function sameSelection(a: Selection, b: Selection): boolean {
       return b.kind === 'none'
     case 'clip':
       return b.kind === 'clip' && b.identity === a.identity
+    case 'clips':
+      return (
+        b.kind === 'clips' &&
+        b.anchor === a.anchor &&
+        b.last === a.last &&
+        b.identities.length === a.identities.length &&
+        b.identities.every((identity, index) => identity === a.identities[index])
+      )
     case 'cut':
       return b.kind === 'cut' && b.identity === a.identity && b.key === a.key
     case 'card':
@@ -83,7 +107,7 @@ export function sameSelection(a: Selection, b: Selection): boolean {
  */
 export function keptIn(sel: Selection, part: Partial<World>): Selection {
   const knows =
-    (sel.kind === 'clip' && part.clips !== undefined) ||
+    ((sel.kind === 'clip' || sel.kind === 'clips') && part.clips !== undefined) ||
     (sel.kind === 'cut' && part.cuts !== undefined) ||
     (sel.kind === 'card' && part.chapters !== undefined) ||
     (sel.kind === 'suggestion' && part.suggestions !== undefined)
@@ -97,6 +121,115 @@ export function keptIn(sel: Selection, part: Partial<World>): Selection {
     suggestions: new Set(),
     ...part,
   })
+}
+
+/**
+ * The selection of `identities`, normalised: none for none, `clip` for one, else `clips` with the
+ * given anchor and last clip (a clip alone is its own anchor).
+ */
+function clipsOf(identities: readonly string[], anchor: string, last: string): Selection {
+  if (identities.length === 0) {
+    return NO_SELECTION
+  }
+  if (identities.length === 1) {
+    return { kind: 'clip', identity: identities[0] as string }
+  }
+  return { kind: 'clips', identities, anchor, last }
+}
+
+/** How a press on a clip changes the selection: replaces it, adds or takes out, or ranges from the anchor. */
+export type Press = 'alone' | 'toggle' | 'range'
+
+/**
+ * The selection after a press on `identity`. `alone` selects it only. `toggle` (Ctrl or Cmd) adds
+ * it to the clips selected, or takes it out when it was one of them; from a cut, a card, a
+ * suggestion or nothing it starts a set of the clip alone. `range` (Shift) selects the clips of
+ * `order` (the drawn order on the track, the bin's rows in the bin) from the anchor to the clip,
+ * keeping the anchor. A range whose anchor is not in `order` (it left the track), or from a
+ * selection without one, is the clip alone.
+ */
+export function pressClip(
+  sel: Selection,
+  identity: string,
+  press: Press,
+  order: readonly string[],
+): Selection {
+  const alone: Selection = { kind: 'clip', identity }
+  const held = selectedClips(sel)
+  switch (press) {
+    case 'alone':
+      return alone
+    case 'toggle': {
+      const next = held.includes(identity)
+        ? held.filter((candidate) => candidate !== identity)
+        : [...held, identity]
+      return clipsOf(next, identity, identity)
+    }
+    case 'range': {
+      const anchor = sel.kind === 'clip' ? sel.identity : sel.kind === 'clips' ? sel.anchor : null
+      const from = anchor === null ? -1 : order.indexOf(anchor)
+      const to = order.indexOf(identity)
+      if (anchor === null || from < 0 || to < 0) {
+        return alone
+      }
+      return clipsOf(order.slice(Math.min(from, to), Math.max(from, to) + 1), anchor, identity)
+    }
+  }
+}
+
+/** The clips the selection holds: none, one, or the set. A cut is not a clip selection. */
+export function selectedClips(sel: Selection): readonly string[] {
+  switch (sel.kind) {
+    case 'clip':
+      return [sel.identity]
+    case 'clips':
+      return sel.identities
+    default:
+      return []
+  }
+}
+
+/** The clip pressed last, or null when no clip is selected. */
+export function lastClip(sel: Selection): string | null {
+  switch (sel.kind) {
+    case 'clip':
+      return sel.identity
+    case 'clips':
+      return sel.last
+    default:
+      return null
+  }
+}
+
+/**
+ * What the selection's polite status says for the change from `was` to `now` (design D6), or null
+ * when it says nothing new: a change to a set is the count ("3 clips selected."), and a set that
+ * gains or loses exactly one clip names it first ("s1710003.mp4 added. 3 clips selected."). A
+ * change to one clip or to another kind keeps today's words, which are none.
+ */
+export function selectionWords(
+  was: Selection,
+  now: Selection,
+  nameOf: (identity: string) => string,
+): string | null {
+  if (now.kind !== 'clips') {
+    return null
+  }
+  const before = selectedClips(was)
+  const after = now.identities
+  const count = `${after.length} clips selected.`
+  if (before.length === after.length && before.every((identity) => after.includes(identity))) {
+    return null
+  }
+  if (before.length > 0 && after.length === before.length + 1 && before.every((i) => after.includes(i))) {
+    const added = after.find((identity) => !before.includes(identity))
+    return added === undefined ? count : `${nameOf(added)} added. ${count}`
+  }
+  if (before.length > 0 && after.length === before.length - 1 && after.every((i) => before.includes(i))) {
+    const out = before.find((identity) => !after.includes(identity))
+    return out === undefined ? count : `${nameOf(out)} taken out. ${count}`
+  }
+  return count
 }
 
 /**
@@ -131,7 +264,12 @@ export function clearState(was: SelectionState): SelectionState {
 
 /** The selection ends when its target is gone from `part` of the world. */
 export function keepState(was: SelectionState, part: Partial<World>): SelectionState {
-  return keptIn(was.sel, part) === was.sel ? was : clearState(was)
+  const kept = keptIn(was.sel, part)
+  if (kept === was.sel) {
+    return was
+  }
+  // A set that lost some of its clips stays, with the rest.
+  return kept.kind === 'none' ? clearState(was) : { ...was, sel: kept, opened: null }
 }
 
 /**
