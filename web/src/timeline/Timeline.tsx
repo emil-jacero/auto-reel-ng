@@ -345,6 +345,8 @@ export function useTimeline({
       drawn,
       overBin: editing.overBin,
       onIgnore: editing.onIgnore,
+      onGroupDrop: (identities, dragged, slot) => editing.onMoveMany(identities, dragged, slot, drawn),
+      onGroupIgnore: editing.onIgnoreMany,
     }
   }, [chapterNames, chapterKeys, clips, clipLay, map, editing])
   const draftCuts = editing.cuts

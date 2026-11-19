@@ -1115,6 +1115,12 @@ function onDisk(clip: Clip | undefined): boolean {
   return clip?.status === 'active' || clip?.status === 'new'
 }
 
+/** The clips of `identities` that a listed chapter of `draft` plays, in page order. */
+function playedOf(draft: Draft, identities: readonly string[]): string[] {
+  const listed = listedChapters(draft.chapters).map((chapter) => chapter.key)
+  return groupOf(draft.orders, listed, new Set(identities))
+}
+
 /** A clip that can carry a mark: on disk and not excluded (the rows with a Cuts control). */
 function canMark(clip: Clip | undefined): boolean {
   return onDisk(clip) && clip?.excluded !== true
@@ -1954,6 +1960,63 @@ export function EventEditor({
     [announce],
   )
 
+  // A group of selected clips dropped on the track (`clip-multi-select`, D4): the clips ship in the
+  // action with `onDisk`, so a missing clip is not moved (`selectionStep`); one draft edit, one Undo.
+  // The gap is the index of the clip the run goes before in the chapter's full order, as a drop of
+  // one clip finds it (`includeIndex`).
+  const onMoveMany = useCallback<EditBinding['onMoveMany']>(
+    (identities, dragged, slot, drawn) => {
+      const current = latest.current
+      if (!idle(current)) {
+        return
+      }
+      const gap = includeIndex(current.draft.orders, slot, drawn)
+      if (gap === null) {
+        return
+      }
+      const action: SelectionEdit = {
+        type: 'selection-drop',
+        identities,
+        dragged,
+        to: slot.chapter,
+        gap,
+        onDisk: (identity) => onDisk(clips.get(identity)),
+      }
+      if (selectionStep(current, action) === current) {
+        announce(NOTHING_MOVED)
+        return
+      }
+      const count = playedOf(current.draft, identities.filter(action.onDisk)).length
+      dispatch(action)
+      announce(`Moved ${plural(count, 'clip', 'clips')}. ${slot.place}. Not saved.`)
+    },
+    [announce, clips],
+  )
+
+  // A group of selected clips released over the bin: every one that is on disk and played is ignored,
+  // one draft edit (`ignore-many`).
+  const onIgnoreMany = useCallback<EditBinding['onIgnoreMany']>(
+    (identities) => {
+      const current = latest.current
+      if (!idle(current)) {
+        return
+      }
+      const action: SelectionEdit = {
+        type: 'ignore-many',
+        identities,
+        onDisk: (identity) => onDisk(clips.get(identity)),
+      }
+      if (selectionStep(current, action) === current) {
+        announce(NOTHING_MOVED)
+        return
+      }
+      const count = playedOf(current.draft, identities.filter(action.onDisk)).length
+      dispatch(action)
+      announce(`Ignored ${plural(count, 'clip', 'clips')}. Not saved.`)
+    },
+    [announce, clips],
+  )
+
   // An ignored clip included without a drag: at the end of its chapter's play order, the same
   // draft edit as the track drop, with the same guard.
   const onIncludeClip = useCallback<IncludeHandler>(
@@ -2163,6 +2226,8 @@ export function EventEditor({
       onEdge,
       onMove: onMoveClip,
       onIgnore: onIgnoreClip,
+      onMoveMany,
+      onIgnoreMany,
       overBin,
       trackAt,
       onPoster,
@@ -2188,6 +2253,8 @@ export function EventEditor({
     onEdge,
     onMoveClip,
     onIgnoreClip,
+    onMoveMany,
+    onIgnoreMany,
     overBin,
     onPoster,
     rotateClip,

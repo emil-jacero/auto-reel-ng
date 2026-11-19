@@ -65,6 +65,11 @@ export type ClipDragging = {
   widthMs: Ms
   lineMs: Ms | null
   words: string
+  /**
+   * A group of selected clips is dragged (`clip-multi-select`, D4): the drawn indices of its
+   * blocks, held dimmed. No block moves or makes room; the line and the words say the slot.
+   */
+  held?: ReadonlySet<number> | null
 }
 
 export type DragStore = {
@@ -143,7 +148,8 @@ function sameClip(a: ClipDragging | null, b: ClipDragging | null): boolean {
     a.to === b.to &&
     a.widthMs === b.widthMs &&
     a.lineMs === b.lineMs &&
-    a.words === b.words
+    a.words === b.words &&
+    (a.held ?? null) === (b.held ?? null)
   )
 }
 

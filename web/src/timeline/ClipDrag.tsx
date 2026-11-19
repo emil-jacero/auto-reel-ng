@@ -10,18 +10,22 @@ import type { PointerEvent, RefObject } from "react";
 
 import {
   MOVE_CANCEL,
+  IGNORE_GROUP_WORDS,
   IGNORE_WORDS,
   MOVE_LOCKED,
   bandSlot,
   dropWords,
   flatMove,
+  groupBandSlot,
+  groupSlot,
   inBox,
+  isGroupOwnPlace,
   isOwnPlace,
   pastSlop,
   shiftOf,
   slotLineMs,
 } from "./clipDrag";
-import type { Box } from "./clipDrag";
+import type { Box, GroupSlot } from "./clipDrag";
 import type { DragStore } from "./dragStore";
 import { extentMs, pxToTime, timeToPx } from "./model";
 import type { Layout, Ms } from "./model";
@@ -53,6 +57,17 @@ export type ReorderModel = {
   overBin(x: number, y: number): boolean;
   /** A release over the bin: one draft edit that ignores the clip. */
   onIgnore(identity: string): void;
+  /**
+   * A group released on the track (`clip-multi-select`, D4): `identities` in drawn order, one
+   * draft edit at `slot`. Not called when the slot leaves the order as it is.
+   */
+  onGroupDrop(
+    identities: readonly string[],
+    dragged: string,
+    slot: GroupSlot,
+  ): void;
+  /** A group released over the bin: one draft edit that ignores them all. */
+  onGroupIgnore(identities: readonly string[]): void;
 };
 
 type Context = {
@@ -60,6 +75,8 @@ type Context = {
   lay: Layout;
   pps: number;
   reorder: ReorderModel;
+  /** The clips the page's selection holds: a press on one of several drags them all. */
+  selected: ReadonlySet<string>;
   locked: boolean;
   announce: (words: string) => void;
   onSelectClip: (identity: string) => void;
@@ -80,6 +97,12 @@ type Press = {
   slot: DropSlot | null;
   /** A release now would ignore the clip: the pointer is over the bin. */
   ignore: boolean;
+  /** A drag of several selected clips: the clips in drawn order, once the drag starts. */
+  members: readonly string[] | null;
+  /** The slot a release of the group would use, null when it would drop nothing. */
+  groupAt: GroupSlot | null;
+  /** The pointer is over the track at the group's own place: a release says so. */
+  groupOwn: boolean;
   off: (() => void) | null;
 };
 
@@ -139,6 +162,81 @@ export function useClipDrag(
     [drag],
   );
 
+  // A group in the air (`clip-multi-select`, D4): no block moves, the held ones are dimmed, and
+  // the line stands at the boundary nearest the pointer over the drawn order without the group.
+  const updateGroup = useCallback(
+    (
+      p: Press,
+      event: PointerEvent<HTMLElement>,
+      el: HTMLElement,
+      box: DOMRect,
+      c: Context,
+    ) => {
+      const members = p.members ?? [];
+      const group = new Set(members);
+      const held = new Set<number>();
+      c.clips.forEach((k, at) => {
+        if (group.has(k.identity)) {
+          held.add(at);
+        }
+      });
+      const base = {
+        identity: p.identity,
+        dxPx: 0,
+        from: p.index,
+        to: p.index,
+        widthMs: 0,
+        held,
+      };
+      p.groupAt = null;
+      p.groupOwn = false;
+      const outside = !inBox(
+        { left: box.left, right: box.right, top: box.top, bottom: box.bottom },
+        event.clientX,
+        event.clientY,
+      );
+      if (outside) {
+        p.ignore = c.reorder.overBin(event.clientX, event.clientY);
+        drag.setClip({
+          ...base,
+          lineMs: null,
+          words: p.ignore ? IGNORE_GROUP_WORDS : MOVE_CANCEL,
+        });
+        return;
+      }
+      p.ignore = false;
+      const chapters = c.reorder.chapters;
+      const starts = c.lay.startsMs.slice(0, c.clips.length);
+      const extents = c.clips.map((k) => extentMs(k.kept));
+      const band = bandBoxes(el).find((b) =>
+        inBox(b.box, event.clientX, event.clientY),
+      );
+      const slot =
+        band !== undefined
+          ? groupBandSlot(chapters, group, starts, extents, band.chapter)
+          : groupSlot(
+              chapters,
+              group,
+              starts,
+              extents,
+              pxToTime(event.clientX - el.getBoundingClientRect().left, c.pps),
+            );
+      if (slot === null) {
+        drag.setClip({ ...base, lineMs: null, words: "" });
+        return;
+      }
+      const own = isGroupOwnPlace(chapters, group, slot);
+      p.groupAt = own ? null : slot;
+      p.groupOwn = own;
+      drag.setClip({
+        ...base,
+        lineMs: slot.lineMs,
+        words: own ? `${members.length} clips \u00b7 Stays where they are` : slot.words,
+      });
+    },
+    [drag],
+  );
+
   const update = useCallback(
     (p: Press, event: PointerEvent<HTMLElement>) => {
       const c = now.current;
@@ -151,6 +249,10 @@ export function useClipDrag(
       const widthMs = extentMs(clip.kept);
       const dxPx = event.clientX - p.x;
       const base = { identity: p.identity, dxPx, from: p.index, widthMs };
+      if (p.members !== null) {
+        updateGroup(p, event, el, box, c);
+        return;
+      }
       const outside = !inBox(
         { left: box.left, right: box.right, top: box.top, bottom: box.bottom },
         event.clientX,
@@ -206,7 +308,7 @@ export function useClipDrag(
         words: dropWords(own, slot),
       });
     },
-    [drag, canvas, viewport],
+    [drag, canvas, viewport, updateGroup],
   );
 
   useEffect(() => () => end(null), [end]);
@@ -279,6 +381,9 @@ export function useClipDrag(
           refused: false,
           slot: null,
           ignore: false,
+          members: null,
+          groupAt: null,
+          groupOwn: false,
           off: () => {
             window.removeEventListener("keydown", cancel, true);
             window.removeEventListener("contextmenu", menu, true);
@@ -304,7 +409,20 @@ export function useClipDrag(
             return;
           }
           p.started = true;
-          now.current.onSelectClip(p.identity);
+          // A press on one of several selected clips drags them all and keeps the selection; any
+          // other press is a drag of one clip, which selects it alone.
+          const c = now.current;
+          const members =
+            c.selected.size > 1 && c.selected.has(p.identity)
+              ? c.reorder.chapters
+                  .flatMap((chapter) => [...chapter.identities])
+                  .filter((identity) => c.selected.has(identity))
+              : [];
+          if (members.length > 1) {
+            p.members = members;
+          } else {
+            c.onSelectClip(p.identity);
+          }
         }
         update(p, event);
       },
@@ -316,7 +434,19 @@ export function useClipDrag(
         const slot = p.started ? p.slot : null;
         const ignore = p.started && p.ignore;
         const identity = p.identity;
+        const { members, groupAt, groupOwn } = p;
         end(event);
+        if (members !== null) {
+          const c = now.current;
+          if (ignore) {
+            c.reorder.onGroupIgnore(members);
+          } else if (groupAt !== null) {
+            c.reorder.onGroupDrop(members, identity, groupAt);
+          } else if (groupOwn) {
+            c.announce(`${members.length} clips dropped, unchanged.`);
+          }
+          return;
+        }
         if (ignore) {
           now.current.reorder.onIgnore(identity);
         } else if (slot !== null) {
@@ -374,6 +504,7 @@ export function ClipDragLayer({
     }
     const moved = new Set<HTMLElement>();
     const lifted = new Set<HTMLElement>();
+    const held = new Set<HTMLElement>();
     const apply = () => {
       const d = drag.getClip();
       if (d === null) {
@@ -384,6 +515,14 @@ export function ClipDragLayer({
         ".tl-clip[data-index], .tl-clip-press[data-index]",
       )) {
         const at = Number(node.dataset.index);
+        if (d.held != null) {
+          // A group: nothing lifts or makes room; its blocks are held, dimmed.
+          if (d.held.has(at) && node.dataset.held === undefined) {
+            node.dataset.held = "true";
+            held.add(node);
+          }
+          continue;
+        }
         const by = at === d.from ? d.dxPx : shiftOf(d.from, d.to, at) * width;
         const value = by === 0 ? "" : `${by}px 0`;
         if (node.style.translate !== value) {
@@ -405,6 +544,9 @@ export function ClipDragLayer({
       }
       for (const node of lifted) {
         delete node.dataset.lifted;
+      }
+      for (const node of held) {
+        delete node.dataset.held;
       }
     };
   }, [active, drag, canvas, pps]);

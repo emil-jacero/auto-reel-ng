@@ -635,6 +635,7 @@ export function Track({
     lay,
     pps,
     reorder,
+    selected: selectedClips,
     locked: editing.locked,
     announce: editing.announce,
     onSelectClip,

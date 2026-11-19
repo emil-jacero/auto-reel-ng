@@ -4,6 +4,7 @@ import type { ClipPreviews } from '../preview/previews'
 import type { PosterPick } from '../edit/poster.ts'
 import type { Turn, Way } from '../rotate/turn.ts'
 import type { EdgeEdit } from './edgeTrim.ts'
+import type { GroupSlot } from './clipDrag.ts'
 import type { DropSlot } from './reorder.ts'
 
 /*
@@ -70,6 +71,19 @@ export type EditBinding = {
    * ignored clips, as dragging it onto the bin makes it. Ignored while locked.
    */
   onIgnore(identity: string): void
+  /**
+   * Several selected clips dropped on the track (`clip-multi-select`, D4): one draft edit,
+   * `identities` as one run at `slot` (before `slot.beforeIdentity`, or at the chapter's end after
+   * the last clip the track draws, `drawn`). Ignored while locked; a missing clip is left out.
+   */
+  onMoveMany(
+    identities: readonly string[],
+    dragged: string,
+    slot: Pick<GroupSlot, 'chapter' | 'beforeIdentity' | 'place'>,
+    drawn: ReadonlySet<string>,
+  ): void
+  /** Several selected clips released over the bin: one draft edit that ignores them all. Ignored while locked. */
+  onIgnoreMany(identities: readonly string[]): void
   /** Whether a client point is over the clip bin (a track drag released there ignores the clip). */
   overBin(x: number, y: number): boolean
   /** Where the bin's drag lands on the track (the Track keeps it current while mounted). */
